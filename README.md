@@ -118,9 +118,31 @@ index above lists them all with one-line summaries.
   re-tells at another type (Writer.scala; the five encodings tried
   before this one: docs/existentials.md).
 - `State` — get/set with a bespoke tail-recursive handler; `PState` —
-  type-changing (typestate) state on the paramonad (State.scala).
-- `Throws` — typed errors: abort, runEither, the `throws` union
-  (Throws.scala).
+  type-changing (typestate) state on the paramonad (State.scala). A
+  row holds ONE `State % S`, since `Get()` carries no runtime trace of
+  S.
+- **Several instances of one effect** — `Tag.Of["small", State % Int]`
+  names them in the row, for ANY signature; `tag` puts a finished
+  program's operations under a key (so a function written against a
+  plain `State % Int` runs twice at two states), and `untag` hands the
+  plain signature back to its own handler (Tag.scala). Where the
+  instances are made rather than named, `Refs` keeps a heap: cells
+  created at run time, one row member however many, one stated cast
+  (Refs.scala).
+- `Throws` — typed errors: abort, runEither, the `throws` union; and
+  `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
+  `runOption` (Throws.scala).
+- **Your own effect** ([the tutorial](docs/your-own-effect.md)), in
+  three lines: `enum Users[+A] derives Effect`
+  and the cases carry their answer types. `derives Effect` writes the
+  row-split test and registers the signature for direct style;
+  `.plus[R]` puts an operation in a wider row; with `Abort` in the row
+  a refutable pattern and an `if` guard work in a for-comprehension
+  (`case Some(old) <- find(id).plus[Abort]`), so a step that must not run
+  is not reachable rather than skipped by hand; `h.tracing(log)`
+  makes any handler a recording one (Fail.scala, RowLift.scala,
+  docs/guide.md §2, and the worked example in
+  `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`).
 - `Choice` — nondeterminism with a genuinely multi-shot handler; the
   canonical MonadPlus (Choice.scala). `Logic` — fair backtracking
   search on top of it: interleave, once, ifte (Logic.scala,

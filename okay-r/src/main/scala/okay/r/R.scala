@@ -52,14 +52,12 @@ final case class RFrame(cols: Vector[(String, Vector[RValue])])
  * message — data, and the process survives to take the next call */
 final case class Condition(kind: String, message: String)
 
-enum REval[A]:
+enum REval[A] derives okay.Effect:
   case Call(fn: String, args: Vector[RValue])
     extends REval[Either[Condition, RValue]]
   case Frame(fn: String, in: RFrame, args: Vector[RValue])
     extends REval[Either[Condition, RFrame]]
 
-object REval:
-  given okay.TypeableK[REval] = okay.typeableK(classOf[REval[?]])
 
 /**
  * The wire halves every engine shares: `RValue` <-> the tagged JSON

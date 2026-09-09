@@ -38,29 +38,15 @@ final case class ToolCall(id: String, name: String, args: Json)
 final case class Reply(text: String, calls: Seq[ToolCall])
 
 /** the model effect: completion, and the local token count */
-enum Model[+A]:
+enum Model[+A] derives okay.Effect:
   case Complete(context: Seq[Turn], tools: Seq[ToolSpec]) extends Model[Reply]
   case Count(text: String) extends Model[Int]
 
 
-/** The class IS the whole identity: Model has no parameter but its
- * (erased) answer type, so splitting the agent row on it is a TOTAL
- * test. In the COMPANION so implicit search finds it without an
- * import — `import okay.agent.*` does not bring toplevel givens. */
-object Model:
-  given okay.TypeableK[Model] = okay.typeableK(classOf[Model[?]])
-
 /** one typed tool invocation — the handler decides what that means */
-enum Tool[+A]:
+enum Tool[+A] derives okay.Effect:
   case Call(call: ToolCall) extends Tool[String]
 
-
-/** The class IS the whole identity: Tool has no parameter but its
- * (erased) answer type, so splitting the agent row on it is a TOTAL
- * test. In the COMPANION so implicit search finds it without an
- * import — `import okay.agent.*` does not bring toplevel givens. */
-object Tool:
-  given okay.TypeableK[Tool] = okay.typeableK(classOf[Tool[?]])
 
 /**
  * The conversation as effects. Recall answers a view that is ALREADY
@@ -69,19 +55,13 @@ object Tool:
  * context backtrackable — the state is a value, so a rollback is a
  * pointer, not an undo log.
  */
-enum Context[+A]:
+enum Context[+A] derives okay.Effect:
   case Remember(turn: Turn) extends Context[Unit]
   case Recall() extends Context[Seq[Turn]]
   case Mark() extends Context[Snapshot]
   case Restore(mark: Snapshot) extends Context[Unit]
 
 
-/** The class IS the whole identity: Context has no parameter but its
- * (erased) answer type, so splitting the agent row on it is a TOTAL
- * test. In the COMPANION so implicit search finds it without an
- * import — `import okay.agent.*` does not bring toplevel givens. */
-object Context:
-  given okay.TypeableK[Context] = okay.typeableK(classOf[Context[?]])
 /** an opaque handle to a context state (a persistent value) */
 final class Snapshot(private[agent] val state: Any):
   /** the SNAPSHOT kernel, once: a snapshot is only ever made by a

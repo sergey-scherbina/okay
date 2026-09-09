@@ -15,6 +15,15 @@ import okay.given
  * checked at runtime" — which is unactionable there and was drowning
  * out everything else it had to say. The limitation belongs here
  * instead: named, demonstrated, and impossible to be surprised by.
+ *
+ * It is also not INHERENT, which the Writer case below already hints
+ * at: the split is a runtime test, so a signature that carries its
+ * identity at run time is told apart. Two effects do exactly that,
+ * and a program needing more than one instance picks between them:
+ * `Tag` (the instances are NAMED in the row, for any signature at
+ * all, and handled by that signature's own handler after `untag`) and
+ * `Refs` (state made at run time, one row member however many, one
+ * stated cast in the heap).
  */
 class TestRowIdentity extends munit.FunSuite {
 

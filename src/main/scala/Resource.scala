@@ -8,7 +8,7 @@ import okay.!.*
  * scope ends, in reverse acquisition order, whatever else the program
  * does (region style, as in the region calculus / cats Resource).
  */
-enum Resource[+A]:
+enum Resource[+A] derives okay.Effect:
   /** acquire a resource; the scope releases it at its end */
   case Acquire[R](make: () => R, release: R => Unit) extends Resource[R]
 
@@ -98,4 +98,3 @@ def bracket[R, A, F[+_] : Handler](acquire: => R)(release: R => Unit)(use: R => 
  * (erased) answer type, so splitting a row on it is a TOTAL test —
  * said once here, rather than as a "cannot be checked at runtime"
  * warning at every use site of a test that is in fact complete. */
-given TypeableK[Resource] = typeableK(classOf[Resource[?]])

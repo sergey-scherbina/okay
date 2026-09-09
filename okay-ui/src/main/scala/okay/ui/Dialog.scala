@@ -18,12 +18,11 @@ import okay.given
  *     the awaited event arrives, which is what delimited
  *     continuations are for.
  */
-enum Dialog[+A]:
+enum Dialog[+A] derives okay.Effect:
   case Show(ui: Ui) extends Dialog[Event]
 
 object Dialog {
 
-  given okay.TypeableK[Dialog] = okay.typeableK(classOf[Dialog[?]])
 
   /** show the tree; the answer is what the user did next */
   inline def show(ui: Ui): Event ! Dialog = effect(Show(ui))

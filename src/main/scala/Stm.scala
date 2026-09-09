@@ -86,7 +86,12 @@ object TRef {
 
   private final class Wrapped[A](init: A) extends TRef[A]:
     private[okay] val ref = AtomicReference[Stamped[A]](install(init, 0L))
-    private[okay] def install(a: A, v: Long): Stamped[A] = { val s = Slot(a); s.stamp = v; s }
+    // `new`, not `Slot(a)`: on the JVM there is also a package-private
+    // okay.Slot (Platform.scala's parking cell), and a constructor
+    // proxy for the inner class shadowing it is an ERROR (E177) — one
+    // that only appears when this file is recompiled, so it hides from
+    // an incremental build and fails a clean one.
+    private[okay] def install(a: A, v: Long): Stamped[A] = { val s = new Slot(a); s.stamp = v; s }
     protected def unchanged(a: A, content: Stamped[A]): Boolean = false
 
   private final class Bare[A <: Stamped[A]](init: A) extends TRef[A]:

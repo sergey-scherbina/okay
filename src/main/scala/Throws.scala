@@ -3,6 +3,7 @@ package okay
 import scala.reflect.*
 import scala.util.*
 import scala.annotation.implicitNotFound
+import okay.RowLift.at
 
 /**
  * Errors on two levels, with the bridges between them.
@@ -17,7 +18,15 @@ import scala.annotation.implicitNotFound
  */
 
 /** the effect of failing with E */
-case class Throws[E, +A](e: E)
+/**
+ * PARAMETERISED, so the derived test is by CLASS only: the operations
+ * carry no runtime trace of E, and a row may therefore hold ONE
+ * Throws. Two — `Throws % A + Throws % B` — misroute, loudly
+ * (TestRowIdentity): the first handler answers both asks and the
+ * second continuation gets a ClassCastException, rather than a
+ * plausible wrong answer.
+ */
+case class Throws[E, +A](e: E) derives okay.Effect
 
 /** perform the failure */
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
@@ -31,10 +40,66 @@ inline def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
 inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): (A throws E) ! F =
   runEither(a).map(e => e)
 
+/**
+ * FAILURE WITH NOTHING TO SAY. Not every failure carries a reason: a
+ * lookup that found nothing, a pattern that did not match, a guard
+ * that did not hold. `Throws % Unit` is exactly that error, and
+ * because it is an ordinary Throws it needs no new node, no new
+ * handler and no new interpreter — only names.
+ *
+ * The Option does not disappear, it MOVES: out of every signature
+ * along the way and into the handler at the end. That is what makes
+ * `for case Some(x) <- p` work (Fail.scala) — the pattern says what
+ * happens when the value is not there, and the type says the program
+ * may stop.
+ */
+type Abort = Throws % Unit
+
+/** stop: nothing to answer with */
+inline def abort[A]: A ! Abort = raise[Unit, A](())
+
+/** handle Abort into Option, forwarding the effects F */
+inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
+  runEither[A, F, Unit](a).map(_.toOption)
+
 /** handle Throws by actually throwing: the JVM is the handler */
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
   Effects[Free].handle[Throws % E, F, A, A](a)(a => pure(a)):
     [X] => e => shift(_ => throw e.e)
+
+/**
+ * RECOVERY, in the row rather than around it: run the alternative
+ * when the first program raises.
+ *
+ *     load(id).orElse(pure(default))
+ *     load(id).recover(e => pure(fallbackFor(e)))
+ *
+ * Both are `runEither` applied to a PART of the program instead of to
+ * all of it — the handler is installed here, the failure is answered
+ * here, and the row comes out unchanged, so what follows neither knows
+ * nor cares that anything went wrong. `orElse` is `recover` for the
+ * case where the error had nothing to say, which is every `Abort`.
+ *
+ * NOT free, and the cost is where you would guess: one handler per
+ * call, over the program it guards. Wrap the smallest piece that can
+ * fail, not the whole thing.
+ *
+ * This is the Alternative structure of a failing row (`empty` is
+ * `abort`, `append` is this), spelled as methods rather than as an
+ * instance. An instance would not be FOUND: matching
+ * `Alternative[[A] =>> A ! (Throws % E + F)]` against a concrete row
+ * is the higher-order unification the compiler declines (see
+ * Fail.scala). A method's receiver is unified, not searched for, and
+ * that does work — including with the row written in the other order.
+ */
+extension [A, E, F[+_]](p: A ! (Throws % E + F))
+  /** answer the failure, seeing the error */
+  def recover(h: E => A ! (Throws % E + F)): A ! (Throws % E + F) =
+    runEither[A, F, E](p).at[Throws % E + F].flatMap(_.fold(h, pure))
+
+  /** answer the failure, ignoring the error */
+  inline def orElse(q: => A ! (Throws % E + F)): A ! (Throws % E + F) =
+    recover(_ => q)
 
 /** reflect a direct-style computation into the effect */
 inline def catching[A, E <: Unsafe : Typeable](a: => A throws E): A ! Throws % (E | Unsafe) =
@@ -125,7 +190,6 @@ extension [A, E <: Unsafe](a: A throws E)
 
 /** by class only: the payload `e: E` is erased in the type, so a row
  * may hold ONE Throws — see typeableKByClass */
-given throwsK[E]: TypeableK[Throws % E] = typeableKByClass(classOf[Throws[?, ?]])
 
 /**
  * The seam direct-try stands on: how a monad CATCHES a JVM throw

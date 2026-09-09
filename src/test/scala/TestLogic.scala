@@ -80,4 +80,21 @@ class TestLogic extends munit.FunSuite {
     assertEquals(found, Seq(10, 20))
     assertEquals(told, Seq("seen 1", "seen 2"))
   }
+
+  test("a refutable pattern binds where the row can fail, and prunes") {
+    // `case Some(n) <-` desugars to withFilter, which exists exactly
+    // under MonadPlus: the branch that does not match dies
+    val kept: Int ! Choose =
+      for case Some(n) <- choose(Some(1), None, Some(3)) yield n
+    assertEquals(!.run(runChoice[Int, okay.Pure](kept)), Seq(1, 3))
+
+    // an `if` guard goes through the same method — guard, spelled the
+    // way a for-comprehension spells it
+    val guarded: Int ! Choose =
+      for
+        case Some(n) <- choose(Some(1), None, Some(3))
+        if n > 1
+      yield n * 10
+    assertEquals(!.run(runChoice[Int, okay.Pure](guarded)), Seq(30))
+  }
 }

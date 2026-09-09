@@ -8,7 +8,15 @@ import okay.!.*
  * both operations answer with the (current or new) state. For a state
  * that changes its TYPE mid-program, see PState below.
  */
-enum State[S, +A] {
+/**
+ * PARAMETERISED, so the derived test is by CLASS only: the operations
+ * carry no runtime trace of S, and a row may therefore hold ONE
+ * State. Two — `State % Int + State % String` — misroute, loudly
+ * (TestRowIdentity): the first handler answers both asks and the
+ * second continuation gets a ClassCastException, rather than a
+ * plausible wrong answer.
+ */
+enum State[S, +A] derives okay.Effect {
   /** read the current state */
   case Get() extends State[S, S]
 
@@ -26,6 +34,56 @@ object State {
 
   /** replace the state */
   inline def set[S](s: S): S ! State % S = effect(Set(s))
+
+  /**
+   * apply f to the state. Get and set are what it is, and saying so
+   * once is worth it: a `modify` spelt out is two operations with a
+   * name in between that never means anything.
+   *
+   * It answers the NEW state, as both operations do — the file's one
+   * convention, and worth keeping over the statement-shaped `Unit`
+   * other libraries return: a caller who wants unit writes
+   * `.map(_ => ())`, and one who wants the state would otherwise have
+   * to ask for it again.
+   */
+  inline def modify[S](f: S => S): S ! State % S = get[S].flatMap(s => set(f(s)))
+
+  /**
+   * a transition that ANSWERS something computed from the old state:
+   * `f` sees the state and returns what to answer and what to leave
+   * behind.
+   *
+   * `modify` cannot do this. It answers the new state, and what a
+   * caller usually wants back is something the write destroys — the
+   * value that WAS there. Spelt out, that is get, then set the
+   * modified store, then answer out of the store already read; here
+   * it is one step, and the answer type is whatever `f`'s first
+   * component is.
+   */
+  inline def update[S, B](f: S => (B, S)): B ! State % S =
+    get[S].flatMap { s => val (b, next) = f(s); set(next).map(_ => b) }
+
+  /**
+   * both states — what it was and what it is.
+   *
+   * The three answer three different questions, and the cost is the
+   * reason there are three rather than one:
+   *
+   *   modify(f) : S          the new state — the common case, and it
+   *                          allocates nothing
+   *   update(f) : B          anything computed from the OLD state, in
+   *                          one pass over it: the form that answers
+   *                          what the write is about to destroy
+   *   swap(f)   : (S, S)     both, for when the caller wants to
+   *                          compare them
+   *
+   * `swap` is `update` with a pair for an answer, and a pair per call
+   * is why `modify` does not simply answer one: most callers want the
+   * new state or nothing at all, and they should not pay for a tuple
+   * to say so.
+   */
+  inline def swap[S](f: S => S): (S, S) ! State % S =
+    update(s => { val next = f(s); ((s, next), next) })
 
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
@@ -84,6 +142,3 @@ object PState {
     (m / (a => s2 => (s2, a)))(s)
 }
 
-/** by class only: `Get()`/`Set(s)` carry no trace of S in the type,
- * so a row may hold ONE State — see typeableKByClass */
-given stateK[S]: TypeableK[State % S] = typeableKByClass(classOf[State[?, ?]])

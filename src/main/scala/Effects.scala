@@ -1,9 +1,11 @@
 package okay
 
+import scala.quoted.*
+import okay.RowLift.{at, plus}
+
 import scala.annotation.implicitNotFound
 
 import scala.annotation.tailrec
-import scala.reflect.Typeable
 
 /**
  * Extensible effects, founded on the continuation paramonad.
@@ -47,6 +49,36 @@ inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 /** an operation as a computation */
 inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 
+/**
+ * The same thing postfix, which is what removes the last piece of
+ * boilerplate from declaring an effect:
+ *
+ *     enum Users[+A] derives TypeableK:
+ *       case Find(id: Long) extends Users[Option[String]]
+ *
+ *     Users.Find(7).perform   :  Option[String] ! Users
+ *
+ * The answer type comes from the CASE — `Find` extends
+ * `Users[Option[String]]`, so unifying the receiver against `F[A]`
+ * recovers both the signature and what it answers, with nothing
+ * written down twice.
+ *
+ * Named constructors (`def find(id: Long) = effect(Find(id))`) are
+ * still worth writing for an effect anyone else will use: they are its
+ * API, they read better at every call site, and they cost one line
+ * each. This is for the ones nobody but the handler will ever say.
+ *
+ * It applies to any `F[A]`, including types nobody declared as a
+ * signature — and that is not the hazard it first looks like. A freer
+ * monad takes ANY type constructor, so `List(1, 2).perform` is not
+ * nonsense: it is nondeterminism, and `runSeq` (Choice.scala) is its
+ * handler, the same one `Choose` uses. The type that cannot be handled
+ * is the one you find out about at the handler, where the row has to
+ * be answered — which is the only place the question can be asked.
+ */
+extension [F[+_], A](op: F[A])
+  inline def perform: A ! F = effect(op)
+
 /** an interpretation of F into any Control carrier C, with the answers S */
 type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 
@@ -64,6 +96,22 @@ infix type !>[F[_], S] = Interpr[F, Cont, S]
 @implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value (trait Handler: def handle[A](a: F[A]): A).\nFor a ROW, build the union from the parts: given Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
 trait Handler[F[_]]:
   def handle[A](a: F[A]): A
+
+extension [F[_]](h: Handler[F])
+  /**
+   * Every handler can be a recording one, without being written
+   * twice.
+   *
+   *     rename(7, "grace").runWith(using live(c).tracing(log += _))
+   *
+   * "What did this program ask for, and in what order" is the
+   * question a test wants answered, and the operations are ALREADY
+   * data — so the answer is a decorator, not a second handler. It
+   * sees exactly what the real one sees, because it IS the real one
+   * with a line in front.
+   */
+  def tracing(log: Any => Unit): Handler[F] = new:
+    def handle[A](a: F[A]): A = { log(a); h.handle(a) }
 
 /** A comonadic (per-operation) Handler at every answer type. */
 inline def handler[F[_] : Handler as H, S]: F !> S =
@@ -156,7 +204,7 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
   compiletime.summonInline[Effects[M]]
 
 /** ∀X, the runtime test for F[X], by the erasure of F */
-@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations. If one class carries the whole\nsignature (the answer type is the only parameter), declare:\n  given TypeableK[${F}] = typeableK(classOf[YourOp[?]])\n— the test is then TOTAL (see Delim.scala's precedent and the typepedia entry).")
+@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised one says the same: `enum YourOp[S, +A] derives Effect` abstracts the LAST\nparameter, and the test is then by class only (a row may hold one of it).\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
 trait TypeableK[F[_]]:
   def unapply[A](x: Any): Option[x.type & F[A]]
 
@@ -203,28 +251,130 @@ def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
 def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
 
 /**
- * The fallback lives in the TYPECLASS'S COMPANION, and that placement
- * is the whole point: a given in lexical scope (which `import
- * okay.given` puts there) BEATS one in a type's implicit scope, so a
- * toplevel generic instance would shadow every specific one — which
- * is exactly what happened, and why `Model`, `Tool` and `Context`
- * kept getting the erasure-based test after being given a total one.
- * From the companion it is implicit scope too, and specificity picks
- * the better instance.
+ * There is NO generic instance any more, and that is the point.
+ *
+ * There used to be one — `given [F[+_]](using Typeable[F[Nothing]])`,
+ * an erasure test derived for any signature that had not declared
+ * one. It cost more than it saved. It made every effect that forgot
+ * to declare a test work anyway, at a warning per USE site ("the type
+ * test for F[Nothing] cannot be checked at runtime") that the author
+ * of the effect never saw. It shadowed better instances when brought
+ * into lexical scope by `import okay.given`, which is why `Model`,
+ * `Tool` and `Context` kept getting the erasure test after being
+ * given a total one. And it was the one place in this library that
+ * NEEDED the row's covariance, since `F[Nothing] <: F[X]` is what
+ * made it sound (specs/writer-covariance.md, signature-covariance).
+ *
+ * Now a signature says `derives Effect` and its instance lives in its
+ * own companion, where implicit search finds it with no import and
+ * nothing can shadow it. What was lost with the fallback: a COMPOSITE
+ * row can no longer be given a test implicitly. Nothing needs one —
+ * `Handler.union[F, G]` and `<|>` test one side and take the other by
+ * exclusion, so every tested signature is atomic.
  */
 object TypeableK:
-  /** by the compiler-synthesized class test — no cast: sound by
-   * covariance, F[Nothing] <: F[X] for every X. Complete only when
-   * the erasure IS the signature's identity; a signature that wants
-   * better should say so with its own instance. */
-  given [F[+_]](using t: Typeable[F[Nothing]]): TypeableK[F] = new:
-    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
+  /**
+   * `enum Users[+A] derives TypeableK` — the instance every effect
+   * needs, written by the compiler.
+   *
+   * No macro: a `ClassTag[F[Any]]` IS the erasure of F, which is what
+   * `typeableK` wants, and the compiler synthesizes it for any
+   * concrete signature. So this is the hand-written
+   * `typeableK(classOf[Users[?]])` with the class no longer spelled
+   * out — same instance, same totality (see `typeableK`: complete
+   * when the answer type is the signature's only parameter, partial
+   * for `State % S` and friends, which say so themselves).
+   */
+  inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): TypeableK[F] =
+    ${ derivedImpl[F]('ct) }
+
+  /**
+   * The check is the reason this is a macro and not one line.
+   *
+   * A `ClassTag` of a UNION is its LUB, and a LUB is useless as a
+   * test: measured, `ClassTag[(Choose + Writer % String)[Any]]` is
+   * `interface java.io.Serializable` and `ClassTag[(Db + Writer %
+   * String)[Any]]` is `interface scala.reflect.Enum` — classes every
+   * operation in the program matches. A row derived this way would
+   * send every operation left and say nothing, which is the failure
+   * mode this library refuses on principle.
+   *
+   * A blacklist of such classes is whack-a-mole (the two above are
+   * already different). The type says it exactly: refuse a union,
+   * accept a signature. And a row does not need this anyway — the
+   * generic instance below handles a composite row correctly, by
+   * testing the parts.
+   */
+  def derivedImpl[F[_] : Type](ct: Expr[scala.reflect.ClassTag[F[Any]]])
+                              (using Quotes): Expr[TypeableK[F]] =
+    import quotes.reflect.*
+    val body = TypeRepr.of[F].dealias match
+      case tl: TypeLambda => tl.resType.dealias
+      case other => other.appliedTo(TypeRepr.of[Any]).dealias
+    body match
+      case OrType(_, _) =>
+        report.errorAndAbort(
+          "TypeableK.derived is for ONE signature, and this is a row.\n" +
+          "A ClassTag of a union is its LUB, a class every operation matches, so the\n" +
+          "split would send all of them left and say nothing.\n" +
+          "A row needs no instance of its own: let each signature derive one, and the\n" +
+          "row split will find them.")
+      case _ => '{ typeableK[F]($ct.runtimeClass) }
+
 
   /** the empty signature is trivially splittable: nothing inhabits
    * it, so the test never matches — which lets row-generic code
    * (Logic, the effectful streams) instantiate at F = Pure */
   given TypeableK[Pure] = new:
     def unapply[A](x: Any): Option[x.type & Nothing] = None
+
+/**
+ * WHAT A SIGNATURE SAYS ABOUT ITSELF: `enum Users[+A] derives Effect`.
+ *
+ * One word, and it reads as what it is — a declaration that this type
+ * is an effect signature — where `derives TypeableK` reads as a
+ * mechanism. What it currently carries is exactly the mechanism: a
+ * row is an untagged union, unions erase, and a handler meeting an
+ * operation in `F + G` decides by class test. `Effect` IS that test
+ * (it extends `TypeableK`), so everything that asks for one finds
+ * this instance in the signature's own companion.
+ *
+ * It also carries `Direct.Effect`, the marker that lets a signature's
+ * operations auto-color inside a `direct` block:
+ *
+ *     val prog: Option[String] ! Users = direct {
+ *       val old: Option[String] = find(7)   // no mark
+ *       old
+ *     }
+ *
+ * That marker was originally a separate, per-project decision
+ * (specs/direct-auto-coloring.md): auto-coloring is invasive, so
+ * arbitrary `G[A]`s must never silently color. Bundling it moves the
+ * decision to the signature's author — which is the operator's call
+ * (2026-09-08) and is defensible on its own terms: `derives Effect`
+ * is not arbitrary, it is a type declaring that its values ARE
+ * operations, which is exactly the claim the marker wanted. The other
+ * gate is untouched and does the heavier work: the conversion needs
+ * `DirectCtx[F]`, which exists ONLY inside a direct block, so nothing
+ * colors anywhere else. An effect that wants the row-split test and
+ * NOT auto-coloring writes `derives TypeableK` instead.
+ *
+ * It is a trait rather than a type alias so that it has room. What
+ * joins it has to be DERIVABLE from the declaration alone, which
+ * rules out most things and is the point.
+ */
+trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]
+
+object Effect:
+  /** delegates to `TypeableK.derived`, which is where the check lives
+   * that refuses a row */
+  inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
+    of(TypeableK.derived[F])
+
+  /** not inlined, deliberately: an anonymous class in an inline body
+   * is duplicated at every derivation site */
+  def of[F[_]](t: TypeableK[F]): Effect[F] = new Effect[F]:
+    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
 
 /**
  * Split the union by testing only the F side (the erasure of F, by
@@ -453,6 +603,58 @@ object ! {
    * `Free.run(f: F ==> M)` is the same idea when the row is handled
    * ENTIRELY; this is the version that leaves a residue.
    */
+  /**
+   * `translate`, with the widening done for you — and this is the one
+   * to reach for when the target row is BIGGER than the source's.
+   *
+   * `translate` interprets F into a row the program is already in.
+   * Interpreting one effect into OTHERS means arriving somewhere new:
+   * `A ! (Users + F)` becomes `A ! (State % Store + Writer % String +
+   * F)`, where F is whatever the caller was already doing and is
+   * carried through untouched. Written by hand that is a widen and a
+   * translate and three type arguments; here the expected type solves
+   * every row:
+   *
+   *     def tracked[A, F[+_]](p: A ! (Users + F)): A ! (Tracked + F) =
+   *       !.interpret(p):
+   *         [X] => (e: Users[X]) => e match
+   *           case Users.Find(id) => ...   // a PROGRAM in Tracked + F
+   *
+   * (Not `interpr`, which builds a handler out of one. This rewrites
+   * a program.)
+   */
+  def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! (F + H))
+                                                   (h: F ==> ([X] =>> X ! (G + H)))
+  : A ! (G + H) =
+    translate[A, F, G + H](prog.plus[G])(h)
+
+  /**
+   * RECORD what a program asks for, without answering any of it: each
+   * operation of F is told to a `Writer` and then performed exactly
+   * as before, so the row keeps F and gains `Writer % W`.
+   *
+   *     !.tracing(prog)([X] => (e: Users[X]) => e.toString)
+   *       : A ! (Users + Writer % String + G)
+   *
+   * The program-level counterpart of `h.tracing`, and the same idea:
+   * the operations are already data, so recording is a layer, not a
+   * second implementation that can drift from the first. This one
+   * records BEFORE anything is interpreted, so it sees the program's
+   * own asks whatever eventually answers them — and it knows nothing
+   * about F beyond `show`.
+   *
+   * The interpreter re-emits `e` into the target row, which does not
+   * loop: `translate` walks the SOURCE program and never re-walks
+   * what a branch answers with.
+   */
+  def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! (F + G))
+                                             (show: [X] => F[X] => W)
+  : A ! (F + Writer % W + G) =
+    type R = F + Writer % W + G
+    interpret[A, F, Writer % W, F + G](prog):
+      [X] => (e: F[X]) =>
+        Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
+
   def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! (F + G))
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
     // every step suspends under a flatMap (the answer is a PROGRAM,

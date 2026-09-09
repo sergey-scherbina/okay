@@ -12,6 +12,15 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Tutorial](tutorial.md)** — the same layers by use, twenty-two
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
+- **[Your own effect](your-own-effect.md)** — one worked effect from
+  the enum to four interpretations of the same program: `derives
+  Effect` and what it writes, constructors or `perform`, rows
+  (`plus`/`at`), a step the program may DECLINE (`Abort`, a refutable
+  pattern, `ensure`, `recover`), handlers against a real SQLite file
+  and against a store type class, recording as a decorator,
+  interpreting one effect INTO others, several instances of one
+  signature (`Tag`, `Refs`) — and the four things that bite, each with
+  the measurement behind it.
 - **[Building a chat application](building-a-chat-app.md)** — from an
   EMPTY DIRECTORY to a running streaming chat, outside this
   repository: how to depend on a library that is not published yet

@@ -291,3 +291,419 @@ lesson is the one this whole arc keeps arriving at from new
 directions: an upcast that is free at the type level is not free
 operationally, and where work is DONE matters more than how much of
 it there is.
+
+## rowlift (2026-09-08): moving an operation into a wider row, for free
+
+free-row-variance answered "can the walk be deleted?" with a measured
+no. This section answers the question that survived it: the walk is
+right for `Source.merge`, but is it right for a SINGLE operation?
+
+**The problem, as it appears in code.** A constructor builds at its
+own row — `State.get[Int] : Int ! (State % Int)` — and a program
+usually has a wider one. The only spelling the library had was
+`!.widen[A, F, G]`, which asks for the COMPLEMENT: the part of the row
+you are NOT talking about. That is what made the tracked demo
+(`okay-jdbc/.../UsersDemo.scala`) awkward and what makes a helper
+against an unknown row hard to write — you cannot name a complement
+you have not been told.
+
+**Six spellings, measured.** `RowLiftBenchmark`, N=1000 operations, so
+one 16-byte node per operation reads as 16 000 B/op:
+
+| lane | B/op | what it does |
+|---|---|---|
+| `viaEffect` | 272 016 | `effect[R, A](op)` — construct AT the row, the floor |
+| `viaDirect` | 272 016 | `direct { op.!? }` — the macro emits Inject at the block's row |
+| `viaAt` | 272 016 | cast under an `In` witness |
+| `viaLiftAt` | 288 000 | lift the OPERATION, then inject: +1 node |
+| `viaWiden` | 288 016 | today's spelling: +1 node |
+| `viaAtWalk` | 304 000 | the same postfix, done by walking: +2 |
+
+The escape-analysis hypothesis was tested here and refuted: the
+intermediate Inject that `widen` and the walking `.at` build does not
+get scalarised away — it is constructed and destructured inside one
+inlined region, the textbook case, and it still costs bytes.
+
+**Decision: `RowLift.at`, one cast, under a witness.** `+` is a union
+(`[A] =>> F[A] | G[A]`) and unions erase, so a `Free[F, A]` already IS
+a `Free[R, A]` whenever F is a member of R. `In[F, R]` is the proof of
+that side condition — `self` / `left` / `deeper`, the minimal
+hierarchy — and the single `asInstanceOf` lives in `at`, beside the
+invariant that licenses it.
+
+- **The witness has no runtime existence.** The first cut gave `In` an
+  `inj` method, so each instance had to be an object; one cached
+  `IdIn` served them all and each `given` cast it into place — three
+  casts spent to avoid an allocation, and `inj` was the erasure fact
+  stated a second time. As `opaque type In[F[+_], R[+_]] = Unit` the
+  instances are `()`: nothing allocated, no cast in any instance, and
+  opacity is what stops a caller conjuring a proof. One
+  `asInstanceOf` in the whole design.
+- **The trap, since the error message points away from it.** An opaque
+  type is TRANSPARENT inside its defining scope: write the uses in the
+  same object and `In[F, R]` is literally `Unit` there, implicit
+  search goes to `Unit`'s companion, and the compiler says "No given
+  instance of type In[...]" while suggesting the imports that are
+  already in scope. Move the uses out and the givens resolve with no
+  import at all — the companion of an opaque type IS its implicit
+  scope. `ProbeOneCast` is laid out that way for this reason.
+- **Ergonomics.** Partially applied, `type Has[F[+_]] = [R[+_]] =>>
+  In[F, R]` makes the witness a context bound: `def bump[R[+_] :
+  Has[State % Int] : Has[Writer % String]]`. The target row is named
+  once; the complement never is.
+
+**`plus` names only the addition.** `at[R]` asks for the whole target
+row, which is right at a call site and noise inside a helper: the row
+you are already in is in the type, so repeating it is repeating
+yourself. `p.plus[R] : A ! (F + R)` says only what is being added —
+
+    Users.find(id).plus[Abort]   :  Option[String] ! (Users + Abort)
+
+— and needs no witness at all, where `at` needs one: membership is by
+CONSTRUCTION here, `F + R` being built out of F, so there is nothing
+for a proof to establish. Both go through the same single cast, and
+`viaPlus` measures at the floor with the rest (272 016 B/op).
+
+Which to reach for is only about what is shorter to SAY: `plus` names
+the addition, `at` names the target. One effect added: `plus`. Several
+operations landing in one row: `at`, since there each operation's
+complement differs while the target does not. `at` is REQUIRED only
+where the complement cannot be named at all — an abstract row known
+only by membership (`Fail.scala`'s `abort[A].at[F]`). An earlier
+version of this section said an interpreter's `Tracked + F` was such a
+row; it is not, and both spellings compile there.
+
+**The prohibition that comes with it.** `.at` does NOT replace
+`!.widen`, and a change that swaps one for the other on a streaming
+path is a regression, not a cleanup: free-row-variance measured the
+walk as a NORMALIZATION worth 5-7% on `Source.merge`. `.at` is for
+single operations, which are already head-normal and have nothing to
+normalize. The two coexist on purpose.
+
+**Refuted along the way**, kept so the next attempt starts later than
+this one did:
+
+- **A macro** emitting the Inject at R directly. Scala binds an
+  extension's receiver to a val proxy BEFORE the splice, so the macro
+  sees `Ident("p$proxy1")`; marking the receiver `inline` fixes that
+  (`HIT: Free$.Inject$.apply`), but the operation it extracts refers
+  to a proxy from `effect`'s own inlining and re-emitting it fails
+  with "a reference to value a$proxy16 was used outside the scope
+  where it was defined". Rewriting a subtree that arrived from an
+  inline def is not generally possible — which is why `direct` builds
+  its Inject from its own pieces. Worse, a macro that cannot see its
+  term fails SILENTLY into its fallback: the lane read 288016,
+  identical to widen to three decimals, and looked like a result.
+- **`<:<` instead of `In`** — and it proves more than expected: the
+  compiler establishes `F[X] <:< R[X]` by itself, at concrete types,
+  any row shape, any depth, with no instance hierarchy written. But
+  the polymorphic form `[X] => () => (F[X] <:< R[X])` is not
+  summonable (implicit search diverges), and the operations inside a
+  program carry different X, so a per-X proof cannot serve.
+- **Currying the constructors** (`State.get[S]` returning an applier
+  that takes the row). `direct[F]` gets away with this because nobody
+  reads `direct[F]` as a value; a constructor is different — the day
+  `State.get[Int]` stops being a program, every call site that reads
+  it as one breaks. That is the migration the row parameter was
+  trying to avoid, just moved.
+
+## signature-covariance (2026-09-08): what `F[+_]` is actually for
+
+`Free`'s row is `F[+_]`, so every signature in this library is
+covariant in its answer type. The question came from a call site, not
+from theory: interpreting `Save extends Users[Unit]` inside
+`[X] => (e: Users[X]) => ...`, the GADT match proves only `X >: Unit`,
+never `X = Unit` — because a COVARIANT `Users[Unit]` is a `Users[X]`
+for every `X >: Unit`. So the branch must widen `Unit ! R` to `X ! R`,
+and every interpreter carries a `.map(_ => ())` that looks like noise
+and is not.
+
+**Measured, by spiking it.** Rewriting every `[+_]` bound in
+`src/main` to `[_]` — which does NOT make the library's own
+signatures invariant, only permits invariant ones — the whole core
+compiles with exactly TWO real failures:
+
+1. `TypeableK`'s generic instance, `given [F[+_]](using
+   Typeable[F[Nothing]])`. It answers `Option[x.type & F[Nothing]]`
+   where `Option[x.type & F[A]]` is wanted, and only covariance closed
+   that gap. Under an invariant bound it needs a cast.
+2. `<|>`, where `case T(e)` infers the unapply's type argument as
+   `Nothing` and covariance made that fine. `T.unapply[A](e) match` —
+   passing the argument instead of inferring it — fixes it with no
+   cast.
+
+That is the whole cost in the kernel. Everything else was mechanical:
+`[+_]` to `[_]` across 23 files in main and ~15 in test, none of it
+interesting, and the library's own effects stay covariant and keep
+working.
+
+**And the payoff is real.** With the bound relaxed, an invariant
+signature — `enum Users[A]` — runs end to end (`InvSpike`: a program,
+an interpreter into `State`, the right answer), and the compiler says
+of the Save branch: "X is a type in method stored **which is an alias
+of Unit**". Exact refinement. The widening disappears, provided the
+answer the branch produces is a `Unit` (with `State.modify` answering
+the new STATE, as it does, a `.map(_ => ())` is still needed — that
+one is about the combinator, not about variance).
+
+**Two conditions, jointly.** Spiked again to settle it, because the
+question keeps being asked as if variance alone were the answer.
+Removing covariance does NOT delete the `.map(_ => ())` from an
+interpreter's Save branch: with `State.modify` answering the new STATE
+the branch still produces an `S ! R` that has to be thrown away, and
+the compiler says so ("Found: Map[Long,String], Required: X ... which
+is an alias of Unit" — the variance is gone from the message, the
+mismatch is not). Nor does a `Unit`-answering `modify` delete it on
+its own: under covariance `X` stays `>: Unit` and something must
+widen. With BOTH — an invariant signature and a combinator that
+answers `Unit` — the branch is bare:
+
+    case Users.Save(id, name) =>
+      State.modify[Map[Long, String]](_ + (id -> name)).plus[F]
+
+compiles and runs (`InvSpike2`). So the widening is the sum of two
+independent choices, and each can be paid for separately.
+
+**And there is a third route that costs nothing at all: give the
+operation an answer worth computing.** With `Save` declared
+`Users[Option[String]]` — the name it replaced — the branch ends in a
+`map` that does real work, and the widening rides along inside it for
+free:
+
+    case Users.Save(id, name) =>
+      State.get[S].plus[F].flatMap: store =>
+        S.get(id)(store) match
+          case None => pure(None)
+          case was  => State.modify[S](S.put(id, name)).plus[F].map(_ => was)
+
+That version of the demo contained ZERO occurrences of `map(_ => ())`
+(counted, not remembered), with the library untouched: no variance
+change, no new combinator. The widening only looks like noise when the
+operation answers `Unit`, because then there is nothing for the `map`
+to be doing. The demo answers `Unit` on purpose — see
+`okay-jdbc/.../UsersDemo.scala`, which says why the worse model is the
+better demonstration — but a real signature usually has something to
+say, and then the question does not arise.
+
+**THE COMPLETE ANSWER (the whole library made invariant).** Every
+signature's answer type flipped — `State[S, A]`, `Writer[+W, A]`,
+`Reader[R, A]`, `Throws[E, A]`, `Choose[A]`, `Take[V, A]`, `Async[A]`,
+`Resource[A]`, `Delim[A]`, `Flush[A]`, `Tx[A]` — on top of the relaxed
+bounds. Main compiles, tests compile, 83 tests pass across ten suites
+(Stm, Logic, Throws, Fail, SeqEffect, State, Effects, Delim,
+Condition, DeriveEffect). Two things needed changing beyond the
+mechanical churn, and they are the entire answer to "what is
+covariance in an effect FOR":
+
+1. **`TypeableK`'s generic instance.** `Typeable[F[Nothing]]` answers
+   at `F[Nothing]` where `F[A]` is wanted, and only covariance closed
+   that. Without it the instance needs a cast — and it is now the one
+   thing a signature can avoid needing, since `derives Effect` builds
+   the same test from a `ClassTag`.
+
+2. **An operation that never answers, declared once at `Nothing`.**
+   `case Retry() extends Tx[Nothing]` is a `Tx[A]` for every A only
+   because `Tx` is covariant. Invariant, it is written
+   `case Retry[A]() extends Tx[A]` — one type parameter, and arguably
+   a worse statement, since it now claims to answer an A it never
+   produces. Two operations in the library are of this shape (`Tx`'s
+   `Retry`, `Condition`'s `Leave`).
+
+That is all. Not the union rows, not `Pure`, not the handlers, not the
+constructions at `Nothing` — those were measured separately and are
+inference. `<|>` needed an explicit type argument, which is not a
+cost, it is a better line.
+
+**Can the `Typeable` fallback simply GO?** Measured too, since it is
+the one thing standing between this library and invariant signatures.
+With it deleted, `sbt compile` — every module's main sources — is
+green. Across the whole build's tests, five errors in two files:
+
+- `okay-sql/TestSqlPure.scala` needs `import okay.given_TypeableK_Async`.
+  The instance exists; the test was quietly getting the fallback
+  instead. Mechanical, and arguably a better line.
+- `TestDeriveEffect`'s `summon[TypeableK[Db + Writer % String]]` — a
+  COMPOSITE row. That capability really does go, and no replacement
+  can be FOUND: a structural `given both[F, G](using TypeableK[F],
+  TypeableK[G]): TypeableK[F + G]` compiles but never matches a
+  concrete row, because solving F and G from `Db + Writer % String` is
+  the same higher-order unification the compiler declines everywhere
+  else in this file. A composite test would have to be passed
+  explicitly.
+
+Nothing in the library needs a composite one: `Handler.union[F, G]`
+tests only its LEFT side, so nesting to the right keeps every tested
+signature atomic — `union[Tool, Context + (Model + Async)]` asks for
+`TypeableK[Tool]`.
+
+**So the trade, exactly.** Covariance buys one instance and one
+declaration shorthand. It costs exact GADT refinement: matching an
+operation declared `Users[Unit]` proves only `X >: Unit`, so every
+interpreter branch that answers `Unit` carries a widening. Which of
+those matters more is a judgement about what this library is FOR, and
+it is the operator's.
+
+**Contravariance was tried too, since the question comes up: `enum
+Users[-A]`.** It is not a variant of the choice, it is the wrong
+direction, and the compiler says so in one line — the GADT then proves
+`X <: Option[String]` and `X <: Unit`, UPPER bounds, and an
+interpreter branch has to PRODUCE the answer:
+
+    Found: Option[String]   Required: X
+    where: X ... with bounds <: Option[String]
+
+`Option[String]` is not an unknown subtype of itself; the branch
+cannot be written. That is the semantics showing through: the answer
+index is an OUTPUT of the handler, so it is produced narrow and
+consumed wide, which is covariance. Contravariance would let an
+operation that answers `Any` stand where one answering `Unit` is
+expected, and nothing could satisfy it.
+
+**THE TABLE.** Everything measured in this section, in one place. "="
+means the two are indistinguishable, and every such row is a claim
+that was checked rather than assumed.
+
+| | covariant `F[+A]` | invariant `F[A]` |
+|---|---|---|
+| what the index says | a LOWER BOUND: answers at least this | an exact tag |
+| match on a case indexed at a concrete type | `X >: Unit` — a bound | `X = Unit` — an equation |
+| interpreter branch answering Unit | must widen (`.map(_ => ())`) | writes the answer directly |
+| match on a case with its OWN parameter | `X = A`, an equation | `X = A`, an equation |
+| operation consuming its answer (`(A, Int) => A`) | rejected unless the case parameterises itself | accepted |
+| "never answers", declared once | `case Retry() extends Tx[Nothing]`, usable at every A | `Retry[A]()`, which claims an A it never produces |
+| `Typeable[F[Nothing]]`-derived `TypeableK` | sound as written | needs a cast |
+| `TypeableK` for a composite row | found (that instance) | found (same instance, with the cast) |
+| operations built at `Nothing` (`Choose(Seq.empty)`) | = | = (inference, not variance) |
+| unions, `Pure`, `Handler`, `<|>` | = | = (`<|>` wants one explicit type argument) |
+| `A ! F` subtyping in A | invariant either way | invariant either way |
+| cost to switch | — | 2 kernel edits + `[+_]`→`[_]` churn; 83 tests pass |
+
+**WHAT FOLLOWS.**
+
+1. **It is one axis, not many.** Everything that looked like a second
+   difference — Nothing-substitution, rows, `Pure`, handlers — measured
+   identical. The single question is whether the index is a promise or
+   a name.
+2. **Each side is right about something different.** Covariance is
+   right about the SEMANTICS: the answer is an output of the handler,
+   produced narrow and consumed wide, and only covariance can say
+   "this never answers". Invariance is right about the ERGONOMICS of
+   interpreting: an equation instead of a bound, which is what
+   interpreter code actually wants.
+3. **Both losses are locally repairable, and that is the real
+   finding.** Covariance's loss is repaired per case (parameterise it,
+   and the equation comes back — plus the right to consume the answer
+   type). Invariance's loss is repaired per operation (parameterise
+   the non-returning one, at the price of a type that overpromises).
+   So the choice is not which is possible; it is which repair you
+   write more often.
+4. **In this library the counts are: two operations that never
+   answer, against every interpreter branch that answers `Unit`.**
+   That leans invariant — until you notice the third route: a branch
+   only pays when its operation has nothing to answer, and an
+   operation with something to answer costs nothing either way.
+5. **What would flip it.** If the `Typeable` fallback goes (it can —
+   measured above — now that `derives Effect` exists), invariance's
+   only remaining cost is `Retry[A]()`, and the case for it becomes
+   strong. That is the trigger to watch.
+
+**THE DECISION: keep covariance.** Three reasons, in the order they
+matter:
+
+1. It is the RIGHT variance for what the index means. The handler
+   produces the answer; the program consumes it. Produce narrow,
+   consume wide.
+2. It is the only way to say "this operation never answers":
+   `case Retry() extends Tx[Nothing]` is a `Tx[A]` for every A.
+   Invariant, that is `Retry[A]()`, which CLAIMS to answer an A it
+   never produces — a worse type, not a smaller one.
+3. What it costs is a widening in interpreter branches that answer
+   `Unit`, and the cheapest fix for that is not variance at all: give
+   the operation something to answer. Measured — the version of the
+   demo whose `Save` answered the name it replaced contained zero
+   `map(_ => ())`, with the library untouched.
+
+**What the annotation MEANS, since that is the question underneath.**
+The answer index is not a payload — it appears in no constructor
+parameter — so the variance is a statement about what the index
+promises. Covariant, it is a LOWER BOUND: `Users[Option[String]]` says
+"answers at least an Option[String]", and `Tx[Nothing]` says "answers
+anything, having answered nothing". Invariant, it is an exact tag:
+`F[Unit]` and `F[Any]` are unrelated.
+
+Everything else follows from that one sentence. Under covariance a
+match against a case with a CONCRETE index proves only
+`Unit <: X` — a bound, because a bound is all that was promised — and
+the branch must widen. Under invariance it proves `X = Unit`, an
+equation, because there is nothing else X could be.
+
+**The escape hatch, which nobody had written down.** Covariance is per
+CASE, not per signature. A case that declares its own type parameter
+gets an equation even under `+A`:
+
+    enum Op[+A]:
+      case Ask()  extends Op[Int]
+      case Fold[A](seed: A, step: (A, Int) => A) extends Op[A]
+
+    def exact[X](e: Op[X]): X = e match
+      case Op.Fold(seed, _) => seed      // typechecks: X IS A here
+
+Two things fall out. An operation may CONSUME its answer type — `step:
+(A, Int) => A` is a contravariant occurrence and is rejected outright
+in a case indexed at the enum's own `+A`, and accepted the moment the
+case declares its own (the compiler suggests exactly this). And an
+author who needs an exact answer type for one operation can have it
+today, without touching the library's variance. So what covariance
+costs is confined to cases whose index is a concrete type — which is
+most of them, but not all, and never irreparably.
+
+The measurements above stand as the record of what the alternative
+costs, which is what makes this a decision rather than an assumption.
+**LANDED 2026-09-08 (operator): the fallback is gone anyway.** Keeping
+covariance did not mean keeping the instance it exists for. Every
+signature in the library now declares its own test — `enum Async[+A]
+derives okay.Effect`, and `enum State[S, +A] derives okay.Effect` for
+the parameterised ones, which works because `derives` abstracts the
+LAST type parameter — and the generic `Typeable[F[Nothing]]` given is
+deleted. What that bought:
+
+- an effect that forgets to declare a test is now a compile error at
+  the DECLARATION, instead of working with a warning per use site that
+  its author never sees;
+- nothing can shadow a signature's own instance, since it lives in the
+  companion rather than in lexical scope (the `Model`/`Tool`/`Context`
+  incident that the old comment recorded cannot recur);
+- `okay-sql`'s test stopped needing `import okay.given_TypeableK_Async`
+  — a companion instance is found without an import, so removing the
+  fallback FIXED a call site rather than breaking one.
+
+What it cost: a composite row can no longer be handed a test
+implicitly, which nothing asks for. And with the fallback gone,
+covariance's remaining job is one declaration shorthand
+(`Tx[Nothing]`) — the trigger named above has fired, so the invariance
+question is now open on its merits rather than blocked on a cast.
+
+**Not taken, then.** The trade is: one cast in `TypeableK`'s
+generic instance (in a repo whose rule is no cast without necessity),
+plus churn in every module, against `.map(_ => ())` in interpreters
+and exact GADT types for anyone who wants them. Recorded here rather
+than done, because the choice is the operator's and because the
+measurement — two kernel edits, not a rewrite — is the part that was
+worth finding out.
+
+Two smaller facts fell out and are worth keeping:
+
+- It was assumed that covariance is what lets `Choose(Seq.empty) :
+  Choose[Nothing]` stand for `Choose[A]`, and `Throws(e)` for
+  `Throws[E, A]`. It is NOT. Spiked with `case class Choose[A]` and
+  `case class Throws[E, A]` — invariant — on top of the relaxed
+  bounds: main compiles, the tests compile, and 28 of them pass
+  (TestLogic, TestThrows, TestFail, TestSeqEffect). The type argument
+  comes from the EXPECTED type at each construction site, which
+  inference propagates into the constructor call; variance was
+  contributing nothing there. So `Nothing` never had to be
+  substituted, and the "conveniences at construction" cost of dropping
+  covariance is zero.
+- `derives Effect` (ClassTag-based) needs no covariance at all, so the
+  one place that does need it is now the one place a signature can
+  avoid declaring.

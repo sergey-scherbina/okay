@@ -4,6 +4,28 @@ import scala.util.chaining.*
 
 class TestState extends munit.FunSuite {
 
+  test("modify: get and set, said once") {
+    val p: Int ! State % Int =
+      for
+        _ <- State.modify[Int](_ + 1)
+        _ <- State.modify[Int](_ * 10)
+        n <- State.get[Int]
+      yield n
+    assertEquals(State.run[Int, Int](4)(p), (50, 50))
+    // it answers the NEW state, as get and set do
+    assertEquals(State.run[Int, Int](4)(State.modify[Int](_ + 1)), (5, 5))
+  }
+
+  test("update answers what the write destroys") {
+    // the value that WAS there, which `modify` cannot give back
+    val p: Int ! State % Int = State.update[Int, Int](s => (s, s * 10))
+    assertEquals(State.run[Int, Int](4)(p), (40, 4))
+  }
+
+  test("swap answers both states") {
+    assertEquals(State.run[Int, (Int, Int)](4)(State.swap[Int](_ * 10)), (40, (4, 40)))
+  }
+
   test("index") {
     val x = State.index(List("a", "b", "c", "d", "e", "f", "g"), 1).tap(println)
     assertEquals(x, (8L, List((7L, "g"), (6L, "f"), (5L, "e"), (4L, "d"), (3L, "c"), (2L, "b"), (1L, "a"))))

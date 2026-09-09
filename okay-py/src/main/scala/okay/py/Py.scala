@@ -26,14 +26,12 @@ final case class PyFrame(cols: Vector[(String, Vector[PyValue])])
  * — data, and the worker survives to take the next call */
 final case class Condition(kind: String, message: String)
 
-enum PyEval[A]:
+enum PyEval[A] derives okay.Effect:
   case Call(fn: String, args: Vector[PyValue])
     extends PyEval[Either[Condition, PyValue]]
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
     extends PyEval[Either[Condition, PyFrame]]
 
-object PyEval:
-  given okay.TypeableK[PyEval] = okay.typeableK(classOf[PyEval[?]])
 
 /** the wire halves shared by every engine: PyValue <-> the tagged
  * JSON the shim speaks (None = null; NaN and bytes ride tagged

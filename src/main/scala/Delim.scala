@@ -40,7 +40,7 @@ import scala.annotation.tailrec
 /** a delimiter's identity AND its answer type; identity is the tag */
 final class Prompt[R]
 
-enum Delim[+A]:
+enum Delim[+A] derives okay.Effect:
   /** install a delimiter and run the body under it (reset) */
   case Push[R](prompt: Prompt[R], body: Any) extends Delim[R]
 
@@ -239,4 +239,3 @@ object Delim {
  * (erased) answer type, so splitting a row on it is a TOTAL test —
  * said once here, rather than as a "cannot be checked at runtime"
  * warning at every use site of a test that is in fact complete. */
-given TypeableK[Delim] = typeableK(classOf[Delim[?]])

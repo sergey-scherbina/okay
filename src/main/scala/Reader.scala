@@ -7,7 +7,15 @@ import okay.!.*
  * answers every Ask with the same value, which makes it exactly
  * tail-resumptive — run is the relay, at relay speed.
  */
-enum Reader[R, +A] {
+/**
+ * PARAMETERISED, so the derived test is by CLASS only: the operations
+ * carry no runtime trace of R, and a row may therefore hold ONE
+ * Reader. Two — `Reader % Int + Reader % String` — misroute, loudly
+ * (TestRowIdentity): the first handler answers both asks and the
+ * second continuation gets a ClassCastException, rather than a
+ * plausible wrong answer.
+ */
+enum Reader[R, +A] derives okay.Effect {
   /** read the environment */
   case Ask() extends Reader[R, R]
 }
@@ -25,4 +33,3 @@ object Reader {
 
 /** by class only: `Ask()` carries no trace of R, so a row may hold
  * ONE Reader — see TestRowIdentity and typeableKByClass */
-given readerK[R]: TypeableK[Reader % R] = typeableKByClass(classOf[Reader[?, ?]])

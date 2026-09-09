@@ -71,6 +71,145 @@ the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
 `whenS`/`unlessS` — written once, running over any instance.
 
+### Your own effect
+
+The short version is below; the full worked tutorial — four
+interpretations of one program, the handlers, the interpreters, and
+what bites — is **[Your own effect](your-own-effect.md)**.
+
+A signature is an enum whose cases carry their own answer types, and
+that is the whole declaration:
+
+```scala
+enum Users[+A] derives Effect:
+  case Find(id: Long) extends Users[Option[String]]
+  case Save(id: Long, name: String) extends Users[Unit]
+
+object Users:                       // optional: `Users.Find(id).perform`
+  inline def find(id: Long): Option[String] ! Users = effect(Find(id))
+  inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
+```
+
+`derives Effect` writes the runtime test a row split needs (a row is an
+untagged union, so a handler for F meeting an operation in `F + G`
+decides by class), and registers the signature for direct-style
+auto-coloring. `derives TypeableK` gives the first without the second.
+It is not optional: there is no generic fallback, so a signature that
+declares nothing is a compile error where it is USED — which is the
+right place for it, since the alternative was a warning at every use
+site that the effect's author never saw. A parameterised signature says the same thing:
+`enum Your[S, +A] derives Effect` abstracts the LAST parameter, and
+its test is then by class only — so a row may hold one `Your`, not
+two at different S.
+
+**Putting an operation in a wider row.** `p.plus[R]` adds R to whatever
+row `p` has; `p.at[R]` names the target row instead — better when
+several operations land in the same row, and required when that row is
+known only by MEMBERSHIP, as a row-polymorphic helper's is
+(`[R[+_] : Has[State % Int]]`).
+Both are one cast under a witness, measured at the same B/op as
+constructing the operation at R. Row ORDER is not a thing: `+` is a
+union, so `A ! (Users + Abort)` and `A ! (Abort + Users)` are the same
+type.
+
+**Stopping.** `Abort` (= `Throws % Unit`) is failure carrying no
+information. With it in the row, a refutable pattern and an `if` guard
+work in a for-comprehension — both desugar to `withFilter`, which needs
+somewhere for the dropped step to go — and `runOption` answers with
+what happened:
+
+```scala
+def rename(id: Long, to: String): Option[String] ! Users = runOption {
+  for
+    case Some(old) <- Users.find(id).plus[Abort]
+    _              <- Users.save(id, to).plus[Abort]
+  yield old
+}
+```
+
+`save` cannot run for a missing id because it is not REACHABLE. Outside
+a for-comprehension the same demand is `ensure[R](cond)`, and a failure
+is answered in the row by `p.orElse(q)` / `p.recover(h)`. Where the row
+carries `Choose` instead, the same pattern PRUNES the branch and the
+search goes on.
+
+**Handling.** `runWith(using h)` for a per-operation `Handler[F]`;
+`h.tracing(log)` makes any handler a recording one, since the
+operations are already data; `!.translate` interprets each operation
+into a PROGRAM in another row (a `Handler` answers with a value, so it
+cannot itself tell or get), and `!.interpret` is the same with the
+widening done for you, for when the target row is BIGGER than the
+source's:
+
+```scala
+def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+  type R = State % Store + Writer % String + F
+  !.interpret(p):
+    [X] => (e: Users[X]) => e match
+      case Find(id) =>
+        for
+          store <- State.get[Store].at[R]
+          _     <- Writer.tell(s"find($id)").at[R]
+        yield store.get(id)
+      ...
+```
+
+The expected type solves every row, so there is no type argument and
+`F` — whatever the caller was already doing — rides through untouched.
+
+Interpreters compose, and are better small. `!.tracing(p)(show)`
+records every operation into a `Writer` and then performs it exactly
+as before — it answers nothing, and knows nothing about the effect
+beyond `show` — so the storage half can be written without a Writer
+anywhere in it:
+
+```scala
+def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+  stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
+```
+
+Order is the meaning: recording happens BEFORE interpretation, so the
+log holds what the program ASKED, not what the store did about it. One program, four handlers — SQLite, a Map,
+State + Writer, and a trace of any of them — is
+`okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`, runnable with
+`sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"`.
+
+**Several instances of one effect.** A row is split by a RUNTIME test,
+so two members of the same signature are told apart exactly when the
+operation carries something to compare. `Tag` is that, for any
+signature: a key, and a test that reads it.
+
+```scala
+type Small = Tag.Of["small", State % Int]
+type Big   = Tag.Of["big",   State % Int]
+
+// an ordinary function, written against a plain State, run twice
+// at two different states in one program:
+val twice: (Int, Int) ! (Small + Big) =
+  for
+    a <- Tag.tag["small", State % Int, Int, Pure](bump(1)).plus[Big]
+    b <- Tag.tag["big",   State % Int, Int, Pure](bump(10)).at[Small + Big]
+  yield (a, b)
+```
+
+`tag` walks a finished program and puts every operation of F under the
+key — which is the point: the function did not have to be written for
+this. Handling needs no new handler: `untag` strips one key and hands
+back the plain signature, and the effect's own handler takes it from
+there.
+
+Where the instances are MADE rather than named, `Refs` is the
+counterpart — cells created at run time, one row member however many,
+identity by cell, at the price of a heap and one stated cast. And the
+third route is the one `Delim` already has: a fresh prompt per handler
+installation, scoped dynamically, with the program carrying the
+prompt.
+
+And any type constructor is a signature: `List(1, 2).perform` is
+nondeterminism, handled by `runSeq` — which is `runChoice`'s handler
+unchanged, because `Choose[+A](as: Seq[A])` is a box around exactly
+this.
+
 ## 3. Streams: codata by `uncons`
 
 A stream is defined by ONE observation:

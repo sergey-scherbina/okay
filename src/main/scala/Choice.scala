@@ -8,13 +8,12 @@ package okay
  * by parametricity) nor an ordinary exception-style handler can.
  * Each nesting level of choose costs stack at run time.
  */
-case class Choose[+A](as: Seq[A])
+case class Choose[+A](as: Seq[A]) derives Effect
 
 /** The class IS the whole identity: Choose has no parameter but its
  * (erased) answer type, so splitting a row on it is a TOTAL test —
  * said once here, rather than as a "cannot be checked at runtime"
  * warning at every use site of a test that is in fact complete. */
-given TypeableK[Choose] = typeableK(classOf[Choose[?]])
 
 
 /** one of the given alternatives */
@@ -54,3 +53,38 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
     [X] => c => shift: k =>
       c.as.foldLeft(pure[F, Seq[A]](Seq.empty)): (acc, x) =>
         acc.flatMap(s => k(x).map(s ++ _))
+
+/**
+ * A COLLECTION IS ALREADY A SIGNATURE, and this is the sharpest
+ * statement of what a freer monad is: ANY type constructor can be an
+ * effect, so `List[A]` — which already means "several A" — is
+ * nondeterminism without a wrapper.
+ *
+ *     val pairs: (Int, Int) ! List =
+ *       for
+ *         x <- List(1, 2).perform
+ *         y <- List(10, 20).perform
+ *       yield (x, y)
+ *
+ *     runSeq[List, (Int, Int), Pure](pairs)
+ *     // List((1,10), (1,20), (2,10), (2,20))
+ *
+ * The handler is `runChoice`'s, unchanged, because there was never
+ * anything else in it: `Choose[+A](as: Seq[A])` is a box around a Seq
+ * of alternatives, and the box is what this does without. `Choose`
+ * keeps its own name and its place in a row — a row wants a signature
+ * that means nondeterminism and nothing else, and `List` in a row
+ * means whatever the reader guesses — but seeing that the two are the
+ * same handler is the point.
+ */
+def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! (S + F))(using TypeableK[S]): Seq[A] ! F =
+  Effects[Free].handle[S, F, A, Seq[A]](p)(x => pure(Seq(x))):
+    [X] => (s: S[X]) => shift: k =>
+      s.foldLeft(pure[F, Seq[A]](Seq.empty)): (acc, x) =>
+        acc.flatMap(prev => k(x).map(prev ++ _))
+
+/** the class IS the identity for a collection too: the element type
+ * is erased, so the test is total for exactly the reason `Choose`'s
+ * is */
+given TypeableK[List] = typeableK(classOf[List[?]])
+given TypeableK[Vector] = typeableK(classOf[Vector[?]])
