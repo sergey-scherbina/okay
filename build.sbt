@@ -1180,6 +1180,27 @@ lazy val okayMail = (project in file("okay-mail"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * Resilience (specs/resilience.md): a circuit breaker, a bulkhead, a
+ * keyed token-bucket limiter, hedged requests and a travelling
+ * deadline, as handlers around any `A ! Async` and around `Http`.
+ * JVM + JS like okay-http, which it depends on for the Request it
+ * reads the deadline header from.
+ */
+lazy val okayResilience = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-resilience"))
+  .dependsOn(okayHttp)
+  .settings(
+    name := "okay-resilience",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    // the parking tests: a fiber that waits, a hedge that races a timer
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okayJetty = project
   .in(file("okay-jetty"))
   .dependsOn(okayHttp.jvm)
@@ -1543,6 +1564,7 @@ lazy val root = (project in file("."))
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
+    okayResilience.jvm, okayResilience.js,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",

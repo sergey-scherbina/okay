@@ -40,6 +40,7 @@ package okay.resilience
 /** every piece reports itself as a value; a Schema makes it a metric
   * and a span attribute without a second definition */
 trait Reporting[S]:
+  def name: String
   def stats: S
 
 /** a refusal is a NAMED exception carrying what a caller can act on —
@@ -47,6 +48,11 @@ trait Reporting[S]:
   * same thing a server turns into a status and a Retry-After */
 sealed abstract class Refused(msg: String) extends RuntimeException(msg, null, false, false):
   def retryAfterMillis: Option[Long]
+object Refused:
+  final class BreakerOpen(name: String, retryAfterMillis: Option[Long])
+  final class BulkheadFull(name: String)                  // retryAfter None
+  final class Exhausted(name: String, key: String, retryAfterMillis: Option[Long])
+  final class DeadlineExceeded(remainingMillis: Long)     // retryAfter None
 
 // ---- 1. Circuit breaker
 
@@ -56,14 +62,13 @@ object Breaker:
   final case class Stats(state: State, consecutiveFailures: Int,
                          calls: Long, failures: Long, rejected: Long,
                          opened: Long) derives Schema
-  final class Open(name: String, val retryAfterMillis: Option[Long]) extends Refused(...)
 
 final class Breaker(name: String,
                     failures: Int,           // consecutive failures that open it
                     openMillis: Long,        // how long Open lasts before one probe
                     clock: () => Long = () => System.currentTimeMillis)
   extends Reporting[Breaker.Stats]:
-  /** the operation, or `Breaker.Open` without running it */
+  /** the operation, or `Refused.BreakerOpen` without running it */
   def protect[A](prog: => A ! Async)(failing: Either[Throwable, A] => Boolean = _.isLeft): A ! Async
 
 // ---- 2. Bulkhead
@@ -71,12 +76,11 @@ final class Breaker(name: String,
 object Bulkhead:
   final case class Stats(permits: Int, inFlight: Int, waiting: Int,
                          rejected: Long) derives Schema
-  final class Full(name: String) extends Refused(...)   // retryAfter None
 
 final class Bulkhead(name: String, permits: Int, queue: Int = 0)
   extends Reporting[Bulkhead.Stats]:
   /** runs with a permit, parks in the queue for one, or refuses with
-    * `Bulkhead.Full` when the queue is full too; the permit is released
+    * `Refused.BulkheadFull` when the queue is full too; the permit is released
     * on every exit, cancellation included */
   def limit[A](prog: => A ! Async): A ! Async
 
@@ -85,7 +89,6 @@ final class Bulkhead(name: String, permits: Int, queue: Int = 0)
 object Limiter:
   final case class Stats(keys: Int, admitted: Long, delayed: Long,
                          rejected: Long) derives Schema
-  final class Exhausted(name: String, key: String, val retryAfterMillis: Option[Long]) extends Refused(...)
 
 final class Limiter(name: String,
                     ratePerSecond: Double, burst: Int,
@@ -115,9 +118,8 @@ final case class Deadline(atMillis: Long):
 
 object Deadline:
   val header = "x-deadline-ms"
-  final class Exceeded(val remainingMillis: Long) extends Refused(...)
   def in(millis: Long, clock: () => Long = ...): Deadline
-  /** the program within the budget, or `Exceeded` — before starting it
+  /** the program within the budget, or `Refused.DeadlineExceeded` — before starting it
     * when the budget is already gone, and by cancellation otherwise */
   def enforce[A](d: Deadline, clock: () => Long = ...)(prog: => A ! Async)
                 (using Scheduler, Timer): A ! Async
@@ -157,36 +159,36 @@ the piece's `name`, the same pure mapping it does for `Store.Stats`.
 
 Stage 0 — the five, generic, deterministic under an injected clock:
 
-- [ ] breaker: `failures` consecutive failures open it; while Open
-      the operation is NOT run and `Breaker.Open` carries the
+- [x] breaker: `failures` consecutive failures open it; while Open
+      the operation is NOT run and `Refused.BreakerOpen` carries the
       remaining open time; after `openMillis` ONE probe runs
       (HalfOpen) — its success closes, its failure re-opens for a
       fresh `openMillis`; a success in Closed resets the count; the
       `failing` predicate decides what a failure is (a returned
       value can be one)
-- [ ] breaker stats: `calls`, `failures`, `rejected`, `opened` count
+- [x] breaker stats: `calls`, `failures`, `rejected`, `opened` count
       what happened; `state` is the current state
-- [ ] bulkhead: with N permits, N+1 concurrent programs hold N in
+- [x] bulkhead: with N permits, N+1 concurrent programs hold N in
       flight and one waiting when `queue >= 1`; with `queue = 0` the
-      (N+1)th is refused with `Bulkhead.Full` at once, nothing runs
+      (N+1)th is refused with `Refused.BulkheadFull` at once, nothing runs
       twice; the permit is released when the program completes, when
       it fails, and when it is cancelled while waiting
-- [ ] limiter: `burst` calls pass at once, the next is refused with
+- [x] limiter: `burst` calls pass at once, the next is refused with
       `Exhausted` naming the wait; with `maxWaitMillis > 0` it PARKS
       instead and passes when the bucket has refilled (the clock is
       the test's); keys are independent buckets; a full bucket is
       evicted so `stats.keys` falls back to the active ones
-- [ ] hedge: a slow first attempt is joined by a second after
+- [x] hedge: a slow first attempt is joined by a second after
       `afterMillis`; the FIRST SUCCESS answers and the other is
       cancelled; a fast first attempt never starts a second; when
       every attempt fails, the failure is the last one's; `max`
       bounds attempts in flight
-- [ ] deadline: an expired budget refuses BEFORE running; a budget
+- [x] deadline: an expired budget refuses BEFORE running; a budget
       that expires mid-run cancels the run and answers `Exceeded`;
       `carry` writes the REMAINING budget (not the absolute instant)
       and `read` turns a header back into a local `Deadline`; a
       damaged or negative header reads as `None`
-- [ ] every refusal is a `Refused` with a name and, where it has
+- [x] every refusal is a `Refused` with a name and, where it has
       one, a `retryAfterMillis` — one type for the server to map
 
 Stage 1 — around Http, and visible:
@@ -296,4 +298,25 @@ semantics are gRPC's so that a gateway can translate.
 
 ## Results
 
-(filled in as stages land)
+**Stage 0 landed (resilience, 2026-09-09).** Module `okay-resilience`,
+JVM + JS: `Breaker`, `Bulkhead`, `Limiter`, `Hedge`, `Deadline`,
+`Refused`, `Reporting`. 18 tests on the JVM (10 shared + 8 timed),
+the 10 shared ones green on JS unchanged — including the bulkhead's
+cancel-while-parked, which on JS goes through the drive's canceller
+and on the JVM through the interrupt reaching `CanBlock.block`.
+
+Two things the tests found that the first draft had wrong:
+
+- The limiter's sweep compared STORED token counts to `burst`, but a
+  bucket is only refilled when its key is touched, so every idle
+  bucket looked empty and nothing was ever evicted. The sweep now
+  refills as of `now` before asking "full?".
+- A cancelled Loom fiber leaves the bulkhead's queue on ITS thread,
+  after `cancel()` returns — an assertion right after the cancel
+  read the old count. The test waits for the count; the code was
+  right.
+
+`Attempt` (observing how a closed `Async` program ends, on the same
+fiber) is what lets the breaker and the bulkhead work without a
+`Scheduler`: one extra node per operation of the guarded program
+instead of a fiber per call. Hedge and Deadline fork, as they must.

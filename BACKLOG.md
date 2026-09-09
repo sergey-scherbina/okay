@@ -1,5 +1,44 @@
 # Backlog
 
+## resilience — the microservice handlers (operator's direction, 2026-09-09)
+
+Stage 0 of specs/resilience.md landed (okay-resilience: Breaker,
+Bulkhead, Limiter, Hedge, Deadline, one `Refused` type). What
+follows, in the spec's order:
+
+- [ ] resilience-http — stage 1: `Resilient.http(inner, ...)` in the
+      fixed order deadline → breaker → bulkhead → limiter → hedge, a
+      5xx counting as a breaker failure, hedging safe methods only;
+      `Resilient.route` mapping `Refused` to 429/503/504 with
+      `Retry-After`, keyed on `Request.peer` (the field specs/http.md
+      added for exactly this); `Deadline.read`/`carry` across two
+      hops under a controlled clock. Spec: specs/resilience.md
+      Behavior, stage 1.
+- [ ] resilience-metrics — stage 1's other half: okay-ops renders
+      `Breaker.Stats`, `Bulkhead.Stats`, `Limiter.Stats` as
+      Prometheus rows beside `Store.Stats`, `name` as the label;
+      `Ops.routes` takes a `Vector[Reporting[?]]`. okayOps gains the
+      okayResilience dependency (JVM + JS only — okay-ops is already
+      JVM + JS).
+- [ ] resilience-faults — stage 2: `Faults.http(seed, plan)(inner)`,
+      the seeded fault-injecting Http (delays, drops, 5xx by
+      ordinal), and the composite under a plan behaving per the
+      pieces' contracts. Adaptive concurrency stays deferred until
+      stage 1 is in use somewhere.
+- [ ] retry-js — `okay.retry` lives in scala-jvm-native and sleeps
+      the thread; a JS twin over `Async.sleep` (Timer) would make the
+      one resilience primitive the core already has cross-platform.
+      Found by the resilience audit; not taken there because the
+      module needed none of it.
+- [ ] microservices-next — the audit's remaining gaps, each its own
+      spec when picked: graceful shutdown (readiness → 503, stop
+      accepting, drain in-flight — no server here does it); RED
+      metrics per route and per outbound client; saga over `Durable`
+      + persist with compensations as values; transactional outbox /
+      inbox / dead-letter when the truth is in SQL; service discovery
+      + client-side balancing (cluster.md lists it out of scope);
+      Schema compatibility checks between services; a `Log` effect
+      with trace correlation (0 hits for one today).
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 
 The audit (2026-09-09) read every seam: `Sql` (JDBC, pg wire, R2DBC),

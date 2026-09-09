@@ -1,5 +1,24 @@
 # Changelog
 
+## resilience — stage 0 of specs/resilience.md: breaker, bulkhead, limiter, hedge, deadline
+
+The microservices audit (operator's direction, 2026-09-09) found the
+stack holding retry, timeout, supervision, tracing, health, auth and
+durable execution, and missing five things by grep: a circuit
+breaker, a bulkhead, a rate limiter (specs/http.md had added
+`Request.peer` FOR one), hedged requests and a deadline that travels
+with the request. This lane wrote the spec and landed the five as
+`okay-resilience` (JVM + JS, depends on okay-http): each a program
+transformer over `A ! Async`, state in one `TRef` moved by one
+`modify`, the clock injected, every refusal one `Refused` type with
+a name and a `retryAfterMillis`. `Attempt` observes how a closed
+Async program ends on the same fiber — no `Scheduler` for the
+breaker and the bulkhead. 18 tests on the JVM, the 10 shared ones
+green on JS unchanged. Found on the way: the limiter's sweep had
+compared stale token counts (never evicted — fixed, pinned). Stage 1
+(the `Http` adapter in a fixed order, 429/503/504 routes, okay-ops
+rows) and stage 2 (seeded fault injection) are in BACKLOG. Docs:
+docs/modules/okay-resilience.md, indexed in docs/README.md.
 ## sql-commit-tag — COMMIT reads its command tag: an aborted pg transaction no longer reports success
 
 First of the seven persistence-audit lanes (BACKLOG "persistence-audit",
