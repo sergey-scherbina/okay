@@ -28,7 +28,7 @@ the key is `chatDb`, and the store's declared volume now reaches every
 rendered target — PVC, compose volume, systemd `ReadWritePaths` and
 `install -d` — from one line. 3 core tests, 1 in okay-deploy, 2 in
 okay-demo; the rendered `okay-demo/deploy` regenerated and drift-
-checked. Commit: LANDING.
+checked. Commit: 630b0cc1.
 ## r-frame-columnar-wire — the tag moves from the cell to the column: 58x on a 100k-row frame
 
 The spec landed first, because the thing being changed is a wire
