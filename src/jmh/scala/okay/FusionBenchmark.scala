@@ -13,7 +13,9 @@ import okay.RowLift.at
  * immutable and `resume` allocates fresh nodes on every walk, so the
  * same tree can be walked by every lane.
  *
- * Read B/op (-prof gc) before us/op. The cost model in the spec says
+ * Read B/op (-prof gc) before us/op. Stage A (split-without-either)
+ * moved the fused loops and the shipping runners onto `split`; the
+ * `<|>` numbers they replaced are the stage-0 rows in history.tsv. The cost model in the spec says
  * the nested run pays one Bind + one closure per operation per pass
  * that does not own it: on `nestedSW` every State operation once, on
  * `nestedTSW` every State operation once and every Writer operation
@@ -51,8 +53,39 @@ class FusionBenchmark {
       case 1 => State.set[Int](i).at[SW].flatMap(x => rightSW(i + 1, acc + x))
       case _ => Writer.tell("w").at[SW].flatMap(_ => rightSW(i + 1, acc + 1))
 
+  // ---- stage B: the same right-nested program as Eff (no tree) and as
+  // a handler-passing program over a Control carrier
+
+  var effR: Eff[SW, Int] = scala.compiletime.uninitialized
+
+  def rightEff(i: Int, acc: Int): Eff[SW, Int] =
+    val E = Effects[Eff]
+    if i >= N then E.pure(acc)
+    else (i % 3) match
+      case 0 => E.flatMap(E.perform[SW, Int](State.Get()))(x => rightEff(i + 1, acc + x))
+      case 1 => E.flatMap(E.perform[SW, Int](State.Set(i)))(x => rightEff(i + 1, acc + x))
+      case _ => E.flatMap(E.perform[SW, Unit](Writer.Say("w")))(_ => rightEff(i + 1, acc + 1))
+
+  type R = Fused.Answer[Int, String, Int]
+  def rightCtrl[C[_, _, _]](h: Interpr[SW, C, R])(using C: Control[C])(i: Int, acc: Int): C[Int, R, R] =
+    if i >= N then C.pure(acc)
+    else (i % 3) match
+      case 0 => C.flatMap(h(State.Get()))(x => rightCtrl(h)(i + 1, acc + x))
+      case 1 => C.flatMap(h(State.Set(i)))(x => rightCtrl(h)(i + 1, acc + x))
+      case _ => C.flatMap(h(Writer.Say("w")))(_ => rightCtrl(h)(i + 1, acc + 1))
+
+  @Benchmark
+  def effSWr(): Int = Fused.runEff(0)(effR)._2
+
+  @Benchmark
+  def ctrlContSWr(): Int = Fused.runCtrl[Cont, Int, String, Int](0)(h => rightCtrl[Cont](h)(0, 0))._2
+
+  @Benchmark
+  def ctrlFuncSWr(): Int = Fused.runCtrl[Func, Int, String, Int](0)(h => rightCtrl[Func](h)(0, 0))._2
+
   @Setup
   def up(): Unit =
+    effR = rightEff(0, 0)
     swR = rightSW(0, 0)
     sw = (0 until N).foldLeft(pure[SW, Int](0)): (m, i) =>
       m.flatMap: acc =>

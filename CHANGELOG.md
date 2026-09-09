@@ -33,6 +33,443 @@ resolve with `import okay.given` in scope — the `Id` monad's extension
 gets in the way of `ArrayOps` — so the check goes through `.iterator.map`,
 noted where it happens.
 
+## docs-dynamo — the DynamoDB adapter of the Docs seam: condition expressions as Cond, GSIs as indexes, SigV4 without an SDK
+
+Lane 7 of 7 of the persistence audit; the arc closes. `Docs` was
+designed for Dynamo/Cassandra/Mongo and had met only Mongo — the
+engine with condition expressions and eventual reads never tested the
+seam. `okay-docs-dynamo` (JVM): DynamoDB's JSON protocol over the one
+http client, signed by okay-blob's SigV4 with service `dynamodb`, no
+SDK. CBOR under `d`, the version under `ver` advanced by `ADD ver
+:one`; every conditional write is ONE UpdateItem/DeleteItem carrying a
+condition expression (`attribute_not_exists(id)`, `ver = :ver`) and a
+ConditionalCheckFailedException answers `Stale` with the current
+version; declared indexes are `ix_<field>` attributes and GSIs the
+query walks; `grants` names DynamoDB's two read modes (One eventual,
+Quorum granted Strong as ConsistentRead). The full DocsSuite contract
+passes Live on dockerized dynamodb-local, plus the grants test. Landed
+as c4831720 + 5ad9b24c (the module page TestDocsIndex demands);
+specs/data.md Behavior. Gate: full matrix, 3055 tests, the one failure
+TestDocsIndex (no module page), fixed by the docs commit and okay-deploy
+rerun green (113); the code tree was otherwise gated whole.
+
+The seven-lane arc (this session): sql-commit-tag, sql-serialization-
+retry, sql-temporal-types, sql-readonly-region, sql-pool, persist-saga,
+docs-dynamo — BACKLOG "persistence-audit" is fully checked.
+
+## ui-compose — the native client that never changes: Kotlin, Compose, no okay dependency, proven by the conformance script and a live smoke
+
+Stage 3 of specs/frontend.md, the operator's first native target.
+`okay-compose/` is a Gradle/Kotlin project beside sbt (its settings
+INSIDE the directory; the repo root stays sbt's) that depends on
+nothing of okay: `protocol/` transcribes `docs/protocol/frontend.md`
+as sealed interfaces, reads and writes the `{"Case": {...}}` shapes
+totally (damage is null), applies patches by path, and carries the
+hybrid rule (a Form's fields fold on the client, its button submits
+once); its test replays `docs/protocol/conformance.jsonl` — every
+`in` applied, every `tree` held, every `out` reproduced, the
+Submitted included — 3 of 3. `app/` is Compose Desktop: level L in
+Material, the JDK's own WebSocket, hello first, claims nothing.
+
+The claim of the whole arc, measured: `okay.script.Serve` served a
+Live counter page; `GET /counter` gave the browser its HTML and
+`live.js`; the headless smoke (`./gradlew :app:smoke`) opened the
+page's own WebSocket, received `count: 0`, pressed `inc`, and held
+`count: 1` after the server's patch. One server, unchanged, a browser
+and a native client at once — the native client written from the
+rendered document alone. Gradle 8.11.1 by wrapper (sdkman installed
+it once; the machine had no Gradle, Kotlin or Android SDK). Android
+and the Scala Native/Swing host are deferred to their own claims,
+stated in the spec.
+
+## persist-saga — okay.persist.Saga: intent-first steps with compensations over a keyed topic, recovery by policy
+
+Lane 6 of the persistence audit. The multi-item change specs/data.md
+and `Docs` describe as "a journaled sequence of conditional writes"
+was hand-rolled by every consumer; now `Saga[S](topic, id, policy)
+(steps*)`: a step is its effect and its compensation over the saga's
+state; `Intent(i)` lands before step i and `Done(i, state)` after, so
+a restart tells never-ran, ran-answer-lost and ran apart; a failing
+step journals `Failed` and the earlier steps compensate in reverse;
+`Finished`/`Aborted` are answers a later `recover` returns untouched.
+`recover()` folds the records and acts by the declared `Policy`:
+Forward re-runs a step whose answer was lost (its far end must be
+idempotent — the Durable rule one level up), Backward compensates
+everything done, the uncertain step included. `Stuck` names a failed
+compensation; `status` is a Schema value. One saga = one key = one
+partition; state as CBOR at the edge, records through the Typed
+envelope. Tests on MemoryStore: the happy path, failure and
+compensation, the crash window under both policies, a crash
+mid-compensation, two sagas on one topic. Landed as 9e8ef60d;
+specs/persist.md "The saga". Gate: full matrix, 3176 tests, 0
+failures, 0 warnings.
+
+## sql-pool — okay.sql.Pool: a fixed-size, driver-neutral connection pool with a cancel-safe hand-off and the brake on return
+
+Lane 5 of the persistence audit; before it one `Sql` was one
+connection and no pool existed anywhere. `Pool[C <: Sql](size,
+acquireTimeoutMillis)(open)(close)`: `borrow` runs a program on one
+connection and returns it after, value or failure; `pinned` hands one
+to the enclosing Resource scope; `stats` is a plain value; `close`
+disposes idle connections now and busy ones as they return. One `TRef`
+cell, waiters as callbacks; a timed-out waiter and a grant that races
+it settle on one CAS (withdrawn from the canceller AND the timeout
+branch, since a fiber's cancel is the platform's business), and the
+loser passes the connection on. A returned connection goes through
+`Sql.cancel` first, so a raw `begin` never reaches the next borrower.
+The grab's own failure travels as a value, because a failing contender
+never wins `Async.race` and a Closed pool must not read Exhausted.
+`JdbcSql.close` for the plain case; Hikari is one open function away.
+Tests on H2: eight borrowers on two connections (peak two, none
+reopened), the brake on a leftover transaction, Exhausted within its
+timeout then served on the same connection, pinned scope, Closed after
+close. Landed as 46498266; specs/sql.md "The pool". Gate: full matrix,
+3163 tests, 0 failures, 0 warnings — the tree it covered included the
+three sibling lanes the previous entry named; ui-hybrid landed during
+this gate (okay-ui/okay-script only) and the persist-saga gate covers
+it next.
+
+## ui-hybrid — no round trip per keystroke: a Form folds on the client and submits once
+
+Stage 2 of specs/frontend.md, the operator's "hybrid from the start".
+`Event.Submitted(key, edits)` is a Form's one event: every field's
+value as the `Edited`/`Toggled`/`Chosen` a live form would have sent,
+folded on the server by `Form.submitted` through the SAME `Form.edit`
+— so a submitted form cannot decode differently from a typed one, and
+the client needs no schema. `Form` moves to the level every client
+draws, because the rule lives on it: once lowered, a Box is any Box.
+`Wire.client` keeps the typed value in its tree (the host re-renders
+it), sends nothing while the user types, and turns the button's press
+into the Submitted; `live` inputs and inputs outside a Form speak per
+change; a CLAIMED `Tabs` or the new `Disclosure` switches locally —
+the "local set" is exactly the semantic nodes a client claims, not a
+second vocabulary. The server stays the truth: its `SetValue` lands on
+the client's tree and wins; `Wire.permitted` drops a Submitted that
+names a form not shown, a field not that form's, or an edit that is
+not one. `live.js` draws `Form` (`data-form`), keeps the values in
+the DOM, submits once, and speaks only for `data-live` inputs;
+okay-script's `Live.form` is a Form node handling Submitted. The
+protocol document states the rule; the conformance script carries a
+Submitted. TestHybrid (7); okay-ui 81, okay-script, okay-demo, JS and
+Native legs, the Live-tagged suites green.
+
+## di-stage1 — qualifiers by type, the plan as the type, okay-conf in a module
+
+specs/di.md stage 1, three small pieces. A qualifier is an opaque type
+per role (`Primary`, `Replica`) — no mechanism, one pattern, and a
+`wire[Replica]` where only `Primary` is installed is a compile error
+naming the role. `m.plan` lists what a module will install in
+acquisition order, and it is a MACRO over the module's type: the
+curried chain `A ?=> B ?=> … ?=> X` already says it, so no value is
+built to print it and a dependent module contributes its `G` from the
+type of `and`; an opaque qualifier shows as itself, which the erased
+class could not do. The spec's "via the TypeableK seam" was wrong
+twice and is corrected in Decisions. okay-conf joins with no new API:
+config and `Secrets` are `Module.value`s and the connection module
+resolves its `Secret` inside its acquisition, so a miss fails the
+build naming the reference. 3 core tests + 2 in okay-conf.
+Commit: f41ea76f.
+## sql-readonly-region — READ ONLY regions granted and read back; JdbcSql restores the isolation level with autocommit
+
+Lane 4 of the persistence audit. `Sql.begin(isolation, readOnly)` and
+the flag on `transact`/`region`/`transactRetry`; `Granted.readOnly` is
+what the engine GRANTED, read back — pg's `SHOW transaction_read_only`
+after `SET TRANSACTION ... READ ONLY` (a write inside answers 25006),
+JDBC's `isReadOnly` after the hint (H2 ignores it and the grant says
+so), R2DBC's `TransactionDefinition` with `READ_ONLY` (r2dbc-postgresql
+takes it). The audit's leak: `JdbcSql` restored autocommit after a
+region but not the isolation level, so every autocommit statement after
+a `transact(Serializable)` ran Serializable — the level and the
+read-only flag are saved at `begin` and restored with autocommit on
+commit, rollback and the brake. Tests: pg wire (Live), H2, r2dbc pg
+(Live). Landed as 0777e790; specs/sql.md "Read-only regions, and the
+isolation restored". Gate: full matrix, 3143 tests, 0 failures, 0
+warnings — run before three sibling lanes (ui-protocol,
+handler-fusion-eff, ui-hybrid's claim) landed on master; the merge
+followed a claims-only rebase check that was wrong about those three,
+which touch okay-ui/okay-script/Fused only; the sql-pool gate covers
+the combined tree next.
+
+## ui-protocol — the frontend protocol as an artifact: one derived definition, two encodings, a rendered contract
+
+Stage 1 of specs/frontend.md. `okay.ui.Protocol` derives the schemas
+of the tree, the events, the patches and the envelope (`Msg`: Hello,
+Tree, Patch, Event, Close) — enumerations spelt short (`"h"`/`"v"`,
+`"secret"`, `"danger"`) — and both encodings come from it: JSON lines
+for the WebSocket, CBOR bytes for a byte transport. The hand-mapped
+`WireJson` is RETIRED, its dialect replaced by the derived shape
+(`{"Tree":{"ui":{"Box":{...}}}}`): every consumer — `Sessions`'s
+segment split, okay-script's `Site` push and close lines, the Live
+pages' `live.js` (rewritten, still dependency-free), the wire/session/
+live tests — speaks `Protocol`. The client's first line is its
+`Hello {vocab, version}`; `Wire.serve` reads it and lowers every
+semantic node the client did not claim (unknown names ignored, an
+event before any hello served as level L and still handled);
+`Wire.client(host, vocab)` says hello first.
+
+The contract is rendered, not written: `docs/protocol/frontend.md` is
+`Protocol.document` — fixed prose plus a SHAPE LANGUAGE over the
+Schema algebra (`Protocol.describe`: named types once, in
+first-reference order, so the recursive `Ui` is a name; `JsonSchema.of`
+has no `$ref` and overflowed on it) — and `docs/protocol/conformance.jsonl`
+is `Protocol.conformance`, a scripted session with the tree a client
+must hold after each line. `TestProtocol` fails when either file
+drifts; `OKAY_RENDER=1 sbt okayUiJVM/testOnly okay.ui.TestProtocol`
+regenerates. A Compose client (stage 3) reads those two files and
+nothing of okay.
+
+Spec correction recorded: "derived JSON equals WireJson's, then
+retire" was impossible and is replaced by the retirement itself.
+TestProtocol (5); okay-ui 74, okay-script 166, okay-demo 54, the
+Live-tagged wire, session and jetty suites, JS and Native legs green.
+
+## handler-fusion-eff — the composite handler over Eff measured: 0.58x, the tree was never the cost, the arc closes
+
+Stage B of specs/handler-fusion.md, the road stage 0 and stage A had
+pointed at: run the program as a FUNCTION of one inline-assembled
+composite handler (`Eff`, the Church encoding), so no Free tree exists
+between program and answer. Built and lawful — `Fused.stateWriterInterp[C]`
+threads the row's accumulator through the answer type (PState's
+trick) at any Control carrier; `runEff`/`runCtrl` run it; the `Eff`
+road agrees with the fused Free loop on generated programs, the
+carrier road at Cont and at Func.
+
+Then measured, and refuted. The same 1 000-op right-nested program:
+the fused Free loop 13.7 µs / 122 641 B/op; handler-passing over Func
+16.0 / 184 665; over Cont 18.0 / 200 673; `Eff` with the composite
+23.5 / 297 897 — 0.58x, with 2.4x the allocation. Bar was 1.5x.
+
+Why, in bytes: a Free node (Inject + Bind + one closure) is CHEAPER
+than the two closures every CPS bind allocates, and a tail-recursive
+walk over data beats closure invocation. The 1.9x staged-effects.md
+recorded was compile-time unrolling of 24 STATIC operations, which
+does not transfer to a loop or a recursion — i.e. to any program of a
+size that matters. "Drop the tree" was the premise of the reordered
+arc, and it was wrong; the byte counts said so on the first run.
+
+The arc closes with what it landed: pass fusion is 1.13–1.29x here
+(stage 0, gated off), the wrapper-free split is −18% bytes and 7–11%
+on the hot loops (stage A, landed), and the fused Free loop at 13.7 ns
+per operation is this design's floor. The `direct → Eff` follow-up is
+dropped for the same reason. Code and lanes stay in the tree as the
+measured refutation; four rows in history.tsv.
+## di-module — a Module is a Providing that has not been built yet
+
+specs/di.md, stage 0, the operator's ask for our own DI and the
+bridges to everyone else's. The core already made a dependency a type
+and a missing one a compile error; what it lacked was lifecycle. A
+`Module[F]` wraps `Providing[F] ! Resource`: `module[Db](open)(close)`
+acquires in the region, `Resource.run` releases in reverse order
+whatever the program did, and `and` types its right operand
+`F[Module[G]]` so a module needing an earlier one is `Db ?=> Module[…]`
+reading `wire[Db]` — the graph is the composition, the compiler
+checks it, a test double is one more `and`. Five tests. Two decisions
+in the spec: a class, not an alias (an extension `apply` typed the
+body without its expected type — E10 from a new side), and
+`Module.ready` rather than a companion `apply`. Stages 1-3 filed in
+BACKLOG "di": qualifiers, the printable plan, okay-conf, okay-spring
+/ ZLayer / Guice bridges, the join with deployment. Commits: 39eb31f6 (code + spec), 26ed22b3 (boards).
+## sql-temporal-types — Timestamp/Date/Time/Uuid/Json in the seam, java.time fields on the JVM, and the H2 Calendar road refuted
+
+Lane 3 of the persistence audit. A `timestamptz`/`date`/`time`/`uuid`/
+`json` column travelled as Text under `SqlType.Other` and was
+hand-parsed per field in the engine's own print form. The seam now
+carries them as platform-neutral numbers (micros since the epoch UTC,
+days, micros of day, `java.util.UUID`, json text) with SqlType mirrors;
+`okay.sql.Temporal` renders ISO UTC and parses pg/H2/ISO forms with
+offsets, no java.time (the module runs on JS and Native). Fields:
+`Schema[UUID]` everywhere, `Schema[Instant/LocalDate/LocalTime]` on the
+JVM, known to the typed layer by the identity of the given
+(`Typed.Known`, the one cast isolated in `Known.find`, the platform's
+table in `JavaTime.known`). All three drivers decode and bind natively;
+a String field still reads every such column as ISO text; okay-delta
+maps Timestamp/Date to Delta's own micros/days. FOUND ON THE WAY: JDBC's
+`setTimestamp(ts, utcCalendar)` into an H2 `timestamp with time zone`
+stores the calendar's wall clock with the SESSION's offset — two hours
+wrong, hidden in the isolated suite because the Calendar read reversed
+it, exposed by the full matrix (DuckDB's suite first in the same JVM).
+The JDBC road now binds by the declared parameter type (OffsetDateTime
+at UTC into timestamptz, the UTC wall-clock LocalDateTime into
+timestamp) and reads by the column's JDBC code; SQLite-class drivers
+fall back to ISO text. Tests: Temporal on JVM+JS+Native; H2, pg wire
+(session zone Europe/Kyiv, a timestamptz[] into Vector[Instant]),
+R2DBC H2/pg round trips. Landed as e3c7d563 + 728ceb37; specs/sql.md
+"Temporal, uuid and json values". Gate: full matrix, 3137 tests, 0
+failures, 0 warnings.
+
+## split-without-either — the row split with no wrapper per operation: −18% allocation, 7–11% on the hot loops
+
+Stage A of specs/handler-fusion.md, the lever stage 0 found: `<|>`
+answered an `Either` per operation and the `TypeableK` extractor an
+`Option` per test, on the hottest path of every runner — and B/op
+showed both survive escape analysis (they were the prediction to the
+byte: 32 B per operation).
+
+Built: `TypeableK.test`, a boolean beside `unapply`; `split[F, G](e)
+(onF)(onG)` — a value class carrying the test with an `inline apply`,
+so the two branches beta-reduce into the caller's match and nothing is
+allocated on the way; `<|>` itself on `test`, so its 50-odd walk sites
+lose the Option with no churn; and the hot loops on `split` —
+`State.handle`, `Writer.foldWith`, `relay`, `Effects.handle`,
+`Handler.union` (every `runWith` over a row) and the `Fused` probes.
+The two casts on a row live in `<|>` and `Split.apply` and nowhere
+else; no runner casts (GADT refinement inside the branch still types
+the answer). Two idioms the rewrite needed, both written down where
+they bite: a RETURNING arm ascribes the loop's answer inside the
+branch (the constructor refined the answer type there), and a Writer
+branch under `Bind` matches its only constructor with `@unchecked`,
+the same claim `resume` makes.
+
+Measured on a box that was never quiet (load 20–80: four sibling gates
+and docker), minima across rounds, B/op load-proof: the fused
+right-nested pass went 149 312 → 122 641 B/op and 16.7 → 13.8 µs
+(1.21x against stage 0, 1.11x against the same tree's `<|>` loop); the
+shipping runners 181 369 → 170 696 and 18.8 → 17.4 (1.08x). Small,
+uniform, zero-risk; lands; not the lever. Typepedia has the entries.
+Six rows in history.tsv.
+## resilience-http — stage 1 of specs/resilience.md: the Http layer, the routes, the /metrics rows
+
+`Resilient.http` composes the five around `trait Http` in the one
+order the spec fixes (deadline → breaker → bulkhead → limiter →
+hedge): a 5xx is a breaker failure and a 4xx is not, hedging takes
+safe methods only, a per-call budget is merged with a deadline the
+request already carries and the outgoing header says what is left.
+`Resilient.route` keeps routes defined where they were and turns a
+refusal into 429/503/504 with `Retry-After`, keyed on `Request.peer`
+— the field specs/http.md added for exactly this. okay-ops gained
+`Prom.guards` and `Ops.routes(..., guards)`, so breaker, bulkhead and
+limiter stats are Prometheus rows beside the store's. The layer above
+found two defects in stage 0: `Deadline.enforce` over `Async.timeout`
+masked a failure as a timeout after the whole budget (a `race` waits
+for the other contender when one fails — filed for the core as
+`timeout-masks-failure`), and `Attempt` let a throwing `flatMap`
+continuation escape, so the breaker never counted such failures. Both
+fixed and pinned. The two-hop deadline test corrected the spec's own
+wording: a relative header charges work, not transit. Eleven latent
+warnings in okay-ops's tests, hidden by warm compiles, surfaced with
+the new dependency and are fixed. 9 new tests. Also closes
+`resilience-timed-flake`, filed by grant-vacuity mid-lane: the timed
+limiter test's wall-clock assertion failed under five sibling sbts
+because the real clock refilled the bucket between the calls; it now
+freezes the limiter's clock and asserts `delayed`, not milliseconds.
+## grant-vacuity — the last test that had stopped testing what it says
+
+The sweep `grant-unenforced` implied, done: one explicit coloring
+grant was left in the test tree, in `TestDirectAuto`'s "operations
+color via the Effect marker". `Reader derives okay.Effect` and
+`Effect extends Direct.Effect` since 2026-09-08, so the marker arrived
+without the line. **Measured: the test passes with it deleted.** It
+had stopped testing the marker and was testing that Reader colors,
+which now holds for free.
+
+Same defect as the two vacuous tests in `TestEffectProvide`, and the
+same lesson twice in one day: a red test tells you what broke, a test
+that cannot fail tells you nothing, and its NAME keeps promising what
+the code stopped doing. Both were invisible in a green gate.
+
+The line is gone, the name says what is exercised, and it points at
+`TestEffectProvide` for the claim it used to make — where that claim
+is now a negative test proved by mutation. `an unmarked G never
+colors` was checked and left: it uses `List`, which has no
+`okay.Effect`, so it still refuses for its stated reason.
+
+The lane predicted this outcome in its claim and named the other
+branch too — if the test had FAILED without the grant, that would
+have meant `derives Effect` covers less than the `grant-unenforced`
+changelog entry claims, and that entry would have needed a
+correction. It did not; no correction is owed.
+
+Gate: clean build, 86 modules, 3 104 tests, 0 failures, 0 warnings.
+## sql-serialization-retry — the region retries 40001/40P01: Sql.sqlState, Async.attempt, Typed.transactRetry
+
+Lane 2 of the persistence audit. Under RepeatableRead/Serializable the
+engine may choose a transaction to LOSE (Postgres SSI: `40001`,
+deadlock `40P01`) and nothing in the tree read a SQLSTATE — a program
+asking for Serializable saw an exception where the engine meant "run
+again". Now each driver names the state (`PgError.code` from the
+ErrorResponse's C field, `SQLException.getSQLState`,
+`R2dbcException.getSqlState`), `Async.attempt` gives a program's
+failure as data on one fiber (the effect-world try/catch the core did
+not have), and `Typed.transactRetry(db, isolation, Retry(attempts,
+backoff))` re-runs the whole region — begin, body, commit, the brake
+rolling back a lost run — answering `Retried(value, attempts)`. The
+body is `Resource + Async`; a Throws body runs its Throws inside (an
+abort is a decision, not a conflict). Tests: a losing decorator over
+H2 (N losses vs Retry(N)/Retry(N+1), 40P01 retried, 23505 not, backoff
+consulted with the run number) and write skew on the docker pg through
+the wire driver (the loser sees 40001 raw; transactRetry lands it on
+run 2). Landed as 233ce589; specs/sql.md "Serialization failures are
+retried". Gate: full matrix, 3108 tests, 0 failures, 0 warnings.
+
+## resilience — stage 0 of specs/resilience.md: breaker, bulkhead, limiter, hedge, deadline
+
+The microservices audit (operator's direction, 2026-09-09) found the
+stack holding retry, timeout, supervision, tracing, health, auth and
+durable execution, and missing five things by grep: a circuit
+breaker, a bulkhead, a rate limiter (specs/http.md had added
+`Request.peer` FOR one), hedged requests and a deadline that travels
+with the request. This lane wrote the spec and landed the five as
+`okay-resilience` (JVM + JS, depends on okay-http): each a program
+transformer over `A ! Async`, state in one `TRef` moved by one
+`modify`, the clock injected, every refusal one `Refused` type with
+a name and a `retryAfterMillis`. `Attempt` observes how a closed
+Async program ends on the same fiber — no `Scheduler` for the
+breaker and the bulkhead. 18 tests on the JVM, the 10 shared ones
+green on JS unchanged. Found on the way: the limiter's sweep had
+compared stale token counts (never evicted — fixed, pinned). Stage 1
+(the `Http` adapter in a fixed order, 429/503/504 routes, okay-ops
+rows) and stage 2 (seeded fault injection) are in BACKLOG. Docs:
+docs/modules/okay-resilience.md, indexed in docs/README.md.
+## sql-commit-tag — COMMIT reads its command tag: an aborted pg transaction no longer reports success
+
+First of the seven persistence-audit lanes (BACKLOG "persistence-audit",
+the operator's go 2026-09-09). A statement failed inside a region, the
+program HANDLED the error, and the region reached COMMIT: Postgres
+answers the tag `ROLLBACK` with no ErrorResponse, and `PgSql.commit`
+ignored the tag — the region returned normally over a transaction the
+server had rolled back, the exact "rollback that quietly does not roll
+back" specs/jdbc.md refuses. Watched failing first on the dockerized pg
+("expected exception of type PgError but body evaluated successfully",
+insert gone), then `simpleTag` reads the `C` message and commit throws
+on ROLLBACK, `inTx` cleared either way. The same probe through
+r2dbc-postgresql passes: that driver refuses such a COMMIT itself. The
+JDBC road has no pg case in the tree (pgjdbc is not a dependency; H2 and
+SQLite keep a transaction usable after a failed statement). Landed as
+988b4ab6; specs/sql.md has the box. Gate: full matrix, 2849 tests, one
+load timeout in okay.intent.TestOfflineGate (48 s under two sibling
+sbts against a 30 s limit; 4 s alone; okay-intent does not depend on
+okay-pg) — noted for that lane, not tagged here.
+## ui-vocab — two vocabulary levels in one tree, each semantic node defined by its lowering
+
+Stage 0 of specs/frontend.md, the operator's frontend direction
+(2026-09-09): the logic of a frontend belongs to the application, the
+drawing to whoever draws, and a client as dumb as a browser must draw
+everything. The tree gains a CLOSED layout level — `Box(dir, weights,
+gap, pad)`, `Image`, `Scroll`, `Input` kinds and `live`, `Button`
+roles, style tones and sizes — and an OPEN semantic level — `Form`,
+`Items`, `Table`, `Tabs`, `Modal` — where a node is admitted only
+with its lowering `Ui.lower`, which is what the node MEANS. Two laws
+make the levels one and are tested: `Ui.keys(s) == Ui.keys(lower(s))`
+under any vocabulary (update cannot tell how the client drew it; only
+the selected tab's page is a capability), and the diff commutes with
+lowering (a form edit is the same SetValue at the same path on either
+tree). `Wire.serve(init, vocab)` lowers before the first line, so the
+Live pages' `live.js` — extended for level L, still ~150 lines —
+never meets a semantic node; the in-process hosts lower at their
+entry (`Ui.diffing`, `React.elem`, `Frame.render`).
+
+Found by the extended DOM battery: a `Replace` of one child of a
+weighted box lost its flex, because the child's element is built
+alone. The box now carries `data-w`, and a patch consumer (Dom,
+live.js) gives a replaced or inserted child its weight from the
+parent it lands in — the same declaration a fresh build makes.
+
+Decisions recorded in the spec: Row/Column stay (an enum case cannot
+alias with its own extractor; level L is nine nodes), `Items` not
+`List` (it would shadow Scala's under `import Ui.*`), numeric form
+fields render as `InputKind.Number`. TestVocab (7), TestDom's battery
+extended; okay-ui 69 + 7, okay-script 166, okay-demo 54, JS and
+Native legs green.
 ## taxi-algebra — the aggregation algebra against real data on real Spark
 
 `okay-spark`'s `TestTaxiAlgebra` (Live-tagged: it wants a downloaded

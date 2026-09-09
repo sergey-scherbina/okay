@@ -2,7 +2,7 @@ package okay.r2dbc
 
 import okay.{!, +, Async, Chunk, Handler, Produce}
 import okay.given
-import okay.sql.{Isolation, SqlValue, Typed}
+import okay.sql.{Isolation, SqlType, SqlValue, Typed}
 import okay.sql.given
 import io.r2dbc.spi.Connection
 
@@ -108,5 +108,26 @@ abstract class R2dbcSuite extends munit.FunSuite:
       run(db.update("insert into okay_r2dbc values (2, 'y', 0, true, 0, null)")): Unit
       run(db.commit())
       assertEquals(collectChunks(db.query("select id from okay_r2dbc")).flatten, List(Vector(SqlValue.I32(2))))
+    finally db.close()
+  }
+
+  final case class Stamp(id: Int, at: java.time.Instant, d: java.time.LocalDate, t: java.time.LocalTime, ref: java.util.UUID)
+  given okay.codec.Schema[Stamp] = okay.codec.Schema.derived
+
+  test(s"$engine: sql-temporal-types — timestamptz/date/time/uuid read typed and bind back exact") {
+    val db = fresh()
+    try
+      run(db.update("drop table if exists okay_stamps")): Unit
+      run(db.update("create table okay_stamps(id int not null, at timestamp with time zone not null, d date not null, " +
+        "t time(6) not null, ref uuid not null)")): Unit
+      val six = java.time.Instant.parse("2026-09-02T06:00:00Z")
+      val one = Stamp(1, six.plusNanos(1000), java.time.LocalDate.of(1899, 12, 31), java.time.LocalTime.of(23, 59, 59, 999999000),
+        java.util.UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
+      assertEquals(run(Typed.update(db, "insert into okay_stamps values ($1, $2, $3, $4, $5)")(one)), 1L)
+      val sql = "select id, at, d, t, ref from okay_stamps"
+      assertEquals(run(db.describe(sql)).map(_.tpe), Vector(SqlType.I32, SqlType.Timestamp, SqlType.Date, SqlType.Time, SqlType.Uuid))
+      // r2dbc-postgresql does not know nullability (knowsNullability); the types are the claim here
+      assertEquals(run(Typed.verify[Stamp](db, sql)).filterNot(_.found == "nullable"), Vector.empty)
+      assertEquals(collectChunks(Typed.rows[Stamp](db, sql)).flatten, List(Right(one)))
     finally db.close()
   }

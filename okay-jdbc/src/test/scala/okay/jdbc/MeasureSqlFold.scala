@@ -84,7 +84,7 @@ class MeasureSqlFold extends munit.FunSuite:
       go(frames)
     def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = okay.pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
-    def begin(isolation: Isolation): Granted ! Async = okay.pure(Granted(isolation, isolation))
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.pure(Granted(isolation, isolation))
     def commit(): Unit ! Async = okay.pure(())
     def rollback(): Unit ! Async = okay.pure(())
     def cancel(): Unit = ()

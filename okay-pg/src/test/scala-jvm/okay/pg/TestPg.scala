@@ -1,10 +1,11 @@
 package okay.pg
 
-import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
+import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Stream, Throws, effect}
 import okay.given
 import okay.crypto.given
 import okay.codec.Schema
-import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
+import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
+import okay.sql.given
 
 /**
  * The wire against a REAL Postgres (the live-suite pattern: skips
@@ -149,6 +150,128 @@ class TestPg extends munit.FunSuite {
       assertEquals(out, Left("no"))
       val n = collectChunks(db.query("select count(*) from customer where id = 30")).flatten
       assertEquals(n.head.head, SqlValue.I64(0), "the insert survived the abort")
+    }
+  }
+
+  test("a handled error inside a region: pg's COMMIT answers ROLLBACK, and the region must not report success (sql-commit-tag)") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    withDb { db =>
+      // the body inserts, then RECOVERS from a failed statement (the
+      // nested blocking run is what any program that catches the
+      // PgError does); pg is now in the aborted state, and its COMMIT
+      // answers the tag ROLLBACK with no error at all
+      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+        !.widen[Long, Async, Resource](
+          db.update("insert into customer(id, user_name, balance, active) values (31, 'tag', 1, true)"))
+          .flatMap(_ => !.widen[Long, Async, Resource](okay.async {
+            try run(db.update("select syntax error from"))
+            catch { case _: PgError => 0L }
+          }))
+      }
+      val e = intercept[PgError](!.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog))))
+      assert(e.getMessage.contains("ROLLBACK"), e.getMessage)
+      val n = collectChunks(db.query("select count(*) from customer where id = 31")).flatten
+      assertEquals(n.head.head, SqlValue.I64(0), "the aborted transaction's insert is not there")
+      // and the connection is usable afterwards, outside any transaction
+      assertEquals(run(db.update("delete from customer where id = 31")), 0L)
+    }
+  }
+
+  test("write skew under Serializable: the loser gets 40001 through the wire, and transactRetry re-runs it (sql-serialization-retry)") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    val a = connect(); val b = connect()
+    try
+      run(a.update("drop table if exists ssi")): Unit
+      run(a.update("create table ssi(k int not null)")): Unit
+      def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
+        val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
+        S.uncons(p).flatMap {
+          case None => okay.pure(Vector.empty)
+          case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
+        }
+      def count(db: Sql): Long ! Async =
+        drain(db.query("select count(*) from ssi")).map(_.head.head match
+          case SqlValue.I64(n) => n
+          case other => throw AssertionError(s"count: $other"))
+      // a's whole transaction, run to completion INSIDE b's first run,
+      // between b's read and b's write — the classic rw-conflict cycle
+      def aWrites(): Unit =
+        !.run(Async.run[Long, Nothing](Resource.run[Long, Async](
+          Typed.transact[Long, Async](a, Isolation.Serializable) { _ =>
+            !.widen[Long, Async, Resource](count(a).flatMap(_ => a.update("insert into ssi values (1)")))
+          }))): Unit
+      var runs = 0
+      val r = run(Typed.transactRetry(b, Isolation.Serializable, Typed.Retry(3)) { _ =>
+        !.widen[Long, Async, Resource](count(b).flatMap { _ =>
+          runs += 1
+          if runs == 1 then aWrites()
+          b.update("insert into ssi values (2)")
+        })
+      })
+      assertEquals(r.attempts, 2, "the first run lost to a, the second landed")
+      assertEquals(run(count(b)), 2L)
+      // and the loser's failure, seen raw, is the SQLSTATE the retry keys on
+      run(b.update("delete from ssi")): Unit
+      runs = 0
+      val e = intercept[PgError](run(Typed.transactRetry(b, Isolation.Serializable) { _ =>
+        !.widen[Long, Async, Resource](count(b).flatMap { _ =>
+          runs += 1
+          if runs == 1 then aWrites()
+          b.update("insert into ssi values (2)")
+        })
+      }))
+      assertEquals(b.sqlState(e), Some("40001"), e.getMessage)
+    finally { a.close(); b.close() }
+  }
+
+  final case class Stamp(id: Int, at: java.time.Instant, plain: java.time.Instant, d: java.time.LocalDate,
+                         t: java.time.LocalTime, ref: java.util.UUID, doc: String, ats: Vector[java.time.Instant])
+  given Schema[Stamp] = Schema.derived
+
+  test("sql-temporal-types over the wire: timestamptz/timestamp/date/time/uuid/jsonb and a timestamptz[] read typed, bind back exact, verify clean") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    withDb { db =>
+      run(db.update("drop table if exists stamps")): Unit
+      run(db.update("create table stamps(id int not null, at timestamptz not null, plain timestamp not null, " +
+        "d date not null, t time not null, ref uuid not null, doc jsonb not null, ats timestamptz[] not null)")): Unit
+      // the session zone is whatever the server has; the offset on the wire is applied, not assumed
+      run(db.update("set time zone 'Europe/Kyiv'")): Unit
+      run(db.update("insert into stamps values (1, '2026-09-02 06:00:00+00', '2026-09-02 06:00:00', '2026-09-02', " +
+        "'06:00:00.5', '6ba7b810-9dad-11d1-80b4-00c04fd430c8', '{\"k\": [1, 2]}', " +
+        "array['2026-09-02 06:00:00+00', '1969-12-31 23:59:59.999999+00']::timestamptz[])")): Unit
+      val six = java.time.Instant.parse("2026-09-02T06:00:00Z")
+      val one = Stamp(1, six, six, java.time.LocalDate.of(2026, 9, 2), java.time.LocalTime.of(6, 0, 0, 500000000),
+        java.util.UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), "{\"k\": [1, 2]}",
+        Vector(six, java.time.Instant.parse("1969-12-31T23:59:59.999999Z")))
+      val sql = "select id, at, plain, d, t, ref, doc, ats from stamps order by id"
+      assertEquals(run(db.describe(sql)).map(_.tpe), Vector(SqlType.I32) ++
+        Vector(SqlType.Timestamp, SqlType.Timestamp, SqlType.Date, SqlType.Time, SqlType.Uuid, SqlType.Json, SqlType.Arr(SqlType.Timestamp)))
+      assertEquals(run(Typed.verify[Stamp](db, sql)), Vector.empty)
+      assertEquals(collectChunks(Typed.rows[Stamp](db, sql)).flatten, List(Right(one)))
+      val two = one.copy(id = 2, at = six.plusNanos(1000), plain = java.time.Instant.parse("1969-12-31T23:59:59.999999Z"),
+        d = java.time.LocalDate.of(1899, 12, 31), t = java.time.LocalTime.of(23, 59, 59, 999999000),
+        ref = java.util.UUID.randomUUID(), doc = "{\"z\": true}", ats = Vector.empty)
+      assertEquals(run(Typed.update(db, "insert into stamps values ($1, $2, $3, $4, $5, $6, $7, $8)")(two)), 1L)
+      assertEquals(collectChunks(Typed.rows[Stamp](db, sql)).flatten, List(Right(one), Right(two)))
+      run(db.update("set time zone 'UTC'")): Unit
+    }
+  }
+
+  test("a READ ONLY region on the wire: granted and read back, a write inside answers 25006, writes work again after (sql-readonly-region)") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    withDb { db =>
+      val e = intercept[PgError](run(Resource.run[Long, Async](
+        Typed.transact[Long, Async](db, Isolation.ReadCommitted, readOnly = true) { g =>
+          assert(g.readOnly, "the server granted READ ONLY")
+          !.widen[Long, Async, Resource](db.update("insert into customer(id, user_name, balance, active) values (40, 'ro', 1, true)"))
+        })))
+      assertEquals(db.sqlState(e), Some("25006"), e.getMessage)
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, readOnly = true)(g => okay.pure(g))))
+      assert(g.readOnly)
+      val plain = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.pure(g))))
+      assert(!plain.readOnly)
+      assertEquals(run(db.update("insert into customer(id, user_name, balance, active) values (40, 'rw', 1, true)")), 1L)
+      assertEquals(run(db.update("delete from customer where id = 40")), 1L)
     }
   }
 

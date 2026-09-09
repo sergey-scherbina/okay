@@ -1,6 +1,6 @@
 package okay.sql
 
-import okay.{!, +, Async, Chunk, Chunks, Produce, Resource, Stream, effect}
+import okay.{!, +, Async, Chunk, Chunks, Produce, Resource, Scheduler, Stream, Timer, effect, pure}
 import okay.given
 import okay.codec.Schema
 import scala.collection.immutable.ArraySeq
@@ -35,7 +35,7 @@ object Typed:
    * composite) carrying its Schema for the typed field walk. Decode
    * and encode recurse over it by GADT matching; `tpe` is what verify
    * compares. */
-  private enum Shape[A]:
+  private[sql] enum Shape[A]:
     case Prim[A](t: SqlType, dec: SqlValue => Either[String, A], enc: A => SqlValue) extends Shape[A]
     case Opt[A](of: Shape[A]) extends Shape[Option[A]]
     case Iso[A, B](of: Shape[B], to: B => Either[String, A], from: A => B) extends Shape[A]
@@ -57,7 +57,7 @@ object Typed:
       case Iso(of, _, _) => of.optional
       case _ => false
 
-  private object Shape:
+  private[sql] object Shape:
     /** a primitive column's shape: one SqlType, and the two typed
      * directions — the widenings a column may take (I32 → I64,
      * Num → F64/Text) live in `dec` */
@@ -71,7 +71,25 @@ object Typed:
     { case SqlValue.F64(x) => x; case SqlValue.Num(x) => x.toDouble }, SqlValue.F64(_))
   private val bool = Shape.prim[Boolean](SqlType.Bool, { case SqlValue.Bool(x) => x }, SqlValue.Bool(_))
   private val text = Shape.prim[String](SqlType.Text,
-    { case SqlValue.Text(x) => x; case SqlValue.Num(x) => x.toString }, SqlValue.Text(_))
+    { case SqlValue.Text(x) => x; case SqlValue.Num(x) => x.toString
+      // the lossless fallback: a String field reads the temporal, uuid
+      // and json columns as their ISO/canonical text
+      case SqlValue.Timestamp(us) => Temporal.renderTimestamp(us)
+      case SqlValue.Date(d) => Temporal.renderDate(d)
+      case SqlValue.Time(us) => Temporal.renderTime(us)
+      case SqlValue.Uuid(u) => u.toString
+      case SqlValue.Json(j) => j }, SqlValue.Text(_))
+  private val uuid = Shape.prim[java.util.UUID](SqlType.Uuid, { case SqlValue.Uuid(u) => u }, SqlValue.Uuid(_))
+
+  /** a typed field known by the IDENTITY of its Schema given: the
+   * given is a stable val, so `schema eq known.schema` is the proof
+   * that A is X. `find` holds the one cast this module needs for it —
+   * an erased pair behind a wildcard, checked by that identity. */
+  private[sql] final class Known[X](val schema: Schema[X], val shape: Shape[X])
+  private[sql] object Known:
+    def find[A](table: Vector[Known[?]], s: Schema[A]): Option[Shape[A]] =
+      table.find(_.schema eq s).map(_.shape.asInstanceOf[Shape[A]])
+  private val known: Vector[Known[?]] = Known(uuidSchema, uuid) +: JavaTime.known
   private val bytes = Shape.prim[Array[Byte]](SqlType.Bytes, { case SqlValue.Bytes(x) => x }, SqlValue.Bytes(_))
 
   private final case class Field(name: String, shape: Shape[?]):
@@ -79,6 +97,7 @@ object Typed:
     def optional: Boolean = shape.optional
 
   private def shapeOf[A](s: Schema[A]): Either[String, Shape[A]] = s match
+    case s if Known.find(known, s).isDefined => Right(Known.find(known, s).get)
     case Schema.SInt => Right(i32)
     case Schema.SLong => Right(i64)
     case Schema.SDouble => Right(f64)
@@ -130,6 +149,8 @@ object Typed:
     case (SqlType.F64, SqlType.Num) => true
     case (SqlType.Text, SqlType.Num) => true
     case (SqlType.Text, SqlType.Other(_)) => true
+    // the ISO text of a temporal/uuid/json column (sql-temporal-types)
+    case (SqlType.Text, SqlType.Timestamp | SqlType.Date | SqlType.Time | SqlType.Uuid | SqlType.Json) => true
     // the driver could not name the element type (JDBC metadata):
     // decode checks the elements, and decode is total
     case (SqlType.Arr(_), SqlType.Arr(SqlType.Other(_))) => true
@@ -314,15 +335,56 @@ object Typed:
    * After a commit the brake is a no-op. `G` is whatever else the
    * body performs (Throws for abortable bodies; pass `Async` when
    * nothing extra). A transact program is one-shot. */
-  def transact[A, G[+_]](db: Sql, isolation: Isolation = Isolation.ReadCommitted)
+  def transact[A, G[+_]](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                         (body: Granted => A ! (Resource + Async + G))
   : A ! (Resource + Async + G) =
     for
-      g <- !.widen[Granted, Async, Resource + G](db.begin(isolation))
+      g <- !.widen[Granted, Async, Resource + G](db.begin(isolation, readOnly))
       _ <- !.widen[Unit, Resource, Async + G](Resource.acquire(())(_ => db.cancel()))
       a <- body(g)
       _ <- !.widen[Unit, Async, Resource + G](db.commit())
     yield a
+
+  /** how many times a region may run, and the pause between runs */
+  final case class Retry(attempts: Int, backoffMillis: Int => Long = _ => 0L):
+    require(attempts >= 1, "a region runs at least once")
+  object Retry:
+    val none: Retry = Retry(1)
+
+  /** what a retried region answers: the value and how many runs it
+   * took (1 = no conflict) — a number worth watching in production */
+  final case class Retried[A](value: A, attempts: Int)
+
+  /**
+   * The region that RETRIES a serialization failure. Under
+   * RepeatableRead/Serializable the engine may pick this transaction
+   * to lose (SQLSTATE 40001, deadlock 40P01): that is a normal
+   * outcome, not a defect, and the only correct response is to run
+   * the body again from `begin` — which a program value can do by
+   * construction. Each run is a full `transact`: on the failure the
+   * cancel brake rolls back, the pause runs, the next run begins.
+   * Any other failure propagates at once; the last permitted run's
+   * failure propagates whatever it is.
+   *
+   * The body is `Resource + Async` (no other effect): the retry needs
+   * the run's failure as data (`Async.attempt`), which means running
+   * the body's effects inside the attempt. A body that aborts through
+   * Throws decides to abort — it is not a conflict — and runs its
+   * Throws inside, answering the Either as its value.
+   */
+  def transactRetry[A](db: Sql, isolation: Isolation = Isolation.ReadCommitted,
+                       retry: Retry = Retry.none, readOnly: Boolean = false)
+                      (body: Granted => A ! (Resource + Async))
+                      (using Scheduler, Timer): Retried[A] ! Async =
+    def once: A ! Async = Resource.run[A, Async](transact[A, Async](db, isolation, readOnly)(body))
+    def go(n: Int): Retried[A] ! Async =
+      Async.attempt(once).flatMap {
+        case Right(a) => pure(Retried(a, n))
+        case Left(t) if n < retry.attempts && db.sqlState(t).exists(Sql.retryable) =>
+          Async.sleep(retry.backoffMillis(n)).flatMap(_ => go(n + 1))
+        case Left(t) => throw t
+      }
+    go(1)
 
   // ── the TYPED region: the protocol in the types ────────────────
 
@@ -361,10 +423,10 @@ object Typed:
    * the nested-begin failure specs/jdbc.md documents as a runtime
    * refusal is unrepresentable here. Runtime behavior is EXACTLY
    * `transact` (commit on completion, the cancel brake on abort). */
-  def region[A, G[+_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted)
+  def region[A, G[+_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                       (body: Db[Tx.Yes] => A ! (Resource + Async + G))
   : A ! (Resource + Async + G) =
-    transact(db.db, isolation)(_ => body(new Db[Tx.Yes](db.db)))
+    transact(db.db, isolation, readOnly)(_ => body(new Db[Tx.Yes](db.db)))
 
 /** parameter binding: positionally from a product's declared field
  * order, through the driver's prepared path — there is no API that
@@ -378,6 +440,12 @@ object Params:
  * numeric's text (verify passes Text against Num; decode renders a
  * Num exactly), and in JSON/CBOR it travels as a string — no float on
  * either road. `import okay.sql.given` */
+/** a uuid field, every platform: text in JSON/CBOR, `SqlValue.Uuid`
+ * on the row (sql-temporal-types) */
+given uuidSchema: Schema[java.util.UUID] = Schema.refine[java.util.UUID, String](
+  s => try Right(java.util.UUID.fromString(s)) catch { case _: IllegalArgumentException => Left(s"not a uuid: '$s'") },
+  _.toString)
+
 given decimalSchema: Schema[BigDecimal] = Schema.refine[BigDecimal, String](
   s => try Right(BigDecimal(s)) catch { case _: NumberFormatException => Left(s"not a decimal: '$s'") },
   _.toString)

@@ -72,7 +72,7 @@ class TestSqlPure extends munit.FunSuite {
       effect[Produce + Async, Chunk[Vector[SqlValue]]](scala.collection.immutable.ArraySeq.from(rows))
     def update(sql: String, params: Vector[SqlValue]): Long ! Async = okay.pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
-    def begin(isolation: Isolation): Granted ! Async = okay.pure(Granted(isolation, isolation))
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.pure(Granted(isolation, isolation))
     def commit(): Unit ! Async = okay.pure(())
     def rollback(): Unit ! Async = okay.pure(())
     def cancel(): Unit = ()
@@ -147,14 +147,15 @@ class TestSqlPure extends munit.FunSuite {
 
   val acctCols = Vector(Col("id", SqlType.I32, false), Col("balance", SqlType.Num, false),
     Col("approx", SqlType.Num, false), Col("as_text", SqlType.Num, false),
-    Col("when", SqlType.Other("timestamptz"), false))
+    Col("when", SqlType.Timestamp, false))
   val money = BigDecimal("12345678901234567890.123456789")   // beyond a Double's 15-17 digits
 
   test("a Num decodes exactly into BigDecimal and String, lossy into Double by the field's choice; a String reads any vendor type") {
     val row = Vector(SqlValue.I32(1), SqlValue.Num(money), SqlValue.Num(money), SqlValue.Num(money),
-      SqlValue.Text("2026-09-02 06:00:00+00"))
+      SqlValue.Timestamp(Temporal.parseTimestamp("2026-09-02 06:00:00+00").get))
     val out = decoded[Acct](OneFrame(acctCols, Vector(row)))
-    assertEquals(out, Vector(Right(Acct(1, money, money.toDouble, money.toString, "2026-09-02 06:00:00+00"))))
+    // the String field reads the timestamp column as its ISO text
+    assertEquals(out, Vector(Right(Acct(1, money, money.toDouble, money.toString, "2026-09-02T06:00:00Z"))))
     assert(BigDecimal(money.toDouble) != money)   // the Double IS lossy — the point of Num
     // and the BigDecimal binds back as its exact text
     assertEquals(Params.bind(Acct(1, money, 0.0, "", ""))(1), SqlValue.Text(money.toString))
@@ -180,5 +181,60 @@ class TestSqlPure extends munit.FunSuite {
     assertEquals(Placeholders.numbered("UPDATE t SET s = 'why?', \"odd?col\" = ? WHERE q = 'it''s?' AND id = ?"),
       "UPDATE t SET s = 'why?', \"odd?col\" = $1 WHERE q = 'it''s?' AND id = $2")
     assertEquals(Placeholders.numbered("SELECT 1"), "SELECT 1")
+  }
+
+  // ── sql-temporal-types: the text forms, without java.time ────────
+
+  test("Temporal: civil dates round-trip over centuries, and the epoch is day 0") {
+    assertEquals(Temporal.daysFromCivil(1970, 1, 1), 0)
+    assertEquals(Temporal.daysFromCivil(2000, 3, 1), 11017)
+    assertEquals(Temporal.civilFromDays(-719468), (0, 3, 1))
+    for days <- Seq(-1000000, -719468, -1, 0, 1, 59, 60, 11017, 20698, 1000000) do
+      val (y, m, d) = Temporal.civilFromDays(days)
+      assertEquals(Temporal.daysFromCivil(y, m, d), days, s"$days -> $y-$m-$d")
+    assertEquals(Temporal.renderDate(20698), "2026-09-02")
+    assertEquals(Temporal.parseDate("2026-09-02"), Some(20698))
+    assertEquals(Temporal.parseDate("2026-13-02"), None)
+    assertEquals(Temporal.renderDate(Temporal.parseDate("1899-12-31").get), "1899-12-31")
+  }
+
+  test("Temporal: a timestamp parses in pg's, H2's and ISO's forms, offsets applied, and renders ISO UTC") {
+    val six = 20698L * 86400000000L + 6L * 3600000000L
+    assertEquals(Temporal.parseTimestamp("2026-09-02 06:00:00+00"), Some(six))
+    assertEquals(Temporal.parseTimestamp("2026-09-02T06:00:00Z"), Some(six))
+    assertEquals(Temporal.parseTimestamp("2026-09-02 08:00:00+02"), Some(six))
+    assertEquals(Temporal.parseTimestamp("2026-09-02 08:30:00+02:30"), Some(six))
+    assertEquals(Temporal.parseTimestamp("2026-09-02 03:00:00-03"), Some(six))
+    assertEquals(Temporal.parseTimestamp("2026-09-02 06:00:00"), Some(six), "no zone reads as UTC")
+    assertEquals(Temporal.parseTimestamp("2026-09-02 06:00:00.123456+00"), Some(six + 123456))
+    assertEquals(Temporal.parseTimestamp("2026-09-02 06:00:00.5"), Some(six + 500000))
+    assertEquals(Temporal.parseTimestamp("2026-09-02T06:00:00.123456789Z"), Some(six + 123456), "nanos truncate to micros")
+    assertEquals(Temporal.parseTimestamp("not a time"), None)
+    assertEquals(Temporal.renderTimestamp(six), "2026-09-02T06:00:00Z")
+    assertEquals(Temporal.renderTimestamp(six + 500000), "2026-09-02T06:00:00.5Z")
+    assertEquals(Temporal.renderTimestamp(six + 1), "2026-09-02T06:00:00.000001Z")
+    assertEquals(Temporal.renderTimestamp(-1L), "1969-12-31T23:59:59.999999Z", "before the epoch floors, never rounds")
+    for us <- Seq(0L, -1L, six, six + 1, -86400000000L * 400000) do
+      assertEquals(Temporal.parseTimestamp(Temporal.renderTimestamp(us)), Some(us))
+  }
+
+  test("Temporal: a time of day parses with or without seconds and fraction, and renders back") {
+    assertEquals(Temporal.parseTime("06:00:00"), Some(21600000000L))
+    assertEquals(Temporal.parseTime("06:00"), Some(21600000000L))
+    assertEquals(Temporal.parseTime("23:59:59.999999"), Some(86399999999L))
+    assertEquals(Temporal.parseTime("24:00:00"), None)
+    assertEquals(Temporal.renderTime(21600000000L), "06:00:00")
+    assertEquals(Temporal.renderTime(86399999999L), "23:59:59.999999")
+  }
+
+  final case class Tagged(id: Int, ref: java.util.UUID, note: String)
+  given Schema[Tagged] = Schema.derived
+
+  test("a UUID field binds as Uuid and decodes from one; a String field reads a uuid column as its text") {
+    val u = java.util.UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+    assertEquals(Params.bind(Tagged(1, u, "x")), Vector(SqlValue.I32(1), SqlValue.Uuid(u), SqlValue.Text("x")))
+    val cols = Vector(Col("id", SqlType.I32, false), Col("ref", SqlType.Uuid, false), Col("note", SqlType.Uuid, false))
+    val out = decoded[Tagged](OneFrame(cols, Vector(Vector(SqlValue.I32(1), SqlValue.Uuid(u), SqlValue.Uuid(u)))))
+    assertEquals(out, Vector(Right(Tagged(1, u, u.toString))))
   }
 }

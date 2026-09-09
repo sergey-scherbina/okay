@@ -2,9 +2,8 @@ package okay.script
 
 import okay.*
 import okay.given
-import okay.codec.Json
 import okay.http.{Frame, Request}
-import okay.ui.{Event, Patch, Ui, WireJson}
+import okay.ui.{Event, Patch, Ui, Protocol}
 
 import java.nio.file.{Files, Path}
 
@@ -41,7 +40,7 @@ class TestLiveResume extends munit.FunSuite:
     resp.headers.collect { case (k, v) if k.equalsIgnoreCase("set-cookie") && v.startsWith(s"${Site.SessionCookie}=") => v }
       .head.drop(Site.SessionCookie.length + 1).takeWhile(_ != ';')
 
-  private def press(k: String) = Frame.Text(Json.print(WireJson.eventJson(Event.Pressed(k))))
+  private def press(k: String) = Frame.Text(Protocol.eventLine(Event.Pressed(k)))
   private val close = Frame.Close(1000, "")
 
   /** drive one socket: the frames in, the text lines out */
@@ -51,7 +50,7 @@ class TestLiveResume extends munit.FunSuite:
     val (out, _) = !.run(Writer.run(through(Writer.of(in))(stage)))
     out.collect { case Frame.Text(s) => s }.toVector
 
-  private def treeText(line: String): Option[Ui] = WireJson.uiOf(Json.parse(line))
+  private def treeText(line: String): Option[Ui] = Protocol.treeOf(line)
 
   test("durable: a Live.durable app keeps its state in the session, and a second Site over the same store resumes it") {
     val store = new okay.persist.MemoryStore
@@ -104,7 +103,7 @@ class TestLiveResume extends munit.FunSuite:
       // alice reconnects: her first frame is the full tree at the state she reached
       val again = drive(site, Some("alice"), List(press("inc"), close))
       assertEquals(treeText(again(0)), Some(Ui.Column(Vector(Ui.Text("count: 2"), Ui.Button("+1", "inc")))))
-      assertEquals(WireJson.patchOf(Json.parse(again(1))), Some(Patch.SetText(List(0), "count: 3")))
+      assertEquals(Protocol.patchOf(again(1)), Some(Patch.SetText(List(0), "count: 3")))
       // and once more: the count kept climbing
       assertEquals(treeText(drive(site, Some("alice"), List(close))(0)),
         Some(Ui.Column(Vector(Ui.Text("count: 3"), Ui.Button("+1", "inc")))))

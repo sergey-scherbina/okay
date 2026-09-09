@@ -1,0 +1,19 @@
+task: persistence-e2e
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T07:14:31Z
+status: in-progress
+branch: feature/persistence-e2e
+worktree: ../okay-wt-e2e
+spec: specs/sql.md "The pool" + specs/persist.md "The saga" (new boxes); specs/ops.md
+
+why: the seven audit lanes were each proven alone; nothing proves them
+  together, and their stats reach no /metrics.
+
+what: (a) Pool.Stats and Saga.Status on okay-ops /metrics (Prom rows,
+  okay-ops depends on okay-sql); (b) a Live end-to-end test: Pool over
+  the pg wire, transactRetry through borrow under write skew, a Saga
+  whose steps are DynamoDocs CAS writes, recovered across the crash
+  window, its status rendered.
+
+next: worktree, Prom rows + tests, then the e2e suite

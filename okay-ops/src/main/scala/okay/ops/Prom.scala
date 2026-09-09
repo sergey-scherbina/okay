@@ -1,6 +1,7 @@
 package okay.ops
 
 import okay.persist.{Offsets, Store, Topic}
+import okay.resilience.{Breaker, Bulkhead, Limiter, Reporting}
 
 /**
  * `Store.Stats` (and, optionally, `Offsets`) as Prometheus's text
@@ -48,4 +49,58 @@ object Prom:
         val g = Prom.esc(group)
         sb ++= s"""okay_persist_consumer_lag{group="$g",topic="${esc(t.name)}"} ${offsets.lag(group, t)}"""
         sb += '\n'
+    sb.result()
+
+  /**
+   * The resilience pieces' stats (specs/resilience.md, stage 1):
+   * `name` is the label, gauges for what IS, counters for what
+   * happened. A breaker's state is a gauge 0/1/2 = closed/open/
+   * half-open, the usual Prometheus shape for a small enum.
+   */
+  def guards(pieces: Vector[Reporting[?]]): String =
+    val sb = new StringBuilder
+    def metric(name: String, help: String, tpe: String)(rows: Vector[String]): Unit =
+      if rows.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name $tpe\n"
+        rows.foreach(r => sb ++= r += '\n')
+    def row(metric: String, name: String, value: Long): String =
+      s"""$metric{name="${esc(name)}"} $value"""
+
+    // each piece's stats is read ONCE, and sorted by its type — a
+    // type pattern, not a cast: the match checks it
+    val read = pieces.map(p => (p.name, p.stats))
+    val breakers = read.collect { case (n, s: Breaker.Stats) => (n, s) }
+    val bulkheads = read.collect { case (n, s: Bulkhead.Stats) => (n, s) }
+    val limiters = read.collect { case (n, s: Limiter.Stats) => (n, s) }
+
+    metric("okay_breaker_state", "0 closed, 1 open, 2 half-open", "gauge")(
+      breakers.map((n, s) => row("okay_breaker_state", n, s.state.ordinal.toLong)))
+    metric("okay_breaker_consecutive_failures", "failures in a row, as of now", "gauge")(
+      breakers.map((n, s) => row("okay_breaker_consecutive_failures", n, s.consecutiveFailures.toLong)))
+    metric("okay_breaker_calls_total", "calls admitted", "counter")(
+      breakers.map((n, s) => row("okay_breaker_calls_total", n, s.calls)))
+    metric("okay_breaker_failures_total", "admitted calls that failed", "counter")(
+      breakers.map((n, s) => row("okay_breaker_failures_total", n, s.failures)))
+    metric("okay_breaker_rejected_total", "calls refused while open", "counter")(
+      breakers.map((n, s) => row("okay_breaker_rejected_total", n, s.rejected)))
+    metric("okay_breaker_opened_total", "times the circuit opened", "counter")(
+      breakers.map((n, s) => row("okay_breaker_opened_total", n, s.opened)))
+
+    metric("okay_bulkhead_permits", "permits configured", "gauge")(
+      bulkheads.map((n, s) => row("okay_bulkhead_permits", n, s.permits.toLong)))
+    metric("okay_bulkhead_in_flight", "permits held now", "gauge")(
+      bulkheads.map((n, s) => row("okay_bulkhead_in_flight", n, s.inFlight.toLong)))
+    metric("okay_bulkhead_waiting", "callers parked for a permit", "gauge")(
+      bulkheads.map((n, s) => row("okay_bulkhead_waiting", n, s.waiting.toLong)))
+    metric("okay_bulkhead_rejected_total", "callers refused, queue full", "counter")(
+      bulkheads.map((n, s) => row("okay_bulkhead_rejected_total", n, s.rejected)))
+
+    metric("okay_limiter_keys", "buckets alive", "gauge")(
+      limiters.map((n, s) => row("okay_limiter_keys", n, s.keys.toLong)))
+    metric("okay_limiter_admitted_total", "calls that took a token", "counter")(
+      limiters.map((n, s) => row("okay_limiter_admitted_total", n, s.admitted)))
+    metric("okay_limiter_delayed_total", "admitted calls that parked for their token", "counter")(
+      limiters.map((n, s) => row("okay_limiter_delayed_total", n, s.delayed)))
+    metric("okay_limiter_rejected_total", "calls refused, no token within the wait", "counter")(
+      limiters.map((n, s) => row("okay_limiter_rejected_total", n, s.rejected)))
     sb.result()

@@ -1,5 +1,160 @@
 # Backlog
 
+## resilience — the microservice handlers (operator's direction, 2026-09-09)
+
+Stage 0 of specs/resilience.md landed (okay-resilience: Breaker,
+Bulkhead, Limiter, Hedge, Deadline, one `Refused` type). What
+follows, in the spec's order:
+
+- [x] resilience-http — DONE 2026-09-09 (with resilience-metrics, one
+      lane). Was: stage 1: `Resilient.http(inner, ...)` in the
+      fixed order deadline → breaker → bulkhead → limiter → hedge, a
+      5xx counting as a breaker failure, hedging safe methods only;
+      `Resilient.route` mapping `Refused` to 429/503/504 with
+      `Retry-After`, keyed on `Request.peer` (the field specs/http.md
+      added for exactly this); `Deadline.read`/`carry` across two
+      hops under a controlled clock. Spec: specs/resilience.md
+      Behavior, stage 1.
+- [x] resilience-metrics — DONE 2026-09-09 (in resilience-http). Was:
+      stage 1's other half: okay-ops renders
+      `Breaker.Stats`, `Bulkhead.Stats`, `Limiter.Stats` as
+      Prometheus rows beside `Store.Stats`, `name` as the label;
+      `Ops.routes` takes a `Vector[Reporting[?]]`. okayOps gains the
+      okayResilience dependency (JVM + JS only — okay-ops is already
+      JVM + JS).
+- [ ] resilience-faults — stage 2: `Faults.http(seed, plan)(inner)`,
+      the seeded fault-injecting Http (delays, drops, 5xx by
+      ordinal), and the composite under a plan behaving per the
+      pieces' contracts. Adaptive concurrency stays deferred until
+      stage 1 is in use somewhere.
+- [ ] timeout-masks-failure — CORE. `Async.timeout(ms)(p)` is
+      `race(p.map(Some), sleep(ms).map(None))`, and `race` lets a
+      FAILING contender lose without ending the race: a program that
+      fails at once under `timeout` comes out as `None` after the
+      whole `ms`, its exception replaced by a timeout. Found by
+      resilience-http (a breaker's refusal under `Deadline.enforce`
+      became a 504 after 5 s); okay-resilience now races on its own.
+      Decide the law — "a failure ends a timeout at once" reads
+      right — write the test on `Async.timeout` first, then change
+      `timeout` (not `race`, whose contract is stated and tested).
+- [ ] retry-js — `okay.retry` lives in scala-jvm-native and sleeps
+      the thread; a JS twin over `Async.sleep` (Timer) would make the
+      one resilience primitive the core already has cross-platform.
+      Found by the resilience audit; not taken there because the
+      module needed none of it.
+- [ ] microservices-next — the audit's remaining gaps, each its own
+      spec when picked: graceful shutdown (readiness → 503, stop
+      accepting, drain in-flight — no server here does it); RED
+      metrics per route and per outbound client; saga over `Durable`
+      + persist with compensations as values; transactional outbox /
+      inbox / dead-letter when the truth is in SQL; service discovery
+      + client-side balancing (cluster.md lists it out of scope);
+      Schema compatibility checks between services; a `Log` effect
+      with trace correlation (0 hits for one today).
+## di — modules, wiring and the containers next door (specs/di.md; operator's ask, 2026-09-09)
+
+Stage 0 landed in the core (Module over Providing and Resource,
+TestModule). What follows, in the spec's order — each stage's gate is
+its Behavior checklist:
+
+- [x] di-qualifiers, di-plan, di-conf — stage 1, DONE 2026-09-09 as
+      one lane (di-stage1): opaque-type roles, `m.plan` as a macro over
+      the module's type (not TypeableK — see the spec's Decisions),
+      the okay-conf example with a Secret resolved inside the
+      acquisition.
+- [ ] okay-spring — stage 2: `Module` → `@Configuration` (one
+      BeanDefinition per capability, SmartLifecycle for the scope),
+      `Module.fromContext(ctx)`, a controller returning `A ! Async`
+      via okay-reactive, a Boot starter. New satellite; build.sbt
+      touched — coordinate.
+- [ ] zio-layer — stage 2: `ZLayer` ⇄ `Module`, `ZEnvironment` →
+      `Providing`, in okay-zio.
+- [ ] okay-guice — stage 2: `Module` → `AbstractModule`,
+      `Module.fromInjector`; CDI/Micronaut documented as the same
+      shape.
+- [ ] di-deploy — stage 3: the root module's unresolved inputs render
+      into specs/deployment.md's dependency graph.
+
+## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
+
+The audit (2026-09-09) read every seam: `Sql` (JDBC, pg wire, R2DBC),
+`Topic`/`Store`, `Docs` (Mongo, TopicDocs), `Cache`/`View`, `Blob`,
+Delta, migrations, bulk load. Local transactions are right in shape
+(region + sync brake + compile-time nested refusal + granted
+isolation); XA/2PC stays refused (specs/jdbc.md, specs/data.md) and
+the saga-over-journal answer stands. The gaps are concrete, ordered
+correctness first:
+
+- [x] sql-commit-tag — DONE 2026-09-09 (988b4ab6): pg-wire COMMIT reads
+      its tag and throws on ROLLBACK; r2dbc-postgresql already refused.
+      Was: an error inside a region that the BODY
+      handles (no unwind) leaves Postgres in the aborted state; its
+      `COMMIT` then answers the command tag `ROLLBACK` with NO error,
+      and `PgSql.commit` ignores the tag (`simple("COMMIT")`), so the
+      region reports success on a transaction that rolled back — the
+      exact "rollback that does not roll back" specs/jdbc.md refuses.
+      Test first (TestPg, Live): handled error, commit, row absent,
+      region must FAIL. Fix: read the `C` tag on COMMIT, throw on
+      ROLLBACK. Same probe through R2DBC-postgresql (R2dbcSuite) and
+      note what pgjdbc does. Spec: specs/sql.md Behavior.
+- [x] sql-serialization-retry — DONE 2026-09-09 (233ce589): Sql.sqlState per
+      driver, Async.attempt, Typed.transactRetry with Retried(value, attempts).
+      Was: SQLSTATE 40001/40P01 is handled
+      nowhere (0 hits in main sources). Under RepeatableRead/
+      Serializable a serialization failure is a NORMAL outcome the
+      region must retry, not an exception the program sees.
+      `Typed.transact(..., retry = Retry(max, backoff))` re-runs the
+      BODY (a program value — re-runnable by construction) on 40001/
+      40P01/deadlock, with the count exposed; anything else propagates.
+      The driver names the class: `Sql.Failure.Serialization` from a
+      pg ErrorResponse's SQLSTATE and from `SQLException.getSQLState`.
+      Test: two connections, SSI conflict on pg (Live), and a fake
+      driver that fails N times (unit).
+- [x] sql-temporal-types — DONE 2026-09-09 (e3c7d563, 728ceb37): the five
+      cases, Temporal, java.time givens on the JVM, three drivers, Delta;
+      the H2 Calendar road refuted on the way. Was: `SqlValue` has no timestamp/date/time/uuid/
+      json: they travel as Text under `SqlType.Other`, so every
+      `created_at timestamptz` is hand-parsed per field. Add
+      `SqlValue.Timestamp(Instant)`, `Date(LocalDate)`, `Time`,
+      `Uuid(UUID)`, `Json(String)` with `SqlType` mirrors; Schema
+      givens for the java.time types and UUID; both drivers encode/
+      decode; verify accepts the pairs. Keep Text←Timestamp as the
+      lossless fallback so nothing that reads today stops reading.
+- [x] sql-readonly-region — DONE 2026-09-09 (0777e790): readOnly on begin and
+      the regions, Granted.readOnly read back per engine, JdbcSql restores
+      isolation + readOnly with autocommit. Was: (a) `transact(readOnly = true)`: `SET
+      TRANSACTION READ ONLY` on pg, `Connection.setReadOnly` on JDBC,
+      the FOREIGN posture's honest declaration where the DBA gave us
+      reads; (b) `JdbcSql.commit/rollback/cancel` restore autocommit
+      but NOT the isolation level — after `transact(Serializable)`
+      every later autocommit statement on the connection runs
+      Serializable. Save and restore it beside `autoBefore`.
+- [x] sql-pool — DONE 2026-09-09 (46498266): okay.sql.Pool, borrow/pinned/stats/
+      close, cancel-safe hand-off, the brake on return. Was: no connection pool anywhere; one `Sql` = one
+      connection. A `Pool[Sql]` as a Resource: `borrow` hands a
+      connection to a program and returns it after, a region pins one
+      for its scope, size + acquire timeout, a health probe on return
+      (a connection whose transaction is still open is rolled back,
+      not returned). Hikari behind the JDBC driver as the interop
+      hatch; the pool itself is driver-neutral (pg wire has none).
+- [x] persist-saga — DONE 2026-09-09 (9e8ef60d): okay.persist.Saga, steps with
+      compensations, intent-first on a keyed topic, recover by Forward/Backward
+      policy, Stuck, status. Was: the multi-item change is spec'd as "a journaled
+      sequence of conditional writes" (Docs.scala, specs/data.md) but
+      nothing packages it: every consumer hand-rolls steps,
+      compensations and recovery. `Saga` over `Durable.Journal` +
+      CAS: steps with a compensation each, intent journaled before
+      each step, `recover` replays the tail (finish forward or
+      compensate back, a declared policy), status as a Schema value.
+      Test: crash between steps (journal cut), both policies.
+- [x] docs-dynamo — DONE 2026-09-09 (c4831720, 5ad9b24c): okay-docs-dynamo, the
+      DocsSuite contract Live on dynamodb-local. Was: `Docs` was designed for Dynamo/Cassandra/Mongo and
+      is implemented on Mongo only; the seam has not met condition
+      expressions or eventual reads. DynamoDB adapter over the REST
+      API with SigV4 (okay-blob already signs): `Cond` → condition
+      expressions, `grants(Quorum)` → ConsistentRead, declared indexes
+      → GSIs. Live against dynamodb-local in docker.
+
 ## handler-fusion — one composite handler for a row, staged at compile time (specs/handler-fusion.md)
 
 The operator's proposal, 2026-09-09, assessed in the spec: compose a
@@ -24,7 +179,9 @@ refuted run-time closure composition 3/3).
       programs for BOTH orders. Threshold ≥ 1.3x; below it the
       spec's Results record the refutation and the stages below
       are not built.
-- [ ] split-without-either — THE LEVER STAGE 0 FOUND: `<|>` allocates
+- [x] split-without-either — DONE 2026-09-09: -26.7 KB/op, 7–11% on the
+      hot loops, zero churn for the walks; specs/handler-fusion.md Stage A.
+      Was: THE LEVER STAGE 0 FOUND: `<|>` allocates
       an `Either` per operation in EVERY runner (≈20 KB of the 149 KB a
       fused right-nested pass allocates for 1000 ops). A split that
       answers by a flat class match with no wrapper — for nested and
@@ -44,7 +201,10 @@ refuted run-time closure composition 3/3).
       abort/choose fall back to a shift with the state captured
       immutably; laws: agrees with nested for both orders, stack-safe
       at 1M, multi-shot and abort survive.
-- [ ] handler-fusion-eff — the same composite `!>` for Eff (no tree),
+- [x] handler-fusion-eff — DONE 2026-09-09, REFUTED: Eff + composite is
+      0.58x of the fused Free loop, 2.4x the bytes; the best tree-free road
+      0.86x (specs/handler-fusion.md Stage B). The arc is closed. Was: the
+      same composite `!>` for Eff (no tree),
       after the Free loop has its numbers.
 
 ## flush-premium — `flushAfter` costs 30% over the chunked merge where the page said 9%
@@ -1493,22 +1653,22 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-vocab — specs/frontend.md stage 0: Box with weights/gap/pad
+- [x] ui-vocab — LANDED 2026-09-09 (see specs/frontend.md Results). Original: Box with weights/gap/pad
       (Row/Column as aliases), style tokens, Image, Input kinds,
       Scroll; the semantic level (Form, List, Table, Tabs, Modal) each
       DEFINED by its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`; laws:
       diff-then-patch on every new node, keys(s)==keys(lower(s)), diff
       commutes with lowering.
-- [ ] ui-protocol — stage 1: derived Schema[Ui]/[Event]/[Patch] (JSON +
+- [x] ui-protocol — LANDED 2026-09-09 (specs/frontend.md Results). Original: derived Schema[Ui]/[Event]/[Patch] (JSON +
       CBOR from one definition; needs codec-vector's gaps closed),
       `hello {vocab, version}` first line and lowering per vocab in
       Wire.serve, the conformance script, docs/protocol/frontend.md
       rendered from the schemas. WireJson retires after equality.
-- [ ] ui-hybrid — stage 2: Input local by default, Form submits ONCE
+- [x] ui-hybrid — LANDED 2026-09-09 (specs/frontend.md Results). Original: Input local by default, Form submits ONCE
       as Submitted(key, json) decoded by the form's schema, `live`
       inputs send Edited, the closed Local set (Toggle, Tab), server
       SetValue overrides a local edit, forged Submitted dropped.
-- [ ] ui-compose — stage 3: a Compose Multiplatform thin client
+- [x] ui-compose — LANDED 2026-09-09 (specs/frontend.md Results; okay-compose/README.md). Original: a Compose Multiplatform thin client
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
       once; Scala Native + GTK or Swing as the out-of-the-box leg.
@@ -5130,3 +5290,41 @@ and that escape hatch already shipped. A cheaper trigger would have
 to learn who is pushing without reading thread identity and without
 writing a counter, and no such mechanism has been proposed. Reopen
 this with one, not with a rearrangement of layers.
+
+## resilience-timed-flake — a wall-clock assertion in the default gate
+
+DONE 2026-09-09 (resilience-http): the second route. The mechanism was
+the opposite of "too slow": under load the two calls were more than
+20 ms apart, the REAL clock had refilled the bucket, and the second
+call never parked — elapsed read 0. The limiter now takes a frozen
+clock in that test, so the park is owed whatever the box is doing,
+and `stats.delayed` is the assertion; the elapsed check is gone.
+
+`okay.resilience.TestResilienceTimed`, "limiter: with a wait budget
+the caller parks for the refill instead of being refused", asserts
+
+    (System.nanoTime() - t0) / 1_000_000 >= 15
+
+and FAILED in a full `sbt test` on 2026-09-09 while five sbt processes
+from four sibling lanes were running. Measured immediately after, in
+isolation, on the same tree: **three runs, three passes**. So it is
+load-sensitive, not broken — and it took a green lane's gate red with
+it, which is how it was found.
+
+AGENTS.md is explicit about this class: "POLICY: no flaky tests in the
+default gate — only in `integrationTest`. Anything whose outcome
+depends on timing this repository cannot control ... a landing's gate
+must not depend on external timing."
+
+Owned by the `resilience` lane, which was active when this was found,
+so it is filed rather than fixed. Two honest routes:
+
+- move the timing assertions to `integrationTest`, which is what the
+  policy prescribes; or
+- keep them in the gate and make them robust — assert ORDER (the
+  second call completed after the refill) rather than elapsed
+  milliseconds, since the thing being tested is that the caller
+  parked, not how long it parked for. `l.stats.delayed == 1` on the
+  next line already says the former and does not depend on the clock.
+
+The second is better if it can be had: it tests the actual claim.

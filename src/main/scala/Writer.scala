@@ -89,18 +89,23 @@ object Writer {
                                      (using TypeableK[Writer % W]): (S, A) ! F = {
     def _loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = loop(s)(x)
 
+    // `split`, not `<|>` (split-without-either): no Either per tell.
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
-      case Effect(e) => <|>[Writer % W, F](e) match
-        // matching the constructor refines the answer type to Unit:
-        // the program ends here, and a tell ends it with nothing
-        case Left(Say(v)) => Pure((step(s, v), ()))
-        case Right(e) => Effect(e).map((s, _))
-      case Bind(Effect(e), k) => <|>[Writer % W, F](e) match
-        // and here it refines the CONTINUATION's domain, so this is
-        // an ordinary call and not an assertion
-        case Left(Say(v)) => loop(step(s, v))(k(()))
-        case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
+      case Effect(e) => split[Writer % W, F](e) {
+          // matching the constructor refines the answer type to Unit:
+          // the program ends here, and a tell ends it with nothing —
+          // the ascription is where the refined value meets the loop
+          case Say(v) => Pure((step(s, v), ())): (S, A) ! F
+        } { e => Effect(e).map((s, _)) }
+      case Bind(Effect(e), k) => split[Writer % W, F](e) { w0 =>
+          // here it refines the CONTINUATION's domain, so this is an
+          // ordinary call and not an assertion; the checker cannot see
+          // that `Say` is the only constructor under an existential
+          // answer type — the same claim `resume`'s @unchecked makes
+          (w0: @unchecked) match
+            case Say(v) => loop(step(s, v))(k(()))
+        } { e => Effect(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(z)(a)
   }
@@ -289,4 +294,10 @@ given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = ne
     case s: Writer.Say[?, ?] =>
       t.unapply(s.w).map(_ => x.asInstanceOf[x.type & Writer[W, A]])
     case _ => None
+  // `Typeable.unapply` still answers an Option for the told value's
+  // own test (the JDK's Typeable has no boolean form); the Say wrapper
+  // and the outer Option are gone
+  override def test(x: Any): Boolean = x match
+    case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
+    case _ => false
 

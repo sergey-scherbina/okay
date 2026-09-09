@@ -6,7 +6,7 @@ class TestHealth extends munit.FunSuite:
 
   test("an open store is live and ready") {
     val store = MemoryStore()
-    store.topic("t", 1)
+    val _ = store.topic("t", 1)
     assertEquals(Health.of(store), Health(live = true, ready = true))
   }
 

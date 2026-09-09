@@ -2,7 +2,7 @@ package okay.r2dbc
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, async, effect}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
-import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement}
+import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement, TransactionDefinition}
 import java.nio.ByteBuffer
 
 /**
@@ -76,14 +76,31 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
       updated(st)
   }
 
-  def begin(isolation: Isolation): Granted ! Async = async {
+  def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = async {
     if inTx then throw IllegalStateException(
       "nested transaction: this connection is already in one — " +
         "refuse rather than silently flatten (specs/jdbc.md)")
-    Rx.all(conn.beginTransaction()): Unit
-    Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
+    // the SPI's TransactionDefinition carries READ ONLY; a driver that
+    // does not take definitions (r2dbc-h2) gets the plain begin and
+    // grants no read-only — reported, not assumed
+    val granted =
+      if readOnly then
+        val definition = new TransactionDefinition:
+          def getAttribute[T](option: io.r2dbc.spi.Option[T]): T =
+            if option == TransactionDefinition.READ_ONLY then option.cast(java.lang.Boolean.TRUE)
+            else if option == TransactionDefinition.ISOLATION_LEVEL then option.cast(levelOf(isolation))
+            else option.cast(null)
+        try { Rx.all(conn.beginTransaction(definition)): Unit; true }
+        catch case _: UnsupportedOperationException =>
+          Rx.all(conn.beginTransaction()): Unit
+          Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
+          false
+      else
+        Rx.all(conn.beginTransaction()): Unit
+        Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
+        false
     inTx = true
-    Granted(isolation, isolationOf(conn.getTransactionIsolationLevel))
+    Granted(isolation, isolationOf(conn.getTransactionIsolationLevel), granted)
   }
 
   def commit(): Unit ! Async = async {
@@ -97,6 +114,11 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   }
 
   /** the sync emergency brake: a no-op unless a transaction is open */
+  /** the engine's SQLSTATE, as R2DBC carries it */
+  override def sqlState(t: Throwable): Option[String] = t match
+    case e: io.r2dbc.spi.R2dbcException => Option(e.getSqlState)
+    case _ => None
+
   def cancel(): Unit =
     if inTx then
       inTx = false
@@ -161,7 +183,14 @@ object R2dbcSql:
    * keep their name, so verify can accept a String field for them */
   private def typeOf(c: ColumnMetadata): SqlType =
     val jt: Class[?] = if c.getJavaType == null then classOf[Object] else c.getJavaType
-    if jt == classOf[java.lang.Boolean] then SqlType.Bool
+    val typeName = Option(c.getType).map(_.getName.toLowerCase).getOrElse("")
+    if typeName == "json" || typeName == "jsonb" then SqlType.Json
+    else if jt == classOf[java.time.OffsetDateTime] || jt == classOf[java.time.LocalDateTime]
+      || jt == classOf[java.time.Instant] || jt == classOf[java.time.ZonedDateTime] then SqlType.Timestamp
+    else if jt == classOf[java.time.LocalDate] then SqlType.Date
+    else if jt == classOf[java.time.LocalTime] then SqlType.Time
+    else if jt == classOf[java.util.UUID] then SqlType.Uuid
+    else if jt == classOf[java.lang.Boolean] then SqlType.Bool
     else if jt == classOf[java.lang.Integer] || jt == classOf[java.lang.Short] || jt == classOf[java.lang.Byte] then SqlType.I32
     else if jt == classOf[java.lang.Long] then SqlType.I64
     else if jt == classOf[java.lang.Double] || jt == classOf[java.lang.Float] then SqlType.F64
@@ -172,8 +201,15 @@ object R2dbcSql:
     else SqlType.Other(Option(c.getType).map(_.getName).getOrElse(jt.getSimpleName))
 
   private def rowOf(row: Row, md: RowMetadata): Vector[SqlValue] =
-    val n = md.getColumnMetadatas.size
-    Vector.tabulate(n)(i => valueOf(row.get(i)))
+    val cols = md.getColumnMetadatas
+    Vector.tabulate(cols.size) { i =>
+      // json is asked for AS TEXT: the pg driver's own Json wrapper
+      // would otherwise arrive as an unknown object (sql-temporal-types)
+      if typeOf(cols.get(i)) == SqlType.Json then
+        val s = row.get(i, classOf[String])
+        if s == null then SqlValue.Null else SqlValue.Json(s)
+      else valueOf(row.get(i))
+    }
 
   /** a value as the driver hands it back (java boxes) */
   private def valueOf(o: Any): SqlValue = o match
@@ -189,6 +225,13 @@ object R2dbcSql:
     case d: java.math.BigInteger => SqlValue.Num(BigDecimal(d))
     case s: String => SqlValue.Text(s)
     case bs: Array[Byte] => SqlValue.Bytes(bs)
+    case t: java.time.OffsetDateTime => SqlValue.Timestamp(microsOf(t.toInstant))
+    case t: java.time.ZonedDateTime => SqlValue.Timestamp(microsOf(t.toInstant))
+    case t: java.time.Instant => SqlValue.Timestamp(microsOf(t))
+    case t: java.time.LocalDateTime => SqlValue.Timestamp(microsOf(t.toInstant(java.time.ZoneOffset.UTC)))
+    case d: java.time.LocalDate => SqlValue.Date(d.toEpochDay.toInt)
+    case t: java.time.LocalTime => SqlValue.Time(t.toNanoOfDay / 1000L)
+    case u: java.util.UUID => SqlValue.Uuid(u)
     case bb: ByteBuffer =>
       val bs = new Array[Byte](bb.remaining); bb.duplicate().get(bs); SqlValue.Bytes(bs)
     case arr: Array[?] => SqlValue.Arr(Vector.tabulate(scala.runtime.ScalaRunTime.array_length(arr))(i =>
@@ -212,6 +255,13 @@ object R2dbcSql:
         case SqlValue.Num(x) => st.bind(i, x.bigDecimal)
         case SqlValue.Text(s) => st.bind(i, s)
         case SqlValue.Bytes(bs) => st.bind(i, ByteBuffer.wrap(bs))
+        case SqlValue.Timestamp(us) => st.bind(i, offsetOf(us))
+        case SqlValue.Date(d) => st.bind(i, java.time.LocalDate.ofEpochDay(d.toLong))
+        case SqlValue.Time(us) => st.bind(i, java.time.LocalTime.ofNanoOfDay(us * 1000L))
+        case SqlValue.Uuid(u) => st.bind(i, u)
+        // json binds as its text; a jsonb column on pg wants the DBA's
+        // `$n::jsonb` in the statement (bind-don't-model)
+        case SqlValue.Json(s) => st.bind(i, s)
         case SqlValue.Arr(elems) => st.bind(i, elems.map(javaOf).toArray)
         case SqlValue.Row(_) => throw IllegalArgumentException(
           s"param ${i + 1}: a composite parameter is not bindable through R2DBC")
@@ -226,8 +276,20 @@ object R2dbcSql:
     case SqlValue.Num(x) => x.bigDecimal
     case SqlValue.Text(s) => s
     case SqlValue.Bytes(bs) => ByteBuffer.wrap(bs)
+    case SqlValue.Timestamp(us) => offsetOf(us)
+    case SqlValue.Date(d) => java.time.LocalDate.ofEpochDay(d.toLong)
+    case SqlValue.Time(us) => java.time.LocalTime.ofNanoOfDay(us * 1000L)
+    case SqlValue.Uuid(u) => u
+    case SqlValue.Json(s) => s
     case SqlValue.Arr(elems) => elems.map(javaOf).toArray
     case SqlValue.Row(fields) => fields.map(javaOf).toArray
+
+  private def microsOf(i: java.time.Instant): Long = i.getEpochSecond * 1000000L + i.getNano / 1000L
+
+  private def offsetOf(us: Long): java.time.OffsetDateTime =
+    java.time.OffsetDateTime.ofInstant(
+      java.time.Instant.ofEpochSecond(Math.floorDiv(us, 1000000L), Math.floorMod(us, 1000000L) * 1000L),
+      java.time.ZoneOffset.UTC)
 
   private def levelOf(i: Isolation): IsolationLevel = i match
     case Isolation.ReadCommitted => IsolationLevel.READ_COMMITTED

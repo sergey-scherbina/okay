@@ -138,5 +138,6 @@ final class Scram(user: String, password: String, nonce: String)(using Crypto):
     case p: Scram.ClientFinal => p.serverFinal(serverFinal)
     case _ => throw PgError("SCRAM server-final before server-first")
 
-/** a backend refusal or a protocol violation, named */
-final case class PgError(message: String) extends RuntimeException(message)
+/** a backend refusal or a protocol violation, named; `code` is the
+ * server's SQLSTATE for a backend error, empty for a protocol one */
+final case class PgError(message: String, code: String = "") extends RuntimeException(message)

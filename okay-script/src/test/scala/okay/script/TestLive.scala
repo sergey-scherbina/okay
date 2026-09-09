@@ -2,10 +2,9 @@ package okay.script
 
 import okay.*
 import okay.given
-import okay.codec.Json
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
 import okay.script.api.{Live, mount}
-import okay.ui.{Event, Patch, Style, Ui, WireJson}
+import okay.ui.{Event, Patch, Style, Ui, Protocol}
 
 import java.nio.file.{Files, Path}
 
@@ -91,11 +90,11 @@ class TestLive extends munit.FunSuite:
   test("the session in-JVM: the tree first, a press yields one narrow patch, a forged key nothing, Close ends it") {
     withSite { (site, _) =>
       val stage = site.ws(Request.get("/counter?__live=counter"))
-      def press(k: String) = Frame.Text(Json.print(WireJson.eventJson(Event.Pressed(k))))
+      def press(k: String) = Frame.Text(Protocol.eventLine(Event.Pressed(k)))
       val (out, _) = !.run(Writer.run(through(Writer.of(List(press("inc"), press("forged"), Frame.Close(1000, ""), press("inc"))))(stage)))
       val lines = out.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 2, lines.toString)
-      assertEquals(WireJson.uiOf(Json.parse(lines(0))), Some(Ui.Column(Vector(Ui.Text("count: 0"), Ui.Button("+1", "inc")))))
-      assertEquals(WireJson.patchOf(Json.parse(lines(1))), Some(Patch.SetText(List(0), "count: 1")))
+      assertEquals(Protocol.treeOf(lines(0)), Some(Ui.Column(Vector(Ui.Text("count: 0"), Ui.Button("+1", "inc")))))
+      assertEquals(Protocol.patchOf(lines(1)), Some(Patch.SetText(List(0), "count: 1")))
     }
   }

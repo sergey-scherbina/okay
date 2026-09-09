@@ -1,0 +1,192 @@
+# DI: modules, wiring and the containers next door
+
+## Overview
+
+The operator's ask (2026-09-09): our own dependency injection, "not
+worse and even better than every competitor", declarative where that
+follows, and the same code working unchanged inside whatever the
+neighbours were written for — Spring Boot, ZIO, Guice, whatever else
+there is. The architecture ours, not theirs.
+
+Most of it is already standing (specs/context-functions.md,
+docs/capabilities.md): a dependency is a TYPE in the signature
+(`Db ?=> X`, a `using` parameter, `wire[Db]`), a missing one is a
+compile error with the requirement in the message, `provide` installs
+for an expression, `providing`/`and` compose environments as values
+with no arity cap and nearest-wins overriding, and a test double is
+one more `and`. Spring finds a missing bean at start-up, Guice at
+injector creation, ZLayer by its own runtime's types; here the
+compiler finds it, and there is no container to start.
+
+What was NOT standing, and is the gap between "context functions" and
+DI: an installer holds a READY value. Nothing opened a pool, ordered
+start and stop, or let one module's construction see the module
+before it. Spring's `@Bean` methods take other beans as parameters
+and the container closes them in reverse; `ZLayer` is a resource-
+scoped constructor whose `>>>` feeds one layer's output to the next.
+Stage 0 adds exactly that piece, on the two primitives the core
+already had — `Providing` and the `Resource` region — and nothing
+else.
+
+Everything after stage 0 is the operator's list in the order it can
+be built: qualifiers, the plan as a printable value, the bridges,
+and the join with specs/deployment.md, where an application's
+"needs" are literally the unresolved inputs of its root module.
+
+## The model (stage 0, SHIPPED)
+
+One new noun:
+
+- **Module** — `Module[F]` wraps `Providing[F] ! Resource`: an
+  installer that has not been built yet. `module[A](acquire)(release)`
+  is one capability acquired in the scope; `Module.value(a)` and
+  `Module.ready(providing)` are modules with nothing to build; the
+  scope that releases them is `Resource.run`, in reverse order,
+  whatever the program did (specs/delimited-control.md's region).
+
+Two operations, both `Providing`'s, with one difference:
+
+- `m and that` — `that` is typed `F[Module[G]]`: it is built INSIDE
+  the left's context. A plain module coerces (a value is a context
+  function that ignores its argument); a module whose acquisition
+  needs an earlier one is written `Db ?=> Module[…]` and reads it
+  with `wire[Db]`. That is the dependency graph: it is the
+  composition itself, the compiler checks it, and an acquisition
+  naming a capability no module before it installs does not compile.
+  Left acquires first, so the right (inner) releases first. The
+  right is the inner layer and wins under nearest-wins, so a test
+  double is `base and Module.value[Log](fake)` — `Providing.and`'s
+  order and override story, unchanged.
+- `m { body }` — install everything and run the body inside the
+  scope; the result is `B ! Resource`, handed to `Resource.run`.
+
+```scala
+val db   = module[Db](Db.open(url))(_.close)
+val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
+  module[Pool](Pool.over(wire[Db]))(_.close)
+Resource.run((db and pool) { wire[Pool].borrow() })
+```
+
+The rule docs/capabilities.md already states, kept and sharpened: a
+module ACQUIRES a resource (the pool, the server) and INSTALLS an
+environment (`Pool`, `Http`). What it installs is what one scope
+shares safely; the per-call resource — a connection borrowed from the
+pool — stays an explicit argument, as before.
+
+## Behavior
+
+Stage 0 (core, `Providing.scala`, TestModule):
+- [x] modules acquire left to right and release in reverse at the end
+      of the scope, through `Resource.run`
+- [x] a module's acquisition reads the module before it (`wire[Db]`
+      inside `module[Pool](…)`) — the graph is the composition
+- [x] a test double overrides by composing to the right, and builds
+      nothing
+- [x] a dependency no module installs is a COMPILE error naming the
+      type (`compileErrors`, the message quoted)
+- [x] a failing acquisition releases what was acquired before it
+
+Stage 1 — qualifiers and the plan as a value (SHIPPED, di-stage1):
+- [x] two capabilities of one type are told apart by TYPE, never by
+      string: an opaque type per role (`Primary`, `Replica`) is the
+      qualifier; a `Module.value[Primary](…)` installs one and
+      `wire[Replica]` cannot see it — a compile error naming the role.
+      No new mechanism (TestModule, `ModuleRoles`)
+- [x] `m.plan`: what the module will install, in acquisition order,
+      as a `Vector[String]` — read off the module's TYPE by a macro,
+      before anything is built (a plan that acquired to be printed
+      would be a trace). A dependent module's contribution is its `G`
+      in the type of `and`, so the plan needs no value. Names are the
+      type symbols', so an opaque qualifier shows as itself
+      (`Vector("Primary", "Log")`) where its erased class could not
+- [x] okay-conf joins with no new API: a config is a `Module.value`,
+      a `Secrets` resolver is another, and the connection module is
+      `(DbConf, Secrets) ?=> Module[…]` resolving the `Secret` inside
+      its acquisition — the value exists only between `Secrets.get`
+      and the constructor argument; a miss fails the acquisition
+      naming the REFERENCE (okay-conf TestConfModule)
+
+Stage 2 — the bridges (each its own satellite; instances inward,
+values outward, the P3 rule from specs/interop.md):
+- [ ] `okay-spring`: `Module` → Spring, a `@Configuration` that
+      registers one `BeanDefinition` per installed capability and
+      maps the scope to `SmartLifecycle` (start in order, stop in
+      reverse); Spring → `Module`, `Module.fromContext(ctx)` reading
+      beans by type as a `Providing` (a container is a source of
+      values); a controller returning `A ! Async` served through
+      okay-reactive's `Publisher` bridge. A Boot starter (auto-
+      configuration) so the dependency is one line
+- [ ] `okay-zio` gains `ZLayer[R, E, A]` ⇄ `Module`: a layer is a
+      resource-scoped constructor, `>>>` is `and`; `ZEnvironment` →
+      `Providing`
+- [ ] `okay-guice`: `Module` → `AbstractModule` (one `bind` per
+      capability, `@Singleton`, a `PreDestroy`-style close) and
+      `Module.fromInjector` — the same "container as a source of
+      values" bridge; CDI/Micronaut follow the same shape and are
+      documented, not built, until someone needs one
+
+Stage 3 — the join with deployment (specs/deployment.md):
+- [ ] the root module's unresolved inputs ARE the application's
+      declared needs: a `Module` whose remaining requirements are
+      `Postgres ?=> Volume ?=> …` renders into the deployment
+      manifest's dependency graph, so the port, the database and the
+      certificate are said once, in the type
+
+## Interop: rendering, not emulation
+
+The principle is specs/deployment.md's, applied to wiring: **a
+declarative layer over what already works in each place, orchestrating
+the CONTAINERS and never becoming one.** A `Module` is a value; a
+Spring configuration, a ZLayer, a Guice module are RENDERINGS of it,
+and a foreign container is a SOURCE of values for a `Providing`. So
+one module written here runs under Spring Boot by rendering, under
+ZIO by conversion, standalone by `Resource.run`, and the code that
+uses `wire[Db]` does not know which.
+
+What is deliberately NOT emulated, so the reader is not surprised:
+AOP proxies and `@Transactional` (the region and `Typed.transact` are
+the answer here, and a Spring-managed transaction is reachable from
+a bean, not from our code), classpath scanning and annotation-driven
+injection INTO our classes (ours take their dependencies as
+constructor parameters and `using` clauses; that is the condition of
+portability, not a loss), hot reload, and Spring's actuator (okay-ops
+is the actuator, and a Boot app can mount both).
+
+## Decisions
+
+- **`Module` is a class wrapping the program, not an alias over it.**
+  The first cut was `type Module[F] = Providing[F] ! Resource` with
+  the combinators as extensions on `Providing`'s companion. It
+  compiled, and `m { wire[Db].q }` did not: the body of an EXTENSION
+  `apply` was typed without its expected type and eagerly applied —
+  the E10 trap of specs/context-functions.md, met from a new side —
+  while `Providing.apply(m) { … }` spelled out worked. A class method
+  types the same body as `Providing`'s does. Kept in the class's doc.
+- **The companion factory is `Module.ready`, not `Module.apply`.**
+  An `apply` overload on the companion shadows the constructor call
+  and every internal `Module(prog)` becomes `new Module(prog)`;
+  naming the lift for what it is reads better and costs nothing.
+- **Dependency between modules is the right operand's TYPE**,
+  `F[Module[G]]`, not a separate `flatMap`/`>>>`. It reuses the one
+  fact the whole design rests on (a context function auto-applies
+  where its given is in scope), so a dependent module and an
+  independent one compose with the same word, and inference finds `G`
+  through the type lambda as `Providing.and` already does.
+- **Stage 0 adds no plan, no names, no tags.** Ordering and release
+  are the region's; names belong to stage 1.
+- **The plan is the type, not a record of the build** (stage 1). The
+  entry first said "via the TypeableK seam"; that seam names an
+  effect signature by its runtime class, which is the wrong tool
+  twice over: it cannot see a dependent module's value without its
+  dependency, and it erases an opaque qualifier to its underlying
+  class. The module's `F` already carries the answer — the curried
+  chain `A ?=> B ?=> … ?=> X`, outer to inner in acquisition order —
+  so `plan` is a macro walking `F[Marker]` to the marker. It costs
+  nothing at runtime and names the qualifier as written.
+
+## Out of scope
+
+- a runtime container of our own, reflection, annotations, classpath
+  scanning; cyclic dependencies (a value graph cannot express one,
+  and that is the feature, not the limit); emulating any foreign
+  runtime beyond the bridges above

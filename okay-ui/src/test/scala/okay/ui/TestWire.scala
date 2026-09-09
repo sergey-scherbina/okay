@@ -2,7 +2,6 @@ package okay.ui
 
 import okay.*
 import okay.given
-import okay.codec.Json
 
 /**
  * Server-driven UI over no transport at all — the stage tested pure —
@@ -34,19 +33,21 @@ class TestWire extends munit.FunSuite {
     Ui.Column(Vector(Ui.Input("v", "k2", "l"), Ui.Check(true, "k3", "c")), "col"),
     Ui.Select(Vector("x", "y"), 1, "k4"))
 
-  test("every Ui, Event and Patch shape round-trips through Json") {
+  test("every Ui, Event and Patch shape round-trips through JSON lines and CBOR bytes") {
     for u <- shapes do
-      assertEquals(WireJson.uiOf(Json.parse(Json.print(WireJson.uiJson(u)))), Some(u))
+      assertEquals(Protocol.treeOf(Protocol.line(Protocol.Msg.Tree(u))), Some(u))
+      assertEquals(Protocol.ofBytes(Protocol.bytes(Protocol.Msg.Tree(u))), Some(Protocol.Msg.Tree(u)))
     val events = Seq(Event.Pressed("a"), Event.Edited("b", "v"), Event.Toggled("c", true),
       Event.Chosen("d", 2), Event.Key('x'), Event.Resized(80, 24), Event.Closed)
     for e <- events do
-      assertEquals(WireJson.eventOf(Json.parse(Json.print(WireJson.eventJson(e)))), Some(e))
+      assertEquals(Protocol.eventOf(Protocol.eventLine(e)), Some(e))
     val patches = Seq(Patch.Replace(List(1, 0), shapes(2)), Patch.SetText(List(0), "s"),
       Patch.SetValue(Nil, "v"), Patch.SetChecked(List(2), false), Patch.SetSelected(List(1), 1),
       Patch.Remove(List(0), 2), Patch.Reorder(Nil, Vector(2, 0, 1)),
       Patch.Insert(List(1), 0, shapes(0)))
     for p <- patches do
-      assertEquals(WireJson.patchOf(Json.parse(Json.print(WireJson.patchJson(p)))), Some(p))
+      assertEquals(Protocol.patchOf(Protocol.line(Protocol.Msg.Patch(p))), Some(p))
+      assertEquals(Protocol.ofBytes(Protocol.bytes(Protocol.Msg.Patch(p))), Some(Protocol.Msg.Patch(p)))
   }
 
   /** drive the pure serve stage with lines, collect its lines */
@@ -55,13 +56,13 @@ class TestWire extends munit.FunSuite {
       Wire.serve(0)(view)(update))))
     (out, s)
 
-  def press(k: String): String = Json.print(WireJson.eventJson(Event.Pressed(k)))
+  def press(k: String): String = Protocol.eventLine(Event.Pressed(k))
 
   test("the first line is the full tree; later lines are narrow patches") {
     val (out, _) = talk(press("inc"), press("inc"))
-    assertEquals(WireJson.uiOf(Json.parse(out.head)), Some(view(0)))
+    assertEquals(Protocol.treeOf(out.head), Some(view(0)))
     // each press changed ONE text: one narrow patch each, no repaints
-    assertEquals(out.tail.map(l => WireJson.patchOf(Json.parse(l))), Seq(
+    assertEquals(out.tail.map(l => Protocol.patchOf(l)), Seq(
       Some(Patch.SetText(List(0), "count: 1")),
       Some(Patch.SetText(List(0), "count: 2"))))
   }
@@ -75,14 +76,14 @@ class TestWire extends munit.FunSuite {
 
   test("Closed ends the session with the final state") {
     val (_, s) = talk(press("inc"),
-      Json.print(WireJson.eventJson(Event.Closed)), press("inc"))
+      Protocol.eventLine(Event.Closed), press("inc"))
     assertEquals(s, 1)   // nothing after Closed
   }
 
   test("a reconnecting client: a fresh serve of the SAME state leads with the full tree") {
-    val (out, _) = !.run(Writer.run(through(Writer.of(List.empty[String]))(
+    val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(Set.empty)))))(
       Wire.serve(41)(view)(update)))): @unchecked
-    assertEquals(WireJson.uiOf(Json.parse(out.head)), Some(view(41)))
+    assertEquals(Protocol.treeOf(out.head), Some(view(41)))
   }
 
   test("end to end over channels: the client's frames are the server's views") {

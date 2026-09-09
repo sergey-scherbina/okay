@@ -279,6 +279,16 @@ object Async {
         case Left(e) => fail(fb)(e)
       () => { fa.cancel(); fb.cancel() }
 
+  /** the program's failure as DATA: it runs on its own fiber, and
+   * whatever it threw arrives as a Left instead of unwinding this
+   * program — the effect-world try/catch, one fiber, every platform.
+   * Cancelling the Await cancels the fiber. */
+  def attempt[A](prog: => A ! Async)(using Scheduler): Either[Throwable, A] ! Async =
+    await: k =>
+      val f = spawn(prog)
+      f.onComplete(r => k(Right(r)))
+      () => f.cancel()
+
   /** park for the duration — an Await on the platform timer; the
    * timer's own canceller serves cancellation */
   def sleep(millis: Long)(using T: Timer): Unit ! Async =

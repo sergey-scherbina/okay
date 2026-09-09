@@ -687,6 +687,14 @@ lazy val okaySql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay-sql",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    // sql-temporal-types: java.time givens on the JVM, an empty table
+    // elsewhere (JavaTime.scala per platform)
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / (crossProjectPlatform.value match {
+        case JVMPlatform => "scala-jvm"
+        case JSPlatform => "scala-js"
+        case _ => "scala-native"
+      }),
   )
   // scala-jvm tests: a suite that DRAINS a `Produce + Async` stream
   // summons a `Handler[Async]`, which needs the `CanBlock` JS and
@@ -807,7 +815,8 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-ops"))
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp)
+  // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(
@@ -1180,6 +1189,27 @@ lazy val okayMail = (project in file("okay-mail"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * Resilience (specs/resilience.md): a circuit breaker, a bulkhead, a
+ * keyed token-bucket limiter, hedged requests and a travelling
+ * deadline, as handlers around any `A ! Async` and around `Http`.
+ * JVM + JS like okay-http, which it depends on for the Request it
+ * reads the deadline header from.
+ */
+lazy val okayResilience = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-resilience"))
+  .dependsOn(okayHttp)
+  .settings(
+    name := "okay-resilience",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    // the parking tests: a fiber that waits, a hedge that races a timer
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okayJetty = project
   .in(file("okay-jetty"))
   .dependsOn(okayHttp.jvm)
@@ -1543,6 +1573,7 @@ lazy val root = (project in file("."))
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
+    okayResilience.jvm, okayResilience.js,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
@@ -1607,4 +1638,16 @@ lazy val compare = (project in file("compare"))
       "io.circe" %% "circe-parser" % "0.14.10",
       "io.circe" %% "circe-generic" % "0.14.10",
     ),
+  )
+
+/** The DynamoDB adapter of the Docs seam (docs-dynamo, specs/data.md):
+ * the JSON protocol over the one http client, signed by okay-blob's
+ * SigV4 with service "dynamodb" — no AWS SDK. JVM, like the Mongo
+ * adapter; the DocsSuite contract runs Live against dynamodb-local. */
+lazy val okayDocsDynamo = (project in file("okay-docs-dynamo"))
+  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm)
+  .settings(
+    name := "okay-docs-dynamo",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    Test / fork := true,
   )

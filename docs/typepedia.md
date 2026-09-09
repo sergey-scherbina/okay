@@ -46,8 +46,10 @@ same material with the measurements attached.
   `runWith` runs with it. **`Handler.union`** composes one handler
   per effect into a row handler (an explicit combinator, not a given:
   a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
-  splits unions (`<|>`); identity-style signatures are split by the
-  runtime class of their values, so keep them class-distinct.
+  splits unions (`<|>`, `split`): `unapply` for pattern positions,
+  `test` — a plain boolean, no Option — for the split itself;
+  identity-style signatures are split by the runtime class of their
+  values, so keep them class-distinct.
 - **the direct marks: `.reflect` / `.!?` / `!prog`** — one mark,
   three spellings, one dispatch-by-type inside `direct { }` blocks
   (docs/direct-style.md): an `F[T]` of the block reflects, a row
@@ -406,8 +408,17 @@ and nothing else in the library casts for that reason:
   nothing: GADT refinement gives the type back.
 - **`ChunkBuf.update` / `.chunk`** — the array assertion, once, with
   four measured alternatives recorded against it.
-- **`<|>`** — the union split, sound by the excluded middle of `F[A] |
-  G[A]`, documented as the trusted kernel.
+- **`<|>`** and **`split`** — the union split, sound by the excluded
+  middle of `F[A] | G[A]`, documented as the trusted kernel. `<|>`
+  answers an `Either` (a value, for walks that pass it on); `split`
+  takes the two branches as `inline` continuations and answers
+  nothing but their result — no Either, no Option per operation —
+  and is what the hot loops use (`State.handle`, `Writer.foldWith`,
+  `relay`, `Effects.handle`, `Handler.union`; split-without-either,
+  2026-09-09, measured to the byte in specs/handler-fusion.md). In a
+  RETURNING arm of `split`, ascribe the loop's answer inside the
+  branch: the constructor has refined the answer type there, and the
+  ascription is where the refined value meets the loop's type.
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for

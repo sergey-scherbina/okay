@@ -74,11 +74,11 @@ class TestForm extends munit.FunSuite {
   test("a form renders from the Schema: inputs, a check, optional unrequired") {
     val ui = Form.of[Person](empty)
     val Ui.Column(fields, _) = ui: @unchecked
-    assertEquals(fields.collect { case Ui.Input(_, k, _) => k },
+    assertEquals(fields.collect { case Ui.Input(_, k, _, _, _) => k },
       Vector("name", "age", "note"))
     assertEquals(fields.collect { case Ui.Check(_, k, _) => k }, Vector("ok"))
     // the optional field says so on its label, but keeps its plain key
-    assert(fields.collectFirst { case Ui.Input(_, "note", l) => l }.get.contains("optional"))
+    assert(fields.collectFirst { case Ui.Input(_, "note", l, _, _) => l }.get.contains("optional"))
   }
 
   test("edits fold in, typed by the schema; decode answers the SAME A") {

@@ -372,6 +372,184 @@ declined for v1 — same guarantee, plus a Free<->Cont bridge per step.
       `transact` (proven on H2 through the JDBC driver)
 - [x] a nested `region` is a COMPILE error, and the error names the
       state (`Tx.Yes` where `Tx.No` is demanded)
+- [x] a statement fails inside a region, the program HANDLES it, and
+      the region reaches COMMIT: Postgres answers the command tag
+      `ROLLBACK` with no ErrorResponse, and the region must FAIL, not
+      report success (sql-commit-tag, 2026-09-09). Watched failing
+      first on the dockerized pg: "expected exception of type PgError
+      but body evaluated successfully" while the insert was gone. The
+      pg wire driver now reads COMMIT's tag and throws on ROLLBACK
+      (`inTx` cleared either way — the server's transaction is over).
+      The same probe through r2dbc-postgresql passes because that
+      driver refuses such a COMMIT itself. The JDBC road has no pg
+      case in the tree (pgjdbc is not a dependency; H2 and SQLite keep
+      a transaction usable after a failed statement, so the aborted
+      state does not exist there) — when a pgjdbc consumer appears,
+      run this probe through it before trusting `commit()`.
+
+## Serialization failures are retried (sql-serialization-retry)
+
+Under RepeatableRead and Serializable the engine may choose a
+transaction to LOSE — Postgres's SSI answers `40001
+serialization_failure`, a deadlock `40P01` — and the only correct
+response is to run the transaction again from `begin`. Before this
+lane no code in the tree looked at a SQLSTATE (0 hits), so a program
+that asked for Serializable saw an exception where the engine meant
+"try again". A transact body is a program VALUE, re-runnable by
+construction; the region is where the retry belongs.
+
+- `Sql.sqlState(t)`: the driver names the engine's SQLSTATE behind a
+  failure (pg: the ErrorResponse's `C` field, now carried on
+  `PgError.code`; JDBC: `SQLException.getSQLState`; R2DBC:
+  `R2dbcException.getSqlState`). `Sql.retryable(state)` is the class:
+  40001 and 40P01, nothing else.
+- `Async.attempt(prog)`: the program's failure as data, one fiber,
+  every platform — the effect-world try/catch the retry needs and the
+  core did not have.
+- `Typed.transactRetry(db, isolation, Retry(attempts, backoff))(body)`:
+  each run is a full `transact` (begin, body, commit; the cancel brake
+  rolls back a failed run), a retryable failure pauses and runs again,
+  anything else propagates at once, and the answer `Retried(value,
+  attempts)` carries how many runs it took — the number to watch. The
+  body is `Resource + Async`: the attempt must run the body's effects,
+  so a Throws-aborting body runs its Throws inside and answers the
+  Either (an abort is a decision, not a conflict).
+
+- [x] a driver that fails a run with 40001 N times and then succeeds:
+      `Retry(N+1)` answers the value with `attempts = N+1`, every
+      failed run was rolled back (the brake), and `Retry(N)` propagates
+      the N-th failure; a non-retryable failure propagates on the
+      first run (H2 through JDBC with a failing decorator)
+- [x] write skew on the dockerized pg under Serializable: two
+      connections read, both write, the second COMMIT fails with 40001
+      through the wire driver — and `transactRetry` on the loser
+      re-runs it and lands the write (Live)
+
+## Temporal, uuid and json values (sql-temporal-types)
+
+Before this lane a `timestamptz`, `date`, `time`, `uuid`, `json`/
+`jsonb` column travelled as `Text` under `SqlType.Other(name)`: a
+String field fit it and every `created_at` was hand-parsed per field,
+in the engine's own print form (pg in the SESSION's zone with an
+offset, H2 `+00`). The seam now has the values, platform-neutral on
+purpose — this module runs on JVM, JS and Native and java.time is
+JVM-only (okay-intent's `Temporal` made the same choice):
+
+- `SqlValue.Timestamp(micros)` — microseconds since the epoch, UTC. A
+  `timestamptz` exactly; a `timestamp` WITHOUT zone is read as UTC,
+  stated, on every driver (the JDBC reads go through a UTC calendar so
+  the JVM's default zone never enters). `Date(days)` since the epoch,
+  `Time(micros)` into the day, `Uuid(java.util.UUID)` (the JDK class
+  every platform has), `Json(text)` untouched. `SqlType` mirrors them.
+- `okay.sql.Temporal` renders ISO 8601 UTC and parses what engines
+  print (`2026-09-02 06:00:00.123456+02`, `+02:30`, `T…Z`, no zone);
+  Hinnant's civil-date arithmetic, exact over the Int range of days.
+  A form the parser does not know stays `Text` — loud in the type,
+  never a wrong number.
+- Fields: `given Schema[UUID]` everywhere; `Schema[Instant]`,
+  `Schema[LocalDate]`, `Schema[LocalTime]` on the JVM (ISO text in
+  JSON/CBOR). The typed layer knows them by the IDENTITY of the given
+  (`Typed.Known`: the given is a stable val, so `eq` is the proof of
+  the type — the one cast in the module, isolated in `Known.find`),
+  and the platform hands over its table (`JavaTime.known`, empty off
+  the JVM). A String field still fits every one of these columns and
+  reads the ISO text — the lossless fallback, its print form now
+  canonical rather than the engine's.
+- Params bind natively, and on JDBC by the DECLARED type: a Timestamp
+  goes in as an `OffsetDateTime` at UTC where the parameter is a
+  `timestamp with time zone`, as the UTC wall-clock `LocalDateTime`
+  where it is a `timestamp` (`ParameterMetaData`, asked once per
+  statement and only when a temporal param is bound); reads mirror it
+  by the column's JDBC code. The Calendar road (`setTimestamp(ts,
+  utcCalendar)`) is deliberately NOT used: MEASURED on H2 2.3, a UTC
+  calendar's 06:00 into a `timestamp with time zone` is stored as
+  `06:00:00+02` — the session's offset stamped onto the calendar's
+  wall clock, a two-hour error that the isolated suite hid because
+  the Calendar read made the same mistake in reverse; the full
+  matrix (DuckDB's suite first in the same JVM) exposed it. A driver
+  without JDBC 4.2 `getObject(Class)` or parameter metadata (SQLite)
+  falls back to ISO text through `Temporal`. R2DBC: `OffsetDateTime`
+  at UTC, `LocalDate`, `LocalTime`, `UUID`; the pg wire renders ISO
+  text and the server types it from the column. Json binds as its
+  text — a `jsonb` column through JDBC/R2DBC wants the DBA's
+  `?::jsonb` in the statement (bind-don't-model); the wire driver
+  needs nothing. okay-delta maps Timestamp/Date to Delta's own
+  TimestampType (micros) and DateType (days) — the same units.
+
+- [x] `Temporal` round-trips civil dates over centuries, parses pg's,
+      H2's and ISO's forms with offsets applied, truncates nanos to
+      micros, floors before the epoch, and renders ISO UTC (TestSqlPure,
+      JVM + JS + Native)
+- [x] H2 through JDBC: timestamptz/timestamp/date/time(6)/uuid read into
+      Instant/LocalDate/LocalTime/UUID fields, `describe` names the
+      kinds, verify is clean, a microsecond and an 1899 date survive the
+      bind-and-read round trip; the String field reads the ISO text
+- [x] pg over the wire, session zone Europe/Kyiv: the same six plus
+      jsonb and a `timestamptz[]` into `Vector[Instant]`, typed reads,
+      verify clean, exact bind back (Live)
+- [x] R2DBC on H2 and pg: timestamptz/date/time/uuid typed both ways
+      (Live for pg)
+
+## Read-only regions, and the isolation restored (sql-readonly-region)
+
+The FOREIGN posture's honest declaration: where the DBA gave us reads,
+the region says so and the engine enforces it. `Sql.begin(isolation,
+readOnly)` and `Typed.transact/region/transactRetry(..., readOnly =
+true)`; `Granted.readOnly` is what the engine GRANTED, read back rather
+than assumed — pg's `SET TRANSACTION ... READ ONLY` then `SHOW
+transaction_read_only` (a write inside answers `25006`); JDBC's
+`setReadOnly` is a hint and `isReadOnly` reports it (H2 ignores the
+hint and reports false, which the grant then says); R2DBC's
+`TransactionDefinition` with `READ_ONLY` (r2dbc-postgresql takes it,
+a driver that refuses definitions gets the plain begin and grants no
+read-only). And the leak the audit found: `JdbcSql` restored autocommit
+after a region but not the isolation level, so every autocommit
+statement after a `transact(Serializable)` ran Serializable; the level
+and the read-only flag are saved at `begin` and restored with
+autocommit on commit, rollback and the brake.
+
+- [x] pg over the wire: a READ ONLY region is granted and read back, a
+      write inside fails with 25006, a plain region grants none, and
+      writes work again after (Live)
+- [x] H2 through JDBC: after `transact(Serializable, readOnly = true)`
+      the connection's isolation, autocommit and read-only flag are
+      what they were before; the grant reports H2's refusal of the
+      hint honestly
+- [x] r2dbc-postgresql: the SPI definition is taken, the write inside
+      refuses with 25006, the plain begin grants none (Live)
+
+## The pool (sql-pool)
+
+One `Sql` is one connection and one thread of control (the driver
+contract), and the audit found no pool anywhere. `okay.sql.Pool[C <:
+Sql](size, acquireTimeoutMillis)(open)(close)` is the one that wraps
+any driver as a Resource-shaped value, every platform: `borrow(use)`
+runs a program on one connection and returns it after, value or
+failure; `pinned` hands a connection to the enclosing Resource scope,
+whose end returns it; `stats` (size, idle, busy, waiting, created,
+closed) is a plain value for /metrics; `close()` disposes idle
+connections now and busy ones as they return, and fails the waiters.
+State is one `TRef` cell modified atomically; waiters are callbacks;
+the hand-off is cancel-safe — a waiter whose timeout fired and a grant
+that races it settle on one CAS, and the loser passes the connection
+to the next waiter, so a timeout never leaks a connection. A returned
+connection goes through the BRAKE first: an open transaction (a raw
+`begin` the borrower never closed) rolls back, a no-op costs nothing —
+the health probe this stack already had. Hikari behind JDBC is `open =
+() => JdbcSql(dataSource.getConnection)` and a close that hands back;
+`JdbcSql.close` exists for the plain case.
+
+- [x] eight borrowers on a pool of two: never more than two connections
+      open, none reopened, every insert lands, idle equals opened after,
+      close disposes them all (H2)
+- [x] a borrower leaves a raw `begin` open: the brake rolls it back on
+      return, and the next borrower sees no leftover on the same
+      connection
+- [x] exhausted: the second borrow on a held pool of one fails with
+      `Exhausted` within its timeout, leaves the queue, and succeeds once
+      the first returns — on the one connection
+- [x] `pinned` holds one connection across statements for the scope and
+      returns it at the end; a borrow after `close` refuses with `Closed`
 
 ## Out of scope
 

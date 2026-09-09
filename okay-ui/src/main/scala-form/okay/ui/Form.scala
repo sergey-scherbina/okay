@@ -72,12 +72,13 @@ object Form {
                     errors: Vector[(String, String)]): Ui = s match
     case Schema.SIso(u, _, _) => field(name, k, u(), v, errors)
     case Schema.SOption(of) => field(name + " (optional)", k, of(), v, errors) match
-      case Ui.Input(value, _, label) => Ui.Input(value, key = k, label)
+      case i: Ui.Input => i.copy(key = k)
       case Ui.Check(on, _, label) => Ui.Check(on, key = k, label)
       case other => other
     case Schema.SBool => Ui.Check(v.contains(Json.JBool(true)), key = k, label = name)
     case Schema.SInt | Schema.SLong | Schema.SDouble => Ui.Input(v.collect {
-      case Json.JNum(n) => Json.print(Json.JNum(n)) }.getOrElse(""), key = k, label = name)
+      case Json.JNum(n) => Json.print(Json.JNum(n)) }.getOrElse(""), key = k, label = name,
+      kind = InputKind.Number)
     case Schema.SString => Ui.Input(v.collect {
       case Json.JStr(x) => x }.getOrElse(""), key = k, label = name)
     case p: Schema.SProduct[?] =>
@@ -105,6 +106,14 @@ object Form {
       } :+ Ui.Button("+", key = s"$k$$add"))
 
   // ---- editing: one event in, routed by its path -------------------
+
+  /** the hybrid's one event (specs/frontend.md stage 2): the edits a
+   * client folded locally, folded here through the SAME `edit` a live
+   * edit takes — so a submitted form cannot decode differently from
+   * one typed over the wire */
+  def submitted[A](using s: Schema[A])(value: Json, e: Event): Json = e match
+    case Event.Submitted(_, edits) => edits.foldLeft(value)(edit[A])
+    case other => edit[A](value, other)
 
   /** fold one event into the partial value, typed by the schema */
   def edit[A](using s: Schema[A])(value: Json, e: Event): Json =

@@ -3,7 +3,7 @@ package okay.jdbc
 import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
 import okay.given
 import okay.codec.Schema
-import okay.sql.{Bad, Granted, Isolation, Sql, SqlValue, Typed}
+import okay.sql.{Bad, Granted, Isolation, Sql, SqlType, SqlValue, Typed}
 import okay.sql.given
 import java.sql.DriverManager
 
@@ -59,6 +59,11 @@ class TestTyped extends munit.FunSuite {
       st.execute("create table ledger(id int not null, amount decimal(30, 9) not null, at timestamp with time zone not null)")
       st.execute("insert into ledger values (1, 12345678901234567890.123456789, '2026-09-02 06:00:00+00')")
       st.execute("grant select, insert on ledger to app")
+      st.execute("create table stamps(id int not null, at timestamp with time zone not null, plain timestamp not null, " +
+        "d date not null, t time(6) not null, ref uuid not null, note varchar(64))")
+      st.execute("insert into stamps values (1, '2026-09-02 08:00:00+02', '2026-09-02 06:00:00', '2026-09-02', " +
+        "'06:00:00.5', '6ba7b810-9dad-11d1-80b4-00c04fd430c8', null)")
+      st.execute("grant select, insert on stamps to app")
       st.close()
     finally admin.close()
 
@@ -360,25 +365,70 @@ class TestTyped extends munit.FunSuite {
 
   // ── pg-scalar-types over JDBC: decimal exact, a vendor type as text ──
 
-  final case class Ledger(id: Int, amount: BigDecimal, at: String)
+  final case class Ledger(id: Int, amount: BigDecimal, at: java.time.Instant)
   given Schema[Ledger] = Schema.derived
+  /** the fallback: the same column into a String */
+  final case class LedgerText(id: Int, at: String)
+  given Schema[LedgerText] = Schema.derived
   final case class Rounded(id: Int, amount: Double)
   given Schema[Rounded] = Schema.derived
 
-  test("a DECIMAL column is exact in a BigDecimal field and lossy in a Double one; a timestamp reads as text with a clean verify") {
+  test("a DECIMAL column is exact in a BigDecimal field and lossy in a Double one; a timestamp reads into an Instant, or as ISO text") {
     val money = BigDecimal("12345678901234567890.123456789")
+    val six = java.time.Instant.parse("2026-09-02T06:00:00Z")
     withDb { db =>
       assertEquals(allRows[Ledger](db, "select id, amount, at from ledger"),
-        Vector(Right(Ledger(1, money, "2026-09-02 06:00:00+00"))))
+        Vector(Right(Ledger(1, money, six))))
       assertEquals(run(Typed.verify[Ledger](db, "select id, amount, at from ledger")), Vector.empty)
+      assertEquals(allRows[LedgerText](db, "select id, at from ledger"), Vector(Right(LedgerText(1, "2026-09-02T06:00:00Z"))))
+      assertEquals(run(Typed.verify[LedgerText](db, "select id, at from ledger")), Vector.empty)
       val Vector(Right(r)) = allRows[Rounded](db, "select id, amount from ledger"): @unchecked
       assert(BigDecimal(r.amount) != money, "the Double field rounds — by its choice")
       // a BigDecimal param binds as its exact text and lands exact
       assertEquals(run(Typed.update(db, "insert into ledger values (?, ?, ?)")(
-        Ledger(2, money + 1, "2026-09-02 07:00:00+00"))), 1L)
+        Ledger(2, money + 1, six.plusSeconds(3600)))), 1L)
       assertEquals(allRows[Ledger](db, "select id, amount, at from ledger where id = 2").map(_.map(_.amount)),
         Vector(Right(money + 1)))
     }
+  }
+
+  final case class Stamp(id: Int, at: java.time.Instant, plain: java.time.Instant, d: java.time.LocalDate,
+                         t: java.time.LocalTime, ref: java.util.UUID, note: Option[String])
+  given Schema[Stamp] = Schema.derived
+
+  test("sql-temporal-types on H2: timestamptz/timestamp/date/time/uuid read into java.time and UUID fields, verify clean, and bind back exact") {
+    val six = java.time.Instant.parse("2026-09-02T06:00:00Z")
+    val one = Stamp(1, six, six, java.time.LocalDate.of(2026, 9, 2), java.time.LocalTime.of(6, 0, 0, 500000000),
+      java.util.UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), None)
+    withDb { db =>
+      val sql = "select id, at, plain, d, t, ref, note from stamps order by id"
+      assertEquals(run(db.describe(sql)).map(_.tpe), Vector(SqlType.I32, SqlType.Timestamp, SqlType.Timestamp,
+        SqlType.Date, SqlType.Time, SqlType.Uuid, SqlType.Text))
+      assertEquals(run(Typed.verify[Stamp](db, sql)), Vector.empty)
+      assertEquals(allRows[Stamp](db, sql), Vector(Right(one)))
+      // a microsecond survives the round trip, and a date before the epoch
+      val two = Stamp(2, six.plusNanos(1000), java.time.Instant.parse("1969-12-31T23:59:59.999999Z"),
+        java.time.LocalDate.of(1899, 12, 31), java.time.LocalTime.of(23, 59, 59, 999999000),
+        java.util.UUID.randomUUID(), Some("two"))
+      assertEquals(run(Typed.update(db, "insert into stamps values (?, ?, ?, ?, ?, ?, ?)")(two)), 1L)
+      assertEquals(allRows[Stamp](db, sql), Vector(Right(one), Right(two)))
+    }
+  }
+
+  test("sql-readonly-region on H2: the isolation level and the read-only hint are restored after a region; H2 grants no read-only and says so") {
+    val conn = DriverManager.getConnection(url, "app", "app")
+    try
+      val db = JdbcSql(conn)
+      val before = conn.getTransactionIsolation
+      assertNotEquals(before, java.sql.Connection.TRANSACTION_SERIALIZABLE)
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, Isolation.Serializable, readOnly = true)(g => okay.pure(g))))
+      assertEquals(g.granted, Isolation.Serializable)
+      // JDBC's setReadOnly is a hint H2 ignores: the grant reports what the connection says
+      assertEquals(g.readOnly, conn.isReadOnly)
+      assertEquals(conn.getTransactionIsolation, before, "the level before the region is the level after it")
+      assert(conn.getAutoCommit)
+      assert(!conn.isReadOnly)
+    finally conn.close()
   }
 
   test("the restricted user has no DDL: their schema, our types, full function") {

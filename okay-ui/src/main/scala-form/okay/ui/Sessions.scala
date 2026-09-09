@@ -105,7 +105,7 @@ object Sessions {
     // state the last one reached. (Found by the intent-first test: a
     // line appended after a Closed vanished from a naive refold.)
     def isClosed(line: String): Boolean =
-      WireJson.eventOf(okay.codec.Json.parse(line)).contains(Event.Closed)
+      Protocol.closes(line)
     def segments(rest: List[String]): List[List[String]] =
       if rest.isEmpty then Nil
       else

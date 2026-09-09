@@ -1,7 +1,7 @@
 package okay.pg
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, effect, pure}
-import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
+import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8
 
@@ -161,28 +161,47 @@ final class PgSql private (conn: NetConn) extends Sql:
       }
     }
 
-  def begin(isolation: Isolation): Granted ! Async =
+  def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async =
     settled {
       if inTx then throw IllegalStateException(
         "nested transaction: this connection is already in one — " +
           "refuse rather than silently flatten (specs/jdbc.md)")
+      val mode = if readOnly then " READ ONLY" else ""
       simple("BEGIN").flatMap { _ =>
-        simple(s"SET TRANSACTION ISOLATION LEVEL ${levelSql(isolation)}").flatMap { _ =>
+        simple(s"SET TRANSACTION ISOLATION LEVEL ${levelSql(isolation)}$mode").flatMap { _ =>
           inTx = true
-          simpleValue("SHOW transaction_isolation").map { v =>
+          simpleValue("SHOW transaction_isolation").flatMap { v =>
             val granted = v match
               case Some("serializable") => Isolation.Serializable
               case Some("repeatable read") => Isolation.RepeatableRead
               case _ => Isolation.ReadCommitted
-            Granted(isolation, granted)
+            // read back, not assumed: pg enforces READ ONLY (a write
+            // answers 25006), and this is the server saying so
+            simpleValue("SHOW transaction_read_only").map(ro => Granted(isolation, granted, ro.contains("on")))
           }
         }
       }
     }
 
-  def commit(): Unit ! Async = settled(simple("COMMIT").map { _ => inTx = false })
+  /** COMMIT reads its COMMAND TAG: a transaction that an earlier
+   * error left in the aborted state — an error the program HANDLED,
+   * so nothing unwound the region — answers `ROLLBACK` with no
+   * ErrorResponse at all. Reporting that as success is the rollback
+   * that quietly does not roll back (specs/jdbc.md); the tag is the
+   * only place the server says so (sql-commit-tag). */
+  def commit(): Unit ! Async = settled(simpleTag("COMMIT").map { tag =>
+    inTx = false
+    if tag.startsWith("ROLLBACK") then throw PgError(
+      "COMMIT answered ROLLBACK: an earlier error aborted this transaction " +
+        "and the server rolled it back — nothing in the region is committed")
+  })
 
   def rollback(): Unit ! Async = settled(simple("ROLLBACK").map { _ => inTx = false })
+
+  /** the server's SQLSTATE, carried on the ErrorResponse */
+  override def sqlState(t: Throwable): Option[String] = t match
+    case PgError(_, code) if code.nonEmpty => Some(code)
+    case _ => None
 
   /** the sync brake: mark now, roll back before the next use —
    * program order is server order, and an abandoned connection is
@@ -258,6 +277,15 @@ final class PgSql private (conn: NetConn) extends Sql:
 
   private def simple(sql: String): Unit ! Async =
     conn.write(msg('Q', str(sql))).flatMap(_ => collectReady(())((_, _) => ()))
+
+  /** a simple-protocol statement whose command tag is the answer */
+  private def simpleTag(sql: String): String ! Async =
+    conn.write(msg('Q', str(sql))).flatMap { _ =>
+      collectReady("") {
+        case (('C', body), _) => new String(body, UTF_8).takeWhile(_ != '\u0000')
+        case (_, acc) => acc
+      }
+    }
 
   private def simpleValue(sql: String): Option[String] ! Async =
     conn.write(msg('Q', str(sql))).flatMap { _ =>
@@ -514,7 +542,7 @@ object PgSql:
         case 'M' => m = v
         case 'C' => code = v
         case _ => ()
-    PgError(if code.isEmpty then m else s"$m [$code]")
+    PgError(if code.isEmpty then m else s"$m [$code]", code)
 
   /** CommandComplete's tag: the affected count is the last token */
   private[pg] def countOf(body: Array[Byte]): Long =
@@ -535,15 +563,18 @@ object PgSql:
     case 1700 => SqlType.Num
     case 25 | 1043 | 18 | 19 => SqlType.Text
     case 17 => SqlType.Bytes
+    case 1114 | 1184 => SqlType.Timestamp
+    case 1082 => SqlType.Date
+    case 1083 => SqlType.Time
+    case 2950 => SqlType.Uuid
+    case 114 | 3802 => SqlType.Json
     case other => SqlType.Other(vendorNames.getOrElse(other, s"oid:$other"))
 
   /** the scalars that stay TEXT on purpose (bind-don't-model; no
    * java.time in a JVM/JS/Native module), named so verify can say what
    * it found — a String field fits any of them (pg-scalar-types) */
   private val vendorNames: Map[Int, String] = Map(
-    2950 -> "uuid", 114 -> "json", 3802 -> "jsonb", 142 -> "xml",
-    1114 -> "timestamp", 1184 -> "timestamptz", 1082 -> "date",
-    1083 -> "time", 1266 -> "timetz", 1186 -> "interval",
+    142 -> "xml", 1266 -> "timetz", 1186 -> "interval",
     869 -> "inet", 650 -> "cidr", 829 -> "macaddr", 790 -> "money")
 
   private def valueOf(oid: Int, s: String): SqlValue = oid match
@@ -564,6 +595,15 @@ object PgSql:
         out(i) = Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16).toByte
         i += 1
       SqlValue.Bytes(out)
+    // the temporal/uuid/json scalars (sql-temporal-types): pg prints a
+    // timestamptz in the SESSION's zone with its offset, a timestamp
+    // without one (read as UTC); a form the parser does not know stays
+    // text — the fallback is loud in the type, never a wrong number
+    case 1114 | 1184 => Temporal.parseTimestamp(s).fold(SqlValue.Text(s))(SqlValue.Timestamp(_))
+    case 1082 => Temporal.parseDate(s).fold(SqlValue.Text(s))(SqlValue.Date(_))
+    case 1083 => Temporal.parseTime(s).fold(SqlValue.Text(s))(SqlValue.Time(_))
+    case 2950 => SqlValue.Uuid(java.util.UUID.fromString(s))
+    case 114 | 3802 => SqlValue.Json(s)
     // ROW()/record and arrays decode into structure (pg-composite-decode)
     case 2249 => parseComposite(s)
     case a if arrayElem.contains(a) => parseArray(s, r => valueOf(arrayElem(a), r))
@@ -583,7 +623,9 @@ object PgSql:
     1000 -> 16,   1005 -> 21,   1007 -> 23,   1016 -> 20,
     1021 -> 700,  1022 -> 701,  1231 -> 1700,
     1009 -> 25,   1015 -> 1043, 1014 -> 1042, 1002 -> 18,
-    1001 -> 17,   1028 -> 26,   1005 -> 21)
+    1001 -> 17,   1028 -> 26,   1005 -> 21,
+    1115 -> 1114, 1185 -> 1184, 1182 -> 1082, 1183 -> 1083,
+    2951 -> 2950, 199 -> 114,   3807 -> 3802)
 
   /** split a composite/array body into top-level members, honouring
    * double-quoted values (both `""` and `\"`/`\\` escaping, so the
@@ -669,6 +711,11 @@ object PgSql:
     case SqlValue.F64(x) => Some(x.toString)
     case SqlValue.Num(x) => Some(x.toString)
     case SqlValue.Text(s) => Some(s)
+    case SqlValue.Timestamp(us) => Some(Temporal.renderTimestamp(us))
+    case SqlValue.Date(d) => Some(Temporal.renderDate(d))
+    case SqlValue.Time(us) => Some(Temporal.renderTime(us))
+    case SqlValue.Uuid(u) => Some(u.toString)
+    case SqlValue.Json(j) => Some(j)
     case SqlValue.Bytes(bs) =>
       Some("\\x" + bs.map(b => f"${b & 0xff}%02x").mkString)
     // the reverse of the decode: a structured value re-encodes to the

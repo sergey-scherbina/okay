@@ -91,20 +91,27 @@ object Live:
                  (using okay.codec.Schema[A]): Live[FormState] =
     import okay.ui.Form
     val empty = Forms.defaults[A]
+    // a Form node (ui-hybrid): the browser folds the fields itself and
+    // sends them ONCE as Submitted when the button is pressed
     def view(st: FormState): Ui =
-      Ui.Column(Vector(Form.ofWith[A](st.errors)(st.value), Ui.Button(label, SubmitKey))
+      val fields = Form.ofWith[A](st.errors)(st.value) match
+        case c: Ui.Column => c.children
+        case other => Vector(other)
+      Ui.Column(Vector(Ui.Form(fields, label, SubmitKey))
         ++ st.errors.collect { case ("", m) => Ui.Text(s"! $m", okay.ui.Style(bold = true)) }
         ++ st.message.map(m => Ui.Text(m)).toVector)
+    def submitNow(st: FormState): FormState =
+      val errs = Form.errors[A](st.value)
+      if errs.nonEmpty then st.copy(errors = errs, message = None)
+      else Form.decode[A](st.value) match
+        case Left(m) => st.copy(errors = Vector("" -> m), message = None)
+        case Right(a) =>
+          val failures = checks.flatMap(_(a)).toVector
+          if failures.nonEmpty then st.copy(errors = failures, message = None)
+          else FormState(empty, Vector.empty, Some(submit(a)))
     def update(st: FormState, e: Event): FormState = e match
-      case Event.Pressed(SubmitKey) =>
-        val errs = Form.errors[A](st.value)
-        if errs.nonEmpty then st.copy(errors = errs, message = None)
-        else Form.decode[A](st.value) match
-          case Left(m) => st.copy(errors = Vector("" -> m), message = None)
-          case Right(a) =>
-            val failures = checks.flatMap(_(a)).toVector
-            if failures.nonEmpty then st.copy(errors = failures, message = None)
-            else FormState(empty, Vector.empty, Some(submit(a)))
+      case Event.Pressed(SubmitKey) => submitNow(st)
+      case Event.Submitted(SubmitKey, _) => submitNow(st.copy(value = Form.submitted[A](st.value, e)))
       case other => st.copy(value = Form.edit[A](st.value, other), message = None)
     Live(FormState(empty, Vector.empty, None))(view)(update)
 
@@ -152,7 +159,9 @@ object Live:
       }
       if e.tag == "input" && e.props.exists(_ == ("type", "checkbox")) then attr(sb, "value", "on")
     sb ++= ">": Unit
-    if e.tag != "input" then
+    if e.tag != "input" && e.tag != "img" then
+      // a textarea's value is its content, not an attribute
+      if e.tag == "textarea" then e.props.collectFirst { case ("value", v) => v }.foreach(v => sb ++= escape(v): Unit)
       e.text.foreach(t => sb ++= escape(t): Unit)
       e.children.foreach(render(_, sb, named))
       sb ++= "</" ++= e.tag ++= ">": Unit

@@ -57,7 +57,7 @@ class TestOpsRoutes extends munit.FunSuite:
 
   test("/stats answers Store.Stats as JSON") {
     val store = MemoryStore()
-    store.topic("chats", 1).append(0, Array(1), Array(1, 2), okay.persist.Ack.Durable)
+    val _ = store.topic("chats", 1).append(0, Array(1), Array(1, 2), okay.persist.Ack.Durable)
     withServer(store) { port =>
       val s = get(port, "/stats")
       assertEquals(s.statusCode(), 200)
@@ -69,7 +69,7 @@ class TestOpsRoutes extends munit.FunSuite:
 
   test("/metrics answers Prometheus text with the right content-type") {
     val store = MemoryStore()
-    store.topic("chats", 1)
+    val _ = store.topic("chats", 1)
     withServer(store) { port =>
       val m = get(port, "/metrics")
       assertEquals(m.statusCode(), 200)

@@ -104,4 +104,21 @@ class TestFused extends munit.ScalaCheckSuite {
     assertEquals(Fused.stateWriter(5)(p), Fused.stateWriter(5)(p))
     assertEquals(Fused.stateWriter(5)(p), ((6, Vector("a", "b")), 5))
   }
+
+  // ---- stage B: the composite handler over Eff agrees with the Free loop
+
+  property("stage B: an Eff program run once with the composite handler answers what the fused Free loop answers") {
+    forAll(Gen.listOf(plain), Gen.choose(-50, 50)) { (ins, s0) =>
+      val p = compileSW(ins)
+      Fused.runEff(s0)(fromFree[Eff, SW, Int](p)) == Fused.stateWriter(s0)(p)
+    }
+  }
+
+  test("stage B: a program written against a Control carrier agrees at Cont and at Func") {
+    inline def prog[C[_, _, _]](h: Interpr[SW, C, Fused.Answer[Int, String, Int]]): C[Int, Fused.Answer[Int, String, Int], Fused.Answer[Int, String, Int]] =
+      val C = Control[C]
+      C.flatMap(h(Writer.Say("a")))(_ => C.flatMap(h(State.Get()))(s => C.flatMap(h(State.Set(s + 1)))(_ => C.flatMap(h(Writer.Say("b")))(_ => C.pure(s)))))
+    assertEquals(Fused.runCtrl[Cont, Int, String, Int](5)(prog[Cont]), ((6, Vector("a", "b")), 5))
+    assertEquals(Fused.runCtrl[Func, Int, String, Int](5)(prog[Func]), ((6, Vector("a", "b")), 5))
+  }
 }

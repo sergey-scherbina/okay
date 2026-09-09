@@ -29,15 +29,31 @@ class TestDirectAuto extends munit.FunSuite {
     assertEquals(r, Some(10))
   }
 
-  test("operations color via the Effect marker; Unit ops keep the explicit mark") {
+  /**
+   * WHAT THIS TESTS, corrected 2026-09-09 (grant-vacuity). Its name
+   * was "operations color via the Effect marker", and it carried
+   * `given Effect[[X] =>> Reader[Int, X]] with {}` to supply that
+   * marker. Since 2026-09-08 `okay.Effect extends Direct.Effect`, and
+   * `Reader derives okay.Effect` — so the marker arrived on its own
+   * and the line was redundant. MEASURED: the test passes with it
+   * deleted, which means it had stopped testing the marker and was
+   * testing that Reader colors, a claim that now holds for free.
+   *
+   * The line is gone and the name says what is actually exercised: a
+   * DECLARED effect's operations color with nothing provided, and a
+   * Unit-answering operation still takes the explicit mark. That the
+   * marker is REQUIRED where a signature does not declare itself is
+   * `TestEffectProvide`, where it is a negative test proved by
+   * mutation.
+   */
+  test("a declared effect's operations color; Unit ops keep the explicit mark") {
     type F = Reader % Int + Writer % String
-    given Effect[[X] =>> Reader[Int, X]] with {}
     // auto-coloring resolves at the DECLARED type: a smart
     // constructor typed at the trait colors; a raw case constructor
     // (Reader.Ask[Int, Int]()) is too precise for G inference
     def ask: Reader[Int, Int] = Reader.Ask()
     val prog: Int ! F = direct {
-      val env: Int = ask                      // colored via the marker
+      val env: Int = ask            // colors by Reader's own declaration
       Writer(s"env=$env"): Unit // bare statement: do-notation,
                                               // the statement IS the mark
       env + 1

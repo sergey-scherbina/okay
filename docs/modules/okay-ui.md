@@ -43,3 +43,28 @@ as DATA — the mechanism the stack itself dictates), the raw-DOM
 patch backend (`Dom`), forms from schemas, event-sourced sessions.
 specs/ui.md holds the decisions; docs/typepedia.md the capability
 patterns.
+
+## Two vocabulary levels (specs/frontend.md, stage 0)
+
+The tree has a CLOSED layout level a thin client must draw — `Box`
+with weights/gap/pad (Row/Column are its two plain forms), `Text`
+with style tokens, `Image`, `Input` kinds, `Button` roles, `Check`,
+`Select`, `Scroll` — and an OPEN semantic level — `Form`, `Items`,
+`Table`, `Tabs`, `Modal` — where each node is DEFINED by its lowering
+to level L (`Ui.lower(ui, vocab)`). The laws: `Ui.keys(s) ==
+Ui.keys(lower(s))`, so `update` cannot tell how a client drew a node;
+and the diff commutes with lowering. The wire is `Protocol`
+(stage 1): one derived definition — `Msg` = Hello / Tree / Patch /
+Event / Close over the derived `Schema[Ui]`, `[Event]`, `[Patch]` —
+as JSON lines or CBOR bytes; the client's `Hello {vocab, version}`
+comes first and `Wire.serve` lowers what it did not claim; the
+in-process hosts lower at their entry. `docs/protocol/frontend.md`
+(rendered from the schemas) and `docs/protocol/conformance.jsonl` are
+the contract a client in any language implements. The wire is HYBRID
+(stage 2): a `Form`'s fields fold on the client and its button sends
+ONE `Event.Submitted(key, edits)` (folded by `Form.submitted` through
+the same `Form.edit`); a `live` input speaks per change; a claimed
+`Tabs`/`Disclosure` switches locally; the server's `SetValue` wins.
+The first client in another language is `okay-compose/` (stage 3):
+Kotlin, Compose Desktop, no okay dependency, proven by replaying the
+conformance script and by a headless smoke against a real Live page.

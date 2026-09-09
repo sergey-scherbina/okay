@@ -343,6 +343,15 @@ list in its spec or spec section)
       loud). Source/Sink SPIs are the whole coupling; engine
       adapters (RabbitMQ/SQS/NATS/…) are named deployments. Proven
       against an in-memory fake broker (TestQueues, 4 tests)
+- [x] docs-dynamo (2026-09-09): the SAME DocsSuite contract passes over
+      DynamoDB (dockerized dynamodb-local, Live) through the JSON
+      protocol signed by okay-blob's SigV4 with service `dynamodb` — no
+      SDK; `Cond` is a condition expression on one UpdateItem/DeleteItem
+      (`attribute_not_exists(id)`, `ver = :ver`), a
+      ConditionalCheckFailedException answers `Stale` carrying the
+      current version, declared indexes are GSIs the query walks, and
+      `grants` names DynamoDB's two read modes (One eventual, Quorum
+      granted Strong as ConsistentRead)
 - [ ] every adapter exposes stats as a Schema value; no adapter
       logs or journals a credential (grep-able invariant from
       specs/conf.md asserted in tests where feasible)

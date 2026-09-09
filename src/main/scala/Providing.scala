@@ -71,3 +71,79 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
   def pure[A](a: A): E ?=> A = a
   extension [A](fa: E ?=> A)
     def flatMap[B](f: A => E ?=> B): E ?=> B = f(fa)
+
+/**
+ * A module is an installer that has not been built yet (specs/di.md):
+ * `Providing[F]` holds READY values, a `Module[F]` builds them in the
+ * `Resource` effect — so opening a pool, starting a server, and
+ * closing both at the end of the scope, in reverse order, is the
+ * region's obligation and not the caller's.
+ *
+ * {{{
+ *   val db   = module[Db](Db.open(url))(_.close)
+ *   val pool = module[Pool](Pool.over(wire[Db]))(_.close)   // Db ?=> Module[...]
+ *   val app  = (db and pool) { wire[Pool].borrow() }        // : Int ! Resource
+ *   Resource.run(app)
+ * }}}
+ *
+ * `and` takes its right operand INSIDE the left's context, `F[Module[G]]`:
+ * a plain module coerces (a value is a context function that ignores
+ * its argument), and a module whose acquisition needs an earlier one
+ * reads it with `wire[Db]` — so the dependency graph is written in
+ * the composition and checked by the compiler: an acquisition naming
+ * a capability no module before it installs does not compile. Left
+ * acquires first, so the right (inner) releases first; nesting order
+ * and the override story are `Providing.and`'s, unchanged.
+ *
+ * A class, not an alias over the program: an extension `apply` on
+ * `Providing[F] ! Resource` typed `m { wire[Db].q }` without the
+ * expected type, and the body eagerly applied (the E10 trap) — the
+ * same body against a class method types as it does on `Providing`.
+ */
+final class Module[F[_]](val build: Providing[F] ! Resource):
+  /** compose; the right operand is built inside the left's context, and is the inner layer */
+  infix def and[G[_]](that: F[Module[G]]): Module[[X] =>> F[G[X]]] =
+    new Module(build.flatMap(p => p(that).build.map(q => p and q)))
+  /** install everything and run the body inside the scope */
+  def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
+
+/** acquire one capability in the scope; the scope releases it */
+def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
+  new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
+
+/**
+ * The plan is the TYPE (specs/di.md, stage 1): a module's `F` is the
+ * curried chain `A ?=> B ?=> … ?=> X`, outer to inner in acquisition
+ * order, so what it will install — and in what order — is read off
+ * `F` at compile time, before anything is built. That is why a
+ * dependent module (`Db ?=> Module[…]`), whose VALUE cannot be seen
+ * without a `Db`, still has a plan: its `G` is in the type of `and`.
+ * Names are the type symbols' — an opaque qualifier (`Primary`) shows
+ * as itself, which the erased class could not do.
+ */
+extension [F[_]](m: Module[F])
+  inline def plan: Vector[String] = ${ Module.planImpl[F] }
+
+object Module:
+  /** a module with nothing to build or release — a test double, a config value */
+  def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p))
+  /** the same, from the bare value */
+  def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
+
+  import scala.quoted.*
+  /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;
+   * walk it to the marker, naming each parameter */
+  def planImpl[F[_] : Type](using Quotes): Expr[Vector[String]] =
+    import quotes.reflect.*
+    val marker = TypeRepr.of[Module.Marker]
+    def walk(t: TypeRepr, acc: List[String]): List[String] = t.dealias match
+      case AppliedType(fn, List(a, rest)) if fn.typeSymbol.name.startsWith("ContextFunction") =>
+        walk(rest, a.typeSymbol.name :: acc)
+      case t if t =:= marker => acc.reverse
+      case other => report.errorAndAbort(
+        s"Module.plan: expected a chain of context functions ending in the marker, found ${other.show}")
+    val names = walk(TypeRepr.of[F[Module.Marker]], Nil)
+    val list = Expr(names)
+    '{ $list.toVector }
+  /** the end of the chain the plan walks to; never inhabited */
+  sealed trait Marker

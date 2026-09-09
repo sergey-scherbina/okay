@@ -37,6 +37,17 @@ enum SqlValue:
    * without a describe); a named composite's fields are typed when the
    * driver resolves them. A NULL field is `Null`. */
   case Row(fields: Vector[SqlValue])
+  /** microseconds since the epoch, UTC (sql-temporal-types): a
+   * `timestamptz` exactly; a `timestamp` without zone read as UTC,
+   * stated. Renders as ISO 8601 (`Temporal.renderTimestamp`) */
+  case Timestamp(micros: Long)
+  /** days since 1970-01-01 */
+  case Date(days: Int)
+  /** microseconds into the day (a `time` without zone) */
+  case Time(micros: Long)
+  case Uuid(v: java.util.UUID)
+  /** json/jsonb: the document's text, untouched */
+  case Json(text: String)
 
 /** the column types verify speaks; `Other` carries a vendor type by
  * name so a drift report can say what it found rather than shrug */
@@ -45,6 +56,9 @@ enum SqlType:
   /** numeric/decimal: exact, arbitrary precision */
   case Num
   case Other(name: String)
+  // the temporal, uuid and json columns (sql-temporal-types); a
+  // String field fits every one of them — the ISO text is what it reads
+  case Timestamp, Date, Time, Uuid, Json
   /** an array column; `Other` as the element when the driver's
    * metadata cannot name it (JDBC) — decode checks the elements */
   case Arr(elem: SqlType)
@@ -60,7 +74,7 @@ final case class Col(label: String, tpe: SqlType, nullable: Boolean)
 enum Isolation:
   case ReadCommitted, RepeatableRead, Serializable
 
-final case class Granted(requested: Isolation, granted: Isolation):
+final case class Granted(requested: Isolation, granted: Isolation, readOnly: Boolean = false):
   def downgraded: Boolean = granted != requested
 
 /**
@@ -93,12 +107,29 @@ trait Sql:
   /** opens a transaction; a second begin before commit/rollback
    * REFUSES loudly (nested transact is the rollback that quietly
    * does not roll back — specs/jdbc.md) */
-  def begin(isolation: Isolation): Granted ! Async
+  /** `readOnly` asks for a READ ONLY transaction — the FOREIGN
+   * posture's declaration where the DBA gave us reads; the answer's
+   * `readOnly` is what the engine GRANTED (pg enforces it, H2 takes
+   * the JDBC hint and ignores it — and says so) */
+  def begin(isolation: Isolation, readOnly: Boolean = false): Granted ! Async
   def commit(): Unit ! Async
   def rollback(): Unit ! Async
 
   /** the sync emergency brake (see the trait comment) */
   def cancel(): Unit
+
+  /** the SQLSTATE behind a failure this driver raised, when it has
+   * one — the engine's own classification, so the region can tell a
+   * serialization failure (a normal outcome under Serializable, to
+   * be retried) from a defect. `None` for anything else. */
+  def sqlState(t: Throwable): Option[String] = None
+
+object Sql:
+  /** the states a region RETRIES: serialization_failure and
+   * deadlock_detected (the SQL standard's class 40, transaction
+   * rollback — the engine chose this transaction to lose) */
+  def retryable(state: String): Boolean =
+    state == "40001" || state == "40P01"
 
 /** startup drift between our Schema and their schema: data naming
  * the column, never a throw (the Durable fingerprint lesson at the

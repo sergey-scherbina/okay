@@ -172,50 +172,144 @@ aliases), so every existing application and test compiles unchanged.
 
 ## Behavior
 
-Stage 0 — the vocabulary (ui-vocab):
-- [ ] `Box` with weights: the terminal divides width by weight, the
-      DOM maps to flex-grow; Row/Column are Box and every existing
-      test passes unchanged
-- [ ] style tokens: a token renders differently on each host and the
+Stage 0 — the vocabulary (ui-vocab, LANDED 2026-09-09):
+- [x] `Box` with weights: the terminal divides the row's natural
+      width by weight, the DOM maps to flex-grow (and the box carries
+      `data-w`, so a patch consumer replacing one child gives it its
+      flex without holding the tree — TestDom's law found a Replace
+      losing it); Row/Column stay as they were and every existing test
+      passes unchanged
+- [x] style tokens: a token renders differently on each host and the
       SAME on the test host; no host receives a pixel
-- [ ] the diff law holds for every new node: diff-then-patch equals
-      the next tree across shuffles, removals, insertions and edits
-      (the keyed battery, extended)
-- [ ] `lower` is total over level S and its result is level L only
-- [ ] `keys(s) == keys(lower(s))` for every semantic node
-- [ ] diff commutes with lowering
+- [x] the diff law holds for every new node: diff-then-patch equals
+      the next tree (TestVocab's battery: every semantic node in one
+      screen, edits, a tab switch, keyed items appearing and
+      vanishing; TestDom's battery extended at the DOM)
+- [x] `lower` is total over level S and its result is level L only;
+      level L is a fixed point; a claimed node is sent as itself
+- [x] `keys(s) == keys(lower(s))` for every semantic node, under any
+      vocabulary — and only the SELECTED tab's page is a capability
+- [x] diff commutes with lowering: `lower(patch(a, diff(a, b))) ==
+      lower(b)` under every vocabulary; a form edit is the same narrow
+      SetValue at the same path on either tree
+- [x] `Wire.serve(init, vocab)` lowers before the first line: a
+      level-L client (the Live pages' `live.js`, extended for level L)
+      never receives a semantic node; hello arrives in stage 1
 
-Stage 1 — the protocol (ui-protocol):
-- [ ] `Schema[Ui]`, `Schema[Event]`, `Schema[Patch]` derived; every
-      shape round-trips through JSON and CBOR; the derived JSON equals
-      `WireJson`'s on the existing battery (then `WireJson` retires)
-- [ ] hello: a client claiming only level L receives a tree with no
-      semantic node; a client claiming `Table` receives `Table`
-- [ ] the conformance script: one line sequence, the frames the test
-      host produces; the terminal, DOM and React hosts produce the
-      same frames modulo painting
-- [ ] docs/protocol/frontend.md is written from the derived schemas,
-      not by hand (rendered, so it cannot drift)
+Stage 1 — the protocol (ui-protocol, LANDED 2026-09-09):
+- [x] `Schema[Ui]`, `Schema[Event]`, `Schema[Patch]` and the envelope
+      `Schema[Protocol.Msg]` derived (the enumerations spell
+      themselves short: `"h"`/`"v"`, `"secret"`, `"danger"`); every
+      shape round-trips through JSON lines and CBOR bytes from the one
+      definition. `WireJson` RETIRED — not "equal on the battery", the
+      derived shape replaced it (see Decisions), and every consumer
+      (Sessions, okay-script's Site and `live.js`, the tests) speaks
+      `Protocol` now
+- [x] hello: a client claiming nothing receives a tree with no
+      semantic node; one claiming `form` receives `Form`; unknown
+      names are ignored; an event before any hello is served as
+      level L, and that first line is still handled
+- [x] the conformance script (`docs/protocol/conformance.jsonl`): the
+      client's outs and the server's ins with the tree the client must
+      hold after each; `Wire.client` over a recording host reproduces
+      every tree, and says every out, hello first
+- [x] `docs/protocol/frontend.md` is rendered from the derived schemas
+      by `Protocol.document` (a shape language over the Schema
+      algebra, recursion by name — `JsonSchema.of` overflows on the
+      recursive `Ui`); `TestProtocol` fails when either file drifts,
+      `OKAY_RENDER=1` regenerates
 
-Stage 2 — the hybrid (ui-hybrid):
-- [ ] typing into a `Form`'s inputs crosses the wire ZERO times;
-      pressing submit crosses once with `Submitted(key, json)`, which
-      decodes by the form's schema on the server
-- [ ] an `Input` marked `live` sends `Edited` per change, as today
-- [ ] `Local.Toggle` and `Local.Tab` change what is shown without a
-      line on the wire; the server's next patch still applies
-- [ ] a `SetValue` from the server overrides a local edit
-- [ ] a forged `Submitted` (a key not shown, or a value the schema
-      rejects) never reaches `update`
+Stage 2 — the hybrid (ui-hybrid, LANDED 2026-09-09):
+- [x] typing into a `Form`'s inputs crosses the wire ZERO times (the
+      client's tree keeps the typed value and the host re-renders it);
+      pressing submit crosses ONCE with `Submitted(key, edits)` — every
+      field's value as the edit a live form would have sent — folded
+      on the server by `Form.submitted` through the SAME `Form.edit`,
+      so a submitted form cannot decode differently from a typed one
+- [x] an `Input` marked `live` sends `Edited` per change; so does any
+      input outside a `Form`
+- [x] a CLAIMED `Tabs` or `Disclosure` switches on the client without
+      a line on the wire (the local behaviours are the claimable
+      nodes, not a separate `Local` type — see Decisions); unclaimed,
+      their lowering's buttons round-trip as `Pressed`
+- [x] a `SetValue` from the server lands on the client's tree and
+      overrides the local edit
+- [x] a forged `Submitted` — a key that is not a shown `Form`, an
+      edit naming a field outside that form, or an "edit" that is not
+      one — never reaches `update`; `Wire.permitted` checks all three
 
-Stage 3 — the first thin client (ui-native):
-- [ ] a Compose Multiplatform client (Kotlin, no okay dependency)
-      draws level L, claims nothing else, passes the conformance
-      script
-- [ ] the same server, unchanged, drives the browser and the native
-      client at once
+Stage 3 — the first thin client (ui-compose, LANDED 2026-09-09):
+- [x] `okay-compose/` — a Gradle/Kotlin project beside sbt with NO
+      okay dependency: `protocol/` (the document transcribed as
+      sealed interfaces, a total codec for the `{"Case": {...}}` sum,
+      patch application, the hybrid rule) whose test replays
+      `docs/protocol/conformance.jsonl` — every `in` applied, every
+      `tree` held, every `out` produced from the same user actions,
+      the Submitted included — and `app/` (Compose Desktop: level L
+      in Material, the JDK's WebSocket, hello first, claims nothing).
+      3 of 3 conformance tests; the app compiles
+- [x] the same server, unchanged, drives the browser and the native
+      client at once: `okay.script.Serve` served a Live counter page,
+      the browser's HTML + `live.js` came from `GET /counter`, and the
+      headless smoke (`./gradlew :app:smoke`) opened the page's own
+      WebSocket, received the tree, pressed `inc`, and held
+      `count: 1` after the server's patch — measured, not inferred
 - [ ] Scala Native + GTK (or Swing on the JVM) as a host over the same
-      seam — the "out of the box" leg
+      seam — the "out of the box" leg: DEFERRED, its own claim
+      (ui-native-toolkits in BACKLOG); nothing in stages 0-3 needs it
+- [ ] Android: the composables are common code, but no SDK is on the
+      build machine; the `androidTarget()` is added when one is, so
+      the build that is checked in is the build that runs
+
+## Results
+
+Stage 3 (ui-compose) landed 2026-09-09. `okay-compose/README.md` is
+the entry: `cd okay-compose && ./gradlew :protocol:test` is the
+conformance proof, `./gradlew :app:run --args "<ws url>"` the window,
+`./gradlew :app:smoke --args "<ws url> <key>"` the headless check.
+Gradle 8.11.1 by wrapper (the machine had no Gradle, Kotlin or
+Android SDK; sdkman installed Gradle once to generate the wrapper).
+The Kotlin protocol module is ~450 lines, the app ~250. The wire's
+first native client was written from `docs/protocol/frontend.md`
+alone, which is what stage 1 was for.
+
+Stage 2 (ui-hybrid) landed 2026-09-09. `Event.Submitted(key, edits)`;
+`Form` moved to level L (every client draws it — the hybrid rule
+lives on it); `Disclosure` added to level S; `Ui.forms`, `Ui.foldLocal`,
+`Ui.submit`, `Ui.map`; `Wire.client` folds locally and submits once;
+`Wire.permitted` validates a Submitted against the shown forms;
+`Form.submitted`; `live.js` draws `Form` (data-form), keeps field
+values in the DOM, submits once, and speaks only for `data-live`
+inputs; okay-script's `Live.form` is a `Form` node handling
+`Submitted`. The protocol document states the hybrid rule and the
+conformance script carries a `Submitted`. TestHybrid (7); okay-ui 81,
+okay-script, okay-demo, JS and Native legs, Live-tagged suites green.
+
+Stage 1 (ui-protocol) landed 2026-09-09. `okay.ui.Protocol`: the
+derived schemas (enumerations as short names), `Msg` (Hello, Tree,
+Patch, Event, Close), JSON lines and CBOR bytes, `document`,
+`describe` (the shape language), `conformance`. `Wire.serve` reads
+the hello first and lowers per its vocabulary; `Wire.client(host,
+vocab)` says hello first. `live.js` rewritten to the derived shapes
+(~160 lines, still dependency-free). `docs/protocol/frontend.md` and
+`docs/protocol/conformance.jsonl` are the contract a Compose client
+implements in stage 3. TestProtocol (5); okay-ui 74, okay-script 166,
+okay-demo 54, the Live-tagged wire/session/jetty suites, JS and
+Native legs green.
+
+Stage 0 (ui-vocab) landed 2026-09-09. Level L: `Box(dir, weights,
+gap, pad)`, `Image`, `Scroll`, `Input` kinds (text, secret,
+multiline, number) and `live`, `Button` roles, `Style` tones and
+sizes. Level S: `Form`, `Items`, `Table`, `Tabs`, `Modal`, each with
+its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`, `Ui.Vocab`. Every host
+draws the new level L (terminal: weights, gap, pad, tones, secret
+masking; React/DOM: flex, classes, input types, textarea, img; the
+Live pages' `live.js`: the same) and lowers level S at its entry
+(`Ui.diffing` lowers for a Backend, `React.elem` for the React host,
+`Frame.render` for the terminal). `Form` renders numeric fields as
+`InputKind.Number`. 7 tests in TestVocab, the DOM battery extended;
+the 69 existing okay-ui tests, okay-script's 166 and okay-demo's 54
+pass unchanged.
 
 ## Out of scope
 - Animation and gestures beyond press/edit/scroll.
@@ -242,6 +336,64 @@ Stage 3 — the first thin client (ui-native):
   application says "danger", the host says red.
 - **Codecs derived, WireJson retired** — one definition, two
   encodings, versioning by the rules Schema already has.
+- **A Gradle project beside sbt, not inside it** — the client's
+  whole point is that it depends on nothing of okay; a Scala.js or
+  sbt-driven Kotlin build would have put okay's build in its path.
+  `okay-compose/settings.gradle.kts` lives INSIDE that directory (the
+  repo root stays sbt's), and the conformance test finds
+  `docs/protocol/` by walking up — the two builds meet only at the
+  rendered files.
+- **Desktop first, Android when an SDK exists** — Compose
+  Multiplatform's desktop target runs the same composables; adding
+  `androidTarget()` without an SDK would check in a build nobody on
+  this machine can run.
+- **The smoke is a main, not a test** — a test that needs a running
+  okay-script server would couple the two builds; the smoke is the
+  operator's tool ("is this server speaking the protocol?") and was
+  run once against a real server for the landing.
+- **Form is level L; the local behaviours are claimable nodes** — the
+  spec's first sketch had a separate closed `Local` enum (`Toggle`,
+  `Tab`) and Form as a semantic node. Both fell to the same test:
+  once a Form is lowered, a level-L client cannot tell its Box from
+  any other and the hybrid rule has nothing to attach to. So every
+  client draws `Form` (a column plus a button — cheap), and the rule
+  is stated ON it. The "local set" is then exactly the semantic nodes
+  a client claims: claim `tabs`, switch tabs locally; claim
+  `disclosure`, toggle locally. Still closed, still data, and no
+  second vocabulary to keep in step with the first.
+- **`Submitted` carries edits, not Json** — the core tree has no
+  `Schema[Json]`, and a Vector of the same `Edited`/`Toggled`/`Chosen`
+  a live form sends lets the server fold a submission through the
+  one `Form.edit` it already trusts: the drift law holds by
+  construction, and the client needs no schema at all.
+- **The derived shape IS the wire; WireJson retired** — the spec
+  first planned "derived JSON equals WireJson's, then retire", which
+  is impossible (a derived sum is `{"Case": {...}}`, the dialect was
+  `{"t": "text"}`), and keeping two shapes would have made the
+  document a lie about one of them. The derived shape is a little
+  longer on the wire and much better for a client in another
+  language: every field present, by name, and the document names
+  exactly what the codec writes.
+- **A shape language, not JSON Schema, in the document** — the
+  codec's `JsonSchema.of` has no `$ref` and overflows on a recursive
+  type; the wire's document needs recursion by name and nothing else
+  JSON Schema offers. `Protocol.describe` renders the algebra in one
+  screen a Kotlin developer can read whole.
+- **Hello first, but not a gate** — a client that sends an event
+  before any hello is served as level L; a second hello is ignored.
+  The Live pages' journal (ui-durable) keeps hello lines verbatim and
+  the refold reads them like any other.
+- **Row/Column stay; Box is the general node** — the spec first said
+  "Row/Column are Box"; an enum case cannot be an alias with its own
+  extractor, and rewriting every `case Row(c, k)` in the repository
+  for no semantic gain is not surgical. Level L is nine nodes, Row
+  and Column being Box without weights, gap or pad.
+- **`Items`, not `List`** — a case named `List` inside `Ui` shadows
+  Scala's in every `import Ui.*`, including the patch paths.
+- **Semantic nodes lower at the HOST's entry in-process** — a Backend
+  is a level-L consumer by definition, so `Ui.diffing` lowers before
+  the diff; the React host and the terminal lower in their renderers.
+  Nothing between the application and the host needs to know.
 - **First native target: Compose** — the operator's call
   (2026-09-09). Kotlin, Compose Multiplatform, so one thin client
   covers Android and desktop; the Kotlin side reads CBOR or JSON by

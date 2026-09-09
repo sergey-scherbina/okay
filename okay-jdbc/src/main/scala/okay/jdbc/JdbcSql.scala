@@ -1,7 +1,7 @@
 package okay.jdbc
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, async, effect}
-import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
+import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import java.sql.{Connection, PreparedStatement, ResultSet, ResultSetMetaData, Types}
 
 /**
@@ -20,6 +20,10 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
 
   private var inTx = false
   private var autoBefore = true
+  // restored with autocommit when the region ends (sql-readonly-region):
+  // a transact(Serializable) must not leave the connection Serializable
+  private var isolationBefore = Connection.TRANSACTION_READ_COMMITTED
+  private var readOnlyBefore = false
 
   def describe(sql: String): Vector[Col] ! Async = async {
     val ps = conn.prepareStatement(sql)
@@ -31,31 +35,32 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   : Chunk[Vector[SqlValue]] ! (Produce + Async) =
     type F = Produce + Async
 
-    def readChunk(rs: ResultSet, cols: Vector[SqlType]): Chunk[Vector[SqlValue]] =
+    def readChunk(rs: ResultSet, cols: Vector[SqlType], codes: Vector[Int]): Chunk[Vector[SqlValue]] =
       val buf = ChunkBuf[Vector[SqlValue]](fetchSize)
       var i = 0
       while i < fetchSize && rs.next() do
-        buf(i) = rowOf(rs, cols)
+        buf(i) = rowOf(rs, cols, codes)
         i += 1
       buf.take(i)
 
-    def go(rs: ResultSet, ps: PreparedStatement, cols: Vector[SqlType])
+    def go(rs: ResultSet, ps: PreparedStatement, cols: Vector[SqlType], codes: Vector[Int])
     : Chunk[Vector[SqlValue]] ! F =
-      effect[F, Chunk[Vector[SqlValue]]](Async.Run(() => readChunk(rs, cols))).flatMap { c =>
+      effect[F, Chunk[Vector[SqlValue]]](Async.Run(() => readChunk(rs, cols, codes))).flatMap { c =>
         if c.length < fetchSize then
           effect[F, Unit](Async.Run { () => rs.close(); ps.close() }).flatMap { _ =>
             if c.isEmpty then okay.pure(Chunks.emptyChunk)
             else effect[F, Chunk[Vector[SqlValue]]](c)
           }
-        else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => go(rs, ps, cols))
+        else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => go(rs, ps, cols, codes))
       }
 
-    effect[F, (ResultSet, PreparedStatement, Vector[SqlType])](Async.Run { () =>
+    effect[F, (ResultSet, PreparedStatement, Vector[SqlType], Vector[Int])](Async.Run { () =>
       val ps = conn.prepareStatement(sql)
       ps.setFetchSize(fetchSize)
       bindAll(ps, params)
       val rs = ps.executeQuery()
-      (rs, ps, colsOf(rs.getMetaData).map(_.tpe))
+      val md = rs.getMetaData
+      (rs, ps, colsOf(md).map(_.tpe), (1 to md.getColumnCount).toVector.map(md.getColumnType))
     }).flatMap(go)
 
   def update(sql: String, params: Vector[SqlValue]): Long ! Async = async {
@@ -74,35 +79,51 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     finally ps.close()
   }
 
-  def begin(isolation: Isolation): Granted ! Async = async {
+  def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = async {
     if inTx then throw IllegalStateException(
       "nested transaction: this connection is already in one — " +
         "refuse rather than silently flatten (specs/jdbc.md)")
     autoBefore = conn.getAutoCommit
+    isolationBefore = conn.getTransactionIsolation
+    readOnlyBefore = conn.isReadOnly
     conn.setAutoCommit(false)
     conn.setTransactionIsolation(levelOf(isolation))
+    if readOnly then conn.setReadOnly(true)
     inTx = true
-    Granted(isolation, isolationOf(conn.getTransactionIsolation))
+    // JDBC's setReadOnly is a HINT; what the connection reports back is
+    // what was granted (H2 ignores it and reports false; pg enforces it)
+    Granted(isolation, isolationOf(conn.getTransactionIsolation), readOnly && conn.isReadOnly)
   }
 
   def commit(): Unit ! Async = async {
     conn.commit()
-    conn.setAutoCommit(autoBefore)
-    inTx = false
+    restore()
   }
 
   def rollback(): Unit ! Async = async {
     conn.rollback()
-    conn.setAutoCommit(autoBefore)
-    inTx = false
+    restore()
   }
+
+  private def restore(): Unit =
+    conn.setAutoCommit(autoBefore)
+    conn.setTransactionIsolation(isolationBefore)
+    conn.setReadOnly(readOnlyBefore)
+    inTx = false
+
+  /** closes the connection (a pooled one goes back to its pool) */
+  def close(): Unit = conn.close()
+
+  /** the engine's SQLSTATE, as JDBC carries it */
+  override def sqlState(t: Throwable): Option[String] = t match
+    case e: java.sql.SQLException => Option(e.getSQLState)
+    case _ => None
 
   /** the sync emergency brake: a no-op unless a transaction is open */
   def cancel(): Unit =
     if inTx then
       conn.rollback()
-      conn.setAutoCommit(autoBefore)
-      inTx = false
+      restore()
 
 object JdbcSql:
 
@@ -115,7 +136,39 @@ object JdbcSql:
 
   /** java.sql.Types → the neutral vocabulary. NUMERIC/DECIMAL are
    * exact (`Num`, pg-scalar-types) — the v1 F64 mapping rounded */
+  /** the text fallback of a temporal read: parsed when the form is
+   * known, the text itself when not — loud in the type */
+  private def textual[N](s: String, parse: String => Option[N], mk: N => SqlValue): SqlValue =
+    if s == null then SqlValue.Null else parse(s).fold(SqlValue.Text(s))(mk)
+
+  private def microsOf(t: java.sql.Timestamp): Long =
+    Math.floorDiv(t.getTime, 1000L) * 1000000L + t.getNanos / 1000L
+
+  private def microsOf(i: java.time.Instant): Long =
+    i.getEpochSecond * 1000000L + i.getNano / 1000L
+
+  private def instantOf(us: Long): java.time.Instant =
+    java.time.Instant.ofEpochSecond(Math.floorDiv(us, 1000000L), Math.floorMod(us, 1000000L) * 1000L)
+
+  /** a Timestamp param by the DECLARED parameter type: an
+   * OffsetDateTime at UTC into a `timestamp with time zone`, a
+   * LocalDateTime (the UTC wall clock) into a `timestamp`; a driver
+   * that cannot describe its parameters (SQLite) takes ISO text */
+  private def bindTimestamp(ps: PreparedStatement, i: Int, us: Long, paramType: Int => Int): Unit =
+    paramType(i) match
+      case Types.TIMESTAMP_WITH_TIMEZONE =>
+        ps.setObject(i, java.time.OffsetDateTime.ofInstant(instantOf(us), java.time.ZoneOffset.UTC))
+      case Types.TIMESTAMP =>
+        ps.setObject(i, java.time.LocalDateTime.ofInstant(instantOf(us), java.time.ZoneOffset.UTC))
+      case _ => ps.setString(i, Temporal.renderTimestamp(us))
+
   private def typeOf(t: Int, vendorName: String): SqlType = t match
+    // named before the code: H2 reports UUID under BINARY, pg under OTHER
+    case _ if vendorName != null && vendorName.equalsIgnoreCase("uuid") => SqlType.Uuid
+    case _ if vendorName != null && (vendorName.equalsIgnoreCase("json") || vendorName.equalsIgnoreCase("jsonb")) => SqlType.Json
+    case Types.TIMESTAMP | Types.TIMESTAMP_WITH_TIMEZONE => SqlType.Timestamp
+    case Types.DATE => SqlType.Date
+    case Types.TIME => SqlType.Time
     case Types.BOOLEAN | Types.BIT => SqlType.Bool
     case Types.TINYINT | Types.SMALLINT | Types.INTEGER => SqlType.I32
     case Types.BIGINT => SqlType.I64
@@ -142,6 +195,15 @@ object JdbcSql:
     case d: java.math.BigDecimal => SqlValue.Num(BigDecimal(d))
     case s: String => SqlValue.Text(s)
     case bs: Array[Byte] => SqlValue.Bytes(bs)
+    case t: java.sql.Timestamp => SqlValue.Timestamp(microsOf(t))
+    case t: java.time.OffsetDateTime => SqlValue.Timestamp(microsOf(t.toInstant))
+    case t: java.time.Instant => SqlValue.Timestamp(microsOf(t))
+    case t: java.time.LocalDateTime => SqlValue.Timestamp(microsOf(t.toInstant(java.time.ZoneOffset.UTC)))
+    case d: java.sql.Date => SqlValue.Date(d.toLocalDate.toEpochDay.toInt)
+    case d: java.time.LocalDate => SqlValue.Date(d.toEpochDay.toInt)
+    case t: java.sql.Time => SqlValue.Time(t.toLocalTime.toNanoOfDay / 1000L)
+    case t: java.time.LocalTime => SqlValue.Time(t.toNanoOfDay / 1000L)
+    case u: java.util.UUID => SqlValue.Uuid(u)
     case a: java.sql.Array => arrayOf(a)
     case xs: Array[AnyRef] => SqlValue.Arr(xs.toVector.map(valueOf))
     case other => SqlValue.Text(other.toString)
@@ -154,10 +216,47 @@ object JdbcSql:
         valueOf(scala.runtime.ScalaRunTime.array_apply(arr, i))))
       case other => SqlValue.Text(other.toString)
 
-  private def rowOf(rs: ResultSet, cols: Vector[SqlType]): Vector[SqlValue] =
+  /** the temporal reads are java.time objects by the column's JDBC
+   * code — a `timestamp with time zone` as an OffsetDateTime (absolute),
+   * a `timestamp` as a LocalDateTime read as UTC — so no session or
+   * JVM zone enters (sql-temporal-types). The Calendar road is NOT
+   * used: H2 stamps the session offset onto a UTC calendar's wall
+   * clock, measured. A driver without the JDBC 4.2 getObject(Class)
+   * (SQLite) falls back to the column's text through `Temporal`. */
+  private def rowOf(rs: ResultSet, cols: Vector[SqlType], codes: Vector[Int]): Vector[SqlValue] =
     Vector.tabulate(cols.length) { ix =>
       val i = ix + 1
       cols(ix) match
+        case SqlType.Timestamp =>
+          try
+            if codes(ix) == Types.TIMESTAMP_WITH_TIMEZONE then
+              val t = rs.getObject(i, classOf[java.time.OffsetDateTime])
+              if t == null then SqlValue.Null else SqlValue.Timestamp(microsOf(t.toInstant))
+            else
+              val t = rs.getObject(i, classOf[java.time.LocalDateTime])
+              if t == null then SqlValue.Null else SqlValue.Timestamp(microsOf(t.toInstant(java.time.ZoneOffset.UTC)))
+          catch case _: java.sql.SQLException => textual(rs.getString(i), Temporal.parseTimestamp, SqlValue.Timestamp(_))
+        case SqlType.Date =>
+          try
+            val d = rs.getObject(i, classOf[java.time.LocalDate])
+            if d == null then SqlValue.Null else SqlValue.Date(d.toEpochDay.toInt)
+          catch case _: java.sql.SQLException => textual(rs.getString(i), Temporal.parseDate, SqlValue.Date(_))
+        case SqlType.Time =>
+          try
+            val t = rs.getObject(i, classOf[java.time.LocalTime])
+            if t == null then SqlValue.Null else SqlValue.Time(t.toNanoOfDay / 1000L)
+          catch case _: java.sql.SQLException => textual(rs.getString(i), Temporal.parseTime, SqlValue.Time(_))
+        case SqlType.Uuid => rs.getObject(i) match
+          case null => SqlValue.Null
+          case u: java.util.UUID => SqlValue.Uuid(u)
+          case s: String => SqlValue.Uuid(java.util.UUID.fromString(s))
+          case bs: Array[Byte] if bs.length == 16 =>
+            val bb = java.nio.ByteBuffer.wrap(bs)
+            SqlValue.Uuid(java.util.UUID(bb.getLong, bb.getLong))
+          case other => SqlValue.Text(other.toString)
+        case SqlType.Json =>
+          val s = rs.getString(i)
+          if s == null then SqlValue.Null else SqlValue.Json(s)
         // the reference reads carry their own null; sqlite-jdbc's
         // getBigDecimal does not mark the column, so wasNull after it
         // throws — decide nullness from the value here
@@ -173,13 +272,23 @@ object JdbcSql:
             case SqlType.Text => SqlValue.Text(rs.getString(i))
             case SqlType.Bytes => SqlValue.Bytes(rs.getBytes(i))
             case SqlType.Arr(_) => arrayOf(rs.getArray(i))
-            case SqlType.Num | SqlType.Other(_) | SqlType.Row(_) =>
+            // Num and the temporal kinds were answered above; the
+            // compiler wants the match total
+            case SqlType.Num | SqlType.Other(_) | SqlType.Row(_) | SqlType.Timestamp | SqlType.Date
+               | SqlType.Time | SqlType.Uuid | SqlType.Json =>
               val s = rs.getString(i)
               SqlValue.Text(if s == null then "" else s)
           if rs.wasNull then SqlValue.Null else v
     }
 
   private def bindAll(ps: PreparedStatement, params: Vector[SqlValue]): Unit =
+    // the declared parameter types, asked for once and only when a
+    // temporal param needs them (a describe round trip on pg)
+    lazy val declared: Int => Int =
+      try
+        val md = ps.getParameterMetaData
+        i => try md.getParameterType(i) catch case _: java.sql.SQLException => Types.OTHER
+      catch case _: java.sql.SQLException => _ => Types.OTHER
     var i = 0
     while i < params.length do
       params(i) match
@@ -191,6 +300,17 @@ object JdbcSql:
         case SqlValue.Num(v) => ps.setBigDecimal(i + 1, v.bigDecimal)
         case SqlValue.Text(v) => ps.setString(i + 1, v)
         case SqlValue.Bytes(v) => ps.setBytes(i + 1, v)
+        case SqlValue.Timestamp(us) => bindTimestamp(ps, i + 1, us, declared)
+        case SqlValue.Date(d) =>
+          try ps.setObject(i + 1, java.time.LocalDate.ofEpochDay(d.toLong))
+          catch case _: java.sql.SQLException => ps.setString(i + 1, Temporal.renderDate(d))
+        case SqlValue.Time(us) =>
+          try ps.setObject(i + 1, java.time.LocalTime.ofNanoOfDay(us * 1000L))
+          catch case _: java.sql.SQLException => ps.setString(i + 1, Temporal.renderTime(us))
+        case SqlValue.Uuid(u) => ps.setObject(i + 1, u)
+        // json binds as its text; a jsonb column on pg wants the
+        // DBA's `?::jsonb` in the statement (bind-don't-model)
+        case SqlValue.Json(s) => ps.setString(i + 1, s)
         // an Object[] is what H2 (and the pg driver's setObject) take
         // for an ARRAY parameter; the vendor-typed createArrayOf road
         // is not needed for the engines this stack binds
@@ -208,6 +328,11 @@ object JdbcSql:
     case SqlValue.Num(x) => x.bigDecimal
     case SqlValue.Text(s) => s
     case SqlValue.Bytes(bs) => bs
+    case SqlValue.Timestamp(us) => java.time.OffsetDateTime.ofInstant(instantOf(us), java.time.ZoneOffset.UTC)
+    case SqlValue.Date(d) => java.time.LocalDate.ofEpochDay(d.toLong)
+    case SqlValue.Time(us) => java.time.LocalTime.ofNanoOfDay(us * 1000L)
+    case SqlValue.Uuid(u) => u
+    case SqlValue.Json(s) => s
     case SqlValue.Arr(elems) => elems.map(jdbcOf).toArray
     case SqlValue.Row(fields) => fields.map(jdbcOf).toArray
 
