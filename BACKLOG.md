@@ -124,7 +124,9 @@ correctness first:
       givens for the java.time types and UUID; both drivers encode/
       decode; verify accepts the pairs. Keep Text←Timestamp as the
       lossless fallback so nothing that reads today stops reading.
-- [ ] sql-readonly-region — (a) `transact(readOnly = true)`: `SET
+- [x] sql-readonly-region — DONE 2026-09-09 (0777e790): readOnly on begin and
+      the regions, Granted.readOnly read back per engine, JdbcSql restores
+      isolation + readOnly with autocommit. Was: (a) `transact(readOnly = true)`: `SET
       TRANSACTION READ ONLY` on pg, `Connection.setReadOnly` on JDBC,
       the FOREIGN posture's honest declaration where the DBA gave us
       reads; (b) `JdbcSql.commit/rollback/cancel` restore autocommit

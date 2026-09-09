@@ -1,6 +1,9 @@
 # Sprint
 
 ## Doing
+- sql-pool — BACKLOG "persistence-audit", lane 5 of 7: okay.sql.Pool,
+  driver-neutral, cancel-safe hand-off, the brake on return. Claim:
+  sql-pool. Then: persist-saga, docs-dynamo.
 - resilience-faults — specs/resilience.md stage 2: seeded Faults.http, the composite under a plan (claim: resilience-faults)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
