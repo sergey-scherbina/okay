@@ -1,0 +1,39 @@
+task: failing-over
+agent: fable51-core
+started: 2026-09-09
+branch: feature/failing-over
+worktree: ../okay-wt-failing-over
+spec: specs/sql.md "The brake runs on a failing statement
+  (resource-async-failure)" — a new paragraph + box; docs/typepedia.md
+  "The row-typeclass recipe" and the cast list
+
+why: operator, 2026-09-09 — "посмотри этот код и подумай как можно
+  избежать здесь каста или хотя бы как этот каст вынести куда-нибудь
+  и сделать его не таким явным". `FailingLow.anyRow` casts twice on
+  its own (`.asInstanceOf[F[X]]` after a class test), and duplicates
+  the guard logic that `Failing.async` already writes under a GADT
+  match with no cast.
+
+what: (1) a kernel prism over the row, beside `split` in
+  Effects.scala — `over[F : TypeableK, R](e: R[A])(f: F[A] => F[A]):
+  R[A]`: the class test proves the operation is an F, `f` keeps it
+  one at the same answer type, the row is erased; ONE cast, the same
+  claim `split` already makes, made once more in the same file.
+  (2) `anyRow` becomes `over[Async, F](e)(Failing.async.guard(_,
+  onFailure))` — no cast in Failing.scala, the logic written once.
+  (3) doc: Failing.scala's header, `<|>`/`split`'s "casts live HERE"
+  comments, typepedia's cast list + recipe, the spec paragraph.
+
+refuted before building (the road the operator's phrasing suggested,
+  "через имплисит"): a `RowLift.In[Async, F]` witness instance plus a
+  `NotGiven` identity. Probed with `summonFrom` on every TestFailing
+  shape: `(S + P) + Async` and the right-nested row do NOT resolve
+  `In[Async, F]` (In walks the left spine only), so both would take
+  the identity — the silence resource-guard's history refuses. And
+  even a complete `In` leaves `NotGiven` answering "no" on an ABSTRACT
+  F (a polymorphic Resource.run caller): unknown is not absent.
+
+predict: behaviour identical (TestFailing's 5 + TestResource's 8 pass
+  on the scratch tree already); B/op identical — `over` is inline,
+  one class test as before; zero warnings. Files: Effects.scala,
+  Failing.scala, TestFailing.scala (header only), typepedia, sql spec.
