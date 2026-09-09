@@ -1,0 +1,60 @@
+task: gate-honesty
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/gate-honesty
+worktree: ../okay-wt-honesty
+
+why: the full gate cries wolf, and it cost this session four separate
+  investigations in one day. Every one measured, every one a condition
+  of the run rather than a defect:
+
+    okay.kafka.TestKafkaInterop     237 s in the gate, 0.084 s alone
+    okay.intent.TestCutStops         39 s in the gate, 0.059 s alone
+    okay.persist.TestStable          BindException,    0.007 s alone
+    okay.ui  TestHybrid/Cmd/Swing    2 comparison failures + 2 timeouts,
+                                     84/84 alone
+
+  That is the tax: every lane pays isolated re-runs to tell a real
+  failure from noise. And the real cost is the other direction — I
+  nearly dismissed a GENUINE defect (actor-stop-drain, 219 of 300)
+  as load, by analogy with these. A gate that is noisy trains people
+  to ignore it, and then it stops working exactly once.
+
+  AGENTS.md already has the policy — "no flaky tests in the default
+  gate — only in integrationTest ... a landing's gate must not depend
+  on external timing" — and names a `gate-honesty` lane that landed
+  before. What is missing is not the policy but MEASUREMENTS: which
+  suites, by how much, and which of the two fixes each one needs.
+
+what, per suite, one of exactly two outcomes:
+  a) it depends on wall-clock timing or an external resource, so it
+     moves to `integrationTest` — which is what the policy already
+     prescribes and nobody applied to it;
+  b) its ASSERTION can be made load-independent, which is better
+     where it is possible: assert the ORDER or the COUNT the test
+     actually cares about instead of a duration. `resilience-timed-
+     flake` is the worked example — `stats.delayed == 1` on the next
+     line already says what `elapsed >= 15 ms` was trying to say.
+
+DISQUALIFYING EVIDENCE, registered before the work:
+
+  - a suite that fails in the gate and passes alone is NOT
+    automatically a flake. `actor-stop-drain` did exactly that and
+    was a real bug: the load merely widened a window that was always
+    open. So for each one I must say WHY the isolated pass is
+    evidence — a timeout that vanishes at 1/3000th the duration is a
+    resource fact; a comparison failure is not, until I can explain
+    which interleaving produced it.
+  - moving a suite to `integrationTest` is a LOSS: it stops running
+    on every landing. It is right only when the assertion genuinely
+    cannot be made load-independent, and I must say so per suite
+    rather than sweep them all sideways.
+  - I must not touch suites whose lanes are active. `gate-warnings`
+    was claimed by a sibling minutes ago for the warnings half; this
+    lane is the FAILURES half and must not collide with it.
+
+predict: most are (a) by mechanism but (b) by right answer — the
+  timeouts are honest resource starvation, yet the two okay.ui
+  comparison failures will turn out to be scheduler-order assumptions
+  that can be written order-independently. Recorded so being wrong
+  shows.
