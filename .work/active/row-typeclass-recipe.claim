@@ -1,0 +1,19 @@
+task: row-typeclass-recipe
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T12:13:04Z
+status: in-progress
+branch: feature/row-typeclass-recipe
+worktree: ../okay-wt-recipe
+spec: docs/typepedia.md (a new recipe section beside the capability one)
+
+why: the operator asked where the anchored-row-instance recipe is
+  written down and whether it holds in every case — an unmeasured
+  "yes" is what put the cast there in the first place.
+
+what: TestFailing enumerates the row shapes and asserts which resolve
+  to the guarding instance and which fall to the low-priority identity
+  (the silent hazard); typepedia gains "The row-typeclass recipe" with
+  the boundary the test enforces.
+
+next: worktree, TestFailing, measure, then write the section
