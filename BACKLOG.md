@@ -5604,7 +5604,13 @@ was true of the blocking loop and false now; corrected in the same
 commit. A build comment promising what the code no longer does is the
 same defect class as a test named for what it stopped checking.
 
-## bulk-plan-warnings — eight warnings landed on a warning-free gate
+## bulk-plan-warnings — DONE 2026-09-09 by `gate-warnings` (76478fa1)
+
+Closed by a sibling lane that swept twelve warnings in four files —
+a superset of the eight filed here — rather than by this entry.
+VERIFIED before closing it: `clean` + `Test/compile` over the whole
+build on master, zero `[warn]` lines. The entry stays for its
+measurement, which is the argument for the rule.
 
 `bulk-plan` / `bulk-rewrite` (origin, 2026-09-09) added eight compiler
 warnings to a repository whose gate had none. Measured either side of
