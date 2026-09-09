@@ -1,0 +1,20 @@
+task: sql-serialization-retry
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T05:52:48Z
+status: in-progress
+branch: feature/sql-serialization-retry
+worktree: ../okay-wt-sql-retry
+spec: specs/sql.md, new section "Serialization failures are retried"
+
+why: persistence audit lane 2 of 7 (operator's go 2026-09-09):
+  SQLSTATE 40001/40P01 handled nowhere; under RepeatableRead/
+  Serializable a serialization failure is a normal outcome.
+
+what: Sql.sqlState(t) per driver (pg code, SQLException, R2dbcException);
+  Async.attempt (error as data on one fiber); Typed.transactRetry over
+  Resource + Async bodies, re-running the region on 40001/40P01 with
+  backoff and the attempt count exposed. Tests: fake driver failing N
+  times (H2, unit); SSI write-skew on the docker pg (Live).
+
+next: worktree, spec section, failing tests
