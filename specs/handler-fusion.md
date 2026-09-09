@@ -1,0 +1,311 @@
+# Handler fusion: one composite handler for a row, staged at compile time
+
+## Overview
+
+A program over a row `F1 + F2 + … + Fk` is run today in one of two
+ways, and they are not the same cost. If every effect has a comonadic
+`Handler` (an operation answers with a plain value), `runWith` already
+runs ONE pass: `Handler.union` assembles a composite handler and
+`runFree` is a single tail-recursive loop. But the effects that need
+the continuation — `Writer`, `State`, `Throws`, `Choice`, `Reader`'s
+`local` — are run ONE AT A TIME: `Throws.run(State.handle(s)(Writer.run(p)))`
+is three walks over the program, and at every walk each operation the
+walker does not own is REBUILT (`Effect(g).flatMap(k)` — a fresh Bind
+node and a closure) for the next walk to find. For a row with k such
+effects an operation is rebuilt up to k−1 times and `resume`'s
+rotation is redone k times. That is Kiselyov's freer cost, and it is
+the cost this spec removes.
+
+The operator's proposal (2026-09-09): instead of running handlers one
+after another, COMPOSE the handlers into one handler first, then run
+the program once with the composite — and use staging to build and
+optimize that composite. This spec is the assessment of that idea
+against what the repository already has, and the design that follows.
+
+The assessment, in one paragraph: the idea is right, it is already the
+library's design for the comonadic class, it is licensed by theory the
+repository already claims, and the literature has done it three times
+under three names — fold fusion (Wu & Schrijvers, *Fusion for Free*,
+MPC 2015: handlers are folds over the free monad, and by initiality
+`fold h2 ∘ fold h1` fuses into one fold), evidence passing (Xie,
+Brachthäuser, Hillerström, Schuster & Leijen, *Effect Handlers,
+Evidently*, ICFP 2020, and Xie & Leijen, *Generalized Evidence
+Passing*, ICFP 2021: the whole handler stack travels as a vector and
+an operation indexes its handler directly, so tail-resumptive
+operations become direct calls with no forwarding chain), and
+capability passing with staging (Schuster, Brachthäuser & Ostermann,
+ICFP 2020, and the Effekt line, already cited in theory/08). Okay's
+`Free` is initial and `Eff` is the Church encoding — `Eff` IS the
+fused form, and `fromFree`/`reify` are the initiality that makes
+fusion a theorem here rather than an optimization one hopes is sound.
+What is missing is not the principle but the ARTIFACT: a composite
+`!>` interpreter for a row of continuation-aware handlers, and a
+dispatch that does not pay a type test per effect per operation.
+
+Two things the proposal gets right that must survive into the design,
+and two hazards that must not:
+
+- RIGHT: build the composite once, run once. For `Eff` the program is
+  literally `[S] => F !> S => A /> S`; give it one composite `!>` and
+  the single pass is already there. For `Free`, `runFree` is the
+  precedent — one match over the tree with the handler inlined.
+- RIGHT: staging. The row is a TYPE, so the composite's shape is known
+  at the call site; the composite should be assembled by `inline` at
+  compile time, so that the dispatch becomes one flat `match` and each
+  handler's step is inlined into the loop.
+- HAZARD 1: order is semantics. `State.run(s)(Choice.run(p))` and
+  `Choice.run(State.run(s)(p))` are DIFFERENT programs (global state
+  vs. state that backtracks); `Throws` over `Writer` decides whether a
+  log survives an error. Composition is therefore an ORDERED stack and
+  must never be presented as commutative; the composite must reproduce
+  the nested meaning for the order the user wrote. Fusion for Free
+  handles this by composing the layers' CARRIERS in order — the answer
+  type of the fused handler is the transformer stack of the layers'
+  answer types.
+- HAZARD 2: the refuted road. `specs/staged-effects.md` measured
+  run-time closure composition (`foldIn[Func]`) as "staging" and found
+  it 1.07x SLOWER than the tail-recursive Cont walk; the staged
+  artifact that won (1.9x) was an inline handler-passing program
+  evaluated at compile time. A generic "compose any two `!>` handlers"
+  combinator that builds the composite from closures at run time would
+  be that refuted road under a new name. Run-time quoted staging
+  (`okay-staging`, `scala.quoted.staging`) is also the wrong tool: it
+  is JVM-only, single-threaded by the compiler's own rule, and pays a
+  generation cost per composite — for a shape that is fully static at
+  the call site. Compile-time `inline` is the only staging this spec
+  admits.
+
+## Interface
+
+Nothing existing changes signature or meaning. Added:
+
+```scala
+// 1. flat dispatch for comonadic rows: the same Handler[F + G] as
+//    Handler.union, assembled inline so the nested <|> tests unroll
+//    into ONE match over the row's operation classes
+inline def Handler.flat[F[+_], G[+_]](using TypeableK[F], Handler[F], Handler[G]): Handler[F + G]
+
+// 2. an effect's contribution to a fused loop: what it does to ONE
+//    operation given the accumulated state it owns. Tail-resumptive
+//    by construction (it answers X and a new Acc); abort and
+//    multi-shot are NOT Steps — see Design
+trait Step[F[+_], Acc]:
+  def step[X](e: F[X], acc: Acc): (Acc, X)
+
+// 3. the composite: a row's steps fused into one loop over a PRODUCT
+//    state, immutable, threaded through the loop — never a cell
+inline def Fused.run[F[+_], G[+_], AccF, AccG, A]
+    (accF: AccF, accG: AccG)(p: A ! (F + G))
+    (using TypeableK[F], Step[F, AccF], Step[G, AccG]): ((AccF, AccG), A)
+// and the k-ary shape by nesting rows: Fused.run over F + (G + H)
+// composes Step[G + H, (AccG, AccH)] inline, so the product state
+// nests the way the row does — its layout is the row's layout
+
+// 4. instances for the effects that are steps today, written ONCE
+//    each, replacing nothing: Step[State % S, S], Step[Writer % W, Vector[W]]
+//    (Fold-generic: Step[Writer % W, Acc] given Fold[W, Acc]),
+//    Step[Reader % R, R] (acc is the environment; local is a Step too,
+//    it answers a NEW environment for the continuation — see Design)
+```
+
+Abort (`Throws`) and multi-shot (`Choice`) keep `Effects.handle`; a
+fused loop over a row that contains them handles the resumptive members
+as steps and falls back to a shift only at an abort/choose node — the
+`Design` says how, and the `Behavior` items pin that the fallback
+agrees with the nested meaning.
+
+## Behavior
+
+- [ ] `Handler.flat` agrees with `Handler.union` on every operation of
+      a four-effect row (the agent's `Model + (Tool + (Context + Async))`
+      shape), for all four positions.
+- [ ] `Fused.run(s, Vector())(p)` over `State % S + Writer % W` agrees
+      with `State.handle(s)(Writer.run(p))` AND with
+      `Writer.run(State.handle(s)(p))` (both orders reachable, each
+      by naming the row in that order), on programs generated to
+      interleave get/set/tell arbitrarily (scalacheck, ≥ 1000 cases).
+- [ ] A fused loop is stack-safe on any bind shape: 1M operations,
+      left- and right-nested, no StackOverflowError (the `runFree`
+      bar).
+- [ ] Multi-shot survives fusion: a row `Choice + State % S + Writer % W`
+      run fused equals the nested run for BOTH orders of State and
+      Choice — global state and backtracking state — on generated
+      programs; the fused product state is immutable (the residual
+      program after a forwarded operation can be run twice with the
+      same answer; the law State.handle already keeps).
+- [ ] Abort survives fusion: `Throws % E` in a fused row aborts with
+      the same value and the same log/state visibility as the nested
+      run, for both nestings of Throws relative to Writer.
+- [ ] The fused product state has the row's layout: `((accF, accG), a)`
+      for `F + G`, nested for a nested row — asserted, so that the
+      layout is a documented contract and not an artifact.
+- [ ] Every existing suite stays green; no existing runner changes
+      behavior (this spec ADDS a road, it does not move the old one).
+- [ ] MEASURED before any of the above is built (stage 0, the gate):
+      a hand-written fused loop for `State + Writer` on the
+      RowLift-style program (N = 1000) is ≥ 1.3x faster than
+      `State.handle(Writer.run(p))` in µs/op, and the B/op difference
+      names the saved Bind+closure per forwarded operation. If the
+      hand-written ceiling does not clear 1.3x, this spec's Results
+      record the refutation and stages 1–2 do not start.
+- [ ] MEASURED after: the `inline`-composed `Fused.run` is within 10%
+      of the hand-written loop (staging did not leave the win on the
+      table), and the three-effect row (`+ Throws`) gains more than the
+      two-effect one (the win grows with k, as the cost model says).
+- [ ] MEASURED: `Handler.flat` on the four-effect agent row is not
+      slower than `Handler.union` at any position, and faster at the
+      last (the position that pays four tests today).
+
+## Out of scope
+
+- Run-time staging (`scala.quoted.staging`, okay-staging): the
+  composite's shape is static at every call site; a JVM-only,
+  single-threaded, generation-per-composite tool buys nothing here.
+- Run-time closure composition as a "generic `!>` union": the road
+  `specs/staged-effects.md` refuted. If a generic combinator is ever
+  wanted for ergonomics, it must be measured against the inline form
+  and shipped only as a convenience with the cost stated.
+- Commutative composition, or any reordering of handlers by the
+  library. The row names the order; the user chose it.
+- Changing `State.handle`, `Writer.fold`, `Throws.run`, `Choice.run`,
+  `Reader.run` or `relay`. They stay as the one-effect-at-a-time
+  road, which remains right for a row with ONE continuation-aware
+  effect (already one pass) and for stepping/inspecting a program
+  between layers.
+- Scoped operations carrying computations (`Fork(prog)`, `OrElse(a, b)`)
+  — theory/05 rules the scoped hazard out by kind; fusion does not
+  change that and this spec does not touch those nodes.
+- Cross-platform claims beyond "compiles and agrees": the fused loop
+  is plain Scala over `Free`, so JS and Native get it for free; only
+  the JVM is measured.
+
+## Design
+
+**Where the cost is, precisely.** Take `Throws.run(State.handle(s)(Writer.run(p)))`
+over a program with n operations. `Writer.run` walks p once, consumes
+the tells, and for each `State`/`Throws` operation emits
+`Effect(e).flatMap(x => _loop(acc)(k(x)))` — one Bind node, one closure
+capturing the accumulator. `State.handle` walks THAT program: consumes
+get/set, re-emits every `Throws` operation the same way. `Throws.run`
+walks the result. So a Throws operation was allocated three times and
+rotated by `resume` three times; a State operation twice. Per pass,
+every operation not owned costs one Bind (16–32 B) and one closure, and
+every pass re-runs the left-nested rotation. The fused loop allocates
+nothing per operation that it owns as a step: it is `runFree` with a
+richer handler and a product accumulator.
+
+**The composite is a loop, not a value.** The composite's form is the
+one `runFree`, `State.handle`, `Writer.fold` and `Stm`'s runner all
+already have — a `@tailrec` match over `Pure` / `Effect` / `Bind(Effect, k)`
+with the operation's meaning inlined. What changes is that the match
+arm is the row's flat dispatch and the accumulator is a product. It is
+written as `inline def Fused.run`, and `Step` instances are `inline`
+too where their step is a few instructions (State's get/set, Writer's
+append), so the composed loop is ONE static expression per call site —
+the shape staged-effects.md measured at 1.9x, now applied to a row of
+handlers rather than a chain of binds.
+
+**Tail-resumptive members are steps; the others are shifts.** A `Step`
+answers `(Acc, X)` — it resumes exactly once, in place, which keeps
+the loop tail-recursive and captures no continuation. That is
+evidence passing's tail-resumptive fast path (Xie & Leijen 2021), and
+it covers `State`, `Writer`, `Reader` (including `local`: the step
+answers a new environment that the loop threads to the continuation
+and restores after — the product state carries a stack of
+environments for nested locals, exactly what `Reader.local` does with
+its relay today). `Throws.abort` and `Choose` are NOT steps: an abort
+discards the continuation, a choose runs it more than once. In a row
+with them the fused loop handles every step-member in the tail loop
+and, at an abort/choose node, does what `Effects.handle` does — a
+`shift` over the answer type, with the product state captured
+immutably in the closure. The nested run's meaning for that node is
+"the outer handlers see the inner handlers' results so far", and the
+product state IS those results so far, so the fallback agrees by
+construction; the Behavior items make the claim testable rather than
+trusted.
+
+**Immutability is not a style choice.** A staged loop's natural
+optimization is a mutable cell per accumulator — and it is wrong here,
+for the reason `State.handle` already states: a forwarded or captured
+continuation must be re-runnable (multi-shot, `Choice`), so the state
+it closed over must be the state at capture time. The product state
+is a value threaded through the loop; the loop allocates a new tuple
+only when a component changes. This is also what makes the "run the
+residual twice" law hold, and that law is in Behavior.
+
+**Order is the row's order.** `Fused.run` over `F + G` handles F's
+operations "inside" G's, i.e. as `G.run(F.run(p))` would — the row
+`State % S + Writer % W` fuses to `Writer.run(State.handle(s)(p))`'s
+meaning, `Writer % W + State % S` to the other. The product state's
+layout follows the row, which is why the layout is asserted rather
+than left to whoever reads the tuple. A user who wants the other
+meaning names the other row; nothing reorders.
+
+**Flat dispatch for comonadic rows** is the small win and the first
+thing to build, because it stands alone: `Handler.union` is a left-
+nested chain of `<|>` tests, so the k-th effect's operations pay k
+`TypeableK` checks. Assembled `inline`, the chain unrolls into one
+`match` whose cases are the row's operation classes in order; the JIT
+sees one type switch. The agent row is the measuring case because it
+is the row that motivated `Handler.union` in the first place.
+
+**What `Eff` gets.** `Eff`'s program is its `foldCont`; a composite
+`!>` built the same inline way (flat dispatch + product state carried
+in the answer type, i.e. `S = Acc => (Acc, A)` for the step members)
+runs it in one pass with no tree. That is stage 3, after the `Free`
+loop has the numbers, because `Eff` is not stack-safe on left-nested
+binds and the fused loop's first job is to keep `runFree`'s bar.
+
+## Decisions
+
+- **Assess against `specs/staged-effects.md` first** — chosen because
+  that spec already tried "staging" as run-time closure composition
+  and refuted it 3/3; this spec must not re-run that experiment under
+  a new name. Rejected: a generic `!>` union built from closures
+  (measured slower than the tail loop it would replace).
+- **Compile-time `inline`, not `scala.quoted.staging`** — chosen
+  because the row and the handler identities are static at every call
+  site (givens resolve there), so partial evaluation by `inline` is
+  the whole of the staging needed; run-time staging is JVM-only,
+  single-threaded and pays generation per composite for nothing.
+  Rejected: okay-staging's road (right for codecs over RUN-TIME schema
+  values, wrong for a compile-time row).
+- **`Step` is tail-resumptive by type** — chosen because a step that
+  answers `(Acc, X)` cannot abort or resume twice, so the fused loop's
+  tail recursion is guaranteed by the interface rather than by a rule
+  the handler author must remember (the same move `relay` makes with
+  answer polymorphism). Rejected: one `!>`-shaped step for everything
+  (loses the tail loop for every member, not just the non-resumptive
+  ones).
+- **Product state, immutable, row-shaped** — chosen for multi-shot
+  correctness (State.handle's own argument) and so the result's layout
+  is a contract. Rejected: a mutable cell per accumulator (breaks
+  re-running a captured continuation; only safe when no multi-shot
+  member is in the row, which the type cannot yet say).
+- **A hand-written fused loop is the gate, before any generic code** —
+  chosen because one measurement is a hypothesis and the win's size is
+  a cost-model prediction until the box says so; the hand-written
+  loop is also the ceiling the inline version is held to. Rejected:
+  building `Fused.run` first and measuring after (the shape of the
+  loop would be argued from, not measured against).
+- **The one-at-a-time road stays** — chosen because it is already one
+  pass for a single continuation-aware effect, and because stepping a
+  program between layers (relay in stages, inspection) is a feature
+  Free exists for. Fusion is an added road, not a replacement.
+
+## Results
+
+Predictions, to be replaced by measurements (JMH, µs/op and B/op via
+`-prof gc`, quiet box, protocol as docs/benchmarks.md):
+
+- Stage 0 (the gate): hand-fused `State + Writer`, N = 1000 — expected
+  1.3–1.8x over `State.handle(Writer.run(p))`, and ≈ one Bind + one
+  closure per State operation LESS in B/op. Three effects
+  (`+ Throws`, no abort taken): a larger ratio than two, because the
+  Throws operations were rebuilt twice.
+- Stage 1: `Handler.flat` on the four-effect agent row — a small
+  number; the fourth position is the one to read.
+- If the gate fails: the entry goes here with the numbers, the
+  mechanism that ate the win (the likely one: `resume`'s rotation is
+  the cost, not the rebuild, and one pass rotates as much as three),
+  and the stages below it are not built.
