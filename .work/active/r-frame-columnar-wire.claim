@@ -2,7 +2,7 @@ task: r-frame-columnar-wire
 agent: fable-persist
 started: 2026-09-09
 heartbeat: 2026-09-09T17:51:22Z
-status: spec-first
+status: in-progress
 branch: feature/r-frame-columnar-wire
 worktree: ../okay-wt-rwire
 spec: specs/r.md, new section "The columnar frame wire" — WRITTEN AND
