@@ -30,6 +30,14 @@ object Wire {
         case Event.Edited(k, _) => keys(k)
         case Event.Toggled(k, _) => keys(k)
         case Event.Chosen(k, _) => keys(k)
+        // a Submitted names a shown Form and only its own fields
+        case Event.Submitted(k, edits) => Ui.forms(tree).get(k).exists { fields =>
+          edits.forall {
+            case Event.Edited(fk, _) => fields(fk)
+            case Event.Toggled(fk, _) => fields(fk)
+            case Event.Chosen(fk, _) => fields(fk)
+            case _ => false
+          } }
         case _ => false
 
   /**
@@ -111,12 +119,25 @@ object Wire {
               host.render(t).flatMap(_ => receive(more))
       }
 
+    // the hybrid rule (specs/frontend.md stage 2): a field edit inside
+    // a Form stays here — the tree keeps it and the host re-renders —
+    // and the Form's button sends the fields ONCE as Submitted; a
+    // claimed Tabs/Disclosure switches here too. Everything else
+    // crosses the wire as it did.
     def forward(rest: Source[Event]): Unit ! Async =
       Writer.uncons[Event, Unit, Async](rest).flatMap {
         case Left(_) => pure(())
         case Right((e, more)) =>
-          send(Protocol.eventLine(e)).flatMap(_ =>
-            if e == Event.Closed then pure(()) else forward(more))
+          Ui.foldLocal(tree, e, vocab) match
+            case Some(t) =>
+              tree = t
+              host.render(t).flatMap(_ => forward(more))
+            case None =>
+              val out = e match
+                case Event.Pressed(k) if Ui.forms(tree).contains(k) => Ui.submit(tree, k).getOrElse(e)
+                case other => other
+              send(Protocol.eventLine(out)).flatMap(_ =>
+                if e == Event.Closed then pure(()) else forward(more))
       }
 
     // hello first, then both directions at once: rendering what

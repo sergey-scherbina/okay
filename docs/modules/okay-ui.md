@@ -60,4 +60,8 @@ as JSON lines or CBOR bytes; the client's `Hello {vocab, version}`
 comes first and `Wire.serve` lowers what it did not claim; the
 in-process hosts lower at their entry. `docs/protocol/frontend.md`
 (rendered from the schemas) and `docs/protocol/conformance.jsonl` are
-the contract a client in any language implements.
+the contract a client in any language implements. The wire is HYBRID
+(stage 2): a `Form`'s fields fold on the client and its button sends
+ONE `Event.Submitted(key, edits)` (folded by `Form.submitted` through
+the same `Form.edit`); a `live` input speaks per change; a claimed
+`Tabs`/`Disclosure` switches locally; the server's `SetValue` wins.

@@ -44,6 +44,15 @@ object LiveJs:
       |        if (f.weights && f.weights.length === f.children.length) el.dataset.w = f.weights.join(" ");
       |        for (i = 0; i < f.children.length; i++) el.appendChild(weighed(el, i, build(f.children[i])));
       |        return el;
+      |      case "Form":
+      |        // the hybrid rule: the DOM holds the fields' values; the
+      |        // button keyed like the form sends them once as Submitted
+      |        el = document.createElement("div");
+      |        el.className = "okay-form";
+      |        el.dataset.form = f.key;
+      |        for (i = 0; i < f.fields.length; i++) el.appendChild(build(f.fields[i]));
+      |        el.appendChild(build({ Button: { label: f.submit, key: f.key, role: "primary" } }));
+      |        return el;
       |      case "Scroll":
       |        el = document.createElement("div");
       |        el.className = "okay-scroll";
@@ -70,6 +79,7 @@ object LiveJs:
       |          else if (f.kind === "number") el.type = "number";
       |        }
       |        if (f.key) el.dataset.key = f.key;
+      |        if (f.live) el.dataset.live = "1";
       |        el.value = f.value;
       |        if (!f.label) return el;
       |        var lab = document.createElement("label");
@@ -169,17 +179,37 @@ object LiveJs:
       |      while (el && el !== root) { if (el.dataset && el.dataset.key) return el; el = el.parentNode; }
       |      return null;
       |    }
+      |    function formOf(el) {
+      |      while (el && el !== root) { if (el.dataset && el.dataset.form) return el; el = el.parentNode; }
+      |      return null;
+      |    }
+      |    function edits(form) {
+      |      var out = [], els = form.querySelectorAll("[data-key]");
+      |      for (var i = 0; i < els.length; i++) {
+      |        var e = els[i], tag = e.tagName;
+      |        if (tag === "INPUT" && e.type === "checkbox") out.push({ Toggled: { key: e.dataset.key, on: e.checked } });
+      |        else if (tag === "INPUT" || tag === "TEXTAREA") out.push({ Edited: { key: e.dataset.key, value: e.value } });
+      |        else if (tag === "SELECT") out.push({ Chosen: { key: e.dataset.key, index: e.selectedIndex } });
+      |      }
+      |      return out;
+      |    }
       |    root.addEventListener("click", function (ev) {
       |      var el = keyed(ev.target);
-      |      if (el && el.tagName === "BUTTON") event({ Pressed: { key: el.dataset.key } });
+      |      if (!el || el.tagName !== "BUTTON") return;
+      |      var form = formOf(el);
+      |      if (form && form.dataset.form === el.dataset.key) event({ Submitted: { key: el.dataset.key, edits: edits(form) } });
+      |      else event({ Pressed: { key: el.dataset.key } });
       |    });
+      |    // inside a form the DOM keeps the value; only a live input speaks
       |    root.addEventListener("input", function (ev) {
       |      var el = keyed(ev.target);
-      |      if (el && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && el.type !== "checkbox"))) event({ Edited: { key: el.dataset.key, value: el.value } });
+      |      if (!el || !(el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && el.type !== "checkbox"))) return;
+      |      if (formOf(el) && !el.dataset.live) return;
+      |      event({ Edited: { key: el.dataset.key, value: el.value } });
       |    });
       |    root.addEventListener("change", function (ev) {
       |      var el = keyed(ev.target);
-      |      if (!el) return;
+      |      if (!el || formOf(el)) return;
       |      if (el.tagName === "INPUT" && el.type === "checkbox") event({ Toggled: { key: el.dataset.key, on: el.checked } });
       |      else if (el.tagName === "SELECT") event({ Chosen: { key: el.dataset.key, index: el.selectedIndex } });
       |    });

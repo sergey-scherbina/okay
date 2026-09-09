@@ -41,7 +41,8 @@ class TestVocab extends munit.FunSuite {
       case Column(c, _) => c.map(semanticNodes).sum
       case Box(c, _, _, _, _, _) => c.map(semanticNodes).sum
       case Scroll(c, _) => semanticNodes(c)
-      case _: Form | _: Items | _: Table | _: Tabs | _: Modal => 1
+      case Form(fields, _, _) => fields.map(semanticNodes).sum   // level L since ui-hybrid
+      case _: Items | _: Table | _: Tabs | _: Modal | _: Disclosure => 1
       case _ => 0
     val low = Ui.lower(screen(0), Set.empty)
     assertEquals(semanticNodes(low), 0)
@@ -56,7 +57,7 @@ class TestVocab extends munit.FunSuite {
     for tab <- 0 to 1; salt <- 0 to 1 do
       val s = screen(salt, tab)
       assertEquals(Ui.keys(s), Ui.keys(Ui.lower(s, Set.empty)))
-      assertEquals(Ui.keys(s), Ui.keys(Ui.lower(s, Set(Vocab.form, Vocab.tabs))))
+      assertEquals(Ui.keys(s), Ui.keys(Ui.lower(s, Set(Vocab.items, Vocab.tabs))))
     // only the SELECTED tab's page is a capability; the tab buttons always are
     val k0 = Ui.keys(screen(0, tab = 0))
     assert(k0("p1") && !k0("p2") && k0(Ui.tabKey("tabs", 1)), k0.toString)
@@ -81,7 +82,7 @@ class TestVocab extends munit.FunSuite {
       (Form(Vector(Input("", "n")), "go", "f"), Form(Vector(Input("v", "n")), "go", "f")))
     for (a, b) <- pairs do
       assertEquals(apply(a, Ui.diff(a, b)), b, s"the law broke on $a -> $b")
-      for vocab <- Vector(Set.empty[String], Set(Vocab.form), Vocab.all) do
+      for vocab <- Vector(Set.empty[String], Set(Vocab.items), Vocab.all) do
         val (la, lb) = (Ui.lower(a, vocab), Ui.lower(b, vocab))
         assertEquals(apply(la, Ui.diff(la, lb)), lb, s"lowered law broke ($vocab) on $a -> $b")
         // lowering commutes with patching: lower(patch(a)) == lower(b)
@@ -139,12 +140,12 @@ class TestVocab extends munit.FunSuite {
   }
 
   test("Wire.serve lowers for the client's vocabulary: a level-L client never sees a semantic node") {
-    val view: Int => Ui = n => Form(Vector(Input(n.toString, "n")), "Save", "f")
+    val view: Int => Ui = n => Items(Vector(Text(n.toString)), "l")
     def first(vocab: Set[String]): String =
       val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(vocab)))))(
         Wire.serve(0)(view)((s, _) => s))))
       out.head
-    assert(!first(Set.empty).contains("\"Form\""), first(Set.empty))
-    assert(first(Set(Vocab.form)).contains("\"Form\""), first(Set(Vocab.form)))
+    assert(!first(Set.empty).contains("\"Items\""), first(Set.empty))
+    assert(first(Set(Vocab.items)).contains("\"Items\""), first(Set(Vocab.items)))
   }
 }

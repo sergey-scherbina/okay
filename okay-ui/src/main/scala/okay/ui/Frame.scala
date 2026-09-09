@@ -49,6 +49,8 @@ object Frame {
       val cur = options.lift(selected).getOrElse("")
       Vector(if focus.contains(s) then s"<$cur>" else s" $cur ")
 
+    case Form(fields, submit, k) =>
+      render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus)
     case semantic => render(Ui.lower(semantic, Set.empty), focus)
 
   /** blocks side by side; with weights, the row's natural width is

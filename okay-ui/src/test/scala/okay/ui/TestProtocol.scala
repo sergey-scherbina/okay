@@ -15,7 +15,7 @@ class TestProtocol extends munit.FunSuite {
 
   import Ui.*
 
-  def view(n: Int): Ui = Ui.Form(Vector(Ui.Text(s"n=$n"), Ui.Input(n.toString, "n")), "Save", "f")
+  def view(n: Int): Ui = Ui.Items(Vector(Ui.Text(s"n=$n"), Ui.Input(n.toString, "n"), Ui.Button("+", "f")), "l")
   def update(n: Int, e: Event): Int = e match
     case Event.Pressed("f") => n + 1
     case _ => n
@@ -41,11 +41,11 @@ class TestProtocol extends munit.FunSuite {
     assertEquals(Protocol.parse("""{"Tree":{"ui":{"Nope":{}}}}"""), None)
   }
 
-  test("hello: a client claiming nothing receives no semantic node; one claiming form receives Form") {
+  test("hello: a client claiming nothing receives no semantic node; one claiming items receives Items") {
     val plain = talk(Some(Set.empty))
-    assert(!plain.head.contains("\"Form\""), plain.head)
+    assert(!plain.head.contains("\"Items\""), plain.head)
     assertEquals(Protocol.treeOf(plain.head), Some(Ui.lower(view(0), Set.empty)))
-    val rich = talk(Some(Set("form", "nonsense")))
+    val rich = talk(Some(Set("items", "nonsense")))
     assertEquals(Protocol.treeOf(rich.head), Some(view(0)))
     // no hello at all: served as level L, the first line still handled
     val none = talk(None, Protocol.eventLine(Event.Pressed("f")))

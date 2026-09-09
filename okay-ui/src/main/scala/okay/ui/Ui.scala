@@ -26,13 +26,18 @@ enum Ui:
   case Check(on: Boolean, key: String, label: String = "")
   case Select(options: Vector[String], selected: Int, key: String)
   case Scroll(child: Ui, key: String = "")
+  /** fields and a submit button; `submit` is the button's label, the
+   * form's key is the button's key. Form is LEVEL L — every client
+   * draws it — because the hybrid rule lives on it (ui-hybrid): the
+   * fields fold on the client, the button sends ONE
+   * `Event.Submitted(key, edits)`; an input marked `live` sends its
+   * `Edited` as it happens */
+  case Form(fields: Vector[Ui], submit: String, key: String)
   // ---- level S, the semantic vocabulary: OPEN, each node DEFINED by
   // its lowering (`Ui.lower`) — a client that does not claim a node
-  // receives the lowering, and cannot tell (`Ui.keys` is the law)
-  /** fields and a submit button; `submit` is the button's label, the
-   * form's key is the button's key (Pressed(key) until ui-hybrid's
-   * Submitted) */
-  case Form(fields: Vector[Ui], submit: String, key: String)
+  // receives the lowering, and cannot tell (`Ui.keys` is the law).
+  // A CLAIMED Tabs or Disclosure switches on the client with no line
+  // on the wire; lowered, its buttons round-trip as Pressed
   /** a keyed list of items — `List` is Scala's name, so `Items` */
   case Items(items: Vector[Ui], key: String)
   case Table(header: Vector[String], rows: Vector[Vector[Ui]], key: String)
@@ -40,6 +45,9 @@ enum Ui:
    * is shown, so only its keys are capabilities */
   case Tabs(labels: Vector[String], selected: Int, pages: Vector[Ui], key: String)
   case Modal(title: String, body: Ui, key: String)
+  /** a titled subtree shown when `open`; the title is its toggle,
+   * keyed by the node's key */
+  case Disclosure(title: String, open: Boolean, body: Ui, key: String)
 
 enum Dir:
   case Horizontal, Vertical
@@ -73,6 +81,10 @@ enum Event:
   case Key(ch: Char)
   case Resized(w: Int, h: Int)
   case Closed
+  /** a Form's ONE event: the field edits the client folded locally,
+   * sent together when its button was pressed (ui-hybrid). The server
+   * folds them through the same `Form.edit` a live edit takes */
+  case Submitted(key: String, edits: Vector[Event])
 
 /**
  * The seam, in the form React taught everyone: a HOST is handed the
@@ -127,6 +139,7 @@ object Ui {
     case Table(_, _, k) if k.nonEmpty => Some(k)
     case Tabs(_, _, _, k) if k.nonEmpty => Some(k)
     case Modal(_, _, k) if k.nonEmpty => Some(k)
+    case Disclosure(_, _, _, k) if k.nonEmpty => Some(k)
     case _ => None
 
   def diff(old: Ui, next: Ui): Vector[Patch] =
@@ -153,6 +166,8 @@ object Ui {
       case (Form(f1, s1, k1), Form(f2, s2, k2)) if s1 == s2 && k1 == k2 => children(b, f1, f2, path)
       case (Items(i1, k1), Items(i2, k2)) if k1 == k2 => children(b, i1, i2, path)
       case (Modal(t1, x, k1), Modal(t2, y, k2)) if t1 == t2 && k1 == k2 => go(x, y, 1 :: path)
+      case (Disclosure(t1, o1, x, k1), Disclosure(t2, o2, y, k2)) if t1 == t2 && o1 == o2 && k1 == k2 =>
+        go(x, y, 1 :: path)
       case _ => Vector(Patch.Replace(path.reverse, b))
 
     /**
@@ -218,6 +233,7 @@ object Ui {
         case Form(c, s, k) => Form(c.updated(i, at(c(i), rest, f)), s, k)
         case Items(c, k) => Items(c.updated(i, at(c(i), rest, f)), k)
         case Modal(t, c, k) if i == 1 => Modal(t, at(c, rest, f), k)
+        case Disclosure(t, o, c, k) if i == 1 => Disclosure(t, o, at(c, rest, f), k)
         case other => other   // a path into a leaf: the diff never makes one
     def kids(u: Ui, f: Vector[Ui] => Vector[Ui]): Ui = u match
       case Row(c, k) => Row(f(c), k)
@@ -245,6 +261,7 @@ object Ui {
     case Scroll(c, _) => focusable(c)
     case _: Text | _: Image => Vector.empty
     case _: Button | _: Input | _: Check | _: Select => Vector(ui)
+    case Form(fields, submit, k) => fields.flatMap(focusable) :+ Button(submit, k, Role.Primary)
     case semantic => focusable(lower(semantic, Set.empty))
 
   /** the CAPABILITY LIST: every key an event may name. Structural on
@@ -267,15 +284,110 @@ object Ui {
     case Tabs(labels, selected, pages, k) =>
       labels.indices.map(i => tabKey(k, i)).toSet ++ pages.lift(selected).map(keys).getOrElse(Set.empty)
     case Modal(_, body, _) => keys(body)
+    case Disclosure(_, open, body, k) => (if open then keys(body) else Set.empty) + k
 
   def tabKey(key: String, i: Int): String = s"$key$$tab$i"
+
+  /** every Form on the tree: its key, and the keys of its fields —
+   * what a `Submitted` may name (the hybrid's capability list) */
+  def forms(ui: Ui): Map[String, Set[String]] = ui match
+    case Row(c, _) => c.flatMap(forms).toMap
+    case Column(c, _) => c.flatMap(forms).toMap
+    case Box(c, _, _, _, _, _) => c.flatMap(forms).toMap
+    case Scroll(c, _) => forms(c)
+    case Form(fields, _, k) => fields.flatMap(forms).toMap + (k -> fields.flatMap(keys).toSet)
+    case Items(items, _) => items.flatMap(forms).toMap
+    case Table(_, rows, _) => rows.flatten.flatMap(forms).toMap
+    case Tabs(_, selected, pages, _) => pages.lift(selected).map(forms).getOrElse(Map.empty)
+    case Modal(_, body, _) => forms(body)
+    case Disclosure(_, open, body, _) => if open then forms(body) else Map.empty
+    case _ => Map.empty
+
+  /**
+   * The HYBRID rule, on the client (ui-hybrid): an event that stays
+   * local answers the tree it changes; None means "send it". Local:
+   * an edit to a field of a Form whose input is not `live` (the tree
+   * keeps the typed value, so the host re-renders it), a tab switch
+   * when the client claims `tabs`, a disclosure toggle when it claims
+   * `disclosure`. The server stays the truth: its later SetValue
+   * lands on the same tree and wins.
+   */
+  def foldLocal(tree: Ui, e: Event, vocab: Set[String]): Option[Ui] =
+    val fieldOf = forms(tree).flatMap((f, ks) => ks.map(_ -> f))
+    def live(k: String): Boolean = focusable(tree).exists { case Input(_, `k`, _, _, l) => l; case _ => false }
+    def set(f: Ui => Ui): Ui = map(tree, f)
+    e match
+      case Event.Edited(k, v) if fieldOf.contains(k) && !live(k) =>
+        Some(set { case i: Input if i.key == k => i.copy(value = v); case u => u })
+      case Event.Toggled(k, on) if fieldOf.contains(k) =>
+        Some(set { case c: Check if c.key == k => c.copy(on = on); case u => u })
+      case Event.Chosen(k, i) if fieldOf.contains(k) =>
+        Some(set { case s: Select if s.key == k => s.copy(selected = i); case u => u })
+      case Event.Pressed(k) if vocab(Vocab.tabs) && tabOf(tree, k).isDefined =>
+        val (tk, i) = tabOf(tree, k).get
+        Some(set { case t: Tabs if t.key == tk => t.copy(selected = i); case u => u })
+      case Event.Pressed(k) if vocab(Vocab.disclosure) && exists(tree) { case Disclosure(_, _, _, `k`) => true; case _ => false } =>
+        Some(set { case d: Disclosure if d.key == k => d.copy(open = !d.open); case u => u })
+      case _ => None
+
+  /** the Form's one event, from the values its fields hold now */
+  def submit(tree: Ui, formKey: String): Option[Event] =
+    def find(u: Ui): Option[Form] = u match
+      case f: Form if f.key == formKey => Some(f)
+      case Form(fields, _, _) => fields.flatMap(find).headOption
+      case Row(c, _) => c.flatMap(find).headOption
+      case Column(c, _) => c.flatMap(find).headOption
+      case Box(c, _, _, _, _, _) => c.flatMap(find).headOption
+      case Scroll(c, _) => find(c)
+      case Items(items, _) => items.flatMap(find).headOption
+      case Table(_, rows, _) => rows.flatten.flatMap(find).headOption
+      case Tabs(_, selected, pages, _) => pages.lift(selected).flatMap(find)
+      case Modal(_, body, _) => find(body)
+      case Disclosure(_, open, body, _) => if open then find(body) else None
+      case _ => None
+    find(tree).map { f =>
+      Event.Submitted(formKey, f.fields.flatMap(focusable).collect {
+        case Input(v, k, _, _, _) => Event.Edited(k, v)
+        case Check(on, k, _) => Event.Toggled(k, on)
+        case Select(_, i, k) => Event.Chosen(k, i)
+      })
+    }
+
+  private def tabOf(tree: Ui, k: String): Option[(String, Int)] =
+    var found: Option[(String, Int)] = None
+    val _ = map(tree, {
+      case t: Tabs if found.isEmpty =>
+        t.labels.indices.find(i => tabKey(t.key, i) == k).foreach(i => found = Some(t.key -> i)); t
+      case u => u })
+    found
+
+  private def exists(tree: Ui)(p: Ui => Boolean): Boolean =
+    var hit = false
+    val _ = map(tree, u => { if p(u) then hit = true; u })
+    hit
+
+  /** a bottom-up rewrite of every node */
+  def map(ui: Ui, f: Ui => Ui): Ui =
+    val u = ui match
+      case Row(c, k) => Row(c.map(map(_, f)), k)
+      case Column(c, k) => Column(c.map(map(_, f)), k)
+      case b: Box => b.copy(children = b.children.map(map(_, f)))
+      case Scroll(c, k) => Scroll(map(c, f), k)
+      case Form(fields, s, k) => Form(fields.map(map(_, f)), s, k)
+      case Items(items, k) => Items(items.map(map(_, f)), k)
+      case Table(h, rows, k) => Table(h, rows.map(_.map(map(_, f))), k)
+      case Tabs(l, s, pages, k) => Tabs(l, s, pages.map(map(_, f)), k)
+      case Modal(t, body, k) => Modal(t, map(body, f), k)
+      case Disclosure(t, o, body, k) => Disclosure(t, o, map(body, f), k)
+      case leaf => leaf
+    f(u)
 
   /** the names a client claims in its `hello` — a semantic node is
    * sent as itself only to a client that named it */
   object Vocab:
-    val form = "form"; val items = "items"; val table = "table"
-    val tabs = "tabs"; val modal = "modal"
-    val all: Set[String] = Set(form, items, table, tabs, modal)
+    val items = "items"; val table = "table"
+    val tabs = "tabs"; val modal = "modal"; val disclosure = "disclosure"
+    val all: Set[String] = Set(items, table, tabs, modal, disclosure)
 
   /**
    * The LOWERING: every semantic node the vocabulary does not claim,
@@ -291,9 +403,7 @@ object Ui {
       case b: Box => b.copy(children = b.children.map(go))
       case Scroll(c, k) => Scroll(go(c), k)
       case _: Text | _: Image | _: Button | _: Input | _: Check | _: Select => u
-      case Form(fields, submit, k) =>
-        if vocab(Vocab.form) then Form(fields.map(go), submit, k)
-        else Box(fields.map(go) :+ Button(submit, k, Role.Primary), Dir.Vertical, key = k)
+      case Form(fields, submit, k) => Form(fields.map(go), submit, k)   // level L since ui-hybrid
       case Items(items, k) =>
         if vocab(Vocab.items) then Items(items.map(go), k)
         else Box(items.map(go), Dir.Vertical, key = k)
@@ -314,6 +424,10 @@ object Ui {
       case Modal(title, body, k) =>
         if vocab(Vocab.modal) then Modal(title, go(body), k)
         else Box(Vector(Text(title, Style(tone = Tone.Emphasis)), go(body)), Dir.Vertical, pad = 1, key = k)
+      case Disclosure(title, open, body, k) =>
+        if vocab(Vocab.disclosure) then Disclosure(title, open, go(body), k)
+        else Box(Button(title, k, if open then Role.Active else Role.Plain) +: (if open then Vector(go(body)) else Vector.empty),
+          Dir.Vertical, key = k)
     go(ui)
 
   /**

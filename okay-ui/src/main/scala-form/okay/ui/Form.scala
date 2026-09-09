@@ -107,6 +107,14 @@ object Form {
 
   // ---- editing: one event in, routed by its path -------------------
 
+  /** the hybrid's one event (specs/frontend.md stage 2): the edits a
+   * client folded locally, folded here through the SAME `edit` a live
+   * edit takes — so a submitted form cannot decode differently from
+   * one typed over the wire */
+  def submitted[A](using s: Schema[A])(value: Json, e: Event): Json = e match
+    case Event.Submitted(_, edits) => edits.foldLeft(value)(edit[A])
+    case other => edit[A](value, other)
+
   /** fold one event into the partial value, typed by the schema */
   def edit[A](using s: Schema[A])(value: Json, e: Event): Json =
     val (k, ev) = e match

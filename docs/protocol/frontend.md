@@ -26,10 +26,23 @@ either            Close
   `[T]` is a JSON array of T, `T?` a field that may be `null` or
   absent, `int` a JSON number without a fraction.
 - `Hello.vocab` lists the SEMANTIC nodes the client draws itself
-  (`form`, `items`, `table`, `tabs`, `modal`). Every other node is
-  LOWERED by the server to the layout level before it is sent, so a
-  client that claims nothing receives only: `Text`, `Row`, `Column`,
-  `Box`, `Image`, `Button`, `Input`, `Check`, `Select`, `Scroll`.
+  (`items`, `table`, `tabs`, `modal`, `disclosure`). Every other node
+  is LOWERED by the server to the layout level before it is sent, so
+  a client that claims nothing receives only: `Text`, `Row`, `Column`,
+  `Box`, `Image`, `Button`, `Input`, `Check`, `Select`, `Scroll`,
+  `Form`.
+- THE HYBRID RULE. A `Form` is fields plus a submit button whose key
+  is the form's key. The client keeps the fields' values itself and
+  sends nothing while the user types; when the button is pressed it
+  sends ONE `Submitted {key, edits}` — an `Edited` per input, a
+  `Toggled` per check, a `Chosen` per select, all of them — instead
+  of `Pressed`. An `Input` with `live: true` also sends `Edited` as
+  it changes (search-as-you-type). Inputs outside any `Form` send
+  `Edited`/`Toggled`/`Chosen` as they happen. A client that claims
+  `tabs` or `disclosure` switches them itself and sends nothing; a
+  client that does not receives their lowering (buttons) and sends
+  `Pressed`. The server stays the truth: a `SetValue` it sends lands
+  on the client's field and wins.
 - A server that receives an `Event` before any `Hello` serves the
   client as if it had claimed nothing.
 - Patch paths index children in order: `Row`/`Column`/`Box` children,
@@ -70,6 +83,7 @@ Ui = Text {s: string, style: Style}
   | Table {header: [string], rows: [[Ui]], key: string}
   | Tabs {labels: [string], selected: int, pages: [Ui], key: string}
   | Modal {title: string, body: Ui, key: string}
+  | Disclosure {title: string, open: bool, body: Ui, key: string}
 
 Style = {bold: bool, dim: bool, tone: "plain" | "emphasis" | "muted" | "danger", size: "small" | "normal" | "large"}
 
@@ -89,4 +103,5 @@ Event = Pressed {key: string}
   | Key {ch: string}
   | Resized {w: int, h: int}
   | Closed {}
+  | Submitted {key: string, edits: [Event]}
 ```

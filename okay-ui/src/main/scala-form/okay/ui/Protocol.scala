@@ -108,10 +108,23 @@ either            Close
   `[T]` is a JSON array of T, `T?` a field that may be `null` or
   absent, `int` a JSON number without a fraction.
 - `Hello.vocab` lists the SEMANTIC nodes the client draws itself
-  (`form`, `items`, `table`, `tabs`, `modal`). Every other node is
-  LOWERED by the server to the layout level before it is sent, so a
-  client that claims nothing receives only: `Text`, `Row`, `Column`,
-  `Box`, `Image`, `Button`, `Input`, `Check`, `Select`, `Scroll`.
+  (`items`, `table`, `tabs`, `modal`, `disclosure`). Every other node
+  is LOWERED by the server to the layout level before it is sent, so
+  a client that claims nothing receives only: `Text`, `Row`, `Column`,
+  `Box`, `Image`, `Button`, `Input`, `Check`, `Select`, `Scroll`,
+  `Form`.
+- THE HYBRID RULE. A `Form` is fields plus a submit button whose key
+  is the form's key. The client keeps the fields' values itself and
+  sends nothing while the user types; when the button is pressed it
+  sends ONE `Submitted {key, edits}` — an `Edited` per input, a
+  `Toggled` per check, a `Chosen` per select, all of them — instead
+  of `Pressed`. An `Input` with `live: true` also sends `Edited` as
+  it changes (search-as-you-type). Inputs outside any `Form` send
+  `Edited`/`Toggled`/`Chosen` as they happen. A client that claims
+  `tabs` or `disclosure` switches them itself and sends nothing; a
+  client that does not receives their lowering (buttons) and sends
+  `Pressed`. The server stays the truth: a `SetValue` it sends lands
+  on the client's field and wins.
 - A server that receives an `Event` before any `Hello` serves the
   client as if it had claimed nothing.
 - Patch paths index children in order: `Row`/`Column`/`Box` children,
@@ -193,7 +206,8 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
       case Event.Pressed("dec") => n - 1
       case _ => n
     val sent = Vector(hello(Set.empty), Msg.Event(Event.Pressed("inc")), Msg.Event(Event.Pressed("inc")),
-      Msg.Event(Event.Edited("name", "ada")), Msg.Event(Event.Pressed("dec")), Msg.Event(Event.Closed))
+      Msg.Event(Event.Submitted("f", Vector(Event.Edited("name", "ada"), Event.Toggled("even", true)))),
+      Msg.Event(Event.Pressed("dec")), Msg.Event(Event.Closed))
       .map(line)
     val (received, _) = !.run(Writer.run(through(Writer.of(sent.toList))(Wire.serve(0)(view)(update))))
     // interleave as the client sees them: hello, tree, then each event and its patches

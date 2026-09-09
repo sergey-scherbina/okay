@@ -56,12 +56,13 @@ object React {
       val props = if role == Role.Plain then Vector.empty
         else Vector("className" -> ("okay-" + role.toString.toLowerCase))
       Elem("button", keyed(key, props), text = Some(label))
-    case Input(value, key, label, kind, _) =>
+    case Input(value, key, label, kind, live) =>
+      val lv = if live then Vector("data-live" -> "1") else Vector.empty
       val input = kind match
-        case InputKind.Text => Elem("input", keyed(key, Vector("value" -> value)))
-        case InputKind.Secret => Elem("input", keyed(key, Vector("type" -> "password", "value" -> value)))
-        case InputKind.Number => Elem("input", keyed(key, Vector("type" -> "number", "value" -> value)))
-        case InputKind.Multiline => Elem("textarea", keyed(key, Vector("value" -> value)))
+        case InputKind.Text => Elem("input", keyed(key, lv :+ ("value" -> value)))
+        case InputKind.Secret => Elem("input", keyed(key, lv ++ Vector("type" -> "password", "value" -> value)))
+        case InputKind.Number => Elem("input", keyed(key, lv ++ Vector("type" -> "number", "value" -> value)))
+        case InputKind.Multiline => Elem("textarea", keyed(key, lv :+ ("value" -> value)))
       if label.isEmpty then input
       else Elem("label", Vector.empty, Vector(Elem("span", Vector.empty, text = Some(label)), input))
     case Check(on, key, label) =>
@@ -71,8 +72,14 @@ object React {
     case Select(options, selected, key) =>
       Elem("select", keyed(key, Vector("value" -> options.lift(selected).getOrElse(""))),
         options.map(o => Elem("option", Vector("value" -> o), text = Some(o))))
-    // the React host claims no semantic node in stage 0: it draws the
-    // lowering, which is the node's meaning
+    // a Form is a marked column: data-form names it, so a patch
+    // consumer (live.js) knows which inputs fold locally and which
+    // button submits them
+    case Form(fields, submit, key) =>
+      Elem("div", Vector("data-form" -> key, "className" -> "okay-form"),
+        fields.map(elem) :+ elem(Button(submit, key, Role.Primary)))
+    // the React host claims no semantic node: it draws the lowering,
+    // which is the node's meaning
     case semantic => elem(Ui.lower(semantic, Set.empty))
 
   /** a style declaration appended to an element's own */

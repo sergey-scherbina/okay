@@ -1,5 +1,29 @@
 # Changelog
 
+## ui-hybrid — no round trip per keystroke: a Form folds on the client and submits once
+
+Stage 2 of specs/frontend.md, the operator's "hybrid from the start".
+`Event.Submitted(key, edits)` is a Form's one event: every field's
+value as the `Edited`/`Toggled`/`Chosen` a live form would have sent,
+folded on the server by `Form.submitted` through the SAME `Form.edit`
+— so a submitted form cannot decode differently from a typed one, and
+the client needs no schema. `Form` moves to the level every client
+draws, because the rule lives on it: once lowered, a Box is any Box.
+`Wire.client` keeps the typed value in its tree (the host re-renders
+it), sends nothing while the user types, and turns the button's press
+into the Submitted; `live` inputs and inputs outside a Form speak per
+change; a CLAIMED `Tabs` or the new `Disclosure` switches locally —
+the "local set" is exactly the semantic nodes a client claims, not a
+second vocabulary. The server stays the truth: its `SetValue` lands on
+the client's tree and wins; `Wire.permitted` drops a Submitted that
+names a form not shown, a field not that form's, or an edit that is
+not one. `live.js` draws `Form` (`data-form`), keeps the values in
+the DOM, submits once, and speaks only for `data-live` inputs;
+okay-script's `Live.form` is a Form node handling Submitted. The
+protocol document states the rule; the conformance script carries a
+Submitted. TestHybrid (7); okay-ui 81, okay-script, okay-demo, JS and
+Native legs, the Live-tagged suites green.
+
 ## di-stage1 — qualifiers by type, the plan as the type, okay-conf in a module
 
 specs/di.md stage 1, three small pieces. A qualifier is an opaque type

@@ -219,16 +219,24 @@ Stage 1 — the protocol (ui-protocol, LANDED 2026-09-09):
       recursive `Ui`); `TestProtocol` fails when either file drifts,
       `OKAY_RENDER=1` regenerates
 
-Stage 2 — the hybrid (ui-hybrid):
-- [ ] typing into a `Form`'s inputs crosses the wire ZERO times;
-      pressing submit crosses once with `Submitted(key, json)`, which
-      decodes by the form's schema on the server
-- [ ] an `Input` marked `live` sends `Edited` per change, as today
-- [ ] `Local.Toggle` and `Local.Tab` change what is shown without a
-      line on the wire; the server's next patch still applies
-- [ ] a `SetValue` from the server overrides a local edit
-- [ ] a forged `Submitted` (a key not shown, or a value the schema
-      rejects) never reaches `update`
+Stage 2 — the hybrid (ui-hybrid, LANDED 2026-09-09):
+- [x] typing into a `Form`'s inputs crosses the wire ZERO times (the
+      client's tree keeps the typed value and the host re-renders it);
+      pressing submit crosses ONCE with `Submitted(key, edits)` — every
+      field's value as the edit a live form would have sent — folded
+      on the server by `Form.submitted` through the SAME `Form.edit`,
+      so a submitted form cannot decode differently from a typed one
+- [x] an `Input` marked `live` sends `Edited` per change; so does any
+      input outside a `Form`
+- [x] a CLAIMED `Tabs` or `Disclosure` switches on the client without
+      a line on the wire (the local behaviours are the claimable
+      nodes, not a separate `Local` type — see Decisions); unclaimed,
+      their lowering's buttons round-trip as `Pressed`
+- [x] a `SetValue` from the server lands on the client's tree and
+      overrides the local edit
+- [x] a forged `Submitted` — a key that is not a shown `Form`, an
+      edit naming a field outside that form, or an "edit" that is not
+      one — never reaches `update`; `Wire.permitted` checks all three
 
 Stage 3 — the first thin client (ui-native):
 - [ ] a Compose Multiplatform client (Kotlin, no okay dependency)
@@ -240,6 +248,18 @@ Stage 3 — the first thin client (ui-native):
       seam — the "out of the box" leg
 
 ## Results
+
+Stage 2 (ui-hybrid) landed 2026-09-09. `Event.Submitted(key, edits)`;
+`Form` moved to level L (every client draws it — the hybrid rule
+lives on it); `Disclosure` added to level S; `Ui.forms`, `Ui.foldLocal`,
+`Ui.submit`, `Ui.map`; `Wire.client` folds locally and submits once;
+`Wire.permitted` validates a Submitted against the shown forms;
+`Form.submitted`; `live.js` draws `Form` (data-form), keeps field
+values in the DOM, submits once, and speaks only for `data-live`
+inputs; okay-script's `Live.form` is a `Form` node handling
+`Submitted`. The protocol document states the hybrid rule and the
+conformance script carries a `Submitted`. TestHybrid (7); okay-ui 81,
+okay-script, okay-demo, JS and Native legs, Live-tagged suites green.
 
 Stage 1 (ui-protocol) landed 2026-09-09. `okay.ui.Protocol`: the
 derived schemas (enumerations as short names), `Msg` (Hello, Tree,
@@ -292,6 +312,21 @@ pass unchanged.
   application says "danger", the host says red.
 - **Codecs derived, WireJson retired** — one definition, two
   encodings, versioning by the rules Schema already has.
+- **Form is level L; the local behaviours are claimable nodes** — the
+  spec's first sketch had a separate closed `Local` enum (`Toggle`,
+  `Tab`) and Form as a semantic node. Both fell to the same test:
+  once a Form is lowered, a level-L client cannot tell its Box from
+  any other and the hybrid rule has nothing to attach to. So every
+  client draws `Form` (a column plus a button — cheap), and the rule
+  is stated ON it. The "local set" is then exactly the semantic nodes
+  a client claims: claim `tabs`, switch tabs locally; claim
+  `disclosure`, toggle locally. Still closed, still data, and no
+  second vocabulary to keep in step with the first.
+- **`Submitted` carries edits, not Json** — the core tree has no
+  `Schema[Json]`, and a Vector of the same `Edited`/`Toggled`/`Chosen`
+  a live form sends lets the server fold a submission through the
+  one `Form.edit` it already trusts: the drift law holds by
+  construction, and the client needs no schema at all.
 - **The derived shape IS the wire; WireJson retired** — the spec
   first planned "derived JSON equals WireJson's, then retire", which
   is impossible (a derived sum is `{"Case": {...}}`, the dialect was

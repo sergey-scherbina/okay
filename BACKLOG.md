@@ -1660,7 +1660,7 @@ measure on our own data, never a predicted result.
       `hello {vocab, version}` first line and lowering per vocab in
       Wire.serve, the conformance script, docs/protocol/frontend.md
       rendered from the schemas. WireJson retires after equality.
-- [ ] ui-hybrid — stage 2: Input local by default, Form submits ONCE
+- [x] ui-hybrid — LANDED 2026-09-09 (specs/frontend.md Results). Original: Input local by default, Form submits ONCE
       as Submitted(key, json) decoded by the form's schema, `live`
       inputs send Edited, the closed Local set (Toggle, Tab), server
       SetValue overrides a local edit, forged Submitted dropped.
