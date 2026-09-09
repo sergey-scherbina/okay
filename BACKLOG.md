@@ -1290,6 +1290,21 @@ construction instead of a type test per value).
       without the fix. specs/schedulers.md, "Every park site".
 
 ## Flakes observed (record → fix loop when they recur)
+
+- **TestManyToMany "the default channel ends for every consumer",
+  2026-09-09 09:32 and 09:36** (okay-spring's gate, then a solo rerun),
+  both while the box was thrashing (build-ram-guard ACT lines, five
+  sibling sbts, two background gates killed for memory in the same
+  minutes): `Channel.apply 16x16: received 15000 distinct of 16000;
+  missing 1000 (by producer: Map(14 -> 1000), first Vector(14000, …));
+  duplicated 0`. Same producer, its WHOLE output, twice — and every
+  producer had returned from `sendBlocking` and joined, so 1000
+  accepted elements were never delivered after `close()`. 3/3 green
+  on the same tree once the box was quiet, Channel/Growing sources
+  identical to master. Not a timing assertion: a lost element is a
+  defect wherever it shows. For the channel lane: a part accepted
+  under memory pressure and dropped at close — reproduce under
+  `stress`/a busy box before touching anything.
 - [x] flaky-scheduler-late-answer — FOUND AND FIXED 2026-09-07
       (scheduler-cancel-wins). Not the pre-park window I guessed (a
       sleep in the registration refuted that): `CanBlock.block` read
