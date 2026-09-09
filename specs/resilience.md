@@ -135,7 +135,7 @@ object Resilient:
     * COUNTS as a failure for the breaker; a 4xx does not. Hedging
     * applies to safe methods only unless told otherwise. */
   def http(inner: Http,
-           deadline: Option[Deadline] = None,
+           budgetMillis: Option[Long] = None,   // per call; a carried deadline that is earlier wins
            breaker: Option[Breaker] = None,
            bulkhead: Option[Bulkhead] = None,
            limiter: Option[(Limiter, Request => String)] = None,
@@ -147,9 +147,10 @@ object Resilient:
     * 503 for a breaker or a bulkhead, 504 for a deadline — with
     * `Retry-After` in whole seconds where the refusal knows one */
   def route(limiter: Option[(Limiter, Request => String)] = None,
-            bulkhead: Option[Bulkhead] = None)
+            bulkhead: Option[Bulkhead] = None,
+            deadlines: Boolean = true)           // enforce a carried x-deadline-ms
            (routes: PartialFunction[Request, Response ! Async])
-           (using Timer): PartialFunction[Request, Response ! Async]
+           (using Scheduler, Timer): PartialFunction[Request, Response ! Async]
 ```
 
 okay-ops grows `Prom.render` rows for these stats (stage 1), keyed by
@@ -193,17 +194,18 @@ Stage 0 — the five, generic, deterministic under an injected clock:
 
 Stage 1 — around Http, and visible:
 
-- [ ] `Resilient.http` composes in the fixed order and a request
+- [x] `Resilient.http` composes in the fixed order and a request
       passes every piece exactly once; a 5xx trips the breaker, a
       404 does not; a Post is not hedged by default
-- [ ] `Resilient.route` answers 429 + `Retry-After` for an exhausted
+- [x] `Resilient.route` answers 429 + `Retry-After` for an exhausted
       limiter keyed by `Request.peer`, 503 for a full bulkhead; the
       route stays defined exactly where the wrapped one is
-- [ ] `Deadline.read` on the server + `carry` on the client: a
+- [x] `Deadline.read` on the server + `carry` on the client: a
       budget shrinks across two hops in a test with a controlled
-      clock, and the second hop refuses what the first would have
-      let through
-- [ ] okay-ops renders the four `Stats` as Prometheus gauges and
+      clock — by the first hop's WORK, not by transit (the header is
+      relative) — and the call to the second hop is refused before
+      the wire once the work has spent it
+- [x] okay-ops renders the four `Stats` as Prometheus gauges and
       counters, `name` as the label; the existing `/metrics` route
       takes them beside `Store.Stats`
 
@@ -292,6 +294,22 @@ semantics are gRPC's so that a gateway can translate.
   `Response ! Async` and the existing retry in TestHttp already
   treats a thrown wire error as the failure shape; a second channel
   would make every caller handle two.
+- **A per-call budget, not a per-client deadline** — `Resilient.http`
+  takes `budgetMillis`; a `Deadline` value on a client instance would
+  expire once and for ever. A deadline the request already carries
+  (propagated from an inbound one) is honoured and the earlier wins.
+- **`Deadline.enforce` is its own race, not `Async.timeout`** —
+  `Async.race` waits for the other contender when one FAILS, so a
+  refusal raised under a timeout came out as a timeout after the
+  whole budget (found by the stage-1 test: a breaker's refusal
+  became a 504 after 5 s). Filed for the core as
+  `timeout-masks-failure`; here the first outcome of either kind
+  settles it.
+- **`Attempt` guards continuations too** — the first cut caught only
+  a `Run` thunk's throw and an `Await`'s `Left`; a `flatMap` body
+  that throws (the breaker's own refusal, a limiter's) escaped it, so
+  the breaker never counted such failures and the route never mapped
+  them. Pinned by a shared test.
 - **`x-deadline-ms`, relative** — see Design. Rejected: W3C
   `baggage` (a pass-through, no tool acts on it); an absolute
   epoch (needs clock agreement).
@@ -320,3 +338,17 @@ Two things the tests found that the first draft had wrong:
 fiber) is what lets the breaker and the bulkhead work without a
 `Scheduler`: one extra node per operation of the guarded program
 instead of a fiber per call. Hedge and Deadline fork, as they must.
+
+**Stage 1 landed (resilience-http, 2026-09-09).** `Resilient.http`
+(deadline → breaker → bulkhead → limiter → hedge, a 5xx a breaker
+failure, hedging safe methods only, a per-call budget merged with a
+carried deadline), `Resilient.route` (429/503/504 + `Retry-After`,
+keyed on `Request.peer`, defined where the wrapped route is),
+`Prom.guards` and `Ops.routes(..., guards)` in okay-ops. 7 tests in
+`TestResilient` (JVM), 1 in `TestProm`, 1 more shared in
+`TestResilience`. Two defects of stage 0 found by the layer above it
+and fixed here: `enforce` over `Async.timeout` masked a failure as a
+timeout (see Decisions), and `Attempt` missed a throwing
+continuation. The two-hop test also corrected the spec's own
+wording: a relative header is not charged for transit, only for
+work — which is the trade the Design section already stated.

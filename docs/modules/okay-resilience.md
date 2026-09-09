@@ -48,11 +48,40 @@ attribute need no second definition (stage 1 wires them into
 okay-ops). The clock is a `() => Long` you can hand in, which is how
 the suite drives every state transition without sleeping.
 
-**Order matters, and stage 1 fixes it** for `Resilient.http`:
-deadline outermost (the budget bounds the waits too), then breaker
-(an open circuit spends no permit and no token), then bulkhead, then
-limiter, hedge innermost (each hedged attempt is one call of the
-inner). The standalone pieces let you compose otherwise, knowingly.
+**Around `Http`, in one order.** `Resilient.http(inner, budgetMillis,
+breaker, bulkhead, limiter, hedge)` composes deadline outermost (the
+budget bounds the waits too), then breaker (an open circuit spends
+no permit and no token), then bulkhead, then limiter, hedge
+innermost (each hedged attempt is one call of the inner). A 5xx
+counts as a breaker failure, a 4xx does not; hedging applies to
+Get/Head/Options unless `hedgeable` says otherwise; a deadline the
+request already carries is honoured, the earlier of it and the
+budget wins, and the outgoing header says what is left.
+
+```scala
+val client = Resilient.http(Transports.http(), budgetMillis = Some(2000),
+  breaker = Some(breaker), bulkhead = Some(bulkhead),
+  limiter = Some((limiter, _ => "payments")), hedge = Some((100L, 2)))
+```
+
+**On the server, a refusal is a status.** `Resilient.route(limiter =
+Some((l, Resilient.byPeer)), bulkhead = Some(b))(routes)` keeps the
+routes defined exactly where they were and answers 429 for the
+limiter, 503 for a bulkhead, 504 for a carried deadline that ran
+out — with `Retry-After` in whole seconds where the refusal knows
+one. `Request.peer` is the key a server wants: the sender as the
+transport saw it, not a header anyone can write.
+
+**Propagating a deadline** is two calls: `Deadline.read(r)` where a
+request enters, `Deadline.carry(out, d)` where a call leaves — or
+just `Resilient.http`, which reads a carried header itself. The
+header is relative, so transit is not charged; the work a hop does
+before calling on is.
+
+**`/metrics`.** `Ops.routes(store, guards = Vector(breaker, bulkhead,
+limiter))` renders `okay_breaker_*`, `okay_bulkhead_*`,
+`okay_limiter_*` rows beside the store's, `name` as the label;
+`Prom.guards` is the pure mapping if you render elsewhere.
 
 **What is already elsewhere.** Retry is `okay.retry` (policies are
 streams, specs/parallel-resilience.md); timeout is `Async.timeout`;

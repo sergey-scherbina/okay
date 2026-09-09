@@ -6,7 +6,8 @@ Stage 0 of specs/resilience.md landed (okay-resilience: Breaker,
 Bulkhead, Limiter, Hedge, Deadline, one `Refused` type). What
 follows, in the spec's order:
 
-- [ ] resilience-http — stage 1: `Resilient.http(inner, ...)` in the
+- [x] resilience-http — DONE 2026-09-09 (with resilience-metrics, one
+      lane). Was: stage 1: `Resilient.http(inner, ...)` in the
       fixed order deadline → breaker → bulkhead → limiter → hedge, a
       5xx counting as a breaker failure, hedging safe methods only;
       `Resilient.route` mapping `Refused` to 429/503/504 with
@@ -14,7 +15,8 @@ follows, in the spec's order:
       added for exactly this); `Deadline.read`/`carry` across two
       hops under a controlled clock. Spec: specs/resilience.md
       Behavior, stage 1.
-- [ ] resilience-metrics — stage 1's other half: okay-ops renders
+- [x] resilience-metrics — DONE 2026-09-09 (in resilience-http). Was:
+      stage 1's other half: okay-ops renders
       `Breaker.Stats`, `Bulkhead.Stats`, `Limiter.Stats` as
       Prometheus rows beside `Store.Stats`, `name` as the label;
       `Ops.routes` takes a `Vector[Reporting[?]]`. okayOps gains the
@@ -25,6 +27,16 @@ follows, in the spec's order:
       ordinal), and the composite under a plan behaving per the
       pieces' contracts. Adaptive concurrency stays deferred until
       stage 1 is in use somewhere.
+- [ ] timeout-masks-failure — CORE. `Async.timeout(ms)(p)` is
+      `race(p.map(Some), sleep(ms).map(None))`, and `race` lets a
+      FAILING contender lose without ending the race: a program that
+      fails at once under `timeout` comes out as `None` after the
+      whole `ms`, its exception replaced by a timeout. Found by
+      resilience-http (a breaker's refusal under `Deadline.enforce`
+      became a 504 after 5 s); okay-resilience now races on its own.
+      Decide the law — "a failure ends a timeout at once" reads
+      right — write the test on `Async.timeout` first, then change
+      `timeout` (not `race`, whose contract is stated and tested).
 - [ ] retry-js — `okay.retry` lives in scala-jvm-native and sleeps
       the thread; a JS twin over `Async.sleep` (Timer) would make the
       one resilience primitive the core already has cross-platform.

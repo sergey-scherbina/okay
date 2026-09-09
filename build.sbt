@@ -807,7 +807,8 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-ops"))
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp)
+  // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(

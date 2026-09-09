@@ -51,22 +51,35 @@ trait Reporting[S]:
  */
 private[resilience] object Attempt:
   def apply[A](p: A ! Async): Either[Throwable, A] ! Async =
-    (p.resume: @unchecked) match
-      case Pure(a) => Pure(Right(a))
-      case Effect(e) => step(e, (x: A) => Pure(x))
-      case Bind(Effect(e), k) => step(e, k)
+    // `resume` runs continuations (a `flatMap` body after `Pure`), and
+    // a continuation may throw — the breaker's own refusal does. That
+    // is a failure of the program like any other.
+    val head = try Right(p.resume) catch case t: Throwable => Left(t)
+    head match
+      case Left(t) => Pure(Left(t))
+      case Right(h) => (h: @unchecked) match
+        case Pure(a) => Pure(Right(a))
+        case Effect(e) => step(e, (x: A) => Pure(x))
+        case Bind(Effect(e), k) => step(e, k)
+
+  /** the continuation applied, its own throw made an answer */
+  private def continue[X, A](k: X => A ! Async, x: X): Either[Throwable, A] ! Async =
+    val next = try Right(k(x)) catch case t: Throwable => Left(t)
+    next match
+      case Right(p) => apply(p)
+      case Left(t) => Pure(Left(t))
 
   // `k` is the continuation the GADT match typed at X
   private def step[X, A](e: Async[X], k: X => A ! Async): Either[Throwable, A] ! Async = e match
     case Async.Run(f) =>
       okay.effect[Async, Either[Throwable, X]](Async.Run(() => try Right(f()) catch case t: Throwable => Left(t)))
         .flatMap {
-          case Right(x) => apply(k(x))
+          case Right(x) => continue(k, x)
           case Left(t) => Pure(Left(t))
         }
     case Async.Await(reg) =>
       okay.effect[Async, Either[Throwable, X]](Async.Await(cb => reg(r => cb(Right(r)))))
         .flatMap {
-          case Right(x) => apply(k(x))
+          case Right(x) => continue(k, x)
           case Left(t) => Pure(Left(t))
         }

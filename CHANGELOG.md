@@ -1,5 +1,26 @@
 # Changelog
 
+## resilience-http — stage 1 of specs/resilience.md: the Http layer, the routes, the /metrics rows
+
+`Resilient.http` composes the five around `trait Http` in the one
+order the spec fixes (deadline → breaker → bulkhead → limiter →
+hedge): a 5xx is a breaker failure and a 4xx is not, hedging takes
+safe methods only, a per-call budget is merged with a deadline the
+request already carries and the outgoing header says what is left.
+`Resilient.route` keeps routes defined where they were and turns a
+refusal into 429/503/504 with `Retry-After`, keyed on `Request.peer`
+— the field specs/http.md added for exactly this. okay-ops gained
+`Prom.guards` and `Ops.routes(..., guards)`, so breaker, bulkhead and
+limiter stats are Prometheus rows beside the store's. The layer above
+found two defects in stage 0: `Deadline.enforce` over `Async.timeout`
+masked a failure as a timeout after the whole budget (a `race` waits
+for the other contender when one fails — filed for the core as
+`timeout-masks-failure`), and `Attempt` let a throwing `flatMap`
+continuation escape, so the breaker never counted such failures. Both
+fixed and pinned. The two-hop deadline test corrected the spec's own
+wording: a relative header charges work, not transit. Eleven latent
+warnings in okay-ops's tests, hidden by warm compiles, surfaced with
+the new dependency and are fixed. 9 new tests.
 ## grant-vacuity — the last test that had stopped testing what it says
 
 The sweep `grant-unenforced` implied, done: one explicit coloring

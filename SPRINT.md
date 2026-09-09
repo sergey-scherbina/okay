@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- resilience-http — specs/resilience.md stage 1: Resilient.http/route + okay-ops rows (claim: resilience-http)
 - sql-temporal-types — BACKLOG "persistence-audit", lane 3 of 7:
   timestamp/date/time/uuid/json as SqlValue cases with Schema givens,
   both drivers, verify. Claim: sql-temporal-types. Then:

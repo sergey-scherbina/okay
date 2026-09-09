@@ -204,6 +204,15 @@ class TestResilience extends munit.FunSuite {
       case other => fail(s"$other")
   }
 
+  test("breaker: a failure thrown from a continuation, not a thunk, is counted too") {
+    now = 0
+    val b = Breaker("k", failures = 1, openMillis = 10, clock)
+    val prog: Int ! Async = okay.async(1).flatMap(_ => throw RuntimeException("in the continuation"))
+    assertEquals(intercept[RuntimeException](run(b.protect(prog)())).getMessage, "in the continuation")
+    assertEquals(b.stats.failures, 1L)
+    assertEquals(b.stats.state, Breaker.State.Open)
+  }
+
   test("every refusal is one type, named by its piece") {
     val all: Seq[Refused] = Seq(
       Refused.BreakerOpen("b", Some(1)), Refused.BulkheadFull("h"),

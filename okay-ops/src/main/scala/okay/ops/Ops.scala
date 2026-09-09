@@ -23,8 +23,10 @@ object Ops:
 
   /** `GET /healthz`, `/readyz`, `/stats`, `/metrics` over `store`.
    * `lagOf` (topic groups to report consumer lag for) is optional —
-   * a store keeps no registry of its own consumer groups */
-  def routes(store: Store, lagOf: Vector[(String, Offsets, Vector[Topic])] = Vector.empty)
+   * a store keeps no registry of its own consumer groups; `guards`
+   * (breakers, bulkheads, limiters) join `/metrics` the same way */
+  def routes(store: Store, lagOf: Vector[(String, Offsets, Vector[Topic])] = Vector.empty,
+             guards: Vector[okay.resilience.Reporting[?]] = Vector.empty)
   : PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/healthz" =>
       val h = Health.of(store)
@@ -35,4 +37,4 @@ object Ops:
     case r if r.method == okay.http.Method.Get && r.url == "/stats" =>
       text(200, Json.encode(summon[Schema[Store.Stats]])(store.stats), "application/json")
     case r if r.method == okay.http.Method.Get && r.url == "/metrics" =>
-      text(200, Prom.render(store.stats, lagOf), "text/plain; version=0.0.4; charset=utf-8")
+      text(200, Prom.render(store.stats, lagOf) + Prom.guards(guards), "text/plain; version=0.0.4; charset=utf-8")

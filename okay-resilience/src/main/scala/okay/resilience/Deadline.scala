@@ -25,12 +25,27 @@ object Deadline:
     * before starting when the budget is already gone, by cancellation
     * when it runs out mid-way */
   def enforce[A](d: Deadline, clock: () => Long = wall)(prog: => A ! Async)
-                (using Scheduler, Timer): A ! Async =
+                (using S: Scheduler, T: Timer): A ! Async =
     okay.async(d.remaining(clock())).flatMap { left =>
       if left <= 0 then throw Refused.DeadlineExceeded(left)
-      else Async.timeout(left)(prog).map {
-        case Some(a) => a
-        case None => throw Refused.DeadlineExceeded(d.remaining(clock()))
+      else Async.await[A] { k =>
+        // not `Async.timeout`: that is a race, and a race waits for
+        // the other contender when one FAILS — a refusal under a
+        // deadline would wait the whole budget to come out as a
+        // timeout. Here the first outcome of either kind settles it.
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        val f = S.fork(() => prog)
+        val cancelTimer = T.after(left) { () =>
+          if !done.getAndSet(true) then
+            f.cancel()
+            k(Left(Refused.DeadlineExceeded(d.remaining(clock()))))
+        }
+        f.onComplete { r =>
+          if !done.getAndSet(true) then
+            cancelTimer()
+            k(r)
+        }
+        () => { if !done.getAndSet(true) then { cancelTimer(); f.cancel() } }
       }
     }
 
