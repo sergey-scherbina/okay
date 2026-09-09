@@ -15,7 +15,7 @@ decision recorded: a given per capability, not a field on `module`,
 so no deployment word enters the core and a module that resolves its
 own database contributes nothing. 4 tests. With this the "di" arc
 (stages 0-3: Module, qualifiers/plan/conf, Spring/ZLayer/Guice,
-deployment) is closed. Commit: LANDING.
+deployment) is closed. Commit: f2cdaf88.
 ## ui-gtk — GTK 4 on Scala Native over the same seam, present only where pkg-config finds it
 
 The operator had GTK installed (`brew install gtk4 pkg-config`) and
