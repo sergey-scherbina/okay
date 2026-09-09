@@ -1,0 +1,23 @@
+task: docs-di
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T18:55:31Z
+status: in-progress
+branch: feature/docs-di
+worktree: ../okay-wt-docsdi
+spec: specs/di.md (the arc); docs/capabilities.md is its neighbour
+
+why: the arc has a spec (a design record) and three bridge pages, and
+  no page that tells a reader how to WIRE something: modules,
+  lifecycle, the graph as composition, qualifiers, reading a module
+  without building it, an application end to end, the containers next
+  door, and what a deployment reads. capabilities.md stops at
+  provide/providing/wire.
+
+what: docs/di.md — the guide, in this repository's voice: worked
+  examples that exist in the tree, the gotchas that cost time
+  (the E10 trap, ready-vs-acquired facts, the global lazy val), and
+  every claim traceable to a test. Linked from docs/README's guide
+  list and cross-linked with capabilities.md.
+
+next: write it, check every code sample against the real API
