@@ -1,13 +1,6 @@
 # Sprint
 
 ## Doing
-- failing-over — specs/sql.md (resource-async-failure): `Failing.anyRow`
-  casts twice on its own; move the one cast a row costs into the
-  kernel as a prism over the row (`over[F, R]`, beside `split`) and
-  make the default the typed `Failing[Async]` lifted through it. The
-  `In`-witness road was probed and REFUTED first (two shapes unfound,
-  and `NotGiven` turns an abstract row into a silent identity). Claimed
-  2026-09-09 (.work/active/failing-over.claim).
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

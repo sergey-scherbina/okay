@@ -1,5 +1,36 @@
 # Changelog
 
+## failing-over — the row cast leaves Failing.scala: one prism in the kernel, and the default is the typed instance lifted over the row
+
+The operator's question, on `Failing.anyRow`'s two `.asInstanceOf[F[X]]`:
+avoid the cast, or at least move it somewhere less explicit — an
+implicit, a typeclass. The implicit road was probed BEFORE anything was
+built: a `RowLift.In[Async, F]` witness selecting a guarding instance,
+`NotGiven` selecting an identity. `summonFrom` on every TestFailing
+shape: `In[Async, F]` resolves for five of the seven Async-holding
+shapes and NOT for `(S + P) + Async` or the right-nested row (`In`
+walks the left spine only) — both would have taken the identity, the
+silence this hook's whole history refuses. And a complete `In` would
+not rescue it: on an abstract `F` (a polymorphic `Resource.run`
+caller) `NotGiven` reads "unknown" as "absent". Refuted twice, with
+no line written.
+
+What CAN move is the cast, because it is the kernel's own claim — the
+class test proved the operation is an F, and the row is erased — which
+`split` already makes twice in Effects.scala. The kernel gains its
+reverse direction: `over[F : TypeableK, R](e: R[A])(f: F[A] => F[A]):
+R[A]`, a prism over the row — test, rewrite, back under the row's
+type — one cast beside `split`'s. `Failing.anyRow` is now
+`over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed GADT
+instance lifted over any row, any nesting, an abstract F included,
+because what the test reads is the operation. Failing.scala casts
+nowhere and writes the guard logic once (it was duplicated between the
+two instances). TestFailing's nine shapes report the hook ran as
+before, plus `over`'s own contract: a non-member comes back as the
+same object. Recipe and cast list in docs/typepedia.md; the probe's
+table in specs/sql.md (resource-async-failure). Landed as c322ef6b.
+Gate: full matrix in the lane's worktree, 92 suites, 3538 tests, 0 failures, 0 warnings; okayLexNative's test runner was LOST (RunTerminatedException, no test failed) on a box at 5.6 GB swap with a sibling sbt at 500% CPU, and passed alone, 11/11 — the native-runner-error signature, one more shape of it.
+
 ## actor-on-js — the loop was a `while` over blocking reads, so the module shipped a JS artifact that could not spawn an actor
 
 `okay-actor` was `crossProject(JVMPlatform, JSPlatform, NativePlatform)`
