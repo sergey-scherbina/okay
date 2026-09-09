@@ -1,5 +1,25 @@
 # Changelog
 
+## timeout-masks-failure — a failure under Async.timeout ends it at once, with its own exception
+
+`Async.timeout(ms)(p)` was `race(p.map(Some), sleep(ms).map(None))`,
+and `race`'s stated contract lets a failing contender LOSE without
+ending the race — so a program that failed immediately answered
+`None` after the whole duration, its exception replaced by a timeout.
+resilience-http met it live: a breaker's refusal under
+`Deadline.enforce` became a 504 after five seconds, and okay-resilience
+had to race on its own.
+
+The law, written as a cross test first — and it FAILED on the old
+shape (2.014 s: the failure waited for the timer): the first outcome
+of the program, of either kind, settles the timeout; only the timer
+answers `None`. `timeout` is now written directly on `await` — spawn
+the program, arm the timer, whichever settles first wins under one
+flag, the loser is cancelled or unregistered — and `race` is
+untouched, its contract being right for a race. Green on the JVM,
+under Node and as a native binary. `okay-sql`'s `Pool` is the one
+caller in the tree, and it gets the meaning it wanted: a failing
+acquire surfaces at once instead of masquerading as a timeout.
 ## gate-hygiene — the three load flakes and two warnings nine matrices showed
 
 `TestRepoAgent` indexes the whole repository and ran 203-237 s under
@@ -36,6 +56,46 @@ typed dlq and commits past it; `replay` puts it back. DDL per
 dialect (`varbinary`/`bytea`/`blob` — the one type SQL never agreed
 on) as values for migration scripts. 8 tests on H2 + MemoryStore;
 specs/outbox.md; docs/modules/okay-outbox.md indexed.
+## bulk — the road to the aggregation, said once (specs/bulk.md)
+
+The Wrocław demo wrote its ETL — four GTFS CSVs joined and expanded
+into 4 593 288 departures — against Spark's own API, so "one
+definition, any platform" held for the aggregation and not for the
+road to it. `Bulk[D[_]]` is that road as a typeclass in the
+dependency-free core: `of`, `csv`, `map`, `flatMap`, `filter`, `join`
+(the equi-join), `cache`, `aggregate(agg)`, `toChunks`, with the
+collection view as extension methods for code generic in `D`. Three
+instances: `Bulk[Chunks]` (core; scala-jvm contributes `java.nio`
+lines, every source under `Chunks.defer` so a run re-reads and `cache`
+is the request not to), `SparkBulk` in okay-spark, `Parallel` in
+okay-java (a `java.util.List`, parallel streams, the Collector bridge).
+
+**No evidence per element type.** Spark wants a `ClassTag` at every
+`map`; threading it through a generic program is an evidence parameter
+per intermediate type — the leak the seam exists to stop. The Spark
+instance is an opaque `RDD[Any]` with ONE cast at the element boundary
+(`elem`, the `Refs.slot` precedent) and leaves through
+`toLocalIterator`, never asking for an array. The cost is a boxed
+element where Spark boxes it anyway; the win is `Gtfs.departures[D[_]]`
+with no platform in its type.
+
+Measured (TestWroclawAlgebra, Live): the same program builds 4 593 288
+departures on Spark in 18.1 s (RDD-level join over `Any` rows — the
+DataFrame version read 7 s; the seam is the RDD level, not Catalyst,
+on purpose) and in one JVM through `Chunks` in 4.0 s; the per-hour
+aggregate over the cached result reads 676 ms on Spark and 631 ms
+locally, and the two agree hour for hour. okay-java's `TestParallel`
+runs a join-and-group program on the cores and on `Chunks` to equal
+answers; `TestBulk` pins `Csv.fields` (quotes, doubled quotes, commas
+in quotes), the BOM strip, replay (a file re-read per run, held after
+`cache`) and the equi-join.
+
+One resolution finding, recorded in the spec: on a CONCRETE
+`Chunks[A]` — a program, `Chunk[A] ! Produce` — `d.map(f)` is the
+program's monadic `map`, not the seam's, so local concrete code calls
+`B.map(d)(f)`; the collection view is for code generic in `D`, which is
+the code the seam is for.
+
 ## adapter-stats — Docs.Stats and Blob.Stats counted at the seam, on /metrics; no adapter logs a credential: the last box of specs/data.md
 
 `Docs.counted` and `Blob.counted` wrap any engine with the same counters
@@ -79,6 +139,7 @@ the same `PartialFunction`. `Attempt` in okay-resilience is public
 now — both wrappers observe a program's outcome with it. 15 tests;
 specs/ops.md gained the two sections and their boxes;
 docs/modules/okay-ops.md documents both with the shutdown sequence.
+
 ## single-shot-row — priced, refuted, and the runner-floor list closes
 
 The last of the four items the operator ordered after the
@@ -411,6 +472,10 @@ calendar.txt) into **4 593 288 departures**.
   84.4 ms and 1 701.9 ms. Busiest hour of the fortnight ended Monday
   2026-09-07 at 07:25 with 20 410 departures; busiest 24 hours ended the
   same Monday with 340 139.
+- The demo's ETL now goes through the `Bulk` seam (see `bulk`, above):
+  the same `Gtfs.departures` runs on Spark and on `Chunks`, asserted
+  equal; data provenance (the portal, the dataset, the snapshot, the
+  four files) is a comment at the top of the program.
 - A window over a Monoid-only element is still a compile error, asserted
   with `compileErrors` — and a second test says what that error
   protects: write the `Group[Busiest]` the compiler asks for (`inverse`

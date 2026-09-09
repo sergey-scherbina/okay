@@ -1,11 +1,12 @@
 package okay.spark
 
-import okay.{Aggregator, Chunks, Group, Monoid, sliding}
-import okay.given // Group[N] for every Numeric — the window's evidence
-import SparkInterop.*
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import okay.{Aggregator, Bulk, Chunks, Group, Monoid, sliding}
+import okay.given // Group[N] for every Numeric, and the local Bulk[Chunks]
+import okay.Bulk.* // the collection view over any Bulk[D]
+import org.apache.spark.sql.SparkSession
 import java.io.File
 import java.time.{LocalDate, LocalDateTime}
+import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 
 /** One scheduled departure: a vehicle leaving a stop at a known minute. */
 final case class Dep(minute: Int, hour: Int, tram: Boolean, route: Int)
@@ -17,21 +18,72 @@ object Busiest:
     def empty: Busiest = Busiest(Double.NegativeInfinity)
     def combine(x: Busiest, y: Busiest): Busiest = if x.value >= y.value then x else y
 
+/** a GTFS service pattern: which weekdays, between which dates */
+final case class Service(from: Long, to: Long, days: Vector[Boolean]):
+  /** every date this pattern runs on, as epoch days */
+  def dates: Iterator[Long] =
+    Iterator.iterate(from)(_ + 1).takeWhile(_ <= to)
+      .filter(d => days(LocalDate.ofEpochDay(d).getDayOfWeek.getValue - 1))
+
 /**
- * The aggregation algebra on the city's own timetable: Wrocław's GTFS
- * feed, expanded from 1.16M scheduled stop times into every departure
- * of the fortnight it is valid for.
- *
- * `Live`-tagged: it wants a downloaded feed and a Spark session, which
- * is exactly what the default gate must not depend on. Fetch with
+ * WHERE THE DATA COMES FROM. Wrocław publishes its public-transport
+ * timetable as GTFS on the city's open-data portal
+ * (https://open-data.cui.wroclaw.pl — dataset "Rozkład jazdy transportu
+ * publicznego", /hdb/metadane/13/). The portal's API lists the weekly
+ * snapshots at https://api.open-data.cui.wroclaw.pl/od2/6/ ; this demo
+ * uses snapshot 131, OtwartyWroclaw_rozklad_jazdy_GTFS_06092026, valid
+ * 2026-09-06 .. 2026-09-20:
  *
  *   curl -sL https://api.open-data.cui.wroclaw.pl/od2-files/131/download/ \
  *     -o okay-spark/target/data/wroclaw_gtfs.zip &&
- *   unzip -o okay-spark/target/data/wroclaw_gtfs.zip \
- *     -d okay-spark/target/data/gtfs
+ *   unzip -o okay-spark/target/data/wroclaw_gtfs.zip -d okay-spark/target/data/gtfs
  *
- * (od2-files/131 is one weekly snapshot; the current list of snapshots
- * is https://api.open-data.cui.wroclaw.pl/od2/6/.)
+ * Four of its files are read: stop_times.txt (1,158,821 scheduled stop
+ * departures, one per trip and stop), trips.txt (the route and the
+ * service pattern of each trip), routes.txt (route_type2_id 31 is a
+ * tram), calendar.txt (which weekdays a service pattern runs, and the
+ * dates the feed is valid for).
+ *
+ * THE ETL, SAID ONCE. Everything below is written against `Bulk[D]`
+ * (specs/bulk.md) and names no platform: the test runs it on Spark and
+ * on the local `Chunks` instance and asserts the two agree. A timetable
+ * is a PLAN, not events — one stop_times row is a departure on every
+ * date its service pattern runs — so the last step expands it.
+ */
+object Gtfs:
+  def departures[D[_]](file: String => String)(using B: Bulk[D]): D[Dep] =
+    val stopTimes = B.csv(file("stop_times.txt")).map(r => r("trip_id") -> r("departure_time"))
+    val trips = B.csv(file("trips.txt")).map(r => r("trip_id") -> (r("route_id"), r("service_id")))
+    val routes = B.csv(file("routes.txt")).map(r => r("route_id") -> (r("route_type2_id").toInt == 31))
+    val calendar = B.csv(file("calendar.txt")).map { r =>
+      val days = Vector("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday").map(r(_) == "1")
+      r("service_id") -> Service(epochDay(r("start_date")), epochDay(r("end_date")), days)
+    }
+    // the first day of the feed, by the algebra: the minimum start date
+    val day0 = calendar.aggregate(Aggregator.min[Long].contramap((kv: (String, Service)) => kv._2.from)).get
+
+    stopTimes.join(trips)                                                       // trip    -> (time, (route, service))
+      .map { case (_, (time, (route, service))) => route -> (time, service) }   // route   -> (time, service)
+      .join(routes)                                                             // route   -> ((time, service), tram)
+      .map { case (route, ((time, service), tram)) => service -> (time, tram, route.hashCode) }
+      .join(calendar)                                                           // service -> ((time, tram, route), Service)
+      .flatMap { case (_, ((time, tram, route), service)) =>
+        val h = time.substring(0, 2).toInt // GTFS lets a late trip run past 24:00
+        val m = time.substring(3, 5).toInt
+        service.dates.map { d =>
+          // an "25:10" departure is 01:10 the next day, and lands there
+          Dep(((d - day0).toInt) * 1440 + h * 60 + m, (h * 60 + m) / 60 % 24, tram, route)
+        }
+      }
+
+  private def epochDay(yyyymmdd: String): Long = LocalDate.parse(yyyymmdd, BASIC_ISO_DATE).toEpochDay
+
+/**
+ * The aggregation algebra on the city's own timetable, on two
+ * platforms from one program.
+ *
+ * `Live`-tagged: it wants the downloaded feed and a Spark session,
+ * which is exactly what the default gate must not depend on.
  */
 class TestWroclawAlgebra extends munit.FunSuite:
   override def munitTests(): Seq[Test] =
@@ -40,6 +92,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
   val gtfs: File =
     val here = new File("okay-spark/target/data/gtfs")
     if here.isDirectory then here else new File("target/data/gtfs")
+  def file(name: String): String = new File(gtfs, name).getPath
 
   val javaFeature: Int = Runtime.version().feature()
   override def munitIgnore: Boolean =
@@ -56,52 +109,23 @@ class TestWroclawAlgebra extends munit.FunSuite:
 
   override def afterAll(): Unit = if !munitIgnore then spark.stop()
 
-  /** GTFS files carry a BOM, so the first column arrives with one glued on. */
-  def gtfsFile(name: String): DataFrame =
-    val df = spark.read.option("header", "true").csv(new File(gtfs, name).getPath)
-    df.withColumnRenamed(df.columns.head, df.columns.head.replace("﻿", ""))
+  /** the platform, chosen once: everything below that says `.aggregate` goes through it */
+  given sparkBulk: Bulk[SparkBulk.Rows] = SparkBulk(spark)
+  val localBulk: Bulk[Chunks] = okay.localBulk
 
-  /**
-   * The timetable is a PLAN, and a plan is not yet events: one row of
-   * stop_times is a departure on every date its service pattern runs.
-   * Expanding it is the join the aggregation is then asked about.
-   */
-  lazy val departuresRdd: org.apache.spark.rdd.RDD[Dep] =
+  /** the same program, twice: a cluster (well, four local cores of one) and one JVM */
+  lazy val onSpark: SparkBulk.Rows[Dep] =
     val t0 = System.nanoTime()
-    val stopTimes = gtfsFile("stop_times.txt").selectExpr("trip_id", "departure_time")
-    val trips = gtfsFile("trips.txt").selectExpr("trip_id", "route_id", "service_id")
-    val routes = gtfsFile("routes.txt").selectExpr("route_id", "CAST(route_type2_id AS INT) AS kind")
-    val calendar = gtfsFile("calendar.txt").selectExpr(
-      "service_id", "CAST(start_date AS INT) AS d0", "CAST(end_date AS INT) AS d1",
-      "CAST(monday AS INT) AS w1", "CAST(tuesday AS INT) AS w2", "CAST(wednesday AS INT) AS w3",
-      "CAST(thursday AS INT) AS w4", "CAST(friday AS INT) AS w5", "CAST(saturday AS INT) AS w6",
-      "CAST(sunday AS INT) AS w7")
-
-    val joined = stopTimes.join(trips, "trip_id").join(routes, "route_id").join(calendar, "service_id")
-    val firstDay = calendar.selectExpr("MIN(d0)").collect().head.getInt(0)
-    val day0 = LocalDate.parse(firstDay.toString, java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
-
-    val rdd = joined.rdd.flatMap { r =>
-      val hhmmss = r.getAs[String]("departure_time")
-      val h = hhmmss.substring(0, 2).toInt
-      val m = hhmmss.substring(3, 5).toInt
-      val kind = r.getAs[Int]("kind")
-      val route = r.getAs[String]("route_id").hashCode
-      val d0 = LocalDate.parse(r.getAs[Int]("d0").toString, java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
-      val d1 = LocalDate.parse(r.getAs[Int]("d1").toString, java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
-      val runs = (1 to 7).map(i => r.getAs[Int](s"w$i") == 1)
-      Iterator.iterate(d0)(_.plusDays(1)).takeWhile(!_.isAfter(d1))
-        .filter(d => runs(d.getDayOfWeek.getValue - 1))
-        .map { d =>
-          val dayIndex = (d.toEpochDay - day0.toEpochDay).toInt
-          // an "25:10" departure is 01:10 the next day, and lands there
-          Dep(dayIndex * 1440 + h * 60 + m, (h * 60 + m) / 60 % 24, kind == 31, route)
-        }
-    }.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
-
-    val n = rdd.count() // materialise, so no timing below is a CSV read
-    println(f"  $n%,d scheduled departures from ${day0} (${(System.nanoTime() - t0) / 1000000}%,d ms)")
-    rdd
+    val d = sparkBulk.cache(Gtfs.departures(file))
+    val n = d.aggregate(Aggregator.count[Dep])
+    println(f"  spark: $n%,d scheduled departures (${(System.nanoTime() - t0) / 1000000}%,d ms, read + join + expand)")
+    d
+  lazy val local: Chunks[Dep] =
+    val t0 = System.nanoTime()
+    val d = localBulk.cache(Gtfs.departures(file)(using localBulk))
+    val n = localBulk.aggregate(d)(Aggregator.count[Dep])
+    println(f"  local: $n%,d departures from the same program (${(System.nanoTime() - t0) / 1000000}%,d ms)")
+    d
 
   // ---------------------------------------------------------------- the algebra
   //
@@ -125,63 +149,53 @@ class TestWroclawAlgebra extends munit.FunSuite:
   /** the same monoid, over a value the input carries rather than 1 */
   val trams = Aggregator.sum[Long].contramap[Dep](d => if d.tram then 1L else 0L)
 
-  /**
-   * What share of departures is rail. `zip` is the PRODUCT of two
-   * monoids — `((0L, 0L), (a, b) merged componentwise)` — so both counts
-   * ride one pass, and `map` moves the ratio into `present`, leaving the
-   * monoid alone.
-   */
+  /** what share of departures is rail: `zip` is the PRODUCT of two
+   * monoids, so both counts ride one pass; `map` moves the ratio into
+   * `present`, leaving the monoid alone */
   val tramShare = departures.zip(trams).map((n, t) => t * 100.0 / n)
 
   /** how much of the network is awake: the monoid of sets, init empty, merge union */
   val routesRunning = Aggregator.distinct[Int].contramap[Dep](_.route)
 
-  /**
-   * Three statistics per hour of the day, still one pass. `groupBy` is
-   * the monoid of finite MAPS into a monoid: the unit is the empty map,
-   * and merging two maps merges the accumulators of the keys they share.
-   * Every partition builds its own 24-key map; the merge is what makes
-   * the four of them one.
-   */
+  /** per hour of the day, one pass: `groupBy` is the monoid of finite
+   * MAPS into a monoid — the empty map its unit, and merging two maps
+   * merges the accumulators of the keys they share. Every partition
+   * builds its own 24-key map; the merge is what makes them one. */
   val hourly = Aggregator.groupBy((d: Dep) => d.hour)(departures.zip(routesRunning).zip(tramShare))
 
   test("routes are counted by a hash, and the hash does not collide here") {
-    // .iterator.map, not .map: with `import okay.given` in scope the Id
-    // monad's extension gets in the way of ArrayOps on an Array[Row]
-    val ids = gtfsFile("routes.txt").select("route_id").collect().iterator.map(_.getString(0)).toVector
-    assertEquals(ids.map(_.hashCode).distinct.length, ids.distinct.length,
-      "two route ids share a hashCode — `distinct` would undercount")
-    println(f"  ${ids.distinct.length}%d routes, ${ids.map(_.hashCode).distinct.length}%d distinct hashes")
+    val B = localBulk
+    val ids = B.map(B.csv(file("routes.txt")))(_("route_id"))
+    val (routes, hashes) = B.aggregate(ids)(Aggregator.distinct[String].zip(Aggregator.distinct[Int].contramap(_.hashCode)))
+    assertEquals(hashes, routes, "two route ids share a hashCode — `distinct` would undercount")
+    println(f"  $routes%d routes, $hashes%d distinct hashes")
   }
 
-  test("the same aggregator: distributed on Spark, and local over Chunks") {
-    departuresRdd.count(): Unit
+  test("the same program on Spark and in one JVM: equal departures, equal hours") {
+    onSpark: Unit; local: Unit // built and cached OUTSIDE the timers: no lane below is an ETL
     val t0 = System.nanoTime()
-    val onSpark = aggregate(departuresRdd)(hourly)
+    val sparkHours = onSpark.aggregate(hourly)
     val sparkMs = (System.nanoTime() - t0) / 1000000
-
-    val rows = departuresRdd.collect()
     val t1 = System.nanoTime()
-    val local = hourly.present(Chunks.fold(Chunks.fromIterator(rows.iterator))(using hourly.fold))
+    val localHours = localBulk.aggregate(local)(hourly)
     val localMs = (System.nanoTime() - t1) / 1000000
-
     println(f"  aggregate: spark(4 partitions) ${sparkMs}%,d ms · local single pass ${localMs}%,d ms")
+
     println("  hour  departures   routes   tram%")
     for h <- 0 to 23 do
-      val ((n, routes), tram) = onSpark(h)
+      val ((n, routes), tram) = sparkHours(h)
       println(f"  $h%4d  $n%,10d  $routes%7d  $tram%5.1f%%")
-
-    val byDeps = onSpark.toSeq.sortBy((_, v) => v._1._1)
-    val byTram = onSpark.toSeq.sortBy((_, v) => v._2)
+    val byDeps = sparkHours.toSeq.sortBy((_, v) => v._1._1)
+    val byTram = sparkHours.toSeq.sortBy((_, v) => v._2)
     println(f"  busiest hours: ${byDeps.takeRight(3).reverse.map(_._1).mkString(", ")}" +
       f" · quietest: ${byDeps.take(3).map(_._1).mkString(", ")}")
     println(f"  most rail: ${byTram.last._1} at ${byTram.last._2._2}%.1f%% tram" +
       f" · least: ${byTram.head._1} at ${byTram.head._2._2}%.1f%%")
 
-    assertEquals(onSpark.keySet, local.keySet)
-    for h <- onSpark.keys do
-      assertEquals(onSpark(h)._1, local(h)._1, s"counts differ at hour $h")
-      assert(math.abs(onSpark(h)._2 - local(h)._2) < 1e-9, s"tram% at $h")
+    assertEquals(sparkHours.keySet, localHours.keySet)
+    for h <- sparkHours.keys do
+      assertEquals(sparkHours(h)._1, localHours(h)._1, s"counts differ at hour $h")
+      assert(math.abs(sparkHours(h)._2 - localHours(h)._2) < 1e-9, s"tram% at $h")
   }
 
   /**
@@ -194,7 +208,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
    * one subtract no matter how wide the window is.
    */
   test("a group is a window: the fortnight minute by minute, rolling") {
-    val perMinute = aggregate(departuresRdd)(Aggregator.groupBy((d: Dep) => d.minute)(departures))
+    val perMinute = onSpark.aggregate(Aggregator.groupBy((d: Dep) => d.minute)(departures))
     val minutes = perMinute.keys.max + 1
     val series = LazyList.tabulate(minutes)(m => perMinute.getOrElse(m, 0L).toDouble)
 
@@ -212,7 +226,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
         assert(math.abs(a - b) < 1e-6, s"window $w at $i: $a vs $b") }
       (rolling, groupMs, naiveMs)
 
-    val day0 = LocalDate.parse("20260906", java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
+    val day0 = LocalDate.parse("20260906", BASIC_ISO_DATE)
     for w <- List(60, 1440) do
       val (rolling, groupMs, naiveMs) = bench(w)
       val (peak, peakEnd) = rolling.zipWithIndex.maxBy(_._1)
