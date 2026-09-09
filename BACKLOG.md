@@ -5477,3 +5477,41 @@ not beside the CRDTs.
       source and the check is the store's, not the lease's.
 - [ ] numbered queues (a ticket per waiter, served in order) only if
       something actually needs them — filed as a question, not work.
+
+## actor-stop-drain — a parent's stop lost one accepted message, under load
+
+`okay.actor.TestChildren`, "law: a parent's stop waits for its
+children to DRAIN", read **299 of 300** in a full `sbt test` on
+2026-09-09 (crdt-wire's gate, 90 modules, the only failure). Three
+isolated runs of the same suite on the same tree passed.
+
+**This is not the same thing as `resilience-timed-flake`, and the
+difference is the whole entry.** That one asserts `elapsed >= 15 ms`
+— a clock assumption, which a loaded box can defeat without anything
+being wrong. This one has NO timing in it:
+
+    (0 until 300).foreach(i => child.tell(i).runWith)
+    parent.stop().runWith
+    assertEquals(handled.get, 300)
+
+300 sends into a channel of capacity 1024, so every message is
+ACCEPTED; then `stop`, which the law says waits for accepted messages
+to be handled. 299 means one accepted message was not handled before
+`stop` returned. That is the law failing, not a deadline missed —
+there is a window in the drain that load widens.
+
+WHAT IT IS NOT: it is not crdt-wire's doing. okay-actor does not
+depend on okay-crdt and that lane touched neither `Actor` nor
+`Channel`.
+
+- [ ] reproduce it deliberately, which means UNDER LOAD — isolated
+      runs pass, so a bare `testOnly` proves nothing either way. Run
+      the suite with the box busy, or add a stress variant with more
+      children and more messages.
+- [ ] then read `stop`'s drain against `Channel`'s close: the
+      suspicion is a message accepted into the channel after the
+      drain has decided how many there are — the same shape as the
+      sentinel/close races already recorded in okay-stm-consumers.
+- [ ] if it is real, the law is right and the code is wrong; if the
+      law over-promises, say so in the spec and weaken the test
+      deliberately rather than by accident.
