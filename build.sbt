@@ -278,9 +278,16 @@ lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-actor",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
-  // the laws need a Scheduler to fork with, and that is platform
-  // work -- so the module is cross-built and its LAWS are checked on
-  // the JVM, the same split the core uses
+  // The laws run on ALL THREE platforms (src/test/scala), and that is
+  // new (actor-on-js, 2026-09-09). Until then the loop read with
+  // `receiveBlocking` and ran behaviours with `runWith`, both of which
+  // need `CanBlock` — which JS does not have — so the module
+  // cross-built for a platform on which no actor could ever be
+  // spawned. The loop is an Async program now, driven by whatever the
+  // platform's Scheduler is, and on JS that is the event loop itself.
+  //
+  // `scala-jvm` keeps the tests that genuinely need a thread: the
+  // poison/supervision laws that assert across a blocking join.
   .jvmSettings(
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",

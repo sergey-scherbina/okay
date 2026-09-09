@@ -5528,20 +5528,37 @@ and can never spawn an actor.
 
 That is a real question, not a defect, and it has two honest answers:
 
-- [ ] **Say so.** Drop JSPlatform from the module, the way okay-reactive
-      is JVM-only for `Flow`. Then the build states the truth and
-      nobody ships a JS artifact that cannot be used. Smallest, and
-      loses nothing that works today.
-- [ ] **Or make the loop asynchronous** — `receiveAsync` and a drive
+- [ ] ~~Say so.~~ Not taken: the operator asked for the actors to
+      WORK on JS, which is the second answer.
+- [x] **Make the loop asynchronous** — DONE 2026-09-09. — `receiveAsync` and a drive
       rather than `receiveBlocking` — so an actor runs on the event
       loop, which is what the JS `Scheduler` already is ("the event
-      loop IS the scheduler"). Bigger, and it is the version that
-      makes actors mean something in a browser.
+      loop IS the scheduler").
 
-`stop` is already asynchronous after actor-stop-drain, so the second
-answer is one step less far away than it was this morning. Whoever
-takes it should decide deliberately rather than leave a cross-build
-that quietly cannot run.
+WHAT IT TOOK. The loop stopped being a `while` over blocking reads and
+became a program: `mailbox.receive.flatMap` instead of
+`receiveBlocking`, `Async.attempt(b(state, m))` instead of a
+try/catch around `runWith`, and recursion through `flatMap` instead of
+a mutable `var state`. Supervision carried over word for word —
+the failed message is still gone and never retried, Resume keeps the
+state, Restart takes a fresh one, Stop and Escalate fail the mailbox
+and drain what nobody will read.
+
+`CanBlock` then had no user left in the module, so both `spawn`s
+dropped it — and with it `import okay.given`, which turned out to have
+been there for `CanBlock` alone.
+
+RESULT: 20 tests on the JVM, and **5 on JS and 5 on Native**, which is
+the first time anything in this module has EXECUTED on those
+platforms rather than merely compiled. The new laws live in
+`src/test/scala`, shared, so if the loop ever goes back to blocking
+the file stops compiling for JS — a better guard than a comment.
+
+The `build.sbt` comment that explained why the laws were JVM-only
+("the laws need a Scheduler to fork with, and that is platform work")
+was true of the blocking loop and false now; corrected in the same
+commit. A build comment promising what the code no longer does is the
+same defect class as a test named for what it stopped checking.
 
 ## bulk-plan-warnings — eight warnings landed on a warning-free gate
 
