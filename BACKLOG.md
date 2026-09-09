@@ -1341,14 +1341,27 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
+- **hedge-timer-leak (found by hedge-timed-flake, 2026-09-09, NOT a
+  flake — a small leak for the resilience lane).** `Hedge.start` forks
+  the attempt BEFORE it arms the hedge timer: a fast attempt can
+  settle in between, so `settle`'s `timer.get()()` cancels the initial
+  no-op and the timer armed a moment later is never cancelled. Nothing
+  wrong happens when it fires — `start()` sees `done` and returns —
+  but a virtual thread sleeps until then. Fix is local: keep the
+  cancel handle and call it when `done` is already set after arming.
+  Not taken here: it is not the flake, and it wants its own gate.
+
 - **TestResilienceTimed "hedge: a fast first attempt never starts a
-  second", 2026-09-09 ~10:20** (di-deploy's gate, NINE sbt JVMs on the
-  box): `starts.get` was 2 — the "fast" first attempt took longer than
-  the 20 ms hedge delay under load, so the hedge did what it is for.
-  Green alone. Same family as the limiter entry below: a wall-clock
-  budget asserted on a shared machine; the fix that entry took (a
-  frozen clock) applies here too. Also TestOfflineGate's 30 s timeout
-  again in the same run (known, load).
+  second" — FIXED 2026-09-09 (hedge-timed-flake).** Seen at ~10:20
+  under nine sbt JVMs: `starts.get` was 2, because the "fast" first
+  attempt took longer than the 20 ms hedge delay and the timer fired
+  as designed. Two assertions in that file said "nothing else started"
+  by sleeping 60 ms on the REAL timer, which asserts the box's speed.
+  Both now take a `ManualTimer` the test fires by hand: after the run
+  settles, firing whatever is still armed starts nothing, because
+  `start()` is guarded by `done`. Measured both ways with a first
+  attempt three times slower than the delay: the old shape fails, the
+  new one passes. No wall clock left in either.
 
 - **TestManyToMany "the default channel ends for every consumer",
   2026-09-09 09:32 and 09:36** (okay-spring's gate, then a solo rerun),

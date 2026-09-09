@@ -1,5 +1,22 @@
 # Changelog
 
+## hedge-timed-flake — the hedge assertions stop timing the box
+
+Two tests in `TestResilienceTimed` said "nothing else started" by
+sleeping 60 ms past a 20 ms hedge delay on the real timer. That
+asserts the machine's speed: under nine sibling sbt JVMs the first
+attempt took longer than the delay, the hedge timer fired exactly as
+designed, and the count was 2 (di-deploy's gate, 2026-09-09). Both now
+take a `ManualTimer` the test fires by hand — after the run has
+settled, firing whatever is still armed starts nothing, because
+`start()` is guarded by `done`, which is the contract the sleep was
+groping for. Measured both ways with a first attempt three times
+slower than the delay: the old shape fails, the new one passes; the
+two tests went from 60+ ms each to 2 ms, and no wall clock is left in
+either. Found on the way and filed rather than fixed
+(`hedge-timer-leak`): `Hedge.start` forks before it arms, so a fast
+attempt can leave one timer armed and uncancelled — harmless when it
+fires, but it is a sleeping thread. Commit: LANDING.
 ## ui-mobile-android — the Android target on okay-compose: one set of composables, a debug APK built
 
 M3 of specs/frontend.md "Mobile". The Android SDK came by
