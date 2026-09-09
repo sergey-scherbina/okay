@@ -993,8 +993,30 @@ one with an open decision is the first.
       the cost before building it); or `Scan` gaining a
       `finish(s, input)` the element-wise path can feed. Gate as
       before: B/op first, the target is the ~171 B/char that remains.
-- [ ] bracket-over-region — `okayBracket` 27.2 against `okayResource`
-      22.4 (§7), 21%.
+- [x] bracket-over-region — ANSWERED 2026-09-09 (bracket-pairing), and
+      the answer reverses the question. The two lanes were not a pair:
+      `okayBracket` performs an effect inside the scope, `okayResource`
+      performs none. Paired (two lanes added, B/op on a loaded box —
+      three sibling builds, and `okayBracket`'s time came back ±16 µs
+      on 29 µs, a bar bigger than the effect):
+
+      | per 1000 steps | region | bracket |
+      |---|---|---|
+      | nothing inside the scope | 245 960 B/op | 364 416 B/op |
+      | ONE effect inside | 480 011 B/op | 364 641 B/op |
+
+      A scope costs bracket 118 B more than a bare region acquire —
+      the delay it needs before it may acquire (a Pure, a Bind, the
+      capture, and the Pure its answer returns into), which is
+      structural. An operation INSIDE the scope costs bracket 0.23 B
+      (one suspension, the drive scalarised) and the region 234 B (a
+      forwarded operation suspends the scope, and `Resource.run`
+      rebuilds the residual around it — guard closure, Inject, Bind,
+      continuation). So the crossover is at ONE operation: bracket is
+      48% dearer with nothing inside the scope and 24% cheaper with a
+      single effect in it. Nothing to fix; §7 carries the table and
+      the guidance. My prediction — that the inner effect and the
+      nested drive were the gap — was refuted by the measurement.
 - [ ] vector-search-dominates — `searchVectors` 379 us dominates §11's
       per-query table, where everything else is under 20. Not a
       defect (240 segments x 1536 dims is real work), filed because it
@@ -1921,10 +1943,12 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## optics (specs/optics.md)
-- [ ] optics-schema — stage 1: `Json.field/index/case` optics; the
-      second-order drift law (value lens and Json lens commute with the
-      codec); a prism per derived case; `Form.edit` through the optic
-      path with every form test unchanged.
+- [x] optics-schema — LANDED 2026-09-09 (specs/optics.md Results):
+      `JsonOptic` (at/field/index/caseOf/values/entries/path), the
+      second-order drift law, the prism per derived case. `Form.edit`
+      keeps its router — it creates missing parents, which is the
+      unlawful lens — and `TestFormOptic` asserts the two agree where
+      both are defined.
 - [ ] optics-ui — stage 2: `Ui.key(k)`, `Ui.path(is)`, `Ui.everywhere`;
       foldLocal/submit written with them; `Ui.patch` under `Ui.path`
       only if stage 0's gate allowed it.

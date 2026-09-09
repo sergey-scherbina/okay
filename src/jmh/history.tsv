@@ -1702,3 +1702,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-09	7073ec1e	7	lexbuf-array-chunked64	520920.665	467872.971	0.90	the same on the chunked path, +11.3%
 2026-09-09	7073ec1e	7	lexbuf-array-parseFull	812185.094	758865.363	0.93	and through the parser, +7.0%
 2026-09-09	7073ec1e	7	lexbuf-decomposition	-	-	-	of the ~171 B per lexed character (arithmetic from field lists): S ~56 B (33%), step's Tuple2 ~32 B (19%), the concat ~40+ B (23%) — the concat is the smallest, and it is the only one anyone had tried to remove
+2026-09-09	487f01f8	9	bracket-bare-vs-region-bare	364415.841	245960.150	0.67	B/op, -prof gc, f1 wi3 i5; bracket's scope wrapper is +118 B/step over a bare region acquire (the honest pairing of the old '21%')
+2026-09-09	487f01f8	9	bracket-with-effect-vs-region	364640.955	480011.314	1.32	B/op; one effect INSIDE the scope costs bracket 0.23 B/step and the region 234 B/step (a rebuilt residual per forwarded operation) — bracket wins from the first operation

@@ -267,14 +267,23 @@ outcome):
 - an absent field takes its declared default, then None-if-optional,
   then a refusal by name (codec-defaults);
 - an unknown CASE is a refusal, on both wires;
-- an unknown FIELD is **ignored by Json** (only declared fields are
-  looked up) and **refused by Cbor** (`unknown field '<k>'`).
+- an unknown FIELD is **skipped**, on both wires.
 
-That last asymmetry is the one surprise, and it is why a verdict
-names its wire rather than pretending there is one answer. It also
-says something operational: a service pair that adds fields freely
-is doing so on JSON; the same change on CBOR needs the readers
-upgraded first.
+The last line is the interesting one, because it used to say
+something else, and the history is the point of writing a check
+against the decoders instead of against a belief. When this section
+was first written, Json skipped an unknown field and Cbor REFUSED it
+(`unknown field '<k>'`), so a verdict had to name its WIRE. The
+check reported that faithfully — and reporting it is what made
+someone look. Nothing had chosen it: no test pinned the refusal, no
+spec stated it, and `JsonStrict`, the door that IS strict, skips
+unknown fields by design. It was a divergence, not a decision, and
+the operationally worse half of it: it made adding a field a
+breaking change for every reader already deployed.
+
+Fixed by cbor-unknown-fields (see below). The two wires answer
+alike now, and the `Wire` parameter went with the defect it existed
+to describe.
 
 Two directions, and they answer different questions:
 
@@ -288,17 +297,17 @@ for ever.
 
 ```scala
 val report = Compat.compare(summon[Schema[OrderV1]], summon[Schema[OrderV2]])
-report.backward(Compat.Wire.Cbor).compatible   // deploy-safe against the log?
-report.render                                  // the operator's paragraph
+report.backward.compatible   // deploy-safe against the log?
+report.render                // the operator's paragraph
 ```
 
 Behavior:
 - [x] a new REQUIRED field breaks backward on both wires; a new
       OPTIONAL or DEFAULTED one does not
-- [x] a new field breaks FORWARD on Cbor and not on Json — the
-      decoders' own asymmetry, asserted by decoding, not assumed
-- [x] a removed required field breaks forward; on Cbor it breaks
-      backward too
+- [x] a new field is safe FORWARD on both wires — asserted by
+      decoding on both and requiring them to agree, not assumed
+- [x] a removed required field breaks forward only: the new reader
+      skips what it dropped
 - [x] a retyped field breaks both directions and names both types
 - [x] a new case breaks forward only; a removed case breaks backward
       only
@@ -315,6 +324,51 @@ deployment fact, and the log already carries the envelope version,
 specs/persist.md); a migration generator (an upcast is a function
 someone writes, `Typed.step`); field RENAMES read as a remove plus
 an add, which is what the wire sees.
+
+
+
+## Unknown fields, on both wires (2026-09-09, cbor-unknown-fields)
+
+`Json.decode` skipped a field it did not declare; `Cbor.get` refused
+one, for the same `Schema` and the same value. The section above
+found it and reported it; this one fixes it.
+
+**Why skipping is the right half.** Ignoring an unknown field is what
+makes a schema evolve: a writer that adds a field keeps every
+deployed reader working. Refusing turns every addition into a flag
+day. And this module's own `JsonStrict` — the door whose whole point
+is strictness — skips unknown fields by design, so "strict" here has
+never meant this refusal. Nothing had chosen the CBOR behaviour: no
+test pinned it, no spec stated it, and specs/codecs.md said CBOR
+carries "the same content as JSON".
+
+**`Cbor.In.skipItem` reads one complete item and discards it**, by
+major type: an integer's argument IS the value, a string takes its
+length, an array skips its elements, a map skips twice its pairs, a
+tag skips the item after it, and a simple value or a float is
+already consumed by the head. The interpreted decoder and the staged
+one both call it, so the generated reader answers exactly what the
+fold answers.
+
+**The depth limit is the part worth reading.** Every other read here
+recurses on the depth of the SCHEMA, which the program wrote. A skip
+recurses on the depth of the INPUT, which the sender wrote — so a
+hundred thousand nested arrays in a field nobody declared would be a
+stack overflow where this module promises a value. `Cbor.maxSkipDepth`
+(256) bounds it and the refusal names the limit.
+
+Behavior:
+- [x] a value written by a newer schema decodes as the older one on
+      both wires, to the same answer
+- [x] every CBOR major type skips to exactly the next field —
+      integer, negative, text, byte string, boolean, double, array,
+      null, nested product — proved by a DECLARED field after the
+      skipped one, which would not decode if the skip mis-counted
+- [x] a skipped value nested past the limit is a named refusal, and
+      one just under it still skips
+- [x] a TRUNCATED unknown field is still damage, not a silent skip
+- [x] what stays refused: an unknown CASE (which value this IS, not
+      an extra detail about it) and a required field nobody sent
 
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends

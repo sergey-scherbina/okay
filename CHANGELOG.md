@@ -1,5 +1,83 @@
 # Changelog
 
+## cbor-unknown-fields — the two wires disagreed, and nothing had chosen that
+
+`Json.decode` skipped a field it did not declare; `Cbor.get` refused
+one, for the same `Schema` and the same value. schema-compat found it
+this morning and DOCUMENTED it as a surprise, giving its verdicts a
+`Wire` because of it. Documenting a divergence is how it gets looked
+at; this lane looked.
+
+Nothing had chosen the refusal: no test pinned it, no spec stated it,
+and `JsonStrict` — the door whose whole point is strictness — skips
+unknown fields by design, so "strict" here never meant this. It was
+also the operationally worse half: it made adding a field a breaking
+change for every reader already deployed, on the wire this stack uses
+between services.
+
+`Cbor.In.skipItem` reads one complete item and discards it, by major
+type; the interpreted decoder and the staged one both call it, so the
+generated reader answers what the fold answers. The depth limit is
+the part worth reading: every other read here recurses on the depth
+of the SCHEMA, which the program wrote, while a skip recurses on the
+depth of the INPUT, which the sender wrote — so `Cbor.maxSkipDepth`
+(256) bounds it and the refusal names the limit, instead of a stack
+overflow where this module promises a value.
+
+`Compat` lost its `Wire` parameter with the defect it existed to
+describe, and the five compat tests that asserted the asymmetry now
+assert the agreement. `TestCompat.reads` decodes on BOTH wires and
+requires them to agree, so the law is enforced for every case there
+and not only in the new suite. 6 new tests, including every major
+type skipping to exactly the next field, the depth limit from both
+sides, and a truncated unknown field still being damage. Removed on
+the way: a `tname` parameter of the staged product reader that only
+the deleted error message used — and the full matrix caught what a
+scoped codec run could not, that okay-staging's RUN-TIME staged
+generator is a third caller of that helper. It has no unknown-field
+branch of its own, so all three decoders (the fold, the compile-time
+generated one, the run-time generated one) now answer alike through
+one place. That is the second time today a scoped run was green while
+another module was red; the matrix is the gate for a reason.
+
+## optics-schema — the second carrier: optics over Json, and an edit that cannot drift from the wire
+
+Stage 1 of specs/optics.md. `okay.codec.JsonOptic`: `at(name)` is the
+lawful lens whose focus is an `Option[Json]` — absent is `None`,
+`set(None)` removes, `set(Some(v))` inserts or replaces — and
+`field`, `index` and `caseOf` are affines over it, `values` and
+`entries` traversals. That is the `at`/`ix` pair every optics library
+ends up with, arrived at here for the reason it exists: a lens that
+CREATES a missing field breaks GetPut, and a library whose tests are
+laws cannot ship that quietly. `JsonOptic.path(schema, key)` reads a
+form's dotted key as an optic against the SCHEMA, which is what tells
+a sum from a product — `{"Case": {...}}` has a level the key does not
+mention. `Affine(preview, set)` joined the core for the affines that
+are not a lens ∘ prism.
+
+THE DRIFT LAW OF THE SECOND ORDER, which is what this stage was for:
+for a derived schema, the value optic and the Json optic commute with
+the codec. A field, a nested field through the composition on both
+sides, a list through the traversal on both sides, and a sum — the
+value's `Prism.of[Shape, Circle]` and the Json's `caseOf("Circle")`
+preview exactly together, set commutes, a miss leaves both wholes
+alone. ui-toolkit made a form unable to drift from its parser; this
+makes an EDIT unable to drift from the wire.
+
+Two findings, recorded rather than smoothed over. `at`'s PutPut holds
+MODULO FIELD ORDER: exact unless the first put removed the field, in
+which case the next insert appends and the order differs — JSON
+objects are unordered by RFC 8259, `JObj` keeps a Vector because the
+codec's field order is worth preserving, and the test asserts both
+readings and names the pair. And `Form.edit` KEEPS ITS ROUTER: the
+plan was to route it through the optic path, but it creates missing
+parents (the unlawful lens) and interprets the Edit at the leaf (not
+navigation at all), so a rewrite would have cost the optics their
+laws to make a router shorter. `TestFormOptic` asserts what the
+rewrite was after instead — where both are defined, `Form.edit`
+touches exactly the focus the optic path names and nothing else — and
+names the one place they differ.
+
 ## r-docs — okay-r's page describes the module, not the promise
 
 Four lanes changed what okay-r IS today, and its page had drifted the

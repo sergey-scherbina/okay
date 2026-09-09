@@ -137,7 +137,6 @@ object Staged {
   def cborProduct[T](in: Cbor.In, n: Long, names: Array[String],
                      readers: Array[Cbor.In => Either[String, Any]],
                      absents: Array[Either[String, Any]],
-                     tname: String,
                      make: Array[Any] => T): Either[String, T] =
     val slots = new Array[Any](names.length)
     val filled = new Array[Boolean](names.length)
@@ -148,7 +147,11 @@ object Staged {
         case Left(e) => err = Some(e)
         case Right(k) =>
           val idx = names.indexOf(k)
-          if idx < 0 then err = Some(s"unknown field '$k' of $tname")
+          // skipped, not refused — the generated reader answers
+          // exactly what the interpreted one does (cbor-unknown-fields)
+          if idx < 0 then in.skipItem() match
+            case Left(e) => err = Some(e)
+            case Right(()) => ()
           else readers(idx)(in) match
             case Left(e) => err = Some(e)
             case Right(v) => slots(idx) = v; filled(idx) = true
@@ -636,7 +639,7 @@ object Staged {
                 '{ if $ok then {
                      $in.mapHeader().flatMap(n =>
                        Staged.cborProduct[T]($in, n, $namesArr, $readersArr, $absentsArr,
-                         ${ Expr(tname) }, xs => $m.fromProduct(Tuple.fromArray(xs))))
+                         xs => $m.fromProduct(Tuple.fromArray(xs))))
                    } else $fold }
               case Some((Shape.Sum, types, names, _)) =>
                 val ok = okFor[T](Shape.Sum, names, schema)
