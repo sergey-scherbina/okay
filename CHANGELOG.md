@@ -1,5 +1,21 @@
 # Changelog
 
+## dsl-slots — a slot is built from the same terms as the rule it belongs to
+
+okay-chat builds its routing rules with `okay.intent.Dsl` and typed
+its nineteen slot patterns by hand beside them. A slot is a value in
+the message where a rule is a question about it, and it is made of
+the same words: `Term.Capture` is the one group a slot reads out,
+`Anchor.Anywhere` reads wherever it stands, `Ending.End` stops at the
+end of the message, and `Term.Rest` is the thing after «нужен:» —
+allowed only because nothing follows it but the end, which is what
+keeps it from being the gap `.*` is. `Slot(name, rule, fallback)`,
+`slot(name)(rule)`, `.orWhole`. With them the shapes those patterns
+use: `someChars` (`[,и ]+`), `digits(6)`, `blank` (`\s*` as a term),
+`maybeAfter` (`(?:\s+мені)?`, the mirror of `maybeThen`), `many`
+(`(?:…)*`). No existing rendering changed; `raws` walks through the
+new wrappers. Gate: okay-intent JVM tests green, JS compiles, 0
+warnings.
 ## optics-state — a program over a part runs over the whole, and the four-parameter lens zooms Atkey's state
 
 Stage 3 of specs/optics.md, the last of the arc's implementation
