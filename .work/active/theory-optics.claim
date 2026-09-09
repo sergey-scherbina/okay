@@ -1,0 +1,26 @@
+task: theory-optics
+agent: opus-optics
+started: 2026-09-09
+branch: feature/theory-optics
+worktree: ../okay-wt-theory-optics
+spec: specs/optics.md, the filed chapter
+
+why: the optics arc's three implementation stages landed today, and
+  stage 3 produced the chapter's punchline: PState.zoom is one shift,
+  and it typechecks because the four-parameter lens and Atkey's
+  parameterised state are the same picture. Chapter 3 already reads
+  Cont "through Atkey's lens"; the pun should stop being one.
+
+what: docs/theory/10-optics.md in the house style — every Okay claim a
+  file:line, every theory claim a citation — plus its entry in the
+  index and the previous chapter's footer link. Content: the three
+  encodings and why the profunctor one; the constraint lattice as
+  intersection types (Scala 3 has no constraint kinds); Tambara
+  modules and the Yoneda argument; the interpretations as the choice
+  of profunctor, and the one only an effect library has (Star over the
+  row); type-changing optics as parameterised state; and the two
+  places the theory said no (the creating lens is not a lens; a
+  bottom-up rewrite is a catamorphism, not a traversal).
+
+predict: the chapter is the arc's ledger read as theory; no code
+  changes, so the gate is the docs suite and the links.
