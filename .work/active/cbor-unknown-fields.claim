@@ -1,0 +1,27 @@
+task: cbor-unknown-fields
+agent: opus5-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T19:01:58Z
+status: in-progress
+branch: feature/cbor-unknown-fields
+worktree: ../okay-wt-cbor-unknown
+spec: specs/codecs.md — "Compatibility between two versions" documented this as a surprise; it is a defect
+
+why: Json.decode IGNORES a field it does not declare and Cbor.get
+  REFUSES it, for the same Schema and the same value. Found by
+  schema-compat, which had to give its verdict a WIRE because of it.
+  Nothing chose this: no test pins the refusal and no spec states it,
+  while JsonStrict — the door that IS strict — ignores unknown fields
+  by design. specs/codecs.md says CBOR carries "the same content as
+  JSON". Operationally the refusal is the worse half: it makes adding
+  a field a breaking change for every deployed reader.
+
+what: Cbor.In gains skipItem (every major type, with a DEPTH LIMIT —
+  a skip recurses on input depth, which the schema-driven decoder
+  never does, so unbounded nesting would be a new way in); the
+  interpreted decoder and Staged's generated one both skip instead of
+  refusing. Compat's per-wire verdicts collapse where they were only
+  reporting this defect — and the docs that trumpet the asymmetry
+  have to change with it, or they become a lie.
+
+next: skipItem + depth guard, both decoders, tests, Compat, docs

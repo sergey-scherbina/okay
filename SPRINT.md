@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- cbor-unknown-fields — specs/codecs.md: the two wires disagree about a field nobody declared (claim: cbor-unknown-fields)
 - bracket-pairing — docs/benchmarks.md §7 / BACKLOG bracket-over-region:
   the two lanes do different work (the bracket lane performs a Produce
   effect and a nested runWith per step, the region lane one acquire),
