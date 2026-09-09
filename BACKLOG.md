@@ -1,6 +1,11 @@
 # Backlog
 
 ## bulk — after the seam (specs/bulk.md, landed 2026-09-09)
+- [ ] bulk-rewrite — `Tables` plans are data (`!.tracing` prints them);
+      the rewrite `bulk-join-cost` asks for — a `Select` that only
+      projects, pushed below a `Join` — is a walk over the same data,
+      one pass before `Tables.via`. Worth doing with a measurement: the
+      RDD-level join over `Csv.Row` maps is where the 18 s went.
 - [ ] bulk-parquet — `Bulk.csv` is the only source; the taxi demo
       (TestTaxiAlgebra) still reads its parquet through Spark's API.
       A `source` per format, or `Bulk.read(Format)`, with the local
