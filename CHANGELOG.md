@@ -1,5 +1,54 @@
 # Changelog
 
+## handler-fusion-gate — pass fusion measured: 1.13–1.29x, the gate is not cleared, and the cost was never where the model put it
+
+Stage 0 of specs/handler-fusion.md (the operator's "compose the
+handlers, run once, stage the composite" — assessed there as right and
+already half the design). This lane built the hand-written ceiling and
+measured it, and the number says stop: `Fused.stateWriter` beats
+`State.run(Writer.run(p))` by **1.24x** left-nested and **1.13x** on the
+right-nested twin the lane rules require; `Fused.throwsStateWriter`
+beats the three-pass nested run by **1.29x**. The bar was 1.3x. Per the
+spec, stages 1–2 (the generic `Step`/`Fused.run` machinery and the
+inline flat dispatch) do not start; both are marked GATED OFF in
+BACKLOG with the number that gates them.
+
+The mechanism is fine and the laws hold: `TestFused` shows the fused
+loops agree with BOTH nestings on generated programs (aborts included
+for the Throws row), stay stack-safe at a million left-nested
+operations, and keep the product accumulator a value (the residual is
+re-runnable — State.handle's own law, restated for the product). B/op
+is the prediction to the byte: fused saves 32 056 B per 1000-op run in
+both bind shapes = 667 forwarded State operations × 48 B, one Bind and
+one closure each.
+
+What was wrong was the PREMISE, and the right-nested twin is what
+showed it. The model said each foreign operation is rebuilt once per
+pass and rotation multiplies that; the twin has no rotation, saves the
+same 32 KB, and its ratio is SMALLER. The rebuild is 9% of a pass's
+allocation. The nested runners were never paying 2–3x for three
+passes, because an inner handler consumes its own operations and emits
+a residual — pass k walks fewer nodes than pass k−1 (~1 667 visits for
+two handlers over 1 000 ops, not 2 000). The time is INSIDE one pass:
+the node visit, the `Either` that `<|>` allocates per operation (~20 KB
+of the 149 KB a fused right-nested pass allocates), the continuation
+call, `Vector :+` per tell — and pass fusion leaves every one of them
+in place. Filed as `split-without-either`, the lever this measurement
+actually found, with `Fused.stateWriter` as its first probe because
+its B/op is known to the byte.
+
+Measured on a box that was not quiet (Chrome at 70% CPU, load 4–7):
+per-fork minima over two rounds, as bench-refresh's methodology note
+says, and the means are quoted only to show why they are not numbers
+(nestedTSW's fork 2 ran 60–102 µs). Five rows in history.tsv.
+
+Two things found in the Jmh configuration on the way, both from
+2026-09-08 landings that did not run `okayJVM/Jmh/compile`: `Ask` in
+HandlerBenchmark had no `derives Effect` after f9417643 removed the
+erasure fallback (a compile error — master's Jmh was red), and
+RowLift's `given deeper` had an unused evidence parameter (the
+zero-warning policy covers Jmh). Both fixed here, one line each.
+
 ## grant-unenforced — master was red, and the green tests were the problem
 
 `TestEffectProvide`'s negative test compiled what it asserts must not:
@@ -45,7 +94,6 @@ in place. The clean run produced the list.
 
 Gate: clean build, 84 modules, 3 072 tests, 0 failures, 0 compiler
 warnings.
-
 ## queue-swap — the layer was free, and the entry closed itself
 
 `queue-swap` had been open since 2026-09-07 with six filed steps:

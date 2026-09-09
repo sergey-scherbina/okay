@@ -119,12 +119,12 @@ agrees with the nested meaning.
 - [ ] `Handler.flat` agrees with `Handler.union` on every operation of
       a four-effect row (the agent's `Model + (Tool + (Context + Async))`
       shape), for all four positions.
-- [ ] `Fused.run(s, Vector())(p)` over `State % S + Writer % W` agrees
+- [x] `Fused.run(s, Vector())(p)` over `State % S + Writer % W` agrees
       with `State.handle(s)(Writer.run(p))` AND with
       `Writer.run(State.handle(s)(p))` (both orders reachable, each
       by naming the row in that order), on programs generated to
       interleave get/set/tell arbitrarily (scalacheck, ≥ 1000 cases).
-- [ ] A fused loop is stack-safe on any bind shape: 1M operations,
+- [x] A fused loop is stack-safe on any bind shape: 1M operations,
       left- and right-nested, no StackOverflowError (the `runFree`
       bar).
 - [ ] Multi-shot survives fusion: a row `Choice + State % S + Writer % W`
@@ -133,7 +133,7 @@ agrees with the nested meaning.
       programs; the fused product state is immutable (the residual
       program after a forwarded operation can be run twice with the
       same answer; the law State.handle already keeps).
-- [ ] Abort survives fusion: `Throws % E` in a fused row aborts with
+- [x] Abort survives fusion: `Throws % E` in a fused row aborts with
       the same value and the same log/state visibility as the nested
       run, for both nestings of Throws relative to Writer.
 - [ ] The fused product state has the row's layout: `((accF, accG), a)`
@@ -141,7 +141,7 @@ agrees with the nested meaning.
       layout is a documented contract and not an artifact.
 - [ ] Every existing suite stays green; no existing runner changes
       behavior (this spec ADDS a road, it does not move the old one).
-- [ ] MEASURED before any of the above is built (stage 0, the gate):
+- [x] MEASURED before any of the above is built (stage 0, the gate):
       a hand-written fused loop for `State + Writer` on the
       RowLift-style program (N = 1000) is ≥ 1.3x faster than
       `State.handle(Writer.run(p))` in µs/op, and the B/op difference
@@ -295,17 +295,61 @@ binds and the fused loop's first job is to keep `runFree`'s bar.
 
 ## Results
 
-Predictions, to be replaced by measurements (JMH, µs/op and B/op via
-`-prof gc`, quiet box, protocol as docs/benchmarks.md):
+**Stage 0, measured 2026-09-09 (handler-fusion-gate, b19539e0): the gate
+is NOT cleared.** `Fused.scala` (hand-written loops for `State + Writer`
+and `Throws + State + Writer`), `TestFused` (agreement with BOTH
+nestings on generated programs, aborts included, 1M ops stack-safe,
+the residual re-runnable — 4/4), `FusionBenchmark` (JMH, N = 1000,
+2 forks × 5 iterations, plus `-prof gc`). The box was not quiet
+(Chrome at 70% CPU, load 4–7), so the numbers are per-fork MINIMA over
+two rounds, the rule bench-refresh wrote down; B/op is load-proof.
 
-- Stage 0 (the gate): hand-fused `State + Writer`, N = 1000 — expected
-  1.3–1.8x over `State.handle(Writer.run(p))`, and ≈ one Bind + one
-  closure per State operation LESS in B/op. Three effects
-  (`+ Throws`, no abort taken): a larger ratio than two, because the
-  Throws operations were rebuilt twice.
-- Stage 1: `Handler.flat` on the four-effect agent row — a small
-  number; the fourth position is the one to read.
-- If the gate fails: the entry goes here with the numbers, the
-  mechanism that ate the win (the likely one: `resume`'s rotation is
-  the cost, not the rebuild, and one pass rotates as much as three),
-  and the stages below it are not built.
+| lane (µs/op, min) | nested | fused | ratio | B/op nested | B/op fused | saved |
+|---|---|---|---|---|---|---|
+| State + Writer, foldLeft (`nestedSW` / `fusedSW`) | 35.0 | 28.3 | **1.24x** | 364 953 | 332 896 | 32 057 |
+| the other nesting (`nestedWS` / same fused) | 33.9 | 28.3 | **1.20x** | 354 241 | 332 896 | 21 345 |
+| State + Writer, RIGHT-nested twin (`nestedSWr` / `fusedSWr`) | 18.8 | 16.7 | **1.13x** | 181 369 | 149 312 | 32 056 |
+| Throws + State + Writer, no raise (`nestedTSW` / `fusedTSW`) | 38.6 | 29.9 | **1.29x** | 365 082 | 322 273 | 42 809 |
+
+Two effects: 1.13–1.24x, under the 1.3x bar in both bind shapes. Three
+effects: 1.29x by minima (the means said 1.39x, from a nested lane
+whose fork 2 ran 60–102 µs under load — not a number). Per the gate,
+stages 1–2 as designed DO NOT START.
+
+**What the numbers say, and it is not what the cost model said.**
+
+- The rebuild is exactly what was predicted, and it is small. Fused
+  saves 32 056 B/op in BOTH bind shapes — 667 forwarded State
+  operations × 48 B = one Bind (24) + one closure (24) each, to the
+  byte. But that is 9% of the nested walk's allocation (365 KB) and
+  6.7 µs of its 35 (left-nested), 2.1 µs of 18.8 (right-nested).
+- Rotation was not the eater either. The right-nested twin has no
+  rotation and the saving is the same 32 KB; the ratio is SMALLER
+  (1.13x) because the walk is cheaper and the constant saving buys
+  less of it. The refutation mechanism the spec named ("one pass
+  rotates as much as three") is refuted itself.
+- The premise was wrong: "each foreign operation rebuilt once per
+  pass" is true only of the LAST-handled effect's operations. An
+  inner handler consumes its own operations and emits a RESIDUAL of
+  the rest, so pass k walks fewer nodes than pass k−1 — total node
+  visits for two handlers over 1000 ops are ~1 667, not 2 000, and the
+  third pass over a program that never raises walks 667 nodes owning
+  none of them for ~11 KB and ~2 µs. The nested runners were never
+  paying 2–3x; they were paying 1.1–1.3x, and that is the whole prize.
+- Where the time actually is: INSIDE one pass, fused or not — 149 KB
+  and 16.7 µs for 1000 operations with nothing to rebuild. Per
+  operation: the node visit, the `<|>` split (an `Either` allocated
+  per operation, ~20 KB of the 149), the continuation call, and
+  `Vector :+` per tell. Fusing passes leaves every one of those in
+  place.
+
+**The corrected claim, for whoever picks this up.** Pass fusion is
+worth 10–30% and no more on this library's runners, because the
+runners already shrink the program as they go. The lever the
+measurement points at is the per-operation cost of a single pass,
+which every runner pays and fusion does not touch: a row split that
+allocates no `Either` (a flat class match — stage 1's dispatch idea,
+but aimed at `<|>` itself, for nested and fused alike) is the next
+thing to price, and it is a different spec (`split-without-either`,
+BACKLOG). The `Fused` loops stay in the tree as the measured ceiling
+and the agreement laws stay green; nothing generic is built on them.

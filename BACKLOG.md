@@ -13,7 +13,9 @@ already claim. Order is semantics; the product state is immutable;
 compile-time inline is the ONLY staging admitted (staged-effects.md
 refuted run-time closure composition 3/3).
 
-- [ ] handler-fusion-gate — STAGE 0, the measurement gate: a
+- [x] handler-fusion-gate — DONE 2026-09-09, GATE NOT CLEARED (1.13–1.29x
+      against a 1.3x bar; specs/handler-fusion.md Results has the table
+      and the corrected cost model). Was: STAGE 0, the measurement gate: a
       hand-written fused loop for `State % S + Writer % W` (one
       @tailrec match, product accumulator, immutable) against
       `State.handle(s)(Writer.run(p))` and the other nesting, JMH
@@ -22,10 +24,21 @@ refuted run-time closure composition 3/3).
       programs for BOTH orders. Threshold ≥ 1.3x; below it the
       spec's Results record the refutation and the stages below
       are not built.
-- [ ] handler-fusion-flat — `Handler.flat`: Handler.union assembled
+- [ ] split-without-either — THE LEVER STAGE 0 FOUND: `<|>` allocates
+      an `Either` per operation in EVERY runner (≈20 KB of the 149 KB a
+      fused right-nested pass allocates for 1000 ops). A split that
+      answers by a flat class match with no wrapper — for nested and
+      fused runners alike — is the per-operation cost fusion cannot
+      touch, and the next thing to price. Measure on `Fused.stateWriter`
+      first (the loop is small and its B/op is known to the byte), then
+      on `State.handle`/`Writer.foldWith`.
+- [ ] handler-fusion-flat — GATED OFF by stage 0 (the ceiling for pass
+      fusion measured 1.13–1.29x); reopen only with a new number. Was:
+      `Handler.flat`: Handler.union assembled
       inline so the nested <|> chain unrolls to one match; measured
       on the four-effect agent row, fourth position is the number.
-- [ ] handler-fusion-step — `Step[F, Acc]` (tail-resumptive by type)
+- [ ] handler-fusion-step — GATED OFF by stage 0, same reason. Was:
+      `Step[F, Acc]` (tail-resumptive by type)
       and `Fused.run` over `F + G` with the row-shaped product state;
       instances for State, Writer (Fold-generic), Reader incl. local;
       abort/choose fall back to a shift with the state captured
