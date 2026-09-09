@@ -43,6 +43,13 @@ final class Bulkhead(val name: String, permits: Int, queue: Int = 0)
       r.fold(t => throw t, identity)
     }
 
+  /** the same permit over a ROW, held for the whole streaming call */
+  def limitIn[A, F[+_]](prog: => A ! (F + Async))(using okay.TypeableK[Async]): A ! (F + Async) =
+    !.widen[Unit, Async, F](acquire).flatMap(_ => Attempt.in[A, F](prog)).map { r =>
+      release()
+      r.fold(t => throw t, identity)
+    }
+
   /** the answer is the waiter when there was one, so the first step
     * after the park can mark it Started — from then on the permit's
     * return is `limit`'s own */
