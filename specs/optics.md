@@ -181,14 +181,24 @@ Stage 1 — from the Schema (optics-schema, LANDED 2026-09-09):
       where they differ — a missing parent — the test names the
       difference.
 
-Stage 2 — the tree (optics-ui):
-- [ ] `Ui.key(k)`: an `Affine[Ui, Ui, Ui, Ui]` to the widget with a
-      key; `Ui.path(is)`: the node at an index path; `Ui.everywhere`:
-      the traversal `Ui.map` is
-- [ ] `foldLocal` and `submit` are written with them; the Kotlin and
-      Swift `Tree` documents say which optic each function is
-- [ ] `Ui.patch` navigates with `Ui.path` IF the gate allowed it; the
-      diff-then-patch law is unchanged either way
+Stage 2 — the tree (optics-ui, LANDED 2026-09-09):
+- [x] `Ui.key(k)` — every node a key names, a TRAVERSAL rather than
+      the affine this list first said: a key is unique on a
+      well-formed tree and `Ui.keys` reads keys as a set, but nothing
+      enforces it, and `foldLocal` rewrote every match with `map`. A
+      traversal keeps that exactly instead of quietly picking one.
+- [x] `Ui.path(is)` — the affine at an index path, index for index
+      with `Ui.patch`'s own walk, so `path(p).preview` names exactly
+      the node a `Patch` at `p` touches (asserted against `Ui.patch`)
+- [x] `Ui.everywhere` — every node; and `Ui.shown`, which was not in
+      the plan and had to exist: `submit` must not find a form inside
+      a hidden tab, and `keys`/`forms`/`focusable` already read the
+      tree that way
+- [x] `foldLocal`, `submit` and `tabOf` are written with them (86
+      okay-ui tests unchanged); the Kotlin and Swift `Tree` files name
+      the optic each of their functions is
+- [x] `Ui.patch` KEEPS its navigation, as stage 0's gate decided
+      (3.5x); the diff-then-patch law is untouched
 
 Stage 3 — the state (optics-state):
 - [ ] `zoom(lens)(program: X ! State % A): X ! State % S` — a program
@@ -275,6 +285,26 @@ picture, and chapter 3 of the theory textbook already reads `Cont`
   cheap enough. Measured, not assumed.
 
 ## Results
+
+Stage 2 (optics-ui) landed 2026-09-09: `Ui.everywhere`, `Ui.shown`,
+`Ui.key`, `Ui.path` in okay-ui, `foldLocal`/`submit`/`tabOf` written
+with them, `TestUiOptic` (5, JVM — okay-ui's shared tests are JVM by
+its own build). Two things the plan had wrong, both found by writing
+it:
+
+**A bottom-up rewrite is not a traversal.** `Ui.map` rewrites children
+first and then applies `f` to the REBUILT node; a traversal has only
+an `Applicative`, and applying `f` to a rebuilt node is a bind. So
+`everywhere` is top-down — `f` sees the node, the children it had are
+traversed and put back into what `f` answered — and the two agree on
+every `f` that keeps a node's children, which is every call site. The
+test asserts the agreement and names an `f` for which they differ.
+
+**`shown` had to exist.** The plan named `everywhere`; `submit` needs
+the other reading, because a form inside a hidden tab must not be
+submittable, and `keys`/`forms`/`focusable` already walk that way. So
+there are two traversals with two meanings, and the test asserts the
+capability rule through them.
 
 Stage 1 (optics-schema) landed 2026-09-09:
 `okay-codec/src/main/scala/okay/codec/JsonOptic.scala` (~150 lines),

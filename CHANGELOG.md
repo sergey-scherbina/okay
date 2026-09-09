@@ -1,5 +1,36 @@
 # Changelog
 
+## optics-ui — the tree's walks get their names, and two things the plan had wrong
+
+Stage 2 of specs/optics.md. `Ui.everywhere` (every node), `Ui.shown`
+(only what is on screen), `Ui.key(k)` (every node a key names) and
+`Ui.path(is)` (the node at an index path, index for index with
+`Ui.patch`'s own walk, asserted against it). `foldLocal`, `submit` and
+`tabOf` are written with them and okay-ui's 86 tests pass unchanged;
+the Kotlin and Swift `Tree` files now name the optic each of their
+functions is, so a port has the map without the machinery.
+`Ui.patch` keeps its navigation, as stage 0's gate decided.
+
+Two findings, both from writing it rather than planning it.
+
+A BOTTOM-UP REWRITE IS NOT A TRAVERSAL. `Ui.map` rewrites children
+first and applies `f` to the REBUILT node; a traversal has only an
+`Applicative`, and applying `f` to a rebuilt node is a bind. So
+`everywhere` is top-down — `f` sees the node, the children it had are
+traversed and put back into what `f` answered — and the two agree on
+every `f` that keeps a node's children, which is every call site in
+the file. The test asserts that agreement and names an `f` for which
+they differ, rather than claiming an equality that does not hold.
+
+`SHOWN` HAD TO EXIST. The plan named one traversal. `submit` needs the
+other reading: a form inside a hidden tab or a closed disclosure must
+not be submittable, and `keys`, `forms` and `focusable` already walk
+the tree that way. Two traversals, two meanings, and the capability
+rule asserted through them. `Ui.key` is a traversal rather than the
+affine the plan named, for the same kind of reason: a key is unique on
+a well-formed tree, nothing enforces it, and `foldLocal` rewrote every
+match — a traversal keeps that exactly instead of quietly picking one.
+
 ## cbor-unknown-fields — the two wires disagreed, and nothing had chosen that
 
 `Json.decode` skipped a field it did not declare; `Cbor.get` refused

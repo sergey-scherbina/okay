@@ -315,36 +315,32 @@ object Ui {
   def foldLocal(tree: Ui, e: Event, vocab: Set[String]): Option[Ui] =
     val fieldOf = forms(tree).flatMap((f, ks) => ks.map(_ -> f))
     def live(k: String): Boolean = focusable(tree).exists { case Input(_, `k`, _, _, l) => l; case _ => false }
-    def set(f: Ui => Ui): Ui = map(tree, f)
+    // the optics say what each of these reaches (specs/optics.md stage
+    // 2): `key(k)` is every node that key names, and the guard above
+    // it is the capability check `forms` already performs
+    def at(k: String)(f: Ui => Ui): Ui = key(k).modify(f)(tree)
     e match
       case Event.Edited(k, v) if fieldOf.contains(k) && !live(k) =>
-        Some(set { case i: Input if i.key == k => i.copy(value = v); case u => u })
+        Some(at(k) { case i: Input => i.copy(value = v); case u => u })
       case Event.Toggled(k, on) if fieldOf.contains(k) =>
-        Some(set { case c: Check if c.key == k => c.copy(on = on); case u => u })
+        Some(at(k) { case c: Check => c.copy(on = on); case u => u })
       case Event.Chosen(k, i) if fieldOf.contains(k) =>
-        Some(set { case s: Select if s.key == k => s.copy(selected = i); case u => u })
+        Some(at(k) { case s: Select => s.copy(selected = i); case u => u })
       case Event.Pressed(k) if vocab(Vocab.tabs) && tabOf(tree, k).isDefined =>
         val (tk, i) = tabOf(tree, k).get
-        Some(set { case t: Tabs if t.key == tk => t.copy(selected = i); case u => u })
-      case Event.Pressed(k) if vocab(Vocab.disclosure) && exists(tree) { case Disclosure(_, _, _, `k`) => true; case _ => false } =>
-        Some(set { case d: Disclosure if d.key == k => d.copy(open = !d.open); case u => u })
+        Some(at(tk) { case t: Tabs => t.copy(selected = i); case u => u })
+      case Event.Pressed(k) if vocab(Vocab.disclosure) && everywhere.toVector(tree).exists {
+          case Disclosure(_, _, _, `k`) => true; case _ => false } =>
+        Some(at(k) { case d: Disclosure => d.copy(open = !d.open); case u => u })
       case _ => None
 
   /** the Form's one event, from the values its fields hold now */
   def submit(tree: Ui, formKey: String): Option[Event] =
-    def find(u: Ui): Option[Form] = u match
-      case f: Form if f.key == formKey => Some(f)
-      case Form(fields, _, _) => fields.flatMap(find).headOption
-      case Row(c, _) => c.flatMap(find).headOption
-      case Column(c, _) => c.flatMap(find).headOption
-      case Box(c, _, _, _, _, _) => c.flatMap(find).headOption
-      case Scroll(c, _) => find(c)
-      case Items(items, _) => items.flatMap(find).headOption
-      case Table(_, rows, _) => rows.flatten.flatMap(find).headOption
-      case Tabs(_, selected, pages, _) => pages.lift(selected).flatMap(find)
-      case Modal(_, body, _) => find(body)
-      case Disclosure(_, open, body, _) => if open then find(body) else None
-      case _ => None
+    // the SHOWN traversal, in pre-order: a form inside a hidden tab or
+    // a closed disclosure is not on screen and cannot be submitted,
+    // which is the same reading `forms` and `keys` take
+    def find(u: Ui): Option[Form] =
+      shown.toVector(u).collectFirst { case f: Form if f.key == formKey => f }
     find(tree).map { f =>
       Event.Submitted(formKey, f.fields.flatMap(focusable).collect {
         case Input(v, k, _, _, _) => Event.Edited(k, v)
@@ -354,17 +350,119 @@ object Ui {
     }
 
   private def tabOf(tree: Ui, k: String): Option[(String, Int)] =
-    var found: Option[(String, Int)] = None
-    val _ = map(tree, {
-      case t: Tabs if found.isEmpty =>
-        t.labels.indices.find(i => tabKey(t.key, i) == k).foreach(i => found = Some(t.key -> i)); t
-      case u => u })
-    found
+    everywhere.toVector(tree).collectFirst {
+      case t: Tabs if t.labels.indices.exists(i => tabKey(t.key, i) == k) =>
+        t.key -> t.labels.indices.find(i => tabKey(t.key, i) == k).get
+    }
 
-  private def exists(tree: Ui)(p: Ui => Boolean): Boolean =
-    var hit = false
-    val _ = map(tree, u => { if p(u) then hit = true; u })
-    hit
+  // ---------------------------------------------------------------- the tree's optics (specs/optics.md stage 2)
+
+  /**
+   * Every node, in pre-order: `f` sees the node, and the children it
+   * had are traversed and put back into what `f` answered.
+   *
+   * TOP-DOWN, AND IT HAS TO BE. `Ui.map` rewrites bottom-up — children
+   * first, then `f` on the REBUILT node — and that is not a traversal
+   * at all: applying `f` to a rebuilt node means binding the effect
+   * (`F[Ui] >>= f`), and a traversal has only an Applicative. So the
+   * two agree on every `f` that keeps a node's children (which is
+   * every call site in this file), and `TestUiOptic` both asserts that
+   * agreement and names an `f` for which they differ.
+   */
+  def everywhere: Traversal[Ui, Ui, Ui, Ui] =
+    Traversal([F[_]] => (F: Applicative[F]) ?=> (f: Ui => F[Ui]) => (u: Ui) => walk(f, u, structural = true))
+
+  /**
+   * Every node the user can SEE: the selected tab's page only, an open
+   * disclosure's body only — the reading `keys`, `forms` and
+   * `focusable` take, and the reason a form in a hidden tab cannot be
+   * submitted.
+   */
+  def shown: Traversal[Ui, Ui, Ui, Ui] =
+    Traversal([F[_]] => (F: Applicative[F]) ?=> (f: Ui => F[Ui]) => (u: Ui) => walk(f, u, structural = false))
+
+  /**
+   * Every node a key names — a TRAVERSAL, not an affine. On a
+   * well-formed tree there is exactly one: `Ui.keys` treats keys as a
+   * SET and the capability rule reads them that way. But nothing
+   * enforces it — a view is an ordinary function and may build the
+   * same key twice — and this is the operation `foldLocal` used to
+   * perform with `map`, which rewrote every match. A traversal keeps
+   * that behaviour exactly instead of quietly picking the first.
+   */
+  def key(k: String): Traversal[Ui, Ui, Ui, Ui] =
+    Traversal([F[_]] => (F: Applicative[F]) ?=> (f: Ui => F[Ui]) => (u: Ui) =>
+      walk((n: Ui) => if keyOf(n).contains(k) then f(n) else F.pure(n), u, structural = true))
+
+  /**
+   * The node at an index path — THE PATCH CONVENTION, index for index
+   * with `Ui.patch`'s own walk (a Scroll's child at 0, a Modal's and a
+   * Disclosure's body at 1), so `path(p).preview` names exactly the
+   * node a `Patch` at `p` touches. An affine: a path into a leaf
+   * previews nothing, which is that walk's `case other => other`.
+   */
+  def path(is: List[Int]): Affine[Ui, Ui, Ui, Ui] =
+    is.foldLeft(Affine[Ui, Ui, Ui, Ui](Right(_), (_, v) => v))((acc, i) => acc.andThen(child(i)))
+
+  private def child(i: Int): Affine[Ui, Ui, Ui, Ui] =
+    Affine(u => childAt(u, i).map(_._1).toRight(u), (u, v) => childAt(u, i).map(_._2(v)).getOrElse(u))
+
+  /** the i-th child by the patch convention, and how to put one back */
+  private def childAt(u: Ui, i: Int): Option[(Ui, Ui => Ui)] = u match
+    case Row(c, k) if c.isDefinedAt(i) => Some((c(i), v => Row(c.updated(i, v), k)))
+    case Column(c, k) if c.isDefinedAt(i) => Some((c(i), v => Column(c.updated(i, v), k)))
+    case b: Box if b.children.isDefinedAt(i) => Some((b.children(i), v => b.copy(children = b.children.updated(i, v))))
+    case Scroll(c, k) if i == 0 => Some((c, v => Scroll(v, k)))
+    case Form(fs, sub, k) if fs.isDefinedAt(i) => Some((fs(i), v => Form(fs.updated(i, v), sub, k)))
+    case Items(items, k) if items.isDefinedAt(i) => Some((items(i), v => Items(items.updated(i, v), k)))
+    case Modal(t, body, k) if i == 1 => Some((body, v => Modal(t, v, k)))
+    case Disclosure(t, o, body, k) if i == 1 => Some((body, v => Disclosure(t, o, v, k)))
+    case _ => None
+
+  /** a node's children — all of them, or only those on screen */
+  private def kidsOf(u: Ui, structural: Boolean): Vector[Ui] = u match
+    case Row(c, _) => c
+    case Column(c, _) => c
+    case b: Box => b.children
+    case Scroll(c, _) => Vector(c)
+    case Form(fs, _, _) => fs
+    case Items(items, _) => items
+    case Table(_, rows, _) => rows.flatten
+    case Tabs(_, sel, pages, _) => if structural then pages else pages.lift(sel).toVector
+    case Modal(_, body, _) => Vector(body)
+    case Disclosure(_, open, body, _) => if structural || open then Vector(body) else Vector.empty
+    case _ => Vector.empty
+
+  /** children back into a node, by position; a node whose shape `f`
+   * changed keeps what `f` made of it */
+  private def withKids(u: Ui, cs: Vector[Ui], structural: Boolean): Ui =
+    if cs.length != kidsOf(u, structural).length then u
+    else u match
+      case Row(_, k) => Row(cs, k)
+      case Column(_, k) => Column(cs, k)
+      case b: Box => b.copy(children = cs)
+      case Scroll(_, k) => Scroll(cs.head, k)
+      case Form(_, sub, k) => Form(cs, sub, k)
+      case Items(_, k) => Items(cs, k)
+      case Table(h, rows, k) => Table(h, regroup(cs, rows.map(_.length)), k)
+      case Tabs(l, sel, pages, k) =>
+        if structural then Tabs(l, sel, cs, k)
+        else Tabs(l, sel, cs.headOption.fold(pages)(c => pages.updated(sel, c)), k)
+      case Modal(t, _, k) => Modal(t, cs.head, k)
+      case Disclosure(t, o, body, k) => Disclosure(t, o, cs.headOption.getOrElse(body), k)
+      case leaf => leaf
+
+  private def walk[F[_]](f: Ui => F[Ui], u: Ui, structural: Boolean)(using F: Applicative[F]): F[Ui] =
+    val kids = kidsOf(u, structural)
+    val traversed = kids.foldLeft(F.pure(Vector.empty[Ui]))((acc, x) =>
+      F.fmap(acc, (out: Vector[Ui]) => (y: Ui) => out :+ y).app(walk(f, x, structural)))
+    F.fmap(f(u), (n: Ui) => (cs: Vector[Ui]) => withKids(n, cs, structural)).app(traversed)
+
+  private def regroup(flat: Vector[Ui], lengths: Vector[Int]): Vector[Vector[Ui]] =
+    lengths.foldLeft((flat, Vector.empty[Vector[Ui]])) { case ((rest, out), n) =>
+      val (row, more) = rest.splitAt(n)
+      (more, out :+ row)
+    }._2
 
   /** a bottom-up rewrite of every node */
   def map(ui: Ui, f: Ui => Ui): Ui =
