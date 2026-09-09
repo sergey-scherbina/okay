@@ -85,6 +85,15 @@ Stage 0 (core, `Providing.scala`, TestModule):
 - [x] a dependency no module installs is a COMPILE error naming the
       type (`compileErrors`, the message quoted)
 - [x] a failing acquisition releases what was acquired before it
+- [x] the vocabulary runs on EVERY platform, not only where it was
+      written (di-cross): `TestModuleCross` in `src/test/scala-cross`
+      covers acquisition order and reverse release, a dependent
+      module, the override, `plan` off the type, `exports` with the
+      erased class and `Resource.open`'s closer — JVM, JS and Native.
+      It found nothing: the code was already right, the guard was
+      missing. `Module` is shared core, and both non-JVM platforms
+      replace the test sources with `scala-cross` alone, so the JVM
+      suite could never have said this
 
 Stage 1 — qualifiers and the plan as a value (SHIPPED, di-stage1):
 - [x] two capabilities of one type are told apart by TYPE, never by

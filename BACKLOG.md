@@ -208,6 +208,10 @@ its Behavior checklist:
       WebFlux end-to-end (handler stack in the gate, Netty under
       Live), which found and fixed the result-handler gap. Nothing
       left in this arc.
+- [x] di-cross — DONE 2026-09-09: the module vocabulary pinned on
+      JVM, JS and Native (`TestModuleCross`, src/test/scala-cross).
+      Found nothing; the guard was what was missing. The arc is now
+      complete on every platform it ships to.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 

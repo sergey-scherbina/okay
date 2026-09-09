@@ -1,5 +1,22 @@
 # Changelog
 
+## di-cross — the module vocabulary was tested on one platform of three
+
+`Module`, `module`, `and`, `plan`, `exports` and `Resource.open` are
+shared core, so they compile for JS and Native — and nothing ran them
+there. `TestModule` lives in `src/test/scala`, and both non-JVM
+platforms replace the test sources with `src/test/scala-cross` alone,
+so the JVM suite could never have said whether the vocabulary worked
+where it ships. `TestModuleCross` now does: acquisition order and
+reverse release through the region, a dependent module reading the one
+before it, the override to the right, `plan` read off the type before
+anything is built, `exports` with the erased class, and
+`Resource.open`'s idempotent closer.
+
+Five tests, green on JVM, JS and Native at the first run. It found no
+defect, and that is the honest result: the code was already right, the
+guard was missing. With it the DI arc of specs/di.md is complete on
+every platform it ships to. Commit: LANDING.
 ## failing-over — the row cast leaves Failing.scala: one prism in the kernel, and the default is the typed instance lifted over the row
 
 The operator's question, on `Failing.anyRow`'s two `.asInstanceOf[F[X]]`:
