@@ -1,7 +1,6 @@
 package okay.http
 
 import okay.*
-import okay.given
 
 /**
  * A WebSocket frame.

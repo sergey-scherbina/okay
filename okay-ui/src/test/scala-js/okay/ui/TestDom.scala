@@ -1,7 +1,6 @@
 package okay.ui
 
 import okay.*
-import okay.given
 import scala.scalajs.js
 
 /**

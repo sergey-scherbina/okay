@@ -1,7 +1,6 @@
 package okay.chat
 
 import okay.*
-import okay.given
 import okay.http.{Body, Method, Request, Response}
 import okay.llm.{Anthropic, Cut, OpenAi, Transport}
 import okay.conf.{Secret, Secrets}

@@ -1,7 +1,6 @@
 package okay.llm
 
 import okay.{!, %, +, Async, Writer}
-import okay.given
 import okay.codec.{Json, Schema}
 import okay.lex.Json as JsonLex
 import okay.parse.{Cst, JsonParse, Parse}
