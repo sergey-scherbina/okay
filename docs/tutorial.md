@@ -51,7 +51,10 @@ val sum = Chunks.fold(
 ```
 
 Same semantics, the tree steps once per 64 elements: this pipeline
-measures 16.9us where kyo takes 239 and fs2 1410. Or reify and let
+measures 10.2us — 8.2 when the whole input is one chunk, which is what
+the competitors' own chunked sources get, and there fs2 `emits` takes
+21.9, `ZStream.range` 35.8 and kyo `Stream.range` 65.9 (plain Iterator
+15.2). Or reify and let
 the optimizer fuse it:
 
 ```scala

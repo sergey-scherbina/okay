@@ -93,5 +93,14 @@ Behavior:
   iterator mode); kyo 239, zio 692, fs2 1410
 - merge 2x500: **okayChunksMerge 14.7 us** vs zio 47.3 — **3.2x faster than
   ZIO** (was 158 elementwise); fs2 9031
+
+(THE COMPETITOR NUMBERS ON THOSE TWO ROWS ARE THEIR PER-ELEMENT LANES
+and are kept only as the record of what this session measured.
+`benchmark-fairness-audit` (2026-09-06) and `lane-fairness` (2026-09-08)
+re-asked each library with the source its own author intended: pipeline
+fs2 `emits` 21.9, `ZStream.range` 35.8, kyo `Stream.range` 65.9 against
+okay's 8.22 for the same one-chunk shape; merge fs2 chunk-native 94.4,
+ZIO 51.5 against okay 13.3. Quote docs/benchmarks.md §5 and §6, not
+these rows.)
 - remaining per-element cost is the Iterator plumbing itself; per chunk: one
   freer-tree step and one queue operation
