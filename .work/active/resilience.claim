@@ -1,7 +1,7 @@
 task: resilience
 agent: fable-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T05:39:01Z
+heartbeat: 2026-09-09T05:51:40Z
 status: in-progress
 branch: feature/resilience
 worktree: ../okay-wt-resilience
@@ -19,4 +19,4 @@ what: new module okay-resilience (JVM+JS, depends on okay-http):
   tests are deterministic; stage 1 composes them around trait Http in
   a fixed order and renders their stats in okay-ops.
 
-next: write and commit the spec; then stage 0 in the worktree
+next: JS suite, docs page, CHANGELOG, gate, land
