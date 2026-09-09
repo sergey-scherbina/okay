@@ -898,11 +898,27 @@ one with an open decision is the first.
 - [ ] elements-door-cursor — the `.elements` door reads 23.8 against
       the chunk transformers' 10.78 (§5), 2.2x for the per-element
       cursor. Known mechanism, stated in the doc.
-- [ ] chunked-lexer-bookkeeping — chunked lexing 58.0 against
-      element-wise 48.9 (§10). The doc already refuted the boxing
-      theory (unboxing bought 8% of a 23% gap) and named per-chunk
-      bookkeeping: a builder, a token-chunk allocation and a Free node
-      per input chunk. Prize ~19%.
+- [x] chunked-lexer-bookkeeping — REFUTED 2026-09-09, nothing landed.
+      The per-chunk bookkeeping was rewritten away (one traversal into
+      a growable array) and measured: 1.8% of allocation at chunk 64,
+      nothing at 512, and time unmeasurable — two four-fork rounds on
+      the same code disagreed 1.5-2x in both directions. §10 carries
+      the numbers. The 19% gap is NOT this.
+- [ ] lexer-state-allocation — WHERE LEXING'S COST ACTUALLY IS, found
+      by chunked-lexer-bookkeeping's byte counts: ~180 B per input
+      CHARACTER on BOTH paths (453 KB element-wise for a 2 495-char
+      document). `okay.lex.Json`'s state is
+      `S(mode, buf: String, start: P, cur: P)` and every `step` does
+      `s.copy(buf = s.buf + c, cur = s.cur + c)`: a fresh String per
+      character — quadratic in the token's length — plus a new S, a
+      new P, and the Tuple2 `step` answers. The fix is a state that
+      carries the token's START OFFSET and slices the input once at
+      `finish`, not a growing String; `P` can be three Ints in `S`.
+      Gate it the way this one was gated: B/op first (the target is
+      the ~180 B/char), a quiet box for time, and it lands only if the
+      numbers show it. Note the interaction with `scan-step-allocation`
+      (the Tuple2 per char, an interface change): the state fix needs
+      no interface change and should be measured FIRST, alone.
 - [ ] bracket-over-region — `okayBracket` 27.2 against `okayResource`
       22.4 (§7), 21%.
 - [ ] vector-search-dominates — `searchVectors` 379 us dominates §11's

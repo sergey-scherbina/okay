@@ -1,5 +1,36 @@
 # Changelog
 
+## chunked-lexer-bookkeeping — the named residual was not it either, and the byte counts found the real one
+
+§10 had already refuted one explanation for chunked lexing's 19% gap
+(the boxing theory: unboxed storage plus a direct array read bought 8%
+of 23%) and named a second — per-chunk bookkeeping: a
+`Vector.newBuilder`, a token-chunk allocation and a Free node per
+input chunk. This lane rewrote that away, one traversal into a
+growable array instead of builder → `result()` →
+`ChunkBuf.ofSpecialized` (which, the token kind being abstract there,
+falls to `of` and sizes and copies again), and measured it against
+the old loop in one run.
+
+It buys 1.8% of allocation at chunk 64 (485 949 against 494 902 B/op)
+and nothing at 512 (475 369 against 466 574 — slightly worse: the
+growable array over-reserves where the Vector builder did not). Time
+could not be measured: two four-fork rounds on the SAME code
+disagreed by 1.5–2x in both directions, on a box whose 5- and
+15-minute load never fell below 25. Nothing landed — a hot-path
+rewrite that cannot show a benefit does not belong in the tree — and
+§10 now carries both refutations.
+
+What the byte counts did find is where lexing's cost actually is, and
+it is on BOTH paths equally: **~180 bytes per input CHARACTER** (453 KB
+element-wise for a 2 495-character document). `okay.lex.Json`'s
+scanner state is `S(mode, buf: String, start: P, cur: P)` and every
+`step` does `s.copy(buf = s.buf + c, cur = s.cur + c)` — a fresh
+String per character, quadratic in the token's length, plus a new `S`,
+a new `P` and the `Tuple2` that `step` returns. Filed as
+`lexer-state-allocation` with the fix sketched (carry the start offset
+and slice the input once at `finish`) and the same gate this lane was
+held to. Four rows in history.tsv, three of them negative results.
 ## obs-log — log lines as values, joined to the trace by the handler
 
 The microservices audit's last item, and the one specs/obs.md had

@@ -1737,6 +1737,29 @@ it always was: streaming and constant memory over a source you
 cannot materialize (a socket, a gigabyte file), where `Scan.all`
 needs the whole input in memory.
 
+**And that second explanation is refuted too** (chunked-lexer-bookkeeping,
+2026-09-09). The per-chunk bookkeeping was rewritten away — one
+traversal into a growable array instead of `Vector.newBuilder` →
+`result()` → `ChunkBuf.ofSpecialized` (which, with the token kind
+abstract and so no ClassTag at that site, falls to `of` and sizes and
+copies again) — and measured against the old loop in one run. It buys
+**1.8% of allocation at chunk 64** (485 949 against 494 902 B/op) and
+**nothing at 512** (475 369 against 466 574, i.e. slightly worse). Time
+could not be measured at all: two four-fork rounds on the same code
+disagreed by 1.5–2x in both directions (round 2 minima 49.1/91.0 for
+new/old at 64, round 3 75.6/54.8), on a box whose 5- and 15-minute
+load never fell below 25. The change was NOT kept — a hot-path rewrite
+that cannot show a benefit does not belong in the tree.
+
+What the byte counts do say is where lexing's cost really is, and it
+is on BOTH paths equally: **~180 bytes per input CHARACTER** (453 KB
+element-wise for a 2 495-character document). `okay.lex.Json`'s
+scanner state is `S(mode, buf: String, start: P, cur: P)` and every
+`step` does `s.copy(buf = s.buf + c, cur = s.cur + c)` — a fresh
+String per character, quadratic in token length, plus a new `S`, a
+new `P` and the `Tuple2` that `step` returns. That is the lever;
+`lexer-state-allocation` in BACKLOG carries it.
+
 **Parsing, full vs incremental:**
 
 | full parse | incremental reparse (one-member edit) |

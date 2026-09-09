@@ -1690,3 +1690,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-09	867e4b1b	30	sshot-writerMut-vs-run	104056	128024	0.81	mutable ListBuffer cell vs Writer.run (List + finish in loop), Writer-only 1000 tells, same run; time 12.5 vs 11.2 (noise)
 2026-09-09	867e4b1b	30	sshot-mixedMut-vs-run	135400	148696	0.91	the same on the mixed program (333 tells + 667 State ops): -8.9% B/op, gate was 10%; time 15.7 vs 16.7 (noise)
 2026-09-09	867e4b1b	30	sshot-REFUTED	-	-	-	SingleShot evidence NOT shipped: it buys Writer's reverse (24 B/tell) and nothing else; the runner-floor list is closed — what is left under the fused pass is the program's own nodes
+2026-09-09	8c265ba5	30	lexchunk-onepass-64	485949.311	494901.683	1.02	one traversal into a growable array vs Vector.newBuilder+ofSpecialized, chunk 64, same run: -8952 B/op = 1.8%
+2026-09-09	8c265ba5	30	lexchunk-onepass-512	475369.259	466574.457	0.98	the same at chunk 512: WORSE by 8795 B/op — the growable array over-reserves where the Vector builder did not
+2026-09-09	8c265ba5	30	lexchunk-time-UNMEASURABLE	-	-	-	two 4-fork rounds on the SAME code disagreed 1.5-2x in both directions (r2 new/old 49.1/91.0 at 64, r3 75.6/54.8); 5- and 15-min load never below 25. No time claim made; the change was not kept
+2026-09-09	8c265ba5	30	lex-cost-is-the-scanner-state	453265.819	-	-	element-wise lexing allocates 453 KB for a 2495-char document = ~180 B per CHARACTER, on both paths: Json's S.copy(buf = buf + c) is a fresh String per char plus S, P and step's Tuple2 -> lexer-state-allocation
