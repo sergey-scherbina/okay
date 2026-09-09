@@ -1,5 +1,20 @@
 # Changelog
 
+## intent-period-month-forms — «майстер» is not May
+
+The bare month `Temporal.period` reads (landed this morning) matched
+the lexicon's PREFIXES, which `monthAndDay` can afford because a day
+number stands beside the month and settles it. Alone, nothing does:
+okay-chat's measurement over its live log read «майстер» as May 2027
+and «лютни», «лютьер», «лютню» as February — the Ukrainian and Polish
+month stems are the stems of ordinary words. A month named alone now
+matches the month's own whole forms in the cases a sentence puts them
+in («в лютому», «у травні», «w maju», «в мае», «октябрь»), and the
+English «may» needs a preposition before it, because bare it is a
+verb. Fifteen ordinary words that begin with a month are asserted to
+be `None`. Gate: okay-intent JVM green, JS compiles, 0 warnings, full
+matrix green.
+
 ## intent-spans — typed spans from token vectors, and okay-onnx
 
 A sentence encoder computes a vector per token and mean pooling throws

@@ -141,6 +141,10 @@ object Eval:
 - [x] `Temporal.findPeriod` returns the shortest window of words
       reproducing the whole message's period, the evidence rule of
       `find` (intent-periods-and-zl)
+- [x] a month named alone matches the month's WHOLE forms, never a
+      prefix: «майстер», «лютни», «lutnia» are not months, «в лютому»,
+      «w maju», «in May» are, and English «may» without a preposition
+      is a verb (intent-period-month-forms)
 
 ## Out of scope
 
@@ -4740,3 +4744,17 @@ it — «неделе» out of the question about Wrocław, as `find` gives
 consumer that wants «на этой неделе» widens over the function words
 beside the span, which it can do with a word list, while a parser
 guessing at how far a phrase reaches would be a second parser.
+
+**Corrected the same evening (intent-period-month-forms).** The bare
+month was matched by the lexicon's PREFIXES, which `monthAndDay` can
+afford because a day number stands beside the month and settles it.
+Alone, nothing settles it: okay-chat's measurement over its live log
+read «майстер» as May 2027 and «лютни», «лютьер», «лютню» as
+February — the Ukrainian and Polish month stems are the stems of
+ordinary words («лют», «трав», «лип», «серп», «квіт», «жовт», «груд»,
+`lut`, `maj`, `marz`). A month named alone now matches the month's
+own whole forms, in the cases a sentence puts them in («в лютому»,
+«у травні», «w maju», «в мае»), and the English «may» needs a
+preposition before it, because bare it is a verb. The lesson is the
+general one this parser already states: what a lexicon does not say
+is `None`, and a prefix says more than it knows.

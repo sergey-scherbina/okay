@@ -292,7 +292,14 @@ object Temporal {
       /** the weekend, as prefixes; a language that says it in several
        * words (`fin de semana`) says so in `weekendPhrase` instead */
       weekend: Seq[String] = Seq.empty,
-      weekendPhrase: Seq[List[String]] = Seq.empty)
+      weekendPhrase: Seq[List[String]] = Seq.empty,
+      /** the month's OWN forms, whole words, for a month named with
+       * no day beside it. `months` are prefixes, and `monthAndDay` can
+       * afford a prefix because a day number stands next to it; alone,
+       * «майстер» starts with «май» and «лютни» with «лют», and a
+       * consumer's live log read a luthier as February. Empty means
+       * the prefixes are whole names already (fr, de, es) */
+      monthWords: Vector[Seq[String]] = Vector.empty)
 
     private def is(tok: String, forms: Seq[String]): Boolean = forms.exists(f => tok.startsWith(f))
     private def has(words: List[String], forms: Seq[String]): Boolean = words.exists(w => is(w, forms))
@@ -324,7 +331,11 @@ object Temporal {
         Seq("июл"), Seq("август"), Seq("сентябр"), Seq("октябр"), Seq("ноябр"), Seq("декабр")),
       today = Seq("сегодня"), tomorrow = Seq("завтра"), dayAfter = Seq("послезавтра"), yesterday = Seq("вчера"),
       next = Seq("следующ", "будущ"), last = Seq("прошл", "прошедш"), week = Seq("недел"), days = Seq("дн", "день"), ago = Seq("назад"),
-      weekend = Seq("выходн", "уикенд", "уик-энд"))
+      weekend = Seq("выходн", "уикенд", "уик-энд"),
+      monthWords = Vector(Seq("январь", "января", "январе"), Seq("февраль", "февраля", "феврале"), Seq("март", "марта", "марте"),
+        Seq("апрель", "апреля", "апреле"), Seq("май", "мая", "мае"), Seq("июнь", "июня", "июне"), Seq("июль", "июля", "июле"),
+        Seq("август", "августа", "августе"), Seq("сентябрь", "сентября", "сентябре"), Seq("октябрь", "октября", "октябре"),
+        Seq("ноябрь", "ноября", "ноябре"), Seq("декабрь", "декабря", "декабре")))
     val uk = Lexicon(
       Vector(Seq("понеділ", "щопонеділ"), Seq("вівтор", "щовівтор"), Seq("серед", "щосеред"), Seq("четвер", "щочетверг"),
         Seq("п'ятниц", "п’ятниц", "щоп'ятниц", "щоп’ятниц"), Seq("субот", "щосубот"), Seq("неділ", "щонеділ")),
@@ -332,14 +343,23 @@ object Temporal {
         Seq("лип"), Seq("серп"), Seq("верес"), Seq("жовт"), Seq("листопад"), Seq("груд")),
       today = Seq("сьогодні"), tomorrow = Seq("завтра"), dayAfter = Seq("післязавтра"), yesterday = Seq("вчора"),
       next = Seq("наступн"), last = Seq("минул", "попередн"), week = Seq("тижд", "тижн"), days = Seq("дн", "день"), ago = Seq("тому"),
-      weekend = Seq("вихідн", "вікенд"))
+      weekend = Seq("вихідн", "вікенд"),
+      monthWords = Vector(Seq("січень", "січня", "січні"), Seq("лютий", "лютого", "лютому"), Seq("березень", "березня", "березні"),
+        Seq("квітень", "квітня", "квітні"), Seq("травень", "травня", "травні"), Seq("червень", "червня", "червні"),
+        Seq("липень", "липня", "липні"), Seq("серпень", "серпня", "серпні"), Seq("вересень", "вересня", "вересні"),
+        Seq("жовтень", "жовтня", "жовтні"), Seq("листопад", "листопада", "листопаді"), Seq("грудень", "грудня", "грудні")))
     val pl = Lexicon(
       Vector(Seq("poniedział"), Seq("wtor"), Seq("środ", "srod"), Seq("czwart"), Seq("piąt", "piat"), Seq("sobot"), Seq("niedziel")),
       Vector(Seq("stycz"), Seq("lut"), Seq("marz", "marc"), Seq("kwiet"), Seq("maj"), Seq("czerw"),
         Seq("lip"), Seq("sierp"), Seq("wrze"), Seq("październik", "pazdziernik"), Seq("listopad"), Seq("grud")),
       today = Seq("dziś", "dzisiaj"), tomorrow = Seq("jutr"), dayAfter = Seq("pojutrze"), yesterday = Seq("wczoraj"),
       next = Seq("przyszł", "przyszl", "następn", "nastepn"), last = Seq("zeszł", "zeszl", "ostatn", "poprzedn"),
-      week = Seq("tydz", "tygod"), days = Seq("dni", "dzień", "dzien"), ago = Seq("temu"), weekend = Seq("weekend"))
+      week = Seq("tydz", "tygod"), days = Seq("dni", "dzień", "dzien"), ago = Seq("temu"), weekend = Seq("weekend"),
+      monthWords = Vector(Seq("styczeń", "stycznia", "styczniu"), Seq("luty", "lutego", "lutym"), Seq("marzec", "marca", "marcu"),
+        Seq("kwiecień", "kwietnia", "kwietniu"), Seq("maj", "maja", "maju"), Seq("czerwiec", "czerwca", "czerwcu"),
+        Seq("lipiec", "lipca", "lipcu"), Seq("sierpień", "sierpnia", "sierpniu"), Seq("wrzesień", "września", "wrześniu"),
+        Seq("październik", "października", "październiku"), Seq("listopad", "listopada", "listopadzie"),
+        Seq("grudzień", "grudnia", "grudniu")))
     val lexicons = Vector(fr, de, es, ru, uk, pl)
 
     /** English, for PERIODS only — the day parser has its own English
@@ -349,7 +369,8 @@ object Temporal {
       weekdays.map(Seq(_)), months.map(Seq(_)),
       today = Seq("today"), tomorrow = Seq("tomorrow"), dayAfter = Seq("after"), yesterday = Seq("yesterday"),
       next = Seq("next", "coming", "following"), last = Seq("last", "past", "previous"), week = Seq("week"),
-      days = Seq("day"), ago = Seq("ago"), weekend = Seq("weekend", "week-end"))
+      days = Seq("day"), ago = Seq("ago"), weekend = Seq("weekend", "week-end"),
+      monthWords = months.map(Seq(_)))
     private val periodLexicons = en +: lexicons
 
     /**
@@ -381,15 +402,29 @@ object Temporal {
       else if has(words, lex.week) then Some(week(start))
       else monthAlone(words, today, lex)
 
-    /** a month named with no day beside it — the coming one */
+    /** the English «may» is a verb far more often than a month, and a
+     * bare one is the verb; the month wears one of these before it */
+    private val beforeMay = Set("in", "during", "by", "until", "till", "for", "from", "of", "this", "next", "last", "since")
+
+    /**
+     * A month named with no day beside it — the coming one.
+     *
+     * Matched against the month's WHOLE forms, never the prefixes
+     * `monthAndDay` uses: there a day number stands beside the month
+     * and settles it; here nothing does, and «майстер», «лютни»,
+     * «lutnia» all begin with a month. Found on a consumer's live log
+     * the evening the period parser landed.
+     */
     private def monthAlone(words: List[String], today: Date, lex: Lexicon): Option[Period] =
-      val idx = words.indexWhere(w => lex.months.exists(forms => is(w, forms)))
+      val forms = if lex.monthWords.nonEmpty then lex.monthWords else lex.months
+      val idx = words.indexWhere(w => forms.exists(_.contains(w)))
       if idx < 0 then None
       else
         def dayAt(j: Int) = words.lift(j).exists { case digits(d) => d.toInt >= 1 && d.toInt <= 31; case _ => false }
-        if dayAt(idx + 1) || dayAt(idx - 1) then None
+        val bareMay = words(idx) == "may" && !words.lift(idx - 1).exists(beforeMay)
+        if dayAt(idx + 1) || dayAt(idx - 1) || bareMay then None
         else
-          val m = lex.months.indexWhere(forms => is(words(idx), forms)) + 1
+          val m = forms.indexWhere(_.contains(words(idx))) + 1
           val year = if toEpochDay(lastDayOf(today.year, m)) >= toEpochDay(today) then today.year else today.year + 1
           Some(Period(Date(year, m, 1), lastDayOf(year, m)))
     // qualifiers are the words most alike across the Cyrillic and Slavic

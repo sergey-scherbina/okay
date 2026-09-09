@@ -56,6 +56,27 @@ class TestPeriod extends munit.FunSuite {
     assertEquals(on("el fin de semana"), Some("2026-09-05/2026-09-06"))
   }
 
+  test("a month alone is the month's own word, never a prefix — «майстер» is not May") {
+    // found on a consumer's live log the evening the parser landed:
+    // «майстер» starts with «май», «лютни» and «лютьер» with «лют»
+    for p <- Seq("майстер", "лютни", "лютьер", "чиню лютни и мандолины за 120 зл", "lutnia", "marzenie",
+                 "серп", "вереск", "жовтий", "квітка", "береза", "липа", "gruda", "майка", "мартышка") do
+      assertEquals(on(p), None, p)
+    // the month's own forms, in the case a sentence puts them in
+    assertEquals(on("в лютому"), Some("2027-02-01/2027-02-28"))
+    assertEquals(on("у травні"), Some("2027-05-01/2027-05-31"))
+    assertEquals(on("w lutym"), Some("2027-02-01/2027-02-28"))
+    assertEquals(on("w maju"), Some("2027-05-01/2027-05-31"))
+    assertEquals(on("в мае"), Some("2027-05-01/2027-05-31"))
+    assertEquals(on("октябрь"), Some("2026-10-01/2026-10-31"))
+    // English «may» is a verb until a preposition makes it a month
+    assertEquals(on("in May"), Some("2027-05-01/2027-05-31"))
+    assertEquals(on("may I ask"), None)
+    assertEquals(on("you may"), None)
+    assertEquals(on("en janvier"), Some("2027-01-01/2027-01-31"))
+    assertEquals(on("im Dezember"), Some("2026-12-01/2026-12-31"))
+  }
+
   test("a day is not a period, and neither is a guess") {
     for p <- Seq("thursday", "next thursday", "tomorrow", "2026-09-14", "в пятницу", "soon", "later", "", "   ") do
       assertEquals(on(p), None, p)
