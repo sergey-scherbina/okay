@@ -135,6 +135,12 @@ with one permit, and the test that proves otherwise parks a seam
 mid-stream. okay-resilience takes no dependency on llm, mcp or
 cluster: this is wired at the caller's edge.
 
+**A worked instance.** okay-demo guards its Anthropic transport this
+way (`ChatDemo.guarded`), publishes the breaker and the bucket to
+`/metrics` through `Ops.routes(guards = ...)`, and its tests drive
+both to their refusals without touching a wire. If you want to see
+the arc used rather than described, read that.
+
 **Testing the composite: `Faults.http`.** A seeded adversary between
 your client and a fake far end: `Faults.http(seed, Faults.Plan(dropAt
 = Set(2, 3), slowAt = Map(1L -> 5000L), failRate = 0.2))(far)`. A

@@ -1526,7 +1526,9 @@ lazy val okayDeploy = (project in file("okay-deploy"))
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
+  // okayResilience: the guards around the one live outbound call
+  // (demo-guarded-llm) — the arc's worked instance
+  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayResilience.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
   // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
   .settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(

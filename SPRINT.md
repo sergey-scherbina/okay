@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- demo-guarded-llm — specs/resilience.md: the arc gets a worked instance, and the adaptive gate its measurement (claim: demo-guarded-llm)
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

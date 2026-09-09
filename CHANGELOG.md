@@ -1,5 +1,38 @@
 # Changelog
 
+## demo-guarded-llm — the arc gets a worked instance
+
+Eight pieces of microservice machinery landed today, each with its
+own tests, and not one was wired into a running service. okay-demo
+already used okay-ops (the lifecycle, RED, `/metrics`); its Anthropic
+transport — the one live outbound call in this repository — had no
+breaker, no limiter and no budget, which is backwards for the thing
+most likely to answer 429 or 529.
+
+`ChatDemo.guarded` wraps the transport it provides with
+`Resilient.guarded`: a breaker (5 consecutive failures, 30 s open)
+and a token bucket (5/s, burst 10, so a runaway loop here cannot
+spend an account's quota), both published to `/metrics` through
+`Ops.routes(guards = ...)`. It is exactly the three lines
+specs/resilience.md claimed a caller needs — written out rather than
+asserted, which is the point of a worked instance.
+
+Four tests, none touching a wire or a clock: the demo's guards are
+the ones `/metrics` is given (this catches a guard wired but never
+published); a dead model opens the circuit and the wire is not
+touched while it is open, then one probe closes it; the bucket
+refuses before the model is reached; the guard is transparent when
+nothing refuses. The adaptive-concurrency box stays deferred, now for
+a better reason — the obstacle is gone, the MEASUREMENT is what is
+missing, and a control loop tuned against no traffic is a guess with
+extra steps.
+
+Found while writing it, and worth more than the lane: a suite-level
+mutable clock made one test's `now = 200` run time BACKWARD after an
+earlier test left it at 30 000, the refill went negative, and a
+fixture bug looked exactly like a limiter bug. The clock is per test
+now.
+
 ## lexer-buf-without-concat — the concat is the smallest of three, and the obvious fix is worse
 
 After `lexer-state-allocation` took the positions out, ~171 bytes per
