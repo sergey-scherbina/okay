@@ -1682,6 +1682,49 @@ parameter would hide it — was a real bug, now a comment); releases
 run in reverse at Pure or exception. Nothing suspends, so runtimes
 built around suspension pay their machinery for nothing.
 
+**The "bracket costs 21%" row was two different workloads, and pairing
+them turned the answer around** (bracket-pairing, 2026-09-09). The
+lane read as bracket's price — `bracket(x)(rel)(r => produce(r + 1))`
+— performs an effect INSIDE the scope; the region lane it was compared
+against (`Resource.acquire`) performs none. Two lanes were added so
+each shape has both forms, and the box had three sibling builds, so
+B/op is the evidence here and the times are context (`okayBracket`
+came back ±16 µs on a 29 µs lane — a bar bigger than the effect it was
+being asked to price):
+
+| per 1000 steps | region | bracket |
+|---|---|---|
+| acquire + release, nothing inside | **245 960** B/op | 364 416 B/op |
+| acquire + release, ONE effect inside | 480 011 B/op | **364 641** B/op |
+
+Read down the columns rather than across the old row:
+
+- **A scope costs bracket 118 B more than a region acquire** (364 416
+  against 245 960 per step): the delay `bracket` needs before it may
+  acquire — a `Pure`, a `Bind` and the closure that captures acquire,
+  release and use — plus the `Pure` its answer goes back into. That is
+  the 21%, honestly paired, and it is structural: `bracket` must not
+  acquire while the program is being built.
+- **An operation inside the scope costs bracket 0.23 B** — nothing.
+  It runs the use program to completion inside ONE suspension, and the
+  JIT scalarises the whole drive: the lane with a `produce` in it
+  allocates 225 bytes more per 1000 steps than the lane without.
+- **The same operation costs the region 234 B**, because a forwarded
+  operation SUSPENDS the scope: `Resource.run` rebuilds the residual
+  around it — the guard closure, an `Inject`, a `Bind` and its
+  continuation closure — carrying the finalizer list into it, once per
+  operation. This is `Resource.run`'s documented behaviour, now priced.
+- **So the crossover is at ONE operation.** Perform nothing inside the
+  scope and the region is 48% cheaper; perform a single effect and
+  bracket is already 24% cheaper, and the gap grows per operation.
+  N acquires under one scope with the work done outside it is the
+  region's shape; work done INSIDE the scope is bracket's.
+
+The prediction registered before the run — that most of the gap was
+the inner effect and the nested drive rather than the wrapper — was
+REFUTED by the first column: the inner effect is free, the wrapper is
+the whole of it.
+
 ## 8. Generators — the 1000th Fibonacci, element by element
 
 | Iterator | LazyList | **Okay Producer** | Okay LazyList | kyo | ZStream | fs2 |
