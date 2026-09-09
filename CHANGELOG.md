@@ -1,5 +1,34 @@
 # Changelog
 
+## channel-lost-part — the channel lost nothing; a producer died on its first send
+
+The many-to-many law twice reported one producer's whole 1000 elements
+missing after close, and it was filed as a channel defect. It is not.
+Reproduced under CPU oversubscription (about one run in eight) and
+instrumented at every boundary: `sendBlocking` refused nothing, the
+buffer ended empty with all parts sealed and drained, and accepted =
+popped = delivered = seen — one thousand short of what was sent. The
+producer had DIED on its very first send with `NullPointerException:
+tried to cast away nullability`, and `Thread.join` is happy with a
+thread that threw, so the law read the gap as loss.
+
+The throw is real and is now fixed. `AdaptiveFifo.claimPart` publishes
+the part COUNT (`open.getAndIncrement()`) before the SLOT
+(`slots.set`), so a producer that shares an existing part — sixteen
+producers over a buffer whose cap is eight — can read that slot while
+it is still null. Every other reader in the class expects exactly that
+and comes back (`partAt` falls back to part 0, the pop and seal scans
+skip the null); the thread-local home was the one that `.nn`'d it. It
+now waits for the opener's next statement, the same reasoning `seal`
+already states for its own spin. `TestAdaptiveClaimRace` is the
+regression: sixteen producers over two parts, all taking their first
+route at once — it throws within three rounds (0.07 s) without the
+wait and is green with it, ten runs of ten under load.
+
+Two things the law itself was hiding, both fixed: it discarded
+`sendBlocking`'s answer, so a refusal and a loss looked identical, and
+it never asked whether a producer finished. It now reports both, which
+is how the truth came out. Commit: LANDING.
 ## bulk-plan — the whole plan as a tree, and two rewrites that pay
 
 The effect layer could see one operation at a time (a `Free`

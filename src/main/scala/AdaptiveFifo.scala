@@ -111,7 +111,33 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       if (Thread.currentThread() eq firstOwner) then Home(0, slots.get(0).nn)
       else
         val i = claimPart()
-        Home(i.intValue, slots.get(i.intValue).nn)
+        Home(i.intValue, slotAt(i.intValue))
+
+  /**
+   * The slot for an index the COUNT already covers.
+   *
+   * `claimPart` publishes the count (`open.getAndIncrement()`) before
+   * the slot (`slots.set`), so a producer that SHARES an existing
+   * part — more producers than parts, or a frozen buffer — can arrive
+   * between the two and read a null. Every other reader here expects
+   * that and comes back: `partAt` falls back to part 0, the pop and
+   * seal scans skip the null. A producer's HOME cannot fall back —
+   * its whole order lives in the part it takes, and part 0 belongs to
+   * someone else — so it waits, and what it waits for is the opener's
+   * very next statement (the same reasoning `seal` states for its own
+   * spin, and no `onSpinWait` here for the same portability reason).
+   *
+   * MEASURED (channel-lost-part, 2026-09-09): without the wait, a
+   * first send threw `NullPointerException` within three rounds of 16
+   * producers over 2 parts, and at 16x16 through a channel it killed
+   * the producer thread outright — which the many-to-many law then
+   * reported as "the channel lost one producer's 1000 elements",
+   * because nothing had ever asked whether a producer finished.
+   */
+  private def slotAt(i: Int): Buffer[A] =
+    var b = slots.get(i)
+    while b == null do b = slots.get(i)
+    b.nn
 
   /**
    * ONE CONSUMER AT A TIME PER PART (consumer-claim, 2026-09-07, the

@@ -1374,128 +1374,27 @@ construction instead of a type test per value).
   attempt three times slower than the delay: the old shape fails, the
   new one passes. No wall clock left in either.
 
-- **TestManyToMany "the default channel ends for every consumer",
-  2026-09-09 09:32 and 09:36** (okay-spring's gate, then a solo rerun),
-  both while the box was thrashing (build-ram-guard ACT lines, five
-  sibling sbts, two background gates killed for memory in the same
-  minutes): `Channel.apply 16x16: received 15000 distinct of 16000;
-  missing 1000 (by producer: Map(14 -> 1000), first Vector(14000, …));
-  duplicated 0`. Same producer, its WHOLE output, twice — and every
-  producer had returned from `sendBlocking` and joined, so 1000
-  accepted elements were never delivered after `close()`. 3/3 green
-  on the same tree once the box was quiet, Channel/Growing sources
-  identical to master. Not a timing assertion: a lost element is a
-  defect wherever it shows. For the channel lane: a part accepted
-  under memory pressure and dropped at close — reproduce under
-  `stress`/a busy box before touching anything.
-- [x] flaky-scheduler-late-answer — FOUND AND FIXED 2026-09-07
-      (scheduler-cancel-wins). Not the pre-park window I guessed (a
-      sleep in the registration refuted that): `CanBlock.block` read
-      the slot's FAST path before the interrupt, so a cancel and an
-      answer landing while the registration still ran were seen by a
-      fiber that had not looked at its interrupt. One line at the
-      source, covering loom, forkJoin and threads; a new law forces
-      the race instead of waiting for it and fails on every run
-      without the fix. specs/schedulers.md, "Cancel wins the race it
-      is in".
-- [ ] native-runner-137 — the Native test binary
-      (`.native/target/scala-3.7.4/okay-test`) "finished with non-zero
-      value 137" in a full matrix (2026-09-07 01:25, the
-      frame-language-tag-fallback gate): the sbt-scala-native runner
-      logged `Force close java.net.SocketTimeoutException: Accept timed
-      out` and then "Test runner interrupted by fatal signal 9", and
-      `okay.TestChannelFailureCross` was the suite in flight. Neither
-      launchd guard killed anything (build-ram-guard.log: `killed=0`
-      every tick, okay worktrees `SPARE`d; kill-stale-builders' last
-      kill 19:22 the day before). The box was paging through the whole
-      run (pageouts 240–590/tick, "available" 8–10 GB, a sibling's
-      idle 601 MB sbt beside the gate), so the reading is the
-      adapter's own accept timeout under paging, followed by its
-      SIGKILL of the binary it could not reach. The timeout is a
-      constant: `scala.scalanative.testinterface.ComRunner` calls
-      `ServerSocket.setSoTimeout(40000)` (test-runner 0.5.12,
-      bytecode), so a Native test binary that takes more than 40 s to
-      start and connect — on a paging box, with the gate's own JVMs
-      beside it — is force-closed by its own runner. Nothing in
-      `nativeConfig` reaches it. Until upstream makes it a setting, a
-      137 with `Accept timed out` above it is the box, not the tree —
-      re-run, and keep the box quiet (one sbt) for the Native leg.
-- [x] chat-demo-sessions-flake — CLOSED 2026-09-07: the nine
-      `withServer` tests of `TestChatDemo` are `portTest` now (the
-      `Live` tag through a per-test helper, as `liveTest` already
-      was); the one test that never opens a port stays in the gate.
-      Original: `okay.demo.TestChatDemo` "demo-sessions:
-      a verified session is the identity of record" failed once in the
-      full matrix (2026-09-07, intent-typo-robustness' second gate, load
-      ~6): `java.io.IOException: HTTP/1.1 header parser received no
-      bytes` after 30.1 s, from `postJson` against a real Jetty port
-      (`withServer`, `Jetty.serve(0)`), the request thread's EOF. It
-      passed in the same lane's first gate forty minutes earlier and in
-      every gate of the day before it, and 3/3 in isolation right
-      after — the port/readiness family (flaky-port-roulette), not the
-      intent change beside it. Per the standing rule, the demo-sessions
-      tests over a real socket move to `Live` (`sbt integrationTest`);
-      the scripted-chat tests that never open a port stay in the gate.
-- [x] script-temp-snapshot-crosstalk — FIXED 2026-09-05 (same defect as
-      the since-removed `script-temp-tests-watch-a-shared-directory`
-      entry, filed separately and merged here): `TestScalaScript`'s
-      "run: leaves no temp file/directory behind" and `TestPage`'s
-      "close() deletes the cached compiled program's temp output
-      directory" both snapshotted the SHARED `java.io.tmpdir` for
-      `okay-script-*` entries before/after, so either failed whenever
-      another concurrent suite (a sibling worktree's own okay-script
-      tests, in a parallel matrix) created a matching entry between
-      the two snapshots — nothing to do with either test's own
-      cleanup. `ScalaScript` now takes an explicit `tempRoot: Path`
-      (threaded through `run`/`render`/`compileRender`/`check`/
-      `compileOnly` and `Page`), defaulting to the old shared lookup;
-      both tests now point it at a private directory and snapshot
-      that instead. `TestScalaScript`'s test is back in the default
-      gate (dropped the `Live` tag). See specs/okay-script.md
-      "okay-script-tests-watch-a-shared-directory".
-- [x] demo-live-judgment-flake — FIXED 2026-09-02: `judged` retries
-      the whole turn once before asserting in LIVE UNGATED and LIVE
-      SEEKER (stochastic judgment — one retry is a quadratic flake
-      cut; a consistent failure still fails). 15/15 with the retry.
-- [x] persist-election-replicated-flake — SETTLED by exclusion
-      (flakes-integration, 2026-09-03, OPERATOR CALL). History:
-      okay.persist.TestElectionReplicated errored at suite level on
-      one platform under the full matrix (2026-09-01, Errors 1 with 0
-      failures; JVM tests of the same suite green in the same run);
-      the second platform run printed the header with no tests.
-      TRIAGED 2026-09-01: alone on JS (3/3) and Native (3/3) — did
-      NOT reproduce. The suite is pure and deterministic (MemoryStore
-      + Election + Replicated, a manual clock, no threads, no IO), so
-      what failed was the RUNNER under parallel matrix load, the same
-      family as the Native-SIGKILL-under-load incidents, not a code
-      defect. Now `Live`-tagged with the rest of the recorded flake
-      family and run by `sbt integrationTest`. Noted honestly at the
-      suite and in specs/integration-test-gate.md: this one is
-      excluded by DECISION, not by evidence against the suite — it is
-      the only member of the family that touches nothing outside the
-      JVM. Re-triage only if it recurs with a non-environmental
-      signature, where it will now show up in the integration run.
-- [x] mcp-auth-matrix-flake — SETTLED by exclusion (nio-port-scope
-      tagged the suite, 2026-09-03; closed here with the rest of the
-      family, flakes-integration). okay.security.TestMcpAuth "the
-      metadata documents are servable without any token" failed once
-      under the full matrix (2026-09-02, `java.io.IOException:
-      HTTP/1.1 header parser received no bytes` — the client read an
-      empty reply from a server the suite had just started); ran
-      alone right after: 4/4 green. It BINDS A REAL PORT, so its red
-      can be the machine's rather than the code's: `Live`-tagged, out
-      of the default gate, run by `sbt integrationTest`.
-- [x] chunk-size-representation — SETTLED, and the premise was wrong
-      (2026-09-03). The suspected cause (Vector-then-ArraySeq per
-      chunk) was tried: filling a `ChunkBuf` in `Stage.chunked`
-      measured 11% better at chunk 256 and 8% at 1024 while 2.2%
-      WORSE at the default 16, bars non-overlapping — helping only
-      sizes nobody uses. Declined and reverted. The real reading is
-      that the curve was never a chunking defect: it compared our
-      per-element `Source`, chunked after the fact, against a stream
-      chunked by construction. Against the like-for-like pair — okay
-      `Chunks.merge` 23.2us against ZIO `ZStream.merge` 58.6 on
-      2x2000 — okay is 2.5x AHEAD. docs/benchmarks.md §6b.
+- **TestManyToMany "the default channel ends for every consumer" —
+  FIXED 2026-09-09 (channel-lost-part), and MY EARLIER READING OF IT
+  WAS WRONG.** The entry said "a part accepted under memory pressure
+  and dropped at close" and asked for a repro. Reproduced under CPU
+  oversubscription (28 burners, ~1 run in 8) and instrumented, the
+  channel turned out to lose nothing: `sendBlocking` refused nothing,
+  the buffer ended empty and every accepted element was delivered
+  (accepted = popped = delivered = seen, one thousand short of the
+  16 000 sent). What actually happened is that a PRODUCER THREAD DIED
+  on its very first send with `NullPointerException: tried to cast
+  away nullability`, and `join` is happy with a thread that threw, so
+  the law reported its whole output as elements the channel had lost.
+  The throw: `AdaptiveFifo.claimPart` publishes the part COUNT before
+  the SLOT, and a producer that shares an existing part — 16
+  producers over a buffer whose cap is 8 — read that slot while it
+  was still null. Every other reader in the class expects the null and
+  comes back; the thread-local home `.nn`'d it. Fixed by waiting for
+  the slot (`slotAt`), with `TestAdaptiveClaimRace` as the regression:
+  it throws within three rounds without the wait, 0.07 s. The law now
+  asserts that every producer finished, so a next occurrence names the
+  throw instead of blaming the channel.
 
 - [x] nio-port-scope-flake — SETTLED, and the timing was not what the
       name says (nio-port-scope, 2026-09-03). The assertion took the
