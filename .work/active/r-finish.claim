@@ -1,0 +1,22 @@
+task: r-finish
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T16:54:08Z
+status: in-progress
+branch: feature/r-finish
+worktree: ../okay-wt-r-finish
+spec: specs/r.md (the two boxes spec-truth found unbuilt)
+
+why: the operator asked to finish okay-r. The audit named exactly two
+  gaps: no timeout at all (a hung Rscript hangs the caller's fiber),
+  and no typed layer over the frame (RFrame is columns; the spec
+  promises a Seq of a flat case class both ways).
+
+what: (a) r-call-timeout — a deadline on the exchange; on expiry the
+  process is killed, a fresh one takes its place, and the call answers
+  Left(Condition) — the engine usable after; (b) r-frame-schema —
+  RFrame.rows[A: Schema] / RFrame.of[A: Schema], a column the Schema
+  does not name an error naming it. Tests in TestRMock where no R is
+  needed, in TestR (Live) where one is.
+
+next: worktree, timeout first
