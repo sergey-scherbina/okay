@@ -117,8 +117,10 @@ its Behavior checklist:
 - [x] zio-layer + okay-guice — DONE 2026-09-09 as one lane
       (di-bridges): `ZioLayers` in okay-zio, the new okay-guice
       satellite. CDI documented as the same shape, not built.
-- [ ] di-deploy — stage 3: the root module's unresolved inputs render
-      into specs/deployment.md's dependency graph.
+- [x] di-deploy — DONE 2026-09-09: `Needs[A]` + `Needs.of[Root]` in
+      okay-deploy. The "di" arc of specs/di.md is closed at stages
+      0-3; what remains is wanted-on-demand: CDI (documented shape),
+      a WebFlux end-to-end with a real server.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 

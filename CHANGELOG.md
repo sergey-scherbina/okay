@@ -1,5 +1,21 @@
 # Changelog
 
+## di-deploy — the root module's inputs are the deployment's needs
+
+specs/di.md stage 3, the arc's last piece. In okay-deploy, `Needs[A]`
+is a capability type's own declaration of what it is to a deployment
+(`given Needs[Pg] = Needs(Need.Database(Engine.Postgres, "16", "shop"))`),
+and `Needs.of[Root]` is a macro that walks a root module's unresolved
+inputs — `Pg ?=> Files ?=> Module[…]`, tupled chains too — summoning
+one `Needs` per input into the `Vector[Need]` a `Service` carries. The
+database is said once, in the type; what only the place can say
+(`Need.Port`, `Need.Dns`, `Need.Tls`) stays beside it in the Service.
+An input without a `Needs` is a compile error naming the type. The
+decision recorded: a given per capability, not a field on `module`,
+so no deployment word enters the core and a module that resolves its
+own database contributes nothing. 4 tests. With this the "di" arc
+(stages 0-3: Module, qualifiers/plan/conf, Spring/ZLayer/Guice,
+deployment) is closed. Commit: LANDING.
 ## ui-gtk — GTK 4 on Scala Native over the same seam, present only where pkg-config finds it
 
 The operator had GTK installed (`brew install gtk4 pkg-config`) and

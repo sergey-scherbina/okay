@@ -138,12 +138,18 @@ values outward, the P3 rule from specs/interop.md):
       builds. CDI/Micronaut are the same shape and are documented in
       the Interop section, not built
 
-Stage 3 — the join with deployment (specs/deployment.md):
-- [ ] the root module's unresolved inputs ARE the application's
-      declared needs: a `Module` whose remaining requirements are
-      `Postgres ?=> Volume ?=> …` renders into the deployment
-      manifest's dependency graph, so the port, the database and the
-      certificate are said once, in the type
+Stage 3 — the join with deployment (specs/deployment.md), SHIPPED:
+- [x] the root module's unresolved inputs ARE the application's
+      declared needs: `Needs.of[Root]` (okay-deploy) walks
+      `Pg ?=> Files ?=> Module[…]` at compile time and summons one
+      `given Needs[A]` per input — the capability's own declaration
+      of what it is to a deployment (`Need.Database`, `Need.Volume`)
+      — into the `Vector[Need]` a `Service` carries; tupled inputs
+      and a root with nothing left both read; an input without a
+      `Needs` is a compile error naming it. What only the PLACE can
+      say (`Need.Port`, `Need.Dns`, `Need.Tls`) stays beside them in
+      the `Service`: the type says what the code needs, not where it
+      runs
 
 ## Interop: rendering, not emulation
 
@@ -210,6 +216,15 @@ is the actuator, and a Boot app can mount both).
   as. The bridge meets Spring's `Object`-typed API in two places,
   both restating a check already made (`Class.cast`, the registry's
   class test).
+- **Needs are a given per capability, not a field on `module`**
+  (stage 3). The first sketch had the deployment fact ride on the
+  module (`module[Pg](…).needs(Need.Database(…))`), which puts a
+  deployment word into every module that touches a database and
+  into the core. A `Needs[A]` given lives where the capability is
+  defined, once, and the macro summons it only for the inputs a
+  root still has — a module that RESOLVES its `Pg` internally
+  contributes nothing, which is right: the deployment provisions
+  what the code cannot make.
 - **The plan is the type, not a record of the build** (stage 1). The
   entry first said "via the TypeableK seam"; that seam names an
   effect signature by its runtime class, which is the wrong tool

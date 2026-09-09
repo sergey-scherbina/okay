@@ -125,6 +125,12 @@ enum Engine: case Postgres, Redis, Mongo, Kafka
 enum TlsMode: case None, SelfSigned, Files, Acme, Proxy
 ```
 
+A service's `needs` can come from the code that has them: specs/di.md
+stage 3 reads a root module's unresolved inputs (`Pg ?=> Files ?=> Module[…]`)
+into `Need`s through one `given Needs[Pg]` per capability, so the
+database is said in the type and the deployment reads it there
+(`Needs.of[Root]`, okay-deploy).
+
 Nothing above is a target's vocabulary. `Need.Database(Postgres)` is
 a compose service on a laptop, a StatefulSet or a `postgresql` chart
 dependency in a cluster, RDS in AWS, Cloud SQL in Google — the value

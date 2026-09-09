@@ -116,6 +116,17 @@ re-rendering, fails that test naming the file.
 to YAML, so `":memory:"`, `"8080"` and `"true"` stay the strings they
 are.
 
+**The needs a module already has** (`Needs`, specs/di.md stage 3).
+An application's root is a module still waiting for what only the
+place can give — `Pg ?=> Files ?=> Module[…]` — and each such input
+type says once what it is in deployment terms:
+`given Needs[Pg] = Needs(Need.Database(Engine.Postgres, "16", "shop"))`.
+`Needs.of[Root]` reads the root's type at compile time, one `Need`
+per unresolved input, and a `Service` carries the result beside the
+needs only the place can say (`Need.Port`, `Need.Dns`). An input
+with no `Needs` is a compile error naming it: a need the module has
+and the deployment does not know.
+
 ## What gets rendered
 
 `Deploy.files(d)` is the whole deployment as `(path, content)` pairs
