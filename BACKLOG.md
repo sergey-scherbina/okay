@@ -104,7 +104,9 @@ follows, in the spec's order:
       Found by service-lifecycle, not taken there.
 - [ ] microservices-next — the audit's remaining gaps, each its own
       spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
-      shutdown and RED metrics, both in okay-ops. Still open: saga over `Durable`
+      shutdown and RED metrics, both in okay-ops. DONE 2026-09-09
+      (outbox): transactional outbox / inbox / dead-letter as
+      okay-outbox (specs/outbox.md). Still open: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);

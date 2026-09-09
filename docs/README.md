@@ -125,6 +125,7 @@ API reference, gotchas.
 | [`okay-deploy`](modules/okay-deploy.md) | a whole deployable SYSTEM as one value — services and what each of them needs — rendered to seven targets: a laptop (compose), a rented host (systemd), a cluster (Helm), fly/render/railway, and AWS (Terraform for ECS). Plus the `okay deploy` CLI, which reads `deployment.json` so an artifacts directory works on a server with no repository. [specs/deployment.md](../specs/deployment.md) |
 | [`okay-cache`](modules/okay-cache.md) | how a cache is ALLOWED to be wrong, named: budgets, invalidation, the log-fed view; memory and Redis engines; the cross-node invalidation topic |
 | [`okay-resilience`](modules/okay-resilience.md) | circuit breaker, bulkhead, keyed token-bucket limiter, hedged requests, a deadline that travels — handlers around one operation, state as values, clock injected |
+| [`okay-outbox`](modules/okay-outbox.md) | the log and a database that is ours: the transactional outbox and its relay, the inbox (the unique constraint as idempotency), the dead-letter topic and its replay |
 | [`okay-sql`](modules/okay-sql.md) | the relational seam: SqlValue/Col and the typed layer once, drivers underneath (JDBC, the pg wire, sqlite) |
 | [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |
 | [`okay-docs`](modules/okay-docs.md) | the document seam: get/put with CAS, declared consistency; TopicDocs own engine |

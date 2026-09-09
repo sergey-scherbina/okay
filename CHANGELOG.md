@@ -1,5 +1,27 @@
 # Changelog
 
+## outbox — the transactional outbox, the inbox and the dead-letter topic, as okay-outbox
+
+The microservices audit's largest remaining gap. `Queues.ingress`/
+`egress` bridge a foreign BROKER to the log; nothing bridged a
+foreign TRANSACTION — a business transaction in our own database
+(the one `Migrate` versions; specs/jdbc.md's refusal for THEIR
+database stands) had no atomic way to announce an event, no consumer
+dedup survived a restart, and a poison record blocked its partition
+for ever. `Outbox.enqueue` writes the event as a row in the caller's
+`Typed.transact`; `relayOnce`/`relay` carry rows into their topics in
+creation order with the ROW ID as the record key and mark them
+published — at-least-once, said out loud and forced in a test (a
+store decorator that appends and then dies re-appends the same key).
+`Inbox.once` records the id inside the consumer's own transaction and
+runs the body the first time only; the primary key is the machinery,
+the select the fast path, and a failing body rolls its id back.
+`DeadLetter.consume` retries a record `attempts` times, parks it as a
+`Dead` (topic, partition, offset, key, value, attempts, error) in a
+typed dlq and commits past it; `replay` puts it back. DDL per
+dialect (`varbinary`/`bytea`/`blob` — the one type SQL never agreed
+on) as values for migration scripts. 8 tests on H2 + MemoryStore;
+specs/outbox.md; docs/modules/okay-outbox.md indexed.
 ## adapter-stats — Docs.Stats and Blob.Stats counted at the seam, on /metrics; no adapter logs a credential: the last box of specs/data.md
 
 `Docs.counted` and `Blob.counted` wrap any engine with the same counters

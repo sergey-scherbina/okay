@@ -1244,6 +1244,29 @@ lazy val okayResilience = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
 
+/**
+ * Outbox, inbox, dead-letter (specs/outbox.md): the log and a database
+ * that is ours — an event as a row in the business transaction, a
+ * relay into a Topic, a consumer that records ids inside its own
+ * transaction, a dead-letter topic for poison records. Two seams,
+ * nothing new minted; cross-built because both seams are. The H2
+ * tests are JVM (okay-jdbc).
+ */
+lazy val okayOutbox = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-outbox"))
+  .dependsOn(okay, okayCodec, okaySql, okayPersist)
+  .settings(
+    name := "okay-outbox",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmConfigure(_.dependsOn(okayJdbc % Test))
+  .jvmSettings(
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okayJetty = project
   .in(file("okay-jetty"))
   .dependsOn(okayHttp.jvm)
@@ -1631,6 +1654,7 @@ lazy val root = (project in file("."))
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
+    okayOutbox.jvm, okayOutbox.js, okayOutbox.native,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
