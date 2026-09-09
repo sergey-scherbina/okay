@@ -1667,7 +1667,7 @@ measure on our own data, never a predicted result.
       as Submitted(key, json) decoded by the form's schema, `live`
       inputs send Edited, the closed Local set (Toggle, Tab), server
       SetValue overrides a local edit, forged Submitted dropped.
-- [ ] ui-compose — stage 3: a Compose Multiplatform thin client
+- [x] ui-compose — LANDED 2026-09-09 (specs/frontend.md Results; okay-compose/README.md). Original: a Compose Multiplatform thin client
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
       once; Scala Native + GTK or Swing as the out-of-the-box leg.

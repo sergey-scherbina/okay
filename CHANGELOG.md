@@ -1,5 +1,30 @@
 # Changelog
 
+## ui-compose — the native client that never changes: Kotlin, Compose, no okay dependency, proven by the conformance script and a live smoke
+
+Stage 3 of specs/frontend.md, the operator's first native target.
+`okay-compose/` is a Gradle/Kotlin project beside sbt (its settings
+INSIDE the directory; the repo root stays sbt's) that depends on
+nothing of okay: `protocol/` transcribes `docs/protocol/frontend.md`
+as sealed interfaces, reads and writes the `{"Case": {...}}` shapes
+totally (damage is null), applies patches by path, and carries the
+hybrid rule (a Form's fields fold on the client, its button submits
+once); its test replays `docs/protocol/conformance.jsonl` — every
+`in` applied, every `tree` held, every `out` reproduced, the
+Submitted included — 3 of 3. `app/` is Compose Desktop: level L in
+Material, the JDK's own WebSocket, hello first, claims nothing.
+
+The claim of the whole arc, measured: `okay.script.Serve` served a
+Live counter page; `GET /counter` gave the browser its HTML and
+`live.js`; the headless smoke (`./gradlew :app:smoke`) opened the
+page's own WebSocket, received `count: 0`, pressed `inc`, and held
+`count: 1` after the server's patch. One server, unchanged, a browser
+and a native client at once — the native client written from the
+rendered document alone. Gradle 8.11.1 by wrapper (sdkman installed
+it once; the machine had no Gradle, Kotlin or Android SDK). Android
+and the Scala Native/Swing host are deferred to their own claims,
+stated in the spec.
+
 ## persist-saga — okay.persist.Saga: intent-first steps with compensations over a keyed topic, recovery by policy
 
 Lane 6 of the persistence audit. The multi-item change specs/data.md

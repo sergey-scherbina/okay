@@ -65,3 +65,6 @@ the contract a client in any language implements. The wire is HYBRID
 ONE `Event.Submitted(key, edits)` (folded by `Form.submitted` through
 the same `Form.edit`); a `live` input speaks per change; a claimed
 `Tabs`/`Disclosure` switches locally; the server's `SetValue` wins.
+The first client in another language is `okay-compose/` (stage 3):
+Kotlin, Compose Desktop, no okay dependency, proven by replaying the
+conformance script and by a headless smoke against a real Live page.

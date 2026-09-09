@@ -238,16 +238,40 @@ Stage 2 — the hybrid (ui-hybrid, LANDED 2026-09-09):
       edit naming a field outside that form, or an "edit" that is not
       one — never reaches `update`; `Wire.permitted` checks all three
 
-Stage 3 — the first thin client (ui-native):
-- [ ] a Compose Multiplatform client (Kotlin, no okay dependency)
-      draws level L, claims nothing else, passes the conformance
-      script
-- [ ] the same server, unchanged, drives the browser and the native
-      client at once
+Stage 3 — the first thin client (ui-compose, LANDED 2026-09-09):
+- [x] `okay-compose/` — a Gradle/Kotlin project beside sbt with NO
+      okay dependency: `protocol/` (the document transcribed as
+      sealed interfaces, a total codec for the `{"Case": {...}}` sum,
+      patch application, the hybrid rule) whose test replays
+      `docs/protocol/conformance.jsonl` — every `in` applied, every
+      `tree` held, every `out` produced from the same user actions,
+      the Submitted included — and `app/` (Compose Desktop: level L
+      in Material, the JDK's WebSocket, hello first, claims nothing).
+      3 of 3 conformance tests; the app compiles
+- [x] the same server, unchanged, drives the browser and the native
+      client at once: `okay.script.Serve` served a Live counter page,
+      the browser's HTML + `live.js` came from `GET /counter`, and the
+      headless smoke (`./gradlew :app:smoke`) opened the page's own
+      WebSocket, received the tree, pressed `inc`, and held
+      `count: 1` after the server's patch — measured, not inferred
 - [ ] Scala Native + GTK (or Swing on the JVM) as a host over the same
-      seam — the "out of the box" leg
+      seam — the "out of the box" leg: DEFERRED, its own claim
+      (ui-native-toolkits in BACKLOG); nothing in stages 0-3 needs it
+- [ ] Android: the composables are common code, but no SDK is on the
+      build machine; the `androidTarget()` is added when one is, so
+      the build that is checked in is the build that runs
 
 ## Results
+
+Stage 3 (ui-compose) landed 2026-09-09. `okay-compose/README.md` is
+the entry: `cd okay-compose && ./gradlew :protocol:test` is the
+conformance proof, `./gradlew :app:run --args "<ws url>"` the window,
+`./gradlew :app:smoke --args "<ws url> <key>"` the headless check.
+Gradle 8.11.1 by wrapper (the machine had no Gradle, Kotlin or
+Android SDK; sdkman installed Gradle once to generate the wrapper).
+The Kotlin protocol module is ~450 lines, the app ~250. The wire's
+first native client was written from `docs/protocol/frontend.md`
+alone, which is what stage 1 was for.
 
 Stage 2 (ui-hybrid) landed 2026-09-09. `Event.Submitted(key, edits)`;
 `Form` moved to level L (every client draws it — the hybrid rule
@@ -312,6 +336,21 @@ pass unchanged.
   application says "danger", the host says red.
 - **Codecs derived, WireJson retired** — one definition, two
   encodings, versioning by the rules Schema already has.
+- **A Gradle project beside sbt, not inside it** — the client's
+  whole point is that it depends on nothing of okay; a Scala.js or
+  sbt-driven Kotlin build would have put okay's build in its path.
+  `okay-compose/settings.gradle.kts` lives INSIDE that directory (the
+  repo root stays sbt's), and the conformance test finds
+  `docs/protocol/` by walking up — the two builds meet only at the
+  rendered files.
+- **Desktop first, Android when an SDK exists** — Compose
+  Multiplatform's desktop target runs the same composables; adding
+  `androidTarget()` without an SDK would check in a build nobody on
+  this machine can run.
+- **The smoke is a main, not a test** — a test that needs a running
+  okay-script server would couple the two builds; the smoke is the
+  operator's tool ("is this server speaking the protocol?") and was
+  run once against a real server for the landing.
 - **Form is level L; the local behaviours are claimable nodes** — the
   spec's first sketch had a separate closed `Local` enum (`Toggle`,
   `Tab`) and Form as a semantic node. Both fell to the same test:
