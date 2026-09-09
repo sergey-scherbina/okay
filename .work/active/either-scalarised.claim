@@ -1,0 +1,17 @@
+task: either-scalarised
+agent: fable-fusion
+started: 2026-09-09
+branch: feature/either-scalarised
+worktree: ../okay-wt-either
+spec: specs/handler-fusion.md Stage A's open observation; BACKLOG "runner-floor" item 3
+
+why: after stage A the shipping runners saved only the Option in
+  State.run(Writer.run(p)) and both wrappers in Writer.run(State.handle(p));
+  expected savings were 53 KB and 43 KB, measured 10.7 and 26.7 — so
+  the JIT scalarises some wrappers and not others, per runner. Which,
+  and why, is not known.
+what: per-runner lanes (Writer.run over a Writer-only program,
+  State.handle over a State-only one), each beside a benchmark-local
+  copy of its OLD <|>+extractor loop; -prof gc says which wrapper
+  escapes in which runner; explain; fix only if a runner still pays
+  for a wrapper split was meant to remove.
