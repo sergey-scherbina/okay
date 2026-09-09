@@ -1,5 +1,26 @@
 # Changelog
 
+## sql-serialization-retry — the region retries 40001/40P01: Sql.sqlState, Async.attempt, Typed.transactRetry
+
+Lane 2 of the persistence audit. Under RepeatableRead/Serializable the
+engine may choose a transaction to LOSE (Postgres SSI: `40001`,
+deadlock `40P01`) and nothing in the tree read a SQLSTATE — a program
+asking for Serializable saw an exception where the engine meant "run
+again". Now each driver names the state (`PgError.code` from the
+ErrorResponse's C field, `SQLException.getSQLState`,
+`R2dbcException.getSqlState`), `Async.attempt` gives a program's
+failure as data on one fiber (the effect-world try/catch the core did
+not have), and `Typed.transactRetry(db, isolation, Retry(attempts,
+backoff))` re-runs the whole region — begin, body, commit, the brake
+rolling back a lost run — answering `Retried(value, attempts)`. The
+body is `Resource + Async`; a Throws body runs its Throws inside (an
+abort is a decision, not a conflict). Tests: a losing decorator over
+H2 (N losses vs Retry(N)/Retry(N+1), 40P01 retried, 23505 not, backoff
+consulted with the run number) and write skew on the docker pg through
+the wire driver (the loser sees 40001 raw; transactRetry lands it on
+run 2). Landed as 233ce589; specs/sql.md "Serialization failures are
+retried". Gate: full matrix, 3108 tests, 0 failures, 0 warnings.
+
 ## resilience — stage 0 of specs/resilience.md: breaker, bulkhead, limiter, hedge, deadline
 
 The microservices audit (operator's direction, 2026-09-09) found the

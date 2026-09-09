@@ -61,7 +61,9 @@ correctness first:
       region must FAIL. Fix: read the `C` tag on COMMIT, throw on
       ROLLBACK. Same probe through R2DBC-postgresql (R2dbcSuite) and
       note what pgjdbc does. Spec: specs/sql.md Behavior.
-- [ ] sql-serialization-retry — SQLSTATE 40001/40P01 is handled
+- [x] sql-serialization-retry — DONE 2026-09-09 (233ce589): Sql.sqlState per
+      driver, Async.attempt, Typed.transactRetry with Retried(value, attempts).
+      Was: SQLSTATE 40001/40P01 is handled
       nowhere (0 hits in main sources). Under RepeatableRead/
       Serializable a serialization failure is a NORMAL outcome the
       region must retry, not an exception the program sees.

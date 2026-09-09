@@ -2,11 +2,10 @@
 
 ## Doing
 - resilience-http — specs/resilience.md stage 1: Resilient.http/route + okay-ops rows (claim: resilience-http)
-- sql-serialization-retry — BACKLOG "persistence-audit", lane 2 of 7
-  (operator's go, 2026-09-09): 40001/40P01 retried by the region, the
-  body re-run as the program value it is. Claim: sql-serialization-retry.
-  Then: sql-temporal-types, sql-readonly-region, sql-pool, persist-saga,
-  docs-dynamo.
+- sql-temporal-types — BACKLOG "persistence-audit", lane 3 of 7:
+  timestamp/date/time/uuid/json as SqlValue cases with Schema givens,
+  both drivers, verify. Claim: sql-temporal-types. Then:
+  sql-readonly-region, sql-pool, persist-saga, docs-dynamo.
 - split-without-either — specs/handler-fusion.md "Stage A": the row
   split without an Either/Option per operation, measured on
   Fused.stateWriter then the shipping runners. Claimed 2026-09-09
