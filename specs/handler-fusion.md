@@ -353,3 +353,49 @@ but aimed at `<|>` itself, for nested and fused alike) is the next
 thing to price, and it is a different spec (`split-without-either`,
 BACKLOG). The `Fused` loops stay in the tree as the measured ceiling
 and the agreement laws stay green; nothing generic is built on them.
+
+## After stage 0: the arc, reordered by the measurement (2026-09-09)
+
+Stage 0 put the cost inside ONE pass, not between passes, and two
+thirds of that inside the `Free` encoding itself: a continuation is a
+function, so every `k(x)` BUILDS the next node (Inject + Bind + closure)
+— the program is re-materialised on every run. No handler composition
+removes that. So the order changes; the numbers, not the plan, decide:
+
+- **Stage A — `split-without-either`** (next, small, every runner):
+  `<|>` answers an `Either` per operation, and `TypeableK.unapply`
+  answers an `Option` per test — two wrappers on the hottest path of
+  every runner, fused or not (~20 KB of the 149 KB a fused pass
+  allocates for 1 000 ops). Replace the split with an `inline` form
+  whose two continuations beta-reduce into the caller — no closure,
+  no wrapper — keeping the ONE cast where it is today (the excluded
+  middle of the union, trusted kernel, `Effects.scala`), and the type
+  test a plain class test with no `Option`. GADT refinement inside
+  the F branch must survive (matching `Get()`/`Say(v)` refines the
+  answer type; that is what keeps the runners cast-free).
+  - [ ] every runner that splits a row (`State.handle`, `Writer.foldWith`,
+        `Writer.map/widen`, `relay`, `Effects.handle`, `Handler.union`,
+        `Fused.*`) answers identically on the existing suites.
+  - [ ] MEASURED on `Fused.stateWriter` right-nested first (B/op known
+        to the byte, 149 312): expected −16…24 KB/op and ≥ 10% time;
+        then `nestedSW` and `relayForward` (HandlerBenchmark) to see
+        the same saving land in the shipping runners.
+  - [ ] no new cast: the count of `asInstanceOf` in Effects.scala does
+        not grow, and none appears in a runner.
+- **Stage B — `handler-fusion-eff`** (the main line): the composite
+  `!>` for a row over `Eff`, assembled `inline`, the product
+  accumulator in the answer type (`Acc => (Acc, A)`); the program is a
+  function of the handler, the handler is one static expression, and
+  no tree exists between them. Bar **1.5x** over `Fused.stateWriter`'s
+  right-nested 16.7 µs (staged-effects.md measured 1.6–1.9x for this
+  shape). Laws as stage 0: agreement with the nested `Free` runners for
+  both orders, aborts included. Stated limit, in the spec before the
+  code: `Eff` is not stack-safe on left-nested binds, so this is the
+  road for for-comprehension-shaped programs; `foldLeft`-built ones
+  stay on `Free`.
+- Stages 1–2 (`Step`/`Fused.run` over `Free`, `Handler.flat`) stay
+  GATED OFF with stage 0's numbers.
+- Follow-up, its own spec after B has a number: `direct` blocks emit
+  `Free` binds today; targeting `Eff` would give direct-style programs
+  the fused run for free.
+
