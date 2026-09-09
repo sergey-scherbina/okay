@@ -595,26 +595,29 @@ paragraph used to say was wrong and the correction matters more than
 the row** (growing-adopted-part0, 2026-09-08). It said `growing` is
 "behind both of the buffers it is made of at their own shapes, because
 after the swap every push crosses two layers". Both halves are
-refuted: a buffer that ONLY forwards measures 1.02x the ring it
-forwards to, so the layer is free; and the `adaptive` column is not
+refuted: a buffer that ONLY forwards measures 1.00x the ring it
+forwards to, so the layer is free; and the `adaptive` column was not
 the same object — `adaptive.parts(16).each(capacity)` is sixteen parts
-of `capacity`, 16 384 slots, while `growing(capacity, 16)` is part 0
-at `capacity` plus fifteen at `capacity / 16`, 1 984. An 8.3x
-difference in buffer, read as a difference in mechanism.
+of `capacity`, 16 384 slots, against `growing`'s one part until a
+second producer arrives. A difference in buffer, read as a difference
+in mechanism.
 
-Against `adaptive` with parts the size `growing`'s grown parts
-actually are, four rounds on a quiet box:
+**The table that stood here is withdrawn** (queue-swap, 2026-09-09).
+It read `growing` 178.7 against `adaptive, matched parts` 1 149.6 at
+one producer and concluded that adopting the ring buys **6.4x**.
+Those "matched parts" were `capacity / 16` — 64 slots each — because
+they were measured BEFORE growing-part-sizing made every part
+`capacity`. A lone producer given 64 slots stalls; that is what the
+1 149.6 is, and it is a memory difference wearing a mechanism's
+clothes, which is the third time this page has made that exact
+mistake.
 
-| producers | `growing` | `adaptive`, matched parts | ratio |
-|---|---|---|---|
-| 1 | **178.7** | 1 149.6 | **0.16x** |
-| 4 | 527.4 | 543.1 | 0.97x |
-| 16 | 422.0 | 428.7 | 0.98x |
-
-At matched capacity it is at PARITY with the buffer it grows into, and
-at one producer it is **6.4x faster** than a partitioned buffer of the
-same size — which is precisely what adopting the ring buys, and had
-never been priced.
+Measured against a partitioned buffer of the size `growing`'s parts
+are TODAY, with the threads taken out so the number can be trusted to
+1% (`BufferPushBenchmark`, two runs of three rounds): `growing`
+9.913 us against 10.058 for a lazily-partitioned buffer that routes
+by thread from the first push. **1.5%, not 6.4x.** Adopting the ring
+earns its keep, and it earns a little.
 
 So: take `growing` unless you have a reason not to — at an equal
 memory budget it is the best of the three at every producer count
@@ -624,14 +627,40 @@ producer count in advance AND can give each part its own `capacity`,
 which is 16x the memory and buys the best number here.
 
 And read `capacity` carefully: `growing(capacity, parts)` sizes the
-INITIAL RING at `capacity` and each later part at `capacity / parts`
-— about 2x `capacity` in total once grown — while
-`adaptive.parts(n).each(c)` is `n * c`. Two builders, two meanings of
-the same word, and that difference is what made every table above
-wrong for months.
-The layer is what has to go, and `queue-swap` is the entry that
-removes it by having the channel replace its buffer rather than wrap
-it.
+initial ring AND every later part at `capacity`, so its memory is
+`capacity x the producers that actually arrive` — parts open lazily —
+while `adaptive.parts(n).each(c)` is `n * c` whether the producers
+arrive or not. Two builders, two meanings of the same word, and that
+difference is what made every table above wrong for months.
+**And the layer is NOT what has to go** — `queue-swap` said it was,
+and the measurement closed the entry (2026-09-09). The channel lanes
+above are too noisy at one producer to price a 9% effect: `oneRing`
+read 147.8 / 202.8 / 153.8 across three identical rounds. With the
+threads taken out — one thread fills a 1 024 buffer and drains it,
+everything else common to every row, two independent runs of three
+rounds, bars under 1% (`BufferPushBenchmark`):
+
+| what it is | us per 1 024 push+pop | vs the ring |
+|---|---|---|
+| the ring | 9.036 | 1.000x |
+| + a wrapper layer that only forwards | 9.057 | **1.002x** |
+| + a `@volatile` buffer field, no trigger | 9.053 | **1.002x** |
+| + the counting trigger (this is `growing`) | 9.913 | 1.097x |
+| a partitioned buffer routing by thread from the first push | 10.058 | 1.113x |
+| + an identity compare instead of the counter | 10.479 | 1.160x |
+
+The wrapper is free and the volatile field is free. Every point
+`growing` costs at one producer is the TRIGGER — and `queue-swap`
+proposed to delete the first free row and add the second, which is
+nothing traded for nothing.
+
+What the 9.7% actually is: the price of asking WHO IS PUSHING on
+every push, and no arrangement of layers avoids it. A partitioned
+buffer that routes by thread from the first push asks the same
+question and pays 1.5% more. An identity compare pays 6% more. Of
+three designs this is the cheapest, and if you know there is one
+producer you can still have the 9.036 by asking for it:
+`Queues.strong[A].fifo(capacity)`.
 
 
 ## 4. Recipes

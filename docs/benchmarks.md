@@ -1400,17 +1400,26 @@ partial chunk may wait is what makes chunking safe on a live source,
 and it is the shape both competitors are worst at — ZIO's
 `groupedWithin` costs 38x its own plain `grouped` (5 591 against
 146), fs2's `groupWithin` 5.4x its own `chunkN`. okay's `flushAfter`
-costs **23%** over its own chunked merge (386.8 against 314.5),
+costs **11%** over its own chunked merge (349.4 against 315.8),
 because the flusher is one sleeping fiber beside the feed rather than
-machinery in the per-element path. Against ZIO that is **15x**,
-against fs2 **41x**.
+machinery in the per-element path. Against ZIO that is **16x**,
+against fs2 **45x**.
 
-(This page claimed 9% from 2026-09-06 until 2026-09-09, when six
-rounds with tight bars — 1.07x and 1.10x spread within a lane — put it
-at **1.23x**. Nine percent is outside those bars: 314.5 x 1.09 is
-342.8 and the flush lane starts at 386.8. The premium is real and
-larger than advertised; WHY it grew is not investigated and is filed
-as `flush-premium`. It was measured expecting to find noise.)
+**It cost 29% until 2026-09-09, and the reason was a leak
+(flush-premium).** The two flusher fibers were forked and dropped;
+`done.get` stopped them only at their NEXT tick, so a merge finishing
+in 380 MICROseconds left two fibers asleep for a further second under
+`flushAfter = 1000`, each holding a timer entry. At a few thousand
+merges a second that is thousands of live sleepers.
+
+The measurement that found it is worth more than the fix: a
+**one-millisecond** window, which does strictly MORE work because its
+timer actually fires, measured 1.14x where the thousand-millisecond
+one measured 1.29x. A shorter window costing less is not something a
+correct implementation can do. Cancelling each flusher when its own
+source finishes — it has already flushed its tail by then — takes the
+premium to 1.11x, and the 11% that remains is two forks and two timer
+registrations per merge, which is real work.
 
 **The stack-safety bug this found (chunk-stack-safety).** Writing the
 edge cases turned up an overflow that predates all of it: `through`

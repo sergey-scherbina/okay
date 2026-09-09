@@ -1,5 +1,52 @@
 # Backlog
 
+## handler-fusion — one composite handler for a row, staged at compile time (specs/handler-fusion.md)
+
+The operator's proposal, 2026-09-09, assessed in the spec: compose a
+row's handlers into ONE handler first, run once, stage the composite.
+Already the design for comonadic rows (Handler.union + runFree is one
+pass); the continuation-aware class (Writer/State/Throws/Choice/
+Reader.local) runs one effect at a time and rebuilds every foreign
+operation once per pass. Fold fusion (Wu & Schrijvers 2015), evidence
+passing (Xie & Leijen 2020/2021) — licensed by the initiality Free/Eff
+already claim. Order is semantics; the product state is immutable;
+compile-time inline is the ONLY staging admitted (staged-effects.md
+refuted run-time closure composition 3/3).
+
+- [x] handler-fusion-gate — DONE 2026-09-09, GATE NOT CLEARED (1.13–1.29x
+      against a 1.3x bar; specs/handler-fusion.md Results has the table
+      and the corrected cost model). Was: STAGE 0, the measurement gate: a
+      hand-written fused loop for `State % S + Writer % W` (one
+      @tailrec match, product accumulator, immutable) against
+      `State.handle(s)(Writer.run(p))` and the other nesting, JMH
+      µs/op AND B/op (-prof gc), N=1000, plus the three-effect row
+      (+ Throws, no abort taken). Agreement test on generated
+      programs for BOTH orders. Threshold ≥ 1.3x; below it the
+      spec's Results record the refutation and the stages below
+      are not built.
+- [ ] split-without-either — THE LEVER STAGE 0 FOUND: `<|>` allocates
+      an `Either` per operation in EVERY runner (≈20 KB of the 149 KB a
+      fused right-nested pass allocates for 1000 ops). A split that
+      answers by a flat class match with no wrapper — for nested and
+      fused runners alike — is the per-operation cost fusion cannot
+      touch, and the next thing to price. Measure on `Fused.stateWriter`
+      first (the loop is small and its B/op is known to the byte), then
+      on `State.handle`/`Writer.foldWith`.
+- [ ] handler-fusion-flat — GATED OFF by stage 0 (the ceiling for pass
+      fusion measured 1.13–1.29x); reopen only with a new number. Was:
+      `Handler.flat`: Handler.union assembled
+      inline so the nested <|> chain unrolls to one match; measured
+      on the four-effect agent row, fourth position is the number.
+- [ ] handler-fusion-step — GATED OFF by stage 0, same reason. Was:
+      `Step[F, Acc]` (tail-resumptive by type)
+      and `Fused.run` over `F + G` with the row-shaped product state;
+      instances for State, Writer (Fold-generic), Reader incl. local;
+      abort/choose fall back to a shift with the state captured
+      immutably; laws: agrees with nested for both orders, stack-safe
+      at 1M, multi-shot and abort survive.
+- [ ] handler-fusion-eff — the same composite `!>` for Eff (no tree),
+      after the Free loop has its numbers.
+
 ## flush-premium — `flushAfter` costs 30% over the chunked merge where the page said 9%
 
 Found 2026-09-08 by `bench-stale-tables`, while correcting prose that
@@ -10,7 +57,23 @@ that lane and not by any since.
 a 30% premium for bounding how long a partial chunk may wait. §6b has
 said 9% (244.3 against 223.7) since 2026-09-06.
 
-- [ ] flush-premium — STILL OPEN, and now with a firm number instead
+- [x] flush-premium — FIXED 2026-09-09. The two flusher fibers were
+      forked and DROPPED, so `done.get` stopped them only at their
+      next tick: a merge finishing in 380 microseconds left two fibers
+      asleep for a further second under `flushAfter = 1000`, each
+      holding a timer entry, and at a few thousand merges a second
+      that is thousands of live sleepers.
+      Identified by an INVERSION: a 1 ms window, which does strictly
+      more work because its timer actually fires, measured 1.14x where
+      the 1000 ms window measured 1.29x. A shorter window costing less
+      is not something a correct implementation can do.
+      Each flusher is now cancelled when its own source finishes — it
+      has already flushed its tail by then. Premium 1.29x -> **1.11x**
+      (`okayChunkedFlush` 400.0 -> 349.4, the `okayChunked` control
+      +1.5%). The 11% left is two forks and two timer registrations
+      per merge, which is work rather than waste.
+
+      (as filed) STILL OPEN, and now with a firm number instead
       of a suspicion. Six rounds, tight bars (spread 1.07x and 1.10x
       within a lane): `okayChunked` 314.5 min / 325.4 median,
       `okayChunkedFlush` 386.8 / 404.1 — a premium of **1.23x**, not
@@ -1430,6 +1493,25 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
+- [ ] ui-vocab — specs/frontend.md stage 0: Box with weights/gap/pad
+      (Row/Column as aliases), style tokens, Image, Input kinds,
+      Scroll; the semantic level (Form, List, Table, Tabs, Modal) each
+      DEFINED by its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`; laws:
+      diff-then-patch on every new node, keys(s)==keys(lower(s)), diff
+      commutes with lowering.
+- [ ] ui-protocol — stage 1: derived Schema[Ui]/[Event]/[Patch] (JSON +
+      CBOR from one definition; needs codec-vector's gaps closed),
+      `hello {vocab, version}` first line and lowering per vocab in
+      Wire.serve, the conformance script, docs/protocol/frontend.md
+      rendered from the schemas. WireJson retires after equality.
+- [ ] ui-hybrid — stage 2: Input local by default, Form submits ONCE
+      as Submitted(key, json) decoded by the form's schema, `live`
+      inputs send Edited, the closed Local set (Toggle, Tab), server
+      SetValue overrides a local edit, forged Submitted dropped.
+- [ ] ui-compose — stage 3: a Compose Multiplatform thin client
+      (Kotlin, no okay dependency) drawing level L, passing the
+      conformance script; the same server drives browser + Compose at
+      once; Scala Native + GTK or Swing as the out-of-the-box leg.
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
@@ -4967,130 +5049,84 @@ four against master without it — so a diagnostic that costs the hot
 path does not live in main code. Re-add it temporarily if the latency
 measurement is ever built.
 
-## queue-swap — the channel-level version, which removes the layer `Growing` still pays
+## queue-swap — CLOSED 2026-09-09, refuted by measurement
 
-The operator asked (2026-09-07) whether we can have a single ideal
-MPMC queue. Measured today, the answer is in two halves.
+The entry proposed moving the ring -> partitioned swap out of the
+`Growing` wrapper and into `SentinelChannel`, which would hold the
+buffer in a volatile field and REPLACE it, so there would be exactly
+one layer on each side of the swap instead of two. Six steps were
+filed. **The plan is zero-sum and the lane did not build it.**
 
-**No single ALGORITHM is ideal, and the tensions are not engineering
-gaps — they are the trade itself:**
+WHY. The channel lanes cannot price a 9% effect at one producer:
+`oneRing_chunk` read 147.8 / 202.8 / 153.8 across three identical
+rounds, and in one of them `forwarded_chunk` — a buffer that does
+nothing but forward — read WORSE than `growing_chunk`, which is
+impossible as a cost. So the lane built the instrument the question
+needed: `BufferPushBenchmark`, one thread filling a 1 024 buffer and
+draining it on a pre-boxed element, everything else common to every
+row. Two independent runs of three rounds, bars under 1%:
 
-| axis | one end | the other | measured today |
-|---|---|---|---|
-| producers | one head | a part per producer | ring 122 / partitioned 144 at ONE producer; ring 2 375 / partitioned 99 at sixteen |
-| bound | bounded refuses when full (backpressure) | unbounded never refuses | unbounded 673 vs bounded 1 485 at sixteen — and the difference IS the contract, not a free win |
-| claim | CAS, because a bounded claim can be REFUSED | fetch-and-add, only sound when nothing can refuse | why Jiffy may use FAA and `Ring` may not |
-| order | strict FIFO across producers | per-producer FIFO, relaxed between | partitioning gives the second by construction; the first cannot be had with parts |
-| dequeue | wait-free, atomic-free — ONE consumer | several consumers | Jiffy's dequeue is atomic-free precisely because nobody else dequeues |
-| holes | a claimed-unpublished slot stalls the head (latency) | scan past it (needs handled-state per slot) | 0 of 5 001 visible behind a held hole; no throughput cost |
+| what it is | us per 1 024 push+pop | vs the ring |
+|---|---|---|
+| the ring | 9.036 | 1.000x |
+| + a wrapper layer that only forwards | 9.057 | **1.002x** |
+| + a `@volatile` buffer field, no trigger | 9.053 | **1.002x** |
+| + the counting trigger (this is `growing`) | 9.913 | 1.097x |
+| a partitioned buffer routing by thread from the first push | 10.058 | 1.113x |
+| + an identity compare instead of the counter | 10.479 | 1.160x |
 
-Anything claiming to be best on all six is best on none of them.
+Read the first three rows together and the entry answers itself. Step
+one turns `SentinelChannel.ring` from a `private val` into a
+`@volatile private var` — row three, 1.002x. The thing that buys is
+removing the wrapper — row two, 1.002x. **The plan deletes something
+free and adds something free**, and the 9.7% it never touches stays
+exactly where it was.
 
-**But one TYPE can be right for whatever the program turns out to do,
-and that is buildable.** It is the same answer the scheduler lane
-reached: measure what is happening and change policy, rather than ask
-the caller to know in advance. For a channel:
+WHAT THE 9.7% IS, and why no rearrangement removes it: the price of
+asking WHO IS PUSHING on every push. It is informational, not
+structural. Three designs were measured and the shipped one is the
+cheapest:
 
-1. `Channel.apply` starts with a plain `Ring` — the fastest thing at
-   one producer, which is what a channel usually has, and the reason
-   the ring is still the default.
-2. The moment a SECOND producer sends, the channel installs an
-   `AdaptiveFifo` whose PART 0 IS THAT RING. No element moves, no
-   copy, no stop-the-world: a single volatile publish of the buffer
-   reference, and both a reader holding the old reference and one
-   reading the new see the same part 0.
-3. From then on it grows a part per producer as it does today.
+- the counting sample (shipped): a plain store to a padded counter
+  every push, the thread compare behind an every-64th branch. 1.097x.
+- routing by thread from the first push, which is what a lazily
+  partitioned `AdaptiveFifo` does: 1.113x. This also prices what
+  adopting the ring as part 0 buys — **1.5%**, not the 6.4x
+  `docs/queues.md` claimed from parts measured before
+  growing-part-sizing. That table is withdrawn.
+- an identity compare instead of the counter (`GrowingCheap`):
+  1.160x, **6% worse**. A volatile load plus `Thread.currentThread()`
+  on every push lose to a plain store to a line this thread already
+  owns.
 
-What this buys: zero partitioning cost while there is one producer
-(the 1.15-1.3x that keeps `adaptive` opt-in disappears, because there
-is no wrapper until it is needed), and the 5x-24x at four and sixteen
-without anyone choosing.
+The lane predicted, in its claim and before any of this ran, that the
+gap would be ~8% and would be `sample()` rather than the layer. Half
+right: it is `sample()`, and it is 9.7% rather than 8% — but the
+first channel run said the opposite (layer 8.7%, trigger 4.6%) and
+was believed for an hour. What settled it was building an instrument
+whose bars were smaller than the effect, which is the lesson worth
+keeping from this entry.
 
-What it needs, in order:
-- `SentinelChannel.ring` becomes a volatile `var`, read once per
-  operation into a local. Every method already does this by habit;
-  the audit is that none of them read it twice and compare.
-- the waiter arrays are sized by `maxParts`, which changes at the
-  swap: allocate for the partitioned buffer's cap at swap time, and
-  publish the new arrays BEFORE the new buffer.
-- the swap must be idempotent and single-shot: one CAS on the buffer
-  reference, losers use the winner's.
-- laws: everything in `TestManyToMany` and `TestChannelLaws`, plus a
-  new one — a swap under load loses nothing, ends once, and a sender
-  parked on the ring before the swap is woken after it.
+WHAT LANDED instead of the six steps:
 
-The last of those is the hard part and where this could fail: a
-producer parked on a FULL ring, with the swap installing a buffer
-whose other parts have room. It must be woken rather than left
-waiting for room in part 0. `wakeAllSenders` at swap time is the
-blunt answer and probably the right one — a swap happens once per
-channel.
+- [x] `BufferPushBenchmark` — the instrument, kept, because the
+      channel lanes demonstrably cannot resolve this class of
+      question and the next person to ask will need it.
+- [x] `GrowingCheap` and `GrowingNoSample` — the two diagnostic
+      buffers, kept with their verdicts in their comments, so the
+      shipped trigger reads as a measured choice rather than the
+      first thing tried.
+- [x] the corrections in `docs/queues.md` and `Growing`'s own class
+      comment, both of which told the next reader that the layer was
+      the problem.
+- [x] the audit (`read-once`, 2026-09-07) stays landed and is good on
+      its own terms: six methods now read the buffer once per
+      operation.
 
-WHAT WAS BUILT AND WHAT IT MEASURED. A `Growing` buffer: a ring until
-producers contend, then an `AdaptiveFifo` that ADOPTS that ring as its
-part 0 (which needed the adaptive buffer to accept a pre-made part and
-to remember who owns it — that producer must keep pushing there or its
-own order breaks). Four laws held, including one producer never
-growing it and a producer parked on the full ring when it grows not
-being stranded. Minimum of five rounds, us:
-
-| producers | ring | growing | adaptive |
-|---|---|---|---|
-| 1 | **123** | 158 | 144 |
-| 4 | 715 | 477 | **136** |
-| 16 | 3 066 | 446 | **100** |
-
-It works — 6.9x the ring at sixteen producers — and it is DOMINATED at
-every point: worse than the ring where the ring wins, four times worse
-than the partitioned buffer where that wins. I reverted it for that
-reason and the operator decided otherwise (2026-09-07): it ships as
-`Queues.strong[A].growing` with the table beside it in
-`docs/queues.md`, as the thing this entry improves rather than
-replaces.
-
-THREE TRIGGERS, and the first two were refuted by measurement:
-- a REFUSED push. Wrong: a ring is 17x slower at sixteen producers
-  WITH ROOM TO SPARE, because the cost is many threads on one tail,
-  not fullness. It never refused, so it never grew.
-- two DIFFERENT refused producers. Same defect, same reason.
-- the pushing thread SAMPLED every 64th push. This one fires, and is
-  what the table above measures.
-
-WHY IT IS DOMINATED, and what to do instead: after the swap every push
-goes through TWO layers (the wrapper and the partitioned buffer), and
-before it, through the wrapper and its sampling. The channel-level
-version has neither — `SentinelChannel` holds the buffer in a volatile
-field and REPLACES it, so there is exactly one layer on each side of
-the swap. That is the version this entry now proposes.
-
-STATE, so whoever picks this up knows what is already paid for:
-
-- [x] THE AUDIT, done 2026-09-07 (`read-once`): six methods in
-      `SentinelChannel` read the buffer more than once in one
-      operation and now read it once into a local. No behaviour
-      change, gate green — and after a swap, two such reads could
-      have compared a ring against a part of itself.
-- [ ] the field becomes `@volatile private var`, and `growingTo(parts)`
-      arms it. Nothing else in the channel changes: the locals are
-      already there.
-- [ ] the sender waiter queues are sized for the GROWN part count at
-      construction, not resized at the swap — the array is small and
-      growing one under concurrent senders is a race nobody needs.
-- [ ] the swap itself: one CAS, losers use the winner's buffer, and
-      `AdaptiveFifo(first = the ring, firstOwner = the producer that
-      filled it)` — both already built and under laws in the reverted
-      lane's history (see the commit for `Growing`).
-- [ ] `wakeAllSenders()` immediately after, because a producer parked
-      for room in part 0 must be able to see the new parts. This is
-      the hazard of the whole design and the law to write first.
-- [ ] the trigger: the pushing thread SAMPLED every 64th push, which
-      is the only one of three that measured (a refused push does not
-      fire — a ring under sixteen producers is slow with room to
-      spare).
-- [ ] measure `oneRing_chunk` (must not move), `adaptive_chunk` (must
-      not move) and a new lane that starts with one producer and adds
-      fifteen, which is the only shape the swap is for.
-
-The adoption mechanism (`AdaptiveFifo(first, firstOwner)`) is proven
-and its laws are written; it is the WRAPPER that has to go, not the
-idea.
+WHAT IS STILL OPEN, honestly small: nothing in this design is known
+to be improvable. Whoever wants the ring's 9.036 and knows there is
+one producer can ask for it — `Queues.strong[A].fifo(capacity)` —
+and that escape hatch already shipped. A cheaper trigger would have
+to learn who is pushing without reading thread identity and without
+writing a counter, and no such mechanism has been proposed. Reopen
+this with one, not with a rearrangement of layers.

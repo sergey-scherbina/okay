@@ -1,7 +1,6 @@
 package okay.script
 
 import okay.*
-import okay.given
 import okay.codec.Json
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
 import okay.security.{Decision, Policy, Verified}

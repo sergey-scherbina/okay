@@ -31,6 +31,158 @@ passages further up the page (the "Fast — and measured" bullet, the
 consumption-modes table, the merge and fork/join lines) were stale in
 the same way and were re-measured from the same run.
 
+## handler-fusion-gate — pass fusion measured: 1.13–1.29x, the gate is not cleared, and the cost was never where the model put it
+
+Stage 0 of specs/handler-fusion.md (the operator's "compose the
+handlers, run once, stage the composite" — assessed there as right and
+already half the design). This lane built the hand-written ceiling and
+measured it, and the number says stop: `Fused.stateWriter` beats
+`State.run(Writer.run(p))` by **1.24x** left-nested and **1.13x** on the
+right-nested twin the lane rules require; `Fused.throwsStateWriter`
+beats the three-pass nested run by **1.29x**. The bar was 1.3x. Per the
+spec, stages 1–2 (the generic `Step`/`Fused.run` machinery and the
+inline flat dispatch) do not start; both are marked GATED OFF in
+BACKLOG with the number that gates them.
+
+The mechanism is fine and the laws hold: `TestFused` shows the fused
+loops agree with BOTH nestings on generated programs (aborts included
+for the Throws row), stay stack-safe at a million left-nested
+operations, and keep the product accumulator a value (the residual is
+re-runnable — State.handle's own law, restated for the product). B/op
+is the prediction to the byte: fused saves 32 056 B per 1000-op run in
+both bind shapes = 667 forwarded State operations × 48 B, one Bind and
+one closure each.
+
+What was wrong was the PREMISE, and the right-nested twin is what
+showed it. The model said each foreign operation is rebuilt once per
+pass and rotation multiplies that; the twin has no rotation, saves the
+same 32 KB, and its ratio is SMALLER. The rebuild is 9% of a pass's
+allocation. The nested runners were never paying 2–3x for three
+passes, because an inner handler consumes its own operations and emits
+a residual — pass k walks fewer nodes than pass k−1 (~1 667 visits for
+two handlers over 1 000 ops, not 2 000). The time is INSIDE one pass:
+the node visit, the `Either` that `<|>` allocates per operation (~20 KB
+of the 149 KB a fused right-nested pass allocates), the continuation
+call, `Vector :+` per tell — and pass fusion leaves every one of them
+in place. Filed as `split-without-either`, the lever this measurement
+actually found, with `Fused.stateWriter` as its first probe because
+its B/op is known to the byte.
+
+Measured on a box that was not quiet (Chrome at 70% CPU, load 4–7):
+per-fork minima over two rounds, as bench-refresh's methodology note
+says, and the means are quoted only to show why they are not numbers
+(nestedTSW's fork 2 ran 60–102 µs). Five rows in history.tsv.
+
+Two things found in the Jmh configuration on the way, both from
+2026-09-08 landings that did not run `okayJVM/Jmh/compile`: `Ask` in
+HandlerBenchmark had no `derives Effect` after f9417643 removed the
+erasure fallback (a compile error — master's Jmh was red), and
+RowLift's `given deeper` had an unused evidence parameter (the
+zero-warning policy covers Jmh). Both fixed here, one line each.
+
+## grant-unenforced — master was red, and the green tests were the problem
+
+`TestEffectProvide`'s negative test compiled what it asserts must not:
+a block coloring itself with no grant. Verified failing on
+`origin/master` alone, so every gate in the repository was red with it.
+
+It was not a leak. `okay.Effect` became
+`trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]` on
+2026-09-08 — declaring a signature with `derives Effect` now also
+grants its operations the coloring permission, which is deliberate
+and documented in `Effects.scala`. `Reader derives okay.Effect`, so
+that block colors legitimately and always will. The test was RIGHT to
+go red; what it tested had moved out from under it.
+
+**The two tests that stayed green were the worse defect.** With the
+grant arriving ambiently through `Reader`, `provide(grant)` was doing
+nothing in either of them: they would have passed with `provide`
+deleted from the file. A red test is visible. Two green tests that
+cannot fail are not, and they were the ones actually claiming the
+feature works.
+
+So the suite moved to `ProvideProbe derives TypeableK` — the escape
+hatch `Effects.scala` names for "the row-split test and NOT
+auto-coloring" — where the grant is genuinely required. Three tests
+mean what they say again and a fourth pins the new rule from the
+other side, so the next reader meets it as a decision rather than a
+hole.
+
+Proved rather than assumed: changing the probe to `derives
+okay.Effect` turns the negative test red and nothing else. It failed
+twice on the way, the second time on my own assertion — which looked
+for the `@implicitNotFound` text on `Direct.Effect` and never sees
+it. A missing CONVERSION is not reported as a missing implicit; the
+compiler says `Found: ProvideProbe[Int], Required: Int`, and that
+mismatch IS the rule holding.
+
+Also: nine unused `import okay.given`, left behind when `Keyed` went.
+**A warm gate saw four of them.** It only recompiles what changed, so
+it named okay-llm and okay-http and stayed silent about okay-chat,
+okay-script and okay-ui, whose classes were already built — fixing
+the four and re-running warm would have looked complete and left five
+in place. The clean run produced the list.
+
+Gate: clean build, 84 modules, 3 072 tests, 0 failures, 0 compiler
+warnings.
+## queue-swap — the layer was free, and the entry closed itself
+
+`queue-swap` had been open since 2026-09-07 with six filed steps:
+move the ring -> partitioned swap out of the `Growing` wrapper and
+into `SentinelChannel`, so that a push crosses one layer instead of
+two. This lane measured the layer before removing it, and the plan is
+zero-sum.
+
+The channel lanes could not answer the question. At one producer
+`oneRing_chunk` read **147.8 / 202.8 / 153.8** across three identical
+rounds, and in one of them `forwarded_chunk` — a buffer that does
+nothing but forward to a ring — read WORSE than `growing_chunk`,
+which forwards AND samples. That is not a cost, it is noise, and an
+8% effect cannot be read off a lane that moves 37%.
+
+So the lane built the instrument instead: `BufferPushBenchmark`, one
+thread filling a 1 024 buffer and draining it on a pre-boxed element,
+with everything the rows share — boxing, the ring's arithmetic, the
+loop — common to all of them. Two independent runs of three rounds,
+bars under 1%, us per 1 024 push+pop:
+
+| what it is | us | vs the ring |
+|---|---|---|
+| the ring | 9.036 | 1.000x |
+| + a wrapper layer that only forwards | 9.057 | **1.002x** |
+| + a `@volatile` buffer field, no trigger | 9.053 | **1.002x** |
+| + the counting trigger (this is `growing`) | 9.913 | 1.097x |
+| a partitioned buffer routing by thread from the first push | 10.058 | 1.113x |
+| + an identity compare instead of the counter | 10.479 | 1.160x |
+
+Step one of the plan turns `SentinelChannel.ring` from a `private
+val` into a `@volatile private var` — the third row, 1.002x. What it
+buys is deleting the wrapper — the second row, 1.002x. **It deletes
+something free and adds something free**, and the 9.7% it never
+touches is the whole cost.
+
+That 9.7% is `sample()`, and it is not a structure to be rearranged:
+it is the price of asking WHO IS PUSHING on every push. Three designs
+now have numbers, and the shipped one is the cheapest of the three. An
+identity compare instead of the counter is **6% worse** — a volatile
+load plus `Thread.currentThread()` every push lose to a plain store
+to a line the thread already owns. A lazily partitioned buffer that
+routes by thread from the first push is 1.5% worse, which is also the
+first honest price of adopting the ring as part 0: **1.5%**, against
+the **6.4x** `docs/queues.md` claimed. That table was measured before
+growing-part-sizing, when "matched parts" meant 64 slots each and a
+lone producer stalled in them; it is withdrawn, and it is the third
+time this page read a memory difference as a mechanism difference.
+
+Kept: the instrument, and the two diagnostic buffers (`GrowingCheap`,
+`GrowingNoSample`) with their verdicts in their comments, so the
+shipped trigger reads as a measured choice. Corrected: `Growing`'s
+own class comment and two claims in `docs/queues.md`, all of which
+told the next reader that the layer was the problem. The lane's
+registered prediction — that the gap would be `sample()` — was right,
+and the first channel run said the opposite for an hour before the
+instrument settled it.
+
 ## row-ergonomics — a constructor's row, and a step a program may decline
 
 Closes `row-polymorphic constructors`, which had been on the backlog
@@ -108,6 +260,43 @@ key and `untag` handing the plain signature back to its own handler;
 `Refs` is the dynamic counterpart, cells made at run time with one row
 member however many. `State.update` and `State.swap` answer what a
 write is about to destroy.
+## flush-premium — the flusher fibers were never cancelled
+
+`flushAfter` cost **29%** over the same chunked merge without it,
+against a page that said 9% and that a standing window is free. The
+two lanes differ by one argument, and with `flushAfter = 1000` against
+an operation taking 380 **micro**seconds the timer never fires once —
+so the cost was the machinery merely standing.
+
+It was a leak. `chunkedMerge` forked a flusher per source and dropped
+the handle; `done.get` stopped it only at its NEXT tick, so every
+merge left two fibers asleep for up to a second, each holding a timer
+entry. At a few thousand merges a second that is thousands of live
+sleepers.
+
+**The measurement that found it is worth more than the fix.** A
+one-millisecond window — which does strictly MORE work, because its
+timer actually fires and flushes chunks — measured **1.14x** where the
+thousand-millisecond window measured **1.29x**. A shorter window
+costing less is not something a correct implementation can do, and
+that inversion was written into the diagnostic lane as the test before
+it was run.
+
+Each flusher is now cancelled when its own source finishes; by then
+that source has flushed its own tail, so the flusher has nothing left
+to do.
+
+| | before | after | |
+|---|---|---|---|
+| `okayChunkedFlush` | 400.0 | **349.4** | −12.7% |
+| `okayChunked` (control) | 311.2 | 315.8 | +1.5% |
+| premium of a 1000 ms window | 1.29x | **1.11x** | |
+
+The 11% that remains is two forks and two timer registrations per
+merge — work rather than waste — and §6b says so instead of implying
+the window is free.
+
+Commit: ddc62408.
 
 ## growing-default — `Channel.apply` grows, and exact FIFO gets its own name
 

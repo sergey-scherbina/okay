@@ -859,24 +859,52 @@ object Channel {
                              (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
     val c = Channel[Chunk[A]](capacity)
     val alive = AtomicInteger(2)
-    def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Unit = within.foreach: ms =>
-      def tick(): Unit ! Async =
-        Async.sleep(ms).flatMap: _ =>
-          if done.get > 0 then
-            takeChunk(buf, size, full = true) match
-              case Some(ch) => c.send(ch).flatMap(_ => tick())
-              case None => tick()
-          else pure(())
-      val _ = sch.fork(() => tick())
-    def watch(f: Fiber[Unit], mine: AtomicInteger): Unit = f.onComplete { r =>
-      mine.set(0)
-      r.left.foreach(e => c.fail(e))
-      if alive.decrementAndGet() == 0 then c.close()
-    }
+    /**
+     * The flusher is RETURNED so it can be cancelled, and that is not
+     * tidiness (flush-premium, 2026-09-09).
+     *
+     * It used to be forked and dropped. `done.get` then stopped it
+     * only at its NEXT tick, so with `flushAfter = 1000` a merge that
+     * finishes in 380 microseconds left two fibers asleep for a
+     * further second, each holding a timer entry. At a few thousand
+     * merges a second that is thousands of live sleepers, and it
+     * measured **1.29x** the same merge without a window — while a
+     * ONE-millisecond window, which does strictly more work because
+     * its timer actually fires, measured only 1.14x. A shorter window
+     * costing less is the inversion that identified this.
+     */
+    def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Fiber[Unit] | Null =
+      within match
+        case None => null
+        case Some(ms) =>
+          def tick(): Unit ! Async =
+            Async.sleep(ms).flatMap: _ =>
+              if done.get > 0 then
+                takeChunk(buf, size, full = true) match
+                  case Some(ch) => c.send(ch).flatMap(_ => tick())
+                  case None => tick()
+              else pure(())
+          sch.fork(() => tick())
+    def watch(f: Fiber[Unit], mine: AtomicInteger, fl: => (Fiber[Unit] | Null)): Unit =
+      f.onComplete { r =>
+        mine.set(0)
+        r.left.foreach(e => c.fail(e))
+        // this source is finished and has already flushed its own
+        // tail, so its flusher has nothing left to do: stop it now
+        // rather than at its next tick
+        val t = fl
+        if t != null then t.nn.cancel()
+        if alive.decrementAndGet() == 0 then c.close()
+      }
     val (bs, bt) = (TRef.bare(ChunkBuffer[A](Vector.empty)), TRef.bare(ChunkBuffer[A](Vector.empty)))
     val (ds, dt) = (AtomicInteger(1), AtomicInteger(1))
-    watch(sch.fork(() => feedS(c, bs)), ds); flusher(bs, ds)
-    watch(sch.fork(() => feedT(c, bt)), dt); flusher(bt, dt)
+    // `flusher` is started BEFORE its `watch` is armed but referred to
+    // by name, so a feed that finishes instantly still cancels the
+    // flusher rather than racing past a `null`
+    lazy val fs: Fiber[Unit] | Null = flusher(bs, ds)
+    lazy val ft: Fiber[Unit] | Null = flusher(bt, dt)
+    watch(sch.fork(() => feedS(c, bs)), ds, fs); val _ = fs
+    watch(sch.fork(() => feedT(c, bt)), dt, ft); val _ = ft
     c
 
   /** the chunking merge for ordinary sources: the common path, fed

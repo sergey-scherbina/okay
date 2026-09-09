@@ -68,7 +68,7 @@ class RowLiftBenchmark {
 
   object In extends InLow:
     given left[F[+_], G[+_]]: In[F, F + G] = IdIn.asInstanceOf[In[F, F + G]]
-    given deeper[F[+_], G[+_], H[+_]](using i: In[F, G]): In[F, G + H] =
+    given deeper[F[+_], G[+_], H[+_]](using @scala.annotation.unused i: In[F, G]): In[F, G + H] =
       IdIn.asInstanceOf[In[F, G + H]]
 
   /** on the OPERATION: constructs at R, nothing to rebuild */

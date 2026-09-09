@@ -7,7 +7,11 @@ import !.*
 import scala.annotation.nowarn
 
 /** an operation carrying its own answer, for handler benchmarks */
-case class Ask[+A](a: A)
+// `derives Effect`: since f9417643 (2026-09-08) every signature declares
+// its own runtime test — the erasure fallback is gone — and this lane's
+// relay/handle split needs one. Found by handler-fusion-gate: the
+// landing that removed the fallback did not reach the Jmh configuration.
+case class Ask[+A](a: A) derives okay.Effect
 
 /**
  * The previously unbenchmarked paths: tail-resumptive relay vs the

@@ -1,0 +1,24 @@
+task: ui-vocab
+agent: fable-frontend
+started: 2026-09-09
+branch: feature/ui-vocab
+worktree: ../okay-wt-ui-vocab
+spec: specs/frontend.md (be2d2d35), stage 0
+
+why: the operator's frontend direction (2026-09-09): two vocabulary
+  levels in one tree, semantic nodes defined by lowering, so a thin
+  Compose client draws eight primitives and the server lowers the
+  rest. Stage 0 is pure Scala and blocks nothing on the platform.
+
+what: Box(dir, weights, gap, pad) with Row/Column as aliases; Style
+  tokens; Image; Input kinds + live; Button role; Scroll; the semantic
+  nodes Form/List/Table/Tabs/Modal with `Ui.lower(ui, vocab)` and
+  `Ui.keys`. Diff/patch/Frame/React/Dom/WireJson/Form extended so every
+  existing test passes unchanged. Laws tested: diff-then-patch on the
+  new nodes (keyed battery extended), keys(s)==keys(lower(s)), diff
+  commutes with lowering.
+
+predict: Row/Column-as-Box touches every pattern match on Row/Column
+  in okay-ui, okay-script (Live/React.elem → HTML) and the demo;
+  compile errors are the map of the work. Frame's layout gains
+  weights; the DOM maps weights to flex-grow.

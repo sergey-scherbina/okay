@@ -102,10 +102,38 @@ import java.util.concurrent.atomic.AtomicBoolean
  * first message, and this when the count is genuinely unknown and you
  * would rather not be wrong at either end.
  *
- * The layer is what has to go, and the way to remove it is for the
- * CHANNEL to replace its buffer rather than wrap it — one layer on
- * each side of the swap. That is filed as `queue-swap`, its audit is
- * already landed, and this class is the piece it grows out of.
+ * WHAT THIS COSTS AND WHY IT CANNOT BE REARRANGED AWAY (queue-swap,
+ * 2026-09-09). The sentence that stood here said "the layer is what
+ * has to go, and the way to remove it is for the CHANNEL to replace
+ * its buffer rather than wrap it". That was measured and it is
+ * false. With the threads taken out — one thread filling a 1 024
+ * buffer and draining it, everything else common to all rows, two
+ * independent runs of three rounds, bars under 1%:
+ *
+ * {{{
+ * ring           9.036   1.000x   -
+ * forwarding     9.057   1.002x   + a wrapper layer, plain final ref
+ * noSample       9.053   1.002x   + a @volatile buffer field
+ * growing        9.913   1.097x   + the counting trigger
+ * adaptiveLazy  10.058   1.113x   routing by thread from the first push
+ * }}}
+ *
+ * The wrapper is free. The volatile field is free. Every point this
+ * class costs at one producer is `sample()` — and `queue-swap`
+ * proposed to remove the free row and ADD the other free row, which
+ * is nothing traded for nothing. The entry is closed.
+ *
+ * What the number really is: the price of asking WHO IS PUSHING on
+ * every push. A partitioned buffer that routes by thread from the
+ * first push asks the same question and pays 1.5% MORE (10.058),
+ * which is what the adoption of the ring as part 0 buys — a little,
+ * honestly, not the 6.4x an earlier table in `docs/queues.md`
+ * claimed from a stale sizing. An identity compare instead of the
+ * counter pays 6% more still. Three designs, and this one is the
+ * cheapest of the three.
+ *
+ * Whoever wants the ring's 9.036 and knows there is one producer can
+ * still have it: `Queues.strong[A].fifo(capacity)`.
  */
 final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) extends Buffer[A] {
 
