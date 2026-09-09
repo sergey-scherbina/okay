@@ -1,6 +1,6 @@
 package okay.spark
 
-import okay.Aggregator
+import okay.*
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 
@@ -100,3 +100,23 @@ object SparkBulk:
 
     def toChunks[A](d: Rows[A]): okay.Chunks[A] =
       okay.Chunks.fromIteratorWith(d.toLocalIterator.map(elem[A]))(okay.ChunkBuf.factory[A](64))(64)
+
+  /**
+   * `Sort` answered NATIVELY (specs/bulk.md, the effect layer): Spark's
+   * own sort over the same heap `Tables.via` threads. Nothing in the
+   * `Tables` handler knows this exists — both translate into the same
+   * `State % Heap[Rows]`, which is how an operation joins a platform
+   * without joining the platform's contract. Keys travel as `Any` like
+   * elements do, and come back through the same `elem`.
+   */
+  def sort[A, F[+_]](p: A ! (okay.Sort + F)): A ! (okay.State % okay.Tables.Heap[Rows] + F) =
+    import okay.RowLift.plus
+    def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
+    : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =
+      val keyed: RDD[(Any, Any)] = h.get(t).map(x => (key(elem[X](x)): Any, x))
+      val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
+      h.put[X](RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any)
+        .sortByKey().values)
+    okay.!.interpret(p):
+      [X] => (e: okay.Sort[X]) => e match
+        case okay.Sort.By(t, key, ord) => okay.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord)).plus[F]

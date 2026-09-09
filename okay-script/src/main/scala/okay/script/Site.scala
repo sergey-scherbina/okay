@@ -84,7 +84,7 @@ final class Site(
    * file; anything else falls through to the server's own 404, or to
    * the next route a caller chains with `orElse` */
   def routes: PartialFunction[Request, HttpResponse ! Async] = {
-    case r if pathOf(r.url) == api.Live.JsPath || resolve(pathOf(r.url)).isDefined => pure(handle(r))
+    case r if pathOf(r.url) == api.Live.JsPath || Mobile.paths(pathOf(r.url)) || resolve(pathOf(r.url)).isDefined => pure(handle(r))
   }
 
   /** the WebSocket side: a Live app's session on the page's own path
@@ -188,6 +188,19 @@ final class Site(
     if httpsOnly && !secureFor(webOf(r, path, query, Map.empty)) then toHttps(r)
     else if path == api.Live.JsPath then
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
+    // the mobile web leg (Mobile.scala): the stylesheet, the service
+    // worker, the manifest and the icon, all from the container
+    else if path == Mobile.CssPath then
+      HttpResponse(200, Vector("Content-Type" -> "text/css; charset=utf-8"), Http.one(Mobile.css.getBytes(UTF_8)))
+    else if path == Mobile.SwPath then
+      HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8", "Service-Worker-Allowed" -> "/"),
+        Http.one(Mobile.serviceWorker.getBytes(UTF_8)))
+    else if path == Mobile.IconPath then
+      HttpResponse(200, Vector("Content-Type" -> "image/svg+xml"), Http.one(Mobile.icon.getBytes(UTF_8)))
+    else if path == Mobile.ManifestPath then
+      val q = parseQuery(query)
+      HttpResponse(200, Vector("Content-Type" -> "application/manifest+json"),
+        Http.one(Mobile.manifest(q.getOrElse("name", "okay"), q.getOrElse("start", "/")).getBytes(UTF_8)))
     else resolve(path) match
       case None => plain(404, "not found")
       case Some(Hit.Static(f)) =>

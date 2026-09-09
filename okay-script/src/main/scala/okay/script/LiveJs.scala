@@ -166,10 +166,17 @@ object LiveJs:
       |    var proto = location.protocol === "https:" ? "wss://" : "ws://";
       |    var sep = location.search ? "&" : "?";
       |    var ws = new WebSocket(proto + location.host + location.pathname + location.search + sep + "__live=" + encodeURIComponent(id));
-      |    function send(o) { if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
+      |    // an event before the socket opens is KEPT, not dropped (ui-mobile
+      |    // found a tap racing the connection): the hello goes first, then the queue
+      |    var queue = [];
+      |    function send(o) { if (ws.readyState === 1) ws.send(JSON.stringify(o)); else queue.push(o); }
       |    function event(e) { send({ Event: { event: e } }); }
       |    // the hello: this client draws the layout level only
-      |    ws.onopen = function () { send({ Hello: { vocab: [], version: 1 } }); };
+      |    ws.onopen = function () {
+      |      ws.send(JSON.stringify({ Hello: { vocab: [], version: 1 } }));
+      |      var q = queue; queue = [];
+      |      for (var i = 0; i < q.length; i++) ws.send(JSON.stringify(q[i]));
+      |    };
       |    ws.onmessage = function (m) {
       |      var j = JSON.parse(m.data), t = k(j);
       |      if (t === "Tree") { while (root.firstChild) root.removeChild(root.firstChild); root.appendChild(build(j.Tree.ui)); }

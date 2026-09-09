@@ -1,5 +1,173 @@
 # Changelog
 
+## resource-guard — Failing[F]: the forwarded-failure hook as a typeclass, and the cast in Resource.run is gone
+
+jdbc-tails fixed the abandoned-finalizer defect with one cast in
+`Resource.guardAsync`; the operator asked for the typeclass route if
+nothing better existed. Nothing did, and the route turned out better
+than "the cast moves": `okay.Failing[F]` says, per row, how a forwarded
+operation reports its failure to the scope that forwarded it.
+`Async`'s instance is a typed GADT match (a `Run` thunk that throws, an
+`Await` callback answering Left run the hook first); the row instances
+are anchored on `Async` at either side of `+`, split by Async's own
+`TypeableK` through the kernel `<|>` — the one place a row is ever cast
+— and come back by plain upcast; a row without Async gets the
+low-priority identity. `Resource.run` takes `(using Failing[F])`.
+Measured on the way: an unanchored `Failing[F + G]` instance is
+selected by dotty but cannot pin `F` (ambiguous `TypeableK[F]`), so the
+instances name `Async` explicitly; `Async`, `Async + G`, `G + Async`
+and both three-part nestings resolve. `guardAsync` and its
+`asInstanceOf` are deleted; TestResource gains the `Async + Throws` row
+case. Landed as d2e2ecc1; specs/sql.md "The brake runs on a failing
+statement". Gate: full matrix, 3467 tests, 0 failures, 0 warnings.
+
+## schema-compat — whether the other side still reads our messages, as a fold over two Schemas
+
+The microservices audit's last cheap gap: two services share a
+Schema-encoded message, one side's case class changes, and nothing
+answered whether the other can still decode. The industry answer is
+a schema registry or a contract-testing tool; neither is needed,
+because a `Schema` is a VALUE. `Compat.compare(old, next)` folds two
+of them into a `Report`: the changes (field added/removed with its
+optionality and whether it is defaulted, case added/removed, a
+retype, a shape change), each with a path, and a verdict per
+DIRECTION per WIRE — backward (the new reader over old bytes: the
+log, traffic in flight), forward (the old reader over new bytes:
+consumers not yet upgraded), `rolling` for both.
+
+The rules are not invented, they are read off this module's own
+decoders, and the tests assert that by encoding with one schema and
+decoding with the other rather than by restating the rule: an absent
+field takes its default then None-if-optional then a refusal; an
+unknown case is refused on both wires; an unknown FIELD is **ignored
+by Json and refused by Cbor**. That asymmetry — which surfaced only
+because the check was written against the decoders — is why a
+verdict names its wire: adding a field is forward-compatible on JSON
+and not on CBOR, so a CBOR service pair must upgrade readers first.
+
+Nesting, collections, wrappers (an `SIso` is no change at all),
+List-vs-Vector (the same array on both wires) and self-referential
+types (a name-pair guard) are handled. 14 tests; specs/codecs.md
+gained the section with its boxes; docs/modules/okay-codec.md
+documents it with the change table and the one-line regression test
+a service can keep.
+## bulk-effect — the road to the aggregation as a program, and an operation added without touching the seam
+
+`Bulk[D]` stays the platform's contract; the program's vocabulary is now
+an EFFECT over it (specs/bulk.md, "the effect layer"). `Tables[+A]
+derives Effect` — Of, Read, Select, Expand, Where, Join, Cache,
+Aggregate, Collect — answers with `Table[A]`, an opaque slot on the
+handler's heap (the `Refs.Ref` precedent, one cast in `Heap.get`).
+`Tables.via(B)` translates every operation into one step of
+`State % Heap[D]` using only `B: Bulk[D]` — one handler for every
+platform — and `Tables.run(B)(prog)` runs a plan on a platform.
+
+**The point, demonstrated: `Sort`.** Not in `Bulk`, not a method
+anywhere. `enum Sort[+A] derives Effect` with `By(t, key, ord)`;
+`Sort.viaTables` answers it through the primitives (collect, sort, hand
+back — correct on any platform, written once), `SparkBulk.sort` answers
+it natively by translating into the same `State % Heap[Rows]`, and
+`Tables.via` knows nothing of either. A program that sorts says so in
+its type, `! (Tables + Sort)`; nothing in any platform's build moved.
+
+The Wrocław analysis is now ONE program over `Tables + Sort` in direct
+style — build the departures, cache, count, per-hour, per-minute, the
+three busiest minutes sorted on the platform — run on Spark (native
+sort) and in one JVM (`viaTables`), equal in every part: 4 593 288
+departures, the same 24 hours, the same top three (minutes 1855, 16255,
+14815 at 372 departures each). Spark 15.3 s, local 7.0 s for the whole
+analysis. `!.tracing` prints the plan before anything runs:
+`Read Select Read Select Read Select Read Select Aggregate Join Select
+Join Select Join Expand` — 3 joins, as the assertion says.
+
+Two findings for the spec. A mark in a direct block takes the block's
+own row EXACTLY — a `! Tables` program in a `! (Tables + Sort)` block
+says `.plus[Sort]` (the macro accepts the carrier or a single operation
+of its row, not a narrower program). And `!` is invariant in its
+answer, so where a match refines `X >: Table[A]` under the covariant
+enum, the handler spells the widening as `.map(t => t: X)`.
+
+## ui-mobile-ios — the Swift thin client: a SwiftPM package with no okay dependency, proved by the conformance script, built for the iOS simulator
+
+M2 of specs/frontend.md "Mobile". `okay-swift/` transcribes
+`docs/protocol/frontend.md` into Swift (`OkayProtocol`: enums with
+associated values, a total codec over JSONSerialization, patch
+application by path, the hybrid rule), draws level L in SwiftUI
+(`OkayUI.Render`; `OkayApp(url:)` is the whole client as one view),
+and speaks the wire over `URLSessionWebSocketTask` — hello first,
+events queued until the socket opens, M1's lesson applied before it
+could bite. `swift test` replays the conformance script, 3 of 3;
+`xcodebuild` for the iOS Simulator SDK succeeds for both slices; the
+headless `okay-smoke` opened a real `okay.script.Serve` page's socket,
+pressed `inc`, and held the patched tree. An app bundle is an Xcode
+project the operator creates that shows `OkayApp(url:)` — not
+generated by hand here. The client was written from the rendered
+document alone, the second time that has worked (Kotlin was the
+first), which is what the document is for.
+
+## http-post-body-audit — the law existed, and exactly one of three backends ran it
+
+The audit asked whether a POST body reaches a route on every backend,
+because Jetty's did not: `posted` did not exist, every body arrived
+empty, and an MCP route answered every message as damaged until
+mcp-push found it live. The code answer is reassuring — Netty reads
+`req.content` after its aggregator, `okay.http.Server` reads
+`getRequestBody.readAllBytes()`, and Jetty has read one since the fix.
+
+The test answer was not. The shared acceptance program already
+carries the check — "a POST body reaches the route" — and it ran
+against **Jetty alone**, the backend that had the bug; the other two
+had never been made to pass it. So the deliverable is a law, not a
+fix: `Acceptance.rest` is the program's REST half (the JDK server
+serves no WebSocket, so the full `check` cannot hold it), and
+`TestBackends` — the suite whose whole point is one program, every
+backend — now runs it against the JDK, Jetty and Netty, reporting
+which backend failed which check.
+
+Proven able to fail, not assumed: disabling Jetty's body read in the
+worktree turned it red with `jetty failed these: "a POST body reaches
+the route"`, and restoring it turned it green.
+
+One thing the audit could not fix and states instead, in specs/http.md:
+the DEFAULT gate cannot catch this class at all. Every suite that
+binds a real port is `Live`-tagged by policy (nio-port-scope), so a
+change to any HTTP backend is ungated until `sbt integrationTest`
+runs. Also corrected on the way out: the entry's "NIO" was a misnomer
+— `Nio.scala` is raw TCP, not an HTTP server.
+
+## ui-mobile — installable Live pages: the mobile web, proved in an iPhone emulation, offline included
+
+The first of the operator's mobile lanes (specs/frontend.md "Mobile",
+M1). `api.installable(name)` in a page's head makes a Live page a
+mobile-first, installable application with no build step: the
+viewport, `/__okay/app.css` (level L for a phone — 44px tap targets,
+16px inputs, tokens as classes), a web manifest with the page as its
+start URL, and `/__okay/sw.js`, a service worker keeping the shell —
+network first, cache on failure — so the page opens offline as last
+seen and the socket reconnects when it can. `Mobile.scala` holds the
+four files, `Site` serves them, `docs/frontend-guide.md` is the guide
+for the whole frontend story (indexed from docs/README.md).
+
+Measured through a real headless Chromium in an iPhone emulation
+(`TestMobileWeb`, okay-demo-e2e-browser, `sbt integrationTest`): the
+tap lands, the patch lands, the button is tap-sized, manifest and
+worker are served and active; offline, the page reloads whole from
+the shell. `TestMobileHead` (okay-script, default gate) checks the
+head and the four files without a browser.
+
+Four defects found on the way, by a step-by-step probe after the
+suite went silent (`MobileProbe`, kept): `live.js` DROPPED any event
+sent before the socket opened — a tap racing the connection — and now
+queues them behind the hello (a defect of every Live page, made
+visible by a phone); a worker registered without a scope controlled
+`/__okay/` and no page, so `ready` never resolved (scope `/` now,
+which the `Service-Worker-Allowed` header permits); the first load
+precedes the worker's control, so the page adds itself to the shell
+after registering (offline reload had failed with ERR_FAILED); the
+e2e module's tests were not forked, so the embedded page compiler saw
+sbt's launcher as its classpath and crashed in the parser
+(`Test / fork := true`, as okay-script's own tests have).
+
 ## discovery — service discovery and client-side balancing, in okay-resilience
 
 `Resilient.http` hardened one call to the one host in its URL; a

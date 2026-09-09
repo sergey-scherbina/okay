@@ -1,11 +1,6 @@
 # Sprint
 
 ## Doing
-- http-post-body-audit — BACKLOG: does a POST body reach a route on
-  every backend? Jetty's did not (found live by mcp-push, fixed
-  there); nothing pins it anywhere. One law over all three servers in
-  TestBackends, PROVEN to fail on the broken shape. Claimed 2026-09-09
-  (.work/active/http-post-body-audit.claim).
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

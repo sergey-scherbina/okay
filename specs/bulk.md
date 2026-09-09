@@ -62,6 +62,52 @@ trait Bulk[D[_]]:
 - **`join` is the equi-join only.** It is what the demo needs and what
   every platform has natively; anything richer is a program over it.
 
+## The effect layer — the same road as a program (bulk-effect, 2026-09-09)
+
+`Bulk[D]` is the platform's contract: nine primitives every platform
+must supply, and adding a tenth breaks every platform's build. The
+program's vocabulary is a different thing and should be OPEN, so it is
+an effect, `Tables`, over the same nine, with the platform's values on
+a heap the program never sees:
+
+```scala
+enum Tables[+A] derives Effect:                  // Of, Read, Select, Expand, Where, Join, Cache, Aggregate, Collect
+  case Select[A, B](t: Table[A], f: A => B) extends Tables[Table[B]]
+  ...
+opaque type Table[A] = Int                        // a typed slot on the handler's heap (Refs.Ref)
+def departures: Table[Dep] ! Tables = direct { ... }       // the plan: a value, no platform in it
+Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same value, twice
+```
+
+- **Handler = translation into State.** `Tables.via(B)` turns every
+  operation into one step on `State % Heap[D]`, using only `B: Bulk[D]`
+  — written once for every platform, and the heap is state rather than
+  a private field so that an extension can share it (next point). The
+  one cast is `Heap.get`, the `Refs.slot` argument: every value on the
+  heap was put there under the `A` of the handle that reads it.
+- **Extension = a new signature in the row, not a new method.** `Sort`
+  is not in `Bulk`. `Sort.viaTables` answers it through the primitives
+  (collect, sort, hand back) — correct on every platform, written once;
+  `SparkBulk.sort` answers it NATIVELY by translating into the same
+  `State % Heap[Rows]`, and `Tables.via` neither knows nor cares. A
+  program that sorts says so in its type, `! (Tables + Sort)`, and a
+  platform that has not been told about `Sort` refuses that program at
+  ITS run site — nothing else in the build moves.
+- **A plan is data.** `!.tracing` prints the operations before any of
+  them runs (`Of Select Of Join Select Aggregate`), and the rewrite that
+  `bulk-join-cost` asks for — project before the join — is a walk over
+  the same data. Filed, not done.
+- **Direct style.** `derives Effect` registers the signature, so inside
+  `direct { }` a mark (`!prog`) binds a handle: `val deps = !departures.cache`.
+  A mark takes the block's own row exactly — a `! Tables` program in a
+  `! (Tables + Sort)` block says `.plus[Sort]` — and the combinators on
+  programs are row-polymorphic by membership (`In[Tables, F]`), so
+  `read(p).select(f).join(q)` types in any row that carries `Tables`.
+- **Two spellings, one meaning.** `select`/`expand`/`where`, not
+  `map`/`flatMap`/`filter`: a program `Table[A] ! F` is a monad and its
+  own `map` is the program's, so the query names are the ones that
+  cannot collide. On a handle the same names give a `! Tables` program.
+
 ## Behavior
 - [x] the same ETL (Wrocław's GTFS: four CSVs joined, service patterns
       expanded into departures) written once against `Bulk[D]` gives
@@ -70,6 +116,12 @@ trait Bulk[D[_]]:
       equal the local instance's on the same data
 - [x] `Csv.fields` handles quotes, doubled quotes and commas in quotes
 - [x] a local source is replayable: aggregating twice reads twice
+- [x] the effect layer: a `Tables` plan run on `localBulk` equals the
+      direct computation; `!.tracing` lists its operations before any
+      runs; `Sort` — absent from `Bulk` — answers through the primitives
+      locally and natively on Spark, to the same top-3
+- [x] the Wrocław analysis as ONE program over `Tables + Sort`, run on
+      Spark and in one JVM to equal departures, hours and sorted minutes
 
 ## Out of scope
 - Flink: `flink-core` alone carries no DataStream, so no instance yet;

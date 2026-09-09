@@ -1,8 +1,12 @@
 package okay.spark
 
-import okay.{Aggregator, Bulk, Chunks, Group, Monoid, sliding}
+import okay.*
 import okay.given // Group[N] for every Numeric, and the local Bulk[Chunks]
-import okay.Bulk.* // the collection view over any Bulk[D]
+import okay.Tables.{Table, read, of}
+import okay.Chunks.elements
+import okay.Sort.sortBy
+import okay.RowLift.plus
+import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession
 import java.io.File
 import java.time.{LocalDate, LocalDateTime}
@@ -44,30 +48,32 @@ final case class Service(from: Long, to: Long, days: Vector[Boolean]):
  * tram), calendar.txt (which weekdays a service pattern runs, and the
  * dates the feed is valid for).
  *
- * THE ETL, SAID ONCE. Everything below is written against `Bulk[D]`
- * (specs/bulk.md) and names no platform: the test runs it on Spark and
- * on the local `Chunks` instance and asserts the two agree. A timetable
- * is a PLAN, not events — one stop_times row is a departure on every
- * date its service pattern runs — so the last step expands it.
+ * THE ETL, SAID ONCE — AS A VALUE. `departures` is a program of the
+ * `Tables` effect (specs/bulk.md, the effect layer): it names no
+ * platform, it can be printed before it runs (`!.tracing`), and the
+ * test runs the SAME value on Spark and on the local `Chunks` platform
+ * and asserts the two agree. A timetable is a PLAN, not events — one
+ * stop_times row is a departure on every date its service pattern runs
+ * — so the last step expands it.
  */
 object Gtfs:
-  def departures[D[_]](file: String => String)(using B: Bulk[D]): D[Dep] =
-    val stopTimes = B.csv(file("stop_times.txt")).map(r => r("trip_id") -> r("departure_time"))
-    val trips = B.csv(file("trips.txt")).map(r => r("trip_id") -> (r("route_id"), r("service_id")))
-    val routes = B.csv(file("routes.txt")).map(r => r("route_id") -> (r("route_type2_id").toInt == 31))
-    val calendar = B.csv(file("calendar.txt")).map { r =>
+  def departures(file: String => String): Table[Dep] ! Tables = direct {
+    val stopTimes = !read(file("stop_times.txt")).select(r => r("trip_id") -> r("departure_time"))
+    val trips = !read(file("trips.txt")).select(r => r("trip_id") -> (r("route_id"), r("service_id")))
+    val routes = !read(file("routes.txt")).select(r => r("route_id") -> (r("route_type2_id").toInt == 31))
+    val calendar = !read(file("calendar.txt")).select { r =>
       val days = Vector("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday").map(r(_) == "1")
       r("service_id") -> Service(epochDay(r("start_date")), epochDay(r("end_date")), days)
     }
     // the first day of the feed, by the algebra: the minimum start date
-    val day0 = calendar.aggregate(Aggregator.min[Long].contramap((kv: (String, Service)) => kv._2.from)).get
+    val day0 = (!calendar.aggregate(Aggregator.min[Long].contramap((kv: (String, Service)) => kv._2.from))).get
 
-    stopTimes.join(trips)                                                       // trip    -> (time, (route, service))
-      .map { case (_, (time, (route, service))) => route -> (time, service) }   // route   -> (time, service)
+    !stopTimes.join(trips)                                                      // trip    -> (time, (route, service))
+      .select { case (_, (time, (route, service))) => route -> (time, service) } // route   -> (time, service)
       .join(routes)                                                             // route   -> ((time, service), tram)
-      .map { case (route, ((time, service), tram)) => service -> (time, tram, route.hashCode) }
+      .select { case (route, ((time, service), tram)) => service -> (time, tram, route.hashCode) }
       .join(calendar)                                                           // service -> ((time, tram, route), Service)
-      .flatMap { case (_, ((time, tram, route), service)) =>
+      .expand { case (_, ((time, tram, route), service)) =>
         val h = time.substring(0, 2).toInt // GTFS lets a late trip run past 24:00
         val m = time.substring(3, 5).toInt
         service.dates.map { d =>
@@ -75,6 +81,7 @@ object Gtfs:
           Dep(((d - day0).toInt) * 1440 + h * 60 + m, (h * 60 + m) / 60 % 24, tram, route)
         }
       }
+  }
 
   private def epochDay(yyyymmdd: String): Long = LocalDate.parse(yyyymmdd, BASIC_ISO_DATE).toEpochDay
 
@@ -109,23 +116,8 @@ class TestWroclawAlgebra extends munit.FunSuite:
 
   override def afterAll(): Unit = if !munitIgnore then spark.stop()
 
-  /** the platform, chosen once: everything below that says `.aggregate` goes through it */
-  given sparkBulk: Bulk[SparkBulk.Rows] = SparkBulk(spark)
+  val sparkBulk: Bulk[SparkBulk.Rows] = SparkBulk(spark)
   val localBulk: Bulk[Chunks] = okay.localBulk
-
-  /** the same program, twice: a cluster (well, four local cores of one) and one JVM */
-  lazy val onSpark: SparkBulk.Rows[Dep] =
-    val t0 = System.nanoTime()
-    val d = sparkBulk.cache(Gtfs.departures(file))
-    val n = d.aggregate(Aggregator.count[Dep])
-    println(f"  spark: $n%,d scheduled departures (${(System.nanoTime() - t0) / 1000000}%,d ms, read + join + expand)")
-    d
-  lazy val local: Chunks[Dep] =
-    val t0 = System.nanoTime()
-    val d = localBulk.cache(Gtfs.departures(file)(using localBulk))
-    val n = localBulk.aggregate(d)(Aggregator.count[Dep])
-    println(f"  local: $n%,d departures from the same program (${(System.nanoTime() - t0) / 1000000}%,d ms)")
-    d
 
   // ---------------------------------------------------------------- the algebra
   //
@@ -163,24 +155,59 @@ class TestWroclawAlgebra extends munit.FunSuite:
    * builds its own 24-key map; the merge is what makes them one. */
   val hourly = Aggregator.groupBy((d: Dep) => d.hour)(departures.zip(routesRunning).zip(tramShare))
 
+  /** how many minutes the fortnight has, and how many departures each */
+  val perMinute = Aggregator.groupBy((d: Dep) => d.minute)(departures)
+
+  /**
+   * THE WHOLE ANALYSIS AS ONE PROGRAM, over a row that says what it
+   * needs: tables, and a sort. `Sort` is not in `Bulk` — it is an
+   * operation added beside the seam. Spark answers it natively
+   * (`SparkBulk.sort`), the local platform through the primitives
+   * (`Sort.viaTables`); the program is the same value both times.
+   */
+  def analysis(file: String => String)
+  : (Long, Map[Int, ((Long, Long), Double)], Map[Int, Long], Vector[(Int, Long)]) ! (Tables + Sort) = direct {
+    // a mark takes the block's own row: a `! Tables` program says `.plus[Sort]`
+    val deps = !Gtfs.departures(file).cache.plus[Sort]
+    val n = !deps.aggregate(departures).plus[Sort]
+    val hours = !deps.aggregate(hourly).plus[Sort]
+    val minutes = !deps.aggregate(perMinute).plus[Sort]
+    val busiest = !of(minutes.toVector).plus[Sort]
+    val sorted = !busiest.sortBy((kv: (Int, Long)) => -kv._2).plus[Tables]
+    val top = !sorted.collect.plus[Sort]
+    (n, hours, minutes, top.elements.take(3).toVector)
+  }
+
+  lazy val onSpark =
+    val t0 = System.nanoTime()
+    val r = State.run(Tables.Heap.empty[SparkBulk.Rows])(SparkBulk.sort(Tables.via(sparkBulk)(analysis(file))))._2
+    println(f"  spark: ${r._1}%,d scheduled departures, the whole analysis in ${(System.nanoTime() - t0) / 1000000}%,d ms")
+    r
+  lazy val local =
+    val t0 = System.nanoTime()
+    val r = Tables.run(localBulk)(Sort.viaTables(analysis(file)))
+    println(f"  local: ${r._1}%,d departures from the same program, ${(System.nanoTime() - t0) / 1000000}%,d ms")
+    r
+
+  test("the plan, printed before anything runs") {
+    val traced = okay.!.tracing(Gtfs.departures(file).plus[okay.Pure])([X] => (e: Tables[X]) => e.productPrefix)
+    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
+    val (plan, _) = okay.!.run(okay.Writer.run(handled))
+    println(s"  plan: ${plan.mkString(" ")}")
+    assertEquals(plan.count(_ == "Join"), 3)
+  }
+
   test("routes are counted by a hash, and the hash does not collide here") {
-    val B = localBulk
-    val ids = B.map(B.csv(file("routes.txt")))(_("route_id"))
-    val (routes, hashes) = B.aggregate(ids)(Aggregator.distinct[String].zip(Aggregator.distinct[Int].contramap(_.hashCode)))
+    val (routes, hashes) = Tables.run(localBulk)(
+      read(file("routes.txt")).select(_("route_id"))
+        .aggregate(Aggregator.distinct[String].zip(Aggregator.distinct[Int].contramap(_.hashCode))))
     assertEquals(hashes, routes, "two route ids share a hashCode — `distinct` would undercount")
     println(f"  $routes%d routes, $hashes%d distinct hashes")
   }
 
   test("the same program on Spark and in one JVM: equal departures, equal hours") {
-    onSpark: Unit; local: Unit // built and cached OUTSIDE the timers: no lane below is an ETL
-    val t0 = System.nanoTime()
-    val sparkHours = onSpark.aggregate(hourly)
-    val sparkMs = (System.nanoTime() - t0) / 1000000
-    val t1 = System.nanoTime()
-    val localHours = localBulk.aggregate(local)(hourly)
-    val localMs = (System.nanoTime() - t1) / 1000000
-    println(f"  aggregate: spark(4 partitions) ${sparkMs}%,d ms · local single pass ${localMs}%,d ms")
-
+    val (_, sparkHours, _, sparkTop) = onSpark
+    val (_, localHours, _, localTop) = local
     println("  hour  departures   routes   tram%")
     for h <- 0 to 23 do
       val ((n, routes), tram) = sparkHours(h)
@@ -191,11 +218,14 @@ class TestWroclawAlgebra extends munit.FunSuite:
       f" · quietest: ${byDeps.take(3).map(_._1).mkString(", ")}")
     println(f"  most rail: ${byTram.last._1} at ${byTram.last._2._2}%.1f%% tram" +
       f" · least: ${byTram.head._1} at ${byTram.head._2._2}%.1f%%")
+    println(s"  busiest minutes (Spark's sort / the local one): $sparkTop / $localTop")
 
+    assertEquals(onSpark._1, local._1)
     assertEquals(sparkHours.keySet, localHours.keySet)
     for h <- sparkHours.keys do
       assertEquals(sparkHours(h)._1, localHours(h)._1, s"counts differ at hour $h")
       assert(math.abs(sparkHours(h)._2 - localHours(h)._2) < 1e-9, s"tram% at $h")
+    assertEquals(sparkTop, localTop)
   }
 
   /**
@@ -208,7 +238,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
    * one subtract no matter how wide the window is.
    */
   test("a group is a window: the fortnight minute by minute, rolling") {
-    val perMinute = onSpark.aggregate(Aggregator.groupBy((d: Dep) => d.minute)(departures))
+    val perMinute = onSpark._3
     val minutes = perMinute.keys.max + 1
     val series = LazyList.tabulate(minutes)(m => perMinute.getOrElse(m, 0L).toDouble)
 

@@ -73,6 +73,22 @@ object Acceptance {
    * comparison rather than a hope.
    */
   def check(http: Http, sockets: Sockets, port: Int): Seq[(String, Boolean)] ! Async =
+    for
+      r <- rest(http, port)
+      frames <- sockets.connect(s"ws://127.0.0.1:$port/ws").flatMap(sock =>
+        Ws.over(sock)(say).flatMap(fs => sock.close().map(_ => fs)))
+    yield r :+ ("a websocket session round-trips" -> (frames == Seq(Frame.Text(echoed))))
+
+  /**
+   * The REST half alone, so that EVERY server can be held to it —
+   * including the JDK's own, which serves no WebSocket
+   * (http-post-body-audit, 2026-09-09). Until then this program ran
+   * against Jetty only, and "a POST body reaches the route" was the
+   * one check no other backend had ever been made to pass: Jetty's
+   * body did not arrive at all until mcp-push found it live, and
+   * nothing would have caught the same thing on Netty or the JDK.
+   */
+  def rest(http: Http, port: Int): Seq[(String, Boolean)] ! Async =
     val base = s"http://127.0.0.1:$port"
     for
       p <- http.send(Request.get(s"$base/person")).flatMap(Http.json[Person])
@@ -80,11 +96,8 @@ object Acceptance {
         .flatMap(r => Writer.run[String, Unit, Async](Http.lines(r)).map(_._1))
       posted <- http.send(Request.post(s"$base/echo", Body.Text(greeting)))
         .flatMap(Http.text)
-      frames <- sockets.connect(s"ws://127.0.0.1:$port/ws").flatMap(sock =>
-        Ws.over(sock)(say).flatMap(fs => sock.close().map(_ => fs)))
     yield Seq(
       "json body decodes to the shared value" -> (p == Right(person)),
       "a streamed body reassembles into every line" -> (ls == lines),
-      "a POST body reaches the route" -> (posted == "you said: " + greeting),
-      "a websocket session round-trips" -> (frames == Seq(Frame.Text(echoed))))
+      "a POST body reaches the route" -> (posted == "you said: " + greeting))
 }

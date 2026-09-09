@@ -1,6 +1,11 @@
 # Backlog
 
 ## bulk — after the seam (specs/bulk.md, landed 2026-09-09)
+- [ ] bulk-rewrite — `Tables` plans are data (`!.tracing` prints them);
+      the rewrite `bulk-join-cost` asks for — a `Select` that only
+      projects, pushed below a `Join` — is a walk over the same data,
+      one pass before `Tables.via`. Worth doing with a measurement: the
+      RDD-level join over `Csv.Row` maps is where the 18 s went.
 - [ ] bulk-parquet — `Bulk.csv` is the only source; the taxi demo
       (TestTaxiAlgebra) still reads its parquet through Spark's API.
       A `source` per format, or `Bulk.read(Format)`, with the local
@@ -127,7 +132,9 @@ follows, in the spec's order:
       (outbox): transactional outbox / inbox / dead-letter as
       okay-outbox (specs/outbox.md). DONE 2026-09-09 (discovery):
       service discovery + client-side balancing in okay-resilience
-      (specs/discovery.md). Still open: saga over `Durable`
+      (specs/discovery.md). DONE 2026-09-09 (schema-compat): Schema
+      compatibility between services, `okay.codec.Compat`
+      (specs/codecs.md). Still open: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);
@@ -1778,6 +1785,9 @@ measure on our own data, never a predicted result.
       as Submitted(key, json) decoded by the form's schema, `live`
       inputs send Edited, the closed Local set (Toggle, Tab), server
       SetValue overrides a local edit, forged Submitted dropped.
+- [x] ui-mobile — LANDED 2026-09-09 (specs/frontend.md "Mobile", M1): installable Live pages — viewport, level-L mobile CSS, manifest, service worker; Playwright in an iPhone emulation, offline reload; live.js queues events before the socket opens.
+- [x] ui-mobile-ios — LANDED 2026-09-09 (specs/frontend.md "Mobile" M2): okay-swift/, `swift test` 3/3 over conformance.jsonl, iOS Simulator build succeeded, headless smoke against a real Live page.
+- [ ] ui-mobile-android — M3: the SDK by brew + sdkmanager, the Android target on okay-compose, a debug APK.
 - [x] ui-compose — LANDED 2026-09-09 (specs/frontend.md Results; okay-compose/README.md). Original: a Compose Multiplatform thin client
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
@@ -2066,8 +2076,13 @@ measure on our own data, never a predicted result.
       2026-09-01, green twice alone — port/readiness race shape)
 - [ ] http-streaming-responses — incremental bodies on the NIO and
       Netty backends (Jetty has it); unblocks MCP push there
-- [ ] http-post-body-audit — Netty/NIO: do POST bodies reach routes?
-      (Jetty's did not — found by mcp-push, fixed there)
+- [x] http-post-body-audit — DONE 2026-09-09. Netty and the JDK server
+      DO read the body (Jetty's `posted` was the only defect and
+      mcp-push fixed it) — but nothing asserted it on any backend but
+      Jetty, so the audit's answer is a law, not a fix:
+      `Acceptance.rest` runs against all three servers in
+      TestBackends, proven able to fail. The entry's "NIO" was a
+      misnomer: `Nio.scala` is raw TCP, not an HTTP server.
 
 ## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md) — DONE, all 11 landed
 - [x] demo-streaming-cut — LANDED 2026-09-02: `Chat.reply`/`chatRoute`
