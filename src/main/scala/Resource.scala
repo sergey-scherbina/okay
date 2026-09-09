@@ -61,7 +61,7 @@ object Resource {
         throw t
   }
 
-  def run[A, F[+_]](a: A ! Resource + F): A ! F = {
+  def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 
     // a while-loop, not @tailrec: the catch must see the CURRENT
@@ -85,7 +85,7 @@ object Resource {
               return Pure(r)
             case Right(e) =>
               val f = fin
-              return Effect(guardAsync(e, () => releaseAll(f))).map { a => releaseAll(f); a }
+              return Effect(failing.guard(e, () => releaseAll(f))).map { a => releaseAll(f); a }
           case Bind(Effect(e), k) => <|>[Resource, F](e) match
             case Left(Acquire(mk, rel)) =>
               val r = mk()
@@ -96,7 +96,7 @@ object Resource {
               // k(y) runs USER code (the composed continuation) at
               // the outer handler's call site, outside this loop's
               // try — a throw there must not skip the finalizers
-              return Effect(guardAsync(e, () => releaseAll(f))).flatMap { y =>
+              return Effect(failing.guard(e, () => releaseAll(f))).flatMap { y =>
                 _loop(f)(
                   try k(y)
                   catch { case t: Throwable => releaseAll(f); throw t })
@@ -109,36 +109,7 @@ object Resource {
 
     _loop(Nil)(a)
   }
-
-  /**
-   * A forwarded ASYNC operation is executed by the outer handler, and
-   * a failure there abandons this scope's residual — with its
-   * finalizers (resource-async-failure, jdbc-tails: a SQL statement
-   * that throws inside a transaction region left the connection in
-   * the transaction; the region's brake never ran). So the operation
-   * goes out GUARDED: a `Run` whose thunk throws releases first, an
-   * `Await` whose callback answers Left releases first. Every other
-   * effect passes untouched.
-   *
-   * The one cast in this file: `e` is a `F[X]` that IS an `Async.Run`
-   * (the class test proves it — the row is a union, so `F[X]` holds
-   * the Async value itself), and the replacement is the same
-   * constructor at the same answer type; only the erased `F` cannot
-   * say so.
-   */
-  private def guardAsync[F[+_], X](e: F[X], release: () => Unit): F[X] = e match
-    case r: Async.Run[?] =>
-      Async.Run(() => try r.run() catch { case t: Throwable => release(); throw t }).asInstanceOf[F[X]]
-    case a: Async.Await[?] =>
-      Async.Await[Any](k => a.register { r =>
-        r match
-          case Left(_) => release()
-          case _ => ()
-        k(r)
-      }).asInstanceOf[F[X]]
-    case other => other
 }
-
 /**
  * Bracket over any Handler-able row F (Async, Produce, Pure, ...):
  * acquire, use, release — the use-program runs to completion inside
