@@ -1,7 +1,9 @@
 # Sprint
 
 ## Doing
-- resilience-faults — specs/resilience.md stage 2: seeded Faults.http, the composite under a plan (claim: resilience-faults)
+- writer-test-no-some — BACKLOG "runner-floor", first of four in the
+  operator's order (2, 4, 3, 1). Claimed 2026-09-09
+  (.work/active/writer-test-no-some.claim).
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

@@ -1,5 +1,66 @@
 # Changelog
 
+## persistence-e2e — the seven audit lanes together, and Pool/Saga stats on /metrics
+
+The seven persistence-audit lanes were each proven alone; this lane
+proves them together and makes their standing visible. okay-ops renders
+`Pool.Stats` (okay_pool_size/idle/busy/waiting/created_total, named)
+and `Saga.Status` (okay_saga_phase, steps_done, steps_undone, by id)
+beside the guards; `Pool.Stats` derives Schema; okay-ops now depends on
+okay-sql. A Live end-to-end suite in okay-docs-dynamo: a Pool over the
+pg wire lends two connections to a real write skew and `transactRetry`
+through `borrow` lands on run 2 with the pool whole after; a Saga whose
+steps are DynamoDocs CAS writes crosses the crash window and recovers
+Forward because the re-run CAS answers Stale — the far end's idempotency
+the saga states. Landed as dfb0fbaa. Gate: full matrix, 2957 tests, two
+okay-intent timeouts (TestOfflineGate, TestTypoRobustness: 30 s limit
+under three sbts on the box, 412 s matrix) green on rerun alone;
+okay-intent does not depend on the changed modules.
+
+## resilience-faults — stage 2 of specs/resilience.md: the seeded adversary, and the composite under it
+
+`Faults.http(seed, plan)(inner)` delays, drops or fails calls by a
+plan; a call's fate is a pure function of the seed and its ORDINAL
+(SplitMix64 on the pair), so a hedged race meets the same faults in
+the same places whichever attempt finishes first — Sim's move one
+seam up: a found bug is a seed. Fixed faults by ordinal win over
+drawn rates; `log` and `stats` say what each call met. `TestFaults`
+drives the five through it: the breaker opens on planned drops and
+the far end is not asked while open; the hedge answers from ordinal
+2 while ordinal 1 sleeps 5 s and is cancelled before the far end; a
+40 ms budget cuts a 5 s call; 40 calls of a drawn plan are all
+accounted for across breaker, wire and limiter, and the run replays
+by seed. Adaptive concurrency stays deferred, unmeasured: nothing
+wires `Resilient.http` into a service yet, so there is no latency to
+follow. 5 tests. The full-matrix gate caught what the scoped run
+had not: the composite test's limiter ran on the wall clock, a warm
+replay finished its 40 calls in fewer milliseconds than the first,
+refilled less, met `Exhausted`, and broke its own replay — the
+limiter's clock is frozen there now, which is the spec's own rule
+(time is injected) applied to the test that had forgotten it.
+
+## ui-native-toolkits — the Swing host: the JVM's own toolkit over the same seam, headless-tested by the DOM battery
+
+The "out of the box" native leg specs/frontend.md left open.
+`Swing.backend(container)` is a patch Backend built exactly as the raw
+DOM one is: the tree is the plan, `Ui.patch` keeps a mirror so events
+interpret against a value, `React.event` is the one pure
+interpretation, and a patch path walks `getComponents` index for
+index (an Input's label wrapper is a leaf's root, a Scroll's child is
+its viewport's view). `Swing.host` is `Ui.diffing` over it — semantic
+nodes arrive lowered, Form is level L — and `Swing.window` is the one
+thing that needs a display. Zero dependencies; a JVM-only source
+directory (`scala-jvm`) added to okay-ui.
+
+Headless, TestSwing (3): the DOM law battery verbatim plus semantic
+frames (patching frame by frame equals building the last frame), a
+keyed shuffle MOVES the same component instances, and delegated
+events round-trip by key while a patch's own SetValue is applied, not
+spoken. An application now runs unchanged on the terminal, under
+React, on the raw DOM, in a Swing window, and over the wire to a
+browser or the Compose client. GTK via Scala Native is not here: the
+machine has no GTK headers, and a binding nobody can compile is not
+out of the box — it stays filed.
 ## wroclaw-algebra — the same algebra on the city's own timetable
 
 `okay-spark`'s `TestWroclawAlgebra` (Live-tagged, like the taxi demo)

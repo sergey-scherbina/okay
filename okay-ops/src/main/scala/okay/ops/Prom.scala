@@ -104,3 +104,34 @@ object Prom:
     metric("okay_limiter_rejected_total", "calls refused, no token within the wait", "counter")(
       limiters.map((n, s) => row("okay_limiter_rejected_total", n, s.rejected)))
     sb.result()
+
+  /** a connection pool's standing, one row per gauge, named by the
+   * pool (persistence-e2e): `okay.sql.Pool.stats`, read once */
+  def pools(pieces: Vector[(String, () => okay.sql.Pool.Stats)]): String =
+    val sb = new StringBuilder
+    val read = pieces.map((n, f) => (n, f()))
+    def metric(name: String, help: String)(value: okay.sql.Pool.Stats => Long): Unit =
+      if read.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name gauge\n"
+        read.foreach((n, s) => sb ++= s"""$name{name="${esc(n)}"} ${value(s)}""" += '\n')
+    metric("okay_pool_size", "connections at most")(_.size.toLong)
+    metric("okay_pool_idle", "connections open and free")(_.idle.toLong)
+    metric("okay_pool_busy", "connections borrowed")(_.busy.toLong)
+    metric("okay_pool_waiting", "borrowers waiting for one")(_.waiting.toLong)
+    metric("okay_pool_created_total", "connections ever opened")(_.created)
+    sb.result()
+
+  /** a saga's standing: its phase as a labelled gauge (1 at the phase
+   * it is in) and its progress in steps (persistence-e2e) */
+  def sagas(pieces: Vector[() => okay.persist.Saga.Status]): String =
+    val sb = new StringBuilder
+    val read = pieces.map(_())
+    if read.nonEmpty then
+      sb ++= "# HELP okay_saga_phase 1 at the phase the saga is in\n# TYPE okay_saga_phase gauge\n"
+      read.foreach(s => sb ++= s"""okay_saga_phase{id="${esc(s.id)}",phase="${esc(s.phase)}"} 1""" += '\n')
+      sb ++= "# HELP okay_saga_steps_done steps completed forward\n# TYPE okay_saga_steps_done gauge\n"
+      read.foreach(s => sb ++= s"""okay_saga_steps_done{id="${esc(s.id)}"} ${s.done.length}""" += '\n')
+      sb ++= "# HELP okay_saga_steps_undone steps compensated\n# TYPE okay_saga_steps_undone gauge\n"
+      read.foreach(s => sb ++= s"""okay_saga_steps_undone{id="${esc(s.id)}"} ${s.undone.length}""" += '\n')
+    sb.result()
+

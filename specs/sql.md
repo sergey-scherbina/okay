@@ -550,6 +550,10 @@ the health probe this stack already had. Hikari behind JDBC is `open =
       the first returns — on the one connection
 - [x] `pinned` holds one connection across statements for the scope and
       returns it at the end; a borrow after `close` refuses with `Closed`
+- [x] (persistence-e2e) a Pool over the pg wire lends two connections
+      to a real write skew; `transactRetry` through `borrow` lands on
+      run 2; the pool is whole after; `Pool.Stats` is a Schema value and
+      okay-ops renders it as `okay_pool_*` rows (Live)
 
 ## Out of scope
 

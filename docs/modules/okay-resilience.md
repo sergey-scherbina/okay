@@ -89,6 +89,14 @@ tracing is okay-obs; health is okay-ops; idempotency keys and
 recovery are okay-agent's `Durable`. This module adds only what the
 2026-09-09 audit found missing.
 
+**Testing the composite: `Faults.http`.** A seeded adversary between
+your client and a fake far end: `Faults.http(seed, Faults.Plan(dropAt
+= Set(2, 3), slowAt = Map(1L -> 5000L), failRate = 0.2))(far)`. A
+call's fate is a pure function of the seed and its ordinal, so a
+hedged race replays exactly; `log` says what each ordinal met, and a
+found bug is a seed. This is how `TestFaults` proves the pieces'
+contracts hold through the whole stack rather than one at a time.
+
 ## Gotchas
 
 - A cancel that lands while a program is IN FLIGHT under a bulkhead

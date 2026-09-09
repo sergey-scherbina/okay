@@ -815,8 +815,9 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-ops"))
-  // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience)
+  // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows;
+  // okaySql: Pool.Stats joins them (persistence-e2e)
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(
@@ -1096,6 +1097,10 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-form",
+    // the Swing host (ui-native-toolkits): the JVM's own toolkit as a
+    // Backend over the same seam, zero dependencies, headless-testable
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
   )
   .nativeSettings(
     Compile / unmanagedSourceDirectories +=
@@ -1645,7 +1650,10 @@ lazy val compare = (project in file("compare"))
  * SigV4 with service "dynamodb" — no AWS SDK. JVM, like the Mongo
  * adapter; the DocsSuite contract runs Live against dynamodb-local. */
 lazy val okayDocsDynamo = (project in file("okay-docs-dynamo"))
-  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm)
+  // okayPg/okaySql in Test: the end-to-end suite (persistence-e2e) runs
+  // a Pool over the pg wire and a Saga over this adapter side by side
+  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm,
+    okaySql.jvm % Test, okayPg.jvm % Test)
   .settings(
     name := "okay-docs-dynamo",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

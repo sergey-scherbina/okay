@@ -140,6 +140,7 @@ object Pool:
     new Pool[C](open, close, size, acquireTimeoutMillis)
 
   final case class Stats(size: Int, idle: Int, busy: Int, waiting: Int, created: Long, closed: Boolean)
+    derives okay.codec.Schema
 
   final case class Exhausted(size: Int, waitedMillis: Long)
     extends RuntimeException(s"pool exhausted: $size connections busy for $waitedMillis ms")
