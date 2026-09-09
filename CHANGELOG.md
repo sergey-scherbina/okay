@@ -28,7 +28,7 @@ wait and is green with it, ten runs of ten under load.
 Two things the law itself was hiding, both fixed: it discarded
 `sendBlocking`'s answer, so a refusal and a loss looked identical, and
 it never asked whether a producer finished. It now reports both, which
-is how the truth came out. Commit: LANDING.
+is how the truth came out. Commit: a3325df5.
 ## bulk-plan — the whole plan as a tree, and two rewrites that pay
 
 The effect layer could see one operation at a time (a `Free`
