@@ -1,0 +1,23 @@
+task: gate-lost-shape2
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T17:02:17Z
+status: in-progress
+branch: feature/gate-lost-shape2
+worktree: ../okay-wt-shape2
+spec: BACKLOG native-runner-error (third occurrence, filed by failing-over)
+
+why: a sibling's gate hit the same family in a shape gate.sh does not
+  know: `(okayLexNative / Test / executeTests)` with
+  RPCCore$ClosedException / RunTerminatedException, no suite header, so
+  NO `Error: Total .., Failed 0, Errors 1` line at all. The script
+  called it unrecognised and did not re-run. Their log is kept, so the
+  change can be tested against the real thing.
+
+what: teach the lost-process test the second shape, keep it
+  conservative — still no rerun if any `==> X`, or if a failing
+  project matches neither shape. Verified with --read over four real
+  logs: two of shape A, this one of shape B, one true failure, one
+  green.
+
+next: extend the signature, test against all five logs
