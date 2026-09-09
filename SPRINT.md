@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- intent-periods-and-zl — a `Temporal.Period` (this/next/last week, the weekend, a named month) beside the day parser, and `Amount` reading «зл»/«zl». Claimed 2026-09-09; spec section in specs/intent-classify.md.
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
