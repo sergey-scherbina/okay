@@ -1,5 +1,323 @@
 # Changelog
 
+## growing-default — `Channel.apply` grows, and exact FIFO gets its own name
+
+The default buffer behind `Channel.apply` is now
+`growing(capacity, 8)`: a plain ring while one producer pushes, and an
+`AdaptiveFifo` that ADOPTS that ring the moment a second one appears.
+Measured with the ring as the in-run control, one consumer, chunked,
+8 000 elements:
+
+| producers | ring | **growing** | |
+|---|---|---|---|
+| 1 | 156.0 | 171.1 | 1.10x worse |
+| 2 | 772.4 | **188.0** | 4.1x better |
+| 4 | 1258.2 | **159.0** | 7.9x better |
+| 16 | 2907.1 | **127.6** | **22.8x better** |
+
+Ten percent at one producer for four to twenty-three times above it.
+
+**What it costs is not speed but ORDER.** A ring orders every push by
+one CAS on one tail; once this has grown, each producer keeps its own
+order and nothing is promised between them.
+`Queues.strong[A].fifo(capacity)` is the ring this default used to be,
+under a name that says what it gives — take it when the order between
+producers is part of your correctness, and not merely because it
+sounds safer, since it is a single contended tail and at sixteen
+producers that costs 22x.
+
+**A correction, because it reversed a conclusion I had published the
+day before.** This switch was blocked by `Source.merge` reading 3.5x
+slower, and after `growing-part-sizing` the regression "did not move",
+so I reported that the sizing was not the cause. It was. The
+diagnostic variant built `Growing` DIRECTLY inside a patched
+`Channel.apply` with `Ring(capacity / 8)`, bypassing
+`Queues.Mechanism.growing` — where the fix lived. It re-measured the
+old sizing twice. Swept properly:
+
+| capacity | ring | growing | |
+|---|---|---|---|
+| 64 | 127.5 | 127.7 | 1.00x — no regression at all |
+| 256 | 122.9 | 94.4 | 0.77x |
+| 1024 | 116.1 | 95.5 | 0.82x |
+
+A variant that reimplements the code under test does not test it.
+
+**Three Scala Native gaps**, found by the gate the moment
+`AdaptiveFifo` became reachable from the default — none had ever
+linked there because nothing reachable used it: `AtomicIntegerArray`
+(now a small `Cells` type over `Array[AtomicInteger]`),
+`Thread.threadId()` (Java 19+, now `System.identityHashCode`), and
+`ThreadLocal.withInitial` (now the subclass it desugars to). And
+`Thread.onSpinWait()` removed: a CPU hint with no Native equivalent,
+and the spin is correct without it.
+
+Gate: 3032 tests, 84 module runs, 0 warnings, on JVM, JS and Native.
+
+Commit: 17404a4e.
+
+## growing-part-sizing — `capacity` is per part, and that was worth 70%
+
+`growing` divided `capacity` by the part count it MIGHT need rather
+than the one it has. `growing(64, parts = 8)` gave part 0 sixty-four
+slots and every later part **eight**, so the second producer to arrive
+got an eighth of what a plain ring would have given it.
+
+Every part is now a full `capacity`. That is affordable because
+`AdaptiveFifo` opens parts LAZILY — its `open` counter starts at one
+and rises as producers claim — so a channel holds `capacity ×
+producers that actually arrived`, not `capacity × parts`.
+
+Alternating, three rounds, one consumer:
+
+| producers | `cap / parts` | **`cap` per part** | |
+|---|---|---|---|
+| 1 | 176.8 | 182.5 | +3.2% |
+| 4 | 552.5 | **165.4** | **−70.1%** |
+| 16 | 429.3 | **126.1** | **−70.6%** |
+
+126 at sixteen producers is within 10% of the best number on the page
+at the same memory per producer, and the one-producer case — the one
+that has to stay free — is unmoved.
+
+**It is a contract change and the scaladoc says so**: a channel built
+this way holds `capacity` per producer, not `capacity` in total.
+
+**What it did not fix, which is why it was written.** It was meant to
+unblock making `growing` the default. It did not: `Source.merge` is
+still 3.5x slower under a growing default, so the sizing was not that
+cause. Filed as `growing-elementwise-pop` with the evidence — a
+partitioned buffer pays a part scan per pop and only a CHUNKED
+consumer amortises it, which is why `growing_chunk` is now the best
+lane on the page while `Source.merge`, which reads per element, is the
+worst.
+
+Commit: 51adaf00.
+
+## lane-fairness — five benchmark lanes asked the two sides different questions
+
+An audit of every cross-library benchmark class against this page's
+own Lane rules, then a full re-run on the corrected lanes: 22 classes,
+501 lanes with all three rounds, 0 failures, and the three rounds
+indistinguishable (each one's median ratio to its own lane's best is
+1.010–1.012).
+
+**All five mismatches were on OUR side**, because our lane is written
+first and the competitor's second, against it. Four gave okay an
+unearned advantage; one handicapped us and had gone unnoticed for
+months precisely because okay won the row anyway.
+
+| lane | the mismatch |
+|---|---|
+| `AsyncBenchmark` (§4) | okay forked and joined 100 fibers from OUTSIDE the runtime; cats, ZIO and kyo each entered theirs ONCE. §4b hit this at K=10 000 and split into two rows; §4 had no twin. Added `okaySpawnInside`. |
+| `adaptive_chunk` | `parts(16).each(1024)` = **16 384 slots** against `oneRing`'s 1024 and `growing`'s 1 984. Matched; `adaptiveWide_chunk` keeps the old sizing, named. |
+| `manyToMany_okayAdaptive` | the same 16 384 against ZIO's and cats' `Queue.bounded(1024)`. Matched. |
+| `adaptiveManyConsumers` | part count from `availableProcessors`, so its capacity and its number differed per machine. Pinned. |
+| `StreamOps` | okay at `Chunks.nats`'s default 64 while every competitor got the whole stream in ONE chunk. Both sizes now measured. |
+
+**A fourth Lane rule is added — RESOURCES**: same buffer capacity,
+same worker count, same chunk size. The three existing rules could not
+have caught any of these; every mismatched pair had matching
+granularity and an author-intended source, and differed only in what
+the runtime was handed.
+
+**Three tables changed their conclusion.**
+
+`docs/queues.md`'s central table said `adaptive` is the choice for
+many producers, on 144 / 136 / 100. Those numbers had 16x the buffer
+of the rows beside them. At an equal memory budget of 1 024 slots:
+
+| producers | `bounded` | **`growing`** | `adaptive` | `adaptive`, 16x memory |
+|---|---|---|---|---|
+| 1 | 169 | **171** | 1 119 | 169 |
+| 4 | 1 257 | **528** | 559 | 166 |
+| 16 | 2 828 | **394** | 408 | 115 |
+
+`growing` is the best of the three at every producer count once the
+memory is equal — the opposite of what the page said, and a
+vindication of the decision to keep it that the numbers had appeared
+to contradict.
+
+§4b's adaptive row, added the previous day, claimed 3.6x and 6.1x
+ahead of ZIO. Matched, it is a tie at 4×4 and 3.0x ahead at 16×16.
+
+§5 now carries both chunk sizes: the 64-element default costs 24%
+against the one-chunk spelling the competitors get, and okay wins the
+table either way.
+
+Commits: 9247bdd2 (the audit and the fourth rule), 3cb19501 (the
+re-run and the tables).
+
+## growing-adopted-part0 — the 3.6x was buffer capacity, and the adoption is worth 6.4x
+
+`Growing` read 3.6x the `AdaptiveFifo` it grows into, and the backlog
+blamed the adopted part 0 by elimination. The entry rested on a
+**mismatched pair**, filed by me:
+
+| lane | what it builds | slots |
+|---|---|---|
+| `growing_chunk` | part 0 at 1024, fifteen more at 64 | **1 984** |
+| `adaptive_chunk` | sixteen parts at 1024 | **16 384** |
+
+`adaptive` had 8.3x the buffer. With 8 000 elements through one
+consumer, capacity decides how often a producer parks — so most of the
+"mechanism gap" was buffer size. A new diagnostic lane,
+`adaptiveSmall_chunk`, holds the mechanism and matches the capacity:
+
+| producers | `growing` | `adaptiveSmall` | `adaptive` | growing/small |
+|---|---|---|---|---|
+| 1 | **178.7** | 1149.6 | 174.6 | **0.16x** |
+| 4 | 527.4 | 543.1 | 172.1 | 0.97x |
+| 16 | 422.0 | 428.7 | 118.2 | 0.98x |
+
+**At matched capacity `Growing` is at parity with the buffer it grows
+into**, marginally ahead. There is no defect in the adopted part 0 —
+and the one-producer column prices the adoption for the first time:
+**6.4x faster than a partitioned buffer of the same capacity**, which
+is exactly what it exists to buy.
+
+`Growing`'s scaladoc and `docs/queues.md` both said the opposite — that
+it is "behind both of the buffers it is made of, because after the swap
+every push crosses two layers". Both halves are refuted: the layer of
+call measures 1.02x (a buffer that only forwards), and the comparison
+was never like-for-like. Both documents are corrected in place, because
+a class that misdescribes itself is worse than one with no comment.
+
+What remains is not speed but **semantics**, filed as
+`growing-capacity-semantics`: `growing(capacity, parts)` and
+`adaptive.parts(n).each(c)` spell capacity differently, so two builders
+that look comparable are not. That mismatch cost this session two
+claims and is the seventh instance of this class of error on this page.
+
+Commits: d3acba4c (the measurement and the board), 4a8e5f9e (the two
+documents).
+
+## growing-grown-cost — the sample counter outlived the one swap it existed for
+
+`Growing`'s `sample()` stored its counter on every push **for ever**:
+the `!grown.get` guard sat inside the every-64th branch, so the store
+survived the swap it was there to trigger. Growth is one-shot, so
+every store after it is waste — and at sixteen producers it is sixteen
+threads storing to one cache line, which is contention rather than the
+false sharing the padding already answers.
+
+The counter now stops at the swap, gated on a racy **plain** hint
+instead of a volatile read: a producer still seeing `false` does a
+useless increment for a while, and the real decision re-reads the
+`AtomicBoolean` anyway. A variant reading the `AtomicBoolean` per push
+measured the same on many producers and looked worse on one, so the
+plain field is what ships.
+
+Alternating, four rounds, `adaptive` stable to 1% as the control:
+
+| producers | before | after | |
+|---|---|---|---|
+| 16 | 560 | **426** | −24.1% |
+| 4 | 594 | **544** | −8.5% |
+| 1 | 177 | 181 | +1.8%, inside the noise |
+
+Ratio to the buffer it grows into: **4.80x → 3.62x** at sixteen.
+
+**This closes a quarter of the gap and not more, and the board says
+so.** 3.6x remains. By elimination the suspect is the adopted part 0 —
+`grow()` keeps the original full-capacity ring as part 0 pinned to one
+producer while every other part is `cap/n` — and that is filed as
+`growing-adopted-part0` rather than guessed at here, with the warning
+that the adoption is exactly what makes the swap free, so any
+re-balancing pays a stall that has to be measured before it is
+designed.
+
+A note on the method, since it caught a wrong turn: a first run
+suggested the volatile-reading variant cost +11.4% at one producer.
+It did not reproduce over four alternating rounds. The claim was not
+made until it had been run again.
+
+Commit: c23e3707.
+
+## growing-wrapper-cost — the sample counter was false-sharing with the consumer
+
+`Growing` at one producer cost **1.31x** the plain ring it wraps and
+does nothing else to, and that premium is what kept `Channel.apply`
+on the ring. The backlog entry blamed the extra virtual call and the
+`@volatile inner` read. Measured, both are free:
+
+| lane | vs ring | |
+|---|---|---|
+| `forwarded` — a buffer that ONLY delegates | 1.02x | the layer of call is free |
+| `onePart` — partitioned, one part, cannot grow | 1.17x | a separate question |
+| `growing` | 1.31x | |
+
+Then the gap split by alternating diagnostic builds, five rounds each
+with the ring as the in-run control: removing `sample()` gives 1.03x
+(**−22 points**), removing the `volatile` gives 1.30x (**−5, i.e.
+nothing**). The whole cost is the per-push sample counter.
+
+And 60% of that is **false sharing**: the producer stores `seen` on
+every push into the same object the consumer loads `inner` from on
+every `popMany`, so the store invalidates the load. The counter moves
+to its own padded object — semantics untouched, sampling still fires
+on the 64th push, a second producer still grows the buffer, all six
+`TestGrowing` laws pass. **1.200x → 1.109x**, against a floor of
+1.049x with no sampling at all. The remaining ~6 points are the branch
+itself and are left alone.
+
+`channel-default-adaptive` is unblocked by this: the premium a default
+would pay at one producer is now 11%, not 31%, against 5.5x and 9x at
+four and sixteen producers. That is a decision rather than an
+optimisation, and it is filed for the operator.
+
+**A method note, because three predictions in a row were wrong here.**
+The first eight-round attempt was thrown away entirely: a sibling's
+build ran through rounds 3–5 and put the RING itself at 7550 against
+its usual 155. The rerun waits for the box to be quiet before it
+starts and re-checks between rounds. Everything above is from that
+second run.
+
+Commit: 6fd4ac1a.
+
+## growing-onbehalf — a resumed push is not a second producer
+
+`Growing` becomes partitioned when it sees two different threads
+pushing. That reading is right for a push a producer makes itself and
+wrong when the channel resumes a producer it had parked:
+`SentinelChannel.attemptSend` enqueues the sender's continuation and
+`wakeSender()` runs it on whichever thread freed the slot — the
+consumer's. So the resumed push arrived wearing the consumer's
+identity, and ONE producer looked like two. Measured: ten runs out of
+thirty grew a single-producer buffer into an `AdaptiveFifo`.
+
+`Buffer` gains `pushDecidingAtOnBehalf`, defaulting to the ordinary
+push so no other buffer changes; `Growing` overrides it to neither
+sample nor grow, because a resumed push is not evidence in either
+direction; `SentinelChannel` calls it when its own `granted` flag is
+set, which is already its word for "a sender I parked".
+
+**The law had been stated at the wrong layer.** `TestGrowing`'s two
+"one producer never grows it" tests drive the Buffer directly from one
+thread and therefore could not see the channel's resume path at all.
+The new law goes through a CHANNEL, with a consumer running and more
+elements than the buffer holds so the producer really parks. It fails
+on the old code in 32 ms, on round 1 of 30.
+
+**It is a correctness fix and it bought no speed — stated here rather
+than left for someone to discover.** With the ring as the in-run
+control over six rounds, `growing`/`ring` at one producer went 1.53x →
+1.47x, inside the noise. The arithmetic agrees: `adaptive` costs 1.20x
+the ring and the spurious growth hit a third of runs, so removing it
+was worth about six points of the fifty-three. The other ~45 is the
+wrapper's own dispatch — one extra virtual call and a `@volatile`
+read per push and per pop — and is filed as `growing-wrapper-cost`
+with the warning that the volatile is what publishes the swap and
+cannot simply be shaved.
+
+Found by `bench-refresh` triage. Of the six problem cases that lane
+filed, this is the only one that was a defect: three were already
+explained in the tree, and two were mismatched pairings — including
+§4b's headline row, which had okay losing fork/join 3.1x to kyo by
+comparing okay's outside-the-runtime shape against kyo's inside one.
+
+Commits: fa5ea54a (the fix and its law), 6c955578 (the board).
+
 ## bench-refresh — every cross-library table re-measured in one session, on 3.9.0
 
 `docs/benchmarks.md` sections 0-11 and 14-16 now come from ONE run:

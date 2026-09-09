@@ -23,7 +23,10 @@ import java.util.concurrent.TimeUnit
 @Fork(3)
 class ManyProducersBenchmark {
 
-  @Param(Array("1", "4", "16"))
+  /** 2 added 2026-09-08 (growing-elementwise-pop): `Growing` grows on
+   * the SECOND producer, and nobody had measured whether growth pays
+   * at two. `Source.merge` runs exactly two. */
+  @Param(Array("1", "2", "4", "16"))
   var producers: Int = 1
 
   final val Total = 8000
@@ -111,8 +114,12 @@ class ManyProducersBenchmark {
   @Benchmark def ringManyConsumers(): Long =
     runManyConsumers(Queues.strong[Long].bounded(Cap).build)
 
+  /** `parts` PINNED (lane-fairness, 2026-09-08): without it the part
+   * count defaults to `availableProcessors`, so this lane's capacity
+   * — and therefore its number — differed from machine to machine and
+   * could not be compared with `ringManyConsumers`' fixed 1024. */
   @Benchmark def adaptiveManyConsumers(): Long =
-    runManyConsumers(Queues.strong[Long].adaptive.each(Cap / 8 max 8).build)
+    runManyConsumers(Queues.strong[Long].adaptive.parts(8).each(Cap / 8 max 8).build)
 
   @Benchmark def oneRing_chunk(): Long =
     runChunked(Queues.strong[Long].bounded(Cap).build)
@@ -168,8 +175,22 @@ class ManyProducersBenchmark {
   @Benchmark def growing_chunk(): Long =
     runChunked(Queues.strong[Long].growing(Cap, parts = 16).build)
 
+  /** CAPACITY-MATCHED (lane-fairness, 2026-09-08). This used to be
+   * `parts(16).each(Cap)` — sixteen parts of 1024, so 16 384 slots
+   * against `oneRing_chunk`'s 1024 and `growing_chunk`'s 1 984. Every
+   * table that quoted it was reading a 16x buffer advantage as a
+   * mechanism advantage. `each(Cap / 16)` gives the same 1024 slots
+   * the lanes it is compared against have; `adaptiveWide_chunk` below
+   * keeps the old sizing so what the extra memory buys stays
+   * visible. */
   @Benchmark def adaptive_chunk(): Long =
+    runChunked(Queues.strong[Long].adaptive.parts(16).each(math.max(Cap / 16, 2)).build)
+
+  /** the same buffer with 16x the memory: what capacity alone buys,
+   * kept so the matched row above is not mistaken for a regression */
+  @Benchmark def adaptiveWide_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).each(Cap).build)
+
 
   @Benchmark def adaptiveUnbounded_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).unbounded.build)

@@ -78,6 +78,21 @@ force, all already practiced, none previously written down:
   `git reflog show master` names the old tip, and
   `git reset --hard <tip>` restores it — the reflog is local and only
   yours, so ask in the room before anyone commits on the wrong base.
+- **The one case where you DO integrate `origin`: when it is genuinely
+  AHEAD.** The prohibition above exists because a `merge --ff-only
+  origin/master` DISCARDS lanes when origin is behind. It says nothing
+  about the opposite, which happened on 2026-09-09: five README edits
+  were made on GitHub during a session, so both sides had commits the
+  other lacked and no fast-forward existed in either direction.
+  `--force` was never an option — it would have destroyed the five.
+  MERGE, do not rebase, and the reason is specific rather than
+  stylistic: a rebase rewrites the shas of every unpushed commit, and
+  CHANGELOG.md and BACKLOG.md cite landed commits BY SHA ("landed as
+  51adaf00", "fixed-in 3f09bd9c"). Seventeen such references pointed
+  into the unpushed range that day. A ledger citing commits that no
+  longer exist is a worse defect than a merge commit on an otherwise
+  linear branch. Gate the merged tree before pushing it: the merge is
+  a tree nobody has tested, however trivial the incoming diff looks.
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
   lands, naming the landing commit.

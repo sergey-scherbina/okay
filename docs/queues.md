@@ -547,17 +547,88 @@ producers is 17x slower than a partitioned buffer with room to spare,
 so fullness is backpressure and says nothing about how many producers
 there are.
 
-| producers | `bounded` | `growing` | `adaptive` |
-|---|---|---|---|
-| 1 | **123** | 158 | 144 |
-| 4 | 715 | 477 | **136** |
-| 16 | 3 066 | 446 | **100** |
+**AT THE SAME MEMORY BUDGET — 1 024 slots each** (lane-fairness,
+2026-09-08). Read the note below before the numbers: the version of
+this table that stood here gave `adaptive` sixteen times the buffer of
+the other two.
 
-It is honest about being between the two: 6.9x the ring where the ring
-is weak, and behind both of the buffers it is made of at their own
-shapes, because after the swap every push crosses two layers. Take
-`bounded` when there is one producer, `adaptive` when there are many
-from the first message, and this when the count is genuinely unknown.
+| producers | `bounded` | **`growing`** | `adaptive` | `adaptive`, 16x memory |
+|---|---|---|---|---|
+| 1 | 169 | **183** | 1 119 | 169 |
+| 4 | 1 257 | **165** | 559 | 166 |
+| 16 | 2 828 | **126** | 408 | 115 |
+
+(`growing`'s columns are after growing-part-sizing, 2026-09-08:
+`capacity` is now PER PART rather than divided among them, which is
+worth 70% at four and sixteen producers — 552 to 165 and 429 to 126.
+Its memory is `capacity x producers that actually arrive`, since parts
+open lazily, so at four and sixteen it holds what the last column
+holds and reads within 10% of it.)
+
+**`growing` is the best of the three at every producer count once the
+memory is equal**, and that is the opposite of what this page said. It
+ties the ring at one producer (171 against 169) because until a second
+producer appears it IS that ring, and it beats `adaptive` at four and
+sixteen because `adaptive` splits the same 1 024 slots into sixteen
+parts of 64 — so a lone producer gets 64 of them and stalls, which is
+the 1 119.
+
+**Where the old numbers came from.** The previous table read
+`adaptive` 144 / 136 / 100 and concluded it was the choice for many
+producers. Those came from `parts(16).each(capacity)` — **16 384
+slots** — against `bounded(capacity)`'s 1 024 and `growing`'s 1 984. A
+16x memory advantage was being read as a mechanism advantage, in this
+table and in three others. The last column keeps that sizing so what
+the memory actually buys stays visible: it is real, and it is bought
+with sixteen times the buffer, not with a better structure.
+
+So there are two questions and this table answers both:
+
+- **"I have this much memory."** Take `growing`. It is at worst tied
+  and at best 7x ahead of the ring.
+- **"I have this many producers and can size for them."** Take
+  `adaptive` with `each` sized per part; 115 at sixteen producers is
+  the best number on the page, and it costs 16x the buffer.
+
+It is 6.9x the ring where the ring is weak. **The rest of what this
+paragraph used to say was wrong and the correction matters more than
+the row** (growing-adopted-part0, 2026-09-08). It said `growing` is
+"behind both of the buffers it is made of at their own shapes, because
+after the swap every push crosses two layers". Both halves are
+refuted: a buffer that ONLY forwards measures 1.02x the ring it
+forwards to, so the layer is free; and the `adaptive` column is not
+the same object — `adaptive.parts(16).each(capacity)` is sixteen parts
+of `capacity`, 16 384 slots, while `growing(capacity, 16)` is part 0
+at `capacity` plus fifteen at `capacity / 16`, 1 984. An 8.3x
+difference in buffer, read as a difference in mechanism.
+
+Against `adaptive` with parts the size `growing`'s grown parts
+actually are, four rounds on a quiet box:
+
+| producers | `growing` | `adaptive`, matched parts | ratio |
+|---|---|---|---|
+| 1 | **178.7** | 1 149.6 | **0.16x** |
+| 4 | 527.4 | 543.1 | 0.97x |
+| 16 | 422.0 | 428.7 | 0.98x |
+
+At matched capacity it is at PARITY with the buffer it grows into, and
+at one producer it is **6.4x faster** than a partitioned buffer of the
+same size — which is precisely what adopting the ring buys, and had
+never been priced.
+
+So: take `growing` unless you have a reason not to — at an equal
+memory budget it is the best of the three at every producer count
+measured. Take `bounded` when you know there is exactly one producer
+and want the simplest thing. Take `adaptive` when you know the
+producer count in advance AND can give each part its own `capacity`,
+which is 16x the memory and buys the best number here.
+
+And read `capacity` carefully: `growing(capacity, parts)` sizes the
+INITIAL RING at `capacity` and each later part at `capacity / parts`
+— about 2x `capacity` in total once grown — while
+`adaptive.parts(n).each(c)` is `n * c`. Two builders, two meanings of
+the same word, and that difference is what made every table above
+wrong for months.
 The layer is what has to go, and `queue-swap` is the entry that
 removes it by having the channel replace its buffer rather than wrap
 it.

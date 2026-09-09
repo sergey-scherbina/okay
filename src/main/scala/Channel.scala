@@ -563,11 +563,46 @@ object Channel {
    * is the one with STM composability, `AbruptChannel` the one that
    * trades drain-on-close away for speed.
    */
+  /** how many parts the default may grow into. Parts open LAZILY, so
+   * this is a ceiling on the producer count that gets its own buffer,
+   * not memory reserved up front. */
+  private final val Parts = 8
+
   /**
-   * THE DEFAULT IS A SINGLE RING TODAY; the adaptive buffer is opt-in
-   * (`Queues.strong[A].adaptive.parts(n).each(capacity).build`) while
-   * the question of making it the default is measured properly
-   * (adversarial-lanes, 2026-09-06/07).
+   * THE DEFAULT IS `growing` SINCE 2026-09-08 (growing-default): a
+   * plain ring while one producer pushes, and an `AdaptiveFifo` that
+   * ADOPTS that ring the moment a second producer appears.
+   *
+   * WHAT IT BUYS, measured with the ring as the in-run control, one
+   * consumer, chunked, 8 000 elements:
+   *
+   * {{{
+   * producers    ring   growing
+   *         1   156.0     171.1   1.10x worse
+   *         2   772.4     188.0   4.1x better
+   *         4  1258.2     159.0   7.9x better
+   *        16  2907.1     127.6  22.8x better
+   * }}}
+   *
+   * Ten percent at one producer for four to twenty-three times at
+   * two and above. The one-producer row is the whole reason the ring
+   * was the default, and it is the row that costs least here.
+   *
+   * WHAT IT COSTS, and it is not speed: EXACT FIFO ACROSS PRODUCERS.
+   * A ring orders every push by one CAS on one tail; once this has
+   * grown, each producer keeps its own order and nothing is promised
+   * between them. A caller who needs the strict order asks for it by
+   * name — `Queues.strong[A].fifo(capacity)` is the ring this default
+   * used to be.
+   *
+   * WHY NOT `adaptive`, which this comment argued for until the
+   * measurement came in: it splits its capacity across parts up
+   * front, so at an equal memory budget a lone producer gets a
+   * fraction of the buffer and reads **1 119 against the ring's
+   * 169**, 6.6x. That is exactly the hazard the paragraph below
+   * predicted — "a lone producer must not pay for parts it never
+   * opens" — and `growing` is the answer to it rather than a way
+   * round it: until a second producer appears it IS the ring.
    *
    * The case for adaptive: a single ring loses to `zio.Queue` the
    * moment there is a second consumer -- 4964us against 3122 at
@@ -590,18 +625,19 @@ object Channel {
    * capacity is PER PART and a lone producer must not pay for parts
    * it never opens.
    */
-  /** which buffer `apply` builds, so the ring-vs-adaptive default can
-   * be A/B'd on the default's OWN paths (buffer, bufferChunked,
-   * merge) without editing this file between arms — the same
-   * mechanism `okay.cont.fuse` uses. `ring` (the default) is the
-   * shipped behaviour and the only value any released build should
-   * see; `adaptive` exists for the measurement the comment above
-   * says must happen before the default can change.
-   * scripts/ab-defaults.sh drives both arms. */
+  /** which buffer `apply` builds, so a default can be A/B'd on the
+   * paths it actually feeds (buffer, bufferChunked, merge) without
+   * editing this file between arms — the same mechanism
+   * `okay.cont.fuse` uses. `growing` is the shipped behaviour and the
+   * only value a released build should see; `ring` and `adaptive` are
+   * the two arms it was chosen BETWEEN, kept so the choice can be
+   * re-measured rather than re-argued.
+   * scripts/ab-defaults.sh drives them. */
   private val BufferKind: String =
-    Try(System.getProperty("okay.channel.buffer", "ring")).getOrElse("ring")
+    Try(System.getProperty("okay.channel.buffer", "growing")).getOrElse("growing")
 
-  /** parts for the adaptive arm; ignored under `ring` */
+  /** parts for the adaptive arm; ignored under `growing` and `ring`
+   * (the growing default carries its own `Parts`) */
   private val AdaptiveParts: Int =
     Try(System.getProperty("okay.channel.parts", "16").toInt).getOrElse(16)
 
@@ -609,7 +645,10 @@ object Channel {
     if BufferKind == "adaptive" && capacity >= 2 then
       Queues.strong[A].adaptive.parts(AdaptiveParts)
         .each(if capacity > MaxRing then MaxRing else capacity).build
-    else if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
+    else if BufferKind == "ring" && capacity >= 2 && capacity <= MaxRing then
+      SentinelChannel[A](capacity)
+    else if capacity >= 2 && capacity <= MaxRing then
+      SentinelChannel[A](Queues.Mechanism.growing(capacity, Parts)[A | Mark](capacity))
     else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
     else StmChannel[A](capacity)
 

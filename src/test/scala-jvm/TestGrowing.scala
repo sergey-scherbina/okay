@@ -28,6 +28,50 @@ class TestGrowing extends munit.FunSuite {
     assertEquals(b.parts, 1, "one producer must not turn it into a partitioned buffer")
   }
 
+  /** The two laws above drive the BUFFER, from one thread, and that
+   * is the wrong layer: they cannot see the path that actually broke
+   * it. A channel whose buffer fills parks the sender behind a
+   * continuation and runs that continuation from whichever thread
+   * frees a slot — the consumer's. `Growing` read the caller's
+   * identity there, saw a thread that was not the producer, and grew.
+   * Measured before the fix: ten runs in thirty (growing-onep).
+   *
+   * So the law is stated through a CHANNEL, with a consumer running,
+   * and with more elements than the buffer holds so the producer
+   * really does park. */
+  test("one producer through a CHANNEL never grows it, however often it parks") {
+    val Total = 8000
+    val Cap = 1024
+    var round = 0
+    while round < 30 do          // p(miss) per round was ~2/3 before the fix
+      round += 1
+      type E = Int | Mark
+      val buf = Growing[E](Ring[E](Cap), 16, () => Ring[E](Cap / 16))
+      val c = SentinelChannel[Int](buf)
+
+      val p = Thread.ofVirtual().start { () =>
+        var i = 0
+        while i < Total do { val _ = c.sendBlocking(i); i += 1 }
+      }
+      val closer = Thread.ofVirtual().start { () => p.join(); c.close() }
+
+      val cb = summon[CanBlock]
+      var seen = 0
+      var go = true
+      while go do
+        val chunk = cb.block[Either[Throwable, Chunk[Int]]] { k =>
+          c.receiveManyAsync(4096)(k); () => ()
+        }.fold(throw _, identity)
+        if chunk.length == 0 then go = false else seen += chunk.length
+      p.join(); closer.join()
+
+      assertEquals(seen, Total, s"round $round: every element exactly once")
+      assertEquals(buf.parts, 1,
+        s"round $round: ONE producer parked and was resumed by the consumer; " +
+        "that resume is not a second producer and must not partition the buffer")
+    ()
+  }
+
   test("a second producer grows it, and what was already in it stays readable") {
     val b = Growing[Int](Ring[Int](4), 8, () => Ring[Int](4))
     var i = 0

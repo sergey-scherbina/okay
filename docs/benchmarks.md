@@ -24,7 +24,137 @@ is that a chunk is a WHOLE definition, so it is measured as a
 percentage by `okay-rag`'s `TestChunkQuality` and reported in §11
 beside the microseconds it costs.
 
-## THE RUN THESE TABLES COME FROM (bench-refresh, 2026-09-08)
+## The short version
+
+Every number is microseconds per operation, lower better, JMH, from
+one session on a quiet 14-core box. Where a competitor appears, both
+sides were checked against the Lane rules below — same shape, same
+granularity, same source, same resources — because five lanes that
+failed that check were found on 2026-09-08 alone, and every one of
+them read as "we are slow" or "we are fast" for the wrong reason.
+
+| the question | okay | best competitor | § |
+|---|---|---|---|
+| run an already-finished program | **0.0021** | ZIO 0.043 | [§0](#0-the-floor--what-each-runtime-charges-to-run-nothing) |
+| 10 000 flatMaps, built and run | **5.5** eager, **95** Cont | kyo 60 | [§1](#1-bind-chain--10k-left-nested-flatmaps-built-and-run) |
+| direct syntax over its own flatMap chain | **1.05x** | zio-direct 0.65x | [§1b](#1b-direct-syntax--the-same-10k-binds-written-as-code) |
+| 10 000 handled reads | **79** | kyo 253 | [§2](#2-reader--10k-asks--writer--10k-tells) |
+| 10 000 handled writes | **159** | kyo 178 | [§2](#2-reader--10k-asks--writer--10k-tells) |
+| fork and join 100 fibers | 24.0 | **kyo 18.5** | [§4](#4-forkjoin--100-trivial-fibers) |
+| fork and join 10 000, runtime-native | **796** | kyo 884 | [§4b](#4b-adversarial-lanes--the-rows-we-expected-to-lose) |
+| map/filter/take/sum over 1 000 | **1.70** staged, **8.2** chunked | fs2 21.9 | [§5](#5-stream-pipeline--mapfiltertake1000sum) |
+| merge two streams by readiness | **13.3** | ZIO 51.5 | [§6](#6-merge--two-500-element-streams-by-readiness) |
+| 1 000 bracketed acquire/release | **15.2** | ZIO 116 | [§7](#7-resource--1000-bracketed-acquireuserelease) |
+| the 1 000th Fibonacci, per element | **19.2** | kyo 70.7 | [§8](#8-generators--the-1000th-fibonacci-element-by-element) |
+| read a 2.5 KB JSON document | **0.35** staged, 0.66 lossless | circe 0.56 | [§10](#10-the-text-stack--lex-parse-reparse-codecs) |
+| look up a symbol in an index | **0.56** | — | [§11](#11-retrieval--indexing-re-indexing-chunking-query) |
+| 4 000 elements through an unbounded channel, chunked | **56.0** | ZIO 439.7 | [§16](#16-every-capacity-a-ring--the-table-that-closes-the-arc) |
+| 8 000 elements, 16 producers (okay's own buffers) | **128** | — | [queues.md](queues.md) |
+
+**Where okay loses, and it is here rather than buried:** fork/join of
+100 fibers against kyo (24.0 against 18.5, §4), and the single-channel
+many-to-many row against ZIO (§4b). Both are stated in place with the
+matched pairing that makes them honest.
+
+### Lane rules — before a competitor's number is quoted
+
+Every wrong row this document has carried was a lane asking a
+different question of each side. Three checks, each with the row
+that taught it:
+
+1. **Shape.** A lane built by `foldLeft` gets a RIGHT-NESTED twin
+   before its number is quoted. kyo's Env/Emit/Resource read ~1000x
+   on the left-nested shape `((ask >>= f) >>= f) >>= f` — quadratic
+   in kyo, linear right-nested — and were quoted as the library's
+   price for a week (§2; `ReaderBenchmark` keeps both shapes side by
+   side, and its header says which is which). A number that changes
+   by orders of magnitude with the nesting is the SHAPE's price, not
+   the library's, until the twin says otherwise.
+2. **Pairing.** Only lanes sharing a granularity compare: chunked
+   against chunked, elementwise against elementwise, memoised against
+   memoised. Five of six "ZIO ahead" rows on 2026-09-04/05 were
+   mismatched pairs, and every one flipped once paired (§6b, §14–§16).
+   A lane names its granularity in its name.
+3. **Source.** A competitor is priced from the source its author
+   intended: `ZStream.range`, `fs2.Stream.emits`, kyo `Stream.range`
+   — not `iterate`, not fs2's `range`, which is a singleton chunk per
+   element by construction (§5). The per-element source stays in the
+   table as the worst case it is, beside the fair one, never alone.
+4. **Resources.** Both sides get the same BUDGET: the same buffer
+   capacity, the same worker count, the same chunk size — anything the
+   runtime is handed rather than earns. Added 2026-09-08 after an
+   audit found four lanes breaking it, and the rules above could not
+   catch any of them because each pair had matching granularity and
+   an intended source. `adaptive.parts(16).each(1024)` is **16 384
+   slots**; the `oneRing`, `growing` and ZIO `Queue.bounded(1024)`
+   lanes it was quoted against have 1024. That is a 16x memory
+   advantage read as a mechanism advantage, and it sat in two files
+   and three tables. A lane whose capacity comes from
+   `availableProcessors` breaks this rule too — its number is not
+   comparable with the same lane on another machine.
+
+A new competitor lane lands with all FOUR answered in its header, or
+it lands without a number.
+
+**And the rules bind the lane you wrote yourself.** Every violation
+found in the 2026-09-08 audit was on OUR side, because our lane is
+written first and the competitor's second, against it. One of them
+(§5's chunk size: okay at its 64-element default against three
+competitors getting the whole stream in one chunk) runs AGAINST us and
+went unnoticed for months precisely because okay won the row anyway. A
+comparison unfair in your own disfavour is still unfair.
+
+## How to read this page
+
+Each section is one question, and has three parts in this order: the
+table, why okay's number is what it is, and why the competitors' are
+what theirs are. After that comes the part most pages do not have and
+this one exists for — **what was tried and REFUTED**, kept because the
+`performance` skill's first rule is that a plausible idea nobody
+recorded as wrong gets tried again.
+
+So the long prose is a record, not a preamble. If you want the number,
+the table is the top of the section. If you want to change the number,
+read the refutations first: several of them cost a day and say
+plainly what did not work and by how much.
+
+Numbers are re-measured in batches, and a section says which run it
+belongs to. When a row moved for a reason other than the code — a
+different compiler, a corrected lane, a busier box — the row says
+that too, because a table that silently improves is a table nobody
+can trust.
+
+## THE RUN THESE TABLES COME FROM (lane-fairness, 2026-09-08 evening)
+
+    date       2026-09-08, 16:00-19:08
+    tree       master + the lane-fairness audit
+    host       Apple Silicon, 14 cores, nothing else running
+    runner     sbt-free, one JVM per class, `-f 1`, each class at its
+               own declared @Warmup/@Measurement, 3 rounds, per-lane
+               MINIMUM
+    scale      22 classes, 501 lanes with all three rounds, 0 failures
+    quality    the three rounds are indistinguishable — each one's
+               median ratio to its own lane's best is 1.010-1.012, so
+               nothing here rests on a quiet round or a noisy one
+
+**THIS RUN FOLLOWED AN AUDIT, AND FIVE LANES CHANGED BEFORE IT.** Every
+cross-library class was checked against the Lane rules at the end of
+this page, and five pairs were found asking different questions of the
+two sides — all five on OUR side, because our lane gets written first
+and the competitor's second, against it. Four gave okay an unearned
+advantage; one handicapped us and had gone unnoticed for months
+precisely because okay won the row anyway.
+
+The audit added a FOURTH rule — same resources: same buffer capacity,
+same worker count, same chunk size — which none of the existing three
+could have caught, since every mismatched pair had matching
+granularity and an author-intended source.
+
+**Numbers below that got WORSE than the previous table mostly did not
+regress; they stopped being flattered.** Where that is so, the row
+says it.
+
+### The previous run, kept for the diff (bench-refresh, 2026-09-08 morning)
 
 Sections 0-11 and 14-16 were re-measured in ONE session, because the
 tables had drifted into a dozen sessions on hosts of varying quiet and
@@ -72,7 +202,7 @@ text says so and does NOT attribute it to the compiler.
 
 | **Okay** | ZIO | kyo `.eval` | kyo `runAndBlock` | cats IO |
 |---|---|---|---|---|
-| **0.0021** | 0.043 | 0.0047 | 8.5 | 8.7 |
+| **0.0021** | 0.043 | 0.0048 | 8.1 | 8.4 |
 
 (`FairnessProbeBenchmark`, `floor_*`, bench-refresh 2026-09-08: an
 already-finished program, run. Same run as the `chain_*`, `pipeline_*`
@@ -103,7 +233,7 @@ cannot show it.)
 
 | **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
-| **5.4** | 58 | **92** | **100** | 121 | 146 | 161 | 194 | 284 |
+| **5.5** | 60 | **95** | **112** | 117 | 153 | 163 | 193 | 286 |
 
 **What it measures.** The raw cost of the monadic plumbing itself:
 build a 10 000-step flatMap chain by foldLeft (the WORST, left-nested
@@ -170,10 +300,10 @@ per-program, instead of as the only semantics.
 
 | | flatMap (hand) | direct | the syntax costs |
 |---|---|---|---|
-| **Okay** (while+var) | **102** | **106** | **1.04x — matched** |
-| **Okay** (recursion) | **102** | **61** | **0.59x — faster** |
-| kyo-direct (recursion) | 57 | 171 | 3.0x |
-| zio-direct (recursion) | 196 | **126** | **0.64x — faster** |
+| **Okay** (while+var) | **104** | **109** | **1.05x — matched** |
+| **Okay** (recursion) | **104** | **62** | **0.60x — faster** |
+| kyo-direct (recursion) | 56 | 176 | 3.1x |
+| zio-direct (recursion) | 196 | **127** | **0.65x — faster** |
 
 **What it measures.** Each ecosystem's first-party direct form
 against its own hand-written flatMap chain, same shape, same run
@@ -221,8 +351,8 @@ spellings and the competitors in the one they allow.
 
 | Reader | **Okay ctx direct** | **Okay ctx instance** | **Okay row** | ZIO | cats Kleisli | atnos | kyo Env |
 |---|---|---|---|---|---|---|---|
-| right-nested (recursion) | **0.34** | **44**† | **76** | | | | 270 |
-| left-nested (foldLeft) | | | **115** | 260 | 343 | 1460 | 367 900* |
+| right-nested (recursion) | **0.35** | **46**† | **79** | | | | 253 |
+| left-nested (foldLeft) | | | **116** | 258 | 346 | 1469 | 382 800* |
 
 († the ctx instance is measured at 1 000 binds — 4.4 µs, scaled ×10
 here — because the chain is stack-bounded at ~2-5k binds; see the
@@ -235,8 +365,8 @@ different host. It is recorded, not explained.)
 
 | Writer | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|---|
-| right-nested (recursion) | **161** | | | 175 |
-| left-nested (foldLeft) | **213** | 1212 | 3386 | 369 700* |
+| right-nested (recursion) | **159** | | | 178 |
+| left-nested (foldLeft) | **217** | 1222 | 3385 | 375 400* |
 
 **Two shapes, deliberately (kyo-fair-lanes, 2026-09-02).** The
 foldLeft build — `(1 to N).foldLeft(ask)((m, _) => m.flatMap(_ =>
@@ -304,7 +434,7 @@ measured, not the library.
 
 | List (floor) | **Okay** | kyo | atnos |
 |---|---|---|---|
-| 598 | **1649** | 4080 | 5660 |
+| 615 | **1645** | 4185 | 5487 |
 
 The one handler that is genuinely MULTI-SHOT: the continuation runs
 once per alternative. Okay's `runChoice` folds `k(x)` over the
@@ -317,7 +447,26 @@ this handler cannot be expressed with relay OR exceptions.)
 
 | raw Loom (floor) | kyo | **Okay** | ZIO | cats IO |
 |---|---|---|---|---|
-| 21.7 | 18.3 | **24.4** | 47.4 | 120 |
+| 21.8 | **18.5** | 24.0 | 46.6 | 121 |
+
+**The twin this table was missing, added by the 2026-09-08 audit.**
+`okaySpawn` forks and joins K fibers from OUTSIDE the runtime — K
+crossings of the boundary — while every competitor lane enters its own
+runtime ONCE and does all K inside (`parTraverse` in one
+`unsafeRunSync`, `foreachPar` in one `Runtime.unsafe.run`,
+`parallelUnbounded` in one `runAndBlock`). §4b hit exactly this at
+K = 10 000 and had okay losing 3.1x to kyo until the two shapes were
+separated. §4 had the same pairing and no twin to separate it with.
+
+Measured: `okaySpawnInside` — one entry, 100 fibers inside, joined
+asynchronously — reads **35.8**, WORSE than the 24.0 above. So at
+K = 100 okay's outside shape is genuinely its better one and the
+table's number stands. The twin is kept because a number nobody has
+compared against its alternative is a number on trust, and at
+K = 10 000 the ordering reverses (§4b: inside 796, outside 1957).
+
+kyo's 18.5 is under the raw-Loom floor and 1.3x under okay's best
+here. That is a real loss on this shape and it is stated as one.
 
 **Why Okay's number.** There is almost no Okay here — that is the
 design. A fiber IS a virtual thread; spawn is `Thread.startVirtualThread`,
@@ -346,12 +495,42 @@ Three lanes chosen because the predictions in the claim said we lose
 them (`compare/src/jmh/scala/okay/AdversarialBenchmark.scala`,
 `-f 1 -wi 3 -i 5`, sbt-free launcher, quiet box, us/op, ±error):
 
-| lane | okay | raw Loom | zio | cats | kyo |
+**This table's first row was a MISMATCHED PAIR for as long as it has
+existed, and the sixth instance of the one mistake this page keeps
+making** (forkjoin-pairing, 2026-09-08). `forkJoin10k_okay` spawns
+10 000 virtual threads and joins them from OUTSIDE the runtime;
+`forkJoin10k_kyo` is `Async.parallelUnbounded` inside `runAndBlock`
+and never leaves kyo's. Both numbers are true, of different questions,
+and Lane Rule 2 below forbids putting them in one row. The matched
+lanes were already in the file on both sides — `forkJoin10k_kyoOutside`
+and `forkJoin10k_okayOwnInside` — so this is a reading error, not a
+missing measurement. Asked properly it is two rows, and okay is ahead
+in both:
+
+| fork/join 10 000, `work=100` | okay | raw Loom | zio | cats | kyo |
 |---|---|---|---|---|---|
-| fork/join 10 000 fibers | 2715 | 2661 | 3445 | 2730 | **884** |
-| many-to-many 4×4, one channel | 4806 | — | **3106** | 4302 | — |
-| many-to-many 16×16 | 9325 | — | **6325** | 8881 | — |
-| cancel 1 000 parked fibers | 1116 | — | 887 | **748** | — |
+| **spawned and joined from OUTSIDE** | **1957** | 2661 | 3503 | 2730 | 33 900 |
+| **spawned INSIDE, runtime-native** | **796** | — | — | — | 884 |
+
+At `work=10000` the inside pair is okay **3218** against kyo **26 260**
+— 8.2x — because kyo's answer never spreads and okay's decides to.
+That decision is the point: the self-deciding `Owned` reads 796 / 3218
+where its own fixed policies read 709 / 27 640 (`forShortTasks`) and
+2618 / 3200 (`forLongTasks`). Best of both, at a 12% premium over
+either at the end where that one wins.
+
+The rest of the block, unchanged in pairing:
+
+| lane | okay, one channel | okay adaptive | zio | cats |
+|---|---|---|---|---|
+| many-to-many 4×4 | 4720 | **2986** | 3076 | 4260 |
+| many-to-many 16×16 | 9199 | **2256** | 6723 | 8682 |
+| cancel 1 000 parked fibers | 1116 | — | 887 | **748** |
+
+(All four now hold **1024 slots**. That sentence is the whole
+correction: `manyToMany_okayAdaptive` used to be
+`parts(16).each(1024)` — **16 384** slots against zio's and cats'
+`Queue.bounded(1024)`.)
 
 (bench-refresh 2026-09-08, `work=100`, minimum of three rounds. **Read
 this block as ranks, not as measurements**: every lane in it except
@@ -361,17 +540,33 @@ on fourteen cores is a scheduling experiment, not a microbenchmark.
 kyo's own rounds sat inside 5%, which is itself the finding: its
 scheduler is the steady one here.)
 
-**Two rows this table did not have, and both change the reading.** The
-same suite carries `manyToMany_okayAdaptive` — the adaptive buffer
-rather than the single channel the `okay` row uses — and it reads
-**870 at 4×4 and 1042 at 16×16**, against ZIO's 3106 and 6325. The
-`okay` row above is one channel against ZIO's one queue, which is the
-honest like-for-like and stays; but the answer this library actually
-ships for many producers is 3.6x and 6.1x AHEAD, not 1.5x behind, and
-a reader who stops at the table would never learn that. And on
-cancellation, `cancel1k_okayDrive` reads **597** where the `okay` row's
-default scheduler reads 1116 — the drive scheduler wins its own lane
-by 1.9x and beats every competitor here.
+**The cancel row is the same asymmetry, one step milder.**
+`cancel1k_okay` runs on Loom, where a cancel is a thread INTERRUPT;
+cats does its thousand cancels inside `unsafeRunSync`, entering its
+runtime once. okay's matched lanes are the pool ones, and the comment
+over them in the benchmark says so outright — "a cancel is a CAS on
+the fiber's own cell rather than an interrupt of a thread — §4b blamed
+the interrupt, and this is the lane that says whether it was right".
+It was right: `cancel1k_okayOwn` reads **750** against cats' 748, a
+tie, and `cancel1k_okayDrive` reads **597**, the best number in the
+block. The 1116 above is the price of Loom's interrupt, which is a
+real number for the default scheduler and not a defect of the
+cancellation protocol.
+
+**A correction to this section, from the day after it was written.**
+The adaptive row above said 870 and 1042, "3.6x and 6.1x AHEAD" of
+ZIO. It had **16x ZIO's buffer** — `parts(16).each(1024)` is 16 384
+slots against `Queue.bounded(1024)` — and I wrote that note without
+checking. Matched at 1024 slots it reads 2986 and 2256: a TIE with ZIO
+at 4×4 (2986 against 3076, 3%) and 3.0x ahead at 16×16. Still the
+answer this library ships for many producers, still worth knowing, and
+a third of the advantage claimed.
+
+What survives unchanged: the single-channel row is the like-for-like
+against ZIO's single queue and okay loses it, 1.5x at both shapes. And
+on cancellation `cancel1k_okayDrive` reads **597** where the default
+scheduler reads 1116 — the drive scheduler wins its own lane by 1.9x
+and beats every competitor here.
 
 Predicted: lose all three. Measured: lose two, and sit on the floor
 for the third.
@@ -657,20 +852,43 @@ of three rounds; bytes come from a `-prof gc` pass of the same tree in
 the same session, and allocation does not drift with host load the way
 time does.
 
-| lane | us/op | B/op | vs floor |
-|---|---|---|---|
-| Iterator (floor) | 14.72 | 108 872 | 1x |
-| **Okay Staged** — whole-stage inline pipeline | **1.66** | **112** | **0.11x** |
-| **Okay chunked** — `Chunks.map/filter/take/fold` | **10.78** | 116 192 | **0.73x** |
-| **Okay elements** — the `.elements` door | **23.8** | 129 832 | 1.6x |
-| fs2 `Stream.emits` (pure, one chunk) | 21.4 | 152 896 | 1.5x |
-| ZIO `ZStream.range` (4096 a chunk) | 35.8 | 159 257 | 2.4x |
-| Okay iterator | 57.3 | 656 765 | 3.9x |
-| kyo `Stream.range` (4096 a chunk) | 64.1 | 336 120 | 4.4x |
-| Okay LazyList / Producer | 167.5 / 188.1 | 1 366 113 / 1 534 305 | 11x / 13x |
-| kyo singleton emit | 273 | 1 554 354 | 19x |
-| ZIO `ZStream.iterate` | 673 | 5 068 695 | 46x |
-| fs2 `Stream.iterate` | 1513 | 9 802 203 | 103x |
+| lane | us/op | vs floor |
+|---|---|---|
+| Iterator (floor) | 15.21 | 1x |
+| **Okay Staged** — whole-stage inline pipeline | **1.70** | **0.11x** |
+| **Okay chunked, one chunk** — the competitors' chunking | **8.22** | **0.54x** |
+| **Okay chunked, default 64** — `Chunks.map/filter/take/fold` | **10.21** | **0.67x** |
+| fs2 `Stream.emits` (pure, one chunk) | 21.9 | 1.4x |
+| **Okay elements** — the `.elements` door | 24.5 | 1.6x |
+| ZIO `ZStream.range` (4096 a chunk) | 35.8 | 2.4x |
+| Okay iterator | 54.2 | 3.6x |
+| kyo `Stream.range` (4096 a chunk) | 65.9 | 4.3x |
+| Okay LazyList / Producer | 171.8 / 181.8 | 11x / 12x |
+| kyo singleton emit | 266 | 17x |
+| ZIO `ZStream.iterate` | 700 | 46x |
+| fs2 `Stream.iterate` | 1510 | 99x |
+
+**THE CHUNK SIZE WAS NOT THE SAME ON BOTH SIDES, and it ran against
+us** (lane-fairness, 2026-09-08). Every competitor lane here gets the
+whole 3 004-element stream as ONE chunk — `fs2.Stream.emits` by
+construction, `ZStream.range` and kyo's `Stream.range` because their
+4096 default is bigger than the input. okay's lanes used
+`Chunks.nats`'s default of **64**, so they crossed 47 chunk boundaries
+where the others crossed none. Nobody noticed for months because okay
+won the table anyway.
+
+Both are now here. The default costs **24%** (10.21 against 8.22), and
+that is the honest price of a chunk size a caller gets without asking
+for one. Quote the 64 row when the question is "what do I get by
+default" and the one-chunk row when the question is "how does the
+mechanism compare" — the second is the one the rows beneath it answer.
+
+(The B/op column is dropped from this run: the `-prof gc` pass was not
+repeated after the audit, and carrying allocation figures from a
+previous tree beside times from this one is exactly the mixing this
+page keeps having to correct. `chunked-source-sweep`'s bytes are in
+history.tsv and were 112 for Staged, 116 192 for chunked, 108 872 for
+the floor.)
 
 (The previous version of this table mixed three sessions — Staged from
 one, kyo `Stream.range` from another, ZIO's and fs2's chunked sources
@@ -746,7 +964,12 @@ the three per-element ones 1.6–9.9 MB.
 
 | **Okay chunked** | ZIO | fs2 chunk-native | Okay elementwise | fs2 singletons |
 |---|---|---|---|---|
-| **13.5** | 51.8 | 98.9 | **130** | 10 760 |
+| **13.3** | 51.5 | 94.4 | **122** | 10 746 |
+
+(Re-measured after `Channel.apply`'s default became `growing`
+(default-retable, 2026-09-08). `Okay elementwise` — `Source.merge`,
+which runs two producers into one channel — went 130 → 125 → 122
+across the two changes that touched it.)
 
 (bench-refresh 2026-09-08, N=500 a side. `Okay elementwise` reads 130
 against the 308 this table carried, and `ScalingBenchmark` agrees at
@@ -852,10 +1075,10 @@ the numbers PER ELEMENT:
 
 | per element | 500 el | 1000 el | 2000 el | 4000 el |
 |---|---|---|---|---|
-| `rawLazyListDrain` (control) | 14.3ns | 13.6 | 13.5 | 12.7 |
-| `sourceSingleDrain` | 50.8ns | 49.2 | 46.7 | 51.9 |
-| `channelMerge` | 90.7ns | 81.1 | 87.6 | 84.4 |
-| `sourceMerge` | 146.0ns | 122.5 | 122.9 | 120.2 |
+| `rawLazyListDrain` (control) | 14.0ns | 14.0 | 13.5 | 13.0 |
+| `sourceSingleDrain` | 49.4ns | 47.3 | 49.3 | 54.7 |
+| `channelMerge` | 88.8ns | 82.5 | 83.5 | 92.0 |
+| `sourceMerge` | 139.2ns | 119.0 | 118.9 | 115.3 |
 
 (bench-refresh 2026-09-08. `ScalingBenchmark`'s `n` is elements PER
 SIDE and both sides are drained, so the per-element figure is the lane
@@ -974,12 +1197,39 @@ not to omit the row — both libraries CAN be forced to work one
 element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
 — it is to ask every library the same question:
 
+**These rows predate the default change and are being re-measured
+lane by lane; the ones below carry their 2026-09-06 values.** What is
+already known from `default-retable` (2026-09-08), against a noise
+floor of 5.9% established from 54 lanes that cannot be affected by the
+change:
+
+| lane | ring default | `growing` default | |
+|---|---|---|---|
+| `chunksMergeSize1` (k = 16 / 256 / 1024) | 664 / 626 / 640 | **386 / 380 / 393** | **−39%** |
+| `okayElementwise` (k = 256) | 539.9 | **423.2** | **−21.6%** |
+| `elementwiseFromRange` (k = 1024) | 464.6 | **368.0** | **−20.8%** |
+| `okayChunked` (k = 16) | 339.3 | 292.8 | −13.7% |
+
+Nothing regressed that can be shown to have regressed.
+`okayChunkedFlush` reads 10–12% higher, and that is NOT claimed as a
+regression: `sourceSingleDrain`, a lane with no channel in it at all
+and therefore untouchable by this change, moved 15.1% in the same
+pair of runs. For these contended lanes the honest band is ~15%, not
+the 5.9% the single-threaded ones support, and 12% sits inside it.
+
 | 2x2000 elements | okay | ZIO | fs2 (re-paired 2026-09-06) | fs2 as first measured | reads as |
 |---|---|---|---|---|---|
-| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | **109.0 ±0.6** | 44443 ±2359 | comparison |
-| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 2373 ±25 | 38508 ±403 | comparison |
-| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 14597 ±371 | 54270 ±1790 | comparison |
-| per-element (chunk of one, forced on ZIO/fs2) | 824.9 ±6.9 | 10032.5 ±111.0 | 35507 ±447 | 36030 ±1204 | diagnostic |
+| chunk-native (each library's own default) | **24.0** | 146 | 134 | 49 150 | comparison |
+| chunked at a matched size (16) | **293** | 146 | 2 912 | 43 540 | comparison |
+| chunked + timed flush | **382** | 5 591 | 15 803 | 57 120 | comparison |
+| per-element (chunk of one, forced on ZIO/fs2) | **446** | 11 668 | 40 586 | 42 640 | diagnostic |
+
+(Re-measured 2026-09-08 under the `growing` default, k = 16, minimum
+of three rounds. The previous values were from 2026-09-06 and were the
+last stale table on this page — found by the operator asking whether
+the numbers had actually been updated, which they had not. The
+`chunked at a matched size` row is now a TIE with ZIO rather than 1.8x
+behind, and the timed-flush row is 15x ahead rather than 20x.)
 
 **The fs2 column was the same methodology bug a fifth time, and this
 section had already named it four (fs2-chunked-merge-lanes,
@@ -1055,12 +1305,14 @@ artefact of which library got its home field.
 **At a matched chunk of 16, ZIO leads** — 127.2 against 223.7 — a
 real result, unpacked two paragraphs down.
 
-**Timed flush is okay's by 20x** (244.3 against 4907), which says
-more about `groupedWithin` than about either representation.
+**Timed flush is okay's by 15x** (382 against 5 591), which says more
+about `groupedWithin` than about either representation. (It read 20x
+— 244.3 against 4907 — before the 2026-09-08 re-measure; the ratio
+moved because okay's flush lane rose, not because ZIO's fell.)
 
 **The forced per-element row is a DIAGNOSTIC, not a win.** Nobody
 writes `ZStream(chunkSize = 1)`: it wraps every element in a one-slot
-array and pays the chunk machinery on top, so 824.9-against-10032
+array and pays the chunk machinery on top, so 446-against-11 668
 measures what that mode costs a library with no per-element
 representation — not what okay beats `ZStream` at. It earns its place
 because a genuinely one-at-a-time source exists (LLM tokens, SSE) and
@@ -1146,12 +1398,19 @@ producer, not a universal replacement for `Source.of`.
 **Where okay wins outright: the timed flush.** A bound on how long a
 partial chunk may wait is what makes chunking safe on a live source,
 and it is the shape both competitors are worst at — ZIO's
-`groupedWithin` costs 37x its own plain `grouped` (4907 against 127),
-fs2's `groupWithin` 1.4x its own `chunkN`. okay's `flushAfter` costs
-9% over its own chunked merge (244.3 against 223.7), because the
-flusher is one sleeping fiber beside the feed rather than machinery
-in the per-element path. Against ZIO that is **20x**, against fs2
-**222x**.
+`groupedWithin` costs 38x its own plain `grouped` (5 591 against
+146), fs2's `groupWithin` 5.4x its own `chunkN`. okay's `flushAfter`
+costs **23%** over its own chunked merge (386.8 against 314.5),
+because the flusher is one sleeping fiber beside the feed rather than
+machinery in the per-element path. Against ZIO that is **15x**,
+against fs2 **41x**.
+
+(This page claimed 9% from 2026-09-06 until 2026-09-09, when six
+rounds with tight bars — 1.07x and 1.10x spread within a lane — put it
+at **1.23x**. Nine percent is outside those bars: 314.5 x 1.09 is
+342.8 and the flush lane starts at 386.8. The premium is real and
+larger than advertised; WHY it grew is not investigated and is filed
+as `flush-premium`. It was measured expecting to find noise.)
 
 **The stack-safety bug this found (chunk-stack-safety).** Writing the
 edge cases turned up an overflow that predates all of it: `through`
@@ -1191,9 +1450,9 @@ in the library all along and simply was not used:
 
 | lane | us/op |
 |---|---|
-| `Chunks.foldLeft(Chunks.fromIterator(list.iterator, N))` | **11.0 ±0.5** |
-| `ZStream.fromIterable(list).runSum` | 49.6 ±2.8 |
-| `Source.of(list).toLazyList.foldLeft` (kept, ours only) | 154.1 ±17.5 |
+| `Chunks.foldLeft(Chunks.fromIterator(list.iterator, N))` | **11.6** |
+| `ZStream.fromIterable(list).runSum` | 58.6 |
+| `Source.of(list).toLazyList.foldLeft` (kept, ours only) | 162.9 |
 
 **4.5x ahead, where the mismatched row said 3.1x behind.** The
 elementwise lane stays in the table because it measures a real thing —
@@ -1275,7 +1534,7 @@ the lanes it sat beside walked a program tree one element at a time.
 
 | lane | us/op |
 |---|---|
-| `Chunks.foldLeft(Chunks.fromIterator(...))` | **12.8 ±0.1** |
+| `Chunks.foldLeft(Chunks.fromIterator(...))` | **11.3** |
 | `ZStream.fromIterable(list).runForeach` | 96.9 ±3.1 |
 | `Source.of(list).runForeach` (diagnostic, ours only) | 169.8 ±20.8 |
 | `Source.of(list).toLazyList.foreach` (diagnostic) | 165.5 ±4.5 |
@@ -1399,8 +1658,8 @@ queue underneath it.
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
 |---|---|---|---|---|---|
-| right-nested (recursion) | **15.5** | | | | 706 |
-| left-nested (foldLeft) | **22.4** | **27** | 117 | 210 | 7984* |
+| right-nested (recursion) | **15.2** | | | | 696 |
+| left-nested (foldLeft) | **22.5** | **29** | 116 | 225 | 7912* |
 
 (Same two shapes as §2, same session as §2's table. *The starred kyo
 number is the left-nested O(N²) trap explained in §2 — an earlier
@@ -1418,7 +1677,7 @@ built around suspension pay their machinery for nothing.
 
 | Iterator | LazyList | **Okay Producer** | Okay LazyList | kyo | ZStream | fs2 |
 |---|---|---|---|---|---|---|
-| 11.7 | 15.7 | **19.5** | 35.5 | 72.5 | 177 | 270 |
+| 11.7 | 16.2 | **19.2** | 35.5 | 70.7 | 175 | 268 |
 
 Per-element unfold — the generator's honest per-element price. The
 Okay Producer is 1.5x from the bare-iterator floor; the streaming
@@ -1447,7 +1706,7 @@ Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.
 
 | element-wise | chunked (512) | chunked (64) | chunked (8) |
 |---|---|---|---|
-| **48.9** | 57.1 | 58.0 | 72.9 |
+| **49.3** | 58.4 | 58.8 | 78.0 |
 
 Chunked lexing is SLOWER, and the first explanation for it was
 WRONG — which is worth more than the number. The three-size probe
@@ -1473,7 +1732,7 @@ needs the whole input in memory.
 
 | full parse | incremental reparse (one-member edit) |
 |---|---|
-| 94.4 | **42.9** |
+| 93.7 | **43.4** |
 
 2.2x under the full parse for a one-in-fifty edit — real, and
 honestly below what O(damage) suggests: the relex dominates the
@@ -1486,9 +1745,9 @@ REFERENCE) is what the layer exists for.
 
 | | write | read |
 |---|---|---|
-| **Okay CBOR** | **0.469** | **1.017** |
-| circe (JSON) | 0.412 | 0.689 |
-| **Okay JSON** (`Json.read`, lossless) | **0.423** | **0.657** |
+| **Okay CBOR** | **0.465** | **1.010** |
+| circe (JSON) | 0.438 | 0.558 |
+| **Okay JSON** (`Json.read`, lossless) | **0.426** | **0.664** |
 
 (bench-refresh 2026-09-08, `TextBenchmark`. The `Json.readStrict` row
 this table carried is measured by `CodecBenchmark` in ns/op and lives
@@ -1501,8 +1760,12 @@ price of the contract. Since then `json-parse-fast-road` (131cedc2 —
 "the default road through the JSON parser was the slow one, by 79x")
 and `json-cst-batch-road` (b4172242 — "the lossless CST road was lexing
 through the effect system, one char at a time") landed. The lossless
-read now measures **0.657 against circe's 0.689**: at parity, not 16x
-behind.
+read now measures **0.664 against circe's 0.558** — 1.19x, where it
+used to be 16x. (The morning run of 2026-09-08 read 0.657 against
+0.689 and this paragraph said "at parity"; the evening run puts circe
+19% ahead. Both are within the run-to-run spread of a sub-microsecond
+lane and neither supports a claim finer than "the same order". The
+16x is what is gone.)
 
 So: read this as a price list for CONTRACTS whose prices have changed.
 Our CBOR read is 1.5x circe's JSON read — the Schema fold on its own,
@@ -1655,7 +1918,7 @@ comments, strings and nesting — and its 6.3KB Python twin.
 
 | Scala, 8.5KB | Python, 6.3KB |
 |---|---|
-| **658** | **470** |
+| **662** | **465** |
 
 **Where a symbol index's time goes**, split on the same 8.5KB file:
 
@@ -1758,7 +2021,7 @@ buys the 29%, and it is paid once at ingestion rather than per query.
 
 | symbols (exact) | keyword (BM25) | hybrid (fused) | hybrid + assemble | vectors (240 segs, 1536 dim) |
 |---|---|---|---|---|
-| **0.56** | 11.4 | 19.2 | 19.3 | 379 |
+| **0.56** | 11.3 | 19.3 | 18.7 | 374 |
 
 Half a microsecond for an exact symbol lookup is the number worth
 staring at: it is the argument for having a half of retrieval that
@@ -1953,12 +2216,18 @@ was being measured against one per batch.
 Measured at BOTH granularities, both libraries at the same weak
 guarantee (`ChannelGranularityBenchmark`, N=4000, cap=1024):
 
-| lane | before `popMany` | after |
-|---|---|---|
-| okayElementwise | 190.1 | 212.3 |
-| okayChunked | 182.9 | **111.6** |
-| zioElementwise | 304.0 | 336.8 |
-| zioChunked | 113.7 | 149.5 |
+| lane | before `popMany` | after | 2026-09-08 |
+|---|---|---|---|
+| okayElementwise | 190.1 | 212.3 | **151.5** |
+| okayChunked | 182.9 | **111.6** | **54.8** |
+| zioElementwise | 304.0 | 336.8 | 340.9 |
+| zioChunked | 113.7 | 149.5 | 130.7 |
+
+(The third column is this page's current run, minimum of three rounds
+under the `growing` default. Both okay lanes improved — chunked by
+2.0x since the middle column — and both ZIO lanes are where they
+were, which is what makes the okay movement readable as ours rather
+than the box's.)
 
 (The two columns are separate runs on a box whose absolute level
 drifts by ~30% between them — `zioChunked` moved without its code
@@ -2011,11 +2280,11 @@ sharing a suffix compare:
 
 | | elementwise | chunked |
 |---|---|---|
-| okayStrong — drain-on-close as an INVARIANT | 258.8 | 136.0 |
-| okayWeak — close discards | 159.7 | 57.2 |
-| **okayLayered — the same strong contract as a LAYER** | **151.4** | **57.8** |
-| zioStrong — `Queue[Option]` | 350.8 | 137.5 |
-| zioWeak — `Queue` | 329.4 | 136.7 |
+| okayStrong — drain-on-close as an INVARIANT | 256.1 | 124.7 |
+| okayWeak — close discards | 164.3 | 58.1 |
+| **okayLayered — the same strong contract as a LAYER** | **157.7** | **61.0** |
+| zioStrong — `Queue[Option]` | 317.1 | 137.1 |
+| zioWeak — `Queue` | 309.5 | 134.6 |
 
 (bench-refresh 2026-09-08, N=4000, cap=1024.)
 
@@ -2035,23 +2304,65 @@ is 298.3, not 114.8. Their advantage was never the queue.
 `Channel[Chunk[A]]`, so its channel already pays one transaction per
 chunk. `sendManyNow` is for a producer holding a batch of ELEMENTS.
 
-| lane | us/op |
-|---|---|
-| okaySendBulk + chunked receive | **66.9** |
-| okayChunked | 105.9 |
-| okaySendElem + chunked receive | 109.0 |
-| zioChunked | 114.8 |
-| okaySendElem + elementwise receive | 196.7 |
-| okaySendBulk + elementwise receive | **280.4** |
+| lane | us/op (2026-09-04) | us/op (2026-09-08) |
+|---|---|---|
+| okaySendBulk + chunked receive | **66.9** | 63.2 |
+| okayChunked | 105.9 | 58.4 |
+| okaySendElem + chunked receive | 109.0 | **54.1** |
+| zioChunked | 114.8 | 141.8 |
+| okaySendElem + elementwise receive | 196.7 | 134.9 |
+| okaySendBulk + elementwise receive | **280.4** | 138.4 |
 
-**Batch both ends or neither.** Against a draining consumer the bulk
-send is 1.63x (66.9 against 109.0) and lands 1.71x past `zioChunked`.
-Against an ELEMENTWISE consumer it is a 1.43x LOSS. The cause is room,
-not the claim: a consumer taking one element at a time keeps the ring
-full, so every bulk attempt fails its scan and falls back to a single
-send anyway — the scan is pure overhead on top of work that had to
-happen regardless. A batched primitive is not a free upgrade; it is a
-bet that the other end leaves room.
+**"Batch both ends or neither" no longer holds, and the reason it was
+believed does not either (bench-refresh, 2026-09-08).** The bulk send
+was 1.63x AHEAD of the element send against a draining consumer; it is
+now **17% BEHIND** (63.2 against 54.1), consistently across three
+rounds. What moved is not the bulk lane — it sits where it was — but
+the ELEMENT lane, which halved and overtook it.
+
+**The obvious explanation was measured and REFUTED.** The paragraph
+below blames "room": a full ring makes every bulk attempt fail its
+scan and fall back to a single send. That is true of the ELEMENTWISE
+consumer and remains the right reading of the last row. It is NOT what
+happens here. Counted directly against a chunk-draining consumer, same
+N, Cap and Batch as the lane (300 repetitions, 22 090 `sendManyNow`
+calls): the scan finds room in **97.3%** of calls, the mean claim is
+**55.8 of the 64 asked**, 18 364 calls take the full 64, and **0.05%
+of elements** reach the per-element fallback. The bulk path is being
+exercised almost perfectly and is still slower.
+
+**It has now been profiled, and the answer is that there is no cause
+to find in the mechanism (sendbulk-profile, 2026-09-09).** Both lanes
+are ~60% WAITING and their RUNNABLE time is dominated by
+`Ring.popMany` on the CONSUMER side — 21% and 32% of it. Neither
+`Ring.pushMany` nor its scan appears in either profile at all. Two
+further explanations were built and measured:
+
+- the scan touching every slot twice — not visible in the profile,
+  and the send side is not where the time is;
+- the per-element wake after a bulk claim (`sendManyNow` calls
+  `wakeOne` once per element admitted, sixty-four times per batch,
+  of which one wakes anybody). A variant that stops as soon as the
+  waiter queue is empty made the bulk lane 8.5% WORSE and the
+  element lane — which does not call `sendManyNow` at all — 7%
+  better, so both movements are noise. These lanes spread 64 to 92
+  across rounds; anything under ~40% here is not a measurement.
+
+So: four explanations, four refutations, and the honest reading is the
+one the paragraph above already half-states. **The element path caught
+up**, and `sendManyNow` no longer earns its place on this shape. The
+claim that it is 1.63x ahead is withdrawn rather than defended; the
+primitive stays because a producer holding a batch of elements is a
+real caller, and because nothing here shows it is WRONG — only that it
+is no longer faster where this page said it was.
+
+Against an ELEMENTWISE consumer the bulk send is still a loss, and
+there the room explanation stands: a consumer taking one element at a
+time keeps the ring full, every bulk attempt fails its scan and falls
+back to a single send, and the scan is pure overhead on work that had
+to happen anyway. A batched primitive is not a free upgrade; it is a
+bet that the other end leaves room — and, on this evidence, a bet that
+no longer pays even when it wins.
 
 **The acceptance answer stopped boxing.** `Function1` is specialised
 on Int, Long, Float and Double and not on Boolean, so every send's
@@ -2080,22 +2391,48 @@ methodology §15 had to correct twice.
 
 | pair | okay | zio | ratio |
 |---|---|---|---|
-| unbounded, chunked | **56.3** | 425.7 | **7.6x** |
-| unbounded, elementwise | **109.5** | 493.9 | **4.5x** |
-| bounded strong, chunked | **136.0** | 137.5 | 1.01x |
-| bounded strong, elementwise | **258.8** | 350.8 | 1.36x |
-| weak, chunked | **57.2** | 136.7 | 2.39x |
-| weak, elementwise | **159.7** | 329.4 | 2.06x |
-| `StmChannel` (list), elementwise | **238.9** | 350.8 | 1.47x |
-| `StmChannel` (list), chunked | **120.1** | 137.5 | 1.14x |
+| unbounded, chunked | **56.0** | 439.7 | **7.9x** |
+| unbounded, elementwise | **111.3** | 496.7 | **4.5x** |
+| bounded strong, chunked | **124.7** | 137.1 | 1.10x |
+| bounded strong, elementwise | **256.1** | 317.1 | 1.24x |
+| weak, chunked | **58.1** | 134.6 | 2.32x |
+| weak, elementwise | **164.3** | 309.5 | 1.88x |
+| `StmChannel` (list), elementwise | **253.2** | 317.1 | 1.25x |
+| `StmChannel` (list), chunked | **121.6** | 137.1 | 1.13x |
 
 (bench-refresh 2026-09-08, N=4000, cap=1024, minimum of three rounds.
-Two rows moved enough to say so plainly. `bounded strong, chunked` was
-2.24x ahead and is now a TIE (136.0 against 137.5) — the okay side got
-slower relative to the run this table came from, and nothing here
-explains it; it is recorded, not diagnosed. Against that, the
-`StmChannel` chunked row was ZIO's by 1.6% and is now okay's by 14%.
-The unbounded pair, the largest gap on this page, holds.)
+The `StmChannel` chunked row was ZIO's by 1.6% and is now okay's by
+14%. The unbounded pair, the largest gap on this page, holds.)
+
+**`bounded strong, chunked` was never 2.24x, and the A/B that says so
+is worth more than the row (strong-chunked-tie, 2026-09-08).** This
+table used to read okay 56.2 against zio 125.9 there; the refresh read
+136.0 against 137.5 and recorded a suspected regression WITHOUT
+diagnosing it, because the tree had changed compiler in between. The
+A/B was then run across the exact boundary — `0e32ed6c`, the last
+commit on Scala 3.7.4, against `4ce13ec7`, the first on 3.9.0, whose
+migration commit changed ZERO files under `src/main`, so the channel
+sources are byte-identical and only the compiler differs. Five
+alternating rounds each:
+
+| lane | 3.7.4 | 3.9.0 | |
+|---|---|---|---|
+| `okayStrongChunk` | **127.2** | 138.2 | +8.7% |
+| `zioStrongChunk` (control) | 142.7 | 141.4 | −0.9% |
+| `okayWeakChunk` | 65.1 | 57.0 | −12.4% |
+| `zioWeakChunk` (control) | 133.8 | 138.7 | +3.6% |
+
+**On 3.7.4 the lane reads 127.2, not 56.2.** The old number does not
+reproduce on the compiler it was measured with, so it was an artefact
+of its own session — that table was taken at `f=3 i=8`, a protocol
+this page has not repeated. The pair is 1.12x in okay's favour on
+3.7.4 and 1.02x on 3.9.0; it was never 2.24x, and there is no
+regression to find.
+
+What the A/B DOES establish is a real, modest and two-directional
+compiler effect: 3.9.0 costs this lane 8.7% and gives the weak one
+12.4% back, with both ZIO controls inside 4%. That is worth knowing
+and is not what anyone was looking for.
 
 The unbounded pair is the largest gap in this file and it deserves the
 scepticism: `Queue.unbounded` is the like-for-like, not
@@ -2177,34 +2514,6 @@ measuring the thing rather than the story about it.
   of the number and should never be quoted apart from it.
 - The host is a busy laptop; medians across forks and same-session
   grouping are the discipline, and history.tsv records the load.
-
-### Lane rules — before a competitor's number is quoted
-
-Every wrong row this document has carried was a lane asking a
-different question of each side. Three checks, each with the row
-that taught it:
-
-1. **Shape.** A lane built by `foldLeft` gets a RIGHT-NESTED twin
-   before its number is quoted. kyo's Env/Emit/Resource read ~1000x
-   on the left-nested shape `((ask >>= f) >>= f) >>= f` — quadratic
-   in kyo, linear right-nested — and were quoted as the library's
-   price for a week (§2; `ReaderBenchmark` keeps both shapes side by
-   side, and its header says which is which). A number that changes
-   by orders of magnitude with the nesting is the SHAPE's price, not
-   the library's, until the twin says otherwise.
-2. **Pairing.** Only lanes sharing a granularity compare: chunked
-   against chunked, elementwise against elementwise, memoised against
-   memoised. Five of six "ZIO ahead" rows on 2026-09-04/05 were
-   mismatched pairs, and every one flipped once paired (§6b, §14–§16).
-   A lane names its granularity in its name.
-3. **Source.** A competitor is priced from the source its author
-   intended: `ZStream.range`, `fs2.Stream.emits`, kyo `Stream.range`
-   — not `iterate`, not fs2's `range`, which is a singleton chunk per
-   element by construction (§5). The per-element source stays in the
-   table as the worst case it is, beside the fair one, never alone.
-
-A new competitor lane lands with all three answered in its header,
-or it lands without a number.
 
 ## 17. Actors and the reactive bridge — the first numbers
 
