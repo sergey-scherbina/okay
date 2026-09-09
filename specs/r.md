@@ -452,19 +452,58 @@ The rule this lane is held to:
 
 ### Behavior
 
-- [ ] a frame of every column type round-trips through a real R
+- [x] a frame of every column type round-trips through a real R
       unchanged, including an integer column, a double column with a
-      NaN, a character column, a logical column and a raw column
-- [ ] a column of NAs keeps its type across the wire (all four), and
+      NaN, a character column, a logical column and a raw column (the
+      raw one on the `cells` road — see the correction below)
+- [x] a column of NAs keeps its type across the wire (all four), and
       an NA in a double column stays distinct from a NaN in the same
-      column
-- [ ] an empty frame and an empty column keep their column names and
-      types
-- [ ] a `v` the reader does not know refuses by name, and a v1 shim
-      refuses at the handshake as before
-- [ ] MEASURED: the same `MeasureRFrame` table after the change, beside
+      column — over a real R, and an all-NA column too
+- [~] an empty frame and an empty column keep their column names and
+      types — NAMES yes, TYPES no, and the reason is a fact about
+      `RFrame` rather than about the wire: it types VALUES, not
+      columns (`Vector[(String, Vector[RValue])]`), so an empty column
+      has no type on our side to send or to restore. The wire CAN
+      carry it (a column object holds `type` with an empty `values`),
+      and R's own answer for an untyped empty vector is `logical`,
+      which is what we send. Making this box true would mean changing
+      `RFrame` to carry a per-column type — a change to a public type
+      for a case no consumer has, so it is stated rather than made.
+- [x] a `v` the reader does not know refuses by name, and a v1 shim
+      refuses at the handshake as before; the v1 FRAME shape still
+      reads, so a fixture or a journal holding one is not stranded
+- [x] MEASURED: the same `MeasureRFrame` table after the change, beside
       the before, in this spec — with the verdict against the 2x bar
       written whichever way it goes
+
+### The number, and the verdict
+
+Same box, same container, medians of five, an hour apart:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000, before | 0.30 MB | 5.0 ms | 1 121 ms | 5.3 ms | 2.5 ms | 0.9% |
+| 10 000, after | 0.17 MB | 3.7 ms | **20.9 ms** | 5.2 ms | 3.7 ms | 42.3% |
+| 100 000, before | 3.21 MB | 20.5 ms | 10 505 ms | 16.5 ms | 6.1 ms | 0.4% |
+| 100 000, after | 1.88 MB | 28.0 ms | **179.7 ms** | 18.0 ms | 6.6 ms | 25.6% |
+
+**58x at 100 000 rows against a 2x bar**, and 54x at 10 000; the
+payload also fell by 41% because a tagged object per cell is bigger
+than a number. The diagnosis was right about where the time was: it
+was R building the structure, and the structure was ours to choose.
+
+The balance has flipped, which is the useful part of the after-column:
+R held 99.6% before and holds under 75% now, so the next thing worth
+measuring — if anyone ever needs more — is our own encode. Nobody is
+hurting at 180 ms for a 100k-row frame, and `r-arrow` now has to beat
+that number with a native dependency on both sides rather than beat
+10.5 seconds. It stays filed and it stays waiting.
+
+One thing the implementation had to learn from R rather than from the
+design: jsonlite UNBOXES a length-1 vector, so a column of one row
+arrives as a scalar and a single absence as a bare number, not as
+arrays of one. The reader accepts both shapes; the round trip lost
+exactly one NA until it did.
 
 ## Results (stage 0)
 

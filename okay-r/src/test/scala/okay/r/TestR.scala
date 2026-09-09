@@ -343,4 +343,24 @@ class TestR extends munit.FunSuite {
     sessions = ok :: sessions
     assertEquals(call(ok, "sqrt", Vec(Vector(F64(81)))), Right(Vec(Vector(F64(9)))))
   }
+
+  test("the columnar wire over a REAL R: four NA types, a NaN, and an all-NA column come back intact") {
+    val r = session()
+    val in = RFrame(Vector(
+      "l" -> Vector(Bool(true), NA(RType.Logical)),
+      "i" -> Vector(I32(1), NA(RType.Integer)),
+      "d" -> Vector(F64(Double.NaN), NA(RType.Double)),
+      "s" -> Vector(Str("a"), NA(RType.Character)),
+      "allna" -> Vector(NA(RType.Double), NA(RType.Double))))
+    r.handler.handle(REval.Frame("identity", in, Vector.empty)) match
+      case Right(back) =>
+        assertEquals(back.cols.map(_._1), in.cols.map(_._1))
+        // NaN and NA are different values in the same column, and R agrees
+        assertEquals(back.cols(2)._2.head match { case F64(d) => d.isNaN; case o => fail(s"$o") }, true)
+        assertEquals(back.cols(2)._2(1), NA(RType.Double))
+        assertEquals(back.cols(1)._2, Vector(I32(1), NA(RType.Integer)))
+        assertEquals(back.cols(3)._2, Vector(Str("a"), NA(RType.Character)))
+        assertEquals(back.cols(4)._2, Vector(NA(RType.Double), NA(RType.Double)))
+      case Left(c) => fail(s"identity on the frame: $c")
+  }
 }
