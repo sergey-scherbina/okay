@@ -1,0 +1,21 @@
+task: hedge-start-races
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T12:07:24Z
+status: in-progress
+branch: feature/hedge-start-races
+worktree: ../okay-wt-hedge2
+spec: BACKLOG "Flakes observed" — hedge-timer-leak, filed by hedge-timed-flake
+
+why: `Hedge.start` PUBLISHES after it acts. It forks the attempt and
+  only then adds the fiber to the list settle cancels, and it arms the
+  timer only after that. A settle in either window leaves something
+  behind: an attempt nobody cancels (a duplicate request that outlives
+  the answer — the serious one) or a timer nobody disarms.
+
+what: re-check `done` after each publication and undo — cancel the
+  fiber, cancel the timer. A deterministic test drives the window with
+  a Scheduler wrapper whose fork lets the first attempt settle before
+  the second is registered, and asserts the second fiber was cancelled.
+
+next: write the failing test first, then the fix
