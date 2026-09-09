@@ -5447,26 +5447,64 @@ WHAT THE TREE HAS, grepped:
       `okay-security` has no way to express — it signs and verifies,
       centrally, and a JWT cannot be narrowed by its holder.
 
-## leases — tickets, TTLs and fencing tokens
+## leases — CLOSED 2026-09-09: every part of it was already built
 
-The second half of the operator's "tokens or tickets" (2026-09-09),
-deliberately NOT in specs/coordination-free.md: leases are
-COORDINATION, and that spec is about avoiding it. Keeping them
-together would make one spec mean two things.
+Filed as the second half of the operator's "tokens or tickets", to be
+taken after capabilities. Taken, and there is nothing to build: the
+whole design exists in okay-persist, and exists with better reasoning
+than the entry proposed.
 
-Belongs on okay-persist, which already has Raft-backed leadership —
-not beside the CRDTs.
+WHAT I CLAIMED WAS THE POINT, and where it already lives:
 
-- [ ] 0 — specs/leases.md: a TTL lease, renewal, and what happens
-      when it expires while the holder still believes it holds one.
-- [ ] the FENCING TOKEN is the point, not the lease: a monotonically
-      increasing number handed out with each grant, which the store
-      checks and refuses if it has already seen a higher one. Without
-      it a holder that stalled past its expiry and woke up still
-      writes, and the lease bought nothing. `Hlc` is the obvious
-      source and the check is the store's, not the lease's.
-- [ ] numbered queues (a ticket per waiter, served in order) only if
-      something actually needs them — filed as a question, not work.
+- **the fencing token** — `Replicated.Leader(partition, epoch)`, with
+  an epoch-checked `append` that is "the only road records enter by",
+  a refusal RECORDED as `Op.FencedAppend` rather than swallowed, and
+  `promote` to advance it (catch the successor up, bump the epoch,
+  switch the leader, record `Op.Promoted`).
+- **the TTL lease** — `Election(control, node, leaseMillis = 5000,
+  skewMillis = 1000, clock = ...)`. `heartbeat()` renews every
+  partition this node holds; `vacant(partition)` permits a takeover
+  only after `until` PLUS the declared skew allowance.
+- **automatic takeover** — the election is a FOLD of a totally
+  ordered control topic: "the first `Take` at an epoch wins that
+  epoch on every node's fold — total order is the arbiter, so there
+  are no votes, no terms of our own, no new wire messages". The
+  winner calls the same `promote` an operator would, and the deposed
+  leader is fenced.
+
+AND IT SPLITS THE CONCERNS BETTER THAN THE ENTRY DID. Election.scala:
+"Leases decide LIVENESS only ... Safety stays where stage 2 put it:
+epochs fence, the high-water mark bounds visibility; if every clock
+lies at once, the worst outcome is a fenced append and an ops event,
+not forked history."
+
+That is the exact distinction I had to correct MYSELF on earlier the
+same day, in specs/coordination-free.md: I wrote that a capability's
+`until` wants an `Hlc`, and it does not — a deadline is the
+verifier's clock's business, and a logical clock orders events
+without making one trustworthy. This entry made the same mistake
+("`Hlc` is the obvious source" for the fencing token). The shipped
+design uses neither: epochs from a total order for SAFETY, a wall
+clock with a declared skew allowance for LIVENESS only. Clocks are
+never trusted for correctness, which is why it is right.
+
+MY PREDICTION IN THE CLAIM WAS WRONG, and in the useful direction. I
+predicted "a narrow yes — a lease is worth having only as a way to
+MOVE THE EPOCH automatically, i.e. as a policy over `promote`". That
+policy is exactly what `Election` is, and it was written before I
+proposed it.
+
+The claim registered "no" as a permitted answer and named the reason
+to refuse: "two fencing mechanisms is worse than one, and a lease
+that grants its own token while `append` checks a different one is a
+bug with two names". Building anything here would have done precisely
+that. Second arc today to close as already-solved, after queue-swap.
+
+- [ ] the only thing genuinely absent is NUMBERED QUEUES — a ticket
+      per waiter, served in order — and the entry filed that as a
+      question rather than work. It stays a question: nothing in the
+      tree asks for one, and `Channel` already serves waiters in
+      order within a partition.
 
 ## actor-stop-drain — FIXED 2026-09-09: stop waited by the clock and gave up
 
