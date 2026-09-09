@@ -21,7 +21,7 @@ extension needs). The gotchas section carries what this arc actually
 cost: the E10 trap on a combinator written as an extension, facts
 below an acquisition not being readable early, a qualifier's export
 carrying the erased class, and the container registrations being
-eager. Commit: LANDING.
+eager. Commit: 41fccd5b.
 
 ## optics-core — lenses on profunctors: the constraint is a type parameter, composition is the intersection, and the gate said where they may live
 
