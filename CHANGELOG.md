@@ -1,5 +1,21 @@
 # Changelog
 
+## resilience-faults — stage 2 of specs/resilience.md: the seeded adversary, and the composite under it
+
+`Faults.http(seed, plan)(inner)` delays, drops or fails calls by a
+plan; a call's fate is a pure function of the seed and its ORDINAL
+(SplitMix64 on the pair), so a hedged race meets the same faults in
+the same places whichever attempt finishes first — Sim's move one
+seam up: a found bug is a seed. Fixed faults by ordinal win over
+drawn rates; `log` and `stats` say what each call met. `TestFaults`
+drives the five through it: the breaker opens on planned drops and
+the far end is not asked while open; the hedge answers from ordinal
+2 while ordinal 1 sleeps 5 s and is cancelled before the far end; a
+40 ms budget cuts a 5 s call; 40 calls of a drawn plan are all
+accounted for across breaker, wire and limiter, and the run replays
+by seed. Adaptive concurrency stays deferred, unmeasured: nothing
+wires `Resilient.http` into a service yet, so there is no latency to
+follow. 5 tests.
 ## ui-native-toolkits — the Swing host: the JVM's own toolkit over the same seam, headless-tested by the DOM battery
 
 The "out of the box" native leg specs/frontend.md left open.

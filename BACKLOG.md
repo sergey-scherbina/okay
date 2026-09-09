@@ -22,7 +22,7 @@ follows, in the spec's order:
       `Ops.routes` takes a `Vector[Reporting[?]]`. okayOps gains the
       okayResilience dependency (JVM + JS only — okay-ops is already
       JVM + JS).
-- [ ] resilience-faults — stage 2: `Faults.http(seed, plan)(inner)`,
+- [x] resilience-faults — DONE 2026-09-09. Was: stage 2: `Faults.http(seed, plan)(inner)`,
       the seeded fault-injecting Http (delays, drops, 5xx by
       ordinal), and the composite under a plan behaving per the
       pieces' contracts. Adaptive concurrency stays deferred until

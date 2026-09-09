@@ -211,14 +211,17 @@ Stage 1 — around Http, and visible:
 
 Stage 2 — proving it under faults:
 
-- [ ] `Faults.http(seed, plan)(inner)`: a seeded fault-injecting
+- [x] `Faults.http(seed, plan)(inner)`: a seeded fault-injecting
       `Http` (delays, drops, 5xx by ordinal) — the deterministic
       adversary; the composite under a plan behaves per the
       pieces' contracts (breaker opens on the drops, hedging hides
       the delays, the deadline bounds the whole)
 - [ ] adaptive concurrency (a bulkhead whose permits follow observed
       latency, Netflix's gradient) is DEFERRED with a measured reason
-      or landed here — not before stage 1 is in use
+      or landed here — not before stage 1 is in use. Status
+      2026-09-09: deferred, unmeasured — nothing in the tree wires
+      `Resilient.http` into a service yet, so there is no latency to
+      follow; the box stays open until there is
 
 ## Out of scope
 
@@ -352,3 +355,18 @@ timeout (see Decisions), and `Attempt` missed a throwing
 continuation. The two-hop test also corrected the spec's own
 wording: a relative header is not charged for transit, only for
 work — which is the trade the Design section already stated.
+
+**Stage 2 landed (resilience-faults, 2026-09-09).** `Faults.http(seed,
+plan)(inner)`: a call's fate is a PURE function of the seed and its
+ordinal (SplitMix64 on the pair), so a hedged race is replayable —
+the second attempt is ordinal 2 whichever finishes first. Fixed
+faults by ordinal (`dropAt`, `failAt`, `slowAt`) win over drawn
+rates. `TestFaults` (5, JVM): the breaker opens on the planned drops
+and the far end is not asked while open; the hedge answers from
+ordinal 2 while ordinal 1 sleeps its 5 s and is cancelled before
+reaching the far end; a 40 ms budget cuts a 5 s slowed call and the
+far end sees nothing; the composite over 40 calls of a drawn plan
+accounts for every call (`breaker.calls + rejected == 40`,
+`breaker.failures == wire.dropped + wire.failed`, a first refusal is
+final) and replays by seed. Adaptive concurrency stays deferred, see
+the box above.
