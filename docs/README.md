@@ -125,6 +125,7 @@ API reference, gotchas.
 | [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |
 | [`okay-docs`](modules/okay-docs.md) | the document seam: get/put with CAS, declared consistency; TopicDocs own engine |
 | [`okay-docs-mongo`](modules/okay-docs-mongo.md) | the foreign adapter that proves the Docs seam, on Mongo's native CAS |
+| [`okay-docs-dynamo`](modules/okay-docs-dynamo.md) | the Docs seam on DynamoDB: condition expressions as CAS, GSIs as indexes, SigV4 without an SDK |
 | [`okay-conf`](modules/okay-conf.md) | configuration as data, secrets as REFERENCES — a config cannot leak what it does not contain |
 | [`okay-acme`](modules/okay-acme.md) | an ACME (RFC 8555) client: prove the name, get the certificate, renew before it runs out — issue, renew, revoke, external account binding |
 | [`okay-tls`](modules/okay-tls.md) | one TLS seam at the transport; the sslmode ladder, verify-full the only default; keys as Secret refs |
