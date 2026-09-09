@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- intent-period-month-beside-a-number — a month with any number beside it is not a bare month («12-14 сентября» is a range, not September). Claimed 2026-09-09.
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
