@@ -19,6 +19,7 @@ because subscriptions are `merge`.
 | `Frame` | the terminal's pure half: frames are `Vector[String]`, keys interpret against the tree — tested with no tty |
 | `Terminal.host()` / `Terminal.raw` | the thin impure edge: stty, stdin, painting (JVM + Native) |
 | `Swing.backend` / `Swing.host` / `Swing.window` | the JVM's own toolkit over the same seam: zero dependencies, headless-tested by the DOM battery (ui-native-toolkits) |
+| `okay.ui.gtk.Gtk` (okay-ui-gtk, Scala Native) | GTK 4 over the same seam, present only where `pkg-config --exists gtk4` answers (`brew install gtk4 pkg-config`); TestGtk against real widgets (ui-gtk) |
 | `React.elem` / `ReactJs.host` | pure `Ui => Elem` (JVM-tested), five lines of js glue over any `createElement`-shaped global — React, Preact, likes |
 | `Form` | the fifth algebra over `Schema`: a form rendered from the same schema that decodes it; plus the dynamic (JSON Schema) side elicitation needs |
 

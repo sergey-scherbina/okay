@@ -1732,7 +1732,7 @@ measure on our own data, never a predicted result.
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
       once; Scala Native + GTK or Swing as the out-of-the-box leg.
-- [x] ui-native-toolkits — LANDED 2026-09-09 as the Swing host (`Swing.backend/host/window`, TestSwing headless); GTK/Cocoa satellites stay filed here: no GTK headers on the box, a binding nobody can compile is not out of the box. Original: GTK/Cocoa satellites over the Backend seam
+- [x] ui-native-toolkits — LANDED 2026-09-09 as the Swing host (`Swing.backend/host/window`, TestSwing headless); GTK 4 on Scala Native LANDED 2026-09-09 (ui-gtk, okay-ui-gtk/, aggregated only where pkg-config finds gtk4). Cocoa stays filed: Objective-C from Scala Native is objc_msgSend all the way, and a Swift thin client over the protocol is the cheaper road. Original: GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-codec

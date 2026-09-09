@@ -263,14 +263,42 @@ Stage 3 — the first thin client (ui-compose, LANDED 2026-09-09):
       the DOM law battery verbatim plus semantic nodes lowered, a
       keyed shuffle MOVES the same component instances, delegated
       events round-trip by key and a patch's own change is not a
-      user. GTK via Scala Native is NOT here: the machine has no GTK
-      headers (`pkg-config gtk+-3.0` fails), and a binding nobody can
-      compile is not out of the box — filed, not claimed
+      user
+- [x] GTK 4 on Scala Native (ui-gtk, LANDED 2026-09-09, after the
+      operator had GTK installed — `brew install gtk4 pkg-config`):
+      `okay-ui-gtk/`, a Native-only sbt project AGGREGATED ONLY WHEN
+      `pkg-config --exists gtk4` answers, so `sbt test` on a box
+      without GTK never sees it (proved: with `PKG_CONFIG_LIBDIR`
+      pointed at nothing, `show root/aggregate` lists no okayUiGtk).
+      `Gtk4` is the handful of `@extern` calls a level-L renderer
+      needs; `Gtk.backend` is built as Dom/Swing are, dispatching each
+      patch by what the MIRROR says is at its path (no widget is
+      type-tested), paths walking first-child/next-sibling; signal
+      handlers are static C function pointers over a global widget →
+      key table (one live GTK backend per process, stated); patches
+      from another thread are marshalled through `g_idle_add`;
+      `Gtk.window` pumps GTK's loop on its own thread until the
+      application ends. TestGtk (3, against real GTK widgets, skipped
+      with a message when `gtk_init_check` fails): the law battery,
+      a keyed shuffle moves the same pointers, signals by key. Found
+      by a Gtk-CRITICAL, not by the law: `gtk_scrolled_window_get_child`
+      hands back the GtkViewport GTK wraps a non-scrollable child in,
+      so a SetText landed on the viewport while the law compared two
+      viewports — `Gtk.scrolled` unwraps it on both sides now.
+      Weights are `hexpand`/`vexpand` (GTK has no weights), multiline
+      is a plain entry, images are labels: recorded, not hidden.
+      `Gtk.window` was not run here (no app driven through a window
+      in this session); Cocoa stays filed
 - [ ] Android: the composables are common code, but no SDK is on the
       build machine; the `androidTarget()` is added when one is, so
       the build that is checked in is the build that runs
 
 ## Results
+
+ui-gtk landed 2026-09-09: `okay-ui-gtk/src/main/scala/okay/ui/gtk/`
+(Gtk4.scala ~90 lines of bindings, Gtk.scala ~250), TestGtk (3). The
+one Scala application now has hosts on the terminal, React, the raw
+DOM, Swing, GTK 4, and over the wire to a browser or Compose.
 
 ui-native-toolkits landed 2026-09-09: `okay-ui/src/main/scala-jvm/
 okay/ui/Swing.scala` (~160 lines), TestSwing (3, headless). An

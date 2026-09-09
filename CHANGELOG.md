@@ -1,5 +1,36 @@
 # Changelog
 
+## ui-gtk — GTK 4 on Scala Native over the same seam, present only where pkg-config finds it
+
+The operator had GTK installed (`brew install gtk4 pkg-config`) and
+asked for the native leg. `okay-ui-gtk/` is a Scala Native-only sbt
+project that the root AGGREGATES ONLY WHEN `pkg-config --exists gtk4`
+answers at load — proved by pointing `PKG_CONFIG_LIBDIR` at nothing
+and reading `show root/aggregate` — so `sbt test` on a box without
+GTK never sees it; the linking flags are pkg-config's. `Gtk4` is the
+handful of `@extern` calls a level-L renderer needs. `Gtk.backend` is
+built as the DOM and Swing backends are: the tree is the plan,
+`Ui.patch` keeps a mirror, and a patch is dispatched by what the
+mirror says is at its path, so no widget is ever type-tested; paths
+walk first-child/next-sibling. Signal handlers are static C function
+pointers over a global widget → key table (one live GTK backend per
+process); a patch from another thread is marshalled through
+`g_idle_add`; `Gtk.window` pumps GTK's loop on its own thread until
+the application ends.
+
+TestGtk (3), against real GTK widgets, skipped with a message when
+`gtk_init_check` fails: the law battery, a keyed shuffle moves the
+same pointers, signals come back by key and a patch's own change is
+not a user. A Gtk-CRITICAL, not the law, found the defect:
+`gtk_scrolled_window_get_child` returns the GtkViewport GTK wraps a
+non-scrollable child in, so a SetText hit the viewport while the law
+compared two viewports — `Gtk.scrolled` unwraps on both sides. Two
+suite runs died with 143 before that: not memory, a hung `take(4)`
+waiting for a click `gtk_widget_activate` does not emit on an
+unrealized button; the test now emits `clicked` by name and closes
+the channel to read every event. Weights are hexpand/vexpand, a
+multiline input is a plain entry, an image is a label: recorded.
+
 ## eff-stack-safety — a million left-nested Eff binds run; the price is stated and kept
 
 `Eff` overflowed on a LEFT-nested chain between 10 000 and 100 000

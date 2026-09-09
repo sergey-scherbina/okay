@@ -1578,7 +1578,30 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
  * "разработчик" against "программист", which is a claim about a
  * product this library no longer carries.
  */
+/**
+ * The GTK 4 host on Scala Native (ui-gtk): aggregated ONLY when the
+ * machine has GTK — `pkg-config --exists gtk4` — so `sbt test` on a
+ * box without it never sees the project. Headers come from
+ * `brew install gtk4 pkg-config` (macOS) or the distribution's
+ * libgtk-4-dev; the linking flags are pkg-config's, read at load.
+ */
+lazy val gtkAvailable: Boolean =
+  scala.util.Try(scala.sys.process.Process(Seq("pkg-config", "--exists", "gtk4")).! == 0).getOrElse(false)
+lazy val gtkLinkFlags: Seq[String] =
+  if (gtkAvailable) scala.sys.process.Process(Seq("pkg-config", "--libs", "gtk4")).!!.trim.split("\\s+").toSeq
+  else Seq.empty
+lazy val okayUiGtk = (project in file("okay-ui-gtk"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(okayUi.native)
+  .settings(
+    name := "okay-ui-gtk",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    nativeConfig ~= { c => c.withLinkingOptions(c.linkingOptions ++ gtkLinkFlags) },
+  )
+lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) else Seq.empty
+
 lazy val root = (project in file("."))
+  .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
