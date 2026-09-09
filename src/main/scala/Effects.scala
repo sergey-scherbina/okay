@@ -156,9 +156,10 @@ object Handler {
   def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
   : Handler[F + G] = new Handler[F + G]:
     def handle[A](a: F[A] | G[A]): A =
-      // the split is `<|>`'s, the one place the union's excluded
-      // middle is claimed
-      <|>[F, G](a).fold(f => hf.handle(f), g => hg.handle(g))
+      // the split is the kernel's (`Split.apply`), the one place the
+      // union's excluded middle is claimed — and with no Either on
+      // the way (split-without-either)
+      split[F, G](a)(f => hf.handle(f))(g => hg.handle(g))
 }
 
 /**
@@ -194,10 +195,7 @@ trait Effects[M[_[+_], _]]:
   def handle[F[+_] : TypeableK, G[+_], A, B](m: M[F + G, A])
                                             (ret: A => M[G, B])
                                             (h: F !> M[G, B]): M[G, B] =
-    m.foldCont[M[G, B]]([X] => e => <|>[F, G](e) match
-      case Left(e) => h(e)
-      case Right(e) => shift(k => perform(e).flatMap(k))
-    ) / ret
+    m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))) / ret
 
 /** the staging entry for effect programs, as staged is for Control */
 transparent inline def Effects[M[_[+_], _]]: Effects[M] =
@@ -207,6 +205,9 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
 @implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised one says the same: `enum YourOp[S, +A] derives Effect` abstracts the LAST\nparameter, and the test is then by class only (a row may hold one of it).\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
 trait TypeableK[F[_]]:
   def unapply[A](x: Any): Option[x.type & F[A]]
+  /** the same question with no wrapper in the answer: `split` asks
+   * it on every operation of every runner (split-without-either) */
+  def test(x: Any): Boolean = unapply(x).isDefined
 
 /**
  * A `TypeableK` by the runtime CLASS of a signature's values.
@@ -227,6 +228,7 @@ trait TypeableK[F[_]]:
 def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
   def unapply[A](x: Any): Option[x.type & F[A]] =
     if cls.isInstance(x) then Some(x.asInstanceOf[x.type & F[A]]) else None
+  override def test(x: Any): Boolean = cls.isInstance(x)
 
 /**
  * A `TypeableK` for a signature whose PARAMETER leaves no runtime
@@ -327,6 +329,7 @@ object TypeableK:
    * (Logic, the effectful streams) instantiate at F = Pure */
   given TypeableK[Pure] = new:
     def unapply[A](x: Any): Option[x.type & Nothing] = None
+    override def test(x: Any): Boolean = false
 
 /**
  * WHAT A SIGNATURE SAYS ABOUT ITSELF: `enum Users[+A] derives Effect`.
@@ -375,6 +378,7 @@ object Effect:
    * is duplicated at every derivation site */
   def of[F[_]](t: TypeableK[F]): Effect[F] = new Effect[F]:
     def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
+    override def test(x: Any): Boolean = t.test(x)
 
 /**
  * Split the union by testing only the F side (the erasure of F, by
@@ -382,11 +386,41 @@ object Effect:
  * would erase to an always-true test.
  */
 inline def <|>[F[+_] : TypeableK as T, G[+_]]: [A] => (F[A] | G[A]) => Either[F[A], G[A]] =
-  [A] => e => e match
-    case T(e) => Left(e)
-    // the trusted kernel, sound by the excluded middle of the union:
-    // a value of F[A] | G[A] that is not an F[A] is a G[A]
-    case e => Right(e.asInstanceOf[G[A]])
+  // the trusted kernel, sound by the excluded middle of the union: a
+  // value of F[A] | G[A] that passes F's test is an F[A], and one that
+  // does not is a G[A]. `test` rather than the extractor
+  // (split-without-either, 2026-09-09): the extractor answered an
+  // Option per operation on top of this Either, and B/op showed both
+  // survive escape analysis. The left cast is what the extractor's
+  // `x.type & F[A]` said, made explicit; nothing outside this function
+  // and `Split.apply` casts on a row.
+  [A] => e => if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
+
+/**
+ * The same split with NO wrapper on the way out (split-without-either,
+ * specs/handler-fusion.md stage A): `<|>` answers an `Either` per
+ * operation and the extractor an `Option` per test, on the hottest
+ * path of every runner. Here the two continuations are `inline`, so
+ * they beta-reduce into the caller's match — no closure, no Either,
+ * no Option — and the test is `TypeableK.test`, a plain class test for
+ * a derived signature.
+ *
+ * Both casts live HERE and nowhere else, licensed by the one test:
+ * the left one is what the extractor's `x.type & F[A]` said, made
+ * explicit; the right one is `<|>`'s excluded middle. A runner that
+ * uses `split` still refines the answer type by matching the
+ * constructor inside `onF` (`case Get() =>`), exactly as after
+ * `case Left(...)` — so no cast reaches a runner.
+ */
+inline def split[F[+_] : TypeableK as T, G[+_]]: Split[F, G] = Split(T)
+
+/** `split`'s second stage, so that A and R are inferred from the
+ * operation and the branches (the `Bind` arm's answer type is
+ * existential; naming it is not possible, inferring it is). A value
+ * class: nothing is allocated to carry the test. */
+final class Split[F[+_], G[+_]](val T: TypeableK[F]) extends AnyVal:
+  inline def apply[A, R](e: F[A] | G[A])(inline onF: F[A] => R)(inline onG: G[A] => R): R =
+    if T.test(e) then onF(e.asInstanceOf[F[A]]) else onG(e.asInstanceOf[G[A]])
 
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:
@@ -683,12 +717,8 @@ object ! {
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
                                            (g: [X, Y] => F[X] => X /> Y): B ! G = {
     @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
-      case Bind(Effect(e), k) => <|>[F, G](e) match
-        case Left(e) => loop(g(e)(k))
-        case Right(e) => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g))
-      case Effect(e) => <|>[F, G](e) match
-        case Left(e) => g(e)(f)
-        case Right(e) => Effect(e).flatMap(f)
+      case Bind(Effect(e), k) => split[F, G](e)(e => loop(g(e)(k)))(e => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
+      case Effect(e) => split[F, G](e)(e => g(e)(f))(e => Effect(e).flatMap(f))
       case Pure(a) => f(a)
 
     loop(a)

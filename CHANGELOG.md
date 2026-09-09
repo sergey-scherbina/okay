@@ -1,5 +1,35 @@
 # Changelog
 
+## split-without-either — the row split with no wrapper per operation: −18% allocation, 7–11% on the hot loops
+
+Stage A of specs/handler-fusion.md, the lever stage 0 found: `<|>`
+answered an `Either` per operation and the `TypeableK` extractor an
+`Option` per test, on the hottest path of every runner — and B/op
+showed both survive escape analysis (they were the prediction to the
+byte: 32 B per operation).
+
+Built: `TypeableK.test`, a boolean beside `unapply`; `split[F, G](e)
+(onF)(onG)` — a value class carrying the test with an `inline apply`,
+so the two branches beta-reduce into the caller's match and nothing is
+allocated on the way; `<|>` itself on `test`, so its 50-odd walk sites
+lose the Option with no churn; and the hot loops on `split` —
+`State.handle`, `Writer.foldWith`, `relay`, `Effects.handle`,
+`Handler.union` (every `runWith` over a row) and the `Fused` probes.
+The two casts on a row live in `<|>` and `Split.apply` and nowhere
+else; no runner casts (GADT refinement inside the branch still types
+the answer). Two idioms the rewrite needed, both written down where
+they bite: a RETURNING arm ascribes the loop's answer inside the
+branch (the constructor refined the answer type there), and a Writer
+branch under `Bind` matches its only constructor with `@unchecked`,
+the same claim `resume` makes.
+
+Measured on a box that was never quiet (load 20–80: four sibling gates
+and docker), minima across rounds, B/op load-proof: the fused
+right-nested pass went 149 312 → 122 641 B/op and 16.7 → 13.8 µs
+(1.21x against stage 0, 1.11x against the same tree's `<|>` loop); the
+shipping runners 181 369 → 170 696 and 18.8 → 17.4 (1.08x). Small,
+uniform, zero-risk; lands; not the lever. Typepedia has the entries.
+Six rows in history.tsv.
 ## resilience-http — stage 1 of specs/resilience.md: the Http layer, the routes, the /metrics rows
 
 `Resilient.http` composes the five around `trait Http` in the one

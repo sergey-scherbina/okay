@@ -1667,3 +1667,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-09	b19539e0	7.0	fusion-gate-SW-rightNested	16.734	18.786	1.13	the right-nested twin (lane rules): no rotation, saving the SAME 32056 B/op (149312 vs 181369), ratio smaller — rotation was not the cost
 2026-09-09	b19539e0	7.0	fusion-gate-TSW	29.862	38.635	1.29	Throws+State+Writer, no raise; three passes vs one; B/op 322273 vs 365082; means said 1.39x from a fork at 60-102us under load — not a number
 2026-09-09	b19539e0	7.0	fusion-gate-REFUTED	-	-	-	gate NOT cleared (bar 1.3x): the rebuild is 9% of a pass's allocation; inner handlers emit a residual so passes shrink; the cost is inside ONE pass (Either per op from <|>, node visit, closure, Vector :+) -> split-without-either
+2026-09-09	5d0eb857	30	splitA-fusedSWr-vs-either	13.828	15.402	1.11	split loop vs <|> loop, same tree, cross-round MIN (r2 load 60-80, r3 load 20-36); B/op 122641 vs 149314 = -26673 (Either 16 + Some 16 per op, minus Writer's Typeable Some that stays)
+2026-09-09	5d0eb857	30	splitA-fusedSWr-vs-stage0	13.828	16.734	1.21	the split fused loop vs stage 0's <|>+Option loop (cfa6a3b2 rows): both wrappers gone
+2026-09-09	5d0eb857	30	splitA-fusedSW-vs-either	25.467	27.549	1.08	left-nested twin, same comparison; B/op 306225 vs 332902
+2026-09-09	5d0eb857	30	splitA-nestedSWr-vs-stage0	17.352	18.786	1.08	State.handle+Writer.foldWith on split, right-nested; B/op 170696 vs 181369 (-10673: the Option; the Either here was scalarised already — bytecode has no Left/Right in State$)
+2026-09-09	5d0eb857	30	splitA-nestedWS-vs-stage0	31.673	33.888	1.07	the other nesting; B/op 327569 vs 354241 (-26672: both wrappers)
+2026-09-09	5d0eb857	30	splitA-VERDICT	-	-	-	stage A holds: -18% allocation on a fused pass, 7-11% time on the hot loops, zero churn for the 50-odd walks (<|> lost its Option for them). Small, uniform, real; not a headline. Box at load 20-80 throughout, minima across rounds.

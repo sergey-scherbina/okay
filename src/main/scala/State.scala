@@ -99,16 +99,20 @@ object State {
   def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
+    // `split`, not `<|>` (split-without-either): the two branches
+    // beta-reduce into this match, no Either per operation. A
+    // returning arm ascribes the loop's answer inside the branch,
+    // where the constructor has refined the answer type to S.
     @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
-      case Effect(e) => <|>[State[S, *], F](e) match
-        case Left(Get()) => Pure((s, s))
-        case Left(Set(s)) => Pure((s, s))
-        case Right(e) => Effect(e).map((s, _))
-      case Bind(Effect(e), k) => <|>[State[S, *], F](e) match
-        case Left(Get()) => loop(s)(k(s))
-        case Left(Set(s)) => loop(s)(k(s))
-        case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
+      case Effect(e) => split[State[S, *], F](e) {
+          case Get() => Pure((s, s)): (S, A) ! F
+          case Set(s) => Pure((s, s)): (S, A) ! F
+        } { e => Effect(e).map((s, _)) }
+      case Bind(Effect(e), k) => split[State[S, *], F](e) {
+          case Get() => loop(s)(k(s))
+          case Set(s) => loop(s)(k(s))
+        } { e => Effect(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(s)(a)
   }

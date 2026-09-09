@@ -373,15 +373,22 @@ removes that. So the order changes; the numbers, not the plan, decide:
   test a plain class test with no `Option`. GADT refinement inside
   the F branch must survive (matching `Get()`/`Say(v)` refines the
   answer type; that is what keeps the runners cast-free).
-  - [ ] every runner that splits a row (`State.handle`, `Writer.foldWith`,
-        `Writer.map/widen`, `relay`, `Effects.handle`, `Handler.union`,
-        `Fused.*`) answers identically on the existing suites.
-  - [ ] MEASURED on `Fused.stateWriter` right-nested first (B/op known
+  - [x] the HOT loops split with `split` — `State.handle`,
+        `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`
+        (every `runWith` over a row) — and answer identically on the
+        existing suites. The WALKS (`Writer.map`/`widen`, Pipe's
+        transducers, the 50-odd other `<|>` sites) stay on `<|>`, which
+        loses its Option for them with no churn; converting a walk
+        without a lane that measures it would be a rewrite on faith.
+  - [x] MEASURED on `Fused.stateWriter` right-nested first (B/op known
         to the byte, 149 312): expected −16…24 KB/op and ≥ 10% time;
         then `nestedSW` and `relayForward` (HandlerBenchmark) to see
         the same saving land in the shipping runners.
-  - [ ] no new cast: the count of `asInstanceOf` in Effects.scala does
-        not grow, and none appears in a runner.
+  - [x] no cast outside the kernel: `<|>` and `Split.apply` are the
+        two functions that cast on a row, both licensed by the one
+        `TypeableK.test`; no runner casts. (The count in Effects.scala
+        grows by two — the extractor's implicit `x.type & F[A]` made
+        explicit — and that is stated here rather than hidden.)
 - **Stage B — `handler-fusion-eff`** (the main line): the composite
   `!>` for a row over `Eff`, assembled `inline`, the product
   accumulator in the answer type (`Acc => (Acc, A)`); the program is a
@@ -398,4 +405,39 @@ removes that. So the order changes; the numbers, not the plan, decide:
 - Follow-up, its own spec after B has a number: `direct` blocks emit
   `Free` binds today; targeting `Eff` would give direct-style programs
   the fused run for free.
+
+### Stage A — measured, 2026-09-09 (split-without-either)
+
+Built: `TypeableK.test` (a boolean beside `unapply`; `typeableK`,
+`Effect.of`, Pure and Writer's own instance answer it without an
+Option), `split[F, G](e)(onF)(onG)` (a value class carrying the test,
+`inline apply`, both branches beta-reduced; the two casts on a row now
+live in `<|>` and `Split.apply` and nowhere else), `<|>` itself on
+`test` (so every one of its 50-odd walk sites loses the Option with no
+churn), and the hot loops on `split`: `State.handle`, `Writer.foldWith`,
+`relay`, `Effects.handle`, `Handler.union`, `Fused.*`.
+
+The box was never quiet (load 20–80, four sibling gates and docker);
+numbers are minima across rounds, B/op from `-prof gc` is load-proof:
+
+| lane | B/op before | after | µs before | after | ratio |
+|---|---|---|---|---|---|
+| fused State+Writer, right-nested | 149 312 | 122 641 | 16.7 (stage 0) / 15.4 (`<|>`, same tree) | 13.8 | 1.21x / 1.11x |
+| fused, left-nested | 332 896 | 306 225 | 27.5 | 25.5 | 1.08x |
+| nested `State.run(Writer.run)` right-nested | 181 369 | 170 696 | 18.8 | 17.4 | 1.08x |
+| nested, the other order | 354 241 | 327 569 | 33.9 | 31.7 | 1.07x |
+
+−26.7 KB/op is the Either (16 B) plus the extractor's Some (16 B) per
+operation, minus the Some `scala.reflect.Typeable` still answers for a
+told value's own test (333 per run) — the prediction (−16…24 KB) was
+under. Time: 7–11% on the hot loops, which clears the 10% bar on the
+lane it was set on and misses it by two points on the left-nested one.
+One observation left open: `State.handle`+`Writer.foldWith` on `split`
+saved only the Option in one nesting and both wrappers in the other
+(bytecode shows no `Left`/`Right` in `State$` at all), so the JIT was
+already scalarising that Either in one shape and not the other; not
+chased.
+
+Verdict: stage A holds as a small, uniform, zero-risk gain and lands;
+it is not the lever. Stage B is.
 

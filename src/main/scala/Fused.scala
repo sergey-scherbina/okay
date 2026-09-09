@@ -34,23 +34,35 @@ import okay.!.*
  */
 object Fused {
 
-  /** `State % S + Writer % W`, one pass; the log in order */
+  /** `State % S + Writer % W`, one pass; the log in order. Over
+   * `split` (stage A, split-without-either): no Either and no Option
+   * per operation — the `<|>` form it replaced is in history.tsv as
+   * `fusedSWr` at 149 312 B/op against this one's 122 641. */
   def stateWriter[S, W, A](s: S)(p: A ! (State % S + Writer % W))
-                          (using TypeableK[State % S]): ((S, Vector[W]), A) = {
+                               (using TypeableK[State % S]): ((S, Vector[W]), A) = {
     @tailrec def loop(s: S, w: Vector[W])(x: A ! (State % S + Writer % W)): ((S, Vector[W]), A) =
       (x.resume: @unchecked) match
         case Pure(a) => ((s, w), a)
-        case Effect(e) => <|>[State % S, Writer % W](e) match
-          // matching the constructor refines the answer type (State's
-          // to S, Writer's to Unit), so the value answered is typed,
-          // not asserted — the same refinement the runners rely on
-          case Left(State.Get()) => ((s, w), s)
-          case Left(State.Set(s2)) => ((s2, w), s2)
-          case Right(Writer.Say(v)) => ((s, w :+ v), ())
-        case Bind(Effect(e), k) => <|>[State % S, Writer % W](e) match
-          case Left(State.Get()) => loop(s, w)(k(s))
-          case Left(State.Set(s2)) => loop(s2, w)(k(s2))
-          case Right(Writer.Say(v)) => loop(s, w :+ v)(k(()))
+        // a RETURNING arm ascribes the outer answer inside the branch:
+        // the constructor refines A (to S, to Unit) in there, and the
+        // ascription is where the refined value meets the loop's type —
+        // otherwise R is inferred from the branches as `S | Unit`
+        case Effect(e) => split[State % S, Writer % W](e) {
+            case State.Get() => ((s, w), s): ((S, Vector[W]), A)
+            case State.Set(s2) => ((s2, w), s2): ((S, Vector[W]), A)
+          } { case Writer.Say(v) => ((s, w :+ v), ()): ((S, Vector[W]), A) }
+        case Bind(Effect(e), k) => split[State % S, Writer % W](e) {
+            case State.Get() => loop(s, w)(k(s))
+            case State.Set(s2) => loop(s2, w)(k(s2))
+          } { w0 =>
+            // `Say` is Writer's ONLY constructor, but under a Bind the
+            // answer type is existential and the exhaustivity checker
+            // reports the match incomplete on `Say(_)` itself — the
+            // same claim `resume`'s `@unchecked` makes, at the same
+            // kind of site
+            (w0: @unchecked) match
+              case Writer.Say(v) => loop(s, w :+ v)(k(()))
+          }
     loop(s, Vector.empty)(p)
   }
 
@@ -70,18 +82,19 @@ object Fused {
         case Pure(a) => Right(((s, w), a))
         // the split tests ONE signature and takes the rest by exclusion,
         // so a three-effect row is split twice, single effect first
-        case Effect(e) => <|>[Throws % E, State % S + Writer % W](e) match
-          case Left(Throws(err)) => Left(err)
-          case Right(e) => <|>[State % S, Writer % W](e) match
-            case Left(State.Get()) => Right(((s, w), s))
-            case Left(State.Set(s2)) => Right(((s2, w), s2))
-            case Right(Writer.Say(v)) => Right(((s, w :+ v), ()))
-        case Bind(Effect(e), k) => <|>[Throws % E, State % S + Writer % W](e) match
-          case Left(Throws(err)) => Left(err)
-          case Right(e) => <|>[State % S, Writer % W](e) match
-            case Left(State.Get()) => loop(s, w)(k(s))
-            case Left(State.Set(s2)) => loop(s2, w)(k(s2))
-            case Right(Writer.Say(v)) => loop(s, w :+ v)(k(()))
+        case Effect(e) => split[Throws % E, State % S + Writer % W](e) {
+            case Throws(err) => Left(err): Either[E, ((S, Vector[W]), A)]
+          } { e => split[State % S, Writer % W](e) {
+            case State.Get() => Right(((s, w), s)): Either[E, ((S, Vector[W]), A)]
+            case State.Set(s2) => Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)]
+          } { case Writer.Say(v) => Right(((s, w :+ v), ())): Either[E, ((S, Vector[W]), A)] } }
+        case Bind(Effect(e), k) => split[Throws % E, State % S + Writer % W](e) {
+            case Throws(err) => Left(err)
+          } { e => split[State % S, Writer % W](e) {
+            case State.Get() => loop(s, w)(k(s))
+            case State.Set(s2) => loop(s2, w)(k(s2))
+          } { w0 => (w0: @unchecked) match
+                case Writer.Say(v) => loop(s, w :+ v)(k(())) } }
     loop(s, Vector.empty)(p)
   }
 }

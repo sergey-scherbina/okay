@@ -147,7 +147,9 @@ refuted run-time closure composition 3/3).
       programs for BOTH orders. Threshold ≥ 1.3x; below it the
       spec's Results record the refutation and the stages below
       are not built.
-- [ ] split-without-either — THE LEVER STAGE 0 FOUND: `<|>` allocates
+- [x] split-without-either — DONE 2026-09-09: -26.7 KB/op, 7–11% on the
+      hot loops, zero churn for the walks; specs/handler-fusion.md Stage A.
+      Was: THE LEVER STAGE 0 FOUND: `<|>` allocates
       an `Either` per operation in EVERY runner (≈20 KB of the 149 KB a
       fused right-nested pass allocates for 1000 ops). A split that
       answers by a flat class match with no wrapper — for nested and

@@ -13,7 +13,9 @@ import okay.RowLift.at
  * immutable and `resume` allocates fresh nodes on every walk, so the
  * same tree can be walked by every lane.
  *
- * Read B/op (-prof gc) before us/op. The cost model in the spec says
+ * Read B/op (-prof gc) before us/op. Stage A (split-without-either)
+ * moved the fused loops and the shipping runners onto `split`; the
+ * `<|>` numbers they replaced are the stage-0 rows in history.tsv. The cost model in the spec says
  * the nested run pays one Bind + one closure per operation per pass
  * that does not own it: on `nestedSW` every State operation once, on
  * `nestedTSW` every State operation once and every Writer operation
