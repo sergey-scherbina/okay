@@ -1,5 +1,42 @@
 # Changelog
 
+## taxi-algebra — the aggregation algebra against real data on real Spark
+
+`okay-spark`'s `TestTaxiAlgebra` (Live-tagged: it wants a downloaded
+file and a Spark session, so it stays out of the default gate) runs the
+P1 algebra over the NYC TLC's own January 2024 yellow-taxi parquet —
+2 318 848 card-paid trips, `local[4]`.
+
+- One `Aggregator` value, two runtimes, no rewrite: `aggregate(trips)`
+  on Spark reads 266 ms over the cached RDD, `Chunks.fold` over the
+  same collected rows 398 ms, and the results agree — counts exactly,
+  money to 1e-9 (Double addition is not exactly associative; the
+  assertion says so rather than pretending bit-equality).
+- `rides zip fares zip tipPct` under `groupBy(_.hour)` is three
+  statistics per hour of the day in ONE pass, and `tipPct` is itself
+  two sums presented as their ratio. Tips are card-only in this
+  dataset, so cash rides are filtered out rather than averaged in as
+  zeros; per-hour tips read 21-24%, which is what an analyst would
+  expect, where a mean of per-trip RATIOS read 49% at 3am off tiny
+  fares — a first version of this demo published that number to itself
+  before the filter was thought through.
+- The group earns the window: revenue per minute for the month (44 640
+  points), rolling. Subtracting what ages out costs 30.7 ms at a
+  60-minute window and 10.4 ms at 24 hours; recomputing each window
+  costs 143.6 ms and 3 613 ms. The recompute grows with the window,
+  the group does not. (Busiest hour of January 2024 ended 18:04 on the
+  4th with $125 121 in fares; busiest 24 hours ended 07:29 on the 26th
+  with $1.68M.)
+- And `sliding` over a Monoid-only element is a COMPILE ERROR, asserted
+  with `compileErrors`: "No given instance of type Group[Peak]". A
+  running maximum has no inverse and the type system says so.
+
+One ergonomics finding: `sliding` needs `Group[N]`, whose given is
+top-level in package `okay`, so a file importing only the names it uses
+gets "No given instance of type Group[Double]" until it also imports
+`okay.given`. The compiler's own suggestion (`import okay.given_Group_N`)
+is what the demo followed.
+
 ## readme-lanes — the front page was quoting the lanes this page stopped printing
 
 `lane-fairness` (2026-09-08) fixed the tables in docs/benchmarks.md and
