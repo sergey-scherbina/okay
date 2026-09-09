@@ -32,52 +32,13 @@ and not only in the new suite. 6 new tests, including every major
 type skipping to exactly the next field, the depth limit from both
 sides, and a truncated unknown field still being damage. Removed on
 the way: a `tname` parameter of the staged product reader that only
-the deleted error message used.
-## bracket-pairing — the "bracket costs 21%" row was two different workloads, and pairing them reversed the answer
-
-The sprint had `bracket-over-region` open since the §7 table: okay's
-`bracket` at 27–29 µs against the region's 22, "21%". Reading the two
-lanes before optimising anything showed they do not do the same work.
-The bracket lane performs a `Produce` effect INSIDE the scope and runs
-it through bracket's own nested drive; the region lane it was compared
-against performs a bare `Resource.acquire` and nothing else. That is
-the repo's own mismatched-pair rule, from the other side.
-
-Two lanes were added so each shape has both forms — `okayBracketPure`
-(bracket, nothing inside the scope) and `okayResourceUse` (region, one
-effect inside) — and measured with the gc profiler, because the box
-carried three sibling builds and `okayBracket` came back ±16 µs on a
-29 µs lane, a bar bigger than the effect it was being asked to price.
-Per 1000 steps:
-
-    nothing inside the scope   region 245 960 B/op   bracket 364 416 B/op
-    ONE effect inside          region 480 011 B/op   bracket 364 641 B/op
-
-So there are two prices, not one. A scope costs bracket 118 B more
-than a bare region acquire — the delay it needs before it may acquire,
-a Pure, a Bind, the closure capturing acquire/release/use, and the
-Pure its answer returns into — and that is structural, not waste. An
-operation performed inside the scope costs bracket 0.23 B, nothing:
-the use program runs to completion inside ONE suspension and the JIT
-scalarises the drive. The same operation costs the region 234 B,
-because a forwarded operation SUSPENDS the scope and `Resource.run`
-rebuilds the residual around it, guard closure and Inject and Bind and
-continuation, once per operation — its documented behaviour, now
-priced. The crossover is therefore at ONE operation: the region is 48%
-cheaper with nothing inside the scope, bracket is 24% cheaper with a
-single effect in it, and the gap grows from there.
-
-Nothing was optimised and nothing needed to be. The prediction
-registered in the claim — that the inner effect and the nested drive
-were the gap — was refuted by the first column, where the two bracket
-lanes differ by 225 bytes per 1000 steps. §7 carries the table and the
-guidance, BACKLOG's item is answered rather than deferred, and
-`src/jmh/history.tsv` has both rows. Landed as 4651c126. Gate:
-`compare/Jmh/compile` clean and warning-free, re-run after the rebase
-because master had gained `Optic.scala` under it; the lanes themselves
-ran to completion (JMH exit 0). No main or test source changed, so the
-matrix was not re-run — the JMH configuration is the one `sbt test`
-does not reach, and it is what this lane touches.
+the deleted error message used — and the full matrix caught what a
+scoped codec run could not, that okay-staging's RUN-TIME staged
+generator is a third caller of that helper. It has no unknown-field
+branch of its own, so all three decoders (the fold, the compile-time
+generated one, the run-time generated one) now answer alike through
+one place. That is the second time today a scoped run was green while
+another module was red; the matrix is the gate for a reason.
 
 ## optics-schema — the second carrier: optics over Json, and an edit that cannot drift from the wire
 

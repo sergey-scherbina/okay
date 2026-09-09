@@ -510,10 +510,9 @@ object RuntimeStaged {
           val absents: List[Expr[Either[String, Any]]] =
             fields.zipWithIndex.map { case ((name, fs), i) => absent(p, pe, i, name, fs) }
           val names = Expr(fields.map(_._1))
-          val tname = Expr(p.name)
           '{ $in.mapHeader().flatMap(n =>
                Staged.cborProduct[Any]($in, n, $names.toArray, Array(${ Varargs(readers) }*), Array(${ Varargs(absents) }*),
-                 $tname, xs => $pe.make(xs.toSeq))) }
+                 xs => $pe.make(xs.toSeq))) }
         case su: Schema.SSum[?] =>
           val here = s :: seen
           val tname = Expr(su.name)
