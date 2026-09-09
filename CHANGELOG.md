@@ -1,5 +1,56 @@
 # Changelog
 
+## optics-core — lenses on profunctors: the constraint is a type parameter, composition is the intersection, and the gate said where they may live
+
+The operator's direction (2026-09-09), specs/optics.md. An optic is
+`Optic[C[_[_,_]], S, T, A, B]` with `apply[P[_,_]](p: P[A,B])(using
+C[P]): P[S,T]`: the family IS the constraint (`Lens = Optic[Strong]`,
+`Prism = Optic[Choice]`, `Traversal = Optic[Traversing]`, an iso a
+bare `Profunctor`), and `andThen` yields `Optic[[P] =>> C[P] & C2[P]]`
+— the intersection type is the meet of the lattice, so lens ∘ prism ∘
+lens HAS the affine type and `Traversing[Function1]` satisfies it by
+subtyping. No composition table. Three interpretations: `Function1`
+(`modify`, `set`), `Forget[R]` (`get`; with a Monoid `preview`,
+`foldMap`, `toVector`), `Star[F]` (`traverseOf` for any Applicative —
+with `[x] =>> x ! Row` the effectful traversal in the effect row,
+which is the sentence Monocle cannot say). The field selector is
+CODE: `Lens[Person](_.age)` is a macro that reads only the selector's
+tree — the lambda is the getter, the setter is a generated
+`s.copy(…)`, a non-selector is refused with a message and a wrong
+field by the type checker itself — and `Lens.field[S]("name")`,
+typed by the Mirror through match types, stays beneath it for the
+place where a name is data (stage 1's Schema-derived optics). The
+macro policy in specs/codecs.md is restated as what both macros obey:
+a macro only reads, it never writes.
+
+Seven laws on the JVM, JS and Native from one file, the macro
+included: the lens laws for all three constructors, the prism laws
+(`Prism.some`, `Prism.of` over a hierarchy), the traversal laws,
+composition across every family pair, the `Star` traversal threading
+`State % Int` through the foci in order, and — after the gate — every
+interpretation's direct road against the derived default it replaces.
+
+THE GATE (JMH, per-lane minima on a quiet box; a round at load 60
+was discarded, its 1000-element lanes 6x slower for lane and control
+alike). First measurement: 12x, 17x, 30x, 5x, 5x — and decomposed,
+neither was the profunctor idea: the textbook `dimap(first(p))` builds
+a tuple per set, the Mirror setter walked iterator, array and Tuple.
+So `Strong` derives `lens` from `first` with the textbook formula as
+the default, `Choice` derives `prism`, `Traversing` derives
+`eachVector`, and each interpretation overrides with its direct road
+(`Function1`'s lens is `s => set(s, p(get(s)))`), held to the default
+by a test; the macro generates `copy`; the Mirror route replaces its
+array with a one-element-replaced view. After: one-field lens 3.1 ns
+against `copy` 1.8 (1.7x, 1.2 ns), `Lens.field` 2.4x, lens ∘ prism ∘
+lens 3.5x (a composed optic re-interprets on every `set`; `modify(f)`
+with a fixed f hoists), `Traversal.each.modify` 1.00x of `Vector.map`,
+fold 1.7x. The bar was 1.5x: the traversal clears it, the one-field
+lens sits on it, composition does not — so optics are a convenience
+and derivation layer, `Ui.patch` keeps its navigation (stage 2), and
+optics-fast is filed for a consumer that needs a cached
+interpretation. `Monoid[Vector[A]]` joined `Monoid`'s companion;
+`Monad[Option]` is global now at the operator's ask.
+
 ## module-facts — the component that opens the thing declares what it needs
 
 Stage 3 as first built read only a root's unresolved inputs, so a

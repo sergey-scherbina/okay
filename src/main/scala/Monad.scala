@@ -187,3 +187,17 @@ given Comonad[Id] with
     override inline def extract: A = a
     override inline def coflatMap[B](f: A => B): B = f(a)
   }
+
+/**
+ * Option is a Monad, globally (optics-core, at the operator's ask): the
+ * instance three direct-style suites each carried locally, so that
+ * `Star[Option]` — the traversal where one failing element fails the
+ * whole — and every other Option-shaped program find it with
+ * `import okay.given`. A suite's own local instance still wins by
+ * scope, so the three keep working unchanged.
+ */
+given Monad[Option] with
+  def pure[A](a: A): Option[A] = Some(a)
+  override def fmap[A, B](a: Option[A], f: A => B): Option[B] = a.map(f)
+  extension [A](a: Option[A])
+    def flatMap[B](f: A => Option[B]): Option[B] = a.flatMap(f)

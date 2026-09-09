@@ -105,9 +105,14 @@ as a workaround.
 ## codec-defaults — decode falls back to the declaration
 
 The reason this was filed is the design: Mirrors do not carry
-defaults, so the ONE macro this library allows itself reads what the
-compiler already wrote — the companion's `<init>$default$N` methods —
-and nothing else. Everything downstream stays ordinary values:
+defaults, so the macro here reads what the compiler already wrote —
+the companion's `<init>$default$N` methods — and nothing else. (This
+was "the ONE macro this library allows itself" until optics-core,
+2026-09-09, whose field selector `Lens[S](_.f)` is a second of the
+same kind; the policy is now stated as what both obey: A MACRO ONLY
+READS, IT NEVER WRITES — it may inspect a tree the compiler built and
+must generate nothing beyond a call to ordinary code. specs/optics.md
+Decisions.) Everything downstream stays ordinary values:
 
 - `SProduct` gains `defaults: Vector[Option[() => Any]]` (aligned
   with `fields`, empty when underived/unknown — every existing

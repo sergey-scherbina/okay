@@ -1914,6 +1914,26 @@ measure on our own data, never a predicted result.
       outside world instead of only with itself. Keep separate from
       the items above; it is a benchmark harness, not a feature.
 
+## optics (specs/optics.md)
+- [ ] optics-schema — stage 1: `Json.field/index/case` optics; the
+      second-order drift law (value lens and Json lens commute with the
+      codec); a prism per derived case; `Form.edit` through the optic
+      path with every form test unchanged.
+- [ ] optics-ui — stage 2: `Ui.key(k)`, `Ui.path(is)`, `Ui.everywhere`;
+      foldLocal/submit written with them; `Ui.patch` under `Ui.path`
+      only if stage 0's gate allowed it.
+- [ ] optics-state — stage 3: `zoom(lens)` over `State % S`, and the
+      type-changing version over `PState` (Atkey's parameterised state
+      IS the four-parameter lens, theory ch. 3).
+- [ ] optics-fast — the composed optic re-interprets on every `set`
+      (3.5x a nested copy, specs/optics.md Results); an interpretation
+      into a concrete affine (`preview` + `set`, built once) would make
+      `set(b)` a direct call. By a consumer that needs it; none does.
+- [ ] theory-optics — chapter 10 of the textbook: Tambara modules,
+      existential ≅ profunctor by Yoneda, the type-changing lens and
+      parameterised state as one picture (Pickering–Gibbons–Wu 2017,
+      Boisseau–Gibbons 2018, Clarke et al. 2020, Riley 2018).
+
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [x] ui-vocab — LANDED 2026-09-09 (see specs/frontend.md Results). Original: Box with weights/gap/pad
       (Row/Column as aliases), style tokens, Image, Input kinds,
