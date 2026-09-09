@@ -86,7 +86,9 @@ correctness first:
       pg ErrorResponse's SQLSTATE and from `SQLException.getSQLState`.
       Test: two connections, SSI conflict on pg (Live), and a fake
       driver that fails N times (unit).
-- [ ] sql-temporal-types — `SqlValue` has no timestamp/date/time/uuid/
+- [x] sql-temporal-types — DONE 2026-09-09 (e3c7d563, 728ceb37): the five
+      cases, Temporal, java.time givens on the JVM, three drivers, Delta;
+      the H2 Calendar road refuted on the way. Was: `SqlValue` has no timestamp/date/time/uuid/
       json: they travel as Text under `SqlType.Other`, so every
       `created_at timestamptz` is hand-parsed per field. Add
       `SqlValue.Timestamp(Instant)`, `Date(LocalDate)`, `Time`,

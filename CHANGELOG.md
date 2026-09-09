@@ -1,5 +1,33 @@
 # Changelog
 
+## sql-temporal-types — Timestamp/Date/Time/Uuid/Json in the seam, java.time fields on the JVM, and the H2 Calendar road refuted
+
+Lane 3 of the persistence audit. A `timestamptz`/`date`/`time`/`uuid`/
+`json` column travelled as Text under `SqlType.Other` and was
+hand-parsed per field in the engine's own print form. The seam now
+carries them as platform-neutral numbers (micros since the epoch UTC,
+days, micros of day, `java.util.UUID`, json text) with SqlType mirrors;
+`okay.sql.Temporal` renders ISO UTC and parses pg/H2/ISO forms with
+offsets, no java.time (the module runs on JS and Native). Fields:
+`Schema[UUID]` everywhere, `Schema[Instant/LocalDate/LocalTime]` on the
+JVM, known to the typed layer by the identity of the given
+(`Typed.Known`, the one cast isolated in `Known.find`, the platform's
+table in `JavaTime.known`). All three drivers decode and bind natively;
+a String field still reads every such column as ISO text; okay-delta
+maps Timestamp/Date to Delta's own micros/days. FOUND ON THE WAY: JDBC's
+`setTimestamp(ts, utcCalendar)` into an H2 `timestamp with time zone`
+stores the calendar's wall clock with the SESSION's offset — two hours
+wrong, hidden in the isolated suite because the Calendar read reversed
+it, exposed by the full matrix (DuckDB's suite first in the same JVM).
+The JDBC road now binds by the declared parameter type (OffsetDateTime
+at UTC into timestamptz, the UTC wall-clock LocalDateTime into
+timestamp) and reads by the column's JDBC code; SQLite-class drivers
+fall back to ISO text. Tests: Temporal on JVM+JS+Native; H2, pg wire
+(session zone Europe/Kyiv, a timestamptz[] into Vector[Instant]),
+R2DBC H2/pg round trips. Landed as e3c7d563 + 728ceb37; specs/sql.md
+"Temporal, uuid and json values". Gate: full matrix, 3137 tests, 0
+failures, 0 warnings.
+
 ## split-without-either — the row split with no wrapper per operation: −18% allocation, 7–11% on the hot loops
 
 Stage A of specs/handler-fusion.md, the lever stage 0 found: `<|>`
