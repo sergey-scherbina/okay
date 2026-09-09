@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- intent-period-month-forms — `Temporal.period`'s bare month matches the month's own inflected forms, not the lexicon's prefixes («майстер» was May). Claimed 2026-09-09.
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
