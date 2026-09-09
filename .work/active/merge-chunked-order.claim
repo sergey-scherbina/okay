@@ -1,0 +1,59 @@
+task: merge-chunked-order
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/merge-chunked-order
+worktree: ../okay-wt-mergeorder
+
+why: the only known REAL defect open. Found by gate-honesty's own
+  gate and filed rather than guessed at; taking it now because a
+  finding nobody chases is the worst state a finding can be in — the
+  same reasoning that made actor-stop-drain today's most valuable
+  work.
+
+the evidence, and why it is not one of the day's false alarms:
+
+    okay.TestStream "merge(chunked): the same elements as merge ..."
+    obtained: 1..16, 49, 50, 17..48   (source a's OWN elements)
+
+  - nothing lost, nothing duplicated: 100 elements, both `.sorted`
+    assertions passed. So not truncation.
+  - 0.068 s. So not starvation, which is what kafka (237 s against
+    0.084 s alone) and intent (39 s against 0.059 s) were.
+  - nothing early or extra, which is what the two okay.ui failures
+    were: a `Thread.sleep` used as a synchronisation point.
+
+  A later chunk of ONE source overtook an earlier chunk of the SAME
+  source. Five isolated runs of the suite passed, so it wants
+  contention.
+
+THE QUESTION IS THE CONTRACT, and it must be settled before any fix.
+  `Source.merge`'s doc is long — chunk size, capacity, `flushAfter`,
+  why the size is not a parameter — and says NOTHING about order
+  within a source. Two outcomes, both legitimate:
+
+  a) per-source order IS the law. Then the chunked path has a race
+     and the code is wrong.
+  b) it is not promised for `chunked = true`. Then the TEST asserts
+     more than the contract — and the contract must then SAY SO out
+     loud, because "merge" naturally reads as interleaving sources
+     without reordering within one. Silently weakening the test would
+     leave the next reader with the same wrong expectation.
+
+DISQUALIFYING EVIDENCE, registered before the work:
+
+  - no failing repro, no fix. Five isolated runs are green, so a
+    green run proves nothing here. Today's method applies: when the
+    CONDITIONS cannot be reproduced, reproduce the MECHANISM — for
+    the ui pair that meant setting a sleep to zero, and it worked in
+    a minute after a 28-spinner load harness had failed.
+  - I must not decide the contract by reading my own expectation into
+    it. If the design intent is (b), the merge is correct and my
+    instinct is the thing that is wrong.
+  - `Chunks.merge` is a DIFFERENT function the doc points at for
+    already-chunked streams. Whatever I find must be attributed to
+    the right one.
+
+predict: (a) — a race, in how chunks reach the channel rather than in
+  the merge's own logic, and most likely around the `capacity /
+  ChunkSize` slot arithmetic the doc describes. Recorded so being
+  wrong shows.
