@@ -1,7 +1,7 @@
 task: obs-log
 agent: opus5-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T11:12:40Z
+heartbeat: 2026-09-09T11:35:51Z
 status: in-progress
 branch: feature/obs-log
 worktree: ../okay-wt-obs-log
@@ -22,4 +22,5 @@ what: okay-obs Log — a Line VALUE with a Schema (level, message,
   collector reads), topic (the span treatment), collecting (tests).
   Tracer gains a public `context`.
 
-next: spec section, code, tests, docs, gate, land
+next: committed 684e7a3c, okay-obs green on all three platforms;
+  waiting for a quiet box for the full matrix, then land

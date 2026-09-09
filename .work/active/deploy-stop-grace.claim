@@ -1,7 +1,7 @@
 task: deploy-stop-grace
 agent: opus5-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T11:29:38Z
+heartbeat: 2026-09-09T11:35:51Z
 status: in-progress
 branch: feature/deploy-stop-grace
 worktree: ../okay-wt-deploy-stop-grace
@@ -20,4 +20,5 @@ what: Health gains stopSeconds (default 30, above the lifecycle's
   preStop hook: the process handles SIGTERM itself (okay-ops Signals).
   Regenerate the committed renderings; the drift tests hold them.
 
-next: read each renderer, add the field, regenerate, gate, land
+next: committed 1c5ccb5d, scoped tests green (deploy 119, demo drift 3);
+  QUEUED behind obs-log for the box — gate the full matrix, then land
