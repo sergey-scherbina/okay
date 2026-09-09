@@ -367,22 +367,33 @@ catches. The fix is in the core: `Resource.run` forwards an Async
 operation GUARDED — a `Run` whose thunk throws and an `Await` whose
 callback answers Left release the finalizers first. First cut: one
 cast in `Resource.guardAsync`, argued in place. Then (resource-guard,
-the operator's call): the hook is a typeclass, `okay.Failing[F]`, and
-the cast is gone — `Async`'s instance is a GADT match, the row
-instances are anchored on `Async` at either side of `+` and split by
-Async's own `TypeableK` through the kernel `<|>` (the one place a row
-is ever cast), coming back by plain upcast; a row without Async gets
-the low-priority identity. `Resource.run` takes `(using Failing[F])`.
-Measured on the way: an UNANCHORED `Failing[F + G]` instance is
-selected by dotty but cannot pin `F` (ambiguous `TypeableK[F]`), which
-is why the instances name `Async` explicitly; `Async`, `Async + G`,
-`G + Async`, `(Async + F) + G` and `(F + G) + Async` all resolve
-(TestResource's row case; the probe itself is in the lane's commit).
+the operator's call): the hook became a typeclass, `okay.Failing[F]`,
+`Resource.run` taking `(using Failing[F])`. Its instances are anchored
+on `Async` at either side of `+` and split by Async's own `TypeableK`
+through the kernel `<|>` — an UNANCHORED `Failing[F + G]` is selected
+by dotty but cannot pin `F` (ambiguous `TypeableK[F]`).
+
+**Corrected the same day (row-typeclass-recipe).** That lane claimed
+the anchored set covered `(Async + F) + G` and `(F + G) + Async` too.
+It does not: `summon` succeeded there, but what answered was the
+low-priority IDENTITY, so a deeper row was silently unguarded — the
+defect this hook exists to prevent, reintroduced by a probe that read
+"an instance was found" as "the instance guards". The fallback is now
+TOTAL (`Failing.anyRow`: the operation's own class, one cast,
+documented in docs/typepedia.md's cast list), the typed anchored
+instances answer the shapes that actually occur, and `TestFailing`
+walks the nestings and asserts that BOTH roads guard.
 
 - [x] core: a forwarded `Async.Run` that throws, and an `Await` that
       answers Left, both release (TestResource); on a ROW `Async +
       Throws` the Async half is found through `Failing` and released
       (resource-guard)
+- [x] every nesting is guarded, by the typed instance or the total
+      fallback: `Async`, `Async + G`, `G + Async`, `(Async + S) + P`,
+      `(S + P) + Async`, `(S + Async) + P` and a right-nested row; an
+      Async-free row is returned untouched (TestFailing,
+      row-typeclass-recipe — the shapes are the test, so a future
+      instance that moves the boundary moves it visibly)
 - [x] H2: a failing statement inside a region — the brake runs,
       autocommit is restored, the insert before it is gone, the next
       region begins

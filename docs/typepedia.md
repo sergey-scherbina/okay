@@ -447,6 +447,15 @@ and nothing else in the library casts for that reason:
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the
   ascription is where the refined value meets the loop's type.
+- **`Failing.anyRow`** (Resource's forwarded-failure hook) — the
+  TOTAL road of the row-typeclass recipe below: the class test proves
+  the operation is an `Async.Run`/`Async.Await`, the replacement is
+  the same constructor at the same answer type, and only the erased
+  `F[X]` cannot say so. It is the LOW-priority instance; the typed
+  ones above it (anchored on `Async`) answer for every shape a
+  `Resource.run` in this repository actually passes, so the cast
+  serves the shapes the compiler cannot pin — and it is there because
+  the alternative was measured and was SILENCE (see the recipe).
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for
@@ -521,6 +530,48 @@ val s2 = step("two");   import s2.given   // sees s1's ctx
 Mechanism: NAME shadowing (different member names restore
 ambiguity — E7). FOOTGUN, stated: a forgotten `import sN.given`
 silently uses the stale context; there is no error.
+
+## The row-typeclass recipe: a typeclass over `F + G` (row-typeclass-recipe)
+
+A typeclass indexed by a ROW — `Failing[F]` is the worked example, and
+`Handler` is the older one — cannot be derived the obvious way, and the
+reasons are measured rather than argued:
+
+- **An unanchored `given [F[+_], G[+_]]: TC[F + G]` does not work.**
+  dotty selects it and then cannot pin `F`: splitting needs
+  `TypeableK[F]`, and against a free `F` that query is ambiguous
+  (`TypeableK[Vector]` and `TypeableK[Op]` both match). `Handler`
+  meets the same wall one step earlier and worse — an implicit row
+  given enters scope for EVERY `Handler` query and crashes the 3.7.1
+  type comparer — which is why `Handler.union[F, G]` is called BY
+  NAME at a concrete call site and never given implicitly.
+- **Anchor the instance on the CONCRETE effect instead.**
+  `given [G]: TC[Async + G]` and `given [F]: TC[F + Async]` pin
+  everything: the split runs on `Async`'s own `TypeableK` through the
+  kernel `<|>`, the branches come back by plain upcast, and no cast
+  appears. This is the typed road, and it covers `Async`, `Async + G`
+  and `G + Async` — which is every row a `Resource.run` in this
+  repository passes today.
+- **The anchors are NOT the whole story, and the gap is silent.**
+  `A + B + C` nests to the left, so `(Async + S) + P` is not
+  `Async + ?G` to the implicit search and no anchored instance
+  matches. With only anchors plus an identity fallback, such a row
+  compiles, resolves, and does NOTHING — the finalizers are abandoned
+  exactly as before the fix, with no error anywhere. That was measured
+  (TestFailing) after a first probe read `summon` succeeding as
+  "resolved" when what had answered was the identity.
+- **So the fallback must be TOTAL, not typed.** `Failing.anyRow`
+  tests the OPERATION's own class rather than the row's shape, casts
+  once, and is correct for every nesting — the low-priority instance,
+  so the typed ones win where they apply. A typeclass over rows ends
+  up with two roads on purpose: the typed one for the shapes that
+  occur, the total one so an unusual shape fails loudly or not at all.
+
+The rule that survives all of it: **when a typeclass over a row can be
+answered wrongly by a default, the default must be total; when it can
+only be answered by the shape, anchor it on a concrete effect.** An
+identity default is the one thing to refuse — it turns a type-level
+miss into a runtime silence.
 
 ## The capability recipe: adding a door to any API (ctx-everywhere)
 
