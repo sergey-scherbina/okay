@@ -52,6 +52,50 @@ a documented wire is a mapping, exactly as OTLP was.
   the deploying team's own infrastructure, out of this repo's reach
   and out of scope here (filed: deploy-package, deploy-k8s).
 
+## Graceful shutdown (service-lifecycle, 2026-09-09)
+
+The microservices audit found no server here that DRAINS: a
+`Resource` release calls `stop()` and every request in flight is
+cut, and Kubernetes does that at every rollout. The standard
+sequence is fixed by how Kubernetes works, not by taste:
+
+1. **Readiness flips first.** `/readyz` answers 503 the moment a
+   stop is asked for, while `/healthz` stays 200 — a pod that goes
+   un-live is RESTARTED, a pod that goes un-ready is taken out of
+   the Service's endpoints, which is what we want.
+2. **A readiness delay.** Endpoint removal propagates in seconds;
+   during that window new requests still arrive. They are answered
+   503 with `Connection: close`, so a client retries elsewhere.
+3. **In-flight requests finish**, up to a grace period.
+4. **The server stops** — the region's release, unchanged.
+
+`Lifecycle` is the value that carries it: a draining flag, an
+in-flight count, `route(routes)` that counts and refuses, `drain
+(grace)` that waits, and stats with a Schema. `Ops.routes(store,
+lifecycle = Some(l))` makes `/readyz` read it. On the JVM
+`Lifecycle.awaitSignal(l, readinessDelay, grace)` blocks the main
+thread until SIGTERM/SIGINT (a shutdown hook), runs steps 1–3, and
+returns so the region can run step 4 — the demo's
+`Thread.sleep(Long.MaxValue)` becomes exactly that call. The
+shutdown hook joins the main thread, so the JVM does not exit
+before the release has run.
+
+## RED metrics (service-lifecycle, 2026-09-09)
+
+`/metrics` knew the store and, since resilience-http, the guards —
+but not the REQUESTS: no rate, no errors, no duration per route,
+and nothing for outbound clients. `Red(name)` is a value keeping,
+per label, requests by status class, errors (a 5xx or a throw) and
+a duration histogram in Prometheus's own cumulative-bucket shape;
+`red.route(label)(routes)` wraps a server's routes, `red.http(label)
+(inner)` an outbound `Http`, and `Prom.red(rs)` renders
+`okay_http_requests_total{name,route,class}`,
+`okay_http_errors_total` and
+`okay_http_request_duration_seconds_{bucket,sum,count}` — a
+histogram a `histogram_quantile` reads directly. The clock is
+injected, as everywhere in this stack, so a duration bucket is
+testable without sleeping.
+
 ## Behavior
 
 - [x] `Ops.health(store)` answers live/ready by calling `store.stats`;
@@ -73,6 +117,38 @@ a documented wire is a mapping, exactly as OTLP was.
       the same acceptance move `TestChatDemo` already makes for
       every other route
 
+Graceful shutdown:
+
+- [x] `Lifecycle.route` counts requests in flight (up on entry, down
+      on every exit — an answer, a throw) and, once draining, answers
+      new ones 503 with `Connection: close` without running them
+- [x] `/readyz` is 503 `ready=false (draining)` once draining while
+      `/healthz` stays 200; before draining both are as before
+- [x] `drain(grace)` answers true once in-flight reaches zero and
+      false when the grace runs out with requests still in flight;
+      a request that completes during the drain is the wake-up
+- [x] `awaitSignal` (JVM): a SIGTERM delivered to the process runs
+      readiness-off → delay → drain and returns to the caller, and
+      the JVM waits for the caller's release before exiting (tested
+      in-process by firing the hook's own action, not by killing the
+      test JVM)
+- [x] the demo holds its region open with `awaitSignal` instead of
+      an infinite sleep, and `/readyz` reads the lifecycle
+
+RED metrics:
+
+- [x] `red.route(label)` counts a 200 as a request in class `2xx`, a
+      404 in `4xx`, a 503 as a request AND an error, a throw as an
+      error with class `exception` — and the throw still propagates
+- [x] durations land in the right cumulative buckets under an
+      injected clock; `sum` and `count` agree with the requests
+- [x] `red.http(label)` does the same around an outbound client,
+      a dropped wire counted as an error
+- [x] `Prom.red` renders the Prometheus histogram shape: `_bucket`
+      rows with `le`, cumulative, a `+Inf` row equal to `_count`,
+      then `_sum` and `_count`; `Ops.routes(..., red = Vector(r))`
+      serves them at `/metrics`
+
 ## Out of scope
 
 - a metrics PUSH gateway, a StatsD/OTLP-metrics exporter — this box
@@ -93,6 +169,23 @@ a documented wire is a mapping, exactly as OTLP was.
 
 ## Decisions
 
+- **Draining is a route wrapper, not a server feature** — the three
+  servers here (JDK, Jetty, Netty) all take a `PartialFunction
+  [Request, Response ! Async]`, so one wrapper serves all three and
+  a fourth; a per-server hook would be written three times and
+  differ. Rejected: `server.stop(gracePeriod)` (Jetty has one, the
+  JDK server has a crude one, Netty none — and none of them flips
+  readiness first, which is the step that matters).
+- **The drain waits by polling, 20 ms** — a shutdown path runs once
+  per process; waking waiters from the in-flight counter is code
+  that would exist only for it. Revisit if a drain ever needs to be
+  precise to the millisecond.
+- **RED, not a metrics library** — the same ruling as the rest of
+  this spec: a value with a Schema and a pure rendering. Buckets are
+  fixed (5 ms … 10 s, the usual HTTP set) rather than configurable:
+  a histogram whose buckets differ per service cannot be aggregated
+  across them, which is the one thing a histogram is for.
+
 - **A mapping, not a dependency** — the same ruling obs.md already
   made for OTLP: Prometheus text and the Kubernetes probe contract
   are DOCUMENTED WIRES, so this module writes the string, never
@@ -108,6 +201,19 @@ a documented wire is a mapping, exactly as OTLP was.
   manifest flavor) without touching `okay-ops`.
 
 ## Results
+
+**service-lifecycle (2026-09-09).** `Lifecycle` (shared), `Signals`
+(JVM: the shutdown hook that wakes `awaitSignal` and joins the main
+thread), `Red` with `Series`/`Count` values and `Prom.red` in the
+histogram shape, `Ops.routes(..., lifecycle, red)`. 15 tests in
+okay-ops (6 shared, cross-platform; 2 JVM for the stop sequence,
+fired in-process). The demo's `main` now drains on SIGTERM instead
+of sleeping for ever, its `/readyz` reads the lifecycle and every
+route is measured. Not done here: the rendered Kubernetes manifest
+does not yet set `terminationGracePeriodSeconds` (BACKLOG
+deploy-termination-grace) — the drift test on the committed
+rendering makes that its own small lane.
+
 
 Landed 2026-09-02 (ops-monitoring): a new JVM/JS module `okay-ops`
 (the Native leg was not built — its routes need `okay-http`, which

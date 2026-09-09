@@ -848,6 +848,10 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .jvmSettings(
+    // the shutdown hook (Signals) is the JVM's own; the routes and
+    // the values stay shared
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )

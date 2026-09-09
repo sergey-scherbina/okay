@@ -51,6 +51,46 @@ object Prom:
         sb += '\n'
     sb.result()
 
+  /** the lifecycle as two gauges and a counter */
+  def lifecycle(l: Lifecycle): String =
+    val s = l.stats
+    val sb = new StringBuilder
+    sb ++= "# HELP okay_lifecycle_draining 1 while the process is draining, else 0\n# TYPE okay_lifecycle_draining gauge\n"
+    sb ++= s"okay_lifecycle_draining ${if s.draining then 1 else 0}\n"
+    sb ++= "# HELP okay_lifecycle_in_flight requests being answered now\n# TYPE okay_lifecycle_in_flight gauge\n"
+    sb ++= s"okay_lifecycle_in_flight ${s.inFlight}\n"
+    sb ++= "# HELP okay_lifecycle_refused_total requests refused while draining\n# TYPE okay_lifecycle_refused_total counter\n"
+    sb ++= s"okay_lifecycle_refused_total ${s.refused}\n"
+    sb.result()
+
+  /**
+   * RED per route, in Prometheus's histogram shape: `_bucket` rows
+   * CUMULATIVE with `le`, a `+Inf` row equal to `_count`, then `_sum`
+   * (seconds) and `_count` — what `histogram_quantile` reads.
+   */
+  def red(rs: Vector[Red]): String =
+    val all = rs.map(_.stats).filter(_.series.nonEmpty)
+    if all.isEmpty then return ""
+    val sb = new StringBuilder
+    def labels(name: String, route: String, more: String = ""): String =
+      s"""name="${esc(name)}",route="${esc(route)}"""" + more
+    sb ++= "# HELP okay_http_requests_total requests by status class\n# TYPE okay_http_requests_total counter\n"
+    for st <- all; se <- st.series; c <- se.byClass.sortBy(_.cls) do
+      sb ++= s"""okay_http_requests_total{${labels(st.name, se.route, s""",class="${c.cls}"""")}} ${c.n}\n"""
+    sb ++= "# HELP okay_http_errors_total 5xx answers and throws\n# TYPE okay_http_errors_total counter\n"
+    for st <- all; se <- st.series do
+      sb ++= s"okay_http_errors_total{${labels(st.name, se.route)}} ${se.errors}\n"
+    sb ++= "# HELP okay_http_request_duration_seconds how long a request took\n# TYPE okay_http_request_duration_seconds histogram\n"
+    for st <- all; se <- st.series do
+      var acc = 0L
+      for (bound, n) <- Red.buckets.zip(se.buckets) do
+        acc += n
+        sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, s""",le="${bound / 1000.0}"""")}} $acc\n"""
+      sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, """,le="+Inf"""")}} ${se.requests}\n"""
+      sb ++= s"okay_http_request_duration_seconds_sum{${labels(st.name, se.route)}} ${se.sumMillis / 1000.0}\n"
+      sb ++= s"okay_http_request_duration_seconds_count{${labels(st.name, se.route)}} ${se.requests}\n"
+    sb.result()
+
   /**
    * The resilience pieces' stats (specs/resilience.md, stage 1):
    * `name` is the label, gauges for what IS, counters for what
