@@ -22,6 +22,13 @@ sum of both. The committed demo renderings are regenerated through
 `DemoDeploy`'s own main, and the drift test that caught them is green
 again. 1 new test.
 
+Found by the full matrix and worth stating: there are TWO committed
+renderings, not one — `okay-demo/deploy` and `okay-script/deploy` —
+and each has its own drift test in its own module. A scoped run of
+`okayDeploy/test` plus the demo's drift test passed while
+`okay.script.TestScriptDeploy` was red. Anything that changes a
+renderer regenerates both mains.
+
 ## chunked-lexer-bookkeeping — the named residual was not it either, and the byte counts found the real one
 
 §10 had already refuted one explanation for chunked lexing's 19% gap
