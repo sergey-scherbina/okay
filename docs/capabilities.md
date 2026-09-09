@@ -163,6 +163,13 @@ deleted:
 - **Modules are ordinary values.** An environment is a `val`; a
   test override is `and` with one more layer; there is nothing to
   configure and no reflection anywhere.
+- **Lifecycle is the region's.** A `Module[F]` (specs/di.md) is a
+  `Providing[F]` that has not been built yet — `module[Db](open)(close)`
+  acquires inside `Resource.run`, which releases in reverse order
+  whatever the program did. `and` builds its right operand INSIDE the
+  left's context, so a module needing an earlier one is written
+  `Db ?=> Module[…]` and reads it with `wire[Db]`: the dependency
+  graph is the composition, and the compiler checks it.
 
 Two design rules keep it honest. **Environment vs. resource**: a
 capability should be an *environment* — `Http`, `Secrets`, `Crypto`,

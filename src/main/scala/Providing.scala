@@ -71,3 +71,48 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
   def pure[A](a: A): E ?=> A = a
   extension [A](fa: E ?=> A)
     def flatMap[B](f: A => E ?=> B): E ?=> B = f(fa)
+
+/**
+ * A module is an installer that has not been built yet (specs/di.md):
+ * `Providing[F]` holds READY values, a `Module[F]` builds them in the
+ * `Resource` effect — so opening a pool, starting a server, and
+ * closing both at the end of the scope, in reverse order, is the
+ * region's obligation and not the caller's.
+ *
+ * {{{
+ *   val db   = module[Db](Db.open(url))(_.close)
+ *   val pool = module[Pool](Pool.over(wire[Db]))(_.close)   // Db ?=> Module[...]
+ *   val app  = (db and pool) { wire[Pool].borrow() }        // : Int ! Resource
+ *   Resource.run(app)
+ * }}}
+ *
+ * `and` takes its right operand INSIDE the left's context, `F[Module[G]]`:
+ * a plain module coerces (a value is a context function that ignores
+ * its argument), and a module whose acquisition needs an earlier one
+ * reads it with `wire[Db]` — so the dependency graph is written in
+ * the composition and checked by the compiler: an acquisition naming
+ * a capability no module before it installs does not compile. Left
+ * acquires first, so the right (inner) releases first; nesting order
+ * and the override story are `Providing.and`'s, unchanged.
+ *
+ * A class, not an alias over the program: an extension `apply` on
+ * `Providing[F] ! Resource` typed `m { wire[Db].q }` without the
+ * expected type, and the body eagerly applied (the E10 trap) — the
+ * same body against a class method types as it does on `Providing`.
+ */
+final class Module[F[_]](val build: Providing[F] ! Resource):
+  /** compose; the right operand is built inside the left's context, and is the inner layer */
+  infix def and[G[_]](that: F[Module[G]]): Module[[X] =>> F[G[X]]] =
+    new Module(build.flatMap(p => p(that).build.map(q => p and q)))
+  /** install everything and run the body inside the scope */
+  def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
+
+object Module:
+  /** a module with nothing to build or release — a test double, a config value */
+  def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p))
+  /** the same, from the bare value */
+  def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
+
+/** acquire one capability in the scope; the scope releases it */
+def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
+  new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
