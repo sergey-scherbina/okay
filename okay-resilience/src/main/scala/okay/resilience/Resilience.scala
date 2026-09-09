@@ -1,6 +1,6 @@
 package okay.resilience
 
-import okay.{Async, !}
+import okay.{Async, !, +, TypeableK}
 import okay.!.{Effect, resume}
 import okay.Free.{Bind, Pure}
 
@@ -73,6 +73,57 @@ object Attempt:
     next match
       case Right(p) => apply(p)
       case Left(t) => Pure(Left(t))
+
+  /**
+   * The same observation over a ROW: guard the `Async` operations,
+   * pass every other one through untouched, and answer when the whole
+   * program ends. A streaming seam needs this — `okay.llm.Transport`
+   * posts and tells its response lines, so its program is
+   * `Unit ! (Writer % String + Async)` and the plain `apply` above
+   * cannot see it (resilient-transport).
+   *
+   * `Async` is tested rather than `F` because its erasure is a
+   * concrete enum; `F` is taken by exclusion, which is what `<|>`
+   * documents as the sound direction.
+   */
+  def in[A, F[+_]](p: A ! (F + Async))(using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
+    val head = try Right(p.resume) catch case t: Throwable => Left(t)
+    head match
+      case Left(t) => Pure(Left(t))
+      case Right(h) => (h: @unchecked) match
+        case Pure(a) => Pure(Right(a))
+        case Effect(e) => split(e, (x: A) => Pure(x))
+        case Bind(Effect(e), k) => split(e, k)
+
+  /** one operation of the row: ours to guard, or someone else's to relay */
+  private def split[X, A, F[+_]](e: Async[X] | F[X], k: X => A ! (F + Async))
+                                (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
+    okay.<|>[Async, F].apply[X](e) match
+      case Left(a) => stepIn(a, k)
+      case Right(f) =>
+        okay.effect[F + Async, X](f).flatMap(x => continueIn(k, x))
+
+  private def continueIn[X, A, F[+_]](k: X => A ! (F + Async), x: X)
+                                     (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
+    val next = try Right(k(x)) catch case t: Throwable => Left(t)
+    next match
+      case Right(p) => in(p)
+      case Left(t) => Pure(Left(t))
+
+  private def stepIn[X, A, F[+_]](e: Async[X], k: X => A ! (F + Async))
+                                 (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) = e match
+    case Async.Run(f) =>
+      okay.effect[F + Async, Either[Throwable, X]](
+        Async.Run(() => try Right(f()) catch case t: Throwable => Left(t))).flatMap {
+        case Right(x) => continueIn(k, x)
+        case Left(t) => Pure(Left(t))
+      }
+    case Async.Await(reg) =>
+      okay.effect[F + Async, Either[Throwable, X]](
+        Async.Await(cb => reg(r => cb(Right(r))))).flatMap {
+        case Right(x) => continueIn(k, x)
+        case Left(t) => Pure(Left(t))
+      }
 
   // `k` is the continuation the GADT match typed at X
   private def step[X, A](e: Async[X], k: X => A ! Async): Either[Throwable, A] ! Async = e match

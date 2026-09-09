@@ -49,6 +49,23 @@ final class Breaker(val name: String, failures: Int, openMillis: Long,
         }
     }
 
+  /**
+   * The same guard over a ROW: for a seam whose program streams
+   * (`okay.llm.Transport` and friends), so the circuit sees the whole
+   * call and not merely its first operation (resilient-transport).
+   */
+  def protectIn[A, F[+_]](prog: => A ! (F + Async))
+                         (failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
+                         (using okay.TypeableK[Async]): A ! (F + Async) =
+    okay.effect[F + Async, Option[Option[Long]]](Async.Run(() => admit())).flatMap {
+      case Some(wait) => throw Refused.BreakerOpen(name, wait)
+      case None =>
+        Attempt.in[A, F](prog).map { r =>
+          record(failing(r))
+          r.fold(t => throw t, identity)
+        }
+    }
+
   /** None: go; Some(wait): refused, with the remaining open time when
     * it is known (a probe already in flight has none to promise) */
   private def admit(): Option[Option[Long]] =

@@ -216,12 +216,56 @@ Stage 2 — proving it under faults:
       adversary; the composite under a plan behaves per the
       pieces' contracts (breaker opens on the drops, hedging hides
       the delays, the deadline bounds the whole)
+## The other seams (2026-09-09, resilient-transport)
+
+`Resilient.http` fits the shape `Request => Response ! Async`, and
+the audit that produced this spec then found the awkward fact: the
+ONE live outbound path in this repository does not have that shape.
+`okay.llm.Transport` is `post(url, headers, body): Unit ! (Writer %
+String + Async)` — it posts and then TELLS its response lines — and
+`okay.mcp.Link` and `okay.cluster.Remote` are the same kind. Every
+LLM call in okay-demo, okay-agent and okay-chat was therefore
+unguarded, which is precisely backwards: an LLM API is the thing in
+this stack most likely to answer 429 or 529.
+
+The pieces were already generic over `A ! Async`; only the composed
+convenience was Http-shaped. What was missing is that a STREAMING
+program's row is `F + Async`, and `Attempt` — the observation the
+breaker and the bulkhead are built on — walked `Async` alone.
+`Attempt.in` walks the row instead: it guards the `Async` operations
+and passes every other one through untouched. `Breaker.protectIn`,
+`Bulkhead.limitIn` and `Limiter.admitIn` are the pieces' own row
+variants over their own private state, and `Resilient.guarded`
+composes the three.
+
+The property that makes this worth having, and the one the test is
+named after: **the permit spans the whole stream**. A guard that
+released when the first line came out would let N callers into a
+seam with one permit. The test parks a seam mid-stream, after its
+first line, and asserts the permit is still held and a second caller
+still refused.
+
+Deliberately NOT a dependency per seam: okay-resilience knows
+nothing about llm, mcp or cluster; a caller wires this at its own
+edge in three lines.
+
+- [x] a guarded stream tells every line, and the guards are
+      transparent when nothing refuses
+- [x] a failure PART-WAY through the stream is the breaker's
+      failure, and the lines told before it stand
+- [x] the permit spans the whole stream: parked mid-stream, the
+      permit is held and a second caller is refused
+- [x] the limiter refuses before the seam is touched at all
+- [x] no guards is the program unchanged
+
 - [ ] adaptive concurrency (a bulkhead whose permits follow observed
       latency, Netflix's gradient) is DEFERRED with a measured reason
       or landed here — not before stage 1 is in use. Status
       2026-09-09: deferred, unmeasured — nothing in the tree wires
-      `Resilient.http` into a service yet, so there is no latency to
-      follow; the box stays open until there is
+      these guards into a service yet, so there is no latency to
+      follow; the box stays open until there is. resilient-transport
+      removed the OBSTACLE (the live outbound path can now be
+      guarded) but wiring it into okay-demo is its own lane
 
 ## Out of scope
 

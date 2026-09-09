@@ -115,6 +115,26 @@ val client = Resilient.http(Transports.http(), breaker = Some(breaker), balanced
 client.send(Request.get("http://orders/v1/orders/42"))
 ```
 
+**Seams that stream.** `Resilient.http` fits `Request => Response !
+Async`. The repo's other seams — `okay.llm.Transport`, `okay.mcp
+.Link`, `okay.cluster.Remote` — post and then TELL their answer, so
+their programs are `A ! (F + Async)`. `Resilient.guarded` is the same
+order for those, and the pieces have row variants of their own
+(`protectIn`, `limitIn`, `admitIn`):
+
+```scala
+val guardedTransport: Transport = new Transport:
+  def post(url: String, headers: Map[String, String], body: String) =
+    Resilient.guarded(inner.post(url, headers, body),
+      breaker = Some(breaker), limiter = Some(limiter), key = "anthropic")
+```
+
+The permit and the circuit span the WHOLE stream, not its first
+line — a guard that released early would let N callers into a seam
+with one permit, and the test that proves otherwise parks a seam
+mid-stream. okay-resilience takes no dependency on llm, mcp or
+cluster: this is wired at the caller's edge.
+
 **Testing the composite: `Faults.http`.** A seeded adversary between
 your client and a fake far end: `Faults.http(seed, Faults.Plan(dropAt
 = Set(2, 3), slowAt = Map(1L -> 5000L), failRate = 0.2))(far)`. A

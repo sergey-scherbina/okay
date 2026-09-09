@@ -1,5 +1,59 @@
 # Changelog
 
+## resilient-transport — the seams that stream get the guards too
+
+The resilience arc guarded `okay.http.Http`, and the awkward fact
+behind this lane is that the one LIVE outbound path in this
+repository does not have that shape: `okay.llm.Transport` posts and
+then TELLS its response lines, so its program is `Unit ! (Writer %
+String + Async)`, and `okay.mcp.Link` and `okay.cluster.Remote` are
+the same kind. Every LLM call in okay-demo, okay-agent and okay-chat
+was unguarded — backwards, since an LLM API is the thing here most
+likely to answer 429 or 529.
+
+The pieces were already generic over `A ! Async`; what was missing is
+that `Attempt` — the observation the breaker and the bulkhead stand
+on — walked `Async` alone. `Attempt.in` walks a ROW: it guards the
+Async operations and passes every other one through untouched
+(`Async` is the side tested, because its erasure is a concrete enum;
+`F` comes by exclusion, which is the direction `<|>` documents as
+sound). `Breaker.protectIn`, `Bulkhead.limitIn` and
+`Limiter.admitIn` are the pieces' row variants over their own private
+state, and `Resilient.guarded` composes them.
+
+The property worth naming: **the permit spans the whole stream**. A
+guard that released when the first line came out would let N callers
+into a seam with one permit; the test parks a seam mid-stream, after
+its first line, and asserts the permit is still held and a second
+caller still refused. okay-resilience takes no dependency on llm,
+mcp or cluster — a caller wires this at its own edge in three lines,
+which is also why this is not `Resilient.transport`. 5 tests;
+specs/resilience.md gained "The other seams"; the module page
+documents it.
+## hedge-start-races — an attempt that outlived the answer
+
+Filed by hedge-timed-flake as a timer leak; the timer was the smaller
+half. `Hedge.start` published after it acted, twice: it forked an
+attempt and only then added the fiber to the list `settle` cancels,
+and it armed the hedge timer after that. The `done` check at the top
+does not cover either window, because the attempt that answers is
+another one, already in flight, and `settle` cancels only what it can
+SEE. So an attempt forked while the answer arrived ran on with nobody
+to stop it — for a hedged request, a duplicate that outlives the
+answer, which is exactly what hedging promises not to leave behind —
+and a timer armed in the same window sat until it fired.
+
+Both publications are re-checked now and undone by the thread that
+made them; both undos are idempotent, since `settle` may have
+cancelled the same fiber and disarming a spent timer does nothing.
+
+`TestHedgeStart` drives the window instead of timing it: a `Scheduler`
+wrapper records which fiber is cancelled and, on the second fork, lets
+the first attempt answer and waits until it has, so the second fiber
+is registered after `settle` has swept. Without the fix it fails
+naming what survived (`cancelled Set(1)`); with it, ten tests green
+eight runs out of eight. Commit: 54838b3c.
+
 ## deploy-stop-grace — the rendered manifests wait for the drain
 
 service-lifecycle gave the process a drain — readiness off, a delay

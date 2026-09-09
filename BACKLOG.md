@@ -1374,15 +1374,19 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
-- **hedge-timer-leak (found by hedge-timed-flake, 2026-09-09, NOT a
-  flake — a small leak for the resilience lane).** `Hedge.start` forks
-  the attempt BEFORE it arms the hedge timer: a fast attempt can
-  settle in between, so `settle`'s `timer.get()()` cancels the initial
-  no-op and the timer armed a moment later is never cancelled. Nothing
-  wrong happens when it fires — `start()` sees `done` and returns —
-  but a virtual thread sleeps until then. Fix is local: keep the
-  cancel handle and call it when `done` is already set after arming.
-  Not taken here: it is not the flake, and it wants its own gate.
+- **hedge-timer-leak — FIXED 2026-09-09 (hedge-start-races), and it
+  was the SMALLER half.** `Hedge.start` published after it acted, in
+  two places: it forked an attempt and only then added the fiber to
+  the list `settle` cancels, and it armed the hedge timer later still.
+  An attempt answering inside the first window left a fiber nobody
+  cancels — for a hedged request, a duplicate that outlives the answer
+  and keeps working — and inside the second, a timer nobody disarms.
+  Both are re-checked and undone now, by the thread that published
+  them. `TestHedgeStart` drives the window rather than timing it: a
+  Scheduler wrapper lets the first attempt answer in the middle of the
+  second one's fork, and the test asserts the second fiber was
+  cancelled and no timer stayed armed. It fails on the first count
+  without the fix.
 
 - **TestResilienceTimed "hedge: a fast first attempt never starts a
   second" — FIXED 2026-09-09 (hedge-timed-flake).** Seen at ~10:20
