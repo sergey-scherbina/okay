@@ -1,0 +1,14 @@
+task: single-shot-row
+agent: fable-fusion
+started: 2026-09-09
+branch: feature/single-shot-row
+worktree: ../okay-wt-sshot
+spec: specs/single-shot-row.md
+
+why: the last road under the fused pass is a mutable accumulator,
+  sound only under a single-shot promise the types cannot enforce.
+what: the spec's gate — a private Writer.runMut (ListBuffer) probe,
+  same-run A/B against Writer.run on SplitBenchmark's Writer-only and
+  mixed lanes. Arithmetic predicts -19% / -5% B/op; the evidence type
+  ships only if the mixed program saves >= 10%. Otherwise the numbers
+  close the item and nothing lands but the record.
