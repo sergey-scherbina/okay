@@ -1,5 +1,29 @@
 # Changelog
 
+## docs-dynamo — the DynamoDB adapter of the Docs seam: condition expressions as Cond, GSIs as indexes, SigV4 without an SDK
+
+Lane 7 of 7 of the persistence audit; the arc closes. `Docs` was
+designed for Dynamo/Cassandra/Mongo and had met only Mongo — the
+engine with condition expressions and eventual reads never tested the
+seam. `okay-docs-dynamo` (JVM): DynamoDB's JSON protocol over the one
+http client, signed by okay-blob's SigV4 with service `dynamodb`, no
+SDK. CBOR under `d`, the version under `ver` advanced by `ADD ver
+:one`; every conditional write is ONE UpdateItem/DeleteItem carrying a
+condition expression (`attribute_not_exists(id)`, `ver = :ver`) and a
+ConditionalCheckFailedException answers `Stale` with the current
+version; declared indexes are `ix_<field>` attributes and GSIs the
+query walks; `grants` names DynamoDB's two read modes (One eventual,
+Quorum granted Strong as ConsistentRead). The full DocsSuite contract
+passes Live on dockerized dynamodb-local, plus the grants test. Landed
+as c4831720 + 5ad9b24c (the module page TestDocsIndex demands);
+specs/data.md Behavior. Gate: full matrix, 3055 tests, the one failure
+TestDocsIndex (no module page), fixed by the docs commit and okay-deploy
+rerun green (113); the code tree was otherwise gated whole.
+
+The seven-lane arc (this session): sql-commit-tag, sql-serialization-
+retry, sql-temporal-types, sql-readonly-region, sql-pool, persist-saga,
+docs-dynamo — BACKLOG "persistence-audit" is fully checked.
+
 ## ui-compose — the native client that never changes: Kotlin, Compose, no okay dependency, proven by the conformance script and a live smoke
 
 Stage 3 of specs/frontend.md, the operator's first native target.

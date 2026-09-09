@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- docs-dynamo — BACKLOG "persistence-audit", lane 7 of 7: the DynamoDB
-  adapter of Docs over the JSON protocol + SigV4, the DocsSuite contract
-  Live on dynamodb-local. Claim: docs-dynamo.
 - resilience-faults — specs/resilience.md stage 2: seeded Faults.http, the composite under a plan (claim: resilience-faults)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

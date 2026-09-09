@@ -147,7 +147,8 @@ correctness first:
       each step, `recover` replays the tail (finish forward or
       compensate back, a declared policy), status as a Schema value.
       Test: crash between steps (journal cut), both policies.
-- [ ] docs-dynamo — `Docs` was designed for Dynamo/Cassandra/Mongo and
+- [x] docs-dynamo — DONE 2026-09-09 (c4831720, 5ad9b24c): okay-docs-dynamo, the
+      DocsSuite contract Live on dynamodb-local. Was: `Docs` was designed for Dynamo/Cassandra/Mongo and
       is implemented on Mongo only; the seam has not met condition
       expressions or eventual reads. DynamoDB adapter over the REST
       API with SigV4 (okay-blob already signs): `Cond` → condition
