@@ -1,5 +1,34 @@
 # Changelog
 
+## spec-truth — boxes that named refuted or already-proven work now say which
+
+Two Behavior lists were sending the next agent to the wrong place.
+specs/handler-fusion.md: the gate was NOT cleared and stages 1-2 do not
+start, yet six boxes stood open as if waiting for a taker — five now
+say GATED OFF with the stage they belong to, the sixth ("every existing
+suite stays green; no runner changes behaviour") is a claim about what
+WAS built and is checked, and the list opens by pointing at Results.
+specs/r.md: nine open boxes against a built module with 24 tests, so
+each was read against the tests and the source. Five are proven and
+checked with the test named; two are half built and say which half (the
+frame's Schema/case-class layer is absent; the dead-worker box's second
+half is a claim about a CONSUMER, since okay-r has no supervisor by
+design); one is NOT BUILT — no timeout anywhere in okay-r, a hung
+Rscript hangs the caller's fiber. The two real gaps became BACKLOG
+r-call-timeout and r-frame-schema instead of silent boxes.
+
+Caught before landing, and worth more than the audit: the five checks
+first rested on TestR, which is Live-tagged and SKIPS where no R is
+found — this box has none, so `okayR/test` had run six mock tests and
+none of the eighteen the boxes stand on. The suite builds its own R
+container when docker is there, so the fix was to RUN it: 17 passed, 1
+skipped, and the skipped one (a parent variable being invisible, which
+the container shim cannot show because it forwards the environment on
+purpose) turned its box from [x] into [~]. A test that exists is not a
+test that passed — the third form of that error in one day, all three
+now in the session's memory. Landed as 1998b570. Gate: full matrix,
+3548 tests, 0 failures.
+
 ## dsl-unless — not these words, and then this
 
 The last shape okay-chat's quoted rules waited on. «хочу сделать
