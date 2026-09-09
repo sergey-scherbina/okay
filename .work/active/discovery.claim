@@ -1,0 +1,21 @@
+task: discovery
+agent: fable-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T10:15:16Z
+status: in-progress
+branch: feature/discovery
+worktree: ../okay-wt-discovery
+spec: specs/discovery.md (new) — BACKLOG "resilience" / microservices-next
+
+why: Resilient.http knows one address; cluster.md lists membership/
+  discovery as out of scope; a service in Kubernetes has N pods behind
+  a name and nothing here picks one, skips a dead one, or spreads load.
+
+what: in okay-resilience: Discovery seam (service name → endpoints;
+  static, environment (Kubernetes <NAME>_SERVICE_HOST/PORT and a comma
+  list), DNS on the JVM), Balanced.http(discovery)(inner): resolves
+  http://<service>/... to a living endpoint, round-robin, a failed
+  call marks its endpoint down for a cool-down, Refused.NoEndpoint
+  when none is alive; stats with a Schema; docs page section + spec.
+
+next: spec, code, tests, docs, gate, land

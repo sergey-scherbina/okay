@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- discovery — specs/discovery.md: service discovery + client-side balancing in okay-resilience (claim: discovery)
 - timeout-masks-failure — BACKLOG (CORE): `Async.timeout` lets a
   failing contender lose the race silently, so an immediate failure
   comes out as `None` after the whole ms. Law first ("a failure ends a
