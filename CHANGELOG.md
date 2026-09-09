@@ -1,5 +1,49 @@
 # Changelog
 
+## actor-on-js — the loop was a `while` over blocking reads, so the module shipped a JS artifact that could not spawn an actor
+
+`okay-actor` was `crossProject(JVMPlatform, JSPlatform, NativePlatform)`
+and could be USED on two of the three. The mailbox loop read with
+`mailbox.receiveBlocking()` and ran each behaviour with `.runWith`;
+both need `CanBlock`, so `Actor.spawn` asked for one, and JS has none
+— deliberately, since "there is no CanBlock on JS, so a blocking join
+is a compile error, not a frozen loop". The JS artifact therefore
+compiled, published, and could never spawn an actor. Nobody noticed
+because nothing tried: every law in the module lived in `scala-jvm`.
+
+The blocking bought nothing. It was the imperative shape — a `while`
+over a blocking read is how a mailbox loop is written when the
+platform has threads — in a library whose whole point is that waiting
+for the next message is a PROGRAM, not a parked thread. The loop is
+that program now: `mailbox.receive.flatMap` instead of
+`receiveBlocking`, `Async.attempt(b(state, m))` instead of a try/catch
+around `runWith`, recursion through `flatMap` instead of a mutable
+`var state`, forked onto whatever the platform's `Scheduler` is — and
+on JS that is the event loop itself.
+
+Supervision carried over word for word: the failed message is still
+gone and never retried, `Resume` keeps the state, `Restart` takes a
+fresh one, `Stop` and `Escalate` fail the mailbox and drain what
+nobody will read. The 15 existing JVM laws passed unchanged on the
+first run, which is what makes that claim checkable rather than
+asserted. `CanBlock` then had no user left in the module, so both
+`spawn`s dropped it, and `import okay.given` with it — it had been
+there for `CanBlock` alone.
+
+20 tests on the JVM and FIVE ON JS AND FIVE ON NATIVE: the first time
+anything in this module has executed on those platforms rather than
+merely compiled for them. The new shared laws live in
+`src/test/scala`, so a return to blocking stops the file compiling for
+JS — a better guard than a comment. The `build.sbt` comment that had
+explained why the laws were JVM-only ("the laws need a Scheduler to
+fork with, and that is platform work") was true of the blocking loop
+and false after it, and was corrected in the same commit: a build
+comment promising what the code no longer does is the same defect
+class as a test named for what it stopped checking.
+
+Landed as c8664564; this entry was written afterwards, the lane having
+recorded itself in BACKLOG and not here.
+
 ## spec-truth — boxes that named refuted or already-proven work now say which
 
 Two Behavior lists were sending the next agent to the wrong place.
