@@ -1,5 +1,15 @@
 # Changelog
 
+## intent-period-month-beside-a-number — «12-14 сентября» is a range, not September
+
+`Temporal.period`'s bare month counted a neighbour as a day only when
+it was 1..31, so «с 12 по 40 сентября» — an impossible day the day
+parser refuses on purpose — and «12-14 сентября» — a range in one
+token — both read as the whole of September. Found by okay-chat's
+TestWhen the moment its `When.read` asked the platform for periods. Any
+number beside the month now makes it somebody's date or range, never
+the bare month. Gate: okay-intent green, full matrix green.
+
 ## intent-period-month-forms — «майстер» is not May
 
 The bare month `Temporal.period` reads (landed this morning) matched

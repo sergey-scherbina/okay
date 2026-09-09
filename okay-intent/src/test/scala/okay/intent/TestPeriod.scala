@@ -27,6 +27,12 @@ class TestPeriod extends munit.FunSuite {
     // a day beside the month makes it a date, and a date is `parse`'s
     assertEquals(on("14 September"), None)
     assertEquals(on("September 14"), None)
+    // ANY number beside it: an impossible day the day parser refuses on
+    // purpose, and a range in one token, are not the bare month either
+    assertEquals(on("с 12 по 40 сентября"), None)
+    assertEquals(on("12-14 сентября"), None)
+    assertEquals(on("od 12 do 14 września"), None)
+    assertEquals(on("September 40"), None)
   }
 
   test("the six languages, and the weekend read before the week") {

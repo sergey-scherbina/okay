@@ -420,9 +420,15 @@ object Temporal {
       val idx = words.indexWhere(w => forms.exists(_.contains(w)))
       if idx < 0 then None
       else
-        def dayAt(j: Int) = words.lift(j).exists { case digits(d) => d.toInt >= 1 && d.toInt <= 31; case _ => false }
+        // ANY number beside the month makes it somebody's date or range,
+        // never the bare month: «с 12 по 40 сентября» is an impossible
+        // day the day parser refuses on purpose, and «12-14 сентября» is
+        // a range in one token — both read as the whole of September
+        // when only 1..31 counted as a neighbour (found by okay-chat's
+        // TestWhen the moment its reader asked for periods)
+        def numberAt(j: Int) = words.lift(j).exists(_.exists(_.isDigit))
         val bareMay = words(idx) == "may" && !words.lift(idx - 1).exists(beforeMay)
-        if dayAt(idx + 1) || dayAt(idx - 1) || bareMay then None
+        if numberAt(idx + 1) || numberAt(idx - 1) || bareMay then None
         else
           val m = forms.indexWhere(_.contains(words(idx))) + 1
           val year = if toEpochDay(lastDayOf(today.year, m)) >= toEpochDay(today) then today.year else today.year + 1

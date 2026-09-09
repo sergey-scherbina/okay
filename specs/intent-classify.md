@@ -145,6 +145,9 @@ object Eval:
       prefix: «майстер», «лютни», «lutnia» are not months, «в лютому»,
       «w maju», «in May» are, and English «may» without a preposition
       is a verb (intent-period-month-forms)
+- [x] a month with ANY number beside it is not a month named alone —
+      «с 12 по 40 сентября» and «12-14 сентября» are a date or a range,
+      somebody else's to read (intent-period-month-beside-a-number)
 
 ## Out of scope
 
