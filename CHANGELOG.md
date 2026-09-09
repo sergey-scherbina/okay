@@ -18,7 +18,7 @@ while nothing is re-run.
 Tested against five real logs with `--read`, including the sibling's
 own saved log of the occurrence, plus a doctored one where a second
 project fails in an unknown shape and the retry is correctly refused.
-Commit: LANDING.
+Commit: d64d466e.
 
 ## di-cross — the module vocabulary was tested on one platform of three
 
