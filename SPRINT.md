@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- resilient-transport — specs/resilience.md: the LLM seam gets the arc, and the demo becomes its worked instance (claim: resilient-transport)
 - lexer-state-allocation — BACKLOG: ~180 B per input CHARACTER on both
   lexing paths; Json's `S.copy(buf = s.buf + c)` is a fresh String per
   char, quadratic in token length. Carry the start offset, slice the

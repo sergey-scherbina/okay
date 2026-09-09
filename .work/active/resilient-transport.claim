@@ -1,0 +1,26 @@
+task: resilient-transport
+agent: opus5-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T12:04:40Z
+status: in-progress
+branch: feature/resilient-transport
+worktree: ../okay-wt-resilient-transport
+spec: specs/resilience.md — the deferred adaptive-concurrency box names this gate
+
+why: the arc guards okay.http.Http, and the ONE real outbound path in
+  this repo does not go through it: okay.llm.Transport is its own seam
+  (post streaming lines back), so every LLM call in okay-demo, okay-agent
+  and okay-chat gets no breaker, no limiter, no deadline. An LLM API is
+  exactly what those exist for — 429 and 529 are routine there. And
+  specs/resilience.md gates adaptive concurrency on "nothing wires
+  Resilient.http into a service yet", which stays true until this lands.
+
+what: Resilient.transport(inner, ...) in okay-resilience over the same
+  five pieces (they are already generic over A ! Async; only the
+  composed convenience was Http-shaped). Then okay-demo wires a breaker
+  and a limiter around its Anthropic transport, which makes the arc a
+  worked instance rather than a shelf. NOT converting the demo's five
+  printlns: they are a startup banner and a login code for a human at a
+  terminal, not service logging — checked, and Log would be wrong there.
+
+next: read what a streaming seam does to Attempt, write it, test, gate
