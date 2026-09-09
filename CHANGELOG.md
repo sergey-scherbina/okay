@@ -1,5 +1,32 @@
 # Changelog
 
+## single-shot-row — priced, refuted, and the runner-floor list closes
+
+The last of the four items the operator ordered after the
+handler-fusion arc: the one road left under the fused pass is a
+mutable accumulator, sound only under a promise — "no handler applied
+to the residual resumes a continuation twice" — that the types cannot
+enforce (a user-written multi-shot `Effects.handle` over any signature
+breaks it silently). The spec designs the evidence (`SingleShot`, a
+promise about the handlers of the residual row, library givens for
+the five single-shot signatures, none for Choose/Logic/List/Vector)
+and then does the arithmetic: it buys Writer's reverse, 24 B per tell,
+and nothing else — State threads one value already.
+
+Priced before any API, as the spec demands: a benchmark-local
+`ListBuffer` runner against the shipping `Writer.run`, same run,
+`-prof gc`. Writer-only 1 000 tells −18.7% B/op (predicted −19%); the
+mixed program −8.9% (predicted −5%); time within noise both ways. The
+gate was 10% on the mixed program. Not shipped.
+
+So the list is closed with its ledger: writer-test-no-some refuted
+(0 B, and unsound for a union); eff-stack-safety landed (a million
+left-nested binds, +11% on Eff's fast path, kept); either-scalarised
+explained to the byte and `Writer.run` −13/−35% on the way;
+single-shot-row priced and refused. What is left under the fused pass
+at ~122 B and ~14 ns per operation is the program's own nodes — and
+those are the program.
+
 ## either-scalarised — the anomaly explained, and Writer.run loses a third of its bytes on the way
 
 Runner-floor item 3: after stage A the two nestings of the same

@@ -124,6 +124,33 @@ class SplitBenchmark {
   def mixedVecInline(): Int =
     State.run[Int, (Vector[String], Int)](0)(Writer.foldWith[String, Vector[String], Int, State % Int](mixed)(Vector.empty)((s, w) => s :+ w))._2._2
 
+  // ---- single-shot-row: the PRICE of a mutable accumulator, before
+  // any evidence type exists. A benchmark-local Writer runner that
+  // appends into a ListBuffer cell instead of threading a List and
+  // reversing it — sound ONLY if no continuation it hands out is ever
+  // resumed twice, which nothing here checks: this is the probe the
+  // spec's gate asks for, not a runner anyone may call.
+
+  private def writerMutLoop[A, F[+_]](a: A ! Writer % String + F)(using TypeableK[Writer % String]): (Seq[String], A) ! F =
+    val buf = scala.collection.mutable.ListBuffer.empty[String]
+    def _loop(x: A ! Writer % String + F): (Seq[String], A) ! F = loop(x)
+    @tailrec def loop(x: A ! Writer % String + F): (Seq[String], A) ! F = (x.resume: @unchecked) match
+      case Free.Pure(a) => Free.Pure((buf.toList, a))
+      case Effect(e) => split[Writer % String, F](e) {
+          case Writer.Say(v) => buf += v; Free.Pure((buf.toList, ())): (Seq[String], A) ! F
+        } { e => Effect(e).map(x => (buf.toList, x)) }
+      case Bind(Effect(e), k) => split[Writer % String, F](e) { w0 =>
+          (w0: @unchecked) match
+            case Writer.Say(v) => buf += v; loop(k(()))
+        } { e => Effect(e).flatMap(x => _loop(k(x))) }
+    loop(a)
+
+  @Benchmark
+  def writerMut(): Int = writerMutLoop[Int, Produce](wp).runWith._2
+
+  @Benchmark
+  def mixedMut(): Int = State.run[Int, (Seq[String], Int)](0)(writerMutLoop[Int, State % Int](mixed))._2._2
+
   // ---- State: the same three
 
   @Benchmark

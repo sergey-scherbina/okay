@@ -42,7 +42,11 @@ operator asked for the four things left under it, in this order:
       `Left`/`Right` in `State$`. Per-runner lanes with the old `<|>`
       loops kept benchmark-local as the A/B; explain, then fix or
       record.
-- [ ] single-shot-row — the only road under 122 B/op: a mutable cell
+- [x] single-shot-row — PRICED AND REFUTED 2026-09-09: a mutable cell
+      buys Writer's reverse and nothing else (-8.9% B/op on the mixed
+      program, gate was 10%; -18.7% Writer-only); the evidence type is
+      not shipped, specs/single-shot-row.md has the table. The
+      runner-floor list is closed. Was: the only road under 122 B/op: a mutable cell
       in place of the threaded accumulator, which is sound only when
       no handler below resumes a continuation twice. A type-level
       evidence for that (per signature, derived for a row; NOT for

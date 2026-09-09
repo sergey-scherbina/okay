@@ -80,7 +80,7 @@ a contract the types cannot enforce.
 
 ## Behavior
 
-- [ ] PRICED FIRST (the gate): `Writer.runMut` as a private probe
+- [x] PRICED FIRST (the gate): `Writer.runMut` as a private probe
       (ListBuffer under `SingleShot[F]`), same-run A/B against
       `Writer.run` on the Writer-only and the mixed lanes
       (`SplitBenchmark`). If the mixed-program saving is under 10%
@@ -111,4 +111,24 @@ a contract the types cannot enforce.
 
 ## Results
 
-(after the probe)
+2026-09-09, the probe (`SplitBenchmark.writerMut` / `mixedMut`: a
+benchmark-local Writer runner appending into a `ListBuffer` cell,
+finishing with `toList`), same-run A/B against the shipping
+`Writer.run` (a List threaded and reversed in the loop), 2 forks,
+`-prof gc`, load 10–44:
+
+| program | `Writer.run` | mutable cell | saving |
+|---|---|---|---|
+| Writer-only, 1 000 tells | 128 024 B/op | 104 056 | −18.7% (predicted −19%) |
+| mixed, 333 tells + 667 State ops | 148 696 | 135 400 | **−8.9%** (predicted −5%) |
+| time, mixed | 16.7 µs | 15.7 | within noise (±3.3) |
+| time, Writer-only | 11.2 | 12.5 | within noise, not faster |
+
+The gate was ≥ 10% on the mixed program. **Not cleared.** The
+arithmetic held: the mutable accumulator buys exactly Writer's reverse
+(24 B per tell) and nothing else, and on a program that is not mostly
+tells that is a twentieth of a pass — for a new typeclass whose
+promise the types cannot enforce. `SingleShot` is NOT shipped; the
+probe stays in `SplitBenchmark` as the measurement, and this item
+closes the runner-floor list: what is left under the fused pass is
+the program's own nodes, and those are the program.
