@@ -1,0 +1,30 @@
+task: gate-warnings
+agent: opus5-gate
+started: 2026-09-09
+branch: feature/gate-warnings
+worktree: ../okay-wt-gatewarn
+
+why: AGENTS.md's policy is no warnings, ever — main, test AND Jmh, any
+  platform — and master is red on it: 12 warnings in 4 files, spread
+  across several lanes' landings, none of them one owner's to notice.
+  A gate that is red by policy stops meaning anything.
+
+what (mechanical only, no behaviour touched):
+  - okay-persist/FileStore.scala:334 — `channel.position(...)` answers
+    a FileChannel nobody wants: `: Unit`.
+  - okay-spark/TestWroclawStages.scala — five `timed(label) { ... }`
+    stages discard the counts they time; the suite's whole point is
+    the PRINTED timings ("kept as the profile to re-read"), so `: Unit`
+    is the honest fix and an assertion would change what it is. Plus
+    two unused imports (`Tables.of`, `Chunks.elements`).
+  - okay-resilience/TestResilienceTimed.scala:65,77 — `timer.fireAll()`
+    answers how many fired; these two call sites do not care: `: Unit`.
+  - src/test/scala-jvm/TestPlan.scala:3 — unused import `Tables.of`.
+
+NOT in scope: any `x: Unit` on a discarded PROGRAM (`A ! F`) — that is
+  an ERROR by build.sbt:41 and the fix there is to run or flatMap it.
+  None of these twelve is that shape; checked before claiming.
+
+gate: clean `Test/compile` (an incremental one hides warnings in files
+  it did not touch) plus both Jmh configurations, and the full matrix
+  since the touched suites are Live-tagged and will not run in it.
