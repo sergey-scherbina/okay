@@ -23,7 +23,7 @@ test pins what a deployment reads from it: nothing. It provisions its
 own store, transport and secrets, and its one remaining input is the
 runtime's — so the day that root gains a database it did not
 provision, the build stops until someone says what it is. 6 tests in
-okay-deploy, 1 in okay-demo. Commit: LANDING.
+okay-deploy, 1 in okay-demo. Commit: d76482ad.
 
 ## di-dogfood — the DI arc builds an application, and the application changed it
 
