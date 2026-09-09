@@ -1295,6 +1295,15 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
+- **TestResilienceTimed "hedge: a fast first attempt never starts a
+  second", 2026-09-09 ~10:20** (di-deploy's gate, NINE sbt JVMs on the
+  box): `starts.get` was 2 — the "fast" first attempt took longer than
+  the 20 ms hedge delay under load, so the hedge did what it is for.
+  Green alone. Same family as the limiter entry below: a wall-clock
+  budget asserted on a shared machine; the fix that entry took (a
+  frozen clock) applies here too. Also TestOfflineGate's 30 s timeout
+  again in the same run (known, load).
+
 - **TestManyToMany "the default channel ends for every consumer",
   2026-09-09 09:32 and 09:36** (okay-spring's gate, then a solo rerun),
   both while the box was thrashing (build-ram-guard ACT lines, five
