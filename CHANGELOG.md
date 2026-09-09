@@ -16,7 +16,7 @@ anything is built, `exports` with the erased class, and
 Five tests, green on JVM, JS and Native at the first run. It found no
 defect, and that is the honest result: the code was already right, the
 guard was missing. With it the DI arc of specs/di.md is complete on
-every platform it ships to. Commit: LANDING.
+every platform it ships to. Commit: 15ff0b59.
 ## failing-over — the row cast leaves Failing.scala: one prism in the kernel, and the default is the typed instance lifted over the row
 
 The operator's question, on `Failing.anyRow`'s two `.asInstanceOf[F[X]]`:
