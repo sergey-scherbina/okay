@@ -605,7 +605,9 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCrdt = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-crdt"))
-  .dependsOn(okay)
+  // okay for `Hlc` and `Uid`; okay-codec so a replica ships as data
+  // (`Wire`). Both are JVM + JS + Native, so nothing narrows.
+  .dependsOn(okay, okayCodec)
   .settings(
     name := "okay-crdt",
     libraryDependencies ++= Seq(
@@ -1240,6 +1242,32 @@ lazy val okayResilience = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     // the parking tests: a fiber that waits, a hedge that races a timer
+    // DiscoveryJvm: the resolver and sys.env are the JVM's own
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
+/**
+ * Outbox, inbox, dead-letter (specs/outbox.md): the log and a database
+ * that is ours — an event as a row in the business transaction, a
+ * relay into a Topic, a consumer that records ids inside its own
+ * transaction, a dead-letter topic for poison records. Two seams,
+ * nothing new minted; cross-built because both seams are. The H2
+ * tests are JVM (okay-jdbc).
+ */
+lazy val okayOutbox = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-outbox"))
+  .dependsOn(okay, okayCodec, okaySql, okayPersist)
+  .settings(
+    name := "okay-outbox",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmConfigure(_.dependsOn(okayJdbc % Test))
+  .jvmSettings(
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
@@ -1573,9 +1601,13 @@ lazy val okayLangchain4jEmbed = (project in file("okay-langchain4j-embed"))
  * "okayDemoE2eBrowser/test"`.
  */
 lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
-  .dependsOn(okayDemo)
+  .dependsOn(okayDemo, okayScript)   // okayScript: the mobile-web proof drives a Live page (ui-mobile)
   .settings(
     name := "okay-demo-e2e-browser",
+    // forked, as okay-script's own tests are: a Live page is compiled
+    // by the embedded compiler from java.class.path, which in-process
+    // is sbt's launcher alone (ui-mobile found it as a parser crash)
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "com.microsoft.playwright" % "playwright" % "1.62.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -1631,6 +1663,7 @@ lazy val root = (project in file("."))
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
+    okayOutbox.jvm, okayOutbox.js, okayOutbox.native,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
@@ -1724,10 +1757,15 @@ lazy val okaySpring = (project in file("okay-spring"))
     name := "okay-spring",
     libraryDependencies ++= Seq(
       "org.springframework" % "spring-context" % "6.2.10",
+      "org.springframework" % "spring-webflux" % "6.2.10",   // the result handler (OkayResultHandler)
       "io.projectreactor" % "reactor-core" % "3.7.9",
       "org.springframework.boot" % "spring-boot-autoconfigure" % "3.5.5",
       "org.springframework.boot" % "spring-boot-test" % "3.5.5" % Test,
       "org.assertj" % "assertj-core" % "3.27.3" % Test,   // ApplicationContextRunner's assertable context
+      // the WebFlux end-to-end: the handler stack under WebTestClient in
+      // the default gate, a Netty server on a random port under Live
+      "org.springframework.boot" % "spring-boot-starter-webflux" % "3.5.5" % Test,
+      "org.springframework" % "spring-test" % "6.2.10" % Test,
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )
@@ -1760,4 +1798,20 @@ lazy val okayDocsCassandra = (project in file("okay-docs-cassandra"))
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
     Test / fork := true,
+  )
+
+/** The CDI bridge of specs/di.md (stage 2, the documented shape built
+ * on the operator's go): a Module's installed values as synthetic
+ * application-scoped beans through a portable Extension, the closer
+ * destroyed with the container; a container's instance as a module.
+ * The API only at compile time; Weld SE is the test container. */
+lazy val okayCdi = (project in file("okay-cdi"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-cdi",
+    libraryDependencies ++= Seq(
+      "jakarta.enterprise" % "jakarta.enterprise.cdi-api" % "4.1.0",
+      "org.jboss.weld.se" % "weld-se-core" % "5.1.6.Final" % Test,
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
   )

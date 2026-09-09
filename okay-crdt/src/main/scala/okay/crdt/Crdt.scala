@@ -40,6 +40,40 @@ object Crdt:
     infix def merge(y: A): A = c.merge(x, y)
 
   /**
+   * A CRDT READ AS A FOLD (specs/coordination-free.md stage 3).
+   *
+   * okay-cache's `View` is built from `(Option[V], Record) => Option[V]`
+   * and describes itself as a CONSUMER — "never invalid, only BEHIND".
+   * A CRDT is exactly that fold with its laws written down, so the
+   * seam between them is this function and nothing else.
+   *
+   * GENERIC OVER THE RECORD TYPE on purpose. Naming okay-persist's
+   * `Record` here would make this module depend on okay-persist to
+   * express a shape it does not need; `View.apply` takes any function
+   * of the right form, so the seam is a FUNCTION rather than a module
+   * edge. Pass it straight in:
+   *
+   * {{{
+   * View(topic)(keyOf)(Crdt.folding(decodeMyCrdt))
+   * }}}
+   *
+   * `decode` answering `None` means "this record is not for me" and
+   * leaves the state alone — a record that cannot be read must not
+   * silently reset a replica to empty.
+   */
+  def folding[V, R](decode: R => Option[V])(using c: Crdt[V]): (Option[V], R) => Option[V] =
+    (state, record) =>
+      decode(record) match
+        case None => state                    // unreadable: keep what we have
+        case Some(v) => Some(state.fold(v)(c.merge(_, v)))
+
+  /** everything seen so far, merged. `None` for nothing seen — a
+   * CRDT has no empty element in general, and inventing one here
+   * would be a lie for `LwwRegister`. */
+  def mergeAll[A](values: IterableOnce[A])(using c: Crdt[A]): Option[A] =
+    values.iterator.reduceOption(c.merge)
+
+  /**
    * Check the three laws over a sample of values and ANSWER what
    * broke, rather than throwing at the first failure — a merge is
    * usually wrong in one law and right in the others, and knowing

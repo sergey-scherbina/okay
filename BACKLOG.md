@@ -100,7 +100,10 @@ follows, in the spec's order:
       ordinal), and the composite under a plan behaving per the
       pieces' contracts. Adaptive concurrency stays deferred until
       stage 1 is in use somewhere.
-- [ ] timeout-masks-failure — CORE. `Async.timeout(ms)(p)` is
+- [x] timeout-masks-failure — DONE 2026-09-09: timeout on `await`, the
+      first outcome of either kind settles it; law in TestAsyncCross on
+      all three platforms, failed first on the old shape. Was: CORE.
+      `Async.timeout(ms)(p)` is
       `race(p.map(Some), sleep(ms).map(None))`, and `race` lets a
       FAILING contender lose without ending the race: a program that
       fails at once under `timeout` comes out as `None` after the
@@ -110,7 +113,9 @@ follows, in the spec's order:
       Decide the law — "a failure ends a timeout at once" reads
       right — write the test on `Async.timeout` first, then change
       `timeout` (not `race`, whose contract is stated and tested).
-- [ ] retry-js — `okay.retry` lives in scala-jvm-native and sleeps
+- [x] retry-js — DONE 2026-09-09: `Retry.async` in the shared core over
+      Async.attempt + Async.sleep, three laws in the cross suite on all
+      platforms. Was: `okay.retry` lives in scala-jvm-native and sleeps
       the thread; a JS twin over `Async.sleep` (Timer) would make the
       one resilience primitive the core already has cross-platform.
       Found by the resilience audit; not taken there because the
@@ -123,7 +128,11 @@ follows, in the spec's order:
       Found by service-lifecycle, not taken there.
 - [ ] microservices-next — the audit's remaining gaps, each its own
       spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
-      shutdown and RED metrics, both in okay-ops. Still open: saga over `Durable`
+      shutdown and RED metrics, both in okay-ops. DONE 2026-09-09
+      (outbox): transactional outbox / inbox / dead-letter as
+      okay-outbox (specs/outbox.md). DONE 2026-09-09 (discovery):
+      service discovery + client-side balancing in okay-resilience
+      (specs/discovery.md). Still open: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);
@@ -151,8 +160,11 @@ its Behavior checklist:
       satellite. CDI documented as the same shape, not built.
 - [x] di-deploy — DONE 2026-09-09: `Needs[A]` + `Needs.of[Root]` in
       okay-deploy. The "di" arc of specs/di.md is closed at stages
-      0-3; what remains is wanted-on-demand: CDI (documented shape),
-      a WebFlux end-to-end with a real server.
+      0-3.
+- [x] di-tails — DONE 2026-09-09: okay-cdi (Weld SE tests) and the
+      WebFlux end-to-end (handler stack in the gate, Netty under
+      Live), which found and fixed the result-handler gap. Nothing
+      left in this arc.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 
@@ -1771,6 +1783,9 @@ measure on our own data, never a predicted result.
       as Submitted(key, json) decoded by the form's schema, `live`
       inputs send Edited, the closed Local set (Toggle, Tab), server
       SetValue overrides a local edit, forged Submitted dropped.
+- [x] ui-mobile — LANDED 2026-09-09 (specs/frontend.md "Mobile", M1): installable Live pages — viewport, level-L mobile CSS, manifest, service worker; Playwright in an iPhone emulation, offline reload; live.js queues events before the socket opens.
+- [x] ui-mobile-ios — LANDED 2026-09-09 (specs/frontend.md "Mobile" M2): okay-swift/, `swift test` 3/3 over conformance.jsonl, iOS Simulator build succeeded, headless smoke against a real Live page.
+- [ ] ui-mobile-android — M3: the SDK by brew + sdkmanager, the Android target on okay-compose, a debug APK.
 - [x] ui-compose — LANDED 2026-09-09 (specs/frontend.md Results; okay-compose/README.md). Original: a Compose Multiplatform thin client
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
@@ -2059,8 +2074,13 @@ measure on our own data, never a predicted result.
       2026-09-01, green twice alone — port/readiness race shape)
 - [ ] http-streaming-responses — incremental bodies on the NIO and
       Netty backends (Jetty has it); unblocks MCP push there
-- [ ] http-post-body-audit — Netty/NIO: do POST bodies reach routes?
-      (Jetty's did not — found by mcp-push, fixed there)
+- [x] http-post-body-audit — DONE 2026-09-09. Netty and the JDK server
+      DO read the body (Jetty's `posted` was the only defect and
+      mcp-push fixed it) — but nothing asserted it on any backend but
+      Jetty, so the audit's answer is a law, not a fix:
+      `Acceptance.rest` runs against all three servers in
+      TestBackends, proven able to fail. The entry's "NIO" was a
+      misnomer: `Nio.scala` is raw TCP, not an HTTP server.
 
 ## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md) — DONE, all 11 landed
 - [x] demo-streaming-cut — LANDED 2026-09-02: `Chat.reply`/`chatRoute`
@@ -5463,7 +5483,7 @@ WHAT THE TREE HAS, grepped:
       instances — GCounter, PNCounter, LwwRegister over `Hlc`, GSet,
       OrSet. A merge that is not idempotent makes the type a lie, so
       the laws land first.
-- [ ] 3 — the seam: a CRDT is a fold, and okay-cache's `View` already
+- [x] 3 — the seam LANDED 2026-09-09 (`Crdt.folding`); Schema for the wire LANDED 2026-09-09 (crdt-wire): a CRDT is a fold, and okay-cache's `View` already
       takes one. Merge over okay-persist; `Schema` so a replica ships
       as data.
 - [x] 4 — capability tokens. LANDED 2026-09-09.  DECIDED: the operator chose
@@ -5494,3 +5514,41 @@ not beside the CRDTs.
       source and the check is the store's, not the lease's.
 - [ ] numbered queues (a ticket per waiter, served in order) only if
       something actually needs them — filed as a question, not work.
+
+## actor-stop-drain — a parent's stop lost one accepted message, under load
+
+`okay.actor.TestChildren`, "law: a parent's stop waits for its
+children to DRAIN", read **299 of 300** in a full `sbt test` on
+2026-09-09 (crdt-wire's gate, 90 modules, the only failure). Three
+isolated runs of the same suite on the same tree passed.
+
+**This is not the same thing as `resilience-timed-flake`, and the
+difference is the whole entry.** That one asserts `elapsed >= 15 ms`
+— a clock assumption, which a loaded box can defeat without anything
+being wrong. This one has NO timing in it:
+
+    (0 until 300).foreach(i => child.tell(i).runWith)
+    parent.stop().runWith
+    assertEquals(handled.get, 300)
+
+300 sends into a channel of capacity 1024, so every message is
+ACCEPTED; then `stop`, which the law says waits for accepted messages
+to be handled. 299 means one accepted message was not handled before
+`stop` returned. That is the law failing, not a deadline missed —
+there is a window in the drain that load widens.
+
+WHAT IT IS NOT: it is not crdt-wire's doing. okay-actor does not
+depend on okay-crdt and that lane touched neither `Actor` nor
+`Channel`.
+
+- [ ] reproduce it deliberately, which means UNDER LOAD — isolated
+      runs pass, so a bare `testOnly` proves nothing either way. Run
+      the suite with the box busy, or add a stress variant with more
+      children and more messages.
+- [ ] then read `stop`'s drain against `Channel`'s close: the
+      suspicion is a message accepted into the channel after the
+      drain has decided how many there are — the same shape as the
+      sentinel/close races already recorded in okay-stm-consumers.
+- [ ] if it is real, the law is right and the code is wrong; if the
+      law over-promises, say so in the spec and weaken the test
+      deliberately rather than by accident.

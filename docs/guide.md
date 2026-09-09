@@ -461,7 +461,8 @@ gap is 3x in okay's favour (docs/benchmarks.md §6c). On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`
-takes its policy as a STREAM of delays; `retryChunks` recomputes a
+takes its policy as a STREAM of delays (`Retry.async` is the same as
+an Async program, so JS has it too); `retryChunks` recomputes a
 failed chunk from the stream's own program — the value is the
 lineage, Spark-style. One level up, `Cluster.distribute` (okay-cluster)
 rides the same fact across machines: workers behind one seam

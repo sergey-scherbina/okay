@@ -15,7 +15,12 @@ class TestRepoAgent extends munit.FunSuite {
 
   // the corpus is THIS repository, and it grows: at 419+ sources the
   // index build passes munit's default 30s under a loaded full
-  // matrix only sometimes — the suite's budget grows with the repo
+  // matrix only sometimes — the suite's budget grows with the repo.
+  // gate-hygiene (2026-09-09): measured 203-237 s under four sbts on
+  // the box against this 120 s, green alone — a result that depends
+  // on the box's load is what the `Live` tag is for (AGENTS.md:
+  // no flaky tests in the default gate); `sbt integrationTest` runs it
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitTimeout: scala.concurrent.duration.Duration =
     scala.concurrent.duration.Duration(120, "s")
 

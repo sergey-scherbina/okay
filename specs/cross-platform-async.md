@@ -82,6 +82,16 @@ cross-build lands so nothing has to be broken later.
   cancels the sibling; `Fiber.joinAsync` is the effect-world join.
   race fails (with the later error) only when BOTH contenders fail —
   a lone failing contender still never wins.
+- **timeout is NOT a race** (timeout-masks-failure, 2026-09-09): the
+  first outcome of the program, of EITHER kind, settles it — a
+  failure comes through the error channel at once with its own
+  exception, and only the timer answers `None`. It used to be
+  `race(prog.map(Some), sleep.map(None))`, and a race lets a failing
+  contender lose without ending the race, so an immediate failure
+  answered `None` after the whole duration (a breaker's refusal under
+  a deadline became a 504 after five seconds — found by
+  resilience-http). The law is a cross test that FAILED on the old
+  shape before the change (TestAsyncCross, all three platforms).
 - **send after close is REFUSED, not thrown** (channel-send-closed,
   2026-09-02): `send(a): Boolean` — true when the channel took the
   element, false once closed (the element dropped). The first cut

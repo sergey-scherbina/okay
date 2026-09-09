@@ -185,6 +185,15 @@ object Live:
  * own WebSocket (`?__live=<id>`) to receive patches and send events.
  * Outside a `Site` (a bare `render`) the HTML still renders; there is
  * just no container to answer the socket. */
+/** the head of an INSTALLABLE page (specs/frontend.md "Mobile"): the
+ * viewport, the level-L stylesheet, the manifest "Add to Home Screen"
+ * reads, and the service worker that opens the page offline. Put it
+ * where the head goes; `start` is the page's own path (the default is
+ * the page being rendered). */
+def installable(name: String, start: String = ""): String =
+  val at = if start.nonEmpty then start else Web.current.path
+  okay.script.Mobile.head(name, at)
+
 def mount(id: String, app: Live[?]): String =
   Container.liveRegistrar.foreach(register => register(id, app))
   // a Live page is stateful, so mounting one opens the session: the

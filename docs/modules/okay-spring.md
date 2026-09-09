@@ -35,13 +35,21 @@ acquisition looks the bean up by type when the scope builds; compose
 it with `and` like any other. A container is a source of values for a
 `Providing`, nothing more.
 
-**Controllers.** With okay-spring on the classpath the auto-configuration
-registers an adapter on the shared `ReactiveAdapterRegistry`, so a
-WebFlux handler may return `A ! Async` and Spring subscribes to it as
-it would to a `Mono`: the program runs on Reactor's bounded-elastic
-scheduler on subscription, once per subscriber, and may park.
-`OkayReactive.mono` and `fromPublisher` are the same two conversions
-by hand.
+**Controllers.** With okay-spring on the classpath a WebFlux handler
+may return `A ! Async`; the program runs on Reactor's bounded-elastic
+scheduler on subscription, once per subscriber, and may park. Two
+pieces make that true, both from the auto-configuration: a
+`BeanPostProcessor` teaching every `ReactiveAdapterRegistry` bean the
+program type (WebFlux makes a registry bean of its own and never
+consults the shared instance), and `OkayResultHandler`, just before
+`ResponseBodyResultHandler`, because WebFlux reads a reactive type's
+element from generic index 0 and ours is at index 1 — with the
+adapter alone a `String ! Async` came back as a server-sent event.
+A CharSequence result is written as text, anything else by its
+runtime class (JSON). Tested through the handler stack in the default
+gate and against a real Netty server on a random port under `Live`.
+`OkayReactive.mono` and `fromPublisher` are the same conversions by
+hand.
 
 ## Gotchas
 

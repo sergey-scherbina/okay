@@ -28,6 +28,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   the Scala.js frontend whose logic is tested on the JVM, the tests
   over a real socket, and running it. Every command executed before it
   was written down.
+- **[Frontends: one application, any client](frontend-guide.md)** —
+  the view as a value with two vocabulary levels, the hosts (terminal,
+  React, DOM, Swing, GTK), the server-driven wire and its rendered
+  contract, the hybrid rule (no round trip per keystroke), Live pages,
+  the mobile web (installable, offline) and the native thin clients
+  (Compose today; a Swift package is the road for iOS).
 - **[A site out of markdown](okay-script-guide.md)** — from an empty
   directory to a running shop whose pages ARE markdown files compiled
   at runtime: routing by directory, sessions and typed forms, a live
@@ -93,6 +99,7 @@ API reference, gotchas.
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
 | [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |
 | [`okay-guice`](modules/okay-guice.md) | a Module as Guice bindings by name and type, the closer bound beside them, an injector's instance as a module |
+| [`okay-cdi`](modules/okay-cdi.md) | a Module as CDI beans through a portable Extension, the closer at shutdown, a container's instance as a module |
 | [`okay-kyo`](modules/okay-kyo.md) | kyo bridges and the structural effect-row mapping |
 | [`okay-fs2`](modules/okay-fs2.md) | fs2 streams, chunk for chunk, native backpressure both sides |
 | [`okay-kafka`](modules/okay-kafka.md) | Kafka: one poll, one chunk; offsets = the replayable capability |
@@ -125,6 +132,7 @@ API reference, gotchas.
 | [`okay-deploy`](modules/okay-deploy.md) | a whole deployable SYSTEM as one value — services and what each of them needs — rendered to seven targets: a laptop (compose), a rented host (systemd), a cluster (Helm), fly/render/railway, and AWS (Terraform for ECS). Plus the `okay deploy` CLI, which reads `deployment.json` so an artifacts directory works on a server with no repository. [specs/deployment.md](../specs/deployment.md) |
 | [`okay-cache`](modules/okay-cache.md) | how a cache is ALLOWED to be wrong, named: budgets, invalidation, the log-fed view; memory and Redis engines; the cross-node invalidation topic |
 | [`okay-resilience`](modules/okay-resilience.md) | circuit breaker, bulkhead, keyed token-bucket limiter, hedged requests, a deadline that travels — handlers around one operation, state as values, clock injected |
+| [`okay-outbox`](modules/okay-outbox.md) | the log and a database that is ours: the transactional outbox and its relay, the inbox (the unique constraint as idempotency), the dead-letter topic and its replay |
 | [`okay-sql`](modules/okay-sql.md) | the relational seam: SqlValue/Col and the typed layer once, drivers underneath (JDBC, the pg wire, sqlite) |
 | [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |
 | [`okay-docs`](modules/okay-docs.md) | the document seam: get/put with CAS, declared consistency; TopicDocs own engine |

@@ -89,6 +89,32 @@ tracing is okay-obs; health is okay-ops; idempotency keys and
 recovery are okay-agent's `Durable`. This module adds only what the
 2026-09-09 audit found missing.
 
+**Discovery and balancing.** A service is N addresses behind a name.
+`Discovery` turns the name into endpoints — `Discovery.static(table)`
+for tests and compose files, `Discovery.env(lookup)` for what
+Kubernetes writes into every pod (`ORDERS_SERVICE_HOST`/`_PORT`) or
+a comma list `OKAY_SERVICE_ORDERS=h1:p1,h2:p2`, `DiscoveryJvm.dns(port)`
+for a headless Service's A-records (wrap it in `Discovery.cached`
+for a ttl), `Discovery.chain` to try them in order. `Balanced(d).http
+(inner)` is the client: the program says `http://orders/v1/…`, the
+balancer picks an endpoint round-robin among those not cooling down
+and sends `http://10.0.3.7:8080/v1/…`; a host the discovery does not
+know passes through unchanged, so one client serves service calls
+and the outside world. A THROWN wire error cools its endpoint down
+(default 5 s) and the next call goes elsewhere; an answered 5xx is
+the far end speaking and is left to the breaker. All endpoints
+cooling down → the least recently failed is tried; an empty
+resolution refuses with `Refused.NoEndpoint` (503 on a server).
+`Resilient.http(..., balanced = Some(b))` puts it innermost, so each
+hedged attempt picks its own endpoint and the breaker counts per
+service. `stats` names what is down.
+
+```scala
+val discovery = Discovery.chain(DiscoveryJvm.env(), Discovery.cached(DiscoveryJvm.dns(8080), 5_000))
+val client = Resilient.http(Transports.http(), breaker = Some(breaker), balanced = Some(Balanced(discovery)))
+client.send(Request.get("http://orders/v1/orders/42"))
+```
+
 **Testing the composite: `Faults.http`.** A seeded adversary between
 your client and a fake far end: `Faults.http(seed, Faults.Plan(dropAt
 = Set(2, 3), slowAt = Map(1L -> 5000L), failRate = 0.2))(far)`. A

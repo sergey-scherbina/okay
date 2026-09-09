@@ -141,9 +141,10 @@ rather than the only one.
       `LwwRegister` (over `Hlc`), `GSet`, `OrSet`. Laws before
       instances — a merge that is not idempotent makes the type a lie.
       Landed 2026-09-09.
-- [ ] **3 — the seam**: a `Crdt` is a fold, so it meets okay-cache's
-      `View` and okay-persist directly; `Schema` for the wire so a
-      replica ships as data.
+- [x] **3 — the seam**: a `Crdt` is a fold, so it meets okay-cache's
+      `View` and okay-persist directly. Landed 2026-09-09 as
+      `Crdt.folding`. `Schema` for the wire is NOT done and is filed
+      below.
 - [x] **4 — capability tokens**, landed 2026-09-09. HMAC-chained
       attenuation: each caveat is signed with the PREVIOUS signature
       as its key, so anyone can narrow a token and nobody can widen
@@ -307,3 +308,78 @@ The lane predicted the wire round trip would break first, on a caveat
 carrying the separator. It did not: base64url on every part removes
 the hazard by construction, and the awkward-caveat test passed
 immediately.
+
+**Stage 3 landed (crdt-seam, 2026-09-09).** `Crdt.folding` and
+`Crdt.mergeAll`, six lines of code and six tests. The lane predicted
+the seam would be under ten lines and the interesting work would be
+entirely in the law; that is what happened.
+
+**The seam is a FUNCTION, not a module edge.** `folding` is generic
+over the record type, so `okay-crdt` gains no dependency on
+okay-persist or okay-cache to express `(Option[V], R) => Option[V]`.
+`View.apply` takes any function of that shape:
+
+```scala
+View(topic)(keyOf)(Crdt.folding(decodeMyCrdt))
+```
+
+**The law is the deliverable, and it is a different law from stage 2.**
+Stage 2 proved the algebra — commutative, associative, idempotent.
+This proves what the algebra BUYS once a log is involved: a fold over
+records **in any order, with duplicates**, lands on one value. That is
+the form a `View` actually meets — partitions interleave, a consumer
+replays from an offset, a cold rebuild reads what compaction left.
+Checked EXHAUSTIVELY over all 120 permutations of five records, each
+also folded with every record delivered twice.
+
+**With a control, because a passing permutation check proves nothing
+on its own.** The naive fold a cache reaches for — last write wins by
+ARRIVAL — is order dependent, and the suite asserts that it is. If the
+permutation law passed for that too it would not be testing
+order-independence.
+
+Two smaller decisions worth keeping:
+
+- `decode` answering `None` means "not for me" and KEEPS the state. A
+  fold that let an unreadable record clear the state would make one
+  bad message erase a replica.
+- `mergeAll` answers `Option`, not an empty value. A CRDT has no
+  identity element in general — there is no "empty `LwwRegister`" —
+  and manufacturing one would be a lie for the type that has none.
+
+### Still open after stage 3
+
+- [x] **`Schema` for the wire.** Landed 2026-09-09 (crdt-wire).
+      `Wire` in okay-crdt: instances for `NodeId`, `Uid`,
+      `Hlc.Stamp` and all five types, 32 tests on JVM, JS and Native.
+
+**The wire form is SORTED, and that is the decision the piece turns
+on.** A CRDT's state is maps and sets whose ITERATION ORDER is not
+part of their value, so two replicas that have converged — that are
+`==` — would ship different bytes unless something imposes an order.
+Everything downstream that compares encodings would then see a
+difference that is not there: a cache key that misses, a digest that
+differs, a dedup check that lets a duplicate through, a test that
+fails on Tuesday.
+
+`Schema` has no Map and no Set. That absence turned out to be a
+feature: it forced the choice into the open, where a Map instance
+would have picked an order silently.
+
+**What sorts by what, and the trap avoided.** `NodeId` and `Uid` have
+orders of their own. `GSet[A]` and `OrSet[A]` hold an arbitrary `A`
+with no `Ordering` available, and the obvious fallback — `hashCode` —
+is the wrong one: it differs between JVM, JS and Native, so a replica
+encoded in a browser would not match the same replica encoded on a
+server, which is exactly the failure the sorting exists to prevent.
+`Sortable` therefore orders by each element's own ENCODING: total,
+already present, and identical on every platform. The lane predicted
+this would be where a cross-platform difference hid, and building it
+that way is why none did.
+
+**Three laws, and the third is the one that matters.** Equal values
+encode to equal bytes; `decode(encode(x)) == x`; and **merging two
+DECODED replicas equals decoding the MERGE**. Only the third catches a
+lossy encoding — one that dropped a tombstone or a per-node count
+would still round-trip a single value and still be canonical, and
+would break convergence the first time two replicas met.
