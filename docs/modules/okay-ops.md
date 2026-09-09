@@ -23,7 +23,7 @@ case r if Ops.routes(store).isDefinedAt(r) => Ops.routes(store)(r)
 | route | answers |
 |---|---|
 | `GET /healthz` | `200 live=true` / `503 live=false (reason)` — a Kubernetes `livenessProbe` |
-| `GET /readyz` | `200 ready=true` / `503 ready=false (reason)` — a `readinessProbe` |
+| `GET /readyz` | `200 ready=true` / `503 ready=false (reason)` — a `readinessProbe`; `503 ready=false (draining)` once a `Lifecycle` is draining |
 | `GET /stats` | `Store.Stats` as JSON — the Schema already derived, no new codec |
 | `GET /metrics` | Prometheus text exposition (`text/plain; version=0.0.4`) |
 
@@ -36,6 +36,42 @@ does, and the two CAN diverge for an engine where they do not.
 **Consumer lag**, per group, is opt-in: `Ops.routes(store, lagOf =
 Vector(("workers", offsets, Vector(topic))))` — a `Store` keeps no
 registry of its own consumer groups, so the caller names them.
+
+**Graceful shutdown.** `Lifecycle()` is a value with a draining flag
+and an in-flight count. Wrap the application's routes in
+`lifecycle.route(...)` — every request is counted, and once draining
+a new one is answered 503 `Connection: close` without running. Keep
+the ops routes OUTSIDE the wrapper: `Ops.routes(store, lifecycle =
+Some(l))` makes `/readyz` answer 503 while draining, and `/healthz`
+must keep answering 200 (an un-live pod is restarted, an un-ready one
+merely leaves the Service's endpoints). On the JVM,
+`Signals.awaitSignal(l, readinessDelayMillis = 2000, graceMillis =
+15000)` blocks the main thread until SIGTERM or ctrl-c, flips
+readiness, waits the delay for endpoint removal to propagate, drains
+in-flight requests up to the grace, and returns — so the region's
+own release stops the server, and the shutdown hook holds the JVM
+open until that has happened:
+
+```scala
+Resource.run[Unit, Pure](
+  Jetty.serve(port)(Ops.routes(store, lifecycle = Some(l)).orElse(l.route(app)))().map { s =>
+    val drained = Signals.awaitSignal(l)   // SIGTERM → ready=false → delay → drain
+  }).runWith                               // → the region stops Jetty
+```
+
+Set the pod's `terminationGracePeriodSeconds` above delay + grace.
+
+**RED per route and per client.** `Red("api")` keeps, per label,
+requests by status class (`2xx` … `5xx`, `exception`), errors (a 5xx
+or a throw) and a duration histogram in fixed buckets (5 ms … 10 s).
+`red.route(Red.byMethodAndPath)(routes)` measures a server's routes,
+`red.http(_ => "payments")(client)` an outbound `Http`; `Ops.routes
+(store, red = Vector(red))` renders
+`okay_http_requests_total{name,route,class}`,
+`okay_http_errors_total{name,route}` and
+`okay_http_request_duration_seconds_{bucket,sum,count}` — a
+Prometheus histogram `histogram_quantile(0.99, ...)` reads directly.
+The clock is injectable, so a bucket is testable without sleeping.
 
 **Wiring it to Kubernetes and Prometheus** is a manifest, not code:
 point `livenessProbe`/`readinessProbe` at `/healthz`/`/readyz`, and

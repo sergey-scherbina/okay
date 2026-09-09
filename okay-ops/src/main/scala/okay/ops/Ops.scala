@@ -24,20 +24,28 @@ object Ops:
   /** `GET /healthz`, `/readyz`, `/stats`, `/metrics` over `store`.
    * `lagOf` (topic groups to report consumer lag for) is optional —
    * a store keeps no registry of its own consumer groups; `guards`
-   * (breakers, bulkheads, limiters) join `/metrics` the same way */
+   * (breakers, bulkheads, limiters), a `lifecycle` (which also makes
+   * `/readyz` answer 503 while draining) and `red` (per-route
+   * request metrics) join `/metrics` the same way */
   def routes(store: Store, lagOf: Vector[(String, Offsets, Vector[Topic])] = Vector.empty,
              guards: Vector[okay.resilience.Reporting[?]] = Vector.empty,
              pools: Vector[(String, () => okay.sql.Pool.Stats)] = Vector.empty,
-             sagas: Vector[() => okay.persist.Saga.Status] = Vector.empty)
+             sagas: Vector[() => okay.persist.Saga.Status] = Vector.empty,
+             lifecycle: Option[Lifecycle] = None,
+             red: Vector[Red] = Vector.empty)
   : PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/healthz" =>
       val h = Health.of(store)
       text(if h.live then 200 else 503, s"live=${h.live}" + h.reason.fold("")(x => s" ($x)"))
     case r if r.method == okay.http.Method.Get && r.url == "/readyz" =>
+      // liveness above stays true while draining: an un-live pod is
+      // restarted, an un-ready one is taken out of the endpoints
       val h = Health.of(store)
-      text(if h.ready then 200 else 503, s"ready=${h.ready}" + h.reason.fold("")(x => s" ($x)"))
+      if lifecycle.exists(_.draining) then text(503, "ready=false (draining)")
+      else text(if h.ready then 200 else 503, s"ready=${h.ready}" + h.reason.fold("")(x => s" ($x)"))
     case r if r.method == okay.http.Method.Get && r.url == "/stats" =>
       text(200, Json.encode(summon[Schema[Store.Stats]])(store.stats), "application/json")
     case r if r.method == okay.http.Method.Get && r.url == "/metrics" =>
-      text(200, Prom.render(store.stats, lagOf) + Prom.guards(guards) + Prom.pools(pools) + Prom.sagas(sagas),
+      text(200, Prom.render(store.stats, lagOf) + Prom.guards(guards) + Prom.pools(pools) + Prom.sagas(sagas)
+        + lifecycle.fold("")(Prom.lifecycle) + Prom.red(red),
         "text/plain; version=0.0.4; charset=utf-8")

@@ -1,5 +1,29 @@
 # Changelog
 
+## service-lifecycle — graceful shutdown and RED metrics, in okay-ops
+
+The microservices audit's cheapest missing pair. No server here
+drained: a region release called `stop()` and every request in
+flight was cut, which Kubernetes does at every rollout. `Lifecycle`
+is a value — draining flag, in-flight count, `route` that counts and,
+once draining, answers 503 `Connection: close` without running — and
+`Ops.routes(store, lifecycle = Some(l))` makes `/readyz` say
+`ready=false (draining)` while `/healthz` stays 200 (an un-live pod
+is restarted, an un-ready one leaves the endpoints). `Signals
+.awaitSignal` (JVM) blocks the main thread until SIGTERM/ctrl-c, runs
+readiness-off → delay → drain, returns so the region stops the
+server, and its shutdown hook joins the main thread so the JVM waits
+for that. The demo's `Thread.sleep(Long.MaxValue)` became that call.
+`/metrics` also knew nothing about REQUESTS: `Red` keeps per-label
+requests by status class, errors and a fixed-bucket duration
+histogram, `red.route` and `red.http` measure a server's routes and
+an outbound client, and `Prom.red` renders the Prometheus histogram
+shape (`_bucket` cumulative, `+Inf` = `_count`, `_sum` in seconds).
+One wrapper per concern serves all three servers, since each takes
+the same `PartialFunction`. `Attempt` in okay-resilience is public
+now — both wrappers observe a program's outcome with it. 15 tests;
+specs/ops.md gained the two sections and their boxes;
+docs/modules/okay-ops.md documents both with the shutdown sequence.
 ## single-shot-row — priced, refuted, and the runner-floor list closes
 
 The last of the four items the operator ordered after the

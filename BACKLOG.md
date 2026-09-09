@@ -96,10 +96,15 @@ follows, in the spec's order:
       one resilience primitive the core already has cross-platform.
       Found by the resilience audit; not taken there because the
       module needed none of it.
+- [ ] deploy-termination-grace — the rendered Kubernetes manifest
+      (okay-deploy `Cluster`) should set `terminationGracePeriodSeconds`
+      above the lifecycle's delay + grace (2 + 15 s by default → 30),
+      and a `preStop` is NOT needed (the process handles SIGTERM
+      itself). Regenerate the committed rendering (drift test).
+      Found by service-lifecycle, not taken there.
 - [ ] microservices-next — the audit's remaining gaps, each its own
-      spec when picked: graceful shutdown (readiness → 503, stop
-      accepting, drain in-flight — no server here does it); RED
-      metrics per route and per outbound client; saga over `Durable`
+      spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
+      shutdown and RED metrics, both in okay-ops. Still open: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);
