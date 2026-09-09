@@ -4983,130 +4983,84 @@ four against master without it — so a diagnostic that costs the hot
 path does not live in main code. Re-add it temporarily if the latency
 measurement is ever built.
 
-## queue-swap — the channel-level version, which removes the layer `Growing` still pays
+## queue-swap — CLOSED 2026-09-09, refuted by measurement
 
-The operator asked (2026-09-07) whether we can have a single ideal
-MPMC queue. Measured today, the answer is in two halves.
+The entry proposed moving the ring -> partitioned swap out of the
+`Growing` wrapper and into `SentinelChannel`, which would hold the
+buffer in a volatile field and REPLACE it, so there would be exactly
+one layer on each side of the swap instead of two. Six steps were
+filed. **The plan is zero-sum and the lane did not build it.**
 
-**No single ALGORITHM is ideal, and the tensions are not engineering
-gaps — they are the trade itself:**
+WHY. The channel lanes cannot price a 9% effect at one producer:
+`oneRing_chunk` read 147.8 / 202.8 / 153.8 across three identical
+rounds, and in one of them `forwarded_chunk` — a buffer that does
+nothing but forward — read WORSE than `growing_chunk`, which is
+impossible as a cost. So the lane built the instrument the question
+needed: `BufferPushBenchmark`, one thread filling a 1 024 buffer and
+draining it on a pre-boxed element, everything else common to every
+row. Two independent runs of three rounds, bars under 1%:
 
-| axis | one end | the other | measured today |
-|---|---|---|---|
-| producers | one head | a part per producer | ring 122 / partitioned 144 at ONE producer; ring 2 375 / partitioned 99 at sixteen |
-| bound | bounded refuses when full (backpressure) | unbounded never refuses | unbounded 673 vs bounded 1 485 at sixteen — and the difference IS the contract, not a free win |
-| claim | CAS, because a bounded claim can be REFUSED | fetch-and-add, only sound when nothing can refuse | why Jiffy may use FAA and `Ring` may not |
-| order | strict FIFO across producers | per-producer FIFO, relaxed between | partitioning gives the second by construction; the first cannot be had with parts |
-| dequeue | wait-free, atomic-free — ONE consumer | several consumers | Jiffy's dequeue is atomic-free precisely because nobody else dequeues |
-| holes | a claimed-unpublished slot stalls the head (latency) | scan past it (needs handled-state per slot) | 0 of 5 001 visible behind a held hole; no throughput cost |
+| what it is | us per 1 024 push+pop | vs the ring |
+|---|---|---|
+| the ring | 9.036 | 1.000x |
+| + a wrapper layer that only forwards | 9.057 | **1.002x** |
+| + a `@volatile` buffer field, no trigger | 9.053 | **1.002x** |
+| + the counting trigger (this is `growing`) | 9.913 | 1.097x |
+| a partitioned buffer routing by thread from the first push | 10.058 | 1.113x |
+| + an identity compare instead of the counter | 10.479 | 1.160x |
 
-Anything claiming to be best on all six is best on none of them.
+Read the first three rows together and the entry answers itself. Step
+one turns `SentinelChannel.ring` from a `private val` into a
+`@volatile private var` — row three, 1.002x. The thing that buys is
+removing the wrapper — row two, 1.002x. **The plan deletes something
+free and adds something free**, and the 9.7% it never touches stays
+exactly where it was.
 
-**But one TYPE can be right for whatever the program turns out to do,
-and that is buildable.** It is the same answer the scheduler lane
-reached: measure what is happening and change policy, rather than ask
-the caller to know in advance. For a channel:
+WHAT THE 9.7% IS, and why no rearrangement removes it: the price of
+asking WHO IS PUSHING on every push. It is informational, not
+structural. Three designs were measured and the shipped one is the
+cheapest:
 
-1. `Channel.apply` starts with a plain `Ring` — the fastest thing at
-   one producer, which is what a channel usually has, and the reason
-   the ring is still the default.
-2. The moment a SECOND producer sends, the channel installs an
-   `AdaptiveFifo` whose PART 0 IS THAT RING. No element moves, no
-   copy, no stop-the-world: a single volatile publish of the buffer
-   reference, and both a reader holding the old reference and one
-   reading the new see the same part 0.
-3. From then on it grows a part per producer as it does today.
+- the counting sample (shipped): a plain store to a padded counter
+  every push, the thread compare behind an every-64th branch. 1.097x.
+- routing by thread from the first push, which is what a lazily
+  partitioned `AdaptiveFifo` does: 1.113x. This also prices what
+  adopting the ring as part 0 buys — **1.5%**, not the 6.4x
+  `docs/queues.md` claimed from parts measured before
+  growing-part-sizing. That table is withdrawn.
+- an identity compare instead of the counter (`GrowingCheap`):
+  1.160x, **6% worse**. A volatile load plus `Thread.currentThread()`
+  on every push lose to a plain store to a line this thread already
+  owns.
 
-What this buys: zero partitioning cost while there is one producer
-(the 1.15-1.3x that keeps `adaptive` opt-in disappears, because there
-is no wrapper until it is needed), and the 5x-24x at four and sixteen
-without anyone choosing.
+The lane predicted, in its claim and before any of this ran, that the
+gap would be ~8% and would be `sample()` rather than the layer. Half
+right: it is `sample()`, and it is 9.7% rather than 8% — but the
+first channel run said the opposite (layer 8.7%, trigger 4.6%) and
+was believed for an hour. What settled it was building an instrument
+whose bars were smaller than the effect, which is the lesson worth
+keeping from this entry.
 
-What it needs, in order:
-- `SentinelChannel.ring` becomes a volatile `var`, read once per
-  operation into a local. Every method already does this by habit;
-  the audit is that none of them read it twice and compare.
-- the waiter arrays are sized by `maxParts`, which changes at the
-  swap: allocate for the partitioned buffer's cap at swap time, and
-  publish the new arrays BEFORE the new buffer.
-- the swap must be idempotent and single-shot: one CAS on the buffer
-  reference, losers use the winner's.
-- laws: everything in `TestManyToMany` and `TestChannelLaws`, plus a
-  new one — a swap under load loses nothing, ends once, and a sender
-  parked on the ring before the swap is woken after it.
+WHAT LANDED instead of the six steps:
 
-The last of those is the hard part and where this could fail: a
-producer parked on a FULL ring, with the swap installing a buffer
-whose other parts have room. It must be woken rather than left
-waiting for room in part 0. `wakeAllSenders` at swap time is the
-blunt answer and probably the right one — a swap happens once per
-channel.
+- [x] `BufferPushBenchmark` — the instrument, kept, because the
+      channel lanes demonstrably cannot resolve this class of
+      question and the next person to ask will need it.
+- [x] `GrowingCheap` and `GrowingNoSample` — the two diagnostic
+      buffers, kept with their verdicts in their comments, so the
+      shipped trigger reads as a measured choice rather than the
+      first thing tried.
+- [x] the corrections in `docs/queues.md` and `Growing`'s own class
+      comment, both of which told the next reader that the layer was
+      the problem.
+- [x] the audit (`read-once`, 2026-09-07) stays landed and is good on
+      its own terms: six methods now read the buffer once per
+      operation.
 
-WHAT WAS BUILT AND WHAT IT MEASURED. A `Growing` buffer: a ring until
-producers contend, then an `AdaptiveFifo` that ADOPTS that ring as its
-part 0 (which needed the adaptive buffer to accept a pre-made part and
-to remember who owns it — that producer must keep pushing there or its
-own order breaks). Four laws held, including one producer never
-growing it and a producer parked on the full ring when it grows not
-being stranded. Minimum of five rounds, us:
-
-| producers | ring | growing | adaptive |
-|---|---|---|---|
-| 1 | **123** | 158 | 144 |
-| 4 | 715 | 477 | **136** |
-| 16 | 3 066 | 446 | **100** |
-
-It works — 6.9x the ring at sixteen producers — and it is DOMINATED at
-every point: worse than the ring where the ring wins, four times worse
-than the partitioned buffer where that wins. I reverted it for that
-reason and the operator decided otherwise (2026-09-07): it ships as
-`Queues.strong[A].growing` with the table beside it in
-`docs/queues.md`, as the thing this entry improves rather than
-replaces.
-
-THREE TRIGGERS, and the first two were refuted by measurement:
-- a REFUSED push. Wrong: a ring is 17x slower at sixteen producers
-  WITH ROOM TO SPARE, because the cost is many threads on one tail,
-  not fullness. It never refused, so it never grew.
-- two DIFFERENT refused producers. Same defect, same reason.
-- the pushing thread SAMPLED every 64th push. This one fires, and is
-  what the table above measures.
-
-WHY IT IS DOMINATED, and what to do instead: after the swap every push
-goes through TWO layers (the wrapper and the partitioned buffer), and
-before it, through the wrapper and its sampling. The channel-level
-version has neither — `SentinelChannel` holds the buffer in a volatile
-field and REPLACES it, so there is exactly one layer on each side of
-the swap. That is the version this entry now proposes.
-
-STATE, so whoever picks this up knows what is already paid for:
-
-- [x] THE AUDIT, done 2026-09-07 (`read-once`): six methods in
-      `SentinelChannel` read the buffer more than once in one
-      operation and now read it once into a local. No behaviour
-      change, gate green — and after a swap, two such reads could
-      have compared a ring against a part of itself.
-- [ ] the field becomes `@volatile private var`, and `growingTo(parts)`
-      arms it. Nothing else in the channel changes: the locals are
-      already there.
-- [ ] the sender waiter queues are sized for the GROWN part count at
-      construction, not resized at the swap — the array is small and
-      growing one under concurrent senders is a race nobody needs.
-- [ ] the swap itself: one CAS, losers use the winner's buffer, and
-      `AdaptiveFifo(first = the ring, firstOwner = the producer that
-      filled it)` — both already built and under laws in the reverted
-      lane's history (see the commit for `Growing`).
-- [ ] `wakeAllSenders()` immediately after, because a producer parked
-      for room in part 0 must be able to see the new parts. This is
-      the hazard of the whole design and the law to write first.
-- [ ] the trigger: the pushing thread SAMPLED every 64th push, which
-      is the only one of three that measured (a refused push does not
-      fire — a ring under sixteen producers is slow with room to
-      spare).
-- [ ] measure `oneRing_chunk` (must not move), `adaptive_chunk` (must
-      not move) and a new lane that starts with one producer and adds
-      fifteen, which is the only shape the swap is for.
-
-The adoption mechanism (`AdaptiveFifo(first, firstOwner)`) is proven
-and its laws are written; it is the WRAPPER that has to go, not the
-idea.
+WHAT IS STILL OPEN, honestly small: nothing in this design is known
+to be improvable. Whoever wants the ring's 9.036 and knows there is
+one producer can ask for it — `Queues.strong[A].fifo(capacity)` —
+and that escape hatch already shipped. A cheaper trigger would have
+to learn who is pushing without reading thread identity and without
+writing a counter, and no such mechanism has been proposed. Reopen
+this with one, not with a rearrangement of layers.

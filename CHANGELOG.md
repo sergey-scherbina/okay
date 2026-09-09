@@ -1,5 +1,63 @@
 # Changelog
 
+## queue-swap — the layer was free, and the entry closed itself
+
+`queue-swap` had been open since 2026-09-07 with six filed steps:
+move the ring -> partitioned swap out of the `Growing` wrapper and
+into `SentinelChannel`, so that a push crosses one layer instead of
+two. This lane measured the layer before removing it, and the plan is
+zero-sum.
+
+The channel lanes could not answer the question. At one producer
+`oneRing_chunk` read **147.8 / 202.8 / 153.8** across three identical
+rounds, and in one of them `forwarded_chunk` — a buffer that does
+nothing but forward to a ring — read WORSE than `growing_chunk`,
+which forwards AND samples. That is not a cost, it is noise, and an
+8% effect cannot be read off a lane that moves 37%.
+
+So the lane built the instrument instead: `BufferPushBenchmark`, one
+thread filling a 1 024 buffer and draining it on a pre-boxed element,
+with everything the rows share — boxing, the ring's arithmetic, the
+loop — common to all of them. Two independent runs of three rounds,
+bars under 1%, us per 1 024 push+pop:
+
+| what it is | us | vs the ring |
+|---|---|---|
+| the ring | 9.036 | 1.000x |
+| + a wrapper layer that only forwards | 9.057 | **1.002x** |
+| + a `@volatile` buffer field, no trigger | 9.053 | **1.002x** |
+| + the counting trigger (this is `growing`) | 9.913 | 1.097x |
+| a partitioned buffer routing by thread from the first push | 10.058 | 1.113x |
+| + an identity compare instead of the counter | 10.479 | 1.160x |
+
+Step one of the plan turns `SentinelChannel.ring` from a `private
+val` into a `@volatile private var` — the third row, 1.002x. What it
+buys is deleting the wrapper — the second row, 1.002x. **It deletes
+something free and adds something free**, and the 9.7% it never
+touches is the whole cost.
+
+That 9.7% is `sample()`, and it is not a structure to be rearranged:
+it is the price of asking WHO IS PUSHING on every push. Three designs
+now have numbers, and the shipped one is the cheapest of the three. An
+identity compare instead of the counter is **6% worse** — a volatile
+load plus `Thread.currentThread()` every push lose to a plain store
+to a line the thread already owns. A lazily partitioned buffer that
+routes by thread from the first push is 1.5% worse, which is also the
+first honest price of adopting the ring as part 0: **1.5%**, against
+the **6.4x** `docs/queues.md` claimed. That table was measured before
+growing-part-sizing, when "matched parts" meant 64 slots each and a
+lone producer stalled in them; it is withdrawn, and it is the third
+time this page read a memory difference as a mechanism difference.
+
+Kept: the instrument, and the two diagnostic buffers (`GrowingCheap`,
+`GrowingNoSample`) with their verdicts in their comments, so the
+shipped trigger reads as a measured choice. Corrected: `Growing`'s
+own class comment and two claims in `docs/queues.md`, all of which
+told the next reader that the layer was the problem. The lane's
+registered prediction — that the gap would be `sample()` — was right,
+and the first channel run said the opposite for an hour before the
+instrument settled it.
+
 ## flush-premium — the flusher fibers were never cancelled
 
 `flushAfter` cost **29%** over the same chunked merge without it,
