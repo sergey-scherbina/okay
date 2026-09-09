@@ -455,6 +455,21 @@ at stage 0 and never rebind.
       again from there sees an append made after its first read —
       the contract tailing stands on (ui-durable, resumable SSE),
       tested in both engines rather than assumed by the consumer
+- [x] …AND SO DOES A SECOND HANDLE. The same contract across
+      PROCESSES, which is the arrangement `FileStore`'s own header
+      calls this module's two-node story: a reader opened before an
+      append sees it, and sees records in a segment the writer rolled
+      after that. It did not — `segments` is memory, `read` asked the
+      in-memory `count` where the active segment ended, and a follower
+      tailed nothing at all. Found 2026-09-09 by a consumer's reading
+      replica, which applied 0 records while the log had grown by four
+      and had to reopen the whole journal on every poll. The end of the
+      active segment is a property of the FILE: `read` refreshes from
+      it and scans on from the last valid end — the scan checks length
+      and CRC and stops at a torn frame, the same authority recovery
+      uses — and looks at the directory for a rolled segment when a
+      reader at the end would otherwise answer nothing. A writer takes
+      one `Files.size` and no branch
 - [x] a process killed between append and ack leaves the partition
       readable: the record is either wholly present or wholly
       absent, never a corrupt log (torn frame truncates on recovery)
