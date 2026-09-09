@@ -605,7 +605,9 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCrdt = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-crdt"))
-  .dependsOn(okay)
+  // okay for `Hlc` and `Uid`; okay-codec so a replica ships as data
+  // (`Wire`). Both are JVM + JS + Native, so nothing narrows.
+  .dependsOn(okay, okayCodec)
   .settings(
     name := "okay-crdt",
     libraryDependencies ++= Seq(

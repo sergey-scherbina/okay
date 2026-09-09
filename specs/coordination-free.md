@@ -349,8 +349,37 @@ Two smaller decisions worth keeping:
 
 ### Still open after stage 3
 
-- [ ] **`Schema` for the wire.** A replica should ship as data through
-      okay-codec, which means instances for `NodeId` (an opaque
-      String), `Uid` and the five types. Not started; it is the one
-      piece of stage 3's original description that is not done, and
-      saying so is better than quietly narrowing the stage.
+- [x] **`Schema` for the wire.** Landed 2026-09-09 (crdt-wire).
+      `Wire` in okay-crdt: instances for `NodeId`, `Uid`,
+      `Hlc.Stamp` and all five types, 32 tests on JVM, JS and Native.
+
+**The wire form is SORTED, and that is the decision the piece turns
+on.** A CRDT's state is maps and sets whose ITERATION ORDER is not
+part of their value, so two replicas that have converged — that are
+`==` — would ship different bytes unless something imposes an order.
+Everything downstream that compares encodings would then see a
+difference that is not there: a cache key that misses, a digest that
+differs, a dedup check that lets a duplicate through, a test that
+fails on Tuesday.
+
+`Schema` has no Map and no Set. That absence turned out to be a
+feature: it forced the choice into the open, where a Map instance
+would have picked an order silently.
+
+**What sorts by what, and the trap avoided.** `NodeId` and `Uid` have
+orders of their own. `GSet[A]` and `OrSet[A]` hold an arbitrary `A`
+with no `Ordering` available, and the obvious fallback — `hashCode` —
+is the wrong one: it differs between JVM, JS and Native, so a replica
+encoded in a browser would not match the same replica encoded on a
+server, which is exactly the failure the sorting exists to prevent.
+`Sortable` therefore orders by each element's own ENCODING: total,
+already present, and identical on every platform. The lane predicted
+this would be where a cross-platform difference hid, and building it
+that way is why none did.
+
+**Three laws, and the third is the one that matters.** Equal values
+encode to equal bytes; `decode(encode(x)) == x`; and **merging two
+DECODED replicas equals decoding the MERGE**. Only the third catches a
+lossy encoding — one that dropped a tombstone or a per-node count
+would still round-trip a single value and still be canonical, and
+would break convergence the first time two replicas met.
