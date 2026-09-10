@@ -55,16 +55,86 @@ object Json {
   /** render = the lossless law made a function */
   def render(c: Cst[K]): String = Cst.lexemes(c)
 
-  /** print a Json VALUE back to text — the projection's other
-   * direction (render is the CST's; this one is the value's) */
-  def print(j: Json): String = j match
-    case JNull => "null"
-    case JBool(b) => b.toString
-    case JNum(n) => if n == n.floor && n.abs < 1e15 then n.toLong.toString else n.toString
-    case JStr(s) => "\"" + escape(s) + "\""
-    case JArr(vs) => vs.map(print).mkString("[", ",", "]")
-    case JObj(fs) => fs.map((k, v) => "\"" + escape(k) + "\":" + print(v)).mkString("{", ",", "}")
-    case JErr(m) => "\"<error: " + escape(m) + ">\""
+  /**
+   * print a Json VALUE back to text — the projection's other
+   * direction (render is the CST's; this one is the value's).
+   *
+   * `remove-codecs-maxdepth` made every DECODE door safe at any input
+   * depth but never touched this one — the write half of the same
+   * pipe. A value big enough to have needed the removed cap to
+   * DECODE can now exist in memory, and printing it back out was
+   * still plain native recursion (encode-side-depth-safety): the same
+   * `Codecs.NativeThreshold`-then-`Cont.defer` split `into`/`intoC`
+   * above already carry, side-effecting into a `StringBuilder` the
+   * way `into` side-effects into a `Builder`.
+   */
+  def print(j: Json): String =
+    val sb = new StringBuilder
+    printInto(j, sb, 0)
+    sb.toString
+
+  private def printInto(j: Json, sb: StringBuilder, open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(printIntoC[Unit](j, sb, open))
+    else printIntoNative(j, sb, open)
+
+  private def printIntoNative(j: Json, sb: StringBuilder, open: Int): Unit = j match
+    case JArr(vs) =>
+      sb.append('[')
+      var first = true
+      vs.foreach { v =>
+        if !first then sb.append(',')
+        first = false
+        printInto(v, sb, open + 1)          // the DISPATCHER
+      }
+      sb.append(']'): Unit
+    case JObj(fs) =>
+      sb.append('{')
+      var first = true
+      fs.foreach { (k, v) =>
+        if !first then sb.append(',')
+        first = false
+        val _ = sb.append('"').append(escape(k)).append("\":")
+        printInto(v, sb, open + 1)          // the DISPATCHER
+      }
+      sb.append('}'): Unit
+    case leaf => printLeaf(leaf, sb)
+
+  private def printLeaf(j: Json, sb: StringBuilder): Unit = j match
+    case JNull => sb.append("null"): Unit
+    case JBool(b) => sb.append(b): Unit
+    case JNum(n) =>
+      sb.append(if n == n.floor && n.abs < 1e15 then n.toLong.toString else n.toString): Unit
+    case JStr(s) => sb.append('"').append(escape(s)).append('"'): Unit
+    case JErr(m) => sb.append("\"<error: ").append(escape(m)).append(">\""): Unit
+    case JArr(_) | JObj(_) => () // unreachable: the caller handles containers
+
+  // ---- the trampoline: mirrors printIntoNative exactly, deferring
+  // each element/field of a sibling loop through Cont.defer, and the
+  // one recursive descent (a nested container) through the same
+  // mechanism, exactly as intoC does above ----
+
+  private def printIntoC[R](j: Json, sb: StringBuilder, open: Int): Unit /> R = j match
+    case JArr(vs) =>
+      sb.append('[')
+      def loop(rest: Vector[Json], first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          Cont.defer(() => printIntoC[R](rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(vs, true)
+    case JObj(fs) =>
+      sb.append('{')
+      def loop(rest: Vector[(String, Json)], first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append('}'); Cont.Pure(()) }
+        else
+          val (k, v) = rest.head
+          if !first then sb.append(',')
+          val _ = sb.append('"').append(escape(k)).append("\":")
+          Cont.defer(() => printIntoC[R](v, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(fs, true)
+    case leaf =>
+      printLeaf(leaf, sb)
+      Cont.Pure(())
 
   /**
    * The total pipeline: any string yields a Json (JErr for damage).
@@ -105,8 +175,19 @@ object Json {
    * a caller composing patches across a boundary it does not control
    * the whole history of should apply them in order, not combine
    * them first.
+   *
+   * Recurses on the PATCH's own depth, not a schema's — the same
+   * exposure `print`/`into` have (encode-side-depth-safety): the same
+   * `Codecs.NativeThreshold`-then-`Cont.defer` split, folding the
+   * patch's fields the way `pairsC` above folds a CST's.
    */
-  def mergePatch(target: Json, patch: Json): Json = patch match
+  def mergePatch(target: Json, patch: Json): Json = mergePatchAt(target, patch, 0)
+
+  private def mergePatchAt(target: Json, patch: Json, open: Int): Json =
+    if open >= Codecs.NativeThreshold then reset(mergePatchC[Json](target, patch, open))
+    else mergePatchNative(target, patch, open)
+
+  private def mergePatchNative(target: Json, patch: Json, open: Int): Json = patch match
     case JObj(patchFields) =>
       val base = target match
         case JObj(fs) => fs
@@ -118,10 +199,28 @@ object Json {
           case JNull => without
           case _ =>
             val orig = acc.find(_._1 == k).map(_._2).getOrElse(JNull)
-            without :+ (k -> mergePatch(orig, v))
+            without :+ (k -> mergePatchAt(orig, v, open + 1))     // the DISPATCHER
       }
       JObj(merged)
     case other => other
+
+  private def mergePatchC[R](target: Json, patch: Json, open: Int): Json /> R = patch match
+    case JObj(patchFields) =>
+      val base = target match
+        case JObj(fs) => fs
+        case _ => Vector.empty
+      def loop(rest: Vector[(String, Json)], acc: Vector[(String, Json)]): Vector[(String, Json)] /> R =
+        if rest.isEmpty then Cont.Pure(acc)
+        else
+          val (k, v) = rest.head
+          val without = acc.filterNot(_._1 == k)
+          v match
+            case JNull => loop(rest.tail, without)
+            case _ =>
+              val orig = acc.find(_._1 == k).map(_._2).getOrElse(JNull)
+              Cont.defer(() => mergePatchC[R](orig, v, open + 1))(merged => loop(rest.tail, without :+ (k -> merged)))
+      loop(patchFields, base).flatMap(merged => Cont.Pure(JObj(merged)))
+    case other => Cont.Pure(other)
 
     /** the projection of an ALREADY PARSED tree — the door for anyone
    * holding a session (an incremental reparse, say) who should not

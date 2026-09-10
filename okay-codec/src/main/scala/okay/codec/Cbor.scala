@@ -69,8 +69,29 @@ object Cbor {
 
     def toArray: Array[Byte] = buf.toArray
 
-  private def put[A](out: Out, s: Schema[A], a: A): Unit = s match
-    case Schema.SIso(u, _, from) => put(out, u(), from(a))
+  /**
+   * The write side of the same recursion the decode arc closed on the
+   * read side (`get`/`getNative`/`getC` below) — `put` walks the
+   * VALUE's own recursive-schema depth exactly as `get` walks the
+   * wire's, and `remove-codecs-maxdepth` only ever bounded how deep
+   * `get` could hand one back. A value that deep can now exist in
+   * memory (decoded from untrusted input, no cap), and writing it
+   * back out was still plain native recursion (encode-side-depth-
+   * safety): the same `Codecs.NativeThreshold`-then-`Cont.defer`
+   * split `get` already carries, checked on EVERY call exactly as
+   * `get` checks `in.depth`, so the switch happens at whatever level
+   * actually crosses it. `SIso` is not a level, for the same reason
+   * it is not one on the read side: it wraps the SAME depth at a
+   * different type, nothing nests.
+   */
+  private def put[A](out: Out, s: Schema[A], a: A): Unit = putAt(out, s, a, 0)
+
+  private def putAt[A](out: Out, s: Schema[A], a: A, open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(putC[A, Unit](out, s, a, open))
+    else putNative(out, s, a, open)
+
+  private def putNative[A](out: Out, s: Schema[A], a: A, open: Int): Unit = s match
+    case Schema.SIso(u, _, from) => putAt(out, u(), from(a), open)
     case Schema.SInt => out.integer(a.toLong)
     case Schema.SLong => out.integer(a)
     case Schema.SDouble => out.double(a)
@@ -81,19 +102,80 @@ object Cbor {
     case Schema.SBytes => out.byteString(a)
     case Schema.SOption(of) => a match
       case None => out.nul()
-      case Some(x) => put(out, of(), x)
+      case Some(x) => putAt(out, of(), x, open + 1)          // the DISPATCHER
     case Schema.SList(of) =>
       out.arrayHeader(a.length.toLong)
-      a.foreach(put(out, of(), _))
+      a.foreach(putAt(out, of(), _, open + 1))                // the DISPATCHER
     case Schema.SVector(of) =>
       out.arrayHeader(a.length.toLong)
-      a.foreach(put(out, of(), _))
+      a.foreach(putAt(out, of(), _, open + 1))                // the DISPATCHER
     case p: Schema.SProduct[A] =>
       out.mapHeader(p.fields.length.toLong)
-      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => { out.text(n); put(out, sc, x) }): Unit
+      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
+        { out.text(n); putAt(out, sc, x, open + 1) }): Unit   // the DISPATCHER
     case su: Schema.SSum[A] =>
       out.mapHeader(1)
-      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => { out.text(n); put(out, sc, x) })
+      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
+        { out.text(n); putAt(out, sc, x, open + 1) })         // the DISPATCHER
+
+  // ---- the trampoline: mirrors putNative exactly, deferring every
+  // recursive descent through Cont.defer — one field/element/case at
+  // a time, forced inside `/`'s own loop at constant native stack,
+  // the same mechanism getC uses on the read side. `eachField`/
+  // `theCase` still do the ONE unavoidable cast (no-casts-without-
+  // necessity), unchanged; building the Cont value their callback
+  // returns is O(1) — the callback never calls putC directly, only
+  // Cont.defer(() => putC(...)), so eachField's own eager loop over
+  // fields costs one Defer-node allocation per field, not a step of
+  // real recursion ----
+
+  private def putC[A, R](out: Out, s: Schema[A], a: A, open: Int): Unit /> R = s match
+    case Schema.SIso(u, _, from) =>
+      Cont.defer(() => putC(out, u(), from(a), open))(_ => Cont.Pure(()))
+    case Schema.SOption(of) => a match
+      case None => out.nul(); Cont.Pure(())
+      case Some(x) => Cont.defer(() => putC(out, of(), x, open + 1))(_ => Cont.Pure(()))
+    case Schema.SList(of) =>
+      out.arrayHeader(a.length.toLong)
+      def loop(rest: A): Unit /> R =
+        if rest.isEmpty then Cont.Pure(())
+        else Cont.defer(() => putC(out, of(), rest.head, open + 1))(_ => loop(rest.tail))
+      loop(a)
+    case Schema.SVector(of) =>
+      out.arrayHeader(a.length.toLong)
+      def loop(rest: A): Unit /> R =
+        if rest.isEmpty then Cont.Pure(())
+        else Cont.defer(() => putC(out, of(), rest.head, open + 1))(_ => loop(rest.tail))
+      loop(a)
+    case p: Schema.SProduct[A] =>
+      out.mapHeader(p.fields.length.toLong)
+      // `eachField`'s own map is EAGER — it calls this callback for
+      // every field synchronously, right here, before `loop` ever
+      // runs a single deferred step. `out.text(n)` MUST be inside the
+      // deferred thunk, not before it: pulling it out (as an easy
+      // first draft did) writes every field's KEY up front, then
+      // every VALUE after — key,key,value,value instead of
+      // key,value,key,value, which is not a CBOR map at all (caught
+      // by TestVector's own two-FIELD Tree: `Cbor.read` answered
+      // "missing field 'kids'" because "kids" arrived as the STRING
+      // after "label", not as its own key).
+      val steps: Vector[Unit /> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
+        Cont.defer(() => { out.text(n); putC(out, sc, x, open + 1) })(_ => Cont.Pure(())))
+      def loop(rest: Vector[Unit /> R]): Unit /> R =
+        if rest.isEmpty then Cont.Pure(()) else rest.head.flatMap(_ => loop(rest.tail))
+      loop(steps)
+    case su: Schema.SSum[A] =>
+      out.mapHeader(1)
+      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
+        { out.text(n); Cont.defer(() => putC(out, sc, x, open + 1))(_ => Cont.Pure(())) })
+    // leaves: no recursion, so no defer — same values as putNative
+    case Schema.SInt => out.integer(a.toLong); Cont.Pure(())
+    case Schema.SLong => out.integer(a); Cont.Pure(())
+    case Schema.SDouble => out.double(a); Cont.Pure(())
+    case Schema.SBool => out.bool(a); Cont.Pure(())
+    case Schema.SString => out.text(a); Cont.Pure(())
+    case Schema.SChar => out.text(a.toString); Cont.Pure(())
+    case Schema.SBytes => out.byteString(a); Cont.Pure(())
 
   /** value to bytes in one move */
   def write[A](a: A)(using s: Schema[A]): Array[Byte] =

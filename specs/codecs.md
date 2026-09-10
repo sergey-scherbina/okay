@@ -655,6 +655,57 @@ Nothing in this module currently reintroduces a cap for that; a future
 wire contract that wants one gets to pick its own number, informed by
 this arc's measurements, not by resurrecting this one.
 
+## The write side gets the same trampoline (2026-09-10, encode-side-depth-safety)
+
+`Codecs.maxDepth`'s removal only ever bounded how deep DECODE could
+hand a value back — nothing on the WRITE side was ever part of
+`iterative-recursive-decode.md`'s arc, because it was named "decode".
+`Json.print`, `Cbor.put`/`write`, and `Json.mergePatch` were all still
+plain native recursion, and the section above's own logic applies to
+them unchanged: a value that used to need the removed cap to DECODE
+can now exist in memory, from untrusted input, with nothing bounding
+it — and writing it back out (a proxy, a relay, a log that decodes
+then re-encodes) crashed on the write half of a round trip the read
+half had just been proven safe on. Found while answering an operator
+question about `Cont`'s fusion budget, not from a bug report.
+
+Same fix, same shape: `Codecs.NativeThreshold`-then-`Cont.defer`,
+mirroring `into`/`intoC` (the CST-to-`Json` projection above, on this
+same file) exactly — side-effecting into a `StringBuilder` (`print`)
+or an `Out` (`Cbor.put`) rather than combining a decoded value.
+`mergePatch` mirrors `pairsC`'s fold instead, since it returns a
+`Json`, not `Unit`.
+
+Two more native-recursion sites turned up by the same grep that found
+these, unrelated to the write side but the same defect shape:
+`okay-demo/StateMcp.scala`'s `damaged` was a byte-for-byte duplicate of
+`okay-mcp/Rpc.damaged` (the one `remove-codecs-maxdepth` already fixed
+once) — same explicit-work-list fix, second time.
+
+**A real defect this lane found, not just a safety one.** `Schema.
+SProduct#eachField`'s own map is EAGER: it calls its callback for
+EVERY field synchronously, before any deferred step runs. The first
+`putC` draft wrote each field's KEY inside that eager callback and
+only deferred the VALUE — so a two-field product wrote key, key,
+value, value onto the wire instead of key, value, key, value, which
+is not a CBOR map at all. `Cbor.read` answered "missing field 'kids'"
+on the first two-field recursive type tested (`TestVector`'s own
+`Tree`, one field only, could not have caught it — the regression
+witness in `TestEncodeTrampoline` is a NEW two-field type for exactly
+this reason). Fixed by moving the key-write inside the same deferred
+thunk as the value-write, so both happen as one atomic step in the
+trampoline's own sequencing — the general rule: when a schema
+combinator's own API is an eager per-item callback (unlike a
+hand-written recursive loop, which naturally steps one item at a
+time), every side effect for one item must be INSIDE that item's own
+`Cont.defer`, not split across the eager collection phase and the
+deferred one.
+
+Every test proving a fixed function safe builds its deep value
+DIRECTLY (a loop, never a decode), so none of them depend on decode's
+own depth safety — only on the write side's, which is what changed
+here.
+
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends
 Schema[Option[A]]` and the rest — and the codecs cast anyway

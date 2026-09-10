@@ -171,6 +171,31 @@ The section's own prose had been claiming the matched-size row was
 146. A claim disagreeing with its own evidence on one screen is how a
 mis-pairing survives three re-measurements.
 
+## okay-codec: the write side gets the same depth-safety trampoline
+
+`remove-codecs-maxdepth` made every DECODE door safe at any input
+depth but never touched WRITE — `Json.print`, `Cbor.put`/`write`, and
+`Json.mergePatch` were still plain native recursion on a value's own
+depth. A value that used to need the removed cap to decode can now
+exist in memory from untrusted input, and writing it back out (a
+proxy, a relay, a log) crashed on the write half of a round trip the
+read half had just been proven safe on. Found while answering an
+operator question about `Cont`'s fusion budget, not from a bug report.
+
+Same `Codecs.NativeThreshold`-then-`Cont.defer` split the read side
+already carries, mirroring `into`/`intoC` (side-effecting) and
+`pairsC` (value-returning) in the same files. Two more copies of an
+already-fixed bug turned up along the way: `okay-demo/StateMcp.
+damaged` was a byte-for-byte duplicate of `okay-mcp/Rpc.damaged`.
+
+Caught a real defect along the way, not just a safety one:
+`Schema.SProduct#eachField`'s callback runs eagerly for every field
+before any deferred step executes, so an early draft wrote every
+field's KEY up front and every VALUE after — not a valid CBOR map.
+`Cbor.read` answered "missing field" the moment a two-field type was
+tested. Fixed by moving each field's key-write inside its own
+deferred thunk, alongside its value.
+
 ## optics-outside-tools — a tool was declared three times, and the model was never told what it needed
 
 Stage 2 of `specs/optics-outside.md`. Stage 1 landed the arc's shape;

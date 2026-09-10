@@ -55,12 +55,26 @@ object StateMcp {
     /** the parser is total and lossless (specs/codecs.md): damage
      * survives as a `JErr` leaf, or — inside an object's fields, a
      * garbled key-value pair — as a synthetic `"<message>"` key
-     * (`Json.scala`'s own `pairs`), so both are checked recursively */
-    private def damaged(j: Json): Boolean = j match
-      case _: Json.JErr => true
-      case Json.JObj(fs) => fs.exists((k, v) => k.startsWith("<") || damaged(v))
-      case Json.JArr(vs) => vs.exists(damaged)
-      case _ => false
+     * (`Json.scala`'s own `pairs`), so both are checked recursively.
+     *
+     * An explicit work-list, not native recursion: nothing here caps
+     * how deep a state file's own JSON can nest any more
+     * (remove-codecs-maxdepth) — same defect, same fix as
+     * `okay.mcp.Rpc.damaged` (encode-side-depth-safety). */
+    private def damaged(j: Json): Boolean =
+      var todo = List(j)
+      var found = false
+      while !found && todo.nonEmpty do
+        val h = todo.head
+        todo = todo.tail
+        h match
+          case _: Json.JErr => found = true
+          case Json.JObj(fs) =>
+            if fs.exists((k, _) => k.startsWith("<")) then found = true
+            else todo = fs.map(_._2).toList ::: todo
+          case Json.JArr(vs) => todo = vs.toList ::: todo
+          case _ => ()
+      found
 
     private def load(): Json =
       if !file.exists() then Json.JObj(Vector.empty)
