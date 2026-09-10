@@ -1,0 +1,32 @@
+task: cbor-decode-threshold-trampoline
+agent: opus-depth
+started: 2026-09-10
+branch: feature/cbor-decode-threshold-trampoline
+worktree: ../okay-wt-cbor-trampoline
+spec: specs/iterative-recursive-decode.md (root 1 of 2: Cbor.get)
+
+why: the operator asked to start the implementation the spec describes.
+  Scope for THIS lane: `Cbor.get` only — one of the two recursive
+  roots the spec names. `Json.decode` and `JsonStrict.Reader.get` are
+  separate follow-up lanes (BACKLOG stays open for them), kept apart
+  because Json.decode has no existing depth counter to reuse (its
+  depth is bounded upstream by Json.isCut, differently) and mixing
+  three decoders' worth of changes into one lane is exactly how
+  TestCompat's Wire removal drifted out of sync before.
+
+what: `Cbor.get` gains a native/trampoline split at `in.depth` (the
+  EXISTING enter/leave counter, read-only accessor added, no second
+  counter): below a small threshold, today's code unchanged
+  (renamed `getNative`); at or past it, a newly-written `getC`
+  produces a `Cont`-based computation via `Cont.defer` at the ONE
+  point each case recurses into a nested schema, `reset` at the
+  boundary. `Codecs.maxDepth`'s refusal (`enter`/`tooDeep`) is
+  preserved identically in both paths — the threshold changes HOW
+  depth is paid for, not what depth is allowed.
+
+predict: shallow (below-threshold) documents show no measurable
+  regression (a JMH-quality benchmark gates this, not a hand-timed
+  loop — the spec's own Behavior checklist item); deep/pathological
+  documents decode instead of overflowing, up to Codecs.maxDepth
+  raised back toward its pre-lower-maxdepth-real-margin range as a
+  FOLLOW-UP decision once this lane's numbers are in, not assumed here.
