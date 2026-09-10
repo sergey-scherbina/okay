@@ -1,5 +1,28 @@
 # Changelog
 
+## pipe-arrow — a partial function, infix, chosen by precedence rather than taste
+
+`PartialFunction[Request, Response ! Async]` is the type this stack
+writes most and reads worst. `infix type |=>[A, B]` is now beside the
+other infix types in the core: `Request |=> Response ! Async`.
+
+The spelling was not a preference. An infix type takes its precedence
+from its FIRST character; `!` sits at the `=`/`!` level, so any tighter
+arrow binds the wrong way — `A ~> B ! F`, `A -?> B ! F` and
+`A =?> B ! F` all parse as `(A ~> B) ! F`, measured against the
+compiler rather than the table. Only `|`, `^` and `&` are looser; `^`
+is already `Cont`; and `=?>`, the usual choice elsewhere, would sit one
+transposition away from the language's `?=>`, which this repository
+writes on every second line. `|` also reads as the alternatives a
+partial function is made of, and a union on the left binds first, so
+`Get | Post |=> Res` means what it looks like — checked, along with an
+effect row on the right, a context function around it, chaining and
+`orElse`.
+
+Used in the DI guide and its routes example; not swept across the
+repository, so other modules adopt it when they touch the code. A line
+in the typepedia carries the reason. Commit: LANDING.
+
 ## fact-declaring — a feature is one module, and the block needs no ascription
 
 Two things the operator found by reading the routes example, both

@@ -25,6 +25,15 @@ same material with the measurements attached.
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
   signature — in scopes importing `!.*` write `okay.Pure` (the
   Free.Pure case shadows it).
+- **`A |=> B`** — a partial function, infix: `Request |=> Response !
+  Async` is the type every route in this stack has. The spelling is
+  forced by precedence, not taste: an infix type takes its precedence
+  from its FIRST character, `!` sits at the `=`/`!` level, and every
+  tighter arrow (`~>`, `-?>`, `=?>`) parses `A ~> B ! F` as
+  `(A ~> B) ! F` — measured. `|`, `^` and `&` are the looser ones, `^`
+  is already `Cont`, and `=?>` would sit one transposition away from
+  the language's `?=>`. A union on the left binds first, so
+  `Get | Post |=> Res` reads as it looks.
 - **`F !> S`** — a handler: `F ==> ([X] =>> X /> S)`; handlers are
   continuations, literally.
 - **`Parse.Step[K, D]`** (okay-parse) — a driver as a pure step

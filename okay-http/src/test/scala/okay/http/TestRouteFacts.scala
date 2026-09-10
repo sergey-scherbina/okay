@@ -19,7 +19,7 @@ import okay.given
  */
 class TestRouteFacts extends munit.FunSuite {
 
-  type Routes = PartialFunction[Request, Response ! Async]
+  type Routes = Request |=> Response ! Async
 
   /** the kind: routes accumulate, first match wins — `orElse` */
   given Monoid[Routes] = Monoid.of(PartialFunction.empty[Request, Response ! Async])(_ orElse _)

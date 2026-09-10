@@ -43,6 +43,24 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 /** a computation of A performing the operations of F: A ! F */
 infix type ![A, F[+_]] = Free[F, A]
 
+/**
+ * A partial function, infix: `Request |=> Response ! Async`.
+ *
+ * The type this stack writes most and reads worst — every route in
+ * every server is one. The spelling is the operator's choice, made
+ * against THIS file's own `!`: an infix type's precedence comes from
+ * its FIRST character, `!` sits at the `=`/`!` level, and anything
+ * tighter binds the wrong way — `A ~> B ! F`, `A -?> B ! F` and
+ * `A =?> B ! F` all parse as `(A ~> B) ! F`, measured. Only `|`, `^`
+ * and `&` are looser, `^` is already `Cont`, and `=?>` would sit one
+ * transposition away from the language's `?=>` besides.
+ *
+ * `|` reads as the alternatives a partial function is made of, and a
+ * union on the left binds first, so `Get | Post |=> Res` means what
+ * it looks like.
+ */
+infix type |=>[A, B] = PartialFunction[A, B]
+
 /** a value as a computation */
 inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 

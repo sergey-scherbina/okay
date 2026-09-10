@@ -345,7 +345,7 @@ The case that motivates it: several features each own part of a
 service's surface, and the server must serve all of it.
 
 ```scala
-type Routes = PartialFunction[Request, Response ! Async]
+type Routes = Request |=> Response ! Async     // `|=>` is PartialFunction, infix
 
 // how two contributions merge: `orElse`, the one every server here uses
 given Monoid[Routes] = Monoid.of(PartialFunction.empty[Request, Response ! Async])(_ orElse _)
