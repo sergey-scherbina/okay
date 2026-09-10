@@ -1,6 +1,0 @@
-feature/aggregator-zip-allocates 2026-09-10T11:11:48Z
-agent: claude-code
-heartbeat: 2026-09-10T11:11:48Z
-status: in-progress
-done-so-far: claimed
-next: a flat count/sum/min/max accumulator beside Mean and Variance, then price it in §20
