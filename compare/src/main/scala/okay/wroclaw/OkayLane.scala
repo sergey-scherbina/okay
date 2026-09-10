@@ -126,6 +126,70 @@ object OkayLane {
   }
 
   /**
+   * WHY THE ONE-CORE ROW LOSES TO A HAND-WRITTEN FOLD, as a 2x2 rather
+   * than as an opinion (docs/benchmarks.md §20). Three things separate
+   * `run` from the plain-JVM lane, and each row below changes exactly
+   * one of them:
+   *
+   *                        | packed LongMap key | HashMap[K, LongMap]
+   *     ---------------------------------------------------------------
+   *     algebraic acc      | `packed`           | `run`
+   *     mutable cell       | `packedCells`      | `runCells`
+   *
+   * and `JvmLane.loop` is the bottom-left cell again WITHOUT eviction,
+   * so the last difference is priced too.
+   *
+   * THE CELL IS A LEGAL `Aggregator`, and that it is legal is half the
+   * finding: `init` is a METHOD, so an implementation may hand out a
+   * fresh mutable accumulator per pane. `Aggregator.apply` cannot —
+   * its `z` is one value — which is why every aggregator built through
+   * the combinators (`count zip sum zip max`, and so `Job.stats`)
+   * allocates its accumulator anew on every add. `merge` copies rather
+   * than mutating, so the value semantics the parallel lane depends on
+   * survive.
+   */
+  private val cellStats: Aggregator[Ride, Cell, Job.Stats] =
+    new Aggregator[Ride, Cell, Job.Stats]:
+      def init: Cell = new Cell(0L, 0L, Int.MinValue)
+      def add(c: Cell, r: Ride): Cell =
+        c.n += 1L; c.sum += r.delay.toLong
+        if r.delay > c.max then c.max = r.delay
+        c
+      def merge(a: Cell, b: Cell): Cell =
+        new Cell(a.n + b.n, a.sum + b.sum, Math.max(a.max, b.max))
+      def present(c: Cell): Job.Stats = Job.Stats(c.n, c.sum, c.max)
+
+  /** the accumulator `cellStats` hands out: three fields, bumped in
+   * place, the shape every hand-written pipeline uses */
+  private final class Cell(var n: Long, var sum: Long, var max: Int)
+
+  /** `run` with the cheap accumulator: the general operator, no tuples */
+  def runCells(feed: Feed, chunk: Int = 256): Job.Result = {
+    val tram = tramTable(feed)
+    val sink = new Sink(tram)
+    val routeWindows = Windows.tumbling[Int, Ride, Cell, Job.Stats](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(cellStats)
+    val stopWindows = Windows.sliding[Int, Ride, Cell, Job.Stats](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(cellStats)
+    val lastSeen = mutable.LongMap.empty[Long]
+
+    Chunks.foldLeft(rides(feed, tram, chunk))(())((_, r) => {
+      routeWindows.add(r)(sink.route)
+      stopWindows.add(r)(sink.stop)
+      bunching(lastSeen, r, sink)
+      ()
+    })
+    routeWindows.close()(sink.route)
+    stopWindows.close()(sink.stop)
+    sink.result
+  }
+
+  /** `packed` with the cheap accumulator: one lookup AND no tuples,
+   * which leaves only the eviction between it and `JvmLane.loop` */
+  def packedCells(feed: Feed, chunk: Int = 256): Job.Result =
+    packedWith(feed, cellStats, chunk)
+
+  /**
    * The job again, reporting the greatest number of panes open at
    * once. It answers §20's memory question EXACTLY rather than by
    * sampling a heap: `okay.Windows.live` knows how many panes it
@@ -200,11 +264,16 @@ object OkayLane {
    * and the driver is duplicated rather than abstracted, because an
    * interface over the hot path would measure the interface.
    */
-  def packed(feed: Feed, chunk: Int = 256): Job.Result = {
+  def packed(feed: Feed, chunk: Int = 256): Job.Result =
+    packedWith(feed, Job.stats, chunk)
+
+  /** the packed driver, over whichever accumulator is being priced */
+  private def packedWith[Acc](feed: Feed, agg: Aggregator[Ride, Acc, Job.Stats],
+                              chunk: Int): Job.Result = {
     val tram = tramTable(feed)
     val sink = new Sink(tram)
-    val routeWindows = new Packed(Job.WindowMs, Job.WindowMs, sink.route)
-    val stopWindows = new Packed(Job.SlideWindowMs, Job.SlideMs, sink.stop)
+    val routeWindows = new Packed(Job.WindowMs, Job.WindowMs, agg, sink.route)
+    val stopWindows = new Packed(Job.SlideWindowMs, Job.SlideMs, agg, sink.stop)
     val lastSeen = mutable.LongMap.empty[Long]
     var maxTs = Long.MinValue
 
@@ -224,9 +293,10 @@ object OkayLane {
   }
 
   /** the pre-core operator, kept only as the measured baseline */
-  private final class Packed(size: Long, slide: Long, emit: Pane[Int, Job.Stats] => Unit) {
-    private val agg = Job.stats
-    private val panes = mutable.LongMap.empty[Job.Acc]
+  private final class Packed[Acc](size: Long, slide: Long,
+                                 agg: Aggregator[Ride, Acc, Job.Stats],
+                                 emit: Pane[Int, Job.Stats] => Unit) {
+    private val panes = mutable.LongMap.empty[Acc]
     private val closing = mutable.ArrayBuffer.empty[Long]
     private val panesPer = (size / slide).toInt
     private var nextSweep = Long.MinValue

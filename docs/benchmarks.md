@@ -4047,21 +4047,66 @@ this section said.**
   libraries land within 6% of the bare loop, which repeats the older
   finding in the new setting: on this job the CARRIER is not the cost.
   What the carrier does not decide, the state model does.
-- **Where okay's single-core kilobyte goes is measurable from rows
-  already in the table.** `okay, 1 thread, packed-key windows` runs at
-  3 766 176 — 5% under the plain loop — with the same
-  `(window << 20) | key` packing and the same eviction. So eviction and
-  the algebraic aggregator together cost about 5%, and the remaining
-  24% is the GENERAL operator's shape: `okay.Windows` keys panes by any
-  `K` under `HashMap[K, LongMap[Acc]]`, which is two lookups where the
-  packed form has one. That is the price of an operator that works for
-  key types that do not fit in twenty bits, and it is now priced on
-  every run rather than remembered.
+- **Where okay's single core goes is now a 2x2, and it is not what
+  this paragraph said first** (see below — the first attribution was
+  read off two DIFFERENT JVM runs and was wrong).
 - **On more than one core it reverses, and hard.** okay goes 2.90M →
   15.78M from one fibre to eight (5.4x); the best any of the five
   reaches is 6.7M, a 1.6x on the same box.
 
-**And the reason is measured, not inferred.** `JvmLane.split` times the
+#### Why one core loses, decomposed
+
+Three things separate `OkayLane.run` from the plain-JVM fold: the pane
+map, the accumulator, and eviction. `OkayLane` now carries all four
+corners of the 2x2, so each is priced instead of argued —
+`runCells`/`packedCells` are the same drivers over a hand-written
+`Aggregator` whose `init` hands out a fresh MUTABLE cell (legal
+because `init` is a method; `Aggregator.apply`'s `z` is a single value,
+so nothing built from the combinators can do it). **Minimum of three
+JVMs per lane, best of 3 rounds in each, 2 414 119 events:**
+
+| | pane map | accumulator | evicts | wall | B/event |
+|---|---|---|---|---:|---:|
+| `run` | `HashMap[K, LongMap]` | `count zip sum zip max` | yes | 694 ms | 955 |
+| `packed` | one `LongMap`, packed key | `count zip sum zip max` | yes | 635 ms | 1 005 |
+| `runCells` | `HashMap[K, LongMap]` | mutable cell | yes | 582 ms | 608 |
+| `packedCells` | one `LongMap`, packed key | mutable cell | yes | **520 ms** | 625 |
+| `JvmLane.loop` | one `LongMap`, packed key | mutable cell | **no** | **520 ms** | 338 |
+
+- **The ALGEBRA is two thirds of the gap.** Swapping only the
+  accumulator is 694 → 582 ms (16%) under the general map and 635 →
+  520 (18%) under the packed one. `Job.stats` is
+  `count zip sum zip max`, so its accumulator is
+  `((Long, Long), Option[Int])` — six objects allocated on every
+  `add`, and every event enters four panes. That is the ~1 KB/event
+  the table's memory column has been showing all along.
+- **The general pane map is the other third**: 694 → 635 ms (8.5%)
+  with the value accumulator, 582 → 520 (11%) with the cheap one —
+  `HashMap[K, LongMap[Acc]]` hashes a boxed key and then the window
+  index where the packed form does one lookup on a `Long`. It is the
+  price of a window operator that takes any key type, and it is
+  smaller than the price of the arithmetic being composable.
+- **Eviction is FREE — 520 ms either way.** The two bottom rows are
+  the same code but for the watermark sweep, and they are within a
+  millisecond. That kills the intuition that okay pays for event time
+  on the single-core row: it does not pay for it at all here, and at
+  eight cores it is what wins.
+- **What is left of the allocation gap** (625 against 338 B/event) is
+  the `Pane` and `Stats` objects the operator hands to the consumer —
+  3.4M panes over the run, unavoidable in the current API and cheap in
+  time, since `packedCells` and the plain loop tie.
+
+**The correction.** The first version of this subsection blamed the
+general pane map for 24% and gave eviction and the aggregator 5%
+between them. That was read off two rows measured in DIFFERENT JVM
+invocations, where `packed` happened to land 18% above its own median
+— the packed lane's spread across three JVMs is 635–739 ms, wider than
+the effect being attributed. One lane per JVM, minimum of three,
+reverses the attribution. The rule this repository already had
+(bench-one-round-lies) applies to comparing two rows just as much as
+to reading one.
+
+**And the eight-core reason is measured too.** `JvmLane.split` times the
 8-thread run in two halves and counts what it built (`JvmBench` prints
 it as a `NOTE` on every run):
 

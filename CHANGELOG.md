@@ -1,5 +1,45 @@
 # Changelog
 
+## window-one-core-cost — why the single-core row loses, as a 2x2 instead of an opinion
+
+§20's new table has okay slowest of the in-process lanes on one core,
+and the section explained it with an attribution I had read off two
+rows measured in DIFFERENT JVM invocations: the general pane map 24%,
+eviction and the aggregator 5% between them. `OkayLane` now carries
+all four corners of the 2x2 — pane map (general / packed) against
+accumulator (`count zip sum zip max` / a mutable cell) — and the
+attribution reverses.
+
+Minimum of three JVMs per lane, best of 3 rounds in each, 2 414 119
+events: `run` 694 ms, `packed` 635, `runCells` 582, `packedCells` 520,
+`JvmLane.loop` (the same but never evicting) 520.
+
+  - **the ALGEBRA is two thirds of the gap**: swapping only the
+    accumulator is 16% under the general map and 18% under the packed
+    one. `Job.stats`'s accumulator is `((Long, Long), Option[Int])` —
+    six objects per `add`, four panes per event, the ~1 KB/event the
+    memory column has shown all along. Filed as `aggregator-zip-
+    allocates` with the directions and the disqualifying condition.
+  - **the general pane map is the other third**: 8.5–11%, for a window
+    operator that takes any key type rather than one that fits in
+    twenty bits.
+  - **eviction is FREE**: 520 ms with the watermark sweep and 520
+    without it. okay does not pay for event time on the single-core
+    row at all — and at eight cores it is what wins.
+
+**The mutable cell is a legal `Aggregator`, and that is half the
+finding**: `init` is a METHOD, so an implementation may hand out a
+fresh accumulator per pane, while `Aggregator.apply`'s `z` is a single
+value — so nothing built from the combinators can. `merge` still
+copies, so the parallel lane's value semantics survive.
+
+Two measurement lessons, both already rules here and both re-earned:
+parameterising the packed driver over its aggregator made its own call
+site bimorphic and moved its number 15% (the file's own comment warned
+that an interface over the hot path measures the interface — so every
+corner is now measured in its own JVM); and bench-one-round-lies
+applies to comparing two rows, not only to reading one.
+
 ## lower-maxdepth-real-margin — Codecs.maxDepth: 256 → 64, and what picking a number taught
 
 stack-depth-margin measured and did not choose. The operator asked for

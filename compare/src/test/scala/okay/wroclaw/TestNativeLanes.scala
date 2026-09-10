@@ -27,4 +27,19 @@ class TestNativeLanes extends munit.FunSuite {
     val feed = Gtfs.events(1)
     assertEquals(JvmLane.threads(feed, 4), OkayLane.run(feed))
   }
+
+  /**
+   * The four corners of §20's "why one core loses" 2x2 answer the same
+   * thing. The mutable-cell aggregator is the interesting one: `init`
+   * hands out a FRESH cell per pane and `add` bumps it in place, so a
+   * shared-cell mistake would show here as a wrong checksum rather
+   * than as a suspiciously good number in the table.
+   */
+  test("the mutable-cell aggregator computes what the algebraic one computes") {
+    val feed = Gtfs.events(1)
+    val expect = OkayLane.run(feed)
+    assertEquals(OkayLane.runCells(feed), expect, "the general operator over a cell differs")
+    assertEquals(OkayLane.packedCells(feed), expect, "the packed operator over a cell differs")
+    assertEquals(OkayLane.packed(feed), expect, "the packed operator differs")
+  }
 }

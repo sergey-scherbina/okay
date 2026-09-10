@@ -58,6 +58,28 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       checksums must equal okay's.
 
 ## okay core
+- [ ] aggregator-zip-allocates — a zipped aggregator's accumulator is a
+      TREE OF TUPLES, allocated fresh on every `add`, and §20 now
+      prices it: `Job.stats` (`count zip sum zip max`, accumulator
+      `((Long, Long), Option[Int])`) against a hand-written
+      `Aggregator` whose `init` hands out a mutable cell is 694 → 582
+      ms under the general window operator and 635 → 520 under the
+      packed one — **16–18% of a windowed job, two thirds of okay's
+      single-core distance from a plain map fold**, and 955 B/event
+      against 625. The seam is already named in `Aggregator.fold`'s
+      own scaladoc (an aggregator that knows its accumulator is a
+      `long` overrides `fold` and hands over a `Fold.OfLong`); this is
+      the same problem one level up, for PRODUCTS of aggregators.
+      Directions, cheapest first: a `zip` whose accumulator is a
+      2-field mutable box reused per pane (safe only where `merge`
+      still copies — the parallel lane depends on value semantics);
+      an arity-N specialization for the common `count/sum/max` triple;
+      or a `Fold`-level product that never builds the tuple at all.
+      DISQUALIFYING: if the mutable box makes `merge` unsafe for the
+      merge-parallel lane (`OkayLane.parallel` asserts equality at 2,
+      4 and 8 slices), the road closes there.
+      MEASURED BASELINE: docs/benchmarks.md §20, "Why one core loses,
+      decomposed" — the 2x2 lives in `OkayLane` and runs every time.
 - [ ] optic-law-rewrites — MEASURED PRIZE, not yet built
       (docs/benchmarks.md §9b, 2026-09-10). The laws are a licence to
       delete work, and the JIT does not have it. Two rewrites:
