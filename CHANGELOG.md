@@ -1,5 +1,71 @@
 # Changelog
 
+## dataflow stage 1 — our own distributed engine: the plan is a value, and the keyed stage does not shuffle
+
+The operator asked for what Flink and Spark do, done by us, and better
+where better can be shown. docs/benchmarks.md §20 stated the starting
+position in its own words — *"okay has no distributed lane at all
+yet"* — which is why its table is one machine per lane and the
+distributed comparison is not attempted. okay-cluster was 48 lines of
+round-robin chunk shipping with no plan, no partitioning and no
+exchange.
+
+**specs/dataflow.md** (bcba7012) is stage 0: what the engine is, what
+it refuses (a resource manager, SQL, exactly-once EXECUTION, a
+Spark/Flink API clone), and three claims written with what would
+FALSIFY each, so the spec cannot degenerate into the marketing every
+engine shares. **d4f6c426** is stage 1: `Flow`, the distributed plan
+as a value, and `Flows`, an executor with a fibre per partition.
+
+**The idea, whole.** A keyed stage does not have to move its records
+to the key's owner; it has to move its ACCUMULATORS, and an
+`Aggregator` is precisely the value that makes that legal. Every
+partition folds every key it sees and the coordinator merges what
+comes back — one accumulator per (key, window) per partition, where
+`reduceByKey` and `keyBy` move the dataset. The exchange, for the
+case this cannot serve, is stage 2.
+
+**Claim 2 held on the job it was written for.** Wrocław's stage 4 —
+two departures of one route from one stop under two minutes apart —
+is what Flink answers with a `KeyedProcessFunction` over
+`ValueState`, an operator that needs every record of a key on one
+machine. Here it is a `Sequential` (new, in the core): an aggregation
+whose merge is associative but NOT commutative. The slice summary is
+(first, last, n, bunches, gap), and merging asks one more question —
+whether the gap ACROSS the boundary is short. It parallelises with no
+shuffle at all, and both the count and the gap sum agree with the
+serial run at every parallelism. That the boundary term is
+load-bearing was CONTROLLED, not assumed: removed, the two tests
+resting on it fail above parallelism 1 and pass at 1, which is the
+shape a correct control has.
+
+**A defect the benchmark could not have caught.** A slice's `maxSeen`
+starts empty, so its watermark runs behind the stream's, so it closes
+panes later and drops fewer late elements — and §20's feed has
+nothing late by construction, so its parallel lane could assert
+equality and never meet this. `Windows.seed` starts a partition from
+the prefix maximum of the event times before it, which makes the two
+watermarks equal at every element. Tested in both directions: seeded
+drops exactly what the stream drops; unseeded drops fewer AND answers
+differently.
+
+**The acceptance is §20's own checksums.** All eleven agree with
+`OkayLane` at 1, 2, 4 and 8 partitions, the top-5 ranking included —
+which only agrees if the map-side join agreed first. What the lane
+now writes is the JOB: a partitioned source, a filter, a map, a
+window, an aggregator. The fifty lines of slice stitching that made
+§20's parallel lane possible are the engine's.
+
+**What stage 1 costs, said rather than hidden.** No exchange means at
+most one keyed stage per flow, so Wrocław's three keyed stages are
+three flows and the feed is read three times where §20's lane reads
+it once. No number is quoted for this lane, and none should be until
+stage 3 makes the pass single.
+
+Tests: `TestFlow` (8, in the default gate), `TestWroclawFlow` (6,
+`Live`-tagged, run under `integrationTest` — and in a worktree the
+GTFS feed must be linked from the main checkout or the suite silently
+reports zero tests).
 ## window-one-core-cost — why the single-core row loses, as a 2x2 instead of an opinion
 
 §20's new table has okay slowest of the in-process lanes on one core,

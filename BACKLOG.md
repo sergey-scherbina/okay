@@ -542,6 +542,37 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       (was filed under "the autonomy programme" — the reasoning
       that section carries is in BACKLOG-ARCHIVE.md)
 
+## okay-cluster / dataflow
+- [ ] dataflow-exchange — stage 2 of specs/dataflow.md: a real hash
+      partition with the combine above it, `Finish.Auto`, and the
+      crossover between the merge finish and the exchange MEASURED
+      rather than assumed. The rule to test: with map-side combine
+      the two roads move the same VOLUME (one accumulator per key per
+      partition), so the question is only whether the final merge
+      fits one node's memory and time — which makes the crossover an
+      accumulator-count, and that number should be found, not
+      guessed.
+- [ ] dataflow-onepass — stage 3: several flows over one source, the
+      shared source detected and the pass single. Until this lands,
+      the engine reads Wrocław's feed three times where §20's
+      hand-written lane reads it once, and no engine number is
+      comparable with that table.
+- [ ] dataflow-processes — stage 4: the worker protocol. Jobs by
+      NAME plus typed parameters (Claim 3: nothing ships a closure),
+      chunked framed transport, partials back. Acceptance: the full
+      Wrocław Result across four OS processes.
+- [ ] dataflow-recovery — stage 5: a lost partition recomputed from
+      lineage (a partition is a thunk, so this is nearly free), and
+      the same under `Sim` seeds rather than under luck.
+- [ ] dataflow-streaming — stage 6: unbounded sources, the watermark
+      as the minimum over input channels, keyed state in a backend
+      (okay-persist), exactly-once OUTCOME at the sink.
+- [ ] windows-packed-key — `Flows`'s windowed partial keys panes by
+      `(Long, K)`, a tuple per update. §20's hand-written operator
+      packs window and key into one Long and is faster for it; the
+      general operator cannot, but a specialisation for small integer
+      keys could. Measure before writing it.
+
 ## okay-spark
 - [ ] spark-4-2 — bump `spark-sql` 4.0.0 -> 4.2.0 and move
       `scala-reflect`/`legacyStdlib` from 2.13.16 to 2.13.18 with it
