@@ -236,6 +236,117 @@ different monoid); a wildcard tail segment; OpenAPI rendering itself
 (stage 3 — `describe` is the input it needs, and rendering is a
 different module's job); content negotiation.
 
+## Stage 2 — a tool is one declaration, not three
+
+### Why this one, and not the six
+
+The six candidates were ranked before any of them had been looked for
+in the tree. Looking for stage 1's successor found something better
+than the ranking: the repository's worst case of the exact defect this
+arc is about is a TOOL declaration, and it is not on the list.
+
+`BoardTools` (okay-demo) declares four tools. Each is written three
+times:
+
+```scala
+ToolSpec("board_add", "Add a task ...", schema("text" -> "string", "owner" -> "string"))
+...
+"board_add" -> (c => for t <- str(c, "text"); o <- str(c, "owner") yield ...)
+```
+
+- the JSON Schema is hand-written, by a local `schema(...)` helper;
+- the dispatch table re-reads the same field names as string
+  LITERALS (`str(c, "text")`), so a rename breaks the tool silently;
+- the tool's name is written twice, in two structures keyed by it, so
+  a tool can be declared and undispatched or dispatched and
+  undeclared — the property `Router.describe` was built to make
+  impossible.
+
+And the derivation already exists and is unused: `ToolSpec.apply[A]`
+and `ToolSpec.args[A]` both take ONE `Schema[A]`, and
+`okay.codec.JsonSchema` is documented as "the FOURTH algebra over
+`Schema[A]` ... so a tool's signature cannot drift from its parser".
+`Schema` is the optic algebra `specs/optics.md` named in its own
+Overview. So this stage is the arc's thesis with the interpreters
+already written: DECLARE (`JsonSchema.of`), DECODE (`Codecs.json`),
+DISPATCH (the handler) — three interpretations of one value.
+
+### Interface
+
+```scala
+package okay.agent
+
+final class Tool[A]:
+  val name: String
+  val description: String
+  val spec: ToolSpec                  // DECLARE — derived, not written
+  def handle(c: ToolCall): String     // DECODE with the same Schema, then run
+
+object Tool:
+  /** the usual kind: the argument type IS the declaration */
+  def apply[A](name: String, description: String)(run: A => String)(using Schema[A]): Tool[A]
+
+  /** a tool whose argument is arbitrary JSON — the schema is given,
+   *  because there is no case class to derive it from */
+  def raw(name: String, description: String, schema: Json)(run: Json => String): Tool[Json]
+
+final class Toolbox:
+  def add[A](t: Tool[A]): Toolbox
+  def specs: Seq[ToolSpec]                      // what the model is told
+  def table: Map[String, ToolCall => String]    // the existing seam, unchanged
+  def call(c: ToolCall): Option[String]
+  def duplicates: Vector[String]
+```
+
+`table` keeps the type `Mcp.Server`, `Handlers.tools` and `Stepper`
+already take, exactly as stage 1 kept
+`PartialFunction[Request, Response ! Async]`. Nothing downstream
+changes.
+
+### Behavior
+
+- [ ] a tool's spec is derived from its argument type: the properties
+      are the fields, and `required` names every field that is not an
+      `Option` and has no default
+- [ ] the SAME `Schema` decodes the call, so a renamed field cannot
+      leave the declaration and the handler disagreeing
+- [ ] a call whose arguments do not decode answers with DATA naming
+      the tool, not an exception — a model given an exception learns
+      nothing
+- [ ] `specs` and `table` are drawn from one vector, so their name
+      sets are equal by construction
+- [ ] a duplicate name is the one inconsistency left (a `Map` keeps
+      the last, a `Seq` keeps both) and `duplicates` names it
+- [ ] a raw tool keeps the schema it was given and passes the
+      arguments through untouched
+- [ ] `BoardTools` and `StateMcp` are declared this way, and their
+      existing suites pass unchanged
+
+### Design
+
+**`Tool.raw` is not a wart.** `StateMcp`'s three tools take a JSON
+Merge Patch — arbitrary JSON by definition, with
+`additionalProperties: true`. There is no case class to derive from,
+and inventing one would be a lie about the protocol. What `raw` still
+buys is the PAIRING: the name is written once and the spec and the
+handler cannot come apart. Being honest about which half of the win
+applies is the point of having the constructor at all.
+
+**The declared schema changes, and that is the finding.** The
+hand-written schemas never declared `required` — the model was never
+told that `board_add` needs both `text` and `owner`. The derived one
+does. `board_assign`'s `id` also goes from `"number"` to `"integer"`,
+which is what a `Long` is. Both are more accurate and both are prompt
+text (`jsonschema-render-is-prompt-text`), so the demo suites run
+before the gate.
+
+### Out of scope
+
+Effectful handlers (`ToolCall => String ! Rest`): `Handlers.gated` and
+`relayTools` already take the pure table, and widening the seam is a
+separate decision with its own callers. Tool RESULTS as typed values
+rather than `String` — the same, and the MCP wire says string.
+
 ## Decisions
 
 - **2026-09-10** — the arc's criterion (an interpreter that
