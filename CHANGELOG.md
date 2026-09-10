@@ -1,5 +1,70 @@
 # Changelog
 
+## input-depth-both-wires — the justification was false, and each false half was a fault
+
+The operator read the cbor-unknown-fields entry back and asked for it
+to be fixed. Two of its claims were not true.
+
+**"Every other read here recurses on the depth of the SCHEMA, which
+the program wrote"** — the reason given for `Cbor.maxSkipDepth`. True
+of Cbor.scala, false of the module. MEASURED 2026-09-10 before any
+code changed: `JsonValue.parse` threw a `StackOverflowError` on
+`"[" * 20000` — a 20 KB document, no cleverness needed — where its own
+doc says "never a throw"; the lossless projection died between 1 000
+and 5 000, where `Json.parse` promises a value; and a RECURSIVE
+schema, which lets the SENDER choose how deep a DECLARED value goes,
+killed `Cbor.read` at 5 000 levels and `Json.readStrict` at 20 000
+under sbt's `-Xss8m`. Nesting is the one dimension a decoder walks
+that the sender picks; that is the whole reason a limit exists, and it
+was drawn around one read out of five.
+
+`Codecs.maxDepth` (256) is now the one number, stated where neither
+wire owns it — 256 is far under every death measured and far over any
+real message (serde_json 128, Jackson 1000, CPython ~1000). Each door
+refuses in the idiom it already had for damage: the fast JSON road is
+NOT SURE, the lossless road makes the cut a `JErr` in place (so
+`Json.parse` still answers a value and TestJsonValue's two-roads law
+holds unchanged), and `Cbor.In`/`JsonStrict.Reader` each carry ONE
+budget for the whole frame — spent by declared reads and skips alike,
+so an unknown field 200 items deep inside 200 declared ones is 400
+levels of the same stack. The staged decoders' containers spend the
+same budget, so all three decoders still refuse at the same depth.
+`Cbor.maxSkipDepth` is gone with the half-truth in its name;
+`skipItem` takes no depth argument any more.
+
+**The cut is the one damage a decoder may not shrug off.** Bounding
+the parse alone made it WORSE, and the probe said so: `Json.read` of a
+256-level tree answered `Right` with a 128-level tree, because
+`decode` skips a damaged list element and reads a damaged optional as
+absent — right for a half-arrived document, a silently wrong value
+here. `Json.isCut` tells the two apart in one place for the fold and
+both generated decoders. The A/B is in the test: with that one line
+reverted, the suite says "Json.read answered a 128-level tree for a
+256-level document".
+
+**"TestCompat.reads decodes on BOTH wires … so the law is enforced for
+every case there"** — the helper did; the suite did not. Removing the
+`Wire` parameter had turned `assert(x(Wire.Json).compatible &&
+x(Wire.Cbor).compatible)` into `assert(x.compatible && x.compatible)`
+in five places — the same conjunct twice, an assertion reading as
+twice what it checks — and the "REMOVED case is the mirror" test
+asserted its verdicts without asking a decoder anything. The
+duplicates are collapsed into what they meant, and every case that has
+a value now runs both wires: the mirror (backward is the reader that
+LOST the case, so the old value has to BE that case), the wrapper, the
+self-referential tree, List-vs-Vector and the root shape change. Only
+`render`, which is about text, asks no decoder anything — and the
+helper's comment says so instead of claiming more.
+
+7 new tests in `TestInputDepth` (the two roads, the limit from both
+sides, objects as well as arrays, a declared and an undeclared field
+past it, and a recursive value refused by all six doors and never
+answered as a shorter tree), 149 in okay-codec. What stays asymmetric
+and was not invented here: on the JSON roads a cut inside a field
+nobody DECLARED is data nobody reads, so the document still decodes,
+while the CBOR decoder walks the bytes and refuses — the same
+totality difference a truncated unknown field already had.
+
 ## flink-stream-bench — okay's streams against Apache Flink, on Wrocław's own timetable
 
 The operator asked for a comparison against a real streaming ENGINE on

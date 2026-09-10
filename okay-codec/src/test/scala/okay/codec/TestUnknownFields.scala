@@ -72,20 +72,22 @@ class TestUnknownFields extends munit.FunSuite:
   }
 
   test("the depth limit: a skipped value nested past it is a REFUSAL, not a stack overflow") {
-    // every other read here recurses on the depth of the SCHEMA, which
-    // the program wrote; a skip recurses on the depth of the INPUT,
-    // which the sender did — so it is bounded, and says so
+    // a skip recurses on the depth of the INPUT, which the sender
+    // chose — so it is bounded, and says so. It is not the only read
+    // that does (that claim was wrong, and TestInputDepth is what
+    // came of checking it): every door on both wires now spends one
+    // budget, Codecs.maxDepth
     val out = new Cbor.Out
     out.mapHeader(2)
     out.text("deep")
-    for _ <- 0 to Cbor.maxSkipDepth + 10 do out.arrayHeader(1)
+    for _ <- 0 to Codecs.maxDepth + 10 do out.arrayHeader(1)
     out.text("bottom")
     out.text("a"); out.text("kept")
 
     final case class OnlyA(a: String)
     given Schema[OnlyA] = Schema.derived
     Cbor.read[OnlyA](out.toArray) match
-      case Left(e) => assert(e.contains(s"nested deeper than ${Cbor.maxSkipDepth}"), e)
+      case Left(e) => assert(e.contains(s"nested deeper than ${Codecs.maxDepth}"), e)
       case Right(v) => fail(s"a value nested past the limit decoded as $v")
   }
 
@@ -93,7 +95,7 @@ class TestUnknownFields extends munit.FunSuite:
     val out = new Cbor.Out
     out.mapHeader(2)
     out.text("deep")
-    for _ <- 0 until Cbor.maxSkipDepth - 2 do out.arrayHeader(1)
+    for _ <- 0 until Codecs.maxDepth - 2 do out.arrayHeader(1)
     out.text("bottom")
     out.text("a"); out.text("kept")
 

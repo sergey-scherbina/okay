@@ -45,7 +45,7 @@ object JsonValue {
     p.skipWs()
     if p.at >= s.length then None
     else
-      val v = p.value()
+      val v = p.value(0)
       if v == null then None
       else
         p.skipWs()
@@ -59,11 +59,16 @@ object JsonValue {
     def skipWs(): Unit =
       while at < n && { val c = s.charAt(at); c == ' ' || c == '\n' || c == '\r' || c == '\t' } do at += 1
 
-    def value(): Json | Null =
+    /** `open` is how many containers are already open around this
+     * value: a recursive descent recurses on the depth of the INPUT,
+     * which the SENDER chose, so it is bounded (`Json.maxDepth`) and
+     * a document past the limit is simply one this road is not sure
+     * of — `Json.parse` then gets the lossless road's JErr. */
+    def value(open: Int): Json | Null =
       if at >= n then null
       else s.charAt(at) match
-        case '{' => obj()
-        case '[' => arr()
+        case '{' => if open >= Json.maxDepth then null else obj(open + 1)
+        case '[' => if open >= Json.maxDepth then null else arr(open + 1)
         case '"' => str() match { case null => null; case x => JStr(x) }
         case 't' => lit("true", JBool(true))
         case 'f' => lit("false", JBool(false))
@@ -74,7 +79,7 @@ object JsonValue {
     private def lit(word: String, v: Json): Json | Null =
       if s.startsWith(word, at) then { at += word.length; v } else null
 
-    private def obj(): Json | Null =
+    private def obj(open: Int): Json | Null =
       at += 1
       val b = Vector.newBuilder[(String, Json)]
       skipWs()
@@ -94,7 +99,7 @@ object JsonValue {
               else
                 at += 1
                 skipWs()
-                val v = value()
+                val v = value(open)
                 if v == null then ok = false
                 else
                   b += ((k, v))
@@ -106,7 +111,7 @@ object JsonValue {
                     case _ => ok = false
         if ok then JObj(b.result()) else null
 
-    private def arr(): Json | Null =
+    private def arr(open: Int): Json | Null =
       at += 1
       val b = Vector.newBuilder[Json]
       skipWs()
@@ -116,7 +121,7 @@ object JsonValue {
         var done = false
         while ok && !done do
           skipWs()
-          val v = value()
+          val v = value(open)
           if v == null then ok = false
           else
             b += v

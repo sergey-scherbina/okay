@@ -30,7 +30,14 @@ class TestCompat extends munit.FunSuite:
   /** does a value written by `from` decode as `to`? Asked of BOTH
     * wires, which must agree — that they do is now a law
     * (cbor-unknown-fields), and this is where it is enforced for
-    * every case below rather than only in TestUnknownFields */
+    * every case below that HAS a value, rather than only in
+    * TestUnknownFields. "Every case" was a claim before it was true:
+    * five asserts below read `x.compatible && x.compatible` — the
+    * same conjunct twice, which is what `x(Wire.Json) && x(Wire.Cbor)`
+    * decayed into when the Wire parameter went — and the
+    * removed-case mirror never reached a decoder at all
+    * (input-depth-both-wires). The one test that still asks nothing of
+    * a decoder is `render`, which is about text. */
   def reads[A, B](from: Schema[A], to: Schema[B], a: A): Boolean =
     val json = Json.decode(to)(Json.parse(Json.encode(from)(a))).isRight
     val cbor = Cbor.read(Cbor.write(a)(using from))(using to).isRight
@@ -48,14 +55,13 @@ class TestCompat extends munit.FunSuite:
   test("no change: compatible both ways, nothing to say") {
     val r = compare(summon[Schema[V1]], summon[Schema[V1]])
     assert(r.isEmpty)
-    assert(r.rolling.compatible && r.rolling.compatible)
+    assert(r.rolling.compatible)
     assertEquals(r.render, "no change\nbackward (new reader, old bytes): compatible\nforward (old reader, new bytes): compatible\n")
   }
 
   test("a new REQUIRED field: the new reader cannot read old bytes, either wire") {
     val r = compare(summon[Schema[V1]], summon[Schema[V2Added]])
     assertEquals(r.changes, Vector(Change.FieldAdded("", "currency", optional = false, defaulted = false)))
-    assert(!r.backward.compatible)
     assert(!r.backward.compatible)
     assert(r.backward.reasons.head.contains("currency is new and required"))
     agrees(summon[Schema[V1]], summon[Schema[V2Added]], V1("o1", 10), V2Added("o1", 10, "EUR"))
@@ -74,7 +80,7 @@ class TestCompat extends munit.FunSuite:
   test("a new DEFAULTED field reads like an optional one — the declaration is the fallback") {
     val r = compare(summon[Schema[V1]], summon[Schema[V2AddedDefault]])
     assertEquals(r.changes, Vector(Change.FieldAdded("", "currency", optional = false, defaulted = true)))
-    assert(r.backward.compatible && r.backward.compatible)
+    assert(r.rolling.compatible, "a defaulted field is safe in both directions")
     agrees(summon[Schema[V1]], summon[Schema[V2AddedDefault]], V1("o1", 10), V2AddedDefault("o1", 10))
   }
 
@@ -107,8 +113,8 @@ class TestCompat extends munit.FunSuite:
   test("a new CASE: the new reader reads old bytes, the old reader refuses the new case") {
     val r = compare(summon[Schema[EventV1]], summon[Schema[EventV2]])
     assertEquals(r.changes, Vector(Change.CaseAdded("", "Refunded")))
-    assert(r.backward.compatible && r.backward.compatible)
-    assert(!r.forward.compatible && !r.forward.compatible)
+    assert(r.backward.compatible)
+    assert(!r.forward.compatible)
     assert(r.forward.reasons.head.contains("refuses a case it does not know"))
     agrees(summon[Schema[EventV1]], summon[Schema[EventV2]], EventV1.Placed("o1"), EventV2.Refunded("o1", 5))
     // and a case both know still round-trips across the versions
@@ -119,7 +125,12 @@ class TestCompat extends munit.FunSuite:
     val r = compare(summon[Schema[EventV2]], summon[Schema[EventV1]])
     assertEquals(r.changes, Vector(Change.CaseRemoved("", "Refunded")))
     assert(!r.backward.compatible)
-    assert(r.forward.compatible && r.forward.compatible)
+    assert(r.forward.compatible)
+    // the mirror asserted its verdicts and asked no decoder anything
+    // until this lane: backward is the reader that LOST the case, so
+    // the old value has to BE that case for the refusal to show
+    agrees(summon[Schema[EventV2]], summon[Schema[EventV1]],
+      EventV2.Refunded("o1", 5), EventV1.Placed("o1"))
   }
 
   // ── nesting, wrappers, recursion ─────────────────────────────────
@@ -147,6 +158,9 @@ class TestCompat extends munit.FunSuite:
     given Schema[Wrapped] = Schema.wrap[Wrapped, String](Wrapped(_), _.v)
     assert(compare(summon[Schema[Wrapped]], summon[Schema[String]]).isEmpty)
     assert(compare(summon[Schema[String]], summon[Schema[Wrapped]]).isEmpty)
+    // "no change at all" is a claim about the WIRE, so the wire answers it
+    assert(reads(summon[Schema[Wrapped]], summon[Schema[String]], Wrapped("x")))
+    assert(reads(summon[Schema[String]], summon[Schema[Wrapped]], "x"))
   }
 
   final case class Tree(label: String, kids: Vector[Tree])
@@ -159,16 +173,22 @@ class TestCompat extends munit.FunSuite:
   test("a self-referential type terminates and reports its change once") {
     val r = compare(summon[Schema[Tree]], summon[Schema[TreeV2]])
     assertEquals(r.changes, Vector(Change.FieldAdded("", "note", optional = true, defaulted = false)))
+    agrees(summon[Schema[Tree]], summon[Schema[TreeV2]],
+      Tree("root", Vector(Tree("kid", Vector.empty))),
+      TreeV2("root", Vector(TreeV2("kid", Vector.empty, None)), Some("n")))
   }
 
   test("List and Vector are the same array on both wires: no change") {
     assert(compare(summon[Schema[List[Int]]], summon[Schema[Vector[Int]]]).isEmpty)
+    assert(reads(summon[Schema[List[Int]]], summon[Schema[Vector[Int]]], List(1, 2, 3)))
+    assert(reads(summon[Schema[Vector[Int]]], summon[Schema[List[Int]]], Vector(1, 2, 3)))
   }
 
   test("a different shape at the root is named, not silently walked") {
     val r = compare(summon[Schema[V1]], summon[Schema[EventV1]])
     assertEquals(r.changes, Vector(Change.ShapeChanged("the root", "V1", "EventV1")))
     assert(!r.rolling.compatible)
+    agrees(summon[Schema[V1]], summon[Schema[EventV1]], V1("o1", 10), EventV1.Placed("o1"))
   }
 
   test("render prints the changes and both verdicts") {

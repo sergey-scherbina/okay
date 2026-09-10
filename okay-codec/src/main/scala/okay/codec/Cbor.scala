@@ -20,9 +20,13 @@ import scala.collection.mutable.ArrayBuffer
  */
 object Cbor {
 
-  /** how deep a SKIPPED value may nest before the decoder refuses —
-   * the sender chooses this depth, so it is bounded (see skipItem) */
-  val maxSkipDepth: Int = 256
+  /** how deep a message may nest before this decoder refuses — the
+   * SENDER chooses that depth, which is why a limit exists at all;
+   * `Codecs.maxDepth` is the number and says why, and it is the same
+   * number on the JSON wire. It used to be `Cbor.maxSkipDepth` and to
+   * bound only the skip, which was the half of the problem that had
+   * been noticed (input-depth-both-wires). */
+  def maxDepth: Int = Codecs.maxDepth
 
 
   // ---------------------------------------------------------------- encode
@@ -111,6 +115,26 @@ object Cbor {
    * Staged.scala's generated decoder both call only these */
   final class In(bs: Array[Byte]):
     private var i = 0
+
+    /**
+     * How many items are open around the one being read — ONE budget
+     * for the whole frame, spent by declared reads and by skips alike.
+     *
+     * Declared depth needed it as much as a skip did: a RECURSIVE
+     * schema's value is nested as deeply as the SENDER nested it, and
+     * MEASURED 2026-09-10 under sbt's `-Xss8m`, a 5 000-level tree was
+     * a `StackOverflowError` out of `Cbor.read`, which promises an
+     * Either. One counter rather than a parameter because the
+     * generated decoder's containers are `Staged.cborProduct` and
+     * friends, not this file's `get`: they spend the same budget, so
+     * the three decoders refuse at the same depth. An abort needs no
+     * `leave` — a Left ends the read.
+     */
+    private var open = 0
+    def enter(): Boolean = if open >= Codecs.maxDepth then false else { open += 1; true }
+    def leave(): Unit = open -= 1
+    def tooDeep[X]: Either[String, X] = Left(s"nested deeper than ${Codecs.maxDepth}")
+
     def peek: Int = if i < bs.length then bs(i) & 0xFF else -1
     def byte(): Either[String, Int] =
       if i < bs.length then { val b = bs(i) & 0xFF; i += 1; Right(b) }
@@ -186,35 +210,52 @@ object Cbor {
      * Read one complete item and discard it — what a decoder does
      * with a field the schema does not declare (cbor-unknown-fields).
      *
-     * The DEPTH LIMIT is not decoration. Every other read here
-     * recurses on the depth of the SCHEMA, which the program wrote;
-     * this one recurses on the depth of the INPUT, which the sender
-     * did. Without a bound, a hundred thousand nested arrays in a
-     * field nobody declared would be a stack overflow rather than a
-     * decode error — a fault where this module promises a value.
+     * It recurses on the depth of the INPUT, which the sender chose,
+     * so it spends the reader's budget (`enter`) — without one, a
+     * hundred thousand nested arrays in a field nobody declared would
+     * be a stack overflow rather than a decode error, a fault where
+     * this module promises a value. The budget is `open`'s, not this
+     * function's own: an unknown field 200 items deep inside 200
+     * declared ones is 400 levels of the same stack
+     * (input-depth-both-wires).
      */
-    def skipItem(depth: Int = 0): Either[String, Unit] =
-      if depth > maxSkipDepth then Left(s"skipped value nested deeper than $maxSkipDepth")
-      else head().flatMap { (major, n) =>
+    def skipItem(): Either[String, Unit] =
+      if !enter() then tooDeep
+      else
+        val out = skipHere()
+        leave()
+        out
+
+    private def skipHere(): Either[String, Unit] =
+      head().flatMap { (major, n) =>
         major match
           // 0/1: the argument WAS the integer; 7: head() consumed the
           // simple value or the float's bits with it
           case 0 | 1 | 7 => Right(())
           case 2 | 3 => take(n.toInt).map(_ => ())
-          case 4 => many(n, depth)
-          case 5 => many(n * 2, depth)     // a map is its pairs, flattened
-          case 6 => skipItem(depth + 1)    // a tag, then the tagged item
+          case 4 => many(n)
+          case 5 => many(n * 2)            // a map is its pairs, flattened
+          case 6 => skipItem()             // a tag, then the tagged item
           case m => Left(s"unsupported major type $m")
       }
 
-    private def many(count: Long, depth: Int): Either[String, Unit] =
+    private def many(count: Long): Either[String, Unit] =
       var left = count
       var bad: Option[String] = None
       while bad.isEmpty && left > 0 do
-        skipItem(depth + 1) match
+        skipItem() match
           case Left(e) => bad = Some(e)
           case Right(()) => left -= 1
       bad.toLeft(())
+
+  /** one container's worth of nesting, on the reader's one budget —
+   * the declared reads spend it exactly as a skip does */
+  private def inside[X](in: In)(body: => Either[String, X]): Either[String, X] =
+    if !in.enter() then in.tooDeep
+    else
+      val out = body
+      in.leave()
+      out
 
   private def get[A](in: In, s: Schema[A]): Either[String, A] = s match
     case Schema.SIso(u, to, _) => get(in, u()).flatMap(to)
@@ -230,19 +271,19 @@ object Cbor {
       if in.isNull then { in.skipNull(); Right(None) }
       else get(in, of()).map(Some(_))
     case l: Schema.SList[a] =>
-      in.arrayHeader().flatMap { n =>
+      inside(in) { in.arrayHeader().flatMap { n =>
         (0L until n).foldLeft(Right(Nil): Either[String, List[a]]) { (acc, _) =>
           acc.flatMap(xs => get(in, l.of()).map(xs :+ _))
         }
-      }
+      } }
     case vec: Schema.SVector[a] =>
-      in.arrayHeader().flatMap { n =>
+      inside(in) { in.arrayHeader().flatMap { n =>
         (0L until n).foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, _) =>
           acc.flatMap(xs => get(in, vec.of()).map(xs :+ _))
         }
-      }
+      } }
     case p: Schema.SProduct[A] =>
-      in.mapHeader().flatMap { n =>
+      inside(in) { in.mapHeader().flatMap { n =>
         (0L until n).foldLeft(Right(Map.empty[String, Any]): Either[String, Map[String, Any]]) {
           (acc, _) =>
             acc.flatMap { m =>
@@ -273,16 +314,23 @@ object Cbor {
             }
           }.map(p.make)
         }
-      }
+      } }
     case su: Schema.SSum[A] =>
-      in.mapHeader().flatMap {
-        case 1 => in.textItem().flatMap { name =>
-          su.cases.find(_._1 == name)
-            .toRight(s"unknown case '$name' of ${su.name}")
-            .flatMap((_, sc) => get(in, sc()))
+      // spelled out rather than through `inside`: the case schemas are
+      // `Schema[? <: A]`, so the block's type carries a wildcard the
+      // by-name parameter cannot take ("not a value")
+      if !in.enter() then in.tooDeep
+      else
+        val out: Either[String, A] = in.mapHeader().flatMap {
+          case 1 => in.textItem().flatMap { name =>
+            su.cases.find(_._1 == name)
+              .toRight(s"unknown case '$name' of ${su.name}")
+              .flatMap((_, sc) => get(in, sc()))
+          }
+          case n => Left(s"expected a one-entry map, got $n entries")
         }
-        case n => Left(s"expected a one-entry map, got $n entries")
-      }
+        in.leave()
+        out
 
   /** one field at its own type; the value joins the product's erased
    * parts (Mirror's fromProduct takes Any) */

@@ -24,6 +24,53 @@ enum Json:
 
 object Json {
 
+  /**
+   * How deep a document either road reads: `Codecs.maxDepth`, which
+   * says why (input-depth-both-wires). Each road refuses past it in
+   * the idiom it already had for damage — the fast road is NOT SURE
+   * (`JsonValue.parse` answers None), the lossless road makes the cut
+   * a `JErr` in place — so `Json.parse` still answers a value and the
+   * two roads still agree (TestJsonValue's law, TestInputDepth).
+   *
+   * A cut is the ONE piece of damage a decoder must not shrug off:
+   * `decode` skips a damaged list element and reads a damaged
+   * optional as absent, which is right for a half-arrived document
+   * and WRONG here — it would turn a 20 000-deep tree into a 128-deep
+   * one and call it `Right`. `isCut` is how the three decoders
+   * (the fold, the compile-time staged one, the run-time staged one)
+   * tell the two apart through one place.
+   */
+  def maxDepth: Int = Codecs.maxDepth
+
+  /** the cut the projection leaves where the document went too deep */
+  private[codec] def tooDeep: Json = JErr(cutMessage)
+
+  private[codec] val cutMessage: String = s"nested deeper than ${Codecs.maxDepth}"
+
+  /** is this the depth cut, rather than damage the sender's document
+   * actually carried? */
+  def isCut(j: Json): Boolean = j match
+    case JErr(m) => m == cutMessage
+    case _ => false
+
+  /** the elements of an array a decode may keep. A damaged element is
+   * DROPPED — a half-arrived document still yields what arrived, which
+   * is why this stack is total — but a cut is not damage the document
+   * carried: it is a value nobody can see, so the array refuses
+   * instead of silently getting shorter. Shared with the staged
+   * decoders (`Staged.elems`), so all three answer alike. */
+  private[codec] def arrived(vs: Vector[Json]): Either[String, Vector[Json]] =
+    val b = Vector.newBuilder[Json]
+    var i = 0
+    var cut = false
+    while !cut && i < vs.length do
+      vs(i) match
+        case e: JErr => if isCut(e) then cut = true
+        case v => b += v
+      i += 1
+    if cut then Left(cutMessage) else Right(b.result())
+
+
   // ----------------------------------------------------------------
   // parse: scanner -> per-token instructions -> CST -> projection
 
@@ -177,7 +224,7 @@ object Json {
    * punctuation fall away; errors stay, as JErr) */
   private def values(c: Cst[K]): Vector[Json] =
     val out = Vector.newBuilder[Json]
-    into(c, out)
+    into(c, out, 0)
     out.result()
 
   /**
@@ -189,13 +236,18 @@ object Json {
    * at every level. That is one Vector per token on a road whose
    * whole job is to walk tokens (json-projection-alloc).
    */
-  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]]): Unit = c match
-    case Cst.Node("object", kids) => out += JObj(pairs(kids))
+  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit = c match
+    case Cst.Node("object", kids) =>
+      if open >= maxDepth then out += tooDeep else out += JObj(pairs(kids, open + 1))
     case Cst.Node("array", kids) =>
-      val vs = Vector.newBuilder[Json]
-      kids.foreach(into(_, vs))
-      out += JArr(vs.result())
-    case Cst.Node(_, kids) => kids.foreach(into(_, out))
+      if open >= maxDepth then out += tooDeep
+      else
+        val vs = Vector.newBuilder[Json]
+        kids.foreach(into(_, vs, open + 1))
+        out += JArr(vs.result())
+    // a node that is not a container is not a level: the wrappers the
+    // grammar puts between them must not spend the budget
+    case Cst.Node(_, kids) => kids.foreach(into(_, out, open))
     case Cst.Leaf(t) => t.kind match
       case K.Str => out += JStr(unquote(t.lexeme))
       case K.Num =>
@@ -216,9 +268,9 @@ object Json {
   /** a field is a key and the value after it — read in ONE pass, in
    * place of a flatMap into a Vector and a grouped(2) that allocated
    * another Vector per field */
-  private def pairs(kids: Vector[Cst[K]]): Vector[(String, Json)] =
+  private def pairs(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
     val vs = Vector.newBuilder[Json]
-    kids.foreach(into(_, vs))
+    kids.foreach(into(_, vs, open))
     val flat = vs.result()
     val out = Vector.newBuilder[(String, Json)]
     var i = 0
@@ -331,17 +383,15 @@ object Json {
       // skipped here; they remain visible in the projection
       // (Json.parse) and in the tree (Cst.errors) for anyone who
       // wants to know that the document was damaged.
-      vs.filterNot(_.isInstanceOf[JErr])
-        .foldLeft(Right(Nil): Either[String, List[a]]) { (acc, v) =>
-          acc.flatMap(xs => decode(l.of())(v).map(xs :+ _))
-        }
+      arrived(vs).flatMap(_.foldLeft(Right(Nil): Either[String, List[a]]) { (acc, v) =>
+        acc.flatMap(xs => decode(l.of())(v).map(xs :+ _))
+      })
     case (vec: Schema.SVector[a], JArr(vs)) =>
       // the same totality rule as SList above: damaged elements are
       // skipped, the ones that arrived survive
-      vs.filterNot(_.isInstanceOf[JErr])
-        .foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, v) =>
-          acc.flatMap(xs => decode(vec.of())(v).map(xs :+ _))
-        }
+      arrived(vs).flatMap(_.foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, v) =>
+        acc.flatMap(xs => decode(vec.of())(v).map(xs :+ _))
+      })
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
       p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
@@ -356,8 +406,10 @@ object Json {
         acc.flatMap { xs =>
           (m.get(f._1), f._2()) match
             case (None, _) => absent.map(xs :+ _)
-            // a damaged optional value is the same as an absent one
-            case (Some(JErr(_)), _: Schema.SOption[?]) => absent.map(xs :+ _)
+            // a damaged optional value is the same as an absent one —
+            // unless it is the CUT, which says a value was there and
+            // this road stopped before reading it
+            case (Some(e @ JErr(_)), _: Schema.SOption[?]) if !isCut(e) => absent.map(xs :+ _)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
               .flatMap(field(sc, _)).map(xs :+ _)
         }

@@ -25,6 +25,33 @@ package okay.codec
  */
 object Codecs {
 
+  /**
+   * How deep a message this stack carries, on either wire
+   * (input-depth-both-wires). Stated once, here, because it is a
+   * property of a MESSAGE and not of one codec: both wires read
+   * nesting by recursive descent, and nesting is the SENDER's number,
+   * not the schema's.
+   *
+   * That is the whole reason a limit exists. Every other dimension a
+   * decoder walks is the program's own — the fields of a product, the
+   * cases of a sum, the shape of a schema — and a program cannot hand
+   * itself a hundred thousand of them by accident. Depth is the one
+   * the sender picks, so without a bound `"[" * 20000` is a 20 KB
+   * document that costs a `StackOverflowError` in a module whose
+   * doors promise an `Either` or a value. MEASURED 2026-09-10, before
+   * this existed: the fast JSON value parser died at 20 000 nested
+   * arrays and the lossless projection between 1 000 and 5 000 on a
+   * default stack; the CBOR decoder at 5 000 and the strict JSON door
+   * at 20 000 levels of a RECURSIVE schema with sbt's `-Xss8m`.
+   *
+   * 256 is deliberately well under every death measured and well over
+   * any message anyone writes: serde_json's limit is 128, Jackson's
+   * 1000, CPython's about 1000. The number is one number so that the
+   * two wires cannot drift into answering differently — which is the
+   * defect the whole unknown-fields arc was about.
+   */
+  val maxDepth: Int = 256
+
   trait Provider:
     def name: String
     def json[A](s: Schema[A]): JsonCodec[A]

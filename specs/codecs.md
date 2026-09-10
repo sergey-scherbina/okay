@@ -350,12 +350,17 @@ already consumed by the head. The interpreted decoder and the staged
 one both call it, so the generated reader answers exactly what the
 fold answers.
 
-**The depth limit is the part worth reading.** Every other read here
-recurses on the depth of the SCHEMA, which the program wrote. A skip
-recurses on the depth of the INPUT, which the sender wrote — so a
-hundred thousand nested arrays in a field nobody declared would be a
-stack overflow where this module promises a value. `Cbor.maxSkipDepth`
-(256) bounds it and the refusal names the limit.
+**The depth limit is the part worth reading** — and the reason given
+for it here was WRONG, which the section below is what came of
+checking it. What is true: a skip recurses on the depth of the INPUT,
+which the sender wrote, so a hundred thousand nested arrays in a field
+nobody declared would be a stack overflow where this module promises a
+value. What was false: that "every other read recurses on the depth of
+the SCHEMA, which the program wrote". Both JSON roads recurse on the
+input too, and a RECURSIVE schema lets the sender pick the depth of a
+DECLARED value on either wire. The bound is now one number for every
+door (`Codecs.maxDepth`, 256, and `Cbor.maxSkipDepth` is gone with the
+half-truth its name carried).
 
 Behavior:
 - [x] a value written by a newer schema decodes as the older one on
@@ -369,6 +374,80 @@ Behavior:
 - [x] a TRUNCATED unknown field is still damage, not a silent skip
 - [x] what stays refused: an unknown CASE (which value this IS, not
       an extra detail about it) and a required field nobody sent
+
+## How deep a message may be, on both wires (2026-09-10, input-depth-both-wires)
+
+The section above bounded ONE read — the CBOR skip — and justified it
+with a claim nobody had checked: that every other read recurses on the
+depth of the schema, which the program wrote. The operator asked for
+the claim to be made true. It was false in three places, and each one
+was a real fault.
+
+**What was measured first** (2026-09-10, a `java -cp` probe on a
+default stack, then sbt's `-Xss8m` for the rest): `JsonValue.parse`
+threw a `StackOverflowError` on `"[" * 20000` — a 20 KB document —
+where its own doc says "never a throw"; the lossless projection
+(`Json.value`) died between 1 000 and 5 000, where `Json.parse`
+promises a value; `Cbor.read` died at a 5 000-level value of a
+RECURSIVE schema and `Json.readStrict` at 20 000, both of which
+promise an `Either`. Nesting is the one dimension a decoder walks that
+the SENDER chooses, which is the whole reason a limit has to exist.
+
+**One number, in one place.** `Codecs.maxDepth` (256) is it, stated
+where neither wire owns it, because the defect this arc is about is
+the two wires answering differently. 256 is far under every death
+measured and far over any message anyone writes — serde_json's limit
+is 128, Jackson's 1000, CPython's about 1000. Each door refuses in the
+idiom it already had for damage:
+
+- the fast JSON value parser is NOT SURE (`None`), exactly as it is
+  about every other damaged document;
+- the lossless road makes the cut a `JErr` in place, so `Json.parse`
+  still answers a value and the two roads still agree (the law in
+  TestJsonValue holds unchanged);
+- `Cbor.In` and `JsonStrict.Reader` each carry ONE budget for the
+  whole frame (`enter`/`leave`), spent by declared reads and by skips
+  alike — an unknown field 200 items deep inside 200 declared ones is
+  400 levels of the same stack — and the staged decoders' containers
+  (`Staged.cborProduct`, `strictElems`, …) spend the same budget, so
+  the three decoders still refuse at the same depth.
+
+**The cut is the one piece of damage a decoder may not shrug off.**
+`Json.decode` skips a damaged list element and reads a damaged
+optional as absent — right for a half-arrived document, and WRONG for
+a cut: measured here, a 256-level tree came back as a 128-level tree
+with `Right`. A wrong value with no error is worse than either throw,
+so `Json.isCut` tells the two apart, in one place, for the fold and
+both generated decoders.
+
+**What stays asymmetric, and why it is not this defect.** On the JSON
+roads a cut inside a field nobody DECLARED is data nobody reads, so
+the document still decodes; the CBOR decoder walks the bytes and
+refuses by name. That is the totality difference the two doors have
+had all along — a TRUNCATED unknown field already behaved this way
+(the section above) — not a divergence anybody chose.
+
+Behavior:
+- [x] `"[" * 20000` is a value, not a `StackOverflowError`, on both
+      JSON roads; the fast road says None, the lossless one cuts with
+      a `JErr` naming the limit, `Json.parse` equals `Json.lossless`
+- [x] a document AT the limit still reads as the value it is; the
+      limit counts every container, objects as well as arrays
+- [x] a recursive schema's value past the limit is refused by EVERY
+      door with the limit named — `Cbor.read`, `Json.read`,
+      `Json.readStrict` and all three of `Staged.cbor`/`json`/`strict`
+      — and never answered as a SHORTER tree
+- [x] a recursive value at the limit reads to the same value on both
+      wires (each level is two containers on both, so the two wires
+      refuse at the same tree depth)
+- [x] one budget per frame: a skip inside declared containers cannot
+      exceed the total
+- [x] TestCompat's law holds for every case that has a value, the
+      removed-case mirror included (it asserted verdicts and asked no
+      decoder anything until this lane: five of its asserts read
+      `x.compatible && x.compatible`, which is what
+      `x(Wire.Json) && x(Wire.Cbor)` decayed into when `Wire` was
+      removed)
 
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends

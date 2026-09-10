@@ -275,7 +275,7 @@ given opticShop[A, B]: Strong[[S, T] =>> Shop[A, B, S, T]] with
   def dimap[S, T, C, D](p: Shop[A, B, S, T])(f: C => S, g: T => D): Shop[A, B, C, D] =
     Shop(c => p.get(f(c)), (c, b) => g(p.put(f(c), b)))
   def first[S, T, C](p: Shop[A, B, S, T]): Shop[A, B, (S, C), (T, C)] =
-    Shop({ case (s, c) => p.get(s) }, { case ((s, c), b) => (p.put(s, b), c) })
+    Shop({ case (s, _) => p.get(s) }, { case ((s, c), b) => (p.put(s, b), c) })
 
 given opticMarket[A, B]: (Strong[[S, T] =>> Market[A, B, S, T]] & Choice[[S, T] =>> Market[A, B, S, T]]) =
   new Strong[[S, T] =>> Market[A, B, S, T]] with Choice[[S, T] =>> Market[A, B, S, T]]:

@@ -59,6 +59,27 @@ object JsonStrict {
     var at = 0
     private val n = s.length
 
+    /**
+     * How many containers are open around the value being read.
+     * Nesting is the SENDER's number, so it is bounded
+     * (`Codecs.maxDepth`) — MEASURED 2026-09-10 on sbt's `-Xss8m`, a
+     * RECURSIVE schema 20 000 levels deep was a `StackOverflowError`
+     * out of this door, which promises an `Either`.
+     *
+     * A counter and not a parameter because the generated strict
+     * reader's containers are `Staged.strictProduct` and friends, not
+     * this file's `product`: they spend the same budget through
+     * `enter`/`leave`, so the interpreted and the staged doors refuse
+     * at the same depth. `enter` answers false when there is no budget
+     * left, and an abort needs no `leave` — a Left ends the read.
+     */
+    private var open = 0
+
+    def enter(): Boolean =
+      if open >= Codecs.maxDepth then false else { open += 1; true }
+    def leave(): Unit = open -= 1
+    def tooDeep[X]: Either[String, X] = Left(s"nested deeper than ${Codecs.maxDepth} at $at")
+
     def skipWs(): Unit =
       while at < n && { val c = s.charAt(at); c == ' ' || c == '\n' || c == '\r' || c == '\t' } do at += 1
 
@@ -98,6 +119,13 @@ object JsonStrict {
 
     /** `[` v (`,` v)* `]`, each element at the element schema */
     def array[X](of: Schema[X]): Either[String, Vector[X]] =
+      if !enter() then tooDeep
+      else
+        val out = arrayHere(of)
+        leave()
+        out
+
+    private def arrayHere[X](of: Schema[X]): Either[String, Vector[X]] =
       expect('[').flatMap { _ =>
         skipWs()
         if peek == ']' then { at += 1; Right(Vector.empty) }
@@ -128,6 +156,13 @@ object JsonStrict {
      * declared default, then None-if-optional, then the refusal.
      */
     private def product[A](p: Schema.SProduct[A]): Either[String, A] =
+      if !enter() then tooDeep
+      else
+        val out = productHere(p)
+        leave()
+        out
+
+    private def productHere[A](p: Schema.SProduct[A]): Either[String, A] =
       expect('{').flatMap { _ =>
         skipWs()
         var found = Map.empty[String, Any]
@@ -179,6 +214,13 @@ object JsonStrict {
 
     /** the one-entry object `Json.encode` writes: `{"Case": value}` */
     private def sum[A](su: Schema.SSum[A]): Either[String, A] =
+      if !enter() then tooDeep
+      else
+        val out = sumHere(su)
+        leave()
+        out
+
+    private def sumHere[A](su: Schema.SSum[A]): Either[String, A] =
       expect('{').flatMap { _ =>
         skipWs()
         string().flatMap { name =>

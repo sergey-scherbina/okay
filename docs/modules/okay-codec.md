@@ -187,7 +187,9 @@ the wire sees.
 | `Json.read` / `Json.write` | `String => Either[String, A]` / `A => String` | one-movers |
 | `Cbor.write` / `Cbor.read` | `A => Array[Byte]` / `Array[Byte] => Either[String, A]` | RFC 8949, same content as JSON |
 | `Compat.compare` | `(Schema[A], Schema[B]) => Report` | what changed, and whether each direction still decodes |
-| `Cbor.In.skipItem` | `Int => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare; bounded by `Cbor.maxSkipDepth` |
+| `Cbor.In.skipItem` | `() => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare; spends the reader's depth budget |
+| `Codecs.maxDepth` | `Int` (256) | how deep a message may nest, on EITHER wire — nesting is the sender's number, so every door bounds it and refuses by name instead of overflowing a stack |
+| `Json.isCut` | `Json => Boolean` | is this `JErr` the depth cut rather than damage the document carried? The one `JErr` a decoder must refuse instead of skipping |
 | `Markdown.parse` | `String => Cst[Markdown.K]` | the reframing dialect (headings, paragraphs, `*`/`_` emphasis, code spans) |
 | `Markdown.scan` / `Markdown.instructions` | the dialect's Scan and its instruction fold | reuse or extend |
 
