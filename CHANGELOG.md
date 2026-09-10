@@ -30,7 +30,7 @@ blocking runner asks for `CanBlock`** while `runAsync` does not.
 
 Added because the page needed them: the whole vocabulary as an
 eight-row table on one screen, and a decision table for the seven
-provider forms. Commit: LANDING.
+provider forms. Commit: b592154e (the release commit above it cites the pre-rebase sha).
 
 ## di-docs-gaps — the guide never said what a Module IS
 
