@@ -1399,3 +1399,58 @@ the STORE to offer "save this only if the term is still mine", and
 the seam already permits one because `save` may throw. What is built
 here is what can be built over a store that offers nothing of the
 kind.
+
+### dataflow-fan-overhead — the third that was not there
+
+Stage 3's decomposition summed the sinks to 104 ms against a fan of
+154 and concluded that a third of a fan's time was in none of its
+sinks. The entry has said "decompose before optimising" ever since,
+which was the right instinct and the wrong premise.
+
+**The arithmetic did not line up.** It subtracted one source read from
+each lane, but the lanes are not the same shape: `Sink.keyed` declares
+no event-time function, so the bunching lane ran with NO pre-pass at
+all, while the fan's pre-pass computes two columns in one pass. And
+the parts have changed under the number since — `Aggregator.topK`
+stopped sorting its corpus — so the 154 is not today's fan.
+
+**Re-measured lane for lane** (`MeasureFanOverhead`, Live, 1 255 298
+events, 8 partitions, best of 21 interleaved rounds, two runs):
+
+```
+  lane                                                     |    ms | (worst)
+  source alone (count, no pre-pass)                        |     1 |       6
+  + a cheap WINDOW (1 pre-pass column)                     |     7 |      13
+  + a second cheap window, same time function (2 columns)  |    11 |      21
+  route windows alone                                      |    14 |      26
+  route + an arm that only counts                          |    17 |      35
+  stop windows alone                                       |    63 |     107
+  bunching alone (keyed, no pre-pass)                      |    15 |      35
+  THE FAN: route + stop + bunching                         |   101 |     194
+  three separate fans, one after another                   |    96 |     160
+```
+
+The fan is 101–111 across two runs and its three sinks sum to 90–92.
+**The gap is 9–20%, not a third**, and the two candidates that can be
+resolved account for part of it: a pre-pass column costs 5–6 ms over
+1.25 million events, a second column in the same pass 4–5. The third
+candidate, `Sink.and`'s plumbing, reads 0–3 ms across two runs — below
+what this instrument can see, which is the honest way to report it
+rather than as a number.
+
+**And the finding worth more than the entry: THE FAN IS NOT FASTER
+THAN THREE SEPARATE FANS on this feed** — 89–96 against 101–111, in
+both runs. One pass saves about 2 ms of source reads, because §20's
+source is an in-memory array, and pays more than that for three
+operators' state being live at once. What a fan buys is the source
+read ONCE — which matters when the source is a file, a topic or a
+socket, and this feed is none of those — and no shuffle, which is what
+§20 actually compares against Flink. Stage 3's own headline number
+(737 ms for "three plans") was never this comparison: that road is
+`Flows.run`, which has no completeness rule, and it is
+`dataflow-run-complete-panes`.
+
+**What is left open, said rather than closed over**: 9–20% of a fan is
+still unattributed, and this instrument's bars are wider than it.
+Pricing it needs JMH with forks rather than a wall clock in a suite.
+Nothing has asked.

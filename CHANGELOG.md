@@ -1,5 +1,37 @@
 # Changelog
 
+## dataflow-fan-overhead — the third that was not there
+
+Stage 3's decomposition summed the sinks to 104 ms against a fan of
+154 and concluded that a third of a fan's time was in none of its
+sinks. Re-measured lane for lane (`MeasureFanOverhead`, Live, best of
+21 interleaved rounds, two runs): the fan is 101-111 ms and its three
+sinks, each run as its own fan, sum to 90-92. The gap is 9-20%, not a
+third.
+
+The arithmetic had not lined up: it subtracted one source read from
+lanes of different shapes — `Sink.keyed` declares no event-time
+function, so the bunching lane ran with NO pre-pass while the fan's
+computes two columns — and the parts have changed since (topK stopped
+sorting).
+
+What can be resolved: a pre-pass column costs 5-6 ms over 1.25M
+events, a second column in the same pass 4-5. `Sink.and`'s plumbing
+reads 0-3 ms across two runs, which is below this instrument and is
+reported as such rather than as a number.
+
+AND THE FINDING WORTH MORE THAN THE ENTRY: the fan is not faster than
+three separate fans on this feed — 89-96 against 101-111. One pass
+saves ~2 ms of source reads, because §20's source is an in-memory
+array, and pays more than that for three operators' state being live
+at once. What a fan buys is reading the source ONCE (a file, a topic,
+a socket — this feed is none of them) and not shuffling, which is what
+§20 actually compares against Flink. §20's fan-out asymmetry now says
+so with the numbers.
+
+9-20% of a fan remains unattributed and this instrument's bars are
+wider than it; pricing that needs JMH.
+
 ## dataflow stage 10 — the election, and the ghost
 
 Stage 8 made a successor possible and stage 9 made its writes safe.

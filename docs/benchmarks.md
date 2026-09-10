@@ -4042,12 +4042,19 @@ computes the same answer twice.
 
 **Two honest asymmetries, named rather than buried.**
 
-- **The fan-out.** One source feeds four consumers. In okay that costs
-  nothing (one pass, four method calls); in Flink it is three
-  shuffles, each with serialization. That is not a flaw of the
-  benchmark — it IS the difference between an in-process fold and a
-  dataflow engine — but a reader should know which side of the
-  comparison it lands on.
+- **The fan-out.** One source feeds four consumers. In okay that is
+  one pass and four method calls; in Flink it is three shuffles, each
+  with serialization. That is not a flaw of the benchmark — it IS the
+  difference between an in-process fold and a dataflow engine — but a
+  reader should know which side of the comparison it lands on. And
+  "one pass" is worth less here than it sounds, measured
+  (`MeasureFanOverhead`): running the three sinks as THREE separate
+  fans costs 89-96 ms against the one fan's 101-111, because this
+  feed's source is an in-memory array — re-reading it is 1 ms, and
+  three operators' state live at once costs more than two extra reads
+  save. What the fan buys is reading the source once, which matters
+  when the source is a file, a topic or a socket, and not having to
+  shuffle.
 - **The watermark cadence.** okay advances its watermark per element
   and evicts panes as they close; Flink's periodic generator fires
   every 200 ms of WALL time (its own default), so under a full-speed
