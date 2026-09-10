@@ -3573,16 +3573,27 @@ digits.
 
 **The cores axis, which is what the table above is really about:**
 
-| engine, ev/s | 1 core | 2 | 4 | 8 | 1 → 8 |
+Each cell is **wall / ev/s** for the whole 2 414 119-event replay:
+
+| engine | 1 core | 2 | 4 | 8 | 1 → 8 |
 |---|---:|---:|---:|---:|---:|
-| **okay** (merge-parallel) | 2 905 077 | 5 499 132 | 9 179 159 | 15 778 555 | **5.4x** |
-| fs2 (`parEvalMap`) | 4 071 026 | 5 734 249 | 6 454 863 | 6 705 886 | 1.6x |
-| `java.util.stream` (ForkJoinPool) | 4 213 122 | 4 780 433 | 5 817 154 | 6 687 310 | 1.6x |
-| plain JVM (`Thread` + join) | 3 957 572 | 4 987 849 | 6 020 246 | 6 386 558 | 1.6x |
-| kyo (`Async.parallel`) | 3 414 595 | 4 633 625 | 5 902 491 | 5 817 154 | 1.7x |
-| zio-streams (`foreachPar`) | 3 964 070 | 5 114 658 | 6 127 205 | 5 666 946 | 1.4x |
-| flink (MiniCluster) | 673 958 | 881 065 | 1 314 163 | 1 593 477 | 2.4x |
-| spark (local[4]) | — | — | 260 844 | — | — |
+| **okay** (merge-parallel) | 831 ms / 2 905 077 | 439 ms / 5 499 132 | 263 ms / 9 179 159 | **153 ms / 15 778 555** | **5.4x** |
+| fs2 (`parEvalMap`) | 593 ms / 4 071 026 | 421 ms / 5 734 249 | 374 ms / 6 454 863 | 360 ms / 6 705 886 | 1.6x |
+| `java.util.stream` (ForkJoinPool) | **573 ms / 4 213 122** | 505 ms / 4 780 433 | 415 ms / 5 817 154 | 361 ms / 6 687 310 | 1.6x |
+| plain JVM (`Thread` + join) | 610 ms / 3 957 572 | 484 ms / 4 987 849 | 401 ms / 6 020 246 | 378 ms / 6 386 558 | 1.6x |
+| zio-streams (`foreachPar`) | 609 ms / 3 964 070 | 472 ms / 5 114 658 | 394 ms / 6 127 205 | 426 ms / 5 666 946 | 1.4x |
+| kyo (`Async.parallel`) | 707 ms / 3 414 595 | 521 ms / 4 633 625 | 409 ms / 5 902 491 | 415 ms / 5 817 154 | 1.7x |
+| flink (MiniCluster) | 3 582 ms / 673 958 | 2 740 ms / 881 065 | 1 837 ms / 1 314 163 | 1 515 ms / 1 593 477 | 2.4x |
+| spark (local[4], RDD) | — | — | 9 255 ms / 260 844 | — | — |
+| spark (local[4], structured streaming) | — | — | 9 321 ms / 258 997 | — | — |
+
+The wall column is the one to read across a row (it is what a replay
+actually took); the rate is the same number per event, and only the
+ratio between rows is meaningful in either. Two lanes go BACKWARDS from
+four cores to eight — zio-streams 394 → 426 ms and kyo 409 → 415 — and
+that is the merge again: past four slices the single-threaded
+reduction of eight unbounded maps costs more than the extra fold
+threads save.
 
 **Read the two halves of that separately, because they say opposite
 things.**
