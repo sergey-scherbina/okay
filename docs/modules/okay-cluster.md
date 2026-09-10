@@ -433,11 +433,15 @@ val wire: Cluster.Worker[Double, Double] = c =>
   checkout's `okay-flink/target/data/gtfs`, which `target/` keeps out
   of git; link it, or the suite silently reports zero tests.
 
-- `Flows.autoBound` was measured on the CHEAPEST possible
-  accumulator (a count) at eight partitions. It is a default for a
-  plan that did not choose; a plan that knows its own shape should
-  say `Merge` or `Shuffle` rather than consult a number measured on
-  someone else's job.
+- **`Flows.autoBound` is measured, and the accumulator's weight does
+  not move it.** 100 000 accumulators sits in the 80 000-to-160 000
+  band where the two roads cross, and §20's own tuple-tree
+  accumulator (`count zip sum zip max`, six objects per add) crosses
+  in the same band as a Long count — what the weight changes is how
+  fast the exchange pulls ahead afterwards, not where it starts to.
+  It is still a default for a plan that did not choose; a plan that
+  knows its own shape should say `Merge` or `Shuffle` rather than
+  consult a number measured on someone else's job.
 
 - **`Flows.run` has the completeness rule too, since
   `dataflow-run-complete-panes`.** It used to merge every pane at the

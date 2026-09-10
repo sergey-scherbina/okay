@@ -1509,3 +1509,51 @@ the same thing the other road does.
 **Controlled**: declaring every pane complete (`if true`) fails four
 of the Wrocław checksums, so the tests can see a rule that fires when
 it should not.
+
+### dataflow-auto-for-a-real-accumulator — the weight does not move the crossover
+
+`Finish.Auto` decides from one constant, and that constant was
+measured on the cheapest accumulator there is: a Long count. The
+comment beside it predicted that a fatter accumulator makes merging
+dearer and moves the bound DOWN — a prediction sitting in a comment
+with no number under it, which is the shape of claim this repository
+is supposed to catch.
+
+**Measured** (MeasureExchange, 1M rows, 8 partitions, minimum of 7
+alternating rounds, the ratio is merge/shuffle so above 1.00 the
+exchange wins):
+
+```
+  accumulators |  count: ratio | tuple: ratio
+         4,000 |         0.77x |        0.67x
+         8,000 |         0.79x |        0.75x
+        20,000 |         0.75x |        0.87x
+        40,000 |         0.79x |        0.79x
+        80,000 |         0.94x |        0.94x
+       160,000 |         1.14x |        1.95x
+       320,000 |         1.71x |        1.30x
+       640,000 |         2.20x |        1.67x
+```
+
+**Both cross between 80 000 and 160 000**, in two runs, and 100 000
+sits in that band. The tuple tree — §20's own `count zip sum zip max`,
+six objects per add and per merge — does not move the crossing
+measurably. What its weight changes is the SLOPE past it, and not even
+that consistently: the exchange pulls ahead harder at 160 000 and less
+hard at 320 000 than it does for a count, because a fat accumulator
+loads the MAP side too and both roads pay that.
+
+So one constant serves both, and the prediction is refuted rather than
+confirmed.
+
+**And a methodological finding that cost the first two runs.** The
+table was originally computed from a millisecond clock, over lanes
+that are 1 to 7 ms at the crossing. It reported the two crossovers as
+40 000 and 160 000 — four-fold apart — and every ratio in the band
+came out as 0.50, 0.67 or 1.00, which are 1/2, 2/3 and 1/1: the
+quantisation of a millisecond clock, not the engine. The ratio is
+computed from nanoseconds now, and the four-fold difference vanished.
+
+**What stays unmeasured, and is now labelled as such** rather than
+asserted beside a measured number: that fewer partitions move the
+bound up. Nobody has run it.

@@ -488,14 +488,25 @@ object Flows {
    * that one is stage 4's to ask. This bound is not it, and must not
    * be quoted as if it were.
    *
-   * MEASURED (MeasureExchange, 1M rows over 8 partitions, count per
-   * key, minimum of 7 alternating rounds): the merge road wins below
-   * 80 000 accumulators (0.67x) and loses above 160 000 (1.33x),
-   * rising to 4.8x against it by a million. 100 000 sits in that
-   * bracket. Two things move it and neither is guessed at: a FATTER
-   * accumulator makes merging dearer and moves the bound DOWN, and
-   * fewer partitions leave less for the reducers to win, moving it
-   * up. This is a default for a plan that did not choose; a plan that
+   * MEASURED (MeasureExchange, 1M rows over 8 partitions, minimum of
+   * 7 alternating rounds): the merge road wins below 80 000
+   * accumulators and loses above 160 000, rising to 4.8x against it
+   * by a million. 100 000 sits in that bracket.
+   *
+   * AND THE ACCUMULATOR'S WEIGHT DOES NOT MOVE IT, which is not what
+   * this comment used to say (dataflow-auto-for-a-real-accumulator).
+   * The prediction here was that a fatter accumulator makes merging
+   * dearer and moves the bound DOWN; measured against §20's own tuple
+   * tree — `count zip sum zip max`, six objects per add — it crosses
+   * in the same 80 000-to-160 000 band as a Long count, in two runs.
+   * What the weight changes is the SLOPE past the crossing, not the
+   * crossing. So one constant does serve both, and this is it.
+   *
+   * The other half of the old claim stands unmeasured and is left
+   * that way: fewer partitions leave less for the reducers to win,
+   * which should move the bound up. Nobody has run it.
+   *
+   * This is a default for a plan that did not choose; a plan that
    * knows its shape should say `Merge` or `Shuffle` and not consult
    * a number measured on someone else's job.
    */

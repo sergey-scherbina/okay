@@ -1,5 +1,29 @@
 # Changelog
 
+## dataflow-auto-for-a-real-accumulator — the weight does not move the crossover
+
+`Finish.Auto` decides from one constant measured on the cheapest
+accumulator there is, and the comment beside it predicted that a
+fatter one moves the bound DOWN — a prediction with no number under
+it. Measured against §20's own tuple tree (`count zip sum zip max`,
+six objects per add): it crosses in the SAME 80 000-to-160 000 band as
+a Long count, in two runs. 100 000 sits in that band. One constant
+serves both, and the prediction is refuted rather than confirmed —
+what the weight changes is the slope past the crossing, and not even
+that consistently, because a fat accumulator loads the map side too
+and both roads pay that.
+
+A methodological finding came with it, and it cost the first two runs.
+The table was computed from a millisecond clock over lanes that are
+1-7 ms at the crossing, and it reported the crossovers four-fold apart
+with every ratio in the band coming out as 0.50, 0.67 or 1.00 — which
+are 1/2, 2/3 and 1/1, the quantisation of the clock rather than the
+engine. From nanoseconds, the four-fold difference vanished.
+
+The half of the old comment that is still unmeasured — that fewer
+partitions move the bound up — is labelled as such now instead of
+standing beside a measured number as if it were one.
+
 ## optics-outside-routes — a route is a prism, and it found two live defects
 
 The optics arc closed with optics INSIDE okay. The operator's

@@ -118,6 +118,69 @@ class MeasureExchange extends munit.FunSuite:
     println("  from the first, the row is the machine and not the engine.\n")
   }
 
+  /**
+   * WROCŁAW'S OWN ACCUMULATOR, not a count
+   * (BACKLOG: dataflow-auto-for-a-real-accumulator).
+   *
+   * `autoBound` was measured on the cheapest accumulator that exists.
+   * The comment beside it has always said that a fatter one moves the
+   * crossover DOWN — merging gets dearer while the hand-off does not
+   * — which is a prediction with no number under it. This is the same
+   * sweep with the tuple tree §20's job actually uses:
+   * `count zip sum zip max`, whose accumulator is
+   * `((Long, Long), Option[Int])` and which allocates six objects per
+   * add and per merge.
+   */
+  val fat: Aggregator[Row, ((Long, Long), Option[Int]), Long] =
+    Aggregator.count[Row]
+      .zip(Aggregator.sum[Long].contramap[Row](_.key.toLong))
+      .zip(Aggregator.max[Int].contramap[Row](_.key))
+      .map { case ((n, sum), mx) => n + sum + mx.getOrElse(0).toLong }
+
+  test("the crossover moves with the ACCUMULATOR: a count against a tuple tree") {
+    println(f"%n  $N%,d rows, $Parts partitions, MINIMUM of $Rounds alternating rounds")
+    println(f"  the ratio is merge/shuffle: above 1.00 the exchange wins%n")
+    println("  distinct keys |  accumulators | count: ratio | tuple: ratio")
+    println("  --------------|---------------|--------------|-------------")
+    var countCross = 0L
+    var fatCross = 0L
+    for k <- Vector(500, 1_000, 2_500, 5_000, 10_000, 20_000, 40_000, 80_000) do
+      val xs = rows(k)
+      def ratioOf[Acc](agg: Aggregator[Row, Acc, Long]): Double =
+        def merge(): Run[Long] =
+          Flows.run(Flow.slices(xs, Parts).keyBy(_.key)(agg), terminal).runWith
+        def shuffle(): Run[Long] =
+          Flows.run(Flow.slices(xs, Parts).keyBy(_.key, Finish.Shuffle(Parts))(agg), terminal).runWith
+        settle()
+        for _ <- 0 until Warmup do { merge(): Unit; shuffle() }
+        var m = Long.MaxValue
+        var s = Long.MaxValue
+        var mv: Run[Long] | Null = null
+        var sv: Run[Long] | Null = null
+        for _ <- 0 until Rounds do
+          // NANOSECONDS, not milliseconds. At the crossover both
+          // roads are a handful of milliseconds over a million rows,
+          // so a millisecond clock quantises the ratio to halves and
+          // thirds and cannot locate the crossing at all — the first
+          // version of this table read 0.50, 0.67 and 1.00 and could
+          // not tell a tie from a 20% win.
+          val t0 = System.nanoTime(); mv = merge(); m = math.min(m, System.nanoTime() - t0)
+          val t1 = System.nanoTime(); sv = shuffle(); s = math.min(s, System.nanoTime() - t1)
+        assertEquals(sv.nn.value, mv.nn.value, s"$k keys: the two roads disagree")
+        m.toDouble / math.max(1L, s).toDouble
+
+      val a = ratioOf(per)
+      val b = ratioOf(fat)
+      if countCross == 0L && a > 1.0 then countCross = math.min(Parts.toLong * k, N.toLong)
+      if fatCross == 0L && b > 1.0 then fatCross = math.min(Parts.toLong * k, N.toLong)
+      val accs = math.min(Parts.toLong * k, N.toLong)
+      println(f"  $k%,13d | $accs%,13d | $a%11.2fx | $b%11.2fx")
+    println()
+    println(f"  the exchange starts to win at ${countCross}%,d accumulators for a COUNT")
+    println(f"  and at ${fatCross}%,d for the tuple tree — autoBound is ${Flows.autoBound}%,d")
+    println()
+  }
+
   test("slicing an IndexedSeq: does an Iterator reach its start by dropping?") {
     // `Flow.slices` cuts the input by index, and the last of eight
     // partitions starts seven eighths of the way in. Whether that
