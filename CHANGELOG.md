@@ -21,7 +21,7 @@ effect row on the right, a context function around it, chaining and
 
 Used in the DI guide and its routes example; not swept across the
 repository, so other modules adopt it when they touch the code. A line
-in the typepedia carries the reason. Commit: LANDING.
+in the typepedia carries the reason. Commit: 8cbd9f26.
 
 ## fact-declaring — a feature is one module, and the block needs no ascription
 
