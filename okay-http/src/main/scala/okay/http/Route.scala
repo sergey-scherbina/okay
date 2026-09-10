@@ -87,8 +87,19 @@ final class Route[A <: Tuple] private[http] (
    * Written as one `Query` rather than a parameter at a time, so the
    * split between the path's tuple and the query's is exactly one
    * `Split`, and the path's own parameters keep their positions.
+   *
+   * `:?` and not `?`, and the reason is Scala's precedence table
+   * rather than taste. An operator's precedence comes from its FIRST
+   * character, and `?` is in the "all other special characters" group,
+   * which binds TIGHTER than `/` — so `Route / "search" ? q` parses as
+   * `Route / ("search" ? q)` and does not compile. `:` is below `/`,
+   * so `:?` groups the way it reads; and since associativity comes
+   * from the LAST character, `:?` stays left-associative. `Query`'s
+   * `+&` sits between them (the `+ -` group), so a whole declaration
+   * needs no parentheses at all. These are http4s's operators, and
+   * this is why they are the ones they are.
    */
-  def ?[B <: Tuple](q: Query[B])(using c: Route.Split[A, B]): Route[c.Out] =
+  def :?[B <: Tuple](q: Query[B])(using c: Route.Split[A, B]): Route[c.Out] =
     new Route[c.Out](segments, queries ++ q.declared,
       (ss, qs) => decode(ss, qs).flatMap(a => q.decode(qs).map(b => c.join(a, b))),
       o =>
@@ -242,6 +253,12 @@ object Route:
           case h *: rest =>
             val (t, b) = c.split(rest)
             (h *: t, b)
+
+  /** start a route from the companion: `Route / "users" / Route[Int]("id")` */
+  def /(lit: String): Route[EmptyTuple] = root / lit
+
+  /** the same, when the first segment is a captured one */
+  def /[B <: Tuple](r: Route[B]): Route[B] = r
 
   /** the empty path, `"/"` */
   val root: Route[EmptyTuple] =
@@ -417,7 +434,10 @@ final class Query[B <: Tuple] private[http] (
     private[http] val decode: Route.Params => Option[B],
     private[http] val encode: B => Vector[(String, String)]):
 
-  def &[C <: Tuple](that: Query[C])(using c: Route.Split[B, C]): Query[c.Out] =
+  /** `+&` and not `&`: `&` is below `:` in Scala's precedence table,
+   * so `r :? a & b` would group as `(r :? a) & b`. `+` is above it,
+   * and the whole declaration then needs no parentheses. */
+  def +&[C <: Tuple](that: Query[C])(using c: Route.Split[B, C]): Query[c.Out] =
     new Query[c.Out](declared ++ that.declared,
       qs => decode(qs).flatMap(b => that.decode(qs).map(d => c.join(b, d))),
       o =>

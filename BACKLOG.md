@@ -570,7 +570,7 @@ or not at all).
       Each conversion is small; each is a BEHAVIOUR change at a live
       endpoint (a query string now matches, a wrong verb now misses),
       so it wants its own lane and its own gate, not a sweep.
-- [x] optics-outside-routes-query — DONE (2026-09-10, d0398ff6).
+- [x] optics-outside-routes-query — DONE (2026-09-10, 6468e90a).
       Stage 3 of the spec: the query string, as its own `Query` type
       composed with `&` and handed over by `?`. The finding was a rule
       attached to the wrong layer — `Param.string` refused the empty

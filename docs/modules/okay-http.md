@@ -44,7 +44,7 @@ one interpreter, and at least one of them DESCRIBES it instead of
 running it. A path passes that three times.
 
 ```scala
-val userPost = Route.lit("users") / Route[Int]("id") / "posts" / Route[String]("slug")
+val userPost = Route / "users" / Route[Int]("id") / "posts" / Route[String]("slug")
 
 userPost.unapply("/users/7/posts/hello%20world")  // Some((7, "hello world"))  -- MATCH
 userPost.url((7, "hello world"))                  // "/users/7/posts/hello%20world"  -- BUILD
@@ -105,7 +105,7 @@ law the repository already tests.
 `&` and handed over with `?`:
 
 ```scala
-val search = Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+val search = Route / "search" :? Query[String]("q") +& Query.opt[Int]("page")
 // Route[(String, Option[Int])]
 
 search.url(("cats", Some(2)))            // "/search?q=cats&page=2"
@@ -117,6 +117,15 @@ search.describeFull                      // "/search?q={q}&page={page}"
 `Query[T](name)` is required, `Query.opt[T]` optional (absent is
 `None`, and `None` writes nothing), `Query.all[T]` repeated (every
 occurrence in wire order, and an empty vector writes nothing).
+
+The operators are `:?` and `+&` rather than `?` and `&` because of
+Scala's precedence table, not taste: precedence comes from an
+operator's FIRST character, and `?` is in the "all other special
+characters" group, which binds tighter than `/` — so
+`Route / "search" ? q` would parse as `Route / ("search" ? q)`. `:` is
+below `/` and `+` sits between them, so `r / "s" :? a +& b` groups the
+way it reads, with no parentheses anywhere. (Associativity comes from
+the LAST character, so `:?` stays left-associative.)
 
 Its own type rather than more `Route` combinators, because the path is
 ORDERED and the query is not: a path parameter is found by position, a

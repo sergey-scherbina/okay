@@ -14,9 +14,9 @@ import okay.given
  */
 class TestRoute extends munit.FunSuite {
 
-  val healthz = Route.lit("healthz")
-  val userPost = Route.lit("users") / Route[Int]("id") / "posts" / Route[String]("slug")
-  val userId = Route.lit("users") / Route[Int]("id")
+  val healthz = Route / "healthz"
+  val userPost = Route / "users" / Route[Int]("id") / "posts" / Route[String]("slug")
+  val userId = Route / "users" / Route[Int]("id")
 
   test("a fully literal route matches its own path and nothing else") {
     assertEquals(healthz.unapply("/healthz"), Some(EmptyTuple))
@@ -138,10 +138,10 @@ class TestRoute extends munit.FunSuite {
   // ---- the query string (stage 3)
 
   val search: Route[(String, Option[Int])] =
-    Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+    Route / "search" :? Query[String]("q") +& Query.opt[Int]("page")
 
   val tagged: Route[(Int, Vector[String])] =
-    Route.lit("posts") / Route[Int]("id") ? Query.all[String]("tag")
+    Route / "posts" / Route[Int]("id") :? Query.all[String]("tag")
 
   test("a query parameter is read by name, not by position") {
     assertEquals(search.unapply("/search?q=cats&page=2"), Some(("cats", Some(2))))

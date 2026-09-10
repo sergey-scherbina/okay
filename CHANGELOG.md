@@ -60,9 +60,33 @@ encoding (`Route[(A, B)]`) as considered and rejected: the flattening
 has to happen somewhere, and pairs move it from the combinator to
 every consumer.
 
+**And the operators changed, for precedence rather than taste.** The
+first cut spelled them `?` and `&`; the operator asked for
+`Route / "search" ?`, which cannot work. Scala takes an infix
+operator's precedence from its FIRST character, and `?` is in the "all
+other special characters" group, which binds TIGHTER than `/` — so
+`Route / "search" ? q` parses as `Route / ("search" ? q)`. The old
+spelling only worked because `Route.lit("search")` was a complete
+expression to its left. `:` is below `/` and `+` sits between them, so
+`:?` on a route and `+&` on a query group as they read:
+
+```scala
+val search = Route / "search" :? Query[String]("q") +& Query.opt[Int]("page")
+```
+
+no parentheses anywhere, and `:?` stays left-associative because
+associativity comes from the LAST character. These are http4s's
+operators, and this is the reason they are the ones they are —
+recorded in the doc comment and the spec's Design so the next person
+who thinks `?` would be prettier finds the answer rather than
+rediscovering it through code that will not compile. `Route` also
+gained its own `/`, so a declaration never begins with `Route.lit` or
+`Route.root`.
+
 No `Router` change was needed, which is the small confirmation that
 stage 1's seam was cut in the right place. 13 new tests in
-`TestRoute`, green on JVM and JS. Commits: 188e9c36 (the rename and the Decisions entry), d0398ff6 (the query).
+`TestRoute`, green on JVM and JS. Commits: 3eb5f96b (the rename and
+the Decisions entry), 6468e90a (the query), 7ebaa196 (the operators).
 
 ## di-facts-examples — what a Fact is for, on a case that earns it
 

@@ -139,7 +139,7 @@ object Route:
 Written out, a declaration reads:
 
 ```scala
-val userPost = Route.lit("users") / Route[Int]("id") / "posts" / Route[String]("slug")
+val userPost = Route / "users" / Route[Int]("id") / "posts" / Route[String]("slug")
 // userPost.url((7, "hello world")) == "/users/7/posts/hello%20world"
 // userPost.unapply("/users/7/posts/hello%20world") == Some((7, "hello world"))
 // userPost.describe == "/users/{id}/posts/{slug}"
@@ -386,12 +386,12 @@ where many urls mean one value.
 ### Interface
 
 ```scala
-val search = Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+val search = Route / "search" :? Query[String]("q") +& Query.opt[Int]("page")
 // Route[(String, Option[Int])]
 
 final class Query[B <: Tuple]:
   val declared: Vector[Route.Q]
-  def &[C <: Tuple](that: Query[C])(using Route.Split[B, C]): Query[?]
+  def +&[C <: Tuple](that: Query[C])(using Route.Split[B, C]): Query[?]
 
 object Query:
   def apply[T](name: String)(using Route.Param[T]): Query[T *: EmptyTuple]        // required
@@ -422,6 +422,21 @@ human.
       required parameter part of the match
 
 ### Design
+
+**The operators are `:?` and `+&`, and that is precedence rather than
+taste.** Scala takes an infix operator's precedence from its FIRST
+character, and `?` is in the "all other special characters" group,
+which binds TIGHTER than `/`. So `Route / "search" ? q` parses as
+`Route / ("search" ? q)` and does not compile; the first cut only
+worked because `Route.lit("search")` was a complete expression to the
+left of it. `:` is below `/`, and `+` sits between them, so
+`Route / "search" :? a +& b` groups exactly as it reads and a whole
+declaration needs no parentheses. Associativity comes from the LAST
+character, so `:?` remains left-associative. These are http4s's
+operators; this is the reason they are the ones they are.
+
+`Route / "users"` is the companion's own `/`, so a declaration never
+has to start with `Route.lit(...)` or `Route.root`.
 
 **`Query` is its own type, not more `Route` combinators.** The path is
 ordered and the query is not, and mixing them would put the split
