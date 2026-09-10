@@ -1,5 +1,32 @@
 # Changelog
 
+## di-prototype — an instance per consumer, without the consumer knowing
+
+The arc had one lifetime: a `module` installs one value and a region
+releases it. An instance per CONSUMER meant a named trait per
+capability, written by hand, and the two shapes had different types —
+one answering a `Conn`, one answering a program — so a provider that
+started closing what it made broke every call site.
+
+`New[A]` is now the one type, `fresh[A]` the one word a consumer
+writes, and `prototype` comes in the two spellings that mirror
+`Module.value` and `module`. `fresh` answers `A ! Resource` ALWAYS,
+including where nothing is released, and that uniformity is the whole
+point: a test runs ONE consumer against both providers, and the
+closing one releases both instances while the call site stays
+untouched.
+
+The region that RUNS a `fresh` releases it, so the caller chooses the
+lifetime — `Resource.scoped` is the region as an expression for a
+per-request one, since `run` forwards a row and a per-call region has
+nothing to forward. Inside a long-lived region every instance piles up
+until it ends; that trade is in the docs and in a test rather than
+left to be found.
+
+`plan` keeps a capability's type argument now, so a prototype reads as
+`New[Conn]` rather than `New`. 5 tests, docs/di.md gained "Three
+lifetimes, and who chooses them". Commit: 99ee89af.
+
 ## dataflow stage 1 — our own distributed engine: the plan is a value, and the keyed stage does not shuffle
 
 The operator asked for what Flink and Spark do, done by us, and better
