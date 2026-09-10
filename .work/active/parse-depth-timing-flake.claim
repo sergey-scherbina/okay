@@ -1,0 +1,11 @@
+feature/parse-depth-timing 2026-09-10T17:40:00Z
+agent: claude-code
+status: in-progress
+done-so-far: claimed
+next: TestParseDepth's two assertions are wall clocks on a shared box and have
+      now cost three gates in one day (87bee43e's matrix, and twice today at
+      loads 99 and 29). Re-establish the measurement rather than weaken it:
+      the minimum of three runs on each side (one round lies), the ratio
+      assertion unchanged at 8x, and the absolute ceiling raised to what
+      actually guards the 74 000 ms regression it was written for.
+touches: okay-parse/src/test/scala/okay/parse/TestParseDepth.scala only
