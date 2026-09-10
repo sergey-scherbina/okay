@@ -21,7 +21,7 @@ The question behind it was whether the collection should be abstracted
 container but combining two contributions, and with the monoid a
 collection stops being special: a test declares facts over `String`
 (concatenation), `Int` (addition) and `Option` with a last-wins rule
-of its own, and installs the summed `Int` as a capability. Commit: LANDING.
+of its own, and installs the summed `Int` as a capability. Commit: 3a9f0c8d.
 ## dataflow-fan-overhead — the third that was not there
 
 Stage 3's decomposition summed the sinks to 104 ms against a fan of
