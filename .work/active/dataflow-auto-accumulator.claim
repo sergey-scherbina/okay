@@ -1,0 +1,31 @@
+task: dataflow-auto-accumulator
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-auto-accumulator
+worktree: ../okay-wt-daa1
+spec: specs/dataflow.md (stage 2's autoBound)
+
+why: `Finish.Auto` decides from one constant — 100 000 accumulators —
+  measured on the CHEAPEST accumulator that exists, a Long count, at
+  eight partitions. The doc already says a fatter accumulator moves
+  the bound DOWN, which is a prediction sitting in a comment with no
+  number under it. A default that has never been measured on the
+  shape it is most often wrong about is a guess wearing a
+  measurement's clothes.
+
+what: the same table again with Wroclaw's own accumulator — the tuple
+  tree `((Long, Long), Option[Int])`, six objects per add — beside the
+  count, so the two crossovers can be read against each other. Then
+  one of two honest outcomes, and the measurement picks which:
+
+    - the crossovers are close, and one constant serves both; or
+    - they are far apart, and no constant serves both — in which case
+      `autoBound` is documented for what it is and the doc says what
+      to do instead, rather than being re-fitted to the average of two
+      jobs neither of which is the caller's.
+
+predict: the fat crossover lands well below 100 000, because merging
+  a tuple tree allocates on every combine while the hand-off does not
+  change. If it lands within a factor of two I will say one constant
+  serves both; if it is an order of magnitude lower, a single default
+  cannot be right and the entry closes by saying so.
