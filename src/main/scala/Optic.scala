@@ -455,6 +455,22 @@ extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
 // ---------------------------------------------------------------- constructors
 
 object Iso:
+  /**
+   * Kmett's `non`: an absent value READS as `d`, and writing `d` back
+   * makes it absent again. This is what turns "create the missing
+   * parent" from an unlawful lens into a lawful composition — absence
+   * stops being a special case on the way down and becomes part of
+   * the focus.
+   *
+   * An iso modulo one normalisation, stated rather than hidden:
+   * `Some(d)` and `None` are the same point, so the round trip
+   * `from(to(_))` sends `Some(d)` to `None`. Where the default MEANS
+   * absence — an empty object in JSON, an empty string in a form —
+   * that is the intended reading and the test pins both directions.
+   */
+  def non[A](d: A): Iso[Option[A], Option[A], A, A] =
+    Iso(_.getOrElse(d), (a: A) => if a == d then None else Some(a))
+
   def apply[S, T, A, B](to: S => A, from: B => T): Iso[S, T, A, B] = new Iso[S, T, A, B]:
     def apply[P[_, _]](p: P[A, B])(using P: Profunctor[P]): P[S, T] = P.dimap(p)(to, from)
 

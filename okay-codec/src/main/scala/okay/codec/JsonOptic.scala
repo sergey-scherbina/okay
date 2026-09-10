@@ -49,6 +49,35 @@ object JsonOptic {
           case None => Json.JObj(fs.filterNot(_._1 == name))
         case other => other)
 
+  /**
+   * A path that CREATES what is missing on the way down, and is a
+   * lawful lens while doing it.
+   *
+   * `field` stops at an absent parent, because a prism through `Some`
+   * has nothing to focus. This does not stop: each step is
+   * `at(name)` composed with `Iso.non(d)`, so an absent field reads as
+   * `d` and writing `d` back removes it again. The unlawful thing a
+   * hand-written router does — invent a parent during `set` — becomes
+   * a composition of two lawful optics, because absence is IN the
+   * focus rather than a case the setter handles behind the caller's
+   * back.
+   *
+   * Each step carries its own default, since what an absent field
+   * means is a question only the schema can answer: an object, an
+   * empty array, a zero.
+   */
+  def creating(steps: List[(String, Json)]): Lens[Json, Json, Json, Json] =
+    steps match
+      case Nil => Lens[Json, Json, Json, Json](j => j, (_, v) => v)
+      case (name, d) :: rest =>
+        val here = at(name).andThen(Iso.non(d)).andThen(creating(rest))
+        new Lens[Json, Json, Json, Json]:
+          def apply[P[_, _]](p: P[Json, Json])(using P: Optic.Strong[P]): P[Json, Json] = here(p)
+
+  /** the same, when every level is an object */
+  def creatingObjects(names: List[String]): Lens[Json, Json, Json, Json] =
+    creating(names.map(n => (n, Json.JObj(Vector.empty))))
+
   /** the field when it is there: `at(name)` through `Some` */
   def field(name: String): Affine[Json, Json, Json, Json] = at(name).andThen(Prism.some)
 

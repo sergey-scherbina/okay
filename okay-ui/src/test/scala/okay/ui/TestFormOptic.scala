@@ -24,6 +24,16 @@ import okay.codec.{Json, JsonOptic, Schema}
  * parents present — `Form.edit` touches EXACTLY the focus
  * `JsonOptic.path` names, and nothing else. That is the statement the
  * rewrite was after, and it holds without one.
+ *
+ * REFINED 2026-09-10 (specs/optics.md stage 6). The FIRST of those two
+ * reasons has dissolved: creating a missing parent is unlawful only
+ * while absence is a case the setter handles behind the caller's back.
+ * `Iso.non` puts absence in the focus, `JsonOptic.creating` composes
+ * it down a path, and the last test here shows that path producing
+ * EXACTLY what `Form.edit` produces, defaults and all. The second
+ * reason stands and is why Form still keeps its router: interpreting
+ * a text by the field's schema, growing a list, swapping a sum's
+ * case are not navigation, and no optic should pretend they are.
  */
 class TestFormOptic extends munit.FunSuite {
 
@@ -70,5 +80,26 @@ class TestFormOptic extends munit.FunSuite {
     val after = Form.edit[Person](seeded, Event.Edited("address.city", "Kraków"))
     val optic = JsonOptic.path(schema, "address.city").get
     assertEquals(optic.set(Json.JStr("Kraków"))(seeded), after)
+  }
+
+  test("the creating path IS what Form does, once absence is part of the focus") {
+    // Form's own default for a missing product is `JObj(Vector.empty)`
+    // (Form.empty), and that is the `non` default here. With the same
+    // defaults, the lawful composition and the hand-written router
+    // agree to the byte — which is what the stage-1 rewrite wanted and
+    // could not have while the creation lived inside `set`.
+    val partial = Json.JObj(Vector("name" -> Json.JStr("ada")))
+    val viaForm = Form.edit[Person](partial, Event.Edited("address.city", "Kraków"))
+    val viaOptic = JsonOptic.creating(List(
+      ("address", Json.JObj(Vector.empty)),
+      ("city", Json.JStr("")))).set(Json.JStr("Kraków"))(partial)
+    assertEquals(viaOptic, viaForm)
+
+    // two levels of absence, the same way
+    val bare = Json.JObj(Vector.empty)
+    assertEquals(
+      JsonOptic.creating(List(("address", Json.JObj(Vector.empty)), ("zip", Json.JNum(0))))
+        .set(Json.JNum(99))(bare),
+      Form.edit[Person](bare, Event.Edited("address.zip", "99")))
   }
 }
