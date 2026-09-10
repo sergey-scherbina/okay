@@ -1,0 +1,31 @@
+task: flows-pane-tuple
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/flows-pane-tuple
+worktree: ../okay-wt-fpt1
+spec: specs/dataflow.md (dataflow-run-complete-panes' own regression)
+
+why: checking `windows-packed-key` found something that is not it. The
+  entry is about the pane store's KEY STRUCTURE and still needs
+  measuring. What the check turned up is a plain regression, and mine:
+  `dataflow-run-complete-panes` put a completeness branch ABOVE the
+  binding it left in place, so `Flows.windowed` allocates the
+  `(Long, K)` pair for every pane it emits — including the ~93% that
+  are finished locally and never use it as a map key. With
+  `Finish.Merge`, which is the default, `bucketOf` is inline and never
+  even evaluates the hash the pair was built for, so on that road the
+  allocation is entirely dead: 1.7 million of them on the Wroclaw job.
+
+what: bind the pair in the branch that uses it, and give the finished
+  branch a bucket it can compute without allocating — start and key
+  mixed by hand rather than through a tuple's hashCode, so a hot key's
+  windows still spread over the reducers.
+
+  Then measure, because the entry this came out of says to: the
+  single-stage road on the Wroclaw feed, before and after, on one box.
+
+predict: it will not show above the noise of a 180 ms lane — an
+  allocation this size is a few milliseconds at most and the bars are
+  wider. Saying so is the result; the change stands on being simpler
+  code that does not build what it cannot use, not on a number I could
+  not measure.
