@@ -2255,6 +2255,24 @@ measure on our own data, never a predicted result.
       that stage, ~6% end to end — A/B'd in ONE run, because the first
       cross-run reading said 2x and was GC noise. Guarded by
       TestJsonValue's existing prefix sweep.
+- [ ] growing-channel-order-under-load — SEEN ONCE, NOT REPRODUCED,
+      and recorded because the alternative is forgetting it. A full
+      matrix on 2026-09-10 failed `okay.TestGrowing`'s "each
+      producer's own order survives the swap"
+      (src/test/scala-jvm/TestGrowing.scala:186) at round 34 of 200:
+      producer 1's subsequence came back 49, **57**, 51, 55, 59 — its
+      own FIFO order broken across a part swap, on the SHIPPED
+      `Channel(4)` the test deliberately uses. The box was at load 45
+      (an operator VM holding ~11 of 14 cores) and two full matrices
+      on the same tree an hour earlier were green, as were 13
+      subsequent runs of the suite alone — 2 600 rounds at load 15–29,
+      no failure. So it is one of: a real race in the adoption/swap
+      path that needs contention to show, or a promise the growing
+      channel does not actually make under it. NOT tagged and NOT
+      retried: both would hide a real defect, and the suite is the
+      only place this guarantee is stated. Reproduce with load, not
+      with repetition — that is what distinguished the two runs. The
+      gate log is okay-gate.ySVIJbPIg1 (the diff is in it).
 - [x] scan-step-allocation — LANDED 2026-09-10, and it bought more
       than it promised: −29.3% of the allocation element-wise
       (425 832 → 301 056 B/op), −27.8% chunked, −15.8% on the full
