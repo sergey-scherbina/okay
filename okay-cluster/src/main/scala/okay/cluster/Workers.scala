@@ -432,6 +432,43 @@ object Cluster {
               epoch(st, f.seen, f.drops, f.merged, f.epoch + 1)
 
   /**
+   * RUN THE JOB IF THIS PROCESS IS THE COORDINATOR
+   * (specs/dataflow.md, stage 10).
+   *
+   * Stage 8 made a successor possible and stage 9 made its writes
+   * safe; this is who starts one. The lease is taken, the journal is
+   * fenced by the term it answers, the stream runs, and the seat is
+   * given up at the end. `None` means somebody else holds it.
+   *
+   * IT DOES NOT WAIT TO BE ELECTED, and that is deliberate rather
+   * than unfinished. A retry loop needs a clock, a backoff and a
+   * decision about how long to keep trying — every one of which
+   * belongs to whatever supervises this process, not to a dataflow
+   * engine. One attempt composes into any of them:
+   *
+   * {{{
+   * while running do
+   *   Cluster.leading(job, params, parts, workers, take, journal, lease)
+   *     .runWith match
+   *       case Some(run) => report(run)          // the stream ended
+   *       case None      => sleep(a while)       // somebody else leads
+   * }}}
+   *
+   * A coordinator DEPOSED mid-run throws `Checkpoint.Deposed` out of
+   * here at its next epoch, which is the correct end of that attempt:
+   * its successor already holds the journal, and everything this one
+   * folded since the last commit was never recorded.
+   */
+  def leading[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
+                    journal: Checkpoint, lease: Lease)
+                   (using Scheduler): Option[Run[R]] ! Async =
+    lease.take() match
+      case None => pure[Async, Option[Run[R]]](None)
+      case Some(term) =>
+        stream(job, p, parts, workers, take, Checkpoint.fenced(term, lease, journal))
+          .map { run => lease.release(term); Some(run) }
+
+  /**
    * ADVANCE ONE PARTITION, WHEREVER IT CAN BE DONE
    * (specs/dataflow.md, stage 6b).
    *

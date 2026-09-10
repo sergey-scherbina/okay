@@ -1,5 +1,43 @@
 # Changelog
 
+## dataflow stage 10 — the election, and the ghost
+
+Stage 8 made a successor possible and stage 9 made its writes safe.
+Nobody started one — `Cluster.stream` had to be called again, by
+something — and there was a second hole, the dangerous one: two
+coordinators over one journal is worse than none, because a paused
+leader that wakes believing it still leads commits over its
+successor's state and the next resume reads whichever landed last.
+
+LEADERSHIP IS A SEAM, for the same reason the journal is. `Lease` is
+three methods over a TERM — take(): Option[Long], held(term),
+release(term) — and okay-persist's `Election` answers all three as it
+stands: `tryTakeover` returns the epoch that becomes the term,
+`leader` says who holds it, `heartbeat` renews the lease, which is
+what a leader should be doing once an epoch anyway. Eleven lines in
+test scope, so okay-cluster's compile graph is still okay-codec.
+
+`Cluster.leading(job, params, parts, workers, take, journal, lease)`
+takes the seat, fences the journal by the term, runs the stream and
+gives the seat up. `None` means somebody else holds it. It does NOT
+wait to be elected: a retry loop needs a clock and a backoff that
+belong to a supervisor, and one attempt composes into any of them.
+
+THE TERM IS A FENCING TOKEN. `Checkpoint.fenced` asks the lease before
+every commit and throws `Deposed` instead of writing, so a
+predecessor that wakes mid-run stops at its next epoch. The test that
+matters is not a fresh candidate taking a vacant seat — that passes
+with no fence at all — it is a leader deposed BETWEEN its epochs:
+it throws at the next commit and the journal still ends where it lost
+the seat. Controlled: without the fence, both ghost tests fail.
+
+Also on the real election, in test scope: two nodes and one seat, the
+second told no while the lease is live and taking over when it lapses.
+
+Not closed, one commit wide: the fence is a check before a write, not
+a compare-and-set. Closing it needs a store that offers a conditional
+write, and the seam permits one because `save` may throw.
+
 ## dataflow stage 9 — the commit window, closed by the writer
 
 Stage 8 left one window open and named it: a pane is written while its

@@ -36,6 +36,41 @@ trait Checkpoint:
   /** the last epoch saved, if any */
   def latest: Option[(Int, Array[Byte])]
 
+/**
+ * WHO IS ALLOWED TO BE THE COORDINATOR (specs/dataflow.md, stage 10).
+ *
+ * Three methods and no dependency, exactly as `Checkpoint` is two
+ * methods over bytes. okay-persist's `Election` answers all three —
+ * `tryTakeover` returns the epoch that becomes the TERM, `leader`
+ * says who holds it, `heartbeat` renews the lease — so the binding is
+ * a handful of lines in test scope, and a caller with a different
+ * store (a row with a lease column, a lock service) writes its own.
+ *
+ * THE TERM IS A FENCING TOKEN, and that is the whole reason `take`
+ * answers a number rather than a boolean. Two coordinators over one
+ * journal is worse than none: a paused leader that wakes believing it
+ * still leads would commit over its successor's state, and the next
+ * resume would read whichever landed last. The term is what lets the
+ * journal refuse it.
+ */
+trait Lease:
+  /** become the coordinator, if the seat is free — the TERM if taken */
+  def take(): Option[Long]
+
+  /** still the coordinator at this term? Called once per epoch,
+   * before the commit, which is also where a lease is renewed */
+  def held(term: Long): Boolean
+
+  /** give the seat up; a lease that only expires may do nothing */
+  def release(term: Long): Unit = ()
+
+object Lease:
+  /** the only candidate there is: leadership without an election, so
+   * a run that has no second coordinator pays nothing for the seam */
+  val solitary: Lease = new Lease:
+    def take(): Option[Long] = Some(1L)
+    def held(term: Long): Boolean = true
+
 object Checkpoint:
 
   /** journals nothing and resumes nothing — the behaviour of every
@@ -63,6 +98,35 @@ object Checkpoint:
     /** how many commits happened — so a test can assert the
      * coordinator journalled rather than infer it from the answer */
     def commits: Long = synchronized(saves)
+
+  /**
+   * A JOURNAL THAT ONLY THE LEADER MAY WRITE TO
+   * (specs/dataflow.md, stage 10).
+   *
+   * The commit asks the lease first, and a coordinator that has lost
+   * it throws `Deposed` instead of writing — so a predecessor that
+   * wakes up mid-run stops at its next epoch rather than committing
+   * over its successor's state. Nothing else about the run changes;
+   * the exception leaves through `Cluster.stream` like any other.
+   *
+   * IT IS A CHECK, NOT A COMPARE-AND-SET, and the difference is one
+   * commit wide: a leader deposed between the check and the write can
+   * still land that write. Closing it needs a conditional write in
+   * the STORE — "save this only if the term is still mine" — and the
+   * seam already permits one, because `save` may throw. The wrapper
+   * here is what can be built over a store that offers no such thing.
+   */
+  def fenced(term: Long, lease: Lease, under: Checkpoint): Checkpoint = new Checkpoint:
+    def save(epoch: Int, bytes: Array[Byte]): Unit =
+      if !lease.held(term) then throw Deposed(term, epoch)
+      under.save(epoch, bytes)
+    def latest: Option[(Int, Array[Byte])] = under.latest
+
+  /** what a coordinator that has lost the seat is told, at the
+   * moment it would have written */
+  final case class Deposed(term: Long, epoch: Int)
+    extends RuntimeException(
+      s"this coordinator no longer holds the lease (term $term) and did not commit epoch $epoch")
 
 /**
  * WHAT THE COORDINATOR HOLDS, AS A VALUE.

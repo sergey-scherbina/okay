@@ -218,6 +218,33 @@ the caller's: okay-cluster's compile graph stays at okay-codec, and
 `TestPersisted` binds the seam to okay-persist's compacted log in
 eight lines.
 
+**And who starts the successor.** `Cluster.leading(job, params, parts,
+workers, take, journal, lease)` takes a lease, fences the journal by
+the term it answers, runs the stream and gives the seat up; `None`
+means somebody else holds it. `Lease` is three methods —
+`take(): Option[Long]`, `held(term)`, `release(term)` — so a real
+election can be handed in without okay-cluster depending on one:
+okay-persist's `Election` answers all three as it stands, and
+`Lease.solitary` is the no-election default.
+
+It does not WAIT to be elected, on purpose — a retry loop needs a
+clock and a backoff that belong to whatever supervises the process:
+
+```scala
+while running do
+  Cluster.leading(job, params, parts, workers, take, journal, lease).runWith match
+    case Some(run) => report(run)        // the stream ended
+    case None      => sleep(a while)     // somebody else leads
+```
+
+The term is a FENCING TOKEN: the journal asks the lease before every
+commit and throws `Checkpoint.Deposed` instead of writing, so a
+predecessor that wakes up mid-run stops at its next epoch rather than
+committing over its successor's state. It is a check before a write
+and not a compare-and-set — a leader deposed between the two can land
+one commit — and the seam permits a conditional write where a store
+offers one.
+
 **The commit window, and who closes it.** A coordinator that dies
 between WRITING a pane and COMMITTING its epoch re-offers that epoch's
 panes — one epoch wide, harmless to a keyed writer. The engine cannot
@@ -365,6 +392,9 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator, for a bounded source |
 | `Cluster.stream` | `(Job[P,R], P, parts, Vector[Serve], take, journal) => Run[R] ! Async` | the same, epoch by epoch, with the state kept on the workers; `journal` defaults to `Checkpoint.none` |
 | `Checkpoint` | `save(epoch, bytes)` / `latest` | where a coordinator writes down what it has folded; `Checkpoint.none`, `Checkpoint.Memory` |
+| `Cluster.leading` | `(Job, P, parts, workers, take, journal, lease) => Option[Run[R]] ! Async` | run it if this process is the coordinator; `None` if not |
+| `Lease` | `take(): Option[Long]` / `held(term)` / `release(term)` | who may be the coordinator; `Lease.solitary` is no election |
+| `Checkpoint.fenced` | `(term, lease, under) => Checkpoint` | refuses a commit once the lease is gone (`Checkpoint.Deposed`) |
 | `Sink.committed / recovered` | `(epoch: Int) => Unit` | the two moments a writer needs; no-ops by default |
 | `Sink.staging` / `Wire.tumblingStaged` | `…(move: (Int, Vector[Pane[K, O]]) => Unit)` | an epoch's panes as one batch when the epoch is final — exactly-once for a writer that records the epoch |
 | `Wire.state` | `Schema[S]` | how the COORDINATOR's own state travels — what makes the journal possible |

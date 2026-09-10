@@ -200,6 +200,11 @@ than trusting the author.
   partitions), 6b (a dying worker's partition is replayed on a
   survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
   execution underneath, and the offers counted rather than promised).
+- **10 — the election.** DONE. `Lease` (three methods, no
+  dependency), `Cluster.leading`, and a FENCE on the journal so a
+  deposed coordinator stops at its next epoch rather than committing
+  over its successor. The seam binds to okay-persist's `Election` as
+  it stands.
 - **9 — the commit window.** DONE. `Sink.committed(epoch)` and
   `Sink.recovered(epoch)` — the two moments a writer needs — and
   `Sink.staging`, a sink that hands a whole epoch over when that
@@ -386,6 +391,35 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
       rather than closed
 - [x] durable checkpointing, so a COORDINATOR restart can resume —
       stage 8
+
+Stage 10 — the election (TestElection, TestPersisted):
+- [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`
+      — three methods over a term, so the engine can be given a real
+      election without depending on one
+- [x] `Lease.solitary`, so a run with no second coordinator pays
+      nothing for the seam
+- [x] `Cluster.leading` takes the seat, fences the journal by the
+      term, runs, and gives the seat up; `None` means somebody else
+      holds it
+- [x] it does NOT wait to be elected — a retry loop needs a clock and
+      a backoff that belong to a supervisor, and one attempt composes
+      into any of them (the doc shows the loop)
+- [x] a leader that dies: the next candidate takes the lapsed seat
+      and finishes the job with the batch answer
+- [x] THE GHOST IS REFUSED: a coordinator deposed BETWEEN its epochs
+      throws at its next commit and the journal still ends at the
+      epoch it lost the seat on
+- [x] controlled: without the fence, the ghost commits and both ghost
+      tests fail
+- [x] the successor of a refused ghost still answers the batch answer
+- [x] bound to okay-persist's `Election` as it stands (TEST scope):
+      `tryTakeover` is the term, `leader` is `held`, `heartbeat` is
+      what a leader should do once an epoch anyway
+- [x] two nodes, one seat, on the real election: the second is told
+      no while the lease is live and takes over when it lapses
+- [ ] a compare-and-set commit. The fence is a check before a write,
+      so a leader deposed between the two can land one commit; the
+      seam permits a conditional write and no store here offers one
 
 Stage 9 — the commit window (TestStaged):
 - [x] `Sink.committed(epoch)` / `Sink.recovered(epoch)`, defaulting
@@ -1322,3 +1356,46 @@ WRITER's. A durable stage — a transaction, a temp file per epoch —
 closes that too, and the seam is already the right one: `recovered`
 says where to resume, `committed` says what to finalize. Nothing has
 asked, so nothing is built.
+
+### Stage 10 — the election, and the ghost
+
+Stage 8 made a successor possible and stage 9 made its writes safe.
+Nobody started one: `Cluster.stream` had to be called again, by
+something, which meant the journal was a recovery story a human ran.
+And there was a second hole, the dangerous one — **two coordinators
+over one journal is worse than none.** A paused leader that wakes
+believing it still leads commits over its successor's state, and the
+next resume reads whichever landed last.
+
+**Leadership is a seam, for the same reason the journal is.** `Lease`
+is three methods over a TERM — `take(): Option[Long]`, `held(term)`,
+`release(term)` — and okay-persist's `Election` answers all three as
+it stands: `tryTakeover` returns the epoch that becomes the term,
+`leader` says who holds it, and `heartbeat` renews the lease, which is
+what a leader should be doing once an epoch anyway. The binding is
+eleven lines in test scope, so okay-cluster's compile graph is still
+okay-codec.
+
+**The term is a fencing token, and that is why `take` answers a number
+rather than a boolean.** `Checkpoint.fenced(term, lease, under)` asks
+the lease before every commit and throws `Deposed` instead of writing,
+so a predecessor that wakes up mid-run stops at its next epoch. The
+test that matters is not a fresh candidate taking a vacant seat — that
+would pass with no fence at all — it is a leader deposed BETWEEN its
+epochs: it throws at the next commit, and the journal still ends at
+the epoch it lost the seat on. Without the fence both ghost tests
+fail.
+
+**`Cluster.leading` does not wait to be elected**, and that is a
+decision rather than an omission. A retry loop needs a clock, a
+backoff and a rule for how long to keep trying, every one of which
+belongs to whatever supervises the process. One attempt composes into
+all of them, and the doc shows the four-line loop.
+
+**What is not closed, and it is one commit wide.** The fence is a
+CHECK before a write, not a compare-and-set: a leader deposed between
+the check and the write can still land that write. Closing it needs
+the STORE to offer "save this only if the term is still mine", and
+the seam already permits one because `save` may throw. What is built
+here is what can be built over a store that offers nothing of the
+kind.

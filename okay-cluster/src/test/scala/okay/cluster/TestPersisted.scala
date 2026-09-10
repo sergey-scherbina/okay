@@ -2,7 +2,7 @@ package okay.cluster
 
 import okay.codec.Schema
 import okay.given
-import okay.persist.{Ack, Configs, MemoryStore}
+import okay.persist.{Ack, Configs, Election, MemoryStore, Policy}
 
 /**
  * THE JOURNAL, ON THE REAL LOG (specs/dataflow.md, stage 8).
@@ -80,5 +80,62 @@ class TestPersisted extends munit.FunSuite {
     val epochs = history.map(_._2.fold(why => fail(why), _.epoch))
     assertEquals(epochs, epochs.sorted, "the log is not in epoch order")
     assertEquals(epochs.last, j.latest.get._1)
+  }
+
+  /**
+   * LEADERSHIP ON THE REAL ELECTION (specs/dataflow.md, stage 10).
+   *
+   * `Lease` is three methods for the same reason `Checkpoint` is two:
+   * so the engine can be given a real one without depending on it.
+   * okay-persist's `Election` answers all three as they stand —
+   * `tryTakeover` returns the epoch, which IS the fencing term;
+   * `leader` says who holds it; `heartbeat` renews the lease, which
+   * is exactly what a leader should be doing once per epoch anyway.
+   */
+  final class Elected(e: Election, partition: Int = 0) extends Lease:
+    def take(): Option[Long] = e.tryTakeover(partition)
+    def held(term: Long): Boolean =
+      e.heartbeat()
+      e.leader(partition).contains((term, e.node))
+    override def release(term: Long): Unit = ()   // a lease expires; nothing to say
+
+  def control(store: okay.persist.Store): okay.persist.Topic =
+    store.topic("__election", 1, Policy(compact = false))
+
+  test("a real election picks the coordinator, and the run answers the batch answer") {
+    val e = Election(control(MemoryStore()), node = "a")
+    val got = Cluster.leading(FanJob, feed, 4, Vector(Cluster.local), 512, journal(), Elected(e)).runWith
+    assertEquals(got.map(_.value), Some(batch.value))
+  }
+
+  test("TWO NODES, ONE SEAT: the second is told no, and takes over when the lease lapses") {
+    val topic = control(MemoryStore())
+    var now = 1000L
+    val clock = () => now
+    val a = Election(topic, node = "a", leaseMillis = 100, skewMillis = 10, clock = clock)
+    val b = Election(topic, node = "b", leaseMillis = 100, skewMillis = 10, clock = clock)
+    val log = journal()
+
+    // a leads and dies at epoch 3
+    val dying: Checkpoint = new Checkpoint:
+      def save(epoch: Int, bytes: Array[Byte]): Unit =
+        log.save(epoch, bytes)
+        if epoch == 3 then throw RuntimeException("node a died at epoch 3")
+      def latest: Option[(Int, Array[Byte])] = log.latest
+
+    val died = intercept[RuntimeException](
+      Cluster.leading(FanJob, feed, 4, Vector(Cluster.local), 512, dying, Elected(a)).runWith)
+    assert(died.getMessage.contains("node a died"), died.getMessage)
+    assertEquals(log.latest.map(_._1), Some(3))
+
+    // b cannot take the seat while a's lease is live
+    assertEquals(Cluster.leading(FanJob, feed, 4, Vector(Cluster.local), 512, log, Elected(b))
+      .runWith, None, "b took a live lease")
+
+    // the lease lapses (nobody is heartbeating a any more) and b leads
+    now += 1000L
+    val got = Cluster.leading(FanJob, feed, 4, Vector(Cluster.local), 512, log, Elected(b)).runWith
+    assertEquals(got.map(_.value), Some(batch.value))
+    assertEquals(got.map(_.dropped), Some(batch.dropped))
   }
 }

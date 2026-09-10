@@ -584,10 +584,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       an assembly: the seam binds to okay-persist's compacted log in
       eight lines, and the reason it is a `save` call rather than a
       barrier protocol is that the epoch loop is lock-step.
-- [ ] dataflow-coordinator-election — a successor now EXISTS but
-      nobody starts it: `Cluster.stream` has to be called again, by
-      something. okay-persist has `Election`; wiring it is a lane, not
-      a line, and nothing has asked yet.
+- [x] dataflow-coordinator-election — LANDED as stage 10, and it was
+      a lane rather than a line for the right reason: the wiring is
+      small, and the FENCE it forced is the part that mattered. A
+      deposed coordinator now stops at its next commit instead of
+      writing over its successor.
+- [ ] dataflow-fenced-commit — stage 10's fence is a CHECK before a
+      write, so a leader deposed between the two can land one commit.
+      Closing it needs a store that offers "save only if the term is
+      still mine"; the seam already permits one (`save` may throw).
+      One commit wide, named in specs/dataflow.md.
 - [x] dataflow-commit-window — LANDED as stage 9, and the entry above
       was wrong about the roads: both the ones it named are worse than
       the window, and the one it did not name is what every engine
