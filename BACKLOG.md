@@ -549,13 +549,22 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       separable: reconnecting a socket, and burying only after k
       consecutive failures rather than the first. Measure whether the
       second alone is enough before building the first.
-- [ ] dataflow-coordinator — the coordinator is a single point of
-      failure: it holds the bounds and the partials, journals
-      nothing, and its death ends the run. What would fix it is not a
-      second coordinator but a JOURNAL — okay-persist already has the
-      log, the offsets and the election — so this is an assembly, not
-      an invention. Not started, and not pretended otherwise in any
-      doc.
+- [x] dataflow-coordinator — LANDED as stage 8. `Wire.state` makes
+      the fold a value, `Checkpoint` is where it goes, and a second
+      `Cluster.stream` over the same journal picks the run up. It was
+      an assembly: the seam binds to okay-persist's compacted log in
+      eight lines, and the reason it is a `save` call rather than a
+      barrier protocol is that the epoch loop is lock-step.
+- [ ] dataflow-coordinator-election — a successor now EXISTS but
+      nobody starts it: `Cluster.stream` has to be called again, by
+      something. okay-persist has `Election`; wiring it is a lane, not
+      a line, and nothing has asked yet.
+- [ ] dataflow-commit-window — a coordinator that dies between
+      WRITING a pane and COMMITTING its epoch re-offers that epoch's
+      panes (stage 8, tested and asserted to happen). Harmless to a
+      keyed writer, and the only ways to close it are worse than it
+      is: write-ahead the pane set, or commit before writing and lose
+      panes instead of repeating them. Named, not closed.
 - [x] dataflow-exchange — LANDED. The crossover is ~100 000
       accumulators and the Wrocław job is three orders of magnitude
       under it, so `Auto` declines the exchange there.

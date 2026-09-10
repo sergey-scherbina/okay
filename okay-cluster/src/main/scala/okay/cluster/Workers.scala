@@ -259,7 +259,8 @@ object Cluster {
    * exactly that, because a streaming answer that differs from the
    * batch one is wrong rather than different.
    */
-  def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int)
+  def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
+                   journal: Checkpoint = Checkpoint.none)
                   (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
@@ -267,9 +268,24 @@ object Cluster {
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
     val living = Living(workers.length)
-    val base = System.nanoTime()
+    val folded = Codecs.cbor(Folded.given_Schema_Folded)
+    val held = Codecs.cbor(sink.state)
+    // the ids this run's sessions carry — inherited from the journal
+    // when there is one, so a resumed coordinator picks up the
+    // sessions its predecessor opened rather than stranding them
+    val resuming: Option[Folded] = journal.latest.flatMap { (at, bytes) =>
+      folded.decode(bytes) match
+        case Right(f) => Some(f)
+        case Left(why) => throw IllegalStateException(s"the journal at epoch $at: $why")
+    }
+    val base = resuming.fold(System.nanoTime())(_.base)
     val sessions = Vector.tabulate(parts)(i => base + i)
     def opening(i: Int): Req.Open = Req.Open(job.name, encoded, i, parts, sessions(i))
+
+    def commit(round: Int, st: sink.S, seen: Vector[Vector[Flows.Extent]],
+               drops: Long, merged: Long): Unit =
+      journal.save(round,
+        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base)))
 
     // NO UPFRONT OPEN. The first `Advance` finds no session and opens
     // one, which is the identical path a replacement worker takes —
@@ -333,6 +349,11 @@ object Cluster {
           val next = sink.absorb(state, ws, mark)
           val d = drops + sink.drops(ws)
           val m = merged + sink.merged(ws)
+          // THE COMMIT, and it is one line because the loop is
+          // lock-step: every partition has contributed exactly rounds
+          // 1..round, so what the coordinator holds now is a
+          // consistent cut with nothing in flight (stage 8).
+          commit(round, next, grown, d, m)
           if es.forall(_.drained) then
             // THE CLOSE CARRIES A PARTIAL. Every pane still open when
             // the source ran out is swept out by `finish` and comes
@@ -356,13 +377,36 @@ object Cluster {
                   case Left(why) => throw IllegalStateException(s"partition $i's last partial: $why")
               }
               val end = sink.absorb(next, lw, Long.MaxValue)
-              Run(sink.emit(end), d + sink.drops(lw), parts, 1,
-                m + sink.merged(lw), living.retries)
+              val dd = d + sink.drops(lw)
+              val mm = m + sink.merged(lw)
+              // the sweep is an epoch too: a coordinator that dies
+              // between the last Close and the answer resumes here,
+              // asks for one more epoch, is told everything is
+              // drained, and re-answers the same value
+              commit(round, end, grown, dd, mm)
+              Run(sink.emit(end), dd, parts, 1, mm, living.retries)
             }
           else epoch(next, grown, d, m, round + 1)
         }
 
-      epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, 1)
+      /**
+       * WHERE THIS RUN BEGINS — and it is the same loop either way.
+       *
+       * A journal with something in it hands back the fold, the
+       * per-partition extents and the two counters as of epoch N, and
+       * the loop starts at N+1. The WORKERS need nothing new: 6b's
+       * `Advance` carries the epoch INDEX, so a worker with no
+       * session opens one and replays to it, discarding what the
+       * coordinator has already folded. A resumed coordinator is a
+       * replacement worker for everyone at once.
+       */
+      resuming match
+        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, 1)
+        case Some(f) =>
+          held.decode(f.state) match
+            case Left(why) =>
+              throw IllegalStateException(s"the journal's fold at epoch ${f.epoch}: $why")
+            case Right(st) => epoch(st, f.seen, f.drops, f.merged, f.epoch + 1)
 
   /**
    * ADVANCE ONE PARTITION, WHEREVER IT CAN BE DONE

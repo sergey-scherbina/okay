@@ -1097,6 +1097,13 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-cluster"))
   .dependsOn(okayCodec)
+  // okay-persist joins in TEST scope only, for the coordinator's
+  // journal (specs/dataflow.md, stage 8): `Checkpoint` is two methods
+  // over bytes and the STORE is the caller's, so okay-cluster's
+  // compile graph stays at okay-codec and `TestPersisted` shows the
+  // assembly against the real compacted log. Same arrangement
+  // okay-persist itself uses for okay-tls.
+  .jvmConfigure(_.dependsOn(okayPersist.jvm % Test))
   .settings(
     name := "okay-cluster",
   )

@@ -200,6 +200,11 @@ than trusting the author.
   partitions), 6b (a dying worker's partition is replayed on a
   survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
   execution underneath, and the offers counted rather than promised).
+- **8 — the coordinator survives.** DONE. `Wire.state` makes the
+  coordinator's fold a value, `Checkpoint` is where it writes it
+  down, and a second `Cluster.stream` over the same journal picks the
+  run up at the next epoch. The store is the caller's; the seam binds
+  to okay-persist's compacted log in eight lines.
 - **7 — the numbers.** DONE. A distributed lane in
   docs/benchmarks.md §20 — the Wrocław job across four real OS
   processes, its wire weighed, and its FIXED cost separated from its
@@ -322,7 +327,9 @@ Stage 5 — failure (TestFailure):
       on every worker in turn
 - [x] A REAL WORKER PROCESS killed mid-run, at a chosen request, and
       the job finishes with the same answer
-- [ ] a coordinator that dies — see the limits below
+- [x] a coordinator that dies — stage 8, for a STREAM; a batch
+      `Cluster.run` is a two-pass function with nothing to resume
+      from, and is restarted
 
 Stage 6a — the epoch loop (TestStream, TestPanesOnce):
 - [x] `Sink`'s coordinator side is a FOLD — `empty` / `absorb(s, ws,
@@ -368,10 +375,47 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
 - [x] streaming writes from the COORDINATOR — offers == panes, at
       every partition count crossed with every epoch size — because a
       streaming partition finishes nothing locally
-- [ ] exactly-once ACROSS RUNS — a restarted coordinator re-offers
-      everything; that needs the journal, `dataflow-coordinator`
-- [ ] durable checkpointing, so a COORDINATOR restart can resume —
-      `dataflow-coordinator`
+- [x] exactly-once ACROSS RUNS, once the coordinator journals — stage
+      8. The window that remains is one epoch wide and named there
+      rather than closed
+- [x] durable checkpointing, so a COORDINATOR restart can resume —
+      stage 8
+
+Stage 8 — the coordinator survives (TestResume, TestPersisted):
+- [x] `Wire.state: Schema[S]` — the coordinator's fold is a value,
+      by `SIso` where the state is a mutable map
+- [x] `Checkpoint`: two methods over bytes, an injectable seam, with
+      `Checkpoint.none` as the default so a run that does not ask for
+      durability pays nothing
+- [x] the journal carries the fold, the per-partition EXTENTS, the
+      drop and merge counters and the SESSION IDS — a resumed
+      coordinator that forgot the extents would answer a different
+      `dropped` for the same stream
+- [x] a coordinator that dies AFTER committing an epoch: a successor
+      over the same journal answers what the batch run answers, with
+      the same `merged` as an uninterrupted stream
+- [x] a coordinator that dies BEFORE committing: the epoch is asked
+      for again, the session re-answers the same partial, and it is
+      absorbed once — `merged` still equals an uninterrupted stream's
+- [x] both controlled: resuming one epoch late and one epoch early
+      each fail all four resume tests
+- [x] the successor inherits the session ids, so a dead coordinator
+      strands no sessions on any worker
+- [x] the resume survives the workers dying too — sessions reopened
+      under the inherited ids and replayed (6b's road)
+- [x] a WRITING sink across runs: after a committed death every
+      (window, key) is offered exactly once across the restart; after
+      an uncommitted one that epoch's panes are offered again, the
+      store still holds each once, and the test asserts the repeat
+      HAPPENS rather than hoping it does not
+- [x] the seam bound to okay-persist's compacted log (TEST scope): a
+      stream journalled there answers the batch answer, a successor
+      given nothing but the log finishes the job, and the log holds
+      every epoch's state in order
+- [ ] a batch `Cluster.run` that resumes — it is a two-pass function
+      with nothing to resume from, and restarting it is the answer
+- [ ] a coordinator ELECTION, so a successor starts by itself.
+      okay-persist has `Election`; nothing here asks for it yet
 
 Stage 7 — the numbers (MeasureWroclawCluster in compare, `Live`):
 - [x] the Wrocław job as a `Job[Days, R]`: submitted by NAME, its
@@ -918,8 +962,9 @@ showed the extents identical on both sides. It compares bytes now.
 
 **What 6b still does not do**: if the COORDINATOR dies the run dies
 with it. It holds the folded state and journals nothing, and no
-amount of worker recovery helps. That is `dataflow-coordinator`, and
-it is an assembly of okay-persist's log rather than an invention.
+amount of worker recovery helps. That is `dataflow-coordinator` —
+taken as stage 8, and it was indeed an assembly of okay-persist's log
+rather than an invention.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements
@@ -1090,3 +1135,87 @@ is a case class and nothing in the engine knows the difference.
 engines here run on one machine; a Flink or Spark number across
 machines needs machines, and the section says so where the rows are
 rather than in a footnote.
+
+### Stage 8 — the coordinator survives
+
+Every stage from 6a to 7 ends with the same sentence: if the
+COORDINATOR dies the run dies with it. The workers have been
+recoverable since stage 5 — a partition is a recipe, so a replacement
+replays it — and the one party that could not be replaced was the one
+holding the fold.
+
+**The whole of it is that the epoch loop is LOCK-STEP.** Every
+partition contributes exactly rounds 1..N before the coordinator
+folds, so a checkpoint taken after absorbing round N is a consistent
+cut BY CONSTRUCTION: nothing is in flight, no partition is half an
+epoch ahead, and there is no alignment protocol to write. Flink's
+checkpointing is an achievement because its operators run
+asynchronously and a barrier has to be threaded through the dataflow;
+this one is a `save` call because 6a chose the other shape. That was
+not foresight — 6a chose lock-step because it made the WATERMARK
+computable — but it is the second thing that shape has now paid for.
+
+**Two members, and neither is new machinery.**
+
+  - `Wire.state: Schema[S]` — the coordinator's running state
+    described the way `wire: Schema[W]` already describes a partial.
+    Every `S` in `Sink` was a value in disguise: a fold's is its
+    accumulator, a keyed sink's is a map of accumulators, a windowed
+    sink's is the open panes plus what has been retired. The two
+    mutable ones travel through `Schema.SIso` — the codec's newtype
+    node, the same one stage 7's terminals use.
+  - `Checkpoint` — `save(epoch, bytes)` and `latest`. An injectable
+    seam, NOT a dependency: okay-cluster's compile graph stays at
+    okay-codec and the store is the caller's. `TestPersisted` binds it
+    to okay-persist's compacted keyed topic in eight lines, which is
+    what "an assembly, not an invention" was supposed to mean when the
+    backlog entry said it.
+
+**What is journalled is more than the fold**, and the extra is not
+decoration. The per-partition EXTENTS go too, because the watermark is
+computed from them and a successor that forgot them would retire panes
+on a watermark of `MinValue`; so do the drop and merge counters, which
+are part of the answer a `Run` reports. A resumed coordinator that
+answered a different `dropped` for the same stream would be the kind
+of "nearly right" this repository counts as wrong.
+
+**And the SESSION IDS.** A successor inherits them rather than minting
+new ones, and two things fall out. A worker that survived still holds
+its session at the epoch it was last asked for, so the resumed run
+continues on it instead of replaying from the start; and a worker that
+did not is opened afresh under the same id, which is 6b's road
+exactly. Without this, every dead coordinator would strand `parts`
+sessions on the workers for ever, because the only party that could
+close them is gone — `TestResume` asserts the predecessor's ids are
+gone at the end, and it fails without the inheritance.
+
+**The two deaths are not the same death, and both are tested.**
+
+  - AFTER the commit: the epoch is in the journal and the successor
+    asks for the next one.
+  - BEFORE it: the epoch was computed and lost, so the successor asks
+    for it AGAIN — and the worker's session, already there, re-answers
+    the same partial. `merged` still equals an uninterrupted stream's,
+    which is the sharp form of "nothing was folded twice". This is
+    where `Advance` naming an INDEX rather than meaning "next" pays
+    for the third time.
+
+Both controlled: resuming at `epoch + 2` (an epoch lost) and at
+`epoch` (an epoch folded twice) each fail all four resume tests.
+
+**6c's boundary moved, and did not vanish.** A writing sink now keeps
+its exactly-once OUTCOME across a coordinator restart: after a
+committed death every (window, key) is offered exactly once across the
+restart, asserted. After an UNCOMMITTED one that epoch's panes are
+offered again — a pane is written while its epoch is absorbed and the
+epoch is committed after, so a death in between loses the record of
+writes that happened. The window is one epoch wide, the test asserts
+the repeat HAPPENS rather than hoping it does not, and what makes it
+harmless is the identity that has made every repeat harmless since 6c.
+
+**What stage 8 does not do.** A batch `Cluster.run` still dies with its
+coordinator: it is a two-pass function with nothing to resume from,
+and restarting it is the answer rather than a mechanism. And nobody
+ELECTS the successor — `Cluster.stream` has to be called again, by
+something. okay-persist has `Election`; wiring it here would be a
+lane, not a line, and nothing has asked.

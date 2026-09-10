@@ -162,9 +162,13 @@ with a real worker process killed mid-run.
 
 Two limits, named rather than implied: a buried worker never returns
 (a `Serve` is a connection, and a broken one does not heal), so a
-blip on EVERY worker still ends the run; and the coordinator is a
-single point of failure that journals nothing. Both are in the
-backlog, neither is pretended away.
+blip on EVERY worker still ends the run — that one is in the backlog,
+`dataflow-reconnect`. The second, the coordinator being a single
+point of failure, held until stage 8: a STREAM can journal now, so a
+successor picks the run up (see "And the COORDINATOR can be replaced
+too", below). A BATCH `Cluster.run` still dies with its coordinator,
+and it is a two-pass function with nothing to resume from — restart
+it.
 
 **As a stream.** `Cluster.stream(job, params, parts, workers, take)`
 runs the job epoch by epoch: every round advances each partition by up
@@ -195,8 +199,28 @@ consumed so far) rather than O(state); a seekable source would make it
 O(elements since the oldest open pane), and the seam for that is
 `Flow.Src`'s thunk.
 
-The COORDINATOR is still a single point of failure: it holds the
-folded state and journals nothing.
+**And the COORDINATOR can be replaced too.** `Cluster.stream` takes a
+`Checkpoint` — two methods over bytes, `save(epoch, bytes)` and
+`latest` — and commits after every epoch: the fold, the per-partition
+extents, the drop and merge counters, and the session ids. A second
+`Cluster.stream` over the same journal picks the run up at the next
+epoch. The workers need nothing new, because `Advance` has carried an
+epoch INDEX since 6b: a resumed coordinator is a replacement worker
+for everyone at once, and it inherits the session ids so its
+predecessor's sessions are continued rather than stranded.
+
+What makes this a `save` call rather than an achievement is that the
+epoch loop is LOCK-STEP: every partition has contributed exactly
+rounds 1..N before the coordinator folds, so a checkpoint taken after
+absorbing round N is a consistent cut by construction — no alignment
+protocol, no barrier in the stream, nothing to reconcile. The store is
+the caller's: okay-cluster's compile graph stays at okay-codec, and
+`TestPersisted` binds the seam to okay-persist's compacted log in
+eight lines.
+
+The window that remains, named rather than closed: a coordinator that
+dies between WRITING a pane and COMMITTING its epoch re-offers that
+epoch's panes. One epoch wide, and harmless to a keyed writer.
 
 **A pane that LEAVES the engine.** `Sink.tumblingTo` / `slidingTo`
 (and `Wire`'s twins, for a job at a distance) hand each retired pane
@@ -224,8 +248,11 @@ table, a topic, a file — never over the submitting process's memory.
 In a STREAM there is only one place, because a streaming partition
 finishes nothing locally: offers equal panes exactly.
 
-Across RUNS there is no such promise. A coordinator that dies and
-starts again re-offers everything, because it journals nothing.
+Across RUNS the promise is the same one, once the coordinator has a
+journal (below): a successor re-offers only the epoch that was in
+flight when its predecessor died, because a pane is written while its
+epoch is absorbed and the epoch is committed after. Without a journal
+it re-offers everything.
 
 **What the distributed road costs**, measured on §20's Wrocław job
 (docs/benchmarks.md, "The engine at a DISTANCE"): about 65 ms ONCE,
@@ -318,7 +345,9 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Job[P, R]` | `name / params / flow / sink` | what a worker can be asked for, by name |
 | `Jobs.register / find / names` | | what a build knows how to run |
 | `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator, for a bounded source |
-| `Cluster.stream` | `(Job[P,R], P, parts, Vector[Serve], take) => Run[R] ! Async` | the same, epoch by epoch, with the state kept on the workers |
+| `Cluster.stream` | `(Job[P,R], P, parts, Vector[Serve], take, journal) => Run[R] ! Async` | the same, epoch by epoch, with the state kept on the workers; `journal` defaults to `Checkpoint.none` |
+| `Checkpoint` | `save(epoch, bytes)` / `latest` | where a coordinator writes down what it has folded; `Checkpoint.none`, `Checkpoint.Memory` |
+| `Wire.state` | `Schema[S]` | how the COORDINATOR's own state travels — what makes the journal possible |
 | `Cluster.local` | `Req => Resp` | a worker made of the registry — in-process, and what a served process runs |
 | `Served.serve / connect` | `(ServerSocket, Serve)` / `(host, port) => Serve` | the same worker on a socket |
 | `WorkerMain` | `main(port, registrars…)` | a worker process |

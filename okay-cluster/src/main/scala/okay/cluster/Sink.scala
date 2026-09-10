@@ -158,10 +158,12 @@ object Sink {
 
   /** no key and no window: fold every element straight into `into`.
    *
-   * The return type NAMES `W`. Without that refinement a caller sees
-   * only the abstract member and cannot say what crosses a wire —
+   * The return type NAMES `W` — and, since stage 8, `S` as well.
+   * Without those refinements a caller sees only the abstract members
+   * and cannot say what crosses a wire or what the coordinator holds,
    * which is exactly what `Wire` has to say. */
-  def fold[A, Acc, R](into: Aggregator[A, Acc, R]): Sink[A, R] { type W = Acc } =
+  def fold[A, Acc, R](into: Aggregator[A, Acc, R])
+  : Sink[A, R] { type W = Acc; type S = Acc } =
     new Sink[A, R]:
       type P = Box[Acc]
       type W = Acc
@@ -183,7 +185,7 @@ object Sink {
   /** one accumulator per key, no window */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
                                   (into: Aggregator[(K, O), IAcc, R])
-  : Sink[A, R] { type W = Vector[(K, Acc)] } =
+  : Sink[A, R] { type W = Vector[(K, Acc)]; type S = mutable.HashMap[K, Acc] } =
     // the same rule as `Flows.run`, checked where the sink is BUILT
     // rather than where it is driven: a keyed stage's output is a hash
     // map's order, so an order-dependent terminal over it is wrong
@@ -228,7 +230,7 @@ object Sink {
                                       key: A => K, at: A => Long,
                                       agg: Aggregator[A, Acc, O], seeded: Boolean)
                                      (into: Aggregator[Pane[K, O], IAcc, R])
-  : Sink[A, R] { type W = Handed[K, Acc, IAcc] } =
+  : Sink[A, R] { type W = Handed[K, Acc, IAcc]; type S = Open[K, Acc, IAcc] } =
     Flows.ordered(into)
     // the same aggregator, presenting its ACCUMULATOR: what a partial
     // pane must carry so another partition's can be merged into it
@@ -333,43 +335,50 @@ object Sink {
    * which is why the answer here is the number of OFFERS and is
    * documented as such.
    *
-   * The third qualifier is the run: a coordinator that dies and starts
-   * again re-offers everything, because it journals nothing
-   * (`dataflow-coordinator`). Within a run the identity is enough.
+   * The third qualifier is the run, and stage 8 moved it rather than
+   * removing it. A coordinator with no journal that dies and starts
+   * again re-offers EVERYTHING. One with a `Checkpoint` re-offers
+   * only the epoch that was in flight — a pane is written while its
+   * epoch is being absorbed and the epoch is committed after, so a
+   * death in between loses the record of writes that happened. The
+   * window is one epoch wide, it is named in specs/dataflow.md rather
+   * than closed, and what makes it harmless is the same identity that
+   * makes a recomputed partition harmless: same key, same value, one
+   * row.
    */
   def writing[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
                             key: A => K, at: A => Long,
                             agg: Aggregator[A, Acc, O], seeded: Boolean)
                            (write: Pane[K, O] => Unit)
-  : Sink[A, Long] { type W = Handed[K, Acc, Long] } =
+  : Sink[A, Long] { type W = Handed[K, Acc, Long]; type S = Open[K, Acc, Long] } =
     windowed(size, slide, lateness, key, at, agg, seeded)(writes(write))
 
   def tumblingTo[A, K, Acc, O](size: Long, lateness: Long,
                                key: A => K, at: A => Long,
                                agg: Aggregator[A, Acc, O], seeded: Boolean = true)
                               (write: Pane[K, O] => Unit)
-  : Sink[A, Long] { type W = Handed[K, Acc, Long] } =
+  : Sink[A, Long] { type W = Handed[K, Acc, Long]; type S = Open[K, Acc, Long] } =
     writing(size, size, lateness, key, at, agg, seeded)(write)
 
   def slidingTo[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
                               key: A => K, at: A => Long,
                               agg: Aggregator[A, Acc, O], seeded: Boolean = true)
                              (write: Pane[K, O] => Unit)
-  : Sink[A, Long] { type W = Handed[K, Acc, Long] } =
+  : Sink[A, Long] { type W = Handed[K, Acc, Long]; type S = Open[K, Acc, Long] } =
     writing(size, slide, lateness, key, at, agg, seeded)(write)
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
                                       agg: Aggregator[A, Acc, O], seeded: Boolean = true)
                                      (into: Aggregator[Pane[K, O], IAcc, R])
-  : Sink[A, R] { type W = Handed[K, Acc, IAcc] } =
+  : Sink[A, R] { type W = Handed[K, Acc, IAcc]; type S = Open[K, Acc, IAcc] } =
     windowed(size, size, lateness, key, at, agg, seeded)(into)
 
   def sliding[A, K, Acc, O, IAcc, R](size: Long, slide: Long, lateness: Long,
                                      key: A => K, at: A => Long,
                                      agg: Aggregator[A, Acc, O], seeded: Boolean = true)
                                     (into: Aggregator[Pane[K, O], IAcc, R])
-  : Sink[A, R] { type W = Handed[K, Acc, IAcc] } =
+  : Sink[A, R] { type W = Handed[K, Acc, IAcc]; type S = Open[K, Acc, IAcc] } =
     windowed(size, slide, lateness, key, at, agg, seeded)(into)
 
   /** a mutable cell: `Sink.fold`'s accumulator has to be per-partition

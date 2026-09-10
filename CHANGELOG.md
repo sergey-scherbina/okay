@@ -1,5 +1,59 @@
 # Changelog
 
+## dataflow stage 8 — the coordinator survives
+
+Every stage from 6a to 7 ended with the same sentence: if the
+COORDINATOR dies the run dies with it. Workers have been recoverable
+since stage 5 — a partition is a recipe, so a replacement replays it —
+and the one party that could not be replaced was the one holding the
+fold. `Cluster.stream` takes a `Checkpoint` now, commits after every
+epoch, and a second `Cluster.stream` over the same journal picks the
+run up.
+
+THE WHOLE OF IT IS THAT THE EPOCH LOOP IS LOCK-STEP. Every partition
+contributes exactly rounds 1..N before the coordinator folds, so a
+checkpoint taken after absorbing round N is a consistent cut by
+construction: nothing in flight, no barrier to thread through the
+dataflow, nothing to reconcile. Flink's checkpointing is an
+achievement because its operators run asynchronously; this is a `save`
+call because 6a chose the other shape — for the watermark, not for
+this, which is the second thing that choice has paid for.
+
+Two members, neither of them new machinery. `Wire.state: Schema[S]`
+describes the coordinator's fold the way `wire` already describes a
+partial — every `S` was a value in disguise, and the two mutable ones
+travel through `Schema.SIso`. `Checkpoint` is `save(epoch, bytes)` and
+`latest`: an injectable seam, so okay-cluster's compile graph stays at
+okay-codec and the store is the caller's. `TestPersisted` binds it to
+okay-persist's compacted log in eight lines.
+
+What is journalled is more than the fold: the per-partition EXTENTS
+(the watermark is computed from them), the drop and merge counters
+(they are part of the answer), and the SESSION IDS — a successor
+inherits them, so a surviving worker's session is continued rather
+than stranded, and a dead one is reopened under the same id, which is
+6b's road exactly.
+
+The two deaths are not the same death and both are tested. After the
+commit, the successor asks for the next epoch. BEFORE it, the epoch
+was computed and lost, so the successor asks for it again and the
+session re-answers the same partial — `merged` still equals an
+uninterrupted stream's, which is the sharp form of "nothing was folded
+twice". Controlled both ways: resuming one epoch late or one epoch
+early fails all four resume tests.
+
+6c's boundary moved rather than vanished. A writing sink keeps its
+exactly-once OUTCOME across a restart after a committed death; after
+an uncommitted one, that epoch's panes are offered again, because a
+pane is written while its epoch is absorbed and committed after. One
+epoch wide, asserted to HAPPEN rather than hoped away, and harmless to
+a keyed writer for the same reason every repeat has been since 6c.
+
+Not done, and said where it matters: a batch `Cluster.run` still dies
+with its coordinator (a two-pass function with nothing to resume
+from), and nobody ELECTS the successor — `Cluster.stream` has to be
+called again, by something.
+
 ## jsonstrict-threshold-trampoline — the last of four, and the arc closes
 
 Target 3 of depth-is-policy-not-rescue, and the last of the four

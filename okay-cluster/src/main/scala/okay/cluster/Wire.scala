@@ -2,6 +2,7 @@ package okay.cluster
 
 import okay.{Aggregator, Pane}
 import okay.codec.Schema
+import scala.collection.mutable
 
 /**
  * A `Sink` WHOSE PARTIAL CAN CROSS A PROCESS BOUNDARY
@@ -35,6 +36,22 @@ abstract class Wire[A, R] extends Sink[A, R]:
   /** how `W` — and only `W` — travels */
   def wire: Schema[W]
 
+  /**
+   * HOW THE COORDINATOR'S OWN STATE TRAVELS (specs/dataflow.md,
+   * stage 8) — the same idea as `wire`, one level up.
+   *
+   * `W` is what leaves a PARTITION; `S` is what the coordinator has
+   * folded so far, and until stage 8 nothing ever asked it to be a
+   * value. A journalled coordinator does: its death is only
+   * survivable if what it holds can be written down.
+   *
+   * Every `S` in `Sink` is a value in disguise — a fold's is its
+   * accumulator, a keyed sink's is a map of accumulators, a windowed
+   * sink's is the open panes plus what has been retired — so this
+   * member costs one `SIso` each and no change to how anything runs.
+   */
+  def state: Schema[S]
+
   /** two wired sinks over one pass, still wired */
   final def and[R2](that: Wire[A, R2]): Wire[A, (R, R2)] =
     val self = this
@@ -44,6 +61,7 @@ abstract class Wire[A, R] extends Sink[A, R]:
       type W = (self.W, that.W)
       type S = (self.S, that.S)
       def wire: Schema[W] = Wire.pair(self.wire, that.wire)
+      def state: Schema[S] = Wire.pair(self.state, that.state)
       def empty: S = (self.empty, that.empty)
       def absorb(st: S, ws: Vector[W], watermark: Long): S =
         (self.absorb(st._1, ws.map(_._1), watermark),
@@ -71,6 +89,9 @@ object Wire {
       type W = local.W
       type S = local.S
       def wire: Schema[W] = s
+      // a fold has nothing open: the coordinator's state IS the
+      // accumulator, and the Schema for it is the one already given
+      def state: Schema[S] = s
       def empty: S = local.empty
       def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
       def emit(st: S): R = local.emit(st)
@@ -93,6 +114,7 @@ object Wire {
       type W = local.W
       type S = local.S
       def wire: Schema[W] = Schema.SVector(() => pair(sk, sa))
+      def state: Schema[S] = keys(sk, sa)
       def empty: S = local.empty
       def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
       def emit(st: S): R = local.emit(st)
@@ -125,6 +147,7 @@ object Wire {
       type W = local.W
       type S = local.S
       def wire: Schema[W] = handed(sk, sa, si)
+      def state: Schema[S] = open(sk, sa, si)
       def empty: S = local.empty
       def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
       def emit(st: S): R = local.emit(st)
@@ -217,6 +240,33 @@ object Wire {
       Vector("_1" -> (() => x), "_2" -> (() => y), "_3" -> (() => z)),
       vs => (vs(0).asInstanceOf[X], vs(1).asInstanceOf[Y], vs(2).asInstanceOf[Z]),
       p => Seq(p._1, p._2, p._3))
+
+  /**
+   * THE COORDINATOR'S STATE, AS A VALUE (specs/dataflow.md, stage 8).
+   *
+   * Both of these are `SIso` — the codec's newtype node — and not a
+   * hand-written product, because what has to travel is a MUTABLE
+   * map: the coordinator updates one key per boundary pane per epoch,
+   * so its state wants to be a `HashMap` and its checkpoint wants to
+   * be a vector. `SIso` says exactly that and nothing else in the
+   * engine knows the difference. No casts: `to` and `from` are
+   * ordinary total functions.
+   */
+  private[cluster] def keys[K, Acc](sk: Schema[K], sa: Schema[Acc])
+  : Schema[mutable.HashMap[K, Acc]] =
+    Schema.SIso[mutable.HashMap[K, Acc], Vector[(K, Acc)]](
+      () => Schema.SVector(() => pair(sk, sa)),
+      v => Right(mutable.HashMap.from(v)),
+      m => m.toVector)()
+
+  /** the open panes, and everything already retired */
+  private[cluster] def open[K, Acc, IAcc](sk: Schema[K], sa: Schema[Acc], si: Schema[IAcc])
+  : Schema[Sink.Open[K, Acc, IAcc]] =
+    Schema.SIso[Sink.Open[K, Acc, IAcc], (Vector[(Long, K, Acc)], IAcc)](
+      () => pair(Schema.SVector(() => triple(Schema.SLong, sk, sa)), si),
+      { case (panes, acc) => Right(Sink.Open(
+        mutable.HashMap.from(panes.map { case (start, k, a) => ((start, k), a) }), acc)) },
+      o => (o.panes.toVector.map { case ((start, k), a) => (start, k, a) }, o.acc))()
 
   private[cluster] def handed[K, Acc, IAcc](sk: Schema[K], sa: Schema[Acc], si: Schema[IAcc])
   : Schema[Sink.Handed[K, Acc, IAcc]] =
