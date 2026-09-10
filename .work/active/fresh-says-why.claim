@@ -1,0 +1,22 @@
+task: fresh-says-why
+agent: opus5-di
+started: 2026-09-10
+heartbeat: 2026-09-10T13:41:31Z
+status: in-progress
+branch: feature/fresh-says-why
+worktree: ../okay-wt-freshmsg
+spec: specs/di.md (lifetimes), docs/di.md
+
+why: `fresh[Db]` where a `module[Db]` installed the singleton is the
+  mistake this vocabulary invites, and the compiler answers "No given
+  instance of type okay.New[Db] ... for parameter n of method fresh",
+  which names the type and not the fix.
+
+what: `New` gains an @implicitNotFound saying both roads (wire the one
+  the region installed, or have the PROVIDER offer a prototype), and
+  `fresh` is respelled `New[A] ?=> (A ! Resource) = wire[New[A]]()` —
+  which is what carries the message to the call site (measured: as a
+  `using` parameter dotty prints its own text instead) and says in
+  the code that fresh IS wire at another type.
+
+next: apply, assert the message in a test, docs line
