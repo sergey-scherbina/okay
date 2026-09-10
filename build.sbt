@@ -696,10 +696,15 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
   // scala-jvm: `Staging.autoInstall()` reaches okay-staging by name
-  // (staging-seam) — reflection, so the JVM only
+  // (staging-seam) — reflection, so the JVM only. The JVM-only TEST
+  // dir holds what needs a thread with a CHOSEN stack size
+  // (TestStackBytes, stack-depth-margin): the only API that measures a
+  // decoder's stack cost in bytes, and it exists on no other platform
   .jvmSettings(
     Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm")
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
 
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of

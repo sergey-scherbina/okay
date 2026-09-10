@@ -480,6 +480,99 @@ Behavior:
       `x(Wire.Json) && x(Wire.Cbor)` decayed into when `Wire` was
       removed)
 
+### The margin, measured (2026-09-10, stack-depth-margin)
+
+The operator asked the obvious question: why 256, and could the limit
+come from measuring the real stack instead of a default? The answer has
+two halves, and only one of them is a measurement.
+
+**The limit stays a fixed number, and that is not laziness.** It is a
+WIRE contract: two services must agree on whether a message is
+readable, so a limit that varies with the reader's `-Xss` means the
+same bytes decode on one box and refuse on another. The log is replayed
+(specs/persist.md), and a decode outcome that depends on a JVM flag
+cannot be replayed. And the three platforms would disagree with each
+other on one document, which is the exact defect this whole arc has
+been about. 256 itself is inherited from `Cbor.maxSkipDepth` and
+justified by precedent — serde_json 128, Jackson 1000, CPython ~1000.
+
+**The MARGIN is a measurement, and it is now a test.** "Far under every
+death measured" was written after measuring one platform on the one
+stack sbt gives (`-Xss8m`), which turns out to have been the generous
+case.
+
+Method, because the obvious probe lies twice. Frames-to-death is not
+stable: the same door in one run survived 32 000 foreign frames cold
+and 256 000 warm, and a trivial recursion reported 128 000 frames in
+one suite and 512 000 in another — JIT state, not stack. And the first
+calibration recursion was TAIL-recursive, so Scala compiled it to a
+loop and it consumed no stack at all while reporting success at every
+depth. So: on the JVM the number is measured in BYTES, by running the
+door on a thread with a chosen `stackSize` (`TestStackBytes`, the only
+API in this build that can ask); everywhere else the door runs at full
+depth with a fixed 1 000 frames of somebody else's recursion under it
+(`TestStackMargin`), which needs no thread API and nothing to overflow.
+
+Measured 2026-09-10, Java 21 on aarch64, Node, Native 0.5.12, at the
+limit (256 containers = 127 tree levels):
+
+| door | JVM stack needed |
+|---|---|
+| `JsonValue.parse` (the fast road) | 256 KB |
+| `Json.lossless` (the projection) | 512 KB |
+| `Json.readStrict[Tree]`, `Staged.strict[Tree]` | 512 KB |
+| `Json.read[Tree]`, `Cbor.read[Tree]`, `Staged.cbor[Tree]` | **1024 KB** |
+
+and in frames, where bytes cannot be chosen — with the spread, because
+these move between runs as much as the JVM's do: a trivial non-tail
+recursion got ~8 000 frames on Node in one run and ~4 000 in the gate,
+~16 000 on Native, while a full-depth door survived 4 000–8 000 and
+8 000–16 000 of them respectively. So the frame numbers say "the same
+order of magnitude as the door needs", not "2x": that is as much as a
+frame count can honestly claim, and it is why the law asserts 1 000
+frames of slack rather than a fraction of a measurement.
+
+**The finding, which is the opposite of what the lane predicted.** The
+tight platform is not the browser. It is a JVM thread with the DEFAULT
+1 MB stack, where a full-depth decode of a RECURSIVE schema needs the
+whole megabyte and leaves nothing for the caller — `Cbor.read[Tree]`
+costs 16 KB at 8 levels and 1024 KB at 127, so about 8 KB of stack per
+tree level through the interpreted fold. sbt's `-Xss8m` and macOS's
+8 MB main thread are what hid it; the numbers in the section above
+(death between 1 000 and 5 000 levels) were measured there.
+
+Nothing is deployed on a 1 MB thread decoding 256-deep recursive
+documents today, so this lane MEASURED and did not choose. The two
+roads, for whoever picks it up:
+
+- lower `Codecs.maxDepth` to ~64, which puts the worst door at 256 KB —
+  a quarter of a default thread. It is below serde_json's 128 and it
+  refuses documents between 65 and 256 levels that read today;
+- or take the per-level cost out: the two JSON roads and `Cbor.get`
+  recurse where `Json.cst`'s builder and `JsonStrict.skipValue` do not
+  — the CST road walked 100 000 levels in the first probe of this arc
+  because it carries its stack on the heap. Iterative decoders make the
+  limit a policy rather than a rescue, and then 256 is free.
+
+One more fact worth writing down, because it changed how this lane was
+written: a stack overflow on Scala Native 0.5.12 is a catchable
+`java.lang.StackOverflowError`, not a fault. The deliberate-overflow
+calibration is still skipped there — a toolchain without that guard
+would take the test process down, and a dead Native process is the
+gate's known false red (native-runner-error), which no assertion is
+worth.
+
+Behavior:
+- [x] every door reads a full-depth document with 1 000 frames of
+      foreign recursion already on the stack, on all three platforms
+- [x] the calibration recursion is proved to consume stack (JVM and JS;
+      skipped on Native by the rule above) — a loop would make the law
+      vacuous
+- [x] the JVM cost of every door at the limit is measured in bytes and
+      bounded: 2 MB for any door, 512 KB for the fast value parser
+- [x] the measurement is proved to measure DEPTH: eight tree levels
+      cost 16 KB where 127 cost 1024
+
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends
 Schema[Option[A]]` and the rest — and the codecs cast anyway
