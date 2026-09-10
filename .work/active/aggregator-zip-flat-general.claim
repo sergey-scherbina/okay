@@ -1,6 +1,0 @@
-feature/aggregator-zip-flat-general 2026-09-10T15:37:37Z
-agent: claude-code
-heartbeat: 2026-09-10T15:37:37Z
-status: in-progress — HELD, the box cannot produce a green gate for anyone
-done-so-far: OfLong.zipLong + Longs2 + AggregatorZipBenchmark written, tested, priced in bytes (90.5 -> 50.8 B/element, +-0.4); branch feature/aggregator-zip-flat-general (b9de70f9); its own module's tests pass
-next: re-run scripts/gate.sh when the load average is under ~10; land if green. Two consecutive gates died on OTHER modules' fixed-timeout tests (okay.codec.TestJsonTrampoline 130 s in the gate against 0.44 s alone; okay.persist.TestRaftSim 37 s against a 30 s limit)
