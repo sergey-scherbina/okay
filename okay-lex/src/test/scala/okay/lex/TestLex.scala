@@ -98,7 +98,8 @@ class TestLex extends munit.FunSuite {
       def step(s: Json.S, c: Char) = Json.scan.step(s, c)
       def flush(s: Json.S) = Json.scan.flush(s)
 
-    def pairRoad[S](sc: Scan[K, S])(in: String): Vector[Token[K]] =
+    // `St`, not `S`: a type parameter named S here shadows Json.S
+    def pairRoad[St](sc: Scan[K, St])(in: String): Vector[Token[K]] =
       var s = sc.init
       val out = Vector.newBuilder[Token[K]]
       in.foreach { c =>

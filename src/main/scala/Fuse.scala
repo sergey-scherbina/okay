@@ -38,6 +38,14 @@ import scala.quoted.*
  * for the amendment and its reason.
  */
 object Fuse {
+  // The two macro implementations below are private, and the inline
+  // defs splice them — which makes the compiler generate an accessor
+  // it warns is unstable across recompilations (E192). This annotation
+  // is the answer to exactly that: private in source, public in the
+  // binary — and it wants a QUALIFIED private, which is what the
+  // compiler's own error message asks for. Caught by the zero-warning
+  // gate one lane late.
+  import scala.annotation.publicInBinary
 
   /** the optic's `set`, fused where the shape allows */
   transparent inline def set[C[_[_, _]], S, T, A, B](inline o: Optic[C, S, T, A, B])(inline b: B)(inline s: S)
@@ -176,14 +184,14 @@ object Fuse {
 
   // ---------------------------------------------------------------- the two entry points
 
-  private def setImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+  @publicInBinary private[Fuse] def setImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
       o: Expr[Optic[C, S, T, A, B]], b: Expr[B], s: Expr[S], fn: Expr[C[Function1]]): Expr[T] =
     import q.reflect.*
     plan(o.asTerm) match
       case Some(p) => emitSet(p, s.asTerm, b.asTerm).asExprOf[T]
       case None => '{ $o.set($b)(using $fn)($s) }
 
-  private def modifyImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+  @publicInBinary private[Fuse] def modifyImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
       o: Expr[Optic[C, S, T, A, B]], f: Expr[A => B], s: Expr[S], fn: Expr[C[Function1]]): Expr[T] =
     import q.reflect.*
     plan(o.asTerm) match

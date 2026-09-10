@@ -55,6 +55,15 @@ compatibility promise the four un-moved scanners rely on. It was
 watched failing first (a default that drops a one-token answer) before
 it was kept.
 
+**One warning fixed that this lane did not create.** The gate is the
+whole matrix from a clean worktree, which is the only way warnings in
+files nobody touched get read — and it found two E192s that
+optics-fuse left on master a lane ago: `Fuse`'s inline defs splice
+private macro implementations, so the compiler generated an accessor
+it calls unstable. `@publicInBinary` on a QUALIFIED private is the
+fix, and the compiler's own error message is what named it. Zero
+warnings again, main and test, every platform.
+
 ## jdk-event-time-collector — an event-time window AS a `java.util.stream.Collector`
 
 The operator asked whether the JDK lane's problem was fixable on our
