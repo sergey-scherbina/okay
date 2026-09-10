@@ -1,0 +1,22 @@
+task: di-comparison
+agent: opus5-di
+started: 2026-09-10
+heartbeat: 2026-09-10T14:53:50Z
+status: in-progress
+branch: feature/di-comparison
+worktree: ../okay-wt-cmp
+spec: docs/di.md (a new section), specs/di.md
+
+why: the operator asked whether the arc covers what Spring Boot,
+  Guice, Dagger, ZLayer and distage offer. The answer is mostly yes,
+  partly by-other-means, and partly NO — and a reader deciding
+  whether to adopt this deserves that list rather than a claim.
+
+what: a capability-by-capability table in docs/di.md: what each
+  feature is for, how it is spelled here, and where we have nothing.
+  Every OUR-side cell must be true of the code today — including the
+  four gaps I know of (no set-binding, no memoisation of a module
+  used twice, no AOP, no events) and the deliberate absences with
+  their reasons.
+
+next: write the section, check each our-side cell against the tree
