@@ -1,0 +1,36 @@
+task: remove-codecs-maxdepth
+agent: opus-depth
+started: 2026-09-10
+branch: feature/remove-codecs-maxdepth
+worktree: ../okay-wt-remove-maxdepth
+spec: specs/iterative-recursive-decode.md ("the arc closed" — the
+  deliberate follow-up it named but left undone)
+
+why: the operator's own call, after the arc closed: with all six
+  doors stack-safe past NativeThreshold, Codecs.maxDepth has no
+  stack-safety motivation left, so its wire-contract refusal is
+  removed outright (raising it was the other option; REMOVE was
+  chosen). Flagged once before starting: removing the cap does not
+  make depth free — a Cont.defer trampoline still allocates a node
+  per level and the decoded value tree still lives on the heap, so an
+  adversarially deep message now costs HEAP instead of native stack.
+  Operator's call, made with that stated.
+
+what: delete `Codecs.maxDepth`, `Json.maxDepth`, `Json.isCut`,
+  `Json.tooDeep`, `Json.cutMessage`, and every refusal built on them
+  (`Cbor.In.enter`/`tooDeep`, `JsonStrict.Reader.enter`/`tooDeep`,
+  `JsonValue`'s `open >= Json.maxDepth` guard, the cut-propagation
+  rules `cut-refuses-the-document` added to `Json.decode`/`Staged`/
+  `RuntimeStaged`, `skipValue`'s depth-capped bracket counter).
+  `Codecs.NativeThreshold` (the native/trampoline switch — unrelated
+  to the refusal, still needed) stays untouched. Every test built on
+  "past maxDepth refuses" either deletes (the refusal it proved no
+  longer exists) or becomes a positive "decodes correctly at a real,
+  large depth" test — decided file by file, not assumed here.
+
+predict: this touches every file the whole iterative-recursive-decode
+  arc touched, plus the tests from BEFORE that arc that first proved
+  the refusal (input-depth-both-wires, cut-refuses-the-document,
+  lower-maxdepth-real-margin). Large, mechanical, no new design — the
+  design question was already answered by the arc; this lane removes
+  what it made unnecessary.
