@@ -19,7 +19,7 @@ lets a deployment read an application's needs without starting it.
 gained three entries — `Module[F]`, `Fact[V]`, `New[A]` — each with
 the sentence that matters (installing SHADOWS, declaring ACCUMULATES;
 `fresh` is always a program so a provider can start closing without
-touching a consumer). Commit: LANDING.
+touching a consumer). Commit: 3a3c2905.
 
 ## pipe-arrow — a partial function, infix, chosen by precedence rather than taste
 
