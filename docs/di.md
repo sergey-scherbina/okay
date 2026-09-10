@@ -335,64 +335,84 @@ vocabulary rather than by machinery.
 
 ## Several contributors, one collection
 
-What a container calls a multibinder. Each module declares its piece
-as a FACT, and `installing` merges every piece by that kind's own rule
-and installs the result as an ordinary capability:
+**Why this is not just another capability.** Installing SHADOWS: two
+modules installing routes leave the second's and lose the first's,
+which is right for a capability — a test double must be able to
+replace one — and wrong for a contribution. A FACT accumulates
+instead, by whatever rule its kind states.
+
+The case that motivates it: several features each own part of a
+service's surface, and the server must serve all of it.
 
 ```scala
-object Routes extends Fact[Vector[Route]]      // the whole declaration
+type Routes = PartialFunction[Request, Response ! Async]
 
-val app = (admin.declare(Routes, Vector(adminRoutes)) and
-           chat.declare(Routes, Vector(chatRoutes))).installing(Routes)
+// how two contributions merge: `orElse`, the one every server here uses
+given Monoid[Routes] = Monoid.of(PartialFunction.empty[Request, Response ! Async])(_ orElse _)
+object Surface extends Fact[Routes]
 
-app { serve(wire[Vector[Route]]) }
+// the capabilities, installed once by whoever owns them
+val board = Module.value[Board](Board(...))
+val admin = Module.value[Admin](Admin(...))
+
+// the features: each adds its part and installs NOTHING
+def boardApi: Board ?=> Module[[X] =>> X] =
+  Module.contributing(Surface, {
+    case r if r.url == "/board" => text(wire[Board].items.mkString(","))
+  }: Routes)
+
+def adminApi: (Board, Admin) ?=> Module[[X] =>> X] =
+  Module.contributing(Surface, {
+    case r if r.url == "/admin"       => text(wire[Admin].token)
+    case r if r.url == "/admin/count" => text(wire[Board].items.size.toString)
+  }: Routes)
+
+val app = (board and admin and boardApi and adminApi).installing(Surface)
+app { serve(wire[Routes]) }
 ```
 
-**A collection is not special here.** How two contributions merge is a
-`Monoid`, the one this core already has, so the kind is declared by
-naming the type and nothing else — and any monoid works, not just
-containers. Text concatenates, numbers add, and a rule the givens do
-not have is passed in:
+Three things in that shape are worth naming.
 
-```scala
-import okay.given                              // see the note below
+**A contribution reads the capabilities that came BEFORE it**, and
+not the one its own module installs — `declare` runs outside that
+installer. So a feature is written `Board ?=> Module[…]`, the same
+shape a dependent module has, and for the same reason.
+`Module.contributing` is the module that installs nothing and carries
+one fact, which is what a feature usually is.
 
-object Notes  extends Fact[String]             // concatenation
-object Weight extends Fact[Int]                // numbers add
-object Newest extends Fact[Option[String]](
-  using Monoid.of(Option.empty[String])((_, b) => b))   // last wins
-```
+**The merge rule is the kind's, not the collection's.** `Routes`
+merge with `orElse`; a deployment's needs merge with dedup (two
+modules on one volume declare one volume); a plain list appends. That
+rule is a `Monoid`, so a kind is one line when the givens already
+have it — `object Surface extends Fact[Routes]` above needed only
+that `given Monoid[Routes]` beside it. Any monoid works, so a fact
+over `String` concatenates and one over `Int` sums; that is a
+consequence, not the point.
 
-The import earns a line of its own, because two rules meet here and
-both were measured from outside the library (monoid-scope). `import
-okay.*` does NOT bring givens — Scala 3 wants `import okay.given` for
-those — and the base monoids are not all reachable the same way:
-`Monoid[Vector[A]]` lives in `Monoid`'s companion, so it is in the
-implicit scope of the type and needs no import at all, while
-`Monoid[String]` and `Monoid[List[A]]` are declared at package level
-and need one. Moving them into the companion looks like the fix and is
-not: the `|+|` on a bare value comes from the instance being in
-LEXICAL scope, so the move breaks `a |+| b` on a `String` (measured —
-it broke `TestLaws`). Import the givens; it is what every file in this
-repository already does.
+**The pieces arrive in acquisition order**, and one declared BELOW an
+acquisition arrives too — facts travel with the build, not only with
+the value read early. The early read (`Needs.declared`) still stops
+at the first acquisition, because a deployment reads it before
+anything opens; the two are not the same thing.
 
-okay-deploy's own kind is one of the last sort: two modules on one
-volume declare one volume, not two, so its monoid dedups.
-
-The pieces arrive in acquisition order, and a contribution declared
-BELOW an acquisition arrives too — the facts travel with the build,
-not only with the value read early. (The early read, `Needs.declared`,
-still stops at the first acquisition; that is a preview for a
-deployment, and the two are not the same thing.)
+The three uses this repository has, in order of how much they earn
+their keep: a deployment's needs (shipped — the module that opens the
+board's log declares the volume it lives on, and the manifest mounts
+it), a service's routes (above, compiled as `TestRouteFacts`), and
+anything a reader collects without knowing its contributors — health
+checks, metrics reporters, migrations.
 
 The fact's VALUE type becomes the capability type, so name it — an
 opaque type or a small wrapper — where a bare `Vector[X]` would
-collide with another collection of the same element.
+collide with another collection of the same element. And declaring a
+kind needs the given in scope: `import okay.given`, not `import
+okay.*`, which does not bring givens (see the note in "Three
+lifetimes" above — measured from outside the package).
 
-One capability installed twice is not a merge: the second wins and the
-first is acquired for nothing. `m.shadowed` reads those off the plan,
-building nothing. A test double is a deliberate one, which is why it
-is a report rather than an error.
+One capability installed twice is not a merge: the second wins and
+the first is acquired for nothing. `m.shadowed` reads those off the
+plan, building nothing. A test double is a deliberate one, which is
+why it is a report rather than an error.
 
 ## Gotchas
 

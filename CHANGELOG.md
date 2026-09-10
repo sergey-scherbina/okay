@@ -1,5 +1,27 @@
 # Changelog
 
+## di-facts-examples — what a Fact is for, on a case that earns it
+
+The Facts section explained the machinery with `Fact[String]` and
+`Fact[Int]` and motivated nothing. It now leads with the reason a fact
+is not a capability — installing SHADOWS, contributing ACCUMULATES —
+and with the case that needs it: several features owning parts of one
+service surface, served together.
+
+Writing the example honestly found a rule and a hole. The rule: a
+contribution cannot read the capability its OWN module installs,
+because `declare` runs outside that installer; it sees what came
+before it, exactly as a dependent module does. The hole: a feature
+that adds routes and offers no capability had nothing to be —
+installing a `Unit` nobody wants was the alternative. `Module.nothing`
+(the identity installer) and `Module.contributing(k, v)` fill it.
+
+The example is compiled: `TestRouteFacts` in okay-http, real
+`Request`/`Response`, `PartialFunction` under `orElse` as the monoid —
+which is the merge every server in this stack already writes by hand.
+Three tests, including the one that shows the same shape as an INSTALL
+keeping only the last. Commit: LANDING.
+
 ## monoid-scope — where a Monoid instance lives, measured and left alone
 
 Asked where the merge in `object Notes extends Fact[String]` comes

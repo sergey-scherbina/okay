@@ -410,6 +410,33 @@ missing. A deeper fix exists and was not taken: a top-level
 monoid from anywhere, at the price of touching the algebra every
 module uses.
 
+## What a Fact is FOR (di-facts-examples, 2026-09-10)
+
+The operator read the Facts section and said the examples motivate
+nothing — `Fact[String]`, `Fact[Int]`, machinery without a reason.
+Right, and writing an honest one found two things.
+
+**The reason a fact is not a capability**: installing SHADOWS (a test
+double must be able to replace one), contributing ACCUMULATES. Stated
+first in the section now, with a test that shows the same shape as an
+install keeping only the last.
+
+**A contribution cannot read the capability its own module installs.**
+`declare` runs outside that installer, so `Module.value[Board](…)
+.declare(Surface, routes reading wire[Board])` does not compile — met
+while writing the example. The rule is the one a dependent module
+already obeys: a contribution sees what came BEFORE it, so a feature
+is `Board ?=> Module[…]`. That made a module which installs NOTHING
+the natural shape for a contributor, and there was none:
+`Module.nothing` and `Module.contributing(k, v)` fill it.
+
+The worked example is routes, compiled as `TestRouteFacts` in
+okay-http against real `Request`/`Response`: the capabilities
+installed once by whoever owns them, each feature adding its part and
+installing nothing, the server serving `wire[Routes]`. `PartialFunction`
+under `orElse` is the monoid, which is also the merge every server in
+this stack already uses by hand.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

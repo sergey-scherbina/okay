@@ -330,6 +330,23 @@ object Module:
   /** the same, from the bare value */
   def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
 
+  /**
+   * A module that installs NOTHING — the identity installer.
+   *
+   * It exists for the CONTRIBUTOR (di-facts-examples): a module that
+   * adds its routes, its health check, its migration to a collection
+   * somebody else reads, and offers no capability of its own. The
+   * alternative was installing a `Unit` nobody wants, and a fact
+   * cannot be declared on the module that installs the capability it
+   * reads anyway — `declare` runs OUTSIDE that installer, so a
+   * contribution reading `wire[Board]` belongs to a module written
+   * `Board ?=> Module[…]`, which is what this makes writable.
+   */
+  val nothing: Module[[X] =>> X] = ready(Providing([X] => (body: X) => body))
+
+  /** the contributor's one-liner: install nothing, declare one fact */
+  def contributing[V](k: Fact[V], v: V): Module[[X] =>> X] = nothing.declare(k, v)
+
   import scala.quoted.*
   /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;
    * walk it to the marker, naming each parameter */
