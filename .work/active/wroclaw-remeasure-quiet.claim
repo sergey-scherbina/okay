@@ -1,6 +1,0 @@
-feature/wroclaw-remeasure-quiet 2026-09-10T19:33:25Z
-agent: claude-code
-heartbeat: 2026-09-10T19:33:25Z
-status: in-progress
-done-so-far: claimed; the box is quiet (load ~3)
-next: scripts/wroclaw-bench.sh 8 3 1 across every engine, then refresh §20's table and drop the dagger marks
