@@ -505,6 +505,67 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
 - [ ] r-restarts — GATED twice: on r-subprocess and on a restart
       consumer; the one resumable-capture case (specs/r.md)
 
+## optics-outside — optics as an API, not an implementation (specs/optics-outside.md)
+
+The arc the operator opened 2026-09-10, after `specs/optics.md` closed.
+Optics INSIDE okay are done; this is optics, profunctors, arrows and
+categories as the vocabulary a USER of the library writes. The spec's
+criterion decides what belongs here and what is decoration: a
+declaration earns an optic only when it must be given to more than one
+interpreter and at least one of them DESCRIBES it instead of running
+it — which a plain `S => A` cannot do. Read the spec's Overview before
+taking any of these; it also records where the run-time tax lands (on
+the USER's data path now, so a per-element optic ships behind `Fuse`
+or not at all).
+
+- [ ] optics-outside-routes — a route is a prism. One declaration
+      answers three questions: does this path match (server), what is
+      the path for these parameters (client, reverse routing), and
+      what does it look like (OpenAPI, an MCP tool). The prism law
+      `unapply(url(a)) == Some(a)` is the feature, not a nicety.
+      Motivated by what is in the tree now: every `routes` in the
+      repository is `case r if r.method == Get && r.url == "/healthz"`
+      (okay-ops, okay-admin, okay-acme, okay-demo) — no route has a
+      typed parameter at all, and the one router that does have
+      parameters (okay-script's `Site.resolve`) hands them back as an
+      untyped `Map[String, String]` and splits on `/` before decoding,
+      so an encoded `%2F` inside a parameter becomes a segment
+      boundary. Stage 1 of the spec.
+- [ ] optics-outside-policy — a projection policy is a traversal:
+      which fields of a record may be seen, embedded, logged. The
+      interpreter that earns it is the AUDIT — "name the fields this
+      policy touches", with no document in hand — and the law that
+      couples the two interpreters is that the audit names exactly
+      the fields the redaction changes. This repository has already
+      paid for not having it: price and contact in a summary's text
+      sank a priced offer from 0.63 to 0.13
+      (`weighed-not-read-out-of-the-embedding`). Cheapest of the six.
+- [ ] optics-outside-live — subscribe to a lens. The lens compiles to
+      a wire path, the server pushes only the focused part of the
+      document, and a client write comes back as `set`. The most
+      valuable of the six to a user and the most work: the optic must
+      be reifiable and must survive serialisation. okay-live,
+      okay-persist, okay-crdt.
+- [ ] optics-outside-query — a query is an optic. `Forget[Sql]`
+      compiles it to SQL, `Function1` runs the SAME predicate over a
+      `Vector` in a test, `set` compiles to UPDATE. The seat is empty
+      — okay-sql is strings plus `Schema` for rows — but typed query
+      DSLs are a swamp, which is why the spec ranks this fourth and
+      not first. Do not start it before routes and policy have
+      measured the shape.
+- [ ] optics-outside-topology — a dataflow is an arrow. The ONLY one
+      of the six that meets the staticness condition the spec sets for
+      reaching for `Arrow` at all: the graph must exist as a value
+      before it runs, to be drawn, fused, or shipped to a cluster.
+      Wants `ArrowChoice` or branches fall out of the static picture.
+      okay-flink / okay-kafka / okay-reactive, and dataflow's own plan
+      value is the incumbent to compare against.
+- [ ] optics-outside-conf — a setting is a lens that knows its path:
+      the error names `server.tls.port` and the reference table
+      generates itself from the same values that read the config.
+      Smallest and least urgent; take it as a warm-up if the others
+      are claimed.
+
 ## okay-http
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,
       one ledger: TestMcpHttp 503 (2026-09-01), TestResumable first
