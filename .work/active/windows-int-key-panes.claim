@@ -1,0 +1,6 @@
+feature/windows-int-key-panes 2026-09-10T13:22:59Z
+agent: claude-code
+heartbeat: 2026-09-10T13:22:59Z
+status: in-progress
+done-so-far: claimed
+next: one lookup per pane (a box per pane), then an Int-keyed pane store; measure both
