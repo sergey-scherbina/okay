@@ -669,6 +669,65 @@ than none, because it removes the real barrier in exchange for prose.
       the companion; `empty` remains the zero of a fold
 - [x] every existing declaration in the repository still compiles
 
+## Stage 6 — a route's parameter names are the case class's field names
+
+`Route.Of[C]` maps the route's tuple into a case class with
+`m.fromProduct`, which is POSITIONAL. The TYPES are checked, so a real
+mismatch is caught by the compiler — but the names are not compared at
+all, and
+
+```scala
+val r = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+r.of[Wrong]      // case class Wrong(a: Int, b: String) — accepted, silently
+```
+
+fits. Positional mapping is type-safe and yet says nothing about
+whether the declaration means what it appears to mean, and `describe`
+publishes those names to OpenAPI and to MCP tool schemas, where being
+wrong is not cosmetic.
+
+### The check, and the honest shape of it
+
+`of[C]` becomes `inline`, reads `MirroredElemLabels` with
+`constValueTuple`, and compares them with the route's own parameter
+names — the path's, in order, then the query's:
+
+```
+route parameters (id, slug) do not match the field names (a, b)
+```
+
+**It is a run-time check at construction, not a compile-time one, and
+that is a property of the problem.** The labels are type-level; the
+route's names are values in `Vector[Seg.Var]`, put there by
+`Route[T](name)` and `"name".as[T]`. There is nothing for the compiler
+to compare. Making it compile-time means lifting the names INTO the
+type — `Route[A, N <: Tuple]` with a tuple of singleton strings, and an
+`inline def as` that keeps `name.type` — which puts a second type
+parameter on every signature and in every user annotation. That is the
+cost already declined once in stage 5, where the path/query stages
+became two classes rather than one phantom parameter, and it buys less
+here: a route is declared as a `val`, so the check fires at class
+initialisation. Start-up, before the first request, or never.
+
+**Why refuse rather than report.** `Toolbox.duplicates` returns data
+instead of throwing, and that is right there: a duplicate tool name is
+something a caller can inspect and decide about. A name mismatch is
+different — the mapping it produces is WRONG, there is no sensible way
+to continue with it, and the value being constructed is a declaration
+rather than a request. Refusing at construction is the same discipline
+as a `require` on a constructor argument.
+
+### Behavior
+
+- [ ] a route whose parameter names are the class's field names, in
+      order, is accepted
+- [ ] a route whose names differ is refused, and the message names
+      both sides
+- [ ] the query's parameters count too, and in tuple order (path
+      first, then query)
+- [ ] a route with no parameters and a class with no fields is fine
+- [ ] every existing `of[C]` in the repository still works
+
 ## Decisions
 
 - **2026-09-10 — nested pairs instead of a flat tuple: considered,
