@@ -1,6 +1,0 @@
-feature/wroclaw-flat-by-default 2026-09-10T23:38:33Z
-agent: claude-code
-heartbeat: 2026-09-10T23:38:33Z
-status: in-progress
-done-so-far: claimed
-next: okay's Wroclaw lanes take Aggregator.summary by default (the zip stays as a labelled diagnostic); re-measure 1/2/4/8 quiet
