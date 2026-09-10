@@ -55,6 +55,19 @@ object OkayLane {
     /** stage 4's detection */
     def bunch(gap: Long): Unit = { bunches += 1; bunchGap += gap }
 
+    /** take another slice's sink into this one: counters add, hashes
+     * XOR (they are order-independent by construction), and the
+     * ranking accumulators merge — which is `Aggregator.merge` doing
+     * across threads what it does across panes */
+    def absorb(o: Sink): Unit =
+      routeWins += o.routeWins; routeEvents += o.routeEvents
+      routeDelay += o.routeDelay; routeHash ^= o.routeHash
+      stopWins += o.stopWins; stopEvents += o.stopEvents; stopHash ^= o.stopHash
+      bunches += o.bunches; bunchGap += o.bunchGap
+      o.ranked.foreachKey { start =>
+        ranked.update(start, ranked.get(start).fold(o.ranked(start))(Job.top.merge(_, o.ranked(start))))
+      }
+
     def result: Job.Result =
       var topWins = 0L; var topHash = 0L
       ranked.foreachKey { start =>
@@ -239,4 +252,155 @@ object OkayLane {
             .flatMap(_ => go(i + 1))
         else go(i + 1)
     go(0)
+
+  /**
+   * THE PARALLEL LANE — parallelism by MERGE, not by shuffle.
+   *
+   * §20's okay lane is one thread, so its lead over Flink-on-four-cores
+   * is per EVENT, not per box. This is the other number, and the way it
+   * is reached is the point: an `Aggregator` carries `merge` precisely
+   * so partial results combine, and a window's panes are aggregates. So
+   * the events are cut into P contiguous slices of the ARRIVAL order,
+   * each slice folds with its own `Windows`, and the pieces are put
+   * together at the end. No shuffle, no serialization, no network — the
+   * only thing crossing a thread boundary is one accumulator per pane
+   * that spans a slice boundary.
+   *
+   * WHICH PANES SPAN A BOUNDARY is not guessed. One cheap pass first
+   * records, per slice, the greatest event time in it (`hi`, monotone
+   * because arrival order is nearly event order) and, globally, the
+   * greatest BACKWARDNESS `b` — how far an event's time can fall below
+   * the greatest seen before it. Then, in slice i:
+   *
+   *   - no EARLIER slice can have touched a window starting after
+   *     `hi(i-1)`, because every earlier event's time is at most that;
+   *   - no LATER slice can touch a window ending at or before
+   *     `hi(i) - b`, because every later event's time is at least that.
+   *
+   * A pane satisfying both is COMPLETE in its slice and is folded
+   * there. Everything else — a handful per boundary — is handed back as
+   * an accumulator and merged by the coordinator. The suite asserts the
+   * result EQUALS the single-threaded lane's, which is what keeps this
+   * reasoning honest.
+   */
+  def parallel(feed: Feed, lanes: Int, chunk: Int = 256): Job.Result = {
+    val tram = tramTable(feed)
+    val events = feed.events
+    val n = events.length
+    val bounds = (0 to lanes).map(i => (n.toLong * i / lanes).toInt).toArray
+
+    // pass 1: the slice maxima and the greatest backwardness
+    val hi = new Array[Long](lanes)
+    var runningMax = Long.MinValue
+    var back = 0L
+    var i = 0
+    while i < lanes do
+      var j = bounds(i)
+      while j < bounds(i + 1) do
+        val ts = events(j).ts
+        if ts > runningMax then runningMax = ts else if runningMax - ts > back then back = runningMax - ts
+        j += 1
+      hi(i) = runningMax
+      i += 1
+
+    // pass 2: one fold per slice, in parallel
+    val parts = (0 until lanes).map { s =>
+      Async.spawn(async(slice(feed, tram, bounds(s), bounds(s + 1), s, hi, back, chunk)))
+    }.map(_.join())
+
+    // the coordinator: fold what was complete, merge what was not
+    val sink = parts.head.sink
+    for p <- parts.tail do sink.absorb(p.sink)
+    merged(parts.map(_.route), Job.WindowMs)((start, key, acc) =>
+      sink.route(Pane(start, start + Job.WindowMs, key, Job.stats.present(acc))))
+    merged(parts.map(_.stop), Job.SlideMs)((start, key, acc) =>
+      sink.stop(Pane(start, start + Job.SlideWindowMs, key, Job.stats.present(acc))))
+
+    // the bunching pairs that fall between two slices: for each key,
+    // the last time in an earlier slice against the first in the next
+    val running = mutable.LongMap.empty[Long]
+    for p <- parts do
+      p.first.foreachKey { k =>
+        running.get(k).foreach { prev =>
+          val gap = Math.abs(p.first(k) - prev)
+          if gap < Job.BunchMs then sink.bunch(gap)
+        }
+      }
+      p.last.foreachKey(k => running.update(k, p.last(k)))
+    sink.result
+  }
+
+  /** what one slice hands back */
+  private final class Part(val sink: Sink,
+                           val route: mutable.LongMap[Job.Acc],
+                           val stop: mutable.LongMap[Job.Acc],
+                           val first: mutable.LongMap[Long],
+                           val last: mutable.LongMap[Long])
+
+  /** the same aggregator, presenting its ACCUMULATOR — what a partial
+   * pane must carry so that another slice's can be merged into it */
+  private val partialStats: Aggregator[Ride, Job.Acc, Job.Acc] =
+    Aggregator[Ride, Job.Acc, Job.Acc](Job.stats.init)(Job.stats.add)(Job.stats.merge)(identity)
+
+  private def slice(feed: Feed, tram: Array[Boolean], from: Int, until: Int, index: Int,
+                    hi: Array[Long], back: Long, chunk: Int): Part = {
+    val sink = new Sink(tram)
+    val partialRoute = mutable.LongMap.empty[Job.Acc]
+    val partialStop = mutable.LongMap.empty[Job.Acc]
+    val first = mutable.LongMap.empty[Long]
+    val last = mutable.LongMap.empty[Long]
+    val lower = if index == 0 then Long.MinValue else hi(index - 1)
+    val upper = hi(index) - back
+
+    def keep(partial: mutable.LongMap[Job.Acc], slide: Long)(p: Pane[Int, Job.Acc]): Unit =
+      val id = ((p.start / slide) << 20) | p.key.toLong
+      partial.update(id, partial.get(id).fold(p.value)(Job.stats.merge(_, p.value)))
+
+    val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Acc](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(partialStats)
+    val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Acc](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(partialStats)
+
+    val onRoute: Pane[Int, Job.Acc] => Unit = p =>
+      if p.start > lower && p.end <= upper then
+        sink.route(Pane(p.start, p.end, p.key, Job.stats.present(p.value)))
+      else keep(partialRoute, Job.WindowMs)(p)
+    val onStop: Pane[Int, Job.Acc] => Unit = p =>
+      if p.start > lower && p.end <= upper then
+        sink.stop(Pane(p.start, p.end, p.key, Job.stats.present(p.value)))
+      else keep(partialStop, Job.SlideMs)(p)
+
+    val lastSeen = mutable.LongMap.empty[Long]
+    val source = Chunks.fromIterator(feed.events.iterator.slice(from, until), chunk)
+    val rs = Chunks.map(Chunks.filter(source)(d => d.route >= 0 && d.route < tram.length))(d =>
+      new Ride(d.ts, d.route, d.stop, d.vehicle, d.delay, tram(d.route)))
+
+    Chunks.foldLeft(rs)(())((_, r) => {
+      routeWindows.add(r)(onRoute)
+      stopWindows.add(r)(onStop)
+      val key = (r.route.toLong << 20) | r.stop.toLong
+      val prev = lastSeen.getOrElse(key, Long.MinValue)
+      if prev == Long.MinValue then first.update(key, r.ts)
+      else
+        val gap = Math.abs(r.ts - prev)
+        if gap < Job.BunchMs then sink.bunch(gap)
+      lastSeen.update(key, r.ts)
+      last.update(key, r.ts)
+      ()
+    })
+    routeWindows.close()(onRoute)
+    stopWindows.close()(onStop)
+    new Part(sink, partialRoute, partialStop, first, last)
+  }
+
+  /** merge one pane map across the slices, then hand each merged
+   * accumulator to the sink — this is `Aggregator.merge` doing the job
+   * a shuffle does in an engine */
+  private def merged(maps: Seq[mutable.LongMap[Job.Acc]], slide: Long)
+                    (emit: (Long, Int, Job.Acc) => Unit): Unit =
+    val all = mutable.LongMap.empty[Job.Acc]
+    for m <- maps do m.foreachKey { id =>
+      all.update(id, all.get(id).fold(m(id))(Job.stats.merge(_, m(id))))
+    }
+    all.foreachKey(id => emit((id >>> 20) * slide, (id & 0xfffffL).toInt, all(id)))
 }

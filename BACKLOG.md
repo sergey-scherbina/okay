@@ -47,7 +47,15 @@ run named and did not build:
       and sliding, keyed, watermark-evicted, an `Aggregator` per pane)
       is settled by the benchmark, but nothing outside a benchmark has
       asked for it yet. Trigger: the second consumer.
-- [ ] flink-okay-parallel-lane — the okay lane is ONE thread, so §20's
+- [x] flink-okay-parallel-lane — CLOSED 2026-09-10: `OkayLane.parallel`
+      slices the arrival order, folds each slice with its own
+      `okay.Windows`, and merges the panes that span a boundary by
+      `Aggregator.merge`. The boundary rule is computed from each
+      slice's greatest event time and the greatest backwardness, and
+      the suite asserts the answer equals the single-threaded one at 2,
+      4 and 8 slices. 3.34x on four fibres, 5.6x of Flink-at-four per
+      event. The original note follows.
+      The okay lane is ONE thread, so §20's
       2.2x over Flink-at-four-cores is per event, not per box. The
       parallel lane that would answer "and if okay used four cores?"
       is a MERGE, not a shuffle: slice the arrival order into P

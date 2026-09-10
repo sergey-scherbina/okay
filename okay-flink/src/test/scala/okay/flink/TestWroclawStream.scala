@@ -66,6 +66,12 @@ class TestWroclawStream extends munit.FunSuite {
     // benchmark carried before it must agree, or the §20 rows compare
     // two different computations
     assertEquals(OkayLane.packed(feed), okay, "the packed baseline differs from the core operator")
+    // parallelism by MERGE: three different slicings, because the whole
+    // question is whether the boundary rule holds wherever the cuts
+    // fall — a wrong rule shows up as a different answer, not a
+    // plausible one
+    for lanes <- Seq(2, 4, 8) do
+      assertEquals(OkayLane.parallel(feed, lanes), okay, s"the merge-parallel lane at $lanes differs")
     // the third engine: java.util.stream through okay-java's Collector
     // interop, sequential and parallel — the same aggregator again, on
     // a PREFIX, because that lane holds the whole history (see the
@@ -86,10 +92,14 @@ class TestWroclawStream extends munit.FunSuite {
     println(s"  ${feed.events.length} events, best of $rounds")
     val okayMs = best("okay, 1 thread", Some(answer))(OkayLane.run(feed))
     best("okay, 1 thread, packed-key windows", Some(answer))(OkayLane.packed(feed)): Unit
+    val p2 = best("okay, 2 fibres (merge)", Some(answer))(OkayLane.parallel(feed, 2))
+    val p4 = best("okay, 4 fibres (merge)", Some(answer))(OkayLane.parallel(feed, 4))
+    val p8 = best("okay, 8 fibres (merge)", Some(answer))(OkayLane.parallel(feed, 8))
     val f1 = best("flink p1", Some(answer))(FlinkLane.run(feed, 1))
     val f4 = best("flink p4", Some(answer))(FlinkLane.run(feed, 4))
     val f4c = best("flink p4 + checkpoints 5 s", Some(answer))(FlinkLane.run(feed, 4, checkpointMs = 5000L))
     val f4n = best("flink p4, no object reuse", Some(answer))(FlinkLane.run(feed, 4, objectReuse = false))
+    println(f"  okay scaling: 2 fibres ${okayMs.toDouble / p2}%.2fx  4 ${okayMs.toDouble / p4}%.2fx  8 ${okayMs.toDouble / p8}%.2fx")
     println(f"  ratios: flink p1 ${f1.toDouble / okayMs}%.1fx  p4 ${f4.toDouble / okayMs}%.1fx" +
       f"  p4+ckpt ${f4c.toDouble / okayMs}%.1fx  p4 no-reuse ${f4n.toDouble / okayMs}%.1fx  of the okay lane")
   }
@@ -203,5 +213,6 @@ class TestWroclawStream extends munit.FunSuite {
     sweep("okay, 1 thread")(OkayLane.run(_))
     sweep("flink p1")(FlinkLane.run(_, 1))
     sweep("flink p4")(FlinkLane.run(_, 4))
+    sweep("okay, 4 fibres (merge)")(OkayLane.parallel(_, 4))
   }
 }

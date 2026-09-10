@@ -1,5 +1,35 @@
 # Changelog
 
+## flink-okay-parallel-lane — four cores without a shuffle, by `Aggregator.merge`
+
+§20's okay lane was one thread, so its lead over Flink-at-four-cores
+was per EVENT and the section said so. This is the other number, and
+the way it is reached is the point: `Aggregator` carries `merge`
+precisely so partial results combine, and a window's pane IS a partial
+result. So the arrival order is cut into P contiguous slices, each
+folds with its own `okay.Windows` over an aggregator that presents its
+accumulator, and the pieces are put together at the end — no shuffle,
+no serialization, and the only thing crossing a thread boundary is one
+accumulator per pane that spans a boundary.
+
+Which panes those are is COMPUTED. One cheap pass records each slice's
+greatest event time `hi` and the greatest backwardness `b`; then a
+window is local to slice i exactly when it starts after `hi(i-1)` and
+ends at or before `hi(i) - b`. The bunching stage's keyed state is
+stitched from each slice's first and last time per key, which supplies
+exactly the comparisons that fell between two slices.
+
+The check that makes it worth having: the suite asserts the parallel
+answer EQUALS the single-threaded one at 2, 4 AND 8 slices — three
+different cuts, so a wrong rule cannot hide behind a lucky one — and
+all eleven checksums also still match Flink's and the JDK lane's.
+
+Measured (2.4M events, 14 cpus): 1.92x on two fibres, 3.34x on four,
+5.43x on eight; marginal 10 431 383 ev/s on four against Flink-at-four's
+1 873 486 — 5.6x, four cores against four cores. §20's tables are all
+re-measured from this one run, so every row in the section now comes
+from the same conditions.
+
 ## optics-fuse — the fusion moved into the compiler, and it lands on the hand-written update to the byte
 
 optics-fast measured that a run-time compiled optic is slower because
