@@ -56,10 +56,26 @@ object Gtfs {
   /** the city's own zone — a GTFS clock time is local time */
   val Zone: ZoneId = ZoneId.of("Europe/Warsaw")
 
-  /** where the unpacked feed is expected (the module's target dir) */
+  /**
+   * Where the unpacked feed is expected (the module's target dir) —
+   * or wherever `okay.wroclaw.gtfs` says, which is how a process that
+   * did not choose its own working directory is told
+   * (bench-across-processes).
+   *
+   * A Spark executor is started by a Worker in a directory under the
+   * worker's own work dir, and a Flink TaskManager wherever it was
+   * launched. Neither can resolve a relative path into this
+   * repository, and a run that derives the feed where the work
+   * happens — which is what makes the three lanes the same shape —
+   * needs them all to find it. A real deployment answers this the
+   * same way: it tells its workers where the data is.
+   */
   def dir: File =
-    val here = new File("okay-flink/target/data/gtfs")
-    if here.isDirectory then here else new File("target/data/gtfs")
+    val told = System.getProperty("okay.wroclaw.gtfs", System.getenv("OKAY_WROCLAW_GTFS"))
+    if told != null && new File(told).isDirectory then new File(told)
+    else
+      val here = new File("okay-flink/target/data/gtfs")
+      if here.isDirectory then here else new File("target/data/gtfs")
 
   def present: Boolean = new File(dir, "stop_times.txt").isFile
 

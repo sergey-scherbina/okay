@@ -407,6 +407,14 @@ lazy val okaySpark = (project in file("okay-spark"))
     libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.16" % LegacyStdlib,
     Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
     Test / fork := true,
+    // bench-across-processes: SparkClusterBench starts a REAL
+    // standalone cluster — a Master and Workers as their own JVMs —
+    // and the driver must come out of THIS build, or it serialises a
+    // collection from a different scala-library and the master
+    // answers InvalidClassException.
+    Test / javaOptions += "-Dokay.spark.cp=" +
+      (Test / fullClasspath).value.map(_.data.getAbsolutePath)
+        .mkString(java.io.File.pathSeparator),
     Test / javaOptions ++= Seq(
       // Run the fork on the JDK the tests were compiled for. Without
       // this the fork inherits sbt's JVM, and if sbt itself was
@@ -451,6 +459,21 @@ lazy val okayFlink = (project in file("okay-flink"))
   .dependsOn(okay.jvm, okayJava % Test, compare % "test->compile")
   .settings(
     name := "okay-flink",
+    // bench-across-processes: FlinkClusterBench starts a REAL
+    // standalone cluster — a JobManager and TaskManagers as their own
+    // JVMs — and a process needs a classpath the test cannot
+    // reconstruct. Written down as a RESOURCE rather than handed over
+    // as a `-D`, because this module's tests do not fork and forking
+    // them to pass one property would change how every existing lane
+    // here runs. (okay-spark forks already, so its own copy of this
+    // is a javaOption.) Same arrangement as `compare`.
+    Test / resourceGenerators += Def.task {
+      val f = (Test / resourceManaged).value / "okay-flink-cp.txt"
+      val cp = (Test / classDirectory).value +: (Compile / classDirectory).value +:
+        (Test / dependencyClasspath).value.map(_.data)
+      IO.write(f, cp.map(_.getAbsolutePath).mkString(java.io.File.pathSeparator))
+      Seq(f)
+    }.taskValue,
     libraryDependencies ++= Seq(
       "org.apache.flink" % "flink-core" % "1.20.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,

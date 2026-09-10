@@ -99,7 +99,20 @@ object FlinkLane {
    *                     at which the guarantee is paid for
    */
   def run(feed: Feed, parallelism: Int, checkpointMs: Long = 0L,
-          objectReuse: Boolean = true, ratePerSecond: Long = 0L): Job.Result = {
+          objectReuse: Boolean = true, ratePerSecond: Long = 0L,
+          /**
+           * WHERE TO RUN IT (bench-across-processes). `None` is the
+           * MiniCluster every §20 row was measured on — one JVM, and
+           * the source replays out of a static array in it. `Some`
+           * submits to a real JobManager, and then the source cannot
+           * be that array: the TaskManager is another process and its
+           * copy of the static is empty. `days` is what travels
+           * instead, and the feed is DERIVED where the work happens —
+           * the same shape okay's workers have, which is what makes
+           * the two lanes comparable at all.
+           */
+          remote: Option[(String, Int)] = None,
+          days: Int = 0): Job.Result = {
     replay = feed.events
 
     val conf = new Configuration()
@@ -112,7 +125,14 @@ object FlinkLane {
       conf.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem")
       conf.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, dir.toUri.toString): Unit
 
-    val env = StreamExecutionEnvironment.createLocalEnvironment(parallelism, conf)
+    val env = remote match
+      case None => StreamExecutionEnvironment.createLocalEnvironment(parallelism, conf)
+      case Some((host, port)) =>
+        // no jars listed: the cluster's processes are started with the
+        // same test classpath this client has, so the job's classes are
+        // already on their system classloader. A deployment that ships
+        // a jar instead would pay for that once, before any event.
+        StreamExecutionEnvironment.createRemoteEnvironment(host, port, conf)
     env.setParallelism(parallelism)
     if objectReuse then env.getConfig.enableObjectReuse(): Unit
     env.getConfig.setAutoWatermarkInterval(200L) // Flink's own default, said out loud
@@ -139,11 +159,13 @@ object FlinkLane {
     // wall-time ratio back under control (docs/benchmarks.md, "the
     // replay, priced").
     val count = feed.events.length.toLong
+    val gen: GeneratorFunction[java.lang.Long, Depart] =
+      if remote.isEmpty then new Replay else new Derive(days)
     val source =
       if ratePerSecond > 0 then
-        new DataGeneratorSource[Depart](new Replay, count,
+        new DataGeneratorSource[Depart](gen, count,
           RateLimiterStrategy.perSecond(ratePerSecond.toDouble), depart)
-      else new DataGeneratorSource[Depart](new Replay, count, depart)
+      else new DataGeneratorSource[Depart](gen, count, depart)
     val events = env.fromSource(source, watermarks, "wroclaw-gtfs", depart).setParallelism(1)
 
     // stage 1 — the enrichment: a map-side join against the routes table.
@@ -207,6 +229,32 @@ object FlinkLane {
 /** the replay source: index -> event, in the JVM the cluster runs in */
 private final class Replay extends GeneratorFunction[java.lang.Long, Depart] {
   def map(i: java.lang.Long): Depart = FlinkLane.event(i.longValue)
+}
+
+/**
+ * THE SOURCE FOR A REAL CLUSTER (bench-across-processes): the feed
+ * DERIVED in the process that reads it, from the one number that
+ * travels.
+ *
+ * `Replay` above is an index into a static array, which is a fine
+ * source when the cluster is a MiniCluster in this JVM and no source
+ * at all when it is not — the TaskManager's copy of that static is
+ * empty. Deriving is also what okay's workers do (a job name and one
+ * Int cross the wire, and the partition is built where it is read),
+ * so the two lanes are the same shape rather than one shipping its
+ * input and the other not.
+ *
+ * The parse is per SUBTASK and happens in `open`, so it is startup
+ * rather than per-event work — and the harness warms every process
+ * before it times anything, exactly as the okay lane does.
+ */
+private final class Derive(days: Int) extends GeneratorFunction[java.lang.Long, Depart] {
+  @transient private var events: Array[Depart] = Array.empty
+
+  override def open(ctx: org.apache.flink.api.connector.source.SourceReaderContext): Unit =
+    events = okay.wroclaw.Distributed.feed(days)._1.events
+
+  def map(i: java.lang.Long): Depart = events(i.intValue)
 }
 
 /**

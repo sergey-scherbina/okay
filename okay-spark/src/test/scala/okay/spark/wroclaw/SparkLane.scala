@@ -49,11 +49,28 @@ import scala.reflect.ClassTag
 object SparkLane {
 
   /** one context per run, as a job would have one per submission */
-  private def context(cores: Int): SparkContext =
-    new SparkContext(new SparkConf()
-      .setMaster(s"local[$cores]").setAppName("wroclaw")
+  // no defaults: this is private and every call site passes all three
+  private def context(cores: Int, master: Option[String], executorCp: String): SparkContext =
+    val conf = new SparkConf()
+      .setMaster(master.getOrElse(s"local[$cores]")).setAppName("wroclaw")
       .set("spark.ui.enabled", "false")
-      .set("spark.driver.host", "127.0.0.1"))
+      .set("spark.driver.host", "127.0.0.1")
+    // ACROSS PROCESSES (bench-across-processes): the executors are
+    // other JVMs that a Worker starts, and they find the job's classes
+    // the way a submitted application's would — here by being handed
+    // the same classpath the cluster's processes were started with,
+    // rather than by shipping a jar, so the comparison is not paying
+    // for a packaging step the other two lanes do not have.
+    if executorCp.nonEmpty then
+      conf.set("spark.executor.extraClassPath", executorCp): Unit
+      conf.set("spark.executor.cores", cores.toString): Unit
+      // an executor is started in a directory under the worker's own
+      // work dir and cannot resolve a relative path into this
+      // repository, so it is TOLD where the feed is — the same way a
+      // deployment tells its workers where the data lives
+      conf.set("spark.executorEnv.OKAY_WROCLAW_GTFS",
+        okay.wroclaw.Gtfs.dir.getAbsolutePath): Unit
+    new SparkContext(conf)
       // NOT Kryo, and the reason is the same one that keeps
       // SparkSession out of this module: Spark's KryoSerializer
       // registers a serializer for `scala.Enumeration$Value` that
@@ -94,11 +111,31 @@ object SparkLane {
   private val mergeRows: (Rows, Rows) => Rows = (a, b) =>
     Rows(a.wins + b.wins, a.events + b.events, a.delay + b.delay, a.hash ^ b.hash)
 
-  def run(feed: Feed, cores: Int = 4): Job.Result = {
-    val sc = context(cores)
+  def run(feed: Feed, cores: Int = 4, master: Option[String] = None,
+          days: Int = 0, executorCp: String = ""): Job.Result = {
+    val sc = context(cores, master, executorCp)
     try {
       val tram = feed.routes.iterator.map(_.tram).toArray
-      val events: RDD[Depart] = sc.parallelize(feed.events.toIndexedSeq, cores * 2)
+      val parts = cores * 2
+      val events: RDD[Depart] = master match
+        case None => sc.parallelize(feed.events.toIndexedSeq, parts)
+        case Some(_) =>
+          // DERIVED ON THE EXECUTOR, not shipped from the driver. A
+          // `parallelize` of a driver array is how this lane reads in
+          // one JVM and is not how a Spark job reads at all — a real
+          // one reads a distributed source. Across processes it would
+          // also mean serializing 1.25 million events out of the
+          // driver, which neither of the other two lanes does, so the
+          // row would be measuring the shipment. `days` travels in the
+          // closure and the feed is built where it is read, memoised
+          // per JVM by the same `Distributed.feed` the okay lane uses.
+          val n = feed.events.length
+          sc.parallelize(0 until parts, parts).mapPartitionsWithIndex { (i, _) =>
+            val all = okay.wroclaw.Distributed.feed(days)._1.events
+            val from = (n.toLong * i / parts).toInt
+            val until = (n.toLong * (i + 1) / parts).toInt
+            all.iterator.slice(from, until)
+          }
 
       // stage 1: the map-side join, the table shipped in the closure
       val rides: RDD[Ride] = events

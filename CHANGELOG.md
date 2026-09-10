@@ -1,5 +1,55 @@
 # Changelog
 
+## bench-across-processes — the three engines in the same deployment mode
+
+§20 has named its own asymmetry since it was written: okay was
+measured in the mode it runs in and so were Flink and Spark, but not
+the SAME mode — a MiniCluster and `local[4]` against okay's fibres.
+Once okay had a distributed lane the asymmetry stopped being
+unavoidable, and it turned out to have been avoidable all along: both
+engines' standalone entry points are on the test classpath already, so
+a real multi-process cluster needs no distribution tarball.
+
+The same job, the same eleven checksums asserted before anything is
+timed, on three real clusters — and split the way this section splits
+every engine, because a cluster coming up is seconds and the job is a
+second:
+
+  lane                                         | fixed  | marginal
+  okay, 8 fibres, ONE JVM (reference)          |  15 ms | 19,492,872 ev/s
+  okay, 8 partitions over 4 processes          |  70 ms | 18,098,329 ev/s
+  flink 1.20, standalone, 3 processes          | 431 ms |  2,712,497 ev/s
+  spark 4.0, standalone, 3 processes+executors | 2824 ms|    581,433 ev/s
+
+okay's marginal rate barely moves between one JVM and four processes:
+distribution costs it a constant, not a rate. Flink's marginal rate is
+HIGHER across processes than its MiniCluster fit (2.71M against 1.87M)
+— parallelism 8 against 4, not a cluster beating one JVM. And Flink's
+fixed cost is the same 431 ms either way, which says that cost is the
+job graph rather than the cluster.
+
+THREE THINGS HAD TO BE MADE THE SAME first, and each changed a lane.
+The feed is DERIVED where the work happens in all three: okay's
+workers always did, Flink's source replayed out of a static array in
+the client's JVM (no source at all when the TaskManager is another
+process) and Spark's `parallelize`d a driver array (2.4 million events
+through the wire the others never send). The driver must come out of
+the same build as the cluster, or Spark's Master answers
+InvalidClassException on a scala-library mismatch. And the parallelism
+is 8 in all three.
+
+WHAT IT IS NOT: a cluster. One machine, loopback, one disk. A fair
+deployment-mode comparison and not a distributed-systems result, said
+where the rows are.
+
+The plumbing is in FlinkClusterBench and SparkClusterBench, which
+start their own clusters and shut them down — including the three
+things that are not in anybody's tutorial: a directly-launched
+TaskManager must be told `taskmanager.cpu.cores` and its memory triad,
+a Spark Worker needs a SPARK_HOME layout (fabricated here from the
+jars already on the classpath), and a Spark executor must be told
+where the feed is because it starts in the Worker's work dir.
+
 ## wroclaw-parallel-prep-pass — the obvious answer to "where is the serial 6.5%" is not the answer
 
 okay's merge-parallel lane scales 1.88x / 3.30x / 5.55x at 2 / 4 / 8

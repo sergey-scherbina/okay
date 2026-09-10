@@ -3974,9 +3974,11 @@ to, and their fixed costs buy recovery, rescale and running across
 machines — none of which this benchmark can show and none of which the
 in-process lanes offer at all. The single-node table is the honest
 comparison against the libraries; against the engines it is a
-statement about ONE machine. okay now has a distributed lane of its
-own — "The engine at a DISTANCE", below — and what it adds is our
-road against our road, not a cluster against a cluster.
+statement about ONE machine. Two sections below close the rest of it:
+"The engine at a DISTANCE" measures our road against our road, and
+"The three engines in the SAME deployment mode" runs all three across
+processes — still one machine, and every engine paying its own
+startup, serialization and process boundaries.
 
 ### The engines' fixed cost, separated from the marginal one
 
@@ -4646,3 +4648,98 @@ is the swap already priced at 1.40x on the same job above, so the
 direction of the difference (84 ms here against 97 ms there) is the
 expected one — and `TestNativeLanes` asserts the eleven checksums do
 not move across it.
+
+### The three engines in the SAME deployment mode — across processes
+
+Every engine row above is one JVM. §20's Flink is a MiniCluster,
+§20's Spark is `local[4]`, and the section has named that asymmetry
+since it was written: okay was measured in the mode it runs in and so
+were they, but not the same mode. Once okay had a distributed lane
+(specs/dataflow.md, stage 7) the asymmetry stopped being unavoidable
+and started being a gap.
+
+**It was avoidable for a reason that turned out to be false**: both
+engines' standalone entry points are on the test classpath already —
+`StandaloneSessionClusterEntrypoint`, `TaskManagerRunner`,
+`deploy.master.Master`, `deploy.worker.Worker` — so a real
+multi-process cluster needs no distribution tarball, only processes.
+
+**The same job, the same eleven checksums, asserted before anything is
+timed, on three real clusters:**
+
+```
+  engine                                           |  575k |  1,255k |  2,414k events
+  okay, 8 partitions over 4 worker processes       |   101 |     141 |     203 ms
+  flink 1.20, 1 JobManager + 2 TaskManagers        |   742 |     736 |   1,379 ms
+  spark 4.0, 1 Master + 2 Workers + executors      | 3,878 |   4,879 |   7,014 ms
+```
+
+and split the way this section splits every engine, because a cluster
+coming up is seconds and the job is a second, and charging that to the
+events would be a statement about the benchmark:
+
+| lane | fixed cost | marginal |
+|---|---:|---:|
+| okay, 8 fibres, ONE JVM (for reference) | 15 ms | 19 492 872 ev/s |
+| okay, 8 partitions over 4 processes | 70 ms | 18 098 329 ev/s |
+| flink 1.20, standalone, 3 processes | 431 ms | 2 712 497 ev/s |
+| spark 4.0, standalone, 3 processes + executors | 2 824 ms | 581 433 ev/s |
+
+**What the fixed costs are.** okay's 70 ms is two round trips and a
+plan built on every worker. Flink's 431 ms is a job graph built,
+serialized and deployed to task slots — and it is the same 433 ms the
+MiniCluster fit found above, which says the cost is the job graph
+rather than the cluster. Spark's 2.8 s is a `SparkContext` per
+submission: the driver registers an application, the Master asks two
+Workers for executors, and each executor is a JVM that has to start.
+That is what submitting a Spark application costs, and a benchmark
+that ran one job for a minute would amortise it.
+
+**Read the marginal column as the engine and the fixed column as the
+deployment.** okay's marginal rate barely moves between one JVM and
+four processes (19.5M to 18.1M): distribution costs it a constant, not
+a rate. Flink's marginal rate is HIGHER across processes than its
+MiniCluster fit above (2.71M against 1.87M), which is parallelism 8
+against 4 rather than the cluster being faster than one JVM.
+
+**Three things were made the same before any of this could be
+compared**, and each of them changed a lane:
+
+- **the feed is derived where the work happens, in all three.** okay's
+  workers have always done that — a job name and one `Int` cross the
+  wire. Flink's §20 source replays out of a static array in the
+  client's JVM, which is no source at all when the TaskManager is
+  another process; Spark's lane `parallelize`s a driver array, which
+  across processes would put 2.4 million events through the wire that
+  the other two never send. Both now derive from the one number that
+  travels, memoised per JVM by the same `Distributed.feed` the okay
+  lane uses.
+- **the driver comes out of the same build as the cluster.** Run from
+  anywhere else, the Spark driver serialises a
+  `scala.collection.immutable.ArraySeq` from a different scala-library
+  and the Master answers `InvalidClassException: local class
+  incompatible` — the two-stdlib arrangement okay-spark documents, met
+  from the other side.
+- **the parallelism is 8 in all three**: eight partitions, two
+  TaskManagers of four slots, two Workers of four cores.
+
+**What this is NOT: a cluster.** One machine, loopback, one disk, and
+three to five JVMs. It is a fair DEPLOYMENT-MODE comparison — every
+engine paying its own serialization, its own process boundaries and
+its own startup — and it is not a distributed-systems result. Nothing
+here says what any of the three does across machines, and the numbers
+must not be quoted as if it did.
+
+**And what it took, since the plumbing is the honest part of the
+cost.** A TaskManager launched directly must be told its resources
+(`taskmanager.cpu.cores` and the memory triad), because
+`taskmanager.sh` normally derives them with BashJavaUtils. A Spark
+Worker builds its executors' launch command through `SPARK_HOME` and
+fails with "Cannot find any build directories" without one, so the
+harness fabricates the layout out of the jars already on the
+classpath — which is what a distribution is. And a Spark executor
+starts in a directory under the Worker's work dir and cannot resolve a
+relative path into this repository, so `Gtfs.dir` reads
+`okay.wroclaw.gtfs` / `OKAY_WROCLAW_GTFS` and is told. All three are
+in `FlinkClusterBench` and `SparkClusterBench`, which start their own
+clusters and shut them down.
