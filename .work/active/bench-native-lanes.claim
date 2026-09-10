@@ -1,0 +1,6 @@
+feature/bench-native-lanes 2026-09-10T10:14:47Z
+agent: claude-code
+heartbeat: 2026-09-10T10:14:47Z
+status: in-progress
+done-so-far: claimed
+next: native folds for JVM/JDK/fs2/zio/kyo at 1-2-4-8 cores
