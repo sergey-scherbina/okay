@@ -4108,13 +4108,39 @@ JVMs per lane, best of 3 rounds in each, 2 414 119 events:**
 | `packedCells` | one `LongMap`, packed key | mutable cell | yes | **520 ms** | 625 |
 | `JvmLane.loop` | one `LongMap`, packed key | mutable cell | **no** | **520 ms** | 338 |
 
-- **The ALGEBRA is two thirds of the gap.** Swapping only the
+- **The ALGEBRA is two thirds of the gap, and it is now FIXED in the
+  core** (`aggregator-zip-allocates`). `Aggregator.summary` says
+  count/sum/min/max in one flat accumulator of four `long` fields —
+  the third member of the family `Mean` and `Variance` already belong
+  to, both of which exist for exactly this reason. Measured on the
+  same job, same operator, same driver, minimum of three JVMs per
+  lane: `run` 810 ms, `runSummary` **580 ms — 1.40x** — against 607 ms
+  for the mutable cell that has no value semantics at all. So the flat
+  VALUE accumulator reaches the hand-written mutable one, and okay's
+  single-core row goes from losing 1.4x to the plain-JVM fold to
+  matching it. Allocation says the same: 83 B per `add` for the tuple
+  tree, 37 B for the flat object, 0 for the cell.
+  (Those four numbers come from a box carrying a sibling's build — the
+  1-minute load average sat between 8 and 20 — so they are UPPER
+  bounds and must not be compared with the table above, which was
+  taken quiet. The ratio is what stands, and it is stable across every
+  pass: the flat form was 0.62–0.66 of the zip in all three, at
+  absolute times that varied 1.7x.) Swapping only the
   accumulator is 694 → 582 ms (16%) under the general map and 635 →
   520 (18%) under the packed one. `Job.stats` is
   `count zip sum zip max`, so its accumulator is
   `((Long, Long), Option[Int])` — six objects allocated on every
   `add`, and every event enters four panes. That is the ~1 KB/event
-  the table's memory column has been showing all along.
+  the table's memory column has been showing all along — and what
+  `Aggregator.summary` removes.
+
+  The zip is not at fault for existing: it is the only shape that
+  composes two aggregators nobody wrote together. It is the wrong
+  shape for a hot statistic, which is why the core now carries flat
+  accumulators for the three that come up — a mean, a variance, and a
+  summary — and why `Job.stats` stays a zip in this benchmark: it is
+  the value handed to Flink and Spark through the interop, and the
+  section's job is to price the difference, not to hide it.
 - **The general pane map is the other third**: 694 → 635 ms (8.5%)
   with the value accumulator, 582 → 520 (11%) with the cheap one —
   `HashMap[K, LongMap[Acc]]` hashes a boxed key and then the window

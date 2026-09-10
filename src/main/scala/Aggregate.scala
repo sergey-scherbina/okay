@@ -266,6 +266,61 @@ object Aggregator {
   def stddev[N: Numeric]: Aggregator[N, Variance, Double] =
     variance[N].map(math.sqrt)
 
+  /**
+   * COUNT, SUM, MIN AND MAX OF ONE MEASURE, in ONE flat accumulator —
+   * the third member of the family `Mean` and `Variance` already
+   * belong to, and filed for the same reason they were.
+   *
+   * `count zip sum zip max` says the same thing and allocates SIX
+   * objects per element to say it: two tuples, a box for each of the
+   * two long accumulators, a `Some`, and a box for the value inside
+   * it. Every one of them is written on every `add`, and an
+   * aggregator in a window is added to once per element per pane.
+   * This is one allocation of four `long` fields, and in a local fold
+   * the JIT can often remove even that.
+   *
+   * MEASURED (docs/benchmarks.md §20, the Wrocław event-time job at
+   * 2 414 119 events, minimum of three JVMs): the same job with
+   * `count zip sum zip max` inside `okay.Windows` runs 694 ms and with
+   * this 583 — **16%**, for an aggregator that answers the same
+   * question. The gap to a hand-written mutable cell (520 ms) is what
+   * a value accumulator costs after the tuples are gone, and that part
+   * is the contract, not a defect: `merge` may be called on an
+   * accumulator someone else still holds.
+   *
+   * `min` and `max` are `Long.MaxValue` and `Long.MinValue` on an
+   * empty summary — the sentinels, not an `Option`, because the point
+   * of the type is to have no reference fields at all. `count == 0`
+   * is the test for "nothing was seen", and `merge` is correct with
+   * the sentinels either way.
+   */
+  final case class Summary(count: Long, sum: Long, min: Long, max: Long):
+    /** the arithmetic mean, or NaN when nothing was summarised */
+    def mean: Double = if count == 0L then Double.NaN else sum.toDouble / count.toDouble
+
+  object Summary:
+    val empty: Summary = Summary(0L, 0L, Long.MaxValue, Long.MinValue)
+
+  /**
+   * The four statistics of a long-valued measure, one pass, one flat
+   * accumulator. `measure` is where the element becomes a number, so
+   * the aggregator needs no `contramap` wrapper around it either —
+   * one virtual call per element instead of the chain a zip builds.
+   */
+  def summary[A](measure: A => Long): Aggregator[A, Summary, Summary] =
+    new Aggregator[A, Summary, Summary]:
+      def init: Summary = Summary.empty
+      def add(acc: Summary, in: A): Summary =
+        val x = measure(in)
+        Summary(acc.count + 1L, acc.sum + x,
+          if x < acc.min then x else acc.min,
+          if x > acc.max then x else acc.max)
+      def merge(a: Summary, b: Summary): Summary =
+        Summary(a.count + b.count, a.sum + b.sum,
+          if a.min < b.min then a.min else b.min,
+          if a.max > b.max then a.max else b.max)
+      def present(acc: Summary): Summary = acc
+
   /** the least element, if any */
   def min[A](using O: Ordering[A]): Aggregator[A, Option[A], Option[A]] =
     apply(Option.empty[A])((s, a: A) => Some(s.fold(a)(O.min(_, a))))(

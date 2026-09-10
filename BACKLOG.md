@@ -60,46 +60,38 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       checksums must equal okay's.
 
 ## okay core
-- [ ] aggregator-zip-allocates — a zipped aggregator's accumulator is a
-      TREE OF TUPLES, allocated fresh on every `add`, and §20 now
-      prices it: `Job.stats` (`count zip sum zip max`, accumulator
-      `((Long, Long), Option[Int])`) against a hand-written
-      `Aggregator` whose `init` hands out a mutable cell is 694 → 582
-      ms under the general window operator and 635 → 520 under the
-      packed one — **16–18% of a windowed job, two thirds of okay's
-      single-core distance from a plain map fold**, and 955 B/event
-      against 625. The seam is already named in `Aggregator.fold`'s
-      own scaladoc (an aggregator that knows its accumulator is a
-      `long` overrides `fold` and hands over a `Fold.OfLong`); this is
-      the same problem one level up, for PRODUCTS of aggregators.
-      Directions, cheapest first: a `zip` whose accumulator is a
-      2-field mutable box reused per pane (safe only where `merge`
-      still copies — the parallel lane depends on value semantics);
-      an arity-N specialization for the common `count/sum/max` triple;
-      or a `Fold`-level product that never builds the tuple at all.
-      DISQUALIFYING: if the mutable box makes `merge` unsafe for the
-      merge-parallel lane (`OkayLane.parallel` asserts equality at 2,
-      4 and 8 slices), the road closes there.
-      MEASURED BASELINE: docs/benchmarks.md §20, "Why one core loses,
-      decomposed" — the 2x2 lives in `OkayLane` and runs every time.
-- [ ] optic-law-rewrites — MEASURED PRIZE, not yet built
-      (docs/benchmarks.md §9b, 2026-09-10). The laws are a licence to
-      delete work, and the JIT does not have it. Two rewrites:
-      `modify(o)(f)` applied to `modify(o)(g)(s)` becomes
-      `modify(o)(g andThen f)` — worth 38 320 → 19 672 B/op and
-      4086 → 1427 ns on a 1000-element traversal, which is HALF the
-      allocation; and `set(a) ∘ set(b)` on one product becomes one
-      `copy` — worth about 2 ns and NOTHING in bytes on the JVM,
-      because escape analysis already scalar-replaces the
-      intermediate. Do the traversal one first: it is the big number
-      and the sound one (`map(f) . map(g) == map(f . g)` is the
-      functor law, and TestOptics already holds every interpretation
-      to it). Shape: `Fuse.modify` looks at whether its `s` argument
-      is itself a `Fuse.modify` on the SAME optic — which needs optic
-      IDENTITY at compile time, and that is the hard part, not the
-      rewrite. The product case wants a Native/JS measurement before
-      it is worth anything, since that is where the allocation the JVM
-      already removes would still be paid.
+- [x] aggregator-zip-allocates — DONE (2026-09-10):
+      `Aggregator.summary` is the flat count/sum/min/max accumulator,
+      beside `Mean` and `Variance`, and it takes the Wrocław job's
+      windowed lane from 810 ms to 580 (1.40x) — level with a
+      hand-written MUTABLE cell, while keeping the value semantics
+      `merge` needs. 83 B per `add` becomes 37.
+- [ ] aggregator-zip-flat-general — the general case is still open:
+      `count zip sum` allocates a `Tuple2` and boxes both `Long`
+      accumulators, and nothing catches it. Directions: an `OfLong`
+      overload of `zip` whose accumulator is a flat two-`long` object;
+      an N-ary `Aggregator.longs(...)` over an `Array[Long]`; or a
+      `Fold`-level product that never builds the pair. DISQUALIFYING:
+      any of them that makes the accumulator's identity observable
+      breaks `OkayLane.parallel`, which merges accumulators other
+      threads still hold.
+- [ ] windows-int-key-panes — the OTHER third of the same gap
+      (docs/benchmarks.md §20, "Why one core loses"): `okay.Windows`
+      keys panes by `HashMap[K, LongMap[Acc]]`, which boxes an `Int`
+      key and hashes twice where the packed benchmark form does one
+      `LongMap` lookup — 8.5-11% measured. A `PaneKey[K]` seam with a
+      packed store for `Int` keys and today's store for everything
+      else would take it, IF the window index and the key both fit in
+      a `Long` (they do for any `Int` key and a slide over ~2 ms, and
+      the fallback must be chosen at construction rather than
+      mid-run). Measure before believing: the same 2x2 is in
+      `OkayLane` and prices it on every run.
+- [ ] wroclaw-remeasure-quiet — the four rows quoted for the
+      `summary` fix were taken while a sibling's build held the box
+      (load 8-20). The ratio held across three passes at absolute
+      times varying 1.7x, so the finding stands, but the §20 numbers
+      should be re-taken on a quiet box and the "why one core loses"
+      table re-run whole.
 - [ ] handler-fusion-flat — GATED OFF by stage 0 (the ceiling for pass
       fusion measured 1.13–1.29x); reopen only with a new number. Was:
       `Handler.flat`: Handler.union assembled

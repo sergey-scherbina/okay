@@ -186,6 +186,44 @@ left to be found.
 `plan` keeps a capability's type argument now, so a prototype reads as
 `New[Conn]` rather than `New`. 5 tests, docs/di.md gained "Three
 lifetimes, and who chooses them". Commits: b0ff12b4, 6264becd.
+## aggregator-zip-allocates — the flat summary accumulator, and okay's single-core row catches up
+
+§20 measured where okay's one-core lane loses to a hand-written fold,
+and two thirds of it was the ARITHMETIC being composable: `Job.stats`
+is `count zip sum zip max`, so its accumulator is
+`((Long, Long), Option[Int])` — two tuples, two boxed longs, a `Some`
+and a boxed int, allocated on every `add`, and an aggregator in a
+window is added to once per element per pane (four here).
+
+`Aggregator.summary` is the fix and it is not a new idea in this
+library: `Mean` and `Variance` are already flat accumulators that
+exist because `sum zip count` cost three allocations per element.
+`Summary(count, sum, min, max)` is four `long` fields in one object,
+with `Long.MaxValue`/`Long.MinValue` sentinels instead of an `Option`
+so the type has no reference field at all, and `measure: A => Long`
+folded in so no `contramap` wrapper is needed either.
+
+**Measured on the Wrocław event-time job** (same operator, same
+driver, minimum of three JVMs per lane, 2 414 119 events): the zip
+810 ms, the flat summary **580 ms — 1.40x** — against 607 ms for a
+mutable cell with no value semantics at all. Allocation: 83 B per
+`add` becomes 37, and 0 for the cell. So a VALUE accumulator can
+reach a mutating one, which is the part worth remembering: what cost
+the 18% was the tuple tree, not immutability.
+
+CAVEAT, stated where the numbers are: those four rows were taken while
+a sibling's build held the box (1-minute load average 8-20), so they
+are upper bounds and are not comparable with §20's quiet-box table.
+The RATIO held at 0.62-0.66 across three passes whose absolute times
+varied 1.7x. A quiet re-measure is filed as `wroclaw-remeasure-quiet`,
+and the two remaining thirds as `aggregator-zip-flat-general` (the
+general `zip`, still allocating) and `windows-int-key-panes` (the
+boxed key and the double lookup, 8.5-11%).
+
+`Job.stats` stays a zip in the benchmark on purpose: it is the value
+handed to Flink and Spark through the interop, and §20's job is to
+price the difference rather than to hide it. `TestNativeLanes` asserts
+the summary lane's eleven checksums equal okay's.
 
 ## dataflow stage 1 — our own distributed engine: the plan is a value, and the keyed stage does not shuffle
 

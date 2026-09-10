@@ -11,6 +11,8 @@ object OkayBench {
         OkayLane.packed(ask.feed)),
       // the 2x2 of §20's "why one core loses": one lookup or two,
       // against a value accumulator or a mutable cell
+      Bench.measure(ask, "okay, 1 thread, flat summary aggregator", 1,
+        "Aggregator.summary: one object, four longs")(OkayLane.runSummary(ask.feed)),
       Bench.measure(ask, "okay, 1 thread, mutable-cell aggregator", 1,
         "the general operator, no tuples")(OkayLane.runCells(ask.feed)),
       Bench.measure(ask, "okay, 1 thread, packed + mutable cell", 1,

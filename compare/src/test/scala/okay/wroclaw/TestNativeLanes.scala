@@ -41,5 +41,6 @@ class TestNativeLanes extends munit.FunSuite {
     assertEquals(OkayLane.runCells(feed), expect, "the general operator over a cell differs")
     assertEquals(OkayLane.packedCells(feed), expect, "the packed operator over a cell differs")
     assertEquals(OkayLane.packed(feed), expect, "the packed operator differs")
+    assertEquals(OkayLane.runSummary(feed), expect, "the flat summary aggregator differs")
   }
 }

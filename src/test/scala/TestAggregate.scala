@@ -27,6 +27,44 @@ class TestAggregate extends munit.FunSuite {
     assert(math.abs(A.stddev[Double].run(xs) - math.sqrt(ref)) < 1e-9)
   }
 
+  test("summary: the flat accumulator answers what the zip answers") {
+    val ns = List(3L, 1L, 4L, 1L, 5L, 9L, 2L, 6L)
+    val zipped = A.count[Long]
+      .zip(A.sum[Long])
+      .zip(A.min[Long])
+      .zip(A.max[Long])
+    val ((( n, sum), mn), mx) = zipped.run(ns)
+    val s = A.summary[Long](identity).run(ns)
+    assertEquals(s.count, n)
+    assertEquals(s.sum, sum)
+    assertEquals(s.min, mn.get)
+    assertEquals(s.max, mx.get)
+    assertEquals(s.mean, ns.sum.toDouble / ns.length)
+  }
+
+  test("summary: empty is the sentinels, and merging with it changes nothing") {
+    val agg = A.summary[Long](identity)
+    val empty = agg.present(agg.init)
+    assertEquals(empty.count, 0L)
+    assertEquals(empty.min, Long.MaxValue)
+    assertEquals(empty.max, Long.MinValue)
+    assert(empty.mean.isNaN)
+    val some = agg.run(List(7L, -2L))
+    assertEquals(agg.merge(some, agg.init), some)
+    assertEquals(agg.merge(agg.init, some), some)
+  }
+
+  test("summary: split-and-combine equals the whole, at every cut") {
+    val ns = (-20L to 20L).toList
+    val agg = A.summary[Long](identity)
+    val whole = agg.run(ns)
+    for cut <- 0 to ns.length do
+      val (l, r) = ns.splitAt(cut)
+      val merged = agg.merge(ns.take(cut).foldLeft(agg.init)(agg.add),
+        ns.drop(cut).foldLeft(agg.init)(agg.add))
+      assertEquals(agg.present(merged), whole, s"a cut at $cut disagrees ($l | $r)")
+  }
+
   test("merge: split-and-combine equals the whole (the distributed contract)") {
     val (l, r) = xs.splitAt(3)
     def half[Acc](agg: Aggregator[Double, Acc, ?], part: List[Double]): Acc =

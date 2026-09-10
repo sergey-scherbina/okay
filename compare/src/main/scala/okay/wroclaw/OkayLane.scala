@@ -184,6 +184,34 @@ object OkayLane {
     sink.result
   }
 
+  /**
+   * `run` with the FLAT accumulator — the fix `aggregator-zip-
+   * allocates` proposes, in the same operator and the same driver as
+   * the row it is compared against, so the delta is the accumulator
+   * and nothing else. Unlike `runCells` it is a value: `merge` may be
+   * handed an accumulator someone else still holds, which is the
+   * contract the merge-parallel lane depends on.
+   */
+  def runSummary(feed: Feed, chunk: Int = 256): Job.Result = {
+    val tram = tramTable(feed)
+    val sink = new Sink(tram)
+    val routeWindows = Windows.tumbling[Int, Ride, Aggregator.Summary, Job.Stats](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.summaryStats)
+    val stopWindows = Windows.sliding[Int, Ride, Aggregator.Summary, Job.Stats](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.summaryStats)
+    val lastSeen = mutable.LongMap.empty[Long]
+
+    Chunks.foldLeft(rides(feed, tram, chunk))(())((_, r) => {
+      routeWindows.add(r)(sink.route)
+      stopWindows.add(r)(sink.stop)
+      bunching(lastSeen, r, sink)
+      ()
+    })
+    routeWindows.close()(sink.route)
+    stopWindows.close()(sink.stop)
+    sink.result
+  }
+
   /** `packed` with the cheap accumulator: one lookup AND no tuples,
    * which leaves only the eviction between it and `JvmLane.loop` */
   def packedCells(feed: Feed, chunk: Int = 256): Job.Result =

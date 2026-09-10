@@ -74,6 +74,23 @@ object Job {
       .zip(Aggregator.max[Int].contramap[Ride](_.delay))
       .map { case ((n, sum), mx) => Stats(n, sum, mx.getOrElse(Int.MinValue)) }
 
+  /**
+   * THE SAME STATISTIC WITH A FLAT ACCUMULATOR (aggregator-zip-
+   * allocates): `Aggregator.summary` says count/sum/min/max in one
+   * object of four `long` fields where `stats` above says it in a
+   * tuple tree that allocates six objects per add — and an aggregator
+   * in a window is added to once per element PER PANE, which here is
+   * four times.
+   *
+   * It computes the same three numbers `Stats` carries, so a lane may
+   * be swapped between them and its eleven checksums must not move —
+   * `TestNativeLanes` asserts exactly that, and docs/benchmarks.md
+   * §20 prices the difference.
+   */
+  val summaryStats: Aggregator[Ride, Aggregator.Summary, Stats] =
+    Aggregator.summary[Ride](_.delay.toLong)
+      .map(s => Stats(s.count, s.sum, if s.count == 0L then Int.MinValue else s.max.toInt))
+
   /** the window a timestamp falls in, for a tumbling window */
   def windowOf(ts: Long): Long = ts - Math.floorMod(ts, WindowMs)
 
