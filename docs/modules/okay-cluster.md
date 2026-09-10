@@ -184,8 +184,19 @@ elements a streamed run drops FEWER than a batch run, because the
 batch engine reconstructs one global order out of its slices and a
 stream's partitions are independent channels.
 
-The worker's state is in memory: a stream that loses a worker loses
-that partition's open panes. Checkpointing is stage 6b.
+**A worker that dies mid-stream is replaced, and the replacement
+REPLAYS rather than restores.** `Advance` carries the epoch index, so
+a session behind it catches up by replaying and discarding, and a
+worker with no session is given the job and does the same. There is no
+snapshot of an operator's insides anywhere in this — a partition is a
+recipe, and its epoch partial is a pure function of (parameters,
+index, count, epoch size, epoch number). Recovery costs O(elements
+consumed so far) rather than O(state); a seekable source would make it
+O(elements since the oldest open pane), and the seam for that is
+`Flow.Src`'s thunk.
+
+The COORDINATOR is still a single point of failure: it holds the
+folded state and journals nothing.
 
 ## Tutorial
 

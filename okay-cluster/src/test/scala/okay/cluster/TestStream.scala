@@ -77,6 +77,74 @@ class TestStream extends munit.FunSuite {
     assertEquals(many.value, one.value)
   }
 
+  // -----------------------------------------------------------------
+  // stage 6b: a worker dies mid-stream
+  // -----------------------------------------------------------------
+
+  test("a worker that dies mid-stream is replaced, and the answer does not move") {
+    // the replacement holds no state: it replays the partition and
+    // discards the epochs the coordinator already absorbed. There is
+    // no snapshot of an operator's insides anywhere in this.
+    val here = batch(FanJob, feed, 8)
+    val n = java.util.concurrent.atomic.AtomicInteger(0)
+    val dies: Cluster.Serve = req =>
+      if n.incrementAndGet() > 5 then throw java.io.IOException("worker gone mid-stream")
+      else Cluster.local(req)
+    val there = Cluster.stream(FanJob, feed, 8, Vector(dies, Cluster.local), 512).runWith
+    assertEquals(there.value, here.value)
+    assert(there.retried > 0, "the dying worker was never noticed")
+  }
+
+  test("every worker but one dies, at a seeded moment, and the stream still finishes") {
+    val here = batch(WindowJob, feed, 8)
+    for seed <- 1L to 12L do
+      val dying = 1 + math.floorMod(mix(seed), 3L).toInt              // 1..3 of 4
+      val workers = Vector.tabulate(4) { i =>
+        if i >= dying then Cluster.local
+        else
+          val n = java.util.concurrent.atomic.AtomicInteger(0)
+          (req: Req) =>
+            if n.incrementAndGet() > 1 + math.floorMod(mix(seed * 7 + i), 9L).toInt then
+              throw java.io.IOException(s"worker $i gone")
+            else Cluster.local(req)
+      }
+      val there = Cluster.stream(WindowJob, feed, 8, workers, 256).runWith
+      assertEquals(there.value, here.value, s"seed $seed, $dying of 4 dying")
+  }
+
+  test("a session asked for an epoch it has already answered answers the SAME thing") {
+    // what a retry after a LOST REPLY must get. Without it the
+    // coordinator would absorb one epoch twice, and with the naive
+    // fix — asking for the next epoch instead — it would silently
+    // lose one epoch's data and fail nothing, which is the mistake
+    // this lane's claim predicted of itself.
+    TestJobs.install()
+    val opened = WindowJob.openAt(
+      okay.codec.Codecs.cbor(WindowJob.params).encode(feed), 0, 4).toOption.get
+    val bounds = Vector(Bounds(Long.MinValue, Long.MinValue))
+    // BY CONTENT. `Resp.Epoch` carries an `Array[Byte]`, and Scala's
+    // `==` on an array is reference equality — so two responses with
+    // identical bytes compare unequal, and a test that used `==`
+    // reports a difference that is not there. (This test did, and the
+    // extents in its own failure message were identical.)
+    def same(a: Resp, b: Resp): Boolean = (a, b) match
+      case (x: Resp.Epoch, y: Resp.Epoch) =>
+        x.bytes.toVector == y.bytes.toVector && x.extent == y.extent && x.drained == y.drained
+      case _ => a == b
+
+    val first = opened.advance(256, bounds, 1)
+    val again = opened.advance(256, bounds, 1)
+    assert(same(again, first), "asking for an epoch twice gave two different answers")
+    val second = opened.advance(256, bounds, 2)
+    assert(!same(second, first), "epoch 2 answered epoch 1's partial")
+
+    // and a FRESH session catches up to the same place
+    val fresh = WindowJob.openAt(
+      okay.codec.Codecs.cbor(WindowJob.params).encode(feed), 0, 4).toOption.get
+    assert(same(fresh.advance(256, bounds, 2), second),
+      "a replayed session did not arrive where the original was")
+  }
+
   test("the sessions are let go when the stream ends") {
     val before = Sessions.count
     Cluster.stream(WindowJob, feed, 4, Vector.fill(2)(Cluster.local), 512).runWith: Unit

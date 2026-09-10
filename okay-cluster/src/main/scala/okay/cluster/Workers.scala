@@ -33,9 +33,19 @@ enum Req:
   /** begin an epoch-by-epoch run of one partition, and keep its
    * operator state between rounds */
   case Open(job: String, params: Array[Byte], part: Int, of: Int, session: Long)
-  /** advance this partition by up to `take` elements under these
-   * bounds, and hand back what it has closed so far */
-  case Advance(session: Long, take: Int, bounds: Vector[Bounds])
+  /**
+   * Advance this partition to EPOCH `epoch` — by up to `take`
+   * elements per epoch — and hand back what it closed in that one.
+   *
+   * The index is what makes recovery the ordinary case rather than a
+   * second mechanism (specs/dataflow.md, stage 6b). A session already
+   * at that epoch answers; a session behind it catches up silently by
+   * replaying and discarding; a worker with no session at all is
+   * given the job and then does the same. So a replacement worker
+   * needs no snapshot of an operator's insides — it rebuilds them
+   * from the recipe, which a partition has been since stage 1.
+   */
+  case Advance(session: Long, take: Int, bounds: Vector[Bounds], epoch: Int)
   /** the stream is over: close what is open and let the state go */
   case Close(session: Long)
 
@@ -196,10 +206,10 @@ object Cluster {
           job.openAt(params, part, of) match
             case Right(st) => { Sessions.put(session, st); Resp.Opened(session) }
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
-    case Req.Advance(session, take, bounds) =>
+    case Req.Advance(session, take, bounds, epoch) =>
       Sessions.get(session) match
         case None => Resp.Failed(s"no session $session on this worker")
-        case Some(st) => st.advance(take, bounds)
+        case Some(st) => st.advance(take, bounds, epoch)
     case Req.Close(session) =>
       Sessions.get(session) match
         case None => Resp.Failed(s"no session $session on this worker")
@@ -259,18 +269,15 @@ object Cluster {
     val living = Living(workers.length)
     val base = System.nanoTime()
     val sessions = Vector.tabulate(parts)(i => base + i)
+    def opening(i: Int): Req.Open = Req.Open(job.name, encoded, i, parts, sessions(i))
 
-    // one session per partition, opened where that partition will live
-    val opened: Vector[Unit] ! Async = Flows.spread(parts) { i =>
-      ask(workers, living, i, Req.Open(job.name, encoded, i, parts, sessions(i))) match
-        case Resp.Opened(_) => ()
-        case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
-        case other => throw IllegalStateException(s"partition $i answered $other to an open")
-    }
-
-    opened.flatMap: _ =>
-      def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long)
-      : Run[R] ! Async =
+    // NO UPFRONT OPEN. The first `Advance` finds no session and opens
+    // one, which is the identical path a replacement worker takes —
+    // so the recovery road IS the road, exercised on every run rather
+    // than only when something has died.
+    locally:
+      def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long,
+                round: Int): Run[R] ! Async =
         // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
         // place the streaming engine had to stop copying the batch
         // one.
@@ -302,7 +309,8 @@ object Cluster {
         // upper bound at MinValue is what finishes nothing locally.
         val bs = Vector.fill(parts)(sink.times.map(_ => Bounds(Long.MinValue, Long.MinValue)))
         Flows.spread(parts) { i =>
-          ask(workers, living, i, Req.Advance(sessions(i), take, bs(i))) match
+          advancing(workers, living, i, opening(i),
+            Req.Advance(sessions(i), take, bs(i), round)) match
             case e: Resp.Epoch => e
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
             case other => throw IllegalStateException(s"partition $i answered $other to an advance")
@@ -351,10 +359,53 @@ object Cluster {
               Run(sink.emit(end), d + sink.drops(lw), parts, 1,
                 m + sink.merged(lw), living.retries)
             }
-          else epoch(next, grown, d, m)
+          else epoch(next, grown, d, m, round + 1)
         }
 
-      epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L)
+      epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, 1)
+
+  /**
+   * ADVANCE ONE PARTITION, WHEREVER IT CAN BE DONE
+   * (specs/dataflow.md, stage 6b).
+   *
+   * Two things can go wrong and they are nearly the same thing:
+   *
+   *   - the worker answers "no session": it has never served this
+   *     partition, or it lost the state. It is given the job and
+   *     asked again for the SAME epoch.
+   *   - the worker is gone: it is buried, and the next survivor is
+   *     asked for the SAME epoch, opening a session there first.
+   *
+   * The same epoch, both times, and that is the whole correctness
+   * argument: a partition's epoch partial is a pure function of
+   * (parameters, index, count, epoch size, epoch number), so asking
+   * somebody else the same question gets the same answer. Asking for
+   * the NEXT epoch instead would lose one epoch's data and fail
+   * nothing, which is the mistake this comment exists to prevent.
+   */
+  private def advancing(workers: Vector[Serve], living: Living, part: Int,
+                        open: Req.Open, adv: Req.Advance): Resp =
+    def onceOn(w: Int): Resp =
+      workers(w)(adv) match
+        case Resp.Failed(why) if why.startsWith("no session") =>
+          workers(w)(open) match
+            case Resp.Opened(_) => workers(w)(adv)
+            case other => other
+        case other => other
+
+    def go(tried: Int, first: Throwable | Null): Resp =
+      living.pick(part + tried) match
+        case None =>
+          val why = IllegalStateException(
+            s"partition $part: no workers left (${workers.length} were given)")
+          if first != null then why.initCause(first.nn): Unit
+          throw why
+        case Some(w) =>
+          try onceOn(w)
+          catch case t: Throwable =>
+            living.bury(w)
+            go(tried + 1, if first == null then t else first)
+    go(0, null)
 
   /** a partition's extent so far, taking this epoch's into the last */
   private def merge(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =

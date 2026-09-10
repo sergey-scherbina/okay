@@ -195,10 +195,10 @@ than trusting the author.
   process killed mid-run. The streaming half — barrier checkpoints
   into okay-persist with source offsets — belongs to stage 6, where
   there is an unbounded source to checkpoint.
-- **6 — streaming, properly.** 6a DONE: the epoch loop, the
+- **6 — streaming, properly.** 6a DONE (the epoch loop, the
   coordinator as a fold, the watermark as the minimum over the
-  partitions. 6b: checkpoints and recovery from an offset. 6c:
-  exactly-once OUTCOME at the sink.
+  partitions) and 6b DONE (a dying worker's partition is replayed on
+  a survivor). 6c: exactly-once OUTCOME at the sink.
 - **7 — the numbers.** A distributed lane in docs/benchmarks.md §20,
   measured against Flink and Spark in the mode they are built for,
   with what their fixed costs buy named where it belongs.
@@ -335,8 +335,16 @@ Stage 6a — the epoch loop (TestStream, TestPanesOnce):
       another party's memory
 - [x] on a late-bearing feed a stream drops FEWER than the batch run,
       and that is stated as correct rather than asserted away
-- [ ] checkpointing and recovery from an offset — 6b
+- [x] 6b: a worker that dies MID-STREAM is replaced and its
+      partition replayed — the answer does not move, under seeded
+      schedules that kill up to three of four
+- [x] a session asked for an epoch it has already answered answers
+      the SAME partial (what a retry after a lost reply must get),
+      and a FRESH session replayed to that epoch arrives at the same
+      place
 - [ ] exactly-once outcome at the sink — 6c
+- [ ] durable checkpointing, so a COORDINATOR restart can resume —
+      `dataflow-coordinator`
 
 Stage 7: written when the stage is claimed.
 
@@ -816,10 +824,54 @@ such order to reconstruct: its partitions are independent channels,
 each with its own watermark. Asserting equality there would be
 asserting that a stream is a batch.
 
-**What 6a does not do**: the worker's state is in memory and dies with
-it. There is no checkpoint and no offset to resume from, so a stream
-that loses a worker loses that partition's open panes — which is 6b,
-and okay-persist already has the log and the offsets it needs.
+### Stage 6b — a replacement worker replays rather than restores
+
+6a's worker kept its operator state in memory, so a worker that died
+mid-stream took its partition's open panes with it — and did not even
+fail cleanly, since the retry reached a survivor that answered "no
+session".
+
+**A snapshot is not the only road, and here it is the wrong one.** To
+snapshot an operator you must describe its insides — a live
+`Windows`, its pane map, its watermark — and every one of those
+becomes a wire format that has to survive a version change. The other
+road is the one this engine has taken since stage 1: a partition is a
+RECIPE, and its epoch partial is a pure function of (parameters,
+index, count, epoch size, epoch NUMBER). So a replacement does not
+need the state. It rebuilds it.
+
+`Advance` therefore carries the epoch INDEX rather than meaning
+"next". A session already at that index re-answers the same partial;
+one behind catches up silently by replaying and discarding; a worker
+with no session at all is given the job and then does the same.
+**Recovery is the ordinary case of one mechanism, not a second one** —
+and to keep it that way there is no upfront `Open`: every run's first
+`Advance` takes the same path a replacement takes, so the recovery
+road is exercised on every run rather than only when something dies.
+
+**The same epoch, both times**, and that is the whole correctness
+argument. Asking for the NEXT epoch instead would lose one epoch's
+data and fail nothing — which is the mistake this lane's claim
+predicted of itself, and which `TestStream`'s idempotency test now
+pins from both sides: the same session asked twice, and a fresh
+session replayed to the same index.
+
+**The cost, stated rather than buried**: recovery is O(elements
+consumed so far), not O(state). For a source that can seek — a topic
+offset, a file position — it becomes O(elements since the oldest open
+pane), and the seam for that is `Flow.Src`'s thunk. Not built,
+because nothing has asked.
+
+**A test was wrong before the code was, again.** The idempotency test
+compared two `Resp.Epoch` values with `==`, and `Resp.Epoch` carries
+an `Array[Byte]` — whose equality in Scala is REFERENCE equality. It
+reported a difference that was not there, and its own failure message
+showed the extents identical on both sides. It compares bytes now.
+
+**What 6b still does not do**: if the COORDINATOR dies the run dies
+with it. It holds the folded state and journals nothing, and no
+amount of worker recovery helps. That is `dataflow-coordinator`, and
+it is an assembly of okay-persist's log rather than an invention.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements

@@ -76,7 +76,29 @@ abstract class Job[P, R]:
         private var state: s.P | Null = null
         private var extent: Vector[Flows.Extent] = Vector.empty
 
-        def advance(take: Int, bounds: Vector[Bounds]): Resp =
+        private var at: Int = 0
+
+        /**
+         * Catch up to `epoch`, then answer for it.
+         *
+         * A session already there re-answers the same partial, which
+         * is what a retry after a lost REPLY must get. One behind
+         * replays and discards until it arrives — that is a fresh
+         * worker rebuilding what a dead one held, and it is the same
+         * loop either way.
+         */
+        def advance(take: Int, bounds: Vector[Bounds], epoch: Int): Resp =
+          if epoch <= at then last.nn
+          else
+            while at < epoch - 1 do { step(take, bounds): Unit; at += 1 }
+            val out = step(take, bounds)
+            at = epoch
+            last = out
+            out
+
+        private var last: Resp | Null = null
+
+        private def step(take: Int, bounds: Vector[Bounds]): Resp =
           // the operator is built at the FIRST epoch, when the
           // coordinator's bounds are known — before that it has no
           // watermark to be seeded with
@@ -131,7 +153,9 @@ abstract class Job[P, R]:
  * held without naming that job's types.
  */
 trait Session:
-  def advance(take: Int, bounds: Vector[Bounds]): Resp
+  /** advance to (and answer for) the given epoch, replaying to catch
+   * up if this session is behind it */
+  def advance(take: Int, bounds: Vector[Bounds], epoch: Int): Resp
   def finish(): Resp
 
 /** the sessions this worker is holding */

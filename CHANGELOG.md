@@ -1,5 +1,45 @@
 # Changelog
 
+## dataflow stage 6b — a replacement worker replays rather than restores
+
+6a's worker kept its operator state in memory, so one that died
+mid-stream took its partition's open panes with it — and did not fail
+cleanly either: the retry reached a survivor that answered "no
+session".
+
+**A snapshot is not the only road, and here it is the wrong one.** To
+snapshot an operator you must describe its insides — a live Windows,
+its pane map, its watermark — and each becomes a wire format that has
+to survive a version change. The other road is the one this engine has
+taken since stage 1: a partition is a RECIPE, and its epoch partial is
+a pure function of (parameters, index, count, epoch size, epoch
+NUMBER). A replacement rebuilds the state instead of restoring it.
+
+So `Advance` carries the epoch INDEX rather than meaning "next". A
+session already there re-answers the same partial; one behind catches
+up by replaying and discarding; a worker with no session is given the
+job and then does the same. RECOVERY IS THE ORDINARY CASE of one
+mechanism — and there is no upfront Open any more, so every run's
+first Advance takes exactly the path a replacement takes.
+
+The same epoch both times is the whole correctness argument. Asking
+for the NEXT epoch would lose one epoch's data and fail nothing, which
+is the mistake this lane's claim predicted of itself; the idempotency
+test pins it from both sides.
+
+Cost, stated: recovery is O(elements consumed so far), not O(state).
+For a source that can seek it becomes O(elements since the oldest open
+pane), and the seam is `Flow.Src`'s thunk.
+
+**A test was wrong before the code was, again.** The idempotency test
+compared two `Resp.Epoch` with `==`, and `Resp.Epoch` carries an
+`Array[Byte]` — reference equality in Scala. It reported a difference
+that was not there, and its own failure message showed the extents
+identical on both sides. It compares bytes now.
+
+Still fatal: a COORDINATOR that dies takes the run with it. It holds
+the folded state and journals nothing — `dataflow-coordinator`.
+
 ## cbor-skip-threshold-trampoline — target 4 of 4, and a benchmark under 34x load caught in time
 
 depth-is-policy-not-rescue named four native-recursion sites the two
