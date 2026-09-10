@@ -555,11 +555,28 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `((Long, Long), Option[Int])`, or the flat one
       aggregator-zip-allocates is landing) would say how far, and
       whether one constant can serve both.
-- [ ] dataflow-onepass — stage 3: several flows over one source, the
-      shared source detected and the pass single. Until this lands,
-      the engine reads Wrocław's feed three times where §20's
-      hand-written lane reads it once, and no engine number is
-      comparable with that table.
+- [x] dataflow-onepass — LANDED. And it produced the number the
+      engine had been unable to quote: 5.5x the hand-written lane.
+- [ ] dataflow-complete-panes — THE headline number of the arc. 84%
+      of the Wrocław run is the sliding stop-window sink, and not
+      because the windowing is slow: the job makes 362 983 stop panes,
+      every partition holds most of them, and the coordinator merges
+      ~2.9 million accumulators on ONE thread.
+      `OkayLane.parallel` does not parallelise that merge, it avoids
+      it — it emits at the slice every pane no other slice can touch
+      (`p.start > hi(i-1) && p.end <= hi(i) - back`) and hands back
+      only the handful that span a boundary. The engine already
+      computes `hi`: it is the prefix-maximum array gathered for the
+      watermark seeding. What is missing is `back`, the greatest
+      backwardness, which is two more columns in the same pre-pass
+      (each partition's local backwardness and its minimum event
+      time). The bar is MeasureWroclawFlow's table: 121 ms against
+      the hand-written 22.
+- [ ] dataflow-fan-exchange — a fan finishes by merge, and stage 3
+      found a stage that wants otherwise (~3x10^5 accumulators per
+      partition, above the 100 000 crossover). Consider only AFTER
+      dataflow-complete-panes: that lane may remove the merge rather
+      than parallelise it, and then this one has nothing to buy.
 - [ ] dataflow-processes — stage 4: the worker protocol. Jobs by
       NAME plus typed parameters (Claim 3: nothing ships a closure),
       chunked framed transport, partials back. Acceptance: the full

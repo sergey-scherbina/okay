@@ -75,7 +75,7 @@ object Flows {
    * survives the exchange intact. That asymmetry is the whole reason
    * the distinction is a type.
    */
-  private def ordered(into: Aggregator[?, ?, ?]): Unit = into match
+  private[cluster] def ordered(into: Aggregator[?, ?, ?]): Unit = into match
     case _: Sequential[?, ?, ?] =>
       throw IllegalArgumentException(
         "the terminal aggregator is a Sequential, but this plan's output comes out of a " +
@@ -83,6 +83,67 @@ object Flows {
           "terminal, or put the order-dependent aggregation IN the keyed stage, where the " +
           "engine merges by partition index (specs/dataflow.md, stage 2).")
     case _ => ()
+
+  /**
+   * SEVERAL SINKS, ONE PASS (specs/dataflow.md, stage 3).
+   *
+   * `Flows.run` drives a plan with one keyed stage in it. A job with
+   * three of them was therefore three plans and three readings of the
+   * source — which is the one place §20's hand-written lane was still
+   * doing something the engine could not. Here the keyed stages live
+   * in the SINKS instead, `Sink.and` pairs them, and one pass over
+   * each partition feeds all of them: in this process a fan-out is
+   * calling three methods with the same reference, where in Flink it
+   * is three shuffles.
+   *
+   * The watermark seeding survives the fan. Each sink declares the
+   * event-time functions its windows need seeded, `and` concatenates
+   * them, and ONE pre-pass computes every column's prefix maximum at
+   * once — so a fan whose stages window on different times is still
+   * exactly the single-threaded answer, drops included.
+   *
+   * A fan finishes by merge; `Run.reducers` is 1. See `Sink` for why
+   * that is a decision rather than an omission.
+   */
+  def fan[A, R](flow: Flow[A], sink: Sink[A, R])(using Scheduler): Run[R] ! Async =
+    val sh = shape(flow)
+    val head = sh.source
+    if head == null then
+      throw IllegalArgumentException(
+        "a fan reads ONE source, and this plan already has a keyed stage in it: put the " +
+          "keyed stages in the sinks (Sink.keyed / Sink.tumbling / Sink.sliding) rather " +
+          "than in the flow (specs/dataflow.md, stage 3)")
+    val src = head.nn
+    val n = sh.parts
+    val times = sink.times
+    val seeds: Vector[Vector[Long]] ! Async =
+      if times.isEmpty then pure[Async, Vector[Vector[Long]]](Vector.fill(n)(Vector.empty))
+      else parallel(n)(i => maxima(src(i), times)).map(prefixes)
+    seeds.flatMap: sd =>
+      parallel(n) { i =>
+        val p = sink.start(sd(i))
+        Chunks.foldLeft(src(i))(())((_, a) => sink.step(p, a))
+        sink.done(p)
+        p
+      }.map: ps =>
+        Run(sink.result(ps), sink.drops(ps), n, 1)
+
+  /** every column's greatest value, in one pass over the partition */
+  private def maxima[A](c: Chunks[A], times: Vector[A => Long]): Vector[Long] =
+    val m = Array.fill(times.length)(Long.MinValue)
+    Chunks.foldLeft(c)(())((_, a) =>
+      var j = 0
+      while j < m.length do
+        val t = times(j)(a)
+        if t > m(j) then m(j) = t
+        j += 1)
+    m.toVector
+
+  /** the per-partition maxima, turned into what each partition must
+   * START from: the prefix maximum of every column */
+  private[cluster] def prefixes(maxes: Vector[Vector[Long]]): Vector[Vector[Long]] =
+    if maxes.isEmpty || maxes.head.isEmpty then maxes
+    else maxes.head.indices.toVector.map(j => before(maxes.map(_(j)))).transpose
 
   /**
    * Every element the plan produces, in partition order.

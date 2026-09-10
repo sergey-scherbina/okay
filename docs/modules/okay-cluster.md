@@ -71,6 +71,30 @@ fatter accumulator moves the bound down; fewer partitions move it up.
 On Wrocław's job — ~10^4 accumulators against 10^6 events — `Auto`
 DECLINES the exchange, and the suite asserts that it declines it.
 
+**One pass, many sinks.** A `Sink[A, R]` is a keyed or windowed stage
+together with what its output is folded into; `and` pairs two;
+`Flows.fan` drives one pass over each partition through all of them.
+The shape is `Aggregator.zip`'s, one level up — the core has computed
+two statistics in one pass since P1. Seeding survives the fan: each
+sink declares the event-time functions its windows need, and one
+pre-pass computes a prefix maximum per column, so a fan whose stages
+window on different times is still exactly the single-threaded answer.
+In this process a fan-out is calling three methods with the same
+reference; in Flink it is three shuffles.
+
+**What the engine costs, measured** (`MeasureWroclawFlow`, one service
+day, one JVM, minimum of 7 rounds). The whole Wrocław job as one plan
+on 8 partitions is 121 ms against `OkayLane.parallel`'s hand-written
+22 — **5.5x**, and the arc's headline number until it moves. It
+decomposes cleanly: the source alone 2 ms, route windows 7, stop
+windows **93**, bunching 4. 84% of the run is one sink, because the
+job makes 362 983 stop panes, most of which every partition holds, so
+the coordinator merges ~2.9 million accumulators on one thread. The
+hand-written lane does not parallelise that merge — it avoids it, by
+emitting at the slice every pane no other slice can touch. That is
+`dataflow-complete-panes` in the backlog, and the engine already
+computes the array it needs.
+
 **The `Sequential` rule cuts both ways, and the second way was a
 surprise.** A `Sequential` KEYED aggregator survives the exchange
 untouched: a reducer owns a hash share and merges its buckets
@@ -174,6 +198,9 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Flow.tumbling/sliding` | `(size, slide, lateness, seeded, finish)(key)(at)(agg) => Flow[Pane[K, O]]` | event-time windows; `seeded` buys exactness for one pre-pass |
 | `Finish` | `Merge` / `Shuffle(r)` / `Auto` | where the partials are combined; `Auto` decides during the run |
 | `Flows.run` | `(Flow[A], Aggregator[A, Acc, O])(using Scheduler) => Run[O] ! Async` | the answer, the DROPPED count, the partitions and the reducers actually used |
+| `Flows.fan` | `(Flow[A], Sink[A, R])(using Scheduler) => Run[R] ! Async` | several sinks, ONE pass over the source |
+| `Sink.fold / keyed / tumbling / sliding` | `… => Sink[A, R]` | one output: a stage plus its terminal |
+| `Sink.and` | `Sink[A, R1] => Sink[A, R2] => Sink[A, (R1, R2)]` | two sinks over one pass — `Aggregator.zip` one level up |
 | `Flows.fold` / `Flows.collect` | as above / `Flow[A] => Vector[A] ! Async` | the answer alone; every element in partition order |
 | `Acceptance` | `agg / source / frames / expected` | the shared-source program of the acceptance run |
 | `Client` (JS) | `main` | the Node client: connect, stream frames, verify via runAsync |
@@ -210,7 +237,11 @@ val wire: Cluster.Worker[Double, Double] = c =>
   say `Merge` or `Shuffle` rather than consult a number measured on
   someone else's job.
 
-Next step per specs/dataflow.md: stage 3 — one pass, many sinks.
-Until that lands the engine reads Wrocław's feed three times where
-§20's hand-written lane reads it once, and no engine number is
-comparable with that table.
+- A fan finishes by MERGE — no exchange. Stage 3's own measurement
+  found a stage that wants otherwise (~3x10^5 accumulators per
+  partition, above the crossover), and the honest fix is to stop
+  producing that merge rather than to parallelise it. See
+  `dataflow-complete-panes`.
+
+Next step per specs/dataflow.md: `dataflow-complete-panes` — the whole
+of the 5.5x — and then stage 4, across processes.

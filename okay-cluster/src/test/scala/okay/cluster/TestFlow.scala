@@ -230,6 +230,69 @@ class TestFlow extends munit.FunSuite {
   }
 
   // -----------------------------------------------------------------
+  // stage 3: one pass, many sinks
+  // -----------------------------------------------------------------
+
+  test("a fan of three sinks answers exactly what three separate runs answer") {
+    val xs = feed(20000, Late - 1)
+    val route = Flows.fold(Flow.slices(xs, 4).tumbling(Size, Late)(_.key)(_.ts)(value), paneSum).runWith
+    val stop = Flows.fold(Flow.slices(xs, 4).sliding(Size, Slide, Late)(_.key)(_.ts)(value), paneSum).runWith
+    val bunch = Flows.fold(Flow.slices(xs, 4).keyBy(_.key)(bunching), keySum).runWith
+
+    for p <- Vector(1, 2, 4, 8) do
+      val fan = Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)
+        .and(Sink.sliding(Size, Slide, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum))
+        .and(Sink.keyed((e: Ev) => e.key, bunching)(keySum))
+      val got = Flows.fan(Flow.slices(xs, p), fan).runWith
+      val ((a, b), c) = got.value
+      assertEquals(a, route, s"$p partitions")
+      assertEquals(b, stop, s"$p partitions")
+      assertEquals(c, bunch, s"$p partitions")
+      assertEquals(got.dropped, 0L, s"$p partitions")
+  }
+
+  test("the fan seeds each sink's watermark from its OWN event time") {
+    // two windowed sinks over DIFFERENT times in one pass: the
+    // pre-pass computes a prefix maximum per column, so neither
+    // borrows the other's watermark
+    val xs = feed(20000, Late * 8)                    // late elements, so the seeding shows
+    val byTs = Flows.run(Flow.slices(xs, 1).tumbling(Size, Late)(_.key)(_.ts)(value), paneSum).runWith
+    val shifted = (e: Ev) => e.ts * 2
+    val byShift = Flows.run(
+      Flow.slices(xs, 1).tumbling(Size, Late)(_.key)(shifted)(value), paneSum).runWith
+    assert(byTs.dropped > 0 && byShift.dropped > 0, "neither column drops anything")
+
+    for p <- Vector(2, 4, 8) do
+      val fan = Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)
+        .and(Sink.tumbling(Size, Late, (e: Ev) => e.key, shifted, value)(paneSum))
+      val got = Flows.fan(Flow.slices(xs, p), fan).runWith
+      assertEquals(got.value._1, byTs.value, s"$p partitions, column 1")
+      assertEquals(got.value._2, byShift.value, s"$p partitions, column 2")
+      assertEquals(got.dropped, byTs.dropped + byShift.dropped, s"$p partitions")
+  }
+
+  test("a fan over a plan that already has a keyed stage is refused by name") {
+    val xs = feed(100, 0)
+    val e = intercept[IllegalArgumentException](
+      Flows.fan(Flow.slices(xs, 2).keyBy(_.key)(value), Sink.fold(keySum)).runWith)
+    assert(e.getMessage.contains("in the sinks"), e.getMessage)
+  }
+
+  test("a Sequential terminal is refused where the sink is BUILT, not where it runs") {
+    val terminal: Sequential[(Int, Long), Runs, Long] = new Sequential[(Int, Long), Runs, Long]:
+      def init: Runs = Runs(0, 0, 0, 0)
+      def add(a: Runs, kv: (Int, Long)): Runs = bunching.add(a, Ev(kv._2, kv._1, 0))
+      def merge(a: Runs, b: Runs): Runs = bunching.merge(a, b)
+      def present(a: Runs): Long = a.bunches
+    val e = intercept[IllegalArgumentException](Sink.keyed((e2: Ev) => e2.key, value)(terminal))
+    assert(e.getMessage.contains("Sequential"), e.getMessage)
+    // and Sink.fold, which really does see the input's order, is fine
+    val ok = Flows.fan(Flow.slices(feed(100, 0), 4).map(e2 => (e2.key, e2.ts)),
+      Sink.fold(terminal)).runWith
+    assert(ok.value >= 0L)
+  }
+
+  // -----------------------------------------------------------------
   // the watermark: what a slice cannot see
   // -----------------------------------------------------------------
 

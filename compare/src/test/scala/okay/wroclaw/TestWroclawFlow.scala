@@ -1,7 +1,7 @@
 package okay.wroclaw
 
 import okay.{Aggregator, Chunks, Pane, Sequential}
-import okay.cluster.{Finish, Flow, Flows}
+import okay.cluster.{Finish, Flow, Flows, Sink}
 import okay.given
 import scala.collection.immutable.ArraySeq
 
@@ -145,6 +145,48 @@ class TestWroclawFlow extends munit.FunSuite {
     assertEquals(auto.value, merged)
     assertEquals(auto.reducers, 1, "this job's panes are far under the exchange's crossover")
   }
+
+  /** the three stages as sinks, separately — the decomposition the
+   * measurement needs, and what `wholeJob` is built from */
+  def routeSink: Sink[Ride, Job.Result] =
+    Sink.tumbling(Job.WindowMs, Job.Lateness, (r: Ride) => r.route, (r: Ride) => r.ts, Job.stats)(
+      into((s, pane) => s.route(pane)))
+  def stopSink: Sink[Ride, Job.Result] =
+    Sink.sliding(Job.SlideWindowMs, Job.SlideMs, Job.Lateness,
+      (r: Ride) => r.stop, (r: Ride) => r.ts, Job.stats)(into((s, pane) => s.stop(pane)))
+  def bunchSink: Sink[Ride, (Long, Long)] =
+    Sink.keyed((r: Ride) => (r.route.toLong << 20) | r.stop.toLong, bunching)(totals)
+
+  /** the job as ONE plan: three sinks, one pass (stage 3) */
+  def wholeJob: Sink[Ride, ((Job.Result, Job.Result), (Long, Long))] =
+    routeSink.and(stopSink).and(bunchSink)
+
+  def assembled(v: ((Job.Result, Job.Result), (Long, Long))): Job.Result =
+    val ((route, stop), (bunches, gap)) = v
+    route.merge(stop).copy(bunches = bunches, bunchGap = gap)
+
+  test("ONE PASS: the whole job as three sinks over one source") {
+    // this is what stage 3 is for. Before it, Wrocław's three keyed
+    // stages were three plans and the feed was read three times where
+    // §20's hand-written lane reads it once.
+    for p <- Vector(1, 2, 4, 8) do
+      val got = Flows.fan(rides(p), wholeJob).runWith
+      assertEquals(got.dropped, 0L, s"$p partitions")
+      assertEquals(assembled(got.value), expected, s"$p partitions")
+  }
+
+  /** the job as THREE plans, which is what the engine did before
+   * stage 3 — kept so the measurement can say what one pass bought */
+  def threeFlows(p: Int): Job.Result =
+    val route = Flows.fold(
+      rides(p).tumbling(Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats),
+      into((s, pane) => s.route(pane))).runWith
+    val stop = Flows.fold(
+      rides(p).sliding(Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats),
+      into((s, pane) => s.stop(pane))).runWith
+    val (bunches, gap) = Flows.fold(
+      rides(p).keyBy(r => (r.route.toLong << 20) | r.stop.toLong)(bunching), totals).runWith
+    route.merge(stop).copy(bunches = bunches, bunchGap = gap)
 
   test("the whole job: all eleven checksums, at parallelism 8") {
     val p = 8

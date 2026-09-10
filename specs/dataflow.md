@@ -182,8 +182,8 @@ than trusting the author.
 - **2 — the exchange.** DONE. A real hash partition with combine
   below it, `Finish.Auto`, and the crossover measured rather than
   assumed.
-- **3 — one pass, many sinks.** A job is several flows over one
-  source; the shared source is detected and the pass is single. This
+- **3 — one pass, many sinks.** DONE. A job is several sinks over one
+  source and the pass is single. This
   is what §20 already names as the asymmetry: a fan-out in one JVM is
   three method calls, in Flink it is three shuffles.
 - **4 — across processes.** The worker protocol: jobs by name, typed
@@ -257,7 +257,22 @@ Stage 2 (TestFlow, TestWroclawFlow, MeasureExchange):
       push. The box stays open only until a stage-4 plan can express
       one.
 
-Stage 3 and later: written when the stage is claimed.
+Stage 3 (TestFlow, TestWroclawFlow, MeasureWroclawFlow):
+- [x] a fan of three sinks answers exactly what three separate runs
+      answer, at every parallelism
+- [x] the whole Wrocław job is ONE plan over one pass, and all eleven
+      checksums hold at 1, 2, 4 and 8 partitions
+- [x] the fan seeds each sink's watermark from its OWN event time —
+      two windowed sinks over different times in one pass, each
+      dropping exactly what its own single-threaded run drops
+- [x] a fan over a plan that already has a keyed stage is refused by
+      name
+- [x] a `Sequential` terminal is refused where the SINK IS BUILT, not
+      where it runs
+- [x] the engine is measured against the hand-written lane, and the
+      number is reported whichever way it comes out
+
+Stage 4 and later: written when the stage is claimed.
 
 ## The watermark, and why a slice is not a stream
 
@@ -414,6 +429,73 @@ eight partitions stepped through seven eighths of the input and threw
 it away. Measured directly: 456 µs against 5 µs for the same eighth
 through `view.slice`. It had been there since stage 1, under a lane
 that was still correct and still passed everything.
+
+### Stage 3 — one pass, many sinks, and the number that came out badly
+
+`Sink[A, R]` is a keyed or windowed stage together with what its
+output is folded into; `and` pairs two of them; `Flows.fan` drives one
+pass over each partition through all of them. The shape is
+deliberately `Aggregator.zip`'s — the core has computed two statistics
+in one pass since P1, and this is that idea one level up, over stages
+that carry keys, windows and watermarks instead of scalars. Seeding
+survives: a sink declares the event-time functions its windows need,
+`and` concatenates them, and one pre-pass computes a prefix maximum
+per column, so a fan whose stages window on DIFFERENT times is still
+exactly the single-threaded answer, drops included.
+
+The whole Wrocław job is now one plan. All eleven checksums hold at
+every parallelism.
+
+**And then the measurement, which is not flattering.** One service
+day, 296 000 events, same JVM, minimum of 7 rounds:
+
+| lane | ms | vs best |
+|---|---:|---:|
+| hand-written, 8 threads (`OkayLane.parallel`) | 22 | 1.00x |
+| hand-written, 1 thread (`OkayLane.run`) | 79 | 3.59x |
+| engine, 8 partitions, one pass | 121 | 5.50x |
+| engine, 8 partitions, three passes (what stage 2 did) | 125 | 5.68x |
+| engine, 1 partition, one pass | 218 | 9.91x |
+
+Two things to read off it. **One pass bought 3%**, not the third the
+name suggests — the prediction written into the claim beforehand said
+it would not be a third, and it was righter than it knew. And the
+engine is 5.5x the hand-written lane at the same parallelism, which
+is a number this spec has to explain rather than round off.
+
+**Where the time goes, decomposed rather than guessed** (8
+partitions, one sink at a time):
+
+| lane | ms |
+|---|---:|
+| the source alone (count) | 2 |
+| route windows only — tumbling, 138 keys | 7 |
+| **stop windows only — sliding, 2482 keys x 3 panes** | **93** |
+| bunching only — keyed state | 4 |
+| all three, one pass | 111 |
+
+The three sinks together cost what they cost apart plus about 5 ms, so
+the fan really is one pass. **84% of the run is one sink**, and the
+reason is a count this spec can state exactly: the job produces 22 543
+route panes and **362 983 stop panes**, and every partition holds most
+of the stop panes, so the coordinator merges on the order of 2.9
+million accumulators — on one thread.
+
+**That refutes a scope decision made in this lane's own claim.** It
+said a fan finishes by merge because "a fan of Wrocław-sized stages is
+three orders of magnitude under the crossover". True of the route
+stage. False of the stop stage by a factor of about thirty: at ~3x10^5
+accumulators per partition it is well ABOVE stage 2's measured 100 000
+bound. The exchange was disabled for fans on the strength of an
+arithmetic that was only checked against the smaller stage.
+
+**But the exchange is not the best fix available, and the measurement
+says why.** `OkayLane.parallel` does not parallelise that merge — it
+AVOIDS it. It emits at the slice every pane no other slice can touch,
+and hands back only the handful that span a boundary. The engine
+already computes the array that rule needs: the prefix maxima it
+gathers for seeding are exactly `hi`. Filed as `dataflow-complete-panes`,
+with this table as its bar.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements

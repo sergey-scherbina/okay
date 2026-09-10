@@ -5,9 +5,12 @@
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
   measured at ~100 000 accumulators — and DECLINED on the Wrocław
-  job, correctly). Next, in order: stage 3 one pass and many sinks
-  (which is what makes an engine number comparable with §20's), then
-  stage 4 across processes.
+  job, correctly), and so has stage 3 (one pass, many sinks). The
+  engine now has its first honest number and it LOSES: 5.5x the
+  hand-written lane, 84% of it in one sink whose coordinator merges
+  2.9 million accumulators on one thread. Next, in order:
+  `dataflow-complete-panes` (which is that number's whole cause),
+  then stage 4 across processes.
 
 ## Queue
 (the note that stood here named eight candidates; SIX have since

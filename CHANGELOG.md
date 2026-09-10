@@ -1,5 +1,55 @@
 # Changelog
 
+## dataflow stage 3 — one pass, many sinks; and the engine measured against the hand-written lane, which it loses to
+
+`Sink[A, R]` is a keyed or windowed stage plus what its output is
+folded into, `and` pairs two, and `Flows.fan` drives one pass over
+each partition through all of them. The shape is deliberately
+`Aggregator.zip`'s: the core has computed two statistics in one pass
+since P1, and this is that idea one level up. Seeding survives — each
+sink declares the event-time functions its windows need, `and`
+concatenates them, one pre-pass computes a prefix maximum per column —
+so a fan whose stages window on DIFFERENT times is still exactly the
+single-threaded answer, drops included.
+
+The whole Wrocław job is now ONE plan over one pass, and all eleven
+checksums hold at 1, 2, 4 and 8 partitions. Before this, its three
+keyed stages were three plans and the feed was read three times where
+§20's hand-written lane reads it once.
+
+**The measurement, reported the way it came out.** One service day,
+296 000 events, one JVM, minimum of 7 rounds: hand-written on 8
+threads 22 ms, hand-written on 1 thread 79, the engine on 8 partitions
+in one pass 121, the engine in three passes 125, the engine on 1
+partition 218. So one pass bought **3%**, not a third — the
+prediction written into the claim beforehand said it would not be a
+third and was righter than it knew — and the engine is **5.5x** the
+hand-written lane at the same parallelism.
+
+**Where that goes, decomposed rather than guessed.** One sink at a
+time on 8 partitions: the source alone 2 ms, route windows 7, **stop
+windows 93**, bunching 4, all three 111. The three together cost what
+they cost apart plus 5 ms, so the fan really is one pass — and 84% of
+the run is a single sink. The count behind it: the job makes 22 543
+route panes and **362 983 stop panes**, most of which every partition
+holds, so the coordinator merges on the order of 2.9 million
+accumulators on one thread.
+
+**That refutes a scope decision this lane's own claim wrote down.**
+The claim said a fan may finish by merge because "a fan of
+Wrocław-sized stages is three orders of magnitude under the
+crossover". True of the route stage; false of the stop stage by about
+thirty times — at ~3x10^5 accumulators per partition it is well ABOVE
+stage 2's measured 100 000 bound. The arithmetic had only been checked
+against the smaller of the two stages.
+
+**And the exchange is still not the best fix, which is the useful
+part.** `OkayLane.parallel` does not parallelise that merge, it AVOIDS
+it: it emits at the slice every pane no other slice can touch and
+hands back only the few that span a boundary. The engine already
+computes the array that rule needs — the prefix maxima it gathers for
+seeding are exactly `hi`. Filed as `dataflow-complete-panes` with this
+table as its bar.
 ## optics-zero-tax — the lens people actually write now fuses
 
 The operator asked why an optic cannot simply be expanded at compile
