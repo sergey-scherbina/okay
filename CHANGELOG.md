@@ -1,5 +1,35 @@
 # Changelog
 
+## bench-spark-lane — the fifth engine, and what an RDD does with an event-time question
+
+`SparkInterop.aggregateByKey` hands an okay `Aggregator` to Spark as
+its (zero, seqOp, combOp) triple — the same value Flink takes through
+`toFlink`, the JDK through `Collect.collector` and the three stream
+libraries fold with directly. Five engines, one definition of the
+arithmetic, eleven checksums equal across all of them.
+
+The row is a BATCH job and §20 says so: an RDD has no event time, so a
+window is a key (the `groupingBy` shape, distributed) and the bunching
+stage carries the arrival INDEX through the shuffle, because an RDD has
+no encounter order to preserve. 7 997 ms and 3 096 MB for the full feed
+(301 878 ev/s) against Flink's 1 680 ms and okay's 727 — a shuffle per
+stage for a job whose live state is a few thousand panes.
+
+Two build facts found on the way, both worth more than the row. The RDD
+API needs NO two-stdlib classpath — `new SparkContext` starts on this
+module's ordinary Scala 3.9 classpath, which is why the lane sits
+beside the others instead of dragging a mixed stdlib onto them (that
+hack is only `SparkSession`'s companion lookup). But Kryo is closed to
+it: Spark's `KryoSerializer` registers a serializer for
+`scala.Enumeration$Value` that reflects for a 2.13 accessor the 3.9
+stdlib does not have, and the first shuffle dies with
+`NoSuchMethodException` — so the lane runs on Java serialization, and
+some of that 7 997 ms is a serializer this module cannot reach.
+
+Spark's own event-time engine is Structured Streaming, and that lane is
+FILED (`spark-structured-streaming-lane`) with everything it needs
+written down, rather than guessed at here.
+
 ## bench-stream-libraries — fs2, zio-streams and kyo in §20, and what they actually measure
 
 The operator asked for the three in-process stream libraries in the

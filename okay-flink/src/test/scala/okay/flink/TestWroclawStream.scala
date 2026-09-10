@@ -121,6 +121,7 @@ class TestWroclawStream extends munit.FunSuite {
         ("java.util.stream, groupingBy", () => JavaLane.run(part, parallel = false)),
         ("java.util.stream, groupingBy, parallel", () => JavaLane.run(part, parallel = true)),
       ) else Seq.empty) ++ Seq(
+        ("spark, local[4], batch RDD", () => SparkLane.run(part, cores = 4)),
         ("flink, parallelism 1", () => FlinkLane.run(part, 1)),
         ("flink, parallelism 4", () => FlinkLane.run(part, 4)),
       )
@@ -174,6 +175,8 @@ class TestWroclawStream extends munit.FunSuite {
     assertEquals(LibLanes.fs2(part), okayPart, "the fs2 lane differs")
     assertEquals(LibLanes.zio(part), okayPart, "the zio-streams lane differs")
     assertEquals(LibLanes.kyo(part), okayPart, "the kyo lane differs")
+    // the fifth engine, and the second distributed one
+    assertEquals(SparkLane.run(part, cores = 4), okayPart, "the Spark lane differs")
     val (flink, _) = timed(FlinkLane.run(feed, parallelism = 1))
     println(s"  flink: $flink")
     assertEquals(flink, okay, "Flink's answer differs from okay's")

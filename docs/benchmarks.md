@@ -3412,36 +3412,38 @@ lane ran next. Each size ran in its own JVM.
 
 | lane | ev/s | wall | peak heap |
 |---|---:|---:|---:|
-| okay, 1 thread | 2 483 658 | 243 ms | 462 MB |
-| okay, 2 fibres (merge) | 4 105 639 | 147 ms | 314 MB |
-| okay, 4 fibres (merge) | 6 705 877 | 90 ms | 440 MB |
-| okay, 8 fibres (merge) | 8 155 797 | 74 ms | 355 MB |
-| java.util.stream, windowed collector | 2 110 241 | 286 ms | 431 MB |
-| fs2 (pure), our window operator | 2 376 098 | 254 ms | 418 MB |
-| zio-streams, our window operator | 2 235 292 | 270 ms | 399 MB |
-| kyo streams, our window operator | 2 178 805 | 277 ms | 440 MB |
-| java.util.stream, `groupingBy` | 1 095 333 | 551 ms | 453 MB |
-| java.util.stream, `groupingBy`, parallel | 215 392 | 2 802 ms | 2 596 MB |
-| flink, parallelism 1 | 412 246 | 1 464 ms | 614 MB |
-| flink, parallelism 4 | 615 218 | 981 ms | 1 015 MB |
+| okay, 1 thread | 3 143 380 | 192 ms | 490 MB |
+| okay, 2 fibres (merge) | 5 294 114 | 114 ms | 443 MB |
+| okay, 4 fibres (merge) | 8 746 797 | 69 ms | 371 MB |
+| okay, 8 fibres (merge) | 13 716 568 | 44 ms | 508 MB |
+| java.util.stream, windowed collector | 2 590 253 | 233 ms | 459 MB |
+| fs2 (pure), our window operator | 2 860 327 | 211 ms | 411 MB |
+| zio-streams, our window operator | 2 860 327 | 211 ms | 451 MB |
+| kyo streams, our window operator | 2 682 351 | 225 ms | 443 MB |
+| java.util.stream, `groupingBy` | 1 359 299 | 444 ms | 507 MB |
+| java.util.stream, `groupingBy`, parallel | 267 403 | 2 257 ms | 2 779 MB |
+| spark, local[4], batch RDD | 277 357 | 2 176 ms | 1 135 MB |
+| flink, parallelism 1 | 500 024 | 1 207 ms | 613 MB |
+| flink, parallelism 4 | 841 741 | 717 ms | 681 MB |
 
 **At 2 414 119 events — the full feed** (best of 3):
 
 | lane | ev/s | wall | peak heap |
 |---|---:|---:|---:|
-| okay, 1 thread | 3 307 012 | 730 ms | 578 MB |
-| okay, 2 fibres (merge) | 5 627 317 | 429 ms | 558 MB |
-| okay, 4 fibres (merge) | 9 773 761 | 247 ms | 584 MB |
-| okay, 8 fibres (merge) | 15 987 543 | 151 ms | 345 MB |
-| java.util.stream, windowed collector | 2 833 473 | 852 ms | 471 MB |
-| fs2 (pure), our window operator | 3 275 602 | 737 ms | 486 MB |
-| zio-streams, our window operator | 3 325 232 | 726 ms | 471 MB |
-| kyo streams, our window operator | 3 021 425 | 799 ms | 540 MB |
+| okay, 1 thread | 3 320 658 | 727 ms | 562 MB |
+| okay, 2 fibres (merge) | 5 524 299 | 437 ms | 1 221 MB |
+| okay, 4 fibres (merge) | 9 579 837 | 252 ms | 489 MB |
+| okay, 8 fibres (merge) | 16 764 715 | 144 ms | 421 MB |
+| java.util.stream, windowed collector | 2 860 330 | 844 ms | 993 MB |
+| fs2 (pure), our window operator | 2 973 052 | 812 ms | 509 MB |
+| zio-streams, our window operator | 2 965 748 | 814 ms | 670 MB |
+| kyo streams, our window operator | 3 098 997 | 779 ms | 509 MB |
 | java.util.stream, `groupingBy` | — | — | OutOfMemoryError, 8 GB heap |
-| flink, parallelism 1 | 697 520 | 3 461 ms | 759 MB |
-| flink, parallelism 4 | 1 479 239 | 1 632 ms | 1 738 MB |
+| spark, local[4], batch RDD | 301 878 | 7 997 ms | 3 096 MB |
+| flink, parallelism 1 | 693 313 | 3 482 ms | 1 011 MB |
+| flink, parallelism 4 | 1 436 975 | 1 680 ms | 1 368 MB |
 
-Five things a reader should take from those two tables, all of them
+Six things a reader should take from those two tables, all of them
 explained further down:
 
 - **The four in-process roads are at PARITY on the full feed** — okay
@@ -3464,9 +3466,15 @@ explained further down:
   alone.** `groupingBy` has no notion of a window closing, so it keeps
   the history and cannot finish the feed at all; the windowed collector
   evicts on a watermark and runs the whole thing in 471 MB.
+- **Spark's row is a BATCH job and says so.** An RDD has no event time
+  and no watermark, so a window is a key — the `groupingBy` shape,
+  distributed — and the bunching stage has to carry the arrival index
+  through the shuffle because an RDD has no encounter order to
+  preserve. Spark's event-time engine is Structured Streaming, which is
+  a different lane and is filed rather than guessed at.
 - **Every lane computes the same eleven checksums** — same windows,
-  same keyed state, same ranking. That is asserted before any row is
-  printed, not hoped for.
+  same keyed state, same ranking, on six engines. That is asserted
+  before any row is printed, not hoped for.
 
 ### The numbers
 
@@ -3837,6 +3845,45 @@ At the quarter size the same four spread a little wider (okay
 collector 2 110 241) — less work per JIT-warm run, so the fixed parts
 weigh more. The ordering is stable across both sizes; the gaps are not
 worth a sentence beyond that.
+
+### Spark — the fifth engine, and the second distributed one
+
+`SparkInterop.aggregateByKey` hands an okay `Aggregator` to Spark as
+its `(zero, seqOp, combOp)` triple — the same value Flink takes through
+`toFlink`, the JDK through `Collect.collector`, and the three stream
+libraries fold with directly. Five engines, one definition of the
+arithmetic, and the eleven checksums agree across all of them.
+
+**Spark's answer to this job is a batch one, and the lane renders it as
+such.** An RDD carries no event time and no watermark: a window is a
+KEY, exactly the `groupingBy` shape, distributed. Two consequences are
+visible in the row:
+
+- **7 997 ms and 3 096 MB for the full feed** (301 878 ev/s), against
+  Flink's 1 680 ms and okay's 727. Local mode pays a shuffle per stage
+  for a job whose state fits in a few thousand panes, and the sliding
+  stage expands every element into three shuffled pairs. This is not
+  Spark being bad at what it is for; it is what happens when a
+  batch engine is asked an event-time question.
+- **The bunching stage needs the arrival INDEX carried through the
+  shuffle.** An RDD has no encounter order, so `zipWithIndex` runs
+  before the partitioning and each key's group is sorted by it. Every
+  other lane in the table gets that order for free from the stream.
+
+**Two build facts found on the way, both worth more than the row.**
+okay-spark's own tests need a two-stdlib classpath because
+`SparkSession`'s companion lookup goes through Scala 2 runtime
+reflection, which cannot bootstrap against the Scala 3.9 stdlib. The
+RDD API needs none of that — measured here: `new SparkContext` starts
+and runs on this module's ordinary classpath, which is why the lane
+sits beside the others instead of dragging a mixed stdlib onto them.
+But **Kryo is closed to it**: Spark's `KryoSerializer` registers a
+serializer for `scala.Enumeration$Value` that reflects for
+`scala$Enumeration$$outerEnum`, a 2.13 accessor the 3.9 stdlib does not
+have, and the first shuffle dies with `NoSuchMethodException`. The lane
+therefore runs on Java serialization, which okay-spark's own doc
+already prices (18 s against 4.3 s on the Wrocław demo's persist) — so
+some of that 7 997 ms is a serializer this module cannot reach.
 
 ### What the okay lane cost to WRITE — and what closing that gap cost
 

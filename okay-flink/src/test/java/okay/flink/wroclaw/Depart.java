@@ -13,7 +13,7 @@ package okay.flink.wroclaw;
  * constructor is what a Flink user writes; the okay lane carries the
  * very same objects, so neither side is favoured by the choice.
  */
-public class Depart {
+public class Depart implements java.io.Serializable {
     /** event time: the moment the vehicle left, epoch millis */
     public long ts;
     /** route index into the routes table (the enrichment's key) */

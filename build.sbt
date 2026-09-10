@@ -444,7 +444,7 @@ lazy val okayFlink = (project in file("okay-flink"))
   // okay-java is TEST only, and only for §20's third lane: the same
   // job over java.util.stream, whose `Collector` an okay Aggregator
   // already is (okay-java's Collect.collector)
-  .dependsOn(okay.jvm, okayJava % Test)
+  .dependsOn(okay.jvm, okayJava % Test, okaySpark % Test)
   .settings(
     name := "okay-flink",
     libraryDependencies ++= Seq(
@@ -467,6 +467,8 @@ lazy val okayFlink = (project in file("okay-flink"))
       "co.fs2" %% "fs2-core" % "3.10.2" % Test,
       "dev.zio" %% "zio-streams" % "2.1.14" % Test,
       "io.getkyo" %% "kyo-core" % "0.16.2" % Test,
+      ("org.apache.spark" %% "spark-core" % "4.0.0" % Test).cross(CrossVersion.for3Use2_13),
+      "org.scala-lang" % "scala-reflect" % "2.13.16" % Test,
     ),
     // Flink 1.20 on JDK 21 reaches into java.base by reflection (Kryo,
     // its own MemorySegment); the same list okay-spark needs, and for

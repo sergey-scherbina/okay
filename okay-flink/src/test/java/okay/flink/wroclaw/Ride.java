@@ -6,7 +6,7 @@ package okay.flink.wroclaw;
  * {@link Depart} is one — it crosses a keyBy in the Flink lane, and
  * the element that crosses a shuffle decides the serializer.
  */
-public class Ride {
+public class Ride implements java.io.Serializable {
     public long ts;
     public int route;
     public int stop;
