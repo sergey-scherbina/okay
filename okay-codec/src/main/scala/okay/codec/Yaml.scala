@@ -222,11 +222,10 @@ object Yaml {
   def cst(input: String): Cst[K] =
     var s = scan.init
     val toks = Vector.newBuilder[T]
-    input.foreach { c =>
-      val (s2, ts) = scan.step(s, c)
-      toks ++= ts
-      s = s2
-    }
+    var i = 0
+    while i < input.length do
+      s = scan.stepInto(s, input.charAt(i), toks)
+      i += 1
     toks ++= scan.flush(s)
     Parse.toCst(instructions(toks.result()))
 

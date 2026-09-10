@@ -1,5 +1,7 @@
 package okay.lex
 
+import scala.collection.mutable.Growable
+
 /**
  * The proving dialect: a total JSON scanner. Every character lands in
  * a token — structure on Syntax, whitespace on Trivia, anything
@@ -35,7 +37,7 @@ object Json {
                      startOff: Int, startLine: Int, startCol: Int,
                      curOff: Int, curLine: Int, curCol: Int)
 
-  val scan: Scan[K, S] = new Scan[K, S]:
+  val scan: Scan[K, S] = new ScanInto[K, S]:
     def init: S = S(Mode.Base, "", 0, 0, 0, 0, 0, 0)
 
     override def key(s: S): Any = (s.mode, s.buf)
@@ -65,41 +67,45 @@ object Json {
                     channel: Channel = Channel.Syntax): Token[K] =
       Token(kind, s.buf, Span(s.startOff, s.startLine, s.startCol, s.buf.length), channel)
 
-    private def one(kind: K, c: Char, s: S): Token[K] =
-      Token(kind, c.toString, Span(s.curOff, s.curLine, s.curCol, 1))
+    private def one(kind: K, c: Char, s: S,
+                    channel: Channel = Channel.Syntax): Token[K] =
+      Token(kind, c.toString, Span(s.curOff, s.curLine, s.curCol, 1), channel)
 
-    /** finish the pending token, if any */
-    private def finish(s: S): Vector[Token[K]] = s.mode match
-      case Mode.Base => Vector.empty
-      case Mode.InStr(_) => Vector(tok(K.Str, s, channel = Channel.Error)) // unterminated
-      case Mode.InNum => Vector(tok(K.Num, s))
-      case Mode.InWs => Vector(tok(K.Ws, s, channel = Channel.Trivia))
+    /** finish the pending token, if any, INTO the sink — the one
+     * place the finished token is built, so neither road carries a
+     * `Vector` per token */
+    private def finishInto(s: S, out: Growable[Token[K]]): Unit = s.mode match
+      case Mode.Base => ()
+      case Mode.InStr(_) => out += tok(K.Str, s, channel = Channel.Error) // unterminated
+      case Mode.InNum => out += tok(K.Num, s)
+      case Mode.InWs => out += tok(K.Ws, s, channel = Channel.Trivia)
       case Mode.InWord => s.buf match
-        case "true" | "false" => Vector(tok(K.Bool, s))
-        case "null" => Vector(tok(K.Null, s))
-        case _ => Vector(tok(K.Bad, s, channel = Channel.Error))
+        case "true" | "false" => out += tok(K.Bool, s)
+        case "null" => out += tok(K.Null, s)
+        case _ => out += tok(K.Bad, s, channel = Channel.Error)
 
-    def step(s: S, c: Char): (S, Vector[Token[K]]) = s.mode match
+    override def stepInto(s: S, c: Char, out: Growable[Token[K]]): S = s.mode match
       case Mode.InStr(esc) =>
         val s2 = eat(s, c)
-        if esc then (s2.copy(mode = Mode.InStr(false)), Vector.empty)
-        else if c == '\\' then (s2.copy(mode = Mode.InStr(true)), Vector.empty)
+        if esc then s2.copy(mode = Mode.InStr(false))
+        else if c == '\\' then s2.copy(mode = Mode.InStr(true))
         else if c == '"' then
-          (S(Mode.Base, "", s2.curOff, s2.curLine, s2.curCol,
-             s2.curOff, s2.curLine, s2.curCol), Vector(tok(K.Str, s2)))
-        else (s2, Vector.empty)
+          out += tok(K.Str, s2)
+          S(Mode.Base, "", s2.curOff, s2.curLine, s2.curCol,
+            s2.curOff, s2.curLine, s2.curCol)
+        else s2
 
-      case Mode.InNum if c.isDigit || "+-.eE".contains(c) => (eat(s, c), Vector.empty)
+      case Mode.InNum if c.isDigit || "+-.eE".contains(c) => eat(s, c)
 
-      case Mode.InWord if c.isLetter => (eat(s, c), Vector.empty)
+      case Mode.InWord if c.isLetter => eat(s, c)
 
       case Mode.InWs if c == ' ' || c == '\t' || c == '\n' || c == '\r' =>
-        (eat(s, c), Vector.empty)
+        eat(s, c)
 
       case _ =>
         // the pending token (if any) ends here; c starts fresh in Base
-        val done = finish(s)
-        val next = c match
+        finishInto(s, out)
+        c match
           case '{' | '}' | '[' | ']' | ':' | ',' =>
             val kind = c match
               case '{' => K.LBrace
@@ -108,15 +114,23 @@ object Json {
               case ']' => K.RBracket
               case ':' => K.Colon
               case _ => K.Comma
-            return (based(s, c), done :+ one(kind, c, s))
+            out += one(kind, c, s)
+            based(s, c)
           case '"' => start(Mode.InStr(false), "\"", s, c)
           case d if d.isDigit || d == '-' => start(Mode.InNum, c.toString, s, c)
           case l if l.isLetter => start(Mode.InWord, c.toString, s, c)
           case w if w == ' ' || w == '\t' || w == '\n' || w == '\r' =>
             start(Mode.InWs, c.toString, s, c)
           case _ =>
-            return (based(s, c), done :+ one(K.Bad, c, s).copy(channel = Channel.Error))
-        (next, done)
+            out += one(K.Bad, c, s, channel = Channel.Error)
+            based(s, c)
 
-    def flush(s: S): Vector[Token[K]] = finish(s)
+    /** the Base arm stays allocation-free on purpose: `relex` asks
+     * "is anything half-built?" once per character */
+    def flush(s: S): Vector[Token[K]] = s.mode match
+      case Mode.Base => Vector.empty
+      case _ =>
+        val sink = new Scan.Sink[K]
+        finishInto(s, sink)
+        sink.result()
 }

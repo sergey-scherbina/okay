@@ -1,5 +1,7 @@
 package okay.lex
 
+import scala.collection.mutable.Growable
+
 
 
 /**
@@ -14,7 +16,7 @@ package okay.lex
  * The dictionary is the classic merges table: a pair of symbols to
  * its rank, lowest rank merged first.
  */
-final case class Bpe(ranks: Map[(String, String), Int]) extends Scan[String, Bpe.S] {
+final case class Bpe(ranks: Map[(String, String), Int]) extends ScanInto[String, Bpe.S] {
 
   import Bpe.S
 
@@ -80,28 +82,37 @@ final case class Bpe(ranks: Map[(String, String), Int]) extends Scan[String, Bpe
           done = n < 2
       Vector.tabulate(n)(syms)
 
-  private def word(s: S): Vector[Token[String]] =
-    if s.buf.isEmpty then Vector.empty
-    else
+  /** the pending word, BPE-merged, into the sink — no intermediate
+   * `Vector` and no `:+` copy to put the whitespace after it */
+  private def wordInto(s: S, out: Growable[Token[String]]): Unit =
+    if s.buf.nonEmpty then
+      val syms = encode(s.buf)
       var off = s.start.off
       var col = s.start.col
-      encode(s.buf).map { sym =>
-        val t = Token(sym, sym, Span(off, s.start.line, col, sym.length))
+      var i = 0
+      while i < syms.length do
+        val sym = syms(i)
+        out += Token(sym, sym, Span(off, s.start.line, col, sym.length))
         off += sym.length
         col += sym.length
-        t
-      }
+        i += 1
 
-  def step(s: S, c: Char): (S, Vector[Token[String]]) =
+  override def stepInto(s: S, c: Char, out: Growable[Token[String]]): S =
     val next = s.at + c
     if c.isWhitespace then
-      val ws = Token(c.toString, c.toString,
+      wordInto(s, out)
+      out += Token(c.toString, c.toString,
         Span(s.at.off, s.at.line, s.at.col, 1), Channel.Trivia)
-      (S("", next, next), word(s) :+ ws)
-    else if s.buf.isEmpty then (S(c.toString, s.at, next), Vector.empty)
-    else (s.copy(buf = s.buf + c, at = next), Vector.empty)
+      S("", next, next)
+    else if s.buf.isEmpty then S(c.toString, s.at, next)
+    else s.copy(buf = s.buf + c, at = next)
 
-  def flush(s: S): Vector[Token[String]] = word(s)
+  def flush(s: S): Vector[Token[String]] =
+    if s.buf.isEmpty then Vector.empty
+    else
+      val sink = new Scan.Sink[String]
+      wordInto(s, sink)
+      sink.result()
 }
 
 object Bpe:
