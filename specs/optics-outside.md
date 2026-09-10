@@ -99,7 +99,7 @@ package okay.http
 /** A path, and the parameters it carries. `A` is a tuple of the
  *  captured parameters, `EmptyTuple` for a fully literal path. */
 final class Route[A <: Tuple]:
-  def /[B <: Tuple](that: Route[B])(using c: Route.Concat[A, B]): Route[c.Out]
+  def /[B <: Tuple](that: Route[B])(using c: Route.Split[A, B]): Route[c.Out]
   def /(lit: String): Route[A]
 
   /** interpreter 1 — MATCH. Also the extractor, so a server writes
@@ -195,17 +195,31 @@ its own type, and `prism` is the honest bridge back: for a FIXED `A`
 a route is exactly a prism `String <-> A`, and that is where the law
 is stated and tested.
 
-**`Concat` is a typeclass, not `Tuple.Concat`.** The match type
-`Tuple.Concat[A, B]` composes fine in the forward direction and
-cannot be taken apart again: printing needs `A` and `B` back out of
-`c.Out`, and the compiler will not prove
-`Concat[Concat[A1,A2],R] = Concat[A1,Concat[A2,R]]`. An `asInstanceOf`
-would close that hole, and the operator's rule forbids it
-(`AGENTS.md`, "NO CAST WITHOUT A REAL NECESSITY"). The typed route is
-an inductive typeclass carrying BOTH directions:
+**`Split` is a typeclass, not `scala.Tuple.Concat`.** The standard
+library gives the forward direction and only that — the match type,
+and `++` for the values. Nothing takes a tuple APART again, and `url`
+needs `A` and `B` back out of `c.Out`. `split` is therefore the whole
+addition; `join` could have been `++`.
+
+The reason not to build on `Tuple.Concat` at all is sharper than
+"the compiler will not prove associativity", which is only the
+symptom. It is that the match type does not NORMALISE. Set
+`Out = Tuple.Concat[A, B]` and the induction resolves once; the
+accumulated type is then itself a `Tuple.Concat[A1, A2]`, which is
+stuck while its arguments are abstract, has no head to peel, and so
+the NEXT `/` in the chain cannot resolve at all. `Out = H *: c.Out`
+is a cons chain at every step, and a cons chain can always be peeled.
+
+An `asInstanceOf` would close the hole in one line, and the operator's
+rule forbids it (`AGENTS.md`, "NO CAST WITHOUT A REAL NECESSITY") —
+rightly here, because the cast would have to take its split index from
+`segments.length`, a different field, making correctness depend on an
+invariant (`segments.length` equals the arity of `A`) that nothing
+enforces and that stage 3's wildcard tail would break. The typed route
+is an inductive typeclass carrying BOTH directions:
 
 ```scala
-trait Concat[A <: Tuple, B <: Tuple]:
+trait Split[A <: Tuple, B <: Tuple]:
   type Out <: Tuple
   def join(a: A, b: B): Out
   def split(o: Out): (A, B)
@@ -213,7 +227,15 @@ trait Concat[A <: Tuple, B <: Tuple]:
 
 with two instances — `EmptyTuple` and `H *: T` — which is how tapir's
 `ParamConcat` does it, and it costs nothing at run time beyond the
-allocation of the tuple the user asked for.
+allocation of the tuple the user asked for. The chain of instances is
+exactly as long as `A`, which is how "where to cut" is answered
+without counting anything at run time. The refinement in each given's
+declared TYPE (`{ type Out = ... }`) is load-bearing: without it
+`c.Out` stays abstract at the call site and a user sees `Route[c.Out]`
+instead of `Route[(Int, String)]`. It was called `Concat`
+until an hour after it landed, when the operator read the name and
+took it for the standard library's; `Split` says what it actually
+adds, since `join` could have been `++`.
 
 **Percent-encoding is ours, not the JDK's.** `java.net.URLEncoder` is
 JVM-only and okay-http is cross-platform; it also encodes for a query
@@ -349,6 +371,25 @@ rather than `String` — the same, and the MCP wire says string.
 
 ## Decisions
 
+- **2026-09-10 — nested pairs instead of a flat tuple: considered,
+  rejected.** `Route[A] / Route[B] : Route[(A, B)]` makes composition
+  trivial — `join` is `(a, b)`, `split` is `case (a, b)`, no typeclass
+  and no match type at all. It was rejected because the flattening has
+  to happen SOMEWHERE, and pairs move it from the combinator to every
+  consumer. Concretely, `lit("users") / int / "posts" / str` would be
+  `Route[((Unit, Int), String)]`, and (1) the extractor the type exists
+  for becomes `case Get(userPost(((_, id), slug)))`, deepening with
+  every segment; (2) `of[C]` becomes impossible, because
+  `Mirror.ProductOf`'s `MirroredElemTypes` is FLAT, so a flattener
+  would be needed anyway — an induction over a binary tree rather than
+  over a list, which is strictly more cases; (3) literal segments stop
+  being free (today `Split[EmptyTuple, B] = B` erases them; with pairs
+  each contributes a `Unit` to be pruned, by — again — a typeclass).
+  The typeclass's real job is to turn a left-associated SYNTAX
+  (`a / b / c` groups as `((a/b)/c)`) into a right-nested TYPE, and
+  that is work the pair encoding simply does not do.
+
+
 - **2026-09-10** — the arc's criterion (an interpreter that
   DESCRIBES) is written before any candidate, because it is what
   disqualifies the pretty ones. It is the reason routes come first
@@ -419,7 +460,7 @@ body. `TestRoute` asserts both refusals.
 
 **Two things the design had to settle, and did.**
 
-`Concat` had to be a typeclass. `Tuple.Concat` composes forwards and
+`Split` had to be a typeclass. `Tuple.Concat` composes forwards and
 will not come apart: `url` needs `A` and `B` back out of `c.Out`, and
 the compiler cannot prove `Concat[Concat[A1,A2],R] =
 Concat[A1,Concat[A2,R]]`. An `asInstanceOf` would have closed it in

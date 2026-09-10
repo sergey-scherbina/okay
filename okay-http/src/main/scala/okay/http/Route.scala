@@ -54,14 +54,15 @@ final class Route[A <: Tuple] private[http] (
   /**
    * append another route, accumulating its parameters.
    *
-   * The witness is a typeclass and not `Tuple.Concat` on purpose: the
-   * match type composes in the forward direction and cannot be taken
-   * apart again — printing needs `A` and `B` back out of `c.Out`, and
-   * the compiler will not prove associativity of `Concat`. Closing
-   * that with an `asInstanceOf` is exactly what AGENTS.md forbids, and
-   * the inductive witness carries both directions honestly.
+   * The witness is a typeclass and not `scala.Tuple.Concat` on
+   * purpose, and its name says the whole difference: the standard
+   * library gives the forward direction (the match type, and `++` for
+   * the values) and nothing that takes a tuple APART again. `url`
+   * needs `A` and `B` back out of `c.Out`. Closing that with an
+   * `asInstanceOf` is what AGENTS.md forbids, and the inductive
+   * witness carries both directions honestly.
    */
-  def /[B <: Tuple](that: Route[B])(using c: Route.Concat[A, B]): Route[c.Out] =
+  def /[B <: Tuple](that: Route[B])(using c: Route.Split[A, B]): Route[c.Out] =
     val width = segments.length
     new Route[c.Out](segments ++ that.segments,
       ss =>
@@ -157,25 +158,42 @@ object Route:
       def print(t: Boolean): String = t.toString
 
   /**
-   * the witness that `A` and `B` concatenate — and, unlike
-   * `Tuple.Concat`, come apart again. Two instances, by induction on
-   * the left tuple.
+   * The witness that `A` and `B` concatenate — and, unlike
+   * `scala.Tuple.Concat`, come apart again. `split` is the whole
+   * addition: `join` could have been the standard library's `++`.
+   *
+   * Two instances, by induction on the LEFT tuple, so the chain of
+   * instances is exactly as long as `A` — which is how "where to cut"
+   * gets answered without counting anything at run time, and why no
+   * invariant has to be maintained by hand.
+   *
+   * `Out = H *: c.Out` also NORMALISES at every step, and that is the
+   * deeper reason not to reuse the standard library's type. With
+   * `Out = Tuple.Concat[A, B]` the induction works once and then the
+   * accumulated type is itself a `Tuple.Concat[A1, A2]`, a stuck match
+   * type when its arguments are abstract, with no head to peel — so
+   * the next `/` in the chain cannot resolve. A cons chain always can.
+   *
+   * The refinement in each given's declared TYPE (`{ type Out = ... }`)
+   * is load-bearing, not decoration: without it `c.Out` stays abstract
+   * at the call site and a user sees `Route[c.Out]` instead of
+   * `Route[(Int, String)]`.
    */
-  trait Concat[A <: Tuple, B <: Tuple]:
+  trait Split[A <: Tuple, B <: Tuple]:
     type Out <: Tuple
     def join(a: A, b: B): Out
     def split(o: Out): (A, B)
 
-  object Concat:
-    given empty[B <: Tuple]: (Concat[EmptyTuple, B] { type Out = B }) =
-      new Concat[EmptyTuple, B]:
+  object Split:
+    given empty[B <: Tuple]: (Split[EmptyTuple, B] { type Out = B }) =
+      new Split[EmptyTuple, B]:
         type Out = B
         def join(a: EmptyTuple, b: B): B = b
         def split(o: B): (EmptyTuple, B) = (EmptyTuple, o)
 
-    given cons[H, T <: Tuple, B <: Tuple](using c: Concat[T, B])
-        : (Concat[H *: T, B] { type Out = H *: c.Out }) =
-      new Concat[H *: T, B]:
+    given cons[H, T <: Tuple, B <: Tuple](using c: Split[T, B])
+        : (Split[H *: T, B] { type Out = H *: c.Out }) =
+      new Split[H *: T, B]:
         type Out = H *: c.Out
         def join(a: H *: T, b: B): H *: c.Out = a match
           case h *: t => h *: c.join(t, b)
