@@ -786,21 +786,41 @@ or not at all).
       (each partition's local backwardness and its minimum event
       time). The bar is MeasureWroclawFlow's table: 121 ms against
       the hand-written 22.
-- [ ] dataflow-fan-exchange — a fan finishes by merge, and stage 3
-      found a stage that wants otherwise (~3x10^5 accumulators per
-      partition, above the 100 000 crossover). Consider only AFTER
-      dataflow-complete-panes: that lane may remove the merge rather
-      than parallelise it, and then this one has nothing to buy.
-- [ ] dataflow-processes — stage 4: the worker protocol. Jobs by
-      NAME plus typed parameters (Claim 3: nothing ships a closure),
-      chunked framed transport, partials back. Acceptance: the full
-      Wrocław Result across four OS processes.
-- [ ] dataflow-recovery — stage 5: a lost partition recomputed from
-      lineage (a partition is a thunk, so this is nearly free), and
-      the same under `Sim` seeds rather than under luck.
-- [ ] dataflow-streaming — stage 6: unbounded sources, the watermark
-      as the minimum over input channels, keyed state in a backend
-      (okay-persist), exactly-once OUTCOME at the sink.
+- [x] dataflow-fan-exchange — CLOSED by its own condition. It said to
+      consider this only after dataflow-complete-panes, because that
+      lane might remove the merge instead of parallelising it. It did:
+      122 679 accumulators reach the coordinator where ~2.9 million
+      did, three orders of magnitude under the exchange's crossover.
+      There is nothing left for an exchange to buy here, and a stage
+      that wants one can still say `Finish.Shuffle`.
+- [x] dataflow-processes — LANDED as stage 4. Jobs by NAME with
+      Schema'd parameters, a four-byte length and CBOR, partials back;
+      `Job`, `Jobs`, `Req`/`Resp`, `Served`, `WorkerMain`. The
+      acceptance ran twice: the synthetic feed across four real OS
+      processes in stage 4b (TestDistributed), and the full Wrocław
+      Result across four of them in stage 7 (MeasureWroclawCluster),
+      which is the one this entry asked for.
+- [x] dataflow-recovery — LANDED as stage 5. A lost partition is
+      recomputed on a survivor, and it is nearly free exactly as the
+      entry guessed: a partition is a thunk and its partial is a pure
+      function of (parameters, index, count, bounds). Under SEEDED
+      schedules rather than luck — forty of them — plus a real worker
+      process killed mid-run. Not under `Sim`: the seeds are the
+      suite's own, because what varies is which worker dies at which
+      request and that needs no virtual clock.
+- [x] dataflow-streaming — LANDED as stage 6, except one half that
+      was REFUSED rather than forgotten, and the difference matters to
+      whoever reads this next. Landed: the epoch loop, the watermark
+      as the minimum over the partitions minus the declared lateness
+      (6a), a dying worker's partition replayed on a survivor (6b),
+      and exactly-once OUTCOME at a keyed sink with the offers counted
+      (6c). NOT landed, and argued against in 6b: keyed state in an
+      okay-persist backend. A replacement worker REPLAYS rather than
+      restores, because a partition is a recipe and snapshotting an
+      operator's insides would make every one of them a wire format
+      that has to survive a version change. The COORDINATOR's state
+      does go to okay-persist — stage 8 — because that one cannot be
+      replayed from anywhere.
 - [ ] windows-packed-key — `Flows`'s windowed partial keys panes by
       `(Long, K)`, a tuple per update. §20's hand-written operator
       packs window and key into one Long and is faster for it; the
