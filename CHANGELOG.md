@@ -19,7 +19,7 @@ underneath.
 
 It stays a compile error, never a silent fallback to the shared
 instance: that is the difference between a dependency that is a type
-and one that is a lookup. Asserted in TestPrototype. Commit: LANDING.
+and one that is a lookup. Asserted in TestPrototype. Commit: d05ae3b8.
 ## optics-fuse-affine-preview — the read the JSON paths actually do
 
 Filed at the end of the last lane, and the operator said do it.
