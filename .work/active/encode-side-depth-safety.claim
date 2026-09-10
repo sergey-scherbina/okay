@@ -1,0 +1,39 @@
+task: encode-side-depth-safety
+agent: opus-depth
+started: 2026-09-10
+branch: feature/encode-side-depth-safety
+worktree: ../okay-wt-encode-depth
+spec: specs/iterative-recursive-decode.md, remove-codecs-maxdepth (its
+  direct follow-up — found while answering an operator question about
+  Cont fusion, not from a bug report)
+
+why: `remove-codecs-maxdepth` made every DECODE door stack-safe at any
+  input depth, but never touched the WRITE side. `Json.print` and
+  `Cbor.put`/`write` are still plain native recursion over the value
+  being written — the exact same shape the decode arc fixed, just on
+  the other end of the pipe. Before this lane, that recursion was
+  reachable only by a value someone built directly in memory (rare);
+  now that decode itself can hand back an arbitrarily deep value from
+  untrusted network input, decode-then-reencode (a proxy, a relay, a
+  log) crashes on the write half of a round trip decode already
+  proved safe. Two more native-recursion sites found by the same grep
+  that found this: `Json.mergePatch` (recurses on PATCH depth, RFC
+  7396) and `okay-demo/StateMcp.damaged` (a byte-for-byte duplicate of
+  the `okay-mcp/Rpc.damaged` bug remove-codecs-maxdepth already fixed
+  once).
+
+what: `Json.print`, `Cbor.put`/`Cbor.write`, `Json.mergePatch` get the
+  same `Codecs.NativeThreshold`-then-`Cont.defer` split the decode
+  doors already carry (`Json.into`/`intoC` in the same file is the
+  exact template: side-effect into a mutable builder/Out, `Unit`-
+  returning trampoline). `okay-demo/StateMcp.damaged` gets the same
+  explicit work-list rewrite `okay-mcp/Rpc.damaged` already got.
+
+predict: mechanical, following an established in-file template
+  (`into`/`intoC`) for three of the four sites; the fourth
+  (`StateMcp.damaged`) is a straight copy of an already-landed fix.
+  Needs new tests proving each function safe on a genuinely deep
+  IN-MEMORY value (built directly, not decoded, so the test does not
+  depend on decode's own depth safety) — a large recursive schema
+  value is easy to build without going through Cbor/Json's actual
+  parser.
