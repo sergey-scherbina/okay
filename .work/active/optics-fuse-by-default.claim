@@ -1,0 +1,24 @@
+task: optics-fuse-by-default
+agent: opus-optics
+started: 2026-09-10
+branch: feature/fuse-by-default
+worktree: ../okay-wt-fusedefault
+spec: specs/optics.md (optics-fuse, stage 8)
+
+why: the operator asked why `Fuse` has to be called by name. It should
+  not. `o.set(b)(s)` is what people write, and it pays 2.600 ns / 40 B
+  where the fused form pays 1.479 / 24 — and 16.5 / 168 against 4.2 /
+  64 for a composed optic.
+
+what: make the `set` and `modify` EXTENSIONS inline with an inline
+  receiver, bodied by the same planner. It always compiles: an
+  unreadable shape falls back to the interpretation, exactly as
+  `Fuse` does today. `Fuse.set`/`Fuse.modify` stay as the named form.
+
+measure: `lensSet` and `composedSet` are written with plain `.set`, so
+  they ARE the experiment: 2.600/40 and 16.547/168 today. If they read
+  the fused figures, fusion is on by default.
+
+the cost to watch, and the reason this is a claim and not an edit:
+  every `.set`/`.modify` call site in the repo then runs a macro.
+  Compile time is the price, and it gets measured before this lands.
