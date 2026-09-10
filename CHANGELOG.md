@@ -27,7 +27,7 @@ plan with nothing built. A report rather than an error, because a test
 double is a deliberate double.
 
 3 tests, the comparison table's two rows rewritten, and docs/di.md
-gained "Several contributors, one collection". Commit: LANDING.
+gained "Several contributors, one collection". Commit: 999c4570.
 
 ## dataflow stage 6c — a row that leaves the engine, and the identity a pane already has
 
