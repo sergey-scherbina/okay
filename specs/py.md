@@ -201,3 +201,23 @@ threads-under-GIL. Concurrent dispatch proven by PID distinctness
 COLD before rethrowing, so the caller's retry lands on live
 imports-cold state; the two-engine acceptance runs one program over
 subprocess and pool unchanged. 4 more tests, all live.
+
+## Wire depth safety (2026-09-11, subprocess-wire-depth-safety)
+
+`Wire.enc`/`Wire.dec` recursed natively on `PyValue.Arr`/`Json.JArr`
+depth — a Python `list` nests as deep as a script chooses, and
+nothing bounded it. The same defect shape `okay-mcp/Rpc.damaged` and
+`okay-demo/StateMcp.damaged` already had fixed twice
+(`okay-codec`'s `remove-codecs-maxdepth`/`encode-side-depth-safety`),
+found by a full-repo grep for `Schema`/`Json` recursion at the
+operator's direct request, not from a bug report.
+
+Lower-severity threat model than the codec's own network wire — the
+Python side is normally the SAME user's own subprocess, not an
+internet attacker — but the mechanism is identical, so fixed
+regardless once found. Rewritten as an explicit work-list (`todo`/
+`Combine(n)` markers), not a `Cont.defer` trampoline: `enc`/`dec` are
+simple tree-rebuild functions with no monadic combination to
+preserve, so the lighter mechanism is the right weight. `TestWireDepth`
+proves a 100 000-level round trip, built directly (never through a
+live subprocess), so it needs no python3 to run.

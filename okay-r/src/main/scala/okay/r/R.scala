@@ -165,18 +165,51 @@ enum REval[A] derives okay.Effect:
  */
 private[r] object Wire {
 
-  def enc(v: RValue): Json = v match
-    case RValue.RNull => Json.JNull
-    case RValue.NA(t) => tagged("na", "of" -> Json.JStr(t.rName))
-    case RValue.Bool(b) => Json.JBool(b)
-    // R's integer and double are different types and stay so
-    case RValue.I32(n) => tagged("i", "v" -> Json.JNum(n.toDouble))
-    case RValue.F64(d) if d.isNaN => tagged("nan")
-    case RValue.F64(d) => Json.JNum(d)
-    case RValue.Str(s) => Json.JStr(s)
-    case RValue.Bytes(bs) => tagged("raw",
-      "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs)))
-    case RValue.Vec(xs) => Json.JArr(xs.map(enc))
+  /**
+   * `RValue.Vec`/`Json.JArr` recurse on the VALUE's own nesting — an
+   * R `list()` nests as deep as a script chooses, and this is the
+   * boundary an arbitrarily-deep R return value crosses
+   * (subprocess-wire-depth-safety, the same defect shape
+   * `okay-mcp/Rpc.damaged`/`okay-demo/StateMcp.damaged` already had
+   * fixed twice, and `okay-py/Py.scala`'s own `Wire.enc`/`dec` just
+   * fixed alongside this one). An explicit work-list, not native
+   * recursion: `todo` holds nodes still to visit and `Combine(n)`
+   * markers saying "the last n results belong to one vector, in
+   * order"; `results` accumulates finished values, most recent first,
+   * so `Combine` reverses its slice before rebuilding the vector.
+   */
+  def enc(v0: RValue): Json =
+    def leaf(v: RValue): Json = v match
+      case RValue.RNull => Json.JNull
+      case RValue.NA(t) => tagged("na", "of" -> Json.JStr(t.rName))
+      case RValue.Bool(b) => Json.JBool(b)
+      // R's integer and double are different types and stay so
+      case RValue.I32(n) => tagged("i", "v" -> Json.JNum(n.toDouble))
+      case RValue.F64(d) if d.isNaN => tagged("nan")
+      case RValue.F64(d) => Json.JNum(d)
+      case RValue.Str(s) => Json.JStr(s)
+      case RValue.Bytes(bs) => tagged("raw",
+        "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs)))
+      case RValue.Vec(_) => throw IllegalStateException("unreachable: Vec is handled by the work-list")
+
+    enum Step:
+      case Todo(v: RValue)
+      case Combine(n: Int)
+
+    var todo = List[Step](Step.Todo(v0))
+    var results = List.empty[Json]
+    while todo.nonEmpty do
+      todo.head match
+        case Step.Todo(RValue.Vec(xs)) =>
+          todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
+        case Step.Todo(other) =>
+          results = leaf(other) :: results
+          todo = todo.tail
+        case Step.Combine(n) =>
+          val (items, rest) = results.splitAt(n)
+          results = Json.JArr(items.reverse.toVector) :: rest
+          todo = todo.tail
+    results.head
 
   private def tagged(t: String, fields: (String, Json)*): Json =
     Json.JObj(("t" -> Json.JStr(t)) +: fields.toVector)
@@ -262,24 +295,45 @@ private[r] object Wire {
     case RType.Integer | RType.Double => Json.JNum(0)
     case RType.Character => Json.JStr("")
 
-  def dec(j: Json): RValue = j match
-    case Json.JNull => RValue.RNull
-    case Json.JBool(b) => RValue.Bool(b)
-    case Json.JNum(n) => RValue.F64(n)
-    case Json.JStr(s) => RValue.Str(s)
-    case Json.JArr(xs) => RValue.Vec(xs.map(dec))
-    case Json.JObj(fs) =>
-      val m = fs.toMap
-      def str(k: String) = m.get(k).collect { case Json.JStr(s) => s }
-      def num(k: String) = m.get(k).collect { case Json.JNum(n) => n }
-      str("t") match
-        case Some("na") => RValue.NA(str("of").flatMap(RType.byName).getOrElse(RType.Logical))
-        case Some("nan") => RValue.F64(Double.NaN)
-        case Some("i") => num("v").map(n => RValue.I32(n.toInt)).getOrElse(RValue.RNull)
-        case Some("raw") => str("b64").map(b => RValue.Bytes(java.util.Base64.getDecoder.decode(b)))
-          .getOrElse(RValue.RNull)
-        case _ => RValue.RNull      // an untagged object has no RValue shape
-    case _ => RValue.RNull
+  /** `enc`'s mirror — same work-list, same reasoning */
+  def dec(j0: Json): RValue =
+    def leaf(j: Json): RValue = j match
+      case Json.JNull => RValue.RNull
+      case Json.JBool(b) => RValue.Bool(b)
+      case Json.JNum(n) => RValue.F64(n)
+      case Json.JStr(s) => RValue.Str(s)
+      case Json.JObj(fs) =>
+        val m = fs.toMap
+        def str(k: String) = m.get(k).collect { case Json.JStr(s) => s }
+        def num(k: String) = m.get(k).collect { case Json.JNum(n) => n }
+        str("t") match
+          case Some("na") => RValue.NA(str("of").flatMap(RType.byName).getOrElse(RType.Logical))
+          case Some("nan") => RValue.F64(Double.NaN)
+          case Some("i") => num("v").map(n => RValue.I32(n.toInt)).getOrElse(RValue.RNull)
+          case Some("raw") => str("b64").map(b => RValue.Bytes(java.util.Base64.getDecoder.decode(b)))
+            .getOrElse(RValue.RNull)
+          case _ => RValue.RNull      // an untagged object has no RValue shape
+      case Json.JErr(_) => RValue.RNull
+      case Json.JArr(_) => throw IllegalStateException("unreachable: JArr is handled by the work-list")
+
+    enum Step:
+      case Todo(j: Json)
+      case Combine(n: Int)
+
+    var todo = List[Step](Step.Todo(j0))
+    var results = List.empty[RValue]
+    while todo.nonEmpty do
+      todo.head match
+        case Step.Todo(Json.JArr(xs)) =>
+          todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
+        case Step.Todo(other) =>
+          results = leaf(other) :: results
+          todo = todo.tail
+        case Step.Combine(n) =>
+          val (items, rest) = results.splitAt(n)
+          results = RValue.Vec(items.reverse.toVector) :: rest
+          todo = todo.tail
+    results.head
 
   def decFrame(j: Json): Either[Condition, RFrame] = j match
     case Json.JObj(fs) if fs.toMap.get("t").contains(Json.JStr("frame")) =>

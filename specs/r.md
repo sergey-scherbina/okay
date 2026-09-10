@@ -546,3 +546,25 @@ And one correction that was not about R: see the overview on
 
 (after implementation — round-trip counts, the clean-environment
 check, a real forecast package through both engines)
+
+## Wire depth safety (2026-09-11, subprocess-wire-depth-safety)
+
+`Wire.enc`/`Wire.dec` recursed natively on `RValue.Vec`/`Json.JArr`
+depth — an R `list()` nests as deep as a script chooses, and nothing
+bounded it. The same defect shape `okay-mcp/Rpc.damaged` and
+`okay-demo/StateMcp.damaged` already had fixed twice
+(`okay-codec`'s `remove-codecs-maxdepth`/`encode-side-depth-safety`),
+found alongside `okay-py`'s own identical defect by a full-repo grep
+for `Schema`/`Json` recursion.
+
+Lower-severity threat model than the codec's own network wire — the R
+side is normally the same user's own subprocess — but the mechanism
+is identical. Rewritten as an explicit work-list (`todo`/`Combine(n)`
+markers), not a `Cont.defer` trampoline: `enc`/`dec` are simple
+tree-rebuild functions with no monadic combination to preserve. The
+frame-row `decode`/`encode` (`product`, `decode[X]`, `encode[X]`
+above) needed no change — they are already flat by design (no
+`SProduct`/`SSum`/`SList`/`SVector` case at all: "R has no ... nesting
+inside a data.frame column"), refusing anything nested rather than
+recursing into it. `TestWireDepth` proves a 100 000-level round trip,
+built directly (never through a live subprocess).

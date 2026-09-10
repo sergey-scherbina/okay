@@ -41,6 +41,26 @@ surfaced in the Live suite, which the default gate does not run — the
 second time this session that explicitly running the Live tests of
 converted code paid for itself. Commits: 60b37cb7 (spec), c7611518 (the body and the fix).
 
+## okay-py/okay-r: the subprocess wire gets the same depth-safety fix
+
+A full-repo grep for `Schema`/`Json` recursion (following
+`form-recursive-depth-safety`, at the operator's direct request)
+turned up two more copies of the same defect: `okay-py/Py.scala`'s
+`Wire.enc`/`Wire.dec` and `okay-r/R.scala`'s `Wire.enc`/`Wire.dec`
+both recursed natively on `PyValue.Arr`/`RValue.Vec`/`Json.JArr`
+depth, unbounded. Python/R subprocess replies are a lower-severity
+threat model than raw network bytes (usually the same user's own
+process), but the mechanism is identical to `okay-mcp/Rpc.damaged`
+and `okay-demo/StateMcp.damaged`, both already fixed twice.
+
+Rewritten as an explicit work-list, not a `Cont.defer` trampoline —
+these are simple tree-rebuild functions with no monadic combination
+to preserve, so the lighter mechanism is the right weight. Audited
+and left untouched: `okay-conf`, `okay-r`'s own frame decode/encode,
+`okay-intent`, `okay-sql`, `okay-ui/Protocol`, `okay-cluster/Wire`,
+`okay-crdt/Wire` — all either schema-definition or schema-only walks
+with no paired value of externally-controlled depth.
+
 ## optics-outside-route-labels — the names a positional mapping never checked
 
 Stage 6 of `specs/optics-outside.md`. `Route.Of[C]` maps a route's
