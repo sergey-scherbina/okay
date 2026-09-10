@@ -31,6 +31,46 @@ so with the numbers.
 
 9-20% of a fan remains unattributed and this instrument's bars are
 wider than it; pricing that needs JMH.
+## wroclaw-remeasure-quiet — §20's table is one run on a quiet box, and the engines' own arithmetic is priced
+
+The table had been assembled from three sittings, one of them while
+sibling builds held the machine, and it carried a footnote marking
+which rows were pessimistic. It is now a single
+`scripts/wroclaw-bench.sh 8 3 1` — every engine, a JVM per lane, best
+of 3 rounds each — on a box whose load average stayed under 5. No
+footnote, and the rows can be read against each other.
+
+**What the re-run bought, beyond tidiness: it priced
+bench-engine-native-arithmetic.** Flink and Spark used to accumulate
+through an okay `Aggregator`, whose `((Long, Long), Option[Int])`
+Flink's type extractor cannot read — so its window state went through
+Kryo. Same machine, same job, same eleven checksums:
+
+  flink p1    673 958 ev/s, 2 181 B/event  ->  756 066, 1 761
+  flink p4  1 314 163 ev/s, 2 187 B/event  -> 1 473 821, 1 767
+  spark RDD   260 844 ev/s, 16 172 B/event ->   339 395, 13 681
+
++12% for Flink with a fifth of its allocation gone, +30% for Spark's
+RDD lane. A benchmark that hands a competitor its slowest serializer
+is not measuring the competitor, and this is what it had cost them.
+
+**And the single-core question this section has been chasing is now
+answered in the table itself.** §20's `Job` defines the statistic as
+`count zip sum zip max`, and that lane reads 2 823 530 ev/s against
+the plain-JVM fold's 3 951 094. The same lane over
+`Aggregator.summary` reads **3 731 250 — within 6% of a hand-written
+mutable fold**, on an operator that also evicts and takes any key
+type. What was a 1.4x gap is 6%, and the thing that closed it was one
+flat accumulator.
+
+**The plain-JVM row acquired the clearest shape in the table**: it
+peaks at TWO threads (429 ms) and gets slower at four (453) and eight
+(461). The fold parallelises; the single-threaded reduction after it
+does not, and with no watermark it walks every pane the run ever
+opened. Every library lane has the same curve more gently (1.3x to
+2.2x from one core to eight) because they all fold into maps that
+never evict; okay reaches 5.6x because its watermark had already
+closed those panes.
 
 ## dataflow stage 10 — the election, and the ghost
 

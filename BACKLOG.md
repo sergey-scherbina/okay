@@ -106,12 +106,11 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       the fallback must be chosen at construction rather than
       mid-run). Measure before believing: the same 2x2 is in
       `OkayLane` and prices it on every run.
-- [ ] wroclaw-remeasure-quiet — the four rows quoted for the
-      `summary` fix were taken while a sibling's build held the box
-      (load 8-20). The ratio held across three passes at absolute
-      times varying 1.7x, so the finding stands, but the §20 numbers
-      should be re-taken on a quiet box and the "why one core loses"
-      table re-run whole.
+- [x] wroclaw-remeasure-quiet — DONE (2026-09-10): §20's whole table
+      is one run of `scripts/wroclaw-bench.sh 8 3 1` on a box under
+      load 5, so the daggers are gone and the rows can be read against
+      each other. It also PRICED the arithmetic rewrite: Flink +12%
+      and a fifth less allocation, Spark's RDD lane +30%.
 - [ ] handler-fusion-flat — GATED OFF by stage 0 (the ceiling for pass
       fusion measured 1.13–1.29x); reopen only with a new number. Was:
       `Handler.flat`: Handler.union assembled
