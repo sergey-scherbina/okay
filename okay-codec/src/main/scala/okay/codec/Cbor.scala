@@ -226,35 +226,82 @@ object Cbor {
      * function's own: an unknown field 200 items deep inside 200
      * declared ones is 400 levels of the same stack
      * (input-depth-both-wires).
+     *
+     * PAST `Cbor.NativeThreshold` this dispatches to the SAME
+     * `Cont.defer` trampoline `Cbor.get` uses, for the same reason:
+     * skipping an undeclared field is exactly as input-depth-driven as
+     * decoding a declared one, and was the one site the two closed
+     * roots left as a rescue rather than a policy
+     * (depth-is-policy-not-rescue, cbor-skip-threshold-trampoline).
+     * Uniformly typed (`Either[String, Unit]`), so unlike `getC` there
+     * is no cross-type `R` to thread through the schema — every
+     * caller's own `R` works, since `skipItem` never exposes `Cont` in
+     * its signature.
      */
     def skipItem(): Either[String, Unit] =
+      if depth >= Cbor.NativeThreshold then reset(skipItemInsideC[Either[String, Unit]])
+      else skipItemNative()
+
+    private def skipItemNative(): Either[String, Unit] =
       if !enter() then tooDeep
       else
-        val out = skipHere()
+        val out = skipHereNative()
         leave()
         out
 
-    private def skipHere(): Either[String, Unit] =
+    private def skipHereNative(): Either[String, Unit] =
       head().flatMap { (major, n) =>
         major match
           // 0/1: the argument WAS the integer; 7: head() consumed the
           // simple value or the float's bits with it
           case 0 | 1 | 7 => Right(())
           case 2 | 3 => take(n.toInt).map(_ => ())
-          case 4 => many(n)
-          case 5 => many(n * 2)            // a map is its pairs, flattened
-          case 6 => skipItem()             // a tag, then the tagged item
+          case 4 => manyNative(n)
+          case 5 => manyNative(n * 2)      // a map is its pairs, flattened
+          case 6 => skipItem()             // the DISPATCHER: depth may
+                                            // have crossed the threshold
+                                            // by the time a tag's own
+                                            // item is reached
           case m => Left(s"unsupported major type $m")
       }
 
-    private def many(count: Long): Either[String, Unit] =
+    private def manyNative(count: Long): Either[String, Unit] =
       var left = count
       var bad: Option[String] = None
       while bad.isEmpty && left > 0 do
-        skipItem() match
+        skipItem() match               // the DISPATCHER, same reason
           case Left(e) => bad = Some(e)
           case Right(()) => left -= 1
       bad.toLeft(())
+
+    /** the trampoline: `skipHereC`'s major-6 (a tag) recursion is the
+      * ONE point that descends into a fresh item, deferred through
+      * `Cont`; the sibling loop for major 4/5 (`manyC`) is the same
+      * shape as `Cbor.get`'s own list loops */
+    private def skipItemInsideC[R]: Either[String, Unit] /> R =
+      if !enter() then Cont.Pure(tooDeep)
+      else skipHereC[R].flatMap { v => leave(); Cont.Pure(v) }
+
+    private def skipHereC[R]: Either[String, Unit] /> R =
+      Cont.Pure(head()).flatMap {
+        case Left(e) => Cont.Pure(Left(e))
+        case Right((major, n)) => major match
+          case 0 | 1 | 7 => Cont.Pure(Right(()))
+          case 2 | 3 => Cont.Pure(take(n.toInt).map(_ => ()))
+          case 4 => manyC[R](n)
+          case 5 => manyC[R](n * 2)
+          case 6 => Cont.defer(() => skipItemInsideC[R])(r => Cont.Pure(r))
+          case m => Cont.Pure(Left(s"unsupported major type $m"))
+      }
+
+    private def manyC[R](count: Long): Either[String, Unit] /> R =
+      def loop(left: Long): Either[String, Unit] /> R =
+        if left <= 0 then Cont.Pure(Right(()))
+        else Cont.defer(() => skipItemInsideC[R]) {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(()) => loop(left - 1)
+        }
+      loop(count)
 
   /** one container's worth of nesting, on the reader's one budget —
    * the declared reads spend it exactly as a skip does */

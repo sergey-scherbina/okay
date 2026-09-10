@@ -1,5 +1,47 @@
 # Changelog
 
+## cbor-skip-threshold-trampoline — target 4 of 4, and a benchmark under 34x load caught in time
+
+depth-is-policy-not-rescue named four native-recursion sites the two
+closed roots left protected only by the hard Codecs.maxDepth refusal.
+This lane closes the first and simplest: Cbor.In.skipItem, which
+skips an UNDECLARED field's value — as input-depth-driven as decoding
+a declared one, and missed when the spec was first scoped to "two
+roots".
+
+Same design, simpler than either root: skipItem is uniformly typed
+(Either[String, Unit]), so no cross-type R to thread. The dispatcher
+checks depth >= Cbor.NativeThreshold and calls skipItemNative (today's
+code, renamed; its recursive calls still go through the DISPATCHER so
+a mid-flight crossing switches over) or reset(skipItemInsideC) (the
+Cont.defer twin).
+
+Verifying it mattered needed a scratch-only Codecs.maxDepth bump.
+Unlike Json.decode, Cbor.In's enter/leave IS both the wire-contract
+refusal and the only stack guard — inseparable, so at maxDepth=64
+there is no way to construct a document deep enough to exercise the
+fix through the public API (the same discovery JsonStrict.Reader.get
+produced in root 2). Temporarily raised in an uncommitted scratch
+copy: native skipItem overflows around 50 000 levels; with the fix,
+400 000 succeeds. Its own per-level cost is cheaper than Cbor.get's
+schema fold (which failed around 5 000) - no schema dispatch, just
+header parsing.
+
+The JMH gate needed a second look too. First 3-fork pair:
+1918+-218 -> 2184+-65 ns/op, a 14% "regression" - taken while system
+load averaged 34 (another agent's own JMH run; an ORPHANED jmh.lock
+from a third, unrelated worktree was found along the way and cleared
+- jmh-lock-orphan, a killed fork's host JVM sitting at 0% CPU for
+7 minutes). Re-run at 5 forks once load dropped to ~5: 1350+-85 before,
+1367+-75 after - indistinguishable. bench-one-round-lies was never
+only about fork count; box load matters as much as warmup, and
+checking `uptime` before trusting a delta is now part of this arc's
+own practice, not just advice for others.
+
+181 tests in okay-codec (4 new, TestCborSkipTrampoline), 178 on JS
+and Native. Three of four sites remain: JsonValue's fast parser,
+Json.lossless's projection, JsonStrict.Reader.get.
+
 ## dataflow stage 6a — the epoch loop, and the same bug three times
 
 Everything before this was a BATCH engine that happened to run across

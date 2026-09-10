@@ -290,3 +290,43 @@ left: raising it, or removing the refusal entirely, becomes a
 deliberate wire-contract choice with no reopened risk, not assumed to
 be safe by this entry alone — that decision still wants its own lane
 to state it and update `TestVector`/the two roots' own tests together.
+
+### Target 4 done: `Cbor.In.skipItem` (cbor-skip-threshold-trampoline, 2026-09-10)
+
+Same design, uniformly typed (`Either[String, Unit]`) so no cross-type
+`R` to thread — simpler than either closed root. The dispatcher
+(`skipItem`) checks `depth >= Cbor.NativeThreshold` and calls either
+`skipItemNative` (today's code, renamed, its `case 6`/`many` still call
+the DISPATCHER `skipItem()` so a mid-flight crossing switches over) or
+`reset(skipItemInsideC)` (the `Cont.defer`-based twin, `skipHereC`
+mirroring `skipHereNative`'s major-type dispatch exactly).
+
+**Verifying it mattered needed a scratch-only `Codecs.maxDepth` bump.**
+Unlike `Json.decode` (whose depth bound is separate, upstream, at
+`Json.isCut`), `Cbor.In`'s `enter`/`leave` IS both the wire-contract
+refusal AND the only thing that would have prevented overflow — the
+two are inseparable, so at today's `maxDepth` = 64 there is no way to
+even CONSTRUCT a document deep enough to exercise the fix through the
+public API (the same discovery `JsonStrict.Reader.get` produced in
+root 2, now confirmed a second time). Temporarily raising `maxDepth`
+in a scratch, uncommitted copy (never landed) found: native
+`skipItem` overflows around 50 000 levels; with `NativeThreshold`
+restored, 400 000 levels succeeds. `skipItem`'s own per-level cost is
+noticeably cheaper than `Cbor.get`'s schema fold (which failed around
+5 000) — no schema dispatch, just header parsing.
+
+**The JMH gate itself needed a second look.** The first 3-fork
+before/after pair read 1918±218 → 2184±65 ns/op, a 14% "regression"
+— taken while system load averaged 34 (another agent's JMH run
+sharing the box; an orphaned JMH lock from a THIRD, unrelated
+worktree was found and cleared along the way, `jmh-lock-orphan`).
+Re-run at 5 forks once load dropped to ~5: **1350±85 before, 1367±75
+after** — indistinguishable. `bench-one-round-lies` was never about
+fork count alone; box load matters as much as warmup, and this arc's
+own JMH runs are not exempt from checking `uptime` before trusting a
+delta.
+
+Target 4 done. Of the four native-recursion sites this section
+named, one is closed alongside the two already-closed roots; three
+remain open: `JsonValue`'s fast parser (target 1), `Json.lossless`'s
+projection (target 2), `JsonStrict.Reader.get` (target 3).
