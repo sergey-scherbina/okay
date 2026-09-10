@@ -1751,6 +1751,59 @@ loses the exchange continues) and NOTHING per `Run`. So the same
 program is portable to a platform with no threads for a fifth more,
 and on the JVM you simply keep `runWith`.
 
+## 9b. Can a compiled optic BEAT hand-written code?
+
+The operator asked it directly, after fusion had already reached
+hand-written to the byte for a single update: is there anything left,
+and could an optic be *faster* than the code a person writes? The
+answer is not one answer. It is two, and they differ by whether the
+JIT can already do the job.
+
+Seven lanes, one round, `-prof gc`; allocation bars are ±0.002 B.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `oneCopyBoth` — `p.copy(age = n, name = "x")` | **1.48** | 24 |
+| `twoCopiesChained` — `p.copy(age = n).copy(name = "x")` | 3.61 | **24** |
+| `fusedTwoSets` — two fused optic `set`s | 3.94 | 24 |
+| `mapFused` — `vec.map(x => (x + 1) * 2)` | **1570** | **19 672** |
+| `mapMapChained` — `vec.map(_ + 1).map(_ * 2)` | 4006 | 38 320 |
+| `traversalFusedByLaw` — one `modify` | 1427 | 19 672 |
+| `traversalTwice` — two `modify`s | 4086 | 38 320 |
+
+**On a product, the JIT has already done half of it.** The naive chain
+allocates exactly as much as the careful single `copy` — 24 bytes,
+both — so escape analysis scalar-replaces the intermediate `Person`
+and there is no allocation left to win. What it does NOT remove is the
+work: 3.61 against 1.48 ns, because the second `copy` still reads and
+writes every field. So fusing `set ∘ set` into one `copy` would buy
+about 2 ns and nothing in bytes, on this platform. (Scala Native and
+Scala.js have no escape analysis of that quality, so the same rewrite
+should buy the allocation there too — not measured, and therefore not
+claimed.)
+
+**On a container, the JIT cannot, and the law can.** Two passes cost
+38 320 B and 4006 ns; one pass costs 19 672 B and 1570 ns. The
+intermediate `Vector` is a thousand elements long and plainly escapes
+the first `map`, so no analysis will delete it. The functor law will:
+`map(f) . map(g) == map(f . g)` is an equality the compiler is
+*licensed* to use and the JIT is not, because the JIT does not know
+the law. That is where "faster than hand-written" actually lives, and
+what it means precisely: faster than the code people write, equal to
+the code a careful person writes.
+
+**And the optic itself costs nothing in that comparison.**
+`traversalTwice` (4086) sits on `mapMapChained` (4006), and
+`traversalFusedByLaw` (1427) on `mapFused` (1570). The optic is not
+the overhead; the missing rewrite is. `fusedTwoSets` at 3.94 against
+the naive 3.61 says the same for products: today's fusion emits the
+two copies a person would write, and the prize for teaching it the law
+is the gap to 1.48.
+
+Filed as `optic-law-rewrites` with these numbers attached, because
+the entry now has what the repository asks of one: a measured prize
+rather than an expectation.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

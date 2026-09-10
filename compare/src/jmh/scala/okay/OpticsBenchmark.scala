@@ -51,6 +51,7 @@ class OpticsBenchmark {
   // macro cannot expand another macro's captured call (optics-fuse),
   // so a fusable optic names its own get and put
   private inline def iAge = Lens[Person, Person, Int, Int](_.age, (s, v) => s.copy(age = v))
+  private inline def iName = Lens[Person, Person, String, String](_.name, (s, v) => s.copy(name = v))
   private inline def iAddress =
     Lens[Person, Person, Option[Address], Option[Address]](_.address, (s, v) => s.copy(address = v))
   private inline def iZip = Lens[Address, Address, Int, Int](_.zip, (s, v) => s.copy(zip = v))
@@ -86,6 +87,32 @@ class OpticsBenchmark {
 
   @Benchmark def vectorSum: Int = vec.foldLeft(0)(_ + _)
   @Benchmark def traversalFold: Int = each.foldMap(identity)(vec)
+
+  // ---------------------------------------------------------------- can a compiled optic BEAT hand-written?
+  //
+  // The operator's question. Fusion already reaches hand-written to
+  // the byte for one update (fusedLensSet above); the interesting
+  // question is whether the LAWS license work a hand writes and a
+  // compiler could delete. Two candidates, and each is measured
+  // against the two things a person actually writes.
+  //
+  // (a) two updates to one product. The naive chain allocates an
+  //     intermediate; the careful `copy` with both names does not. If
+  //     the JIT's escape analysis already erases the intermediate,
+  //     there is nothing here to win on the JVM and the answer is a
+  //     number, not an opinion.
+  @Benchmark def twoCopiesChained: Person = { n += 1; p.copy(age = n).copy(name = "x") }
+  @Benchmark def oneCopyBoth: Person = { n += 1; p.copy(age = n, name = "x") }
+  @Benchmark def fusedTwoSets: Person = { n += 1; Fuse.set(iName)("x")(Fuse.set(iAge)(n)(p)) }
+
+  // (b) two passes over a container. The functor law says
+  //     map(f) . map(g) == map(f . g), so a rewriter is LICENSED to
+  //     delete the intermediate — which no `copy` fusion can claim,
+  //     because the law is what makes it sound.
+  @Benchmark def mapMapChained: Vector[Int] = vec.map(_ + 1).map(_ * 2)
+  @Benchmark def mapFused: Vector[Int] = vec.map(x => (x + 1) * 2)
+  @Benchmark def traversalTwice: Vector[Int] = each.modify(_ * 2)(each.modify(_ + 1)(vec))
+  @Benchmark def traversalFusedByLaw: Vector[Int] = each.modify(x => (x + 1) * 2)(vec)
 }
 
 /** the model lives here, not in the class: JMH generates a subclass, and

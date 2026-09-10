@@ -1,5 +1,105 @@
 # Changelog
 
+## optics-arc-2 — aggregation, arrows, and the lens that may create
+
+The operator read the survey and said take all three, and put the
+reading in the textbook.
+
+**Aggregating is not iterating.** A traversal walks a shape and hands
+it back; nothing in that machinery answers ONE thing from many focuses.
+Clarke, Elkins, Gibbons, Loregian, Milewski, Pillmore and Roman
+catalogue the families that do, and okay had the machinery for two of
+them with no door onto it. `Reflecting` lifts a profunctor through any
+Applicative — read it beside `wander` and the difference is the whole
+family. `Classifying` puts by an algebra over every whole rather than
+by a value. `Aggregating` interprets both in ONE instance, because the
+composite asks for their intersection and the lattice has answered
+intersections since stage 0. `aggregateWith` takes okay's own
+`Aggregator`, which turns out to have been a Moore machine with an
+applicative `zip` and a semigroup `merge` all along.
+
+It is deliberately not `Strong`, and that is the design rather than a
+gap: `first` would have to answer a C from a Vector of Cs, so an
+ordinary lens does not reach this road and the classifying lens stands
+in its place. A compile-time test asserts that, and asserts it fails
+for the missing instance rather than for a typo.
+
+Found rather than assumed: the ZIP applicative needs an INFINITE
+`pure`, so the lawful one on a strict sequence does not exist and
+`Optic.zipLazy` is a LazyList. That is why the literature's is a
+ZipList, and not a Scala accident.
+
+**A scanner is an arrow.** okay-lex's `Scan` is a Mealy machine with
+its state written out as a value, which is what makes it fast and what
+stopped it composing. `Mealy` is the same machine written to compose:
+Category, Strong, Choice, with `ofScan` as the door. A scanner followed
+by a token step in one pass, and two scanners over one input by
+`fanout`, are now ordinary expressions. The price is stated where it is
+paid — a step here allocates the next machine, the very per-character
+object `scan-step-allocation` removed — so this is the composition
+layer and `Scan.all` stays the road.
+
+`Optic.Category` and `Optic.Arrow` join `Profunctor` in core to say
+why this works: Rivas and Jaskelioff put arrows in the same table as
+monads and applicatives, a strong monoid in the category of
+profunctors, where an optic is not a monoid at all but a Tambara
+module. Neighbours, not rivals.
+
+**And the creating lens turns out to be a lens.** This arc has carried
+a refusal since stage 1: a router that invents a missing parent during
+`set` breaks GetPut, so `JsonOptic` would not have one and `Form.edit`
+kept its own walk. Half of that has now dissolved. What makes it
+unlawful is not the creating, it is that the creation happens INSIDE
+`set`, where `get` cannot see it. Kmett's `non` moves absence into the
+focus, `JsonOptic.creating` composes it down a path, and TestFormOptic
+shows that path producing exactly what `Form.edit` produces, defaults
+and all, at one level of absence and at two. Form keeps its router for
+the reason that survives: interpreting a text by the field's schema,
+growing a list, swapping a sum's case are not navigation.
+
+Two consequences the tests found. Writing the default PRUNES the whole
+spine, because absence and the default are one point at every level —
+creation downwards and pruning upwards are one law read in two
+directions, and a sibling anywhere stops it exactly there. And the
+law's domain has an edge, inherited from `at`: a scalar where a parent
+belongs refuses the write rather than clobbering it.
+
+**And the speed question, answered by measurement.** The operator
+asked whether anything is left on the hot path, and whether a compiled
+optic could be FASTER than hand-written. It is two questions, and the
+numbers separate them (docs/benchmarks.md §9b).
+
+On a product, the JIT has already done half the job: the naive
+`copy(...).copy(...)` chain allocates exactly what the careful single
+`copy` allocates, 24 bytes both, so escape analysis erases the
+intermediate and there is no allocation left to win. It does not erase
+the WORK — 3.61 against 1.48 ns — so fusing `set ∘ set` buys about
+2 ns and nothing in bytes here.
+
+On a container it is the other way round. Two passes cost 38 320 B and
+4006 ns, one pass 19 672 B and 1570 ns, and the thousand-element
+intermediate plainly escapes, so no analysis will delete it. The
+functor law will: `map(f) . map(g) == map(f . g)` is an equality the
+compiler may use and the JIT may not, because the JIT does not know
+the law. That is where "faster than hand-written" lives, and what it
+means exactly: faster than the code people write, equal to the code a
+careful person writes.
+
+The optic is not the overhead in either shape — the traversal lanes
+sit on the plain `map` lanes to within noise — so the gap is the
+missing rewrite. Filed as `optic-law-rewrites` with the numbers
+attached.
+
+**The textbook.** Chapter 10 gains three sections — aggregating is not
+iterating, arrows are the other row of the same table, and origami
+(the bananas paper's "lenses" are anamorphism brackets; Uniplate's
+plate IS a traversal and its `transform` is a fold over it, which is
+okay's own `everywhere` finding in the literature's words; and the
+optic's residual is McBride's derivative, which is Huet's zipper). The
+creating-lens refusal is rewritten rather than deleted, because it was
+half right and the half that dissolved is worth reading. Ten
+references become twenty-five, in four groups.
+
 ## bench-native-lanes — every competitor on ITS OWN operators, and the eight-core reversal
 
 The operator's rule, and it was the right one: *a benchmark row for a
