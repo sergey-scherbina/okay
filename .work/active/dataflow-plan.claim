@@ -1,0 +1,30 @@
+task: dataflow-plan
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-plan
+worktree: ../okay-wt-dataflow
+spec: specs/dataflow.md (to be written by this lane), stage 0 + stage 1
+
+why: the operator's task — distributed data processing in the
+  Flink/Spark shape, ours, independent, and better where it can be
+  shown to be. docs/benchmarks.md §20 states the gap in its own
+  words: "okay has no distributed lane at all yet", so the table is
+  one machine per lane and the distributed comparison is not
+  attempted. okay-cluster today is 48 lines of round-robin chunk
+  shipping with no plan, no partitioning and no exchange.
+
+what: stage 0 — specs/dataflow.md: what the engine is, what it is
+  not, the seven stages, and the three claims that are meant to be
+  falsifiable rather than marketing. stage 1 — `Flow`, the
+  distributed plan as a value in okay-cluster (the Pipeline/Catalyst
+  discipline already in core, extended with the keyed, windowed and
+  exchanged nodes), its rewrite rules, and a local executor over N
+  fibres. Acceptance is the EXISTING Wrocław checksums: the engine's
+  answer must equal OkayLane's at every parallelism.
+
+predict: the shuffle-free finish (map-side combine + a coordinator
+  merge) will carry the Wrocław job at every parallelism, because the
+  distinct (window, key) count is ~10^4 and the record count is
+  2.4x10^6 — but I expect to find at least one stage where the merge
+  road needs a boundary monoid rather than a plain Aggregator, and
+  that is the interesting part of the spec.
