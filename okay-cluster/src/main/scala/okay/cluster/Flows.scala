@@ -11,8 +11,19 @@ import scala.collection.mutable
  * is what the plan actually did, which for `Finish.Auto` is decided
  * during the run and is otherwise unknowable from the outside.
  */
+/**
+ * What a run answers, and what it had to report about itself.
+ *
+ * `retried` counts WORKERS BURIED and `failed` counts ATTEMPTS LOST,
+ * and they are two different questions since `dataflow-reconnect`: a
+ * worker is buried after several consecutive failures, so a run may
+ * lose an attempt — and recover from it on another worker — without
+ * anybody being buried at all. A suite asserting that a failure
+ * HAPPENED wants `failed`; one asserting that a machine was taken out
+ * of the rotation wants `retried`.
+ */
 final case class Run[O](value: O, dropped: Long, partitions: Int, reducers: Int,
-                       merged: Long = 0L, retried: Long = 0L)
+                       merged: Long = 0L, retried: Long = 0L, failed: Long = 0L)
 
 /**
  * What one partition may finish BY ITSELF, in one event-time column.

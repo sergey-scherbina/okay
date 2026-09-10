@@ -118,7 +118,10 @@ class TestOnce extends munit.FunSuite {
     val workers = Vector(losing(Cluster.local, 1), Cluster.local, Cluster.local)
     val got = Cluster.run(WriteJob, feed, 8, workers).runWith
 
-    assert(got.retried > 0, "the loss was never noticed — the injection is not working")
+    // `lost`, not `retried`: one lost reply no longer buries anybody
+    // (dataflow-reconnect), and what this line is checking is that
+    // the injection fired at all
+    assert(got.failed > 0, "the loss was never noticed — the injection is not working")
     // THE OUTCOME: keyed by (window, key), and therefore right
     assertEquals(Store.snapshot, expected)
     assertEquals(Store.clashed, 0L, "a repeated offer carried a DIFFERENT value — replay is not deterministic")

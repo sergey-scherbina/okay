@@ -124,7 +124,8 @@ object Cluster {
           case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
           case other => throw IllegalStateException(s"partition $i answered $other to a run")
       }.map: ws =>
-        val out = Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws), living.retries)
+        val out = Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws),
+          living.retries, living.lost)
         sink.committed(1)   // a batch run is ONE epoch, and it is over
         out
 
@@ -161,9 +162,12 @@ object Cluster {
           if first != null then why.initCause(first.nn): Unit
           throw why
         case Some(w) =>
-          try workers(w)(req)
+          try
+            val out = workers(w)(req)
+            living.answered(w)
+            out
           catch case t: Throwable =>
-            living.bury(w)
+            living.failed(w)
             go(tried + 1, if first == null then t else first)
     go(0, null)
 
@@ -175,23 +179,65 @@ object Cluster {
    * the same worker; the second is a no-op, which is what
    * `filterNot` gives for free.
    */
-  private final class Living(n: Int):
+  private final class Living(n: Int, tolerance: Int = Living.Tolerance):
     private var alive: Vector[Int] = (0 until n).toVector
     private var buried: Long = 0L
+    private val failures = Array.fill(n)(0)
+    private var attempts: Long = 0L
 
     /** a survivor for this attempt, or None when there are none */
     def pick(turn: Int): Option[Int] = synchronized {
       if alive.isEmpty then None else Some(alive(math.floorMod(turn, alive.length)))
     }
 
-    def bury(w: Int): Unit = synchronized {
-      if alive.contains(w) then { alive = alive.filterNot(_ == w); buried += 1 }
+    /**
+     * A FAILURE IS NOT YET A DEATH (dataflow-reconnect).
+     *
+     * Burying on the first throw made a run unable to survive a
+     * transient blip on every worker — stage 5's first seeded test
+     * found that by asking for exactly it, and it stayed a named
+     * limit for five stages. A worker is buried after `tolerance`
+     * CONSECUTIVE failures instead, and any success clears its count,
+     * so a machine that hiccups stays in the rotation and one that is
+     * gone is still buried after a bounded number of attempts —
+     * bounded across the whole run, not per request, because the
+     * count is the worker's rather than the caller's.
+     *
+     * The partition still moves to a survivor on every failure. This
+     * changes who is asked NEXT TIME, not who answers now.
+     */
+    def failed(w: Int): Unit = synchronized {
+      attempts += 1
+      if alive.contains(w) then
+        failures(w) += 1
+        if failures(w) >= tolerance then { alive = alive.filterNot(_ == w); buried += 1 }
     }
 
-    /** how many attempts were lost to a dead worker — reported so a
-     * suite can assert that recovery HAPPENED rather than infer it
-     * from the answer being right */
+    /** whatever this worker had against it, it has just answered */
+    def answered(w: Int): Unit = synchronized {
+      if failures(w) != 0 then failures(w) = 0
+    }
+
+    /** how many workers were buried — reported so a suite can assert
+     * that recovery HAPPENED rather than infer it from the answer
+     * being right */
     def retries: Long = synchronized(buried)
+
+    /** how many attempts were lost to a failure, buried or forgiven */
+    def lost: Long = synchronized(attempts)
+
+  private object Living:
+    /**
+     * HOW MANY CONSECUTIVE FAILURES ARE A DEATH.
+     *
+     * Three, and the number is a judgement rather than a
+     * measurement: one is what the engine did and could not survive a
+     * blip, and a large number keeps asking a corpse. What makes
+     * three cheap is that the count is per WORKER and per RUN, so a
+     * worker that is really gone costs three attempts once, not three
+     * per partition.
+     */
+    val Tolerance: Int = 3
 
   /**
    * A worker made of a registry: answer a request by looking the job
@@ -401,7 +447,7 @@ object Cluster {
               // first time this was written.
               sink.committed(round + 1)
               commit(round + 1, end, grown, dd, mm)
-              Run(sink.emit(end), dd, parts, 1, mm, living.retries)
+              Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
           else epoch(next, grown, d, m, round + 1)
         }
@@ -505,9 +551,12 @@ object Cluster {
           if first != null then why.initCause(first.nn): Unit
           throw why
         case Some(w) =>
-          try onceOn(w)
+          try
+            val out = onceOn(w)
+            living.answered(w)
+            out
           catch case t: Throwable =>
-            living.bury(w)
+            living.failed(w)
             go(tried + 1, if first == null then t else first)
     go(0, null)
 

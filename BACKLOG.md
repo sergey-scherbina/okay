@@ -661,14 +661,22 @@ or not at all).
       generates the same code the implicit discard did.
 
 ## okay-cluster / dataflow
-- [ ] dataflow-reconnect — a buried worker never returns, because a
-      `Serve` from `Served.connect` is a single connection and a
-      broken one does not heal. So a run cannot survive a transient
-      blip on EVERY worker (stage 5's first seeded test discovered
-      exactly that by asking for it). Two halves, and they are
-      separable: reconnecting a socket, and burying only after k
-      consecutive failures rather than the first. Measure whether the
-      second alone is enough before building the first.
+- [x] dataflow-reconnect — LANDED, both halves, and the measurement
+      the entry asked for says both are needed. TOLERANCE: a worker is
+      buried after three CONSECUTIVE failures and any answer clears
+      its count, which makes a blip on EVERY worker survivable — with
+      a tolerance of one, the new test dies with the same sentence
+      stage 5's first seeded test produced, "no workers left (4 were
+      given)". That alone is enough for a worker that hiccups and
+      cannot be enough for a SOCKET, whose failure is permanent by
+      construction, so `Served.reconnecting` dials lazily and drops
+      the socket on any failure. Against a server that hangs up after
+      every request, `connect` dies and `reconnecting` finishes the
+      job — the two roads differing only in which `Serve` the
+      coordinator was handed. `Run.failed` (attempts lost) is reported
+      beside `Run.retried` (workers buried), because a run can now
+      recover from a failure without burying anybody, and two tests
+      that asserted the burial were asking the older question.
 - [x] dataflow-coordinator — LANDED as stage 8. `Wire.state` makes
       the fold a value, `Checkpoint` is where it goes, and a second
       `Cluster.stream` over the same journal picks the run up. It was

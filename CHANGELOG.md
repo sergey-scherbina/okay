@@ -1,5 +1,41 @@
 # Changelog
 
+## dataflow-reconnect — a failure is not yet a death
+
+Stage 5 buried a worker on its FIRST throw, so a run could not survive
+a blip on every worker: its own first seeded test asked for exactly
+that and died with "no workers left (4 were given)". The limit has
+been named in three documents since. The entry said the fix had two
+separable halves and that the second should be measured before the
+first was built — it was, and both are needed, for different failures.
+
+TOLERANCE: a worker is buried after three CONSECUTIVE failures and any
+answer clears its count. The partition still moves to a survivor on
+every failure; the count changes who is asked next time, not who
+answers now. The control is the historical failure itself — with the
+tolerance set back to one, the new test dies with stage 5's sentence.
+
+It forced a distinction that was overdue. `Run.retried` counts workers
+BURIED, `Run.failed` counts attempts LOST, and a run can now recover
+from a failure without burying anybody — so two tests that asserted
+`retried > 0` to mean "the injection fired" were asking the older
+question (one of them the four-process kill, whose worker in a short
+run is never asked three times). They ask `failed` now.
+
+THE SOCKET: tolerance is enough for a worker that hiccups and cannot
+be enough for a connection, whose failure is permanent by
+construction. `Served.reconnecting(host, port)` dials lazily and drops
+the socket on any failure, so the next request dials again — what
+makes a RESTARTED worker process usable rather than merely tolerated.
+It does not retry inside itself: the coordinator already has a policy
+for a failed attempt and a second one hidden in the transport would
+fight it.
+
+Tested as the two roads side by side, against a server that serves one
+request per connection and hangs up: handed `connect` the run dies
+with "no workers left", handed `reconnecting` it finishes with the
+same answer and nobody buried.
+
 ## optics-outside-tools — a tool was declared three times, and the model was never told what it needed
 
 Stage 2 of `specs/optics-outside.md`. Stage 1 landed the arc's shape;

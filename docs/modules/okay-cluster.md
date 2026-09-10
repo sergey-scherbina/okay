@@ -160,15 +160,29 @@ than retried — it is the worker's considered answer, and every worker
 runs the same build. Tested under forty seeded failure schedules and
 with a real worker process killed mid-run.
 
-Two limits, named rather than implied: a buried worker never returns
-(a `Serve` is a connection, and a broken one does not heal), so a
-blip on EVERY worker still ends the run — that one is in the backlog,
-`dataflow-reconnect`. The second, the coordinator being a single
-point of failure, held until stage 8: a STREAM can journal now, so a
-successor picks the run up (see "And the COORDINATOR can be replaced
-too", below). A BATCH `Cluster.run` still dies with its coordinator,
-and it is a two-pass function with nothing to resume from — restart
+**A failure is not yet a death.** A worker is buried after three
+CONSECUTIVE failures and any answer clears its count, so a machine
+that hiccups stays in the rotation and a run survives a blip on EVERY
+worker — which it could not before `dataflow-reconnect`. The partition
+still moves to a survivor on every failure; the count changes who is
+asked next time, not who answers now. `Run.retried` counts workers
+BURIED and `Run.failed` counts attempts LOST, and they are different
+questions now.
+
+That is enough for a worker that hiccups and cannot be enough for a
+SOCKET, whose failure is permanent by construction. So
+`Served.reconnecting(host, port)` dials lazily and drops the socket on
+any failure: the next request dials again, which is what makes a
+RESTARTED worker process usable rather than merely tolerated. It does
+not retry inside itself — the coordinator already has a policy for a
+failed attempt, and a second one hidden in the transport would fight
 it.
+
+The other limit, the coordinator being a single point of failure,
+held until stage 8: a STREAM can journal now, so a successor picks
+the run up (see "And the COORDINATOR can be replaced too", below). A
+BATCH `Cluster.run` still dies with its coordinator, and it is a
+two-pass function with nothing to resume from — restart it.
 
 **As a stream.** `Cluster.stream(job, params, parts, workers, take)`
 runs the job epoch by epoch: every round advances each partition by up

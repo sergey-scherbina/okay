@@ -78,6 +78,71 @@ object Served {
       Codecs.cbor(Resp.given_Schema_Resp).decode(reply) match
         case Right(r) => r
         case Left(why) => Resp.Failed(s"undecodable answer: $why")
+
+  /**
+   * THE SAME WORKER, ON A CONNECTION THAT HEALS
+   * (dataflow-reconnect's second half).
+   *
+   * `connect` IS one socket: it dials once, and when that socket
+   * breaks every later request on it breaks too. Tolerance in the
+   * coordinator — burying a worker only after several consecutive
+   * failures — is enough for a worker that HICCUPS, and cannot be
+   * enough for this one, because the failure is permanent by
+   * construction. A restarted worker process is reachable again and
+   * its old socket never will be.
+   *
+   * So this dials LAZILY and drops the socket on any failure: the
+   * next request dials again. What it does NOT do is retry inside
+   * itself. The coordinator already has a policy for a failed
+   * attempt — move the partition to a survivor, count the failure
+   * against that worker, bury it if they keep coming — and a second
+   * policy hidden in the transport would fight it. This makes the
+   * connection able to heal; `Living` still decides when to give up.
+   */
+  def reconnecting(host: String, port: Int): Cluster.Serve =
+    // a lock of its OWN. `connect` synchronizes on its socket, which
+    // this cannot do because the socket is replaced; and a bare
+    // `synchronized` inside the lambda would take the monitor of
+    // `Served` itself and serialise every reconnecting worker in the
+    // process against every other one.
+    val lock = new Object
+    var sock: Socket | Null = null
+    var in: DataInputStream | Null = null
+    var out: DataOutputStream | Null = null
+
+    def dial(): Unit =
+      val s = Socket(host, port)
+      s.setTcpNoDelay(true)
+      sock = s
+      in = DataInputStream(s.getInputStream)
+      out = DataOutputStream(s.getOutputStream)
+
+    def drop(): Unit =
+      val s = sock
+      sock = null; in = null; out = null
+      if s != null then try s.nn.close() catch case _: Throwable => ()
+
+    req =>
+      val bytes = Codecs.cbor(Req.given_Schema_Req).encode(req)
+      val reply =
+        lock.synchronized:
+          if sock == null then dial()
+          try
+            out.nn.writeInt(bytes.length)
+            out.nn.write(bytes)
+            out.nn.flush()
+            val n = in.nn.readInt()
+            val buf = new Array[Byte](n)
+            in.nn.readFully(buf)
+            buf
+          catch case t: Throwable =>
+            // the socket is finished; the NEXT request dials again,
+            // and this attempt is the coordinator's to place
+            drop()
+            throw t
+      Codecs.cbor(Resp.given_Schema_Resp).decode(reply) match
+        case Right(r) => r
+        case Left(why) => Resp.Failed(s"undecodable answer: $why")
 }
 
 /**

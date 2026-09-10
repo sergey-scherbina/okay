@@ -902,14 +902,13 @@ settled on.
 a different subset of workers at a different request. A red run names
 the seed that produced it.
 
-**A limit the first version of that test found by asking for it.** A
-buried worker never returns, and that is the honest model rather than
-a simplification: a `Serve` from `Served.connect` IS a connection, and
-a broken connection does not heal. It also means a run cannot survive
-a blip on EVERY worker — the first seeded test made all four flaky and
-correctly died with "no workers left". Reconnection, and burial only
-after k consecutive failures, are a different lane and are named in
-the backlog rather than half-built here.
+**A limit the first version of that test found by asking for it**, and
+it held for five stages: a buried worker never returned. A `Serve`
+from `Served.connect` IS a connection, a broken connection does not
+heal, and a run therefore could not survive a blip on EVERY worker —
+the first seeded test made all four flaky and correctly died with "no
+workers left". `dataflow-reconnect` closed it with the two halves
+that entry named, and the section for it is below.
 
 **Two things still fatal, said rather than implied.** The coordinator
 is a single point of failure: if it dies, the run dies with it, and
@@ -1557,3 +1556,56 @@ computed from nanoseconds now, and the four-fold difference vanished.
 **What stays unmeasured, and is now labelled as such** rather than
 asserted beside a measured number: that fewer partitions move the
 bound up. Nobody has run it.
+
+### dataflow-reconnect — a failure is not yet a death
+
+Stage 5 buried a worker on its FIRST throw. Its own first seeded test
+asked for a blip on every worker and correctly died with "no workers
+left (4 were given)", and that sentence has been a named limit in
+three documents ever since. The entry said the fix had two separable
+halves and that the second should be measured before the first was
+built. It was, and the answer is that both are needed — for different
+failures.
+
+**Tolerance.** A worker is buried after three CONSECUTIVE failures,
+and any answer clears its count. The partition still moves to a
+survivor on every failure: what the count changes is who is asked NEXT
+TIME, not who answers now. Three is a judgement rather than a
+measurement — one is what the engine did and could not survive a blip,
+and a large number keeps asking a corpse — and what makes it cheap is
+that the count belongs to the WORKER and the RUN, so a machine that is
+really gone costs three attempts once, not three per partition.
+
+The control is the historical failure itself: with the tolerance set
+back to one, the new test dies with the sentence stage 5 produced.
+
+**And it forced a distinction that was overdue.** `Run.retried` counts
+workers BURIED; `Run.failed` counts attempts LOST. A run can now
+recover from a failure without burying anybody, so two tests that
+asserted `retried > 0` to mean "the injection fired" were asking the
+older question — one of them the four-process kill, whose worker in a
+short run is never asked three times. They ask `failed` now, which is
+the same claim on the instrument that still means it.
+
+**The socket.** Tolerance is enough for a worker that hiccups and
+cannot be enough for a connection, whose failure is permanent by
+construction: a broken socket is broken for ever, so tolerance just
+keeps asking a corpse three times instead of once. So
+`Served.reconnecting(host, port)` dials LAZILY and drops the socket on
+any failure — the next request dials again, which is what makes a
+RESTARTED worker process usable rather than merely tolerated.
+
+It does NOT retry inside itself, and that is the design rather than an
+omission: the coordinator already has a policy for a failed attempt —
+move the partition, count it against that worker, bury it if they keep
+coming — and a second policy hidden in the transport would fight it.
+The transport makes the connection able to heal; `Living` decides when
+to give up.
+
+**The test is the two roads side by side.** A server that serves one
+request per connection and hangs up — the cheapest honest model of a
+worker that restarts, since the port stays reachable and the socket
+does not. Handed `Served.connect`, the run dies with "no workers
+left"; handed `Served.reconnecting`, it finishes with the same answer
+and nobody buried. Same server, same job, same tolerance: the only
+difference is which `Serve` the coordinator was given.

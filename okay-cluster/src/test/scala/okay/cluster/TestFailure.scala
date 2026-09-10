@@ -81,6 +81,51 @@ class TestFailure extends munit.FunSuite {
     assert(buried > 0, "forty schedules and nothing ever died — the injection is not working")
   }
 
+  /**
+   * A worker that throws on its FIRST request and works afterwards —
+   * a blip, not a death.
+   */
+  def blips(base: Cluster.Serve): Cluster.Serve =
+    val first = java.util.concurrent.atomic.AtomicBoolean(true)
+    req =>
+      if first.getAndSet(false) then throw java.io.IOException("a blip")
+      else base(req)
+
+  test("A TRANSIENT BLIP ON EVERY WORKER, and the run survives it") {
+    // THE SCHEDULE STAGE 5 COULD NOT SURVIVE. Its first seeded test
+    // asked for exactly this and the run died: a `Serve` was buried
+    // on its FIRST throw, so a hiccup that hit every worker left
+    // nobody alive. It has been a named limit in three documents
+    // since, and it is `dataflow-reconnect`'s first half: a worker is
+    // buried after several CONSECUTIVE failures, and any answer
+    // clears its count.
+    val workers = Vector.fill(4)(blips(Cluster.local))
+    val got = Cluster.run(FanJob, feed, 8, workers).runWith
+    assertEquals(got.value, healthy.value, "a blip on every worker changed the answer")
+    assertEquals(got.dropped, healthy.dropped)
+    assertEquals(got.merged, healthy.merged)
+    assert(got.failed >= 4, s"only ${got.failed} attempts were lost — the blips did not fire")
+    assertEquals(got.retried, 0L,
+      "a worker that hiccupped once and then answered was buried anyway")
+  }
+
+  test("a blip is forgiven, and forgetting is what makes it a blip") {
+    // the count is CONSECUTIVE: a worker that fails, answers, fails
+    // again is at one failure, not two. Without the reset a long
+    // stream would bury every worker it ever hiccupped on, which is
+    // the same limit in slow motion.
+    val n = AtomicInteger(0)
+    val flaky: Cluster.Serve = req =>
+      // every third request throws: six failures over the run, never
+      // two in a row
+      if n.incrementAndGet() % 3 == 0 then throw java.io.IOException("again")
+      else Cluster.local(req)
+    val got = Cluster.run(FanJob, feed, 8, Vector(flaky, Cluster.local)).runWith
+    assertEquals(got.value, healthy.value)
+    assert(got.failed > 0, "the flake never fired")
+    assertEquals(got.retried, 0L, "a worker that never failed twice in a row was buried")
+  }
+
   test("one survivor is enough") {
     val workers = Vector.tabulate(4)(i => if i < 3 then doomed(Cluster.local, 1) else Cluster.local)
     val got = Cluster.run(FanJob, feed, 8, workers).runWith
@@ -117,6 +162,61 @@ class TestFailure extends munit.FunSuite {
     assert(asked.get <= 4, s"a deterministic refusal was retried: ${asked.get} requests for 4 partitions")
   }
 
+  /**
+   * A SERVER THAT SERVES ONE REQUEST PER CONNECTION AND HANGS UP.
+   *
+   * The cheapest honest model of a worker that restarts: the port
+   * stays reachable, and the socket you were holding does not. It
+   * speaks the framed protocol by hand rather than through
+   * `Served.handle`, because `handle` loops until EOF and the point
+   * here is that it does not.
+   */
+  def hangingUp(server: java.net.ServerSocket): Thread =
+    Thread.ofVirtual().start { () =>
+      try
+        while !server.isClosed do
+          val sock = server.accept()
+          val in = java.io.DataInputStream(sock.getInputStream)
+          val out = java.io.DataOutputStream(sock.getOutputStream)
+          try
+            val n = in.readInt()
+            val bytes = new Array[Byte](n)
+            in.readFully(bytes)
+            val answer = okay.codec.Codecs.cbor(Req.given_Schema_Req).decode(bytes) match
+              case Right(req) => Cluster.local(req)
+              case Left(why) => Resp.Failed(why)
+            val reply = okay.codec.Codecs.cbor(Resp.given_Schema_Resp).encode(answer)
+            out.writeInt(reply.length)
+            out.write(reply)
+            out.flush()
+          finally sock.close()      // one request, then the connection is gone
+      catch case _: java.net.SocketException => ()
+    }
+
+  test("A CONNECTION THAT BREAKS EVERY TIME: `connect` dies, `reconnecting` heals") {
+    // tolerance is enough for a worker that HICCUPS and cannot be
+    // enough for a socket, because a broken one is broken for ever —
+    // which is why `dataflow-reconnect` had two halves rather than
+    // one. This is the second: the same server, the same job, and the
+    // only difference is which `Serve` the coordinator was handed.
+    val server = java.net.ServerSocket(0)
+    val serving = hangingUp(server)
+    try
+      val port = server.getLocalPort
+      val once = Vector.fill(2)(Served.connect("127.0.0.1", port))
+      val e = intercept[IllegalStateException](Cluster.run(FanJob, feed, 8, once).runWith)
+      assert(e.getMessage.contains("no workers left"), e.getMessage)
+
+      val healing = Vector.fill(2)(Served.reconnecting("127.0.0.1", port))
+      val got = Cluster.run(FanJob, feed, 8, healing).runWith
+      assertEquals(got.value, healthy.value, "a healing connection changed the answer")
+      assertEquals(got.merged, healthy.merged)
+      assertEquals(got.retried, 0L, "a connection that healed was buried anyway")
+    finally
+      server.close()
+      serving.join()
+  }
+
   test("A REAL WORKER PROCESS IS KILLED MID-RUN, and the job finishes") {
     val cp = System.getProperty("okay.cluster.cp")
     assume(cp != null, "the test classpath was not handed over (see build.sbt)")
@@ -149,7 +249,13 @@ class TestFailure extends munit.FunSuite {
       val got = Cluster.run(FanJob, feed, 8, doomed +: sockets.drop(1)).runWith
       assertEquals(got.value, healthy.value, "a killed process changed the answer")
       assertEquals(got.merged, healthy.merged)
-      assert(got.retried > 0, "the killed worker was never noticed")
+      // `lost`, not `retried`: since dataflow-reconnect a worker is
+      // buried after several CONSECUTIVE failures, so one killed
+      // process in a short run may never be buried at all — every
+      // partition it held simply moves to a survivor. What this test
+      // is about is that the death was NOTICED and paid for, and the
+      // attempts counter is what says so.
+      assert(got.failed > 0, "the killed worker was never noticed")
     finally procs.foreach(_.destroyForcibly(): Unit)
   }
 }
