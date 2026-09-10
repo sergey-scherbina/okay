@@ -1,5 +1,60 @@
 # Changelog
 
+## optics-zero-tax — the lens people actually write now fuses
+
+The operator asked why an optic cannot simply be expanded at compile
+time into the code a person would write. It can. `Fuse` has emitted
+exactly that since optics-fuse, byte for byte against a hand-written
+`copy` — for a lens whose halves are written out. The shape it could
+NOT read was `Lens[S](_.f)`, which is the idiomatic way to build a
+lens in this library. So the answer to the question was "we do", and
+the honest answer was "we do, for the shape nobody writes".
+
+The reason on record was that a macro cannot see through another
+macro's captured call. That is true and it is beside the point.
+`Focus.impl` is an ordinary compile-time function over trees, so
+`Fuse.plan` never needed the compiler to expand it: it can call it,
+with the selector lambda and the Mirror sitting right there in the
+call. Twenty lines, and the fusion now reads the shape that matters,
+alone, composed, and through an `inline def`.
+
+**The number.** One round, `-prof gc`:
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `copySet` — the hand-written `p.copy(age = n)` | 1.488 | 24 |
+| **`fusedSelectorSet`** — `Fuse.set(Lens[P](_.age))` | **1.479** | **24** |
+| `fusedLensSet` — the same with the halves written out | 1.524 | 24 |
+| `lensSet` — the live optic, as before this lane | 2.600 | 40 |
+| `nestedCopy` — the hand-written nested update | 3.713 | 64 |
+| **`fusedSelectorComposed`** — a selector chain through `Some` | **4.213** | **64** |
+| `fusedComposedSet` — the same, halves written out | 4.132 | 64 |
+| `composedSet` — the live composed optic | 16.547 | 168 |
+
+One field: the fused selector lens IS the hand-written `copy`, 24
+bytes both and 1.479 against 1.488 ns, inside the bars. It used to
+cost 2.600 ns and 40 bytes. Composed: the allocation is identical to
+the hand-written nested update and the time is half a nanosecond
+above it, against the live optic's 16.5 ns and 168 bytes.
+
+What is still true: an optic chosen at RUN time cannot be fused, and
+`get`, `foldMap` and `traverseOf` are not fused at all. Only `set`
+and `modify`, and only where the path is known when the code is
+compiled.
+
+**The test that can see it.** Correctness is identical either way,
+which is exactly why the fusion could switch itself off for a whole
+lane with every test green. The fallback runs `optic.set(b)(s)` and
+needs the `Function1` interpretation; fused code emits `s.copy(...)`
+and never asks for it. So the test poisons that instance: a fused
+call passes, a fallback throws. Watched it fail with the new case
+switched off before keeping it.
+
+Still unread, and named rather than left to be discovered:
+`Lens.field[S]("name")` expands to a block with a statement in it,
+and `plan` takes statement-free blocks only. It is also the slowest
+lens form and the least idiomatic.
+
 ## dataflow stage 2 — the exchange, and the number that says when not to take it
 
 specs/dataflow.md stage 2. `Finish` on the keyed and windowed nodes —

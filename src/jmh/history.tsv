@@ -1733,3 +1733,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-10	f0ffad76	6	optic-two-sets-vs-one-copy	3.61	1.48	2.44	ns/op, lower better: the naive copy chain vs one copy with both names; ALLOCATION IS EQUAL (24 B both) — escape analysis already erases the intermediate, so a set-fusion rewrite buys time, not bytes, on the JVM
 2026-09-10	f0ffad76	6	optic-map-map-vs-fused	4006	1570	2.55	ns/op, lower better: vec.map(f).map(g) vs one pass; 38 320 vs 19 672 B/op. The JIT cannot delete a 1000-element intermediate; the functor law can
 2026-09-10	f0ffad76	6	optic-traversal-fusion-prize	4086	1427	2.86	ns/op, lower better: two modify through Traversal.each vs one; the optic sits ON the hand-written map in both shapes, so the gap is the missing rewrite and not the abstraction
+2026-09-10	HEAD	20	optic-selector-lens-fused-time	1.479	1.488	0.99	ns/op, lower better: Fuse.set(Lens[P](_.age)) vs the hand-written copy; was 2.600 as a live optic
+2026-09-10	HEAD	20	optic-selector-lens-fused-alloc	24	24	1.00	B/op: identical to the hand-written copy; the live optic was 40
+2026-09-10	HEAD	20	optic-selector-composed-fused	4.213	3.713	1.13	ns/op vs the hand-written nested copy; allocation IDENTICAL at 64 B/op, against the live composed optic's 16.547 ns / 168 B

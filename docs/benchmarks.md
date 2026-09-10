@@ -1804,6 +1804,41 @@ Filed as `optic-law-rewrites` with these numbers attached, because
 the entry now has what the repository asks of one: a measured prize
 rather than an expectation.
 
+## 9c. The tax on the idiomatic lens, removed
+
+§9b said fusion already reaches hand-written for a single update. It
+did — for a lens whose halves are written out, which is not how anyone
+writes one. `Lens[S](_.f)` was unreadable to the macro, so the fusion
+was off for most code that would have wanted it. optics-zero-tax makes
+`Fuse.plan` call `Focus.impl` itself instead of waiting for the
+compiler to expand it (specs/optics.md stage 8).
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `copySet` — the hand-written `p.copy(age = n)` | 1.488 | 24 |
+| **`fusedSelectorSet`** — `Fuse.set(Lens[P](_.age))` | **1.479** | **24** |
+| `fusedLensSet` — the same with the halves written out | 1.524 | 24 |
+| `lensSet` — the live optic, as before this lane | 2.600 | 40 |
+| `nestedCopy` — the hand-written nested update | 3.713 | 64 |
+| **`fusedSelectorComposed`** — a selector chain through `Some` | **4.213** | **64** |
+| `fusedComposedSet` — the same, halves written out | 4.132 | 64 |
+| `composedSet` — the live composed optic | 16.547 | 168 |
+
+**One field: the tax is gone, to the byte.** The fused selector lens
+allocates the same 24 bytes as `p.copy(age = n)` and runs 1.479
+against 1.488 ns, inside the bars. Before this it was 2.600 ns and 40
+bytes — the 1.7x this page has quoted since the first optics gate.
+
+**Composed: the allocation is gone, half a nanosecond is not.** 64
+bytes both, against the live optic's 168; 4.2 ns against a
+hand-written 3.7 and the live optic's 16.5. The remaining gap has not
+been chased and nothing is claimed about it.
+
+What this does NOT change: an optic chosen at run time cannot be
+fused, by definition, and `get`/`foldMap`/`traverseOf` are not fused
+at all — only `set` and `modify` are. The convenience layer's price
+stands where the path is not known until run time.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

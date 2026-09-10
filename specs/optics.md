@@ -608,3 +608,62 @@ Two findings, both from the tests rather than from the design:
 - [x] the bibliography goes from 10 entries to 25, in four groups:
       the families beyond lens/prism/traversal, arrows and monoids,
       origami and the residual, and effects/grades/indices.
+
+## Stage 8 — the idiomatic lens fuses (optics-zero-tax, 2026-09-10)
+
+The operator asked why an optic cannot simply be expanded at compile
+time into the code a person would write. It can, and `Fuse` already
+did — for a lens whose halves are written out. The shape it could not
+read was `Lens[S](_.f)`, which is the idiomatic way to build a lens
+here, so in practice the fusion was off for most code that wanted it.
+
+The reason on record was "a macro cannot see through another macro's
+captured call". True, and beside the point: `Focus.impl` is an
+ordinary compile-time function over trees, so `Fuse.plan` does not
+need the compiler to expand it. It calls it, with the selector and
+the Mirror it finds in the tree.
+
+- [x] `plan` reads `Lens[S](_.f)`, alone and composed, directly and
+      through an `inline def`.
+- [x] `Focus.impl` loses the `S <: Product` bound it never used, so
+      no cast is needed to call it with types recovered from a tree.
+      The bound stays on the class, where the caller writes it.
+- [x] a test that can SEE the fusion, not just its answer: the
+      fallback needs the `Function1` interpretation and fused code
+      never asks for it, so a poisoned instance in scope tells them
+      apart at run time. Watched it fail with the case switched off
+      before it was kept — which is the check the first lane did not
+      have, and why the fusion could be measured doing nothing for a
+      whole lane while every test stayed green.
+
+MEASURED (one round, load 16-25, `-prof gc`; allocation bars ±0.008 B):
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `copySet` — the hand-written `p.copy(age = n)` | 1.488 | 24 |
+| **`fusedSelectorSet`** — `Fuse.set(Lens[P](_.age))` | **1.479** | **24** |
+| `fusedLensSet` — the same with the halves written out | 1.524 | 24 |
+| `lensSet` — the live optic, as before this lane | 2.600 | 40 |
+| `nestedCopy` — the hand-written nested update | 3.713 | 64 |
+| **`fusedSelectorComposed`** — a selector chain through `Some` | **4.213** | **64** |
+| `fusedComposedSet` — the same, halves written out | 4.132 | 64 |
+| `composedSet` — the live composed optic | 16.547 | 168 |
+
+One field: the idiomatic lens, fused, IS the hand-written `copy` — the
+same 24 bytes and 1.479 against 1.488 ns, which is inside the bars. The
+tax it used to pay was 2.600 ns and 40 bytes, and it is gone.
+
+Composed: the allocation is identical to the hand-written nested
+update, 64 bytes both, and the time is 4.2 against 3.7 ns — half a
+nanosecond above hand-written and 3.9x below the live optic's 16.5.
+Where that half nanosecond is has not been chased and is not claimed.
+
+So the answer to "why can it not just be expanded into the code a
+person would write" is that it is, for `set` and `modify` on a path
+known at compile time, and now for the way people write the path.
+
+Still unread, and the reason is the same shape rather than a
+mystery: `Lens.field[S]("name")` expands to a BLOCK with a statement
+in it (`val i = constValue[...]`), and `plan` takes `Block(Nil, _)`
+only. It is also the slowest of the lens forms and the least
+idiomatic, so it waits for a caller who wants it.

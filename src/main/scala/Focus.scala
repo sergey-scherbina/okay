@@ -19,7 +19,15 @@ final class Focus[S <: Product]:
     ${ Focus.impl[S, A]('get, 'm) }
 
 object Focus:
-  def impl[S <: Product: Type, A: Type](get: Expr[S => A], m: Expr[Mirror.ProductOf[S]])(using Quotes): Expr[Lens[S, S, A, A]] =
+  /**
+   * The bound stays on the CLASS, where the caller writes it, and is
+   * gone from here on purpose: `Fuse.plan` calls this function to
+   * expand a selector-built lens itself, and the types it recovers
+   * from a tree are abstract, so a `<: Product` here would have cost
+   * a cast to satisfy. Nothing in the body needs it — `caseFields`
+   * and `copy` are read off the symbol.
+   */
+  def impl[S: Type, A: Type](get: Expr[S => A], m: Expr[Mirror.ProductOf[S]])(using Quotes): Expr[Lens[S, S, A, A]] =
     import quotes.reflect.*
     def selector(t: Term): Option[String] = t match
       case Inlined(_, _, inner) => selector(inner)

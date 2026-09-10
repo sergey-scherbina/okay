@@ -23,8 +23,12 @@ class TestFuse extends munit.FunSuite {
   inline def zip = Lens[Address, Address, Int, Int](_.zip, (s, v) => s.copy(zip = v))
   inline def address =
     Lens[Person, Person, Option[Address], Option[Address]](_.address, (s, v) => s.copy(address = v))
-  /** the same lens through the selector macro: correct, and NOT fused */
+  /** the same lens through the selector macro — FUSED since
+   * optics-zero-tax, which is the shape most code actually writes */
   inline def ageBySelector = Lens[Person](_.age)
+  inline def homeBySelector = Lens[Person](_.home)
+  inline def cityBySelector = Lens[Address](_.city)
+  inline def selectorChain = homeBySelector.andThen(cityBySelector)
   inline def homeCity = home.andThen(city)
   inline def addressZip = address.andThen(Prism.some[Address, Address]).andThen(zip)
 
@@ -73,13 +77,34 @@ class TestFuse extends munit.FunSuite {
     // a traversal is not a shape it reads; the fallback runs it
     inline def each = Traversal.each[Int, Int]
     assertEquals(Fuse.modify(each)(_ + 1)(Vector(1, 2, 3)), Vector(2, 3, 4))
-    // and the one that matters: a SELECTOR-built lens is opaque to the
-    // fusion (a macro cannot see through another macro's captured call)
-    // and still answers exactly what the optic answers
+    // a selector-built lens is no longer among them: it fuses, and
+    // the next test proves that rather than asserting it
     for _ <- 1 to 50 do
       val q = person(); val v = rnd.nextInt(99)
       assertEquals(Fuse.set(ageBySelector)(v)(q), ageBySelector.set(v)(q))
       assertEquals(Fuse.set(ageBySelector)(v)(q), Fuse.set(age)(v)(q))
+  }
+
+  test("the fusion really fuses, and a poisoned interpretation says so") {
+    // Correctness is the same either way, which is why a test that
+    // only checks the answer cannot see the fusion switch itself off —
+    // and it once did, silently, for a whole lane. The fallback is
+    // `optic.set(b)(s)`, which needs the `Function1` interpretation;
+    // fused code emits `s.copy(...)` and never asks for it. So poison
+    // the instance: a fused call passes, a fallback throws.
+    given poisoned: Optic.Strong[Function1] with
+      def dimap[A, B, C, D](p: A => B)(f: C => A, g: B => D): C => D =
+        throw AssertionError("the fusion fell back")
+      def first[A, B, C](p: A => B): ((A, C)) => (B, C) =
+        throw AssertionError("the fusion fell back")
+      override def lens[S, T, A, B](get: S => A, set: (S, B) => T)(p: A => B): S => T =
+        throw AssertionError("the fusion fell back")
+
+    val p = Person("ada", 1, None, Address("H", 3))
+    assertEquals(Fuse.set(age)(7)(p).age, 7)                        // halves written out
+    assertEquals(Fuse.set(ageBySelector)(7)(p).age, 7)              // the selector macro
+    assertEquals(Fuse.set(selectorChain)("K")(p).home.city, "K")    // two of them, composed
+    assertEquals(Fuse.modify(ageBySelector)(_ + 1)(p).age, 2)
   }
 
   test("the fused code allocates nothing the hand-written update does not") {

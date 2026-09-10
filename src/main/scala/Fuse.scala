@@ -20,18 +20,23 @@ import scala.quoted.*
  * every lambda, so no optic and no intermediate survives.
  *
  * WHAT IT READS: an optic written literally here, or named by an
- * `inline def` (whose definition it follows). The halves must be
- * EXPLICIT — `Lens(_.f, (s, v) => s.copy(f = v))` — because
- * `Lens[S](_.f)` is itself a macro, and an inline argument is captured
- * BEFORE a nested macro in it expands, so a macro cannot see through
- * another macro's call. Measured and not guessed: with a selector-built
- * lens every call fell back and the benchmark showed the live optic's
- * own figure to the byte (168 B/op).
+ * `inline def` (whose definition it follows), with its halves written
+ * out — and, since optics-zero-tax, `Lens[S](_.f)` as well.
  *
- * IT ALWAYS COMPILES. Anything it cannot read — a selector-built lens,
- * an optic behind a `val`, a traversal — falls back to
+ * That last one was recorded here as impossible, and the record was
+ * half right. A macro cannot make another macro expand; it does not
+ * have to. `Focus.impl` is an ordinary compile-time function over
+ * trees, so `plan` calls it with the selector and the Mirror it finds
+ * in the call and reads the result. The correction matters because
+ * `Lens[S](_.f)` is the idiomatic way to build a lens here, so while
+ * it was unreadable the fusion was off for most code that wanted it.
+ *
+ * IT ALWAYS COMPILES. Anything it cannot read — an optic behind a
+ * `val`, a traversal, a block with statements in it — falls back to
  * `optic.set(b)(s)`, the ordinary road. Correctness never depends on
- * the fusion; only speed does.
+ * the fusion; only speed does, and TestFuse tells the two apart at
+ * run time with a poisoned interpretation rather than trusting a
+ * comment.
  *
  * The macro READS the optic and WRITES the update, which the policy in
  * specs/codecs.md did not allow — see specs/optics.md, optics-fuse,
@@ -78,6 +83,31 @@ object Fuse {
       case Apply(TypeApply(Select(Ident("Lens"), "apply"), _), List(get, put)) =>
         Some(Plan.L(get, put))
       case TypeApply(Select(Ident("Prism"), "some"), _) => Some(Plan.Some_)
+      // `Lens[S](_.f)` IS ITSELF A MACRO, and a macro cannot make
+      // another expand — which is true, and was read as a dead end for
+      // one lane. It is not one: `Focus.impl` is an ordinary
+      // compile-time function over trees, so the expansion this needs
+      // is not something to wait for, it is a call. The selector and
+      // the Mirror are right here in the tree; hand them over and plan
+      // the result.
+      //
+      // This matters more than it sounds: `Lens[S](_.f)` is the
+      // idiomatic way to build a lens in this library, so while it was
+      // unreadable the fusion was off for most code that would want it.
+      case Apply(Apply(TypeApply(Select(focus, "apply"), List(ta)), List(get)), List(mirror))
+          if focus.tpe.widen.typeSymbol.fullName == "okay.Focus" =>
+        focus.tpe.widen match
+          case AppliedType(_, List(sTpe)) =>
+            (sTpe.asType, ta.tpe.asType) match
+              case ('[st], '[at]) =>
+                plan(Focus.impl[st, at](
+                  get.asExprOf[st => at],
+                  mirror.asExprOf[scala.deriving.Mirror.ProductOf[st]]).asTerm)
+              // the types did not come back as types: refuse rather
+              // than guess, which is what every other arm here does
+              case _ => None
+          case _ => None
+
       // A REFERENCE TO AN `inline def` ARRIVES UNEXPANDED, and this is
       // the second thing the lane turned on: an inline parameter
       // captures the argument's tree as written, so `Fuse.set(myLens)`

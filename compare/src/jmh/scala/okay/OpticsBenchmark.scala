@@ -52,6 +52,12 @@ class OpticsBenchmark {
   // so a fusable optic names its own get and put
   private inline def iAge = Lens[Person, Person, Int, Int](_.age, (s, v) => s.copy(age = v))
   private inline def iName = Lens[Person, Person, String, String](_.name, (s, v) => s.copy(name = v))
+  // optics-zero-tax: the SELECTOR-built lens, which is what code
+  // actually writes, and which the fusion could not read until now
+  private inline def sAge = Lens[Person](_.age)
+  private inline def sAddress = Lens[Person](_.address)
+  private inline def sZip = Lens[Address](_.zip)
+  private inline def sPersonZip = sAddress.andThen(Prism.some[Address, Address]).andThen(sZip)
   private inline def iAddress =
     Lens[Person, Person, Option[Address], Option[Address]](_.address, (s, v) => s.copy(address = v))
   private inline def iZip = Lens[Address, Address, Int, Int](_.zip, (s, v) => s.copy(zip = v))
@@ -81,6 +87,10 @@ class OpticsBenchmark {
   @Benchmark def fusedLensSet: Person = { n += 1; Fuse.set(iAge)(n)(p) }
   @Benchmark def compiledLensSet: Person = { n += 1; cAge.set(n)(p) }
   @Benchmark def compiledShopSet: Person = { n += 1; cAgeLens.set(n)(p) }
+
+  // optics-zero-tax: is the idiomatic lens free now?
+  @Benchmark def fusedSelectorSet: Person = { n += 1; Fuse.set(sAge)(n)(p) }
+  @Benchmark def fusedSelectorComposed: Person = { n += 1; Fuse.set(sPersonZip)(n)(p) }
 
   @Benchmark def vectorMap: Vector[Int] = vec.map(_ + 1)
   @Benchmark def traversalOver: Vector[Int] = each.modify(_ + 1)(vec)
