@@ -32,7 +32,7 @@ that module, and it is small because the vocabulary decided most of it:
 | `Ws.over(socket)(session)` | run a `Stage[Frame, Frame, A]` over a socket |
 | `Ws.link(socket)` | a socket AS an `mcp.Link` |
 | `Transports.http` / `.sockets` (JVM), `.fetch` / `.sockets` (JS) | the two platform seams |
-| `Route` / `Query` / `Router` | a typed path and query: match, build and describe from one declaration |
+| `Route` / `Queried` / `Query` / `Router` | a typed path and query: match, build and describe from one declaration; `okay.http.syntax` is the terse form |
 | `Server.serve(port)(route)` | a REST server, JVM only |
 
 ## Routes: one declaration, three interpreters
@@ -150,6 +150,60 @@ order is the same request. Four consequences worth knowing:
 `describe` stays the PATH (`/users/{id}`), which is the shape OpenAPI
 wants, with the query as a separate list: `queries` carries `name`,
 `kind`, `required` and `repeated` for each.
+
+**A shorter declaration, behind an import.** `import okay.http.syntax.*`
+adds three extensions on `String`:
+
+```scala
+import okay.http.syntax.*
+
+val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+val search   = Route / "search" :? "q".as[String] :? "page".opt[Int]
+val tagged   = Route / "posts" / "id".as[Int] :? "tag".all[String]
+```
+
+One rule: **a bare string is a literal segment, `"name".as[T]` is a
+hole.** The operator says where the parameter goes — `/` into the path,
+`:?` into the query — because a named typed parameter is the same thing
+in both places. `Route[Int]("id")` and `Query[String]("q")` remain, and
+read better for someone meeting the api rather than using it.
+
+`:?` chains, so `+&` keeps only its real job — factoring out a query
+worth sharing:
+
+```scala
+val paging = Query.opt[Int]("page") +& Query.opt[Int]("size")
+val posts  = Route / "posts" :? paging
+val users  = Route / "users" :? paging
+```
+
+**A path segment cannot follow a query parameter, and that is
+structural.** `:?` answers a `Queried[A]`, which has no `/` at all;
+`Routed[A]` is what both stages share (`unapply`, `url`, `describe`,
+`prism`, `of`) and what `Router` takes. Three ways of getting it wrong
+are refused, each by a different mechanism, and `TestRoute` asserts all
+three with `compileErrors`.
+
+**What the parameter's NAME does** differs by position, which is worth
+knowing: in a query it is load-bearing at run time (parameters are
+matched by name, so wire order is irrelevant), while in a path the
+segment is found by POSITION and the name is the description — it is
+what `describe` prints as `{id}` and what a generated OpenAPI operation
+or MCP tool schema will carry. `Route.Of[C]` maps to a case class by
+position too, so a route's parameter names and the class's field names
+are not checked against each other.
+
+**A table starts from the companion:**
+
+```scala
+val router = Router
+  .on(Method.Get, healthz)(_ => text(200, "live"))
+  .at(Method.Post, userPost)((p, r) => …)
+```
+
+`Router.empty` is still there and still means something — it is the
+zero of a fold over several tables, and the answer a module gives when
+it contributes no routes.
 
 A handler that needs the request itself — its body, its headers, its
 peer — takes `at` instead of `on`: `at(Method.Post, echo)((_, r) =>

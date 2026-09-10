@@ -39,73 +39,28 @@ import java.nio.charset.StandardCharsets.UTF_8
  * inside a parameter becomes a segment boundary. `Route` decodes per
  * segment, after the split, and that class of confusion cannot happen.
  */
-final class Route[A <: Tuple] private[http] (
-    /** the description: what this route looks like, with no request in hand */
-    val segments: Vector[Route.Seg],
-    /** the query half of the description, in declaration order */
-    val queries: Vector[Route.Q],
-    private[http] val decode: (Vector[String], Route.Params) => Option[A],
-    private[http] val encode: A => (Vector[String], Vector[(String, String)])):
+/**
+ * What a declared url can do once it exists, whether or not it has a
+ * query: the three interpreters and the bridge to the core optics.
+ *
+ * It is a trait rather than one class because a url is a path and THEN
+ * a query — `:?` answers a `Queried`, which has no `/`, so a path
+ * segment written after a query parameter cannot compile. That refusal
+ * is structural on purpose (specs/optics-outside.md, stage 5): an
+ * attempt to make the MESSAGE nicer, by giving `Named` a poisoned `/`
+ * carrying `@compileTimeOnly`, fired in five isolated variants and
+ * silently did not in the real expression — and made two invalid
+ * declarations compile. A guarantee with an awkward message beats a
+ * good message that holds only usually.
+ */
+sealed trait Routed[A <: Tuple]:
 
-  /** append a literal segment */
-  def /(lit: String): Route[A] =
-    new Route(segments :+ Route.Seg.Lit(lit), queries,
-      (ss, qs) =>
-        if ss.nonEmpty && ss.last == lit then decode(ss.init, qs) else None,
-      a =>
-        val (segs, qp) = encode(a)
-        (segs :+ lit, qp))
-
-  /**
-   * append another route, accumulating its parameters.
-   *
-   * The witness is a typeclass and not `scala.Tuple.Concat` on
-   * purpose, and its name says the whole difference: the standard
-   * library gives the forward direction (the match type, and `++` for
-   * the values) and nothing that takes a tuple APART again. `url`
-   * needs `A` and `B` back out of `c.Out`. Closing that with an
-   * `asInstanceOf` is what AGENTS.md forbids, and the inductive
-   * witness carries both directions honestly.
-   */
-  def /[B <: Tuple](that: Route[B])(using c: Route.Split[A, B]): Route[c.Out] =
-    val width = segments.length
-    new Route[c.Out](segments ++ that.segments, queries ++ that.queries,
-      (ss, qs) =>
-        if ss.length != width + that.segments.length then None
-        else
-          val (l, r) = ss.splitAt(width)
-          decode(l, qs).flatMap(a => that.decode(r, qs).map(b => c.join(a, b))),
-      o =>
-        val (a, b) = c.split(o)
-        val (ls, lq) = encode(a)
-        val (rs, rq) = that.encode(b)
-        (ls ++ rs, lq ++ rq))
-
-  /**
-   * append the query string this route reads.
-   *
-   * Written as one `Query` rather than a parameter at a time, so the
-   * split between the path's tuple and the query's is exactly one
-   * `Split`, and the path's own parameters keep their positions.
-   *
-   * `:?` and not `?`, and the reason is Scala's precedence table
-   * rather than taste. An operator's precedence comes from its FIRST
-   * character, and `?` is in the "all other special characters" group,
-   * which binds TIGHTER than `/` — so `Route / "search" ? q` parses as
-   * `Route / ("search" ? q)` and does not compile. `:` is below `/`,
-   * so `:?` groups the way it reads; and since associativity comes
-   * from the LAST character, `:?` stays left-associative. `Query`'s
-   * `+&` sits between them (the `+ -` group), so a whole declaration
-   * needs no parentheses at all. These are http4s's operators, and
-   * this is why they are the ones they are.
-   */
-  def :?[B <: Tuple](q: Query[B])(using c: Route.Split[A, B]): Route[c.Out] =
-    new Route[c.Out](segments, queries ++ q.declared,
-      (ss, qs) => decode(ss, qs).flatMap(a => q.decode(qs).map(b => c.join(a, b))),
-      o =>
-        val (a, b) = c.split(o)
-        val (segs, qp) = encode(a)
-        (segs, qp ++ q.encode(b)))
+  /** the description: what this url looks like, with no request in hand */
+  val segments: Vector[Route.Seg]
+  /** the query half of the description, in declaration order */
+  val queries: Vector[Route.Q]
+  private[http] val decode: (Vector[String], Route.Params) => Option[A]
+  private[http] val encode: A => (Vector[String], Vector[(String, String)])
 
   /** interpreter 1 — MATCH. Also the extractor. */
   def unapply(url: String): Option[A] =
@@ -163,6 +118,110 @@ final class Route[A <: Tuple] private[http] (
   def of[C <: Product](using m: Mirror.ProductOf[C] { type MirroredElemTypes = A }): Route.Of[C, A] =
     new Route.Of(this, m)
 
+
+/**
+ * The PATH stage: segments may still be added, and a query may start.
+ */
+final class Route[A <: Tuple] private[http] (
+    val segments: Vector[Route.Seg],
+    val queries: Vector[Route.Q],
+    private[http] val decode: (Vector[String], Route.Params) => Option[A],
+    private[http] val encode: A => (Vector[String], Vector[(String, String)]))
+  extends Routed[A]:
+
+  /** append a literal segment */
+  def /(lit: String): Route[A] =
+    new Route(segments :+ Route.Seg.Lit(lit), queries,
+      (ss, qs) =>
+        if ss.nonEmpty && ss.last == lit then decode(ss.init, qs) else None,
+      a =>
+        val (segs, qp) = encode(a)
+        (segs :+ lit, qp))
+
+  /**
+   * append another route, accumulating its parameters.
+   *
+   * The witness is a typeclass and not `scala.Tuple.Concat` on
+   * purpose, and its name says the whole difference: the standard
+   * library gives the forward direction (the match type, and `++` for
+   * the values) and nothing that takes a tuple APART again. `url`
+   * needs `A` and `B` back out of `c.Out`. Closing that with an
+   * `asInstanceOf` is what AGENTS.md forbids, and the inductive
+   * witness carries both directions honestly.
+   */
+  def /[B <: Tuple](that: Route[B])(using c: Route.Split[A, B]): Route[c.Out] =
+    val width = segments.length
+    new Route[c.Out](segments ++ that.segments, queries ++ that.queries,
+      (ss, qs) =>
+        if ss.length != width + that.segments.length then None
+        else
+          val (l, r) = ss.splitAt(width)
+          decode(l, qs).flatMap(a => that.decode(r, qs).map(b => c.join(a, b))),
+      o =>
+        val (a, b) = c.split(o)
+        val (ls, lq) = encode(a)
+        val (rs, rq) = that.encode(b)
+        (ls ++ rs, lq ++ rq))
+
+  /**
+   * append the query string this route reads.
+   *
+   * Written as one `Query` rather than a parameter at a time, so the
+   * split between the path's tuple and the query's is exactly one
+   * `Split`, and the path's own parameters keep their positions.
+   *
+   * `:?` and not `?`, and the reason is Scala's precedence table
+   * rather than taste. An operator's precedence comes from its FIRST
+   * character, and `?` is in the "all other special characters" group,
+   * which binds TIGHTER than `/` — so `Route / "search" ? q` parses as
+   * `Route / ("search" ? q)` and does not compile. `:` is below `/`,
+   * so `:?` groups the way it reads; and since associativity comes
+   * from the LAST character, `:?` stays left-associative. `Query`'s
+   * `+&` sits between them (the `+ -` group), so a whole declaration
+   * needs no parentheses at all. These are http4s's operators, and
+   * this is why they are the ones they are.
+   */
+  def :?[B <: Tuple](q: Query[B])(using c: Route.Split[A, B]): Queried[c.Out] =
+    new Queried[c.Out](segments, queries ++ q.declared,
+      (ss, qs) => decode(ss, qs).flatMap(a => q.decode(qs).map(b => c.join(a, b))),
+      o =>
+        val (a, b) = c.split(o)
+        val (segs, qp) = encode(a)
+        (segs, qp ++ q.encode(b)))
+
+  /** one required query parameter, named: `:? "q"[String]` */
+  def :?[T](n: Route.Named[T])(using c: Route.Split[A, T *: EmptyTuple]): Queried[c.Out] =
+    this :? Query[T](n.name)(using n.param)
+
+  /** one captured segment, named: `/ "id"[Int]` */
+  def /[T](n: Route.Named[T])(using c: Route.Split[A, T *: EmptyTuple]): Route[c.Out] =
+    this / Route[T](n.name)(using n.param)
+
+/**
+ * The QUERY stage: more parameters may be added, but no more path.
+ *
+ * There is no `/` here, and that is the whole reason the type exists:
+ * a url is a path and THEN a query, so a segment written after a query
+ * parameter would declare something `url` could never place.
+ */
+final class Queried[A <: Tuple] private[http] (
+    val segments: Vector[Route.Seg],
+    val queries: Vector[Route.Q],
+    private[http] val decode: (Vector[String], Route.Params) => Option[A],
+    private[http] val encode: A => (Vector[String], Vector[(String, String)]))
+  extends Routed[A]:
+
+  def :?[B <: Tuple](q: Query[B])(using c: Route.Split[A, B]): Queried[c.Out] =
+    new Queried[c.Out](segments, queries ++ q.declared,
+      (ss, qs) => decode(ss, qs).flatMap(a => q.decode(qs).map(b => c.join(a, b))),
+      o =>
+        val (a, b) = c.split(o)
+        val (segs, qp) = encode(a)
+        (segs, qp ++ q.encode(b)))
+
+  def :?[T](n: Route.Named[T])(using c: Route.Split[A, T *: EmptyTuple]): Queried[c.Out] =
+    this :? Query[T](n.name)(using n.param)
+
 object Route:
 
   /** a segment of the description */
@@ -172,6 +231,14 @@ object Route:
 
   /** a query parameter of the description */
   final case class Q(name: String, kind: String, required: Boolean, repeated: Boolean)
+
+  /**
+   * A NAMED TYPED PARAMETER — the same thing in a path and in a query,
+   * which is why there is one type and not two: the OPERATOR says where
+   * it goes (`/` into the path, `:?` into the query). Written
+   * `"id"[Int]` with `import okay.http.syntax.*`.
+   */
+  final case class Named[T](name: String, param: Param[T])
 
   /** a parsed query string: every value for every key, in wire order */
   type Params = Map[String, Vector[String]]
@@ -291,7 +358,7 @@ object Route:
 
   /** a route read as a case class rather than a tuple */
   final class Of[C <: Product, A <: Tuple] private[http] (
-      private val r: Route[A],
+      private val r: Routed[A],
       private val m: Mirror.ProductOf[C] { type MirroredElemTypes = A }):
     def unapply(path: String): Option[C] = r.unapply(path).map(m.fromProduct)
     def url(c: C): String = r.url(Tuple.fromProductTyped(c)(using m))
@@ -476,6 +543,55 @@ object Query:
         if parsed.forall(_.isDefined) then Some(parsed.map(_.get) *: EmptyTuple) else None,
       t => t.head.map(x => name -> p.print(x)))
 
+/**
+ * The terse declaration syntax, behind an import
+ * (specs/optics-outside.md, stage 5).
+ *
+ * ```scala
+ * import okay.http.syntax.*
+ * val search = Route / "search" :? "q".as[String] :? "page".opt[Int]
+ * val tagged = Route / "posts" / "id".as[Int] :? "tag".all[String]
+ * ```
+ *
+ * One rule: **a bare string is a literal segment, `"name".as[T]` is a
+ * hole.** The operator says where the parameter goes — `/` into the
+ * path, `:?` into the query — because a named typed parameter is the
+ * same thing in both places.
+ *
+ * Named `syntax` and not `query`: a `query` object beside the `Query`
+ * class differs from it only in case, and on a case-insensitive
+ * filesystem the two class files overwrite one another — the compiler
+ * says so, and this repository allows no warnings.
+ *
+ * Behind an import on purpose: `apply[T]` on `String` reaches every
+ * string in scope, and a stray `"abc"[Int]` should not answer with a
+ * message about `Param` in a file that never asked for any of this.
+ * `Route[Int]("id")` and `Query[String]("q")` stay for the reader
+ * meeting the api rather than using it.
+ */
+object syntax:
+  extension (name: String)
+    /**
+     * a named parameter of type `T`: a captured segment after `/`, a
+     * required query parameter after `:?`.
+     *
+     * `as` and not `apply`, which would have let it be written
+     * `"id"[Int]`: `String` ALREADY has an `apply` (via `StringOps`),
+     * and an extension is only reached when the member does not exist,
+     * so `"id"[Int]` resolves to the standard library and fails with a
+     * message about `StringOps`. It compiled in isolation, where no
+     * competitor was in scope, and stopped compiling the moment it met
+     * one — which is also why all three forms here are named methods
+     * now, rather than one magic `apply` beside two named ones.
+     */
+    def as[T](using p: Route.Param[T]): Route.Named[T] = Route.Named(name, p)
+
+    /** an optional query parameter — absent is `None`, `None` writes nothing */
+    def opt[T](using Route.Param[T]): Query[Option[T] *: EmptyTuple] = Query.opt[T](name)
+
+    /** a repeated query parameter — every occurrence, in wire order */
+    def all[T](using Route.Param[T]): Query[Vector[T] *: EmptyTuple] = Query.all[T](name)
+
 /** the verb, as an extractor, so it composes with any route:
  * `case Get(userPost(id, slug)) =>` */
 object Get:
@@ -507,13 +623,13 @@ object Delete:
 final class Router private (val entries: Vector[Router.Entry]):
 
   /** a handler that needs only the path's parameters */
-  def on[A <: Tuple](method: Method, route: Route[A])(h: A => Response ! Async): Router =
+  def on[A <: Tuple](method: Method, route: Routed[A])(h: A => Response ! Async): Router =
     at(method, route)((a, _) => h(a))
 
   /** a handler that needs the request too — its body, its headers, its
    * peer. Most do, which is why `on` is defined in terms of this one
    * and not the other way round. */
-  def at[A <: Tuple](method: Method, route: Route[A])(h: (A, Request) => Response ! Async): Router =
+  def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
     new Router(entries :+ new Router.Entry(method, route.describe, r =>
       if r.method != method then None else route.unapply(r.url).map(a => h(a, r))))
 
@@ -535,7 +651,24 @@ final class Router private (val entries: Vector[Router.Entry]):
   def describe: Vector[(Method, String)] = entries.map(e => (e.method, e.path))
 
 object Router:
+  /** the zero: what a fold over several tables starts from, and what a
+   * module answers when it contributes no routes */
   val empty: Router = new Router(Vector.empty)
+
+  /** start a table from the companion, as `Route / "users"` starts a
+   * path — so a declaration never opens with `.empty.` */
+  def on[A <: Tuple](method: Method, route: Routed[A])(h: A => Response ! Async): Router =
+    empty.on(method, route)(h)
+
+  def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
+    empty.at(method, route)(h)
+
+  def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
+    empty.of(method, route)(h)
+
+  def ofAt[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])
+                                    (h: (C, Request) => Response ! Async): Router =
+    empty.ofAt(method, route)(h)
 
   final class Entry private[http] (val method: Method, val path: String,
                                    private[http] val run: Request => Option[Response ! Async])

@@ -570,10 +570,22 @@ and does not accept a type argument after one: the parser wants an
 operand there. This is why the earlier `Route.lit("search") ? …`
 worked at all — the receiver was a complete expression to the left.
 
-**But the type argument may ride the OPERAND.** `"q"[String]` is
-`"q".apply[String]`, a plain `SimpleExpr1 TypeArgs`, and that parses.
-So the terse form is reachable after all, by moving the type argument
-one position left.
+**The type argument may ride the OPERAND** — `"q"[String]` is
+`"q".apply[String]`, a plain `SimpleExpr1 TypeArgs`, which parses where
+`:?[String]` does not. **But `apply` in particular is unreachable**, and
+that took a second measurement to learn: `String` ALREADY has an
+`apply` through `StringOps`, and an extension method is only consulted
+when the member does not exist. `"id"[Int]` compiled in the isolated
+probe, where nothing competed, and failed the moment it met the real
+imports — with a message about `scala.collection.StringOps`, which
+names the winner rather than the problem.
+
+So the hole is `"id".as[Int]`. The loss is one dot; the gain is that
+all three forms are ordinary named methods (`as`, `opt`, `all`) instead
+of one magic `apply` beside two named ones — which is the more
+teachable API anyway. The general lesson is worth keeping: **a probe
+that isolates the feature also isolates away its competitors**, and an
+extension on a type as populated as `String` has many.
 
 **`Router./` as the name of the empty table is declined.** Not taste:
 `/` already means "append a path segment" in this API, and one symbol
@@ -583,19 +595,19 @@ was made to avoid, in the other direction.
 ### The form
 
 ```scala
-import okay.http.query.*     // opt-in: the extensions live behind it
+import okay.http.syntax.*    // opt-in: the extensions live behind it
 
-val userPost = Route / "users" / "id"[Int] / "posts" / "slug"[String]
-val search   = Route / "search" :? "q"[String] :? "page".opt[Int]
-val tagged   = Route / "posts" / "id"[Int] :? "tag".all[String]
+val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+val search   = Route / "search" :? "q".as[String] :? "page".opt[Int]
+val tagged   = Route / "posts" / "id".as[Int] :? "tag".all[String]
 
 val router = Router
   .on(Method.Get, healthz)(_ => text(200, "live"))
   .at(Method.Post, userPost)((p, r) => …)
 ```
 
-The rule is one sentence: **a bare string is a literal segment, a
-typed string is a hole.** The type argument is exactly what turns a
+The rule is one sentence: **a bare string is a literal segment,
+`"name".as[T]` is a hole.** The type argument is exactly what turns a
 literal into a capture, and the operator says where the parameter goes
 — `/` into the path, `:?` into the query. One operand type, `Named[T]`,
 because a named typed parameter IS the same thing in both places.
@@ -605,7 +617,11 @@ concepts aloud, which is what a reader meeting the API wants; the
 terse form is for the reader who already knows. The extensions are
 behind an import because an `apply[T]` on `String` reaches every string
 in scope, and a stray `"abc"[Int]` should not produce an error about
-`Param` in a file that never asked for any of this.
+`Param` in a file that never asked for any of this. The object is
+`syntax` rather than `query`, because a `query` object beside the
+`Query` class differs from it only in case and the two class files
+overwrite one another on a case-insensitive filesystem — the compiler
+warned, and this repository allows no warnings.
 
 `:?` chains, so `+&` leaves the common case and keeps its real job:
 
@@ -641,17 +657,17 @@ than none, because it removes the real barrier in exchange for prose.
 
 ### Behavior
 
-- [ ] `"id"[Int]` in a path position captures, and `Route[Int]("id")`
+- [x] `"id".as[Int]` in a path position captures, and `Route[Int]("id")`
       still does the same thing
-- [ ] `"q"[String]`, `"page".opt[Int]`, `"tag".all[String]` in a query
+- [x] `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` in a query
       position, matching `Query[String]`, `Query.opt`, `Query.all`
-- [ ] the extensions are NOT in scope without their import
-- [ ] `:?` chains, and `+&` still composes a query value
-- [ ] a path segment after a query does not compile, in both
+- [x] the extensions are NOT in scope without their import
+- [x] `:?` chains, and `+&` still composes a query value
+- [x] a path segment after a query does not compile, in both
       groupings (bare infix, and parenthesised)
-- [ ] `Router.on/at/of/ofAt` and `Toolbox.on/raw` start a table from
+- [x] `Router.on/at/of/ofAt` and `Toolbox.on/raw` start a table from
       the companion; `empty` remains the zero of a fold
-- [ ] every existing declaration in the repository still compiles
+- [x] every existing declaration in the repository still compiles
 
 ## Decisions
 

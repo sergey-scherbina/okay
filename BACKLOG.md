@@ -680,6 +680,30 @@ or not at all).
       are claimed.
 
 ## okay-http
+- [ ] optics-outside-route-of-labels — `Route.Of[C]` maps a route's
+      tuple into a case class through `m.fromProduct`, which is
+      POSITIONAL. The types are checked, so a real mismatch is caught,
+      but the route's parameter NAMES and the class's field names are
+      never compared: `"id".as[Int] / "s".as[String]` fits
+      `case class P(a: Int, b: String)` silently. Checking them with
+      `Mirror.MirroredElemLabels` is possible; whether it is worth it
+      is the open question, since it would catch only a documentation
+      typo, and it would forbid the legitimate case where a field is
+      deliberately named differently from the url.
+- [ ] compile-time-only-is-not-a-guarantee — measured 2026-09-11 in
+      optics-outside-route-syntax. `@compileTimeOnly` was tried as the
+      carrier of a nicer refusal message (a poisoned `/` on
+      `Route.Named`, since precedence sends the mistake there). It
+      fired in five isolated variants — dotted, infix, overloaded
+      method, overloaded caller, extension receiver, parenthesised and
+      not — and silently did NOT fire in the real expression, even
+      after a clean rebuild; worse, its presence made two invalid
+      declarations compile, because the poisoned method returned a
+      usable type where its ABSENCE had produced an error. The trigger
+      was never isolated. Anyone reaching for `@compileTimeOnly` in
+      `specs/error-messages.md` should read this first: it is fine for
+      a message, and must not be the thing that makes an invalid
+      program invalid.
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,
       one ledger: TestMcpHttp 503 (2026-09-01), TestResumable first
       subscribe, TestHttp first GET 404, and TestWire reading

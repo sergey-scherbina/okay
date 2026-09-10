@@ -2,6 +2,7 @@ package okay.http
 
 import okay.*
 import okay.given
+import okay.http.syntax.*
 
 /**
  * A route's three interpreters, and the law that ties two of them
@@ -137,10 +138,10 @@ class TestRoute extends munit.FunSuite {
 
   // ---- the query string (stage 3)
 
-  val search: Route[(String, Option[Int])] =
+  val search: Queried[(String, Option[Int])] =
     Route / "search" :? Query[String]("q") +& Query.opt[Int]("page")
 
-  val tagged: Route[(Int, Vector[String])] =
+  val tagged: Queried[(Int, Vector[String])] =
     Route / "posts" / Route[Int]("id") :? Query.all[String]("tag")
 
   test("a query parameter is read by name, not by position") {
@@ -215,6 +216,65 @@ class TestRoute extends munit.FunSuite {
     assertEquals(search.queries.map(_.name), Vector("q", "page"))
     assertEquals(search.queries.map(_.required), Vector(true, false))
     assertEquals(tagged.queries.map(_.repeated), Vector(true))
+  }
+
+  // ---- the terse syntax (stage 5)
+
+  test("a typed string is a hole, a bare string is a literal") {
+    val terse = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+    assertEquals(terse.describe, userPost.describe)
+    assertEquals(terse.unapply("/users/7/posts/hello"), Some((7, "hello")))
+    assertEquals(terse.url((7, "hello world")), userPost.url((7, "hello world")))
+  }
+
+  test("the same names in a query position, and :? chains") {
+    val terse = Route / "search" :? "q".as[String] :? "page".opt[Int]
+    assertEquals(terse.describeFull, search.describeFull)
+    assertEquals(terse.unapply("/search?page=2&q=cats"), Some(("cats", Some(2))))
+    assertEquals(terse.url(("cats", None)), "/search?q=cats")
+  }
+
+  test("a repeated parameter, terse") {
+    val terse = Route / "posts" / "id".as[Int] :? "tag".all[String]
+    assertEquals(terse.unapply("/posts/7?tag=a&tag=b"), Some((7, Vector("a", "b"))))
+    assertEquals(terse.describeFull, tagged.describeFull)
+  }
+
+  test("+& still composes a query value worth sharing") {
+    val paging = Query.opt[Int]("page") +& Query.opt[Int]("size")
+    val posts = Route / "posts" :? paging
+    val users = Route / "users" :? paging
+    assertEquals(posts.unapply("/posts?page=1&size=20"), Some((Some(1), Some(20))))
+    assertEquals(users.unapply("/users"), Some((None, None)))
+  }
+
+  test("a table starts from the companion, and empty is still the zero") {
+    val r = Router.on(Method.Get, healthz)(_ => blank)
+    assertEquals(r.describe, Vector((Method.Get, "/healthz")))
+    assertEquals(Router.empty.describe, Vector.empty)
+  }
+
+  test("a path segment cannot follow a query parameter — both groupings") {
+    // bare infix: precedence sends the `/` to the parameter on its left
+    val bare = compileErrors("""
+      import okay.http.syntax.*
+      Route / "search" :? "q".as[String] / "page"
+    """)
+    assert(bare.nonEmpty, "a segment after a query parameter compiled")
+
+    // parenthesised: the `/` reaches the Queried, which has none
+    val parens = compileErrors("""
+      import okay.http.syntax.*
+      (Route / "search" :? "q".as[String]) / "page"
+    """)
+    assert(parens.nonEmpty, "a segment after a query compiled when parenthesised")
+
+    // and a query value is not a path segment either
+    val q = compileErrors("""
+      import okay.http.syntax.*
+      Route / "search" / "page".opt[Int]
+    """)
+    assert(q.nonEmpty, "a query parameter was accepted as a path segment")
   }
 
   // ---- the router

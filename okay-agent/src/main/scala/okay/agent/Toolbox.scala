@@ -90,7 +90,17 @@ final class Toolbox private (val entries: Vector[Toolbox.Entry]) {
 
 object Toolbox {
 
+  /** the zero: what a fold over several boxes starts from, and what a
+   * module answers when it contributes no tools */
   val empty: Toolbox = new Toolbox(Vector.empty)
+
+  /** start a box from the companion, so a declaration never opens with
+   * `.empty.` — the same shape `Router.on` has in okay-http */
+  def on[A](name: String, description: String)(run: A => String)(using Schema[A]): Toolbox =
+    empty.on(name, description)(run)
+
+  def raw(name: String, description: String, schema: Json)(run: Json => String): Toolbox =
+    empty.raw(name, description, schema)(run)
 
   /**
    * One tool: its declaration and its answer, together.
