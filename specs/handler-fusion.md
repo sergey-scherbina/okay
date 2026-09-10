@@ -430,7 +430,9 @@ Built: `TypeableK.test` (a boolean beside `unapply`; `typeableK`,
 `Effect.of`, Pure and Writer's own instance answer it without an
 Option), `split[F, G](e)(onF)(onG)` (a value class carrying the test,
 `inline apply`, both branches beta-reduced; the two casts on a row now
-live in `<|>` and `Split.apply` and nowhere else), `<|>` itself on
+live in `<|>` and `Split.apply` and nowhere else — the value class was
+DELETED on 2026-09-11, see generalized-method-syntax below, and the
+casts live in `split` itself now), `<|>` itself on
 `test` (so every one of its 50-odd walk sites loses the Option with no
 churn), and the hot loops on `split`: `State.handle`, `Writer.foldWith`,
 `relay`, `Effects.handle`, `Handler.union`, `Fused.*`.

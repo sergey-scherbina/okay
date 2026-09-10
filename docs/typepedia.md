@@ -477,7 +477,10 @@ and nothing else in the library casts for that reason:
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the
-  ascription is where the refined value meets the loop's type.
+  ascription is where the refined value meets the loop's type. Both
+  are ONE method each since 2026-09-11 (see "Two type clauses" below);
+  the value classes that used to carry the test between two stages are
+  gone, and no call site changed.
 - **`over`** — the row PRISM, `split`'s reverse direction: rewrite the
   operations of one member of a row in place (`over[F, R](e)(f)`,
   `f: F[A] => F[A]`), leaving the others as they are. The class test
@@ -490,6 +493,43 @@ and nothing else in the library casts for that reason:
   `over`, and Failing.scala itself casts nowhere (failing-over,
   2026-09-09). The alternative to a total default was measured and was
   SILENCE (see the recipe).
+- **Two type clauses, and what it is worth** (generalized-method-syntax,
+  2026-09-11). Scala 3 allows a method to take type parameters in more
+  than one clause, so some may be written and the rest inferred. The
+  rule that decides where it applies: **two type clauses may not be
+  adjacent** — a term or `using` clause must separate them, which our
+  row combinators already have as a context bound. Three uses here:
+  - `split`, `over` and `<|>` are single methods. They were a method
+    plus a value class each, whose only purpose was to make `A`/`R`
+    inferable while `F`/`G` were written. Call sites did not change,
+    and the bytecode did not either: no `invokedynamic`, branches
+    beta-reduced, checked with `javap` against the old form before the
+    change was made.
+  - `Effects.handle[F, G](m)(ret)(h)` and the `Tag` trio take their
+    ROWS first and read the answer types off the program:
+    `Tag.tag["small", State % Int](p)`, which is the syntax Tag's own
+    doc comment had been showing since the day it was written, before
+    the compiler could give it.
+  - **and the four combinators that look identical do NOT get it, by
+    measurement.** Splitting the clauses puts a `using` between them,
+    and that clause is resolved BEFORE any value argument is typed —
+    so the first clause's parameters stop being inferable and become
+    mandatory. `!.tracing(prog)(show)` turns into "Ambiguous given
+    instances ... TypeableK[F]", because F is still a variable when
+    the context bound is searched. The rule that follows: **the
+    reorder is a win only where EVERY call site already writes those
+    parameters, and a loss anywhere inference is used.** Counted
+    before deciding: `tracing` 0 explicit against 8 inferred,
+    `interpret` 3 against 9, `translate` 10 against 5, `relay` 7
+    against 1 — all four keep one clause; `Effects.handle` 21 against
+    0 and the `Tag` trio all-explicit — both take two.
+  - `State.handle[Int](0)(p)`, where the separator is the state
+    itself rather than a using clause.
+  What it CANNOT do, measured before the work: a row inferred from a
+  single OPERATION widens (`op: F[A]` gives `[X0] =>> St[Int, Int|X0]`,
+  not `St % Int`), which is why `Tag.one` still names its row; and
+  `pure[F, A]` cannot be split at all, since nothing separates `F`
+  from `A` — its 128 call sites keep both arguments.
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for
@@ -614,7 +654,7 @@ reasons are measured rather than argued:
   row resolve no witness and would take the identity; and on an
   ABSTRACT `F` — a polymorphic `Resource.run` caller — `NotGiven`
   reads "unknown" as "absent". Refuted twice, before a line was
-  written. What moves is the cast: `over[F : TypeableK, R]` in
+  written. What moves is the cast: `over[F, R](using TypeableK[F])[A]` in
   Effects.scala is the prism over the row — test, rewrite, back under
   the row's type — and `Failing.anyRow` is
   `over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed

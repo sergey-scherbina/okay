@@ -291,8 +291,8 @@ type Big   = Tag.Of["big",   State % Int]
 // run twice at two different states in one program:
 val twice: (Int, Int) ! (Small + Big) =
   for
-    a <- Tag.tag["small", State % Int, Int, Pure](bump(1)).plus[Big]
-    b <- Tag.tag["big",   State % Int, Int, Pure](bump(10)).at[Small + Big]
+    a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
+    b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
   yield (a, b)
 ```
 

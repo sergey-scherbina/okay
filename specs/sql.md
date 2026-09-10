@@ -403,7 +403,7 @@ truth is "unknown", and identity again. Refuted on both counts. What
 CAN move is the cast itself, because it is the kernel's own claim —
 "the class test proved the operation is an F, and the row is erased"
 — which `split` already makes twice in Effects.scala. So the kernel
-gains a prism over the row, `over[F : TypeableK, R](e: R[A])(f:
+gains a prism over the row, `over[F, R](using TypeableK[F])[A](e: R[A])(f:
 F[A] => F[A]): R[A]`, one cast beside `split`'s, and `Failing.anyRow`
 is `over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed
 GADT instance lifted over any row, any nesting, an abstract F
