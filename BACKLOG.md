@@ -666,6 +666,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that section carries is in BACKLOG-ARCHIVE.md)
 
 ## okay-resilience
+- [ ] **hedge-start-timing-flake** — `TestHedgeStart."an attempt forked
+      while the answer arrives leaves neither a running attempt nor an
+      armed timer"` fails a landing gate with "timed out waiting for
+      the first attempt to answer" when the box is loaded (1-minute
+      average ~19, three sbt matrices), and passes alone on the same
+      tree seconds later. Same family as `parse-depth-tests-out-of-the-
+      gate`, just landed: a wall clock on a shared box. Either the wait
+      needs to be a condition rather than a deadline, or the test
+      belongs in `integrationTest`. Seen 2026-09-10 by the
+      dataflow-numbers gate, which does not touch okay-resilience.
 - [ ] microservices-next — the audit's remaining gaps, each its own
       spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
       shutdown and RED metrics, both in okay-ops. DONE 2026-09-09
