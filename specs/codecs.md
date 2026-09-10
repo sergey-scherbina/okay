@@ -581,13 +581,18 @@ The two roads, for whoever picks up the second:
   the default stack) — a real, measured, repeatable improvement over
   256's zero margin, at the cost of refusing legitimately-shaped
   documents between 65 and 256 levels that read today;
-- **iterative-recursive-decode (BACKLOG):** take the per-level cost out
-  instead of budgeting around it. The two JSON roads and `Cbor.get`
+- **iterative-recursive-decode (spec written):** take the per-level
+  cost out instead of budgeting around it. `Json.decode`/`Cbor.get`
   recurse on the JVM stack where `Json.cst`'s builder and
   `JsonStrict.skipValue` do not — the CST road walked 100 000 levels in
-  the first probe of this arc because its stack is on the heap. Once
-  every decoder is iterative, `maxDepth` is a policy choice again, not
-  a stack budget, and can go back up without this lane's tradeoff.
+  the first probe of this arc because its stack is on the heap.
+  `specs/iterative-recursive-decode.md` has the design: a threshold —
+  native recursion as today up to ~24-32 levels, `Cont.defer` for the
+  rest (the mechanism `eff-stack-safety.md` already uses and measured:
+  +11% B/op / +14% time for one node on a hot path, which is why this
+  is a THRESHOLD and not a rewrite of the whole decoder). Once it
+  lands, `maxDepth` is a policy choice again, not a stack budget, and
+  can go back up without this lane's tradeoff.
 
 One more fact worth writing down, because it changed how this lane was
 written: a stack overflow on Scala Native 0.5.12 is a catchable
@@ -619,7 +624,7 @@ JVM processes. See "The margin, measured" above for the full finding,
 including what this broke (`TestVector`'s recursion stress test
 hardcoded a depth that outlived the limit — now `Codecs.maxDepth / 4`)
 and the road that removes the tradeoff entirely
-(`iterative-recursive-decode`, BACKLOG).
+(`iterative-recursive-decode`, specs/iterative-recursive-decode.md).
 
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends

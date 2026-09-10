@@ -1,27 +1,29 @@
 # Backlog
 
-## iterative-recursive-decode (2026-09-10, found by lower-maxdepth-real-margin)
+## iterative-recursive-decode (2026-09-10, spec written — specs/iterative-recursive-decode.md)
 
-- [ ] `Json.decode`, `Cbor.get`, and the two staged generators recurse
-      on the JVM stack for every level of a RECURSIVE schema — roughly
-      4-8 KB of stack per level (measured, `specs/codecs.md` "The
-      margin, measured"). `Codecs.maxDepth` was lowered to 64 to buy
-      real margin back (512 KB, half the default 1 MB stack) but that
-      trades away legitimately-shaped documents between 65 and 256
-      levels that read before, and `TestVector`'s OWN recursion test
-      already sits close to the new limit (`deep(Codecs.maxDepth / 4)`
-      — a quarter of it, deliberately, not a coincidence). The two
-      JSON roads' CONTAINER nesting and `JsonStrict.skipValue` are
-      already not like this — `Json.cst`'s builder walked 100 000
-      levels in this arc's first probe because its stack is on the
-      heap, not the JVM's. Converting the three recursive-SCHEMA
-      decoders to the same shape (an explicit work stack, CPS over a
-      heap-allocated continuation rather than the call stack) removes
-      the tradeoff entirely: `maxDepth` becomes a policy choice again,
-      not a stack budget, and can go back up. Write the spec entry
-      (spec-dev) before touching code — this spans three decoders
-      (the fold, the compile-time macro, the run-time macro) and they
-      have drifted out of sync before (TestCompat's Wire removal).
+- [ ] `Json.decode`/`Cbor.get` recurse on the JVM stack for every level
+      of a RECURSIVE schema, ~4-8 KB per level (measured,
+      specs/codecs.md "The margin, measured"). `Codecs.maxDepth` was
+      lowered to 64 (lower-maxdepth-real-margin) to buy real margin
+      back, trading away documents between 65 and 256 levels that
+      decoded before. Design is written and a feasibility spike (not
+      committed) confirmed it: a threshold — native recursion as
+      today up to ~24-32 levels, then `Cont.defer` (the SAME mechanism
+      `eff-stack-safety.md` already uses and already measured, +11%
+      B/op / +14% time for one node on a hot path) hands the rest to
+      `Cont`'s existing, tested, O(1)-stack trampoline. Scope is
+      SMALLER than first thought: both staged generators already
+      delegate to the interpreted decoder for the recursive case
+      (read in Staged.scala before writing code), so only two roots
+      need it — `Json.decode`/`Cbor.get`, and `JsonStrict.Reader.get`
+      separately. The two raw-JSON-nesting walks (JsonValue's fast
+      parser, the CST projection) are OUT of this scope — cheaper per
+      level, already safe at any threshold-picked maxDepth, a smaller
+      separate fix if ever needed. Real work: build it, gate it on a
+      JMH benchmark (not a hand-timed loop) proving the shallow/common
+      case is unchanged, per specs/iterative-recursive-decode.md's
+      Behavior checklist.
 
 Open work only, grouped by the module that owns it. Everything closed —
 landed, refuted, declined or answered — moved VERBATIM to
