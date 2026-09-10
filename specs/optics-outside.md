@@ -465,6 +465,89 @@ refusal moved into the path capture, where it belongs. It surfaced
 only because a second consumer of the same `Param` appeared — which is
 the general lesson worth keeping.
 
+## Stage 4 — the DESCRIBE interpreter gets a consumer
+
+### The consumer, and the correction that shaped it
+
+Stage 1 built `describe` and nothing has read it since. The obvious
+next lane is a renderer, and "generate OpenAPI" is exactly the lane
+with no caller this arc has now recorded three times. So the consumer
+came first, from the tree rather than from the imagination.
+
+A probe path lives in three independent string literals:
+
+```scala
+// okay-ops/Ops.scala          — serves it
+case r if r.method == Get && r.url == "/healthz" => ...
+// okay-deploy/Deploy.scala    — names it, and renders it into SIX targets
+final case class Health(livenessPath: String = "/healthz", readinessPath: String = "/readyz", ...)
+// okay-script/ScriptDeploy.scala — a third pair, by hand
+health = Health(livenessPath = "/healthz", readinessPath = "/healthz")
+```
+
+The first draft of this section said the three had already diverged,
+because `Site.opsRoutes` serves no `/readyz` while `ScriptDeploy`
+names readiness at `/healthz`. **That was wrong, and reading the file
+rather than grepping it is what corrected it**: the choice is
+deliberate and explained in place — a Site is ready when it is live,
+because its pages compile before the port binds.
+
+The real defect is narrower and worse: nothing would NOTICE a
+divergence. Rename an ops path in `Site` and the manifest keeps the
+old literal; Kubernetes finds out first, by restarting the pod. And
+the sharpest form of the argument is that okay-script already holds
+this principle for SETTINGS and never extended it to paths — its own
+comment says they "are DERIVED from the value the program itself
+reads ... a name this deployment could invent does not exist".
+
+### Interface
+
+```scala
+object Ops:
+  val healthz: Route[EmptyTuple] = Route / "healthz"
+  val readyz:  Route[EmptyTuple] = Route / "readyz"
+  val stats:   Route[EmptyTuple] = Route / "stats"
+  val metrics: Route[EmptyTuple] = Route / "metrics"
+
+  def router(store: Store, ...): Router     // the four, declared once
+  def routes(store: Store, ...): PartialFunction[Request, Response ! Async] = router(...).routes
+  val paths: Set[String]                     // what a deployment names its probes from
+```
+
+`Site` gains the same shape for its own three, and `ScriptDeploy`'s
+`Health` names paths taken from those values rather than from
+literals.
+
+### Behavior
+
+- [ ] `Ops.routes` answers exactly what it answered before, and the
+      existing suites pass unchanged
+- [ ] `Ops.router(...).describe` and `Ops.paths` agree — the audit and
+      the dispatch cannot drift, which is the law this stage exists for
+- [ ] `Site.opsRouter` and `Site.opsPaths` agree the same way
+- [ ] every probe path `ScriptDeploy`'s `Health` names is a path
+      `Site` actually serves
+- [ ] a query string no longer defeats an ops route (`/healthz?x=1`
+      matched in `Site`, which used `pathOf`, and MISSED in `Ops`,
+      which compared the whole url — the two disagreed, and now do not)
+
+### Design
+
+**okay-deploy does not learn about okay-http, and that is the right
+answer rather than a workaround.** `okay-deploy` depends on
+`okayCodec` and `okayConf` only; it renders manifests and has no
+business knowing what a `Route` is. So the coupling is enforced in the
+module that already has BOTH sides — okay-script, which serves the
+paths and writes the manifest. A dependency added to make a check
+convenient would cost more than the check is worth.
+
+**`paths` is derived from the route values, and a test proves it
+matches the router.** The alternative — deriving `paths` from
+`router(...)` — needs a `Store` that a deployment has no reason to
+build, which is the same phantom requirement stage 2 caught in
+`BoardTools.specs`. The honest shape is: values are the source, the
+router is built from them, and a test asserts the two agree.
+
 ## Decisions
 
 - **2026-09-10 — nested pairs instead of a flat tuple: considered,

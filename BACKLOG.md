@@ -212,6 +212,10 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `scripts/gate.sh` asks on every occurrence:
       2026-09-10, okayCodecNative, one lost process in a full gate,
       GREEN on the rerun of that module alone (bench-native-lanes).
+      2026-09-10 23:12, okayCrdtNative, same shape, GREEN on the rerun
+      of that module alone (optics-outside-routes-query). Second
+      module to show it, which is consistent with the settled cause
+      being the runner rather than any one suite.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
