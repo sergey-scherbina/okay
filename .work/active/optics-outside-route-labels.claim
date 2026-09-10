@@ -1,0 +1,34 @@
+task: optics-outside-route-labels
+agent: opus5-optics-outside
+started: 2026-09-11
+heartbeat: 2026-09-11T00:47:00Z
+status: in-progress
+branch: feature/optics-outside-route-labels
+worktree: ../okay-wt-labels
+spec: specs/optics-outside.md (stage 6)
+
+why: `Route.Of[C]` maps a route's tuple into a case class through
+  `m.fromProduct`, which is POSITIONAL. The types are checked, so a
+  real mismatch is caught — but the route's parameter NAMES and the
+  class's field names are never compared, so
+  `"id".as[Int] / "s".as[String]` fits `case class P(a: Int, b: String)`
+  in silence. The operator asked for the check (2026-09-11).
+
+what: `of[C]` becomes `inline`, reads `MirroredElemLabels` with
+  `constValueTuple`, and refuses a route whose parameter names are not
+  the class's field names, in order.
+
+known and stated: the check is a RUN-TIME one at construction, and
+  that is a property of the problem rather than a shortcut. The labels
+  are type-level; the route's names are values in `Vector[Seg.Var]`.
+  Lifting them into the type means a second type parameter
+  (`Route[A, N <: Tuple]`) on every signature and every user
+  annotation — the cost already declined once, when the path/query
+  stages became two classes rather than one phantom parameter. Routes
+  are declared as `val`s, so the check fires at class initialisation:
+  start-up, before the first request, or never.
+
+probe: scratchpad/probe/Labels.scala — labels read, mismatch refused
+  with "route parameters (id, slug) do not match the field names (a, b)".
+
+next: spec stage 6, the check, tests both ways, docs
