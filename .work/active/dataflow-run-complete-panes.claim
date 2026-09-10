@@ -1,0 +1,38 @@
+task: dataflow-run-complete-panes
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-run-complete-panes
+worktree: ../okay-wt-drc1
+spec: specs/dataflow.md (dataflow-complete-panes, for the single-stage road)
+
+why: the completeness rule was stage 3's, and it went into the FAN
+  only. `Flows.run` — the single-stage road, the one every windowed
+  plan that is not a fan takes — still merges every pane the job
+  produces at the coordinator, where the fan merges 7% of one
+  partition's worth. The measured gap is 7.6x, and it is not a fair
+  one: the same job, two roads, and the slower one is the one a
+  simpler plan takes.
+
+what: give the windowed `Wide` node the same rule, by the road the
+  entry called cheaper in time and dearer in memory — measured before
+  choosing, as it asked.
+
+  A partition that can finish a pane alone PRESENTS it and appends it
+  to a plain buffer; only the boundary panes go into the bucketed maps
+  the reducers merge. `out` concatenates its range's buffers with the
+  merged remainder. Nothing is threaded down into the node: the
+  terminal stays where it is, which is why this road exists.
+
+  The rule needs what the fan's needs — a prefix maximum and the
+  stream's backwardness — so `prepass` answers an `Extent` rather than
+  one Long and `work` takes `Bounds` rather than a seed. That is the
+  same pair `Flows.fan` computes with `Flows.extent` and
+  `Flows.edges`; the single-stage road has simply been computing half
+  of it.
+
+predict: the gap closes to something near the fan's, and the pane
+  count reaching the merge falls by the same order the fan's did. The
+  risk is in `Finish.Auto`: it counts accumulators to decide whether
+  to shuffle, and the rule removes most of them from that count —
+  which is CORRECT (there is less to merge) but changes a decision a
+  test pins, so the test has to be read rather than re-fitted.
