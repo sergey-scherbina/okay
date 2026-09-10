@@ -1,0 +1,33 @@
+task: optics-outside-ops-routes
+agent: opus5-optics-outside
+started: 2026-09-10
+heartbeat: 2026-09-10T23:15:00Z
+status: in-progress
+branch: feature/optics-outside-ops-routes
+worktree: ../okay-wt-ops
+spec: specs/optics-outside.md (stage 4)
+
+why: the DESCRIBE interpreter still has no consumer that reads it, and
+  "generate OpenAPI" would be a lane with no caller — the trap this
+  arc has recorded three times. There IS a consumer already in the
+  tree, and it is broken. A probe path lives in THREE independent
+  string literals: okay-ops serves `r.url == "/healthz"` and
+  `"/readyz"`; okay-deploy's `Health` defaults to `"/healthz"` and
+  `"/readyz"` as unrelated literals in the k8s manifest; and
+  okay-script's ScriptDeploy writes a third pair by hand. They have
+  ALREADY diverged: Site.opsRoutes serves only `/healthz`, there is no
+  `/readyz` there at all, which is why ScriptDeploy points readiness
+  at `/healthz` to compensate. Nothing in the system can say so — a
+  manifest may name a probe nothing serves, and Kubernetes finds out
+  first, by restarting the pod.
+
+what: Ops.routes and Site.opsRoutes become Routers. `Health` is built
+  from a Router rather than from literals, so the assertion a test can
+  finally make is: the probe path in the manifest is a path the router
+  serves.
+
+also (folded in, one line): record the okayCrdtNative lost-process
+  recurrence in BACKLOG's native-runner-error entry, which the gate
+  asked for at 23:12.
+
+next: claim, spec stage 4, Ops first, then Site, then Health
