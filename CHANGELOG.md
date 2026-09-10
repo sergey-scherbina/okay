@@ -1,5 +1,39 @@
 # Changelog
 
+## optics-fast — built, measured, and refuted: the JIT was already doing it, and better
+
+The operator asked for the lane specs/optics.md had filed "by a
+consumer that needs it; none does". The idea was chapter 10's
+isomorphism made executable: an optic's CONCRETE representation is
+itself a profunctor (`Optic.Market` for the affine pair, `Optic.Shop`
+for the lens pair without an `Either`), so running the optic at it
+once yields that optic's own pair and the chain of interpretations is
+paid once instead of per call. `o.compiled` and `o.compiledLens` do
+that, and `TestOptics` holds every compiled form to the optic it came
+from — every family, every operation, generated values.
+
+It is slower, and by enough to settle the question. Per-lane minima
+over three forks on a quiet box: one field through the optic 3.0 ns,
+compiled without the `Either` 3.9, compiled through `Market` 8.0,
+against a hand-written `copy` at 1.8; a composed lens ∘ prism ∘ lens
+15.1 live and 26.7 compiled, against a nested `copy` at 4.2.
+
+Two findings, the second of which corrects the spec. THE `EITHER`
+COSTS MORE THAN THE CHAIN: 3.9 against 8.0 is the same compilation
+with the pair's `Either` and without, so the affine's shape is the
+expensive part — and specs/optics.md had attributed the composed
+lane's 3.5x to re-interpretation, which was wrong and is now
+corrected there. THE JIT ALREADY DOES THIS COMPILATION, AND BETTER: an
+optic held in a `val` gives a monomorphic call site the JIT inlines
+straight through, while a compiled pair is a field holding a lambda,
+one indirect call it does not.
+
+What ships is the artifact, not a fast path — the way `Fused` stayed
+after handler-fusion's gate: lawful, tested, with the numbers in the
+first screen of its doc comment and a sentence saying to reach for it
+when you want the pair and never for speed. Nothing in the library
+uses it.
+
 ## intent-period-month-beside-a-number — «12-14 сентября» is a range, not September
 
 `Temporal.period`'s bare month counted a neighbour as a day only when

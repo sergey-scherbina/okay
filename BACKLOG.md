@@ -1969,10 +1969,15 @@ measure on our own data, never a predicted result.
       rest of the row untouched) and `PState.zoom` (one shift: the
       four-parameter lens zooms the parameterised state, and the whole
       changes type exactly when the part does).
-- [ ] optics-fast — the composed optic re-interprets on every `set`
-      (3.5x a nested copy, specs/optics.md Results); an interpretation
-      into a concrete affine (`preview` + `set`, built once) would make
-      `set(b)` a direct call. By a consumer that needs it; none does.
+- [x] optics-fast — BUILT, MEASURED, DECLINED 2026-09-10 (operator's
+      call; specs/optics.md "optics-fast"). The premise was refuted:
+      compiling an optic to its concrete pair is SLOWER (3.0 -> 8.0 ns
+      for one lens through the Either, 3.9 without it; 15.1 -> 26.7 for
+      a composed one). The Either costs more than the chain, and the
+      JIT already inlines through a monomorphic optic better than
+      through a stored lambda. The code stays as the measured artifact
+      (as `Fused` did), documented as not a fast path; the spec's own
+      explanation of the 3.5x was wrong and is corrected there.
 - [x] theory-optics — LANDED 2026-09-09: docs/theory/10-optics.md, in
       the index and the README table, with chapter 9 gaining the
       forward link it lacked. Tambara modules, existential ≅

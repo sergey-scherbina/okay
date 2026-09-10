@@ -105,6 +105,77 @@ object Optic {
   /** effectful functions: `traverse` for any Applicative — with `[x] =>> x ! Row`, in the effect row */
   final case class Star[F[_], A, B](run: A => F[B])
 
+  // ---------------------------------------------------------------- compiling an optic (optics-fast)
+
+  /**
+   * THE CONCRETE REPRESENTATION, WHICH IS ITSELF A PROFUNCTOR.
+   *
+   * `Market[A, B, S, T]` is the pair an affine optic is made of — how
+   * to look at an `S` (a focus, or the `T` it already is) and how to
+   * put a `B` back. It is a `Strong` and a `Choice` profunctor in
+   * `(S, T)`, so an optic can be INSTANTIATED at it: run the optic
+   * once at the identity market and what comes out is that optic's own
+   * pair. That is the existential-to-profunctor isomorphism of theory
+   * chapter 10 (Boisseau & Gibbons 2018), executed rather than cited.
+   *
+   * IT IS NOT A FAST PATH, and it was built to be one. The lane's
+   * premise was that a composed optic re-interprets itself on every
+   * call and that paying the chain once would help. Measured
+   * (specs/optics.md, optics-fast), it is the other way round:
+   *
+   *   one field, `Lens[S](_.f).set`     3.0 ns
+   *   the same, compiled without Either 3.9 ns
+   *   the same, compiled through Market 8.0 ns
+   *   composed, live                   15.1 ns
+   *   composed, compiled               26.7 ns
+   *
+   * Two reasons, both instructive. The `Either` a `Market` must carry
+   * costs more than everything it saves (3.9 against 8.0 is the same
+   * compilation with it and without). And the chain was never the
+   * cost: an optic held in a `val` gives the JIT a monomorphic call
+   * site it inlines through, while a compiled pair is a field holding
+   * a lambda — one indirect call it does not. THE JIT ALREADY DOES
+   * THIS COMPILATION, AND BETTER.
+   *
+   * So this is kept the way `Fused` is kept: the artifact a
+   * measurement was taken on, lawful and tested, so the number can be
+   * taken again — and so that the isomorphism chapter 10 cites can be
+   * run. Reach for it when you need the PAIR (to hand across a
+   * boundary, to store an optic as data), never for speed.
+   */
+  final case class Market[A, B, S, T](look: S => Either[T, A], put: (S, B) => T)
+
+  /** a compiled optic: the pair, with the operations as direct calls
+   * — which is slower than the optic, see above */
+  final class Compiled[S, T, A, B](val look: S => Either[T, A], val put: (S, B) => T):
+    /** the focus, if this optic has one here */
+    inline def preview(s: S): Option[A] = look(s).toOption
+    /** every focus replaced — one call, no interpretation */
+    inline def set(b: B): S => T = s => look(s) match
+      case Right(_) => put(s, b)
+      case Left(t) => t
+    /** the focus through `f` */
+    inline def modify(f: A => B): S => T = s => look(s) match
+      case Right(a) => put(s, f(a))
+      case Left(t) => t
+
+  /** the identity market: what an optic is run at to yield its own pair */
+  private[okay] def idMarket[A, B]: Market[A, B, A, B] = Market(Right(_), (_, b) => b)
+
+  /**
+   * The lens's concrete pair — `Market` without the `Either`, because
+   * a lens's focus is always there. `Strong` only: a prism cannot be
+   * run here, which is the point of having both.
+   */
+  final case class Shop[A, B, S, T](get: S => A, put: (S, B) => T)
+
+  /** a compiled lens: two direct calls, and no Either between them */
+  final class CompiledLens[S, T, A, B](val get: S => A, val put: (S, B) => T):
+    inline def set(b: B): S => T = s => put(s, b)
+    inline def modify(f: A => B): S => T = s => put(s, f(get(s)))
+
+  private[okay] def idShop[A, B]: Shop[A, B, A, B] = Shop(identity, (_, b) => b)
+
   // ---------------------------------------------------------------- Lens.field: by name, typed by the Mirror
 
   /** the index of a label in the Mirror's label tuple, at the type level */
@@ -141,7 +212,7 @@ object Optic {
 
 // ---------------------------------------------------------------- the interpretations (ride `import okay.given`)
 
-import Optic.{Profunctor, Strong, Choice, Traversing, Walk, Forget, Const, First, Star}
+import Optic.{Profunctor, Strong, Choice, Traversing, Walk, Forget, Const, First, Star, Market, Compiled, Shop, CompiledLens}
 
 /** plain functions: `modify` and `set` */
 given opticFunction1: Traversing[Function1] with
@@ -190,6 +261,33 @@ given opticStarTraversing[F[_]](using F: Applicative[F]): Traversing[[A, B] =>> 
   override def prism[S, T, A, B](preview: S => Either[T, A], review: B => T)(p: Star[F, A, B]): Star[F, S, T] =
     Star(s => preview(s).fold(t => F.pure(t), a => F.fmap(p.run(a), review)))
 
+/**
+ * The concrete pair as a profunctor: `Strong` AND `Choice`, and
+ * deliberately NOT `Traversing`. A pair holds one focus, so there is
+ * no honest `wander` for it — which means `.compiled` is available for
+ * an iso, a lens, a prism and an affine, and a traversal does not get
+ * it rather than getting a lie. (A traversal has no measured problem:
+ * stage 0's gate put `Traversal.each.modify` at 1.00x of `Vector.map`.)
+ */
+/** the lens's pair as a Strong profunctor — no Choice, so only the
+ * always-there families run here */
+given opticShop[A, B]: Strong[[S, T] =>> Shop[A, B, S, T]] with
+  def dimap[S, T, C, D](p: Shop[A, B, S, T])(f: C => S, g: T => D): Shop[A, B, C, D] =
+    Shop(c => p.get(f(c)), (c, b) => g(p.put(f(c), b)))
+  def first[S, T, C](p: Shop[A, B, S, T]): Shop[A, B, (S, C), (T, C)] =
+    Shop({ case (s, c) => p.get(s) }, { case ((s, c), b) => (p.put(s, b), c) })
+
+given opticMarket[A, B]: (Strong[[S, T] =>> Market[A, B, S, T]] & Choice[[S, T] =>> Market[A, B, S, T]]) =
+  new Strong[[S, T] =>> Market[A, B, S, T]] with Choice[[S, T] =>> Market[A, B, S, T]]:
+    def dimap[S, T, C, D](p: Market[A, B, S, T])(f: C => S, g: T => D): Market[A, B, C, D] =
+      Market(c => p.look(f(c)).left.map(g), (c, b) => g(p.put(f(c), b)))
+    def first[S, T, C](p: Market[A, B, S, T]): Market[A, B, (S, C), (T, C)] =
+      Market({ case (s, c) => p.look(s).left.map(t => (t, c)) }, { case ((s, c), b) => (p.put(s, b), c) })
+    def right[S, T, C](p: Market[A, B, S, T]): Market[A, B, Either[C, S], Either[C, T]] =
+      Market(
+        _.fold(c => Left(Left(c)), s => p.look(s).left.map(Right(_))),
+        (e, b) => e.fold(Left(_), s => Right(p.put(s, b))))
+
 // ---------------------------------------------------------------- the operations, on any optic the interpretation meets
 
 extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
@@ -212,6 +310,28 @@ extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
   /** every focus through an effectful `f`, effects in order — in the row when `F = [x] =>> x ! Row` */
   def traverseOf[F[_]](f: A => F[B])(using C[[X, Y] =>> Star[F, X, Y]]): S => F[T] =
     o[[X, Y] =>> Star[F, X, Y]](Star(f)).run
+
+  /**
+   * The optic run once at its own concrete representation
+   * (`Optic.Market`, and see its comment): the affine pair, with
+   * `preview`, `set` and `modify` as direct calls. Affine by nature —
+   * the pair holds one focus — so a traversal cannot be compiled here
+   * at all, and the missing given says so.
+   *
+   * MEASURED SLOWER THAN THE OPTIC (specs/optics.md, optics-fast).
+   * For the pair, not for speed.
+   */
+  /** a LENS run once at its own pair — no Either, since the focus is
+   * always there; available only where the optic is at least Strong.
+   * The cheaper of the two compilations and still slower than the
+   * optic: 3.9 ns against 3.0 (specs/optics.md, optics-fast). */
+  def compiledLens(using C[[X, Y] =>> Shop[A, B, X, Y]]): CompiledLens[S, T, A, B] =
+    val sh = o[[X, Y] =>> Shop[A, B, X, Y]](Optic.idShop[A, B])
+    CompiledLens(sh.get, sh.put)
+
+  def compiled(using C[[X, Y] =>> Market[A, B, X, Y]]): Compiled[S, T, A, B] =
+    val m = o[[X, Y] =>> Market[A, B, X, Y]](Optic.idMarket[A, B])
+    Compiled(m.look, m.put)
 
 // ---------------------------------------------------------------- constructors
 

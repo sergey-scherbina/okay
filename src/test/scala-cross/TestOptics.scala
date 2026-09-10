@@ -136,6 +136,52 @@ class TestOptics extends munit.FunSuite {
       assertEquals(S.prism(preview, review)(st).run(o), defaultPrism(S)(st).run(o))
   }
 
+  test("compiled: the pair answers what the optic answers, on every family and every operation") {
+    val p = Person("ada", 36, Some(Address("Warszawa", 1)))
+    val none = p.copy(address = None)
+    val personZip: Affine[Person, Person, Int, Int] = address.andThen(Prism.some).andThen(zip)
+
+    // a lens, a prism, an affine, an iso — each compiled once, then
+    // asked the same questions as the optic it came from
+    val cAge = age.compiled
+    assertEquals(cAge.preview(p), age.preview(p))
+    assertEquals(cAge.set(7)(p), age.set(7)(p))
+    assertEquals(cAge.modify(_ + 1)(p), age.modify(_ + 1)(p))
+
+    val some = Prism.some[Int, Int]
+    val cSome = some.compiled
+    for o <- Vector(Some(3), None) do
+      assertEquals(cSome.preview(o), some.preview(o))
+      assertEquals(cSome.set(9)(o), some.set(9)(o))
+      assertEquals(cSome.modify(_ * 2)(o), some.modify(_ * 2)(o))
+
+    val cZip = personZip.compiled
+    for s <- Vector(p, none) do
+      assertEquals(cZip.preview(s), personZip.preview(s))
+      assertEquals(cZip.set(7)(s), personZip.set(7)(s))
+      assertEquals(cZip.modify(_ + 1)(s), personZip.modify(_ + 1)(s))
+
+    val iso: Iso[Int, Int, Int, Int] = Iso(_ + 1, _ - 1)
+    assertEquals(iso.compiled.modify(_ * 2)(10), iso.modify(_ * 2)(10))
+
+    // a TYPE-CHANGING lens compiles too, and the pair carries the change
+    val boxed: Lens[(String, Int), (Boolean, Int), String, Boolean] =
+      Lens(_._1, (si, b) => (b, si._2))
+    assertEquals(boxed.compiled.set(true)(("x", 5)), boxed.set(true)(("x", 5)))
+
+    // generated: every question, on every value, agrees
+    for _ <- 1 to 100 do
+      val q = person(); val v = rnd.nextInt(90)
+      assertEquals(cAge.set(v)(q), age.set(v)(q))
+      assertEquals(cZip.set(v)(q), personZip.set(v)(q))
+      assertEquals(cZip.preview(q), personZip.preview(q))
+  }
+
+  test("compiled is not offered for a traversal: a pair holds one focus, and the type says so") {
+    val e = typeCheckErrors("""okay.Traversal.each[Int, Int].compiled""")
+    assert(e.nonEmpty, "a traversal was allowed to compile to a one-focus pair")
+  }
+
   test("Lens[S](_.f): the lambda is the getter; not a selector, and no such field, are compile errors") {
     val p = Person("ada", 36, None)
     assertEquals(Lens[Person](_.name).get(p), "ada")

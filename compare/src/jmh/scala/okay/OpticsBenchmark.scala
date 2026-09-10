@@ -16,6 +16,10 @@ import okay.given
  *   fieldSet       against copySet       `Lens.field[S]("f")` — the Mirror route, with its array
  *   traversalOver  against vectorMap     `Traversal.each.modify` vs `Vector.map`
  *   traversalFold  against vectorSum     `foldMap` vs `foldLeft`
+ *   compiledComposedSet against composedSet and nestedCopy — the lane
+ *     optics-fast exists for: the chain paid once, then called
+ *   compiledLensSet     against lensSet — where there is no chain to
+ *     pay, so the expected answer is "no difference"
  *
  * Read per-lane MINIMA across forks (bench-one-round-lies), not the mean.
  */
@@ -37,6 +41,12 @@ class OpticsBenchmark {
   private val zip: Lens[Address, Address, Int, Int] = Lens[Address](_.zip)
   private val personZip: Affine[Person, Person, Int, Int] = address.andThen(Prism.some).andThen(zip)
   private val each = Traversal.each[Int, Int]
+  // optics-fast: the optic run ONCE at its concrete representation.
+  // Built here, in a field — building it per call would measure the
+  // build, which is the thing being avoided.
+  private val cAge = age.compiled
+  private val cAgeLens = age.compiledLens
+  private val cPersonZip = personZip.compiled
 
   private val p = Person("ada", 36, Some(Address("Warszawa", 1)))
   private val vec: Vector[Int] = Vector.tabulate(1000)(identity)
@@ -53,6 +63,9 @@ class OpticsBenchmark {
 
   @Benchmark def nestedCopy: Person = { n += 1; p.copy(address = p.address.map(_.copy(zip = n))) }
   @Benchmark def composedSet: Person = { n += 1; personZip.set(n)(p) }
+  @Benchmark def compiledComposedSet: Person = { n += 1; cPersonZip.set(n)(p) }
+  @Benchmark def compiledLensSet: Person = { n += 1; cAge.set(n)(p) }
+  @Benchmark def compiledShopSet: Person = { n += 1; cAgeLens.set(n)(p) }
 
   @Benchmark def vectorMap: Vector[Int] = vec.map(_ + 1)
   @Benchmark def traversalOver: Vector[Int] = each.modify(_ + 1)(vec)

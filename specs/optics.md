@@ -290,6 +290,56 @@ picture, and chapter 3 of the theory textbook already reads `Cont`
   under `Ui.patch` until the number says the tuple `first` builds is
   cheap enough. Measured, not assumed.
 
+## optics-fast — built, measured, declined (2026-09-10)
+
+The operator asked for the lane the spec had filed "by a consumer
+that needs it; none does". Built, measured, and the premise refuted —
+which is the lane's result and is worth more than the fast path would
+have been.
+
+The idea was sound and is chapter 10's isomorphism made executable:
+the CONCRETE representation of an optic is itself a profunctor
+(`Optic.Market` for the affine pair, `Optic.Shop` for the lens pair
+without an `Either`), so running an optic at it once yields that
+optic's own pair, and the chain of interpretations is paid once
+instead of per call. `o.compiled` and `o.compiledLens` do exactly
+that, with `TestOptics` holding every compiled form to the optic it
+came from, on every family and every operation.
+
+It is slower. Per-lane minima over three forks, on a quiet box:
+
+| lane | ns | of the hand-written |
+|---|---|---|
+| `copy` by hand | 1.8 | 1.00x |
+| `Lens[S](_.f).set` | 3.0 | 1.68x |
+| the same, compiled without `Either` (`Shop`) | 3.9 | 2.17x |
+| the same, compiled through `Market` | 8.0 | 4.43x |
+| nested `copy` by hand | 4.2 | 1.00x |
+| lens ∘ prism ∘ lens `.set` | 15.1 | 3.55x |
+| the same, compiled | 26.7 | 6.29x |
+
+Two findings, and the second corrects this spec.
+
+**The `Either` costs more than the chain.** 3.9 against 8.0 is the
+same compilation with the pair's `Either` and without it: the affine's
+shape, not the interpretation, is the expensive part. That also
+re-explains the 3.5x of the composed lane, which this document had
+attributed to re-interpretation.
+
+**The JIT already does this compilation, and better.** An optic in a
+`val` gives a monomorphic call site the JIT inlines straight through;
+a compiled pair is a field holding a lambda, which is one indirect
+call it does not. Pre-compiling a small optic on the JVM is a
+pessimisation, and the measurement says so twice — with the `Either`
+and without.
+
+What ships: the code stays, the way `Fused` stayed after
+handler-fusion's gate — the artifact a measurement was taken on,
+lawful and tested, so the number can be taken again and so that the
+isomorphism chapter 10 cites can be run. Its doc comment says, in the
+first screen, that it is not a fast path. Nothing in the library uses
+it, and nothing should for speed.
+
 ## Results
 
 Stage 3 (optics-state) landed 2026-09-09: `State.zoom` and
@@ -394,10 +444,11 @@ setter walked an iterator, an array and a `Tuple.fromArray`. The
 derived-with-default operations (Decisions) and a macro that
 generates `s.copy(…)` took the one-field lens from 37 ns to 3.1; the
 Mirror route's array became a one-element-replaced VIEW of the
-original product (7.8 → 4.3). What remains is real and named: a
-composed optic re-interprets itself on every `set` — one closure per
-optic in the chain — and `set(b)` with a varying `b` cannot be hoisted
-(`modify(f)` with a fixed `f` can: the interpretation is built once).
+original product (7.8 → 4.3). What remains is real, and what it is was WRONG here until optics-fast
+measured it (below): this said the cost was a composed optic
+re-interpreting itself on every `set`. It is not — the JIT flattens
+that. The cost is the `Either` a prism in the chain must carry, and
+`set(b)` with a varying `b` cannot be hoisted.
 The fold's 1.7x is the `Monoid` dictionary call per element against
 an inlined `+`.
 
@@ -405,5 +456,5 @@ Verdict: the bar was 1.5x; the traversal clears it, the one-field
 lens sits on it, composition does not. Optics are a convenience and
 a derivation layer (stages 1–3), not a hot-path primitive; `Ui.patch`
 keeps its navigation. A lane to cache a composed optic's
-interpretation (an affine as `preview`/`set` pair, built once) is
-filed as optics-fast, by a consumer that needs it.
+interpretation was filed as optics-fast, and is now measured and
+declined — see below.
