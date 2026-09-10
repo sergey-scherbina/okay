@@ -1,5 +1,39 @@
 # Changelog
 
+## wroclaw-parallel-prep-pass — the obvious answer to "where is the serial 6.5%" is not the answer
+
+okay's merge-parallel lane scales 1.88x / 3.30x / 5.55x at 2 / 4 / 8
+fibres. Karp-Flatt — the serial fraction the measurement implies —
+reads 0.062 / 0.071 / 0.063: FLAT across widths, which says the loss
+is a genuine serial part of about 6.5% rather than per-worker
+overhead, and Amdahl turns that into a ceiling of 7.6x on this
+14-core box.
+
+The lane opens with a serial walk of every event (per-slice maxima and
+the greatest backwardness, which the boundary rule needs), and that
+looked like exactly the 6.5%. It is not.
+
+Parallelised as a reduction — each slice reduces its own range to
+(max, min, localBack), the coordinator combines them in O(lanes), with
+the cross-slice bound `hi(i-1) - min(i)` erring on the safe side —
+and measured A/B with both roads alternating INSIDE one JVM, five
+rounds, minimum kept (the design this project arrived at yesterday
+after being confounded by run order):
+
+  width 2   448 -> 454 ms   (-1.3%)
+  width 4   258 -> 257 ms   (+0.4%)
+  width 8   154 -> 158 ms   (-2.6%)
+
+Nothing — and the same numbers bound the scan from above: if eight
+threads save at most ~4 ms, the whole walk is under 1% of the 855 ms
+single-fibre run. Reverted, and filed as `wroclaw-parallel-ceiling`
+with what is left: the coordinator (`Sink.absorb` per slice, `merged`
+over the partial pane maps, the bunching stitch — all serial, all
+proportional to BOUNDARY panes) and fibre spawn/join.
+
+The A/B harness is not kept. What is kept is the bound and the
+elimination: the next person does not re-parallelise the scan.
+
 ## optics-outside-routes-body — a declared body, and a defect of my own it uncovered
 
 Stage 7 of `specs/optics-outside.md`. `Router.json[B]` declares the
