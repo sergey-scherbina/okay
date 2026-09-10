@@ -719,14 +719,14 @@ as a `require` on a constructor argument.
 
 ### Behavior
 
-- [ ] a route whose parameter names are the class's field names, in
+- [x] a route whose parameter names are the class's field names, in
       order, is accepted
-- [ ] a route whose names differ is refused, and the message names
+- [x] a route whose names differ is refused, and the message names
       both sides
-- [ ] the query's parameters count too, and in tuple order (path
+- [x] the query's parameters count too, and in tuple order (path
       first, then query)
-- [ ] a route with no parameters and a class with no fields is fine
-- [ ] every existing `of[C]` in the repository still works
+- [x] a route with no parameters and a class with no fields is fine
+- [x] every existing `of[C]` in the repository still works
 
 ## Decisions
 
@@ -755,6 +755,20 @@ as a `require` on a constructor argument.
   and a typed query DSL comes fourth.
 
 ## Results
+
+### Stage 6 — LANDED 2026-09-11 (optics-outside-route-labels)
+
+`of[C]` is `inline`, reads `MirroredElemLabels` and refuses a route
+whose parameter names are not the class's field names, in order —
+path first, then query.
+
+**Verified by removing the check.** With the `require` disabled, the
+two new tests fail with "expected exception ... but body evaluated
+successfully": a route declaring `(id, slug)` mapped into
+`case class Wrong(a: Int, b: String)` without a murmur, which is
+exactly the silence the stage was written to end. The types agree in
+that example on purpose — otherwise the compiler would have refused it
+and the test would have proved nothing about the names.
 
 ### Stage 4 — LANDED 2026-09-10 (optics-outside-ops-routes)
 

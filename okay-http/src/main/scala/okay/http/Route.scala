@@ -2,6 +2,7 @@ package okay.http
 
 import okay.*
 import scala.deriving.Mirror
+import scala.compiletime.constValueTuple
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
@@ -114,9 +115,24 @@ sealed trait Routed[A <: Tuple]:
    * tuple. This is the form worth using once a route has parameters:
    * `case Get(userPost(p)) => p.id` beats positional tuples, and one
    * extractor result is unambiguous at every arity.
+   *
+   * The mapping is POSITIONAL (`m.fromProduct`), so the compiler checks
+   * the types and says nothing about the names. This checks the names
+   * (specs/optics-outside.md, stage 6): the path's parameters in order,
+   * then the query's, against the class's fields. A mismatch is refused
+   * here rather than reported, because the mapping it would produce is
+   * wrong and there is no sensible way to carry on with it.
+   *
+   * The check runs at CONSTRUCTION, not at compile time, and the
+   * spec says why: the labels are type-level, the route's names are
+   * values, and lifting the names into the type would cost a second
+   * type parameter on every signature. A route is a `val`, so this
+   * fires at class initialisation — start-up, before the first
+   * request, or never.
    */
-  def of[C <: Product](using m: Mirror.ProductOf[C] { type MirroredElemTypes = A }): Route.Of[C, A] =
-    new Route.Of(this, m)
+  inline def of[C <: Product](using m: Mirror.ProductOf[C] { type MirroredElemTypes = A }): Route.Of[C, A] =
+    Route.Of.checked(this, m,
+      constValueTuple[m.MirroredElemLabels].productIterator.map(_.toString).toVector)
 
 
 /**
@@ -355,6 +371,27 @@ object Route:
         case Vector(one) if one.nonEmpty => p.parse(one).map(_ *: EmptyTuple)
         case _ => None,
       t => (Vector(p.print(t.head)), Vector.empty))
+
+  object Of:
+    /**
+     * Build the case-class view, refusing a route whose parameter
+     * names are not the class's field names, in order.
+     *
+     * `names` comes from the caller because only an `inline` context
+     * can read `MirroredElemLabels`; keeping the comparison here keeps
+     * the message in one place.
+     */
+    def checked[C <: Product, A <: Tuple](
+        r: Routed[A],
+        m: Mirror.ProductOf[C] { type MirroredElemTypes = A },
+        labels: Vector[String]): Of[C, A] =
+      val names = r.params.map(_.name) ++ r.queries.map(_.name)
+      require(names == labels,
+        s"route parameters ${names.mkString("(", ", ", ")")} do not match " +
+          s"the field names ${labels.mkString("(", ", ", ")")}: " +
+          "the mapping is positional, so the types already agree — " +
+          "rename one side so the declaration says what it means")
+      new Of(r, m)
 
   /** a route read as a case class rather than a tuple */
   final class Of[C <: Product, A <: Tuple] private[http] (

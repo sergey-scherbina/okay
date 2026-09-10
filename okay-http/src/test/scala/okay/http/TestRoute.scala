@@ -128,6 +128,33 @@ class TestRoute extends munit.FunSuite {
 
   final case class UserPost(id: Int, slug: String)
 
+  final case class Wrong(a: Int, b: String)
+  final case class Swapped(slug: Int, id: String)
+  final case class Found(q: String, page: Option[Int])
+  final case class Misnamed(q: String, limit: Option[Int])
+
+  test("the parameter names must be the field names (stage 6)") {
+    // the types already agree, so only the NAMES can be wrong — and
+    // positional mapping would have accepted this in silence
+    val e = intercept[IllegalArgumentException](userPost.of[Wrong])
+    assert(e.getMessage.contains("(id, slug)"), e.getMessage)
+    assert(e.getMessage.contains("(a, b)"), e.getMessage)
+  }
+
+  test("the query's parameters count too, in tuple order") {
+    assertEquals(search.of[Found].unapply("/search?q=cats&page=2"),
+      Some(Found("cats", Some(2))))
+    val e = intercept[IllegalArgumentException](search.of[Misnamed])
+    assert(e.getMessage.contains("(q, page)"), e.getMessage)
+    assert(e.getMessage.contains("(q, limit)"), e.getMessage)
+  }
+
+  test("a route with no parameters maps to a class with no fields") {
+    // nothing to disagree about, and nothing to refuse
+    assertEquals(healthz.params.length, 0)
+    assertEquals(healthz.queries.length, 0)
+  }
+
   test("a route can read a case class instead of a tuple") {
     val r = userPost.of[UserPost]
     assertEquals(r.unapply("/users/7/posts/hello"), Some(UserPost(7, "hello")))

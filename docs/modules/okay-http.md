@@ -190,8 +190,23 @@ matched by name, so wire order is irrelevant), while in a path the
 segment is found by POSITION and the name is the description — it is
 what `describe` prints as `{id}` and what a generated OpenAPI operation
 or MCP tool schema will carry. `Route.Of[C]` maps to a case class by
-position too, so a route's parameter names and the class's field names
-are not checked against each other.
+position, so the compiler checks the types — and `of[C]` checks the
+NAMES, which position alone would never notice:
+
+```scala
+val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+userPost.of[UserPost]                       // case class UserPost(id: Int, slug: String)
+userPost.of[Wrong]                          // case class Wrong(a: Int, b: String)
+// java.lang.IllegalArgumentException: route parameters (id, slug) do not
+// match the field names (a, b): the mapping is positional, so the types
+// already agree — rename one side so the declaration says what it means
+```
+
+The query's parameters count too, in tuple order. The check runs at
+construction rather than at compile time, because the labels are
+type-level while a route's names are values — and since routes are
+declared as `val`s it fires at class initialisation, which is start-up,
+before the first request.
 
 **A table starts from the companion:**
 

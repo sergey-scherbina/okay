@@ -1,5 +1,53 @@
 # Changelog
 
+## optics-outside-route-labels — the names a positional mapping never checked
+
+Stage 6 of `specs/optics-outside.md`. `Route.Of[C]` maps a route's
+tuple into a case class with `m.fromProduct`, which is POSITIONAL: the
+compiler checks the types and says nothing about the names, so a route
+declaring `(id, slug)` fitted `case class Wrong(a: Int, b: String)` in
+silence. `describe` publishes those names to OpenAPI operations and MCP
+tool schemas, where being wrong is not cosmetic.
+
+`of[C]` is `inline` now, reads `MirroredElemLabels` with
+`constValueTuple`, and refuses a route whose parameter names are not
+the class's field names — the path's in order, then the query's:
+
+```
+route parameters (id, slug) do not match the field names (a, b):
+the mapping is positional, so the types already agree — rename one
+side so the declaration says what it means
+```
+
+**Verified by removing it.** With the `require` disabled both new
+tests fail with "expected exception ... but body evaluated
+successfully", which is the silence this stage ends. The example
+deliberately uses a class whose TYPES agree, since otherwise the
+compiler would refuse it and the test would prove nothing about names.
+
+**It is a run-time check at construction, and that is the problem's
+shape rather than a shortcut.** The labels are type-level; a route's
+names are values in `Vector[Seg.Var]`, put there by `Route[T](name)`
+and `"name".as[T]`. There is nothing for the compiler to compare, and
+making it compile-time means lifting the names INTO the type —
+`Route[A, N <: Tuple]` plus an `inline def as` keeping `name.type` —
+a second type parameter on every signature and in every user
+annotation. That is the price stage 5 already declined when the
+path/query stages became two classes rather than one phantom
+parameter. Routes are `val`s, so this fires at class initialisation:
+start-up, before the first request, or never.
+
+**Refused rather than reported**, unlike `Toolbox.duplicates`, which
+answers with data. A duplicate tool name is something a caller can
+inspect and decide about; a name mismatch produces a WRONG mapping
+with no sensible way to continue, and the value being constructed is a
+declaration rather than a request.
+
+One cost, stated plainly: a field deliberately named differently from
+its url parameter is now refused and must be renamed on one side. That
+was the doubt in the backlog entry, and it survives the lane — it is
+the price of the check, not an oversight. Commits: 3c22b52a (spec), 3d6df43f (the check).
+
 ## optics-outside-route-syntax — five questions about brevity, three answers from the language
 
 Stage 5 of `specs/optics-outside.md`. The operator read the declaration

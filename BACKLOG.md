@@ -680,16 +680,17 @@ or not at all).
       are claimed.
 
 ## okay-http
-- [ ] optics-outside-route-of-labels — `Route.Of[C]` maps a route's
-      tuple into a case class through `m.fromProduct`, which is
-      POSITIONAL. The types are checked, so a real mismatch is caught,
-      but the route's parameter NAMES and the class's field names are
-      never compared: `"id".as[Int] / "s".as[String]` fits
-      `case class P(a: Int, b: String)` silently. Checking them with
-      `Mirror.MirroredElemLabels` is possible; whether it is worth it
-      is the open question, since it would catch only a documentation
-      typo, and it would forbid the legitimate case where a field is
-      deliberately named differently from the url.
+- [x] optics-outside-route-of-labels — DONE (2026-09-11, 3d6df43f). The
+      operator settled the open question ("it will be needed"), and
+      the entry's own doubt was half wrong: the check catches more
+      than a documentation typo, since `describe` publishes those
+      names to OpenAPI and to MCP tool schemas. The cost the entry
+      worried about is real and stands — a field deliberately named
+      differently from the url is now refused, and must be renamed on
+      one side. `of[C]` is inline, reads `MirroredElemLabels`, and
+      compares path parameters then query parameters against the
+      fields; the refusal was verified by removing it and watching
+      both tests fail.
 - [ ] compile-time-only-is-not-a-guarantee — measured 2026-09-11 in
       optics-outside-route-syntax. `@compileTimeOnly` was tried as the
       carrier of a nicer refusal message (a poisoned `/` on
