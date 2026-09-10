@@ -1,5 +1,45 @@
 # Changelog
 
+## jsonstrict-threshold-trampoline — the last of four, and the arc closes
+
+Target 3 of depth-is-policy-not-rescue, and the last of the four
+native-recursion sites the two closed roots left as a rescue rather
+than a policy. Not a new design: the third instance of root 1/2's
+pattern. JsonStrict.Reader already had enter/leave/tooDeep
+(cut-refuses-the-document); get becomes the dispatcher
+(open >= Codecs.NativeThreshold), getNative is the renamed original
+body (unchanged — its calls already went through get), and
+getC/arrayC/productC/sumC mirror getNative/array/product/sum with
+Cont.defer at each recursive descent. skipValue is UNCHANGED: already
+an explicit bracket-counting loop, no native recursion, no fix needed
+there.
+
+Verified the same way as the other three: a scratch Codecs.maxDepth
+bump built a 100 000-level document (JsonStrict.read overflows around
+20 000 without the fix, per the original cut-refuses-the-document
+measurement; succeeds at 100 000 with it), A/B on NativeThreshold
+confirmed the mechanism.
+
+The JMH gate done right this time - uptime checked FIRST (load 3-6,
+quiet) before spending a fork. compare/CodecBenchmark.textToOrderStrict,
+5 forks: 971+-14 before, 1002+-41 after, overlapping error bars, not a
+regression. The two staged variants (which fall back to the
+now-fixed interpreted get only for the recursive case) confirm flat:
+317.8->317.9, 376.7->367.6. Clean on the first attempt, because the
+box was checked before trusting it (jmh-load-not-just-forks).
+
+**All four native-recursion sites depth-is-policy-not-rescue named are
+closed.** Codecs.maxDepth has no remaining stack-safety motivation
+anywhere in okay-codec: Cbor.get, Json.decode, Cbor.In.skipItem,
+JsonValue's fast parser, Json.lossless's projection, and
+JsonStrict.Reader.get all recurse natively only to
+Codecs.NativeThreshold, then trampoline. Raising Codecs.maxDepth, or
+removing the refusal entirely, is now a PURE wire-contract decision -
+left as its own deliberate follow-up, not assumed here.
+
+190 tests in okay-codec (6 new, TestJsonStrictTrampoline), 187 on JS
+and Native.
+
 ## dataflow stage 7 — the distributed road, weighed
 
 Stages 4 to 6 proved the same answer comes back across processes.

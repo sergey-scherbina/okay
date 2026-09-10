@@ -1,5 +1,7 @@
 package okay.codec
 
+import okay.{Cont, reset, />}
+
 /**
  * The STRICT JSON reader: characters straight into a `Schema`, no
  * tokens, no CST, no `Json` tree — the second door beside the
@@ -88,8 +90,21 @@ object JsonStrict {
     def fail[X](what: String): Either[String, X] =
       Left(s"$what at $at" + (if at < n then s" ('${s.charAt(at)}')" else " (end of input)"))
 
-    /** the walk: `Cbor.get`'s shape, `Json.decode`'s rules */
-    def get[A](sc: Schema[A]): Either[String, A] = sc match
+    /**
+     * The walk: `Cbor.get`'s shape, `Json.decode`'s rules — and, past
+     * `Codecs.NativeThreshold`, the same `Cont.defer` trampoline both
+     * already carry (jsonstrict-threshold-trampoline, the third and
+     * last instance of the pattern). `open` IS the counter this
+     * dispatch reads: `array`/`product`/`sum` already bump it via
+     * `enter`/`leave` before their bodies call back into `get`, so the
+     * threshold crossing is measured at the SAME place `Codecs.maxDepth`
+     * already is, not a second counter.
+     */
+    def get[A](sc: Schema[A]): Either[String, A] =
+      if open >= Codecs.NativeThreshold then reset(getC[A, Either[String, A]](sc))
+      else getNative(sc)
+
+    private def getNative[A](sc: Schema[A]): Either[String, A] = sc match
       case Schema.SIso(u, to, _) => get(u()).flatMap(to)
       case Schema.SInt => number().map(_.toInt)
       case Schema.SLong => number().map(_.toLong)
@@ -308,6 +323,156 @@ object JsonStrict {
             else { b.append(c): Unit; j += 1 }
           at = i + 1
           Right(b.toString)
+
+    // ---------------------------------------------------------------
+    // the trampoline (jsonstrict-threshold-trampoline): PAST
+    // Codecs.NativeThreshold, `get` runs this instead of `getNative`.
+    // Same walk, same rules — the ONE difference is that a descent
+    // into a NESTED schema is `Cont.defer`red rather than called
+    // directly, exactly `Cbor.get`'s `getC`/`Json.decode`'s `decodeC`
+    // (cbor-decode-threshold-trampoline, json-decode-threshold-
+    // -trampoline) against this reader's own scanning primitives
+    // instead of `Cbor.In`'s byte cursor or a `Json` value tree.
+    //
+    // No cast: `Cont`'s invariance needs the same one `.map` widening
+    // `getNative`'s callers already get for free from `Either`'s
+    // covariance (a product's field joining `Vector[Any]`, a sum's
+    // case narrowing to its parent type).
+    // ---------------------------------------------------------------
+
+    /** one container's worth of nesting, Cont-shaped — `leave()` fires
+      * once the inner computation's VALUE is ready, via `flatMap`, not
+      * when this function returns (it returns a `Cont`, not a value) */
+    private def insideC[X, R](body: => (Either[String, X] /> R)): Either[String, X] /> R =
+      if !enter() then Cont.Pure(tooDeep)
+      else body.flatMap { v => leave(); Cont.Pure(v) }
+
+    /** `field`'s Cont-shaped twin: widened to `Any` the same way
+      * `field` widens via `Either`'s covariance */
+    private def fieldC[X, R](sc: Schema[X]): Either[String, Any] /> R =
+      getC(sc).map(e => e: Either[String, Any])
+
+    private def getC[A, R](sc: Schema[A]): Either[String, A] /> R = sc match
+      case Schema.SIso(u, to, _) =>
+        Cont.defer(() => getC(u()))(r => Cont.Pure(r.flatMap(to)))
+      case Schema.SInt => Cont.Pure(number().map(_.toInt))
+      case Schema.SLong => Cont.Pure(number().map(_.toLong))
+      case Schema.SDouble => Cont.Pure(number())
+      case Schema.SBool => Cont.Pure(bool())
+      case Schema.SString => Cont.Pure(string())
+      case Schema.SChar => Cont.Pure(string().flatMap(x =>
+        if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}")))
+      case Schema.SBytes => Cont.Pure(string().flatMap(Base64.decode))
+      case Schema.SOption(of) =>
+        if lit("null") then Cont.Pure(Right(None))
+        else Cont.defer(() => getC(of()))(r => Cont.Pure(r.map(Some(_))))
+      case l: Schema.SList[a] => arrayC[a, R](l.of()).map(_.map(_.toList))
+      case v: Schema.SVector[a] => arrayC[a, R](v.of())
+      case p: Schema.SProduct[A] => productC[A, R](p)
+      case su: Schema.SSum[A] => sumC[A, R](su)
+
+    private def arrayC[X, R](of: Schema[X]): Either[String, Vector[X]] /> R =
+      insideC[Vector[X], R] { arrayHereC[X, R](of) }
+
+    private def arrayHereC[X, R](of: Schema[X]): Either[String, Vector[X]] /> R =
+      expect('[') match
+        case Left(e) => Cont.Pure(Left(e))
+        case Right(_) =>
+          skipWs()
+          if peek == ']' then { at += 1; Cont.Pure(Right(Vector.empty)) }
+          else
+            def loop(acc: Vector[X]): Either[String, Vector[X]] /> R =
+              skipWs()
+              Cont.defer(() => getC[X, R](of)) {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(x) =>
+                  val acc2 = acc :+ x
+                  skipWs()
+                  peek match
+                    case ',' => at += 1; loop(acc2)
+                    case ']' => at += 1; Cont.Pure(Right(acc2))
+                    case _ => Cont.Pure(fail[Vector[X]]("expected ',' or ']'"))
+              }
+            loop(Vector.empty)
+
+    private def productC[A, R](p: Schema.SProduct[A]): Either[String, A] /> R =
+      insideC[A, R] { productHereC[A, R](p) }
+
+    private def productHereC[A, R](p: Schema.SProduct[A]): Either[String, A] /> R =
+      expect('{') match
+        case Left(e) => Cont.Pure(Left(e))
+        case Right(_) =>
+          skipWs()
+          if peek == '}' then { at += 1; assembleC[A, R](p, Map.empty) }
+          else
+            def afterField(found: Map[String, Any]): Either[String, A] /> R =
+              skipWs()
+              peek match
+                case ',' => at += 1; loop(found)
+                case '}' => at += 1; assembleC[A, R](p, found)
+                case _ => Cont.Pure(fail[A]("expected ',' or '}'"))
+            def loop(found: Map[String, Any]): Either[String, A] /> R =
+              skipWs()
+              string() match
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(k) =>
+                  skipWs()
+                  expect(':') match
+                    case Left(e) => Cont.Pure(Left(e))
+                    case Right(_) =>
+                      skipWs()
+                      p.fields.find(_._1 == k) match
+                        case Some((_, sc)) =>
+                          Cont.defer(() => fieldC(sc())) {
+                            case Left(e) => Cont.Pure(Left(e))
+                            case Right(v) => afterField(found + (k -> v))
+                          }
+                        case None => skipValue() match
+                          case Left(e) => Cont.Pure(Left(e))
+                          case Right(_) => afterField(found)
+            loop(Map.empty)
+
+    private def assembleC[A, R](p: Schema.SProduct[A], found: Map[String, Any]): Either[String, A] /> R =
+      Cont.Pure(
+        p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
+          val (f, i) = fi
+          acc.flatMap { xs =>
+            found.get(f._1) match
+              case Some(v) => Right(xs :+ v)
+              case None => p.defaults.lift(i).flatten match
+                case Some(d) => Right(xs :+ d())
+                case None => f._2() match
+                  case _: Schema.SOption[?] => Right(xs :+ None)
+                  case _ => Left(s"missing field '${f._1}' in ${p.name}")
+          }
+        }.map(p.make)
+      )
+
+    private def sumC[A, R](su: Schema.SSum[A]): Either[String, A] /> R =
+      insideC[A, R] { sumHereC[A, R](su) }
+
+    private def sumHereC[A, R](su: Schema.SSum[A]): Either[String, A] /> R =
+      expect('{') match
+        case Left(e) => Cont.Pure(Left(e))
+        case Right(_) =>
+          skipWs()
+          string() match
+            case Left(e) => Cont.Pure(Left(e))
+            case Right(name) =>
+              skipWs()
+              expect(':') match
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(_) =>
+                  skipWs()
+                  su.cases.find(_._1 == name) match
+                    case None => Cont.Pure(Left(s"unknown case '$name' of ${su.name}"))
+                    case Some((_, sc)) =>
+                      Cont.defer(() => getC(sc()).map(e => e: Either[String, A])) {
+                        case Left(e) => Cont.Pure(Left(e))
+                        case Right(v) =>
+                          skipWs()
+                          Cont.Pure(expect('}').map(_ => v))
+                      }
 
     /** RFC 8259 number, `-? int frac? exp?`, as `JsonValue.num` reads
      * it; the value is `parseDouble`'s, which is what `JNum` holds and

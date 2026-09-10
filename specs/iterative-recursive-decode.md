@@ -326,10 +326,8 @@ fork count alone; box load matters as much as warmup, and this arc's
 own JMH runs are not exempt from checking `uptime` before trusting a
 delta.
 
-Target 4 done. Of the four native-recursion sites this section
-named, one is closed alongside the two already-closed roots; three
-remain open: `JsonValue`'s fast parser (target 1), `Json.lossless`'s
-projection (target 2), `JsonStrict.Reader.get` (target 3).
+Target 4 done first (it was the simplest); targets 1+2 and target 3
+followed. See below — all four are closed.
 
 ### Targets 1+2 done: `JsonValue`'s fast parser, `Json.lossless`'s projection (json-raw-nesting-threshold-trampoline, 2026-09-10)
 
@@ -372,3 +370,41 @@ load means anything, regardless of fork count
 three platforms, the A/B above); the perf number is BACKLOG's
 `json-raw-nesting-jmh-pending` — measure once the box is quiet, before
 trusting either direction.
+
+### Target 3 done, and the arc closed: `JsonStrict.Reader.get` (jsonstrict-threshold-trampoline, 2026-09-10)
+
+The third and last instance of the root 1/2 pattern — not a new
+design. `JsonStrict.Reader` already had `enter`/`leave`/`tooDeep`
+(cut-refuses-the-document); `get` becomes the dispatcher
+(`open >= Codecs.NativeThreshold`), `getNative` is the renamed
+original body (unchanged, its calls already go through `get`), and
+`getC`/`arrayC`/`productC`/`sumC` mirror `getNative`/`array`/`product`/
+`sum` with `Cont.defer` at each recursive descent. `skipValue` is
+UNCHANGED — it was already an explicit bracket-counting loop with no
+native recursion at all (cut-refuses-the-document already said so).
+Verified the same way as the other three: a scratch `Codecs.maxDepth`
+bump to construct a 100 000-level document, A/B on `NativeThreshold`.
+
+**The JMH gate, done right this time.** `uptime` checked FIRST (load
+3-6, quiet) before spending a single fork —
+`compare/CodecBenchmark.textToOrderStrict`, 5 forks: **971±14 before,
+1002±41 after**, overlapping error bars, not a regression. The two
+staged variants (`textToOrderStrictStaged`/`RuntimeStaged`, which fall
+back to the now-fixed interpreted `get` only for the recursive case —
+`Order` is not recursive, so mostly unaffected) confirm: 317.8→317.9
+and 376.7→367.6, both flat. A clean result on the first attempt,
+because the box was actually checked before trusting it
+(`jmh-load-not-just-forks`, learned two lanes ago).
+
+**All four native-recursion sites `depth-is-policy-not-rescue` named
+are closed.** `Codecs.maxDepth` has no remaining stack-safety
+motivation anywhere in this module: `Cbor.get`, `Json.decode`,
+`Cbor.In.skipItem`, `JsonValue`'s fast parser, `Json.lossless`'s
+projection, and `JsonStrict.Reader.get` all recurse natively only up
+to `Codecs.NativeThreshold`, then trampoline. Raising `Codecs.maxDepth`
+back up — or removing the refusal it enforces entirely — is now a
+PURE wire-contract decision (what counts as a message two services
+still agree to read), not a stack-safety one. That decision, and
+moving `TestVector`'s stress depth with it, is left as its own
+deliberate follow-up, stated here rather than assumed: this arc
+measured and fixed the COST of depth; it does not choose the LIMIT.
