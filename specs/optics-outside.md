@@ -369,6 +369,87 @@ Effectful handlers (`ToolCall => String ! Rest`): `Handlers.gated` and
 separate decision with its own callers. Tool RESULTS as typed values
 rather than `String` — the same, and the MCP wire says string.
 
+## Stage 3 — the query string
+
+### Why before a renderer
+
+Stage 1's DESCRIBE interpreter has no consumer that renders anything —
+which is the "no production caller" trap this arc names twice already.
+A renderer (OpenAPI, or an MCP tool declaration) is the obvious next
+lane, and it would be immediately out of date if a route could not
+describe the rest of a request. So the query comes first.
+
+It is also not filler. A path is ORDERED and a query is not, so this
+is where `unapply(url(a)) == Some(a)` first has to survive a shape
+where many urls mean one value.
+
+### Interface
+
+```scala
+val search = Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+// Route[(String, Option[Int])]
+
+final class Query[B <: Tuple]:
+  val declared: Vector[Route.Q]
+  def &[C <: Tuple](that: Query[C])(using Route.Split[B, C]): Query[?]
+
+object Query:
+  def apply[T](name: String)(using Route.Param[T]): Query[T *: EmptyTuple]        // required
+  def opt[T](name: String)(using Route.Param[T]): Query[Option[T] *: EmptyTuple]  // optional
+  def all[T](name: String)(using Route.Param[T]): Query[Vector[T] *: EmptyTuple]  // repeated
+
+final case class Route.Q(name: String, kind: String, required: Boolean, repeated: Boolean)
+```
+
+`describe` stays the PATH — the shape OpenAPI wants, with query
+parameters as a separate list — and `describeFull` renders both for a
+human.
+
+### Behavior
+
+- [x] a query parameter is read by NAME, so wire order is irrelevant
+- [x] an absent optional parameter is `None`, and `None` writes nothing
+- [x] a missing required parameter is a miss
+- [x] present and unparseable is a MISS, not `None`
+- [x] unknown query parameters are ignored
+- [x] a repeated parameter keeps every value in wire order; empty
+      writes nothing
+- [x] the prism law survives the query, including values containing
+      `&`, `=`, `+`, spaces and non-ASCII
+- [x] a raw `+` in a value is a space, and a literal `+` round-trips
+- [x] a fragment belongs to neither the path nor the query
+- [x] a `Router` dispatches a route that reads the query, with the
+      required parameter part of the match
+
+### Design
+
+**`Query` is its own type, not more `Route` combinators.** The path is
+ordered and the query is not, and mixing them would put the split
+between the two halves of the tuple somewhere that depends on
+declaration interleaving. As one `Query` handed over by `?`, the split
+is exactly one `Split` and the path's parameters keep their positions
+whatever the query does.
+
+**The prism becomes visibly a prism.** `url` writes the query in
+DECLARATION order, so it picks the canonical url among the many the
+route accepts. `unapply(url(a)) == Some(a)` holds; `url(unapply(u))`
+normalises `u` and is not the identity. That was already true of a
+path (`/users/007`), but the query makes it unmistakable.
+
+**Present and unparseable is a miss.** `?page=abc` on an `Int` meant
+something and got it wrong. Treating it as an omission hides the
+caller's mistake behind a page of results.
+
+**Where the empty-value rule lives — a bug the query exposed.**
+`Param.string` refused the empty string, so that an empty PATH segment
+could not build the same url from different parameters. That is a rule
+about the POSITION, not about the type, and attaching it to `Param`
+broke the query on the day the query arrived: `?tag=` is a perfectly
+good empty value and `Query.all[String]` must round-trip one. The
+refusal moved into the path capture, where it belongs. It surfaced
+only because a second consumer of the same `Param` appeared — which is
+the general lesson worth keeping.
+
 ## Decisions
 
 - **2026-09-10 — nested pairs instead of a flat tuple: considered,
@@ -396,6 +477,39 @@ rather than `String` — the same, and the MCP wire says string.
   and a typed query DSL comes fourth.
 
 ## Results
+
+### Stage 3 — LANDED 2026-09-10 (optics-outside-routes-query)
+
+`Query` in `okay-http/src/main/scala/okay/http/Route.scala`, 13 new
+tests in `TestRoute` (32 in the suite, 44 in the module), green on JVM
+and JS. `docs/modules/okay-http.md` has the user-facing half.
+
+**The rename that came with it.** `Route.Concat` is `Route.Split`. The
+operator read the old name and took it for `scala.Tuple.Concat`, which
+is a fair reading — and the typeclass's whole addition over the
+standard library IS `split`, since `join` could have been `++`. The
+doc comment also states the real reason not to build on the match
+type, which is not "the compiler will not prove associativity" (a
+symptom) but that the match type does not NORMALISE: with
+`Out = Tuple.Concat[A, B]` the accumulated type becomes a stuck
+`Tuple.Concat[A1, A2]` with no head to peel, and the NEXT `/` cannot
+resolve at all.
+
+**A bug the query exposed, in a rule attached to the wrong layer.**
+`Param.string` refused the empty string, so an empty PATH segment
+could not build the same url from different parameters. That is a rule
+about the POSITION, not about the type — `?tag=` is a perfectly good
+empty value, and `Query.all[String]` has to round-trip one. The
+refusal moved into the path capture. It surfaced the moment a SECOND
+consumer of the same `Param` existed, which is the general shape worth
+remembering: a constraint on one use site, written into a shared type,
+is invisible until the second use site arrives.
+
+**No `Router` change was needed**, which is the small confirmation
+that stage 1's seam was cut in the right place: `unapply` takes the
+whole url, so a route that reads a query dispatches through the
+`PartialFunction` unchanged, with its required parameters part of the
+match.
 
 ### Stage 2 — LANDED 2026-09-10 (optics-outside-tools)
 

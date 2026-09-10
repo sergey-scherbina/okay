@@ -42,14 +42,19 @@ import java.nio.charset.StandardCharsets.UTF_8
 final class Route[A <: Tuple] private[http] (
     /** the description: what this route looks like, with no request in hand */
     val segments: Vector[Route.Seg],
-    private[http] val decode: Vector[String] => Option[A],
-    private[http] val encode: A => Vector[String]):
+    /** the query half of the description, in declaration order */
+    val queries: Vector[Route.Q],
+    private[http] val decode: (Vector[String], Route.Params) => Option[A],
+    private[http] val encode: A => (Vector[String], Vector[(String, String)])):
 
   /** append a literal segment */
   def /(lit: String): Route[A] =
-    new Route(segments :+ Route.Seg.Lit(lit), ss =>
-      if ss.nonEmpty && ss.last == lit then decode(ss.init) else None,
-      a => encode(a) :+ lit)
+    new Route(segments :+ Route.Seg.Lit(lit), queries,
+      (ss, qs) =>
+        if ss.nonEmpty && ss.last == lit then decode(ss.init, qs) else None,
+      a =>
+        val (segs, qp) = encode(a)
+        (segs :+ lit, qp))
 
   /**
    * append another route, accumulating its parameters.
@@ -64,33 +69,70 @@ final class Route[A <: Tuple] private[http] (
    */
   def /[B <: Tuple](that: Route[B])(using c: Route.Split[A, B]): Route[c.Out] =
     val width = segments.length
-    new Route[c.Out](segments ++ that.segments,
-      ss =>
+    new Route[c.Out](segments ++ that.segments, queries ++ that.queries,
+      (ss, qs) =>
         if ss.length != width + that.segments.length then None
         else
           val (l, r) = ss.splitAt(width)
-          decode(l).flatMap(a => that.decode(r).map(b => c.join(a, b))),
+          decode(l, qs).flatMap(a => that.decode(r, qs).map(b => c.join(a, b))),
       o =>
         val (a, b) = c.split(o)
-        encode(a) ++ that.encode(b))
+        val (ls, lq) = encode(a)
+        val (rs, rq) = that.encode(b)
+        (ls ++ rs, lq ++ rq))
+
+  /**
+   * append the query string this route reads.
+   *
+   * Written as one `Query` rather than a parameter at a time, so the
+   * split between the path's tuple and the query's is exactly one
+   * `Split`, and the path's own parameters keep their positions.
+   */
+  def ?[B <: Tuple](q: Query[B])(using c: Route.Split[A, B]): Route[c.Out] =
+    new Route[c.Out](segments, queries ++ q.declared,
+      (ss, qs) => decode(ss, qs).flatMap(a => q.decode(qs).map(b => c.join(a, b))),
+      o =>
+        val (a, b) = c.split(o)
+        val (segs, qp) = encode(a)
+        (segs, qp ++ q.encode(b)))
 
   /** interpreter 1 — MATCH. Also the extractor. */
-  def unapply(path: String): Option[A] =
-    Route.segmentsOf(path).filter(_.length == segments.length).flatMap(decode)
+  def unapply(url: String): Option[A] =
+    Route.segmentsOf(url).filter(_.length == segments.length)
+      .flatMap(ss => Route.paramsOf(url).flatMap(decode(ss, _)))
 
-  /** interpreter 2 — BUILD. Reverse routing from the same declaration. */
+  /**
+   * interpreter 2 — BUILD. Reverse routing from the same declaration.
+   *
+   * The query is written in DECLARATION order, which makes this the
+   * canonical url among the many a route accepts — a query string is
+   * unordered on the wire and `unapply` reads it from a map. That is
+   * also the moment a route stops resembling an iso and is plainly a
+   * prism: `unapply(url(a)) == Some(a)` holds, and the other direction
+   * does not, because `url(unapply(u))` normalises `u`.
+   */
   def url(a: A): String =
-    encode(a).map(Route.encodeSeg).mkString("/", "/", "")
+    val (segs, qp) = encode(a)
+    val path = segs.map(Route.encodeSeg).mkString("/", "/", "")
+    if qp.isEmpty then path
+    else path + qp.map((k, v) => Route.encodeSeg(k) + "=" + Route.encodeSeg(v)).mkString("?", "&", "")
 
-  /** interpreter 3 — DESCRIBE. `/users/{id}/posts/{slug}`. */
+  /** interpreter 3 — DESCRIBE, the path. `/users/{id}/posts/{slug}` —
+   * the shape OpenAPI wants, where query parameters are a separate
+   * list rather than part of the template. */
   def describe: String =
     segments.map {
       case Route.Seg.Lit(v) => v
       case Route.Seg.Var(n, _) => "{" + n + "}"
     }.mkString("/", "/", "")
 
-  /** the parameters this route captures, in order — what a generated
-   * OpenAPI operation or MCP tool schema is built from */
+  /** the whole thing, for a human: `/search?q={q}&page={page}` */
+  def describeFull: String =
+    if queries.isEmpty then describe
+    else describe + queries.map(q => q.name + "={" + q.name + "}").mkString("?", "&", "")
+
+  /** the path parameters this route captures, in order — what a
+   * generated OpenAPI operation or MCP tool schema is built from */
   def params: Vector[Route.Seg.Var] =
     segments.collect { case v: Route.Seg.Var => v }
 
@@ -117,6 +159,12 @@ object Route:
     case Lit(value: String)
     case Var(name: String, kind: String)
 
+  /** a query parameter of the description */
+  final case class Q(name: String, kind: String, required: Boolean, repeated: Boolean)
+
+  /** a parsed query string: every value for every key, in wire order */
+  type Params = Map[String, Vector[String]]
+
   /**
    * a captured segment's codec — the only thing a new parameter type
    * has to supply, and it is three lines.
@@ -127,16 +175,9 @@ object Route:
     def print(t: T): String
 
   object Param:
-    /**
-     * A path segment is not a value when it is empty: `"/x//y"` and
-     * `"/x/y"` would build the same URL from different parameters, so
-     * an empty capture is REFUSED rather than silently round-tripping
-     * wrong. That is a property of URLs, not of this encoding, and it
-     * is what keeps `unapply(url(a)) == Some(a)` total on the domain.
-     */
     given string: Param[String] with
       def kind = "string"
-      def parse(s: String): Option[String] = if s.isEmpty then None else Some(s)
+      def parse(s: String): Option[String] = Some(s)
       def print(t: String): String = t
 
     given int: Param[Int] with
@@ -204,18 +245,32 @@ object Route:
 
   /** the empty path, `"/"` */
   val root: Route[EmptyTuple] =
-    new Route(Vector.empty, ss => if ss.isEmpty then Some(EmptyTuple) else None, _ => Vector.empty)
+    new Route(Vector.empty, Vector.empty,
+      (ss, _) => if ss.isEmpty then Some(EmptyTuple) else None,
+      _ => (Vector.empty, Vector.empty))
 
   /** one literal segment */
   def lit(s: String): Route[EmptyTuple] = root / s
 
-  /** one captured segment */
+  /**
+   * one captured segment.
+   *
+   * An EMPTY segment is refused here, before the `Param` sees it, and
+   * that is deliberate placement: a path segment is not a value when
+   * it is empty, because `"/x//y"` and `"/x/y"` would build the same
+   * url from different parameters. The constraint belongs to the
+   * POSITION and not to the type — `?tag=` is a perfectly good empty
+   * value in a query string, and `Param.string` accepting it is what
+   * lets `Query.all[String]` round-trip one. Attaching the rule to
+   * `Param` instead was the first cut, and it broke the query the day
+   * the query arrived.
+   */
   def apply[T](name: String)(using p: Param[T]): Route[T *: EmptyTuple] =
-    new Route(Vector(Seg.Var(name, p.kind)),
-      ss => ss match
-        case Vector(one) => p.parse(one).map(_ *: EmptyTuple)
+    new Route(Vector(Seg.Var(name, p.kind)), Vector.empty,
+      (ss, _) => ss match
+        case Vector(one) if one.nonEmpty => p.parse(one).map(_ *: EmptyTuple)
         case _ => None,
-      t => Vector(p.print(t.head)))
+      t => (Vector(p.print(t.head)), Vector.empty))
 
   /** a route read as a case class rather than a tuple */
   final class Of[C <: Product, A <: Tuple] private[http] (
@@ -224,7 +279,9 @@ object Route:
     def unapply(path: String): Option[C] = r.unapply(path).map(m.fromProduct)
     def url(c: C): String = r.url(Tuple.fromProductTyped(c)(using m))
     def describe: String = r.describe
+    def describeFull: String = r.describeFull
     def segments: Vector[Seg] = r.segments
+    def queries: Vector[Q] = r.queries
     def prism: Prism[String, String, C, C] = Prism(s => unapply(s).toRight(s), url)
 
   /**
@@ -234,14 +291,53 @@ object Route:
    * silent literal `%`.
    */
   private[http] def segmentsOf(path: String): Option[Vector[String]] =
-    val q = path.indexOf('?')
-    val p0 = if q >= 0 then path.substring(0, q) else path
+    val p0 = pathOf(path)
     val p = if p0.startsWith("/") then p0.substring(1) else p0
     if p.isEmpty then Some(Vector.empty)
     else
       val raw = p.split("/", -1).toVector
       val out = raw.map(decodeSeg)
       if out.forall(_.isDefined) then Some(out.map(_.get)) else None
+
+  /** the path half of a url — everything before `?` or `#` */
+  private[http] def pathOf(url: String): String =
+    val cut = Seq(url.indexOf('?'), url.indexOf('#')).filter(_ >= 0)
+    if cut.isEmpty then url else url.substring(0, cut.min)
+
+  /**
+   * The query string, as every value for every key.
+   *
+   * A key with no `=` reads as the empty value, a repeated key keeps
+   * all of its values in wire order, and malformed escaping is a MISS
+   * for the same reason it is in a path segment.
+   */
+  private[http] def paramsOf(url: String): Option[Params] =
+    val q = url.indexOf('?')
+    if q < 0 then Some(Map.empty)
+    else
+      val body = url.substring(q + 1)
+      val frag = body.indexOf('#')
+      val text = if frag >= 0 then body.substring(0, frag) else body
+      if text.isEmpty then Some(Map.empty)
+      else
+        val pairs = text.split("&", -1).toVector.filter(_.nonEmpty).map { kv =>
+          val i = kv.indexOf('=')
+          val (k, v) = if i < 0 then (kv, "") else (kv.substring(0, i), kv.substring(i + 1))
+          decodeParam(k).flatMap(dk => decodeParam(v).map(dv => (dk, dv)))
+        }
+        if pairs.forall(_.isDefined) then
+          Some(pairs.map(_.get).groupBy(_._1).map((k, vs) => k -> vs.map(_._2)))
+        else None
+
+  /**
+   * A query value decodes like a segment, except that a raw `+` is a
+   * space — the form-encoding convention every browser writes and
+   * every server reads. `url` never emits one, because `+` is not
+   * unreserved and comes out as `%2B`, so the round trip is not
+   * affected either way.
+   */
+  private[http] def decodeParam(s: String): Option[String] =
+    decodeSeg(if s.indexOf('+') < 0 then s else s.replace('+', ' '))
 
   private def hex(c: Char): Int =
     if c >= '0' && c <= '9' then c - '0'
@@ -295,6 +391,70 @@ object Route:
           out.addAll(s.substring(i, end).getBytes(UTF_8))
           i = end
       if ok then Some(new String(out.result(), UTF_8)) else None
+
+/**
+ * The query string a route reads — a monoid of named parameters,
+ * composed with `&` and handed to a route with `?`
+ * (specs/optics-outside.md, stage 3).
+ *
+ * Its own type, and not more `Route` combinators, for one reason: the
+ * path is ORDERED and the query is not. A path parameter is found by
+ * position, a query parameter by name, and a url that writes them in
+ * a different order is the same request. Keeping them apart lets the
+ * split between the two halves of the tuple be exactly one `Split`,
+ * so the path's parameters keep their positions whatever the query
+ * does.
+ *
+ * The consequence worth stating: with a query, `url` writes the
+ * parameters in DECLARATION order, which makes it the canonical url
+ * among the many a route accepts. `unapply(url(a)) == Some(a)` still
+ * holds; `url(unapply(u)) == u` does not, and never did — that is
+ * what makes this a prism rather than an iso.
+ */
+final class Query[B <: Tuple] private[http] (
+    /** the description: the parameters, with no request in hand */
+    val declared: Vector[Route.Q],
+    private[http] val decode: Route.Params => Option[B],
+    private[http] val encode: B => Vector[(String, String)]):
+
+  def &[C <: Tuple](that: Query[C])(using c: Route.Split[B, C]): Query[c.Out] =
+    new Query[c.Out](declared ++ that.declared,
+      qs => decode(qs).flatMap(b => that.decode(qs).map(d => c.join(b, d))),
+      o =>
+        val (b, d) = c.split(o)
+        encode(b) ++ that.encode(d))
+
+object Query:
+
+  /** required: the route misses without it */
+  def apply[T](name: String)(using p: Route.Param[T]): Query[T *: EmptyTuple] =
+    new Query(Vector(Route.Q(name, p.kind, required = true, repeated = false)),
+      qs => qs.get(name).flatMap(_.headOption).flatMap(p.parse).map(_ *: EmptyTuple),
+      t => Vector(name -> p.print(t.head)))
+
+  /**
+   * optional: absent is `None`, and `None` writes nothing.
+   *
+   * PRESENT AND UNPARSEABLE IS A MISS, not `None`. `?page=abc` on an
+   * `Int` is a request that meant something and got it wrong, and
+   * answering it as though the parameter had been omitted hides the
+   * caller's mistake behind a page of results.
+   */
+  def opt[T](name: String)(using p: Route.Param[T]): Query[Option[T] *: EmptyTuple] =
+    new Query(Vector(Route.Q(name, p.kind, required = false, repeated = false)),
+      qs => qs.get(name).flatMap(_.headOption) match
+        case None => Some(None *: EmptyTuple)
+        case Some(v) => p.parse(v).map(x => Some(x) *: EmptyTuple),
+      t => t.head.map(x => name -> p.print(x)).toVector)
+
+  /** repeated: every occurrence in wire order, and an empty vector
+   * writes nothing */
+  def all[T](name: String)(using p: Route.Param[T]): Query[Vector[T] *: EmptyTuple] =
+    new Query(Vector(Route.Q(name, p.kind, required = false, repeated = true)),
+      qs =>
+        val parsed = qs.getOrElse(name, Vector.empty).map(p.parse)
+        if parsed.forall(_.isDefined) then Some(parsed.map(_.get) *: EmptyTuple) else None,
+      t => t.head.map(x => name -> p.print(x)))
 
 /** the verb, as an extractor, so it composes with any route:
  * `case Get(userPost(id, slug)) =>` */

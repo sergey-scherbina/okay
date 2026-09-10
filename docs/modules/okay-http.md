@@ -32,7 +32,7 @@ that module, and it is small because the vocabulary decided most of it:
 | `Ws.over(socket)(session)` | run a `Stage[Frame, Frame, A]` over a socket |
 | `Ws.link(socket)` | a socket AS an `mcp.Link` |
 | `Transports.http` / `.sockets` (JVM), `.fetch` / `.sockets` (JS) | the two platform seams |
-| `Route` / `Router` | a typed path: match, build and describe from one declaration |
+| `Route` / `Query` / `Router` | a typed path and query: match, build and describe from one declaration |
 | `Server.serve(port)(route)` | a REST server, JVM only |
 
 ## Routes: one declaration, three interpreters
@@ -101,6 +101,47 @@ law the repository already tests.
   to prefer once a path has parameters: `case Get(userPost(p)) => p.id`
   reads better than a positional tuple at every arity.
 
+**The query string.** A route reads it as a `Query`, composed with
+`&` and handed over with `?`:
+
+```scala
+val search = Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+// Route[(String, Option[Int])]
+
+search.url(("cats", Some(2)))            // "/search?q=cats&page=2"
+search.url(("cats", None))               // "/search?q=cats"
+search.unapply("/search?page=2&q=cats")  // Some(("cats", Some(2)))  -- order is irrelevant
+search.describeFull                      // "/search?q={q}&page={page}"
+```
+
+`Query[T](name)` is required, `Query.opt[T]` optional (absent is
+`None`, and `None` writes nothing), `Query.all[T]` repeated (every
+occurrence in wire order, and an empty vector writes nothing).
+
+Its own type rather than more `Route` combinators, because the path is
+ORDERED and the query is not: a path parameter is found by position, a
+query parameter by name, and a url that writes them in a different
+order is the same request. Four consequences worth knowing:
+
+- **`url` writes the query in declaration order**, so it is the
+  canonical url among the many the route accepts. This is where a
+  route stops resembling an iso and is plainly a prism:
+  `unapply(url(a)) == Some(a)` holds and `url(unapply(u)) == u` does
+  not, because `url` normalises.
+- **Present and unparseable is a MISS, not `None`.** `?page=abc` on an
+  `Int` is a request that meant something and got it wrong; answering
+  it as though the parameter had been omitted hides the caller's
+  mistake behind a page of results.
+- **Unknown parameters are ignored**, or every `utm_source` would
+  break the route.
+- **A raw `+` in a value is a space** — the form-encoding convention
+  every browser writes. `url` never emits one (`+` is not unreserved,
+  so it leaves as `%2B`), so the round trip is unaffected.
+
+`describe` stays the PATH (`/users/{id}`), which is the shape OpenAPI
+wants, with the query as a separate list: `queries` carries `name`,
+`kind`, `required` and `repeated` for each.
+
 A handler that needs the request itself — its body, its headers, its
 peer — takes `at` instead of `on`: `at(Method.Post, echo)((_, r) =>
 Http.text(...))`. `at` is the primitive and `on` is written in terms
@@ -116,8 +157,9 @@ JSON body. Both refusals are asserted now.
 
 A new parameter type is a `Route.Param[T]` — `kind`, `parse`, `print`,
 three lines. Query parameters, headers and bodies are stage 2 of the
-spec; `describe`'s output is what an OpenAPI or MCP tool declaration
-will be generated from in stage 3.
+spec (stage 3 landed the query half); `describe` and `queries` are
+what an OpenAPI operation or an MCP tool declaration will be generated
+from in the stage after.
 
 ## What it buys okay-mcp
 

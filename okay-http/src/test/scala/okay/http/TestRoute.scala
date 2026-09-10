@@ -135,6 +135,88 @@ class TestRoute extends munit.FunSuite {
     assertEquals(r.describe, "/users/{id}/posts/{slug}")
   }
 
+  // ---- the query string (stage 3)
+
+  val search: Route[(String, Option[Int])] =
+    Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+
+  val tagged: Route[(Int, Vector[String])] =
+    Route.lit("posts") / Route[Int]("id") ? Query.all[String]("tag")
+
+  test("a query parameter is read by name, not by position") {
+    assertEquals(search.unapply("/search?q=cats&page=2"), Some(("cats", Some(2))))
+    assertEquals(search.unapply("/search?page=2&q=cats"), Some(("cats", Some(2))))
+  }
+
+  test("an absent optional parameter is None, and writes nothing") {
+    assertEquals(search.unapply("/search?q=cats"), Some(("cats", None)))
+    assertEquals(search.url(("cats", None)), "/search?q=cats")
+    assertEquals(search.url(("cats", Some(2))), "/search?q=cats&page=2")
+  }
+
+  test("a missing REQUIRED parameter is a miss") {
+    assertEquals(search.unapply("/search?page=2"), None)
+    assertEquals(search.unapply("/search"), None)
+  }
+
+  test("present and unparseable is a miss, not None") {
+    // ?page=abc meant something and got it wrong; answering it as
+    // though page had been omitted would hide the caller's mistake
+    assertEquals(search.unapply("/search?q=cats&page=abc"), None)
+  }
+
+  test("unknown query parameters are ignored") {
+    assertEquals(search.unapply("/search?q=cats&utm_source=x"), Some(("cats", None)))
+  }
+
+  test("a repeated parameter keeps every value, in wire order") {
+    assertEquals(tagged.unapply("/posts/7?tag=a&tag=b"), Some((7, Vector("a", "b"))))
+    assertEquals(tagged.unapply("/posts/7"), Some((7, Vector.empty)))
+    assertEquals(tagged.url((7, Vector("a", "b"))), "/posts/7?tag=a&tag=b")
+    assertEquals(tagged.url((7, Vector.empty)), "/posts/7")
+  }
+
+  test("the prism law holds with a query") {
+    val cases: Vector[(String, Option[Int])] = Vector(
+      ("cats", None), ("cats", Some(0)), ("a b", Some(-1)),
+      ("a&b=c", Some(7)), ("100%", None), ("привет", Some(3)), ("a+b", None))
+    cases.foreach(a => assertEquals(search.unapply(search.url(a)), Some(a), s"round trip of $a"))
+    Vector((0, Vector.empty[String]), (7, Vector("a b", "x&y")), (1, Vector("", "z")))
+      .foreach(a => assertEquals(tagged.unapply(tagged.url(a)), Some(a), s"round trip of $a"))
+  }
+
+  test("a raw + in a query value is a space, and a literal + survives") {
+    // the form-encoding convention every browser writes
+    assertEquals(search.unapply("/search?q=a+b"), Some(("a b", None)))
+    // and `url` never emits a raw +, so the round trip is unaffected
+    assertEquals(search.url(("a+b", None)), "/search?q=a%2Bb")
+    assertEquals(search.unapply("/search?q=a%2Bb"), Some(("a+b", None)))
+  }
+
+  test("a query separator inside a value is not a separator") {
+    val u = search.url(("a&page=9", None))
+    assertEquals(u, "/search?q=a%26page%3D9")
+    assertEquals(search.unapply(u), Some(("a&page=9", None)))
+  }
+
+  test("malformed escaping in the query is a miss") {
+    assertEquals(search.unapply("/search?q=%zz"), None)
+  }
+
+  test("a fragment is not part of the path or the query") {
+    assertEquals(search.unapply("/search?q=cats#top"), Some(("cats", None)))
+    assertEquals(userPost.unapply("/users/7/posts/hello#top"), Some((7, "hello")))
+  }
+
+  test("describe stays the path, and describeFull shows the query") {
+    assertEquals(search.describe, "/search")
+    assertEquals(search.describeFull, "/search?q={q}&page={page}")
+    assertEquals(userPost.describeFull, "/users/{id}/posts/{slug}")
+    assertEquals(search.queries.map(_.name), Vector("q", "page"))
+    assertEquals(search.queries.map(_.required), Vector(true, false))
+    assertEquals(tagged.queries.map(_.repeated), Vector(true))
+  }
+
   // ---- the router
 
   /** a body nobody reads: these tests are about DISPATCH, and they are
@@ -187,6 +269,18 @@ class TestRoute extends munit.FunSuite {
     // what `startsWith` used to answer, and should not have
     assert(!f.isDefinedAt(Request.get("/personal")))
     assert(!f.isDefinedAt(Request.post("/person", Body.Empty)))
+  }
+
+  test("a router dispatches a route that reads the query") {
+    var seen = ("", Option.empty[Int])
+    val r = Router.empty.on(Method.Get, search)((q, page) => { seen = (q, page); blank })
+    assert(r.routes.isDefinedAt(Request.get("/search?q=cats&page=2")))
+    // the required parameter is part of the match, so its absence is
+    // a MISS and the caller's 404 stays the caller's
+    assert(!r.routes.isDefinedAt(Request.get("/search")))
+    val _ = r.routes(Request.get("/search?page=2&q=cats"))
+    assertEquals(seen, ("cats", Some(2)))
+    assertEquals(r.describe, Vector((Method.Get, "/search")))
   }
 
   test("describe is derived from the values that dispatch") {
