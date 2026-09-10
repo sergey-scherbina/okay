@@ -1,0 +1,31 @@
+task: iterative-recursive-decode-spec
+agent: opus-depth
+started: 2026-09-10
+branch: feature/iterative-recursive-decode-spec
+worktree: ../okay-wt-decode-spec
+spec: specs/iterative-recursive-decode.md (this claim WRITES it)
+
+why: the operator asked how iterative-recursive-decode (BACKLOG,
+  2026-09-10) would actually be solved. A feasibility spike (scratch
+  test, not committed) confirmed the design before spending the spec
+  on an unmeasured guess: a threshold — native recursion to ~24-32
+  levels, `Cont.defer` for the rest, the same mechanism
+  eff-stack-safety.md already uses and measured (+11%/+14% for one
+  node). Per this repo's own process (spec-dev), the spec is written
+  and committed before the three-decoder implementation, not as part
+  of it.
+
+what: specs/iterative-recursive-decode.md (Overview, Design, Interface,
+  Behavior checklist, Out of scope, Decisions, Results — the spike's
+  findings recorded, not the final JMH numbers), plus the BACKLOG
+  entry corrected (scope is TWO recursive roots, not three or four —
+  the staged generators already delegate to the interpreted decoder
+  for recursion) and a cross-link from specs/codecs.md.
+
+  CAUGHT MID-TASK: this was drafted directly in the main checkout
+  instead of a worktree (AGENTS.md violation) — backed up, checkout
+  restored to clean, redone here.
+
+predict: no code changes in this claim; the actual implementation
+  (native/Cont threshold in Cbor.get, Json.decode, JsonStrict.Reader)
+  is separate follow-up work this spec makes ready to pick up.
