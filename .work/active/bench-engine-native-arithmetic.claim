@@ -1,6 +1,0 @@
-feature/bench-engine-native-arithmetic 2026-09-10T14:04:09Z
-agent: claude-code
-heartbeat: 2026-09-10T14:04:09Z
-status: in-progress
-done-so-far: claimed
-next: Flink AggregateFunction with a POJO accumulator, Spark's own aggregateByKey; toFlink/SparkInterop stay in the correctness tests
