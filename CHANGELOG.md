@@ -90,6 +90,37 @@ blocking runner asks for `CanBlock`** while `runAsync` does not.
 Added because the page needed them: the whole vocabulary as an
 eight-row table on one screen, and a decision table for the seven
 provider forms. Commit: b592154e (the release commit above it cites the pre-rebase sha).
+## merge-lane-variance — three reproductions, two refuted fixes, and a confound in my own experiment
+
+`ChunkFlushBenchmark.okayChunked` — the fused `merge(chunked = true)`
+— swings 4x on unchanged code, and the swing is between FORKS more
+than between iterations, which points at a per-JVM decision rather
+than warm-up. Six forks, five iterations each, three builds:
+
+  run A (as landed)         322 330 460 542 301 237
+  run B (expand in merge)   451 456 984 497 260 391
+  run C (fused delegates)   217 358 351 554 347 406
+
+**Both candidate fixes are refuted and reverted.** Replacing the fused
+road's `through(s)(Stage.unchunk)` with `Writer.expand` — the change
+that bought 7.3% on `Source.unchunked` yesterday — does nothing here.
+Making the fused flag delegate to `a.chunked() merge b.chunked()` when
+there is no flush does nothing either.
+
+**And the interesting part is a trap in the experiment, not in the
+code.** Run A also measured the composed lanes at a steady 188-199 and
+that looked like the road being the difference: fused unstable,
+composed stable. But JMH runs lanes SEQUENTIALLY within one
+invocation, `okayChunked` ran first while the box was still settling,
+and the composed lanes ran minutes later. The comparison is confounded
+by ORDER, and the entry now says so: any retry must alternate the two
+lanes A/B/A/B in separate invocations on a quiet box before concluding
+anything about roads.
+
+Nothing is claimed as fixed and nothing landed but the record. The
+untested suspect that remains is thread placement — this box is 10
+performance cores plus 4 efficiency ones, and a fibre landing on an
+E-core would cost roughly what these forks differ by.
 
 ## di-docs-gaps — the guide never said what a Module IS
 
