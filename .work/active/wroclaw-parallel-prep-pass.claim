@@ -1,0 +1,6 @@
+feature/wroclaw-parallel-prep-pass 2026-09-10T23:21:02Z
+agent: claude-code
+heartbeat: 2026-09-10T23:21:02Z
+status: in-progress
+done-so-far: claimed
+next: OkayLane.parallel's pass 1 (slice maxima + backwardness) is O(N) SERIAL; make it a parallel reduction, then re-measure 1/2/4/8 and the Karp-Flatt fraction
