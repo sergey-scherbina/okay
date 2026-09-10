@@ -1,0 +1,26 @@
+task: optics-fast
+agent: opus-optics
+started: 2026-09-10
+branch: feature/optics-fast
+worktree: ../okay-wt-optics-fast
+spec: specs/optics.md, the filed lane
+
+why: the operator's call (2026-09-10). The spec filed this lane "by a
+  consumer that needs it; none does" — the operator asked for it
+  anyway, and the concern is noted rather than re-argued. What makes
+  it more than an optimisation: the CONCRETE representation is itself
+  a profunctor, so compiling an optic is instantiating it there — the
+  existential-to-profunctor isomorphism of chapter 10, executed once
+  instead of on every call.
+
+what: `Optic.Market` (a Strong AND Choice profunctor whose carrier is
+  the pair `(S => Either[T, A], (S, B) => T)`) and `o.compiled`, which
+  runs the optic at it once and answers a concrete affine with direct
+  `preview`/`set`/`modify`; the Bazaar (a Walk as a Traversing
+  profunctor) for traversals if the first measurement earns it. Laws:
+  a compiled optic answers what the optic answers, on every family and
+  every operation. JMH: the composed `set` the 3.5x was measured on.
+
+predict: the win is real for a composed optic and nil for a single
+  lens (there is no chain to pay). If the compiled traversal is not
+  faster than `Function1`'s direct road, it does not ship.
