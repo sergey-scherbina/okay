@@ -289,9 +289,11 @@ Stage 3 — the first thin client (ui-compose, LANDED 2026-09-09):
       is a plain entry, images are labels: recorded, not hidden.
       `Gtk.window` was not run here (no app driven through a window
       in this session); Cocoa stays filed
-- [ ] Android: the composables are common code, but no SDK is on the
-      build machine; the `androidTarget()` is added when one is, so
-      the build that is checked in is the build that runs
+- [x] Android: this said "no SDK is on the build machine", and M3
+      (ui-mobile-android, below) then installed one — `androidTarget()`
+      and the application plugin are in `okay-compose/app`, and
+      `:app:assembleDebug` produces the 8.5 MB APK. Checked off
+      2026-09-10; it had been describing work that was already done
 
 ## Results
 
