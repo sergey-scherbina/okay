@@ -4,10 +4,14 @@ import okay.*
 import okay.given
 import scala.collection.mutable
 
-/** what a run answers: the value, and what the engine had to say
- * about it — late elements are DROPPED by an event-time window, and
- * an engine that does not report how many is hiding a wrong answer */
-final case class Run[O](value: O, dropped: Long, partitions: Int)
+/**
+ * What a run answers: the value, and what the engine had to say about
+ * it. Late elements are DROPPED by an event-time window and an engine
+ * that does not report how many is hiding a wrong answer; `reducers`
+ * is what the plan actually did, which for `Finish.Auto` is decided
+ * during the run and is otherwise unknowable from the outside.
+ */
+final case class Run[O](value: O, dropped: Long, partitions: Int, reducers: Int)
 
 /**
  * THE EXECUTOR (specs/dataflow.md, stage 1): a `Flow` over N
@@ -48,13 +52,37 @@ object Flows {
                     (using Scheduler): Run[O] ! Async =
     val job = shape(flow).job(into)
     val n = job.parts
+    if !job.ordered then ordered(into)
     val seeds: Vector[Long] ! Async =
       val pre = job.prepass
       if pre == null then pure[Async, Vector[Long]](Vector.fill(n)(Long.MinValue))
       else parallel(n)(i => pre.nn(i)).map(before)
     seeds.flatMap: sd =>
-      parallel(n)(i => job.work(i, sd(i))).map: ps =>
-        Run(into.present(job.combine(ps)), job.drops(ps), n)
+      parallel(n)(i => job.work(i, sd(i))).flatMap: ps =>
+        val r = job.reducers(ps)
+        parallel(r)(k => job.reduce(ps, k, r)).map: accs =>
+          Run(into.present(accs.reduceLeft(into.merge)), job.drops(ps), n, r)
+
+  /**
+   * A keyed stage's output is a hash map's iteration order, not the
+   * input's, whether one reducer produced it or eight. So an
+   * order-dependent TERMINAL over it is wrong before any exchange is
+   * involved, and saying so here is cheaper than a wrong number.
+   *
+   * The keyed aggregator itself is a different matter and is NOT
+   * refused: a reducer owns a hash share of the keys and merges its
+   * buckets partition by partition, in index order, so a `Sequential`
+   * survives the exchange intact. That asymmetry is the whole reason
+   * the distinction is a type.
+   */
+  private def ordered(into: Aggregator[?, ?, ?]): Unit = into match
+    case _: Sequential[?, ?, ?] =>
+      throw IllegalArgumentException(
+        "the terminal aggregator is a Sequential, but this plan's output comes out of a " +
+          "keyed stage, whose order is a hash map's and not the input's. Use a commutative " +
+          "terminal, or put the order-dependent aggregation IN the keyed stage, where the " +
+          "engine merges by partition index (specs/dataflow.md, stage 2).")
+    case _ => ()
 
   /**
    * Every element the plan produces, in partition order.
@@ -104,14 +132,26 @@ object Flows {
     def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B]
     def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc]
 
-  /** what the driver runs: `work` on a fibre per partition, `combine`
-   * at the coordinator, and `P` — the partial — known only here */
+  /**
+   * What the driver runs: `work` on a fibre per partition, then
+   * `reduce` on a fibre per reducer, with `P` — the partial — known
+   * only here.
+   *
+   * `reducers` is asked AFTER the partials are in, which is what lets
+   * `Finish.Auto` decide from their size rather than from a guess
+   * made before the run.
+   */
   private abstract class Job[Acc]:
     type P
     def parts: Int
     def prepass: (Int => Long) | Null
+    /** does this plan hand its elements to the terminal in the
+     * input's order? true for a stateless plan, false out of a keyed
+     * stage — see `ordered` */
+    def ordered: Boolean
     def work(i: Int, seed: Long): P
-    def combine(ps: Vector[P]): Acc
+    def reducers(ps: Vector[P]): Int
+    def reduce(ps: Vector[P], r: Int, of: Int): Acc
     def drops(ps: Vector[P]): Long
 
   private final class Pipe[A](val parts: Int, val at: Int => Chunks[A]) extends Shape[A]:
@@ -124,16 +164,28 @@ object Flows {
         type P = Acc
         def parts: Int = self.parts
         def prepass: (Int => Long) | Null = null
+        def ordered: Boolean = true
         def work(i: Int, seed: Long): Acc =
           Chunks.foldLeft(self.at(i))(into.init)((acc, a) => into.add(acc, a))
-        def combine(ps: Vector[Acc]): Acc = ps.reduceLeft(into.merge)
+        def reducers(ps: Vector[Acc]): Int = 1
+        def reduce(ps: Vector[Acc], r: Int, of: Int): Acc = ps.reduceLeft(into.merge)
         def drops(ps: Vector[Acc]): Long = 0L
 
+  /**
+   * A stage wider than one partition. The map side writes `buckets`
+   * hash buckets; a reducer takes a contiguous RANGE of them, which
+   * is how the number of reducers can be smaller than the number of
+   * buckets and still be a partition of the key space.
+   */
   private abstract class Wide[A] extends Shape[A]:
     type P
     def prepass: (Int => Long) | Null
+    def buckets: Int
     def work(i: Int, seed: Long): P
-    def out(ps: Vector[P]): Chunks[A]
+    def reducers(ps: Vector[P]): Int
+    /** the elements of buckets [lo, hi), merged across the partitions
+     * IN INDEX ORDER */
+    def out(ps: Vector[P], lo: Int, hi: Int): Chunks[A]
     def drops(ps: Vector[P]): Long
 
     final def source: (Int => Chunks[A]) | Null = null
@@ -144,8 +196,10 @@ object Flows {
         type P = self.P
         def parts: Int = self.parts
         def prepass: (Int => Long) | Null = self.prepass
+        def buckets: Int = self.buckets
         def work(i: Int, seed: Long): P = self.work(i, seed)
-        def out(ps: Vector[P]): Chunks[B] = f(self.out(ps))
+        def reducers(ps: Vector[P]): Int = self.reducers(ps)
+        def out(ps: Vector[P], lo: Int, hi: Int): Chunks[B] = f(self.out(ps, lo, hi))
         def drops(ps: Vector[P]): Long = self.drops(ps)
 
     final def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc] =
@@ -154,9 +208,14 @@ object Flows {
         type P = self.P
         def parts: Int = self.parts
         def prepass: (Int => Long) | Null = self.prepass
+        def ordered: Boolean = false
         def work(i: Int, seed: Long): P = self.work(i, seed)
-        def combine(ps: Vector[P]): Acc =
-          Chunks.foldLeft(self.out(ps))(into.init)((acc, a) => into.add(acc, a))
+        def reducers(ps: Vector[P]): Int = self.reducers(ps)
+        def reduce(ps: Vector[P], r: Int, of: Int): Acc =
+          val b = self.buckets
+          val lo = (b.toLong * r / of).toInt
+          val hi = (b.toLong * (r + 1) / of).toInt
+          Chunks.foldLeft(self.out(ps, lo, hi))(into.init)((acc, a) => into.add(acc, a))
         def drops(ps: Vector[P]): Long = self.drops(ps)
 
   private def shape[A](flow: Flow[A]): Shape[A] = flow match
@@ -164,9 +223,9 @@ object Flows {
       require(ps.nonEmpty, "a source has at least one partition")
       new Pipe(ps.length, i => ps(i)())
     case Flow.Local(in, _, f) => shape(in).andThen(f)
-    case Flow.Keyed(in, key, agg) => keyed(shape(in), key, agg)
-    case Flow.Windowed(in, size, slide, lateness, key, at, agg, seeded) =>
-      windowed(shape(in), size, slide, lateness, key, at, agg, seeded)
+    case Flow.Keyed(in, key, agg, finish) => keyed(shape(in), key, agg, finish)
+    case Flow.Windowed(in, size, slide, lateness, key, at, agg, seeded, finish) =>
+      windowed(shape(in), size, slide, lateness, key, at, agg, seeded, finish)
 
   private def one[X, A](in: Shape[X], what: String): Int => Chunks[X] =
     val at = in.source
@@ -176,62 +235,139 @@ object Flows {
           "them, which is stage 2 of specs/dataflow.md")
     at.nn
 
+  /** how many hash buckets the map side writes, and how many reducers
+   * may read them — `Auto` buckets as widely as the source is
+   * partitioned, so the choice it makes later has somewhere to go */
+  private def bucketsFor(finish: Finish, parts: Int): Int = finish match
+    case Finish.Merge => 1
+    case Finish.Shuffle(r) =>
+      require(r > 0, "a shuffle has at least one reducer")
+      r
+    case Finish.Auto => math.max(1, parts)
+
+  /** which bucket a key belongs to. `h` is an INLINE parameter, so
+   * with one bucket the hash is never computed at all and
+   * `Finish.Merge` pays nothing for the exchange it is not using */
+  private inline def bucketOf(inline h: Int, b: Int): Int =
+    if b == 1 then 0 else Math.floorMod(h, b)
+
+  /**
+   * THE AUTO RULE, and what it is really choosing.
+   *
+   * In one process an exchange saves no memory: every partial is
+   * already here. What it buys is that the final merge runs on
+   * several threads instead of one, and what it costs is the
+   * bucketing on the map side plus a fibre per reducer. So the
+   * question `Auto` answers is arithmetic — is there enough merging
+   * to pay for the hand-off — and the answer is a count of
+   * accumulators, MEASURED (MeasureExchange, and the table in
+   * specs/dataflow.md's Results) rather than guessed.
+   *
+   * In a cluster the same switch answers a second, larger question —
+   * whether the merged result fits the node doing the merging — and
+   * that one is stage 4's to ask. This bound is not it, and must not
+   * be quoted as if it were.
+   *
+   * MEASURED (MeasureExchange, 1M rows over 8 partitions, count per
+   * key, minimum of 7 alternating rounds): the merge road wins below
+   * 80 000 accumulators (0.67x) and loses above 160 000 (1.33x),
+   * rising to 4.8x against it by a million. 100 000 sits in that
+   * bracket. Two things move it and neither is guessed at: a FATTER
+   * accumulator makes merging dearer and moves the bound DOWN, and
+   * fewer partitions leave less for the reducers to win, moving it
+   * up. This is a default for a plan that did not choose; a plan that
+   * knows its shape should say `Merge` or `Shuffle` and not consult
+   * a number measured on someone else's job.
+   */
+  private[cluster] val autoBound: Long = 100_000L
+
+  private def chosen(finish: Finish, buckets: Int, entries: Long): Int = finish match
+    case Finish.Merge => 1
+    case Finish.Shuffle(r) => r
+    case Finish.Auto => if entries < autoBound then 1 else buckets
+
   private def keyed[X, K, Acc, O](in: Shape[X], key: X => K,
-                                  agg: Aggregator[X, Acc, O]): Shape[(K, O)] =
+                                  agg: Aggregator[X, Acc, O],
+                                  finish: Finish): Shape[(K, O)] =
     val at = one(in, "a keyed aggregation")
     val n = in.parts
+    val b = bucketsFor(finish, n)
     new Wide[(K, O)]:
-      type P = mutable.HashMap[K, Acc]
+      type P = Array[mutable.HashMap[K, Acc]]
       def parts: Int = n
       def prepass: (Int => Long) | Null = null
+      def buckets: Int = b
       def work(i: Int, seed: Long): P =
-        val m = mutable.HashMap.empty[K, Acc]
+        val ms = Array.fill(b)(mutable.HashMap.empty[K, Acc])
         Chunks.foldLeft(at(i))(())((_, x) =>
           val k = key(x)
+          val m = ms(bucketOf(k.##, b))
           m.update(k, agg.add(m.getOrElse(k, agg.init), x)))
-        m
-      def out(ps: Vector[P]): Chunks[(K, O)] =
+        ms
+      def reducers(ps: Vector[P]): Int =
+        chosen(finish, b, entries(ps))
+      def out(ps: Vector[P], lo: Int, hi: Int): Chunks[(K, O)] =
         val all = mutable.HashMap.empty[K, Acc]
-        for m <- ps do
-          for (k, a) <- m do all.update(k, all.get(k).fold(a)(agg.merge(_, a)))
+        var j = lo
+        while j < hi do
+          for m <- ps do
+            for (k, a) <- m(j) do all.update(k, all.get(k).fold(a)(agg.merge(_, a)))
+          j += 1
         Chunks.fromIterator(all.iterator.map((k, a) => (k, agg.present(a))))
       def drops(ps: Vector[P]): Long = 0L
+      private def entries(ps: Vector[P]): Long =
+        var t = 0L
+        for ms <- ps do for m <- ms do t += m.size
+        t
 
   /** a partition's share of a windowed stage: every pane it touched,
    * as an ACCUMULATOR (not a presented value — a presented mean
    * cannot be merged with another partition's), and the late
    * elements it dropped */
-  private final case class Panes[K, Acc](panes: mutable.HashMap[(Long, K), Acc], late: Long)
+  private final case class Panes[K, Acc](panes: Array[mutable.HashMap[(Long, K), Acc]], late: Long)
 
   private def windowed[X, K, Acc, O](in: Shape[X], size: Long, slide: Long, lateness: Long,
                                      key: X => K, at: X => Long,
                                      agg: Aggregator[X, Acc, O],
-                                     seeded: Boolean): Shape[Pane[K, O]] =
+                                     seeded: Boolean, finish: Finish): Shape[Pane[K, O]] =
     val src = one(in, "a windowed aggregation")
     val n = in.parts
+    val b = bucketsFor(finish, n)
     // the same aggregator, presenting its ACCUMULATOR: what a partial
     // pane must carry so another partition's can be merged into it
     val partial = Aggregator[X, Acc, Acc](agg.init)(agg.add)(agg.merge)(identity)
     new Wide[Pane[K, O]]:
       type P = Panes[K, Acc]
       def parts: Int = n
+      def buckets: Int = b
       def prepass: (Int => Long) | Null =
         if !seeded then null
         else (i: Int) => Chunks.foldLeft(src(i))(Long.MinValue)((m, x) => math.max(m, at(x)))
       def work(i: Int, seed: Long): P =
         val w = new Windows[K, X, Acc, Acc](size, slide, lateness, key, at, partial)
         if seed != Long.MinValue then w.seed(seed)
-        val m = mutable.HashMap.empty[(Long, K), Acc]
+        val ms = Array.fill(b)(mutable.HashMap.empty[(Long, K), Acc])
+        // bucketed by the (window, key) PAIR, not by the key: the
+        // aggregation is per pane, so the pair spreads a hot key's
+        // windows over the reducers instead of piling them on one
         val keep: Pane[K, Acc] => Unit = p =>
           val id = (p.start, p.key)
+          val m = ms(bucketOf(id.##, b))
           m.update(id, m.get(id).fold(p.value)(agg.merge(_, p.value)))
         Chunks.foldLeft(src(i))(())((_, x) => w.add(x)(keep))
         w.close()(keep)
-        Panes(m, w.dropped)
-      def out(ps: Vector[P]): Chunks[Pane[K, O]] =
+        Panes(ms, w.dropped)
+      def reducers(ps: Vector[P]): Int =
+        var t = 0L
+        for p <- ps do for m <- p.panes do t += m.size
+        chosen(finish, b, t)
+      def out(ps: Vector[P], lo: Int, hi: Int): Chunks[Pane[K, O]] =
         val all = mutable.HashMap.empty[(Long, K), Acc]
-        for p <- ps do
-          for (id, a) <- p.panes do all.update(id, all.get(id).fold(a)(agg.merge(_, a)))
+        var j = lo
+        while j < hi do
+          for p <- ps do
+            for (id, a) <- p.panes(j) do all.update(id, all.get(id).fold(a)(agg.merge(_, a)))
+          j += 1
         Chunks.fromIterator(all.iterator.map { case ((start, k), a) =>
           Pane(start, start + size, k, agg.present(a))
         })

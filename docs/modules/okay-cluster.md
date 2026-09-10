@@ -51,9 +51,36 @@ RECORDS to the key's owner, it has to move its ACCUMULATORS, and an
 partition folds every key it happens to see and the coordinator
 merges what comes back — one accumulator per (key, window) per
 partition, where Spark's `reduceByKey` and Flink's `keyBy` move the
-dataset. The exchange, for the case this cannot serve (the merged
-result does not fit one node), is stage 2 and is not here yet: a
-second keyed stage in one flow is refused by name.
+dataset. A second keyed stage in one flow is still refused by name.
+
+**And the exchange, for when that is the wrong plan.** `Finish` picks
+the road: `Merge` puts every partial on one coordinator, `Shuffle(r)`
+gives each of r reducers a hash share of the keys, `Auto` decides
+when the partials are in and their size is known. The map side writes
+hash buckets and a reducer takes a contiguous RANGE of them, which is
+what lets the number of reducers be chosen after the run has started.
+
+**When to take it, measured.** In one process the exchange saves no
+memory — every partial is already in this heap — it lets the final
+merge run on several threads instead of one, and the question is
+whether there is enough merging to pay for the hand-off. The answer
+is a count of ACCUMULATORS: below ~80 000 the merge road wins, above
+~160 000 the exchange does, reaching 4.8x against the merge by a
+million (`MeasureExchange`, and the table in specs/dataflow.md). A
+fatter accumulator moves the bound down; fewer partitions move it up.
+On Wrocław's job — ~10^4 accumulators against 10^6 events — `Auto`
+DECLINES the exchange, and the suite asserts that it declines it.
+
+**The `Sequential` rule cuts both ways, and the second way was a
+surprise.** A `Sequential` KEYED aggregator survives the exchange
+untouched: a reducer owns a hash share and merges its buckets
+partition by partition, so the order it depends on is intact. A
+`Sequential` TERMINAL over a keyed stage is refused — and not because
+of the exchange. A keyed stage's output is a hash map's iteration
+order whether one reducer produced it or eight, so an order-dependent
+fold over it was already wrong under `Finish.Merge`. It stays allowed
+on a stateless plan, where the engine really does hand the terminal
+the input's order.
 
 **Two orders that are not decoration.** Partials are joined BY
 PARTITION INDEX, never by which fibre finished first — free for a
@@ -143,9 +170,10 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Flow.slices` | `(IndexedSeq[A], parts, chunk) => Flow[A]` | contiguous slices of the input's own ORDER |
 | `Flow.of` | `(Vector[() => Chunks[A]]) => Flow[A]` | partitions as recipes — a thunk, so a partition can be replayed |
 | `Flow.map/filter` | `(A => B) / (A => Boolean) => Flow[…]` | per-partition, held as a `Chunks` transformer |
-| `Flow.keyBy` | `(A => K)(Aggregator[A, Acc, O]) => Flow[(K, O)]` | a keyed aggregation, finished by merge |
-| `Flow.tumbling/sliding` | `(size, slide, lateness, seeded)(key)(at)(agg) => Flow[Pane[K, O]]` | event-time windows; `seeded` buys exactness for one pre-pass |
-| `Flows.run` | `(Flow[A], Aggregator[A, Acc, O])(using Scheduler) => Run[O] ! Async` | the answer, the DROPPED count and the partition count |
+| `Flow.keyBy` | `(A => K, Finish)(Aggregator[A, Acc, O]) => Flow[(K, O)]` | a keyed aggregation |
+| `Flow.tumbling/sliding` | `(size, slide, lateness, seeded, finish)(key)(at)(agg) => Flow[Pane[K, O]]` | event-time windows; `seeded` buys exactness for one pre-pass |
+| `Finish` | `Merge` / `Shuffle(r)` / `Auto` | where the partials are combined; `Auto` decides during the run |
+| `Flows.run` | `(Flow[A], Aggregator[A, Acc, O])(using Scheduler) => Run[O] ! Async` | the answer, the DROPPED count, the partitions and the reducers actually used |
 | `Flows.fold` / `Flows.collect` | as above / `Flow[A] => Vector[A] ! Async` | the answer alone; every element in partition order |
 | `Acceptance` | `agg / source / frames / expected` | the shared-source program of the acceptance run |
 | `Client` (JS) | `main` | the Node client: connect, stream frames, verify via runAsync |
@@ -176,6 +204,13 @@ val wire: Cluster.Worker[Double, Double] = c =>
   checkout's `okay-flink/target/data/gtfs`, which `target/` keeps out
   of git; link it, or the suite silently reports zero tests.
 
-Next step per specs/dataflow.md: stage 2 — the exchange, and the
-crossover between it and the merge finish, measured rather than
-assumed.
+- `Flows.autoBound` was measured on the CHEAPEST possible
+  accumulator (a count) at eight partitions. It is a default for a
+  plan that did not choose; a plan that knows its own shape should
+  say `Merge` or `Shuffle` rather than consult a number measured on
+  someone else's job.
+
+Next step per specs/dataflow.md: stage 3 — one pass, many sinks.
+Until that lands the engine reads Wrocław's feed three times where
+§20's hand-written lane reads it once, and no engine number is
+comparable with that table.

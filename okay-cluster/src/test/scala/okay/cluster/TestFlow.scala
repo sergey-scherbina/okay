@@ -109,6 +109,50 @@ class TestFlow extends munit.FunSuite {
   }
 
   // -----------------------------------------------------------------
+  // stage 2: the exchange
+  // -----------------------------------------------------------------
+
+  test("the exchange answers what the merge answers — keyed, every parallelism and reducer count") {
+    val xs = feed(20000, 0)
+    val base = Flows.run(Flow.slices(xs, 1).keyBy(_.key)(value), keySum).runWith
+    assertEquals(base.reducers, 1)
+    for p <- Vector(1, 2, 4, 8); r <- Vector(1, 2, 3, 8, 16) do
+      val got = Flows.run(Flow.slices(xs, p).keyBy(_.key, Finish.Shuffle(r))(value), keySum).runWith
+      assertEquals(got.value, base.value, s"$p partitions, $r reducers")
+      assertEquals(got.reducers, r, s"$p partitions, $r reducers")
+  }
+
+  test("the exchange answers what the merge answers — windowed, panes bucketed by (window, key)") {
+    val xs = feed(20000, Late - 1)
+    val base = Flows.fold(Flow.slices(xs, 1).tumbling(Size, Late)(_.key)(_.ts)(value), paneSum).runWith
+    for p <- Vector(1, 4, 8); r <- Vector(2, 5, 16) do
+      val got = Flows.run(
+        Flow.slices(xs, p).tumbling(Size, Late, finish = Finish.Shuffle(r))(_.key)(_.ts)(value),
+        paneSum).runWith
+      assertEquals(got.value, base, s"$p partitions, $r reducers")
+      assertEquals(got.dropped, 0L, s"$p partitions, $r reducers")
+  }
+
+  test("Auto: one reducer under the bound, the buckets over it") {
+    // the bound is a count of ACCUMULATORS, so the two runs differ in
+    // how many distinct keys they make, not in how much data they read
+    val few = feed(20000, 0)
+    val small = Flows.run(Flow.slices(few, 8).keyBy(_.key, Finish.Auto)(value), keySum).runWith
+    assertEquals(small.reducers, 1, "16 keys is far under the bound")
+
+    val n = (Flows.autoBound * 3 / 2).toInt
+    val many = (0 until n).map(i => Ev(i.toLong, i, 1))        // every element its own key
+    val wide = Flows.run(Flow.slices(many, 8).keyBy(_.key, Finish.Auto)(value), keySum).runWith
+    assert(wide.reducers > 1, s"$n accumulators is over the ${Flows.autoBound} bound")
+    assertEquals(wide.value.n, n.toLong)
+    assertEquals(wide.reducers, 8, "Auto buckets as widely as the source is partitioned")
+
+    // and the answer is the same whichever road it took
+    val byHand = Flows.fold(Flow.slices(many, 8).keyBy(_.key)(value), keySum).runWith
+    assertEquals(wide.value, byHand)
+  }
+
+  // -----------------------------------------------------------------
   // Claim 2: keyed STATE without a shuffle
   // -----------------------------------------------------------------
 
@@ -150,6 +194,39 @@ class TestFlow extends munit.FunSuite {
     }
     assertEquals(answers.distinct.length, 1, s"parallelism moved the answer: $answers")
     assert(answers.head.total > 0, "a test with no bunches asserts nothing")
+  }
+
+  test("a Sequential keyed aggregator survives the EXCHANGE too") {
+    // this is the asymmetry the type is for: a reducer owns a hash
+    // share of the keys and merges its buckets partition by
+    // partition, so the order a Sequential depends on is intact —
+    // while the same aggregator used as the TERMINAL is refused
+    val xs = feed(20000, 0)
+    val base = Flows.fold(Flow.slices(xs, 1).keyBy(_.key)(bunching), keySum).runWith
+    for p <- Vector(2, 4, 8); r <- Vector(2, 3, 8) do
+      val got = Flows.fold(Flow.slices(xs, p).keyBy(_.key, Finish.Shuffle(r))(bunching), keySum).runWith
+      assertEquals(got, base, s"$p partitions, $r reducers")
+  }
+
+  test("a Sequential TERMINAL over a keyed stage is refused by name") {
+    val xs = feed(1000, 0)
+    // the terminal folds (key, bunches) pairs in a hash map's order,
+    // which is not the input's — an order-dependent fold over that is
+    // wrong whether one reducer produced it or eight
+    val terminal: Sequential[(Int, Long), Runs, Long] = new Sequential[(Int, Long), Runs, Long]:
+      def init: Runs = Runs(0, 0, 0, 0)
+      def add(a: Runs, kv: (Int, Long)): Runs = bunching.add(a, Ev(kv._2, kv._1, 0))
+      def merge(a: Runs, b: Runs): Runs = bunching.merge(a, b)
+      def present(a: Runs): Long = a.bunches
+    val e = intercept[IllegalArgumentException](
+      Flows.fold(Flow.slices(xs, 4).keyBy(_.key)(value), terminal).runWith)
+    assert(e.getMessage.contains("Sequential"), e.getMessage)
+    assert(e.getMessage.contains("hash map"), e.getMessage)
+
+    // and it is ALLOWED on a stateless plan, where the engine really
+    // does hand the terminal the input's order
+    val ok = Flows.fold(Flow.slices(xs, 4).map(e2 => (e2.key, e2.ts)), terminal).runWith
+    assert(ok >= 0L)
   }
 
   // -----------------------------------------------------------------

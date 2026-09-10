@@ -1,7 +1,7 @@
 package okay.wroclaw
 
 import okay.{Aggregator, Chunks, Pane, Sequential}
-import okay.cluster.{Flow, Flows}
+import okay.cluster.{Finish, Flow, Flows}
 import okay.given
 import scala.collection.immutable.ArraySeq
 
@@ -117,6 +117,33 @@ class TestWroclawFlow extends munit.FunSuite {
         rides(p).keyBy(r => (r.route.toLong << 20) | r.stop.toLong)(bunching), totals).runWith
       assertEquals(bunches, expected.bunches, s"$p partitions")
       assertEquals(gap, expected.bunchGap, s"$p partitions")
+  }
+
+  test("the exchange computes the same job — and Auto declines it, correctly") {
+    // stage 2's honest result on THIS job. Wrocław has ~138 routes
+    // over a few thousand five-minute windows, so the accumulators
+    // that reach the merge are ~10^4 against 10^6 events: three
+    // orders of magnitude under the crossover MeasureExchange found.
+    // The exchange is the road you take when you have to, and this
+    // job does not have to.
+    val merged = Flows.fold(
+      rides(8).tumbling(Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats),
+      into((s, pane) => s.route(pane))).runWith
+    assertEquals(merged, expected.copy(
+      stopWins = 0, stopEvents = 0, stopHash = 0, bunches = 0, bunchGap = 0))
+
+    for r <- Vector(2, 4, 8) do
+      val shuffled = Flows.run(
+        rides(8).tumbling(Job.WindowMs, Job.Lateness, finish = Finish.Shuffle(r))(_.route)(_.ts)(Job.stats),
+        into((s, pane) => s.route(pane))).runWith
+      assertEquals(shuffled.value, merged, s"$r reducers")
+      assertEquals(shuffled.reducers, r)
+
+    val auto = Flows.run(
+      rides(8).tumbling(Job.WindowMs, Job.Lateness, finish = Finish.Auto)(_.route)(_.ts)(Job.stats),
+      into((s, pane) => s.route(pane))).runWith
+    assertEquals(auto.value, merged)
+    assertEquals(auto.reducers, 1, "this job's panes are far under the exchange's crossover")
   }
 
   test("the whole job: all eleven checksums, at parallelism 8") {

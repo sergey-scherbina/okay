@@ -175,12 +175,13 @@ than trusting the author.
 
 - **0 — this spec.** What the engine is, what it refuses, and the
   three falsifiable claims.
-- **1 — the plan and the local runtime.** `Flow`, its rewrite rules
+- **1 — the plan and the local runtime.** DONE. `Flow`, its rewrite rules
   (combine below exchange, local fusion below everything), and an
   executor over N fibres in one process. Acceptance: the existing
   Wrocław checksums, at every parallelism.
-- **2 — the exchange.** A real hash partition with combine above it,
-  `Finish.Auto`, and the crossover MEASURED rather than assumed.
+- **2 — the exchange.** DONE. A real hash partition with combine
+  below it, `Finish.Auto`, and the crossover measured rather than
+  assumed.
 - **3 — one pass, many sinks.** A job is several flows over one
   source; the shared source is detected and the pass is single. This
   is what §20 already names as the asymmetry: a fan-out in one JVM is
@@ -233,7 +234,30 @@ not against its existence):
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
 
-Stage 2 and later: written when the stage is claimed.
+Stage 2 (TestFlow, TestWroclawFlow, MeasureExchange):
+- [x] the exchange answers what the merge answers, at every
+      parallelism crossed with every reducer count — keyed and
+      windowed
+- [x] a `Sequential` KEYED aggregator survives the exchange: a
+      reducer owns a hash share and merges its buckets partition by
+      partition, so the order it depends on is intact
+- [x] a `Sequential` TERMINAL over a keyed stage is refused by name —
+      and allowed on a stateless plan, where the engine really does
+      hand it the input's order
+- [x] `Auto` chooses one reducer under the measured bound and the
+      buckets over it, and both roads answer the same
+- [x] the crossover is MEASURED, not assumed, and the harness is
+      honest about its own noise
+- [x] on the Wrocław job the exchange is declined by `Auto`, and the
+      reason is arithmetic rather than taste
+- [ ] the optimizer pushes a combine below an exchange — STILL NOT
+      APPLICABLE: the combine is not an optimization here, it is
+      where a keyed stage begins. There is no plan in which the
+      records reach the exchange uncombined, so there is nothing to
+      push. The box stays open only until a stage-4 plan can express
+      one.
+
+Stage 3 and later: written when the stage is claimed.
 
 ## The watermark, and why a slice is not a stream
 
@@ -326,6 +350,70 @@ lane uses, which is why it survived the first suite. Controlled: the
 test fails on the defect and on nothing else. `Aggregator.apply` now
 says so in its own scaladoc, since the trap is the core's and this
 engine is only the first caller to reach it.
+
+### Stage 2 — the exchange, and the number that says when to take it
+
+`Finish` (Merge / Shuffle(r) / Auto) on the keyed and windowed nodes.
+The map side writes hash buckets, a reducer takes a contiguous RANGE
+of them, and that indirection is what lets the number of reducers be
+chosen AFTER the partials are in — which is what `Auto` needs and what
+a plan-time constant could not give it.
+
+**The asymmetry that justifies the `Sequential` type, in both
+directions at once.** A `Sequential` KEYED aggregator survives the
+exchange: a reducer owns a hash share of the keys and merges its
+buckets partition by partition, so the order it depends on is
+untouched. A `Sequential` TERMINAL does not, and is refused — but not
+for the reason stage 2 was expected to give. A keyed stage's output
+is a hash map's iteration order whether one reducer produced it or
+eight, so an order-dependent fold over it was already wrong under
+`Finish.Merge`. The rule the engine enforces is therefore about the
+KEYED STAGE, not about the exchange, and it is wider than the one
+this spec first sketched.
+
+**The crossover, measured.** `MeasureExchange`, one million rows over
+eight partitions, count per key (the cheapest accumulator there is),
+minimum of seven alternating rounds:
+
+| distinct keys | accumulators | merge ms | shuffle ms | ratio |
+|---:|---:|---:|---:|---:|
+| 1 000 | 8 000 | 1 | 2 | 0.50x |
+| 10 000 | 80 000 | 2 | 3 | 0.67x |
+| 20 000 | 160 000 | 4 | 3 | 1.33x |
+| 30 000 | 240 000 | 5 | 3 | 1.67x |
+| 50 000 | 400 000 | 8 | 4 | 2.00x |
+| 100 000 | 800 000 | 20 | 8 | 2.50x |
+| 250 000 | 1 000 000 | 43 | 9 | 4.78x |
+| 1 000 000 | 1 000 000 | 54 | 21 | 2.57x |
+
+So `autoBound = 100 000` accumulators, which sits inside the bracket
+the measurement leaves. A fatter accumulator moves it down (merging
+gets dearer, the hand-off does not); fewer partitions move it up.
+
+**The prediction this lane wrote down beforehand was right, and it is
+the useful half.** Wrocław's keyed stage has ~10^4 accumulators
+against 10^6 events — three orders of magnitude under the crossover —
+so `Auto` DECLINES the exchange on the job this engine exists for,
+and the suite asserts that it declines it. An engine that shuffles
+because shuffling is what engines do would pay that 1.5x for nothing.
+
+**The harness had to be rebuilt before any of this could be believed,
+and that is worth recording.** Its first table read 61 ms at 10 000
+keys and 10 ms at 20 000 — more work in less time, which is not a
+measurement of the work but of the previous row's two million dead
+objects in a 1 GB test heap. A lane that swings six-fold cannot price
+a two-fold effect. What fixed it: a smaller feed, a settle between
+rows, the two roads ALTERNATING round by round so drift hits both,
+and the MINIMUM of the rounds reported with the worst round beside it
+so a reader can see whether to believe the row.
+
+**One thing found by measuring rather than reasoning.**
+`Flow.slices` cut its partitions with `xs.iterator.slice(from, until)`
+— and an `Iterator` reaches its start by DROPPING, so the last of
+eight partitions stepped through seven eighths of the input and threw
+it away. Measured directly: 456 µs against 5 µs for the same eighth
+through `view.slice`. It had been there since stage 1, under a lane
+that was still correct and still passed everything.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements

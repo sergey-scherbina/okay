@@ -3,10 +3,11 @@
 ## Doing
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
-  have LANDED. Next, in order: stage 2 the exchange (and the measured
-  crossover between it and the merge finish), stage 3 one pass and
-  many sinks (which is what makes an engine number comparable with
-  §20's), stage 4 across processes.
+  have LANDED, and so has stage 2 (the exchange, with the crossover
+  measured at ~100 000 accumulators — and DECLINED on the Wrocław
+  job, correctly). Next, in order: stage 3 one pass and many sinks
+  (which is what makes an engine number comparable with §20's), then
+  stage 4 across processes.
 
 ## Queue
 (the note that stood here named eight candidates; SIX have since

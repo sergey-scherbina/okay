@@ -545,15 +545,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that section carries is in BACKLOG-ARCHIVE.md)
 
 ## okay-cluster / dataflow
-- [ ] dataflow-exchange — stage 2 of specs/dataflow.md: a real hash
-      partition with the combine above it, `Finish.Auto`, and the
-      crossover between the merge finish and the exchange MEASURED
-      rather than assumed. The rule to test: with map-side combine
-      the two roads move the same VOLUME (one accumulator per key per
-      partition), so the question is only whether the final merge
-      fits one node's memory and time — which makes the crossover an
-      accumulator-count, and that number should be found, not
-      guessed.
+- [x] dataflow-exchange — LANDED. The crossover is ~100 000
+      accumulators and the Wrocław job is three orders of magnitude
+      under it, so `Auto` declines the exchange there.
+- [ ] dataflow-auto-for-a-real-accumulator — `autoBound` was measured
+      on the cheapest accumulator that exists (a Long count) at eight
+      partitions, and both facts move the number. A second row of the
+      same table with a fat accumulator (Wrocław's
+      `((Long, Long), Option[Int])`, or the flat one
+      aggregator-zip-allocates is landing) would say how far, and
+      whether one constant can serve both.
 - [ ] dataflow-onepass — stage 3: several flows over one source, the
       shared source detected and the pass single. Until this lands,
       the engine reads Wrocław's feed three times where §20's

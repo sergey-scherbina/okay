@@ -1,5 +1,60 @@
 # Changelog
 
+## dataflow stage 2 — the exchange, and the number that says when not to take it
+
+specs/dataflow.md stage 2. `Finish` on the keyed and windowed nodes —
+`Merge`, `Shuffle(r)`, `Auto` — with the map side writing hash buckets
+and a reducer taking a contiguous RANGE of them, which is the
+indirection that lets the number of reducers be chosen AFTER the
+partials are in rather than from a constant written before the run.
+
+**The crossover, measured** (`MeasureExchange`, 1M rows, 8 partitions,
+count per key, minimum of 7 alternating rounds). Below ~80 000
+accumulators the merge road wins (0.67x); above ~160 000 the exchange
+does (1.33x), reaching 4.78x by a million. `autoBound` is 100 000,
+inside that bracket. A fatter accumulator moves it down, fewer
+partitions move it up, and the constant says so where it is defined.
+
+**The prediction written into the claim beforehand held, and it is the
+useful half of the result.** Wrocław's keyed stage has ~10^4
+accumulators against 10^6 events, three orders of magnitude under the
+crossover, so `Auto` DECLINES the exchange on the job this engine
+exists for — and TestWroclawFlow asserts that it declines it. An
+engine that shuffles because shuffling is what engines do would pay
+1.5x for nothing.
+
+**The `Sequential` rule turned out wider than the spec sketched, in
+the direction that matters.** A `Sequential` KEYED aggregator survives
+the exchange intact — a reducer owns a hash share and merges its
+buckets partition by partition, so the order it depends on is
+untouched. A `Sequential` TERMINAL is refused, but NOT because of the
+exchange: a keyed stage's output is a hash map's iteration order
+whether one reducer produced it or eight, so an order-dependent fold
+over it was already wrong under `Finish.Merge`. The check is therefore
+about the keyed stage, not about the reducer count, and it stays
+allowed on a stateless plan where the engine really does hand the
+terminal the input's order.
+
+**The harness had to be thrown away and rebuilt before any of this
+could be believed.** Its first table read 61 ms at 10 000 keys and
+10 ms at 20 000 — more work in less time, which measures the previous
+row's two million dead objects in a 1 GB test heap and not the work.
+A lane that swings six-fold cannot price a two-fold effect. What
+fixed it: a smaller feed, a settle between rows, the two roads
+ALTERNATING round by round so drift hits both, and the MINIMUM of the
+rounds reported with the worst round beside it, so a reader can see
+whether to believe the row at all.
+
+**And one defect found by measuring rather than reasoning.**
+`Flow.slices` cut its partitions with `xs.iterator.slice(from, until)`,
+and an Iterator reaches its start by DROPPING — so the last of eight
+partitions stepped through seven eighths of the input and threw it
+away. Measured: 456 us against 5 us for the same eighth through
+`view.slice`. It shipped in stage 1 under a lane that was correct and
+passed everything.
+
+`Run` now reports the reducers a run actually used, which for `Auto`
+is unknowable from the outside otherwise.
 ## di-prototype — an instance per consumer, without the consumer knowing
 
 The arc had one lifetime: a `module` installs one value and a region
