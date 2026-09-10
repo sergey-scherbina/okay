@@ -1,0 +1,31 @@
+task: scan-fold-without-tokens
+agent: opus-optics
+started: 2026-09-10
+branch: feature/scan-fold
+worktree: ../okay-wt-scanfold
+
+why: the operator said "aggregation and scanners", the two doors
+  opened today with no caller. One of them has a real one and the
+  other does not, and this claim says which.
+
+  REAL: `Provider.counting` and `Handlers.counter` count a message's
+  BPE tokens as `Scan.all(bpe)(s).tokens.count(...)` — a Vector of
+  every Token, each with a lexeme String and a Span, materialised to
+  produce one Int, on every message. The sink road built this morning
+  is exactly what removes it and has had no consumer outside the
+  drivers.
+
+  NOT REAL: the kaleidoscope and the classifying lens. okay-intent's
+  nearest-centroid classifier IS aggregate-then-classify in shape, and
+  rewriting it on the optics would be churn: the pooling is a tuned
+  mutable loop the optic does not replace, and the code groups by slot
+  before aggregating, so the composite buys nothing. Said in the
+  entry rather than pretended.
+
+what: `Scan.fold(sc)(input)(z)(f)` on `stepInto`, nothing
+  materialised; `Scan.aggregate(sc)(input)(agg)` as the same with an
+  `Aggregator`, which is the aggregation door that DOES fit here; and
+  `Mealy.fold`, without which a composed machine still materialises.
+
+measure: a bpeCount pair, folded against materialised, -prof gc.
+  Allocation is the number.
