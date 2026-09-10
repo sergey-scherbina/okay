@@ -1,5 +1,44 @@
 # Changelog
 
+## flows-pane-tuple — a pair built for a branch that never uses it
+
+Checking `windows-packed-key` turned up something that is not it, and
+is mine: `dataflow-run-complete-panes` put a completeness branch ABOVE
+the binding it left in place, so `Flows.windowed` allocated the
+`(Long, K)` pair for every pane it emitted — including the ~93% that
+are finished locally and never use it as a map key. With
+`Finish.Merge`, the default, `bucketOf` is inline and never even
+evaluates the hash the pair was built for, so on that road the
+allocation was entirely dead.
+
+The pair is bound in the branch that uses it now, and the finished
+branch mixes start and key by hand for its bucket, so a hot key's
+windows still spread over the reducers and nothing is allocated to say
+so.
+
+A WALL CLOCK COULD NOT PRICE THIS and the A/B said so honestly: the
+`Flows.run` lane read 205 ms then 186, and the hand-written reference
+lane — which this change cannot touch — moved 9% the OTHER way in the
+same pair. The box drifted by the size of the effect.
+
+So the lane leaves an instrument that suits the change:
+`MeasurePaneBytes` reads `getTotalThreadAllocatedBytes`, which is
+DETERMINISTIC where time is not. Same feed, same plan, two trees:
+
+  road                                  |    before |     after |  saved
+  the source alone (control)            |   569,352 |   569,392 |   -40 B
+  Flows.run, tumbling, 8 partitions     | 2,865,232 | 2,717,408 | 147,824
+  ... with Finish.Shuffle(8)            | 3,211,288 | 3,062,888 | 148,400
+  Flows.fan, the same window (control)  | 3,006,600 | 3,006,904 |  -304 B
+
+5.2% of that road's allocation, with both controls inside 0.01% —
+which is what makes the row the change and not the machine.
+
+And `windows-packed-key` keeps its true premise now: it is NOT
+`windows-int-key-panes` (that one is `okay.Windows`'s store in the
+core, this one okay-cluster's partial), and the completeness rule
+already keeps 93% of the panes out of the map it prices.
+
 ## optics-outside-routes-query — the query string, and a rule that was attached to the wrong layer
 
 Stage 3 of `specs/optics-outside.md`. Stage 1's DESCRIBE interpreter

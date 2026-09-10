@@ -871,6 +871,27 @@ or not at all).
       packs window and key into one Long and is faster for it; the
       general operator cannot, but a specialisation for small integer
       keys could. Measure before writing it.
+      TWO THINGS HAVE MOVED UNDER THIS ENTRY since it was filed, and
+      the next reader needs both. (1) It is NOT the same question as
+      `windows-int-key-panes`, which is one heading up: that one is
+      `okay.Windows`'s own pane store in the CORE
+      (`HashMap[K, LongMap[Acc]]`, an Int boxed and hashed twice);
+      this one is okay-cluster's PARTIAL (`HashMap[(Long, K), Acc]`).
+      Different maps, different modules, same idea. (2) The
+      completeness rule now keeps most panes out of that map
+      altogether — 122 679 boundary accumulators against 1 734 893
+      panes on the Wrocław job — so the traffic this entry prices is
+      about 7% of what it was when the entry was written. Whatever a
+      packed store buys, it buys it on that 7%.
+      (`flows-pane-tuple` took the part that was not this: a pair
+      allocated on the branch that never used it — 147 824 bytes of
+      2 865 232, 5.2%, on the synthetic feed.) AND IT LEFT THE
+      INSTRUMENT: `MeasurePaneBytes` prints what each road allocates
+      from `getTotalThreadAllocatedBytes`, which is DETERMINISTIC
+      where a wall clock on a 180 ms lane is not — the box moved 10%
+      between the two halves of the A/B that prompted it, in the
+      wrong direction, on a lane the change cannot touch. A packed
+      store should be judged there.
 
 ## okay-spark
 - [ ] spark-4-2 — bump `spark-sql` 4.0.0 -> 4.2.0 and move

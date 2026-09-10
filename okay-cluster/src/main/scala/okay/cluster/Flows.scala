@@ -622,10 +622,17 @@ object Flows {
         // key, so the pair spreads a hot key's windows over the
         // reducers instead of piling them on one.
         val keep: Pane[K, Acc] => Unit = p =>
-          val id = (p.start, p.key)
           if p.start > bounds.lower && p.start + size <= bounds.upper then
-            done(bucketOf(id.##, b)) += Pane(p.start, p.start + size, p.key, agg.present(p.value))
+            // A FINISHED PANE IS NEVER A MAP KEY, so it needs no PAIR
+            // — only a bucket, and `bucketOf` is inline, so with one
+            // bucket even this is not computed. The mix stands in for
+            // the tuple's own hashCode: a hot key's windows still
+            // spread over the reducers, and nothing is allocated to
+            // say so.
+            done(bucketOf(p.start.hashCode * 31 + p.key.##, b)) +=
+              Pane(p.start, p.start + size, p.key, agg.present(p.value))
           else
+            val id = (p.start, p.key)
             val m = ms(bucketOf(id.##, b))
             m.update(id, m.get(id).fold(p.value)(agg.merge(_, p.value)))
         Chunks.foldLeft(src(i))(())((_, x) => w.add(x)(keep))
