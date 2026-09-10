@@ -1,5 +1,85 @@
 # Changelog
 
+## optics-outside-route-syntax — five questions about brevity, three answers from the language
+
+Stage 5 of `specs/optics-outside.md`. The operator read the declaration
+form four times and asked for something shorter each time. Every
+proposal went to the compiler rather than into an argument, and three
+of the answers were NO — which turned out to be the useful half, since
+a no from the language is a rule that still holds tomorrow while a yes
+may be a coincidence that stops holding, as one of them did.
+
+```scala
+import okay.http.syntax.*
+
+val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+val search   = Route / "search" :? "q".as[String] :? "page".opt[Int]
+val tagged   = Route / "posts" / "id".as[Int] :? "tag".all[String]
+
+val router = Router.on(Method.Get, healthz)(_ => text(200, "live"))
+```
+
+One rule: a bare string is a literal segment, `"name".as[T]` is a hole,
+and the OPERATOR says where the parameter goes — `/` into the path, `:?`
+into the query. One `Named[T]`, because a named typed parameter is the
+same thing in both places; only its position differs. `:?` chains, so
+`+&` keeps its real job, factoring out a query worth sharing.
+`Router.on` and `Toolbox.on` start a table from the companion, and
+`empty` stays, because it is the zero of a fold and what a module
+answers when it contributes no routes.
+
+**A path may not follow a query, structurally.** `:?` answers a
+`Queried[A]` with no `/` at all; `Routed[A]` carries what both stages
+can do and `Router` takes that. Three wrong forms are refused by three
+different mechanisms, and `TestRoute` asserts all three with
+`compileErrors` — a negative property of an api has no protection
+otherwise, and the next person adding a `/` "for convenience" would
+remove the guarantee in silence.
+
+**`:?[String]("q")` and `:?[String] "q"` do not parse.** Scala takes an
+infix operator's precedence from its FIRST character and will not
+accept a type argument after one. The type argument may ride the
+OPERAND instead, which is why `"q"[String]` parses where `:?[String]`
+cannot — and is also why `Route.lit("search") ? …` had worked: the
+receiver was a complete expression to its left.
+
+**But `apply` in particular is unreachable, and that took a second
+measurement.** `String` already has an `apply` through `StringOps`, and
+an extension method is only consulted when the member does not exist.
+`"id"[Int]` compiled in five isolated probes and failed the moment it
+met the real imports, with a message naming `scala.collection.StringOps`
+— the winner rather than the problem. The general lesson is the
+keepable part: **a probe that isolates a feature also isolates away its
+competitors**, and `String` has many. The hole is `"id".as[Int]`; the
+loss is one dot and the gain is that `as`, `opt` and `all` are all
+ordinary named methods rather than one magic `apply` beside two named
+ones.
+
+**`@compileTimeOnly` failed as a guarantee and is not used.** It was
+tried as the carrier of a better refusal message — a poisoned `/` on
+`Named`, since precedence sends the mistake there. It fired in five
+isolated variants (dotted, infix, overloaded method, overloaded caller,
+extension receiver, parenthesised and not) and silently did NOT fire in
+the real expression, even after a clean rebuild; worse, its presence
+made two invalid declarations COMPILE, because the poisoned method
+returned a usable type where its absence had produced an error. The
+trigger was never isolated. Filed as
+`compile-time-only-is-not-a-guarantee` for whoever next reaches for it
+in `specs/error-messages.md`: fine for a message, never the thing that
+makes an invalid program invalid.
+
+**And a name the compiler refused.** The syntax object is `syntax`, not
+`query`: a `query` object beside the `Query` class differs from it only
+in case, and on a case-insensitive filesystem the two class files
+overwrite one another. `Router./` was declined for a related reason —
+`/` already means "append a path segment" here, and one symbol with two
+unrelated meanings is what the `Concat` → `Split` rename was made to
+avoid, in the other direction.
+
+53 tests in okay-http and 136 in okay-agent, no warnings. Also dropped
+an unused `import okay.given` from `TestRouteFacts`, a sibling's file,
+which a full recompile of the module surfaced. Commits: c6c1e8b8 (spec), 0b457082 (the form).
+
 ## windows-packed-key — written, measured and reverted
 
 The entry said to measure before writing it. The ceiling justified
