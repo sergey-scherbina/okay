@@ -73,8 +73,37 @@ object Optic {
    */
   trait Strong[P[_, _]] extends Profunctor[P]:
     def first[A, B, C](p: P[A, B]): P[(A, C), (B, C)]
+    /** the mirror of `first`, derived by swapping; overridable */
+    def second[A, B, C](p: P[A, B]): P[(C, A), (C, B)] =
+      dimap(first[A, B, C](p))((ca: (C, A)) => (ca._2, ca._1), (bc: (B, C)) => (bc._2, bc._1))
     def lens[S, T, A, B](get: S => A, set: (S, B) => T)(p: P[A, B]): P[S, T] =
       dimap(first[A, B, S](p))((s: S) => (get(s), s), (bs: (B, S)) => set(bs._2, bs._1))
+
+  /**
+   * Sequential composition — the OTHER row of the same table.
+   *
+   * Rivas and Jaskelioff ("Notions of Computation as Monoids", JFP
+   * 2017): a monad is a monoid in endofunctors, an applicative a
+   * monoid for Day convolution, and an ARROW a strong monoid in the
+   * category of profunctors. An optic is not a monoid there at all,
+   * it is a Tambara module — an action of a monoidal category on a
+   * profunctor. So arrows and optics are neighbours, not rivals, and
+   * both are written on `Profunctor` here for that reason.
+   */
+  trait Category[P[_, _]]:
+    def id[A]: P[A, A]
+    def compose[A, B, C](g: P[B, C], f: P[A, B]): P[A, C]
+
+  /** Category + Strong + a lifted function, the usual decomposition */
+  trait Arrow[P[_, _]] extends Category[P] with Strong[P]:
+    def arr[A, B](f: A => B): P[A, B]
+    def id[A]: P[A, A] = arr(identity)
+    /** the two sides of a pair, each through its own arrow */
+    def split[A, B, C, D](f: P[A, B], g: P[C, D]): P[(A, C), (B, D)] =
+      compose(second[C, D, B](g), first[A, B, C](f))
+    /** one input, both arrows, both answers */
+    def fanout[A, B, C](f: P[A, B], g: P[A, C]): P[A, (B, C)] =
+      compose(split(f, g), arr((a: A) => (a, a)))
 
   /** a prism's requirement; `prism` derived from `right`, overridable likewise */
   trait Choice[P[_, _]] extends Profunctor[P]:
