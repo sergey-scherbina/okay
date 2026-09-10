@@ -56,10 +56,22 @@ object Flows {
       parallel(n)(i => job.work(i, sd(i))).map: ps =>
         Run(into.present(job.combine(ps)), job.drops(ps), n)
 
-  /** every element the plan produces, in partition order */
+  /**
+   * Every element the plan produces, in partition order.
+   *
+   * The accumulator ALLOCATES in `init`, and that is not style:
+   * `Aggregator.apply(z)(…)` takes its zero by value, so `init`
+   * answers one and the same object every time it is asked — which
+   * is invisible for an immutable accumulator and catastrophic for a
+   * mutable one here, because a stateless plan calls `init` once per
+   * PARTITION and hands every fibre the same buffer.
+   */
   def collect[A](flow: Flow[A])(using Scheduler): Vector[A] ! Async =
-    fold(flow, Aggregator[A, mutable.ArrayBuffer[A], Vector[A]](mutable.ArrayBuffer.empty[A])
-      ((b, a) => b += a)((a, b) => a ++= b)(_.toVector))
+    fold(flow, new Aggregator[A, mutable.ArrayBuffer[A], Vector[A]]:
+      def init: mutable.ArrayBuffer[A] = mutable.ArrayBuffer.empty[A]
+      def add(b: mutable.ArrayBuffer[A], a: A): mutable.ArrayBuffer[A] = b += a
+      def merge(a: mutable.ArrayBuffer[A], b: mutable.ArrayBuffer[A]): mutable.ArrayBuffer[A] = a ++= b
+      def present(b: mutable.ArrayBuffer[A]): Vector[A] = b.toVector)
 
   /** the greatest event time in everything BEFORE each partition: the
    * prefix maximum, which is what a partition's watermark must start

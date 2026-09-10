@@ -133,7 +133,16 @@ object Aggregator {
      * per element instead of two, and nothing allocated to hand it over */
     final override def fold[In2 <: In]: Fold.OfInt[In2] = this
 
-  /** make one from the four pieces */
+  /**
+   * Make one from the four pieces.
+   *
+   * `z` is taken BY VALUE, so `init` answers the same object every
+   * time it is asked. That is right for an immutable accumulator and
+   * wrong for a mutable one wherever `init` is called more than once
+   * — a chunk-parallel or distributed fold asks per partition
+   * (specs/dataflow.md), and every fibre would then share one buffer.
+   * Write those as an explicit `Aggregator` whose `init` allocates.
+   */
   def apply[In, Acc, Out](z: Acc)(step: (Acc, In) => Acc)(comb: (Acc, Acc) => Acc)
                          (out: Acc => Out): Aggregator[In, Acc, Out] =
     new Aggregator[In, Acc, Out]:

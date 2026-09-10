@@ -316,6 +316,17 @@ and the feed is read three times where §20's lane reads it once. No
 number is quoted for this lane and none should be until stage 3 makes
 the pass single.
 
+**One defect found by writing the executor, not by using it.**
+`Flows.collect` built its accumulator with `Aggregator.apply`, whose
+zero is taken BY VALUE — so `init` answers one and the same buffer
+however often it is asked, and a stateless plan asks once per
+PARTITION. Every fibre would have appended to the same
+`ArrayBuffer`. Invisible for the immutable accumulators every other
+lane uses, which is why it survived the first suite. Controlled: the
+test fails on the defect and on nothing else. `Aggregator.apply` now
+says so in its own scaladoc, since the trap is the core's and this
+engine is only the first caller to reach it.
+
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements
 than the stream does and answers differently — asserted in both

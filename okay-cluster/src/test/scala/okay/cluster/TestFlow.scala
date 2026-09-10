@@ -66,6 +66,18 @@ class TestFlow extends munit.FunSuite {
     assertEquals(answers.head, xs.filter(_.v >= 50).map(_.v.toLong).sum)
   }
 
+  test("collect: every element once and in order — the accumulator allocates per partition") {
+    // the trap this pins: `Aggregator.apply(z)(…)` takes its zero BY
+    // VALUE, so `init` answers the same object every time — invisible
+    // for an immutable accumulator, and for a mutable one it hands
+    // every partition's fibre the same buffer
+    val xs = feed(1000, 0)
+    for p <- Vector(1, 2, 4, 8) do
+      val got = Flows.collect(Flow.slices(xs, p).map(_.v)).runWith
+      assertEquals(got.length, xs.length, s"$p partitions")
+      assertEquals(got, xs.map(_.v).toVector, s"$p partitions")
+  }
+
   test("a keyed aggregation answers the same at every parallelism") {
     val xs = feed(5000, 0)
     val answers = Vector(1, 2, 4, 8).map { p =>
