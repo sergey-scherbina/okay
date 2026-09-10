@@ -10,11 +10,21 @@ when the application runs inside somebody else's container, and when
 a deployment wants to know what the application needs from the place
 it runs in.
 
-Everything here exists in the tree, and the samples below are
-COMPILED: they run as `TestDiDocs` in okay-deploy, so a rename that
-makes this page wrong fails a test rather than misleading a reader.
-The application example is okay-demo's `ChatDemo`; the design record,
-with what was refuted along the way, is
+It answers, in order: what you are holding, the whole vocabulary on
+one screen, how the graph is written, what actually happens
+underneath (there is no container — it is a closure), how the body is
+run and why the runner asks for `CanBlock`, qualifiers, what can be
+read before anything is built, the three lifetimes and how to choose
+between them, an application end to end, the four containers next
+door, what a deployment reads, a feature-by-feature comparison with
+Spring Boot and its neighbours, several contributors feeding one
+collection, and the gotchas that cost time.
+
+Everything here exists in the tree, and the samples are COMPILED:
+they run as `TestDiDocs` in okay-deploy and `TestRouteFacts` in
+okay-http, so a rename that makes this page wrong fails a test rather
+than misleading a reader. The application example is okay-demo's
+`ChatDemo`; the design record, with what was refuted along the way, is
 [specs/di.md](../specs/di.md).
 
 ## What you are holding: a recipe, not a running thing
@@ -39,6 +49,21 @@ can be handed to Spring, to Guice or to nothing at all.
 The region is also what ends it. Whatever the modules acquired is
 released when the region closes — in reverse order, at a value, at a
 throw, at a cancellation.
+
+## The whole vocabulary, at a glance
+
+| | You write | You get |
+|---|---|---|
+| A component with nothing to open | `Module.value[Db](db)` | `Db` installed for the region |
+| A component to open and close | `module[Db](open)(_.close())` | the same, released in reverse at the end |
+| Opened as one type, used as another | `moduleAs[Store, FileStore](open)(_.close())` | `Store` installed, `FileStore` closed |
+| An instance per consumer | `prototype[Conn](open)(_.close())` | `fresh[Conn]` makes one, its region releases it |
+| A component that only contributes | `Module.contributing(Surface) { … }` | nothing installed, one fact declared |
+| Compose | `a and b` | b built inside a's context; nearest wins |
+| Where the code asks | `using Db`, `: Db ?=> A`, `wire[Db]` | the same thing, read at three positions |
+| Where the scope ends | `Resource.scoped(m { … })`, `m.use { … }`, `Resource.open(…)` | release at the expression, at the region, or at a closer you hold |
+
+Everything else on this page is these eight lines with their reasons.
 
 ## A module is an installer that has not been built yet
 
@@ -94,6 +119,76 @@ base and Module.value[Db](fake)     // `fake` wins under nearest-wins
 
 Cycles cannot be expressed. That is the feature, not the limit.
 
+## How it works underneath: the container is a closure
+
+Nothing here registers anything. There is no map from types to
+instances, no lookup at run time, no reflection — and knowing that
+explains most of the behaviour on this page.
+
+The whole mechanism is one line, in `providing`:
+
+```scala
+def providing[A](a: A): Providing[[X] =>> A ?=> X] =
+  Providing([X] => (body: A ?=> X) => body(using a))
+```
+
+`body` is a context function — a function whose argument is passed
+implicitly — and `body(using a)` applies it. That is where "the given"
+comes from: inside the body, the nearest `given A` is that function's
+own parameter, found lexically like any other parameter.
+
+`provide` is the same thing without the wrapper (`inline`, so after
+expansion neither the call nor the lambda remains), and `module` is
+the same thing deferred:
+
+```scala
+def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
+  new Module(Resource.acquire(acquire)(release).map(a => (providing[A](a), Facts.empty)))
+```
+
+Read right to left in time: the region will acquire an `A`, and when
+it does, `map` turns it into the installer above. So `db { wire[Db].q }`
+is roughly
+
+```scala
+Resource.acquire(open)(close).map(a => (body: Db ?=> X) => body(using a))
+                             .map(install => install((using d: Db) => summon[Db].q))
+```
+
+Three consequences follow directly, and they are the three properties
+this page keeps claiming. A missing dependency cannot compile, because
+the body's `using` parameter has nothing to fill it. The nearest
+installation wins, because `and` nests applications and an inner
+parameter shadows an outer one. And a scope ends where the call ends,
+which is why the region — not a container — owns release.
+
+### How this relates to `ScopedValue`
+
+The resemblance is real: `ScopedValue.where(V, v).run(body)` binds for
+the extent of a call, a nested binding shadows, nothing needs
+cleaning up. `provide(v) { body }` does all four.
+
+The difference is bigger than the resemblance. `ScopedValue` is
+DYNAMIC scoping: everything called inside sees the value, at any
+depth, declaring nothing. `provide` binds a parameter, so only code
+that DECLARES the capability sees it — a method in between that says
+nothing about `Db` cannot see a `Db`, and cannot pass one on.
+Propagation costs a declaration at every hop, and buys a signature
+that tells the truth about what the code needs.
+
+Three smaller differences: a missing binding is a compile error here
+and a `NoSuchElementException` there; reading costs nothing here (it
+is an argument) and a per-thread lookup there; and a forked
+computation inherits a `ScopedValue` by itself, while here a program
+built inside the body carries its values by ordinary closure capture.
+
+**Where `provide` genuinely cannot reach**: a stack frame you do not
+own — a callback a foreign library invokes, a thread from someone
+else's pool. A type cannot cross that frame. Capture the value in the
+closure when you register the callback, or use a real `ScopedValue` or
+thread-local at that boundary; inside your own code the declaration is
+always possible.
+
 ## Running the body
 
 `m { body }` installs everything and runs a body that answers a
@@ -110,6 +205,17 @@ FORWARDED — `Pure` when the region is the whole story.
 Use `use` for an application. `apply` would answer a program inside a
 program, and the discarded-value lint would catch it at every call
 site.
+
+**Why the runner asks for `CanBlock`.** `Resource.scoped` and
+`runWith` answer a VALUE, and an asynchronous program cannot become a
+value without somebody waiting: at an `Await` the interpreter parks
+the current thread until the callback fires (on a virtual thread that
+costs almost nothing — the carrier is released). The evidence
+parameter is that promise written down. `Async.runAsync` answers a
+`Future` instead and needs none, which is the only shape Scala.js has:
+there is no `CanBlock` instance there, so the blocking runner does not
+resolve at all rather than failing at run time. A module that is
+compiled for JS — like a cross-built test — uses `runAsync`.
 
 Where the end of the scope belongs to somebody else — a Spring
 context, a `main` with a shutdown hook — open it and keep the closer:
@@ -197,6 +303,22 @@ closed. That is deliberate: the day a provider starts closing what it
 makes, one line changes and no consumer moves. A pure shape answering
 a bare `A` would have made that a rewrite.
 
+**`fresh` and `wire` are one primitive, and stay two words.** `fresh[A]`
+is literally `wire[New[A]]()` — the difference is not the verb but
+what you ask for: `wire[Conn]` asks for a connection, `wire[New[Conn]]`
+asks for the ability to make one. Merging the spellings was considered
+and refused twice over. One word that answered "the shared one if a
+`Conn` is installed, a new one if a `New[Conn]` is" would change the
+meaning of a call site depending on what somebody else installed
+above it — the silent behaviour swap this design exists to avoid. And
+one word with a single result type would force EVERY capability read
+to become a program, which is precisely what `wire[Db].q` is not.
+
+Ask for `fresh[Db]` where a `module[Db]` installed the singleton and
+you get a compile error naming both roads — read the region's one with
+`wire[Db]`, or have the provider offer a `prototype[Db]`. Never a
+silent fallback to the shared instance.
+
 **The region that RUNS the `fresh` releases it**, so the caller picks
 the lifetime by picking the region:
 
@@ -213,7 +335,50 @@ is the shape a handler wants.
 
 For something expensive and reusable — a database connection — a
 prototype is usually the wrong answer and a pool is the right one:
-one capability for the application, `borrow` inside the request.
+one capability for the application, `borrow` inside the request
+(`okay.sql.Pool` is that pool).
+
+### The singleton, and the two ways to lose it
+
+A `module` IS a singleton for its region: everything downstream shares
+the one instance, because the value reaches the body as a parameter
+rather than through a factory. There is no annotation to write and
+none to forget. Two ways to lose it anyway, both measured:
+
+- **A `Module` is a recipe, not an instance.** Run the same module in
+  two regions and it acquires twice — correct, since each region owns
+  what it must release. A process-wide singleton is a region held open
+  for the process (what `main` does), not a value you keep a reference
+  to.
+- **Installing one capability twice is two instances**, not a merge:
+  the nearest wins and the earlier one is acquired for nothing.
+  `m.shadowed` names those, read off the plan. A test double is a
+  deliberate one, which is why it is a report and not an error.
+
+The rule that follows: install a capability ONCE, and let the modules
+that need it read it. Sharing is what happens by default.
+
+### Why not a thread-local pool
+
+Because a thread is no longer a scarce thing. Everything here runs on
+virtual threads — `Async.run` forks one, a request handler lives on
+its own — so "one instance per thread" means "one per request", which
+for a connection is not a pool but its absence. And a `ThreadLocal`
+does not know when a thread ends, so nothing closes what it holds,
+while a region knows exactly.
+
+What people usually want from that phrase, and where it lives here:
+CONFINEMENT of something not safe to share is a region per call
+(`Resource.scoped`), REUSE of something expensive is a pool, and
+freedom from CONTENTION is striping by a cheap key — which is exactly
+what `AdaptiveFifo` does, keeping a part number in a `ThreadLocal`
+rather than a resource. That is the one legitimate thread-local in
+this codebase: a number nobody has to close.
+
+Loom's own answer to thread-locals is `ScopedValue`, and this design
+already has it in types: `provide` binds for the extent of a call,
+`wire` reads, nearest wins — checked by the compiler instead of the
+runtime (see "How it works underneath").
 
 In a plan a prototype keeps what it makes: `Vector("Log", "New[Conn]")`.
 
@@ -225,6 +390,23 @@ read the region's one with `wire[Db]`, or have the provider offer a
 `prototype[Db]`. It is a compile error, never a silent fallback to
 the shared instance — which is the whole difference between a
 dependency that is a type and one that is a lookup.
+
+## Choosing a form
+
+| If the thing… | write | and it… |
+|---|---|---|
+| already exists (a config, a test double) | `Module.value[A](a)` | is shared for the region, nothing to release |
+| must be opened and closed | `module[A](open)(close)` | is shared, released in reverse at the end |
+| is opened as one type, used as another | `moduleAs[A, R](open)(close)` | installs `A`, closes `R` |
+| must be new for each consumer | `prototype[A](open)(close)` | is made by `fresh[A]`, released by the region that ran it |
+| is a feature owning its capability AND its routes | `Module.value[A](a).declaring(k) { … }` | installs `A` and contributes to `k`, the contribution reading that same `A` |
+| is a feature over somebody else's capabilities | `Module.contributing(k) { … }` | installs nothing, contributes to `k` |
+| is a fact derived from what came earlier (a path from the config) | `m.declare(k)(v)` | contributes a value computed outside the installer |
+
+If two of these look right, the question is usually whether consumers
+should SHARE the thing (a module) or each get their own (a prototype),
+and then whether the module owns what it declares (`declaring`) or
+only reports on it (`declare`).
 
 ## An application, end to end
 

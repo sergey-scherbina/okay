@@ -1,5 +1,37 @@
 # Changelog
 
+## di-guide-complete — the answers that lived only in a conversation
+
+A session of the operator's questions had been answered in chat and
+never written down. Checked against the page, six were missing
+outright; docs/di.md now carries them, and two more sections it needed
+anyway.
+
+**How it works underneath** — the container is a closure. `providing`
+is one line, `body(using a)`; `provide` is that inlined; `module` is
+that deferred until the region acquires. The three properties this
+guide keeps claiming (a missing dependency cannot compile, the nearest
+installation wins, a scope ends where the call ends) are read off
+those lines rather than asserted. With it, the honest comparison to
+`ScopedValue`: same shape, different mechanism — dynamic scoping there,
+a declared parameter here, so propagation costs a declaration at every
+hop and buys a signature that tells the truth; and the one place
+`provide` cannot reach, a stack frame you do not own.
+
+**The singleton and the two ways to lose it** (a module is a recipe,
+so two regions acquire twice; installing a type twice shadows, and
+`shadowed` names it), **why a thread-local pool is wrong here** (a
+virtual thread per request makes it one connection per request, and a
+`ThreadLocal` never learns the thread ended — confinement is a region,
+reuse is a pool, contention wants striping by a cheap key, which is
+the one legitimate thread-local in this codebase), **why `fresh` and
+`wire` stay two words** though they are one primitive, and **why the
+blocking runner asks for `CanBlock`** while `runAsync` does not.
+
+Added because the page needed them: the whole vocabulary as an
+eight-row table on one screen, and a decision table for the seven
+provider forms. Commit: LANDING.
+
 ## di-docs-gaps — the guide never said what a Module IS
 
 Reading the guide, the operator asked what `app` actually is — and the
