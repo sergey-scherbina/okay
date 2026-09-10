@@ -1,0 +1,12 @@
+feature/topk-bounded 2026-09-10T17:10:00Z
+agent: claude-code
+status: in-progress
+done-so-far: claimed
+next: prove the defect first — Aggregator.topK sorts a (k+1)-element List and
+      rebuilds it for EVERY element, so MemoryStore.search allocates ~k cons
+      cells plus a sorted array per corpus item. Matched pair in ONE run
+      (old implementation kept in the benchmark file), -prof gc; then guard on
+      the k-th kept element so the common case allocates nothing.
+touches: src/main/scala/Aggregate.scala (topK only — aggregator-zip-flat-general
+      is in the same file, on zip; disjoint hunks),
+      compare/src/jmh/scala/okay/RagBenchmark.scala
