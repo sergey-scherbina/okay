@@ -1,0 +1,25 @@
+task: optics-outside-routes
+agent: opus5-optics-outside
+started: 2026-09-10
+heartbeat: 2026-09-10T21:50:00Z
+status: in-progress
+branch: feature/optics-outside-routes
+worktree: ../okay-wt-outside
+spec: specs/optics-outside.md (NEW, stage 0 + stage 1)
+
+why: the optics arc closed with optics used INSIDE okay to implement
+  things. The operator's direction (2026-09-10) is the other
+  direction: optics, profunctors, arrows and categories as the API a
+  USER of the library writes. The criterion that separates that from
+  decoration is one interpreter: a declaration earns an optic only
+  when something must DESCRIBE it without running it, which a plain
+  function cannot do.
+
+what: stage 0 writes specs/optics-outside.md and puts all six
+  candidates in BACKLOG. Stage 1 builds the first: a route as a
+  monoidal prism in okay-http — one declaration, three interpreters
+  (match on the server, build the URL on the client, describe for
+  OpenAPI/MCP), composed with the category's `/`.
+
+next: spec + backlog commit, then Route.scala, tests, docs, gate,
+  merge, push.
