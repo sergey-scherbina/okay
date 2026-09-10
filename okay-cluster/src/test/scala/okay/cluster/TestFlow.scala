@@ -328,6 +328,64 @@ class TestFlow extends munit.FunSuite {
   }
 
   // -----------------------------------------------------------------
+  // stage 4: what crosses a wire
+  // -----------------------------------------------------------------
+
+  given okay.codec.Schema[Sum] = okay.codec.Schema.derived
+  given okay.codec.Schema[Runs] = okay.codec.Schema.derived
+
+  /** the same three stages as the local fan, wired */
+  def wiredJob: Wire[Ev, ((Sum, Sum), Sum)] =
+    Wire.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)
+      .and(Wire.sliding(Size, Slide, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum))
+      .and(Wire.keyed((e: Ev) => e.key, bunching)(keySum))
+
+  test("every partial survives its codec, and the answer does not move") {
+    // the feed has LATE elements on purpose. With a punctual one the
+    // drop count is zero on both sides of the wire, and a codec that
+    // silently loses that field passes — which is what a control
+    // caught here: the first version of this test asserted nothing
+    // about `late` because there was nothing to assert.
+    for jitter <- Vector(Late - 1, Late * 8) do
+      val xs = feed(20000, jitter)
+      val local = Flows.fan(Flow.slices(xs, 1), wiredJob).runWith
+      if jitter > Late then assert(local.dropped > 0, "the late feed drops nothing")
+      for p <- Vector(1, 2, 4, 8) do
+        val wired = Flows.fanWired(Flow.slices(xs, p), wiredJob).runWith
+        assertEquals(wired.value, local.value, s"$p partitions, jitter $jitter, through the codec")
+        assertEquals(wired.dropped, local.dropped, s"$p partitions, jitter $jitter")
+        // and the same plan run locally agrees, so the codec is the
+        // only thing under test
+        val plain = Flows.fan(Flow.slices(xs, p), wiredJob).runWith
+        assertEquals(plain.value, local.value, s"$p partitions, jitter $jitter")
+        assertEquals(wired.merged, plain.merged, s"$p partitions, jitter $jitter")
+  }
+
+  test("what crosses is a SUMMARY plus the boundary, not the panes") {
+    // the completeness rule paying twice: the terminal accumulator
+    // stands for every pane the partition finished alone, so what a
+    // codec has to carry is that one value and the few panes that
+    // span an edge
+    val xs = feed(20000, Late - 1)
+    val one = Flows.fanWired(Flow.slices(xs, 1), wiredJob).runWith
+    val eight = Flows.fanWired(Flow.slices(xs, 8), wiredJob).runWith
+    assertEquals(eight.value, one.value)
+    assert(eight.merged < one.value._1._1.n,
+      s"eight partitions handed over ${eight.merged} accumulators for ${one.value._1._1.n} panes")
+  }
+
+  test("a partial that cannot be described has no Wire — it is a build-time refusal") {
+    // not a runtime check: `Wire.keyed` demands Schema[K] and
+    // Schema[Acc], so a sink whose accumulator nobody can describe
+    // does not compile. What IS asserted here is the other half —
+    // that a Wire is an ordinary Sink and the local driver takes it
+    val xs = feed(1000, 0)
+    val both: Sink[Ev, Sum] = Wire.keyed((e: Ev) => e.key, value)(keySum)
+    assertEquals(Flows.fan(Flow.slices(xs, 4), both).runWith.value,
+      Flows.fan(Flow.slices(xs, 4), Sink.keyed((e: Ev) => e.key, value)(keySum)).runWith.value)
+  }
+
+  // -----------------------------------------------------------------
   // the watermark: what a slice cannot see
   // -----------------------------------------------------------------
 

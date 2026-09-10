@@ -122,6 +122,13 @@ object Flows {
    * that is a decision rather than an omission.
    */
   def fan[A, R](flow: Flow[A], sink: Sink[A, R])(using Scheduler): Run[R] ! Async =
+    fanWith(flow, sink)(identity)
+
+  /** the fan, with what happens to a partial between the partition
+   * and the coordinator made explicit — `identity` in one process, a
+   * codec round trip in `fanWired`, a socket in stage 4b */
+  private def fanWith[A, R](flow: Flow[A], sink: Sink[A, R])
+                           (handOver: sink.W => sink.W)(using Scheduler): Run[R] ! Async =
     val sh = shape(flow)
     val head = sh.source
     if head == null then
@@ -139,10 +146,33 @@ object Flows {
       parallel(n) { i =>
         val p = sink.start(bs(i))
         Chunks.foldLeft(src(i))(())((_, a) => sink.step(p, a))
-        sink.done(p)
-        p
-      }.map: ps =>
-        Run(sink.result(ps), sink.drops(ps), n, 1, sink.merged(ps))
+        handOver(sink.finish(p))
+      }.map: ws =>
+        Run(sink.result(ws), sink.drops(ws), n, 1, sink.merged(ws))
+
+  /**
+   * THE SAME RUN, WITH EVERY PARTIAL FORCED THROUGH ITS CODEC
+   * (specs/dataflow.md, stage 4).
+   *
+   * This is what a distributed run does between a worker and the
+   * coordinator, performed here in one process: `finish` produces a
+   * `W`, the `W` is encoded, the bytes are decoded, and only then is
+   * anything merged. A wire that changes the answer — a Schema that
+   * loses a field, an accumulator that does not survive a round trip
+   * — is caught by an ordinary test in milliseconds rather than
+   * across four processes.
+   *
+   * It is not a simulation of the network. Nothing here is delayed,
+   * dropped or reordered; that is stage 5's business. What it pins is
+   * the one thing sockets cannot fix: whether the partial is a value.
+   */
+  def fanWired[A, R](flow: Flow[A], sink: Wire[A, R])(using Scheduler): Run[R] ! Async =
+    val codec = okay.codec.Codecs.cbor(sink.wire)
+    fanWith(flow, sink) { w =>
+      codec.decode(codec.encode(w)) match
+        case Right(back) => back
+        case Left(why) => throw IllegalStateException(s"a partial did not survive its codec: $why")
+    }
 
   /** one partition's shape in one event-time column: its greatest and
    * least value, and its own backwardness — how far a value fell

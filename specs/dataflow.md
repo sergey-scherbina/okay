@@ -186,8 +186,9 @@ than trusting the author.
   source and the pass is single. This
   is what §20 already names as the asymmetry: a fan-out in one JVM is
   three method calls, in Flink it is three shuffles.
-- **4 — across processes.** The worker protocol: jobs by name, typed
-  parameters, chunked framed transport, partial results back.
+- **4 — across processes.** 4a DONE (what crosses, and its Schema).
+  4b: the worker protocol — jobs by name, typed parameters, framed
+  transport, partial results back.
   Acceptance: the full Wrocław `Result` across four OS processes.
 - **5 — failure.** Batch: recompute a lost partition from lineage —
   a `Chunks` partition is a value, so this is nearly free. Streaming:
@@ -272,7 +273,19 @@ Stage 3 (TestFlow, TestWroclawFlow, MeasureWroclawFlow):
 - [x] the engine is measured against the hand-written lane, and the
       number is reported whichever way it comes out
 
-Stage 4 and later: written when the stage is claimed.
+Stage 4a — what crosses (TestFlow):
+- [x] `Sink` distinguishes `P`, the partition's working state, from
+      `W`, what leaves it — and only `W` has to be a value
+- [x] `Wire[A, R]` is a `Sink` plus a `Schema[W]`, composing through
+      `and` with the pair's Schema
+- [x] every partial forced through its codec answers what the local
+      run answers, at every parallelism, on a punctual feed AND on
+      one with late elements
+- [x] what crosses is a SUMMARY plus the boundary panes, not the
+      panes — asserted, not described
+- [ ] the worker protocol and four processes — stage 4b
+
+Stage 4b and later: written when the stage is claimed.
 
 ## The watermark, and why a slice is not a stream
 
@@ -549,6 +562,43 @@ the slower of the two and the docs say so; and the decomposition
 (source 5 ms, route 18, stop 71, bunching 25) sums to 104 against a
 fan of 154, so about a third of the fan's time is not in any of its
 sinks. Neither is explained here, and neither is guessed at.
+
+### Stage 4a — what crosses a wire, and its Schema
+
+`Sink` had two ideas behind one type. `P` is the partition's WORKING
+state — a live `Windows`, mutable maps, a terminal accumulator being
+folded into — and it never leaves. `W` is what LEAVES, and only `W`
+has to be a value: immutable, mergeable, and describable. `finish(p):
+W` closes the operator and hands over; `result`, `drops` and `merged`
+take `W`. `Wire[A, R]` then adds exactly one member, a `Schema[W]`,
+and composes through `and` with the pair's Schema.
+
+**What crosses is small, and the completeness rule is why.** A
+partition has already folded every pane it could finish alone into
+its terminal accumulator, so `Handed` carries ONE value standing for
+all of them plus the handful of boundary panes. The Schema
+requirement lands on the smallest thing it could: the key, the pane
+accumulator, and the terminal's accumulator.
+
+**Claim 3 is now a compile error rather than a promise.** A sink
+whose partial nobody can describe has no `Wire`, and that is refused
+where the sink is BUILT — not as a `NotSerializableException` inside
+a task on another machine.
+
+**Tested without a socket.** `Flows.fanWired` runs the ordinary fan
+with every partial encoded and decoded between `finish` and `result`.
+That is precisely what a worker and a coordinator do, performed in
+one process, so a Schema that loses a field is caught in
+milliseconds. It is not a network simulation — nothing is delayed,
+dropped or reordered, which is stage 5's business — it pins the one
+thing sockets cannot fix: whether the partial is a value.
+
+**A control caught the test being weaker than it looked.** With the
+drop count deliberately dropped from the Schema, the first version
+of the round-trip test still PASSED, because its feed had no late
+elements and both sides read zero. The test now runs a late-bearing
+feed too; with that, the same break fails it. A round-trip test on
+data that cannot exercise a field is testing the other fields only.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements

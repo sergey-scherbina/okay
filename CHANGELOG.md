@@ -1,5 +1,44 @@
 # Changelog
 
+## dataflow stage 4a — what crosses a wire, and its Schema
+
+The engine was called distributed and was entirely in-process. This
+is the half of stage 4 that decides what a partial IS; the sockets
+are the next lane.
+
+`Sink` had two ideas behind one type. `P` is the partition's WORKING
+state — a live `Windows`, mutable maps, a terminal accumulator being
+folded into — and it never leaves the partition. `W` is what LEAVES,
+and only `W` has to be a value. `finish(p): W` closes the operator
+and hands over; `result`, `drops` and `merged` take `W`. Then
+`Wire[A, R]` adds exactly one member — a `Schema[W]` — and composes
+through `and` with the pair's Schema.
+
+**What crosses is small, and the completeness rule is why.** A
+partition has already folded every pane it could finish alone into
+its terminal accumulator, so `Handed` carries one value standing for
+all of them plus the boundary panes. The Schema requirement lands on
+the smallest thing it could.
+
+**Claim 3 stops being a promise.** A sink whose partial nobody can
+describe has no `Wire`, refused where the sink is BUILT rather than
+as a serialization failure inside a task on another machine.
+
+**Tested without a socket.** `Flows.fanWired` runs the ordinary fan
+with every partial encoded and decoded between `finish` and
+`result` — what a worker and a coordinator do, performed in one
+process. Not a network simulation: nothing is delayed, dropped or
+reordered. It pins the one thing sockets cannot fix, whether the
+partial is a value.
+
+**And a control caught the test being weaker than it looked.** With
+the drop count deliberately removed from the Schema, the first
+version of the round-trip test still passed — its feed had no late
+elements, so both sides read zero and the missing field was
+invisible. The test now runs a late-bearing feed as well; with that,
+the same break fails it. A round-trip test over data that cannot
+exercise a field is testing the other fields only.
+
 ## json-decode-threshold-trampoline — Json.decode, the second and LAST root; two surprises, neither one it
 
 Root 2 of specs/iterative-recursive-decode.md, closing the spec.
