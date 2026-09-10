@@ -29,25 +29,51 @@ class MeasureWroclawFlow extends munit.FunSuite:
   override def munitIgnore: Boolean = !Gtfs.present
   override def munitTimeout = scala.concurrent.duration.Duration(20, "min")
 
-  lazy val feed: Feed = Gtfs.events(1)
-  lazy val expected: Job.Result = OkayLane.run(feed)
-
+  /**
+   * FOUR SERVICE DAYS, NOT ONE, AND THE LANES INTERLEAVED.
+   *
+   * The first version of this harness ran each lane's rounds to
+   * completion before starting the next, over one service day, and
+   * the two readings it produced for the same tree were 1.07x and
+   * 1.64x. Both lanes swung 20-27% between runs, which is larger than
+   * the difference being quoted — a lane that swings a quarter cannot
+   * price a tenth (instrument-bars-smaller-than-effect).
+   *
+   * So: a feed four times the size, so a lane is hundreds of
+   * milliseconds rather than tens; every lane run once per ROUND, so
+   * drift in the machine hits all of them alike; and the minimum of
+   * the rounds reported with the worst beside it, so a reader can see
+   * whether the row is the engine or the box.
+   */
   val Rounds = 7
   val Warmup = 3
   val Parts = 8
 
-  val fixture = new TestWroclawFlow      // the sinks and the assembly, defined once
+  /** the sinks and the assembly, defined once — over a feed four
+   * times the size, which is the fixture's own `days` knob */
+  val fixture = new TestWroclawFlow { override def days: Int = 4 }
+  lazy val feed: Feed = fixture.feed
+  lazy val expected: Job.Result = fixture.expected
 
-  def best(name: String, f: () => Job.Result): (String, Long) =
-    for _ <- 0 until Warmup do assertEquals(f(), expected, s"$name computes something else")
-    var lo = Long.MaxValue
+  /** one lane: a name and a run that must answer the job */
+  final case class Lane(name: String, run: () => Job.Result)
+
+  /** every lane once per round, so the machine's drift is shared */
+  def interleaved(lanes: Vector[Lane]): Vector[(String, Long, Long)] =
+    for _ <- 0 until Warmup do
+      for l <- lanes do assertEquals(l.run(), expected, s"${l.name} computes something else")
+    val lo = Array.fill(lanes.length)(Long.MaxValue)
+    val hi = Array.fill(lanes.length)(0L)
     for _ <- 0 until Rounds do
       System.gc()
-      val t0 = System.nanoTime()
-      val got = f()
-      lo = math.min(lo, (System.nanoTime() - t0) / 1000000L)
-      assertEquals(got, expected, s"$name computes something else")
-    (name, lo)
+      for (l, i) <- lanes.zipWithIndex do
+        val t0 = System.nanoTime()
+        val got = l.run()
+        val ms = (System.nanoTime() - t0) / 1000000L
+        assertEquals(got, expected, s"${l.name} computes something else")
+        if ms < lo(i) then lo(i) = ms
+        if ms > hi(i) then hi(i) = ms
+    lanes.indices.toVector.map(i => (lanes(i).name, lo(i), hi(i)))
 
   /** the same timing, for a lane that answers a PIECE of the job —
    * so the table can say where the time goes instead of asserting it */
@@ -62,8 +88,15 @@ class MeasureWroclawFlow extends munit.FunSuite:
     (name, lo)
 
   test("where the engine's time goes: one sink at a time") {
-    println(f"%n  panes the coordinator merges: route ${expected.routeWins}%,d, " +
-      f"stop ${expected.stopWins}%,d (per partition, before merging)%n")
+    // the completeness rule's own number: how many accumulators
+    // actually reach the coordinator, against how many panes the job
+    // produces in total
+    val whole = Flows.fan(fixture.rides(Parts), fixture.wholeJob).runWith
+    val total = expected.routeWins + expected.stopWins
+    println(f"%n  panes the job produces: route ${expected.routeWins}%,d + " +
+      f"stop ${expected.stopWins}%,d = $total%,d")
+    println(f"  accumulators reaching the COORDINATOR at $Parts partitions: " +
+      f"${whole.merged}%,d (${100.0 * whole.merged / total}%.1f%% of one partition's worth)%n")
     val lanes = Vector(
       part("engine: the source alone (count)", () =>
         Flows.fold(fixture.rides(Parts), okay.Aggregator.count[Ride]).runWith),
@@ -84,22 +117,26 @@ class MeasureWroclawFlow extends munit.FunSuite:
 
   test("the plan against the hand-written lane, on the same feed") {
     val n = feed.events.length
-    val lanes = Vector(
-      best("hand-written, 1 thread (OkayLane.run)", () => OkayLane.run(feed)),
-      best(s"hand-written, $Parts threads (OkayLane.parallel)", () => OkayLane.parallel(feed, Parts)),
-      best("engine, 1 partition, one pass", () =>
+    val rows = interleaved(Vector(
+      Lane("hand-written, 1 thread (OkayLane.run)", () => OkayLane.run(feed)),
+      Lane(s"hand-written, $Parts threads (OkayLane.parallel)", () => OkayLane.parallel(feed, Parts)),
+      Lane("engine, 1 partition, one pass", () =>
         fixture.assembled(Flows.fan(fixture.rides(1), fixture.wholeJob).runWith.value)),
-      best(s"engine, $Parts partitions, one pass", () =>
+      Lane(s"engine, $Parts partitions, one pass", () =>
         fixture.assembled(Flows.fan(fixture.rides(Parts), fixture.wholeJob).runWith.value)),
-      best(s"engine, $Parts partitions, THREE passes (what stage 2 did)", () =>
+      // NOT a measurement of the pass count: `threeFlows` drives the
+      // single-stage road (`Flows.run`), which has no completeness
+      // rule and merges every pane at the coordinator. It is what the
+      // engine was before this lane, kept for exactly that
+      Lane(s"engine, $Parts partitions, three plans via Flows.run", () =>
         fixture.threeFlows(Parts)),
-    )
-    val floor = lanes.map(_._2).min
-    println(f"%n  ${n}%,d events, one service day, minimum of $Rounds rounds%n")
-    println("  lane                                              |    ms |    ev/s | vs best")
-    println("  --------------------------------------------------|-------|---------|--------")
-    for (name, ms) <- lanes do
+    ))
+    val floor = rows.map(_._2).min
+    println(f"%n  ${n}%,d events, four service days, best of $Rounds interleaved rounds%n")
+    println("  lane                                              |    ms | (worst) |    ev/s | vs best")
+    println("  --------------------------------------------------|-------|---------|---------|--------")
+    for (name, ms, worst) <- rows do
       val evs = if ms == 0 then 0L else n.toLong * 1000L / ms
-      println(f"  $name%-49s | $ms%,5d | $evs%,7d | ${ms.toDouble / floor}%.2fx")
+      println(f"  $name%-49s | $ms%,5d | $worst%,7d | $evs%,7d | ${ms.toDouble / floor}%.2fx")
     println()
   }

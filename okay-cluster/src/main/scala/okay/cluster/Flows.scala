@@ -11,7 +11,23 @@ import scala.collection.mutable
  * is what the plan actually did, which for `Finish.Auto` is decided
  * during the run and is otherwise unknowable from the outside.
  */
-final case class Run[O](value: O, dropped: Long, partitions: Int, reducers: Int)
+final case class Run[O](value: O, dropped: Long, partitions: Int, reducers: Int,
+                       merged: Long = 0L)
+
+/**
+ * What one partition may finish BY ITSELF, in one event-time column.
+ *
+ * A windowed pane is complete in this partition — no other partition
+ * can contribute to it — when it starts after `lower` and ends at or
+ * before `upper`. Such a pane is presented and folded into the
+ * terminal here rather than shipped to the coordinator as an
+ * accumulator, which is the difference between merging a handful of
+ * boundary panes and merging every pane the job produced.
+ *
+ * `lower` is also the watermark seed: a partition starts where the
+ * stream stood when it began.
+ */
+final case class Bounds(lower: Long, upper: Long)
 
 /**
  * THE EXECUTOR (specs/dataflow.md, stage 1): a `Flow` over N
@@ -116,34 +132,85 @@ object Flows {
     val src = head.nn
     val n = sh.parts
     val times = sink.times
-    val seeds: Vector[Vector[Long]] ! Async =
-      if times.isEmpty then pure[Async, Vector[Vector[Long]]](Vector.fill(n)(Vector.empty))
-      else parallel(n)(i => maxima(src(i), times)).map(prefixes)
-    seeds.flatMap: sd =>
+    val bounds: Vector[Vector[Bounds]] ! Async =
+      if times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(n)(Vector.empty))
+      else parallel(n)(i => extent(src(i), times)).map(edges)
+    bounds.flatMap: bs =>
       parallel(n) { i =>
-        val p = sink.start(sd(i))
+        val p = sink.start(bs(i))
         Chunks.foldLeft(src(i))(())((_, a) => sink.step(p, a))
         sink.done(p)
         p
       }.map: ps =>
-        Run(sink.result(ps), sink.drops(ps), n, 1)
+        Run(sink.result(ps), sink.drops(ps), n, 1, sink.merged(ps))
 
-  /** every column's greatest value, in one pass over the partition */
-  private def maxima[A](c: Chunks[A], times: Vector[A => Long]): Vector[Long] =
-    val m = Array.fill(times.length)(Long.MinValue)
+  /** one partition's shape in one event-time column: its greatest and
+   * least value, and its own backwardness — how far a value fell
+   * below the greatest seen BEFORE it, within this partition */
+  private[cluster] final case class Extent(max: Long, min: Long, back: Long)
+
+  /** every column's extent, in ONE pass over the partition */
+  private def extent[A](c: Chunks[A], times: Vector[A => Long]): Vector[Extent] =
+    val k = times.length
+    val hi = Array.fill(k)(Long.MinValue)
+    val lo = Array.fill(k)(Long.MaxValue)
+    val bk = Array.fill(k)(0L)
     Chunks.foldLeft(c)(())((_, a) =>
       var j = 0
-      while j < m.length do
+      while j < k do
         val t = times(j)(a)
-        if t > m(j) then m(j) = t
+        if t > hi(j) then hi(j) = t else if hi(j) - t > bk(j) then bk(j) = hi(j) - t
+        if t < lo(j) then lo(j) = t
         j += 1)
-    m.toVector
+    (0 until k).toVector.map(j => Extent(hi(j), lo(j), bk(j)))
 
-  /** the per-partition maxima, turned into what each partition must
-   * START from: the prefix maximum of every column */
-  private[cluster] def prefixes(maxes: Vector[Vector[Long]]): Vector[Vector[Long]] =
-    if maxes.isEmpty || maxes.head.isEmpty then maxes
-    else maxes.head.indices.toVector.map(j => before(maxes.map(_(j)))).transpose
+  /**
+   * THE COMPLETENESS BOUNDS (specs/dataflow.md, stage 3's Results).
+   *
+   * A partition's windowed operator can emit a pane itself — rather
+   * than handing an accumulator to the coordinator — when no other
+   * partition can touch it. `OkayLane.parallel` writes that rule by
+   * hand; this computes it for every partition and every event-time
+   * column from the one pre-pass the seeding already needed:
+   *
+   *   - no EARLIER partition touched a window starting after
+   *     `hi(i-1)`, because every earlier event's time is at most that;
+   *   - no LATER partition touches a window ending at or before
+   *     `hi(i) - back`, because every later event's time is at least
+   *     that.
+   *
+   * `back` is the greatest BACKWARDNESS in the stream. Within a
+   * partition it is measured directly; ACROSS partitions an element
+   * can fall below the greatest seen in an earlier one, and that is
+   * covered by `hi(i-1) - min(i)` — which over-estimates, since it
+   * pairs the partition's least value with a maximum that may come
+   * long before it. Over-estimating is the safe direction: a larger
+   * `back` declares FEWER panes complete, never more.
+   *
+   * The lower bound is also the watermark seed, so nothing new is
+   * computed for it: a partition starts where the stream stood.
+   */
+  private[cluster] def edges(es: Vector[Vector[Extent]]): Vector[Vector[Bounds]] =
+    if es.isEmpty || es.head.isEmpty then es.map(_ => Vector.empty)
+    else
+      val cols = es.head.indices.toVector.map { j =>
+        val maxes = es.map(_(j).max)
+        val lower = before(maxes)                       // hi(i-1), and the seed
+        val incl = lower.indices.map(i => math.max(lower(i), maxes(i)))
+        var back = 0L
+        for i <- es.indices do
+          val e = es(i)(j)
+          if e.back > back then back = e.back
+          // an element below the greatest seen in an EARLIER partition
+          if lower(i) != Long.MinValue && e.min != Long.MaxValue && lower(i) - e.min > back then
+            back = lower(i) - e.min
+        lower.indices.toVector.map { i =>
+          // an empty partition has nothing complete, and MinValue - back would wrap
+          val upper = if incl(i) == Long.MinValue then Long.MinValue else incl(i) - back
+          Bounds(lower(i), upper)
+        }
+      }
+      cols.transpose
 
   /**
    * Every element the plan produces, in partition order.

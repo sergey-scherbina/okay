@@ -497,6 +497,59 @@ already computes the array that rule needs: the prefix maxima it
 gathers for seeding are exactly `hi`. Filed as `dataflow-complete-panes`,
 with this table as its bar.
 
+### dataflow-complete-panes — the 5.5x, and where it went
+
+A partition's windowed operator now emits a pane itself when no other
+partition can touch it: `p.start > hi(i-1)` and
+`p.end <= hi(i) - back`. Complete panes are presented and folded into
+the terminal AT THE PARTITION; only the boundary panes reach the
+coordinator. `hi` was already there — it is the prefix-maximum array
+the watermark seeding needs, and the seed IS the lower bound. What
+was added is `back`, two more columns in the same pre-pass (each
+partition's own backwardness and its least event time, combined with
+the exclusive prefix max). That combination OVER-estimates `back`,
+which is the safe direction: it declares fewer panes complete, never
+more.
+
+**The number, on the instrument this lane had to rebuild** — four
+service days, 1 255 298 events, every lane run once per ROUND so
+drift hits all of them, best of 7 with the worst beside it:
+
+| lane | ms | (worst) | ev/s | vs best |
+|---|---:|---:|---:|---:|
+| hand-written, 8 threads (`OkayLane.parallel`) | 85 | 137 | 14 768 211 | 1.00x |
+| **engine, 8 partitions, one pass** | **97** | 115 | 12 941 216 | **1.14x** |
+| hand-written, 1 thread | 370 | 1050 | 3 392 697 | 4.35x |
+| engine, 1 partition, one pass | 468 | 646 | 2 682 260 | 5.51x |
+| engine, 8 partitions, three plans via `Flows.run` | 737 | 964 | 1 703 253 | 8.67x |
+
+**5.50x to 1.14x.** The claim predicted the two outcomes it could
+have: near the hand-written lane if the merge was the whole cost, or
+50-60 ms if half of it was the per-pane tuple key. It was the first —
+the merge was essentially all of it. And the engine's WORST round
+(115 ms) is better than the hand-written lane's worst (137): the
+plan's bar is the tighter of the two, which is not something a
+benchmark usually finds in the general machinery's favour.
+
+The mechanism is countable rather than inferred. The job makes
+1 734 893 panes; at eight partitions **122 679 accumulators reach the
+coordinator** — 7% of what ONE partition holds, and about 1.5% of
+what eight of them held before. `Run.merged` reports it and the suite
+asserts it drops, so this is not a benchmark's private knowledge.
+
+**The last row is not a measurement of the pass count.** It drives
+the single-stage road, `Flows.run`, which has no completeness rule
+and still merges every pane — the engine as it was an hour before.
+Stage 3 measured one pass against three at 3%; the 7.6x here is the
+completeness rule, not the fan. Those two numbers must not be added.
+
+**Two things this leaves open, both filed.** `Flows.run`'s windowed
+node keeps the old behaviour, so the single-stage road is now much
+the slower of the two and the docs say so; and the decomposition
+(source 5 ms, route 18, stop 71, bunching 25) sums to 104 against a
+fan of 154, so about a third of the fan's time is not in any of its
+sinks. Neither is explained here, and neither is guessed at.
+
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements
 than the stream does and answers differently — asserted in both

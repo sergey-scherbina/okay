@@ -6,11 +6,13 @@
   have LANDED, and so has stage 2 (the exchange, with the crossover
   measured at ~100 000 accumulators — and DECLINED on the Wrocław
   job, correctly), and so has stage 3 (one pass, many sinks). The
-  engine now has its first honest number and it LOSES: 5.5x the
-  hand-written lane, 84% of it in one sink whose coordinator merges
-  2.9 million accumulators on one thread. Next, in order:
-  `dataflow-complete-panes` (which is that number's whole cause),
-  then stage 4 across processes.
+  engine's number against the hand-written lane went 5.5x -> **1.14x**
+  with `dataflow-complete-panes`: a partition now finishes every pane
+  no other partition can touch, so 122 679 accumulators reach the
+  coordinator where ~2.9 million did. Next: `dataflow-run-complete-panes`
+  (the single-stage road did not get the rule and is now 7.6x behind
+  the fan), `dataflow-fan-overhead` (a third of the fan's time is in
+  none of its sinks), then stage 4 across processes.
 
 ## Queue
 (the note that stood here named eight candidates; SIX have since

@@ -542,8 +542,28 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       whether one constant can serve both.
 - [x] dataflow-onepass — LANDED. And it produced the number the
       engine had been unable to quote: 5.5x the hand-written lane.
-- [ ] dataflow-complete-panes — THE headline number of the arc. 84%
-      of the Wrocław run is the sliding stop-window sink, and not
+- [x] dataflow-complete-panes — LANDED. 5.50x -> 1.14x of the
+      hand-written lane; 122 679 accumulators reach the coordinator
+      where ~2.9 million did.
+- [ ] dataflow-run-complete-panes — `Flows.run`'s windowed node did
+      NOT get the completeness rule, so the single-stage road now
+      merges every pane while the fan merges 7% of one partition's
+      worth, and the measured gap between them is 7.6x. The obstacle
+      is structural rather than hard: `Wide.work` has no terminal
+      aggregator to fold a finished pane into, because `job(into)` is
+      built after it. Either thread `into` down, or have the
+      partition keep finished panes as a buffer the coordinator folds
+      without hashing (cheaper in time, dearer in memory — measure
+      which before choosing).
+- [ ] dataflow-fan-overhead — the sink-by-sink decomposition sums to
+      104 ms (source 5, route 18, stop 71, bunching 25) against a fan
+      of 154 on the same feed. About a third of the fan's time is in
+      none of its sinks. Candidates not yet separated: the pre-pass
+      computing two columns where a lone sink computes one, the tuple
+      plumbing in `Sink.and`, and three sinks' state live at once
+      against one. Decompose before optimising.
+- [ ] (SUPERSEDED, kept for the reasoning) dataflow-complete-panes: 84%
+      of the Wrocław run was the sliding stop-window sink, and not
       because the windowing is slow: the job makes 362 983 stop panes,
       every partition holds most of them, and the coordinator merges
       ~2.9 million accumulators on ONE thread.

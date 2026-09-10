@@ -271,6 +271,41 @@ class TestFlow extends munit.FunSuite {
       assertEquals(got.dropped, byTs.dropped + byShift.dropped, s"$p partitions")
   }
 
+  test("a partition finishes what no other partition can touch") {
+    // the completeness rule. Its correctness is already covered by
+    // every equality test above; what this one asserts is that it
+    // FIRES — that the coordinator's merge really does shrink, which
+    // is the whole of the 5.5x in MeasureWroclawFlow's table.
+    val xs = feed(20000, Late - 1)
+    val one = Flows.fan(Flow.slices(xs, 1),
+      Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)).runWith
+
+    var last = Long.MaxValue
+    for p <- Vector(2, 4, 8) do
+      val got = Flows.fan(Flow.slices(xs, p),
+        Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)).runWith
+      assertEquals(got.value, one.value, s"$p partitions")
+      // a partition holds ~all the panes it saw when nothing is
+      // finished locally; with the rule it holds only the boundary
+      assert(got.merged < one.value.n * p / 4,
+        s"$p partitions merged ${got.merged} of ${one.value.n} panes — the rule did not fire")
+      last = got.merged
+    assert(last > 0, "at eight partitions SOMETHING must still cross a boundary")
+  }
+
+  test("an unseeded window finishes nothing locally, and still answers the same") {
+    // the completeness bound is the seed; a partition that does not
+    // know where the stream stood may not declare anything finished
+    val xs = feed(20000, Late - 1)
+    val seeded = Flows.fan(Flow.slices(xs, 4),
+      Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)).runWith
+    val loose = Flows.fan(Flow.slices(xs, 4),
+      Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value, seeded = false)(paneSum)).runWith
+    assertEquals(loose.value, seeded.value, "nothing is late in this feed, so both roads agree")
+    assert(loose.merged > seeded.merged,
+      s"unseeded merged ${loose.merged}, seeded ${seeded.merged} — it must finish nothing locally")
+  }
+
   test("a fan over a plan that already has a keyed stage is refused by name") {
     val xs = feed(100, 0)
     val e = intercept[IllegalArgumentException](

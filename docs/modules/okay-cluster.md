@@ -82,18 +82,27 @@ window on different times is still exactly the single-threaded answer.
 In this process a fan-out is calling three methods with the same
 reference; in Flink it is three shuffles.
 
-**What the engine costs, measured** (`MeasureWroclawFlow`, one service
-day, one JVM, minimum of 7 rounds). The whole Wrocław job as one plan
-on 8 partitions is 121 ms against `OkayLane.parallel`'s hand-written
-22 — **5.5x**, and the arc's headline number until it moves. It
-decomposes cleanly: the source alone 2 ms, route windows 7, stop
-windows **93**, bunching 4. 84% of the run is one sink, because the
-job makes 362 983 stop panes, most of which every partition holds, so
-the coordinator merges ~2.9 million accumulators on one thread. The
-hand-written lane does not parallelise that merge — it avoids it, by
-emitting at the slice every pane no other slice can touch. That is
-`dataflow-complete-panes` in the backlog, and the engine already
-computes the array it needs.
+**A partition finishes what no other partition can touch.** A
+windowed pane leaving the operator goes one of two ways: if it starts
+after `hi(i-1)` and ends at or before `hi(i) - back` then no other
+partition can contribute to it, so it is presented and folded into
+the terminal HERE; otherwise it is kept for the coordinator. `hi` is
+the prefix-maximum array the seeding already gathers — the seed is
+the lower bound — and `back`, the stream's greatest backwardness, is
+two more columns in the same pre-pass. An unseeded window finishes
+nothing locally: a partition that does not know where the stream
+stood may not declare anything closed.
+
+**What the engine costs, measured** (`MeasureWroclawFlow`, four
+service days, 1 255 298 events, every lane once per round, best of 7
+with the worst beside it). The whole Wrocław job as one plan on 8
+partitions is **97 ms (worst 115)** against `OkayLane.parallel`'s
+hand-written **85 (worst 137)** — **1.14x**, and the engine's worst
+round is the better of the two. It was 5.5x before the completeness
+rule, and the whole of that difference was the coordinator: the job
+makes 1 734 893 panes and 122 679 accumulators now reach it, 7% of
+what one partition holds. `Run.merged` reports that number and the
+suite asserts it shrinks.
 
 **The `Sequential` rule cuts both ways, and the second way was a
 surprise.** A `Sequential` KEYED aggregator survives the exchange
@@ -198,7 +207,7 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Flow.tumbling/sliding` | `(size, slide, lateness, seeded, finish)(key)(at)(agg) => Flow[Pane[K, O]]` | event-time windows; `seeded` buys exactness for one pre-pass |
 | `Finish` | `Merge` / `Shuffle(r)` / `Auto` | where the partials are combined; `Auto` decides during the run |
 | `Flows.run` | `(Flow[A], Aggregator[A, Acc, O])(using Scheduler) => Run[O] ! Async` | the answer, the DROPPED count, the partitions and the reducers actually used |
-| `Flows.fan` | `(Flow[A], Sink[A, R])(using Scheduler) => Run[R] ! Async` | several sinks, ONE pass over the source |
+| `Flows.fan` | `(Flow[A], Sink[A, R])(using Scheduler) => Run[R] ! Async` | several sinks, ONE pass; the completeness rule lives here |
 | `Sink.fold / keyed / tumbling / sliding` | `… => Sink[A, R]` | one output: a stage plus its terminal |
 | `Sink.and` | `Sink[A, R1] => Sink[A, R2] => Sink[A, (R1, R2)]` | two sinks over one pass — `Aggregator.zip` one level up |
 | `Flows.fold` / `Flows.collect` | as above / `Flow[A] => Vector[A] ! Async` | the answer alone; every element in partition order |
@@ -237,11 +246,17 @@ val wire: Cluster.Worker[Double, Double] = c =>
   say `Merge` or `Shuffle` rather than consult a number measured on
   someone else's job.
 
+- **`Flows.run` is now much the slower road for a windowed job.** The
+  completeness rule is the fan's; the single-stage node still merges
+  every pane at the coordinator, and on the Wrocław job the measured
+  gap is 7.6x. Use `Flows.fan` with a `Sink` for anything windowed;
+  `dataflow-run-complete-panes` is the backlog item that closes it.
 - A fan finishes by MERGE — no exchange. Stage 3's own measurement
   found a stage that wants otherwise (~3x10^5 accumulators per
   partition, above the crossover), and the honest fix is to stop
   producing that merge rather than to parallelise it. See
   `dataflow-complete-panes`.
 
-Next step per specs/dataflow.md: `dataflow-complete-panes` — the whole
-of the 5.5x — and then stage 4, across processes.
+Next per specs/dataflow.md: `dataflow-run-complete-panes` and
+`dataflow-fan-overhead` (about a third of a fan's time is in none of
+its sinks), then stage 4 — across processes.

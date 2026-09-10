@@ -32,7 +32,10 @@ class TestWroclawFlow extends munit.FunSuite {
   override def munitIgnore: Boolean = !Gtfs.present
   override def munitTimeout = scala.concurrent.duration.Duration(10, "min")
 
-  lazy val feed: Feed = Gtfs.events(1)
+  /** service days of the feed — the measurement subclasses this to
+   * get a run long enough to be measured (MeasureWroclawFlow) */
+  def days: Int = 1
+  lazy val feed: Feed = Gtfs.events(days)
   lazy val tram: Array[Boolean] = feed.routes.iterator.map(_.tram).toArray
   lazy val expected: Job.Result = OkayLane.run(feed)
 

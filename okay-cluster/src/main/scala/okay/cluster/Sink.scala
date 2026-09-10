@@ -35,17 +35,16 @@ abstract class Sink[A, R]:
   type P
 
   /**
-   * The event-time functions whose watermarks this sink needs seeded,
-   * in order. `and` concatenates them, and the driver's single
-   * pre-pass computes one prefix maximum per entry — which is what
-   * keeps stage 1's theorem (a slice's watermark is the stream's)
-   * true through a fan of stages that may window on different times.
+   * The event-time functions this sink's windows depend on, in order.
+   * `and` concatenates them, and the driver's single pre-pass answers
+   * one `Bounds` per entry per partition — the watermark seed, and
+   * what that partition may finish by itself.
    */
   def times: Vector[A => Long]
 
-  /** a fresh partial for one partition; `seeds` has one entry per
+  /** a fresh partial for one partition; `bounds` has one entry per
    * entry of `times` */
-  def start(seeds: Vector[Long]): P
+  def start(bounds: Vector[Bounds]): P
 
   def step(p: P, a: A): Unit
 
@@ -58,6 +57,11 @@ abstract class Sink[A, R]:
   /** late elements this sink dropped */
   def drops(ps: Vector[P]): Long
 
+  /** how many accumulators reached the COORDINATOR — the work the
+   * completeness rule exists to remove, reported so that a suite can
+   * assert it rather than a benchmark merely notice it */
+  def merged(ps: Vector[P]): Long
+
   /** two sinks over one pass */
   final def and[R2](that: Sink[A, R2]): Sink[A, (R, R2)] =
     val self = this
@@ -65,14 +69,16 @@ abstract class Sink[A, R]:
     new Sink[A, (R, R2)]:
       type P = (self.P, that.P)
       def times: Vector[A => Long] = self.times ++ that.times
-      def start(seeds: Vector[Long]): P =
-        (self.start(seeds.take(n)), that.start(seeds.drop(n)))
+      def start(bounds: Vector[Bounds]): P =
+        (self.start(bounds.take(n)), that.start(bounds.drop(n)))
       def step(p: P, a: A): Unit = { self.step(p._1, a); that.step(p._2, a) }
       def done(p: P): Unit = { self.done(p._1); that.done(p._2) }
       def result(ps: Vector[P]): (R, R2) =
         (self.result(ps.map(_._1)), that.result(ps.map(_._2)))
       def drops(ps: Vector[P]): Long =
         self.drops(ps.map(_._1)) + that.drops(ps.map(_._2))
+      def merged(ps: Vector[P]): Long =
+        self.merged(ps.map(_._1)) + that.merged(ps.map(_._2))
 
 object Sink {
 
@@ -81,11 +87,12 @@ object Sink {
     new Sink[A, R]:
       type P = Box[Acc]
       def times: Vector[A => Long] = Vector.empty
-      def start(seeds: Vector[Long]): P = Box(into.init)
+      def start(bounds: Vector[Bounds]): P = Box(into.init)
       def step(p: P, a: A): Unit = p.value = into.add(p.value, a)
       def done(p: P): Unit = ()
       def result(ps: Vector[P]): R = into.present(ps.map(_.value).reduceLeft(into.merge))
       def drops(ps: Vector[P]): Long = 0L
+      def merged(ps: Vector[P]): Long = ps.length.toLong
 
   /** one accumulator per key, no window */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -97,7 +104,7 @@ object Sink {
     new Sink[A, R]:
       type P = mutable.HashMap[K, Acc]
       def times: Vector[A => Long] = Vector.empty
-      def start(seeds: Vector[Long]): P = mutable.HashMap.empty[K, Acc]
+      def start(bounds: Vector[Bounds]): P = mutable.HashMap.empty[K, Acc]
       def step(p: P, a: A): Unit =
         val k = key(a)
         p.update(k, agg.add(p.getOrElse(k, agg.init), a))
@@ -110,6 +117,10 @@ object Sink {
         for (k, a) <- all do acc = into.add(acc, (k, agg.present(a)))
         into.present(acc)
       def drops(ps: Vector[P]): Long = 0L
+      def merged(ps: Vector[P]): Long =
+        var t = 0L
+        for m <- ps do t += m.size
+        t
 
   /** an event-time windowed aggregation, keyed */
   def windowed[A, K, Acc, O, IAcc, R](size: Long, slide: Long, lateness: Long,
@@ -121,26 +132,41 @@ object Sink {
     // pane must carry so another partition's can be merged into it
     val partial = Aggregator[A, Acc, Acc](agg.init)(agg.add)(agg.merge)(identity)
     new Sink[A, R]:
-      type P = Panes[K, Acc, A]
-      def times: Vector[A => Long] = if seeded then Vector(at) else Vector.empty
-      def start(seeds: Vector[Long]): P =
+      type P = Panes[K, Acc, A, O, IAcc]
+      def times: Vector[A => Long] = Vector(at)
+      def start(bounds: Vector[Bounds]): P =
         val w = new Windows[K, A, Acc, Acc](size, slide, lateness, key, at, partial)
-        if seeds.nonEmpty && seeds.head != Long.MinValue then w.seed(seeds.head)
-        Panes(w, mutable.HashMap.empty[(Long, K), Acc], agg)
+        val b = if bounds.isEmpty then Bounds(Long.MinValue, Long.MinValue) else bounds.head
+        if seeded && b.lower != Long.MinValue then w.seed(b.lower)
+        // WITHOUT the seeding the completeness rule must not fire
+        // either: its lower bound is the same number, and a partition
+        // whose watermark is not the stream's has no business
+        // declaring anything finished.
+        val done = if seeded then b else Bounds(Long.MaxValue, Long.MinValue)
+        Panes(w, mutable.HashMap.empty[(Long, K), Acc], agg, size, done, into)
       def step(p: P, a: A): Unit = p.add(a)
       def done(p: P): Unit = p.close()
       def result(ps: Vector[P]): R =
+        // the boundary panes — everything no partition could finish —
+        // merged across the partitions in index order
         val all = mutable.HashMap.empty[(Long, K), Acc]
         for p <- ps do
           for (id, a) <- p.panes do all.update(id, all.get(id).fold(a)(agg.merge(_, a)))
         var acc = into.init
         for ((start, k), a) <- all do
           acc = into.add(acc, Pane(start, start + size, k, agg.present(a)))
+        // and the partitions' own accumulators, each already carrying
+        // the panes it finished alone
+        for p <- ps do acc = into.merge(acc, p.finished)
         into.present(acc)
       def drops(ps: Vector[P]): Long =
         var d = 0L
         for p <- ps do d += p.late
         d
+      def merged(ps: Vector[P]): Long =
+        var t = 0L
+        for p <- ps do t += p.panes.size
+        t
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
@@ -158,15 +184,35 @@ object Sink {
    * state the driver can hand back, and an immutable `Acc` cannot be */
   final class Box[Acc](var value: Acc)
 
-  /** one partition's windowed state: the operator, the panes it has
-   * closed so far as ACCUMULATORS, and the late elements it dropped */
-  final class Panes[K, Acc, A](w: Windows[K, A, Acc, Acc],
-                               val panes: mutable.HashMap[(Long, K), Acc],
-                               agg: Aggregator[A, Acc, ?]):
+  /**
+   * One partition's windowed state.
+   *
+   * A pane leaving the operator goes one of two ways, and which one
+   * is the whole of `dataflow-complete-panes`. If it starts after
+   * `bounds.lower` and ends at or before `bounds.upper` then no other
+   * partition can contribute to it, so it is PRESENTED and folded
+   * into this partition's own terminal accumulator here. Otherwise it
+   * is kept as an accumulator for the coordinator to merge.
+   *
+   * On the Wrocław job that is the difference between the
+   * coordinator merging every pane the job produced and merging the
+   * few that span a partition boundary.
+   */
+  final class Panes[K, Acc, A, O, IAcc](w: Windows[K, A, Acc, Acc],
+                                        val panes: mutable.HashMap[(Long, K), Acc],
+                                        agg: Aggregator[A, Acc, O],
+                                        size: Long, bounds: Bounds,
+                                        into: Aggregator[Pane[K, O], IAcc, ?]):
+    private var acc: IAcc = into.init
     private val keep: Pane[K, Acc] => Unit = p =>
-      val id = (p.start, p.key)
-      panes.update(id, panes.get(id).fold(p.value)(agg.merge(_, p.value)))
+      if p.start > bounds.lower && p.start + size <= bounds.upper then
+        acc = into.add(acc, Pane(p.start, p.start + size, p.key, agg.present(p.value)))
+      else
+        val id = (p.start, p.key)
+        panes.update(id, panes.get(id).fold(p.value)(agg.merge(_, p.value)))
     def add(a: A): Unit = w.add(a)(keep)
     def close(): Unit = w.close()(keep)
     def late: Long = w.dropped
+    /** what this partition finished by itself */
+    def finished: IAcc = acc
 }

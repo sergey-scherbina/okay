@@ -1,5 +1,67 @@
 # Changelog
 
+## dataflow-complete-panes — 5.5x becomes 1.14x: a partition finishes what no other partition can touch
+
+Stage 3 measured the engine at 5.5x the hand-written §20 lane and
+found all of it in one place: the coordinator merging ~2.9 million
+pane accumulators on one thread. `OkayLane.parallel` does not
+parallelise that merge, it AVOIDS it, and this is that rule as the
+engine's.
+
+A pane is complete in partition i when `p.start > hi(i-1)` — no
+earlier partition can have touched a window starting after every
+earlier event's time — and `p.end <= hi(i) - back` — no later one can
+touch a window ending at or before the least a later event's time can
+be. Complete panes are presented and folded into the terminal AT THE
+PARTITION; only the boundary panes reach the coordinator.
+
+`hi` cost nothing: it is the prefix-maximum array the watermark
+seeding already gathers, and the seed IS the lower bound. `back` is
+two more columns in the same pre-pass — each partition's own
+backwardness and its least event time, combined with the exclusive
+prefix max. That combination over-estimates, which is the safe
+direction: it declares fewer panes complete, never more. And an
+UNSEEDED window finishes nothing locally, because a partition that
+does not know where the stream stood has no business declaring
+anything closed.
+
+**The number**, four service days, 1 255 298 events, every lane run
+once per round, best of 7 with the worst beside it:
+
+| lane | ms | (worst) | vs best |
+|---|---:|---:|---:|
+| hand-written, 8 threads (OkayLane.parallel) | 85 | 137 | 1.00x |
+| **engine, 8 partitions, one pass** | **97** | 115 | **1.14x** |
+| hand-written, 1 thread | 370 | 1050 | 4.35x |
+| engine, 1 partition, one pass | 468 | 646 | 5.51x |
+| engine, 8 partitions, three plans via Flows.run | 737 | 964 | 8.67x |
+
+5.50x -> 1.14x, and the claim's written-down prediction picked the
+right one of its two branches: it said "near the hand-written lane if
+the merge is the whole cost, 50-60 ms if half of it is the per-pane
+tuple key", and the merge was essentially all of it. The engine's
+WORST round is better than the hand-written lane's worst.
+
+The mechanism is counted, not inferred: the job makes 1 734 893 panes
+and 122 679 accumulators reach the coordinator — 7% of what one
+partition holds. `Run.merged` reports it and TestFlow asserts it
+shrinks, so it is the suite's knowledge and not a benchmark's.
+
+**THE INSTRUMENT HAD TO BE REBUILT AGAIN, and the first answer was
+wrong.** Two runs of the same tree read 1.07x and 1.64x — both lanes
+swinging 20-27%, which is larger than the difference being quoted. A
+lane that swings a quarter cannot price a tenth. Fixed by a feed four
+times the size, every lane run once per ROUND so drift hits all of
+them alike, and the minimum reported with the worst beside it. Only
+then does 1.14x mean anything.
+
+**Two things left open and named rather than smoothed over.** The
+last row is NOT a measurement of the pass count: it drives
+`Flows.run`, which has no completeness rule, so the single-stage road
+is now much the slower of the two (filed, and the module doc says
+so). And the sink-by-sink decomposition sums to 104 ms against a fan
+of 154, so about a third of the fan's time is in none of its sinks —
+unexplained, filed, not guessed at.
 ## optics-fuse-by-default — nobody has to name the fusion any more
 
 The operator asked why `Fuse` has to be called by name. It does not.
