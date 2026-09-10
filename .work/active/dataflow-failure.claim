@@ -1,0 +1,46 @@
+task: dataflow-failure
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-failure
+worktree: ../okay-wt-dff
+spec: specs/dataflow.md, stage 5
+
+why: stage 4b ends with the sentence "a worker that dies takes the run
+  with it". On one machine that is a bug; across four it is the normal
+  case, and an engine that cannot survive it is a demo.
+
+what: a partition whose worker dies is recomputed on a survivor, and
+  the answer does not move. That is nearly free here and the reason is
+  structural: a partition is a THUNK and its partial is a pure
+  function of (parameters, index, count, bounds) — the same four
+  things every worker is given. There is no lineage graph to walk and
+  no checkpoint to restore, because nothing was mutated.
+
+  The rule about WHICH failures retry, stated rather than discovered:
+  a thrown transport error is a dead worker and retries on a
+  survivor; a `Resp.Failed` is the worker's considered answer — it
+  decoded the request and refused — and every worker runs the same
+  build, so retrying it produces the identical refusal. It is
+  returned, not retried.
+
+  `Run` gains `retried`, so a suite can assert that recovery HAPPENED
+  rather than infer it from the answer being right.
+
+  Failure injection is SEEDED: which attempt on which worker fails is
+  drawn from a seed, so a sweep over seeds explores many schedules and
+  a red one names the seed that produced it. Not luck wearing a lab
+  coat.
+
+  And the headline: a real worker PROCESS killed mid-run, with the
+  job finishing anyway.
+
+what this is NOT: exactly-once execution. A worker that dies after
+  computing but before its reply arrives has its partition computed
+  twice, and that is correct because the coordinator keeps exactly
+  one partial per partition — exactly-once OUTCOME, which is the same
+  words specs/persist.md already settled on.
+
+predict: the retry itself will be twenty lines and the interesting
+  half will be the ROTATION — picking a survivor without two fibres
+  racing on the live set, and making "no workers left" name the
+  original failure rather than an empty-collection error.
