@@ -170,8 +170,16 @@ Stage 1 — from the Schema (optics-schema, LANDED 2026-09-09):
       alone. (By the ClassTag, not the Mirror's ordinal: `Prism.of`
       from stage 0 already IS that prism, and a second spelling would
       have been a second thing to keep correct.)
-- [ ] `Form.edit` routes through the optic path rather than
-      `Path.parse`: NOT DONE, and the reason is the finding —
+- [x] `Form.edit` routes through the optic path rather than
+      `Path.parse`: SETTLED 2026-09-10 by stage 6, and settled as a
+      REFINEMENT rather than as the rewrite. Half the reason below has
+      dissolved — `Iso.non` makes the creating half lawful, and
+      `JsonOptic.creating` reproduces `Form.edit` exactly, defaults
+      and all (TestFormOptic). The other half stands and is why Form
+      keeps its router: interpreting a text by the field's schema,
+      growing a list, swapping a sum's case are not navigation. What
+      was written here before, kept because it was half right:
+- [x] (the original reasoning) —
       `Form.edit` CREATES missing parents on the way down, which is
       exactly the unlawful lens `JsonOptic` refuses to have, and
       interprets the Edit at the leaf, which is not navigation at all.
@@ -512,3 +520,91 @@ a derivation layer (stages 1–3), not a hot-path primitive; `Ui.patch`
 keeps its navigation. A lane to cache a composed optic's
 interpretation was filed as optics-fast, and is now measured and
 declined — see below.
+
+## Stage 4 — the aggregating families (optics-arc-2, LANDED 2026-09-10)
+
+Operator's direction after the survey: take all three openings.
+
+A traversal walks a shape and returns it. Aggregation is a different
+family, catalogued in Clarke, Elkins, Gibbons, Loregian, Milewski,
+Pillmore and Roman (Compositionality 2024) and shipped here:
+
+- [x] `Reflecting` — lift a profunctor through ANY Applicative, which
+      is what collapses many focuses into one answer. `Kaleidoscope`
+      is its optic; `Kaleidoscope.each[F]` is the family.
+- [x] `Classifying` — an algebraic (classifying) lens, whose put is an
+      algebra over every whole rather than a value. Given as its
+      constructor: the paper says the laws of a mixed optic are not
+      settled outside particular cases, so nothing is claimed here
+      that is not tested.
+- [x] `Aggregating` interprets BOTH in one instance, because the
+      composite asks for the intersection. Deliberately not `Strong`:
+      `first` would have to answer a C from a Vector of Cs, so an
+      ordinary lens does not reach this road at all — asserted by a
+      compile-time test that also asserts it fails for the missing
+      instance rather than for a typo.
+- [x] `aggregateWith` takes okay's own `Aggregator`, which was already
+      a Moore machine with an applicative `zip` and a semigroup
+      `merge`.
+- [x] aggregate-then-classify, the literature's own example, as one
+      composite optic (TestAggregationOptics).
+
+Found: the ZIP applicative needs an INFINITE `pure`
+(`pure(f) <*> xs == fmap(xs)(f)` fails for any finite one), so the
+lawful zip applicative on a strict sequence does not exist and
+`Optic.zipLazy` is a LazyList. That is why the literature's is a
+ZipList too, and it is not a Scala accident.
+
+## Stage 5 — a scanner is an arrow (optics-arc-2, LANDED 2026-09-10)
+
+- [x] `Optic.Category` and `Optic.Arrow` beside `Profunctor`, with
+      `Strong.second` derived by swapping. Rivas and Jaskelioff (JFP
+      2017) put arrows in the same table as monads and applicatives —
+      a strong monoid in the category of profunctors — where an optic
+      is not a monoid but a Tambara module.
+- [x] `Mealy` in okay-lex with Category, Strong and Choice, a driver,
+      and `ofScan` as the door from `Scan`.
+- [x] the two things that could not be written before: a scanner
+      followed by a token step in ONE pass, and two scanners over one
+      input by `fanout` (TestMealy).
+- [x] the arrow laws observed the only way a machine's equality can be
+      observed, over an input.
+
+The cost is stated where it is paid: a step here allocates the next
+machine, which is the per-character object `scan-step-allocation`
+removed from the lexing road. This is the composition layer;
+`Scan.all` and `Scan.chunks` remain the road.
+
+## Stage 6 — creating a missing parent, lawfully (optics-arc-2, LANDED 2026-09-10)
+
+- [x] `Iso.non(d)` — Kmett's: absence reads as `d`, and writing `d`
+      back is absence again. An iso modulo one normalisation, and the
+      test names it: `Some(d)` and `None` are the same point.
+- [x] `JsonOptic.creating(steps)` — the same composed down a path,
+      with a per-level default because what an absent field means is a
+      question only the schema can answer.
+- [x] it produces EXACTLY what `Form.edit` produces at one level of
+      absence and at two (TestFormOptic), which is what the stage-1
+      rewrite wanted and could not have while the creation lived
+      inside `set`.
+
+Two findings, both from the tests rather than from the design:
+- writing the default PRUNES the whole spine, because absence and the
+  default are one point at every level. Creation downwards and pruning
+  upwards are one law read in two directions; a sibling anywhere stops
+  it exactly there.
+- the law's domain has an edge, inherited from `at`: a SCALAR where a
+  parent belongs refuses the write rather than clobbering it, so
+  PutGet is claimed where every named level is an object or absent,
+  and the excluded case has its own test.
+
+## Stage 7 — the textbook (optics-arc-2, LANDED 2026-09-10)
+
+- [x] docs/theory/10-optics.md gains three sections — aggregating is
+      not iterating, arrows are the other row of the same table, and
+      origami (the plate is a traversal, the rewrite is a fold over
+      it, and the optic's residual is McBride's derivative) — and the
+      creating-lens refusal is rewritten to record how it dissolved.
+- [x] the bibliography goes from 10 entries to 25, in four groups:
+      the families beyond lens/prism/traversal, arrows and monoids,
+      origami and the residual, and effects/grades/indices.
