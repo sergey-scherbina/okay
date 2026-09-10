@@ -1,7 +1,7 @@
 package okay.flink.wroclaw
 
-import okay.java.{Collect, Streams}
-import okay.Chunks
+import okay.java.{Collect, Streams, Windowed}
+import okay.{Aggregator, Chunks, Pane}
 import java.util.function.Function as JFunction
 import java.util.stream.{Collectors, Stream as JStream}
 import java.util.{List as JList, Map as JMap}
@@ -139,4 +139,108 @@ object JavaLane {
     Job.Result(routeWins, routeEvents, routeDelay, routeHash,
       stopWins, stopEvents, stopHash, bunches, bunchGap, topWins, topHash)
   }
+
+  // ------------------------------------------------- the windowed road
+
+  /**
+   * THE SAME LANE WITH EVENT TIME IN IT (jdk-event-time-collector).
+   *
+   * Everything above holds the whole history because
+   * `Collectors.groupingBy` has no notion of a group being complete.
+   * `okay.java.Windowed` gives the JDK that notion: an `okay.Windows`
+   * inside a `Collector`, folding each pane into a downstream
+   * aggregator the moment the watermark closes it and evicting it. The
+   * bunching stage gets the same treatment from the other direction —
+   * `bunchAgg` is keyed STATE as an aggregator, so `groupingBy` holds
+   * one small accumulator per key instead of every element that ever
+   * had that key.
+   *
+   * It is SEQUENTIAL, and the collector says why (its combiner
+   * refuses): a parallel split evicts against its own range's
+   * watermark. So this road is measured against the sequential
+   * groupingBy road, which is the honest pairing — same threading,
+   * different state model.
+   */
+  def windowed(feed: Feed): Job.Result = {
+    val tram = feed.routes.iterator.map(_.tram).toArray
+
+    val route = rides(feed, tram, parallel = false).collect(
+      Windowed.tumbling[Ride, Int, Job.Acc, Job.Stats, RouteFold, RouteFold](
+        Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)(routeInto(tram)))
+
+    val stop = rides(feed, tram, parallel = false).collect(
+      Windowed.collector[Ride, Int, Job.Acc, Job.Stats, StopFold, StopFold](
+        Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats)(stopInto))
+
+    val byPair: JMap[java.lang.Long, BunchFold] =
+      rides(feed, tram, parallel = false).collect(Collectors.groupingBy(
+        ((r: Ride) => java.lang.Long.valueOf((r.route.toLong << 20) | r.stop.toLong)): JFunction[Ride, java.lang.Long],
+        Collect.collector(bunchAgg)))
+
+    var bunches = 0L; var bunchGap = 0L
+    byPair.forEach((_, b) => { bunches += b.bunches; bunchGap += b.gap })
+
+    var topWins = 0L; var topHash = 0L
+    for (start, acc) <- route.ranked do
+      topWins += 1
+      topHash ^= Job.topHash(start, Job.top.present(acc))
+
+    Job.Result(route.wins, route.events, route.delay, route.hash,
+      stop.wins, stop.events, stop.hash, bunches, bunchGap, topWins, topHash)
+  }
+
+  /** stage 2's downstream: the checksums, and the ranking accumulated
+   * per window as the panes close */
+  private final case class RouteFold(wins: Long, events: Long, delay: Long, hash: Long,
+                                     ranked: Map[Long, List[(Int, Job.Stats)]])
+
+  private def routeInto(tram: Array[Boolean])
+  : Aggregator[Pane[Int, Job.Stats], RouteFold, RouteFold] =
+    Aggregator[Pane[Int, Job.Stats], RouteFold, RouteFold](RouteFold(0, 0, 0, 0, Map.empty))(
+      (f, p) =>
+        val s = p.value
+        val folded = RouteFold(f.wins + 1, f.events + s.n, f.delay + s.sum,
+          f.hash ^ Job.hash(p.start, p.key.toLong, s.n, s.sum, s.max.toLong), f.ranked)
+        if !tram(p.key) then folded
+        else folded.copy(ranked = folded.ranked.updated(p.start,
+          Job.top.add(folded.ranked.getOrElse(p.start, Job.top.init), (p.key, s)))))(
+      (a, b) => RouteFold(a.wins + b.wins, a.events + b.events, a.delay + b.delay, a.hash ^ b.hash,
+        b.ranked.foldLeft(a.ranked)((m, kv) =>
+          m.updated(kv._1, m.get(kv._1).fold(kv._2)(Job.top.merge(_, kv._2))))))(identity)
+
+  /** stage 3's downstream */
+  private final case class StopFold(wins: Long, events: Long, hash: Long)
+
+  private val stopInto: Aggregator[Pane[Int, Job.Stats], StopFold, StopFold] =
+    Aggregator[Pane[Int, Job.Stats], StopFold, StopFold](StopFold(0, 0, 0))(
+      (f, p) => StopFold(f.wins + 1, f.events + p.value.n,
+        f.hash ^ Job.hash(p.start, p.key.toLong, p.value.n, p.value.sum, p.value.max.toLong)))(
+      (a, b) => StopFold(a.wins + b.wins, a.events + b.events, a.hash ^ b.hash))(identity)
+
+  /**
+   * Stage 4 as an AGGREGATOR: the keyed state of the bunching detector
+   * in the shape `groupingBy` can hold — first and last time seen,
+   * plus what the pairs inside this group came to. Its `merge` is the
+   * seam: the pair that falls between two halves of one key's stream
+   * is exactly `|b.first - a.last|`, which is the same stitch the
+   * merge-parallel okay lane makes across a slice boundary.
+   */
+  private final case class BunchFold(first: Long, last: Long, bunches: Long, gap: Long, seen: Boolean)
+
+  private val bunchAgg: Aggregator[Ride, BunchFold, BunchFold] =
+    Aggregator[Ride, BunchFold, BunchFold](BunchFold(0, 0, 0, 0, false))(
+      (b, r) =>
+        if !b.seen then BunchFold(r.ts, r.ts, 0, 0, true)
+        else
+          val gap = Math.abs(r.ts - b.last)
+          if gap < Job.BunchMs then BunchFold(b.first, r.ts, b.bunches + 1, b.gap + gap, true)
+          else BunchFold(b.first, r.ts, b.bunches, b.gap, true))(
+      (a, b) =>
+        if !a.seen then b else if !b.seen then a
+        else
+          val gap = Math.abs(b.first - a.last)
+          val crossed = gap < Job.BunchMs
+          BunchFold(a.first, b.last,
+            a.bunches + b.bunches + (if crossed then 1L else 0L),
+            a.gap + b.gap + (if crossed then gap else 0L), true))(identity)
 }

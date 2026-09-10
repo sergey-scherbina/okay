@@ -1,5 +1,35 @@
 # Changelog
 
+## jdk-event-time-collector — an event-time window AS a `java.util.stream.Collector`
+
+The operator asked whether the JDK lane's problem was fixable on our
+side. It was, and the fix is one file: `okay.java.Windowed` puts an
+`okay.Windows` inside a `Collector`'s accumulator, folding each pane
+into a downstream aggregator the moment the watermark closes it and
+evicting it. The bunching stage got the same treatment from the other
+direction — keyed state as an `Aggregator` whose `merge` supplies the
+pair that falls between two halves — so `groupingBy` holds one small
+accumulator per key instead of every element.
+
+On §20's job the same sequential JDK stream goes from 1 160 632 ev/s
+on 652 MB to **2 493 921 ev/s on 403 MB** — 2.15x faster on 38% less
+heap — and it finishes the FULL 2 414 119-event feed in 992 ms on
+825 MB, which the `groupingBy` road cannot do at all (it dies with an
+OutOfMemoryError on 4 GB and on 8). The state model was the
+performance problem as much as the memory one.
+
+**It is sequential, and that is the finding.** This suite was written
+the other way round first — an equality check on a PARALLEL stream —
+and it failed: a split evicts panes against its own range's watermark,
+so two splits reported the same window with partial values, and a
+folded pane cannot be un-folded. The combiner now refuses, with the
+reason in the message, and the test asserts the refusal. Bounding the
+state needs a container that knows it holds a PREFIX of the stream —
+the coordinator a stream engine has and a `Collector` does not, which
+is the sharpest statement in §20 of what an engine is FOR.
+
+Every table in §20 is re-measured from one run again.
+
 ## cut-refuses-the-document — the depth cut was written as damage at a spot, and that was the wrong shape
 
 The operator asked for the rest of input-depth-both-wires. What was

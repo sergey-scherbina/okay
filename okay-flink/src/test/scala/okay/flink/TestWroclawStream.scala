@@ -99,6 +99,8 @@ class TestWroclawStream extends munit.FunSuite {
     val okayPart = OkayLane.run(part)
     assertEquals(JavaLane.run(part, parallel = false), okayPart, "the JDK lane differs")
     assertEquals(JavaLane.run(part, parallel = true), okayPart, "the PARALLEL JDK lane differs")
+    // and the same lane with event time IN the collector
+    assertEquals(JavaLane.windowed(part), okayPart, "the windowed JDK lane differs")
     val (flink, _) = timed(FlinkLane.run(feed, parallelism = 1))
     println(s"  flink: $flink")
     assertEquals(flink, okay, "Flink's answer differs from okay's")
@@ -175,8 +177,29 @@ class TestWroclawStream extends munit.FunSuite {
 
     lane("okay, 1 thread")(OkayLane.run(part))
     lane("java.util.stream, sequential")(JavaLane.run(part, parallel = false))
+    lane("java.util.stream, windowed collector")(JavaLane.windowed(part))
     lane("java.util.stream, parallel")(JavaLane.run(part, parallel = true))
     lane("flink p4")(FlinkLane.run(part, 4))
+  }
+
+  /**
+   * WHAT EVENT TIME BUYS THE JDK LANE (jdk-event-time-collector).
+   *
+   * The lane that could not finish this feed at all — `groupingBy`
+   * holds every pane of the run, and the parallel road died with an
+   * OutOfMemoryError at this size on 4 GB and on 8 — is asked to run
+   * it, with `okay.java.Windowed` in place of `groupingBy` for the two
+   * windowed stages and the bunching state folded into an aggregator
+   * instead of a list. If it finishes, the state model was the whole
+   * problem.
+   */
+  test("java.util.stream with event time, on the full feed") {
+    val answer = OkayLane.run(feed)
+    val (r, ns, heap) = sampled(JavaLane.windowed(feed))
+    assertEquals(r, answer, "the windowed JDK lane differs from okay's")
+    val n = feed.events.length.toLong
+    println(f"  ${"java.util.stream, windowed collector"}%-38s ${n * 1000000000L / ns}%,10d ev/s" +
+      f"  ${ns / 1000000L}%,7d ms  peak heap ${heap / (1024 * 1024)}%,6d MB  at $n%,d events")
   }
 
   /**
