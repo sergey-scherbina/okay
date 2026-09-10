@@ -545,6 +545,23 @@ or not at all).
       parameters, headers and bodies. Same structure, a different
       monoid, and it is what stage 3 (rendering OpenAPI and MCP tool
       declarations out of `describe`) needs before it can start.
+- [x] optics-outside-tools — DONE (2026-09-10, 21bc8a5c), and it was not
+      on this list. Stage 2 of the spec: a tool was declared three
+      times (hand-written JSON Schema, a dispatch map re-reading the
+      same field names as string literals, and the name written
+      twice). `Toolbox` gives `specs` and `table` from one vector.
+      The finding: the hand-written schemas never declared `required`,
+      so no model was ever told `board_add` needs both its fields.
+- [ ] optics-outside-tools-effectful — `Toolbox` handlers are
+      `A => String`, because that is the seam `Mcp.Server`,
+      `Handlers.tools` and `Stepper` already take. A tool that must do
+      I/O has to close over its own runner today. Widening to
+      `A => String ! Rest` is a separate decision with those three
+      callers to carry; see the spec's Out of scope.
+- [ ] optics-outside-tools-adopt — the remaining hand-written pairs.
+      okay-mcp's and okay-http's test tables build a `ToolSpec` and a
+      `Map` side by side the same way; they are tests, so the cost of
+      the drift is lower, but they are also the examples people copy.
 - [ ] optics-outside-policy — a projection policy is a traversal:
       which fields of a record may be seen, embedded, logged. The
       interpreter that earns it is the AUDIT — "name the fields this

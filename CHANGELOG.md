@@ -1,5 +1,74 @@
 # Changelog
 
+## optics-outside-tools — a tool was declared three times, and the model was never told what it needed
+
+Stage 2 of `specs/optics-outside.md`. Stage 1 landed the arc's shape;
+looking for its next consumer found something better than the ranked
+list of six candidates — the repository's worst case of the exact
+defect this arc is about was a TOOL declaration, and it was not on the
+list.
+
+`BoardTools` wrote each tool three times. The JSON Schema by hand,
+through a local `schema("text" -> "string", ...)` helper. Then a
+separate `Map[String, ToolCall => String]` that re-read the same field
+names as string LITERALS — `str(c, "text")` — so a rename broke the
+tool silently. And the tool's name written twice, in two structures
+keyed by it, so a tool could be declared and undispatched or
+dispatched and undeclared. None of it needed inventing away, only
+using: `ToolSpec.apply[A]` and `ToolSpec.args[A]` both take one
+`Schema[A]`, and `okay.codec.JsonSchema` is documented as "the FOURTH
+algebra over `Schema[A]` ... so a tool's signature cannot drift from
+its parser". The callers simply never used them.
+
+`Toolbox` is the halves in one value.
+`Toolbox.empty.on[A](name, description)(run)` derives the declaration,
+decodes the call with the SAME schema, and dispatches over the decoded
+value: declare, decode, dispatch — three interpretations of one
+`Schema`. `specs` and `table` are drawn from one vector, so their name
+sets are equal by construction. The seam is untouched: `table` is
+still the `Map[String, ToolCall => String]` that `Mcp.Server`,
+`Handlers.tools` and `Stepper` already take, exactly as stage 1 kept
+the servers' `PartialFunction`.
+
+**The finding is what the model was being told.** The hand-written
+schemas never declared `required` — no model was ever informed that
+`board_add` needs both `text` and `owner`, or `board_assign` both `id`
+and `who`. The derived declaration says so, and `TestBoard` pins it.
+`board_assign`'s `id` also went from `"number"` to `"integer"`, which
+is what a `Long` is. A schema change is a model-facing change
+(`jsonschema-render-is-prompt-text`); this one makes the declaration
+more accurate rather than less.
+
+**A name collision improved the design.** `okay.agent.Tool` was taken
+— it is the EFFECT signature, the thing `Agent.call` performs — so the
+element could not be `Tool`. Instead of a synonym the builder moved
+onto the box, which reads exactly like stage 1's
+`Router.empty.on(...)` and makes the element type MONOMORPHIC: `A` is
+consumed by `on`, where the `Schema[A]` is still in scope, so a box of
+tools taking different argument types is an ordinary `Vector` needing
+neither an existential wrapper nor a cast. Stage 1's `Router.Entry`
+had found the same road.
+
+**And a phantom requirement, caught before it was built.** The
+conversion wanted `BoardTools.specs` to stay a board-free `val`, which
+meant either a fake `Board` existing only to be ignored, or
+generalising `Toolbox[-R]` so handlers are `R => A => String`. Both
+were designed before the call sites were read; both callers already
+had a board in scope. `specs(board)` it is, and the generalisation
+stays unbuilt.
+
+`StateMcp` uses `raw` and its comment says why: a JSON Merge Patch
+(RFC 7396) is arbitrary JSON by definition, so there is no case class
+to derive from and inventing one would be a lie about the protocol.
+What it still buys is the pairing, and saying which half applies is
+the point of the constructor existing. One inconsistency survives and
+is reported rather than hidden: a `Map` keeps the last of a duplicate
+name and a `Seq` keeps both, so `duplicates` names them.
+
+9 tests in `TestToolbox`, two coupling tests in `TestBoard`;
+okay-agent's 136 and okay-demo's 56 pass unchanged.
+Commits: 3d25ece0 (spec), 21bc8a5c (the toolbox).
+
 ## dataflow-auto-for-a-real-accumulator — the weight does not move the crossover
 
 `Finish.Auto` decides from one constant measured on the cheapest
