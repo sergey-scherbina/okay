@@ -1,0 +1,47 @@
+task: input-depth-both-wires
+agent: opus-depth
+started: 2026-09-10
+branch: feature/input-depth-both-wires
+worktree: ../okay-wt-input-depth
+spec: specs/codecs.md ("Unknown fields, on both wires" — its two overstated claims)
+
+why: the operator read the cbor-unknown-fields entry back and asked for
+  it to be FIXED. Two of its claims are not true, and each hides
+  something real.
+
+  (1) "Every other read here recurses on the depth of the SCHEMA,
+  which the program wrote" — the justification for Cbor.maxSkipDepth.
+  It is false on the other wire. `JsonValue.Parser.value` and Json's
+  CST projection (`into`) both recurse on the depth of the INPUT, with
+  no bound, and MEASURED 2026-09-10 (java -cp probe, default stack):
+  JsonValue.parse throws StackOverflowError at 20 000 nested arrays,
+  the projection between 1 000 and 5 000 — where JsonValue.parse's own
+  doc promises "never a throw" and Json.parse promises a value. So the
+  CBOR skip is not the only input-depth recursion; it is the only
+  BOUNDED one. (`JsonStrict.skipValue` is the counterexample that
+  proves the shape: a bracket counter in a loop, no stack, no limit.)
+
+  (2) "TestCompat.reads decodes on BOTH wires and requires them to
+  agree, so the law is enforced for every case there" — the helper
+  does, but removing the `Wire` parameter turned
+  `assert(x(Wire.Json).compatible && x(Wire.Cbor).compatible)` into
+  `assert(x.compatible && x.compatible)` in five places (the same
+  conjunct twice, asserting half of what it reads as), and the
+  "REMOVED case is the mirror" test never calls a decoder at all.
+
+what: bound the JSON input-depth recursion at the same 256 the CBOR
+  skip uses, in both JSON roads and in each road's own idiom — the
+  fast parser is "not sure" (None), the lossless projection makes the
+  cut a JErr, exactly as it does for every other damage — so neither
+  road can throw; then say the true thing in Cbor.skipItem's comment,
+  specs/codecs.md and docs/modules/okay-codec.md. And repair the Wire
+  residue in TestCompat: collapse the doubled conjuncts into what they
+  were meant to assert, and make every case that has a value run the
+  decoders, so "enforced for every case" is a fact.
+
+predict: the depth bound costs nothing measurable (one Int compared
+  per nesting level on a road that allocates a Vector per level), and
+  the remaining hole is a RECURSIVE schema's own decode — a Tree
+  nested deep by the SENDER recurses on both wires with no bound.
+  Measure it in this lane; if it dies, it is a BACKLOG entry, not this
+  lane's fix (it needs depth threaded through every decoder).
