@@ -323,6 +323,19 @@ Also here: `plan` now keeps a capability's type ARGUMENT, so a
 prototype reads as `New[Conn]` rather than `New` — the difference
 between a plan and a list of type constructors.
 
+FOLLOW-UP (fresh-says-why, 2026-09-10). `fresh[Db]` where a
+`module[Db]` installed the singleton is the mistake this pair
+invites, and the answer was "No given instance of type okay.New[Db]
+… for parameter n of method fresh": the type, not the fix. `New`
+carries an `@implicitNotFound` naming both roads now — `wire` the one
+the region installed, or have the PROVIDER offer a prototype — and
+`fresh` is respelled `New[A] ?=> (A ! Resource) = wire[New[A]]()`,
+because that is what carries the message to the call site. MEASURED:
+as a `using` parameter the compiler prints its own text and the
+annotation never appears; through the context function it does. The
+respelling also says in the code what was only true in the prose —
+`fresh` IS `wire` at another type, one primitive underneath.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

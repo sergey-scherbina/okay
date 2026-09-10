@@ -73,4 +73,15 @@ class TestPrototype extends munit.FunSuite {
     assertEquals(Resource.scoped(Resource.acquire(7)(_ => closed = true)), 7)
     assertEquals(closed, true)
   }
+
+  test("fresh where a module installed the singleton says which road to take") {
+    val e = compileErrors("""
+      import okay.*
+      val db = okay.module[String]("x")(_ => ())
+      db { okay.fresh[String] }
+    """)
+    assert(e.contains("nothing installed the ability to MAKE"), e)
+    assert(e.contains("is read with `wire["), e)
+    assert(e.contains("prototype["), e)
+  }
 }

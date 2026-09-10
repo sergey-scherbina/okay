@@ -1,5 +1,25 @@
 # Changelog
 
+## fresh-says-why — the error a singleton-vs-prototype mixup deserves
+
+`fresh[Db]` where a `module[Db]` installed the singleton is the
+mistake this vocabulary invites, and the compiler answered "No given
+instance of type okay.New[Db] … for parameter n of method fresh" —
+the type, not the fix.
+
+`New` now carries an `@implicitNotFound` naming both roads: read the
+one the region installed with `wire[Db]`, or have the PROVIDER offer
+`prototype[Db]`. Getting it to the CALL SITE took a respelling:
+measured, as a `using` parameter dotty prints its own text and the
+annotation never appears, while through a context function it does.
+So `fresh` is now `New[A] ?=> (A ! Resource) = wire[New[A]]()` —
+which also says in the code what had only been true in the prose,
+that `fresh` is `wire` at another type and there is one primitive
+underneath.
+
+It stays a compile error, never a silent fallback to the shared
+instance: that is the difference between a dependency that is a type
+and one that is a lookup. Asserted in TestPrototype. Commit: LANDING.
 ## optics-fuse-affine-preview — the read the JSON paths actually do
 
 Filed at the end of the last lane, and the operator said do it.

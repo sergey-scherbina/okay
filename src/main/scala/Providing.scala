@@ -186,11 +186,22 @@ final class Module[F[_]](val build: Providing[F] ! Resource,
  * application (the region `main` holds open — where thousands of
  * unreleased instances would pile up, which is the trade to know).
  */
+@scala.annotation.implicitNotFound("no New[${A}]: nothing installed the ability to MAKE a ${A}.\n`fresh[${A}]` asks for a NEW instance per consumer. A `module[${A}](acquire)(release)` installs ONE\nfor the region, and that one is read with `wire[${A}]`.\nIf an instance per consumer is what you want, the PROVIDER says so:\n  prototype[${A}](make)                     // nothing to release\n  prototype[${A}](acquire)(release)         // released by the region each fresh runs in")
 trait New[A]:
   def apply(): A ! Resource
 
-/** the consumer one-liner: a new `A`, in the region this runs in */
-inline def fresh[A](using n: New[A]): A ! Resource = n()
+/**
+ * The consumer one-liner: a new `A`, in the region this runs in.
+ *
+ * Written as `wire` AT ANOTHER TYPE, which is what it is: one asks
+ * for the thing, the other for the ability to make it, and there is
+ * one primitive underneath. The spelling is not cosmetic — as a
+ * `using` parameter the compiler prints its own "No given instance
+ * … for parameter n of method fresh" and `New`'s message above never
+ * reaches the call site (measured, fresh-says-why). Through the
+ * context function it does.
+ */
+inline def fresh[A]: New[A] ?=> (A ! Resource) = wire[New[A]]()
 
 /** an instance per consumer, with nothing to release */
 def prototype[A](make: => A): Module[[X] =>> New[A] ?=> X] =

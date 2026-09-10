@@ -194,6 +194,15 @@ one capability for the application, `borrow` inside the request.
 
 In a plan a prototype keeps what it makes: `Vector("Log", "New[Conn]")`.
 
+`fresh[A]` is `wire` at another type — `wire[New[A]]()` — so there is
+one primitive underneath and the difference lives in what you ask
+for, not in the verb. Ask for a `fresh[Db]` where a `module[Db]`
+installed the singleton and the compiler answers with both roads:
+read the region's one with `wire[Db]`, or have the provider offer a
+`prototype[Db]`. It is a compile error, never a silent fallback to
+the shared instance — which is the whole difference between a
+dependency that is a type and one that is a lookup.
+
 ## An application, end to end
 
 okay-demo's chat is wired this way. Its config is a value, so
