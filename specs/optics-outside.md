@@ -728,6 +728,55 @@ as a `require` on a constructor argument.
 - [x] a route with no parameters and a class with no fields is fine
 - [x] every existing `of[C]` in the repository still works
 
+## Stage 7 — the request body is part of the declaration
+
+### The consumer, and the defect it was already carrying
+
+Found before the feature, which is the order stage 4 settled. okay-demo
+picks its login fields out of the body by string literal:
+
+```scala
+case r if r.method == Post && r.url == "/login/confirm" =>
+  val email = Chat.fieldOf(r.body, "email")
+  val code  = Chat.fieldOf(r.body, "code")
+  if Login.confirm(email, code) then … else 401 "wrong or expired code"
+```
+
+`Chat.fieldOf` answers `""` for a missing field AND for a body that is
+not JSON at all, so the two cannot be told apart. `/login` checks the
+empty string and answers 400. `/login/confirm` does not: a malformed
+request reaches `Login.confirm("", "")` and the caller is told
+**401, wrong or expired code** — a diagnosis about their credentials
+for what was a broken request. Both routes are covered only by
+`portTest`, which is `Live` and out of the default gate.
+
+### Interface
+
+```scala
+Router.json[B](Method.Post, route)(h: (A, B) => Response ! Async)(using Schema[B]): Router
+```
+
+The body is declared where the method and the handler are, not on the
+`Route`: a `Route` describes a URL, and a URL has no body. The schema
+decodes before the handler runs, so a handler never sees an undecoded
+body; a body that does not decode is answered 400 with data —
+`{"error": …}`, the same rule `Toolbox` states for a tool call, and for
+the same reason.
+
+The entry records the body's JSON Schema, so `describe` carries it —
+what a renderer will need, and what stage 2 already gives tools.
+
+### Behavior
+
+- [ ] a declared body arrives at the handler decoded
+- [ ] a body that is not JSON is answered 400, and never reaches the
+      handler
+- [ ] a body missing a required field is answered 400
+- [ ] the answer is DATA naming what failed, not an exception
+- [ ] a route with no declared body is unchanged (`on`, `at`)
+- [ ] `/login` and `/login/confirm` are declared this way, and a
+      malformed body is a 400 rather than a 401
+
 ## Decisions
 
 - **2026-09-10 — nested pairs instead of a flat tuple: considered,
