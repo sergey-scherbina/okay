@@ -1,5 +1,46 @@
 # Changelog
 
+## optics-fuse-affine-preview — the read the JSON paths actually do
+
+Filed at the end of the last lane, and the operator said do it.
+
+`emitPreview` knows what `emitGet` cannot: what to do with absence.
+Three shapes, each what a person would write — a lens step is the
+projection, wrapped once at the end; previewing `some` on an `Option`
+IS that Option; and a `some` in the middle is the test, with the rest
+emitted inside it. So `personZip.preview(p)` becomes
+`if (s.address.isDefined) Some(s.address.get.zip) else None`.
+
+This is the case that matters. `JsonOptic.field` is `at ∘ some`, so
+every path built from it is an affine, and until now every one of them
+read through the interpretation.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `affinePreviewByHand` — `p.address.map(_.zip)` | 4.172 ± 1.332 | 16 |
+| **`affinePreview`** — `personZip.preview(p)`, fused | **3.370 ± 0.299** | **16** |
+| `affinePreviewInterpreted` — the SAME optic through `Forget[First]` | 35.655 ± 14.101 | 232 |
+
+The fused preview allocates what the hand-written `map` allocates, 16
+bytes — the `Some` box, and nothing else. Its time reads below the
+hand-written lane, but that lane's bars are ±1.3, so the honest claim
+is PARITY and not a win over hand-written code.
+
+The number that is not close is the third row: the same optic through
+the interpretation costs 10.6x the time and 14.5x the allocation. That
+is what every `JsonOptic.field` path was paying to read one field.
+
+`get` still refuses a prism and always will: an absent focus is not a
+value, so there is nothing to emit, and only `preview` can say "or
+nothing". Still interpreted for an affine, named rather than left to
+be discovered: `foldMap` and `toVector` need the Monoid's `empty` for
+the absent branch, `traverseOf` needs the applicative's `pure`.
+
+The teeth: a poisoned `Forget[First[A]]`, which a fused preview never
+asks for. Watched it fail with the new emitter switched off — putting
+`preview` back on `emitGet` — before keeping it.
+
+
 ## dataflow stage 4b — the engine actually runs across processes now
 
 `Job[P, R]` is the registry entry, and it is Claim 3 made into a type:

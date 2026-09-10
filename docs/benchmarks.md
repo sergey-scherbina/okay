@@ -1906,6 +1906,41 @@ Some(...) else None` is emittable — and it is filed rather than done,
 because okay-codec's JSON paths are affines and it wants that
 workload to measure against.
 
+## 9f. The affine preview
+
+§9e fused the read side for lens chains and said an affine's `preview`
+was emittable and filed. It is done (specs/optics.md stage 11), and it
+matters more than the lens case: `JsonOptic.field` is `at ∘ some`, so
+every path built from it is an affine and every one of them was going
+through the interpretation.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `affinePreviewByHand` — `p.address.map(_.zip)` | 4.172 ± 1.332 | 16 |
+| **`affinePreview`** — `personZip.preview(p)`, fused | **3.370 ± 0.299** | **16** |
+| `affinePreviewInterpreted` — the SAME optic through `Forget[First]` | 35.655 ± 14.101 | 232 |
+
+The fused preview allocates what the hand-written `map` allocates, 16
+bytes — the `Some` box, and nothing else. Its time reads below the
+hand-written lane, but that lane's bars are ±1.3, so the honest claim
+is PARITY and not a win over hand-written code.
+
+The number that is not close is the third row: the same optic through
+the interpretation costs 10.6x the time and 14.5x the allocation. That
+is what every `JsonOptic.field` path was paying to read one field.
+
+Where the win comes from is visible in the emitted shape. The
+interpretation builds a `Forget[First[A]]`, runs the composed optic,
+wraps each focus in `First(Some(_))` and unwraps at the end. The
+fusion emits `if (s.address.isDefined) Some(s.address.get.zip) else
+None`, which is what a person writes.
+
+`get` still refuses a prism, and always will: an absent focus is not a
+value, so there is nothing to emit. Only `preview` can say "or
+nothing". Also still interpreted for an affine: `foldMap` and
+`toVector`, which need the Monoid's `empty` for the absent branch, and
+`traverseOf`, which needs the applicative's `pure`.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

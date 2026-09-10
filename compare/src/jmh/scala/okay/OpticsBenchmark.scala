@@ -105,6 +105,13 @@ class OpticsBenchmark {
   @Benchmark def lensGetInterpreted: Int =
     age.apply[[X, Y] =>> Optic.Forget[Int, X, Y]](Optic.Forget(identity)).run(p)
 
+  // optics-fuse-affine-preview: the read the JSON paths actually do
+  @Benchmark def affinePreviewByHand: Option[Int] = p.address.map(_.zip)
+  @Benchmark def affinePreview: Option[Int] = personZip.preview(p)
+  @Benchmark def affinePreviewInterpreted: Option[Int] =
+    personZip.apply[[X, Y] =>> Optic.Forget[Optic.First[Int], X, Y]](
+      Optic.Forget(a => Optic.First(Some(a)))).run(p).value
+
   @Benchmark def vectorMap: Vector[Int] = vec.map(_ + 1)
   @Benchmark def traversalOver: Vector[Int] = each.modify(_ + 1)(vec)
 

@@ -757,3 +757,41 @@ affines and it wants their workload to measure against.
 Also needed on the way: `lambdaIn`, the lambda builder with the owner
 named, because `traverseOf` builds a lambda INSIDE another lambda's
 body and the inner one must be owned by the outer.
+
+## Stage 11 — an affine's preview fuses (optics-fuse-affine-preview, 2026-09-10)
+
+Stage 10 filed this and the operator said do it. It is the read this
+library actually does through an optic: `JsonOptic.field` is
+`at ∘ some`, so every path built from it is an affine, and until now
+every one of them went through the interpretation.
+
+- [x] `emitPreview`, which unlike `emitGet` knows what to do with
+      absence. Three shapes, each what a person would write: a lens
+      step is the projection wrapped once at the end; previewing
+      `some` on an `Option` IS that Option; and a `some` in the middle
+      is the test, with the rest emitted inside it.
+- [x] `get` still refuses a prism, and that has not changed for a
+      reason — an absent focus is not a value, so there is nothing to
+      emit. Only `preview` can say "or nothing".
+- [x] the poisoned instance is `Forget[First[A]]` this time, and the
+      test was watched failing with the new emitter switched off.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `affinePreviewByHand` — `p.address.map(_.zip)` | 4.172 ± 1.332 | 16 |
+| **`affinePreview`** — `personZip.preview(p)`, fused | **3.370 ± 0.299** | **16** |
+| `affinePreviewInterpreted` — the SAME optic through `Forget[First]` | 35.655 ± 14.101 | 232 |
+
+The fused preview allocates what the hand-written `map` allocates, 16
+bytes — the `Some` box, and nothing else. Its time reads below the
+hand-written lane, but that lane's bars are ±1.3, so the honest claim
+is PARITY and not a win over hand-written code.
+
+The number that is not close is the third row: the same optic through
+the interpretation costs 10.6x the time and 14.5x the allocation. That
+is what every `JsonOptic.field` path was paying to read one field.
+
+Still on the interpretation for an affine: `foldMap` and `toVector`
+(they need the Monoid's `empty` for the absent branch, which the
+macro would have to summon) and `traverseOf` (it needs the
+applicative's `pure`). Named rather than discovered later.

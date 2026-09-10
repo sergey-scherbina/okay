@@ -162,6 +162,28 @@ class TestFuse extends munit.FunSuite {
     assertEquals(age.foldMap((a: Int) => a * 2)(p), 14)
   }
 
+  test("an affine's preview fuses: absence is a test, not a fallback") {
+    // `preview` runs at Forget[First[A]]; poison that and a fused
+    // preview passes while one that went through the optic throws.
+    given poisonedFirst: (Optic.Strong[[X, Y] =>> Optic.Forget[Optic.First[Int], X, Y]] &
+                          Optic.Choice[[X, Y] =>> Optic.Forget[Optic.First[Int], X, Y]]) =
+      new Optic.Strong[[X, Y] =>> Optic.Forget[Optic.First[Int], X, Y]]
+        with Optic.Choice[[X, Y] =>> Optic.Forget[Optic.First[Int], X, Y]]:
+        def dimap[A, B, C, D](p: Optic.Forget[Optic.First[Int], A, B])(
+            f: C => A, g: B => D): Optic.Forget[Optic.First[Int], C, D] =
+          throw AssertionError("fell back")
+        def first[A, B, C](p: Optic.Forget[Optic.First[Int], A, B]):
+            Optic.Forget[Optic.First[Int], (A, C), (B, C)] = throw AssertionError("fell back")
+        def right[A, B, C](p: Optic.Forget[Optic.First[Int], A, B]):
+            Optic.Forget[Optic.First[Int], Either[C, A], Either[C, B]] =
+          throw AssertionError("fell back")
+
+    val there = Person("ada", 1, Some(Address("W", 42)), Address("H", 3))
+    val absent = Person("ada", 1, None, Address("H", 3))
+    assertEquals(addressZip.preview(there), Some(42))
+    assertEquals(addressZip.preview(absent), None)
+  }
+
   test("the read side answers what the interpretation answers") {
     for _ <- 1 to 100 do
       val p = person()
@@ -171,9 +193,10 @@ class TestFuse extends munit.FunSuite {
       assertEquals(age.preview(p), Some(p.age))
       assertEquals(age.toVector(p), Vector(p.age))
       assertEquals(homeCity.foldMap((c: String) => c.length)(p), p.home.city.length)
-      // a prism in the chain: absence is not a value, so this one
-      // falls back — and the answer is still the optic's
+      // a prism in the chain: `get` still refuses it (an absent focus
+      // is not a value) but `preview` now emits the test itself
       assertEquals(addressZip.preview(p), p.address.map(_.zip))
+      assertEquals(address.andThen(Prism.some[Address, Address]).preview(p), p.address)
   }
 
   test("traverseOf: the effect runs once and the whole comes back rebuilt") {

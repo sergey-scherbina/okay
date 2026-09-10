@@ -208,6 +208,29 @@ object Fuse {
         emitGet(inner, beta(apply1(get.asInstanceOf[Term], s)))
       case Plan.Then(_, _) => None
 
+  /**
+   * PREVIEW, which unlike `get` knows what to do with absence — and
+   * so reads the shape most of this library's optics actually are.
+   * `JsonOptic.field` is `at ∘ some`, and every path built from it is
+   * an affine.
+   *
+   * Three shapes, and each is what a person would write:
+   *   - a lens step is the projection, wrapped once at the end;
+   *   - previewing `some` on an `Option` IS that Option, unwrapped;
+   *   - a `some` in the middle is the test, `if defined then … else
+   *     None`, with the rest emitted inside it.
+   */
+  private def emitPreview(using q: Quotes)(p: Plan, s: q.reflect.Term): Option[q.reflect.Term] =
+    import q.reflect.*
+    flatten(p) match
+      case Plan.L(get, _) => Some(someOf(beta(apply1(get.asInstanceOf[Term], s))))
+      case Plan.Some_ => Some(s)
+      case Plan.Then(Plan.L(get, _), inner) =>
+        emitPreview(inner, beta(apply1(get.asInstanceOf[Term], s)))
+      case Plan.Then(Plan.Some_, inner) =>
+        emitPreview(inner, Select.unique(s, "get")).map(v => ifDefined(s, v))
+      case Plan.Then(_, _) => None
+
   /** a plan the read side can emit: no absence anywhere in it */
   private def readable(p: Plan): Boolean = p match
     case Plan.L(_, _) => true
@@ -219,13 +242,21 @@ object Fuse {
     case Plan.Then(Plan.Then(a, b), c) => flatten(Plan.Then(a, flatten(Plan.Then(b, c))))
     case other => other
 
-  /** `if s.isDefined then Some(v) else None` — the shape a nested copy has */
-  private def optionOf(using q: Quotes)(s: q.reflect.Term, v: q.reflect.Term): q.reflect.Term =
+  /** `Some(v)` */
+  private def someOf(using q: Quotes)(v: q.reflect.Term): q.reflect.Term =
     import q.reflect.*
-    val some = Apply(
+    Apply(
       TypeApply(Select.unique(Ref(Symbol.requiredModule("scala.Some")), "apply"), List(Inferred(v.tpe.widen))),
       List(v))
-    If(Select.unique(s, "isDefined"), some, Ref(Symbol.requiredModule("scala.None")))
+
+  /** `if s.isDefined then v else None`, where `v` is ALREADY an Option */
+  private def ifDefined(using q: Quotes)(s: q.reflect.Term, v: q.reflect.Term): q.reflect.Term =
+    import q.reflect.*
+    If(Select.unique(s, "isDefined"), v, Ref(Symbol.requiredModule("scala.None")))
+
+  /** `if s.isDefined then Some(v) else None` — the shape a nested copy has */
+  private def optionOf(using q: Quotes)(s: q.reflect.Term, v: q.reflect.Term): q.reflect.Term =
+    ifDefined(s, someOf(v))
 
   /**
    * The wrappers off a lambda, so that `betaReduce` sees one.
@@ -325,10 +356,8 @@ object Fuse {
       o: Expr[Optic[C, S, T, A, B]], s: Expr[S],
       fn: Expr[C[[X, Y] =>> Forget[First[A], X, Y]]]): Expr[Option[A]] =
     import q.reflect.*
-    plan(o.asTerm).flatMap(p => emitGet(p, s.asTerm)) match
-      // a plan `emitGet` reads has no absence in it, so the answer is
-      // always there — which is why this is `Some` and not a test
-      case Some(t) => '{ Some(${ t.asExprOf[A] }) }
+    plan(o.asTerm).flatMap(p => emitPreview(p, s.asTerm)) match
+      case Some(t) => Typed(t, TypeTree.of[Option[A]]).asExprOf[Option[A]]
       case None =>
         '{ $o.apply[[X, Y] =>> Forget[First[A], X, Y]](
              Forget[First[A], A, B]((a: A) => First(Some(a))))(using $fn).run($s).value }
