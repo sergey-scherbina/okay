@@ -1540,6 +1540,20 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
+- **`okay.resilience.TestResilienceTimed."deadline: a budget that runs
+  out mid-way…"` — the cancellation had not been OBSERVED yet** (once,
+  2026-09-10 09:0x, in bench-whole-field's gate; the suite passes alone
+  on the same tree, all eight). Line 105 is `assertEquals(cancelled.get,
+  1)` immediately after `intercept[Refused.DeadlineExceeded]`, and the
+  budget is 30 ms: the exception reaches the caller as soon as the
+  deadline fires, while the cancellation of the inner `never` runs on
+  the way out. Under load the assertion can win that race. It reads
+  like a test-side race rather than a defect in `Deadline.enforce` —
+  the fix, if it recurs, is to await the counter (a bounded spin or an
+  `eventually`) instead of reading it once, NOT to widen the budget,
+  which would only make the window rarer. Recorded from a lane that
+  touches neither module.
+
 - **`okay.TestGrowing.each producer's own order survives the swap` —
   one round of 200 came back out of a producer's own order** (once,
   2026-09-10 07:47, in stream-event-time-window's gate). The lane that
