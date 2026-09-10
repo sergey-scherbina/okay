@@ -1,0 +1,37 @@
+task: json-raw-nesting-threshold-trampoline
+agent: opus-depth
+started: 2026-09-10
+branch: feature/json-raw-nesting-threshold-trampoline
+worktree: ../okay-wt-json-raw
+spec: specs/iterative-recursive-decode.md (targets 1+2: JsonValue's
+  fast parser, Json.lossless's projection)
+
+why: depth-is-policy-not-rescue named these two SEPARATELY, but they
+  are the SAME kind of recursion (raw JSON container nesting, no
+  schema involved) and are already tested together in TestStackBytes
+  — one lane, not two, avoids the ceremony overhead of four more
+  claim/rebase/gate cycles for closely related code.
+
+what: `JsonValue.Parser.value`/`obj`/`arr` (uniformly typed
+  `Json | Null`) and `Json.into`/`pairs` (the CST-to-value projection,
+  currently `Unit`-returning and side-effecting into a
+  `Builder[Json, Vector[Json]]` — its OWN shape decision, not
+  assumed here, made when writing this lane) get the same
+  native/Cont.defer split as the three already-closed sites.
+
+  Also centralizing `NativeThreshold`: it is currently a
+  private val = 24 duplicated in Cbor.scala and Json.scala (three
+  copies after this lane's own use). Moving it to `Codecs.NativeThreshold`
+  (beside `Codecs.maxDepth`, which the same four sites already share)
+  removes the duplication this lane would otherwise add a fourth copy
+  of.
+
+predict: JsonValue's parser mirrors Cbor.In.skipItem's shape exactly
+  (uniform type, no cross-type R). Json.lossless's projection may need
+  a different shape since it does not COMBINE values, it APPENDS to a
+  builder — decided by what compiles and tests correctly, not assumed
+  here. Verifying the fix matters will need the same scratch
+  Codecs.maxDepth bump cbor-skip-threshold-trampoline used, since
+  Json.isCut caps real documents at 64 regardless of the parser's own
+  stack cost. JMH gate: check `uptime` before trusting any delta
+  (jmh-load-not-just-forks).
