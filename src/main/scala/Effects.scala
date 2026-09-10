@@ -174,7 +174,7 @@ object Handler {
   def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
   : Handler[F + G] = new Handler[F + G]:
     def handle[A](a: F[A] | G[A]): A =
-      // the split is the kernel's (`Split.apply`), the one place the
+      // the split is the kernel's (`split`), the one place the
       // union's excluded middle is claimed — and with no Either on
       // the way (split-without-either)
       split[F, G](a)(f => hf.handle(f))(g => hg.handle(g))
@@ -210,9 +210,9 @@ trait Effects[M[_[+_], _]]:
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
-  def handle[F[+_] : TypeableK, G[+_], A, B](m: M[F + G, A])
-                                            (ret: A => M[G, B])
-                                            (h: F !> M[G, B]): M[G, B] =
+  def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
+                                                   (ret: A => M[G, B])
+                                                   (h: F !> M[G, B]): M[G, B] =
     m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))) / ret
 
 /** the staging entry for effect programs, as staged is for Control */
@@ -403,16 +403,16 @@ object Effect:
  * TypeableK), taking G by exclusion: a type test on an abstract G
  * would erase to an always-true test.
  */
-inline def <|>[F[+_] : TypeableK as T, G[+_]]: [A] => (F[A] | G[A]) => Either[F[A], G[A]] =
+inline def <|>[F[+_], G[+_]](using T: TypeableK[F])[A](e: F[A] | G[A]): Either[F[A], G[A]] =
   // the trusted kernel, sound by the excluded middle of the union: a
   // value of F[A] | G[A] that passes F's test is an F[A], and one that
   // does not is a G[A]. `test` rather than the extractor
   // (split-without-either, 2026-09-09): the extractor answered an
   // Option per operation on top of this Either, and B/op showed both
   // survive escape analysis. The left cast is what the extractor's
-  // `x.type & F[A]` said, made explicit; nothing outside this function,
-  // `Split.apply` and `Over.apply` casts on a row.
-  [A] => e => if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
+  // `x.type & F[A]` said, made explicit; nothing outside this
+  // function, `split` and `over` casts on a row.
+  if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
 
 /**
  * The same split with NO wrapper on the way out (split-without-either,
@@ -431,15 +431,11 @@ inline def <|>[F[+_] : TypeableK as T, G[+_]]: [A] => (F[A] | G[A]) => Either[F[
  * constructor inside `onF` (`case Get() =>`), exactly as after
  * `case Left(...)` — so no cast reaches a runner.
  */
-inline def split[F[+_] : TypeableK as T, G[+_]]: Split[F, G] = Split(T)
-
-/** `split`'s second stage, so that A and R are inferred from the
- * operation and the branches (the `Bind` arm's answer type is
- * existential; naming it is not possible, inferring it is). A value
- * class: nothing is allocated to carry the test. */
-final class Split[F[+_], G[+_]](val T: TypeableK[F]) extends AnyVal:
-  inline def apply[A, R](e: F[A] | G[A])(inline onF: F[A] => R)(inline onG: G[A] => R): R =
-    if T.test(e) then onF(e.asInstanceOf[F[A]]) else onG(e.asInstanceOf[G[A]])
+inline def split[F[+_], G[+_]](using T: TypeableK[F])[A, R]
+                              (e: F[A] | G[A])
+                              (inline onF: F[A] => R)
+                              (inline onG: G[A] => R): R =
+  if T.test(e) then onF(e.asInstanceOf[F[A]]) else onG(e.asInstanceOf[G[A]])
 
 /**
  * Rewrite the operations of ONE member of a row in place and leave the
@@ -452,13 +448,9 @@ final class Split[F[+_], G[+_]](val T: TypeableK[F]) extends AnyVal:
  * for one effect is lifted into an instance for every row that holds
  * it (`Failing.anyRow` over `Failing.async`).
  */
-inline def over[F[+_] : TypeableK as T, R[+_]]: Over[F, R] = Over(T)
-
-/** `over`'s second stage, so that A is inferred from the operation. A
- * value class: nothing is allocated to carry the test. */
-final class Over[F[+_], R[+_]](val T: TypeableK[F]) extends AnyVal:
-  inline def apply[A](e: R[A])(inline f: F[A] => F[A]): R[A] =
-    if T.test(e) then f(e.asInstanceOf[F[A]]).asInstanceOf[R[A]] else e
+inline def over[F[+_], R[+_]](using T: TypeableK[F])[A]
+                             (e: R[A])(inline f: F[A] => F[A]): R[A] =
+  if T.test(e) then f(e.asInstanceOf[F[A]]).asInstanceOf[R[A]] else e
 
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:

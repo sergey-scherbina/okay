@@ -24,7 +24,12 @@ import okay.RowLift.plus
  *     val twice: (Int, Int) ! (Small + Big) =
  *       for
  *         a <- Tag.tag["small", State % Int](count).plus[Big]
- *         b <- Tag.tag["big",   State % Int](count).at[Small + Big]
+ *         b <- Tag.tag["big",   State % Int][Int, Pure](count).at[Small + Big]
+ *
+ *     The second line writes the second type clause because `G` is
+ *     inferred from the program, and a program of `State` alone infers
+ *     `G = State % Int` rather than `Pure` — which `.plus` accepts and
+ *     `.at` does not (generalized-method-syntax, 2026-09-11).
  *       yield (a, b)
  *
  * HANDLING IS THE EFFECT'S OWN. There are no new handlers to write:
@@ -59,19 +64,19 @@ object Tag:
       case _ => None)
 
   /** perform one operation under the key */
-  inline def one[K, F[+_], A](op: F[A])(using k: ValueOf[K]): A ! Of[K, F] =
+  inline def one[K, F[+_]](using k: ValueOf[K])[A](op: F[A]): A ! Of[K, F] =
     effect(Tag[K, F, A](k.value, op))
 
   /** put every F operation of a program under the key, leaving the
    * rest of the row alone */
-  def tag[K, F[+_] : TypeableK, A, G[+_]](p: A ! (F + G))
-                                         (using ValueOf[K]): A ! (Of[K, F] + G) =
-    !.interpret[A, F, Of[K, F], G](p)([X] => (e: F[X]) => one[K, F, X](e).plus[G])
+  def tag[K, F[+_]](using TypeableK[F], ValueOf[K])[A, G[+_]]
+                   (p: A ! (F + G)): A ! (Of[K, F] + G) =
+    !.interpret[A, F, Of[K, F], G](p)([X] => (e: F[X]) => one[K, F](e).plus[G])
 
   /** strip one key, handing back the plain signature for its own
    * handler to take */
-  def untag[K, F[+_], A, G[+_]](p: A ! (Of[K, F] + G))
-                               (using TypeableK[Of[K, F]]): A ! (F + G) =
+  def untag[K, F[+_]](using TypeableK[Of[K, F]])[A, G[+_]]
+                     (p: A ! (Of[K, F] + G)): A ! (F + G) =
     !.interpret[A, Of[K, F], F, G](p)([X] => (e: Tag[K, F, X]) => effect[F + G, X](e.op))
 
   /** a comonadic handler for one key, out of the effect's own */

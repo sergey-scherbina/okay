@@ -49,7 +49,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleForward(): Int =
-    Effects[Free].handle[Ask, Produce, Int, Int](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    Effects[Free].handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
   @Benchmark
   def stepBulk(): Any =

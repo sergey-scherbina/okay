@@ -58,9 +58,9 @@ class TestFused extends munit.ScalaCheckSuite {
       val ((s, w), a) = Fused.stateWriter(s0)(p)
       // Writer outside State: (log, (state, a))
       val (w1, (s1, a1)) = !.run(Writer.run[String, (Int, Int), Pure](
-        State.handle[Int, Int, Writer % String](s0)(p)))
+        State.handle[Int](s0)(p)))
       // State outside Writer: (state, (log, a))
-      val (s2, (w2, a2)) = !.run(State.handle[Int, (Seq[String], Int), Pure](s0)(
+      val (s2, (w2, a2)) = !.run(State.handle[Int](s0)(
         Writer.run[String, Int, State % Int](p)))
       (s, w, a) == (s1, w1, a1) && (s, w, a) == (s2, w2, a2)
     }
@@ -71,7 +71,7 @@ class TestFused extends munit.ScalaCheckSuite {
       val p = compileTSW(ins)
       val fused = Fused.throwsStateWriter(s0)(p)
       val nested = !.run(runEither[(Int, (Seq[String], Int)), Pure, String](
-        State.handle[Int, (Seq[String], Int), Throws % String](s0)(
+        State.handle[Int](s0)(
           Writer.run[String, Int, Throws % String + State % Int](p))))
       (fused, nested) match
         case (Left(e), Left(f)) => e == f

@@ -46,5 +46,5 @@ object ProbeOneCast:
     println("MIXED  " + runMix(mixed))
     println("INFER  " + runMix(inferred))
     println("BOUND  " + !.run(Reader.run[Boolean, (Int, (Seq[String], Int)), Pure](true)(
-      State.handle[Int, (Seq[String], Int), Reader % Boolean](7)(
+      State.handle[Int](7)(
         Writer.run[String, Int, State % Int + Reader % Boolean](used)))))

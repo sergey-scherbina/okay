@@ -95,8 +95,14 @@ object State {
    * would break the purity of the residual tree, so the loop is the
    * honest form. A forwarded F-effect suspends with the current state
    * captured immutably, which keeps the residual re-runnable.
+   *
+   * TWO TYPE CLAUSES, separated by the state itself
+   * (generalized-method-syntax, 2026-09-11): `S` has to be written at
+   * most call sites, `A` and the forwarded row `F` are read off the
+   * program. `State.handle[Int](0)(p)` rather than the three
+   * arguments every call site used to spell out.
    */
-  def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
+  def handle[S](s: S)[A, F[+_]](a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
     // `split`, not `<|>` (split-without-either): the two branches

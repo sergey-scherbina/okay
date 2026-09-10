@@ -154,7 +154,7 @@ class SplitBenchmark {
   // ---- State: the same three
 
   @Benchmark
-  def stateShip(): Int = State.handle[Int, Int, Produce](0)(sp).runWith._2
+  def stateShip(): Int = State.handle[Int](0)(sp).runWith._2
 
   @Benchmark
   def stateEither(): Int =
