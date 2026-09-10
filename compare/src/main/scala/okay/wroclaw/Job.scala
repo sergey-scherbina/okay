@@ -87,6 +87,15 @@ object Job {
    * `TestNativeLanes` asserts exactly that, and docs/benchmarks.md
    * §20 prices the difference.
    */
+  /** the same flat accumulator PRESENTING ITSELF — what a partial
+   * pane must carry so another slice's can be merged into it */
+  val summaryPartial: Aggregator[Ride, Aggregator.Summary, Aggregator.Summary] =
+    Aggregator.summary[Ride](_.delay.toLong)
+
+  /** the flat summary as the job's `Stats` */
+  def statsOf(s: Aggregator.Summary): Stats =
+    Stats(s.count, s.sum, if s.count == 0L then Int.MinValue else s.max.toInt)
+
   val summaryStats: Aggregator[Ride, Aggregator.Summary, Stats] =
     Aggregator.summary[Ride](_.delay.toLong)
       .map(s => Stats(s.count, s.sum, if s.count == 0L then Int.MinValue else s.max.toInt))

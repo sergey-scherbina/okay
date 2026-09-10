@@ -37,6 +37,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] wroclaw-table-refresh — §20's table is one quiet run from
+      2026-09-10, and okay's lanes have since changed underneath it
+      (wroclaw-flat-by-default: 855 -> 552 ms at one thread, 154 ->
+      107 at eight). The competitor rows must NOT be copied forward
+      beside new okay rows — that is the mixed-run defect this
+      section spent a day removing. Re-run `scripts/wroclaw-bench.sh
+      8 3 1` WHOLE on a box under load 8 and replace the table in one
+      commit. An attempt on 2026-09-11 degraded halfway (load 35 by
+      the end, ZIO reading 7 348 ms against its quiet 650) and was
+      discarded rather than published.
 - [ ] wroclaw-parallel-ceiling — where okay's merge-parallel lane's
       6.5% serial part actually is, now that the obvious answer is
       REFUTED. The lane scales 1.88x / 3.30x / 5.55x at 2 / 4 / 8

@@ -49,6 +49,40 @@ TaskManager must be told `taskmanager.cpu.cores` and its memory triad,
 a Spark Worker needs a SPARK_HOME layout (fabricated here from the
 jars already on the classpath), and a Spark executor must be told
 where the feed is because it starts in the Worker's work dir.
+## wroclaw-flat-by-default — okay's own lane stops folding with the slow spelling, and the single-core row goes to the front
+
+§20 kept okay's lane folding `count zip sum zip max` after
+`Aggregator.summary` landed, for a reason that had expired: the zip
+was the value handed to Flink and Spark through the interop, so the
+lane and the engines had to share it. They stopped sharing it when
+both engines were rewritten on their own arithmetic
+(bench-engine-native-arithmetic). Nothing was holding the slow
+spelling in place but the habit.
+
+So `OkayLane.run`, `.floor` and the merge-parallel lane now fold with
+the flat accumulator, and the zip survives as `runZip` — a row of its
+own, which is what composability costs and is worth printing.
+
+Measured on a quiet box (load 6.5), 2 414 119 events, best of 3, and
+reproduced in a second run:
+
+  1 thread   855 -> 552 ms   (582 in the second run)
+  2 fibres   454 -> 337
+  4 fibres   259 -> 176
+  8 fibres   154 -> 107 ms — 22 561 859 ev/s
+
+The single-core row was the one the operator kept asking about: at
+855 ms it sat behind every in-process competitor; at 552 it is ahead
+of all of them (the last quiet run had ZIO 650, fs2 617, JDK 633,
+plain JVM 611, kyo 832). It is now also ahead of the plain-JVM fold
+that has no event time in it at all — okay evicts, takes any key
+type, and is still first.
+
+The competitors are NOT re-measured here: the full-table run that
+would do it degraded halfway (load 35 by the end, ZIO reading 7 348 ms
+against its quiet 650), so §20's table keeps its own single quiet run
+until another one can be taken whole. What lands is the code and the
+two okay measurements that agree.
 
 ## wroclaw-parallel-prep-pass — the obvious answer to "where is the serial 6.5%" is not the answer
 

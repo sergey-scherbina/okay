@@ -6,7 +6,10 @@ object OkayBench {
     Seq(
       Bench.measure(ask, "the floor (a while loop)", 1, "no stream machinery")(
         OkayLane.floor(ask.feed)),
-      Bench.measure(ask, "okay, 1 thread (Chunks)", 1)(OkayLane.run(ask.feed)),
+      Bench.measure(ask, "okay, 1 thread (Chunks)", 1, "Aggregator.summary")(
+        OkayLane.run(ask.feed)),
+      Bench.measure(ask, "okay, 1 thread, count zip sum zip max", 1,
+        "what composability costs")(OkayLane.runZip(ask.feed)),
       Bench.measure(ask, "okay, 1 thread, packed-key windows", 1, "the pre-core operator")(
         OkayLane.packed(ask.feed)),
       // the 2x2 of §20's "why one core loses": one lookup or two,

@@ -108,6 +108,38 @@ object OkayLane {
   def run(feed: Feed, chunk: Int = 256): Job.Result = {
     val tram = tramTable(feed)
     val sink = new Sink(tram)
+    // THE FLAT ACCUMULATOR IS THE DEFAULT (wroclaw-flat-by-default).
+    // `Job.stats` — `count zip sum zip max` — is what this lane used
+    // to fold with, and §20 measured what that cost: six objects per
+    // `add`, four panes per event, ~1 KB/event, and 855 ms against
+    // 647 for the same job over `Aggregator.summary`. The zip was
+    // kept as the default while it was the value handed to Flink and
+    // Spark through the interop; those engines use their own
+    // arithmetic now (bench-engine-native-arithmetic), so nothing is
+    // holding the slow spelling in place. It survives as `runZip`,
+    // which is what composability costs and is worth a row of its own.
+    val routeWindows = Windows.tumbling[Int, Ride, Aggregator.Summary, Job.Stats](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.summaryStats)
+    val stopWindows = Windows.sliding[Int, Ride, Aggregator.Summary, Job.Stats](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.summaryStats)
+    val lastSeen = mutable.LongMap.empty[Long]
+
+    Chunks.foldLeft(rides(feed, tram, chunk))(())((_, r) => {
+      routeWindows.add(r)(sink.route)
+      stopWindows.add(r)(sink.stop)
+      bunching(lastSeen, r, sink)
+      ()
+    })
+    routeWindows.close()(sink.route)
+    stopWindows.close()(sink.stop)
+    sink.result
+  }
+
+  /** the same lane over `count zip sum zip max` — the composable
+   * spelling, kept as the row that prices it (docs/benchmarks.md §20) */
+  def runZip(feed: Feed, chunk: Int = 256): Job.Result = {
+    val tram = tramTable(feed)
+    val sink = new Sink(tram)
     val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Stats](
       Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)
     val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Stats](
@@ -261,10 +293,10 @@ object OkayLane {
   def floor(feed: Feed): Job.Result = {
     val tram = tramTable(feed)
     val sink = new Sink(tram)
-    val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Stats](
-      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)
-    val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Stats](
-      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats)
+    val routeWindows = Windows.tumbling[Int, Ride, Aggregator.Summary, Job.Stats](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.summaryStats)
+    val stopWindows = Windows.sliding[Int, Ride, Aggregator.Summary, Job.Stats](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.summaryStats)
     val lastSeen = mutable.LongMap.empty[Long]
     val events = feed.events
     var i = 0
@@ -477,9 +509,9 @@ object OkayLane {
     val sink = parts.head.sink
     for p <- parts.tail do sink.absorb(p.sink)
     merged(parts.map(_.route), Job.WindowMs)((start, key, acc) =>
-      sink.route(Pane(start, start + Job.WindowMs, key, Job.stats.present(acc))))
+      sink.route(Pane(start, start + Job.WindowMs, key, Job.statsOf(acc))))
     merged(parts.map(_.stop), Job.SlideMs)((start, key, acc) =>
-      sink.stop(Pane(start, start + Job.SlideWindowMs, key, Job.stats.present(acc))))
+      sink.stop(Pane(start, start + Job.SlideWindowMs, key, Job.statsOf(acc))))
 
     // the bunching pairs that fall between two slices: for each key,
     // the last time in an earlier slice against the first in the next
@@ -497,42 +529,43 @@ object OkayLane {
 
   /** what one slice hands back */
   private final class Part(val sink: Sink,
-                           val route: mutable.LongMap[Job.Acc],
-                           val stop: mutable.LongMap[Job.Acc],
+                           val route: mutable.LongMap[Aggregator.Summary],
+                           val stop: mutable.LongMap[Aggregator.Summary],
                            val first: mutable.LongMap[Long],
                            val last: mutable.LongMap[Long])
 
   /** the same aggregator, presenting its ACCUMULATOR — what a partial
    * pane must carry so that another slice's can be merged into it */
-  private val partialStats: Aggregator[Ride, Job.Acc, Job.Acc] =
-    Aggregator[Ride, Job.Acc, Job.Acc](Job.stats.init)(Job.stats.add)(Job.stats.merge)(identity)
+  private val partialStats: Aggregator[Ride, Aggregator.Summary, Aggregator.Summary] =
+    Job.summaryPartial
 
   private def slice(feed: Feed, tram: Array[Boolean], from: Int, until: Int, index: Int,
                     hi: Array[Long], back: Long, chunk: Int): Part = {
     val sink = new Sink(tram)
-    val partialRoute = mutable.LongMap.empty[Job.Acc]
-    val partialStop = mutable.LongMap.empty[Job.Acc]
+    val partialRoute = mutable.LongMap.empty[Aggregator.Summary]
+    val partialStop = mutable.LongMap.empty[Aggregator.Summary]
     val first = mutable.LongMap.empty[Long]
     val last = mutable.LongMap.empty[Long]
     val lower = if index == 0 then Long.MinValue else hi(index - 1)
     val upper = hi(index) - back
 
-    def keep(partial: mutable.LongMap[Job.Acc], slide: Long)(p: Pane[Int, Job.Acc]): Unit =
+    def keep(partial: mutable.LongMap[Aggregator.Summary], slide: Long)
+            (p: Pane[Int, Aggregator.Summary]): Unit =
       val id = ((p.start / slide) << 20) | p.key.toLong
-      partial.update(id, partial.get(id).fold(p.value)(Job.stats.merge(_, p.value)))
+      partial.update(id, partial.get(id).fold(p.value)(Job.summaryPartial.merge(_, p.value)))
 
-    val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Acc](
+    val routeWindows = Windows.tumbling[Int, Ride, Aggregator.Summary, Aggregator.Summary](
       Job.WindowMs, Job.Lateness)(_.route)(_.ts)(partialStats)
-    val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Acc](
+    val stopWindows = Windows.sliding[Int, Ride, Aggregator.Summary, Aggregator.Summary](
       Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(partialStats)
 
-    val onRoute: Pane[Int, Job.Acc] => Unit = p =>
+    val onRoute: Pane[Int, Aggregator.Summary] => Unit = p =>
       if p.start > lower && p.end <= upper then
-        sink.route(Pane(p.start, p.end, p.key, Job.stats.present(p.value)))
+        sink.route(Pane(p.start, p.end, p.key, Job.statsOf(p.value)))
       else keep(partialRoute, Job.WindowMs)(p)
-    val onStop: Pane[Int, Job.Acc] => Unit = p =>
+    val onStop: Pane[Int, Aggregator.Summary] => Unit = p =>
       if p.start > lower && p.end <= upper then
-        sink.stop(Pane(p.start, p.end, p.key, Job.stats.present(p.value)))
+        sink.stop(Pane(p.start, p.end, p.key, Job.statsOf(p.value)))
       else keep(partialStop, Job.SlideMs)(p)
 
     val lastSeen = mutable.LongMap.empty[Long]
@@ -561,11 +594,11 @@ object OkayLane {
   /** merge one pane map across the slices, then hand each merged
    * accumulator to the sink — this is `Aggregator.merge` doing the job
    * a shuffle does in an engine */
-  private def merged(maps: Seq[mutable.LongMap[Job.Acc]], slide: Long)
-                    (emit: (Long, Int, Job.Acc) => Unit): Unit =
-    val all = mutable.LongMap.empty[Job.Acc]
+  private def merged(maps: Seq[mutable.LongMap[Aggregator.Summary]], slide: Long)
+                    (emit: (Long, Int, Aggregator.Summary) => Unit): Unit =
+    val all = mutable.LongMap.empty[Aggregator.Summary]
     for m <- maps do m.foreachKey { id =>
-      all.update(id, all.get(id).fold(m(id))(Job.stats.merge(_, m(id))))
+      all.update(id, all.get(id).fold(m(id))(Job.summaryPartial.merge(_, m(id))))
     }
     all.foreachKey(id => emit((id >>> 20) * slide, (id & 0xfffffL).toInt, all(id)))
 }
