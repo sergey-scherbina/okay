@@ -166,6 +166,42 @@ final class Module[F[_]](val build: Providing[F] ! Resource,
   /** declare a fact of kind `k` about this module; a reader merges it with the rest */
   def declare[V](k: Fact[V], v: V): Module[F] = new Module(build, ready, facts.add(k, v))
 
+/**
+ * AN INSTANCE PER CONSUMER, not per scope (di-prototype).
+ *
+ * A `module` installs one value and everyone downstream shares it —
+ * which is what most capabilities want. What a `New[A]` installs is
+ * the ability to MAKE an `A`: every `fresh[A]` answers a new one.
+ *
+ * Its `apply` answers a PROGRAM, always, even where nothing has to be
+ * closed, and that is the point rather than an oversight: a provider
+ * that starts closing what it makes — a connection instead of a
+ * counter — changes one line and no consumer moves. A consumer must
+ * not know whether what it asks for is released, or it would have to
+ * be rewritten every time the answer changes.
+ *
+ * The instance is released by the region its `fresh` RUNS in, so the
+ * caller chooses the lifetime by choosing the region: one per
+ * request (`Resource.scoped` inside the handler) or one per
+ * application (the region `main` holds open — where thousands of
+ * unreleased instances would pile up, which is the trade to know).
+ */
+trait New[A]:
+  def apply(): A ! Resource
+
+/** the consumer one-liner: a new `A`, in the region this runs in */
+inline def fresh[A](using n: New[A]): A ! Resource = n()
+
+/** an instance per consumer, with nothing to release */
+def prototype[A](make: => A): Module[[X] =>> New[A] ?=> X] =
+  Module.value[New[A]](new New[A]:
+    def apply(): A ! Resource = pure[Resource, A](make))
+
+/** an instance per consumer, released by the region each one runs in */
+def prototype[A](acquire: => A)(release: A => Unit): Module[[X] =>> New[A] ?=> X] =
+  Module.value[New[A]](new New[A]:
+    def apply(): A ! Resource = Resource.acquire(acquire)(release))
+
 /** acquire one capability in the scope; the scope releases it */
 def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
   new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
@@ -237,7 +273,16 @@ object Module:
 
   def planImpl[F[_] : Type](using Quotes): Expr[Vector[String]] =
     import quotes.reflect.*
-    val names = chain(TypeRepr.of[F[Module.Marker]], TypeRepr.of[Module.Marker]).map(_._1.typeSymbol.name)
+    // an APPLIED capability keeps its argument: a prototype reads as
+    // `New[Conn]`, not `New`, which is the difference between a plan
+    // and a list of type constructors (di-prototype)
+    def name(using q: Quotes)(t: q.reflect.TypeRepr): String =
+      import q.reflect.*
+      t.dealias match
+        case AppliedType(tc, args) =>
+          s"${tc.typeSymbol.name}[${args.map(a => a.typeSymbol.name).mkString(", ")}]"
+        case other => other.typeSymbol.name
+    val names = chain(TypeRepr.of[F[Module.Marker]], TypeRepr.of[Module.Marker]).map(t => name(t._1))
     val list = Expr(names)
     '{ $list.toVector }
 

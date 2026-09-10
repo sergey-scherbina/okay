@@ -296,6 +296,33 @@ okay-demo's deployment test pins that, so the day the root gains a
 database it did not provision, the build stops until someone says
 what that is.
 
+## Lifetimes (di-prototype, 2026-09-10)
+
+The arc had one lifetime: a `module` installs one value for a region.
+An instance per consumer needed a named trait per capability, and the
+pure and the releasing shapes had DIFFERENT types — so a provider
+that began closing what it made broke every consumer.
+
+`New[A]` is the one type, `fresh[A]` the one consumer word, and
+`prototype` comes in the two spellings that mirror
+`Module.value`/`module`. `New[A].apply()` answers `A ! Resource`
+ALWAYS, including where nothing is released: uniformity at the call
+site is worth a program wrapper, because the alternative is that
+every consumer learns whether its instance is closed. Pinned by a
+test that runs ONE consumer against both providers.
+
+The instance is released by the region its `fresh` runs in, which
+makes the caller the one who chooses the lifetime — a per-request
+region (`Resource.scoped`, the region as an expression, since `run`
+forwards a row and a per-call region has nothing to forward) or the
+application's. Inside a long-lived region every `fresh` accumulates
+until it ends; stated in the docs and in a test rather than left to
+be discovered.
+
+Also here: `plan` now keeps a capability's type ARGUMENT, so a
+prototype reads as `New[Conn]` rather than `New` — the difference
+between a plan and a list of type constructors.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

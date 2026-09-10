@@ -154,6 +154,46 @@ CONFIG and before the first ACQUISITION is readable, which is when a
 manifest is written. Facts declared below an acquisition wait for the
 scope to run.
 
+## Three lifetimes, and who chooses them
+
+A `module` installs ONE value: everything downstream shares it, and
+the region releases it at the end. That is the singleton, and it is
+the default — there is no annotation to write and none to forget.
+
+An instance per CONSUMER is a different capability: not the thing,
+but the ability to make it.
+
+```scala
+val conns = prototype[Conn](Conn.open(url))(_.close())   // or without a release
+...
+direct { val c = !fresh[Conn]; c.query(sql) }
+```
+
+`fresh[A]` always answers a PROGRAM, even where nothing has to be
+closed. That is deliberate: the day a provider starts closing what it
+makes, one line changes and no consumer moves. A pure shape answering
+a bare `A` would have made that a rewrite.
+
+**The region that RUNS the `fresh` releases it**, so the caller picks
+the lifetime by picking the region:
+
+```scala
+def handle(r: Request): New[Conn] ?=> Response =
+  Resource.scoped(fresh[Conn].map(c => answer(r, c)))     // one per request
+```
+
+`Resource.scoped` is the region as an expression — open, run,
+release, answer — for a scope that is the whole story. Inside one
+long-lived region instead, every `fresh` piles up until that region
+ends; that is the trade to know, and it is why a per-request region
+is the shape a handler wants.
+
+For something expensive and reusable — a database connection — a
+prototype is usually the wrong answer and a pool is the right one:
+one capability for the application, `borrow` inside the request.
+
+In a plan a prototype keeps what it makes: `Vector("Log", "New[Conn]")`.
+
 ## An application, end to end
 
 okay-demo's chat is wired this way. Its config is a value, so
