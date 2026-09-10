@@ -28,6 +28,17 @@ enum Req:
   /** what this worker's build knows how to run */
   case Known
 
+  // --- streaming (specs/dataflow.md, stage 6a) ---------------------
+
+  /** begin an epoch-by-epoch run of one partition, and keep its
+   * operator state between rounds */
+  case Open(job: String, params: Array[Byte], part: Int, of: Int, session: Long)
+  /** advance this partition by up to `take` elements under these
+   * bounds, and hand back what it has closed so far */
+  case Advance(session: Long, take: Int, bounds: Vector[Bounds])
+  /** the stream is over: close what is open and let the state go */
+  case Close(session: Long)
+
 enum Resp:
   case Extents(cols: Vector[Flows.Extent])
   /** the partial, encoded by the sink's own `wire` — the coordinator
@@ -35,6 +46,12 @@ enum Resp:
    * inside */
   case Partial(bytes: Array[Byte])
   case Names(names: Vector[String])
+  /** one epoch's partial, and the partition's own extent so far — the
+   * coordinator needs the second to compute the watermark, which in a
+   * stream is the MINIMUM over the partitions rather than the maximum
+   * over everything */
+  case Epoch(bytes: Array[Byte], extent: Vector[Flows.Extent], drained: Boolean)
+  case Opened(session: Long)
   case Failed(why: String)
 
 object Req:
@@ -172,6 +189,24 @@ object Cluster {
    */
   val local: Serve = {
     case Req.Known => Resp.Names(Jobs.names)
+    case Req.Open(name, params, part, of, session) =>
+      Jobs.find(name) match
+        case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
+        case Some(job) =>
+          job.openAt(params, part, of) match
+            case Right(st) => { Sessions.put(session, st); Resp.Opened(session) }
+            case Left(why) => Resp.Failed(s"parameters for '$name': $why")
+    case Req.Advance(session, take, bounds) =>
+      Sessions.get(session) match
+        case None => Resp.Failed(s"no session $session on this worker")
+        case Some(st) => st.advance(take, bounds)
+    case Req.Close(session) =>
+      Sessions.get(session) match
+        case None => Resp.Failed(s"no session $session on this worker")
+        case Some(st) =>
+          val out = st.finish()
+          Sessions.drop(session)
+          out
     case Req.Extent(name, params, part, of) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
@@ -187,6 +222,181 @@ object Cluster {
             case Right(bytes) => Resp.Partial(bytes)
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
   }
+
+  /**
+   * STREAM A JOB, EPOCH BY EPOCH (specs/dataflow.md, stage 6a).
+   *
+   * Each round advances every partition by up to `take` elements. The
+   * workers keep their operator state between rounds — an open pane
+   * is open across an epoch boundary, which is the whole difference
+   * between this and running the batch driver in a loop.
+   *
+   * THE WATERMARK IS THE MINIMUM OVER THE PARTITIONS, and that is not
+   * a detail. In a batch run the coordinator hears from every
+   * partition before anything folds, so the greatest event time is
+   * known. In a stream it knows only what each partition has reported
+   * SO FAR, and a partition that has not advanced holds the whole
+   * stream back — because whatever it has not read yet may still fall
+   * into a pane the others consider closed.
+   *
+   * A pane the watermark has passed is retired by `Sink.absorb` and
+   * leaves the coordinator's memory; one still open meets the next
+   * epoch's partials. That is what keeps a stream's coordinator
+   * bounded rather than growing with the run.
+   *
+   * The run ends when every partition reports itself drained, which
+   * for a bounded source is the batch answer — and the suite asserts
+   * exactly that, because a streaming answer that differs from the
+   * batch one is wrong rather than different.
+   */
+  def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int)
+                  (using Scheduler): Run[R] ! Async =
+    require(parts > 0, "a job has at least one partition")
+    require(workers.nonEmpty, "a job needs at least one worker")
+    require(take > 0, "an epoch advances by at least one element")
+    val encoded = Codecs.cbor(job.params).encode(p)
+    val sink = job.sink(p)
+    val living = Living(workers.length)
+    val base = System.nanoTime()
+    val sessions = Vector.tabulate(parts)(i => base + i)
+
+    // one session per partition, opened where that partition will live
+    val opened: Vector[Unit] ! Async = Flows.spread(parts) { i =>
+      ask(workers, living, i, Req.Open(job.name, encoded, i, parts, sessions(i))) match
+        case Resp.Opened(_) => ()
+        case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
+        case other => throw IllegalStateException(s"partition $i answered $other to an open")
+    }
+
+    opened.flatMap: _ =>
+      def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long)
+      : Run[R] ! Async =
+        // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
+        // place the streaming engine had to stop copying the batch
+        // one.
+        //
+        // A partition may finish a pane by itself when it knows that
+        // nothing earlier can still arrive — `end <= hi(i) - back`.
+        // In a batch run every partition's extent is known before
+        // anything folds, so `back` is the stream's true
+        // backwardness. In a stream `back` is only what has been SEEN
+        // so far, which is an under-estimate of what is to come, so
+        // `upper` is too generous and a pane is finished before its
+        // last elements arrive. It is then presented twice, once for
+        // each half of its data: the totals still agree and the pane
+        // COUNT goes up, which is exactly what the batch comparison
+        // caught (3214 panes against 3204, same sum).
+        //
+        // So a streaming partition finishes nothing locally, and the
+        // COORDINATOR retires panes on the global watermark instead.
+        // That is the ordinary architecture of a stream processor,
+        // and the completeness rule stays what it is: a batch
+        // optimisation that needs the whole extent to be legal.
+        //
+        // `Bounds(MinValue, MinValue)`: the lower bound is also the
+        // watermark SEED, so it must be MinValue — a partition in a
+        // stream starts where it starts and has no earlier stream to
+        // inherit from. (MaxValue there seeds the watermark to
+        // infinity and every element is late: 20 000 of 20 000
+        // dropped, which is how that mistake announced itself.) The
+        // upper bound at MinValue is what finishes nothing locally.
+        val bs = Vector.fill(parts)(sink.times.map(_ => Bounds(Long.MinValue, Long.MinValue)))
+        Flows.spread(parts) { i =>
+          ask(workers, living, i, Req.Advance(sessions(i), take, bs(i))) match
+            case e: Resp.Epoch => e
+            case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
+            case other => throw IllegalStateException(s"partition $i answered $other to an advance")
+        }.flatMap { es =>
+          val ws = es.zipWithIndex.map { (e, i) =>
+            Codecs.cbor(sink.wire).decode(e.bytes) match
+              case Right(w) => w
+              case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
+          }
+          val grown = seen.indices.toVector.map(i => merge(seen(i), es(i).extent))
+          // NOT `drained`: the SOURCES being exhausted is not the
+          // stream being over. Every operator still holds the panes
+          // its own watermark never closed, and those come out on the
+          // Close below. Treating the last epoch as the end retires
+          // the fast partition's half of a boundary pane before the
+          // slow partition's half arrives, and the two are then
+          // presented as two panes — all ten of them in window 99000,
+          // which is exactly where the two partitions meet.
+          val mark = watermark(grown, sink.slack)
+          val next = sink.absorb(state, ws, mark)
+          val d = drops + sink.drops(ws)
+          val m = merged + sink.merged(ws)
+          if es.forall(_.drained) then
+            // THE CLOSE CARRIES A PARTIAL. Every pane still open when
+            // the source ran out is swept out by `finish` and comes
+            // back here; the first version of this driver used the
+            // close only to release the session and threw that
+            // partial away, which lost fifteen panes of three
+            // thousand and is what the batch comparison caught.
+            //
+            // (And the close is a PROGRAM: building it and dropping
+            // it also left every session alive on every worker, which
+            // `Sessions.count` caught separately.)
+            Flows.spread(parts) { i =>
+              ask(workers, living, i, Req.Close(sessions(i))) match
+                case e: Resp.Epoch => e
+                case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
+                case other => throw IllegalStateException(s"partition $i answered $other to a close")
+            }.map { last =>
+              val lw = last.zipWithIndex.map { (e, i) =>
+                Codecs.cbor(sink.wire).decode(e.bytes) match
+                  case Right(w) => w
+                  case Left(why) => throw IllegalStateException(s"partition $i's last partial: $why")
+              }
+              val end = sink.absorb(next, lw, Long.MaxValue)
+              Run(sink.emit(end), d + sink.drops(lw), parts, 1,
+                m + sink.merged(lw), living.retries)
+            }
+          else epoch(next, grown, d, m)
+        }
+
+      epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L)
+
+  /** a partition's extent so far, taking this epoch's into the last */
+  private def merge(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =
+    if a.isEmpty then b else if b.isEmpty then a
+    else a.indices.toVector.map { j =>
+      Flows.Extent(math.max(a(j).max, b(j).max), math.min(a(j).min, b(j).min),
+        math.max(a(j).back, b(j).back))
+    }
+
+  /**
+   * THE LEAST EVENT TIME THAT CAN STILL ARRIVE.
+   *
+   * The minimum over the partitions of (what each has seen MINUS how
+   * far it has been known to go back). Two halves, and both are
+   * load-bearing:
+   *
+   *   - the MINIMUM, because a partition that has read less may still
+   *     produce something earlier than the others' greatest, and a
+   *     partition that has read nothing at all may produce anything;
+   *   - minus the DECLARED lateness, because even a partition that
+   *     has read far can still produce an element below its own
+   *     greatest. The first version used the raw maximum and the
+   *     second used the OBSERVED backwardness; both retire a pane
+   *     before its last elements arrive, and a pane retired early is
+   *     presented twice, once for each half of its data (3214 panes
+   *     against 3204, with the sums equal — which is what the batch
+   *     comparison caught, twice).
+   *
+   *     The observed backwardness is not a bound on the future: it is
+   *     what has been seen so far and it grows. The declared lateness
+   *     is the user's own contract about what may still arrive, and
+   *     it is the only number here that is true of what has not.
+   *
+   * There is no "and now it is over" case here on purpose: that
+   * belongs to the CLOSE, which is the only moment at which every
+   * operator has swept out what it still held.
+   */
+  private def watermark(seen: Vector[Vector[Flows.Extent]], slack: Long): Long =
+    if seen.exists(_.isEmpty) then Long.MinValue
+    else
+      val least = seen.map(_.map(_.max).min).min
+      if least == Long.MinValue then Long.MinValue else least - slack
 
   /** the work seam of P7, unchanged: one executor of chunk work */
   type Worker[A, Acc] = Chunk[A] => Acc

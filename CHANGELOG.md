@@ -1,5 +1,62 @@
 # Changelog
 
+## dataflow stage 6a — the epoch loop, and the same bug three times
+
+Everything before this was a BATCH engine that happened to run across
+machines. Three changes make it a stream, and their order was forced
+rather than chosen.
+
+**The coordinator side of `Sink` became a fold.** `result(ws): R` can
+only be called when nothing is left to come; it is now `empty`,
+`absorb(s, ws, watermark)` and `emit(s)`, with `result` defined as
+that fold over one epoch at a watermark of infinity — so nothing
+existing moved and the batch answer stayed the definition of correct.
+Without it the coordinator can never retire a pane.
+
+**The watermark is the MINIMUM over the partitions, minus the DECLARED
+lateness.** The minimum because a partition that has read less may
+still produce something earlier than the others' greatest, and one
+that has read nothing may produce anything. The declared lateness
+rather than the observed backwardness because the observed figure is
+only what has been seen so far and it grows — it is not a bound on
+the future, and the user's own `lateness` is.
+
+**An epoch**: Open / Advance / Close, with the operator state living
+on the worker between rounds, so a pane open at an epoch boundary
+stays open.
+
+**THE SAME BUG THREE TIMES.** Every one produced identical symptoms —
+sums exactly equal, pane COUNT ten too high, all ten in window 99000,
+which is where the two partitions meet. A pane retired before its last
+contributor has handed over comes out as two panes whose values add
+up.
+
+  1. the local completeness rule fired in a stream, where `back` is an
+     under-estimate. A streaming partition now finishes nothing
+     locally; the rule stays a batch optimisation that needs the whole
+     extent to be legal.
+  2. the coordinator's watermark used the observed backwardness.
+  3. and the last: the sources being EXHAUSTED was treated as the
+     stream being OVER. It is not — every operator still holds the
+     panes its own watermark never closed, and those come out on the
+     Close.
+
+Only the third was found by reasoning. The first two were found by the
+same failing assertion, and the third by finally PRINTING which panes
+differed instead of arguing about which could. That print is now
+`TestPanesOnce`, which asserts the invariant directly, so the next
+version of this mistake announces itself as itself.
+
+**One thing that is not a bug, and the test says so.** On a feed with
+late elements a streamed run drops FEWER than a batch run and counts
+more. The batch engine reconstructs one global order out of its
+slices — stage 1's seeding theorem — and a stream has no such order:
+its partitions are independent channels with independent watermarks.
+Asserting equality there would be asserting that a stream is a batch.
+
+Not done: the worker's state is in memory and dies with it, so a
+stream that loses a worker loses that partition's open panes. That is
+6b, and okay-persist already has the log and the offsets it needs.
 ## bench-engine-native-arithmetic — the last two lanes stop borrowing our arithmetic, and it was a handicap
 
 §20's five in-process lanes were rewritten on their own operators

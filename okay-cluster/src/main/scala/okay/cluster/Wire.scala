@@ -42,14 +42,20 @@ abstract class Wire[A, R] extends Sink[A, R]:
     new Wire[A, (R, R2)]:
       type P = (self.P, that.P)
       type W = (self.W, that.W)
+      type S = (self.S, that.S)
       def wire: Schema[W] = Wire.pair(self.wire, that.wire)
+      def empty: S = (self.empty, that.empty)
+      def absorb(st: S, ws: Vector[W], watermark: Long): S =
+        (self.absorb(st._1, ws.map(_._1), watermark),
+         that.absorb(st._2, ws.map(_._2), watermark))
+      def emit(st: S): (R, R2) = (self.emit(st._1), that.emit(st._2))
+      def slack: Long = math.max(self.slack, that.slack)
       def times: Vector[A => Long] = self.times ++ that.times
       def start(bounds: Vector[Bounds]): P =
         (self.start(bounds.take(n)), that.start(bounds.drop(n)))
       def step(p: P, a: A): Unit = { self.step(p._1, a); that.step(p._2, a) }
       def finish(p: P): W = (self.finish(p._1), that.finish(p._2))
-      def result(ws: Vector[W]): (R, R2) =
-        (self.result(ws.map(_._1)), that.result(ws.map(_._2)))
+      def peek(p: P): W = (self.peek(p._1), that.peek(p._2))
       def drops(ws: Vector[W]): Long =
         self.drops(ws.map(_._1)) + that.drops(ws.map(_._2))
       def merged(ws: Vector[W]): Long =
@@ -63,12 +69,17 @@ object Wire {
     new Wire[A, R]:
       type P = local.P
       type W = local.W
+      type S = local.S
       def wire: Schema[W] = s
+      def empty: S = local.empty
+      def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
+      def emit(st: S): R = local.emit(st)
+      def slack: Long = local.slack
       def times: Vector[A => Long] = local.times
       def start(bounds: Vector[Bounds]): P = local.start(bounds)
       def step(p: P, a: A): Unit = local.step(p, a)
       def finish(p: P): W = local.finish(p)
-      def result(ws: Vector[W]): R = local.result(ws)
+      def peek(p: P): W = local.peek(p)
       def drops(ws: Vector[W]): Long = local.drops(ws)
       def merged(ws: Vector[W]): Long = local.merged(ws)
 
@@ -80,12 +91,17 @@ object Wire {
     new Wire[A, R]:
       type P = local.P
       type W = local.W
+      type S = local.S
       def wire: Schema[W] = Schema.SVector(() => pair(sk, sa))
+      def empty: S = local.empty
+      def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
+      def emit(st: S): R = local.emit(st)
+      def slack: Long = local.slack
       def times: Vector[A => Long] = local.times
       def start(bounds: Vector[Bounds]): P = local.start(bounds)
       def step(p: P, a: A): Unit = local.step(p, a)
       def finish(p: P): W = local.finish(p)
-      def result(ws: Vector[W]): R = local.result(ws)
+      def peek(p: P): W = local.peek(p)
       def drops(ws: Vector[W]): Long = local.drops(ws)
       def merged(ws: Vector[W]): Long = local.merged(ws)
 
@@ -107,12 +123,17 @@ object Wire {
     new Wire[A, R]:
       type P = local.P
       type W = local.W
+      type S = local.S
       def wire: Schema[W] = handed(sk, sa, si)
+      def empty: S = local.empty
+      def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
+      def emit(st: S): R = local.emit(st)
+      def slack: Long = local.slack
       def times: Vector[A => Long] = local.times
       def start(bounds: Vector[Bounds]): P = local.start(bounds)
       def step(p: P, a: A): Unit = local.step(p, a)
       def finish(p: P): W = local.finish(p)
-      def result(ws: Vector[W]): R = local.result(ws)
+      def peek(p: P): W = local.peek(p)
       def drops(ws: Vector[W]): Long = local.drops(ws)
       def merged(ws: Vector[W]): Long = local.merged(ws)
 

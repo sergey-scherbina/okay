@@ -166,6 +166,27 @@ blip on EVERY worker still ends the run; and the coordinator is a
 single point of failure that journals nothing. Both are in the
 backlog, neither is pretended away.
 
+**As a stream.** `Cluster.stream(job, params, parts, workers, take)`
+runs the job epoch by epoch: every round advances each partition by up
+to `take` elements, the workers keep their operator state between
+rounds (so a pane open at an epoch boundary stays open), and the
+coordinator retires what the global watermark has closed. That
+watermark is the MINIMUM over the partitions minus the window's
+declared lateness — the minimum because a partition that has read
+less may still produce something earlier, and the declared lateness
+because the observed backwardness is only what has been seen so far
+and is no bound on the future.
+
+A streaming partition finishes nothing locally: the completeness rule
+of `Flows.fan` needs the whole extent to be legal, which a stream does
+not have. And note the honest asymmetry — on a feed with late
+elements a streamed run drops FEWER than a batch run, because the
+batch engine reconstructs one global order out of its slices and a
+stream's partitions are independent channels.
+
+The worker's state is in memory: a stream that loses a worker loses
+that partition's open panes. Checkpointing is stage 6b.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
@@ -243,7 +264,8 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Flows.fold` / `Flows.collect` | as above / `Flow[A] => Vector[A] ! Async` | the answer alone; every element in partition order |
 | `Job[P, R]` | `name / params / flow / sink` | what a worker can be asked for, by name |
 | `Jobs.register / find / names` | | what a build knows how to run |
-| `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator |
+| `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator, for a bounded source |
+| `Cluster.stream` | `(Job[P,R], P, parts, Vector[Serve], take) => Run[R] ! Async` | the same, epoch by epoch, with the state kept on the workers |
 | `Cluster.local` | `Req => Resp` | a worker made of the registry — in-process, and what a served process runs |
 | `Served.serve / connect` | `(ServerSocket, Serve)` / `(host, port) => Serve` | the same worker on a socket |
 | `WorkerMain` | `main(port, registrars…)` | a worker process |

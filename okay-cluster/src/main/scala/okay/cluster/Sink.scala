@@ -64,11 +64,65 @@ abstract class Sink[A, R]:
    * back what leaves */
   def finish(p: P): W
 
-  /** the coordinator: the partials, IN PARTITION ORDER */
-  def result(ws: Vector[W]): R
+  /**
+   * What has left the partition SO FAR, without closing anything —
+   * one epoch's worth (specs/dataflow.md, stage 6a).
+   *
+   * `finish` is this plus "and there is no more input". A windowed
+   * operator has already emitted every pane its watermark closed, so
+   * `peek` hands those over and keeps the open ones; `finish` sweeps
+   * the rest out too.
+   *
+   * Handing over TWICE must not double-count, which is why every
+   * implementation below empties what it hands over.
+   */
+  def peek(p: P): W
+
+  /**
+   * THE COORDINATOR'S RUNNING STATE.
+   *
+   * A batch run folds every partial once and presents. A stream has
+   * no "once", so the coordinator keeps a state and folds epoch by
+   * epoch, retiring what the watermark has closed. `result` below is
+   * that fold with the whole stream in one epoch and a watermark of
+   * infinity — so the batch answer stays the definition of correct.
+   */
+  type S
+
+  def empty: S
+
+  /**
+   * Take one epoch's partials, IN PARTITION ORDER, and retire
+   * everything the watermark has closed.
+   *
+   * `watermark` is the least event time that can still arrive: a pane
+   * ending at or before it can receive nothing more and is folded
+   * into the answer now. `Long.MaxValue` retires everything, which is
+   * what the end of a stream means.
+   */
+  def absorb(s: S, ws: Vector[W], watermark: Long): S
+
+  /** what has been retired so far */
+  def emit(s: S): R
+
+  /** the batch answer: one epoch, and nothing left to come */
+  final def result(ws: Vector[W]): R = emit(absorb(empty, ws, Long.MaxValue))
 
   /** late elements this sink dropped */
   def drops(ws: Vector[W]): Long
+
+  /**
+   * HOW FAR OUT OF ORDER THIS SINK'S INPUT MAY ARRIVE — the declared
+   * lateness of its windows, and zero when it has none.
+   *
+   * The coordinator needs a bound on the future to retire a pane, and
+   * in a stream the OBSERVED backwardness is not one: it is only what
+   * has been seen so far and it grows. The declared lateness is the
+   * user's own contract — an element further out of order than this
+   * is late and dropped — so it is the only number that is true of
+   * what has not arrived yet.
+   */
+  def slack: Long
 
   /** how many accumulators reached the COORDINATOR — the work the
    * completeness rule exists to remove, reported so that a suite can
@@ -82,13 +136,19 @@ abstract class Sink[A, R]:
     new Sink[A, (R, R2)]:
       type P = (self.P, that.P)
       type W = (self.W, that.W)
+      type S = (self.S, that.S)
+      def empty: S = (self.empty, that.empty)
+      def absorb(s: S, ws: Vector[W], watermark: Long): S =
+        (self.absorb(s._1, ws.map(_._1), watermark),
+         that.absorb(s._2, ws.map(_._2), watermark))
+      def emit(s: S): (R, R2) = (self.emit(s._1), that.emit(s._2))
+      def slack: Long = math.max(self.slack, that.slack)
       def times: Vector[A => Long] = self.times ++ that.times
       def start(bounds: Vector[Bounds]): P =
         (self.start(bounds.take(n)), that.start(bounds.drop(n)))
       def step(p: P, a: A): Unit = { self.step(p._1, a); that.step(p._2, a) }
       def finish(p: P): W = (self.finish(p._1), that.finish(p._2))
-      def result(ws: Vector[W]): (R, R2) =
-        (self.result(ws.map(_._1)), that.result(ws.map(_._2)))
+      def peek(p: P): W = (self.peek(p._1), that.peek(p._2))
       def drops(ws: Vector[W]): Long =
         self.drops(ws.map(_._1)) + that.drops(ws.map(_._2))
       def merged(ws: Vector[W]): Long =
@@ -105,11 +165,18 @@ object Sink {
     new Sink[A, R]:
       type P = Box[Acc]
       type W = Acc
+      type S = Acc
       def times: Vector[A => Long] = Vector.empty
       def start(bounds: Vector[Bounds]): P = Box(into.init)
       def step(p: P, a: A): Unit = p.value = into.add(p.value, a)
-      def finish(p: P): W = p.value
-      def result(ws: Vector[W]): R = into.present(ws.reduceLeft(into.merge))
+      def finish(p: P): W = peek(p)
+      def peek(p: P): W = { val out = p.value; p.value = into.init; out }
+      def empty: S = into.init
+      // no key and no window: nothing is ever open, so every epoch's
+      // partials retire immediately and the watermark says nothing
+      def absorb(s: S, ws: Vector[W], watermark: Long): S = ws.foldLeft(s)(into.merge)
+      def emit(s: S): R = into.present(s)
+      def slack: Long = 0L
       def drops(ws: Vector[W]): Long = 0L
       def merged(ws: Vector[W]): Long = ws.length.toLong
 
@@ -124,19 +191,32 @@ object Sink {
     new Sink[A, R]:
       type P = mutable.HashMap[K, Acc]
       type W = Vector[(K, Acc)]
+      type S = mutable.HashMap[K, Acc]
       def times: Vector[A => Long] = Vector.empty
       def start(bounds: Vector[Bounds]): P = mutable.HashMap.empty[K, Acc]
       def step(p: P, a: A): Unit =
         val k = key(a)
         p.update(k, agg.add(p.getOrElse(k, agg.init), a))
-      def finish(p: P): W = p.toVector
-      def result(ws: Vector[W]): R =
-        val all = mutable.HashMap.empty[K, Acc]
+      def finish(p: P): W = peek(p)
+      def peek(p: P): W = { val out = p.toVector; p.clear(); out }
+      def empty: S = mutable.HashMap.empty[K, Acc]
+      /**
+       * A keyed stage with no window NEVER retires: a key can always
+       * be seen again, so nothing is ever closed and the watermark
+       * has nothing to say. Its state grows with the key space, which
+       * is the same property Flink's keyed state has and the same
+       * reason a stream over unbounded keys needs a TTL nobody has
+       * asked for here yet.
+       */
+      def absorb(s: S, ws: Vector[W], watermark: Long): S =
         for m <- ws do
-          for (k, a) <- m do all.update(k, all.get(k).fold(a)(agg.merge(_, a)))
+          for (k, a) <- m do s.update(k, s.get(k).fold(a)(agg.merge(_, a)))
+        s
+      def emit(s: S): R =
         var acc = into.init
-        for (k, a) <- all do acc = into.add(acc, (k, agg.present(a)))
+        for (k, a) <- s do acc = into.add(acc, (k, agg.present(a)))
         into.present(acc)
+      def slack: Long = 0L
       def drops(ws: Vector[W]): Long = 0L
       def merged(ws: Vector[W]): Long =
         var t = 0L
@@ -156,6 +236,7 @@ object Sink {
     new Sink[A, R]:
       type P = Panes[K, Acc, A, O, IAcc]
       type W = Handed[K, Acc, IAcc]
+      type S = Open[K, Acc, IAcc]
       def times: Vector[A => Long] = Vector(at)
       def start(bounds: Vector[Bounds]): P =
         val w = new Windows[K, A, Acc, Acc](size, slide, lateness, key, at, partial)
@@ -169,21 +250,34 @@ object Sink {
         Panes(w, mutable.HashMap.empty[(Long, K), Acc], agg, size, done, into)
       def step(p: P, a: A): Unit = p.add(a)
       def finish(p: P): W = { p.close(); p.handed }
-      def result(ws: Vector[W]): R =
-        // the boundary panes — everything no partition could finish —
-        // merged across the partitions in index order
-        val all = mutable.HashMap.empty[(Long, K), Acc]
+      def peek(p: P): W = p.handed
+      def empty: S = Open(mutable.HashMap.empty[(Long, K), Acc], into.init)
+      /**
+       * The boundary panes — everything no partition could finish
+       * alone — merged across the partitions in index order, and then
+       * RETIRED where the watermark has passed their end.
+       *
+       * A pane that is still open stays in the map and meets the next
+       * epoch's partials; a pane the watermark has closed is
+       * presented and folded into the answer, and is gone. That is
+       * what keeps a stream's coordinator bounded rather than growing
+       * with the run.
+       */
+      def absorb(s: S, ws: Vector[W], watermark: Long): S =
         for w <- ws do
           for (start, k, a) <- w.boundary do
             val id = (start, k)
-            all.update(id, all.get(id).fold(a)(agg.merge(_, a)))
-        var acc = into.init
-        for ((start, k), a) <- all do
-          acc = into.add(acc, Pane(start, start + size, k, agg.present(a)))
-        // and the partitions' own accumulators, each already carrying
-        // the panes it finished alone
-        for w <- ws do acc = into.merge(acc, w.finished)
-        into.present(acc)
+            s.panes.update(id, s.panes.get(id).fold(a)(agg.merge(_, a)))
+          // the partitions' own accumulators are already finished
+          s.acc = into.merge(s.acc, w.finished)
+        val closed = s.panes.keysIterator.filter((start, _) => start + size <= watermark).toVector
+        for id <- closed do
+          s.panes.remove(id).foreach { a =>
+            s.acc = into.add(s.acc, Pane(id._1, id._1 + size, id._2, agg.present(a)))
+          }
+        s
+      def emit(s: S): R = into.present(s.acc)
+      def slack: Long = lateness
       def drops(ws: Vector[W]): Long =
         var d = 0L
         for w <- ws do d += w.late
@@ -210,6 +304,10 @@ object Sink {
   /** a mutable cell: `Sink.fold`'s accumulator has to be per-partition
    * state the driver can hand back, and an immutable `Acc` cannot be */
   final class Box[Acc](var value: Acc)
+
+  /** the COORDINATOR's running state for a windowed sink: the panes
+   * still open across partitions, and everything already retired */
+  final class Open[K, Acc, IAcc](val panes: mutable.HashMap[(Long, K), Acc], var acc: IAcc)
 
   /**
    * One partition's windowed state.
@@ -239,9 +337,26 @@ object Sink {
         panes.update(id, panes.get(id).fold(p.value)(agg.merge(_, p.value)))
     def add(a: A): Unit = w.add(a)(keep)
     def close(): Unit = w.close()(keep)
-    /** what LEAVES this partition, as a value */
+    /**
+     * What LEAVES this partition, as a value — AND IT EMPTIES.
+     *
+     * A batch run asks once, so it never mattered. An epoch asks
+     * every round, and a pane handed over twice would be merged
+     * twice: the boundary map is cleared and the terminal
+     * accumulator is reset to its zero, so each epoch hands over
+     * exactly what it produced since the last one. The late count is
+     * the operator's own running total, so it is DIFFERENCED rather
+     * than reset — the operator has no way to forget it.
+     */
     def handed: Handed[K, Acc, IAcc] =
-      Handed(panes.toVector.map { case ((start, k), a) => (start, k, a) }, acc, w.dropped)
+      val out = Handed(panes.toVector.map { case ((start, k), a) => (start, k, a) },
+        acc, w.dropped - handedLate)
+      handedLate = w.dropped
+      panes.clear()
+      acc = into.init
+      out
+
+    private var handedLate: Long = 0L
 
   /**
    * What a windowed partition hands over — and the shape of it is the

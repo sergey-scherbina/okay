@@ -59,6 +59,61 @@ abstract class Job[P, R]:
       else Flows.extent(Flows.partition(flow(p, of), part), s.times)
     }
 
+  /**
+   * OPEN A STREAMING SESSION over one partition
+   * (specs/dataflow.md, stage 6a).
+   *
+   * The state that survives between epochs is exactly two things: how
+   * much of the partition is left to read, and the sink's working
+   * state `P`. Neither ever leaves the worker — what leaves each
+   * epoch is a `W`, the same value a batch run hands over.
+   */
+  final def openAt(bytes: Array[Byte], part: Int, of: Int): Either[String, Session] =
+    Codecs.cbor(params).decode(bytes).map { p =>
+      val s = sink(p)
+      new Session:
+        private var rest: Chunks[A] = Flows.partition(flow(p, of), part)
+        private var state: s.P | Null = null
+        private var extent: Vector[Flows.Extent] = Vector.empty
+
+        def advance(take: Int, bounds: Vector[Bounds]): Resp =
+          // the operator is built at the FIRST epoch, when the
+          // coordinator's bounds are known — before that it has no
+          // watermark to be seeded with
+          val st = if state == null then { state = s.start(bounds); state.nn } else state.nn
+          var read = 0
+          var drained = false
+          // ONE pull per chunk. `Chunks.pull` on an iterator-backed
+          // source CONSUMES, so asking twice — once to test and once
+          // to take — reads a chunk and throws it away. That is what
+          // the first version of this loop did, and every test in
+          // TestStream failed on it.
+          while read < take && !drained do
+            Chunks.pull(rest) match
+              case Some((c, r)) =>
+                var i = 0
+                while i < c.length do { s.step(st, c(i)); i += 1 }
+                extent = grow(extent, Flows.extent(Chunks.fromIterator(c.iterator), s.times))
+                read += c.length
+                rest = r
+              case None => drained = true
+          // an epoch hands over what the operator has closed SO FAR;
+          // `finish` is the same call the batch driver makes, and the
+          // panes still open stay in the operator for the next epoch
+          Resp.Epoch(Codecs.cbor(s.wire).encode(s.peek(st)), extent, drained)
+
+        def finish(): Resp =
+          val st = if state == null then s.start(Vector.empty) else state.nn
+          Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true)
+    }
+
+  private def grow(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =
+    if a.isEmpty then b else if b.isEmpty then a
+    else a.indices.toVector.map { j =>
+      Flows.Extent(math.max(a(j).max, b(j).max), math.min(a(j).min, b(j).min),
+        math.max(a(j).back, b(j).back))
+    }
+
   /** run one partition and hand back its partial, encoded */
   final def partialAt(bytes: Array[Byte], part: Int, of: Int, bounds: Vector[Bounds])
   : Either[String, Array[Byte]] =
@@ -68,6 +123,25 @@ abstract class Job[P, R]:
       Chunks.foldLeft(Flows.partition(flow(p, of), part))(())((_, a) => s.step(st, a))
       Codecs.cbor(s.wire).encode(s.finish(st))
     }
+
+/**
+ * One partition's streaming state, living on the worker between
+ * epochs. It is deliberately opaque to the registry: `Jobs.find`
+ * answers a `Job[?, ?]`, and a session is the only thing that can be
+ * held without naming that job's types.
+ */
+trait Session:
+  def advance(take: Int, bounds: Vector[Bounds]): Resp
+  def finish(): Resp
+
+/** the sessions this worker is holding */
+object Sessions {
+  private val open = scala.collection.mutable.LongMap.empty[Session]
+  def put(id: Long, s: Session): Unit = synchronized(open.update(id, s))
+  def get(id: Long): Option[Session] = synchronized(open.get(id))
+  def drop(id: Long): Unit = synchronized(open.remove(id): Unit)
+  def count: Int = synchronized(open.size)
+}
 
 /**
  * The registry a worker looks in. Registration is an ordinary side

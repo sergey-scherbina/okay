@@ -195,8 +195,9 @@ than trusting the author.
   process killed mid-run. The streaming half — barrier checkpoints
   into okay-persist with source offsets — belongs to stage 6, where
   there is an unbounded source to checkpoint.
-- **6 — streaming, properly.** Unbounded sources, the watermark as
-  the minimum over input channels, keyed state in a backend, and
+- **6 — streaming, properly.** 6a DONE: the epoch loop, the
+  coordinator as a fold, the watermark as the minimum over the
+  partitions. 6b: checkpoints and recovery from an offset. 6c:
   exactly-once OUTCOME at the sink.
 - **7 — the numbers.** A distributed lane in docs/benchmarks.md §20,
   measured against Flink and Spark in the mode they are built for,
@@ -319,7 +320,25 @@ Stage 5 — failure (TestFailure):
       the job finishes with the same answer
 - [ ] a coordinator that dies — see the limits below
 
-Stage 6 and later: written when the stage is claimed.
+Stage 6a — the epoch loop (TestStream, TestPanesOnce):
+- [x] `Sink`'s coordinator side is a FOLD — `empty` / `absorb(s, ws,
+      watermark)` / `emit` — and `result` is that fold with one epoch
+      and a watermark of infinity, so the batch answer is unmoved
+- [x] a job streamed in epochs answers what the batch run answers, at
+      every partition count crossed with every epoch size
+- [x] a fan of three sinks, streamed
+- [x] NO WINDOW IS PRESENTED TWICE, asserted directly rather than
+      inferred from a checksum
+- [x] a pane handed over twice is not counted twice
+- [x] the sessions are let go when the stream ends
+- [x] the same over sockets, with the operator state living in
+      another party's memory
+- [x] on a late-bearing feed a stream drops FEWER than the batch run,
+      and that is stated as correct rather than asserted away
+- [ ] checkpointing and recovery from an offset — 6b
+- [ ] exactly-once outcome at the sink — 6c
+
+Stage 7: written when the stage is claimed.
 
 ## The watermark, and why a slice is not a stream
 
@@ -733,6 +752,74 @@ nothing is journaled. And a job longer than the workers' patience has
 no checkpoint to resume from — every recovery here is a recompute
 from the source. For a batch job over a replayable source that is the
 right trade; for an unbounded stream it is not, and that is stage 6.
+
+### Stage 6a — the epoch loop, and three ways to present a pane twice
+
+Everything before this was a BATCH engine that happened to run across
+machines: a partition is read to its end, its partials are merged
+once, an answer is produced once. Three changes make it a stream, and
+their order was forced rather than chosen.
+
+**1. The coordinator side of `Sink` became a fold.** It had
+`result(ws): R`, which can only be called when there is nothing left
+to come. It now has `empty`, `absorb(s, ws, watermark)` and
+`emit(s)`, with `result` defined as that fold over one epoch at a
+watermark of infinity — so no existing behaviour moved and the batch
+answer stayed the definition of correct. Without it the coordinator
+can never retire a pane, and "streaming" would mean holding every
+boundary pane for ever.
+
+**2. The watermark is the MINIMUM over the partitions**, minus the
+window's DECLARED lateness. Both halves are load-bearing. The minimum,
+because a partition that has read less may still produce something
+earlier than the others' greatest — and one that has read nothing may
+produce anything. The declared lateness rather than the observed
+backwardness, because the observed figure is only what has been seen
+so far and it grows: it is not a bound on the future, and the user's
+`lateness` parameter is the only number here that is.
+
+**3. An epoch**: `Open` / `Advance` / `Close`, with the operator state
+living on the worker between rounds. A pane open at an epoch boundary
+stays open, which is the whole difference between this and running
+the batch driver in a loop.
+
+**THE SAME BUG THREE TIMES, and it is worth the space.** Every one of
+these produced identical symptoms — the sums agreed exactly and the
+pane COUNT was ten too high, all ten in window 99000, which is where
+the two partitions meet. A pane retired before its last contributor
+has handed over comes out as two panes whose values add up.
+
+  - the local completeness rule (stage 3's) fired in a stream, where
+    `back` is an under-estimate and `upper` is therefore too
+    generous. A streaming partition now finishes nothing locally; the
+    coordinator retires instead. The rule stays what it is — a batch
+    optimisation that needs the whole extent to be legal.
+  - the coordinator's watermark used the observed backwardness. See
+    (2).
+  - and the last one: the sources being EXHAUSTED was treated as the
+    stream being OVER. It is not. Every operator still holds the panes
+    its own watermark never closed, and those come out on the Close —
+    so retiring everything at the last `Advance` throws away the slow
+    partition's half of a boundary pane.
+
+Only the third was found by reasoning; the first two were found by
+the same failing assertion, and the third by finally printing which
+panes differed instead of arguing about which could. `TestPanesOnce`
+now asserts the invariant directly, so the next version of this
+mistake announces itself as itself.
+
+**One thing that is NOT a bug, and the test says so.** On a feed with
+late elements a streamed run drops FEWER than a batch run and
+therefore counts more. The batch engine reconstructs one global order
+out of its slices — stage 1's seeding theorem — and a stream has no
+such order to reconstruct: its partitions are independent channels,
+each with its own watermark. Asserting equality there would be
+asserting that a stream is a batch.
+
+**What 6a does not do**: the worker's state is in memory and dies with
+it. There is no checkpoint and no offset to resume from, so a stream
+that loses a worker loses that partition's open panes — which is 6b,
+and okay-persist already has the log and the offsets it needs.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements
