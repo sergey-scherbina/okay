@@ -1,0 +1,43 @@
+task: cut-refuses-the-document
+agent: opus-depth
+started: 2026-09-10
+branch: feature/cut-refuses-the-document
+worktree: ../okay-wt-cut
+spec: specs/codecs.md ("How deep a message may be" — its "what stays asymmetric" paragraph)
+
+why: the operator asked for the rest of it. input-depth-both-wires
+  (f9eb4cb1) left ONE difference standing and called it structural: on
+  the JSON roads a cut inside a field nobody DECLARED is data nobody
+  reads, so the document still decodes, while CBOR refuses by name. I
+  justified it by the totality difference. That justification is the
+  same SHAPE as the one this arc already found false — "the other wire
+  is different" — and a recursive schema can really write such a
+  value, so the law "one Schema, one value, one answer on either wire"
+  really is broken by it.
+
+  The second thing named in that report was okay-mcp's six
+  `case Json.JErr(_) => Nil/None` projections (BACKLOG
+  mcp-projection-eats-a-cut). READ BEFORE WRITING, 2026-09-10:
+  `Rpc.damaged` already walks the whole tree for a JErr and maps it to
+  ParseError -32700, so a cut frame is already an error and those six
+  sites are the client's error channel answering correctly. The
+  backlog entry was a misread; it gets a test and a deletion, not a
+  fix.
+
+what: make the cut a property of the DOCUMENT instead of a spot in it.
+  The projection propagates it: a container with a cut child IS the
+  cut, so `Json.parse` of a too-deep document answers the cut at the
+  root, every decoder's existing JErr refusal catches it wherever it
+  sits, and an undeclared deep field refuses exactly as CBOR refuses
+  it. That makes the three special cases f9eb4cb1 added (Json.arrived,
+  the optional-field guard, Staged.elems + both staged optional
+  lookups) UNREACHABLE — they go, and the hot-path `filterNot` comes
+  back. `JsonStrict.skipValue` has no tree to propagate through, so it
+  bounds its own bracket counter, which is where the strict door's
+  undeclared skip refuses.
+
+predict: smaller than what it replaces (one rule in the projection in
+  place of four rules in four files), and the only behaviour anyone
+  loses is the partial value of a document nested past 256 — which no
+  caller can use, because the reader cannot say what it did not
+  descend into.
