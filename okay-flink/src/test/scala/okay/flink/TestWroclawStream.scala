@@ -114,6 +114,9 @@ class TestWroclawStream extends munit.FunSuite {
         ("okay, 4 fibres (merge)", () => OkayLane.parallel(part, 4)),
         ("okay, 8 fibres (merge)", () => OkayLane.parallel(part, 8)),
         ("java.util.stream, windowed collector", () => JavaLane.windowed(part)),
+        ("fs2 (pure), our window operator", () => LibLanes.fs2(part)),
+        ("zio-streams, our window operator", () => LibLanes.zio(part)),
+        ("kyo streams, our window operator", () => LibLanes.kyo(part)),
       ) ++ (if fits then Seq(
         ("java.util.stream, groupingBy", () => JavaLane.run(part, parallel = false)),
         ("java.util.stream, groupingBy, parallel", () => JavaLane.run(part, parallel = true)),
@@ -166,6 +169,11 @@ class TestWroclawStream extends munit.FunSuite {
     assertEquals(JavaLane.run(part, parallel = true), okayPart, "the PARALLEL JDK lane differs")
     // and the same lane with event time IN the collector
     assertEquals(JavaLane.windowed(part), okayPart, "the windowed JDK lane differs")
+    // and the three in-process stream libraries, each carrying the
+    // same window operator because none of them has one
+    assertEquals(LibLanes.fs2(part), okayPart, "the fs2 lane differs")
+    assertEquals(LibLanes.zio(part), okayPart, "the zio-streams lane differs")
+    assertEquals(LibLanes.kyo(part), okayPart, "the kyo lane differs")
     val (flink, _) = timed(FlinkLane.run(feed, parallelism = 1))
     println(s"  flink: $flink")
     assertEquals(flink, okay, "Flink's answer differs from okay's")

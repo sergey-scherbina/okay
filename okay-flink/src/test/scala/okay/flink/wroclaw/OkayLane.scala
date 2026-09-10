@@ -31,7 +31,7 @@ object OkayLane {
    * below share it and the numbers must be produced identically by
    * each — a lane that computes a different answer measures nothing.
    */
-  private final class Sink(tram: Array[Boolean]) {
+  private[wroclaw] final class Sink(tram: Array[Boolean]) {
     private var routeWins = 0L; private var routeEvents = 0L
     private var routeDelay = 0L; private var routeHash = 0L
     private var stopWins = 0L; private var stopEvents = 0L; private var stopHash = 0L

@@ -460,6 +460,13 @@ lazy val okayFlink = (project in file("okay-flink"))
       // Scala lambda erases the type Flink would have extracted).
       "org.apache.flink" % "flink-streaming-java" % "1.20.0" % Test,
       "org.apache.flink" % "flink-clients" % "1.20.0" % Test,
+      // §20's three in-process stream libraries. TEST only, and they
+      // are here rather than in `compare` because the lane they serve
+      // is this job: none of them has an event-time window, so each
+      // gets okay.Windows and what is measured is the plumbing.
+      "co.fs2" %% "fs2-core" % "3.10.2" % Test,
+      "dev.zio" %% "zio-streams" % "2.1.14" % Test,
+      "io.getkyo" %% "kyo-core" % "0.16.2" % Test,
     ),
     // Flink 1.20 on JDK 21 reaches into java.base by reflection (Kryo,
     // its own MemorySegment); the same list okay-spark needs, and for

@@ -1725,3 +1725,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-10	a3af5089	2	bpe-scan-alloc	896833	1066305	0.84	B/op, lower better: Bpe on the sink road (no intermediate word Vector, no :+ for the whitespace token)
 2026-09-10	a3af5089	2	lex-elementwise-time	25.4	43.6	0.58	us/op, lower better: per-lane minimum of 2 alternating rounds; faster in BOTH (34.9 vs 45.5 in the round where another tenant held 11 cores)
 2026-09-10	a3af5089	2	lex-chunked64-time	35.7	60.7	0.59	us/op, lower better: same; 41.3 vs 59.3 in the loaded round. parseFull and bpeScan times moved WITH the box and are NOT claimed
+2026-09-10	25924dbb	5	stream-libs-parity-full-feed	3307012	3325232	0.99	ev/s, higher better: okay one thread vs zio-streams on §20's job at 2.4M events, BOTH carrying okay.Windows (no stream library has an event-time window); fs2 3,275,602, kyo 3,021,425, JDK windowed collector 2,833,473 — four in-process carriers of the same fold, within 9%
+2026-09-10	25924dbb	5	stream-libs-vs-engine	3307012	1479239	2.24	ev/s, higher better: the same one-thread lane vs Flink p4 wall-clock at 2.4M — the gap that IS real is the engine and the state model, not the library

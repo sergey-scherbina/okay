@@ -1,5 +1,30 @@
 # Changelog
 
+## bench-stream-libraries — fs2, zio-streams and kyo in §20, and what they actually measure
+
+The operator asked for the three in-process stream libraries in the
+table. They are there, and the claim they support is narrower than the
+section's others, so the section says it before the numbers: NONE of
+them has an event-time window — fs2's `groupWithin` and ZIO's
+`groupedWithin` are processing time, kyo has neither — so each lane
+carries `okay.Windows`, the same operator okay's own lane and the
+windowed JDK lane use, and what the numbers differ by is the plumbing
+around identical work.
+
+Each source is the library's own chunked constructor at a matched 256
+(fs2 `Stream.chunk` + `chunkLimit`, PURE so no cats-effect runtime and
+no `unsafeRunSync`; `ZStream.fromChunk(...).rechunk(256)`; kyo
+`Stream.init(seq, 256)`), and every lane's eleven checksums are
+asserted equal to okay's before a number is printed.
+
+On the full feed the four in-process roads are at parity: zio-streams
+3 325 232 ev/s, okay 3 307 012, fs2 3 275 602, kyo 3 021 425, the JDK's
+windowed collector 2 833 473. That is the result, not a
+disappointment — once the per-element work is a windowed fold with
+keyed state, the stream library is not the cost. The 5x and 20x gaps
+elsewhere in §20 are engines and state models: a job graph and a
+shuffle on one side, a `groupingBy` that never evicts on the other.
+
 ## scan-step-allocation — the pair every scanner answered, gone from the drivers
 
 The operator asked what else was worth optimising. The repository had
