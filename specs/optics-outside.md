@@ -548,6 +548,111 @@ build, which is the same phantom requirement stage 2 caught in
 `BoardTools.specs`. The honest shape is: values are the source, the
 router is built from them, and a test asserts the two agree.
 
+## Stage 5 — the declaration form, decided by the compiler
+
+Four rounds of "could it be shorter?" from the operator. Every
+proposal was put to the compiler rather than argued about, and three of
+the answers were NO — which is the useful half, because each no is a
+rule about the language rather than an opinion about style. The probes
+are in the session scratchpad; what they settled is here.
+
+### What the language refuses, and why
+
+**`:?[String]("q")` and `:?[String] "q"` do not parse.**
+
+```
+val a = base :?[String]("q")
+                 ^ expression expected but '[' found
+```
+
+Scala takes an infix operator's precedence from its FIRST character
+and does not accept a type argument after one: the parser wants an
+operand there. This is why the earlier `Route.lit("search") ? …`
+worked at all — the receiver was a complete expression to the left.
+
+**But the type argument may ride the OPERAND.** `"q"[String]` is
+`"q".apply[String]`, a plain `SimpleExpr1 TypeArgs`, and that parses.
+So the terse form is reachable after all, by moving the type argument
+one position left.
+
+**`Router./` as the name of the empty table is declined.** Not taste:
+`/` already means "append a path segment" in this API, and one symbol
+with two unrelated meanings is the mistake the `Concat`/`Split` rename
+was made to avoid, in the other direction.
+
+### The form
+
+```scala
+import okay.http.query.*     // opt-in: the extensions live behind it
+
+val userPost = Route / "users" / "id"[Int] / "posts" / "slug"[String]
+val search   = Route / "search" :? "q"[String] :? "page".opt[Int]
+val tagged   = Route / "posts" / "id"[Int] :? "tag".all[String]
+
+val router = Router
+  .on(Method.Get, healthz)(_ => text(200, "live"))
+  .at(Method.Post, userPost)((p, r) => …)
+```
+
+The rule is one sentence: **a bare string is a literal segment, a
+typed string is a hole.** The type argument is exactly what turns a
+literal into a capture, and the operator says where the parameter goes
+— `/` into the path, `:?` into the query. One operand type, `Named[T]`,
+because a named typed parameter IS the same thing in both places.
+
+`Route[Int]("id")` and `Query[String]("q")` stay. They name the
+concepts aloud, which is what a reader meeting the API wants; the
+terse form is for the reader who already knows. The extensions are
+behind an import because an `apply[T]` on `String` reaches every string
+in scope, and a stray `"abc"[Int]` should not produce an error about
+`Param` in a file that never asked for any of this.
+
+`:?` chains, so `+&` leaves the common case and keeps its real job:
+
+```scala
+val paging = Query.opt[Int]("page") +& Query.opt[Int]("size")
+val posts  = Route / "posts" :? paging
+val users  = Route / "users" :? paging
+```
+
+### A path may not follow a query, structurally
+
+`:?` answers a `Queried[A]`, which has no `/` at all. `Routed[A]`
+carries what both stages can do — `unapply`, `url`, `describe`,
+`params`, `queries`, `prism`, `of` — and `Router` takes a `Routed`.
+
+**The refusal is structural on purpose, and the alternative was tried
+and rejected by evidence.** To improve the MESSAGE, a poisoned
+`/` carrying `@compileTimeOnly` was added to `Named`, since precedence
+sends the mistake there (`/` binds tighter than `:?`, so a segment
+written after a query parameter attaches to the parameter, not to the
+route). The annotation fired in five isolated variants — dotted,
+infix, overloaded method, overloaded caller, extension receiver,
+parenthesised and not — and silently did NOT fire in the real
+expression, even after a clean rebuild. Worse, its presence made two
+invalid declarations compile, because the poisoned method returned a
+usable type where absence had produced an error.
+
+So the message stays imperfect and the refusal stays guaranteed:
+without a `/` on `Named`, the mistake is "value / is not a member of
+Named[String]" — the right answer with a confusing locus, which is the
+correct trade. An error mechanism that protects "usually" is worse
+than none, because it removes the real barrier in exchange for prose.
+
+### Behavior
+
+- [ ] `"id"[Int]` in a path position captures, and `Route[Int]("id")`
+      still does the same thing
+- [ ] `"q"[String]`, `"page".opt[Int]`, `"tag".all[String]` in a query
+      position, matching `Query[String]`, `Query.opt`, `Query.all`
+- [ ] the extensions are NOT in scope without their import
+- [ ] `:?` chains, and `+&` still composes a query value
+- [ ] a path segment after a query does not compile, in both
+      groupings (bare infix, and parenthesised)
+- [ ] `Router.on/at/of/ofAt` and `Toolbox.on/raw` start a table from
+      the companion; `empty` remains the zero of a fold
+- [ ] every existing declaration in the repository still compiles
+
 ## Decisions
 
 - **2026-09-10 — nested pairs instead of a flat tuple: considered,
