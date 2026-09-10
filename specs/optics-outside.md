@@ -163,23 +163,23 @@ final case class Router(entries: Vector[Router.Entry]):
 
 ### Behavior
 
-- [ ] a fully literal route matches its own path and nothing else
-- [ ] a captured segment parses by its `Param` and refuses what the
+- [x] a fully literal route matches its own path and nothing else
+- [x] a captured segment parses by its `Param` and refuses what the
       `Param` refuses (`/users/abc` does not match `Route[Int]`)
-- [ ] arity is part of the match: a longer or shorter path misses
-- [ ] **the prism law**: `unapply(url(a)) == Some(a)`, for every
+- [x] arity is part of the match: a longer or shorter path misses
+- [x] **the prism law**: `unapply(url(a)) == Some(a)`, for every
       parameter type, including strings that need escaping
-- [ ] a segment carrying `/`, a space or a non-ASCII character
+- [x] a segment carrying `/`, a space or a non-ASCII character
       round-trips through percent-encoding, and an encoded `/` does
       NOT become a segment boundary
-- [ ] `describe` names one `{...}` per captured segment, in order,
+- [x] `describe` names one `{...}` per captured segment, in order,
       with the names given at the declaration
-- [ ] `prism` satisfies the same law through `Optic`'s own
+- [x] `prism` satisfies the same law through `Optic`'s own
       `preview`/`review`, and composes with a core optic
-- [ ] a `Router` dispatches by method AND path, and misses (no entry)
+- [x] a `Router` dispatches by method AND path, and misses (no entry)
       leave the partial function undefined — the caller's 404 stays
       the caller's
-- [ ] `Router.describe` lists every entry, and is derived from the
+- [x] `Router.describe` lists every entry, and is derived from the
       same values that dispatch — a route cannot be documented and
       unrouted, or routed and undocumented
 
@@ -245,4 +245,46 @@ different module's job); content negotiation.
 
 ## Results
 
-(filled as stages land)
+### Stage 1 — LANDED 2026-09-10 (optics-outside-routes)
+
+`okay-http/src/main/scala/okay/http/Route.scala`, 20 tests in
+`TestRoute`, green on JVM and JS. `docs/modules/okay-http.md` has the
+user-facing half.
+
+**It shipped with a caller, deliberately.** The optics arc closed with
+an honest finding recorded twice in CHANGELOG — the aggregating
+families had no production consumer — and a PUBLIC api with none would
+repeat it worse. `Acceptance.routes` was three
+`case r if r.url.startsWith("/person")` guards; it is now a `Router`,
+served unchanged by all four backends (the JDK's, Jetty, Netty, NIO),
+and the conversion FOUND two defects that had been there the whole
+time: `startsWith("/person")` also answered `/personal`, and every
+route answered every verb, so a POST to `/person` was served the JSON
+body. `TestRoute` asserts both refusals.
+
+**Two things the design had to settle, and did.**
+
+`Concat` had to be a typeclass. `Tuple.Concat` composes forwards and
+will not come apart: `url` needs `A` and `B` back out of `c.Out`, and
+the compiler cannot prove `Concat[Concat[A1,A2],R] =
+Concat[A1,Concat[A2,R]]`. An `asInstanceOf` would have closed it in
+one line and is exactly what AGENTS.md forbids; the inductive witness
+carries `join` and `split` together and costs nothing at run time.
+
+A handler needs the REQUEST, not only the path. The first cut had
+`on(method, route)(h: A => Response ! Async)` and could not express
+`/echo`, whose whole job is to read the body — a router whose handlers
+cannot see the request is a demo, not an API. `at` is the primitive
+and `on` is defined in terms of it.
+
+**One property is not total, and is refused rather than papered
+over.** An empty path segment is not a value: `"/x//y"` and `"/x/y"`
+would build the same URL from different parameters. `Param.string`
+refuses the empty capture, so `unapply(url(a)) == Some(a)` holds on the
+domain instead of holding "mostly".
+
+**What the prism buys.** `route.prism` hands a route to the core
+optics as `Prism[String, String, A, A]`, and `set` on a matching path
+rebuilds the path from new parameters. `put` on a MISS is the whole
+unchanged — a prism's set, not its review — which the test asserts as
+the shape rather than working around.

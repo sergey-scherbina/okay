@@ -57,15 +57,26 @@ object Acceptance {
     Response(200, Seq(("content-type", kind)),
       Http.one(s.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
 
-  /** the routes the JVM side serves — shared, so there is one truth */
-  def routes: PartialFunction[Request, Response ! Async] =
-    case r if r.url.startsWith("/person") =>
-      pure(text(Json.write(person), "application/json"))
-    case r if r.url.startsWith("/lines") =>
-      pure(text(body, "text/plain; charset=utf-8"))
-    case r if r.url.startsWith("/echo") =>
+  /**
+   * the routes the JVM side serves — shared, so there is one truth.
+   *
+   * Declared as a `Router` (specs/optics-outside.md, stage 1) rather
+   * than three `case r if r.url.startsWith(...)` guards, which is what
+   * stood here: `startsWith` also answered `/personal` and every verb,
+   * and the table said nothing about itself. `router.describe` now
+   * lists the three, from the same values that dispatch, and the
+   * partial function the four servers take is unchanged.
+   */
+  val router: Router = Router.empty
+    .on(Method.Get, Route.lit("person"))(_ =>
+      pure(text(Json.write(person), "application/json")))
+    .on(Method.Get, Route.lit("lines"))(_ =>
+      pure(text(body, "text/plain; charset=utf-8")))
+    .at(Method.Post, Route.lit("echo"))((_, r) =>
       Http.text(Response(200, Nil, Http.one(r.body.bytes)))
-        .map(t => text("you said: " + t, "text/plain; charset=utf-8"))
+        .map(t => text("you said: " + t, "text/plain; charset=utf-8")))
+
+  def routes: PartialFunction[Request, Response ! Async] = router.routes
 
   /**
    * The client's whole run, as a program — shared source, so the JVM

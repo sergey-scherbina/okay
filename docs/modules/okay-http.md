@@ -32,7 +32,92 @@ that module, and it is small because the vocabulary decided most of it:
 | `Ws.over(socket)(session)` | run a `Stage[Frame, Frame, A]` over a socket |
 | `Ws.link(socket)` | a socket AS an `mcp.Link` |
 | `Transports.http` / `.sockets` (JVM), `.fetch` / `.sockets` (JS) | the two platform seams |
+| `Route` / `Router` | a typed path: match, build and describe from one declaration |
 | `Server.serve(port)(route)` | a REST server, JVM only |
+
+## Routes: one declaration, three interpreters
+
+`Route` (specs/optics-outside.md, stage 1) is the module's typed path.
+It exists because of a test the optics arc set for public APIs: a
+declaration earns an optic only when it must be handed to more than
+one interpreter, and at least one of them DESCRIBES it instead of
+running it. A path passes that three times.
+
+```scala
+val userPost = Route.lit("users") / Route[Int]("id") / "posts" / Route[String]("slug")
+
+userPost.unapply("/users/7/posts/hello%20world")  // Some((7, "hello world"))  -- MATCH
+userPost.url((7, "hello world"))                  // "/users/7/posts/hello%20world"  -- BUILD
+userPost.describe                                 // "/users/{id}/posts/{slug}"  -- DESCRIBE
+```
+
+A server keeps the convention it already had — the routes are still a
+`PartialFunction[Request, Response ! Async]` — and gets typed
+parameters out of the same value:
+
+```scala
+def routes: PartialFunction[Request, Response ! Async] =
+  case Get(userPost(id, slug)) => ...   // id: Int, slug: String
+```
+
+or assembles a table that is also its own documentation:
+
+```scala
+val router = Router.empty
+  .on(Method.Get, healthz)(_ => ok("live"))
+  .on(Method.Get, userPost)((id, slug) => post(id, slug))
+
+router.routes     // the PartialFunction, unchanged convention
+router.describe   // Vector((Get, "/healthz"), (Get, "/users/{id}/posts/{slug}"))
+```
+
+`describe` is derived from the same values that dispatch, so a route
+cannot be documented and unrouted, or routed and undocumented — which
+is the whole reason to reify a path instead of writing a `case`.
+
+**The law is the feature.** `unapply(url(a)) == Some(a)` says the path
+a client builds is the path the server matches, from ONE declaration.
+A hand-written `r.url == "/users/" + id` cannot state that property,
+let alone check it; `TestRoute` checks it over integers, longs,
+booleans and strings that need escaping, including `"a/b"`, `"100%"`,
+Cyrillic and an emoji. `route.prism` hands the same route to the core
+optics as a `Prism[String, String, A, A]`, where the law is the prism
+law the repository already tests.
+
+**Three details worth knowing.**
+
+- *Percent-encoding is per segment, after the split.* A parameter
+  holding `"a/b"` builds `/users/7/posts/a%2Fb` and reads back as
+  `"a/b"`; `/users/7/posts/a/b` is a different path with one segment
+  too many, and does not match. Every hand-written router in this
+  repository splits before it decodes and is open to that confusion —
+  okay-script's `Site.resolve` still is. Malformed escaping is a MISS,
+  not a silent literal `%`.
+- *An empty capture is refused.* `"/x//y"` and `"/x/y"` would
+  otherwise build the same URL from different parameters. That is a
+  property of URLs, and refusing it is what keeps the law total.
+- *A route can read a case class.* `userPost.of[UserPost]` gives the
+  same three interpreters over `UserPost(id, slug)`, which is the form
+  to prefer once a path has parameters: `case Get(userPost(p)) => p.id`
+  reads better than a positional tuple at every arity.
+
+A handler that needs the request itself — its body, its headers, its
+peer — takes `at` instead of `on`: `at(Method.Post, echo)((_, r) =>
+Http.text(...))`. `at` is the primitive and `on` is written in terms
+of it, because most handlers need the request.
+
+**It has a caller in this module.** `Acceptance.routes` — the fixture
+all four backends (the JDK's server, Jetty, Netty, NIO) are held to —
+was three `case r if r.url.startsWith("/person")` guards and is now a
+`Router`. Converting it found two defects that had been there the
+whole time: `startsWith("/person")` also answered `/personal`, and
+every route answered every verb, so a POST to `/person` was served the
+JSON body. Both refusals are asserted now.
+
+A new parameter type is a `Route.Param[T]` — `kind`, `parse`, `print`,
+three lines. Query parameters, headers and bodies are stage 2 of the
+spec; `describe`'s output is what an OpenAPI or MCP tool declaration
+will be generated from in stage 3.
 
 ## What it buys okay-mcp
 
