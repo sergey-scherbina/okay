@@ -26,9 +26,12 @@ class TestParseDepth extends munit.FunSuite:
 
   def jsonChain(n: Int): String = ("{\"kids\":[" * n) + "{\"kids\":[]}" + ("]}" * n)
 
-  def timeMs(body: => Unit): Double =
+  /** GENERIC in the body's type: a timing harness that insists on
+   * `Unit` makes every caller discard a real value, which is four
+   * E175s at the call sites rather than one decision here */
+  def timeMs[A](body: => A): Double =
     val t0 = System.nanoTime()
-    body
+    body: Unit
     (System.nanoTime() - t0) / 1e6
 
   test("Parse.full is not quadratic in nesting depth") {
