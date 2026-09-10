@@ -3365,9 +3365,11 @@ anything is timed. All eleven numbers match exactly.
 
 ### The numbers
 
-Host: 14 cpus, JVM 21, a working machine. **2 414 119 events** (eight
-service days), best of 3 runs per lane, the spread printed beside each
-(`TestWroclawStream`, `Live`-tagged, `sbt integrationTest`).
+Host: 14 cpus, JVM 21, a working machine, `-Xmx8g` (the heap is 8 GB
+because of ONE lane — see "the third engine" below). **2 414 119
+events** (eight service days), best of 3 runs per lane, the spread
+printed beside each (`TestWroclawStream`, `Live`-tagged, `sbt
+integrationTest`).
 
 | lane | throughput | wall | of the okay lane |
 |---|---:|---:|---:|
@@ -3494,6 +3496,66 @@ and the only option from Scala 3 (the Scala API is 2.13-only and its
 `TypeInformation` macros do not exist for Scala 3); every operator
 names its `TypeInformation` explicitly because a Scala lambda erases
 what Flink's extractor would have read.
+
+### The third engine: `java.util.stream`, through the Collector interop
+
+The operator asked for the same job on the JDK's own streams, and it
+belongs here for the same reason the Flink lane does: okay-java's
+`Collect.collector` says an okay `Aggregator` IS a JDK `Collector`
+(supplier/accumulator/combiner/finisher against init/add/merge/
+present), exactly as `toFlink` says it is an `AggregateFunction`. So
+`Job.stats` — one value — now runs on three engines, and the third is
+the one every JVM already has. The source is okay-java's own bridge,
+`Streams.stream(chunks, parallel)`, whose spliterator hands over one
+CHUNK per split.
+
+All four lanes below are re-measured at 603 529 events — a quarter of
+the feed — because that is the size the JDK lane fits in, and the
+reason it does not fit at the full size is the finding:
+
+| lane, at 603 529 events | throughput | wall | peak heap |
+|---|---:|---:|---:|
+| okay, 1 thread | 2 682 351 ev/s | 225 ms | 549 MB |
+| java.util.stream, sequential | 1 151 772 ev/s | 524 ms | 614 MB |
+| java.util.stream, parallel | 259 247 ev/s | 2 328 ms | 2 811 MB |
+| flink, parallelism 4 | 720 201 ev/s | 838 ms | 777 MB |
+
+**A JDK stream has no event time, so its state is the whole history.**
+There is no watermark to close a window with, so a "window" here is
+only a KEY — `(windowStart, route)` — and every pane of the entire run
+stays live until the terminal operation finishes. The okay and Flink
+lanes both evict as the watermark passes; this one cannot. At the full
+2.4M events the parallel lane dies with an `OutOfMemoryError` on a
+4 GB heap and again on 8 GB — which is why this table is at a quarter,
+and why `okay-flink`'s tests ask for 8 GB at all. That is not a
+criticism of the JDK: it is what "batch model, no event time" costs
+when the grouping is high-cardinality, and it is the clearest
+statement in this whole section of what a watermark is FOR.
+
+**`parallel()` made it 4.5x SLOWER and cost 4.6x the memory** (259k
+against 1 152k ev/s, 2 811 against 614 MB). `Collectors.groupingBy`
+builds one map per split and merges them pairwise, and with ~800 000
+distinct groups at this size that merge IS the work — parallel streams
+are built for cheap reductions over many elements, not for
+high-cardinality grouping. `groupingByConcurrent` would avoid the
+per-split maps, and okay-java's `Collect.collector` deliberately does
+NOT claim `CONCURRENT` (its own comment says why: an `Aggregator`
+promises nothing about its accumulator being thread-safe), so that
+road is honestly closed. The answer for a shape like this one is not
+to parallelise the stream.
+
+**The split size is the chunk size, and it has to be told.**
+`Streams.spliterator` hands over one chunk per `trySplit`, so a
+256-element chunked source turns 2.4M events into ~9 400 parallel
+splits and `groupingBy` allocates a map for every one of them; at 256
+the parallel lane could not finish a single service day on 4 GB. The
+lane uses 8 192. Nothing is wrong with either side — a `Chunks` chunk
+is a streaming batch and a stream split is a unit of parallel work,
+and the two only look like the same number.
+
+**Three passes, not one.** A `java.util.stream` is single-use, so the
+three consumers of the okay lane's single pass become three passes
+here. It is charged to the lane honestly; it is what the model costs.
 
 ### What the okay lane cost to WRITE — and what closing that gap cost
 

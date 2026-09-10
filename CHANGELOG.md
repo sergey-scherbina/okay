@@ -1,5 +1,41 @@
 # Changelog
 
+## bench-java-stream-lane — the same job on java.util.stream, and what the JDK's model costs
+
+The operator asked for §20's job on the JDK's own streams too, and it
+belongs there for the reason the Flink lane does: okay-java's
+`Collect.collector` says an okay `Aggregator` IS a JDK `Collector`,
+exactly as `toFlink` says it is an `AggregateFunction`. So `Job.stats`
+— one value — now runs on three engines, and the eleven checksums
+agree across all of them.
+
+The numbers are not the interesting part. At 603 529 events one okay
+thread reads 2 682 351 ev/s against the sequential JDK lane's
+1 151 772 and Flink-at-four's 720 201. What the lane is worth is the
+three things it makes visible:
+
+- **No event time means the state is the history.** There is no
+  watermark, so a window is only a key and every pane of the run stays
+  live; at the full 2.4M events the parallel lane dies with an
+  OutOfMemoryError on an 8 GB heap, where okay and Flink — which evict
+  — peak at 549 and 777 MB on a quarter of it. okay-flink's tests now
+  ask for 8 GB because of this one lane, and the reason is written in
+  build.sbt rather than tuned until the red went away.
+- **`parallel()` made it 4.5x SLOWER and cost 4.6x the memory.**
+  `Collectors.groupingBy` builds one map per split and merges them
+  pairwise; with ~800 000 distinct groups that merge is the work.
+  `groupingByConcurrent` would avoid it and `Collect.collector`
+  deliberately does not claim CONCURRENT (an Aggregator promises
+  nothing about its accumulator being thread-safe), so that road is
+  honestly closed.
+- **The split size is the chunk size.** `Streams.spliterator` hands
+  over one chunk per `trySplit`, so a 256-element source becomes ~9 400
+  parallel splits and one map per split; the lane uses 8 192, and at
+  256 it could not finish one service day on 4 GB.
+
+docs/benchmarks.md §20 gains "the third engine" with the table and all
+three findings; okay-java joins okay-flink's TEST classpath only.
+
 ## stream-event-time-window — the operator §20 measured the absence of, now in the core
 
 docs/benchmarks.md §20 ended on the half of the Flink comparison no

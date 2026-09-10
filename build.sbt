@@ -441,7 +441,10 @@ lazy val okaySpark = (project in file("okay-spark"))
 
 /** Flink via the same Aggregator triple (P4); flink-core is pure Java */
 lazy val okayFlink = (project in file("okay-flink"))
-  .dependsOn(okay.jvm)
+  // okay-java is TEST only, and only for §20's third lane: the same
+  // job over java.util.stream, whose `Collector` an okay Aggregator
+  // already is (okay-java's Collect.collector)
+  .dependsOn(okay.jvm, okayJava % Test)
   .settings(
     name := "okay-flink",
     libraryDependencies ++= Seq(
@@ -463,7 +466,14 @@ lazy val okayFlink = (project in file("okay-flink"))
     // the same reason
     Test / fork := true,
     Test / javaOptions ++= Seq(
-      "-Xmx4g",
+      // 8 GB because of ONE lane: java.util.stream has no event time, so
+      // its "windows" are keys and the whole history stays resident.
+      // Measured 2026-09-10: the parallel JDK lane dies with an
+      // OutOfMemoryError at 2.4M events on 4 GB, where the okay and
+      // Flink lanes — both of which EVICT on a watermark — never came
+      // near it. The heap is a lane's requirement, so it is stated here
+      // rather than tuned until the red went away.
+      "-Xmx8g",
       "--add-opens=java.base/java.lang=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
