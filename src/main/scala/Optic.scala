@@ -40,6 +40,21 @@ type Prism[S, T, A, B] = Optic[Optic.Choice, S, T, A, B]
 type Affine[S, T, A, B] = Optic[[P[_, _]] =>> Optic.Strong[P] & Optic.Choice[P], S, T, A, B]
 type Traversal[S, T, A, B] = Optic[Optic.Traversing, S, T, A, B]
 
+/**
+ * The aggregating families (Clarke, Elkins, Gibbons, Loregian,
+ * Milewski, Pillmore and Roman, "Profunctor Optics, a Categorical
+ * Update", Compositionality 2024; the practitioner's account is
+ * Penner's Kaleidoscopes).
+ *
+ * A traversal WALKS a Traversable and keeps its shape. A kaleidoscope
+ * lifts through an APPLICATIVE and collapses many focuses into one
+ * answer — grouping, not iteration. An algebraic (classifying) lens
+ * puts by an ALGEBRA over many wholes rather than by a value, which is
+ * what "decide what this is, given everything seen" needs.
+ */
+type Kaleidoscope[S, T, A, B] = Optic[Optic.Reflecting, S, T, A, B]
+type AlgebraicLens[S, T, A, B] = Optic[Optic.Classifying, S, T, A, B]
+
 /** the lattice, and the carriers of the interpretations */
 object Optic {
 
@@ -88,6 +103,55 @@ object Optic {
   val idApplicative: Applicative[Id] = new Applicative[Id]:
     def pure[A](a: A): A = a
     extension [A, B](f: A => B) def app(a: A): B = f(a)
+
+  /**
+   * A kaleidoscope's requirement: lift through ANY Applicative.
+   *
+   * Next to `Traversing.wander`, which needs a traversable SHAPE and
+   * returns it, this needs an applicative and returns one answer. That
+   * is the whole difference between iterating and aggregating, and it
+   * is why the two families are not one.
+   */
+  trait Reflecting[P[_, _]] extends Profunctor[P]:
+    def reflected[F[_], A, B](p: P[A, B])(using Applicative[F]): P[F[A], F[B]]
+
+  /**
+   * An algebraic lens's requirement: view one whole, and put by an
+   * algebra that sees ALL the wholes. `Strong.lens` puts a value;
+   * this classifies — the paper's example is a measurement placed
+   * against a dataset, ours is in TestAggregationOptics.
+   *
+   * Given as its constructor rather than as a structure map, and the
+   * reason is honest: the paper says the laws of a mixed optic are
+   * not settled outside particular cases (monadic lenses being one),
+   * so this claims no Tambara derivation and states no law it has not
+   * tested.
+   */
+  trait Classifying[P[_, _]] extends Profunctor[P]:
+    def classifying[S, T, A, B](view: S => A, classify: (Vector[S], B) => T)(p: P[A, B]): P[S, T]
+
+  /** the aggregating interpretation: many focuses in, one answer out */
+  final case class Aggregating[A, B](run: Vector[A] => B)
+
+  /** `Vector[F[A]] => F[Vector[A]]`, which is `vectorWalk` at identity */
+  def sequenceVector[F[_], A](vs: Vector[F[A]])(using Applicative[F]): F[Vector[A]] =
+    vectorWalk[F[A], A].apply[F]((fa: F[A]) => fa)(vs)
+
+  /**
+   * The ZIP applicative, and why it is a LazyList and not a Vector.
+   *
+   * Column-wise aggregation is zipping, and `pure` for zipping must
+   * be the INFINITE repeat: `pure(f) <*> xs == fmap(xs)(f)` fails for
+   * any finite pure the moment `xs` is longer than it. A Vector cannot
+   * hold that, so the lawful zip applicative on a strict sequence does
+   * not exist and this one is lazy. Not a given: the cartesian
+   * (monadic) applicative for a sequence is the usual one, and two in
+   * scope would be ambiguous.
+   */
+  val zipLazy: Applicative[LazyList] = new Applicative[LazyList]:
+    def pure[A](a: A): LazyList[A] = LazyList.continually(a)
+    extension [A, B](f: LazyList[A => B])
+      def app(a: LazyList[A]): LazyList[B] = f.zip(a).map((g, x) => g(x))
 
   /** read and forget the rest: `get` (Strong), and with a Monoid `preview`, `foldMap`, `toVector` */
   final case class Forget[R, A, B](run: A => R)
@@ -212,7 +276,7 @@ object Optic {
 
 // ---------------------------------------------------------------- the interpretations (ride `import okay.given`)
 
-import Optic.{Profunctor, Strong, Choice, Traversing, Walk, Forget, Const, First, Star, Market, Compiled, Shop, CompiledLens}
+import Optic.{Profunctor, Strong, Choice, Traversing, Reflecting, Classifying, Aggregating, Walk, Forget, Const, First, Star, Market, Compiled, Shop, CompiledLens}
 
 /** plain functions: `modify` and `set` */
 given opticFunction1: Traversing[Function1] with
@@ -245,6 +309,26 @@ given opticForgetTraversing[R](using M: Monoid[R]): Traversing[[A, B] =>> Forget
     Forget(s => preview(s).fold(_ => M.empty, p.run))
   override def eachVector[A, B](p: Forget[R, A, B]): Forget[R, Vector[A], Vector[B]] =
     Forget(_.foldLeft(M.empty)((r, a) => M.combine(r, p.run(a))))
+
+/**
+ * The aggregating interpretation is BOTH classes at once, in one
+ * instance, because `algebraic andThen kaleidoscope` asks for the
+ * intersection and an intersection is satisfied by one value.
+ *
+ * Deliberately NOT `Strong`: `first` would have to answer a `C` from
+ * a `Vector[C]`, and there is no honest choice. So an ordinary lens
+ * does not compose into this road — the classifying lens is what
+ * stands in its place, which is the papers' point and not a gap.
+ */
+given opticAggregating: (Reflecting[Aggregating] & Classifying[Aggregating]) =
+  new Reflecting[Aggregating] with Classifying[Aggregating]:
+    def dimap[A, B, C, D](p: Aggregating[A, B])(f: C => A, g: B => D): Aggregating[C, D] =
+      Aggregating(cs => g(p.run(cs.map(f))))
+    def reflected[F[_], A, B](p: Aggregating[A, B])(using F: Applicative[F]): Aggregating[F[A], F[B]] =
+      Aggregating(fas => F.fmap(Optic.sequenceVector(fas), p.run))
+    def classifying[S, T, A, B](view: S => A, classify: (Vector[S], B) => T)(
+        p: Aggregating[A, B]): Aggregating[S, T] =
+      Aggregating(ss => classify(ss, p.run(ss.map(view))))
 
 given opticConstApplicative[R](using M: Monoid[R]): Applicative[[A] =>> Const[R, A]] with
   def pure[A](a: A): Const[R, A] = Const(M.empty)
@@ -293,6 +377,12 @@ given opticMarket[A, B]: (Strong[[S, T] =>> Market[A, B, S, T]] & Choice[[S, T] 
 extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
   /** every focus through `f` */
   def modify(f: A => B)(using C[Function1]): S => T = o[Function1](f)
+  /** many wholes in, their focuses aggregated by `f`, one whole out */
+  def aggregate(f: Vector[A] => B)(using C[Aggregating]): Vector[S] => T =
+    o[Aggregating](Aggregating(f)).run
+  /** the same, said with a named aggregation algebra */
+  def aggregateWith[Acc](agg: Aggregator[A, Acc, B])(using C[Aggregating]): Vector[S] => T =
+    aggregate(as => agg.present(as.foldLeft(agg.init)(agg.add)))
   /** every focus replaced */
   def set(b: B)(using C[Function1]): S => T = o[Function1](_ => b)
   /** the focus of a lens (or an iso) */
@@ -390,3 +480,31 @@ object Traversal:
   def eachList[A, B]: Traversal[List[A], List[B], A, B] =
     Traversal([F[_]] => (F: Applicative[F]) ?=> (f: A => F[B]) => (as: List[A]) =>
       as.foldRight(F.pure(List.empty[B]))((a, acc) => F.fmap(f(a), (b: B) => (l: List[B]) => b :: l).app(acc)))
+
+/**
+ * The kaleidoscope: aggregate the focuses of many wholes.
+ *
+ * `each` is the whole family in one constructor — an Applicative
+ * container of focuses, aggregated position-wise by whatever the
+ * applicative's `app` means. With `Optic.zipLazy` that is column-wise;
+ * with a cartesian applicative it is every combination, which is a
+ * different and equally honest reading of the same optic.
+ */
+object Kaleidoscope:
+  def each[F[_], A, B](using F: Applicative[F]): Kaleidoscope[F[A], F[B], A, B] =
+    new Kaleidoscope[F[A], F[B], A, B]:
+      def apply[P[_, _]](p: P[A, B])(using P: Optic.Reflecting[P]): P[F[A], F[B]] =
+        P.reflected(p)
+
+/**
+ * The algebraic, or classifying, lens: `view` reads one whole, and
+ * `classify` decides the answer from ALL the wholes together with the
+ * aggregated focus. A lens's `set` takes a value; this takes a
+ * dataset, which is why the literature's example is a measurement
+ * classified against everything measured before.
+ */
+object AlgebraicLens:
+  def apply[S, T, A, B](view: S => A, classify: (Vector[S], B) => T): AlgebraicLens[S, T, A, B] =
+    new AlgebraicLens[S, T, A, B]:
+      def apply[P[_, _]](p: P[A, B])(using P: Optic.Classifying[P]): P[S, T] =
+        P.classifying(view, classify)(p)
