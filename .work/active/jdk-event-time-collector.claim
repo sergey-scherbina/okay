@@ -1,0 +1,35 @@
+task: jdk-event-time-collector
+agent: opus-flink
+started: 2026-09-10
+branch: feature/jdk-event-time-collector
+worktree: ../okay-wt-jdk-windows
+spec: specs/event-time-windows.md (Windows.absorb), docs/benchmarks.md §20
+
+why: the operator's question after §20's third-engine table — "можешь
+  исправить что-то для jdk streams? добавить туда event time?" The
+  lane's OutOfMemoryError is not `java.util.stream`'s fault and not
+  ours-in-general: it is `Collectors.groupingBy`, which has no notion
+  of a group being COMPLETE, so every pane of the run stays live. The
+  collector is our side of the seam, and an okay `Aggregator` is
+  already a `Collector` — so an event-time WINDOW can be one too.
+
+what: `okay.Windows.absorb(other)(emit)` in the core — merge another
+  operator's panes into this one, dropping what is already behind this
+  watermark (the operator's own late rule, kept) and sweeping after.
+  Then `okay.java.Windowed.collector(...)`: a `Collector` whose
+  accumulator is a `Windows` plus a downstream aggregator's state,
+  folding each pane as it CLOSES and evicting it. Sequential it is
+  plainly right; parallel it is right for the same reason the
+  merge-parallel okay lane is — on an ordered stream the combiner sees
+  (left, right) in encounter order, and a pane left has closed cannot
+  receive an element from right unless out-of-orderness exceeds
+  `lateness`, which is exactly what the watermark asserts. Plus the
+  bunching stage as an Aggregator (first/last/gap per key, merged
+  across the seam), so the lane holds one accumulator per key instead
+  of every element.
+
+predict: the JDK lane finishes the FULL 2.4M feed on the heap where it
+  used to die, and the parallel penalty shrinks — the per-split maps
+  that were the work become small. If parallel is still slower than
+  sequential, that is the shuffle-free JDK's own shape and gets
+  reported as such.
