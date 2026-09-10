@@ -1,0 +1,6 @@
+feature/window-one-core-cost 2026-09-10T10:55:06Z
+agent: claude-code
+heartbeat: 2026-09-10T10:55:06Z
+status: in-progress
+done-so-far: claimed
+next: 2x2 decomposition of okay's single-core cost (pane map x accumulator), then eviction
