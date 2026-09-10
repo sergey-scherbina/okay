@@ -1537,6 +1537,24 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
+- **`okay.TestGrowing.each producer's own order survives the swap` —
+  one round of 200 came back out of a producer's own order** (once,
+  2026-09-10 07:47, in stream-event-time-window's gate). The lane that
+  hit it touches nothing that suite reaches — a new pure file in the
+  core (`Windows.scala`) and its own test — and the suite passes ALONE
+  on the same tree, first try, all nine tests. What it does not
+  exonerate is the channel: the assertion is a real guarantee (a
+  growing channel promises each producer's own FIFO across a part
+  swap), and this is exactly the load-shaped race such a guarantee
+  loses first. The box was carrying the full matrix plus two sibling
+  sbts at the minute it failed.
+  NEXT OCCURRENCE: capture the round number and the drained sequence
+  around the inversion (the assertion prints the round; the sequence
+  needs an added diagnostic), because "it passed alone" is not a
+  diagnosis and a second sighting under load makes it the channel's
+  bug rather than the machine's. Not tagged `Live` on my own judgement
+  — the guarantee it defends is the channel owner's to price.
+
 - **native-runner-error — a Native module errors with NO failed test,
   and the runner says nothing else** (twice on 2026-09-09, in my own
   gates: `okay.codec.TestJsonEscape` at 13:01, `okay.lex.TestBpe` at
