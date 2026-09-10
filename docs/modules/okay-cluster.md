@@ -328,6 +328,102 @@ event in SIXTEEN requests for 1.26 million events, since a partition
 is a recipe: a job name and one `Int` go out, and the worker builds
 the plan and reads its own slice.
 
+## Running it
+
+Four roads, smallest first. Every command below was run against real
+processes before it was written down.
+
+**1. One JVM, N fibres.** No processes, no protocol — a plan and a
+sink, `Flows.fan` for several sinks over one pass or `Flows.run` for
+a single-stage plan:
+
+```scala
+val got = Flows.fan(Flow.slices(events, parts = 8), sink).runWith
+got.value      // the answer
+got.dropped    // late elements, COUNTED
+got.merged     // accumulators that reached the coordinator
+```
+
+**2. Across processes.** A worker builds the plan itself from a NAME
+and a Schema'd parameter, so nothing ships a closure and every worker
+must run the same artifact. Define the job once:
+
+```scala
+object WindowJob extends Job[Feed, Sum]:
+  type A = Ev
+  def name = "test.window"
+  def params = summon[Schema[Feed]]
+  def flow(f: Feed, parts: Int) = Flow.slices(events(f), parts)
+  def sink(f: Feed) = Wire.tumbling(Size, Late, _.key, _.ts, value)(paneSum)
+
+object MyJobs:                       // loading this class registers them
+  Jobs.register(WindowJob)
+```
+
+Start the workers — the class name on the command line is what a build
+declares it can run, and each prints the port it bound:
+
+```
+$ sbt "export okayClusterJVM/Test/fullClasspath"   # or your own build's
+$ java -cp "$CP" okay.cluster.WorkerMain 7101 okay.cluster.TestJobs$
+worker listening 7101 knowing test.window,test.fan
+```
+
+and run the coordinator against them:
+
+```scala
+val workers = Vector(Served.reconnecting("127.0.0.1", 7101),
+                     Served.reconnecting("127.0.0.1", 7102))
+val got = Cluster.run(WindowJob, Feed(20000, Late - 1), parts = 8, workers).runWith
+```
+
+```
+answer   = Sum(3204,981508,-7189878780811552831)
+dropped  = 0, partitions = 8
+merged   = 179 accumulators reached the coordinator
+failed   = 0 attempts lost, 0 workers buried
+```
+
+**`reconnecting`, not `connect`, unless you know every worker is up.**
+`Served.connect` dials at construction, so one dead address throws
+before the run starts; `reconnecting` dials lazily and on failure
+drops the socket, which lets the COORDINATOR place the failure — move
+the partition to a survivor, count it, bury that worker after three
+consecutive ones. Kill a worker and re-run the lines above and the
+answer is byte for byte the same:
+
+```
+answer   = Sum(3204,981508,-7189878780811552831)
+failed   = 4 attempts lost, 1 workers buried
+```
+
+**3. As a stream, epoch by epoch**, with the coordinator's fold
+written down so a successor can pick the run up:
+
+```scala
+val journal = Checkpoint.Memory()          // or your own store
+val got = Cluster.stream(WindowJob, params, parts = 8, workers,
+                         take = 1024, journal).runWith
+```
+
+**4. With an election**, when more than one process may try to be the
+coordinator. `leading` takes the seat, fences the journal by the term
+and gives the seat up; `None` means somebody else holds it. It does
+not wait to be elected — that loop belongs to whatever supervises the
+process:
+
+```scala
+while running do
+  Cluster.leading(job, params, parts, workers, take, journal, lease).runWith match
+    case Some(run) => report(run)        // the stream ended
+    case None      => sleep(a while)     // somebody else leads
+```
+
+`Lease` is three methods over a term and `Checkpoint` is two over
+bytes, so both bind to whatever you already run: `TestPersisted`
+binds them to okay-persist's `Election` and its compacted log in
+about a dozen lines each.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
