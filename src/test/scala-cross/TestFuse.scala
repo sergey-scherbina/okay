@@ -143,6 +143,50 @@ class TestFuse extends munit.FunSuite {
     assertEquals(intercept[AssertionError](mutable.set(5)(p)).getMessage, "fell back")
   }
 
+  test("the read side is fused too, and a poisoned Forget says so") {
+    // `get`, `preview`, `foldMap` and `toVector` all run at `Forget`,
+    // so poisoning that interpretation tells a fused read from one
+    // that went through the optic — the same trick as the write side.
+    given poisonedForget: Optic.Strong[[X, Y] =>> Optic.Forget[Int, X, Y]] with
+      def dimap[A, B, C, D](p: Optic.Forget[Int, A, B])(f: C => A, g: B => D): Optic.Forget[Int, C, D] =
+        throw AssertionError("fell back")
+      def first[A, B, C](p: Optic.Forget[Int, A, B]): Optic.Forget[Int, (A, C), (B, C)] =
+        throw AssertionError("fell back")
+      override def lens[S, T, A, B](get: S => A, set: (S, B) => T)(
+          p: Optic.Forget[Int, A, B]): Optic.Forget[Int, S, T] = throw AssertionError("fell back")
+
+    val p = Person("ada", 7, None, Address("H", 3))
+    assertEquals(age.get(p), 7)              // halves written out
+    assertEquals(ageBySelector.get(p), 7)    // the selector macro
+    assertEquals(ageVal.get(p), 7)           // an optic in a val
+    assertEquals(age.foldMap((a: Int) => a * 2)(p), 14)
+  }
+
+  test("the read side answers what the interpretation answers") {
+    for _ <- 1 to 100 do
+      val p = person()
+      assertEquals(age.get(p), p.age)
+      assertEquals(homeCity.get(p), p.home.city)
+      assertEquals(selectorChain.get(p), p.home.city)
+      assertEquals(age.preview(p), Some(p.age))
+      assertEquals(age.toVector(p), Vector(p.age))
+      assertEquals(homeCity.foldMap((c: String) => c.length)(p), p.home.city.length)
+      // a prism in the chain: absence is not a value, so this one
+      // falls back — and the answer is still the optic's
+      assertEquals(addressZip.preview(p), p.address.map(_.zip))
+  }
+
+  test("traverseOf: the effect runs once and the whole comes back rebuilt") {
+    val p = Person("ada", 1, None, Address("H", 3))
+    var ran = 0
+    val out = age.traverseOf[Option]((a: Int) => { ran += 1; Some(a + 10) })(p)
+    assertEquals(out, Some(p.copy(age = 11)))
+    assertEquals(ran, 1)
+    // and it agrees with the optic on a chain
+    assertEquals(homeCity.traverseOf[Option]((c: String) => Some(c.toUpperCase))(p),
+      Some(p.copy(home = p.home.copy(city = "H"))))
+  }
+
   test("the fused code allocates nothing the hand-written update does not") {
     // the shape the fusion is for, written both ways: they are the same
     // expression after the macro, which the benchmark measures in bytes

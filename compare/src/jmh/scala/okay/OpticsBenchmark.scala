@@ -92,6 +92,19 @@ class OpticsBenchmark {
   @Benchmark def fusedSelectorSet: Person = { n += 1; Fuse.set(sAge)(n)(p) }
   @Benchmark def fusedSelectorComposed: Person = { n += 1; Fuse.set(sPersonZip)(n)(p) }
 
+  // optics-fuse-reads: the read side. `ageByName` is `Lens.field`,
+  // which the planner still cannot read (a block with a statement in
+  // it), so it prices the interpretation in the same run.
+  @Benchmark def directAgeGet: Int = p.age
+  @Benchmark def lensGet: Int = age.get(p)
+  @Benchmark def fieldGet: Int = ageByName.get(p)
+  /** the SAME selector lens read through the interpretation, which is
+   * what `get` was before this lane — the matched pair for `lensGet`.
+   * `fieldGet` is not one: it differs in the getter too (a Mirror's
+   * productElement against `_.age`), which is two changes in one row. */
+  @Benchmark def lensGetInterpreted: Int =
+    age.apply[[X, Y] =>> Optic.Forget[Int, X, Y]](Optic.Forget(identity)).run(p)
+
   @Benchmark def vectorMap: Vector[Int] = vec.map(_ + 1)
   @Benchmark def traversalOver: Vector[Int] = each.modify(_ + 1)(vec)
 

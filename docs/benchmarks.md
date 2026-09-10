@@ -1871,6 +1871,41 @@ reading was JIT warm-up inside one sbt — the first compile in a cold
 sbt is the slow one, and comparing a cold run against a warm one
 measures the JVM, not the code.
 
+## 9e. The read side
+
+§9d fused the write side by default. `get`, `preview`, `toVector`,
+`foldMap` and `traverseOf` were still the interpretation: a `Forget`
+built per call and the composed optic run to read one field
+(optics-fuse-reads, specs/optics.md stage 10). A lens chain's `get` is
+`s.a.b`, and that is what the macro emits now.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `directAgeGet` — the plain field read `p.age` | 0.433 | ~0 |
+| **`lensGet`** — `age.get(p)`, fused | **0.431** | ~0 |
+| `lensGetInterpreted` — the SAME lens through `Forget` | 0.832 | ~0 |
+| `fieldGet` — `Lens.field[S]("age")`, still unread | 0.826 | ~0 |
+
+The matched pair is the middle two rows: one lens, read two ways. The
+fused read IS the field read, 0.431 against 0.433, and the
+interpretation is 1.9x that. `fieldGet` is deliberately NOT the
+comparison — it differs in the getter as well (a Mirror's
+`productElement` against `_.age`), which would be two changes in one
+row, and Lane Rule 2 forbids that.
+
+Allocation is ~0 on every row, and that is worth stating plainly: the
+JIT's escape analysis already removes the `Forget` this fusion
+deletes, so on the JVM the win is TIME and not bytes. Scala Native and
+Scala.js have no such analysis, so the bytes should be real there;
+not measured, so not claimed.
+
+A prism in the chain still falls back, and not as a limitation to fix:
+an absent focus is not a value, so there is no `get` to emit.
+`preview` on an affine is a real opening — `if (s.f.isDefined)
+Some(...) else None` is emittable — and it is filed rather than done,
+because okay-codec's JSON paths are affines and it wants that
+workload to measure against.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

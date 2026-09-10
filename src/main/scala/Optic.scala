@@ -425,6 +425,26 @@ extension [C[_[_, _]], S, T, A, B](inline o: Optic[C, S, T, A, B])
   inline def set(inline b: B)(using fn: C[Function1]): S => T =
     ${ Fuse.setFnImpl('o, 'b, 'fn) }
 
+  // the READ side, fused the same way: a lens chain's `get` is the
+  // projection `s.a.b`, and the interpretation it replaces allocates
+  // a `Forget` per level. A prism in the chain falls back, because an
+  // absent focus is not a value and the interpretation knows that.
+  /** the focus of a lens (or an iso) */
+  inline def get(inline s: S)(using fn: C[[X, Y] =>> Forget[A, X, Y]]): A =
+    ${ Fuse.getImpl('o, 's, 'fn) }
+  /** the first focus, if any */
+  inline def preview(inline s: S)(using fn: C[[X, Y] =>> Forget[First[A], X, Y]]): Option[A] =
+    ${ Fuse.previewImpl('o, 's, 'fn) }
+  /** the foci, combined */
+  inline def foldMap[R](inline f: A => R)(inline s: S)(using fn: C[[X, Y] =>> Forget[R, X, Y]]): R =
+    ${ Fuse.foldMapImpl('o, 'f, 's, 'fn) }
+  /** the foci, in order */
+  inline def toVector(inline s: S)(using fn: C[[X, Y] =>> Forget[Vector[A], X, Y]]): Vector[A] =
+    ${ Fuse.toVectorImpl('o, 's, 'fn) }
+  /** every focus through an effectful `f`, effects in order */
+  inline def traverseOf[F[_]](inline f: A => F[B])(using fn: C[[X, Y] =>> Star[F, X, Y]]): S => F[T] =
+    ${ Fuse.traverseOfImpl('o, 'f, 'fn) }
+
 extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
   /** many wholes in, their focuses aggregated by `f`, one whole out */
   def aggregate(f: Vector[A] => B)(using C[Aggregating]): Vector[S] => T =
@@ -432,21 +452,6 @@ extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
   /** the same, said with a named aggregation algebra */
   def aggregateWith[Acc](agg: Aggregator[A, Acc, B])(using C[Aggregating]): Vector[S] => T =
     aggregate(as => agg.present(as.foldLeft(agg.init)(agg.add)))
-  /** the focus of a lens (or an iso) */
-  def get(s: S)(using C[[X, Y] =>> Forget[A, X, Y]]): A =
-    o[[X, Y] =>> Forget[A, X, Y]](Forget(identity)).run(s)
-  /** the first focus, if any */
-  def preview(s: S)(using C[[X, Y] =>> Forget[First[A], X, Y]]): Option[A] =
-    o[[X, Y] =>> Forget[First[A], X, Y]](Forget(a => First(Some(a)))).run(s).value
-  /** the foci, combined */
-  def foldMap[R](f: A => R)(s: S)(using C[[X, Y] =>> Forget[R, X, Y]]): R =
-    o[[X, Y] =>> Forget[R, X, Y]](Forget(f)).run(s)
-  /** the foci, in order */
-  def toVector(s: S)(using C[[X, Y] =>> Forget[Vector[A], X, Y]]): Vector[A] =
-    o[[X, Y] =>> Forget[Vector[A], X, Y]](Forget(a => Vector(a))).run(s)
-  /** every focus through an effectful `f`, effects in order — in the row when `F = [x] =>> x ! Row` */
-  def traverseOf[F[_]](f: A => F[B])(using C[[X, Y] =>> Star[F, X, Y]]): S => F[T] =
-    o[[X, Y] =>> Star[F, X, Y]](Star(f)).run
 
   /**
    * The optic run once at its own concrete representation

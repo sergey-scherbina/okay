@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import okay.Optic.{Forget, First, Star}
 
 /**
  * Optics fused in the COMPILER (specs/optics.md, optics-fuse).
@@ -188,6 +189,31 @@ object Fuse {
         optionOf(s, emitModify(inner, Select.unique(s, "get"), f))
       case Plan.Then(outer, inner) => emitModify(flatten(Plan.Then(outer, inner)), s, f)
 
+  /**
+   * THE READ SIDE. A lens chain's `get` is the composed projection —
+   * `s.a.b` — with every lambda beta-reduced away, which is what a
+   * person writes and what the interpretation cannot be: `Forget`
+   * allocates per call and the chain of them per level.
+   *
+   * A prism has no `get`: an absent focus is not a value. So a plan
+   * with `Some_` anywhere answers None here and the caller falls back
+   * to the interpretation, which knows what to do about absence.
+   */
+  private def emitGet(using q: Quotes)(p: Plan, s: q.reflect.Term): Option[q.reflect.Term] =
+    import q.reflect.*
+    flatten(p) match
+      case Plan.L(get, _) => Some(beta(apply1(get.asInstanceOf[Term], s)))
+      case Plan.Some_ => None
+      case Plan.Then(Plan.L(get, _), inner) =>
+        emitGet(inner, beta(apply1(get.asInstanceOf[Term], s)))
+      case Plan.Then(_, _) => None
+
+  /** a plan the read side can emit: no absence anywhere in it */
+  private def readable(p: Plan): Boolean = p match
+    case Plan.L(_, _) => true
+    case Plan.Some_ => false
+    case Plan.Then(a, b) => readable(a) && readable(b)
+
   /** `andThen` may nest either way; the emitters want it right-nested */
   private def flatten(p: Plan): Plan = p match
     case Plan.Then(Plan.Then(a, b), c) => flatten(Plan.Then(a, flatten(Plan.Then(b, c))))
@@ -277,6 +303,74 @@ object Fuse {
       case Some(p) => lambdaOf[S, T](s => emitModify(p, s, f.asTerm))
       case None => '{ $o.apply[Function1]($f)(using $fn) }
 
+  // ---------------------------------------------------------------- the read side's entry points
+
+  @publicInBinary private[okay] def getImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], s: Expr[S],
+      fn: Expr[C[[X, Y] =>> Forget[A, X, Y]]]): Expr[A] =
+    import q.reflect.*
+    plan(o.asTerm).flatMap(p => emitGet(p, s.asTerm)) match
+      case Some(t) => t.asExprOf[A]
+      case None => '{ $o.apply[[X, Y] =>> Forget[A, X, Y]](Forget[A, A, B]((a: A) => a))(using $fn).run($s) }
+
+  @publicInBinary private[okay] def foldMapImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type, R: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], f: Expr[A => R], s: Expr[S],
+      fn: Expr[C[[X, Y] =>> Forget[R, X, Y]]]): Expr[R] =
+    import q.reflect.*
+    plan(o.asTerm).flatMap(p => emitGet(p, s.asTerm)) match
+      case Some(t) => beta(apply1(f.asTerm, t)).asExprOf[R]
+      case None => '{ $o.apply[[X, Y] =>> Forget[R, X, Y]](Forget[R, A, B]($f))(using $fn).run($s) }
+
+  @publicInBinary private[okay] def previewImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], s: Expr[S],
+      fn: Expr[C[[X, Y] =>> Forget[First[A], X, Y]]]): Expr[Option[A]] =
+    import q.reflect.*
+    plan(o.asTerm).flatMap(p => emitGet(p, s.asTerm)) match
+      // a plan `emitGet` reads has no absence in it, so the answer is
+      // always there — which is why this is `Some` and not a test
+      case Some(t) => '{ Some(${ t.asExprOf[A] }) }
+      case None =>
+        '{ $o.apply[[X, Y] =>> Forget[First[A], X, Y]](
+             Forget[First[A], A, B]((a: A) => First(Some(a))))(using $fn).run($s).value }
+
+  @publicInBinary private[okay] def toVectorImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], s: Expr[S],
+      fn: Expr[C[[X, Y] =>> Forget[Vector[A], X, Y]]]): Expr[Vector[A]] =
+    import q.reflect.*
+    plan(o.asTerm).flatMap(p => emitGet(p, s.asTerm)) match
+      case Some(t) => '{ Vector(${ t.asExprOf[A] }) }
+      case None =>
+        '{ $o.apply[[X, Y] =>> Forget[Vector[A], X, Y]](
+             Forget[Vector[A], A, B]((a: A) => Vector(a)))(using $fn).run($s) }
+
+  /**
+   * The effectful walk, fused: for a lens chain `traverseOf(f)` is
+   * `fmap(f(s.a.b), b => put(s, b))` — the read the fusion already
+   * emits, the effect, and the write the fusion already emits.
+   *
+   * Two things make it fall back rather than guess: a prism in the
+   * chain (absence needs the interpretation's `pure`), and an
+   * `Applicative[F]` that cannot be summoned here, which happens
+   * whenever `F` is not known at this call site.
+   */
+  @publicInBinary private[okay] def traverseOfImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type, F[_]: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], f: Expr[A => F[B]],
+      fn: Expr[C[[X, Y] =>> Star[F, X, Y]]]): Expr[S => F[T]] =
+    import q.reflect.*
+    (plan(o.asTerm), Expr.summon[Applicative[F]]) match
+      case (Some(p), Some(ap)) if readable(p) =>
+        lambdaIn[S, F[T]](Symbol.spliceOwner) { (owner, s) =>
+          emitGet(p, s) match
+            case Some(part) =>
+              val effect = beta(apply1(f.asTerm, part)).asExprOf[F[B]]
+              val put = lambdaIn[B, T](owner)((_, b) => emitSet(p, s, b))
+              '{ $ap.fmap($effect, $put) }.asTerm
+            // readable(p) already said this cannot happen; if it ever
+            // does, the interpretation is still right
+            case None => '{ $o.apply[[X, Y] =>> Star[F, X, Y]](Star($f))(using $fn).run(${ s.asExprOf[S] }) }.asTerm
+        }
+      case _ => '{ $o.apply[[X, Y] =>> Star[F, X, Y]](Star($f))(using $fn).run }
+
   /**
    * `(s: S) => body(s)`, built with the reflection API rather than as
    * a quote — and the reason is not style. A nested quote opens a NEW
@@ -287,14 +381,20 @@ object Fuse {
    */
   private def lambdaOf[S: Type, T: Type](using q: Quotes)(
       body: q.reflect.Term => q.reflect.Term): Expr[S => T] =
+    lambdaIn[S, T](using q)(quotes.reflect.Symbol.spliceOwner)((_, x) => body(x))
+
+  /** the same, owned by a symbol the caller names — which is what a
+   * lambda built inside another lambda's body needs */
+  private def lambdaIn[S: Type, T: Type](using q: Quotes)(owner: q.reflect.Symbol)(
+      body: (q.reflect.Symbol, q.reflect.Term) => q.reflect.Term): Expr[S => T] =
     import q.reflect.*
     Lambda(
-      Symbol.spliceOwner,
+      owner,
       MethodType(List("s"))(_ => List(TypeRepr.of[S]), _ => TypeRepr.of[T]),
       (owner, params) => params match
         // the parameter of a Lambda is an Ident, which is a Term; the
         // match says so instead of a cast
-        case List(p: Term) => body(p).changeOwner(owner)
+        case List(p: Term) => body(owner, p).changeOwner(owner)
         case other => report.errorAndAbort(s"a one-parameter lambda, got: $other")
     ).asExprOf[S => T]
 }

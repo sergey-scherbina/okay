@@ -704,3 +704,56 @@ Test/compile`: 27/16/17 s with the change against 20/17/22 s without.
 Minima 16 and 17, ranges overlapping. An earlier reading of 61 against
 32 was JIT warm-up in one sbt and is not evidence of anything — the
 first compile in a cold sbt is always the slow one.
+
+## Stage 10 — the read side fuses too (optics-fuse-reads, 2026-09-10)
+
+Stage 9 said `get`, `foldMap` and `traverseOf` were not fused, simply
+not attempted. The operator said attempt them.
+
+- [x] `emitGet` — a lens chain's `get` IS the projection `s.a.b`, with
+      every lambda beta-reduced away. What it replaces is not free:
+      the interpretation allocates a `Forget` per level and runs the
+      composed optic to read one field.
+- [x] `get`, `preview`, `toVector` and `foldMap` are inline, bodied by
+      it. For a readable plan `preview` is `Some(...)` and `toVector`
+      is `Vector(...)` with no test at all, because a plan the read
+      side can emit has no absence in it.
+- [x] `traverseOf` — `fmap(f(s.a.b), b => put(s, b))`: the read this
+      stage emits, the effect, and the write stage 8 already emitted.
+      It falls back when `Applicative[F]` cannot be summoned at the
+      call site, which is the honest condition rather than a guess.
+- [x] the same poisoned-instance test, on `Forget` this time: a fused
+      read never asks for the interpretation, so an instance that
+      throws tells the two apart at run time.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `directAgeGet` — the plain field read `p.age` | 0.433 | ~0 |
+| **`lensGet`** — `age.get(p)`, fused | **0.431** | ~0 |
+| `lensGetInterpreted` — the SAME lens through `Forget` | 0.832 | ~0 |
+| `fieldGet` — `Lens.field[S]("age")`, still unread | 0.826 | ~0 |
+
+The matched pair is the middle two rows: one lens, read two ways. The
+fused read IS the field read, 0.431 against 0.433, and the
+interpretation is 1.9x that. `fieldGet` is deliberately NOT the
+comparison — it differs in the getter as well (a Mirror's
+`productElement` against `_.age`), which would be two changes in one
+row, and Lane Rule 2 forbids that.
+
+Allocation is ~0 on every row, and that is worth stating plainly: the
+JIT's escape analysis already removes the `Forget` this fusion
+deletes, so on the JVM the win is TIME and not bytes. Scala Native and
+Scala.js have no such analysis, so the bytes should be real there;
+not measured, so not claimed.
+
+A PRISM IN THE CHAIN FALLS BACK, and the reason is not a limitation to
+fix later: an absent focus is not a value, so there is no `get` to
+emit. `preview` on an affine still answers through the interpretation,
+which knows what absence means. Fusing THAT is a real opening —
+`if (s.f.isDefined) Some(...) else None` is emittable — and it is
+filed rather than done here, because okay-codec's JSON paths are
+affines and it wants their workload to measure against.
+
+Also needed on the way: `lambdaIn`, the lambda builder with the owner
+named, because `traverseOf` builds a lambda INSIDE another lambda's
+body and the inner one must be owned by the outer.

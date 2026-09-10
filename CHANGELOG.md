@@ -1,5 +1,52 @@
 # Changelog
 
+## optics-fuse-reads — the read side of the fusion
+
+The last entry ended by naming what was not fused: `get`, `foldMap`
+and `traverseOf`, simply not attempted. The operator said attempt them.
+
+The write side emits the update; the read side emits the projection. A
+lens chain's `get` IS `s.a.b`, `foldMap(f)` is `f(s.a.b)`, `preview`
+is `Some(...)` and `toVector` is `Vector(...)` with no test at all —
+a plan the read side can emit has no absence in it. `traverseOf` is
+`fmap(f(s.a.b), b => put(s, b))`: this stage's read, the effect, and
+the write stage 8 already emitted. All five are inline extensions now.
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `directAgeGet` — the plain field read `p.age` | 0.433 | ~0 |
+| **`lensGet`** — `age.get(p)`, fused | **0.431** | ~0 |
+| `lensGetInterpreted` — the SAME lens through `Forget` | 0.832 | ~0 |
+| `fieldGet` — `Lens.field[S]("age")`, still unread | 0.826 | ~0 |
+
+The matched pair is the middle two rows: one lens, read two ways. The
+fused read IS the field read, 0.431 against 0.433, and the
+interpretation is 1.9x that. `fieldGet` is deliberately NOT the
+comparison — it differs in the getter as well (a Mirror's
+`productElement` against `_.age`), which would be two changes in one
+row, and Lane Rule 2 forbids that.
+
+Allocation is ~0 on every row, and that is worth stating plainly: the
+JIT's escape analysis already removes the `Forget` this fusion
+deletes, so on the JVM the win is TIME and not bytes. Scala Native and
+Scala.js have no such analysis, so the bytes should be real there;
+not measured, so not claimed.
+
+A prism in the chain falls back, and that is the design rather than a
+gap: an absent focus is not a value, so there is no `get` to emit and
+the interpretation is the thing that knows what absence means.
+`preview` on an affine is emittable and is filed, not done, because
+the workload that should judge it is okay-codec's JSON paths.
+
+Two things the lane needed on the way. `lambdaIn`, a lambda builder
+with its owner named, because `traverseOf` builds a lambda inside
+another lambda's body and the inner one must be owned by the outer.
+And `traverseOf` falls back when `Applicative[F]` cannot be summoned
+at the call site, which is the honest condition and not a guess.
+
+The teeth are the same as the write side's: a poisoned `Forget`
+instance, which a fused read never asks for and a fallback does.
+
 ## dataflow stage 4a — what crosses a wire, and its Schema
 
 The engine was called distributed and was entirely in-process. This
