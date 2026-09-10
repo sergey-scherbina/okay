@@ -10,6 +10,42 @@
       317 turns, not a default. Trigger: a consumer that needs the slot
       layer where `okay-onnx` cannot follow.
 
+## streams vs an engine — what §20 of docs/benchmarks.md left open (flink-stream-bench, 2026-09-10)
+
+The Wrocław event-time job now runs on both okay and Flink 1.20 and the
+two agree on every checksum (docs/benchmarks.md §20). Three things the
+run named and did not build:
+
+- [ ] stream-event-time-window — the core has the arithmetic
+      (`Aggregator`) and the pass (`Chunks`) and NO event-time window
+      operator. Flink's stage 2 is one line; the benchmark's `Windows`
+      (keyed panes under a packed `LongMap` key, a watermark, an
+      eviction sweep per slide boundary) is fifty, and every user of
+      okay who windows a stream writes them again. It is a candidate
+      for the core, not a certainty: the operator's shape (tumbling
+      and sliding, keyed, watermark-evicted, an `Aggregator` per pane)
+      is settled by the benchmark, but nothing outside a benchmark has
+      asked for it yet. Trigger: the second consumer.
+- [ ] flink-okay-parallel-lane — the okay lane is ONE thread, so §20's
+      2.2x over Flink-at-four-cores is per event, not per box. The
+      parallel lane that would answer "and if okay used four cores?"
+      is a MERGE, not a shuffle: slice the arrival order into P
+      contiguous ranges, run P folds, and combine the partial panes
+      with `Aggregator.merge` — which is the operation the contract
+      carries for exactly this. The care is at the boundaries: panes
+      whose window spans two slices must be deferred to the
+      coordinator, and the bunching stage's last-seen-per-key must be
+      stitched across the seam. The equality assertion the suite
+      already runs is what would keep it honest.
+- [ ] flink-window-memory — no memory number is quoted in §20 and the
+      reason is real: okay advances its watermark per element while
+      Flink's periodic generator fires every 200 ms of WALL time, so
+      under a full-speed replay Flink holds panes a real deployment
+      would have evicted. Comparing the two profiles needs a
+      rate-limited source (`RateLimiterStrategy` is already on
+      `DataGeneratorSource`) so both lanes see the same event-time to
+      wall-time ratio.
+
 ## okay-r: two claims the spec made that the module does not (spec-truth, 2026-09-09)
 
 Found by auditing specs/r.md's Behavior list against the 24 tests that
@@ -65,6 +101,10 @@ speculation.
 - [ ] bulk-flink — `flink-core` alone carries no DataStream; an
       instance needs flink-streaming-java. The seam's `Any`-element
       choice is what a `DataStream[AnyRef]` instance would do too.
+      (2026-09-10: flink-streaming-java and flink-clients are now on
+      okay-flink's TEST classpath for the §20 benchmark, so the
+      dependency question is answered — a `Bulk` instance would still
+      need them in `compile`.)
 - [x] bulk-join-cost — CLOSED 2026-09-09 by bulk-rewrite: the join was
       not the cost, the persist was; see above.
 

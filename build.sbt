@@ -447,6 +447,36 @@ lazy val okayFlink = (project in file("okay-flink"))
     libraryDependencies ++= Seq(
       "org.apache.flink" % "flink-core" % "1.20.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
+      // the ENGINE, for the comparison benchmark only (docs/benchmarks.md
+      // section 20): flink-streaming-java is the DataStream API,
+      // flink-clients brings the MiniCluster a local environment runs on.
+      // The Scala DataStream API is not used and could not be: it is
+      // published for 2.13 and its TypeInformation macros do not exist for
+      // Scala 3 — Flink's own advice since 1.18 is to call the Java API,
+      // which is what the lanes do (explicit `.returns(...)` everywhere a
+      // Scala lambda erases the type Flink would have extracted).
+      "org.apache.flink" % "flink-streaming-java" % "1.20.0" % Test,
+      "org.apache.flink" % "flink-clients" % "1.20.0" % Test,
+    ),
+    // Flink 1.20 on JDK 21 reaches into java.base by reflection (Kryo,
+    // its own MemorySegment); the same list okay-spark needs, and for
+    // the same reason
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      "-Xmx4g",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/java.text=ALL-UNNAMED",
+      "--add-opens=java.base/java.time=ALL-UNNAMED",
     ),
   )
 

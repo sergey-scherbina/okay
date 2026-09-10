@@ -1,5 +1,46 @@
 # Changelog
 
+## flink-stream-bench — okay's streams against Apache Flink, on Wrocław's own timetable
+
+The operator asked for a comparison against a real streaming ENGINE on
+a job that is actually hard, and chose the Wrocław data. `okay-flink`
+was the module with one function and no number: `toFlink` claims an
+okay `Aggregator` IS a Flink `AggregateFunction`, and nothing had ever
+run it under a Flink. It does now, and the claim is what makes the
+benchmark unusually fair — `Job.stats` is ONE value, folded by
+`Chunks` in one lane and accumulated, merged across panes and
+presented by Flink's window operator in the other, so what the two
+numbers differ by is the engine.
+
+The job: 1.16M GTFS stop-times turned deterministically into an
+event-time stream (delay by a splitmix hash, arrival jitter under the
+watermark bound so nothing is ever late), then five stages — a
+map-side join, tumbling 5-minute windows per route, sliding 15/5
+windows per stop, a keyed bunching detector, and a per-window top-5 of
+tram routes. Both lanes answer with eleven order-independent
+checksums, and the suite asserts them EQUAL before it times anything;
+they match exactly at parallelism 1 and 4.
+
+Per event, one okay thread is 4.3x a Flink task and 2.2x four of them
+(3.07M ev/s against 719k and 1.42M, least-squares over three sizes);
+Flink pays 0.55–0.70 s of fixed cost per job that okay does not, its
+checkpointing costs 1.4%, and `enableObjectReuse` is worth 1.47x at
+2.4M events. What Flink buys with the fixed cost — recovery,
+distribution, rescale — is stated in the section rather than left out.
+
+The run also found the trap that matters more than the ratios: a
+single-partition source feeding a filter at parallelism 4 is
+REBALANCED, so per-key order (which is per CHANNEL) does not survive,
+and the bunching stage answered 451 instead of 913 until stage 1 was
+pinned to the source's parallelism. It is invisible until something
+computes the same answer twice.
+
+docs/benchmarks.md §20 has the tables and the two named asymmetries;
+BACKLOG gains `stream-event-time-window` (the core has no window
+operator — the benchmark's is fifty lines), `flink-okay-parallel-lane`
+(parallelism by `Aggregator.merge` rather than by shuffle) and
+`flink-window-memory`. Gate: full matrix green, 0 warnings.
+
 ## optics-fast — built, measured, and refuted: the JIT was already doing it, and better
 
 The operator asked for the lane specs/optics.md had filed "by a

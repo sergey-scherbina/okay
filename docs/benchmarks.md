@@ -50,6 +50,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | look up a symbol in an index | **0.56** | — | [§11](#11-retrieval--indexing-re-indexing-chunking-query) |
 | 4 000 elements through an unbounded channel, chunked | **56.0** | ZIO 439.7 | [§16](#16-every-capacity-a-ring--the-table-that-closes-the-arc) |
 | 8 000 elements, 16 producers (okay's own buffers) | **128** | — | [queues.md](queues.md) |
+| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **3.07M**, one thread | Flink 1.42M at parallelism 4 | [§20](#20-streams-against-an-engine--wrocławs-timetable-through-okay-and-apache-flink) |
 
 **Where okay loses, and it is here rather than buried:** fork/join of
 100 fibers against kyo (24.0 against 18.5, §4), and the single-channel
@@ -3300,3 +3301,190 @@ threads) because the host's own load did.
   itself under load 8. For scale, 100k renders/s is roughly 8.6
   billion a day; a page's own work — a database call, an LLM turn —
   will decide long before this does.
+
+## 20. Streams against an ENGINE — Wrocław's timetable through okay and Apache Flink
+
+Every section above compares okay with a LIBRARY: another way of
+writing a program in one JVM. This one compares it with a distributed
+stream processor — Apache Flink 1.20, in a local MiniCluster — on a
+job that is not a pipeline of maps but the thing engines exist for:
+event time, watermarks, keyed windows, keyed state, a ranking of the
+windows.
+
+**Why this workload, and why it is unusually fair.** okay-flink's
+whole content is one claim: an okay `Aggregator` IS a Flink
+`AggregateFunction`, field for field (`init/add/merge/present` against
+`createAccumulator/add/merge/getResult`). If the claim holds, then the
+same VALUE can be handed to both engines — and it is: `Job.stats` is
+one object, folded by `Chunks` in the okay lane and accumulated,
+merged across panes and presented by Flink's window operator in the
+other. Three of the five stages are literally the same code — the two
+windowed statistics and the ranking (`Aggregator.topK`, contramapped
+onto the window record) — so what the two numbers differ by is the
+ENGINE, not the arithmetic. (The claim
+had never been run under a real engine before this benchmark; the unit
+test asserted the field mapping and stopped there. It survived —
+including serialization into a job graph, which is the part a unit
+test could not reach.)
+
+**The data.** Wrocław publishes its public-transport timetable as GTFS
+(`open-data.cui.wroclaw.pl`, snapshot 131, valid 2026-09-06 .. 09-20):
+1 158 821 scheduled stop departures, 41 962 trips, 138 routes, 2 482
+stops. A timetable is a PLAN, not a stream, so `Gtfs.events` turns it
+into one — deterministically, by one splitmix hash of trip,
+stop-sequence and day, with no `Random` and no clock:
+
+- a **delay** per departure (an exponential tail scaled by the hour —
+  rush hours are worse — plus a creep along the trip);
+- an **event time** = scheduled + delay, which is not the order events
+  arrive in;
+- an **arrival jitter** of up to 25 s, which is.
+
+The jitter is deliberately BELOW the 30 s watermark bound both lanes
+use: no event is ever late, both engines therefore see complete
+windows, and the two answers can be asserted EQUAL rather than
+"close". Eight service days replay as 2 414 119 events; four as
+1 255 298.
+
+**The job** (`Job`, one definition, five stages):
+
+| stage | what | what it exercises |
+|---|---|---|
+| 1 | enrich: map-side join against the 138-row routes table, drop unknown routes | closure-shipped table |
+| 2 | tumbling 5 min per route: count, sum, max delay | **the shared `Aggregator`** |
+| 3 | sliding 15 min every 5 per stop | the same aggregator, 3 panes per event |
+| 4 | bunching: two departures of one route from one stop < 2 min apart | keyed STATE (`ValueState` / a map) |
+| 5 | top-5 tram routes by mean delay, per window | `Aggregator.topK`, on stage 2's output |
+
+**Correctness first, and it is not decoration.** Every lane's run
+produces a `Result` of order-independent checksums — window counts,
+event counts, delay sums, an XOR of a hash of every emitted record,
+and an order-SENSITIVE hash of each window's ranking. The suite
+asserts these EQUAL between okay and Flink at every parallelism before
+anything is timed. All eleven numbers match exactly.
+
+### The numbers
+
+Host: 14 cpus, JVM 21, a working machine. **2 414 119 events** (eight
+service days), best of 3 runs per lane, the spread printed beside each
+(`TestWroclawStream`, `Live`-tagged, `sbt integrationTest`).
+
+| lane | throughput | wall | of the okay lane |
+|---|---:|---:|---:|
+| okay, 1 thread | 3 362 282 ev/s | 718 ms | 1.0x |
+| flink, parallelism 1 | 619 163 ev/s | 3 899 ms | 5.4x |
+| flink, parallelism 4 | 1 368 548 ev/s | 1 764 ms | 2.5x |
+| flink, parallelism 4 + checkpoints every 5 s | 1 349 423 ev/s | 1 789 ms | 2.5x |
+| flink, parallelism 4, object reuse OFF | 928 864 ev/s | 2 599 ms | 3.6x |
+
+**That table is not the answer, and saying why is the point of this
+section.** A Flink job pays a FIXED cost before it has seen an event —
+a MiniCluster starts, a job graph is built and serialized, tasks are
+deployed — and a benchmark that runs one job over a fixed dataset
+charges that cost to the events. The smaller the dataset the worse the
+engine looks, which is a statement about the benchmark, not about
+Flink, whose jobs run for weeks. So each lane is also run over
+PREFIXES of the same stream (a quarter, a half, all of it) and the two
+costs are separated by a least-squares fit:
+
+| lane | fixed cost | marginal | the points |
+|---|---:|---:|---|
+| okay, 1 thread | ~0 (fit: −15 ms) | 3 066 940 ev/s | 604k:186ms 1 207k:371ms 2 414k:774ms |
+| flink, parallelism 1 | 699 ms | 719 283 ev/s | 604k:1 536ms 1 207k:2 379ms 2 414k:4 054ms |
+| flink, parallelism 4 | 554 ms | 1 418 640 ev/s | 604k:978ms 1 207k:1 407ms 2 414k:2 255ms |
+
+**The same run at half the data** (four service days, 1 255 298
+events, spreads 1.03–1.58 — looser, which is why the eight-day run is
+the one quoted): okay 3 664 341 ev/s marginal on a 5 ms fixed cost,
+flink p1 754 127 on 462 ms, flink p4 1 883 217 on 418 ms. The two
+sizes agree on the shape and disagree by 15% on okay and flink p1 and
+by 25% on flink p4 — a reminder that one size lies about as readily as
+one round.
+
+**What the tables say.**
+
+- **Per event, one okay thread is 4.3x a Flink task and 2.2x four of
+  them** (3.07M against 0.72M and 1.42M). That is the honest headline,
+  and it is a smaller number than the 5.4x/2.5x of the wall-clock
+  table — because half a second of every Flink run is the engine
+  starting, which no production job pays per event.
+- **Flink's 0.55–0.70 s fixed cost is the price of being an ENGINE**: a
+  job graph, task deployment, network stacks, state backends. okay's
+  fixed cost fits to zero (−15 ms at eight days, +5 ms at four); it has
+  nothing to start.
+- **Flink scales: p1 → p4 is 2.0x on four cores** (719k → 1 419k
+  marginal), which is what a shuffle-based engine should do, and it is
+  still short of one okay thread. The okay lane is ONE thread by
+  construction — the four stages fan out to four consumers of one
+  pass, which in one JVM is four method calls and in Flink is three
+  shuffles. A merge-parallel okay lane (slices joined by
+  `Aggregator.merge`, which is what merge is FOR) is filed rather than
+  claimed: it is not written, so it is not quoted.
+- **The guarantee costs 1.4%.** Checkpointing every 5 seconds to a real
+  filesystem — the thing okay's in-process lane does not offer at all —
+  moved 1 369k to 1 349k ev/s. That is the cheapest honest way to state
+  what Flink is selling, and it is much less than the fan-out costs it.
+- **Object reuse is worth 1.47x at this size, and nothing at half it**
+  (929k vs 1 369k ev/s at 2.4M events; 960k vs 1 053k at 1.26M). The
+  elements are POJOs of five primitives, so the copies are small — but
+  there are three shuffles and 7.2M pane insertions, and the garbage
+  compounds. `enableObjectReuse` is one line and it is the largest
+  single Flink-side setting this benchmark found.
+
+**What Flink buys that this benchmark cannot show.** Everything the
+fixed cost is for: the job survives a machine dying, state is
+checkpointed and restored, the pipeline runs across a cluster rather
+than a heap, and a rescale re-partitions the keyed state. okay's lane
+is a fold in one process: lose the process and lose the state. Any
+comparison that leaves that out is quoting a number for two different
+products.
+
+**A finding the benchmark produced on the way, worth more than the
+ratios.** The first parallel run DISAGREED with the sequential one on
+the bunching stage — 451 detections against 913 — and Flink's own p1
+and p4 runs disagreed with each other. The cause is not a Flink defect
+and not ours: a stream with ONE partition, read by one reader and fed
+to a filter at parallelism 4, is REBALANCED round-robin, and two
+events of the same key then reach the keyed operator through two
+racing channels. Flink's per-key ordering guarantee is per CHANNEL, so
+it does not survive a rebalance — measured, the bunching stage saw
+44 852 out-of-order pairs at p4 against 41 at p1. Pinning stage 1 to
+the source's parallelism (what a partitioned source, Kafka keyed by
+route, gives for free) restores it, and the two lanes then agree
+exactly at every parallelism. Any stateful job whose answer depends on
+per-key order has this trap in it, and it is invisible until something
+computes the same answer twice.
+
+**Two honest asymmetries, named rather than buried.**
+
+- **The fan-out.** One source feeds four consumers. In okay that costs
+  nothing (one pass, four method calls); in Flink it is three
+  shuffles, each with serialization. That is not a flaw of the
+  benchmark — it IS the difference between an in-process fold and a
+  dataflow engine — but a reader should know which side of the
+  comparison it lands on.
+- **The watermark cadence.** okay advances its watermark per element
+  and evicts panes as they close; Flink's periodic generator fires
+  every 200 ms of WALL time (its own default), so under a full-speed
+  replay its window state lags and it holds more panes than it would
+  in a real deployment. Neither lane's ANSWER depends on this — both
+  see complete windows — but the memory profiles are not comparable,
+  and no memory number is quoted here for that reason.
+
+**Where the code is.** `okay-flink/src/test/scala/okay/flink/wroclaw/`
+— `Gtfs` (the feed), `Job` (the definition both lanes share),
+`OkayLane`, `FlinkLane` — and `TestWroclawStream` runs them. Flink's
+lane is the JAVA DataStream API, which is Flink's own advice since 1.18
+and the only option from Scala 3 (the Scala API is 2.13-only and its
+`TypeInformation` macros do not exist for Scala 3); every operator
+names its `TypeInformation` explicitly because a Scala lambda erases
+what Flink's extractor would have read.
+
+**What the okay lane costs to WRITE, which no table shows.** Flink's
+stage 2 is one line (`.window(TumblingEventTimeWindows.of(...))`); the
+okay lane's `Windows` — keyed panes under a packed `LongMap` key, a
+watermark, an eviction sweep per slide boundary — is fifty. The core
+has the arithmetic (`Aggregator`) and the pass (`Chunks`) and no
+event-time window operator; this benchmark is where that shows, and it
+is filed in BACKLOG as `stream-event-time-window` rather than claimed
+as a virtue.
