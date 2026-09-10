@@ -1,0 +1,22 @@
+task: bench-whole-field
+agent: opus-flink
+started: 2026-09-10
+branch: feature/bench-whole-field
+worktree: ../okay-wt-whole-field
+
+why: the operator's ask — "покажи таблицу где всё вместе". §20 grew
+  lane by lane and its tables did too: okay and Flink at 2.4M events,
+  the JDK roads at a quarter (they could not fit), the memory numbers
+  in a third place. Each table is internally honest and the section is
+  hard to read, which is the same defect as a wrong number.
+
+what: one test that runs EVERY lane at ONE size and prints one table —
+  time, throughput and peak heap per lane, with the answer asserted
+  equal for each — and it does it twice, at the size every lane fits
+  (603 529) and at the full feed (2 414 119), where the two
+  `groupingBy` roads are marked as what they are: an OutOfMemoryError.
+  The table goes at the TOP of §20, before the per-lane sections.
+
+predict: nothing new numerically — this is a presentation lane. What
+  it may catch is a lane that only looked comparable because it was
+  measured in a different run, and that is worth the machine time.
