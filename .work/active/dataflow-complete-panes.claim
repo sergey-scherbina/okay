@@ -1,0 +1,47 @@
+task: dataflow-complete-panes
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-complete-panes
+worktree: ../okay-wt-dfc
+spec: specs/dataflow.md, stage 3's Results (the table that filed this)
+
+why: MeasureWroclawFlow says the engine is 5.5x the hand-written lane
+  (121 ms against 22), and the decomposition says where ALL of it is:
+  84% of the run is the sliding stop-window sink, not because the
+  windowing is slow but because the job makes 362 983 stop panes,
+  every partition holds most of them, and the coordinator merges
+  ~2.9 million accumulators on ONE thread.
+
+  `OkayLane.parallel` does not parallelise that merge. It AVOIDS it —
+  it emits at the slice every pane no other slice can touch and hands
+  back only the handful that span a boundary.
+
+what: the same rule, as the engine's. A pane is complete in partition
+  i when `p.start > hi(i-1)` (no earlier partition can have touched a
+  window starting after every earlier event's time) and
+  `p.end <= hi(i) - back` (no later one can touch a window ending at
+  or before the least a later event's time can be). Complete panes
+  are presented and folded into the terminal AT THE PARTITION; only
+  the rest reach the coordinator.
+
+  The engine already computes `hi`: it is the prefix-maximum array
+  gathered for the watermark seeding, and the seed IS the lower
+  bound. What is missing is `back`, and it is two more columns in the
+  same pre-pass — each partition's local backwardness and its
+  minimum event time, combined with the exclusive prefix max. That
+  combination OVER-estimates `back` slightly, which is the safe
+  direction: it declares fewer panes complete, never more.
+
+  `Run` gains `merged`, the number of accumulators that reached the
+  coordinator, so the improvement is asserted by the suite rather
+  than only visible in a benchmark.
+
+scope: the fan road (`Sink`). `Flows.run`'s single-stage windowed node
+  keeps merging everything — it already has an answer for a big merge,
+  which is stage 2's exchange, and the fan does not.
+
+predict: the stop sink is 93 of the engine's 111 ms at 8 partitions.
+  If the merge is the whole of it, the fan should land near the
+  hand-written 22 ms; if it lands at 50-60 the remaining half is the
+  per-pane tuple key (`windows-packed-key`) and the answer is a
+  second lane, not a bigger version of this one. MEASURE which.
