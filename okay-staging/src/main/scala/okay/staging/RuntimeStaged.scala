@@ -381,12 +381,9 @@ object RuntimeStaged {
             val nameE = Expr(name)
             val miss = absent(p, pe, i, name, fs0)
             if fs0.isInstanceOf[Schema.SOption[?]] then
-              // a damaged optional is absent, a depth CUT is a refusal
-              // (input-depth-both-wires) — the same rule the fold and
-              // the compile-time generator read through Json.isCut
               '{ Staged.lookup($fs, $nameE) match
                    case None => $miss
-                   case Some(e @ Json.JErr(_)) if !Json.isCut(e) => $miss
+                   case Some(Json.JErr(_)) => $miss
                    case Some(v) => ${ read(fs0, 'v, here) } }
             else
               '{ Staged.lookup($fs, $nameE) match

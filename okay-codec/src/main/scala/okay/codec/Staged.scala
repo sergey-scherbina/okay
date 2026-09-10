@@ -92,16 +92,16 @@ object Staged {
     found
 
   /** the fold's list rule: damaged elements are skipped, the rest
-   * decode in order, the first Left ends it — and the depth CUT is not
-   * a damaged element but a refusal, exactly as `Json.arrived` reads it
-   * for the interpreted fold (input-depth-both-wires) */
+   * decode in order, the first Left ends it. A depth cut needs no
+   * exception here: it propagates to the root of the document, so it
+   * never arrives as an element (cut-refuses-the-document) */
   def elems[X](vs: Vector[Json])(f: Json => Either[String, X]): Either[String, List[X]] =
     val b = List.newBuilder[X]
     var i = 0
     var failed: Option[String] = None
     while failed.isEmpty && i < vs.length do
       vs(i) match
-        case e @ Json.JErr(_) => if Json.isCut(e) then failed = Some(Json.cutMessage)
+        case Json.JErr(_) => ()
         case v => f(v) match
           case Right(x) => b += x
           case Left(e) => failed = Some(e)
@@ -542,7 +542,7 @@ object Staged {
                         if isOpt then
                           '{ Staged.lookup($fs, $nameE) match
                                case None => $absent
-                               case Some(e @ Json.JErr(_)) if !Json.isCut(e) => $absent
+                               case Some(Json.JErr(_)) => $absent
                                case Some(v) => ${ read[f]('v, here) } }
                         else
                           '{ Staged.lookup($fs, $nameE) match

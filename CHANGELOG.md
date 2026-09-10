@@ -1,5 +1,49 @@
 # Changelog
 
+## cut-refuses-the-document — the depth cut was written as damage at a spot, and that was the wrong shape
+
+The operator asked for the rest of input-depth-both-wires. What was
+left was one difference I had justified rather than fixed: on the JSON
+roads a cut inside a field nobody DECLARED is a field nobody visits,
+so the document still decoded, while CBOR refused it by name. The
+excuse was "the totality difference, not a divergence anybody chose" —
+which is the same excuse this arc had already disproved once, and a
+recursive schema really can write such a value, so the law "one
+Schema, one value, one answer on either wire" really was broken.
+
+**The fix is smaller than what it replaces.** A cut is not damage at a
+spot, it is the document: the projection propagates it, a container
+holding the cut IS the cut, so `Json.parse` of a too-deep document
+answers the cut at its root and every decoder's existing `JErr`
+refusal catches it wherever it sits. Four exceptions written the day
+before are now unreachable and gone — `Json.arrived` (the hot-path
+`filterNot` comes back), the optional-field guard, `Staged.elems`'s cut
+branch and both staged optional lookups — and the undeclared case
+refuses on all of `Json.decode`, `Json.read`, `Json.readStrict` and
+`Staged.strict`. `JsonStrict` has no tree for a cut to travel through,
+so its bracket counter carries the budget: `skipValue` refuses past
+`Codecs.maxDepth` counted from the reader's current depth, which is
+also the one-budget rule CBOR already had.
+
+What is given up: the partial value of a document nested past 256. No
+caller can use it — a reader cannot say what it did not descend into —
+and both wires now agree on that.
+
+**And the backlog entry about okay-mcp was a misread, which reading the
+code answered in one command.** `mcp-projection-eats-a-cut` guessed
+that `Client`'s six `case Json.JErr(_) => Nil/None` projections would
+turn a cut frame into an empty answer. They do not: `Rpc.damaged`
+already walks the whole tree for a `JErr`, so such a frame is
+`-32700 ParseError` with the limit named, and those six sites are the
+client's ERROR channel answering correctly. The entry is deleted and
+`TestRpc` now pins the behaviour it guessed about — a guess about
+another module is a hypothesis, and the command that checks it is
+cheaper than the fix it asks for.
+
+Two boundary tests changed their shape with the rule (the cut is the
+document, so it is no longer found 256 levels down), one new test per
+direction, 149 in okay-codec and 6 in TestRpc.
+
 ## flink-window-memory — how much of an engine's memory is the benchmark's fault
 
 The last of the three things §20 named and did not build. The section

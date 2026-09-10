@@ -42,6 +42,26 @@ class TestRpc extends munit.FunSuite {
         case other => fail(s"'$bad' decoded to $other")
   }
 
+  test("a frame nested past the codec's limit is a ParseError, not a half-read message") {
+    // The input-depth lane (f9eb4cb1) named six `case Json.JErr(_) =>
+    // Nil/None` projections in Client as a backlog item, on the guess
+    // that a cut frame would read as an empty answer. It does not, and
+    // this is why: `damaged` already walks the whole tree for a JErr,
+    // so a frame the codec could not read to the bottom is -32700 with
+    // the limit named — and those six sites are the client's ERROR
+    // channel, answering correctly. A guess about another module is a
+    // hypothesis; this is the command that checks it
+    // (cut-refuses-the-document).
+    val deep = s"{${q}jsonrpc$q:${q}2.0$q,${q}id$q:1,${q}result$q:" +
+      ("[" * 400) + "1" + ("]" * 400) + "}"
+    Rpc.decode(deep) match
+      case Rpc.Failed(id, code, message) =>
+        assertEquals(code, Rpc.ParseError)
+        assertEquals(id, Json.JNull)
+        assert(message.contains("nested deeper than"), message)
+      case other => fail(s"a frame past the limit decoded to $other")
+  }
+
   test("a parse error answers with id null, which is what JSON-RPC owes") {
     val Rpc.Failed(id, code, _) = Rpc.decode("{oops"): @unchecked
     assertEquals(id, Json.JNull)

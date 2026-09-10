@@ -36,7 +36,7 @@ class TestInputDepth extends munit.FunSuite:
         case _ => done = true
     (d, at)
 
-  test("past the limit: a value, not a stack overflow — and the cut names the limit") {
+  test("past the limit: a value, not a stack overflow — and the document says why") {
     // each road is given the depth that used to KILL IT, and no more:
     // the fast road died at 20 000 and refuses there in constant time,
     // while the projection died between 1 000 and 5 000 and every
@@ -45,31 +45,25 @@ class TestInputDepth extends munit.FunSuite:
     val deep = nest(5000)
     val v = Json.parse(deep)                      // must not throw
     assertEquals(v, Json.lossless(deep), "the two roads answer one value, as they do for all damage")
-    val (d, leaf) = bottom(v)
-    assertEquals(d, Codecs.maxDepth, "the tree is cut exactly at the limit")
-    leaf match
+    assert(Json.isCut(v), s"the document IS the cut, not a tree with one in it: $v")
+    v match
       case Json.JErr(m) => assert(m.contains(s"nested deeper than ${Codecs.maxDepth}"), m)
-      case other => fail(s"the cut should be a JErr, got $other")
+      case other => fail(s"expected the cut, got $other")
   }
 
-  test("at the limit: the document still reads as the value it is, on both roads") {
+  test("the limit is exact, and counts every container — objects as well as arrays") {
     val ok = nest(Codecs.maxDepth)
     assert(JsonValue.parse(ok).isDefined, "a document at the limit is not damage")
-    val v = Json.parse(ok)
-    assertEquals(v, Json.lossless(ok))
-    assertEquals(bottom(v), (Codecs.maxDepth, Json.JNum(1.0)))
-  }
+    assertEquals(Json.parse(ok), Json.lossless(ok))
+    assertEquals(bottom(Json.parse(ok)), (Codecs.maxDepth, Json.JNum(1.0)),
+      "every one of the containers at the limit is a value, and the number is under them")
+    assert(Json.isCut(Json.parse(nest(Codecs.maxDepth + 1))), "one more is the cut")
 
-  test("objects nest too: the limit counts every container, not only arrays") {
-    val deep = ("{\"a\":" * 400) + "1" + ("}" * 400)
-    assertEquals(JsonValue.parse(deep), None)
-    val v = Json.parse(deep)                      // must not throw
-    def go(j: Json, d: Int): (Int, Json) = j match
-      case Json.JObj(Vector((_, one))) => go(one, d + 1)
-      case other => (d, other)
-    val (d, leaf) = go(v, 0)
-    assertEquals(d, Codecs.maxDepth)
-    assert(leaf.isInstanceOf[Json.JErr], s"got $leaf")
+    def objs(d: Int) = ("{\"a\":" * d) + "1" + ("}" * d)
+    assertEquals(Json.parse(objs(Codecs.maxDepth)) match
+      case Json.JObj(_) => true
+      case _ => false, true, "objects at the limit read as objects")
+    assert(Json.isCut(Json.parse(objs(Codecs.maxDepth + 1))), "and one more is the cut")
   }
 
   test("a DECLARED field past the limit is a refusal on both wires") {
@@ -83,27 +77,46 @@ class TestInputDepth extends munit.FunSuite:
     assert(Json.readStrict[Known](text).isLeft, "the strict door refuses it too")
   }
 
-  test("an UNDECLARED field past the limit: the totality difference, stated") {
+  test("an UNDECLARED field past the limit refuses too: depth is the DOCUMENT's") {
     final case class OnlyA(a: String)
     given Schema[OnlyA] = Schema.derived
     val text = "{\"a\":\"kept\",\"deep\":" + nest(500) + "}"
-    // JSON's doors are total by design: damage inside a field nobody
-    // declared is data nobody reads, so both JSON doors skip it. That
-    // is the same difference a TRUNCATED unknown field already has
-    // (TestUnknownFields), not a new one — and the CBOR decoder, which
-    // walks the bytes rather than a tree, refuses by name.
-    assertEquals(Json.decode(summon[Schema[OnlyA]])(Json.parse(text)), Right(OnlyA("kept")))
-    assertEquals(Json.readStrict[OnlyA](text), Right(OnlyA("kept")),
-      "the strict door's skip is a bracket counter in a loop: no stack, no limit")
+    // This is where this lane came from. input-depth-both-wires left
+    // the JSON roads reading such a document (a cut inside a field
+    // nobody declares is data nobody reads) and called the difference
+    // structural — the totality of the door. But a RECURSIVE schema
+    // really can write that value, so "one Schema, one value, one
+    // answer on either wire" really was broken by it. A cut is not
+    // damage at a SPOT: the reader cannot say what it did not descend
+    // into, so it is the whole document that is unreadable, and the
+    // projection says so at the root.
+    assert(Json.isCut(Json.parse(text)), s"the document is the cut, not a tree with one in it")
+    def named(e: Either[String, OnlyA], who: String): Unit = e match
+      case Left(m) => assert(m.contains("nested deeper than"), s"$who said: $m")
+      case Right(v) => fail(s"$who answered $v for a document it could not read to the bottom")
+    named(Json.decode(summon[Schema[OnlyA]])(Json.parse(text)), "Json.decode")
+    named(Json.read[OnlyA](text), "Json.read")
+    named(Json.readStrict[OnlyA](text), "Json.readStrict")
+    named(Staged.strict[OnlyA].decode(text), "Staged.strict")
     val out = new Cbor.Out
     out.mapHeader(2)
     out.text("a"); out.text("kept")
     out.text("deep")
     for _ <- 0 to Codecs.maxDepth + 1 do out.arrayHeader(1)
     out.integer(1)
-    Cbor.read[OnlyA](out.toArray) match
-      case Left(e) => assert(e.contains(s"nested deeper than ${Codecs.maxDepth}"), e)
-      case Right(v) => fail(s"CBOR decoded $v from a frame nested past its skip limit")
+    named(Cbor.read[OnlyA](out.toArray), "Cbor.read")
+  }
+
+  test("a cut is not a damaged element: no list silently gets shorter") {
+    // the defect this rule replaces, kept as its test: with the cut
+    // left in place, `decode`'s damaged-element rule dropped it and a
+    // 256-level tree came back as a 128-level one with Right
+    final case class Box(xs: List[String])
+    given Schema[Box] = Schema.derived
+    val text = "{\"xs\":[\"one\"," + nest(400) + "]}"
+    Json.read[Box](text) match
+      case Left(m) => assert(m.contains("nested deeper than"), m)
+      case Right(b) => fail(s"the list came back as ${b.xs}")
   }
 
   // ── the depth a RECURSIVE schema's own value reaches ─────────────

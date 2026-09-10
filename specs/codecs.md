@@ -419,20 +419,30 @@ idiom it already had for damage:
   (`Staged.cborProduct`, `strictElems`, …) spend the same budget, so
   the three decoders still refuse at the same depth.
 
-**The cut is the one piece of damage a decoder may not shrug off.**
-`Json.decode` skips a damaged list element and reads a damaged
-optional as absent — right for a half-arrived document, and WRONG for
-a cut: measured here, a 256-level tree came back as a 128-level tree
-with `Right`. A wrong value with no error is worse than either throw,
-so `Json.isCut` tells the two apart, in one place, for the fold and
-both generated decoders.
+**The cut is not damage at a SPOT — it is the document**
+(cut-refuses-the-document, the same day). Written in place first, it
+made things worse than the overflow it replaced: `Json.decode` skips a
+damaged list element and reads a damaged optional as absent — right
+for a half-arrived document — so a 256-level tree came back as a
+128-level tree with `Right`, a wrong value with no error. Three rules
+in three files were taught the exception (`Json.arrived`, the
+optional-field guard, `Staged.elems` and both staged optional
+lookups), and then a FOURTH case showed the shape was wrong: a cut
+inside a field nobody DECLARED is a field nobody visits, so the JSON
+roads still read such a document while CBOR refused it. The first
+reading of that was "the totality difference, not a divergence anybody
+chose" — which is the same excuse this arc already disproved once.
 
-**What stays asymmetric, and why it is not this defect.** On the JSON
-roads a cut inside a field nobody DECLARED is data nobody reads, so
-the document still decodes; the CBOR decoder walks the bytes and
-refuses by name. That is the totality difference the two doors have
-had all along — a TRUNCATED unknown field already behaved this way
-(the section above) — not a divergence anybody chose.
+So the projection PROPAGATES it: a container holding the cut is the
+cut, `Json.parse` of a too-deep document answers the cut at its root,
+and every decoder's existing `JErr` refusal catches it wherever it
+sits. One rule in one place, four exceptions deleted, and the
+undeclared case refuses on both wires. `JsonStrict` has no tree for a
+cut to travel through, so its own bracket counter carries the budget —
+`skipValue` refuses past `Codecs.maxDepth` counted from the reader's
+current depth. What is given up is the partial value of a document
+nested past 256, which no caller can use: a reader cannot say what it
+did not descend into.
 
 Behavior:
 - [x] `"[" * 20000` is a value, not a `StackOverflowError`, on both
@@ -448,7 +458,21 @@ Behavior:
       wires (each level is two containers on both, so the two wires
       refuse at the same tree depth)
 - [x] one budget per frame: a skip inside declared containers cannot
-      exceed the total
+      exceed the total, on either wire (`Cbor.In`'s counter,
+      `JsonStrict.skipValue` counting from the reader's depth)
+- [x] an UNDECLARED field nested past the limit refuses on every door,
+      as CBOR always did — the document is the cut, so `Json.decode`,
+      `Json.read`, `Json.readStrict` and `Staged.strict` all name the
+      limit
+- [x] a cut never arrives as a damaged ELEMENT, so no list silently
+      gets shorter (the regression that made the first shape worse
+      than the crash)
+- [x] an MCP frame nested past the limit is JSON-RPC `-32700` with the
+      limit in its message — `Rpc.damaged` already walked the whole
+      tree, so the six `case Json.JErr(_) => Nil/None` projections in
+      `Client` are the error channel answering correctly, and the
+      backlog entry that guessed otherwise is deleted with a test in
+      its place (TestRpc)
 - [x] TestCompat's law holds for every case that has a value, the
       removed-case mirror included (it asserted verdicts and asked no
       decoder anything until this lane: five of its asserts read

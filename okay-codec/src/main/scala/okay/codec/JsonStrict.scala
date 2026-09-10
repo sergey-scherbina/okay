@@ -242,13 +242,21 @@ object JsonStrict {
       peek match
         case '"' => string().map(_ => ())
         case '{' | '[' =>
+          // the counter is the budget here: this door has no tree for a
+          // cut to propagate through, so the skip itself refuses, which
+          // is what makes an UNDECLARED deep field answer on this door
+          // what it answers on the other two (cut-refuses-the-document)
+          val depth0 = open          // one budget: a skip counts from here
           var depth = 0
           var err: String | Null = null
           var done = false
           while err == null && !done do
             if at >= n then err = "unterminated value"
             else s.charAt(at) match
-              case '{' | '[' => depth += 1; at += 1
+              case '{' | '[' =>
+                depth += 1; at += 1
+                if depth0 + depth > Codecs.maxDepth then
+                  err = s"nested deeper than ${Codecs.maxDepth} at $at"
               case '}' | ']' => depth -= 1; at += 1; if depth == 0 then done = true
               case '"' => string() match { case Left(e) => err = e; case Right(_) => () }
               case _ => at += 1

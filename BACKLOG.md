@@ -1,20 +1,5 @@
 # Backlog
 
-## mcp-projection-eats-a-cut (2026-09-10, found by input-depth-both-wires)
-
-- [ ] okay-mcp's `Client` projects a tool result's JSON with
-      `case Json.JErr(_) => Nil` / `None` / `Vector.empty` in six
-      places, and `Rpc.hasError` reads any `JErr` as a parse error.
-      Now that a document nested past `Codecs.maxDepth` is cut with a
-      `JErr` in place, a very deep tool result reads as an EMPTY list
-      rather than as an error on those display paths — the same silent
-      shortening that `Json.isCut` was introduced to stop inside
-      `decode`. `Rpc`'s own reading is already right (a refusal).
-      Small, and nothing reaches it below 256 levels of nesting, which
-      is why it is here and not in that lane: the fix is to ask
-      `Json.isCut` at those six projections and say "too deep" instead
-      of answering nothing.
-
 ## intent-spans: the static table as a second `Tokens` (2026-09-09)
 
 - [ ] spans-static-tokens — `Static` already holds a vector per token
