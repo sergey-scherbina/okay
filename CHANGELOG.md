@@ -192,6 +192,34 @@ line: the composition names no URL and no `orElse`, so the surface is
 a by-product of wiring rather than a second list kept by hand.
 Commit: a293d20b.
 
+## okay-ui/Form: the same depth-safety trampoline, one layer up — and a codec gap it found
+
+`Form.editAt`, the render pipeline, and the validation pipeline all
+recursed on a Schema+`Json` pair's own depth for a recursive schema —
+the same defect `okay-codec`'s decode and write sides both had, one
+layer up. `editAt` follows a dotted PATH an `Event` carries (a remote
+submission road exists, per `submitted`'s own doc comment); `render`/
+`errorsOf` walk the actual VALUE, which many folded edits can build
+arbitrarily deep with nothing checking. Same `NativeThreshold`-then-
+`Cont.defer` split as the codec's own doors.
+
+Found along the way: `Json.encode` (used by `Json.write`, distinct
+from `Json.print`) was missed entirely by the codec's own write-side
+fix — this lane's tests needed `Json.write` on a deep fixture and hit
+its native recursion directly. Its first fix was itself a defect:
+string-interpolation combination is quadratic, tolerable on the JVM
+(10-22s at 100k levels) but 1276s on Scala Native before timing out —
+rewritten to a `StringBuilder`, now 0.13-0.18s, on par with
+`Cbor.write`.
+
+One inherent, not fixable, characteristic documented rather than
+"fixed": `render`/`errorsOf`'s dotted-path keys cost O(depth²) memory
+by design (every nested UI element gets its own addressable key), so
+they're tested at a proportionate depth (5 000) rather than the
+100 000 `editAt` (no such cost) is tested at.
+
+Full gate green (4148 tests).
+
 ## flows-pane-tuple — a pair built for a branch that never uses it
 
 Checking `windows-packed-key` turned up something that is not it, and

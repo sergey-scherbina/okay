@@ -110,11 +110,73 @@ by push under ONE run — a prompt lives in the machine that pushed it.
       valid submit never consults the policy
 - [x] hosted ≡ run(host)
 
+## Recursive-schema depth safety (2026-09-11, form-recursive-depth-safety)
+
+`editAt`, the render pipeline (`render`/`field`/`sumUi`/`listUi`) and
+the validation pipeline (`errorsOf`/`listErrors`) all recurse on a
+Schema+`Json` pair's own depth for a RECURSIVE schema — the same
+defect shape `okay-codec`'s decode and write sides both had
+(`remove-codecs-maxdepth`, `encode-side-depth-safety`), one layer up.
+Found by re-auditing that same grep a second time, at a direct
+question ("did you fix everything?"), not from a bug report.
+
+Three ways the value gets deep with nothing bounding it: `editAt`
+recurses once per PATH SEGMENT, and a path is a dotted STRING an
+`Event` carries — `submitted`'s own doc comment already says a
+REMOTE submission road exists ("the edits a client folded locally
+... folded here through the SAME edit a live edit takes"); a batch of
+many edits (`Event.Submitted`) each adding one level to a recursive
+field accumulates an arbitrarily deep value with no check anywhere;
+and `Form.of`/`ofWith` take an arbitrary `Json` directly, not only one
+built through local edits.
+
+Same `Codecs.NativeThreshold`-then-`Cont.defer` split as the codec's
+own doors: `editAt` mirrors `Json.mergePatch` (value-returning),
+`render`'s four mutually-recursive functions mirror `Json.into`/
+`intoC` (no mutable/ordered side effect in this pipeline — it only
+COMBINES immutable `Ui` values, so unlike `Cbor.putC` there is no
+hazard in letting `eachField`'s eager per-field callback build several
+`Cont` values ahead of running any of them).
+
+**Found along the way, not by design: `Json.encode` (used by
+`Json.write`, distinct from `Json.print`) was missed entirely by
+`encode-side-depth-safety` — this lane's own tests needed `Json.write`
+on a deep fixture and hit its native recursion directly.** Fixed the
+same way, and its first draft (string interpolation/`mkString`) was
+itself quadratic — see specs/codecs.md's own entry for the full story.
+
+**`render`/`errorsOf` cost O(depth²) MEMORY, not O(depth) — inherent,
+not a bug to fix.** `key(prefix, name)` rebuilds the whole dotted path
+as a fresh string at every level, so N nested UI elements each
+carrying their own O(N)-length key cost O(N²) total bytes: giving
+every nested element its own addressable dotted key is the FEATURE,
+and no data structure removes that cost once N strings of total length
+O(N²) must exist. `editAt` has no such cost (`List[Seg]`, never
+rebuilds a string) and is tested at 100 000; `render`/`errorsOf` are
+tested at 5 000 — comfortably past `NativeThreshold` (24), proving the
+native-recursion cap is gone without demanding gigabytes of heap to
+prove it (MEASURED: 100 000 levels of `render` exhausted a stock test
+JVM's heap outright).
+
+Behavior:
+- [x] `Form.edit` follows a path 100 000 segments deep, correctly,
+      with no native stack cost
+- [x] `Form.render`/`Form.errors` handle a value 5 000 levels deep
+      with no native stack cost
+- [x] ordinary shapes below the threshold are unaffected (all three
+      pipelines)
+- [x] `Json.write`/`Json.encode` handle a value 100 000 levels deep,
+      in the milliseconds `Cbor.write` already did (not the tens of
+      seconds a quadratic first draft needed)
+
 ## Out of scope
 - Layout/styling beyond bold/dim (specs/ui.md owns Style).
 - Async validation (a validator that needs IO is a scenario's job).
 - The dynamic (`askSchema`) side gaining nesting — elicitation's spec
   restricts it to flat objects; it stays v1 by DESIGN, stated here.
+- Removing `render`/`errorsOf`'s inherent O(depth²) key-string cost —
+  not fixable without removing per-element addressable keys, which is
+  the point of dotted paths (this spec's own "Decisions" section).
 
 ## Decisions
 - **Derivation total over the algebra now, not staged** — user's

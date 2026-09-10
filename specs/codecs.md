@@ -706,6 +706,36 @@ DIRECTLY (a loop, never a decode), so none of them depend on decode's
 own depth safety — only on the write side's, which is what changed
 here.
 
+## The one this lane's own audit missed: `Json.encode` (2026-09-11, form-recursive-depth-safety)
+
+`Json.write` does not call `Json.print` — it calls `Json.encode`, a
+SEPARATE Schema-driven String-building function, entirely missed by
+the audit above. Found only because `okay-ui/Form`'s own depth-safety
+tests (form-recursive-depth-safety, specs/ui-toolkit.md) needed
+`Json.write` on a genuinely deep fixture and hit its native recursion
+directly — the exact same shape as `Cbor.put`, on the JSON side.
+
+Fixed the same way, and the FIRST fix was itself a defect: `encode`
+built its result by STRING INTERPOLATION (`s"\"$n\":${encode(sc)(x)}"`)
+and `.mkString`, combining each level's already-large child string
+into a new, longer one — quadratic, because immutable string
+concatenation re-copies everything built so far at every level. On
+the JVM this passed at a tolerable 10-22s for 100 000 levels (String
+concatenation is a JIT-favorite); on Scala Native (no JIT) the SAME
+test ran 1276s before timing out at a 120s limit — caught by this
+lane's own three-platform gate, not assumed away as "Native is just
+slower". Rewritten to side-effect into a `StringBuilder`
+(`encodeInto`/`encodeIntoC`), exactly the discipline `Json.print`
+already had for exactly this reason. Fixed: 0.13-0.18s for the same
+100 000-level fixtures, on par with `Cbor.write`.
+
+`Schema.SProduct#eachField`'s eager-callback trap (two sections up)
+applies here too, and the fix is the same: each field's key-write and
+its value's `Cont.defer` live in the SAME thunk, never split — string
+combination has no wire-order hazard the way `Cbor.putC`'s mutable
+`Out` buffer did, but the ordering discipline generalizes regardless
+of whether the shared state is a byte buffer or a `StringBuilder`.
+
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends
 Schema[Option[A]]` and the rest — and the codecs cast anyway

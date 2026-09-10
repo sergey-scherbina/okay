@@ -1,8 +1,8 @@
 package okay.ui
 
-import okay.{!, +, pure, Pure}
+import okay.{!, +, pure, Pure, Cont, reset, />}
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.{Codecs, Json, Schema}
 
 /**
  * The fifth algebra over Schema (after JSON, CBOR, YAML and JSON
@@ -38,20 +38,51 @@ object Form {
   private def errorsUnder(errors: Vector[(String, String)], k: String): Vector[Ui] =
     errors.collect { case (`k`, msg) => Ui.Text(s"! $msg", Style(bold = true)) }
 
+  /**
+   * `render`/`field`/`sumUi`/`listUi` recurse on the VALUE's own
+   * depth for a RECURSIVE schema, not a fixed schema shape — the same
+   * exposure `okay-codec`'s decode and write sides both had
+   * (form-recursive-depth-safety, the same defect shape as
+   * remove-codecs-maxdepth/encode-side-depth-safety, one layer up):
+   * `Form.of`/`ofWith` take an arbitrary `Json` directly, and nothing
+   * bounds how deep a value assembled through many folded edits (a
+   * remote `Event.Submitted` batch) can get. Same
+   * `Codecs.NativeThreshold`-then-`Cont.defer` split, mirroring
+   * `intoC`/`pairsC` (okay-codec's `Json.scala`): each of the four
+   * mutually-recursive functions gets a `Native`/`C` pair, and every
+   * call from one into another past the threshold is `Cont.defer`red.
+   * No mutable/ordered side effect lives in this pipeline (unlike
+   * `Cbor.putC`'s `Out` buffer) — it only COMBINES immutable `Ui`
+   * values — so building several fields'/items' `Cont` values ahead of
+   * sequencing them is safe here; `loop`'s accumulator still runs them
+   * one at a time, in order, for the trampoline's own sake.
+   */
   def render[A](s: Schema[A], value: Json, errors: Vector[(String, String)],
-                prefix: String): Ui = s match
-    case p: Schema.SProduct[A] =>
+                prefix: String): Ui = renderAt(s, value, errors, prefix, 0)
+
+  private def renderAt(s: Schema[?], value: Json, errors: Vector[(String, String)],
+                       prefix: String, open: Int): Ui =
+    if open >= Codecs.NativeThreshold then reset(renderC[Ui](s, value, errors, prefix, open))
+    else renderNative(s, value, errors, prefix, open)
+
+  private def renderNative(s: Schema[?], value: Json, errors: Vector[(String, String)],
+                           prefix: String, open: Int): Ui = s match
+    case p: Schema.SProduct[?] =>
       Ui.Column(p.fields.flatMap { (name, f) =>
         val k = key(prefix, name)
-        field(name, k, f(), get(value, name), errors) +: errorsUnder(errors, k)
+        fieldAt(name, k, f(), get(value, name), errors, open + 1) +: errorsUnder(errors, k)
       }.toVector)
-    case su: Schema.SSum[?] => sumUi(su, value, errors, prefix, label = "")
+    case su: Schema.SSum[?] => sumUiAt(su, value, errors, prefix, "", open + 1)
     case other => Ui.Text(s"unsupported form: $other")
 
   /** a sum: the case Select, then the chosen case's subform */
-  private def sumUi(su: Schema.SSum[?], value: Json,
-                    errors: Vector[(String, String)], path: String,
-                    label: String): Ui =
+  private def sumUiAt(su: Schema.SSum[?], value: Json, errors: Vector[(String, String)],
+                      path: String, label: String, open: Int): Ui =
+    if open >= Codecs.NativeThreshold then reset(sumUiC[Ui](su, value, errors, path, label, open))
+    else sumUiNative(su, value, errors, path, label, open)
+
+  private def sumUiNative(su: Schema.SSum[?], value: Json, errors: Vector[(String, String)],
+                          path: String, label: String, open: Int): Ui =
     val names = su.cases.map(_._1)
     val chosen = value match
       case Json.JObj(Vector((n, _))) => math.max(names.indexOf(n), 0)
@@ -63,15 +94,20 @@ object Form {
     val head = Ui.Select(names.toVector, chosen, key = s"$path.$$case".stripPrefix("."))
     val body = caseSchema match
       case p: Schema.SProduct[?] if p.fields.nonEmpty =>
-        Vector(render(p, inner, errors, path))
+        Vector(renderAt(p, inner, errors, path, open + 1))
       case _ => Vector.empty
     Ui.Column((if label.isEmpty then Vector(head)
                else Vector(Ui.Text(label, Style(bold = true)), head)) ++ body)
 
-  private def field(name: String, k: String, s: Schema[?], v: Option[Json],
-                    errors: Vector[(String, String)]): Ui = s match
-    case Schema.SIso(u, _, _) => field(name, k, u(), v, errors)
-    case Schema.SOption(of) => field(name + " (optional)", k, of(), v, errors) match
+  private def fieldAt(name: String, k: String, s: Schema[?], v: Option[Json],
+                      errors: Vector[(String, String)], open: Int): Ui =
+    if open >= Codecs.NativeThreshold then reset(fieldC[Ui](name, k, s, v, errors, open))
+    else fieldNative(name, k, s, v, errors, open)
+
+  private def fieldNative(name: String, k: String, s: Schema[?], v: Option[Json],
+                          errors: Vector[(String, String)], open: Int): Ui = s match
+    case Schema.SIso(u, _, _) => fieldAt(name, k, u(), v, errors, open)
+    case Schema.SOption(of) => fieldAt(name + " (optional)", k, of(), v, errors, open) match
       case i: Ui.Input => i.copy(key = k)
       case Ui.Check(on, _, label) => Ui.Check(on, key = k, label)
       case other => other
@@ -83,17 +119,22 @@ object Form {
       case Json.JStr(x) => x }.getOrElse(""), key = k, label = name)
     case p: Schema.SProduct[?] =>
       // the titled section: the nested fields carry the dotted prefix
-      Ui.Column(Ui.Text(name, Style(bold = true)) +: (render(p, v.getOrElse(Json.JObj(Vector.empty)), errors, k) match
+      Ui.Column(Ui.Text(name, Style(bold = true)) +: (renderAt(p, v.getOrElse(Json.JObj(Vector.empty)), errors, k, open + 1) match
         case c: Ui.Column => c.children     // a product renders as a column
         case other => Vector(other)))
-    case su: Schema.SSum[?] => sumUi(su, v.getOrElse(Json.JObj(Vector.empty)), errors, k, name)
-    case Schema.SList(of) => listUi(name, k, of(), v, errors)
-    case Schema.SVector(of) => listUi(name, k, of(), v, errors)
+    case su: Schema.SSum[?] => sumUiAt(su, v.getOrElse(Json.JObj(Vector.empty)), errors, k, name, open + 1)
+    case Schema.SList(of) => listUiAt(name, k, of(), v, errors, open + 1)
+    case Schema.SVector(of) => listUiAt(name, k, of(), v, errors, open + 1)
     case _ => Ui.Text(s"unsupported field: $name")
 
   /** items in order, each with its remover, and the adder at the end */
-  private def listUi(name: String, k: String, item: Schema[?],
-                     v: Option[Json], errors: Vector[(String, String)]): Ui =
+  private def listUiAt(name: String, k: String, item: Schema[?], v: Option[Json],
+                       errors: Vector[(String, String)], open: Int): Ui =
+    if open >= Codecs.NativeThreshold then reset(listUiC[Ui](name, k, item, v, errors, open))
+    else listUiNative(name, k, item, v, errors, open)
+
+  private def listUiNative(name: String, k: String, item: Schema[?], v: Option[Json],
+                           errors: Vector[(String, String)], open: Int): Ui =
     val items = v match
       case Some(Json.JArr(vs)) => vs
       case _ => Vector.empty
@@ -101,9 +142,89 @@ object Form {
       items.zipWithIndex.flatMap { (iv, i) =>
         val ik = s"$k[$i]"
         Vector(Ui.Row(Vector(
-          field(s"$name $i", ik, item, Some(iv), errors),
+          fieldAt(s"$name $i", ik, item, Some(iv), errors, open + 1),
           Ui.Button("-", key = s"$ik$$del")))) ++ errorsUnder(errors, ik)
       } :+ Ui.Button("+", key = s"$k$$add"))
+
+  // ---- the trampoline: mirrors renderNative/sumUiNative/fieldNative/
+  // listUiNative exactly, each recursive call into a sibling function
+  // deferred through Cont.defer, forced one at a time inside `/`'s
+  // own loop ----
+
+  private def renderC[R](s: Schema[?], value: Json, errors: Vector[(String, String)],
+                         prefix: String, open: Int): Ui /> R = s match
+    case p: Schema.SProduct[?] =>
+      def loop(rest: Vector[(String, () => Schema[?])], acc: Vector[Ui]): Ui /> R =
+        if rest.isEmpty then Cont.Pure(Ui.Column(acc))
+        else
+          val (name, f) = rest.head
+          val k = key(prefix, name)
+          Cont.defer(() => fieldC[R](name, k, f(), get(value, name), errors, open + 1)) { fui =>
+            loop(rest.tail, acc ++ (fui +: errorsUnder(errors, k)))
+          }
+      loop(p.fields, Vector.empty)
+    case su: Schema.SSum[?] =>
+      Cont.defer(() => sumUiC[R](su, value, errors, prefix, "", open + 1))(ui => Cont.Pure(ui))
+    case other => Cont.Pure(Ui.Text(s"unsupported form: $other"))
+
+  private def sumUiC[R](su: Schema.SSum[?], value: Json, errors: Vector[(String, String)],
+                        path: String, label: String, open: Int): Ui /> R =
+    val names = su.cases.map(_._1)
+    val chosen = value match
+      case Json.JObj(Vector((n, _))) => math.max(names.indexOf(n), 0)
+      case _ => 0
+    val inner = value match
+      case Json.JObj(Vector((_, v))) => v
+      case _ => Json.JObj(Vector.empty)
+    val caseSchema = su.cases(chosen)._2()
+    val head = Ui.Select(names.toVector, chosen, key = s"$path.$$case".stripPrefix("."))
+    val heading = if label.isEmpty then Vector(head) else Vector(Ui.Text(label, Style(bold = true)), head)
+    caseSchema match
+      case p: Schema.SProduct[?] if p.fields.nonEmpty =>
+        Cont.defer(() => renderC[R](p, inner, errors, path, open + 1))(rendered => Cont.Pure(Ui.Column(heading :+ rendered)))
+      case _ => Cont.Pure(Ui.Column(heading))
+
+  private def fieldC[R](name: String, k: String, s: Schema[?], v: Option[Json],
+                        errors: Vector[(String, String)], open: Int): Ui /> R = s match
+    case Schema.SIso(u, _, _) => Cont.defer(() => fieldC[R](name, k, u(), v, errors, open))(ui => Cont.Pure(ui))
+    case Schema.SOption(of) =>
+      Cont.defer(() => fieldC[R](name + " (optional)", k, of(), v, errors, open)) { result =>
+        Cont.Pure(result match
+          case i: Ui.Input => i.copy(key = k)
+          case Ui.Check(on, _, label) => Ui.Check(on, key = k, label)
+          case other => other)
+      }
+    case Schema.SBool => Cont.Pure(Ui.Check(v.contains(Json.JBool(true)), key = k, label = name))
+    case Schema.SInt | Schema.SLong | Schema.SDouble => Cont.Pure(Ui.Input(v.collect {
+      case Json.JNum(n) => Json.print(Json.JNum(n)) }.getOrElse(""), key = k, label = name,
+      kind = InputKind.Number))
+    case Schema.SString => Cont.Pure(Ui.Input(v.collect { case Json.JStr(x) => x }.getOrElse(""), key = k, label = name))
+    case p: Schema.SProduct[?] =>
+      Cont.defer(() => renderC[R](p, v.getOrElse(Json.JObj(Vector.empty)), errors, k, open + 1)) { rendered =>
+        Cont.Pure(Ui.Column(Ui.Text(name, Style(bold = true)) +: (rendered match
+          case c: Ui.Column => c.children
+          case other => Vector(other))))
+      }
+    case su: Schema.SSum[?] =>
+      Cont.defer(() => sumUiC[R](su, v.getOrElse(Json.JObj(Vector.empty)), errors, k, name, open + 1))(ui => Cont.Pure(ui))
+    case Schema.SList(of) => Cont.defer(() => listUiC[R](name, k, of(), v, errors, open + 1))(ui => Cont.Pure(ui))
+    case Schema.SVector(of) => Cont.defer(() => listUiC[R](name, k, of(), v, errors, open + 1))(ui => Cont.Pure(ui))
+    case _ => Cont.Pure(Ui.Text(s"unsupported field: $name"))
+
+  private def listUiC[R](name: String, k: String, item: Schema[?], v: Option[Json],
+                         errors: Vector[(String, String)], open: Int): Ui /> R =
+    val items = v match
+      case Some(Json.JArr(vs)) => vs
+      case _ => Vector.empty
+    def loop(rest: Vector[(Json, Int)], acc: Vector[Ui]): Ui /> R =
+      if rest.isEmpty then Cont.Pure(Ui.Column(Ui.Text(name, Style(bold = true)) +: (acc :+ Ui.Button("+", key = s"$k$$add"))))
+      else
+        val (iv, i) = rest.head
+        val ik = s"$k[$i]"
+        Cont.defer(() => fieldC[R](s"$name $i", ik, item, Some(iv), errors, open + 1)) { fui =>
+          loop(rest.tail, acc ++ (Vector(Ui.Row(Vector(fui, Ui.Button("-", key = s"$ik$$del")))) ++ errorsUnder(errors, ik)))
+        }
+    loop(items.zipWithIndex, Vector.empty)
 
   // ---- editing: one event in, routed by its path -------------------
 
@@ -148,9 +269,26 @@ object Form {
       case s => Seg.Field(s)
     }
 
+  /**
+   * `editAt` recurses once per PATH SEGMENT — and a path is a dotted
+   * STRING an `Event` carries, whatever length whoever built it
+   * chose (`submitted`'s own doc: "the edits a client folded locally
+   * ... folded here through the SAME edit a live edit takes" — a
+   * remote submission road exists). Same fix, same shape
+   * (form-recursive-depth-safety): `Codecs.NativeThreshold`-then-
+   * `Cont.defer`, mirroring `mergePatch`/`mergePatchC` (okay-codec's
+   * `Json.scala`) — a value-returning fold, not a side-effecting one.
+   */
   private def editAt(s: Schema[?], value: Json, path: List[Seg], ev: Edit): Json =
+    editAtAt(s, value, path, ev, 0)
+
+  private def editAtAt(s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json =
+    if open >= Codecs.NativeThreshold then reset(editAtC[Json](s, value, path, ev, open))
+    else editAtNative(s, value, path, ev, open)
+
+  private def editAtNative(s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json =
     s match
-      case Schema.SIso(u, _, _) => editAt(u(), value, path, ev)
+      case Schema.SIso(u, _, _) => editAtAt(u(), value, path, ev, open)
       case _ => (s, path) match
         // the case knob: swap to the chosen case's empty object
         case (su: Schema.SSum[?], Seg.Case :: Nil) => ev match
@@ -166,7 +304,7 @@ object Form {
           val inner = value match
             case Json.JObj(Vector((_, v))) => v
             case _ => Json.JObj(Vector.empty)
-          Json.JObj(Vector(name -> editAt(cs(), inner, path, ev)))
+          Json.JObj(Vector(name -> editAtAt(cs(), inner, path, ev, open + 1)))
         case (p: Schema.SProduct[?], Seg.Field(n) :: rest) =>
           p.fields.find(_._1 == n) match
             case None => value
@@ -174,7 +312,7 @@ object Form {
               // rest empty = the event addresses the field itself: a
               // scalar Set/Flag, or a list's Add — leaf serves both
               if rest.isEmpty then set(value, n, leaf(fs(), ev, get(value, n)))
-              else set(value, n, editAt(fs(), get(value, n).getOrElse(empty(fs())), rest, ev))
+              else set(value, n, editAtAt(fs(), get(value, n).getOrElse(empty(fs())), rest, ev, open + 1))
         case (p: Schema.SProduct[?], Seg.Index(n, i) :: rest) =>
           p.fields.find(_._1 == n) match
             case None => value
@@ -189,10 +327,56 @@ object Form {
                   set(value, n, Json.JArr(arr.patch(i, Nil, 1)))
                 else if rest.isEmpty && !isList(item) && !isComposite(item) then
                   set(value, n, Json.JArr(arr.updated(i, leaf(item, ev, Some(arr(i))))))
-                else set(value, n, Json.JArr(arr.updated(i, editAt(item, arr(i), rest, ev))))
+                else set(value, n, Json.JArr(arr.updated(i, editAtAt(item, arr(i), rest, ev, open + 1))))
         // list add/del addressed at the FIELD itself
         case (_: Schema.SProduct[?], Nil) => value
         case _ => value
+
+  private def editAtC[R](s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json /> R =
+    s match
+      case Schema.SIso(u, _, _) => Cont.defer(() => editAtC[R](u(), value, path, ev, open))(v => Cont.Pure(v))
+      case _ => (s, path) match
+        case (su: Schema.SSum[?], Seg.Case :: Nil) => ev match
+          case Edit.Choose(i) if i >= 0 && i < su.cases.length =>
+            Cont.Pure(Json.JObj(Vector(su.cases(i)._1 -> Json.JObj(Vector.empty))))
+          case _ => Cont.Pure(value)
+        case (su: Schema.SSum[?], _) =>
+          val (name, cs) = value match
+            case Json.JObj(Vector((n, _))) => su.cases.find(_._1 == n).getOrElse(su.cases.head)
+            case _ => su.cases.head
+          val inner = value match
+            case Json.JObj(Vector((_, v))) => v
+            case _ => Json.JObj(Vector.empty)
+          Cont.defer(() => editAtC[R](cs(), inner, path, ev, open + 1)) { v =>
+            Cont.Pure(Json.JObj(Vector(name -> v)))
+          }
+        case (p: Schema.SProduct[?], Seg.Field(n) :: rest) =>
+          p.fields.find(_._1 == n) match
+            case None => Cont.Pure(value)
+            case Some((_, fs)) =>
+              if rest.isEmpty then Cont.Pure(set(value, n, leaf(fs(), ev, get(value, n))))
+              else Cont.defer(() => editAtC[R](fs(), get(value, n).getOrElse(empty(fs())), rest, ev, open + 1)) { v =>
+                Cont.Pure(set(value, n, v))
+              }
+        case (p: Schema.SProduct[?], Seg.Index(n, i) :: rest) =>
+          p.fields.find(_._1 == n) match
+            case None => Cont.Pure(value)
+            case Some((_, fs)) => itemSchema(fs()) match
+              case None => Cont.Pure(value)
+              case Some(item) =>
+                val arr = get(value, n) match
+                  case Some(Json.JArr(vs)) => vs
+                  case _ => Vector.empty
+                if i < 0 || i >= arr.length then Cont.Pure(value)
+                else if rest.isEmpty && ev == Edit.Del then
+                  Cont.Pure(set(value, n, Json.JArr(arr.patch(i, Nil, 1))))
+                else if rest.isEmpty && !isList(item) && !isComposite(item) then
+                  Cont.Pure(set(value, n, Json.JArr(arr.updated(i, leaf(item, ev, Some(arr(i)))))))
+                else Cont.defer(() => editAtC[R](item, arr(i), rest, ev, open + 1)) { v =>
+                  Cont.Pure(set(value, n, Json.JArr(arr.updated(i, v))))
+                }
+        case (_: Schema.SProduct[?], Nil) => Cont.Pure(value)
+        case _ => Cont.Pure(value)
 
   private def isList(s: Schema[?]): Boolean = s match
     case Schema.SIso(u, _, _) => isList(u())
@@ -248,9 +432,19 @@ object Form {
   def errors[A](value: Json)(using s: Schema[A]): Vector[(String, String)] =
     errorsOf(s, value, "")
 
+  /** same shape, same fix as `render`'s pipeline above — recurses on
+    * the VALUE's own depth for a recursive schema, validating a
+    * submitted form */
   private def errorsOf(s: Schema[?], value: Json, prefix: String): Vector[(String, String)] =
+    errorsOfAt(s, value, prefix, 0)
+
+  private def errorsOfAt(s: Schema[?], value: Json, prefix: String, open: Int): Vector[(String, String)] =
+    if open >= Codecs.NativeThreshold then reset(errorsOfC[Vector[(String, String)]](s, value, prefix, open))
+    else errorsOfNative(s, value, prefix, open)
+
+  private def errorsOfNative(s: Schema[?], value: Json, prefix: String, open: Int): Vector[(String, String)] =
     s match
-      case Schema.SIso(u, _, _) => errorsOf(u(), value, prefix)
+      case Schema.SIso(u, _, _) => errorsOfAt(u(), value, prefix, open)
       case p: Schema.SProduct[?] =>
         p.fields.toVector.flatMap { (name, f) =>
           val k = key(prefix, name)
@@ -258,29 +452,83 @@ object Form {
           get(value, name) match
             case None => fieldError(fs, None, k)
             case Some(v) => fs match
-              case np: Schema.SProduct[?] => errorsOf(np, v, k)
-              case su: Schema.SSum[?] => errorsOf(su, v, k)
-              case Schema.SList(of) => listErrors(of(), v, k)
-              case Schema.SVector(of) => listErrors(of(), v, k)
+              case np: Schema.SProduct[?] => errorsOfAt(np, v, k, open + 1)
+              case su: Schema.SSum[?] => errorsOfAt(su, v, k, open + 1)
+              case Schema.SList(of) => listErrorsAt(of(), v, k, open + 1)
+              case Schema.SVector(of) => listErrorsAt(of(), v, k, open + 1)
               case other => fieldError(other, Some(v), k)
         }
       case su: Schema.SSum[?] => value match
         case Json.JObj(Vector((n, v))) =>
           su.cases.find(_._1 == n)
-            .map((_, cs) => errorsOf(cs(), v, prefix))
+            .map((_, cs) => errorsOfAt(cs(), v, prefix, open + 1))
             .getOrElse(Vector(prefix -> s"unknown case '$n'"))
         case _ => Vector(key(prefix, "$case") -> "choose one")
       case other => fieldError(other, Some(value), prefix)
 
-  private def listErrors(item: Schema[?], v: Json, k: String): Vector[(String, String)] =
+  private def listErrorsAt(item: Schema[?], v: Json, k: String, open: Int): Vector[(String, String)] =
+    if open >= Codecs.NativeThreshold then reset(listErrorsC[Vector[(String, String)]](item, v, k, open))
+    else listErrorsNative(item, v, k, open)
+
+  private def listErrorsNative(item: Schema[?], v: Json, k: String, open: Int): Vector[(String, String)] =
     v match
       case Json.JArr(vs) => vs.zipWithIndex.flatMap { (iv, i) =>
         item match
-          case p: Schema.SProduct[?] => errorsOf(p, iv, s"$k[$i]")
-          case su: Schema.SSum[?] => errorsOf(su, iv, s"$k[$i]")
+          case p: Schema.SProduct[?] => errorsOfAt(p, iv, s"$k[$i]", open + 1)
+          case su: Schema.SSum[?] => errorsOfAt(su, iv, s"$k[$i]", open + 1)
           case other => fieldError(other, Some(iv), s"$k[$i]")
       }
       case _ => Vector.empty
+
+  // ---- the trampoline: mirrors errorsOfNative/listErrorsNative
+  // exactly ----
+
+  private def errorsOfC[R](s: Schema[?], value: Json, prefix: String, open: Int): Vector[(String, String)] /> R =
+    s match
+      case Schema.SIso(u, _, _) => Cont.defer(() => errorsOfC[R](u(), value, prefix, open))(v => Cont.Pure(v))
+      case p: Schema.SProduct[?] =>
+        def loop(rest: Vector[(String, () => Schema[?])], acc: Vector[(String, String)]): Vector[(String, String)] /> R =
+          if rest.isEmpty then Cont.Pure(acc)
+          else
+            val (name, f) = rest.head
+            val k = key(prefix, name)
+            val fs = f()
+            get(value, name) match
+              case None => loop(rest.tail, acc ++ fieldError(fs, None, k))
+              case Some(v) => fs match
+                case np: Schema.SProduct[?] =>
+                  Cont.defer(() => errorsOfC[R](np, v, k, open + 1))(es => loop(rest.tail, acc ++ es))
+                case su: Schema.SSum[?] =>
+                  Cont.defer(() => errorsOfC[R](su, v, k, open + 1))(es => loop(rest.tail, acc ++ es))
+                case Schema.SList(of) =>
+                  Cont.defer(() => listErrorsC[R](of(), v, k, open + 1))(es => loop(rest.tail, acc ++ es))
+                case Schema.SVector(of) =>
+                  Cont.defer(() => listErrorsC[R](of(), v, k, open + 1))(es => loop(rest.tail, acc ++ es))
+                case other => loop(rest.tail, acc ++ fieldError(other, Some(v), k))
+        loop(p.fields.toVector, Vector.empty)
+      case su: Schema.SSum[?] => value match
+        case Json.JObj(Vector((n, v))) =>
+          val found = su.cases.find(_._1 == n)
+          if found.isEmpty then Cont.Pure(Vector(prefix -> s"unknown case '$n'"))
+          else Cont.defer(() => errorsOfC[R](found.get._2(), v, prefix, open + 1))(es => Cont.Pure(es))
+        case _ => Cont.Pure(Vector(key(prefix, "$case") -> "choose one"))
+      case other => Cont.Pure(fieldError(other, Some(value), prefix))
+
+  private def listErrorsC[R](item: Schema[?], v: Json, k: String, open: Int): Vector[(String, String)] /> R =
+    v match
+      case Json.JArr(vs) =>
+        def loop(rest: Vector[(Json, Int)], acc: Vector[(String, String)]): Vector[(String, String)] /> R =
+          if rest.isEmpty then Cont.Pure(acc)
+          else
+            val (iv, i) = rest.head
+            item match
+              case p: Schema.SProduct[?] =>
+                Cont.defer(() => errorsOfC[R](p, iv, s"$k[$i]", open + 1))(es => loop(rest.tail, acc ++ es))
+              case su: Schema.SSum[?] =>
+                Cont.defer(() => errorsOfC[R](su, iv, s"$k[$i]", open + 1))(es => loop(rest.tail, acc ++ es))
+              case other => loop(rest.tail, acc ++ fieldError(other, Some(iv), s"$k[$i]"))
+        loop(vs.zipWithIndex, Vector.empty)
+      case _ => Cont.Pure(Vector.empty)
 
   private def fieldError(s: Schema[?], v: Option[Json], k: String): Vector[(String, String)] =
     decodeField(s, v) match

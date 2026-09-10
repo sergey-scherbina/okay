@@ -448,34 +448,125 @@ object Json {
   private inline def needsEscape(c: Char): Boolean =
     c == '"' || c == '\\' || c == '\n' || c == '\t' || c == '\r' 
 
-  /** the encoding algebra: fold the schema, render the value */
-  def encode[A](s: Schema[A])(a: A): String = s match
-    case Schema.SInt => a.toString
-    case Schema.SLong => a.toString
-    case Schema.SDouble => a.toString
-    case Schema.SBool => a.toString
-    case Schema.SString => s"\"${escape(a)}\""
-    case Schema.SChar => s"\"${escape(a.toString)}\""
+  /**
+   * `encode` walks a VALUE's own recursive-schema depth — the exact
+   * shape `Cbor.put`/`Json.print` already had fixed
+   * (encode-side-depth-safety) — and was still plain native recursion
+   * itself, unnoticed alongside its two siblings until `form-
+   * recursive-depth-safety`'s own tests (`Json.write` on a genuinely
+   * deep value, needed to build a test fixture for `okay-ui/Form`)
+   * hit it directly. Same `Codecs.NativeThreshold`-then-`Cont.defer`
+   * split as `print`/`into`, side-effecting into a `StringBuilder` —
+   * NOT the first draft, which returned `String` and combined child
+   * results by interpolation/`mkString`: that is quadratic (each
+   * level re-copies the whole string built so far into a longer one),
+   * passed the JVM suite at a tolerable few seconds for 100 000
+   * levels, and then took 1276s on Scala Native (no JIT to hide it)
+   * before this file's own gate caught it. `StringBuilder.append` is
+   * what `print` already used for exactly this reason; `encode` gets
+   * the same discipline. As with `Cbor.putC`'s `SProduct` case, each
+   * field's KEY write and its value's `Cont.defer` live in the SAME
+   * thunk — `eachField`'s own map is eager, so splitting them
+   * reproduces that bug's ordering hazard on a mutable buffer.
+   */
+  def encode[A](s: Schema[A])(a: A): String =
+    val sb = new StringBuilder
+    encodeInto(s, a, sb, 0)
+    sb.toString
+
+  private def encodeInto[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(encodeIntoC[A, Unit](s, a, sb, open))
+    else encodeIntoNative(s, a, sb, open)
+
+  private def encodeIntoNative[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit = s match
+    case Schema.SInt => sb.append(a.toString): Unit
+    case Schema.SLong => sb.append(a.toString): Unit
+    case Schema.SDouble => sb.append(a.toString): Unit
+    case Schema.SBool => sb.append(a.toString): Unit
+    case Schema.SString => sb.append('"').append(escape(a)).append('"'): Unit
+    case Schema.SChar => sb.append('"').append(escape(a.toString)).append('"'): Unit
     // JSON has no bytes. Base64 is what everyone means by them here,
     // and it is also what makes a dump READABLE: a thousand float
     // literals are not something anyone reads, and one opaque token
     // says "binary payload" without burying the fields that matter.
-    case Schema.SBytes => s"\"${Base64.encode(a)}\""
+    case Schema.SBytes => sb.append('"').append(Base64.encode(a)).append('"'): Unit
     case Schema.SOption(of) =>
       a match
-        case Some(x) => encode(of())(x)
-        case None => "null"
+        case Some(x) => encodeInto(of(), x, sb, open + 1)
+        case None => sb.append("null"): Unit
     case Schema.SList(of) =>
-      a.map(encode(of())).mkString("[", ",", "]")
+      sb.append('[')
+      var first = true
+      a.foreach { x => if !first then sb.append(','); first = false; encodeInto(of(), x, sb, open + 1) }
+      sb.append(']'): Unit
     case Schema.SVector(of) =>
-      a.map(encode(of())).mkString("[", ",", "]")
+      sb.append('[')
+      var first = true
+      a.foreach { x => if !first then sb.append(','); first = false; encodeInto(of(), x, sb, open + 1) }
+      sb.append(']'): Unit
     case p: Schema.SProduct[A] =>
-      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => s"\"$n\":${encode(sc)(x)}")
-        .mkString("{", ",", "}")
+      sb.append('{')
+      var first = true
+      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => {
+        if !first then sb.append(',')
+        first = false
+        val _ = sb.append('"').append(n).append("\":")
+        encodeInto(sc, x, sb, open + 1)
+      }): Unit
+      sb.append('}'): Unit
     case su: Schema.SSum[A] =>
-      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => s"{\"$n\":${encode(sc)(x)}}")
+      sb.append('{')
+      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => {
+        val _ = sb.append('"').append(n).append("\":")
+        encodeInto(sc, x, sb, open + 1)
+      })
+      sb.append('}'): Unit
     // the newtype node: A travels as B, so encode is `from` then under's
-    case Schema.SIso(u, _, from) => encode(u())(from(a))
+    case Schema.SIso(u, _, from) => encodeInto(u(), from(a), sb, open)
+
+  private def encodeIntoC[A, R](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit /> R = s match
+    case Schema.SInt => sb.append(a.toString); Cont.Pure(())
+    case Schema.SLong => sb.append(a.toString); Cont.Pure(())
+    case Schema.SDouble => sb.append(a.toString); Cont.Pure(())
+    case Schema.SBool => sb.append(a.toString); Cont.Pure(())
+    case Schema.SString => val _ = sb.append('"').append(escape(a)).append('"'); Cont.Pure(())
+    case Schema.SChar => val _ = sb.append('"').append(escape(a.toString)).append('"'); Cont.Pure(())
+    case Schema.SBytes => val _ = sb.append('"').append(Base64.encode(a)).append('"'); Cont.Pure(())
+    case Schema.SOption(of) => a match
+      case Some(x) => Cont.defer(() => encodeIntoC(of(), x, sb, open + 1))(_ => Cont.Pure(()))
+      case None => sb.append("null"); Cont.Pure(())
+    case Schema.SList(of) =>
+      sb.append('[')
+      def loop(rest: A, first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(a, true)
+    case Schema.SVector(of) =>
+      sb.append('[')
+      def loop(rest: A, first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(a, true)
+    case p: Schema.SProduct[A] =>
+      sb.append('{')
+      val steps: Vector[Unit /> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
+        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
+      def loop(rest: Vector[Unit /> R], first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append('}'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          rest.head.flatMap(_ => loop(rest.tail, false))
+      loop(steps, true)
+    case su: Schema.SSum[A] =>
+      sb.append('{')
+      val step: Unit /> R = su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
+        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
+      step.flatMap(_ => { sb.append('}'); Cont.Pure(()) })
+    case Schema.SIso(u, _, from) => Cont.defer(() => encodeIntoC(u(), from(a), sb, open))(_ => Cont.Pure(()))
 
   /** the public entry, signature unchanged: dispatches on depth,
    * starting at 0. `Json.decode` has no reader object to hang a

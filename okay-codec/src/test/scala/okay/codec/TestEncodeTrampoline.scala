@@ -4,16 +4,22 @@ package okay.codec
  * The write side of the same recursion `iterative-recursive-decode.md`
  * closed on the read side (encode-side-depth-safety, found while
  * answering an operator question about `Cont`'s fusion budget, not
- * from a bug report). `Json.print`, `Cbor.put`/`write` and
- * `Json.mergePatch` all recurse on a VALUE's own depth — `print`/
- * `put` on the value being written, `mergePatch` on the patch — the
- * exact shape the decode arc fixed, just on the other end of the
- * pipe. `remove-codecs-maxdepth` only ever bounded how deep DECODE
- * could hand a value back; a value that deep can now exist in memory
- * from untrusted input, and writing it back out was still plain
- * native recursion. Every value here is built directly (a loop, not
- * a decode), so these tests do not depend on decode's own depth
+ * from a bug report). `Json.print`, `Json.encode`, `Cbor.put`/`write`
+ * and `Json.mergePatch` all recurse on a VALUE's own depth — `print`/
+ * `encode`/`put` on the value being written, `mergePatch` on the
+ * patch — the exact shape the decode arc fixed, just on the other end
+ * of the pipe. `remove-codecs-maxdepth` only ever bounded how deep
+ * DECODE could hand a value back; a value that deep can now exist in
+ * memory from untrusted input, and writing it back out was still
+ * plain native recursion. Every value here is built directly (a loop,
+ * not a decode), so these tests do not depend on decode's own depth
  * safety — only on the write side's.
+ *
+ * `Json.encode` (used by `Json.write`, distinct from `Json.print`'s
+ * `Json`-value-to-text projection) was missed by this lane's first
+ * pass — found only once `okay-ui/Form`'s own tests
+ * (form-recursive-depth-safety) needed `Json.write` on a genuinely
+ * deep fixture and hit its native recursion directly.
  */
 class TestEncodeTrampoline extends munit.FunSuite:
 
@@ -113,6 +119,19 @@ class TestEncodeTrampoline extends munit.FunSuite:
         assertEquals(back.label, s"n${n - 1}")
   }
 
+  test("Json.write on a genuinely deep two-field product — no cap, no stack overflow") {
+    val n = 100000
+    val t = deepTwo(n)
+    Json.read[Two](Json.write(t)) match
+      case Left(e) => fail(s"round trip failed: $e")
+      case Right(back) =>
+        var d = 1
+        var at = back
+        while at.kids.nonEmpty do { d += 1; at = at.kids.head }
+        assertEquals(d, n + 1)
+        assertEquals(back.label, s"n${n - 1}")
+  }
+
   // a recursive SUM, deep past the threshold: `putC`'s SSum case
   // writes its one case-name key eagerly too (`su.theCase` calls its
   // callback once, synchronously) — proven safe by direct reasoning
@@ -131,6 +150,20 @@ class TestEncodeTrampoline extends munit.FunSuite:
   test("Cbor.write on a genuinely deep recursive SUM — no cap, no stack overflow") {
     val n = 100000
     Cbor.read[Chain](Cbor.write(deepChain(n))) match
+      case Left(e) => fail(s"round trip failed: $e")
+      case Right(back) =>
+        var d = 0
+        var at = back
+        var go = true
+        while go do at match
+          case Chain.Node(next) => d += 1; at = next
+          case Chain.Leaf => go = false
+        assertEquals(d, n)
+  }
+
+  test("Json.write on a genuinely deep recursive SUM — no cap, no stack overflow") {
+    val n = 100000
+    Json.read[Chain](Json.write(deepChain(n))) match
       case Left(e) => fail(s"round trip failed: $e")
       case Right(back) =>
         var d = 0
