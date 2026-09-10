@@ -201,23 +201,37 @@ than trusting the author.
 
 ## Behavior
 
-Stage 1:
-- [ ] a `Flow` of source/local/keyed evaluates to the same answer at
-      parallelism 1 and N, for every N tested
-- [ ] the Wrocław tumbling-window stage through the engine equals
-      `OkayLane`'s route checksums exactly
-- [ ] the Wrocław sliding-window stage equals its stop checksums
-- [ ] bunching, expressed as a `Sequential`, equals `OkayLane`'s
-      bunch checksums — the boundary stitch written by hand in the
-      benchmark, now the engine's job
-- [ ] a `Sequential` merged out of slice order is REFUSED, not
-      silently wrong
+Stage 1 (TestFlow in okay-cluster; TestWroclawFlow in compare —
+`Live`-tagged, so it runs under `integrationTest` and NOT in the
+default gate, and the boxes below were checked against a run of it,
+not against its existence):
+- [x] a `Flow` of source/local/keyed evaluates to the same answer at
+      parallelism 1 and N, for every N tested (1, 2, 3, 4, 7, 8, 13,
+      16, 17 across the suite)
+- [x] the Wrocław tumbling-window stage through the engine equals
+      `OkayLane`'s route checksums exactly — and its top-5 ranking
+      with them, at 1, 2, 4 and 8 partitions
+- [x] the Wrocław sliding-window stage equals its stop checksums
+- [x] bunching, expressed as a `Sequential`, equals `OkayLane`'s
+      bunch count AND gap sum — the boundary stitch written by hand
+      in the benchmark, now the engine's job. Controlled: with the
+      boundary term removed the two tests that rest on it fail at
+      every parallelism above 1, and pass at 1.
+- [x] all eleven checksums agree at parallelism 8
+- [x] a `Sequential`'s merge is demonstrably NOT commutative, and the
+      executor joins its partials by partition index rather than by
+      readiness
+- [x] on a feed WITH late elements, a seeded run drops exactly what
+      the single-threaded run drops, and an unseeded one drops fewer
+      AND answers differently — the difference is demonstrated, not
+      assumed
+- [x] a second keyed stage in one flow is refused by name, pointing
+      at the exchange that stage 2 owes it
 - [ ] the optimizer pushes a combine below an exchange, and the
       rewritten plan computes the same answer (property-tested, the
-      `Pipeline.optimize` discipline)
-- [ ] on a feed WITH late elements, a seeded run drops exactly what
-      the single-threaded run drops, and an unseeded one does not —
-      the difference is demonstrated, not assumed
+      `Pipeline.optimize` discipline) — MOVED TO STAGE 2: there is no
+      exchange to push below yet, so this box could only have been
+      checked by a test that asserts nothing
 
 Stage 2 and later: written when the stage is claimed.
 
@@ -267,4 +281,42 @@ a way to start from a known mark rather than from nothing.
 
 ## Results
 
-(written as stages land)
+### Stage 1 — the plan, the local runtime, and Claim 2 demonstrated
+
+Landed with `Flow` and `Flows` in okay-cluster, `Sequential` and
+`Windows.seed` in the core.
+
+**The Wrocław job runs on the engine and answers what §20's lane
+answers** — all eleven checksums, at 1, 2, 4 and 8 partitions,
+including the top-5 ranking that only agrees if the map-side join
+agreed first. What the lane writes is now the JOB: a partitioned
+source, a filter, a map, a window, an aggregator. The fifty lines of
+slice stitching that made §20's parallel lane possible — the pre-pass
+for the slice maxima, the completeness rule, the boundary walk for
+the bunching pairs — are the engine's, and no user writes them again.
+
+**Claim 2 held on the job it was written for.** Stage 4 of the job —
+"two departures of one route from one stop under two minutes apart",
+which Flink answers with a `KeyedProcessFunction` over `ValueState`
+and which therefore needs every record of a key on one machine — is
+a `Sequential` here, and it parallelises with no shuffle at all. The
+slice summary is (first, last, n, bunches, gap); merging asks one
+more question, whether the gap ACROSS the boundary is short. The
+count and the gap sum both agree with the serial run at every
+parallelism.
+
+**One thing measured rather than assumed.** The boundary term was
+REMOVED as a control, and the two tests that rest on it failed at
+every parallelism above 1 and passed at 1 — which is the shape a
+correct control has, since a single partition has no boundary.
+
+**What stage 1 costs, said plainly.** No exchange means at most one
+keyed stage per flow, so Wrocław's three keyed stages are three flows
+and the feed is read three times where §20's lane reads it once. No
+number is quoted for this lane and none should be until stage 3 makes
+the pass single.
+
+**The seeding is not decoration.** On a feed whose jitter exceeds the
+window's lateness, an unseeded parallel run drops FEWER late elements
+than the stream does and answers differently — asserted in both
+directions rather than described.

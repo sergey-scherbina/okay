@@ -63,6 +63,27 @@ final class Windows[K, A, Acc, O](size: Long, slide: Long, lateness: Long,
   private var swept = Long.MinValue
   private var late = 0L
 
+  /**
+   * Start from a watermark that another operator already reached,
+   * rather than from nothing (specs/dataflow.md, "The watermark, and
+   * why a slice is not a stream").
+   *
+   * A worker holding a SLICE of a stream is not looking at the stream:
+   * its `maxSeen` starts empty, so its watermark runs behind the
+   * global one, so it closes panes later, so it drops fewer late
+   * elements — and a parallel run then differs from a single-threaded
+   * one by exactly the late elements. Seeding partition i with the
+   * greatest event time in everything before it (a prefix maximum,
+   * one cheap pass) makes the two watermarks equal at every element,
+   * and the two answers equal INCLUDING the drops.
+   *
+   * Only before the first element: a watermark that moves backwards
+   * mid-stream is the one thing this operator promises never to do.
+   */
+  def seed(maxEventTime: Long): Unit =
+    require(maxSeen == Long.MinValue, "a window is seeded before its first element")
+    maxSeen = maxEventTime
+
   /** the greatest event time seen minus `lateness`; monotone */
   def watermark: Long = if maxSeen == Long.MinValue then Long.MinValue else maxSeen - lateness
 

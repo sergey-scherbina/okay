@@ -70,6 +70,32 @@ trait Aggregator[-In, Acc, +Out] extends Serializable:
       def merge(a: Acc, b: Acc) = self.merge(a, b)
       def present(acc: Acc) = self.present(acc)
 
+/**
+ * An aggregation whose `merge` is associative but NOT commutative
+ * (specs/dataflow.md, Claim 2): `merge(a, b)` reads "the slice
+ * summarised by a, and THEN the slice summarised by b", so a merge
+ * tree over it must respect the input's order.
+ *
+ * WHY THE DISTINCTION IS A TYPE. `Aggregator`'s merge is commutative
+ * by contract — specs/cluster.md already leans on it ("order-free by
+ * the P1 contract"), and a distributed finish that combines partial
+ * results in the order they ARRIVE leans on it much harder. A keyed
+ * state machine's slice summary is usually not commutative: the
+ * bus-bunching statistic of docs/benchmarks.md §20 summarises a slice
+ * as (first, last, bunches, gap) and combining two of them asks
+ * whether the gap ACROSS the boundary is short, which is a different
+ * question in the other order.
+ *
+ * That is worth a type rather than a comment, because it is the
+ * difference between a keyed state machine that parallelises with no
+ * shuffle at all and one that silently answers differently on more
+ * than one worker. A `Sequential` is a perfectly ordinary Aggregator
+ * everywhere the order is already respected — a single fold, or a
+ * merge by partition index — and it is exactly what a distributed
+ * finish must refuse to reorder.
+ */
+trait Sequential[-In, Acc, +Out] extends Aggregator[In, Acc, Out]
+
 object Aggregator {
 
   // ------------------------------------------ unboxed accumulators
