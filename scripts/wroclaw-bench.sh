@@ -33,6 +33,7 @@ echo "wroclaw: days=$DAYS rounds=$ROUNDS fraction=1/$PART — a JVM per lane"
 # whole finding — used to take Spark's lanes down with it, silently.
 for lane in \
   "compare/runMain okay.wroclaw.OkayBench" \
+  "compare/runMain okay.wroclaw.JvmBench" \
   "okayJava/Test/runMain okay.java.wroclaw.JavaBench" \
   "okayFs2/Test/runMain okay.fs2.wroclaw.Fs2Bench" \
   "okayZio/Test/runMain okay.zio.wroclaw.ZioBench" \

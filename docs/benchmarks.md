@@ -3336,14 +3336,32 @@ threads) because the host's own load did.
   billion a day; a page's own work — a database call, an LLM turn —
   will decide long before this does.
 
-## 20. Streams against an ENGINE — Wrocław's timetable through okay and Apache Flink
+## 20. Streams against an ENGINE, and against every library — Wrocław's timetable
 
 Every section above compares okay with a LIBRARY: another way of
-writing a program in one JVM. This one compares it with a distributed
-stream processor — Apache Flink 1.20, in a local MiniCluster — on a
-job that is not a pipeline of maps but the thing engines exist for:
-event time, watermarks, keyed windows, keyed state, a ranking of the
-windows.
+writing a program in one JVM. This one compares it with eight other
+ways of running the SAME JOB on one machine — Apache Flink 1.20 in a
+local MiniCluster, Spark 4.0 in `local[4]` (batch RDD and Structured
+Streaming), `java.util.stream`, fs2, zio-streams, kyo, and a bare
+`while` loop with `Thread`s — on a job that is not a pipeline of maps
+but the thing engines exist for: event time, watermarks, keyed
+windows, keyed state, a ranking of the windows.
+
+**The job, in one paragraph, before any number.** Wrocław's public
+transport publishes a timetable; the benchmark turns it into the
+stream a message bus would deliver — 2.4 million departures over eight
+service days, each with a delay, an EVENT time that is not the order it
+arrives in, and an arrival jitter — and then asks five questions of it
+at once: enrich every departure against the routes table; count, sum
+and max the delay per route in tumbling five-minute windows of event
+time; do the same per stop in sliding fifteen-minute windows every
+five, so each event lands in three panes; detect bus bunching (two
+departures of one route from one stop less than two minutes apart),
+which is keyed STATE and depends on per-key order; and rank the five
+worst tram routes by mean delay in every window. It is deliberately
+the shape a stream engine is FOR and a fold is not obviously good at:
+high-cardinality keyed state, out-of-order events, one source feeding
+four consumers.
 
 **Why this workload, and why it is unusually fair.** okay-flink's
 whole content is one claim: an okay `Aggregator` IS a Flink
@@ -3433,95 +3451,146 @@ and never priced as if it were free.
    against okay's before its number is printed. A row that computed
    something else is not fast or slow, it is wrong, and it never
    reaches the table.
+6. **Each competitor on ITS OWN operators** (2026-09-10, the
+   operator's rule). No lane below is handed okay's window operator or
+   okay's aggregator any more: the five in-process libraries fold into
+   maps that never evict, because that is what they give their users,
+   and Flink and Spark use their own windows. The one place our types
+   still cross a seam is labelled as such — `java.util.stream, windowed
+   collector` is okay-java's `Windowed`, and it is in the table to
+   answer what the JDK's own rows raise, not to stand in for them.
 
 The shared half — the feed, the job's definition, okay's own lanes and
 the measurement — lives in `compare/src/main/scala/okay/wroclaw/`,
 which is also where a new engine's lane would start.
 
 
-### The table
+### The table — everything on one machine, one run
 
-Host: 14 cpus, JVM 21, `-Xmx8g` per lane, 2 414 119 events (eight
-service days), best of 3 rounds, one JVM per lane
-(`scripts/wroclaw-bench.sh 8 3 1`).
+Host: 14 cpus (10 performance, 4 efficiency), 36 GB, JVM 21, macOS
+arm64, a quiet box. **2 414 119 events** (eight service days), best of
+3 rounds per lane, one JVM per lane, every lane's eleven checksums
+asserted against okay's before its number was taken
+(`scripts/wroclaw-bench.sh 8 3 1`). Every row below comes from THIS
+run — no row is carried over from an earlier one, except that Flink's
+six rows come from a second invocation the same hour (the first had no
+2- and 8-core rows). That re-run is also this lane's error bar:
+between two invocations minutes apart Flink read 603 228 and 673 958
+ev/s at parallelism 1, and 1 123 891 and 1 314 163 at 4 — **±12–17%**,
+against 1–2% for the in-process lanes. Read Flink's ratios, not its
+digits.
 
 | lane | cores | ev/s | wall | B/event | peak heap |
 |---|---:|---:|---:|---:|---:|
-| okay, 8 fibres (merge) | 8 | 14 542 885 | 166 ms | 1 099 | 1 944 MB |
-| okay, 4 fibres (merge) | 4 | 8 155 807 | 296 ms | 1 090 | 1 463 MB |
-| okay, 2 fibres (merge) | 2 | 5 136 423 | 470 ms | 1 084 | 1 563 MB |
-| okay, 1 thread, packed-key windows | 1 | 3 302 488 | 731 ms | 1 007 | 1 557 MB |
-| zio-streams, okay's window operator | 1 | 3 240 428 | 745 ms | 1 066 | 1 598 MB |
-| okay, 1 thread (`Chunks`) | 1 | 3 131 153 | 771 ms | 1 101 | 1 513 MB |
-| fs2 (pure), okay's window operator | 1 | 3 110 978 | 776 ms | 1 075 | 1 580 MB |
-| **the floor (a while loop)** | 1 | 3 044 286 | 793 ms | 1 087 | 1 539 MB |
-| kyo streams, okay's window operator | 1 | 2 661 652 | 907 ms | 1 192 | 1 689 MB |
-| java.util.stream, windowed collector | 1 | 2 581 945 | 935 ms | 1 268 | 1 553 MB |
-| flink, parallelism 4 | 4 | 1 457 801 | 1 656 ms | 2 189 | 1 636 MB |
-| flink, parallelism 4 + checkpoints 5 s | 4 | 1 263 936 | 1 910 ms | 2 195 | 1 621 MB |
-| flink, parallelism 4, object reuse off | 4 | 1 192 746 | 2 024 ms | 2 388 | 1 380 MB |
-| flink, parallelism 1 | 1 | 705 264 | 3 423 ms | 2 182 | 1 035 MB |
-| spark, local[4], batch RDD | 4 | 277 580 | 8 697 ms | 16 171 | 2 044 MB |
-| spark, local[4], **structured streaming** | 4 | 271 279 | 8 899 ms | 3 861 | 2 016 MB |
-| java.util.stream, `groupingBy` | 1 | — | — | — | OutOfMemoryError, 8 GB |
+| okay, 8 fibres (merge) | 8 | 15 778 555 | 153 ms | 1 000 | 1 711 MB |
+| okay, 4 fibres (merge) | 4 | 9 179 159 | 263 ms | 991 | 1 732 MB |
+| fs2, 8 cores (`parEvalMap`) | 8 | 6 705 886 | 360 ms | 517 | 1 773 MB |
+| java.util.stream, 8 cores | 8 | 6 687 310 | 361 ms | 823 | 2 650 MB |
+| fs2, 4 cores | 4 | 6 454 863 | 374 ms | 491 | 1 762 MB |
+| plain JVM, 8 threads | 8 | 6 386 558 | 378 ms | 495 | 1 742 MB |
+| zio-streams, 4 cores (`foreachPar`) | 4 | 6 127 205 | 394 ms | 482 | 1 713 MB |
+| plain JVM, 4 threads | 4 | 6 020 246 | 401 ms | 468 | 1 667 MB |
+| kyo, 4 cores (`Async.parallel`) | 4 | 5 902 491 | 409 ms | 611 | 1 819 MB |
+| kyo, 8 cores | 8 | 5 817 154 | 415 ms | 638 | 2 156 MB |
+| java.util.stream, 4 cores | 4 | 5 817 154 | 415 ms | 740 | 2 111 MB |
+| fs2, 2 cores | 2 | 5 734 249 | 421 ms | 447 | 1 603 MB |
+| zio-streams, 8 cores | 8 | 5 666 946 | 426 ms | 508 | 1 789 MB |
+| okay, 2 fibres (merge) | 2 | 5 499 132 | 439 ms | 985 | 1 564 MB |
+| zio-streams, 2 cores | 2 | 5 114 658 | 472 ms | 438 | 1 606 MB |
+| plain JVM, 2 threads | 2 | 4 987 849 | 484 ms | 425 | 1 534 MB |
+| java.util.stream, 2 cores | 2 | 4 780 433 | 505 ms | 684 | 1 832 MB |
+| kyo, 2 cores | 2 | 4 633 625 | 521 ms | 567 | 1 920 MB |
+| **java.util.stream, 1 core** | 1 | **4 213 122** | 573 ms | 338 | 1 358 MB |
+| fs2, 1 core (pure) | 1 | 4 071 026 | 593 ms | 360 | 1 414 MB |
+| zio-streams, 1 core | 1 | 3 964 070 | 609 ms | 351 | 1 381 MB |
+| plain JVM, while loop | 1 | 3 957 572 | 610 ms | 342 | 1 328 MB |
+| okay, 1 thread, packed-key windows | 1 | 3 766 176 | 641 ms | 917 | 1 558 MB |
+| kyo, 1 core | 1 | 3 414 595 | 707 ms | 477 | 1 638 MB |
+| java.util.stream, windowed collector | 1 | 2 940 461 | 821 ms | 1 340 | 1 574 MB |
+| okay, 1 thread (`Chunks`) | 1 | 2 905 077 | 831 ms | 1 047 | 1 574 MB |
+| the floor (a while loop, okay's operator) | 1 | 2 823 530 | 855 ms | 1 033 | 1 536 MB |
+| flink, parallelism 8 | 8 | 1 593 477 | 1 515 ms | 2 195 | 1 420 MB |
+| flink, parallelism 4 + checkpoints 5 s | 4 | 1 397 059 | 1 728 ms | 2 192 | 1 641 MB |
+| flink, parallelism 4 | 4 | 1 314 163 | 1 837 ms | 2 187 | 1 483 MB |
+| flink, parallelism 4, object reuse off | 4 | 1 129 676 | 2 137 ms | 2 387 | 1 595 MB |
+| flink, parallelism 2 | 2 | 881 065 | 2 740 ms | 2 181 | 994 MB |
+| flink, parallelism 1 | 1 | 673 958 | 3 582 ms | 2 181 | 1 049 MB |
+| spark, local[4], batch RDD | 4 | 260 844 | 9 255 ms | 16 172 | 2 021 MB |
+| spark, local[4], structured streaming | 4 | 258 997 | 9 321 ms | 3 839 | 2 016 MB |
 
-**The floor is not the fastest row, and that is the first thing to
-read.** A bare `while` loop over the array — no `Chunks`, no producer,
-no fold combinator — runs at 3 044 286 ev/s, and the same job through
-`Chunks` runs at 3 131 153. Three of the competitors' stream libraries
-are within 6% of both. What that says is blunt and useful: **on this
-job the carrier is not the cost.** Every in-process lane is doing the
-same ~1 KB of allocation per event, and it is the windowing and the
-aggregation — not the pipeline — that the machine is busy with. The
-5x spread against Flink and the OutOfMemoryError against `groupingBy`
-are about ENGINES and STATE MODELS, and nothing in this table is about
-one stream library being faster than another.
+**The cores axis, which is what the table above is really about:**
 
-**Bytes per event says the same thing more precisely**: ~1.0–1.1 KB
-for every in-process lane (the shared aggregator's tuples), 1.27 KB for
-the JDK's collector, 2.2 KB for Flink — where the extra kilobyte is the
-serialization across three shuffles — and 16 KB for Spark's RDD lane,
-which is Java serialization doing what okay-spark's own doc warned it
-does. It is the steadiest column in the table: it barely moves between
-runs, while wall-clock moves by 10-20% with the machine's mood.
+| engine, ev/s | 1 core | 2 | 4 | 8 | 1 → 8 |
+|---|---:|---:|---:|---:|---:|
+| **okay** (merge-parallel) | 2 905 077 | 5 499 132 | 9 179 159 | 15 778 555 | **5.4x** |
+| fs2 (`parEvalMap`) | 4 071 026 | 5 734 249 | 6 454 863 | 6 705 886 | 1.6x |
+| `java.util.stream` (ForkJoinPool) | 4 213 122 | 4 780 433 | 5 817 154 | 6 687 310 | 1.6x |
+| plain JVM (`Thread` + join) | 3 957 572 | 4 987 849 | 6 020 246 | 6 386 558 | 1.6x |
+| kyo (`Async.parallel`) | 3 414 595 | 4 633 625 | 5 902 491 | 5 817 154 | 1.7x |
+| zio-streams (`foreachPar`) | 3 964 070 | 5 114 658 | 6 127 205 | 5 666 946 | 1.4x |
+| flink (MiniCluster) | 673 958 | 881 065 | 1 314 163 | 1 593 477 | 2.4x |
+| spark (local[4]) | — | — | 260 844 | — | — |
 
-**And it is where Spark's two lanes separate.** They finish within 2%
-of each other in wall time (8 697 ms and 8 899 ms), but Structured
-Streaming allocates 3 861 B/event against the RDD lane's 16 171 — four
-times less, because Catalyst's rows are a binary format and the RDD
-lane's are Java-serialized objects. Same engine, same machine, same
-answer; the column that shows the difference is not the clock.
+**Read the two halves of that separately, because they say opposite
+things.**
 
-### The numbers
+**One core: okay is the SLOWEST of the in-process lanes, by about
+1.4x.** `java.util.stream` folding into a plain map runs the job at
+4 213 122 ev/s and okay's own lane at 2 905 077, on a third of the
+allocation (338 B/event against 1 047). That is not a carrier
+difference — the bare `while` loop over the same plain fold is
+3 957 572, within 6% of every library — it is what okay is DOING that
+they are not: keying panes by an arbitrary `K` through
+`HashMap[K, LongMap[Acc]]`, running an aggregator whose accumulator is
+a value, and evicting each pane as the watermark passes it. The
+packed-key row prices the first of those three at 24% and leaves 5%
+for the other two.
 
-Host: 14 cpus, JVM 21, a working machine, `-Xmx8g` (the heap is 8 GB
-because of ONE lane — see "the third engine" below). **2 414 119
-events** (eight service days), best of 3 runs per lane, the spread
-printed beside each (`TestWroclawStream`, `Live`-tagged, `sbt
-integrationTest`).
+**More than one core: okay is 2.4x the best of them, and pulling
+away.** Every one of the five plateaus between 1.4x and 1.7x from one
+core to eight; okay reaches 5.4x. Their merge is proportional to the
+STATE — with no watermark every slice holds every pane the run ever
+opened, and the reduction walks all of them — while okay merges only
+the panes that span a slice boundary. **A watermark is not only a
+memory bound; it is what makes a parallel reduction cheap**, and this
+is the row-pair that shows it.
 
-| lane | throughput | wall | of the okay lane |
-|---|---:|---:|---:|
-| okay, 1 thread (`okay.Windows`) | 3 143 384 ev/s | 768 ms | 1.0x |
-| okay, 1 thread, packed-key windows | 3 503 801 ev/s | 689 ms | 0.90x |
-| okay, 2 fibres (merge) | 5 627 317 ev/s | 429 ms | 0.56x |
-| okay, 4 fibres (merge) | 9 467 133 ev/s | 255 ms | 0.33x |
-| okay, 8 fibres (merge) | 16 649 096 ev/s | 145 ms | 0.19x |
-| flink, parallelism 1 | 707 745 ev/s | 3 411 ms | 4.4x |
-| flink, parallelism 4 | 1 490 196 ev/s | 1 620 ms | 2.1x |
-| flink, parallelism 4 + checkpoints every 5 s | 1 413 418 ev/s | 1 708 ms | 2.2x |
-| flink, parallelism 4, object reuse OFF | 1 138 735 ev/s | 2 120 ms | 2.8x |
+**Bytes per event is the steadiest column** (it barely moves between
+runs, while wall-clock moves 10–20% with the machine's mood), and it
+sorts the table by state model rather than by library: 338–517 B for
+the in-process folds, ~1 KB for okay's aggregator-and-eviction lane,
+1.34 KB for the same job through a JDK `Collector`, 2.18 KB for Flink
+— the extra kilobyte is serialization across three shuffles — 3.84 KB
+for Structured Streaming and 16.17 KB for Spark's RDD lane, which is
+Java serialization doing exactly what okay-spark's own doc warns it
+does. Spark's two lanes finish within 1% of each other in wall time
+and differ 4.2x in allocation: same engine, same machine, same answer,
+and the column that shows the difference is not the clock.
 
-The okay lane's first row moved between the runs of this section and
-the reason is worth stating rather than smoothing: the lane no longer
-carries its own window operator. `okay.Windows`
-(specs/event-time-windows.md) replaced the fifty hand-written lines,
-and the general shape — panes under `HashMap[K, LongMap[Acc]]`, any key
-type — costs about 10% against the `(window << 20) | key` packing those
-fifty lines could afford because a route and a dense stop index both
-fit in twenty bits. The packed operator stays in the file as
-`OkayLane.packed`, asserted to compute the same answer, so the price is
-measured on every run instead of remembered.
+**What the engines' rows are and are not.** Flink and Spark are
+distributed engines on one machine, in the mode they are least suited
+to, and their fixed costs buy recovery, rescale and running across
+machines — none of which this benchmark can show and none of which the
+in-process lanes offer at all. The single-node table is the honest
+comparison against the libraries; against the engines it is a
+statement about ONE machine, and the distributed comparison waits for
+okay to have a distributed lane.
+
+### The engines' fixed cost, separated from the marginal one
+
+Two readings of the same lanes that the table above cannot give,
+measured in earlier runs of this section on the same box and kept
+because nothing since has changed what they say. Their absolute
+numbers are that run's, not today's — the ratios are the point.
+
+The general window operator's price against the packed one is now
+measured on EVERY run instead: `okay.Windows` keys panes by any `K`
+under `HashMap[K, LongMap[Acc]]`, and `OkayLane.packed` keys them by
+`(window << 20) | key` because a route and a dense stop index both fit
+in twenty bits. Today that is 2 905 077 against 3 766 176 ev/s — the
+generality costs 24%, up from the 10% the first run measured on a
+smaller feed, and it is the largest single component of okay's
+single-core distance from a plain map fold.
 
 **That table is not the answer, and saying why is the point of this
 section.** A Flink job pays a FIXED cost before it has seen an event —
@@ -3551,18 +3620,27 @@ costs are separated by a least-squares fit:
 - **Flink's ~0.43 s fixed cost is the price of being an ENGINE**: a job
   graph, task deployment, network stacks, state backends. okay's is
   19 ms on one thread and 3 ms on four — the JIT and the fibres.
-- **Flink scales 2.5x from one core to four** (739k → 1 871k marginal);
-  **okay scales 3.3x** (2.72M → 8.94M, and 1.79x/3.01x/5.30x
-  wall-clock at 2/4/8 fibres on a 14-cpu box). Neither is linear and
-  neither should be: one shuffles, the other merges, and both pay for
-  the part of the job that is not the fold.
-- **The guarantee costs 5.2%.** Checkpointing every 5 seconds to a real
-  filesystem — the thing okay's in-process lane does not offer at all —
-  moved 1 490k to 1 413k ev/s. Across the runs of this section it has
-  read between 1.4% and 5.2%; call it "single digits", not a constant.
-- **Object reuse is worth 1.31x** (1 139k without it against 1 490k
-  with). The elements are POJOs of five primitives, so the copies are
-  small; it is one line in the job and it is free, so take it.
+- **Flink scales 2.5x from one core to four** (739k → 1 871k marginal;
+  1.95x wall-clock today, and 2.4x from one to eight); **okay scales 3.3x** (2.72M →
+  8.94M marginal, and 1.89x/3.16x/5.43x wall-clock at 2/4/8 fibres
+  today on a 14-cpu box). Neither is linear and neither should be: one
+  shuffles, the other merges, and both pay for the part of the job
+  that is not the fold.
+- **The guarantee's cost is below this lane's noise, and saying so is
+  more honest than quoting it.** Checkpointing every 5 seconds to a
+  real filesystem — the thing okay's in-process lane does not offer at
+  all — has read −6.2%, +6.3% and −1.4% across three runs of this
+  section; in the run tabled above the checkpointing lane was FASTER
+  than the one without it. Flink's own run-to-run spread here is
+  ±12–17%, so the effect is smaller than the bars: what can be said is
+  "single digits at most", and a section that quoted 5.2% as a fact
+  was over-reading its instrument.
+- **Object reuse is worth 1.16–1.31x** (1 129 676 without it against
+  1 314 163 with, today). The elements are POJOs of five primitives,
+  so the copies are small; it is one line in the job and it is free,
+  so take it. This one survives the noise because it moves the
+  ALLOCATION too — 2 387 B/event against 2 187 — and that column does
+  not wobble.
 
 ### Four cores without a shuffle: parallelism by `Aggregator.merge`
 
@@ -3607,14 +3685,18 @@ the JDK lane's too.
 
 | lanes | throughput | wall | of one thread |
 |---|---:|---:|---:|
-| 1 | 3 143 384 ev/s | 768 ms | 1.00x |
-| 2 | 5 627 317 ev/s | 429 ms | 1.79x |
-| 4 | 9 467 133 ev/s | 255 ms | 3.01x |
-| 8 | 16 649 096 ev/s | 145 ms | 5.30x |
+| 1 | 2 905 077 ev/s | 831 ms | 1.00x |
+| 2 | 5 499 132 ev/s | 439 ms | 1.89x |
+| 4 | 9 179 159 ev/s | 263 ms | 3.16x |
+| 8 | 15 778 555 ev/s | 153 ms | 5.43x |
 
 Four fibres marginal is 8 941 185 ev/s against Flink-at-four's
 1 870 582 — **4.8x, four cores against four cores** — on a job whose
-answer the two engines agree on to the last hash. What Flink is doing
+answer the two engines agree on to the last hash. The same cut against
+the five in-process libraries is 9 179 159 against 6 454 863 (fs2's
+best four-core row), and it is the parallel MERGE that separates them,
+not the fold: see "Every in-process library on its OWN operators"
+below. What Flink is doing
 with the difference is not nothing (see below); what this table shows
 is that the difference is not the parallelism.
 
@@ -3697,9 +3779,14 @@ grants a batch per cycle, so "asked 2 000 000/s" and "asked 500 000/s"
 both ACHIEVED ~116 000/s. The requested rate is an upper bound, not a
 target, and the achieved column is the one to read.
 
-**Where the code is.** `okay-flink/src/test/scala/okay/flink/wroclaw/`
-— `Gtfs` (the feed), `Job` (the definition both lanes share),
-`OkayLane`, `FlinkLane` — and `TestWroclawStream` runs them. Flink's
+**Where the code is.** The shared half —`Gtfs` (the feed), `Job` (the
+definition every lane computes), `Native` (the fold the five
+in-process libraries carry), `OkayLane`, `JvmLane` and `Bench` — is
+`compare/src/main/scala/okay/wroclaw/`; each engine's lane is in its
+own interop module's tests (`okay-flink`, `okay-spark`, `okay-java`,
+`okay-fs2`, `okay-zio`, `okay-kyo`), with a `main` per module and a
+`Test` beside it that asserts the lane's answer against okay's.
+`scripts/wroclaw-bench.sh` runs the lot. Flink's
 lane is the JAVA DataStream API, which is Flink's own advice since 1.18
 and the only option from Scala 3 (the Scala API is 2.13-only and its
 `TypeInformation` macros do not exist for Scala 3); every operator
@@ -3707,6 +3794,15 @@ names its `TypeInformation` explicitly because a Scala lambda erases
 what Flink's extractor would have read.
 
 ### The third engine: `java.util.stream`, through the Collector interop
+
+**Read this after "Every in-process library on its OWN operators"
+below, not instead of it.** The JDK's HONEST row — `Arrays.stream`, the
+platform's own `filter`/`map`, and a fold into maps that never evict —
+is there, and it is the fastest single-core row in the whole table.
+This subsection is about the two roads that go through okay-java's
+interop instead, and about what `Collectors.groupingBy` does when the
+grouping is high-cardinality; it was written when those were the only
+JDK roads measured, and its findings still stand for them.
 
 The operator asked for the same job on the JDK's own streams, and it
 belongs here for the same reason the Flink lane does: okay-java's
@@ -3795,7 +3891,12 @@ accumulator per key instead of every element that ever had that key.
 | `okay.java.Windowed` | 2 493 921 ev/s | 242 ms | 403 MB | **yes: 992 ms, 825 MB** |
 
 **2.15x faster and 38% less heap at the same size, and it finishes the
-job the other road dies on.** The speed is not a surprise once the
+job the other road dies on** — while being, at the full feed, 0.70x
+the JDK's own plain-map road (2 940 461 against 4 213 122 ev/s). All
+three numbers are worth holding at once: against `groupingBy` the
+windowed collector is faster AND bounded; against a hand-written map
+fold it is slower and bounded. What it buys is the bound, and the
+bound is what the parallel rows above turn into throughput. The speed is not a surprise once the
 memory is: `groupingBy` was building a map of 800 000 live groups and
 rehashing it as it grew, while the windowed collector holds the ~5 000
 panes that are actually open. The state model WAS the performance
@@ -3821,30 +3922,109 @@ rule computed from the whole stream's shape; a `Collector` has neither,
 so it can bound its state only where it knows it holds a prefix — which
 is to say, sequentially.
 
-### fs2, zio-streams and kyo — and what these three rows do NOT yet say
+### Every in-process library on its OWN operators
 
-The three in-process stream libraries are in the table, and what they
-are being asked is narrower than what Flink and Spark are asked. **None
-of them has an event-time window** — fs2 has `groupWithin`, ZIO
-`groupedWithin`, both PROCESSING time, and kyo has neither — so each
-lane currently carries `okay.Windows`, and the numbers therefore
-compare the PLUMBING around identical work: how an element reaches a
-fold, and what `map` and `filter` cost on the way.
+The first two runs of this section handed fs2, zio-streams and kyo
+`okay.Windows` and said so in the text: none of the three has an
+event-time window, so those rows compared the PLUMBING around
+identical work. The operator ended that on 2026-09-10 with the right
+rule — **a competitor's row must measure what the library gives ITS
+user** — and `bench-native-lanes` is that rule carried out for the
+five lanes that run in one process: the plain JVM, `java.util.stream`,
+fs2, zio-streams and kyo.
 
-**That is not the comparison this section should end on, and it is
-being replaced.** A row that hands a competitor our operator measures
-our operator; what a reader wants to know is what the library gives
-THEM — which for these three is a fold into a map that never evicts,
-the same shape as the JDK's `groupingBy`, with the same consequence for
-memory. Rewriting the three lanes in each library's own vocabulary is
-filed as `bench-native-lanes`, and until it lands these rows are
-labelled for what they are.
+**What "their own operators" comes to, concretely.** Not one of the
+five can express an event-time window, so what a user of any of them
+writes is the fold in
+`compare/src/main/scala/okay/wroclaw/Native.scala`, and there is no
+okay type in it:
 
-The sources are each library's own chunked constructor at a matched 256
-(fs2 `Stream.chunk` + `chunkLimit`, PURE so no cats-effect runtime and
-no `unsafeRunSync`; `ZStream.fromChunk(...).rechunk(256)`; kyo
-`Stream.init(seq, 256)`), which is the half of the lane that IS
-idiomatic today.
+- **a window is A KEY** — `(windowStart << 20) | key` — and nothing
+  ever evicts one. That is not laziness, it is what the model forces:
+  with no watermark there is no notion of a window being COMPLETE, so
+  the state of the run is the whole history of it. Here that is
+  2 414 119 events' worth of panes held to the end; on an unbounded
+  stream it is the reason event-time engines exist.
+- **the accumulator is a mutable cell** of three fields, bumped in
+  place — no `Aggregator`, nothing like one, just the fold every
+  hand-written pipeline has.
+- **the top-5 is a sort per window** over the tram routes in it,
+  because none of the five has a top-k combinator either.
+- **the parallelism is the library's own**: `Thread` + `join`; a JDK
+  mutable reduction (`collect(supplier, accumulator, combiner)`) on a
+  parallel stream inside a `ForkJoinPool` of exactly the measured
+  width; fs2's `parEvalMap`; ZIO's `foreachPar` under
+  `withParallelism`; kyo's `Async.parallel`. Each cuts the arrival
+  order into P contiguous slices and reduces the folds IN SLICE ORDER
+  — which all five can express, and which the bunching stage needs
+  because that stitch is not commutative.
+
+The fold is SHARED between the five rather than copied five times, and
+that is deliberate: every line of it is stdlib, so what separates the
+rows is the carrier — how an element reaches `add`, and how the library
+says "run four of these at once" — and not my typing on five
+occasions.
+
+**Why the answers can still be asserted equal.** The feed's arrival
+jitter is bounded below the watermark bound (25 s against 30 s), so no
+event is ever late; a fold that never evicts and an operator that
+evicts on the watermark therefore see exactly the same panes.
+`TestNativeLanes` pins that against okay at one thread and at four, and
+every lane's `main` re-checks its eleven checksums before printing a
+number.
+
+**What the rows then say, and it is not what the earlier version of
+this section said.**
+
+- **On one core the hand-written fold BEATS okay's own lane, by
+  1.4x** — 4 213 122 ev/s through `java.util.stream` and 3 957 572
+  through a bare loop, against okay's 2 905 077 — and it allocates a
+  third as much (338 B/event against 1 047). Three of the five
+  libraries land within 6% of the bare loop, which repeats the older
+  finding in the new setting: on this job the CARRIER is not the cost.
+  What the carrier does not decide, the state model does.
+- **Where okay's single-core kilobyte goes is measurable from rows
+  already in the table.** `okay, 1 thread, packed-key windows` runs at
+  3 766 176 — 5% under the plain loop — with the same
+  `(window << 20) | key` packing and the same eviction. So eviction and
+  the algebraic aggregator together cost about 5%, and the remaining
+  24% is the GENERAL operator's shape: `okay.Windows` keys panes by any
+  `K` under `HashMap[K, LongMap[Acc]]`, which is two lookups where the
+  packed form has one. That is the price of an operator that works for
+  key types that do not fit in twenty bits, and it is now priced on
+  every run rather than remembered.
+- **On more than one core it reverses, and hard.** okay goes 2.90M →
+  15.78M from one fibre to eight (5.4x); the best any of the five
+  reaches is 6.7M, a 1.6x on the same box.
+
+**And the reason is measured, not inferred.** `JvmLane.split` times the
+8-thread run in two halves and counts what it built (`JvmBench` prints
+it as a `NOTE` on every run):
+
+| the 8-thread plain-JVM run | |
+|---|---:|
+| the fold, across 8 threads | **135 ms** |
+| the reduction of what they built, in one thread | **382 ms** |
+| pane cells held at the end | **3 426 483** |
+| what okay's operator holds at once, exactly (`Windows.live`) | **4 918** |
+
+Three quarters of the run is a single-threaded merge, and it walks 700
+times the state okay's lane ever holds. That is the whole plateau: the
+fold itself parallelises about as well as anything does — 135 ms of
+fold against a 610 ms single-threaded row is 4.5x on 8 threads — and
+then every slice hands over a map of every pane the run ever opened.
+okay merges only the panes that SPAN a slice boundary, because the
+watermark closed and discarded the rest as the fold went.
+
+(That split is ONE cold run, not a best-of-3, so its halves sum to
+517 ms where the measured row is 378: read the RATIO between the
+halves, not the absolute times. The pane count is exact.)
+
+**So the event-time operator is not only a memory story.** That was the
+older reading of the `groupingBy` OutOfMemoryError, and it was
+incomplete: what a watermark buys is a state small enough that
+combining two of them is cheap, and that is what shows up as the
+difference between a 1.6x and a 5.4x on the same eight cores.
 
 ### What the okay lane cost to WRITE — and what closing that gap cost
 

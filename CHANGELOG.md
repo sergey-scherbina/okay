@@ -1,5 +1,60 @@
 # Changelog
 
+## bench-native-lanes — every competitor on ITS OWN operators, and the eight-core reversal
+
+The operator's rule, and it was the right one: *a benchmark row for a
+competitor must measure what the LIBRARY gives its user, not what we
+lend it.* §20's fs2, zio-streams and kyo rows carried `okay.Windows`,
+because none of the three has an event-time window — so those rows
+compared the plumbing around identical work and held constant the very
+operator a reader is choosing between.
+
+**What the five in-process lanes now run.** `Native.Fold`
+(`compare/src/main/scala/okay/wroclaw/Native.scala`): the same five
+stages over plain maps, with no okay type in it. A window is a KEY,
+nothing evicts, the accumulator is a mutable cell, the top-5 is a sort
+per window — what a user of any of these libraries writes when the
+library hands them no watermark. What differs between the rows is the
+CARRIER and the way each says "run four of these at once": `Thread` +
+join; a JDK mutable reduction on a parallel stream inside a
+`ForkJoinPool` of the measured width; fs2's `parEvalMap`; ZIO's
+`foreachPar` under `withParallelism`; kyo's `Async.parallel`. Every
+lane also gained the 1/2/4/8-core axis okay already had, so the
+columns compare like with like. A new `plain JVM` lane (a `while` loop
+and `Thread`s, no library at all) is the floor they are all read
+against.
+
+**The result contradicts the previous run of this section in one
+direction and confirms it in the other.**
+
+- **On ONE core okay is the slowest in-process lane, by ~1.4x**:
+  4 213 122 ev/s through `java.util.stream` against okay's 2 905 077,
+  on a third of the allocation. The bare loop over the same fold is
+  3 957 572 — so it is not the carrier, it is what okay is DOING that
+  they are not. The packed-key row prices the general operator's
+  `HashMap[K, LongMap[Acc]]` at 24% and leaves ~5% for eviction and
+  the algebraic aggregator together.
+- **On EIGHT it reverses**: okay 5.4x from one fibre to eight
+  (15 778 555 ev/s), every one of the five between 1.4x and 1.7x
+  (6.7M at best). Measured, not reasoned — `JvmLane.split` times the
+  8-thread run in halves: **fold 135 ms, single-threaded merge 382 ms,
+  3 426 483 pane cells held**, against the 4 918 panes okay's operator
+  holds at once. Their merge is proportional to the state and the
+  state is the whole history.
+
+**So a watermark is not only a memory bound**; it is what makes a
+parallel reduction cheap. That is a sharper statement of the same
+thing the `groupingBy` OutOfMemoryError said in the first run, and it
+took giving the competitors their own operators to see it.
+
+Equality carries over unchanged: `TestNativeLanes` pins the plain fold
+against okay at one thread and four, each lane's suite pins its own,
+and every `main` re-asserts the eleven checksums before printing a
+number. The whole §20 table was re-run in one sitting so no row is
+carried over from an earlier one; Flink and Spark are unchanged in this
+lane and still borrow our aggregation, which stays open in
+`bench-native-lanes` for them.
+
 ## stack-depth-margin — the margin under the depth limit is measured now, and the tight platform is not the one I predicted
 
 The operator asked whether the limit could be measured instead of

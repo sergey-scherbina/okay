@@ -1,83 +1,69 @@
 package okay.fs2.wroclaw
 
-import okay.wroclaw.{Depart, Feed, Job, OkayLane, Ride}
-
-import okay.Windows
-import scala.collection.mutable
+import okay.wroclaw.{Feed, Job, Native}
 
 /**
- * THE THREE IN-PROCESS STREAM LIBRARIES on the same job: fs2,
- * zio-streams and kyo.
+ * fs2 ON ITS OWN TERMS (docs/benchmarks.md §20).
  *
- * WHAT IS BEING COMPARED, said before the numbers. None of the three
- * has an event-time window — fs2 has `groupWithin`, ZIO
- * `groupedWithin`, kyo nothing at all, and all of those are
- * PROCESSING time, which is a different operator answering a
- * different question. So each lane gets `okay.Windows`, the same
- * operator okay's own lane and the JDK lane use, and what the three
- * numbers differ by is the library's plumbing around identical work:
- * how an element reaches a fold, and what `map` and `filter` cost on
- * the way.
+ * WHAT THE LIBRARY GIVES ITS USER, said before the number. fs2 has no
+ * event-time window: `groupWithin` is PROCESSING time and answers a
+ * different question. So a fs2 user writing this job writes the fold
+ * below — `Native.Fold`, panes as keys in a map, nothing evicted —
+ * and carries it with fs2's own combinators. The earlier version of
+ * this lane handed fs2 `okay.Windows`, which measured the plumbing
+ * around identical work and quietly held constant the very thing a
+ * reader is choosing between.
  *
- * That is a narrower claim than "okay is faster than fs2", and it is
- * the only one this file supports. It is also the useful one: on a
- * stateful event-time job, the windowing is the same code whoever
- * carries the elements, so the plumbing is exactly what a reader is
- * choosing between.
+ * THE SOURCE is `Stream.chunk(Chunk.array(...))` re-chunked to 256, to
+ * match `Chunks.fromIterator(_, 256)` in the okay lane (§20's lane
+ * rules: a competitor is priced from the source its author intended,
+ * at a matched granularity).
  *
- * SOURCES, each the library's own chunked constructor, sliced to 256
- * to match `Chunks.fromIterator(_, 256)` in the okay lane (the lane
- * rules of this document: a competitor is priced from the source its
- * author intended, at a matched granularity):
- *
- *   - fs2: `Stream.chunk(Chunk.array(...))` re-chunked by
- *     `chunkLimit(256)`, and PURE — `Stream[Pure, *]` compiles with no
- *     cats-effect runtime and no `unsafeRunSync`, which §0 prices at
- *     7.6 us and which this lane therefore does not pay
- *   - ZIO: `ZStream.fromChunk(Chunk.fromArray(...)).rechunk(256)`,
- *     run once through `Unsafe.unsafe`
- *   - kyo: `Stream.init(ArraySeq.unsafeWrapArray(...), 256)`, `.eval`
+ * ONE CORE IS PURE: `Stream[Pure, *]` compiles with no cats-effect
+ * runtime and no `unsafeRunSync`, which §0 prices at 7.6 us and which
+ * this row therefore does not pay. MORE THAN ONE IS NOT, and cannot
+ * be: parallelism in fs2 needs `Concurrent`, so the parallel rows run
+ * on `IO` and pay for the runtime. That is not a handicap the
+ * benchmark imposes, it is the library's own shape — and it is why
+ * the 1-core row is the pure one rather than an IO row with the
+ * parallelism set to one.
  */
 object Fs2Lane {
 
-  /** the per-element work, identical in all three lanes */
-  private final class Fold(feed: Feed) {
-    private val tram = feed.routes.iterator.map(_.tram).toArray
-    private val sink = new OkayLane.Sink(tram)
-    private val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Stats](
-      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)
-    private val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Stats](
-      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats)
-    private val lastSeen = mutable.LongMap.empty[Long]
+  import _root_.fs2.{Chunk, Pure, Stream}
 
-    def known(d: Depart): Boolean = d.route >= 0 && d.route < tram.length
-
-    def enrich(d: Depart): Ride =
-      new Ride(d.ts, d.route, d.stop, d.vehicle, d.delay, tram(d.route))
-
-    def add(r: Ride): Unit =
-      routeWindows.add(r)(sink.route)
-      stopWindows.add(r)(sink.stop)
-      val key = (r.route.toLong << 20) | r.stop.toLong
-      val prev = lastSeen.getOrElse(key, Long.MinValue)
-      if prev != Long.MinValue then
-        val gap = Math.abs(r.ts - prev)
-        if gap < Job.BunchMs then sink.bunch(gap)
-      lastSeen.update(key, r.ts)
-
-    def result: Job.Result =
-      routeWindows.close()(sink.route)
-      stopWindows.close()(sink.stop)
-      sink.result
-  }
-
-  /** fs2, pure: no cats-effect runtime in the lane at all */
-  def run(feed: Feed): Job.Result = {
-    val f = new Fold(feed)
-    _root_.fs2.Stream.chunk(_root_.fs2.Chunk.array(feed.events))
-      .chunkLimit(256).flatMap(_root_.fs2.Stream.chunk)
+  /** stage 1 and the fold over one contiguous slice of the arrival
+   * order, as a pure fs2 stream */
+  private def slice(feed: Feed, tram: Array[Boolean], from: Int, until: Int): Native.Fold =
+    val f = new Native.Fold(tram)
+    val source: Stream[Pure, okay.wroclaw.Depart] =
+      Stream.chunk(Chunk.array(feed.events, from, until - from))
+    source.chunkLimit(256).flatMap(Stream.chunk)
       .filter(f.known).map(f.enrich)
       .compile.fold(())((_, r) => f.add(r))
-    f.result
-  }
+    f
+
+  /** one core: pure fs2, no runtime under it */
+  def run(feed: Feed): Job.Result =
+    slice(feed, Native.tramTable(feed), 0, feed.events.length).result
+
+  /**
+   * P cores, in fs2's own vocabulary: a stream of the slices, each
+   * folded in `IO`, run `parEvalMap` — which keeps the OUTPUT ORDER of
+   * its inputs, and the order is load-bearing here (`Fold.absorb`
+   * stitches the bunching pair that straddles a slice boundary, and
+   * that stitch is not commutative). `parEvalMapUnordered` would be
+   * marginally cheaper and wrong.
+   */
+  def parallel(feed: Feed, cores: Int): Job.Result =
+    if cores <= 1 then run(feed) else
+      import cats.effect.IO
+      import cats.effect.unsafe.implicits.global
+      val tram = Native.tramTable(feed)
+      val n = feed.events.length
+      val folds = Stream.emits(0 until cores).covary[IO]
+        .parEvalMap(cores)(i =>
+          IO(slice(feed, tram, Native.bound(n, cores, i), Native.bound(n, cores, i + 1))))
+        .compile.toVector.unsafeRunSync()
+      Native.combine(folds)
 }

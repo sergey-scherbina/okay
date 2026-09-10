@@ -11,4 +11,9 @@ class TestZioLane extends munit.FunSuite {
     val feed = Gtfs.events(1)
     assertEquals(ZioLane.run(feed), OkayLane.run(feed))
   }
+
+  test("four slices through foreachPar agree with one") {
+    val feed = Gtfs.events(1)
+    assertEquals(ZioLane.parallel(feed, 4), OkayLane.run(feed))
+  }
 }

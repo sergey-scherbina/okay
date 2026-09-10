@@ -7,6 +7,13 @@ class TestJavaLane extends munit.FunSuite {
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = !Gtfs.present
 
+  test("the JDK's own roads agree with okay, sequential and parallel") {
+    val feed = Gtfs.events(1)
+    val expect = OkayLane.run(feed)
+    assertEquals(JavaLane.stream(feed), expect, "the sequential Arrays.stream road differs")
+    assertEquals(JavaLane.parallel(feed, 4), expect, "the parallel mutable reduction differs")
+  }
+
   test("groupingBy, parallel groupingBy and the windowed collector all agree with okay") {
     val feed = Gtfs.events(1)
     val expect = OkayLane.run(feed)

@@ -16,23 +16,23 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
 
 ## bench-native-lanes — a competitor's row should measure THEIR api, not ours
 
-- [ ] §20's fs2, zio-streams and kyo lanes carry `okay.Windows`, because
-      none of the three has an event-time window. That makes the rows a
-      plumbing comparison, and the operator's rule (2026-09-10) is the
-      right one: measure what the LIBRARY gives its user. For these
-      three that is a fold into a map that never evicts — the JDK's
-      `groupingBy` shape, with the same memory consequence — written in
-      each library's own vocabulary (`scan`/`mapAccum`/`fold`), with no
-      okay type in the lane at all. The same applies to the two lanes
-      that still borrow our aggregation: Flink's window takes
-      `toFlink(Job.stats)` where it should take a Flink
-      `AggregateFunction` as a Flink user would write one, and the
-      Spark RDD lane calls `SparkInterop.aggregateByKey` where it
-      should call Spark's own. `toFlink` and `Collect.collector` stay
-      in the correctness tests, where "one value answers on every
-      engine" is a claim about the interop rather than a benchmark row.
-      The equality assertion carries over unchanged: whatever API a
-      lane uses, its eleven checksums must equal okay's.
+- [x] **The five in-process lanes: DONE** (2026-09-10). The plain JVM,
+      `java.util.stream`, fs2, zio-streams and kyo all fold
+      `Native.Fold` — panes as keys in a map, nothing evicted, a
+      mutable cell, a sort for the top-5 — with no okay type in the
+      lane, each carried by the library's own combinators and each at
+      1/2/4/8 cores. §20 has the numbers and the reversal they show.
+- [ ] Flink still takes `toFlink(Job.stats)` where a Flink user would
+      write an `AggregateFunction`, and the Spark RDD lane still calls
+      `SparkInterop.aggregateByKey` where it should call Spark's own.
+      Both are engine lanes with their own event-time windows, so the
+      distortion is smaller than it was for the five — the borrowed
+      part is the arithmetic, not the operator — but the rule is the
+      rule. `toFlink` and `Collect.collector` stay in the correctness
+      tests, where "one value answers on every engine" is a claim
+      about the interop rather than a benchmark row. The equality
+      assertion carries over: whatever API a lane uses, its eleven
+      checksums must equal okay's.
 
 ## okay core
 - [ ] handler-fusion-flat — GATED OFF by stage 0 (the ceiling for pass
@@ -92,6 +92,15 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       workload.
 
 ## okay-codec
+- [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
+      closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
+      binary's connection ends and it exits 0 while sbt still has a
+      call in flight, so the module reports no tests and sbt reports a
+      lost process). Recorded here only so the rate stays visible, as
+      `scripts/gate.sh` asks on every occurrence:
+      2026-09-10, okayCodecNative, one lost process in a full gate,
+      GREEN on the rerun of that module alone (bench-native-lanes).
+
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
       avoid the lossless road's cost, and 131cedc2 + b4172242 removed

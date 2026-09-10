@@ -11,4 +11,9 @@ class TestFs2Lane extends munit.FunSuite {
     val feed = Gtfs.events(1)
     assertEquals(Fs2Lane.run(feed), OkayLane.run(feed))
   }
+
+  test("four slices through parEvalMap agree with one") {
+    val feed = Gtfs.events(1)
+    assertEquals(Fs2Lane.parallel(feed, 4), OkayLane.run(feed))
+  }
 }

@@ -258,6 +258,10 @@ lazy val okayFs2 = (project in file("okay-fs2"))
     name := "okay-fs2",
     libraryDependencies ++= Seq(
       "co.fs2" %% "fs2-core" % "3.10.2",
+      // the benchmark lane only: fs2 parallelism needs `Concurrent`,
+      // so §20's multi-core fs2 rows run on IO and the runtime comes
+      // with them. The interop itself stands on fs2-core alone.
+      "org.typelevel" %% "cats-effect" % "3.5.7" % Test,
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )

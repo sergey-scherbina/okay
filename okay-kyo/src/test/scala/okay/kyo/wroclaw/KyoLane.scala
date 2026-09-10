@@ -1,85 +1,66 @@
 package okay.kyo.wroclaw
 
-import okay.wroclaw.{Depart, Feed, Job, OkayLane, Ride}
-
-import okay.Windows
-import scala.collection.mutable
+import okay.wroclaw.{Depart, Feed, Job, Native}
 
 /**
- * THE THREE IN-PROCESS STREAM LIBRARIES on the same job: fs2,
- * zio-streams and kyo.
+ * kyo ON ITS OWN TERMS (docs/benchmarks.md §20).
  *
- * WHAT IS BEING COMPARED, said before the numbers. None of the three
- * has an event-time window — fs2 has `groupWithin`, ZIO
- * `groupedWithin`, kyo nothing at all, and all of those are
- * PROCESSING time, which is a different operator answering a
- * different question. So each lane gets `okay.Windows`, the same
- * operator okay's own lane and the JDK lane use, and what the three
- * numbers differ by is the library's plumbing around identical work:
- * how an element reaches a fold, and what `map` and `filter` cost on
- * the way.
+ * WHAT THE LIBRARY GIVES ITS USER. kyo has no windowing operator at
+ * all — not even a processing-time one — so the job is the fold a kyo
+ * user writes: `Native.Fold`, panes as keys in a map, nothing evicted,
+ * carried by `kyo.Stream`. The earlier version of this lane handed kyo
+ * `okay.Windows`, which measured the plumbing and held constant the
+ * operator itself.
  *
- * That is a narrower claim than "okay is faster than fs2", and it is
- * the only one this file supports. It is also the useful one: on a
- * stateful event-time job, the windowing is the same code whoever
- * carries the elements, so the plumbing is exactly what a reader is
- * choosing between.
+ * THE SOURCE is `Stream.init(ArraySeq.unsafeWrapArray(...), 256)` —
+ * the library's own chunked constructor at the granularity every other
+ * lane uses; `ArraySeq.slice` on a wrapped array copies, so the
+ * parallel rows wrap once and slice the SEQ rather than the array.
  *
- * SOURCES, each the library's own chunked constructor, sliced to 256
- * to match `Chunks.fromIterator(_, 256)` in the okay lane (the lane
- * rules of this document: a competitor is priced from the source its
- * author intended, at a matched granularity):
- *
- *   - fs2: `Stream.chunk(Chunk.array(...))` re-chunked by
- *     `chunkLimit(256)`, and PURE — `Stream[Pure, *]` compiles with no
- *     cats-effect runtime and no `unsafeRunSync`, which §0 prices at
- *     7.6 us and which this lane therefore does not pay
- *   - ZIO: `ZStream.fromChunk(Chunk.fromArray(...)).rechunk(256)`,
- *     run once through `Unsafe.unsafe`
- *   - kyo: `Stream.init(ArraySeq.unsafeWrapArray(...), 256)`, `.eval`
+ * ONE CORE evaluates where it is built (`.eval`), with no scheduler
+ * involved. MORE THAN ONE goes through `Async.parallel(p)`, kyo's own
+ * bounded fan-out, blocked on by `KyoApp.Unsafe.runAndBlock` — the
+ * same shape compare/src/jmh's `kyoAsync` benchmark uses, so the two
+ * numbers are readable together.
  */
 object KyoLane {
 
-  /** the per-element work, identical in all three lanes */
-  private final class Fold(feed: Feed) {
-    private val tram = feed.routes.iterator.map(_.tram).toArray
-    private val sink = new OkayLane.Sink(tram)
-    private val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Stats](
-      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)
-    private val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Stats](
-      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats)
-    private val lastSeen = mutable.LongMap.empty[Long]
+  import _root_.kyo.*
 
-    def known(d: Depart): Boolean = d.route >= 0 && d.route < tram.length
-
-    def enrich(d: Depart): Ride =
-      new Ride(d.ts, d.route, d.stop, d.vehicle, d.delay, tram(d.route))
-
-    def add(r: Ride): Unit =
-      routeWindows.add(r)(sink.route)
-      stopWindows.add(r)(sink.stop)
-      val key = (r.route.toLong << 20) | r.stop.toLong
-      val prev = lastSeen.getOrElse(key, Long.MinValue)
-      if prev != Long.MinValue then
-        val gap = Math.abs(r.ts - prev)
-        if gap < Job.BunchMs then sink.bunch(gap)
-      lastSeen.update(key, r.ts)
-
-    def result: Job.Result =
-      routeWindows.close()(sink.route)
-      stopWindows.close()(sink.stop)
-      sink.result
-  }
-
-  /** kyo, evaluated where it is built */
-  def run(feed: Feed): Job.Result = {
-    import _root_.kyo.*
-    val f = new Fold(feed)
-    Stream.init(scala.collection.immutable.ArraySeq.unsafeWrapArray(feed.events), 256)
+  /** stage 1 and the fold over one contiguous slice, as a kyo Stream */
+  private def slice(tram: Array[Boolean],
+                    events: scala.collection.immutable.ArraySeq[Depart],
+                    from: Int, until: Int): Native.Fold =
+    val f = new Native.Fold(tram)
+    Stream.init(events.slice(from, until), 256)
       .filter((d: Depart) => f.known(d))
       .map((d: Depart) => f.enrich(d))
-      .runFold(())((_: Unit, r: Ride) => f.add(r))
+      .runFold(())((_: Unit, r: okay.wroclaw.Ride) => f.add(r))
       .eval
-    f.result
-  }
+    f
+
+  /** one core, evaluated where it is built */
+  def run(feed: Feed): Job.Result =
+    val events = scala.collection.immutable.ArraySeq.unsafeWrapArray(feed.events)
+    slice(Native.tramTable(feed), events, 0, feed.events.length).result
+
+  /**
+   * P cores in kyo's own vocabulary: `Async.parallel(p)` over one
+   * suspended fold per slice, blocked on once. `parallel` keeps the
+   * results in the order of its inputs, and that order is
+   * load-bearing — `Fold.absorb` stitches the bunching pair that
+   * straddles a slice boundary, and that stitch is not commutative.
+   */
+  def parallel(feed: Feed, cores: Int): Job.Result =
+    if cores <= 1 then run(feed) else
+      import AllowUnsafe.embrace.danger
+      val tram = Native.tramTable(feed)
+      val events = scala.collection.immutable.ArraySeq.unsafeWrapArray(feed.events)
+      val n = feed.events.length
+      val slices: Seq[Native.Fold < (Abort[Nothing] & Async)] =
+        (0 until cores).map(i =>
+          IO(slice(tram, events, Native.bound(n, cores, i), Native.bound(n, cores, i + 1))))
+      val folds = KyoApp.Unsafe.runAndBlock(Duration.Infinity)(
+        Async.parallel(cores)(slices)).getOrThrow
+      Native.combine(folds)
 }

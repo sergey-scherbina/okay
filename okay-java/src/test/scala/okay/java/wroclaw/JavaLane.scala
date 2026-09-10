@@ -1,6 +1,6 @@
 package okay.java.wroclaw
 
-import okay.wroclaw.{Depart, Feed, Job, Ride}
+import okay.wroclaw.{Depart, Feed, Job, Native, Ride}
 
 import okay.java.{Collect, Streams, Windowed}
 import okay.{Aggregator, Chunks, Pane}
@@ -40,6 +40,67 @@ import java.util.{List as JList, Map as JMap}
  *     encounter order for an ordered stream, parallel or not.
  */
 object JavaLane {
+
+  // ------------------------------------------- the JDK's own two roads
+
+  /**
+   * THE JDK ALONE, no interop of ours anywhere in it: `Arrays.stream`
+   * over the event array, the platform's own `filter` and `map`, and
+   * `Native.Fold` — the fold a JDK user writes when the platform hands
+   * them no event-time window, which it does not.
+   *
+   * `Arrays.stream` is the source rather than okay-java's
+   * `Streams.stream`, on purpose: the interop's spliterator hands over
+   * one CHUNK per `trySplit` and the array's hands over halves, and
+   * the second is what the JDK gives its own users.
+   */
+  def stream(feed: Feed): Job.Result = {
+    val tram = Native.tramTable(feed)
+    val f = new Native.Fold(tram)
+    java.util.Arrays.stream(feed.events)
+      .filter(((d: Depart) => Native.known(tram, d)): java.util.function.Predicate[Depart])
+      .map(((d: Depart) => Native.enrich(tram, d)): JFunction[Depart, Ride])
+      .forEachOrdered(((r: Ride) => f.add(r)): java.util.function.Consumer[Ride])
+    f.result
+  }
+
+  /**
+   * THE SAME ROAD IN PARALLEL, as the JDK means it: a MUTABLE
+   * REDUCTION, `collect(supplier, accumulator, combiner)`, over a
+   * parallel stream — the platform splits the array, folds each range
+   * into its own container and combines them.
+   *
+   * TWO THINGS MAKE IT CORRECT and neither is incidental. The stream
+   * is ORDERED (an array's spliterator is), so the containers are
+   * combined in ENCOUNTER order — which the bunching stage needs,
+   * because `Fold.absorb` stitches the pair that straddles two ranges
+   * and that stitch is not commutative. And the panes need no
+   * coordination at all, because with no watermark a window is a key
+   * and two ranges that both touch one simply add their cells.
+   *
+   * The core count is the pool's, not the machine's:
+   * `ForkJoinPool.commonPool` would use every core no matter what the
+   * row says, so the collect is submitted to a pool of exactly the
+   * width being measured. That is the JDK's own documented way to
+   * bound a parallel stream, and it is what makes a 1/2/4/8 column
+   * mean the same thing here as in every other lane.
+   */
+  def parallel(feed: Feed, cores: Int): Job.Result =
+    if cores <= 1 then stream(feed) else
+      val tram = Native.tramTable(feed)
+      val pool = new java.util.concurrent.ForkJoinPool(cores)
+      try
+        pool.submit(() =>
+          java.util.Arrays.stream(feed.events).parallel()
+            .filter(((d: Depart) => Native.known(tram, d)): java.util.function.Predicate[Depart])
+            .map(((d: Depart) => Native.enrich(tram, d)): JFunction[Depart, Ride])
+            .collect(
+              (() => new Native.Fold(tram)): java.util.function.Supplier[Native.Fold],
+              ((f: Native.Fold, r: Ride) => f.add(r)): java.util.function.BiConsumer[Native.Fold, Ride],
+              ((a: Native.Fold, b: Native.Fold) => a.absorb(b)): java.util.function.BiConsumer[Native.Fold, Native.Fold])
+            .result).get()
+      finally pool.shutdown()
+
 
   /**
    * THE SPLIT SIZE IS THE CHUNK SIZE, and on this lane that is not a
