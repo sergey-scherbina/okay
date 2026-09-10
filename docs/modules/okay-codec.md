@@ -187,9 +187,8 @@ the wire sees.
 | `Json.read` / `Json.write` | `String => Either[String, A]` / `A => String` | one-movers |
 | `Cbor.write` / `Cbor.read` | `A => Array[Byte]` / `Array[Byte] => Either[String, A]` | RFC 8949, same content as JSON |
 | `Compat.compare` | `(Schema[A], Schema[B]) => Report` | what changed, and whether each direction still decodes |
-| `Cbor.In.skipItem` | `() => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare; spends the reader's depth budget |
-| `Codecs.maxDepth` | `Int` (64) | how deep a message may nest, on EITHER wire — measured, not guessed (TestStackBytes): the worst door at this depth needs half the default 1 MB JVM stack |
-| `Json.isCut` | `Json => Boolean` | is this `JErr` the depth cut? The projection propagates it, so a too-deep document IS the cut at its root and every door refuses it — damage at a spot is still data in place |
+| `Cbor.In.skipItem` | `() => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare |
+| `Codecs.NativeThreshold` | `Int` (24) | native recursion below this, `Cont.defer` trampoline at/above it — every recursive door; no depth cap (`Codecs.maxDepth` removed, remove-codecs-maxdepth) |
 | `Markdown.parse` | `String => Cst[Markdown.K]` | the reframing dialect (headings, paragraphs, `*`/`_` emphasis, code spans) |
 | `Markdown.scan` / `Markdown.instructions` | the dialect's Scan and its instruction fold | reuse or extend |
 

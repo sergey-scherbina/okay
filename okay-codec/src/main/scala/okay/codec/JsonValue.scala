@@ -61,17 +61,14 @@ object JsonValue {
       while at < n && { val c = s.charAt(at); c == ' ' || c == '\n' || c == '\r' || c == '\t' } do at += 1
 
     /** `open` is how many containers are already open around this
-     * value: a recursive descent recurses on the depth of the INPUT,
-     * which the SENDER chose, so it is bounded (`Json.maxDepth`) and
-     * a document past the limit is simply one this road is not sure
-     * of — `Json.parse` then gets the lossless road's JErr.
-     *
-     * PAST `Codecs.NativeThreshold`, dispatches to a `Cont.defer`
-     * trampoline (json-raw-nesting-threshold-trampoline) — the same
-     * design as the three already-closed sites, simpler than the two
-     * schema-decoding ones: uniformly typed (`Json | Null` throughout,
-     * like `Cbor.In.skipItem`'s `Either[String, Unit]`), so no
-     * cross-type `R` to thread. */
+     * value — counted for the native/trampoline switch, not a depth
+     * REFUSAL (remove-codecs-maxdepth: there is no limit to refuse
+     * past any more). PAST `Codecs.NativeThreshold`, dispatches to a
+     * `Cont.defer` trampoline (json-raw-nesting-threshold-trampoline)
+     * — the same design as the three already-closed sites, simpler
+     * than the two schema-decoding ones: uniformly typed
+     * (`Json | Null` throughout, like `Cbor.In.skipItem`'s
+     * `Either[String, Unit]`), so no cross-type `R` to thread. */
     def value(open: Int): Json | Null =
       if open >= Codecs.NativeThreshold then reset(valueC[Json | Null](open))
       else valueNative(open)
@@ -79,8 +76,8 @@ object JsonValue {
     private def valueNative(open: Int): Json | Null =
       if at >= n then null
       else s.charAt(at) match
-        case '{' => if open >= Json.maxDepth then null else objNative(open + 1)
-        case '[' => if open >= Json.maxDepth then null else arrNative(open + 1)
+        case '{' => objNative(open + 1)
+        case '[' => arrNative(open + 1)
         case '"' => str() match { case null => null; case x => JStr(x) }
         case 't' => lit("true", JBool(true))
         case 'f' => lit("false", JBool(false))
@@ -156,8 +153,8 @@ object JsonValue {
     private def valueC[R](open: Int): (Json | Null) /> R =
       if at >= n then Cont.Pure(null)
       else s.charAt(at) match
-        case '{' => if open >= Json.maxDepth then Cont.Pure(null) else objC[R](open + 1)
-        case '[' => if open >= Json.maxDepth then Cont.Pure(null) else arrC[R](open + 1)
+        case '{' => objC[R](open + 1)
+        case '[' => arrC[R](open + 1)
         case '"' => Cont.Pure(str() match { case null => null; case x => JStr(x) })
         case 't' => Cont.Pure(lit("true", JBool(true)))
         case 'f' => Cont.Pure(lit("false", JBool(false)))

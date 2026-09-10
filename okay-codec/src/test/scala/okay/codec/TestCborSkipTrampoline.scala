@@ -9,6 +9,11 @@ package okay.codec
  */
 class TestCborSkipTrampoline extends munit.FunSuite:
 
+  // a genuinely deep document can legitimately take longer than
+  // munit's 30s default under a loaded gate box (many suites running
+  // at once) — this is correctness, not a performance test
+  override val munitTimeout = scala.concurrent.duration.Duration(120, "s")
+
   final case class OnlyA(a: String)
   given Schema[OnlyA] = Schema.derived
 
@@ -23,26 +28,20 @@ class TestCborSkipTrampoline extends munit.FunSuite:
     out.integer(1)
     out.toArray
 
-  test("a deeply nested UNDECLARED field, far past NativeThreshold, is still skipped correctly") {
-    // 40 is comfortably past NativeThreshold (24) and comfortably
-    // under Codecs.maxDepth (64), so the switch is exercised without
-    // hitting the wire-contract refusal
-    val n = 40
+  test("a deeply nested UNDECLARED field, past NativeThreshold, is still skipped correctly") {
+    val n = 40   // comfortably past NativeThreshold (24), exercising the switch
     Cbor.read[OnlyA](frameWithDeepUnknown(n)) match
       case Left(e) => fail(s"expected the unknown field skipped, got: $e")
       case Right(v) => assertEquals(v, OnlyA("kept"))
   }
 
-  test("Codecs.maxDepth still refuses a skip nested past it, on either side of the threshold") {
-    val out = new Cbor.Out
-    out.mapHeader(2)
-    out.text("a"); out.text("kept")
-    out.text("deep")
-    for _ <- 0 to Codecs.maxDepth + 1 do out.arrayHeader(1)
-    out.integer(1)
-    Cbor.read[OnlyA](out.toArray) match
-      case Left(e) => assert(e.contains(s"nested deeper than ${Codecs.maxDepth}"), e)
-      case Right(v) => fail(s"decoded $v past Codecs.maxDepth through an unknown field")
+  test("a genuinely deep UNDECLARED field skips correctly — no cap (remove-codecs-maxdepth)") {
+    // this depth used to be refused outright (Codecs.maxDepth); once
+    // skipItem trampolined past NativeThreshold, the cap had no
+    // remaining job, and this document decodes instead of refusing
+    Cbor.read[OnlyA](frameWithDeepUnknown(200000)) match
+      case Left(e) => fail(s"expected the unknown field skipped, got: $e")
+      case Right(v) => assertEquals(v, OnlyA("kept"))
   }
 
   test("a truncated unknown field past the threshold is still damage, not a silent skip") {

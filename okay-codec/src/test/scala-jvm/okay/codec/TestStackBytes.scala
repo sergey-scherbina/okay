@@ -50,11 +50,13 @@ class TestStackBytes extends munit.FunSuite:
     out.mapHeader(1); out.text("kids"); out.arrayHeader(0)
     out.toArray
 
-  val levels = Codecs.maxDepth / 2 - 1
+  /** comfortably past NativeThreshold; two containers per tree level */
+  val levels = 100
+  val rawDepth = 200
 
   val doors: List[(String, () => Boolean)] = List(
-    "JsonValue.parse"       -> (() => JsonValue.parse(arrays(Codecs.maxDepth)).isDefined),
-    "Json.lossless"         -> (() => !Json.isCut(Json.lossless(arrays(Codecs.maxDepth)))),
+    "JsonValue.parse"       -> (() => JsonValue.parse(arrays(rawDepth)).isDefined),
+    "Json.lossless"         -> (() => !Json.lossless(arrays(rawDepth)).isInstanceOf[Json.JErr]),
     "Json.read[Tree]"       -> (() => Json.read[Tree](jsonTree(levels)).isRight),
     "Json.readStrict[Tree]" -> (() => Json.readStrict[Tree](jsonTree(levels)).isRight),
     "Cbor.read[Tree]"       -> (() => Cbor.read[Tree](cborTree(levels)).isRight),
@@ -86,9 +88,9 @@ class TestStackBytes extends munit.FunSuite:
       kb
     }.max
 
-  test("every door fits in 2 MB at Codecs.maxDepth") {
+  test("every door fits in 2 MB at a full-depth document") {
     val measured = doors.map((name, door) => (name, needs(door)))
-    measured.foreach((name, kb) => println(f"[stack] $name%-22s needs $kb%5d KB at depth ${Codecs.maxDepth}"))
+    measured.foreach((name, kb) => println(f"[stack] $name%-22s needs $kb%5d KB at depth $levels"))
     val worst = measured.maxBy(_._2)
     assert(worst._2 <= 2048, s"${worst._1} needs ${worst._2} KB — a default JVM thread has 1024")
   }
@@ -109,10 +111,10 @@ class TestStackBytes extends munit.FunSuite:
     println(f"[stack] synthetic recursion: $shallow%d KB at 8 frames, $deep%d KB at 200 000 frames")
   }
 
-  test("both threshold lanes: every door is flat at Codecs.maxDepth") {
+  test("both threshold lanes: every door is flat past the threshold") {
     // the combined signature of cbor-decode-threshold-trampoline and
     // json-decode-threshold-trampoline: at 8 levels (well below
-    // NativeThreshold) and at `levels` (Codecs.maxDepth's own limit,
+    // NativeThreshold) and at `levels` (comfortably past it,
     // crossing it), every recursive-schema door costs the SAME —
     // proving the switch happens, not just compiles, for both roots
     for (name, doorAt) <- List(

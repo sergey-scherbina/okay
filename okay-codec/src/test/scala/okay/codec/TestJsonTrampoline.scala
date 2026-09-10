@@ -4,22 +4,28 @@ package okay.codec
  * `Json.decode`'s threshold split (json-decode-threshold-trampoline,
  * specs/iterative-recursive-decode.md, root 2 of 2): native recursion
  * below `NativeThreshold`, `Cont.defer` past it, the same design
- * `Cbor.get` already carries (`TestCborTrampoline`).
+ * `Cbor.get` already carries (`TestCborTrampoline`). `Codecs.maxDepth`
+ * — the wire-contract refusal `Json.isCut` used to enforce upstream,
+ * at parse time — is gone (remove-codecs-maxdepth): a document this
+ * deep now decodes through EITHER `Json.decode` directly or
+ * `Json.read` (parse then decode), where it used to need building
+ * directly to dodge the parser's own cut.
  */
 class TestJsonTrampoline extends munit.FunSuite:
+
+  // a genuinely deep document can legitimately take longer than
+  // munit's 30s default under a loaded gate box (many suites running
+  // at once) — this is correctness, not a performance test
+  override val munitTimeout = scala.concurrent.duration.Duration(120, "s")
 
   final case class Tree(kids: Vector[Tree])
   given Schema[Tree] = Schema.derived
 
   def jsonChain(n: Int): String = ("{\"kids\":[" * n) + "{\"kids\":[]}" + ("]}" * n)
 
-  /** the same shape as a Json VALUE, built directly — no string, no
-    * parser, no `Json.lossless` (which enforces `Codecs.maxDepth`
-    * itself and is QUADRATIC in depth for this shape, found while
-    * writing this test: 50 000 levels took 74s — a real, separate,
-    * out-of-scope bug, BACKLOG's json-lossless-quadratic-depth). This
-    * is the only way to hand `Json.decode` a document deeper than
-    * `Codecs.maxDepth` that was never cut in the first place. */
+  /** the same shape as a Json VALUE, built directly rather than
+    * parsed — used where the test wants to exercise `Json.decode`
+    * alone, independent of the parser */
   def jsonChainValue(n: Int): Json =
     var v: Json = Json.JObj(Vector("kids" -> Json.JArr(Vector.empty)))
     var i = 0
@@ -32,29 +38,22 @@ class TestJsonTrampoline extends munit.FunSuite:
     while at.kids.nonEmpty do { d += 1; at = at.kids.head }
     d
 
-  test("decode is safe on ANY depth, independent of Codecs.maxDepth — Json.decode has no wire limit of its own") {
-    // this is the design point that makes Json.decode different from
-    // Cbor.get: the wire-contract refusal lives upstream, in
-    // Json.isCut at PARSE time. `Json.decode` called directly on a
-    // Json VALUE that never went through the parser's cut (built here
-    // rather than parsed, since Json.lossless enforces the cut too)
-    // is bound by NOTHING but the trampoline this lane adds
+  test("Json.decode is safe on a directly-built value at any depth") {
     val n = 200000
-    val v = jsonChainValue(n)
-    assert(!Json.isCut(v), "a directly-built value was never cut")
-    Json.decode(summon[Schema[Tree]])(v) match
+    Json.decode(summon[Schema[Tree]])(jsonChainValue(n)) match
       case Left(e) => fail(s"expected a value, got: $e")
       case Right(t) => assertEquals(depthOf(t), n + 1)
   }
 
-  test("Json.read still enforces Codecs.maxDepth — the cut happens before decode ever runs") {
-    // a modest depth here (Json.lossless's own cost is quadratic in
-    // depth for this shape — see jsonChainValue's comment — so this
-    // stays small; the cut fires long before size matters)
-    val n = 500
+  test("Json.read decodes a genuinely deep document correctly — no cap (remove-codecs-maxdepth)") {
+    // this depth used to be refused at parse time (Json.isCut,
+    // Codecs.maxDepth); with no cap, and Json.lossless's own O(n)
+    // parse-quadratic-stack-length fix already landed, this is a
+    // plain correct decode
+    val n = 100000
     Json.read[Tree](jsonChain(n)) match
-      case Left(e) => assert(e.contains(s"nested deeper than ${Codecs.maxDepth}"), e)
-      case Right(v) => fail(s"decoded $v past Codecs.maxDepth through Json.read")
+      case Left(e) => fail(s"expected a value, got: $e")
+      case Right(t) => assertEquals(depthOf(t), n + 1)
   }
 
   test("ordinary shapes below the threshold are untouched: products, sums, lists, options, isos") {
@@ -83,8 +82,8 @@ class TestJsonTrampoline extends munit.FunSuite:
     // an element nested past NativeThreshold (a real Tree, decoded via
     // the trampoline) beside a DAMAGED element, both inside a List —
     // proves the trampoline's own list loop still applies the
-    // skip-damage rule (input-depth-both-wires/cut-refuses-the-
-    // -document), not a plain re-throw of the first Left it sees
+    // skip-damage rule (input-depth-both-wires), not a plain re-throw
+    // of the first Left it sees
     val goodDepth = jsonChainValue(30)
     val v = Json.JArr(Vector(goodDepth, Json.JErr("damaged")))
     Json.decode(summon[Schema[List[Tree]]])(v) match

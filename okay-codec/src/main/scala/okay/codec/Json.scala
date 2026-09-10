@@ -25,45 +25,6 @@ enum Json:
 
 object Json {
 
-  /**
-   * How deep a document either road reads: `Codecs.maxDepth`, which
-   * says why (input-depth-both-wires). Each road refuses past it in
-   * the idiom it already had for damage — the fast road is NOT SURE
-   * (`JsonValue.parse` answers None), the lossless road makes the cut
-   * a `JErr` in place — so `Json.parse` still answers a value and the
-   * two roads still agree (TestJsonValue's law, TestInputDepth).
-   *
-   * A cut is not damage at a SPOT, and that is the whole rule: the
-   * projection PROPAGATES it, so a container holding the cut is the
-   * cut and `Json.parse` of a too-deep document answers the cut at
-   * the root. Every decoder's existing JErr refusal then catches it
-   * wherever it sits — including inside a field nobody declared,
-   * which is how the JSON roads came to refuse what CBOR refuses
-   * (cut-refuses-the-document).
-   *
-   * It was first written the other way, in place, and that was worse
-   * than the stack overflow it replaced: `decode` skips a damaged
-   * list element and reads a damaged optional as absent — right for a
-   * half-arrived document — so a 256-level tree came back as a
-   * 128-level one with `Right`. Three rules in three files had to
-   * remember the exception; one rule here needs none of them. What is
-   * given up is the partial value of a too-deep document, which no
-   * caller can use: a reader cannot say what it did not descend into.
-   */
-  def maxDepth: Int = Codecs.maxDepth
-
-  /** the cut the projection leaves where the document went too deep */
-  private[codec] def tooDeep: Json = JErr(cutMessage)
-
-  private[codec] val cutMessage: String = s"nested deeper than ${Codecs.maxDepth}"
-
-  /** is this the depth cut, rather than damage the sender's document
-   * actually carried? */
-  def isCut(j: Json): Boolean = j match
-    case JErr(m) => m == cutMessage
-    case _ => false
-
-
   // ----------------------------------------------------------------
   // parse: scanner -> per-token instructions -> CST -> projection
 
@@ -245,19 +206,11 @@ object Json {
 
   private def intoNative(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit = c match
     case Cst.Node("object", kids) =>
-      if open >= maxDepth then out += tooDeep
-      else
-        val fs = pairs(kids, open + 1)      // the DISPATCHER
-        // a container holding the cut IS the cut: depth is a property
-        // of the DOCUMENT, not damage at a spot (cut-refuses-the-document)
-        out += (if fs.exists((_, v) => isCut(v)) then tooDeep else JObj(fs))
+      out += JObj(pairs(kids, open + 1))      // the DISPATCHER
     case Cst.Node("array", kids) =>
-      if open >= maxDepth then out += tooDeep
-      else
-        val vs = Vector.newBuilder[Json]
-        kids.foreach(into(_, vs, open + 1))   // the DISPATCHER
-        val es = vs.result()
-        out += (if es.exists(isCut) then tooDeep else JArr(es))
+      val vs = Vector.newBuilder[Json]
+      kids.foreach(into(_, vs, open + 1))     // the DISPATCHER
+      out += JArr(vs.result())
     // a node that is not a container is not a level: the wrappers the
     // grammar puts between them must not spend the budget
     case Cst.Node(_, kids) => kids.foreach(into(_, out, open))   // the DISPATCHER
@@ -308,23 +261,13 @@ object Json {
 
   private def intoC[R](c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit /> R = c match
     case Cst.Node("object", kids) =>
-      if open >= maxDepth then { out += tooDeep; Cont.Pure(()) }
-      else pairsC[R](kids, open + 1).flatMap { fs =>
-        out += (if fs.exists((_, v) => isCut(v)) then tooDeep else JObj(fs))
-        Cont.Pure(())
-      }
+      pairsC[R](kids, open + 1).flatMap { fs => out += JObj(fs); Cont.Pure(()) }
     case Cst.Node("array", kids) =>
-      if open >= maxDepth then { out += tooDeep; Cont.Pure(()) }
-      else
-        val vs = Vector.newBuilder[Json]
-        def loop(rest: Vector[Cst[K]]): Unit /> R =
-          if rest.isEmpty then Cont.Pure(())
-          else Cont.defer(() => intoC[R](rest.head, vs, open + 1))(_ => loop(rest.tail))
-        loop(kids).flatMap { _ =>
-          val es = vs.result()
-          out += (if es.exists(isCut) then tooDeep else JArr(es))
-          Cont.Pure(())
-        }
+      val vs = Vector.newBuilder[Json]
+      def loop(rest: Vector[Cst[K]]): Unit /> R =
+        if rest.isEmpty then Cont.Pure(())
+        else Cont.defer(() => intoC[R](rest.head, vs, open + 1))(_ => loop(rest.tail))
+      loop(kids).flatMap { _ => out += JArr(vs.result()); Cont.Pure(()) }
     case Cst.Node(_, kids) =>
       def loop(rest: Vector[Cst[K]]): Unit /> R =
         if rest.isEmpty then Cont.Pure(())
@@ -438,13 +381,10 @@ object Json {
   /** the public entry, signature unchanged: dispatches on depth,
    * starting at 0. `Json.decode` has no reader object to hang a
    * counter on (it is a pure function of `Schema`/`Json`), so depth is
-   * an explicit parameter rather than `Cbor.In`'s mutable `open`. Not
-   * also a refusal check the way CBOR's is: a too-deep DOCUMENT is
-   * already cut before `decode` ever sees it (`Json.isCut`, at the
-   * parse/projection layer) — this threshold exists only so a
-   * RECURSIVE schema's native call depth cannot grow with input depth,
-   * independent of whether that input came through the cut at all
-   * (`decode` is public and callable on any `Json` value directly). */
+   * an explicit parameter rather than `Cbor.In`'s mutable `open`. This
+   * counter drives ONLY the native/trampoline switch (`decode` never
+   * refused a depth, before or after remove-codecs-maxdepth — the
+   * refusal removed was upstream, at the parse/projection layer). */
   def decode[A](s: Schema[A])(j: Json): Either[String, A] = decodeAt(s, j, 0)
 
   private def decodeAt[A](s: Schema[A], j: Json, depth: Int): Either[String, A] =
@@ -502,8 +442,7 @@ object Json {
         acc.flatMap { xs =>
           (m.get(f._1), f._2()) match
             case (None, _) => absent.map(xs :+ _)
-            // a damaged optional value is the same as an absent one (a
-            // cut cannot reach here: it propagates to the root)
+            // a damaged optional value is the same as an absent one
             case (Some(JErr(_)), _: Schema.SOption[?]) => absent.map(xs :+ _)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
               .flatMap(field(sc, _, depth + 1)).map(xs :+ _)

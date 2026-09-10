@@ -100,22 +100,50 @@ object Rpc {
       else Stage.tell[String, Rpc](decode(line)), pure)
 
   /** is there damage anywhere in this tree — the total parser's way
-   * of saying what a throwing one says by throwing */
-  def damaged(j: Json): Boolean = j match
-    case Json.JErr(_) => true
-    case Json.JArr(vs) => vs.exists(damaged)
-    case Json.JObj(fs) => fs.exists((n, v) => n.startsWith("<unexpected") || damaged(v))
-    case _ => false
+   * of saying what a throwing one says by throwing.
+   *
+   * An explicit work-list, not native recursion: `Json.decode` no
+   * longer caps how deep a decoded tree can be (remove-codecs-maxdepth),
+   * so a plain recursive walk here is a `StackOverflowError` waiting on
+   * whatever depth a sender picks — found by `TestRpc` overflowing at
+   * 100 000 levels the moment the codec's own cap was gone. */
+  def damaged(j: Json): Boolean =
+    var todo = List(j)
+    var found = false
+    while !found && todo.nonEmpty do
+      val h = todo.head
+      todo = todo.tail
+      h match
+        case Json.JErr(_) => found = true
+        case Json.JArr(vs) => todo = vs.toList ::: todo
+        case Json.JObj(fs) =>
+          if fs.exists((n, _) => n.startsWith("<unexpected")) then found = true
+          else todo = fs.map(_._2).toList ::: todo
+        case _ => ()
+    found
 
-  /** the first damage found, as a message */
-  private def describe(j: Json): String = j match
-    case Json.JErr(m) => m
-    case Json.JArr(vs) => vs.collectFirst { case v if damaged(v) => describe(v) }.getOrElse("damaged")
-    case Json.JObj(fs) => fs.collectFirst {
-      case (n, _) if n.startsWith("<unexpected") => n
-      case (_, v) if damaged(v) => describe(v)
-    }.getOrElse("damaged")
-    case _ => "damaged"
+  /** the first damage found, as a message — same reasoning as `damaged` */
+  private def describe(j: Json): String =
+    var at = j
+    var result = "damaged"
+    var go = true
+    while go do
+      at match
+        case Json.JErr(m) => result = m; go = false
+        case Json.JArr(vs) =>
+          vs.find(damaged) match
+            case Some(v) => at = v
+            case None => go = false
+        case Json.JObj(fs) =>
+          fs.collectFirst {
+            case (n, _) if n.startsWith("<unexpected") => Left(n)
+            case (_, v) if damaged(v) => Right(v)
+          } match
+            case Some(Left(n)) => result = n; go = false
+            case Some(Right(v)) => at = v
+            case None => go = false
+        case _ => go = false
+    result
 
   /** a field of a JSON object, if it is one and has it */
   def field(j: Json, name: String): Option[Json] = j match

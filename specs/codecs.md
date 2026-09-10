@@ -626,6 +626,35 @@ hardcoded a depth that outlived the limit — now `Codecs.maxDepth / 4`)
 and the road that removes the tradeoff entirely
 (`iterative-recursive-decode`, specs/iterative-recursive-decode.md).
 
+## `Codecs.maxDepth` removed (2026-09-10, remove-codecs-maxdepth)
+
+`iterative-recursive-decode.md`'s road landed: `Cbor.get`, `Json.decode`,
+`Cbor.In.skipItem`, `JsonValue`'s fast parser, `Json.lossless`'s
+projection, and `JsonStrict.Reader.get` all trampoline (`Cont.defer`)
+past `Codecs.NativeThreshold` (24) now, so none of them costs native
+stack proportional to input depth any more. Asked directly whether the
+number that used to budget that cost should go back up or away
+entirely, the operator chose away: **"прибрав Codecs.maxDepth - так"**
+(removed `Codecs.maxDepth` — yes).
+
+`Codecs.maxDepth`, `Cbor.In.tooDeep`, `Json.isCut`/`Json.tooDeep`/
+`Json.cutMessage`, and every refusal built on them are deleted, not
+raised. `TestVector`'s `deep(Codecs.maxDepth / 4)` — the direct
+casualty of the "64 broke a 64-level stress test" finding two sections
+up — is now a fixed, ordinary depth with no wire number to stay a
+fraction of. `Codecs.NativeThreshold` is untouched: it still decides
+where the native/trampoline switch happens, which has nothing to do
+with refusing a message.
+
+This does not make depth free. `Cont.defer` still allocates one node
+per level, and the decoded tree lives on the heap regardless of which
+decoder built it — so an adversarial sender's message now costs HEAP,
+not native stack: a `StackOverflowError` that used to take down one
+thread is now an `OutOfMemoryError` that can take down the whole JVM.
+Nothing in this module currently reintroduces a cap for that; a future
+wire contract that wants one gets to pick its own number, informed by
+this arc's measurements, not by resurrecting this one.
+
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends
 Schema[Option[A]]` and the rest — and the codecs cast anyway

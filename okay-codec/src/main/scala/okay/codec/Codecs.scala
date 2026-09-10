@@ -26,53 +26,30 @@ package okay.codec
 object Codecs {
 
   /**
-   * How deep a message this stack carries, on either wire
-   * (input-depth-both-wires). Stated once, here, because it is a
-   * property of a MESSAGE and not of one codec: both wires read
-   * nesting by recursive descent, and nesting is the SENDER's number,
-   * not the schema's.
+   * There is deliberately NO depth limit here — `Codecs.maxDepth`
+   * (256, then 64) lived for one reason: the interpreted CBOR/JSON
+   * decoders cost real native stack per level of a RECURSIVE schema,
+   * MEASURED 2026-09-10 at ~4-8 KB/level, so an unbounded message
+   * from an adversarial sender was a `StackOverflowError` in a module
+   * whose doors promise an `Either` or a value. That reason is gone:
+   * `iterative-recursive-decode.md`'s arc gave every recursive door
+   * (`Cbor.get`, `Json.decode`, `Cbor.In.skipItem`, `JsonValue`'s fast
+   * parser, `Json.lossless`'s projection, `JsonStrict.Reader.get`) a
+   * `Cont.defer` trampoline past `NativeThreshold`, so native stack no
+   * longer scales with input depth anywhere in this module — measured
+   * directly (a scratch depth of 100 000-500 000 decodes correctly on
+   * each door before this removal landed) rather than assumed.
    *
-   * That is the whole reason a limit exists. Every other dimension a
-   * decoder walks is the program's own — the fields of a product, the
-   * cases of a sum, the shape of a schema — and a program cannot hand
-   * itself a hundred thousand of them by accident. Depth is the one
-   * the sender picks, so without a bound `"[" * 20000` is a 20 KB
-   * document that costs a `StackOverflowError` in a module whose
-   * doors promise an `Either` or a value. MEASURED 2026-09-10, before
-   * this existed: the fast JSON value parser died at 20 000 nested
-   * arrays and the lossless projection between 1 000 and 5 000 on a
-   * default stack; the CBOR decoder at 5 000 and the strict JSON door
-   * at 20 000 levels of a RECURSIVE schema with sbt's `-Xss8m`.
-   *
-   * The number moved once already: 256 was chosen by precedent
-   * (serde_json's limit is 128, Jackson's 1000, CPython's about
-   * 1000), not by what THIS module's frames cost — and MEASURED
-   * 2026-09-10 (stack-depth-margin), a full-depth decode of a
-   * RECURSIVE schema at 256 needed the WHOLE default 1 MB JVM thread
-   * stack (`Cbor.read`, `Json.read`, `Staged.cbor`: 1024 KB), leaving
-   * no margin for the caller — the limit existed to convert an
-   * overflow into a refusal, and on a default-stack thread it was not
-   * reliably doing that.
-   *
-   * 64 is chosen from the same measurement (`TestStackBytes`, which
-   * this number must keep passing): the worst door needs 512 KB at
-   * this depth — half the default stack, confirmed stable across
-   * repeated runs and separate JVMs, not a one-off. It is still above
-   * serde_json's 128 in what it REFUSES (a message this shallow is
-   * not a message this stack cannot afford), while leaving the
-   * caller real room. The number is one number so the two wires
-   * cannot drift into answering differently — the defect the whole
-   * unknown-fields arc was about.
-   *
-   * This bounds the SYMPTOM, not the cause: the interpreted CBOR/JSON
-   * decoders still cost real per-level stack for a recursive schema
-   * (~8 KB/level, `TestStackBytes`'s "honest" test). Removing that
-   * cost — an iterative decoder with an explicit heap stack, as
-   * `Json.cst`'s builder and `JsonStrict.skipValue` already are — is
-   * BACKLOG's `iterative-recursive-decode`; once it lands, this
-   * number can go back up without the tradeoff it makes today.
+   * Removing the number is not "depth is now free": a `Cont.defer`
+   * trampoline still allocates one node per level, and the decoded
+   * value tree still lives on the heap. An adversarially deep message
+   * now costs HEAP instead of native stack — a different failure mode
+   * (a whole-JVM `OutOfMemoryError` rather than one thread's
+   * `StackOverflowError`), not no failure mode. Reintroducing a limit,
+   * if that trade is ever wanted back, is a pure wire-contract policy
+   * choice at this point — nothing in the decoders needs it for their
+   * own correctness or safety.
    */
-  val maxDepth: Int = 64
 
   /**
    * How deep the interpreted fold recurses NATIVELY before switching

@@ -62,25 +62,23 @@ object JsonStrict {
     private val n = s.length
 
     /**
-     * How many containers are open around the value being read.
-     * Nesting is the SENDER's number, so it is bounded
-     * (`Codecs.maxDepth`) — MEASURED 2026-09-10 on sbt's `-Xss8m`, a
-     * RECURSIVE schema 20 000 levels deep was a `StackOverflowError`
-     * out of this door, which promises an `Either`.
+     * How many containers are open around the value being read —
+     * counted for the native/trampoline switch (`get`'s own
+     * dispatch), not a depth REFUSAL any more (remove-codecs-maxdepth:
+     * every door this counter feeds now trampolines past
+     * `Codecs.NativeThreshold` instead of costing native stack per
+     * level, so nothing here needs a limit to stay safe).
      *
      * A counter and not a parameter because the generated strict
      * reader's containers are `Staged.strictProduct` and friends, not
-     * this file's `product`: they spend the same budget through
-     * `enter`/`leave`, so the interpreted and the staged doors refuse
-     * at the same depth. `enter` answers false when there is no budget
-     * left, and an abort needs no `leave` — a Left ends the read.
+     * this file's `product`: they spend the same counter through
+     * `enter`/`leave`, so the interpreted and the staged doors switch
+     * to their own trampolines at the same depth.
      */
     private var open = 0
 
-    def enter(): Boolean =
-      if open >= Codecs.maxDepth then false else { open += 1; true }
+    def enter(): Unit = open += 1
     def leave(): Unit = open -= 1
-    def tooDeep[X]: Either[String, X] = Left(s"nested deeper than ${Codecs.maxDepth} at $at")
 
     def skipWs(): Unit =
       while at < n && { val c = s.charAt(at); c == ' ' || c == '\n' || c == '\r' || c == '\t' } do at += 1
@@ -97,8 +95,8 @@ object JsonStrict {
      * last instance of the pattern). `open` IS the counter this
      * dispatch reads: `array`/`product`/`sum` already bump it via
      * `enter`/`leave` before their bodies call back into `get`, so the
-     * threshold crossing is measured at the SAME place `Codecs.maxDepth`
-     * already is, not a second counter.
+     * threshold crossing is measured at the SAME place `Codecs.NativeThreshold`
+     * itself is checked, not a second counter.
      */
     def get[A](sc: Schema[A]): Either[String, A] =
       if open >= Codecs.NativeThreshold then reset(getC[A, Either[String, A]](sc))
@@ -134,11 +132,10 @@ object JsonStrict {
 
     /** `[` v (`,` v)* `]`, each element at the element schema */
     def array[X](of: Schema[X]): Either[String, Vector[X]] =
-      if !enter() then tooDeep
-      else
-        val out = arrayHere(of)
-        leave()
-        out
+      enter()
+      val out = arrayHere(of)
+      leave()
+      out
 
     private def arrayHere[X](of: Schema[X]): Either[String, Vector[X]] =
       expect('[').flatMap { _ =>
@@ -171,11 +168,10 @@ object JsonStrict {
      * declared default, then None-if-optional, then the refusal.
      */
     private def product[A](p: Schema.SProduct[A]): Either[String, A] =
-      if !enter() then tooDeep
-      else
-        val out = productHere(p)
-        leave()
-        out
+      enter()
+      val out = productHere(p)
+      leave()
+      out
 
     private def productHere[A](p: Schema.SProduct[A]): Either[String, A] =
       expect('{').flatMap { _ =>
@@ -229,11 +225,10 @@ object JsonStrict {
 
     /** the one-entry object `Json.encode` writes: `{"Case": value}` */
     private def sum[A](su: Schema.SSum[A]): Either[String, A] =
-      if !enter() then tooDeep
-      else
-        val out = sumHere(su)
-        leave()
-        out
+      enter()
+      val out = sumHere(su)
+      leave()
+      out
 
     private def sumHere[A](su: Schema.SSum[A]): Either[String, A] =
       expect('{').flatMap { _ =>
@@ -259,19 +254,16 @@ object JsonStrict {
         case '{' | '[' =>
           // the counter is the budget here: this door has no tree for a
           // cut to propagate through, so the skip itself refuses, which
-          // is what makes an UNDECLARED deep field answer on this door
-          // what it answers on the other two (cut-refuses-the-document)
-          val depth0 = open          // one budget: a skip counts from here
+          // no depth cap any more (remove-codecs-maxdepth): the
+          // bracket counter alone still bounds native stack at zero,
+          // since this is a loop, not recursion
           var depth = 0
           var err: String | Null = null
           var done = false
           while err == null && !done do
             if at >= n then err = "unterminated value"
             else s.charAt(at) match
-              case '{' | '[' =>
-                depth += 1; at += 1
-                if depth0 + depth > Codecs.maxDepth then
-                  err = s"nested deeper than ${Codecs.maxDepth} at $at"
+              case '{' | '[' => depth += 1; at += 1
               case '}' | ']' => depth -= 1; at += 1; if depth == 0 then done = true
               case '"' => string() match { case Left(e) => err = e; case Right(_) => () }
               case _ => at += 1
@@ -344,8 +336,8 @@ object JsonStrict {
       * once the inner computation's VALUE is ready, via `flatMap`, not
       * when this function returns (it returns a `Cont`, not a value) */
     private def insideC[X, R](body: => (Either[String, X] /> R)): Either[String, X] /> R =
-      if !enter() then Cont.Pure(tooDeep)
-      else body.flatMap { v => leave(); Cont.Pure(v) }
+      enter()
+      body.flatMap { v => leave(); Cont.Pure(v) }
 
     /** `field`'s Cont-shaped twin: widened to `Any` the same way
       * `field` widens via `Either`'s covariance */

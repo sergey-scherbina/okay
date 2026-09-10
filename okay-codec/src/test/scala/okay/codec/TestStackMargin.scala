@@ -1,8 +1,12 @@
 package okay.codec
 
 /**
- * The margin under `Codecs.maxDepth`, as a test rather than a sentence
- * (stack-depth-margin).
+ * The margin under a full-depth document, as a test rather than a
+ * sentence (stack-depth-margin). `Codecs.maxDepth` — the wire limit
+ * this file once measured margin under — is gone
+ * (remove-codecs-maxdepth); every door here now trampolines past
+ * `Codecs.NativeThreshold`, so this measures margin at a depth chosen
+ * to comfortably cross that threshold, not at any wire cap.
  *
  * specs/codecs.md claimed 256 was "far under every death measured".
  * That was measured on ONE platform and on the ONE stack sbt happens
@@ -36,12 +40,13 @@ class TestStackMargin extends munit.FunSuite:
     out.mapHeader(1); out.text("kids"); out.arrayHeader(0)
     out.toArray
 
-  /** two containers per tree level, so this is a full-depth document */
-  val levels = Codecs.maxDepth / 2 - 1
+  /** comfortably past NativeThreshold; two containers per tree level */
+  val levels = 100
+  val rawDepth = 200
 
   val doors: List[(String, () => Boolean)] = List(
-    "JsonValue.parse" -> (() => JsonValue.parse(arrays(Codecs.maxDepth)).isDefined),
-    "Json.lossless"   -> (() => !Json.isCut(Json.lossless(arrays(Codecs.maxDepth)))),
+    "JsonValue.parse" -> (() => JsonValue.parse(arrays(rawDepth)).isDefined),
+    "Json.lossless"   -> (() => !Json.lossless(arrays(rawDepth)).isInstanceOf[Json.JErr]),
     "Json.decode"     -> (() => Json.read[Tree](jsonTree(levels)).isRight),
     "Json.readStrict" -> (() => Json.readStrict[Tree](jsonTree(levels)).isRight),
     "Cbor.read"       -> (() => Cbor.read[Tree](cborTree(levels)).isRight),

@@ -21,15 +21,6 @@ import okay.{Cont, reset, />}
  */
 object Cbor {
 
-  /** how deep a message may nest before this decoder refuses — the
-   * SENDER chooses that depth, which is why a limit exists at all;
-   * `Codecs.maxDepth` is the number and says why, and it is the same
-   * number on the JSON wire. It used to be `Cbor.maxSkipDepth` and to
-   * bound only the skip, which was the half of the problem that had
-   * been noticed (input-depth-both-wires). */
-  def maxDepth: Int = Codecs.maxDepth
-
-
   // ---------------------------------------------------------------- encode
 
   /** the CBOR item primitives, once: `put` below and Staged.scala's
@@ -118,29 +109,24 @@ object Cbor {
     private var i = 0
 
     /**
-     * How many items are open around the one being read — ONE budget
-     * for the whole frame, spent by declared reads and by skips alike.
-     *
-     * Declared depth needed it as much as a skip did: a RECURSIVE
-     * schema's value is nested as deeply as the SENDER nested it, and
-     * MEASURED 2026-09-10 under sbt's `-Xss8m`, a 5 000-level tree was
-     * a `StackOverflowError` out of `Cbor.read`, which promises an
-     * Either. One counter rather than a parameter because the
-     * generated decoder's containers are `Staged.cborProduct` and
-     * friends, not this file's `get`: they spend the same budget, so
-     * the three decoders refuse at the same depth. An abort needs no
-     * `leave` — a Left ends the read.
+     * How many items are open around the one being read — counted for
+     * `Cbor.get`'s native/trampoline decision (`depth`,
+     * cbor-decode-threshold-trampoline), not for a depth REFUSAL:
+     * remove-codecs-maxdepth took that budget away, since every door
+     * that reads through `enter`/`leave` now trampolines past
+     * `Codecs.NativeThreshold` instead of costing native stack per
+     * level, so nothing here still needs a limit to stay safe.
+     * `enter`/`leave` stay paired (a container's opening and closing)
+     * because the STAGED decoder's containers spend the same counter
+     * (`Staged.cborProduct` and friends aren't this file's `get`), so
+     * one counter is still one source of truth for depth, now for the
+     * threshold switch alone.
      */
     private var open = 0
-    def enter(): Boolean = if open >= Codecs.maxDepth then false else { open += 1; true }
+    def enter(): Unit = open += 1
     def leave(): Unit = open -= 1
-    def tooDeep[X]: Either[String, X] = Left(s"nested deeper than ${Codecs.maxDepth}")
 
-    /** how deep the reader is right now, counting containers — the
-      * SAME number `enter`/`leave` maintain, read here for
-      * `Cbor.get`'s native/trampoline decision (cbor-decode-threshold-
-      * trampoline); a second counter would be a second source of
-      * truth for exactly the fact this one already tracks */
+    /** how deep the reader is right now, counting containers */
     def depth: Int = open
 
     def peek: Int = if i < bs.length then bs(i) & 0xFF else -1
@@ -243,11 +229,10 @@ object Cbor {
       else skipItemNative()
 
     private def skipItemNative(): Either[String, Unit] =
-      if !enter() then tooDeep
-      else
-        val out = skipHereNative()
-        leave()
-        out
+      enter()
+      val out = skipHereNative()
+      leave()
+      out
 
     private def skipHereNative(): Either[String, Unit] =
       head().flatMap { (major, n) =>
@@ -279,8 +264,8 @@ object Cbor {
       * `Cont`; the sibling loop for major 4/5 (`manyC`) is the same
       * shape as `Cbor.get`'s own list loops */
     private def skipItemInsideC[R]: Either[String, Unit] /> R =
-      if !enter() then Cont.Pure(tooDeep)
-      else skipHereC[R].flatMap { v => leave(); Cont.Pure(v) }
+      enter()
+      skipHereC[R].flatMap { v => leave(); Cont.Pure(v) }
 
     private def skipHereC[R]: Either[String, Unit] /> R =
       Cont.Pure(head()).flatMap {
@@ -303,14 +288,13 @@ object Cbor {
         }
       loop(count)
 
-  /** one container's worth of nesting, on the reader's one budget —
+  /** one container's worth of nesting, on the reader's one counter —
    * the declared reads spend it exactly as a skip does */
   private def inside[X](in: In)(body: => Either[String, X]): Either[String, X] =
-    if !in.enter() then in.tooDeep
-    else
-      val out = body
-      in.leave()
-      out
+    in.enter()
+    val out = body
+    in.leave()
+    out
 
   /** the public entry: below the threshold, today's recursive fold,
    * unchanged; at or past it, `getC`'s trampoline — checked on EVERY
@@ -382,18 +366,17 @@ object Cbor {
       // spelled out rather than through `inside`: the case schemas are
       // `Schema[? <: A]`, so the block's type carries a wildcard the
       // by-name parameter cannot take ("not a value")
-      if !in.enter() then in.tooDeep
-      else
-        val out: Either[String, A] = in.mapHeader().flatMap {
-          case 1 => in.textItem().flatMap { name =>
-            su.cases.find(_._1 == name)
-              .toRight(s"unknown case '$name' of ${su.name}")
-              .flatMap((_, sc) => get(in, sc()))
-          }
-          case n => Left(s"expected a one-entry map, got $n entries")
+      in.enter()
+      val out: Either[String, A] = in.mapHeader().flatMap {
+        case 1 => in.textItem().flatMap { name =>
+          su.cases.find(_._1 == name)
+            .toRight(s"unknown case '$name' of ${su.name}")
+            .flatMap((_, sc) => get(in, sc()))
         }
-        in.leave()
-        out
+        case n => Left(s"expected a one-entry map, got $n entries")
+      }
+      in.leave()
+      out
 
   /** one field at its own type; the value joins the product's erased
    * parts (Mirror's fromProduct takes Any) */
@@ -402,8 +385,7 @@ object Cbor {
   // ---------------------------------------------------------------
   // the trampoline (cbor-decode-threshold-trampoline): PAST
   // NativeThreshold, `get` runs this instead of `getNative`. Same
-  // fold, same rules (unknown fields skipped, defaults, the
-  // enter/leave budget for `Codecs.maxDepth`) — the ONLY difference
+  // fold, same rules (unknown fields skipped, defaults) — the ONLY difference
   // is that a descent into a NESTED schema is `Cont.defer`red rather
   // than called directly, so the trampoline forces it inside `/`'s
   // own loop, one level per iteration, at constant native stack
@@ -435,8 +417,8 @@ object Cbor {
    * (via flatMap), not when this function returns — it returns a
    * Cont, not a value */
   private def insideC[X, R](in: In)(body: => (Either[String, X] /> R)): Either[String, X] /> R =
-    if !in.enter() then Cont.Pure(in.tooDeep)
-    else body.flatMap { v => in.leave(); Cont.Pure(v) }
+    in.enter()
+    body.flatMap { v => in.leave(); Cont.Pure(v) }
 
   /** `field`'s Cont-shaped twin: one field at its own type, widened
    * to `Any` to join the product's erased parts — the SAME widening

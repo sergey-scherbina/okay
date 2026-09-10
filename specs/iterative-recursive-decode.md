@@ -160,7 +160,9 @@ Root 2 of 2, `Json.decode` (json-decode-threshold-trampoline,
 - Removing `Codecs.maxDepth` entirely. A wire contract still needs ONE
   number two services can agree on (`specs/codecs.md`,
   input-depth-both-wires) — this lane changes what that number costs,
-  not whether one exists.
+  not whether one exists. (Revisited and reversed once all four sites
+  closed — see remove-codecs-maxdepth below: the number ended up
+  costing nothing to protect against, so it was removed, not raised.)
 
 ## Decisions
 
@@ -408,3 +410,23 @@ still agree to read), not a stack-safety one. That decision, and
 moving `TestVector`'s stress depth with it, is left as its own
 deliberate follow-up, stated here rather than assumed: this arc
 measured and fixed the COST of depth; it does not choose the LIMIT.
+
+**That follow-up decision: removed, not raised (remove-codecs-maxdepth,
+2026-09-10).** Asked directly — operator answered "прибрав
+Codecs.maxDepth - so" (removed `Codecs.maxDepth` — yes). `Codecs.maxDepth`,
+`Cbor.In.tooDeep`, `Json.isCut`/`Json.tooDeep`/`Json.cutMessage`, and
+every `enter()`-returns-`Boolean`/refusal call site built on them are
+deleted outright, not raised to a bigger number: once all four sites
+above trampoline, there was no remaining party the number was
+protecting — it was pure leftover wire policy with no test or spec
+depending on ITS value (only on depth being safe at all). `Codecs.
+NativeThreshold` (24) is untouched — it still decides where the
+native/trampoline switch happens, unrelated to any refusal.
+
+This is not "depth is now free": a `Cont.defer` trampoline still
+allocates one node per level and the decoded tree still lives on the
+heap, so an adversarially deep message now costs HEAP, not native
+stack — a `StackOverflowError` confined to one thread became a
+whole-JVM `OutOfMemoryError` risk. Reintroducing a cap, if a future
+wire contract wants one, is a fresh policy decision with its own
+number, not a restoration of this one.

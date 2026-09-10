@@ -119,6 +119,28 @@ arithmetic is not what is being measured. The next idea about the pane
 store — the key structure, which is the part still unmeasured — can be
 judged the day it is written.
 
+## okay-codec: `Codecs.maxDepth` removed
+
+`iterative-recursive-decode.md`'s arc gave every recursive decoder
+(`Cbor.get`, `Json.decode`, `Cbor.In.skipItem`, `JsonValue`'s fast
+parser, `Json.lossless`'s projection, `JsonStrict.Reader.get`) a
+threshold-then-`Cont.defer`-trampoline split, so native stack no
+longer scales with input depth anywhere in the module. That left
+`Codecs.maxDepth` — the wire-contract refusal originally justified by
+stack cost — with no remaining job. Asked directly whether to raise it
+or remove it, the answer was remove: `Codecs.maxDepth`, `Cbor.In.
+tooDeep`, `Json.isCut`/`Json.tooDeep`/`Json.cutMessage`, and every
+refusal call site built on them are deleted outright.
+
+A message of any depth now decodes correctly instead of being refused
+past a wire limit. This is not "depth is free": a `Cont.defer`
+trampoline still allocates one node per level and the decoded tree
+still lives on the heap, so an adversarially deep message now risks
+`OutOfMemoryError` instead of a confined `StackOverflowError`. Nothing
+in this module currently reintroduces a cap for that; `Codecs.
+NativeThreshold` (24, unchanged) still decides where the native/
+trampoline switch happens but enforces nothing.
+
 ## dataflow stage 8 — the coordinator survives
 
 Every stage from 6a to 7 ended with the same sentence: if the

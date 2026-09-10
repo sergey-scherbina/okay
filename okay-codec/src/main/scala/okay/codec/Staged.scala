@@ -118,12 +118,11 @@ object Staged {
    * item to skip, so no damaged-element rule to keep */
   def cborElems[X](in: Cbor.In, n: Long)(f: Cbor.In => Either[String, X]): Either[String, List[X]] =
     // the generated code's containers are these helpers, so they spend
-    // the reader's nesting budget too (input-depth-both-wires)
-    if !in.enter() then in.tooDeep
-    else
-      val out = cborElemsHere(in, n)(f)
-      in.leave()
-      out
+    // the reader's nesting counter too (input-depth-both-wires)
+    in.enter()
+    val out = cborElemsHere(in, n)(f)
+    in.leave()
+    out
 
   private def cborElemsHere[X](in: Cbor.In, n: Long)(f: Cbor.In => Either[String, X]): Either[String, List[X]] =
     val b = List.newBuilder[X]
@@ -149,11 +148,10 @@ object Staged {
                      readers: Array[Cbor.In => Either[String, Any]],
                      absents: Array[Either[String, Any]],
                      make: Array[Any] => T): Either[String, T] =
-    if !in.enter() then in.tooDeep
-    else
-      val out = cborProductHere(in, n, names, readers, absents, make)
-      in.leave()
-      out
+    in.enter()
+    val out = cborProductHere(in, n, names, readers, absents, make)
+    in.leave()
+    out
 
   private def cborProductHere[T](in: Cbor.In, n: Long, names: Array[String],
                                  readers: Array[Cbor.In => Either[String, Any]],
@@ -195,13 +193,11 @@ object Staged {
    * first Left ends it, as the interpreted reader ends it */
   def strictElems[X](r: JsonStrict.Reader)(f: JsonStrict.Reader => Either[String, X]): Either[String, List[X]] =
     // the generated code's containers are these helpers, so they spend
-    // the reader's nesting budget too — otherwise the staged door would
-    // read deeper than the interpreted one (input-depth-both-wires)
-    if !r.enter() then r.tooDeep
-    else
-      val out = strictElemsHere(r)(f)
-      r.leave()
-      out
+    // the reader's nesting counter too — one source of truth for depth
+    r.enter()
+    val out = strictElemsHere(r)(f)
+    r.leave()
+    out
 
   private def strictElemsHere[X](r: JsonStrict.Reader)(f: JsonStrict.Reader => Either[String, X]): Either[String, List[X]] =
     r.expect('[').flatMap { _ =>
@@ -234,11 +230,10 @@ object Staged {
                        readers: Array[JsonStrict.Reader => Either[String, Any]],
                        absents: Array[Either[String, Any]],
                        make: Array[Any] => T): Either[String, T] =
-    if !r.enter() then r.tooDeep
-    else
-      val out = strictProductHere(r, names, readers, absents, make)
-      r.leave()
-      out
+    r.enter()
+    val out = strictProductHere(r, names, readers, absents, make)
+    r.leave()
+    out
 
   private def strictProductHere[T](r: JsonStrict.Reader, names: Array[String],
                                    readers: Array[JsonStrict.Reader => Either[String, Any]],
@@ -289,11 +284,10 @@ object Staged {
     }
   /** the one-entry object a sum is written as: `{"Case": value}` */
   def strictSum[T](r: JsonStrict.Reader)(byName: String => Either[String, T]): Either[String, T] =
-    if !r.enter() then r.tooDeep
-    else
-      val out = strictSumHere(r)(byName)
-      r.leave()
-      out
+    r.enter()
+    val out = strictSumHere(r)(byName)
+    r.leave()
+    out
 
   private def strictSumHere[T](r: JsonStrict.Reader)(byName: String => Either[String, T]): Either[String, T] =
     r.expect('{').flatMap { _ =>
