@@ -1,0 +1,35 @@
+task: dataflow-exchange
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-exchange
+worktree: ../okay-wt-dfx
+spec: specs/dataflow.md, stage 2
+
+why: stage 1 finishes a keyed stage by merging every partition's
+  partials at ONE coordinator. That is the right plan when the merged
+  result fits one node and the wrong one when it does not, and the
+  spec's Claim 1 says the plan should be able to tell. Today there is
+  no other road to pick, so the claim is untested.
+
+what: `Finish` on the keyed and windowed nodes — Merge (today),
+  Shuffle(reducers), Auto — a hash exchange above the map-side
+  combine, and the rule about `Sequential` made precise in both
+  directions: a Sequential KEYED aggregator stays safe under a
+  shuffle (each owner still merges its share by partition index), a
+  Sequential TERMINAL aggregator is refused when there is more than
+  one reducer, because the reducers' outputs are in no input order at
+  all.
+
+  And the crossover MEASURED, framed honestly: in one process the
+  shuffle saves no memory — every partial is already here. What it
+  buys is that the final merge runs on R threads instead of one. So
+  the number to find is the accumulator count at which parallelising
+  that merge beats the handoff. The memory argument is stage 4's and
+  must not be claimed here.
+
+predict: Wrocław is ~8 x 3300 = 2.6e4 merges, which I expect to be
+  far BELOW the crossover — i.e. the shuffle should LOSE on the
+  benchmark this engine exists for, and the honest outcome of this
+  lane may well be "the exchange is the road you take when you have
+  to, and here is the number that says when". MEASURE it rather than
+  write that sentence in advance.
