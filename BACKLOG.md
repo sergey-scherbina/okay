@@ -1,29 +1,22 @@
 # Backlog
 
-## iterative-recursive-decode (2026-09-10, spec written — specs/iterative-recursive-decode.md)
+## iterative-recursive-decode (root 2 of 2 open — Json.decode, JsonStrict.Reader.get)
 
-- [ ] `Json.decode`/`Cbor.get` recurse on the JVM stack for every level
-      of a RECURSIVE schema, ~4-8 KB per level (measured,
-      specs/codecs.md "The margin, measured"). `Codecs.maxDepth` was
-      lowered to 64 (lower-maxdepth-real-margin) to buy real margin
-      back, trading away documents between 65 and 256 levels that
-      decoded before. Design is written and a feasibility spike (not
-      committed) confirmed it: a threshold — native recursion as
-      today up to ~24-32 levels, then `Cont.defer` (the SAME mechanism
-      `eff-stack-safety.md` already uses and already measured, +11%
-      B/op / +14% time for one node on a hot path) hands the rest to
-      `Cont`'s existing, tested, O(1)-stack trampoline. Scope is
-      SMALLER than first thought: both staged generators already
-      delegate to the interpreted decoder for the recursive case
-      (read in Staged.scala before writing code), so only two roots
-      need it — `Json.decode`/`Cbor.get`, and `JsonStrict.Reader.get`
-      separately. The two raw-JSON-nesting walks (JsonValue's fast
-      parser, the CST projection) are OUT of this scope — cheaper per
-      level, already safe at any threshold-picked maxDepth, a smaller
-      separate fix if ever needed. Real work: build it, gate it on a
-      JMH benchmark (not a hand-timed loop) proving the shallow/common
-      case is unchanged, per specs/iterative-recursive-decode.md's
-      Behavior checklist.
+- [ ] Root 1 (`Cbor.get`) landed as cbor-decode-threshold-trampoline
+      (2026-09-10): native recursion to `NativeThreshold` (24), then
+      `Cont.defer` — `Cbor.read[Tree]`'s stack cost dropped from
+      1024 KB to 16 KB at `Codecs.maxDepth`'s current depth (64),
+      JMH-confirmed no regression on the common (non-recursive)
+      shape (`cborDecodeInterp`, 3 forks: 1438→1338 ns/op, within
+      noise). Root 2 is the same design (specs/iterative-recursive-
+      -decode.md), applied to `Json.decode` (which has no existing
+      depth counter — `Json.isCut` bounds it upstream differently,
+      so this root needs its OWN counter, not a reused one) and
+      `JsonStrict.Reader.get` (which already has `open`/`enter`/
+      `leave`, same shape as `Cbor.In`'s did). Once both land,
+      `Codecs.maxDepth` and `TestVector`'s stress depth can move back
+      up — deferred until then, so `Json.decode` is never left
+      exposed to the risk `Cbor.get` just closed.
 
 Open work only, grouped by the module that owns it. Everything closed —
 landed, refuted, declined or answered — moved VERBATIM to

@@ -1,5 +1,52 @@
 # Changelog
 
+## cbor-decode-threshold-trampoline — Cbor.get, native to a threshold then Cont.defer; a 53% "regression" that was one JMH fork lying
+
+Root 1 of iterative-recursive-decode.md's two-root design, landed.
+`Cbor.get` now checks `in.depth` (the existing enter/leave budget,
+one new read-only accessor) on every call: below `NativeThreshold`
+(24), today's code unchanged (`getNative`, renamed, otherwise
+untouched); at or past it, a new `getC` builds the SAME fold as a
+`Cont`-based computation, deferring each descent into a nested schema
+through `Cont.defer` — the exact mechanism `eff-stack-safety.md`
+already proved for `Eff`'s left-nested binds, reused rather than
+reinvented. Zero casts: `Cont`'s invariance (unlike `Either`'s
+covariance) needed one explicit `.map` at the two erasure/widening
+points `getNative` already has for free (a product's field joining
+`Vector[Any]`, a sum's case narrowing to its parent type) — not a new
+kind of erasure, the same one restated.
+
+`Cbor.read[Tree]`/`Staged.cbor[Tree]`'s stack cost (both route through
+`Cbor.get`, staged included by design — confirmed in the spec before
+writing code) dropped from 1024 KB to 16 KB (the probe's own floor) at
+`Codecs.maxDepth`'s current depth. `TestStackBytes` gained the flat-
+-cost assertion, and reverting `NativeThreshold` to an unreachable
+value (A/B, not committed) makes exactly that one test fail — proof
+it tests the mechanism, not something incidental. `TestStackBytes`'s
+older "one level less costs less stack" self-check moved from
+`Cbor.read[Tree]` (now flat by design) to `Json.read[Tree]` (root 2,
+still native throughout, still proof of life).
+
+**The regression that wasn't.** A single-fork JMH run showed
+`cborDecodeInterp` (Order, an ordinary non-recursive product — the
+below-threshold shape every real caller hits) at 2166 ns/op against a
+1419 ns/op baseline: 53% slower, and by the spec's own Behavior
+checklist that number alone would have sunk the lane. 3 forks each
+(5×1s measurement, 3×1s warmup) told a different story: 1438 ± 58
+before, 1338 ± 14 after — not a regression, arguably slightly faster,
+certainly not the 53% one fork reported. Same box, same session, same
+false-alarm shape this arc has already hit more than once
+(`bench-one-round-lies`) — the spec's Behavior item is amended to say
+3 forks, not "a benchmark."
+
+172 tests in okay-codec (5 new — `TestCborTrampoline` — plus
+`TestStackBytes` updated), gate green.
+
+Root 2 (`Json.decode`, `JsonStrict.Reader.get`) is BACKLOG, same
+design, different counter for `Json.decode` (no existing depth budget
+to reuse — `Json.isCut` bounds it upstream, differently).
+`Codecs.maxDepth` stays 64 until both roots land.
+
 ## dataflow stage 3 — one pass, many sinks; and the engine measured against the hand-written lane, which it loses to
 
 `Sink[A, R]` is a keyed or windowed stage plus what its output is

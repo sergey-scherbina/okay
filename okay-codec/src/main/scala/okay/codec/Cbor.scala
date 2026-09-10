@@ -1,6 +1,7 @@
 package okay.codec
 
 import scala.collection.mutable.ArrayBuffer
+import okay.{Cont, reset, />}
 
 /**
  * CBOR (RFC 8949) as the second algebra over the SAME Schema: what
@@ -135,6 +136,13 @@ object Cbor {
     def leave(): Unit = open -= 1
     def tooDeep[X]: Either[String, X] = Left(s"nested deeper than ${Codecs.maxDepth}")
 
+    /** how deep the reader is right now, counting containers — the
+      * SAME number `enter`/`leave` maintain, read here for
+      * `Cbor.get`'s native/trampoline decision (cbor-decode-threshold-
+      * trampoline); a second counter would be a second source of
+      * truth for exactly the fact this one already tracks */
+    def depth: Int = open
+
     def peek: Int = if i < bs.length then bs(i) & 0xFF else -1
     def byte(): Either[String, Int] =
       if i < bs.length then { val b = bs(i) & 0xFF; i += 1; Right(b) }
@@ -257,7 +265,27 @@ object Cbor {
       in.leave()
       out
 
-  private def get[A](in: In, s: Schema[A]): Either[String, A] = s match
+  /**
+   * How deep the interpreted fold recurses NATIVELY before switching
+   * to `getC`'s `Cont`-based trampoline (iterative-recursive-decode,
+   * cbor-decode-threshold-trampoline). Chosen the way `Cont.Fuse` and
+   * this reader's own budget are — well under any depth a real
+   * message reaches, so the switch is never on a caller's hot path,
+   * and well under `Codecs.maxDepth` so a document that IS this deep
+   * still decodes rather than costing native stack proportional to
+   * its depth.
+   */
+  private val NativeThreshold = 24
+
+  /** the public entry: below the threshold, today's recursive fold,
+   * unchanged; at or past it, `getC`'s trampoline — checked on EVERY
+   * call, so the switch happens at whatever level actually crosses
+   * it, not only at the top */
+  private def get[A](in: In, s: Schema[A]): Either[String, A] =
+    if in.depth >= NativeThreshold then reset(getC[A, Either[String, A]](in, s))
+    else getNative(in, s)
+
+  private def getNative[A](in: In, s: Schema[A]): Either[String, A] = s match
     case Schema.SIso(u, to, _) => get(in, u()).flatMap(to)
     case Schema.SInt => in.intItem().map(_.toInt)
     case Schema.SLong => in.intItem()
@@ -335,6 +363,158 @@ object Cbor {
   /** one field at its own type; the value joins the product's erased
    * parts (Mirror's fromProduct takes Any) */
   private def field[X](in: In, sc: Schema[X]): Either[String, Any] = get(in, sc)
+
+  // ---------------------------------------------------------------
+  // the trampoline (cbor-decode-threshold-trampoline): PAST
+  // NativeThreshold, `get` runs this instead of `getNative`. Same
+  // fold, same rules (unknown fields skipped, defaults, the
+  // enter/leave budget for `Codecs.maxDepth`) — the ONLY difference
+  // is that a descent into a NESTED schema is `Cont.defer`red rather
+  // than called directly, so the trampoline forces it inside `/`'s
+  // own loop, one level per iteration, at constant native stack
+  // (`Cont.defer` is the exact mechanism `specs/eff-stack-safety.md`
+  // proved and measured for `Eff`'s left-nested binds).
+  //
+  // `R` is the FINAL answer type of the whole trampolined
+  // computation — fixed ONCE, at the `reset` call in `get`, to
+  // `Either[String, A]` for whatever `A` was being decoded when depth
+  // first crossed the threshold — and threaded unchanged through
+  // every nested `getC`/`insideC`/`fieldC` call below, however many
+  // different field/element types it passes through on the way. Only
+  // the VALUE type (`Either[String, X]`) varies per node; that is
+  // what makes `Cont.defer`'s own type (`() => Cont[A,T,R]` sharing
+  // `R` with the surrounding `Cont[B,S,R]`) able to compose them.
+  //
+  // No cast anywhere below (no-casts-without-necessity): `Cont` is
+  // INVARIANT in its value type, unlike `Either` — where `getNative`
+  // widens `Either[String, X]` to `Either[String, Any]` for free
+  // (covariance) at a product's field or `Either[String, C]` to
+  // `Either[String, A]` for a sum's case (C <: A), the Cont-wrapped
+  // equivalents need one explicit `.map` to re-state the SAME
+  // widening at the Cont level — still a checked upcast, not a
+  // runtime test.
+  // ---------------------------------------------------------------
+
+  /** one container's worth of nesting, Cont-shaped: `leave()` is
+   * sequenced to fire once the inner computation's VALUE is ready
+   * (via flatMap), not when this function returns — it returns a
+   * Cont, not a value */
+  private def insideC[X, R](in: In)(body: => (Either[String, X] /> R)): Either[String, X] /> R =
+    if !in.enter() then Cont.Pure(in.tooDeep)
+    else body.flatMap { v => in.leave(); Cont.Pure(v) }
+
+  /** `field`'s Cont-shaped twin: one field at its own type, widened
+   * to `Any` to join the product's erased parts — the SAME widening
+   * `field` does via Either's covariance, restated because Cont does
+   * not share it */
+  private def fieldC[X, R](in: In, sc: Schema[X]): Either[String, Any] /> R =
+    getC(in, sc).map(e => e: Either[String, Any])
+
+  private def getC[X, R](in: In, s: Schema[X]): Either[String, X] /> R = s match
+    case Schema.SIso(u, to, _) =>
+      Cont.defer(() => getC(in, u()))(r => Cont.Pure(r.flatMap(to)))
+    case Schema.SInt => Cont.Pure(in.intItem().map(_.toInt))
+    case Schema.SLong => Cont.Pure(in.intItem())
+    case Schema.SDouble => Cont.Pure(in.doubleItem())
+    case Schema.SBool => Cont.Pure(in.boolItem())
+    case Schema.SString => Cont.Pure(in.textItem())
+    case Schema.SChar => Cont.Pure(in.textItem().flatMap(x =>
+      if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}")))
+    case Schema.SBytes => Cont.Pure(in.byteStringItem())
+    case Schema.SOption(of) =>
+      if in.isNull then { in.skipNull(); Cont.Pure(Right(None)) }
+      else Cont.defer(() => getC(in, of()))(r => Cont.Pure(r.map(Some(_))))
+    case l: Schema.SList[a] =>
+      insideC(in) {
+        Cont.Pure(in.arrayHeader()).flatMap {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(n) =>
+            def loop(i: Long, acc: List[a]): Either[String, List[a]] /> R =
+              if i >= n then Cont.Pure(Right(acc.reverse))
+              else Cont.defer(() => getC(in, l.of())) {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(x) => loop(i + 1, x :: acc)
+              }
+            loop(0, Nil)
+        }
+      }
+    case vec: Schema.SVector[a] =>
+      insideC(in) {
+        Cont.Pure(in.arrayHeader()).flatMap {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(n) =>
+            def loop(i: Long, acc: Vector[a]): Either[String, Vector[a]] /> R =
+              if i >= n then Cont.Pure(Right(acc))
+              else Cont.defer(() => getC(in, vec.of())) {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(x) => loop(i + 1, acc :+ x)
+              }
+            loop(0, Vector.empty)
+        }
+      }
+    case p: Schema.SProduct[X] =>
+      insideC(in) {
+        Cont.Pure(in.mapHeader()).flatMap {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(n) =>
+            def readFields(i: Long, m: Map[String, Any]): Either[String, Map[String, Any]] /> R =
+              if i >= n then Cont.Pure(Right(m))
+              else Cont.defer(() => Cont.Pure(in.textItem())) {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(k) => p.fields.find(_._1 == k) match
+                  case Some((_, sc)) =>
+                    Cont.defer(() => fieldC(in, sc())) {
+                      case Left(e) => Cont.Pure(Left(e))
+                      case Right(v) => readFields(i + 1, m + (k -> v))
+                    }
+                  // unknown field: skipped, same rule as getNative
+                  // (cbor-unknown-fields) — no recursion into a
+                  // fresh schema, so no defer needed here
+                  case None => in.skipItem() match
+                    case Left(e) => Cont.Pure(Left(e))
+                    case Right(()) => readFields(i + 1, m)
+              }
+            readFields(0, Map.empty).flatMap { fieldsResult =>
+              Cont.Pure(fieldsResult.flatMap { m =>
+                // the same assembly as getNative: declared default,
+                // then None-if-optional, then the refusal — no
+                // decoding happens here, only combining what already
+                // decoded, so this stays a plain (non-deferred) fold
+                p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
+                  val (f, i) = fi
+                  acc.flatMap { xs =>
+                    (m.get(f._1), f._2()) match
+                      case (None, sc) => (p.defaults.lift(i).flatten, sc) match
+                        case (Some(d), _) => Right(xs :+ d())
+                        case (None, _: Schema.SOption[?]) => Right(xs :+ None)
+                        case _ => Left(s"missing field '${f._1}' in ${p.name}")
+                      case (found, _) =>
+                        found.toRight(s"missing field '${f._1}' in ${p.name}").map(xs :+ _)
+                  }
+                }.map(p.make)
+              })
+            }
+        }
+      }
+    case su: Schema.SSum[X] =>
+      insideC(in) {
+        Cont.Pure(in.mapHeader()).flatMap {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(1) =>
+            Cont.defer(() => Cont.Pure(in.textItem())) {
+              case Left(e) => Cont.Pure(Left(e))
+              case Right(name) => su.cases.find(_._1 == name) match
+                case None => Cont.Pure(Left(s"unknown case '$name' of ${su.name}"))
+                // sc(): Schema[C] for some C <: X (su.cases' own bound) —
+                // getC(in, sc()) is Either[String, C] /> R, widened to
+                // Either[String, X] /> R the same way getNative's plain
+                // `get(in, sc())` widens via Either's own covariance
+                case Some((_, sc)) => getC(in, sc()).map(e => e: Either[String, X])
+            }
+          case Right(n) => Cont.Pure(Left(s"expected a one-entry map, got $n entries"))
+        }
+      }
+
 
   /** bytes to value in one move; errors as values */
   def read[A](bytes: Array[Byte])(using s: Schema[A]): Either[String, A] =

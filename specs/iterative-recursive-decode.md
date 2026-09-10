@@ -91,31 +91,41 @@ Internal:
 
 ## Behavior
 
-- [ ] a recursive schema nested past `Codecs.maxDepth` — raised back up
-      once this lands — decodes on a default 1 MB JVM thread, to a
-      depth this lane's own benchmark states (target: comparable to
-      the interpreted CST builder's 100 000, not a new small ceiling)
-- [ ] a document that never nests past the threshold decodes through
-      the EXACT same code path as before this lane (no `Cont`
-      allocation reachable below `threshold`) — asserted by a test that
-      counts allocations or by construction (a guard, not a hope)
-- [ ] `Json.decode`, `Cbor.get`, and `JsonStrict.Reader.get` agree with
-      each other and with the staged generators on every existing
-      corpus (`TestCompat`, `TestUnknownFields`, `TestInputDepth`,
-      `TestStackBytes`/`TestStackMargin` all still green, values
-      unchanged)
-- [ ] MEASURED, JMH not a hand-timed loop (`compare`'s own convention,
-      `docs/benchmarks.md`): the shallow/common-case cost regression is
-      at most what `eff-stack-safety.md` measured for one `Defer` node
-      on `Eff`'s fast path (+11% B/op, +14% time) — and ideally
-      ZERO, since the hybrid design means the fast path should not
-      allocate a `Defer` at all below `threshold`. A regression on the
-      SHALLOW case is the one outcome that would sink this lane; a
-      cost on the deep/pathological case is the price this lane exists
-      to introduce.
-- [ ] `TestVector`'s recursion test, and `Codecs.maxDepth` itself, get
-      to move back toward their pre-lower-maxdepth-real-margin shape
-      (a decision for the lane that lands this, not assumed here)
+Root 1 of 2, `Cbor.get` (cbor-decode-threshold-trampoline, 2026-09-10):
+
+- [x] a recursive schema decodes correctly at the deepest depth
+      `Codecs.maxDepth` currently allows (well past `NativeThreshold`,
+      so the switch is exercised) — `TestCborTrampoline`
+- [x] ordinary shapes (products, sums, lists, options, isos) below the
+      threshold decode unchanged — `TestCborTrampoline`
+- [x] errors past the threshold still refuse rather than silently
+      succeeding — `TestCborTrampoline`
+- [x] `Codecs.maxDepth`'s own refusal is unchanged in both paths —
+      `TestCborTrampoline`, `TestInputDepth`, `TestUnknownFields`,
+      `TestCompat` all still green
+- [x] `Cbor.read[Tree]`/`Staged.cbor[Tree]`'s stack cost is FLAT past
+      the threshold rather than scaling with depth (the mechanism's
+      own signature) — `TestStackBytes`, A/B'd: reverting
+      `NativeThreshold` to an unreachable value makes this ONE test
+      fail and nothing else, confirming it is what tests the fix
+- [x] MEASURED, JMH not a hand-timed loop (`compare/CodecBenchmark`):
+      `cborDecodeInterp` (Order, a non-recursive product — the
+      below-threshold, common-case shape) at 3 forks, 5×1s
+      measurement/3×1s warmup each: **1438 ± 58 ns/op before, 1338 ±
+      14 ns/op after** — NOT a regression (the single-fork run this
+      lane started from showed 2166 vs 1419, a false 53% alarm that
+      evaporated once the box's own JIT-warmup noise was averaged out
+      across forks — `bench-one-round-lies`, again). The eff-
+      -stack-safety comparison (+11%/+14% for one `Defer` node) was
+      the fallback expectation if this had gone the other way; it did
+      not need spending.
+- [ ] `Json.decode` and `JsonStrict.Reader.get` (root 2 of 2) — NOT
+      done by this lane; BACKLOG stays open for them
+- [ ] `TestVector`'s recursion test, and `Codecs.maxDepth` itself,
+      moving back toward their pre-lower-maxdepth-real-margin shape —
+      deferred until root 2 lands too (raising the wire limit before
+      BOTH decoders are fixed would leave `Json.decode` exposed to
+      exactly the risk this arc closed for `Cbor.get`)
 
 ## Out of scope
 
@@ -155,16 +165,33 @@ Internal:
 
 ## Results
 
-Not yet built. The spike that informed this spec (SpikeContDecode.scala,
-2026-09-10, deleted — not a benchmark, a feasibility check) found:
+**Root 1, `Cbor.get` (cbor-decode-threshold-trampoline, landed
+2026-09-10).** The spike (SpikeContDecode.scala, deleted, not a
+benchmark) found what it was for — feasibility, not a number:
 
 | check | result |
 |---|---|
 | `Cont.defer`-based decode of a 500 000-level chain | succeeds, correct value (native overflows at default stack) |
 | hybrid (native to 24, then `Cont`) at depth 5/20 (below threshold) | ~native speed, noise-level difference |
-| hybrid past the threshold, 500 000 levels | succeeds, correct value |
-| pure-`Cont` decode at depth 5/20/50, 3 independent timing rounds | 0.8x, 1.6x, 1.0x of native — too noisy to trust the number, not too noisy to see it is not free |
+| pure-`Cont` decode at depth 5/20/50, 3 independent timing rounds | 0.8x, 1.6x, 1.0x of native — too noisy to trust, not too noisy to see it is not free (this is WHY the threshold exists) |
 
-A real JMH benchmark, run the way `compare`'s lanes are (forks, GC
-profiling, a load reference), is Behavior's unchecked box and the gate
-before this lands.
+The real gate, `compare/CodecBenchmark.cborDecodeInterp` (Order, a
+non-recursive product — the below-threshold shape every real caller
+hits), JMH, 3 forks, 5×1s/3×1s:
+
+| | before | after |
+|---|---|---|
+| ns/op | 1438 ± 58 | 1338 ± 14 |
+
+Read generously: within noise of unchanged; read exactly: not worse.
+A SINGLE-fork run first showed 2166 vs 1419 (a 53% "regression") —
+`bench-one-round-lies` again, on the same box that has produced this
+exact shape of false alarm before in this session. 3 forks, not 1, is
+what this spec's own Behavior item should have said from the start.
+
+`Cbor.read[Tree]`/`Staged.cbor[Tree]`'s stack cost dropped from 1024 KB
+to 16 KB (this probe's own floor) at `Codecs.maxDepth`'s current depth
+(64) — `TestStackBytes`. `Json.read[Tree]` and the `JsonStrict`-based
+doors are unchanged (256/512 KB): root 2, not yet built.
+
+**Root 2, `Json.decode` + `JsonStrict.Reader.get`: not yet built.**

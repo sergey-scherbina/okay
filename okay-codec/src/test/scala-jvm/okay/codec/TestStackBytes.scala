@@ -7,20 +7,31 @@ package okay.codec
  * runs on — which is what makes this number a property of the DOOR and
  * not of whatever `-Xss` the runner happened to pass.
  *
- * MEASURED 2026-09-10, Java 21 on aarch64, powers of two from 16 KB:
+ * MEASURED 2026-09-10, Java 21 on aarch64, powers of two from 16 KB,
+ * BEFORE cbor-decode-threshold-trampoline:
  *
  *   JsonValue.parse      256 KB      Json.readStrict[Tree]   512 KB
  *   Json.lossless        512 KB      Staged.strict[Tree]     512 KB
  *   Json.read[Tree]     1024 KB      Staged.cbor[Tree]      1024 KB
  *   Cbor.read[Tree]     1024 KB
  *
- * The finding that matters, and it was the opposite of what this lane
- * predicted: the tight platform is not the browser, it is a JVM thread
- * with the DEFAULT 1 MB stack, where a full-depth decode of a RECURSIVE
- * schema (~8 KB of stack per tree level) leaves nothing for the caller.
- * sbt's `-Xss8m` and the 8 MB main thread on macOS are what hid it.
- * specs/codecs.md carries the consequence; this test keeps the number
- * from drifting quietly.
+ * The finding that mattered, and it was the opposite of what
+ * stack-depth-margin predicted: the tight platform is not the browser,
+ * it is a JVM thread with the DEFAULT 1 MB stack, where a full-depth
+ * decode of a RECURSIVE schema (~8 KB of stack per tree level) left
+ * nothing for the caller. sbt's `-Xss8m` and the 8 MB main thread on
+ * macOS are what hid it.
+ *
+ * AFTER cbor-decode-threshold-trampoline (same day): `Cbor.read[Tree]`
+ * and `Staged.cbor[Tree]` — both routed through `Cbor.get` — dropped to
+ * 16 KB, this probe's own floor: past `NativeThreshold` levels, depth
+ * no longer costs native stack at all. `Json.read[Tree]` and the two
+ * `JsonStrict`-based doors are UNCHANGED (256/512 KB) — `Json.decode`
+ * and `JsonStrict.Reader.get` are the other root
+ * (`specs/iterative-recursive-decode.md`), not yet fixed. This is why
+ * the "honest" self-check below reads `Json.read[Tree]`, not
+ * `Cbor.read[Tree]` — the door whose cost still scales with depth is
+ * the one that can still prove the probe measures something real.
  */
 class TestStackBytes extends munit.FunSuite:
 
@@ -83,10 +94,27 @@ class TestStackBytes extends munit.FunSuite:
   test("the measurement is honest: one level LESS of nesting costs less stack") {
     // the guard against a probe that measures something other than the
     // recursion — if these were equal, the number would not be the
-    // door's depth cost at all
-    def treeAt(d: Int): () => Boolean = () => Cbor.read[Tree](cborTree(d)).isRight
+    // door's depth cost at all. Cbor.read[Tree] no longer serves this
+    // check: past NativeThreshold its cost is flat by design
+    // (cbor-decode-threshold-trampoline) — Json.read[Tree] still
+    // recurses natively all the way, so it is still proof of life
+    def treeAt(d: Int): () => Boolean = () => Json.read[Tree](jsonTree(d)).isRight
     val deep = needs(treeAt(levels))
     val shallow = needs(treeAt(8))
     assert(shallow < deep, s"a tree of 8 levels needs $shallow KB and one of $levels needs $deep KB")
+    println(f"[stack] Json.read[Tree]: $shallow%d KB at 8 levels, $deep%d KB at $levels levels")
+  }
+
+  test("cbor-decode-threshold-trampoline: Cbor.read[Tree]'s cost is now FLAT past the threshold") {
+    // the fix's own signature: a door whose native-recursion cost used
+    // to scale with depth (1024 KB at `levels`) now costs the same at
+    // 8 levels (below NativeThreshold, unchanged) as at `levels`
+    // (crosses it, trampolines) — proving the switch actually happens
+    // rather than merely compiling
+    def treeAt(d: Int): () => Boolean = () => Cbor.read[Tree](cborTree(d)).isRight
+    val shallow = needs(treeAt(8))
+    val deep = needs(treeAt(levels))
     println(f"[stack] Cbor.read[Tree]: $shallow%d KB at 8 levels, $deep%d KB at $levels levels")
+    assertEquals(deep, shallow, s"expected the trampoline to flatten the cost past the threshold")
+    assert(deep <= 64, s"Cbor.read[Tree] at $levels levels needs $deep KB — the trampoline should cost near nothing")
   }
