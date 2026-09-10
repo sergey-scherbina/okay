@@ -1,0 +1,31 @@
+task: flink-okay-parallel-lane
+agent: opus-flink
+started: 2026-09-10
+branch: feature/okay-parallel-lane
+worktree: ../okay-wt-parallel-lane
+spec: docs/benchmarks.md §20; specs/aggregators.md (merge is what this uses)
+
+why: BACKLOG's own entry, and the operator's "делай всё что ты
+  обнаружил" (2026-09-10). §20's okay lane is ONE thread, so its lead
+  over Flink-at-four-cores is per EVENT, not per box, and the section
+  says so rather than hiding it. This is the other number.
+
+what: `OkayLane.parallel(feed, lanes)` — parallelism by MERGE, not by
+  shuffle. The arrival order is cut into P contiguous slices; each
+  slice folds with its own `okay.Windows` over an aggregator that
+  presents its ACCUMULATOR; panes that cannot span a slice boundary
+  are folded locally, the rest come back as accumulators and are
+  merged by `Aggregator.merge`. Which panes those are is COMPUTED, not
+  guessed: one cheap pass records each slice's greatest event time and
+  the greatest backwardness b, and then a window is local to slice i
+  iff it starts after hi(i-1) and ends at or before hi(i) - b. The
+  bunching stage's keyed state is stitched across the seams from each
+  slice's first/last time per key. The suite asserts the parallel
+  answer EQUALS the single-threaded one — that is what keeps the
+  reasoning honest.
+
+predict: 2.5-3.5x on four fibres (the slices are independent; the
+  merge is a few thousand accumulators), so ~7-9M ev/s against Flink
+  p4's ~1.9M marginal. If the boundary rule is wrong the equality
+  assertion fails loudly rather than quietly producing a plausible
+  number, which is the only reason this is worth building at all.
