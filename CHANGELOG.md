@@ -41,6 +41,39 @@ reach that check.
 
 Not exactly-once ACROSS runs: a coordinator that dies re-offers
 everything, because it journals nothing. That is `dataflow-coordinator`.
+## parse-depth-tests-out-of-the-gate — the guard keeps its power and leaves the gate, after the obvious repair was measured to fail
+
+`TestParseDepth` asserts wall clock in the DEFAULT gate — 5 s absolute
+for a 50 000-level document, an 8x ratio for 4x the depth — and on
+2026-09-10 it turned five consecutive gates red while passing ALONE on
+the same commit in 0.085 s and 0.073 s. At load average 40-67 it read
+20 324 ms and 12.7x / 9.0x / 11.3x. It was blocking every agent's
+landing, not one lane's.
+
+**The obvious repair was tried first, and this entry exists because it
+did not work.** Load can only ADD time, so the minimum of three runs
+should be the closest thing to an uncontended machine — the rule
+docs/benchmarks.md applies to every lane it publishes. The next gate
+read **19.6x and 11.5x with minima on both sides**, and the
+50 000-level test, now three times as long, hit munit's 30 s timeout:
+the repetition caused a worse failure than the one it was fixing.
+
+The reason is structural rather than statistical: the two sides of the
+ratio differ 20x in duration (29 ms against 575 ms), so a contended
+scheduler perturbs the long side far more often than the short one,
+and no number of repetitions stabilises the quotient while every run
+is being descheduled.
+
+So the suite is `Live` and runs in `sbt integrationTest` — which is
+what AGENTS.md already said about suites whose outcome depends on
+timing the box cannot control. The guard is not weakened: same
+thresholds, same shapes, `sbt integrationTest` runs it, and a landing
+no longer waits on a coin toss. The ratio test keeps the minimum of
+three (it helps and costs nothing); the 50 000-level one takes a
+single sample again for the timeout's sake.
+
+No claim was held on okay-parse when this was taken; the room was told
+before and after.
 
 ## scan-fold-without-tokens — the sink road's first consumer, and one door that stays shut
 
