@@ -1,5 +1,50 @@
 # Changelog
 
+## dataflow stage 4b — the engine actually runs across processes now
+
+`Job[P, R]` is the registry entry, and it is Claim 3 made into a type:
+a worker is asked for a NAME and a Schema-encoded parameter and BUILDS
+THE PLAN ITSELF. No function crosses, no lambda is serialized, no
+class is shipped. The price is stated rather than hidden — every
+worker runs the same artifact, which is the bargain Flink strikes with
+a submitted jar, made explicit rather than left to a serializer that
+usually works.
+
+Two requests, a transcription rather than a design: `Extent` is the
+pre-pass and `Run` is the fold, which are exactly the two passes
+`Flows.fan` already makes in one process, the first now data-local on
+the worker. Two round trips because a partition's watermark must be
+the STREAM's at that point and a worker cannot know what the
+partitions before it saw — the coordinator is the only party that can
+compute a prefix maximum. The cheaper protocol is not faster, it is a
+different answer.
+
+Transport: a four-byte length and CBOR. A partial is already bytes,
+so it is not re-encoded as text to fit a line-oriented protocol.
+
+A worker is `Req => Resp`, which is what `Cluster.Worker` has been
+since P7, so the driver cannot tell an in-process worker from a
+socket. The tests therefore go in three levels — in-process, sockets
+in one JVM, then FOUR REAL OPERATING-SYSTEM PROCESSES — and a failure
+at level three is a failure of the transport and never of the
+arithmetic.
+
+The four-JVM acceptance runs a windowed job and a fan of three sinks
+and asserts the answer, the drop count AND the merged count equal what
+one process computes. The late-bearing feed is deliberate: its drop
+count only agrees if every worker seeded its watermark from the
+coordinator's bounds, so that assertion is really testing the seeding
+theorem across a wire.
+
+CONTROLLED: with the children started without their registrar the test
+fails, naming the empty registry it got back — which is what proves
+the work happens over there rather than quietly at home.
+
+What this does NOT do, and does not pretend to: a worker that dies
+takes the run with it. No retry, no reassignment, no recomputation —
+that is stage 5, and a partition being a thunk is what will make it
+cheap. One request in flight per connection. The coordinator is a
+single point of failure.
 ## optics-fuse-reads — the read side of the fusion
 
 The last entry ended by naming what was not fused: `get`, `foldMap`

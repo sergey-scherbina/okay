@@ -174,13 +174,34 @@ object Flows {
         case Left(why) => throw IllegalStateException(s"a partial did not survive its codec: $why")
     }
 
-  /** one partition's shape in one event-time column: its greatest and
+  /**
+   * One partition's shape in one event-time column: its greatest and
    * least value, and its own backwardness — how far a value fell
-   * below the greatest seen BEFORE it, within this partition */
-  private[cluster] final case class Extent(max: Long, min: Long, back: Long)
+   * below the greatest seen BEFORE it, within this partition.
+   *
+   * PUBLIC because it crosses a wire. It is what a worker answers to
+   * the pre-pass request, and the coordinator turns every
+   * partition's extents into the `Bounds` each of them then runs
+   * under (`edges`). Three longs per event-time column is the whole
+   * of what the coordinator needs to know before any partition may
+   * start — see stage 4b.
+   */
+  final case class Extent(max: Long, min: Long, back: Long)
+
+  /** one partition of a plan, as the chunks a worker will read.
+   * Refuses the same way `fan` does when the plan already has a keyed
+   * stage in it, since a partition of that is not a thing */
+  private[cluster] def partition[A](flow: Flow[A], i: Int): Chunks[A] =
+    val sh = shape(flow)
+    val head = sh.source
+    if head == null then
+      throw IllegalArgumentException(
+        "a distributed job reads ONE source: put the keyed stages in the sinks " +
+          "(specs/dataflow.md, stage 3)")
+    head.nn(i)
 
   /** every column's extent, in ONE pass over the partition */
-  private def extent[A](c: Chunks[A], times: Vector[A => Long]): Vector[Extent] =
+  private[cluster] def extent[A](c: Chunks[A], times: Vector[A => Long]): Vector[Extent] =
     val k = times.length
     val hi = Array.fill(k)(Long.MinValue)
     val lo = Array.fill(k)(Long.MaxValue)
@@ -537,6 +558,11 @@ object Flows {
   // ---------------------------------------------------------------
   // the fibres
   // ---------------------------------------------------------------
+
+  /** the same fan-out the local driver uses, for the coordinator:
+   * one fibre per partition, joined BY INDEX */
+  private[cluster] def spread[P](n: Int)(w: Int => P)(using Scheduler): Vector[P] ! Async =
+    parallel(n)(w)
 
   private def parallel[P](n: Int)(w: Int => P)(using Scheduler): Vector[P] ! Async =
     val fibres = (0 until n).toVector.map(i => Async.spawn(async(w(i))))

@@ -1114,6 +1114,14 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
         ("scala-" + scalaVersion.value) / "okay-cluster-fastopt" / "main.js"
       s"-Dokay.client.js=${client.getAbsolutePath}"
     },
+    // stage 4b (specs/dataflow.md): TestDistributed spawns REAL
+    // worker processes — `java -cp … okay.cluster.WorkerMain` — and a
+    // process needs a classpath. Handed over exactly the way the
+    // linked JS client's path above is, for the same reason: the test
+    // cannot reconstruct what sbt already knows.
+    Test / javaOptions += "-Dokay.cluster.cp=" +
+      (Test / fullClasspath).value.map(_.data.getAbsolutePath)
+        .mkString(java.io.File.pathSeparator),
     // hang the JS client's linking off Test/compile, not Test/test:
     // `test` is an InputTask in sbt 2 and a Task in sbt 1, while
     // `compile` is a plain TaskKey in both — and compiling before the

@@ -186,9 +186,9 @@ than trusting the author.
   source and the pass is single. This
   is what §20 already names as the asymmetry: a fan-out in one JVM is
   three method calls, in Flink it is three shuffles.
-- **4 — across processes.** 4a DONE (what crosses, and its Schema).
+- **4 — across processes.** DONE. 4a: what crosses, and its Schema.
   4b: the worker protocol — jobs by name, typed parameters, framed
-  transport, partial results back.
+  transport, partials back — and four real processes.
   Acceptance: the full Wrocław `Result` across four OS processes.
 - **5 — failure.** Batch: recompute a lost partition from lineage —
   a `Chunks` partition is a value, so this is nearly free. Streaming:
@@ -285,7 +285,23 @@ Stage 4a — what crosses (TestFlow):
       panes — asserted, not described
 - [ ] the worker protocol and four processes — stage 4b
 
-Stage 4b and later: written when the stage is claimed.
+Stage 4b — across processes (TestDistributed):
+- [x] `Job[P, R]` is the registry entry: a worker is asked for a NAME
+      and Schema-encoded parameters and builds the plan itself
+- [x] two requests — the pre-pass and the run — mirroring exactly the
+      two passes `Flows.fan` makes in one process
+- [x] in-process workers compute what the local fan computes, at
+      every partition count crossed with every worker count
+- [x] the same over SOCKETS in one JVM: real framing, real bytes
+- [x] the same across FOUR REAL OPERATING-SYSTEM PROCESSES, for a
+      windowed job and for a fan of three sinks
+- [x] the late feed too: a drop count only agrees if every worker
+      seeded its watermark from the coordinator's bounds
+- [x] a job the build does not know is an ANSWER naming what it does
+      know, not a crash
+- [ ] a worker that dies mid-run — stage 5
+
+Stage 5 and later: written when the stage is claimed.
 
 ## The watermark, and why a slice is not a stream
 
@@ -599,6 +615,62 @@ of the round-trip test still PASSED, because its feed had no late
 elements and both sides read zero. The test now runs a late-bearing
 feed too; with that, the same break fails it. A round-trip test on
 data that cannot exercise a field is testing the other fields only.
+
+### Stage 4b — the coordinator, the worker, and four real processes
+
+`Job[P, R]` is the registry entry, and it is Claim 3 made into a
+type: a worker is asked for a NAME and a Schema-encoded parameter and
+BUILDS THE PLAN ITSELF. No function crosses, no lambda is serialized,
+no class is shipped, and therefore none of the failure modes that
+come with those exist. The price is stated rather than hidden: every
+worker runs the same artifact. You deploy a build and submit a name —
+the same bargain Flink strikes with a submitted jar, made explicit
+instead of hidden behind a serializer that usually works.
+
+**Two requests, and they are a transcription rather than a design.**
+`Extent(job, params, part, of)` is the pre-pass; `Run(…, bounds)` is
+the fold. They are exactly the two passes `Flows.fan` already makes
+over each partition in one process, with the first now data-local on
+the worker.
+
+**Why two round trips, when one is obviously cheaper.** Because a
+partition's watermark must be the STREAM's watermark at that point —
+stage 1's theorem — and a worker cannot know what the partitions
+before it saw. The coordinator is the only party that can compute a
+prefix maximum, so it must hear from every partition before any of
+them may fold. The cheaper protocol is not faster, it is a different
+answer.
+
+**The transport** is a four-byte length and CBOR. No line framing and
+no base64: a partial is already bytes, and re-encoding it as text to
+fit a line-oriented protocol is a cost paid on every accumulator that
+crosses.
+
+**A worker is `Req => Resp`** — which is what `Cluster.Worker` has
+been since P7 — so the driver cannot tell an in-process worker from a
+socket. That is why the tests go in three levels: in-process first,
+then sockets in one JVM, then four real processes. A failure at level
+three is a failure of the transport and never of the arithmetic,
+because the arithmetic was pinned at level one.
+
+**Four JVMs that share nothing but an artifact and a name.** The
+acceptance runs a windowed job and a fan of three sinks across them,
+and asserts the answer, the drop count AND the merged count equal
+what one process computes. The late-bearing feed is in there
+deliberately: its drop count only agrees if every worker seeded its
+watermark from the coordinator's bounds, so the seeding theorem is
+what that assertion is really testing.
+
+**Controlled.** With the children started WITHOUT their registrar the
+test fails, naming the empty registry it got back — which is what
+proves the work happens over there rather than quietly at home.
+
+**What this stage does not do, and does not pretend to.** A worker
+that dies takes the run with it: there is no retry, no reassignment,
+no recomputation yet, and a partition being a thunk is what will make
+that cheap in stage 5. One request is in flight per connection. The
+coordinator is a single point of failure. None of that is hidden
+behind a hopeful word.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements

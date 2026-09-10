@@ -136,6 +136,23 @@ reorder its partials. Flink answers the same stage with a
 `KeyedProcessFunction` over `ValueState`, which must have every
 record of a key on one machine.
 
+**Across processes.** A `Job[P, R]` is what a worker can be asked for
+by NAME: it carries a `Schema` for its parameters and builds the plan
+itself, so nothing that crosses is a function. `Cluster.run(job,
+params, parts, workers)` is the coordinator, and a worker is
+`Req => Resp` — in-process, or a socket away, and the driver cannot
+tell. Two requests: the pre-pass (`Extent`) and the fold (`Run`),
+which are exactly the two passes the local fan already makes. The
+transport is a four-byte length and CBOR; `okay.cluster.WorkerMain`
+is a worker process, told its port and the classes whose loading
+registers what this build can run.
+
+Tested in three levels — in-process, sockets in one JVM, then four
+real operating-system processes — with the same bar at each: the
+answer, the drop count and the merged count must EQUAL what
+`Flows.fan` computes alone. A worker that dies still takes the run
+with it; failure is stage 5.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
@@ -211,6 +228,12 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Sink.fold / keyed / tumbling / sliding` | `… => Sink[A, R]` | one output: a stage plus its terminal |
 | `Sink.and` | `Sink[A, R1] => Sink[A, R2] => Sink[A, (R1, R2)]` | two sinks over one pass — `Aggregator.zip` one level up |
 | `Flows.fold` / `Flows.collect` | as above / `Flow[A] => Vector[A] ! Async` | the answer alone; every element in partition order |
+| `Job[P, R]` | `name / params / flow / sink` | what a worker can be asked for, by name |
+| `Jobs.register / find / names` | | what a build knows how to run |
+| `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator |
+| `Cluster.local` | `Req => Resp` | a worker made of the registry — in-process, and what a served process runs |
+| `Served.serve / connect` | `(ServerSocket, Serve)` / `(host, port) => Serve` | the same worker on a socket |
+| `WorkerMain` | `main(port, registrars…)` | a worker process |
 | `Acceptance` | `agg / source / frames / expected` | the shared-source program of the acceptance run |
 | `Client` (JS) | `main` | the Node client: connect, stream frames, verify via runAsync |
 

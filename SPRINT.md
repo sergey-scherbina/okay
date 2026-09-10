@@ -12,7 +12,9 @@
   coordinator where ~2.9 million did. Next: `dataflow-run-complete-panes`
   (the single-stage road did not get the rule and is now 7.6x behind
   the fan), `dataflow-fan-overhead` (a third of the fan's time is in
-  none of its sinks), then stage 4 across processes.
+  none of its sinks). STAGE 4 IS DONE: the engine runs across four
+  real processes, jobs by name, partials by Schema. Next is stage 5,
+  failure — a worker that dies takes the run with it today.
 
 ## Queue
 (the note that stood here named eight candidates; SIX have since
