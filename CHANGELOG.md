@@ -1,5 +1,40 @@
 # Changelog
 
+## bench-engine-native-arithmetic — the last two lanes stop borrowing our arithmetic, and it was a handicap
+
+§20's five in-process lanes were rewritten on their own operators
+(bench-native-lanes); Flink and Spark still accumulated through an
+okay `Aggregator` — `toFlink(Job.stats)` and
+`SparkInterop.aggregateByKey`. That is a fine claim about the interop
+and a poor benchmark row, and the rewrite turned up why it was worse
+than merely unfair:
+
+**`Job.stats`'s accumulator is `((Long, Long), Option[Int])`, which
+Flink's type extractor cannot read — so the window STATE of every pane
+was serialized by Kryo**, in the engine whose entire cost model is
+serialization, for three runs of this section. Spark wrote the same
+Scala tuple tree across every shuffle. A benchmark that quietly hands
+the competitor its slowest serializer is not measuring the competitor.
+
+Flink now accumulates with `RideStats` and `TopFive` —
+`AggregateFunction` over POJO accumulators (`StatsAcc`, `TopAcc`:
+public fields, no-arg constructor, primitive arrays for the five
+slots), mutated in place, which Flink's contract explicitly permits
+and its extractor reads without Kryo. Spark's RDD lane uses its own
+`aggregateByKey` over a flat `(Long, Long, Int)`, `RDD.aggregate` for
+the checksum fold, and a group-and-sort per window for the top-5.
+
+Both lanes still agree with okay on all eleven checksums
+(`TestWroclawStream`, `TestSparkLanes`), which is what makes the
+rewrite checkable rather than plausible. `FlinkInterop.toFlink` and
+`SparkInterop` are unchanged and still proved by their own suites.
+
+§20's Flink and Spark rows are now marked † and named pessimistic:
+they were taken under the Kryo handicap. They are not re-taken here —
+the box is carrying three sibling builds and cannot resolve a 10%
+change, let alone this one — and `wroclaw-remeasure-quiet` is where
+the whole table gets re-run.
+
 ## parse-quadratic-stack-length — List.length in a hot per-token loop, 74s to 39ms
 
 json-lossless-quadratic-depth (found the same day, building a test

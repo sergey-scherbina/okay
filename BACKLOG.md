@@ -22,17 +22,19 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       mutable cell, a sort for the top-5 — with no okay type in the
       lane, each carried by the library's own combinators and each at
       1/2/4/8 cores. §20 has the numbers and the reversal they show.
-- [ ] Flink still takes `toFlink(Job.stats)` where a Flink user would
-      write an `AggregateFunction`, and the Spark RDD lane still calls
-      `SparkInterop.aggregateByKey` where it should call Spark's own.
-      Both are engine lanes with their own event-time windows, so the
-      distortion is smaller than it was for the five — the borrowed
-      part is the arithmetic, not the operator — but the rule is the
-      rule. `toFlink` and `Collect.collector` stay in the correctness
-      tests, where "one value answers on every engine" is a claim
-      about the interop rather than a benchmark row. The equality
-      assertion carries over: whatever API a lane uses, its eleven
-      checksums must equal okay's.
+- [x] **Flink and Spark: DONE** (2026-09-10,
+      bench-engine-native-arithmetic). Flink accumulates through its
+      own `AggregateFunction` over POJO accumulators (`StatsAcc`,
+      `TopAcc`), Spark's RDD lane through its own `aggregateByKey`
+      over a flat `(Long, Long, Int)` and a sort per window for the
+      top-5. Both still answer the same eleven checksums. The finding
+      the rewrite produced is worth more than the fairness: our
+      accumulator was a HANDICAP — `((Long, Long), Option[Int])` is
+      unreadable to Flink's type extractor, so its window state went
+      through Kryo, and Spark wrote it across every shuffle. `toFlink`
+      and `SparkInterop` stay in their own suites, where "one value
+      answers on every engine" is a claim about the interop rather
+      than a benchmark row.
 
 ## okay core
 - [x] aggregator-zip-allocates — DONE (2026-09-10):

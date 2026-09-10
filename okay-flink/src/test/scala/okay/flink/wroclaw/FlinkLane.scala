@@ -2,10 +2,9 @@ package okay.flink.wroclaw
 
 import okay.wroclaw.{Depart, Feed, Job, Ride}
 
-import okay.flink.FlinkInterop.toFlink
 import org.apache.flink.api.common.accumulators.LongCounter
 import org.apache.flink.api.common.eventtime.{SerializableTimestampAssigner, WatermarkStrategy}
-import org.apache.flink.api.common.functions.{FilterFunction, MapFunction, OpenContext}
+import org.apache.flink.api.common.functions.{AggregateFunction, FilterFunction, MapFunction, OpenContext}
 import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
 import org.apache.flink.api.common.typeinfo.{TypeHint, TypeInformation, Types}
 import org.apache.flink.api.java.functions.KeySelector
@@ -41,14 +40,24 @@ import java.time.Duration
  * arguments — here, the 139-row routes table, which is the map-side
  * join of stage 1.
  *
- * WHAT THIS LANE PROVES ABOUT okay-flink. `toFlink(Job.stats)` is the
- * ONLY adaptation between the two lanes: the very okay `Aggregator`
- * the single-JVM lane folds with is what Flink accumulates, merges
- * across panes and presents here. The module's claim — an
- * `Aggregator` IS an `AggregateFunction` — is under test at every
- * window this job opens, including the serialization of that value
- * into a distributed job graph, which the module's unit test never
- * reached.
+ * THE ARITHMETIC IS FLINK'S OWN (bench-engine-native-arithmetic).
+ * This lane used to accumulate through `FlinkInterop.toFlink(Job.stats)`
+ * — the very okay `Aggregator` the in-process lane folds with — and
+ * that made a fine claim about the interop and a poor benchmark row:
+ * a competitor's number must measure THEIR api. Worse, it was a
+ * handicap nobody had noticed: the accumulator was
+ * `((Long, Long), Option[Int])`, which Flink's type extractor cannot
+ * read, so the window STATE went through Kryo. `RideStats` and
+ * `TopFive` below are what a Flink user writes — `AggregateFunction`
+ * over a POJO accumulator, mutated in place as Flink's contract
+ * permits — and the eleven checksums say they compute the same
+ * answer.
+ *
+ * `FlinkInterop.toFlink` is unchanged and still proved: an okay
+ * `Aggregator` IS an `AggregateFunction`, asserted by
+ * `TestWroclawStream`'s interop lane and okay-flink's own suite —
+ * including serialization into a job graph, which a unit test alone
+ * never reached. That claim belongs in a test, not in a table.
  */
 object FlinkLane {
 
@@ -112,9 +121,11 @@ object FlinkLane {
     val depart = TypeInformation.of(classOf[Depart])
     val ride = TypeInformation.of(classOf[Ride])
     val win = TypeInformation.of(classOf[Win])
-    val acc = TypeInformation.of(new TypeHint[Job.Acc] {})
+    // the accumulators are POJOs now, so Flink's extractor reads them
+    // instead of falling back to Kryo (bench-engine-native-arithmetic)
+    val acc = TypeInformation.of(classOf[StatsAcc])
     val stats = TypeInformation.of(new TypeHint[Job.Stats] {})
-    val topAcc = TypeInformation.of(new TypeHint[List[(Int, Job.Stats)]] {})
+    val topAcc = TypeInformation.of(classOf[TopAcc])
 
     val watermarks = WatermarkStrategy
       .forBoundedOutOfOrderness[Depart](Duration.ofMillis(Job.Lateness))
@@ -159,14 +170,14 @@ object FlinkLane {
     val routeWindows = rides
       .keyBy(new ByRoute, Types.INT)
       .window(TumblingEventTimeWindows.of(Duration.ofMillis(Job.WindowMs)))
-      .aggregate(toFlink(Job.stats), new RouteWindow(tram), acc, stats, win)
+      .aggregate(new RideStats, new RouteWindow(tram), acc, stats, win)
 
     // stage 3 — sliding, per stop: three panes per event, same aggregator
     rides
       .keyBy(new ByStop, Types.INT)
       .window(SlidingEventTimeWindows.of(
         Duration.ofMillis(Job.SlideWindowMs), Duration.ofMillis(Job.SlideMs)))
-      .aggregate(toFlink(Job.stats), new StopWindow, acc, stats, Types.LONG)
+      .aggregate(new RideStats, new StopWindow, acc, stats, Types.LONG)
       .sinkTo(new DiscardingSink[java.lang.Long]): Unit
 
     // stage 4 — keyed state, no window: the bunching detector
@@ -180,8 +191,7 @@ object FlinkLane {
       .filter(new Trams)
       .keyBy(new ByWindow, Types.LONG)
       .window(TumblingEventTimeWindows.of(Duration.ofMillis(Job.WindowMs)))
-      .aggregate(toFlink(Job.top.contramap[Win](w => (w.key, Job.Stats(w.n, w.sum, w.max)))),
-        new Ranking, topAcc, topAcc, Types.LONG)
+      .aggregate(new TopFive, new Ranking, topAcc, topAcc, Types.LONG)
       .sinkTo(new DiscardingSink[java.lang.Long]): Unit
 
     val result = env.execute("wroclaw-departures")
@@ -197,6 +207,61 @@ object FlinkLane {
 /** the replay source: index -> event, in the JVM the cluster runs in */
 private final class Replay extends GeneratorFunction[java.lang.Long, Depart] {
   def map(i: java.lang.Long): Depart = FlinkLane.event(i.longValue)
+}
+
+/**
+ * STAGE 2 AND 3'S ARITHMETIC, AS A FLINK USER WRITES IT
+ * (bench-engine-native-arithmetic): `AggregateFunction` over a POJO
+ * accumulator, mutated in place, which is what Flink's own contract
+ * asks for and what its type extractor can serialize without Kryo.
+ *
+ * It computes what `Job.stats` computes — the equality of the eleven
+ * checksums is asserted before any number is printed — but it is not
+ * that value, and that is the point of the change: a competitor's row
+ * must measure THEIR api. `FlinkInterop.toFlink` still says an okay
+ * `Aggregator` IS an `AggregateFunction`, and `TestFlinkInterop`
+ * still proves it; that claim belongs in a test, not in a table.
+ */
+private final class RideStats extends AggregateFunction[Ride, StatsAcc, Job.Stats] {
+  def createAccumulator(): StatsAcc = new StatsAcc
+
+  def add(r: Ride, acc: StatsAcc): StatsAcc =
+    acc.n += 1L
+    acc.sum += r.delay.toLong
+    if r.delay > acc.max then acc.max = r.delay
+    acc
+
+  def getResult(acc: StatsAcc): Job.Stats = Job.Stats(acc.n, acc.sum, acc.max)
+
+  def merge(a: StatsAcc, b: StatsAcc): StatsAcc =
+    val out = new StatsAcc
+    out.n = a.n + b.n
+    out.sum = a.sum + b.sum
+    out.max = if a.max > b.max then a.max else b.max
+    out
+}
+
+/**
+ * STAGE 5'S RANKING, likewise: five slots of primitives kept sorted
+ * in the job's own total order (greatest mean first, ties to the
+ * smaller route index), where the lane used to hand Flink
+ * `Aggregator.topK`'s `List[(Int, Job.Stats)]` for Kryo to carry.
+ */
+private final class TopFive extends AggregateFunction[Win, TopAcc, TopAcc] {
+  def createAccumulator(): TopAcc = new TopAcc
+
+  def add(w: Win, acc: TopAcc): TopAcc =
+    acc.offer(w.key, w.n, w.sum, w.max)
+    acc
+
+  def getResult(acc: TopAcc): TopAcc = acc
+
+  def merge(a: TopAcc, b: TopAcc): TopAcc =
+    var i = 0
+    while i < b.size do
+      a.offer(b.route(i), b.n(i), b.sum(i), b.max(i))
+      i += 1
+    a
 }
 
 /** event time is the departure's own time */
@@ -310,7 +375,7 @@ private final class Bunching extends KeyedProcessFunction[java.lang.Long, Ride, 
 
 /** stage 5: the ranking, folded */
 private final class Ranking
-  extends ProcessWindowFunction[List[(Int, Job.Stats)], java.lang.Long, java.lang.Long, TimeWindow] {
+  extends ProcessWindowFunction[TopAcc, java.lang.Long, java.lang.Long, TimeWindow] {
   @transient private var wins: LongCounter = scala.compiletime.uninitialized
   @transient private var hash: XorLong = scala.compiletime.uninitialized
 
@@ -320,8 +385,13 @@ private final class Ranking
     getRuntimeContext.addAccumulator(FlinkLane.N.TopHash, hash)
 
   def process(w: java.lang.Long,
-              ctx: ProcessWindowFunction[List[(Int, Job.Stats)], java.lang.Long, java.lang.Long, TimeWindow]#Context,
-              in: java.lang.Iterable[List[(Int, Job.Stats)]], out: Collector[java.lang.Long]): Unit =
+              ctx: ProcessWindowFunction[TopAcc, java.lang.Long, java.lang.Long, TimeWindow]#Context,
+              in: java.lang.Iterable[TopAcc], out: Collector[java.lang.Long]): Unit =
+    val top = in.iterator.next()
+    val ranked = Seq.tabulate(top.size)(i =>
+      (top.route(i), Job.Stats(top.n(i), top.sum(i), top.max(i))))
     wins.add(1L)
-    hash.add(Job.topHash(ctx.window.getStart, in.iterator.next()))
+    // `Job.topHash` is the ANSWER's format, not a way of computing it:
+    // both engines must agree on the same hash of the same ranking
+    hash.add(Job.topHash(ctx.window.getStart, ranked))
 }

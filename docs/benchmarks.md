@@ -3641,14 +3641,30 @@ and never priced as if it were free.
    against okay's before its number is printed. A row that computed
    something else is not fast or slow, it is wrong, and it never
    reaches the table.
-6. **Each competitor on ITS OWN operators** (2026-09-10, the
-   operator's rule). No lane below is handed okay's window operator or
-   okay's aggregator any more: the five in-process libraries fold into
-   maps that never evict, because that is what they give their users,
-   and Flink and Spark use their own windows. The one place our types
+6. **Each competitor on ITS OWN operators AND its own arithmetic**
+   (2026-09-10, the operator's rule). No lane below is handed okay's
+   window operator or okay's aggregator any more: the five in-process
+   libraries fold into maps that never evict, because that is what
+   they give their users; Flink uses its own windows and now its own
+   `AggregateFunction` over a POJO accumulator; Spark's RDD lane uses
+   its own `aggregateByKey` over a flat tuple. The one place our types
    still cross a seam is labelled as such — `java.util.stream, windowed
    collector` is okay-java's `Windowed`, and it is in the table to
    answer what the JDK's own rows raise, not to stand in for them.
+
+   **Handing a competitor our value was a HANDICAP, not a favour, and
+   nobody had noticed.** Flink accumulated through
+   `toFlink(Job.stats)`, whose accumulator is
+   `((Long, Long), Option[Int])` — a Scala tuple tree Flink's type
+   extractor cannot read — so its window STATE was serialized by
+   **Kryo**, on every pane, in the engine whose whole cost model is
+   serialization. Spark's RDD lane wrote the same accumulator across
+   every shuffle. A benchmark that quietly picks the competitor's
+   slowest serializer is not measuring the competitor, and this one
+   did that for three runs of this section while congratulating itself
+   on the interop. The Flink and Spark rows in the table below were
+   taken BEFORE that was fixed and are therefore pessimistic; they are
+   re-taken in `wroclaw-remeasure-quiet`.
 
 The shared half — the feed, the job's definition, okay's own lanes and
 the measurement — lives in `compare/src/main/scala/okay/wroclaw/`,
@@ -3699,14 +3715,20 @@ digits.
 | java.util.stream, windowed collector | 1 | 2 940 461 | 821 ms | 1 340 | 1 574 MB |
 | okay, 1 thread (`Chunks`) | 1 | 2 905 077 | 831 ms | 1 047 | 1 574 MB |
 | the floor (a while loop, okay's operator) | 1 | 2 823 530 | 855 ms | 1 033 | 1 536 MB |
-| flink, parallelism 8 | 8 | 1 593 477 | 1 515 ms | 2 195 | 1 420 MB |
-| flink, parallelism 4 + checkpoints 5 s | 4 | 1 397 059 | 1 728 ms | 2 192 | 1 641 MB |
-| flink, parallelism 4 | 4 | 1 314 163 | 1 837 ms | 2 187 | 1 483 MB |
-| flink, parallelism 4, object reuse off | 4 | 1 129 676 | 2 137 ms | 2 387 | 1 595 MB |
-| flink, parallelism 2 | 2 | 881 065 | 2 740 ms | 2 181 | 994 MB |
-| flink, parallelism 1 | 1 | 673 958 | 3 582 ms | 2 181 | 1 049 MB |
-| spark, local[4], batch RDD | 4 | 260 844 | 9 255 ms | 16 172 | 2 021 MB |
-| spark, local[4], structured streaming | 4 | 258 997 | 9 321 ms | 3 839 | 2 016 MB |
+| flink, parallelism 8 †| 8 | 1 593 477 | 1 515 ms | 2 195 | 1 420 MB |
+| flink, parallelism 4 + checkpoints 5 s †| 4 | 1 397 059 | 1 728 ms | 2 192 | 1 641 MB |
+| flink, parallelism 4 †| 4 | 1 314 163 | 1 837 ms | 2 187 | 1 483 MB |
+| flink, parallelism 4, object reuse off †| 4 | 1 129 676 | 2 137 ms | 2 387 | 1 595 MB |
+| flink, parallelism 2 †| 2 | 881 065 | 2 740 ms | 2 181 | 994 MB |
+| flink, parallelism 1 †| 1 | 673 958 | 3 582 ms | 2 181 | 1 049 MB |
+| spark, local[4], batch RDD †| 4 | 260 844 | 9 255 ms | 16 172 | 2 021 MB |
+| spark, local[4], structured streaming †| 4 | 258 997 | 9 321 ms | 3 839 | 2 016 MB |
+
+† taken while the lane still accumulated through our `Aggregator`,
+which put Flink's window state and Spark's shuffle writes through Kryo
+(see rule 6 above). Both lanes now use their own arithmetic and both
+still answer the same eleven checksums; the rows are pessimistic until
+`wroclaw-remeasure-quiet` re-takes them.
 
 **The cores axis, which is what the table above is really about:**
 
