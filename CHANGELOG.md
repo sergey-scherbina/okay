@@ -19,7 +19,7 @@ implementations of a type (pass the `Vector`, as `Ops.routes` does),
 no memoisation of a module composed twice (measured: two instances,
 the nearest wins), no method interception, no event bus. The first two
 are small and could be built; the last two are refusals, with their
-reasons in the rows. Commit: LANDING.
+reasons in the rows. Commit: 4ca7bed3.
 
 ## dataflow stage 6b — a replacement worker replays rather than restores
 
