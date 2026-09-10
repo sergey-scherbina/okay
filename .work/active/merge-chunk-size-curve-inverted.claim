@@ -1,6 +1,0 @@
-feature/merge-chunk-size-curve-inverted 2026-09-10T20:59:18Z
-agent: claude-code
-heartbeat: 2026-09-10T20:59:18Z
-status: in-progress
-done-so-far: claimed
-next: isolate the rise — chunk building alone, merge without unchunk, then fix whatever the curve points at
