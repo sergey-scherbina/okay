@@ -1,6 +1,0 @@
-feature/parse-depth-tests-out-of-the-gate 2026-09-10T15:10:44Z
-agent: claude-code
-heartbeat: 2026-09-10T15:10:44Z
-status: in-progress
-done-so-far: claimed (no live claim on okay-parse; four gates red on this suite alone)
-next: tag TestParseDepth Live so the wall-clock guard runs in integrationTest, per AGENTS.md's own policy
