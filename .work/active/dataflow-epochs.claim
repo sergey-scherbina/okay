@@ -1,0 +1,51 @@
+task: dataflow-epochs
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-epochs
+worktree: ../okay-wt-dfe
+spec: specs/dataflow.md, stage 6 (first half)
+
+why: everything so far is a BATCH engine that happens to run across
+  machines. A partition is read to its end, its partials are merged
+  once, and the answer is produced once. A stream has no end, so
+  every one of those three sentences has to change.
+
+what, and the ordering is forced rather than chosen:
+
+  1. `Sink`'s coordinator side becomes a FOLD. It has `result(ws): R`
+     today, which can only be called when there is nothing left to
+     come. It gains a running state `S` with `absorb(s, ws,
+     watermark)` and `emit(s)`, and `result` becomes
+     `emit(absorb(empty, ws, MaxValue))` — so no existing behaviour
+     moves, and the batch answer stays the definition of correct.
+
+     This is the load-bearing change: without it the coordinator can
+     never retire a pane, and "streaming" would mean holding every
+     boundary pane for ever.
+
+  2. THE WATERMARK IS THE MINIMUM OVER THE PARTITIONS, not the
+     maximum. In a batch run the coordinator knows every partition's
+     greatest event time before anything folds; in a stream it knows
+     only what each has reported SO FAR, and a partition that has
+     not advanced holds the whole stream back. That is the standard
+     rule and it is also the only correct one.
+
+  3. An EPOCH: workers keep their operator state between rounds
+     (`Open` / `Advance` / `Close`), each round advances every
+     partition by a bounded amount, and the coordinator retires what
+     the global watermark closed.
+
+acceptance: the same job streamed in K epochs answers what the batch
+  run answers — the same panes, the same drops. That is a strong bar
+  because it can only hold if the windows survive an epoch boundary
+  and the watermark is right at every step.
+
+NOT in this lane, and named so it is not assumed: checkpointing and
+  recovery from an offset (the worker's state is in memory and dies
+  with it), and exactly-once at the sink. Those are 6b and 6c, and
+  okay-persist already has the log and the offsets they need.
+
+predict: the refactor in (1) will be mechanical and the watermark in
+  (2) will be where a test fails first — because "min over
+  partitions" and "max so far" agree on a feed where every partition
+  advances evenly, which is exactly what a first test would use.
