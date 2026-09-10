@@ -16,3 +16,4 @@ hs_err_pid*.log
 # JMH -prof jfr writes its recording beside the project
 *.jfr
 compare/okay.*-AverageTime-*/
+compare/jmh-result.text

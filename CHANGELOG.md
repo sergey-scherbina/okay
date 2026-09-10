@@ -1,5 +1,41 @@
 # Changelog
 
+## windows-int-key-panes — the cheap half of the pane store, measured and refuted
+
+§20 left okay's single-core row about a third slower than a plain map
+fold after `Aggregator.summary` took the other two thirds, and named
+the pane store as the remainder. The cheapest idea in it was this:
+`okay.Windows` holds an accumulator per pane, and an accumulator is a
+VALUE, so folding an element is `getOrElse` then `update` — two walks
+of the same hash table, once per pane per element, three times over
+for a 15-minute window sliding every 5. Put the value behind a
+one-field `Cell` and it becomes one walk plus a field store: one
+object per PANE bought to save one lookup per ELEMENT.
+
+It was written, gated, and held unlanded for hours because the box
+could not price it. On a quiet one, `WindowsBenchmark` — which this
+lane lands, and which is the point of it now — says the idea is worth
+nothing:
+
+  tumbling  426.8 +-23.0 us with the Cell, 431.4 +-18.6 without
+  sliding   911.5 +-124.2 us with the Cell, 874.5 +-69.8 without
+
+1% better on one lane, 4% worse on the other, both inside the bars,
+16 iterations a side, the two runs minutes apart on the same box.
+`LongMap`'s get and update are cheap next to the rest of `add`, and
+the Cell's indirection and its per-pane allocation pay back whatever
+the second walk cost. The code is reverted.
+
+**What lands is the instrument.** §20 prices `Windows` inside a
+2.4M-event replay whose wall clock moves 10-30% with whatever else the
+machine is doing — fine for a 1.4x, useless for the 8-11% the pane
+store is supposed to be worth. `WindowsBenchmark` is the same operator
+with warmup, forks and error bars: two lanes, tumbling (one pane per
+element) and sliding (three), over `Aggregator.summary` so the
+arithmetic is not what is being measured. The next idea about the pane
+store — the key structure, which is the part still unmeasured — can be
+judged the day it is written.
+
 ## dataflow stage 8 — the coordinator survives
 
 Every stage from 6a to 7 ended with the same sentence: if the

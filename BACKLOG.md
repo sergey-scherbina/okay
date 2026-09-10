@@ -81,6 +81,20 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       return, or an `OfLong`-returning overload for the `Long` case,
       would close it. The same shape as `zip` hiding the
       specialization, one level down.
+- [x] windows-one-lookup-per-pane — REFUTED BY MEASUREMENT
+      (2026-09-10, windows-int-key-panes). The idea: `Windows` holds a
+      one-field `Cell` per pane, so folding an element is ONE hash walk
+      plus a field store where it was `getOrElse` then `update`, twice
+      per pane per element. Written, gated, and then priced on a quiet
+      box by `WindowsBenchmark` (which this lane also lands), 16
+      iterations per side, minutes apart:
+        tumbling 426.8 +-23.0 us with it, 431.4 +-18.6 without
+        sliding  911.5 +-124.2 us with it, 874.5 +-69.8 without
+      1% better on one lane, 4% WORSE on the other, both inside the
+      bars: the change buys nothing. `LongMap`'s get and update are
+      cheap next to the rest of `add`, and the Cell's indirection and
+      its allocation per pane pay back whatever the second walk cost.
+      The code is reverted; the instrument stays.
 - [ ] windows-int-key-panes — the OTHER third of the same gap
       (docs/benchmarks.md §20, "Why one core loses"): `okay.Windows`
       keys panes by `HashMap[K, LongMap[Acc]]`, which boxes an `Int`
