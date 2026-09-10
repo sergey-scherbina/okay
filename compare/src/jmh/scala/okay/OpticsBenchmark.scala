@@ -20,6 +20,9 @@ import okay.given
  *     optics-fast exists for: the chain paid once, then called
  *   compiledLensSet     against lensSet — where there is no chain to
  *     pay, so the expected answer is "no difference"
+ *   fusedComposedSet    against nestedCopy — optics-fuse: the update
+ *     emitted by the compiler, which should BE the hand-written one
+ *   fusedLensSet        against copySet — the same, one field deep
  *
  * Read per-lane MINIMA across forks (bench-one-round-lies), not the mean.
  */
@@ -30,9 +33,7 @@ import okay.given
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(3)
 class OpticsBenchmark {
-
-  final case class Address(city: String, zip: Int)
-  final case class Person(name: String, age: Int, address: Option[Address])
+  import OpticsBenchmark.{Address, Person}
 
   private val age: Lens[Person, Person, Int, Int] = Lens[Person](_.age)
   private val ageByName = Lens.field[Person]("age")
@@ -44,6 +45,17 @@ class OpticsBenchmark {
   // optics-fast: the optic run ONCE at its concrete representation.
   // Built here, in a field — building it per call would measure the
   // build, which is the thing being avoided.
+  // optics-fuse: the optic as an INLINE DEF, so the macro sees the
+  // expression rather than a reference and can emit the update itself
+  // the halves written out: `Lens[S](_.f)` is itself a macro, and a
+  // macro cannot expand another macro's captured call (optics-fuse),
+  // so a fusable optic names its own get and put
+  private inline def iAge = Lens[Person, Person, Int, Int](_.age, (s, v) => s.copy(age = v))
+  private inline def iAddress =
+    Lens[Person, Person, Option[Address], Option[Address]](_.address, (s, v) => s.copy(address = v))
+  private inline def iZip = Lens[Address, Address, Int, Int](_.zip, (s, v) => s.copy(zip = v))
+  private inline def iPersonZip = iAddress.andThen(Prism.some[Address, Address]).andThen(iZip)
+
   private val cAge = age.compiled
   private val cAgeLens = age.compiledLens
   private val cPersonZip = personZip.compiled
@@ -64,6 +76,8 @@ class OpticsBenchmark {
   @Benchmark def nestedCopy: Person = { n += 1; p.copy(address = p.address.map(_.copy(zip = n))) }
   @Benchmark def composedSet: Person = { n += 1; personZip.set(n)(p) }
   @Benchmark def compiledComposedSet: Person = { n += 1; cPersonZip.set(n)(p) }
+  @Benchmark def fusedComposedSet: Person = { n += 1; Fuse.set(iPersonZip)(n)(p) }
+  @Benchmark def fusedLensSet: Person = { n += 1; Fuse.set(iAge)(n)(p) }
   @Benchmark def compiledLensSet: Person = { n += 1; cAge.set(n)(p) }
   @Benchmark def compiledShopSet: Person = { n += 1; cAgeLens.set(n)(p) }
 
@@ -73,3 +87,11 @@ class OpticsBenchmark {
   @Benchmark def vectorSum: Int = vec.foldLeft(0)(_ + _)
   @Benchmark def traversalFold: Int = each.foldMap(identity)(vec)
 }
+
+/** the model lives here, not in the class: JMH generates a subclass, and
+ * a case class declared inside the benchmark is path-dependent — an
+ * `inline def` expanded in the generated code then cannot name it
+ * (found by optics-fuse) */
+object OpticsBenchmark:
+  final case class Address(city: String, zip: Int)
+  final case class Person(name: String, age: Int, address: Option[Address])

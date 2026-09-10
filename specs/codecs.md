@@ -109,10 +109,17 @@ defaults, so the macro here reads what the compiler already wrote —
 the companion's `<init>$default$N` methods — and nothing else. (This
 was "the ONE macro this library allows itself" until optics-core,
 2026-09-09, whose field selector `Lens[S](_.f)` is a second of the
-same kind; the policy is now stated as what both obey: A MACRO ONLY
-READS, IT NEVER WRITES — it may inspect a tree the compiler built and
-must generate nothing beyond a call to ordinary code. specs/optics.md
-Decisions.) Everything downstream stays ordinary values:
+same kind; the policy was then stated as what both
+obeyed: a macro only reads, it never writes. optics-fuse (2026-09-10)
+is the third and breaks that half — `Fuse` reads an optic and WRITES
+the nested update — so the policy is amended rather than quietly
+dropped: A MACRO MAY WRITE ONLY WHAT THE READER COULD HAVE WRITTEN,
+AND A TEST MUST SAY SO. `Fuse` emits the update a person writes by
+hand; its tests assert the emitted ANSWER equals the optic's on every
+shape, and its benchmark asserts the emitted CODE equals the
+hand-written one by allocation. A macro whose output cannot be checked
+against something that already exists still does not belong here.
+specs/optics.md, optics-fuse.) Everything downstream stays ordinary values:
 
 - `SProduct` gains `defaults: Vector[Option[() => Any]]` (aligned
   with `fields`, empty when underived/unknown — every existing

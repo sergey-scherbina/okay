@@ -2048,6 +2048,15 @@ measure on our own data, never a predicted result.
       rest of the row untouched) and `PState.zoom` (one shift: the
       four-parameter lens zooms the parameterised state, and the whole
       changes type exactly when the part does).
+- [x] optics-fuse — LANDED 2026-09-10 (operator's call, following
+      optics-fast): `Fuse.set` / `Fuse.modify` emit the nested update
+      at compile time. Reaches the hand-written figures to the byte
+      (24 and 64 B/op); the composed set 15.0 -> 3.9 ns. Limitation,
+      measured not guessed: a selector-built `Lens[S](_.f)` is opaque
+      (a macro cannot see through another macro's captured argument)
+      and falls back correctly. specs/codecs.md's macro policy is
+      amended: a macro may write only what the reader could have
+      written, and a test must say so.
 - [x] optics-fast — BUILT, MEASURED, DECLINED 2026-09-10 (operator's
       call; specs/optics.md "optics-fast"). The premise was refuted:
       compiling an optic to its concrete pair is SLOWER (3.0 -> 8.0 ns

@@ -352,6 +352,47 @@ isomorphism chapter 10 cites can be run. Its doc comment says, in the
 first screen, that it is not a fast path. Nothing in the library uses
 it, and nothing should for speed.
 
+## optics-fuse — the fusion moved into the compiler (2026-09-10)
+
+The operator read optics-fast's answer correctly: if the indirection
+is the problem, remove it at COMPILE time. `Fuse.set(optic)(b)(s)` and
+`Fuse.modify` read the optic expression — a chain of `Lens(get, put)`
+and `Prism.some` joined by `andThen` — and emit the nested update,
+beta-reducing every lambda, so no optic and no intermediate survives.
+
+It reaches the hand-written update exactly:
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `copy` by hand | 1.46 | 24 |
+| `Fuse.set`, one field | 1.53 | **24** |
+| the live optic, one field | 2.78 | 40 |
+| nested `copy` by hand | 4.25 | 64 |
+| `Fuse.set`, lens ∘ prism ∘ lens | 3.93 | **64** |
+| the live optic, composed | 15.04 | 168 |
+
+The bytes are the proof rather than the times: 24 and 64 are the
+hand-written figures to the byte, so the emitted code IS the update a
+person would write. The composed set goes 15.0 -> 3.9 ns, 168 -> 64
+B/op.
+
+**What it reads, and the limitation that is not going away.** The
+halves must be EXPLICIT — `Lens(_.f, (s, v) => s.copy(f = v))`, named
+by an `inline def` or written at the call site. `Lens[S](_.f)` is
+itself a macro, and an inline argument is captured BEFORE a nested
+macro in it expands, so a macro cannot see through another macro's
+call. This was not deduced: with selector-built lenses every call fell
+back and the benchmark returned the live optic's own figure to the
+byte (168 B/op), which is how it was found. Following the reference
+through an `inline def` was the other half of the same lesson — a
+reference arrives unexpanded, and without following it nothing fused
+at all.
+
+Everything it cannot read falls back to the ordinary optic, so
+correctness never depends on the fusion; a test asserts the fused and
+the unfused answers agree on every shape, including the ones that
+fall back.
+
 ## Results
 
 Stage 3 (optics-state) landed 2026-09-09: `State.zoom` and

@@ -1,5 +1,43 @@
 # Changelog
 
+## optics-fuse — the fusion moved into the compiler, and it lands on the hand-written update to the byte
+
+optics-fast measured that a run-time compiled optic is slower because
+the JIT will not inline through a field-held lambda. The operator's
+answer was the right one: do the fusion where inlining is not a hope.
+`Fuse.set(optic)(b)(s)` and `Fuse.modify` read the optic EXPRESSION —
+`Lens(get, put)` and `Prism.some` joined by `andThen` — and emit the
+nested update, beta-reducing every lambda, so no optic and no
+intermediate survives to be allocated.
+
+The bytes are the result, not the times: one field 24 B/op against the
+hand-written `copy`'s 24; the composed lens ∘ prism ∘ lens 64 B/op
+against the nested copy's 64. The emitted code IS the update a person
+would write. In time, the composed set goes from 15.0 ns to 3.9 —
+against 4.25 for the hand-written one.
+
+Two things had to be learned rather than assumed, and both came from
+the benchmark rather than from reading the code. A reference to an
+`inline def` arrives UNEXPANDED, so the macro follows the name to its
+definition; without that, every call fell back and the fusion did
+nothing while appearing to work. And a selector-built `Lens[S](_.f)`
+is opaque to it — an inline argument is captured before a nested macro
+in it expands, so a macro cannot see through another macro's call —
+which is why a fusable optic names its halves. That limitation was
+found the same way: with selector lenses the benchmark returned the
+live optic's own figure to the byte.
+
+Everything it cannot read falls back to the ordinary optic, and a test
+asserts the fused and unfused answers agree on every shape, the
+fallbacks included, on the JVM, JS and Native.
+
+The macro policy in specs/codecs.md is amended rather than quietly
+dropped. It read "a macro only reads, it never writes"; `Fuse` writes.
+It now reads: a macro may write only what the reader could have
+written, and a test must say so — `Fuse` emits what a person writes by
+hand, its tests assert the answer, and its benchmark asserts the code
+by allocation.
+
 ## bench-java-stream-lane — the same job on java.util.stream, and what the JDK's model costs
 
 The operator asked for §20's job on the JDK's own streams too, and it
