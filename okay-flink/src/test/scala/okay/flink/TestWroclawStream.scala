@@ -62,6 +62,10 @@ class TestWroclawStream extends munit.FunSuite {
   test("the two lanes compute the same answer") {
     val (okay, _) = timed(OkayLane.run(feed))
     println(s"  okay:  $okay")
+    // the core operator (okay.Windows) and the hand-packed one this
+    // benchmark carried before it must agree, or the §20 rows compare
+    // two different computations
+    assertEquals(OkayLane.packed(feed), okay, "the packed baseline differs from the core operator")
     val (flink, _) = timed(FlinkLane.run(feed, parallelism = 1))
     println(s"  flink: $flink")
     assertEquals(flink, okay, "Flink's answer differs from okay's")
@@ -73,12 +77,33 @@ class TestWroclawStream extends munit.FunSuite {
     val answer = OkayLane.run(feed)
     println(s"  ${feed.events.length} events, best of $rounds")
     val okayMs = best("okay, 1 thread", Some(answer))(OkayLane.run(feed))
+    best("okay, 1 thread, packed-key windows", Some(answer))(OkayLane.packed(feed)): Unit
     val f1 = best("flink p1", Some(answer))(FlinkLane.run(feed, 1))
     val f4 = best("flink p4", Some(answer))(FlinkLane.run(feed, 4))
     val f4c = best("flink p4 + checkpoints 5 s", Some(answer))(FlinkLane.run(feed, 4, checkpointMs = 5000L))
     val f4n = best("flink p4, no object reuse", Some(answer))(FlinkLane.run(feed, 4, objectReuse = false))
     println(f"  ratios: flink p1 ${f1.toDouble / okayMs}%.1fx  p4 ${f4.toDouble / okayMs}%.1fx" +
       f"  p4+ckpt ${f4c.toDouble / okayMs}%.1fx  p4 no-reuse ${f4n.toDouble / okayMs}%.1fx  of the okay lane")
+  }
+
+  /**
+   * THE WINDOW OPERATOR, THREE ROADS (stream-event-time-window).
+   *
+   * Stage 2 alone, because a `Stage` is linear and the job is a
+   * fan-out. `chunks` is the road a user takes; `elementwise` is the
+   * same operator driven by a per-element `Writer` producer, so the
+   * delta is the PRODUCER; `stage` is `Windows.stage` under `through`
+   * on that same producer, so the delta to `elementwise` is the
+   * Take/Writer coroutine and nothing else.
+   */
+  test("the window operator: the loop, the producer, the coroutine") {
+    val n = feed.events.length.toLong
+    val expect = OkayLane.routeWindowsOnly(feed, "chunks")
+    for road <- Seq("chunks", "elementwise", "stage") do
+      val runs = (1 to rounds).map(_ => timed(OkayLane.routeWindowsOnly(feed, road)))
+      for (w, _) <- runs do assertEquals(w, expect, s"road $road windowed differently")
+      val ms = runs.map(_._2).min / 1000000L
+      println(f"  route windows via $road%-14s ${n * 1000L / math.max(1L, ms)}%,10d ev/s  ${ms}%,7d ms")
   }
 
   /**

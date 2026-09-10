@@ -113,21 +113,40 @@ object Windows:
 
 ## Behavior
 
-- [ ] tumbling windows equal a brute-force recompute (group by
+- [x] tumbling windows equal a brute-force recompute (group by
       (window, key), aggregate) on generated event-time data
-- [ ] sliding windows equal the same brute force, and every element
+- [x] sliding windows equal the same brute force, and every element
       that is not near an edge lands in exactly `size / slide` panes
-- [ ] a window is emitted exactly once, when the watermark passes its
+- [x] a window is emitted exactly once, when the watermark passes its
       end; `close()` emits everything still open and nothing twice
-- [ ] an element later than every window it belongs to is dropped, is
+- [x] an element later than every window it belongs to is dropped, is
       counted in `dropped`, and changes no pane's value
-- [ ] an element inside the lateness bound is NOT dropped, however far
+- [x] an element inside the lateness bound is NOT dropped, however far
       out of arrival order it is
-- [ ] `live` falls back to zero after `close()`
-- [ ] the `Stage` form gives the same panes as the class, and the SAME
+- [x] `live` falls back to zero after `close()`
+- [x] the `Stage` form gives the same panes as the class, and the SAME
       stage value driven twice gives the same answer (no shared state)
-- [ ] the operator is driven through `through` in a pipeline, so a
+- [x] the operator is driven through `through` in a pipeline, so a
       window composes with the stages around it
+
+## Results
+
+- **The general shape costs 11% against a packed key** (2 669 886 ev/s
+  against 2 974 050 on §20's whole job, one day, best of two). That is
+  `HashMap[K, LongMap[Acc]]` — one hash by key, then the window index —
+  against `LongMap` under `(window << 20) | key`, which needs a small
+  dense integer key and is therefore not something the core can offer.
+  The benchmark keeps the packed operator as `OkayLane.packed` so the
+  price stays measured rather than remembered.
+- **The `Stage` form costs 2.6x the loop, and the producer costs 4%**
+  (route windows alone, one day: 10 215 217 ev/s through `Chunks`,
+  9 789 583 through a per-element `Writer` producer, 3 851 639 for
+  `Windows.stage` under `through` on that same producer). The middle
+  road is what isolates the two: the coroutine, not the producer, is
+  what the composable form pays for. Both forms compute the same panes
+  — the suite asserts it — so this is a choice, and the choice is
+  stated where a user meets it: reach for the class in a loop, for the
+  stage where the window has to sit in a pipeline.
 
 ## Out of scope
 

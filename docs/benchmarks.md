@@ -50,7 +50,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | look up a symbol in an index | **0.56** | — | [§11](#11-retrieval--indexing-re-indexing-chunking-query) |
 | 4 000 elements through an unbounded channel, chunked | **56.0** | ZIO 439.7 | [§16](#16-every-capacity-a-ring--the-table-that-closes-the-arc) |
 | 8 000 elements, 16 producers (okay's own buffers) | **128** | — | [queues.md](queues.md) |
-| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **3.07M**, one thread | Flink 1.42M at parallelism 4 | [§20](#20-streams-against-an-engine--wrocławs-timetable-through-okay-and-apache-flink) |
+| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **2.87M**, one thread | Flink 1.85M at parallelism 4 | [§20](#20-streams-against-an-engine--wrocławs-timetable-through-okay-and-apache-flink) |
 
 **Where okay loses, and it is here rather than buried:** fork/join of
 100 fibers against kyo (24.0 against 18.5, §4), and the single-channel
@@ -3371,11 +3371,23 @@ service days), best of 3 runs per lane, the spread printed beside each
 
 | lane | throughput | wall | of the okay lane |
 |---|---:|---:|---:|
-| okay, 1 thread | 3 362 282 ev/s | 718 ms | 1.0x |
-| flink, parallelism 1 | 619 163 ev/s | 3 899 ms | 5.4x |
-| flink, parallelism 4 | 1 368 548 ev/s | 1 764 ms | 2.5x |
-| flink, parallelism 4 + checkpoints every 5 s | 1 349 423 ev/s | 1 789 ms | 2.5x |
-| flink, parallelism 4, object reuse OFF | 928 864 ev/s | 2 599 ms | 3.6x |
+| okay, 1 thread (`okay.Windows`) | 2 626 897 ev/s | 919 ms | 1.0x |
+| okay, 1 thread, packed-key windows | 3 293 477 ev/s | 733 ms | 0.8x |
+| flink, parallelism 1 | 620 277 ev/s | 3 892 ms | 4.2x |
+| flink, parallelism 4 | 1 364 680 ev/s | 1 769 ms | 1.9x |
+| flink, parallelism 4 + checkpoints every 5 s | 1 300 710 ev/s | 1 856 ms | 2.0x |
+| flink, parallelism 4, object reuse OFF | 1 165 677 ev/s | 2 071 ms | 2.3x |
+
+The okay lane's first row moved between the two runs of this section
+and the reason is worth stating rather than smoothing: the lane no
+longer carries its own window operator. `okay.Windows`
+(specs/event-time-windows.md) replaced the fifty hand-written lines,
+and the general shape — panes under `HashMap[K, LongMap[Acc]]`, any
+key type — costs 20% against the `(window << 20) | key` packing those
+fifty lines could afford because a route and a dense stop index both
+fit in twenty bits. The packed operator stays in the file as
+`OkayLane.packed`, asserted to compute the same answer, so the price
+is measured on every run instead of remembered.
 
 **That table is not the answer, and saying why is the point of this
 section.** A Flink job pays a FIXED cost before it has seen an event —
@@ -3389,30 +3401,32 @@ costs are separated by a least-squares fit:
 
 | lane | fixed cost | marginal | the points |
 |---|---:|---:|---|
-| okay, 1 thread | ~0 (fit: −15 ms) | 3 066 940 ev/s | 604k:186ms 1 207k:371ms 2 414k:774ms |
-| flink, parallelism 1 | 699 ms | 719 283 ev/s | 604k:1 536ms 1 207k:2 379ms 2 414k:4 054ms |
-| flink, parallelism 4 | 554 ms | 1 418 640 ev/s | 604k:978ms 1 207k:1 407ms 2 414k:2 255ms |
+| okay, 1 thread | ~0 (fit: −8 ms) | 2 871 999 ev/s | 604k:205ms 1 207k:408ms 2 414k:834ms |
+| flink, parallelism 1 | 405 ms | 690 481 ev/s | 604k:1 297ms 1 207k:2 125ms 2 414k:3 910ms |
+| flink, parallelism 4 | 414 ms | 1 852 131 ev/s | 604k:745ms 1 207k:1 058ms 2 414k:1 720ms |
 
-**The same run at half the data** (four service days, 1 255 298
-events, spreads 1.03–1.58 — looser, which is why the eight-day run is
-the one quoted): okay 3 664 341 ev/s marginal on a 5 ms fixed cost,
-flink p1 754 127 on 462 ms, flink p4 1 883 217 on 418 ms. The two
-sizes agree on the shape and disagree by 15% on okay and flink p1 and
-by 25% on flink p4 — a reminder that one size lies about as readily as
-one round.
+**The same run at a quarter of the data** (603 529 events, the sweep's
+first point) puts flink p4 at 745 ms against okay's 205 — 3.6x, where
+the full size reads 1.9x. Every ratio in the wall-clock table is a
+function of how much data the job saw, which is the whole reason the
+fit below exists.
 
 **What the tables say.**
 
-- **Per event, one okay thread is 4.3x a Flink task and 2.2x four of
-  them** (3.07M against 0.72M and 1.42M). That is the honest headline,
-  and it is a smaller number than the 5.4x/2.5x of the wall-clock
-  table — because half a second of every Flink run is the engine
-  starting, which no production job pays per event.
-- **Flink's 0.55–0.70 s fixed cost is the price of being an ENGINE**: a
+- **Per event, one okay thread is 4.2x a Flink task and 1.55x four of
+  them** (2.87M against 0.69M and 1.85M). That is the honest headline,
+  and it is a smaller number than the 4.2x/1.9x of the wall-clock
+  table — because 0.4 s of every Flink run is the engine starting,
+  which no production job pays per event. With the packed operator the
+  same lane reads 1.9x of Flink-on-four-cores rather than 1.55x: the
+  20% the core's generality costs is most of the difference between
+  "well ahead" and "ahead".
+- **Flink's ~0.41 s fixed cost is the price of being an ENGINE**: a
   job graph, task deployment, network stacks, state backends. okay's
-  fixed cost fits to zero (−15 ms at eight days, +5 ms at four); it has
-  nothing to start.
-- **Flink scales: p1 → p4 is 2.0x on four cores** (719k → 1 419k
+  fixed cost fits to zero (−8 ms — the fit's way of saying the
+  per-event cost fell slightly as the run grew); it has nothing to
+  start.
+- **Flink scales: p1 → p4 is 2.7x on four cores** (690k → 1 852k
   marginal), which is what a shuffle-based engine should do, and it is
   still short of one okay thread. The okay lane is ONE thread by
   construction — the four stages fan out to four consumers of one
@@ -3420,12 +3434,13 @@ one round.
   shuffles. A merge-parallel okay lane (slices joined by
   `Aggregator.merge`, which is what merge is FOR) is filed rather than
   claimed: it is not written, so it is not quoted.
-- **The guarantee costs 1.4%.** Checkpointing every 5 seconds to a real
+- **The guarantee costs 4.7%.** Checkpointing every 5 seconds to a real
   filesystem — the thing okay's in-process lane does not offer at all —
-  moved 1 369k to 1 349k ev/s. That is the cheapest honest way to state
+  moved 1 365k to 1 301k ev/s. That is the cheapest honest way to state
   what Flink is selling, and it is much less than the fan-out costs it.
-- **Object reuse is worth 1.47x at this size, and nothing at half it**
-  (929k vs 1 369k ev/s at 2.4M events; 960k vs 1 053k at 1.26M). The
+- **Object reuse is worth 1.17x at this size** (1 166k vs 1 365k ev/s
+  at 2.4M events; it read 1.47x on the previous run of this table, so
+  treat it as "worth having", not as a measured constant). The
   elements are POJOs of five primitives, so the copies are small — but
   there are three shuffles and 7.2M pane insertions, and the garbage
   compounds. `enableObjectReuse` is one line and it is the largest
@@ -3480,11 +3495,32 @@ and the only option from Scala 3 (the Scala API is 2.13-only and its
 names its `TypeInformation` explicitly because a Scala lambda erases
 what Flink's extractor would have read.
 
-**What the okay lane costs to WRITE, which no table shows.** Flink's
-stage 2 is one line (`.window(TumblingEventTimeWindows.of(...))`); the
-okay lane's `Windows` — keyed panes under a packed `LongMap` key, a
-watermark, an eviction sweep per slide boundary — is fifty. The core
-has the arithmetic (`Aggregator`) and the pass (`Chunks`) and no
-event-time window operator; this benchmark is where that shows, and it
-is filed in BACKLOG as `stream-event-time-window` rather than claimed
-as a virtue.
+### What the okay lane cost to WRITE — and what closing that gap cost
+
+The first run of this section ended on the thing no table showed:
+Flink's stage 2 is one line (`.window(TumblingEventTimeWindows.of(…))`)
+and the okay lane's was fifty — keyed panes, a watermark, an eviction
+sweep — because the core had the arithmetic (`Aggregator`) and the
+pass (`Chunks`) and nothing in between. It has now:
+`okay.Windows` (specs/event-time-windows.md), cross-platform, no
+`Async`, tumbling and sliding, late elements dropped and counted. The
+lane above is the job and nothing else.
+
+Closing the gap was not free, and both prices are measured. The first
+is the 20% of generality already named above. The second is what the
+COMPOSABLE form costs, and it needs three roads to say honestly —
+stage 2 alone, because a `Stage` is linear and the whole job is a
+fan-out:
+
+| road | throughput | what the delta means |
+|---|---:|---|
+| the class, driven by a `Chunks` fold | 15 882 361 ev/s | the road a user takes |
+| the class, driven by a per-element `Writer` producer | 11 441 322 ev/s | −28%: the PRODUCER, not the operator |
+| `Windows.stage` under `through`, same producer | 7 382 626 ev/s | −35% more: the Take/Writer coroutine |
+
+The middle road is the whole point of running three: without it the
+composable form looks 2.2x slower than it is, because the comparison
+would have charged it for the producer as well. Both forms compute the
+same panes (`TestWindows` asserts it), so this is a choice with a
+price on it: the class in a loop, the stage where a window must sit in
+a pipeline beside other stages.

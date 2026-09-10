@@ -31,7 +31,13 @@ The Wrocław event-time job now runs on both okay and Flink 1.20 and the
 two agree on every checksum (docs/benchmarks.md §20). Three things the
 run named and did not build:
 
-- [ ] stream-event-time-window — the core has the arithmetic
+- [x] stream-event-time-window — CLOSED 2026-09-10: `okay.Windows`
+      (specs/event-time-windows.md), cross-platform, tumbling and
+      sliding, watermark-evicted, late elements dropped and counted,
+      with a `Stage` form for pipelines. Both prices measured — 20% for
+      the general key shape, 35% for the composable form — in §20 and
+      the spec's Results. The original note follows.
+      The core had the arithmetic
       (`Aggregator`) and the pass (`Chunks`) and NO event-time window
       operator. Flink's stage 2 is one line; the benchmark's `Windows`
       (keyed panes under a packed `LongMap` key, a watermark, an

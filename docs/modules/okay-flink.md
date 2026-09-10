@@ -51,11 +51,12 @@ in both. All eleven checksums agree, at parallelism 1 and 4, which is
 the module's claim under test end to end (serialization into a job
 graph included).
 
-Per event, one okay thread is 4.3x a Flink task and 2.2x four of them
-(3.07M ev/s against 719k and 1.42M, least squares over three sizes);
-Flink pays 0.55–0.70 s of fixed cost per job that okay does not, and
-buys with it the checkpointing, recovery and distribution okay's fold
-does not offer. The full table, the methodology and the per-key ordering
+Per event, one okay thread is 4.2x a Flink task and 1.55x four of them
+(2.87M ev/s against 690k and 1.85M, least squares over three sizes —
+the okay lane now runs on the core's `okay.Windows`, which costs 20%
+against the hand-packed operator it replaced); Flink pays ~0.41 s of
+fixed cost per job that okay does not, and buys with it the
+checkpointing, recovery and distribution okay's fold does not offer. The full table, the methodology and the per-key ordering
 trap the run uncovered are in docs/benchmarks.md §20.
 
 Run it: `sbt integrationTest` (the suite is `Live`-tagged and skips

@@ -1,5 +1,39 @@
 # Changelog
 
+## stream-event-time-window — the operator §20 measured the absence of, now in the core
+
+docs/benchmarks.md §20 ended on the half of the Flink comparison no
+table showed: Flink's stage 2 is one line and okay's was fifty — keyed
+panes, a watermark, an eviction sweep, written inside the benchmark
+because the core had the arithmetic (`Aggregator`) and the pass
+(`Chunks`) and nothing in between. `okay.Windows`
+(specs/event-time-windows.md) is those fifty lines, generalised over
+the key and given the late-event rule in one place: tumbling and
+sliding event-time windows over any `Aggregator`, a bounded
+out-of-orderness watermark, `Pane(start, end, key, value)` emitted as
+the watermark passes each end, and an element that arrives after every
+window it belongs to has closed DROPPED and counted rather than folded
+into a window already reported. No `Async` and no clock, so it runs on
+all three platforms and its suite is in `src/test/scala-cross`, checked
+against a brute-force recompute of every pane.
+
+Both prices are measured rather than assumed. The general shape —
+`HashMap[K, LongMap[Acc]]`, any key type — costs 20% against the
+`(window << 20) | key` packing the hand-written operator could afford
+with dense integer keys, so that operator stays in the benchmark as
+`OkayLane.packed`, asserted to compute the same answer. And the
+composable form (`Windows.stage`, a `Stage[A, Pane[K, O], Unit]` that
+sits under `through`) costs 35% against the class on the same
+per-element producer — a number that needed three roads to state
+honestly, because charging the stage for the producer as well would
+have read 2.2x.
+
+§20's headline moves with it: per event, one okay thread is 4.2x a
+Flink task and 1.55x four of them (2.87M ev/s against 690k and 1.85M,
+least squares over three sizes), where the packed operator read 2.2x.
+The 20% is most of the difference between "well ahead" and "ahead",
+and it is the price of an operator a user does not have to write.
+
 ## input-depth-both-wires — the justification was false, and each false half was a fault
 
 The operator read the cbor-unknown-fields entry back and asked for it

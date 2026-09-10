@@ -273,6 +273,22 @@ tree, rewritten first — a `columns(...)` projection pushed into the
 read so the platform prunes at the parser, the smaller side of a join
 turned to the right — and measured to pay on both platforms.
 
+An aggregation over an event STREAM needs one thing the algebra does
+not carry: when a window is COMPLETE. `Windows`
+(specs/event-time-windows.md) is that operator — keyed tumbling or
+sliding windows over any `Aggregator`, closed by a bounded
+out-of-orderness watermark (`max(seen) - lateness`, monotone),
+emitting a `Pane(start, end, key, value)` as the watermark passes each
+window's end, and DROPPING (and counting) an element that arrives
+after every window it belongs to has closed. It reads no clock —
+windowing is a function of the data's own time — so it runs on all
+three platforms, and it comes in two forms: the class
+(`w.add(a)(emit)` / `w.close()(emit)`, the fast loop) and
+`Windows.stage`, a `Stage[A, Pane[K, O], Unit]` that composes under
+`through` like any other stage and costs 2.6x the loop for it.
+docs/benchmarks.md §20 prices both against Flink's own window operator
+on the same job over the same data.
+
 Both sides of that algebra are specialized, and the split is the same
 one everywhere: where the step is written at the call site, `inline`
 takes it (`Chunks.foldLeft(p)(z)(f)`, 38.2us -> 7.0 per 10k Longs);
