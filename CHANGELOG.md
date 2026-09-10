@@ -39,7 +39,7 @@ the defect had no witness. The property that made it visible is the one
 that makes `Login.confirm` correct: spending the code ONCE. And it
 surfaced in the Live suite, which the default gate does not run — the
 second time this session that explicitly running the Live tests of
-converted code paid for itself. Commits: 60b37cb7 (spec), c7611518 (the body and the fix).
+converted code paid for itself. Commits: ee39d6f7 (spec), 4ba6f048 (the body and the fix).
 
 ## okay-py/okay-r: the subprocess wire gets the same depth-safety fix
 
