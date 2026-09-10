@@ -26,7 +26,7 @@ context: the same assertions in TestDiDocs passed while proving
 nothing, since that file imports the givens at the top. The deeper fix
 that would remove the asymmetry — a top-level `extension [A](x: A)
 (using Monoid[A]) def |+|` — is named in the spec and not taken.
-Commit: LANDING.
+Commit: 4b2c4b2d.
 ## dataflow-durable — a journal that keeps its history, and a defect it turned up
 
 The last two open dataflow entries were the same question twice: what
