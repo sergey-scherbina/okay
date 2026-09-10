@@ -71,7 +71,7 @@ class TestStackMargin extends munit.FunSuite:
     var deepest = 0
     try
       var k = 1000
-      while k <= 100_000_000 do { under(k)(() => true); deepest = k; k *= 2 }
+      while k <= 100_000_000 do { assert(under(k)(() => true) == 1); deepest = k; k *= 2 }
     catch case _: Throwable => ()
     assert(deepest > 0, "the calibration never ran")
     assert(deepest < 100_000_000, s"a recursion that survives $deepest frames is a loop, not a measurement")
