@@ -226,6 +226,49 @@ object ChatDemo {
           if ru then s"готово: ${t.text}" else s"done: ${t.text}")
       case _ => list
 
+  /**
+   * The login exchange, with its request bodies DECLARED
+   * (specs/optics-outside.md, stage 7).
+   *
+   * What stood here read its fields with `Chat.fieldOf(r.body, "email")`,
+   * which answers the empty string both for a missing field and for a
+   * body that is not JSON — so the two could not be told apart.
+   * `/login` checked for the empty string; `/login/confirm` did not, and
+   * a malformed request reached `Login.confirm("", "")`, whose caller was
+   * then told 401, wrong or expired code. A diagnosis about their
+   * credentials for what was a broken request.
+   *
+   * `Router.json` decodes with the schema before the handler runs, so a
+   * body that does not decode is a 400 naming what failed, and the
+   * handler only ever sees a value.
+   */
+  final case class LoginStart(email: String)
+  final case class LoginConfirm(email: String, code: String)
+  private given okay.codec.Schema[LoginStart] = okay.codec.Schema.derived
+  private given okay.codec.Schema[LoginConfirm] = okay.codec.Schema.derived
+
+  private def json(status: Int, fs: (String, Json)*): Response ! Async =
+    pure(Response(status, Seq("content-type" -> "application/json"),
+      Http.one(Json.print(JObj(fs.toVector)).getBytes(UTF_8))))
+
+  def loginRoutes: okay.http.Router = okay.http.Router
+    .json[EmptyTuple, LoginStart](okay.http.Method.Post, okay.http.Route / "login") { (_, in) =>
+      if in.email.isEmpty then json(400, "error" -> JStr("email required"))
+      else
+        val code = Login.start(in.email)
+        println(s"login code for ${in.email}: $code (10 min)")
+        // no email transport exists in this stack yet (specs/security.md):
+        // the code rides the response so the demo is usable end to end;
+        // real delivery replaces this ONE field with silence
+        json(200, "sent" -> JBool(true), "devCode" -> JStr(code))
+    }
+    .json[EmptyTuple, LoginConfirm](okay.http.Method.Post, okay.http.Route / "login" / "confirm") { (_, in) =>
+      if Login.confirm(in.email, in.code) then
+        json(200, "ok" -> JBool(true), "email" -> JStr(in.email),
+          "token" -> JStr(Login.issue(in.email)))
+      else json(401, "ok" -> JBool(false), "error" -> JStr("wrong or expired code"))
+    }
+
   /** the board as an MCP server — the same operations, another door */
   def mcpRoute(b: Board): Request => Response ! Async =
     McpHttp.route(McpServer.Serving(
@@ -336,30 +379,7 @@ object ChatDemo {
 
     case r if ops.isDefinedAt(r) => ops(r)
 
-    case r if r.method == okay.http.Method.Post && r.url == "/login" =>
-      val email = Chat.fieldOf(r.body, "email")
-      if email.isEmpty then
-        pure(Response(400, Seq("content-type" -> "application/json"),
-          Http.one(Json.print(JObj(Vector("error" -> JStr("email required")))).getBytes(UTF_8))))
-      else
-        val code = Login.start(email)
-        println(s"login code for $email: $code (10 min)")
-        // no email transport exists in this stack yet (specs/security.md):
-        // the code rides the response so the demo is usable end to end;
-        // real delivery replaces this ONE field with silence
-        pure(Response(200, Seq("content-type" -> "application/json"),
-          Http.one(Json.print(JObj(Vector("sent" -> JBool(true), "devCode" -> JStr(code)))).getBytes(UTF_8))))
-
-    case r if r.method == okay.http.Method.Post && r.url == "/login/confirm" =>
-      val email = Chat.fieldOf(r.body, "email")
-      val code = Chat.fieldOf(r.body, "code")
-      if Login.confirm(email, code) then
-        val token = Login.issue(email)
-        pure(Response(200, Seq("content-type" -> "application/json"),
-          Http.one(Json.print(JObj(Vector("ok" -> JBool(true), "email" -> JStr(email), "token" -> JStr(token)))).getBytes(UTF_8))))
-      else
-        pure(Response(401, Seq("content-type" -> "application/json"),
-          Http.one(Json.print(JObj(Vector("ok" -> JBool(false), "error" -> JStr("wrong or expired code")))).getBytes(UTF_8))))
+    case r if loginRoutes.routes.isDefinedAt(r) => loginRoutes.routes(r)
 
     }
     // /chat itself is okay-chat (extracted 2026-09-02, specs/chat.md):

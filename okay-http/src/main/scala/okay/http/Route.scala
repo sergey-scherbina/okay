@@ -667,8 +667,35 @@ final class Router private (val entries: Vector[Router.Entry]):
    * peer. Most do, which is why `on` is defined in terms of this one
    * and not the other way round. */
   def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe, r =>
-      if r.method != method then None else route.unapply(r.url).map(a => h(a, r))))
+    new Router(entries :+ new Router.Entry(method, route.describe,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r => if r.method != method then None else route.unapply(r.url).map(a => h(a, r))))
+
+  /**
+   * a handler whose request carries a declared JSON body
+   * (specs/optics-outside.md, stage 7).
+   *
+   * The body is declared HERE and not on the `Route`, because a route
+   * describes a url and a url has no body. `Schema[B]` decodes before
+   * the handler runs, so a handler never sees an undecoded body, and a
+   * body that does not decode is answered 400 with DATA — the same
+   * rule `Toolbox` states for a tool call, and for the same reason: a
+   * caller given `{"error": …}` can see what was wrong with their
+   * request, while one given a diagnosis about something else cannot.
+   */
+  def json[A <: Tuple, B](method: Method, route: Routed[A])(h: (A, B) => Response ! Async)
+                         (using sc: okay.codec.Schema[B]): Router =
+    new Router(entries :+ new Router.Entry(method, route.describe,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r =>
+        if r.method != method then None
+        else route.unapply(r.url).map { a =>
+          okay.codec.Codecs.json(sc).decode(
+            okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
+            case Right(b) => h(a, b)
+            case Left(why) => pure(Router.badRequest(why))
+        },
+      Some(okay.codec.JsonSchema.of(sc))))
 
   /** the same, reading a case class */
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
@@ -676,13 +703,20 @@ final class Router private (val entries: Vector[Router.Entry]):
 
   def ofAt[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])
                                     (h: (C, Request) => Response ! Async): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe, r =>
-      if r.method != method then None else route.unapply(r.url).map(c => h(c, r))))
+    new Router(entries :+ new Router.Entry(method, route.describe,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r => if r.method != method then None else route.unapply(r.url).map(c => h(c, r))))
 
   /** the existing convention, unchanged: a miss is simply undefined,
    * so the caller's 404 stays the caller's */
   def routes: PartialFunction[Request, Response ! Async] =
-    Function.unlift(r => entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x })
+    new PartialFunction[Request, Response ! Async]:
+      def isDefinedAt(r: Request): Boolean = entries.exists(_.matches(r))
+      def apply(r: Request): Response ! Async =
+        entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x }
+          .getOrElse(throw MatchError(r))
+      override def applyOrElse[R <: Request, B >: Response ! Async](r: R, other: R => B): B =
+        entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x }.getOrElse(other(r))
 
   /** every entry, from the same values that dispatch */
   def describe: Vector[(Method, String)] = entries.map(e => (e.method, e.path))
@@ -700,6 +734,10 @@ object Router:
   def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
     empty.at(method, route)(h)
 
+  def json[A <: Tuple, B](method: Method, route: Routed[A])(h: (A, B) => Response ! Async)
+                         (using okay.codec.Schema[B]): Router =
+    empty.json(method, route)(h)
+
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     empty.of(method, route)(h)
 
@@ -707,5 +745,30 @@ object Router:
                                     (h: (C, Request) => Response ! Async): Router =
     empty.ofAt(method, route)(h)
 
+  /**
+   * One row of the table: whether it MATCHES, and what it answers.
+   *
+   * The two are separate because a `PartialFunction`'s `isDefinedAt`
+   * must not run the handler. The first cut kept a single
+   * `Request => Option[Response ! Async]` and built `routes` with
+   * `Function.unlift`, so `isDefinedAt` called the handler to find out
+   * whether it matched — harmless while every handler in the tree
+   * merely BUILT a program, and a real defect the moment one did work
+   * outside it: okay-demo's `/login/confirm` spends a one-time code,
+   * so an `isDefinedAt` followed by an `apply` spent it twice and
+   * answered 401 to a correct code (optics-outside stage 7).
+   */
   final class Entry private[http] (val method: Method, val path: String,
-                                   private[http] val run: Request => Option[Response ! Async])
+                                   private[http] val matches: Request => Boolean,
+                                   private[http] val run: Request => Option[Response ! Async],
+                                   /** the declared body's JSON Schema, when there is one —
+                                    * what a renderer reads, as `Toolbox` already gives tools */
+                                   val body: Option[okay.codec.Json] = None)
+
+  /** a request that does not decode is answered with data, never an
+   * exception: the caller can see what was wrong with what they sent */
+  private[http] def badRequest(why: String): Response =
+    Response(400, Seq("content-type" -> "application/json"),
+      Http.one(okay.codec.Json.print(
+        okay.codec.Json.JObj(Vector("error" -> okay.codec.Json.JStr(why)))).getBytes(
+          java.nio.charset.StandardCharsets.UTF_8)))

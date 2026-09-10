@@ -271,6 +271,18 @@ class TestChatDemo extends munit.FunSuite {
       HttpResponse.BodyHandlers.ofString())
     (res.statusCode(), res.body())
 
+  portTest("a malformed login body is 400, not a verdict about the credentials") {
+    // optics-outside stage 7: Chat.fieldOf answered "" both for a
+    // missing field and for a body that was not JSON, so this request
+    // used to reach Login.confirm("", "") and its caller was told 401,
+    // wrong or expired code
+    withServer(512) { port =>
+      assertEquals(postJson(port, "/login/confirm", "not json")._1, 400)
+      assertEquals(postJson(port, "/login/confirm", """{"email":"ann@example.com"}""")._1, 400)
+      assertEquals(postJson(port, "/login", "{")._1, 400)
+    }
+  }
+
   portTest("demo-sessions: confirm-and-sign — the login+confirm exchange mints a token, a wrong code is refused") {
     withServer(512) { port =>
       val (s1, b1) = postJson(port, "/login", """{"email":"ann@example.com"}""")

@@ -311,6 +311,7 @@ class TestRoute extends munit.FunSuite {
   val blank: Response ! Async =
     pure(Response(200, Nil, Http.one(Array.empty[Byte])))
 
+
   val router: Router = Router.empty
     .on(Method.Get, healthz)(_ => blank)
     .on(Method.Get, userPost)((_, _) => blank)
