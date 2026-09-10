@@ -1,0 +1,25 @@
+task: jsonstrict-threshold-trampoline
+agent: opus-depth
+started: 2026-09-10
+branch: feature/jsonstrict-threshold-trampoline
+worktree: ../okay-wt-jsonstrict
+spec: specs/iterative-recursive-decode.md (target 3, the last one:
+  JsonStrict.Reader.get)
+
+why: the last of the four native-recursion sites depth-is-policy-not-
+  -rescue named. Same shape as the two closed roots — decodes a
+  declared Schema, combines heterogeneously-typed values — not a new
+  design, the third instance of the root 1/2 pattern.
+
+what: JsonStrict.Reader already has enter/leave/tooDeep (from
+  cut-refuses-the-document); add the native/Cont.defer split at the
+  SAME Codecs.NativeThreshold the other three sites now share.
+  product/array/sum get the getNative/getC treatment; skipValue is
+  UNCHANGED (already an explicit loop, no native recursion — its own
+  comment already says "no stack, no limit").
+
+predict: once this lands, all four sites are closed and
+  Codecs.maxDepth has no remaining stack-safety motivation — raising
+  or removing it becomes a pure wire-contract decision, stated as its
+  own follow-up, not assumed here. JMH gate: check uptime FIRST this
+  time, given the last lane's box-load lesson.
