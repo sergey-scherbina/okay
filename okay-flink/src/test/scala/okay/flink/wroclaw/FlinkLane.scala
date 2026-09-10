@@ -8,6 +8,7 @@ import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
 import org.apache.flink.api.common.typeinfo.{TypeHint, TypeInformation, Types}
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.configuration.{CheckpointingOptions, Configuration}
+import org.apache.flink.api.connector.source.util.ratelimit.RateLimiterStrategy
 import org.apache.flink.connector.datagen.source.{DataGeneratorSource, GeneratorFunction}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
@@ -87,7 +88,7 @@ object FlinkLane {
    *                     at which the guarantee is paid for
    */
   def run(feed: Feed, parallelism: Int, checkpointMs: Long = 0L,
-          objectReuse: Boolean = true): Job.Result = {
+          objectReuse: Boolean = true, ratePerSecond: Long = 0L): Job.Result = {
     replay = feed.events
 
     val conf = new Configuration()
@@ -117,7 +118,19 @@ object FlinkLane {
       .forBoundedOutOfOrderness[Depart](Duration.ofMillis(Job.Lateness))
       .withTimestampAssigner(new Timestamps)
 
-    val source = new DataGeneratorSource[Depart](new Replay, feed.events.length.toLong, depart)
+    // A RATE is how this lane asks the question §20's second asymmetry
+    // names: Flink's watermark generator fires every 200 ms of WALL
+    // time, so a replay at full speed pushes days of event time through
+    // in seconds and the engine holds panes a real deployment would
+    // have closed. `RateLimiterStrategy` puts the event-time-to-
+    // wall-time ratio back under control (docs/benchmarks.md, "the
+    // replay, priced").
+    val count = feed.events.length.toLong
+    val source =
+      if ratePerSecond > 0 then
+        new DataGeneratorSource[Depart](new Replay, count,
+          RateLimiterStrategy.perSecond(ratePerSecond.toDouble), depart)
+      else new DataGeneratorSource[Depart](new Replay, count, depart)
     val events = env.fromSource(source, watermarks, "wroclaw-gtfs", depart).setParallelism(1)
 
     // stage 1 — the enrichment: a map-side join against the routes table.

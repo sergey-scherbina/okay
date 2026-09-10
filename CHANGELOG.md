@@ -1,5 +1,35 @@
 # Changelog
 
+## flink-window-memory — how much of an engine's memory is the benchmark's fault
+
+The last of the three things §20 named and did not build. The section
+said okay advances its watermark per ELEMENT while Flink's generator
+fires every 200 ms of WALL time, so a full-speed replay makes the
+engine hold panes a real deployment would have closed — and then
+quoted no memory number, because quoting one would have been quoting
+the replay. Now it is measured: `RateLimiterStrategy` (already on
+Flink's `DataGeneratorSource`) puts the event-time-to-wall-time ratio
+under control, and `OkayLane.peakPanes` answers our side EXACTLY
+rather than by sampling a heap — `Windows.live` knows how many panes
+are open.
+
+At 603 529 events, parallelism 4: Flink peaks at 687 MB at full speed,
+472 MB when the source is slowed 3.6x, and 463 MB when it is slowed
+another 2.4x. So ~460 MB is what the job costs the engine and the
+~225 MB above it is the watermark lagging — about a third of the
+number a naive table would have printed. okay's live state is 4 918
+panes at every rate, because its watermark does not depend on the
+clock.
+
+A caveat found on the way and written into the section: Flink's gated
+limiter grants a batch per cycle, so "asked 2 000 000/s" and "asked
+500 000/s" both achieved ~116 000/s. The requested rate is an upper
+bound, not a target; the achieved column is the one to read.
+
+With this the three BACKLOG entries §20 opened are closed:
+`stream-event-time-window`, `flink-okay-parallel-lane` and
+`flink-window-memory`.
+
 ## flink-okay-parallel-lane — four cores without a shuffle, by `Aggregator.merge`
 
 §20's okay lane was one thread, so its lead over Flink-at-four-cores

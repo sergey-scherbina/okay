@@ -42,6 +42,25 @@ class TestWroclawStream extends munit.FunSuite {
     f
   }
 
+  /** one run, timed AND watched: the peak heap a run reaches, sampled
+   * every 20 ms from a fibre. Crude on its own — it counts garbage the
+   * collector has not taken yet — but comparable between lanes in one
+   * JVM, which is what the rows below use it for */
+  private def sampled[A](a: => A): (A, Long, Long) =
+    System.gc()
+    val peak = new java.util.concurrent.atomic.AtomicLong(0L)
+    val rt = Runtime.getRuntime
+    val sampler = Thread.startVirtualThread { () =>
+      try while true do
+        val used = rt.totalMemory - rt.freeMemory
+        if used > peak.get then peak.set(used)
+        Thread.sleep(20)
+      catch case _: InterruptedException => ()
+    }
+    val (r, ns) = timed(a)
+    sampler.interrupt()
+    (r, ns, peak.get)
+
   private def timed[A](a: => A): (A, Long) =
     val t0 = System.nanoTime()
     val r = a
@@ -148,21 +167,7 @@ class TestWroclawStream extends munit.FunSuite {
     println(f"  at $n%,d events (a quarter of the feed), best of $rounds")
 
     def lane(label: String)(run: => Job.Result): Unit =
-      val runs = (1 to rounds).map { _ =>
-        System.gc()
-        val peak = new java.util.concurrent.atomic.AtomicLong(0L)
-        val rt = Runtime.getRuntime
-        val sampler = Thread.startVirtualThread { () =>
-          try while true do
-            val used = rt.totalMemory - rt.freeMemory
-            if used > peak.get then peak.set(used)
-            Thread.sleep(20)
-          catch case _: InterruptedException => ()
-        }
-        val (r, ns) = timed(run)
-        sampler.interrupt()
-        (r, ns, peak.get)
-      }
+      val runs = (1 to rounds).map(_ => sampled(run))
       for (r, _, _) <- runs do assertEquals(r, answer, s"$label disagrees with the okay lane")
       val ms = runs.map(_._2).min / 1000000L
       val heap = runs.map(_._3).max / (1024L * 1024L)
@@ -172,6 +177,38 @@ class TestWroclawStream extends munit.FunSuite {
     lane("java.util.stream, sequential")(JavaLane.run(part, parallel = false))
     lane("java.util.stream, parallel")(JavaLane.run(part, parallel = true))
     lane("flink p4")(FlinkLane.run(part, 4))
+  }
+
+  /**
+   * THE REPLAY, PRICED (flink-window-memory).
+   *
+   * §20 quotes no memory number for Flink and says why: okay advances
+   * its watermark per ELEMENT and evicts as it goes, while Flink's
+   * generator fires every 200 ms of WALL time — so a full-speed replay
+   * pushes days of event time through in seconds, the watermark
+   * advances a handful of times, and the engine holds panes a real
+   * deployment would have closed long before. This measures that
+   * claim instead of asserting it: the same job at three rates, and
+   * okay's pane count read EXACTLY (`Windows.live`) rather than
+   * sampled off a heap.
+   */
+  test("the replay, priced: rate against window state") {
+    val part = feed.copy(events = feed.events.take(jdkSize))
+    val n = part.events.length.toLong
+    val ((answer, panes), okayNs, okayHeap) = sampled(OkayLane.peakPanes(part))
+    println(f"  at $n%,d events")
+    println(f"  ${"okay, 1 thread"}%-32s ${okayNs / 1000000L}%,7d ms  peak heap ${okayHeap / (1024 * 1024)}%,6d MB" +
+      f"  peak panes ${panes}%,9d (exact)")
+    for rate <- Seq(0L, 2000000L, 500000L, 50000L) do
+      val (r, ns, heap) = sampled(FlinkLane.run(part, 4, ratePerSecond = rate))
+      assertEquals(r, answer, s"flink at rate $rate disagrees with the okay lane")
+      // the ACHIEVED rate, not the asked one: Flink's gated limiter
+      // grants a batch per cycle, so a number above what the pipeline
+      // reaches is an upper bound rather than a target
+      val achieved = n * 1000000000L / math.max(1L, ns)
+      val label = if rate == 0 then "flink p4, full speed" else f"flink p4, asked $rate%,d ev/s"
+      println(f"  $label%-32s ${ns / 1000000L}%,7d ms  peak heap ${heap / (1024 * 1024)}%,6d MB" +
+        f"  achieved ${achieved}%,9d ev/s")
   }
 
   /**

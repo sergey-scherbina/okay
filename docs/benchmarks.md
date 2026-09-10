@@ -3516,8 +3516,47 @@ computes the same answer twice.
   every 200 ms of WALL time (its own default), so under a full-speed
   replay its window state lags and it holds more panes than it would
   in a real deployment. Neither lane's ANSWER depends on this — both
-  see complete windows — but the memory profiles are not comparable,
-  and no memory number is quoted here for that reason.
+  see complete windows — but the memory profiles are not comparable
+  until the replay is slowed down, which is what the next subsection
+  does.
+
+### The replay, priced — how much of Flink's memory is the benchmark's fault
+
+The asymmetry above is easy to state and easy to leave at that, so it
+is measured instead. `RateLimiterStrategy` is already on Flink's
+`DataGeneratorSource`, so the same job runs at a chosen
+event-time-to-wall-time ratio; and okay's side needs no sampling at
+all, because `Windows.live` knows exactly how many panes are open.
+
+At 603 529 events, parallelism 4, one run each:
+
+| lane | wall | peak heap | achieved rate |
+|---|---:|---:|---:|
+| okay, 1 thread | 273 ms | 355 MB | **peak panes 4 918, exact** |
+| flink p4, full speed | 1 426 ms | 687 MB | 423 198 ev/s |
+| flink p4, asked 2 000 000 ev/s | 5 205 ms | 472 MB | 115 940 ev/s |
+| flink p4, asked 500 000 ev/s | 5 148 ms | 457 MB | 117 229 ev/s |
+| flink p4, asked 50 000 ev/s | 12 444 ms | 463 MB | 48 497 ev/s |
+
+**About a third of Flink's peak heap at full speed is the replay.**
+Slowing the source by 3.6x drops it from 687 to 472 MB; slowing it
+another 2.4x changes nothing further (463 MB). So ~460 MB is what this
+job costs the engine at this parallelism, and the ~225 MB above it at
+full speed is the watermark lagging behind a source that has no
+intention of running in real time. A production job never pays it, and
+a benchmark that quoted the 687 would have been quoting itself.
+
+**okay's live state does not move with the rate, because its watermark
+does not.** 4 918 panes — 138 routes plus 2 482 stops times three
+sliding panes, near enough — at any speed, because the operator
+advances the watermark on every element it sees. The 355 MB beside it
+is mostly the events themselves and the garbage of a fold, not window
+state; the pane count is the honest number, and it is exact.
+
+**A measurement caveat that cost a re-run**: Flink's gated limiter
+grants a batch per cycle, so "asked 2 000 000/s" and "asked 500 000/s"
+both ACHIEVED ~116 000/s. The requested rate is an upper bound, not a
+target, and the achieved column is the one to read.
 
 **Where the code is.** `okay-flink/src/test/scala/okay/flink/wroclaw/`
 — `Gtfs` (the feed), `Job` (the definition both lanes share),

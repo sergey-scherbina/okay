@@ -66,7 +66,17 @@ run named and did not build:
       coordinator, and the bunching stage's last-seen-per-key must be
       stitched across the seam. The equality assertion the suite
       already runs is what would keep it honest.
-- [ ] flink-window-memory — no memory number is quoted in §20 and the
+- [x] flink-window-memory — CLOSED 2026-09-10: measured with
+      `RateLimiterStrategy` on the Flink side and `Windows.live` on
+      ours. About a third of Flink's full-speed peak heap is the replay
+      (687 MB at full speed, 463 at ~48k ev/s achieved, with a floor
+      around 460); okay's live state is 4,918 panes at ANY rate,
+      because its watermark advances per element. §20, "the replay,
+      priced". A caveat found on the way: Flink's gated limiter grants
+      a batch per cycle, so a requested rate above what the pipeline
+      reaches is an upper bound, not a target — read the achieved
+      column. The original note follows.
+      No memory number is quoted in §20 and the
       reason is real: okay advances its watermark per element while
       Flink's periodic generator fires every 200 ms of WALL time, so
       under a full-speed replay Flink holds panes a real deployment

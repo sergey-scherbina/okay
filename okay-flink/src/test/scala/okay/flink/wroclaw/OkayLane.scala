@@ -123,6 +123,39 @@ object OkayLane {
   }
 
   /**
+   * The job again, reporting the greatest number of panes open at
+   * once. It answers §20's memory question EXACTLY rather than by
+   * sampling a heap: `okay.Windows.live` knows how many panes it
+   * holds, and the count is read every `every` elements (the read is
+   * O(keys), so it is sampled rather than continuous).
+   */
+  def peakPanes(feed: Feed, every: Int = 4096, chunk: Int = 256): (Job.Result, Int) = {
+    val tram = tramTable(feed)
+    val sink = new Sink(tram)
+    val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Stats](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)
+    val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Stats](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats)
+    val lastSeen = mutable.LongMap.empty[Long]
+    var seen = 0
+    var peak = 0
+
+    Chunks.foldLeft(rides(feed, tram, chunk))(())((_, r) => {
+      routeWindows.add(r)(sink.route)
+      stopWindows.add(r)(sink.stop)
+      bunching(lastSeen, r, sink)
+      seen += 1
+      if seen % every == 0 then
+        val live = routeWindows.live + stopWindows.live
+        if live > peak then peak = live
+      ()
+    })
+    routeWindows.close()(sink.route)
+    stopWindows.close()(sink.stop)
+    (sink.result, peak)
+  }
+
+  /**
    * The same job over the operator this benchmark carried BEFORE the
    * core had one: panes under a key packed as `(window << 20) | key`,
    * which is one hash lookup instead of two and is only possible
