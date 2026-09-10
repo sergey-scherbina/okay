@@ -1,0 +1,49 @@
+task: generalized-method-syntax
+agent: fable51-core
+started: 2026-09-11
+branch: feature/generalized-method-syntax
+worktree: ../okay-wt-gms
+spec: specs/handler-fusion.md (stage A's lineage: split-without-either)
+  and docs/typepedia.md (the cast list names Split.apply/Over.apply)
+
+why: operator, 2026-09-11 — Scala 3's generalized method syntax, then
+  "делай 1 2 и 3" on the three applications I found and probed. The
+  gating rule, checked with the compiler on 3.9.0: two type parameter
+  clauses may NOT be adjacent; a term or `using` clause must separate
+  them. Our row combinators all carry a context bound, which is that
+  separator, so the workarounds they were written around can go.
+
+what, in three stages, each its own commit:
+  1. `split`, `over` and `<|>` become ONE method each. The `Split` and
+     `Over` value classes exist only to make A/R inferable while F/G
+     are given; the syntax now says that directly. NO call site
+     changes: `split[F, G](e)(f)(g)` parses the same before and after
+     (30+ sites surveyed, every one is already in that form).
+  2. rows first, answers inferred: `relay`, `translate`, `interpret`,
+     `tracing`, `Effects.handle`, `Tag.tag`, `Tag.untag`, `Tag.one`.
+     Call sites drop one to two type arguments each. Tag.scala's own
+     doc comment ALREADY shows `Tag.tag["small", State % Int](count)`
+     — the docs promised a syntax the code could not give.
+  3. `State.handle[S](s)[A, F]`, where the separator is the value
+     parameter rather than a using clause: `State.handle[Int](0)(p)`.
+
+measured before claiming (scratchpad probes, scala-cli 3.9.0):
+  - the one-method `split` compiles, the existential R still infers
+    from the branches, and `javap` shows the SAME bytecode as the
+    two-stage form: no invokedynamic, branches beta-reduced. The
+    zero-allocation property `split` exists for is not at risk.
+  - a row inferred from a PROGRAM (`a: A ! F + G`) resolves exactly;
+    a row inferred from a single OPERATION (`op: F[A]`) does NOT —
+    it widens to `[X0] =>> St[Int, Int | X0]`. That is why stage 2
+    keeps F explicit in `Tag.one` and infers only A.
+  - `pure[F, A]` cannot be split (no separator between F and A), so
+    its 128 call sites are untouched. Recorded so nobody retries it.
+
+gate: this changes the kernel every module compiles against.
+  `sbt Test/compile` repo-wide BEFORE the matrix (signature-change
+  rule), both Jmh configurations, then the full matrix, then a clean
+  compile for warnings.
+
+predict: stage 1 lands with zero call-site edits; stage 2 and 3 are
+  mechanical but will find at least one site where the row does not
+  infer and must stay explicit. Recorded so being wrong shows.

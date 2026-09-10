@@ -1,6 +1,13 @@
 # Sprint
 
 ## Doing
+- generalized-method-syntax — Scala 3's multiple type parameter clauses
+  (operator, 2026-09-11). Three stages: `split`/`over`/`<|>` lose their
+  second-stage value classes; the row combinators take rows first and
+  infer the answer types; `State.handle[Int](0)(p)`. Probed on 3.9.0
+  first — same bytecode, and a row infers from a program but widens
+  from a single operation. Claimed 2026-09-11
+  (.work/active/generalized-method-syntax.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
