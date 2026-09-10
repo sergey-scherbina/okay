@@ -1,0 +1,6 @@
+feature/aggregator-zip-flat-general 2026-09-10T14:22:50Z
+agent: claude-code
+heartbeat: 2026-09-10T14:22:50Z
+status: in-progress
+done-so-far: claimed
+next: OfLong.zipLong with a flat two-long accumulator; prove it by bytes/op (load-independent), not by wall clock
