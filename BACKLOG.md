@@ -589,13 +589,26 @@ or not at all).
       arrived. `Route.Concat` also became `Route.Split` in the same
       lane, after the operator read the old name as the standard
       library's.
+- [x] optics-outside-ops-routes — DONE (2026-09-11, cbb1000f). Stage 4:
+      the DESCRIBE interpreter's first consumer. A probe path lived in
+      three independent literals (okay-ops served one, okay-deploy's
+      `Health` defaulted to another, okay-script's ScriptDeploy wrote a
+      third); the paths are values now and two tests hold the ends
+      together. Found on the way: `Ops` compared the whole url while
+      `Site` compared only the path, so `/healthz?probe=1` worked in
+      one module and missed in the other. Also fixed `TestSignals`,
+      which used a spin budget as a timeout and failed 2 of 3 runs on
+      untouched master.
 - [ ] optics-outside-describe — the renderer stage 1's DESCRIBE
       interpreter still has no consumer for. A `Router` plus its
       routes' `describe`/`params`/`queries` is an OpenAPI paths object
       already; okay-agent's `Toolbox` is the same shape for MCP. Do
       NOT start it as "generate OpenAPI": start it by naming which
       consumer reads the output, or it lands with no caller — the trap
-      this arc has now recorded three times.
+      this arc has now recorded three times. Stage 4 is the worked
+      example of doing it the other way round: the consumer (a
+      deployment naming a probe path) was found in the tree first, and
+      the description was shaped to fit it.
 - [ ] optics-outside-routes-body — headers and request/response
       bodies. `Request`/`Response` already carry a `Body` and okay-codec
       has `Schema`, so a body declaration is the `Toolbox` shape
@@ -946,6 +959,21 @@ or not at all).
       that section carries is in BACKLOG-ARCHIVE.md)
 
 ## okay-resilience
+- [ ] resilience-timed-under-load — `TestResilienceTimed."hedge: max
+      bounds the attempts in flight"` failed once in a full gate
+      (2026-09-11 00:0x, optics-outside-ops-routes) and did NOT
+      reproduce alone: 4 of 4 green on unmodified master and 3 of 3 in
+      the lane's worktree, 7 for 7 in isolation. The suite is timed by
+      name — `Hedge.run(10, max = 3)` needs three attempts to start
+      10 ms apart and the third to win at +5 ms, then asserts exact
+      counters (`starts == 3`, `cancelled == 2`) — so it measures
+      whether the scheduler kept up, which under a full matrix it
+      sometimes does not. Untagged today, which puts a machine-speed
+      question in the default gate; the policy in AGENTS.md
+      ("no flaky tests in the default gate") says `Live`. Not tagged
+      by that lane on purpose: one sighting is a ledger entry, not a
+      verdict, and the owner should decide between tagging it and
+      making the assertions bound-based rather than exact.
 - [ ] **hedge-start-timing-flake** — `TestHedgeStart."an attempt forked
       while the answer arrives leaves neither a running attempt nor an
       armed timer"` fails a landing gate with "timed out waiting for

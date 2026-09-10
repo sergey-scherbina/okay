@@ -520,14 +520,14 @@ literals.
 
 ### Behavior
 
-- [ ] `Ops.routes` answers exactly what it answered before, and the
+- [x] `Ops.routes` answers exactly what it answered before, and the
       existing suites pass unchanged
-- [ ] `Ops.router(...).describe` and `Ops.paths` agree — the audit and
+- [x] `Ops.router(...).describe` and `Ops.paths` agree — the audit and
       the dispatch cannot drift, which is the law this stage exists for
-- [ ] `Site.opsRouter` and `Site.opsPaths` agree the same way
-- [ ] every probe path `ScriptDeploy`'s `Health` names is a path
+- [x] `Site.opsRouter` and `Site.opsPaths` agree the same way
+- [x] every probe path `ScriptDeploy`'s `Health` names is a path
       `Site` actually serves
-- [ ] a query string no longer defeats an ops route (`/healthz?x=1`
+- [x] a query string no longer defeats an ops route (`/healthz?x=1`
       matched in `Site`, which used `pathOf`, and MISSED in `Ops`,
       which compared the whole url — the two disagreed, and now do not)
 
@@ -575,6 +575,40 @@ router is built from them, and a test asserts the two agree.
   and a typed query DSL comes fourth.
 
 ## Results
+
+### Stage 4 — LANDED 2026-09-10 (optics-outside-ops-routes)
+
+`Ops.healthz/readyz/stats/metrics` and `Site.Ops.healthz/stats/metrics`
+are values; the routers are built from them; `ScriptDeploy` names both
+probes from `Site.Ops`. Two tests hold the ends together — `paths` is
+exactly what the router dispatches, and every probe path the manifest
+names is one the Site serves — and neither could be stated before.
+
+**A disagreement nobody had noticed.** `Ops` compared the WHOLE url
+(`r.url == "/healthz"`) and `Site` compared only the path
+(`pathOf(r.url)`), so `/healthz?probe=1` was served by okay-script and
+missed by okay-ops. Two modules with the same-looking check behaved
+differently. Both behave like `Site` now, and a test says so.
+
+**A flake that had to be understood before it could be dismissed.**
+The lane's first run of `okayOpsJVM/test` went red on
+`TestSignals`, a suite this lane does not touch. Structural argument —
+it never mentions `Ops` — was not accepted as sufficient, because "my
+diff could not have done that" is exactly the reasoning that has
+failed here before. A control run on UNMODIFIED master failed it twice
+in three tries at load ~20, the same rate as the worktree, which
+settled the attribution by measurement.
+
+The mechanism turned out to be a defect worth fixing rather than
+tagging: the test waited with
+`while hold == null && spins < 10_000_000 do spins += 1` and then
+asserted unconditionally. That loop exits on EITHER condition, so an
+exhausted spin budget was indistinguishable from a successful wait —
+under load the spawned thread never got a core and the assertion spoke
+about a request that had not started. The product's ordering was
+correct throughout. A `CountDownLatch` made the timeout a timeout and
+gave the cross-thread `var` the happens-before edge it never had: five
+clean runs after, against two failures in three before.
 
 ### Stage 3 — LANDED 2026-09-10 (optics-outside-routes-query)
 

@@ -1,5 +1,64 @@
 # Changelog
 
+## optics-outside-ops-routes — a deployment could name a probe path nothing served
+
+Stage 4 of `specs/optics-outside.md`, and the lane that gives stage 1's
+DESCRIBE interpreter a consumer. "Generate OpenAPI" would have been a
+lane with no caller — the trap this arc has recorded three times — so
+the consumer came from the tree instead. A probe path lived in three
+independent string literals: okay-ops served `r.url == "/healthz"`,
+okay-deploy's `Health` named it as an unrelated default (rendered into
+SIX targets — k8s probes, an AWS ALB health_check, Azure, GCP, a
+compose healthcheck), and okay-script's `ScriptDeploy` wrote a third
+pair by hand.
+
+`Ops.healthz/readyz/stats/metrics` and `Site.Ops.healthz/stats/metrics`
+are values now, the routers are built from them, and `ScriptDeploy`
+names its probes from `Site.Ops`. Two tests hold the ends together:
+`paths` is exactly what the router dispatches, and every probe path the
+manifest names is one the Site serves. Neither statement was
+expressible before.
+
+**okay-deploy does not learn about okay-http**, and that is the answer
+rather than a workaround: it depends on `okayCodec` and `okayConf` only
+and has no business knowing what a `Route` is, so the coupling is
+enforced in okay-script, which already has both sides. A dependency
+added to make a check convenient would cost more than the check.
+
+**A disagreement nobody had noticed.** `Ops` compared the whole url and
+`Site` compared only the path, so `/healthz?probe=1` was served by one
+module and missed by the other. Both behave like `Site` now.
+
+**A correction to this lane's own premise.** It was claimed on the
+grounds that the three literals had already diverged, since `Site`
+serves no `/readyz` while `ScriptDeploy` names readiness at
+`/healthz`. Reading the file rather than grepping it showed the choice
+is deliberate and explained in place — a Site is ready when it is live,
+because its pages compile before the port binds. The claim was
+corrected before the work was built on it. The real defect is narrower
+and worse: nothing would have NOTICED a divergence, and Kubernetes
+would have found out first by restarting the pod.
+
+**And a flake that had to be understood before it could be dismissed.**
+The lane's first `okayOpsJVM/test` went red on `TestSignals`, which
+this lane does not touch. The structural argument — it never mentions
+`Ops` — was not taken as sufficient, because "my diff could not have
+done that" is exactly the reasoning that has failed in this repository
+before. A control run on unmodified master failed twice in three tries
+at load ~20, the same rate as the worktree, settling the attribution by
+measurement rather than by argument.
+
+The mechanism deserved a fix rather than a tag. The test waited with
+`while hold == null && spins < 10_000_000 do spins += 1` and then
+asserted unconditionally — a loop that exits on EITHER condition, so an
+exhausted spin budget was indistinguishable from a successful wait.
+Under load the spawned thread never got a core within ten million
+iterations and the assertion spoke about a request that had not
+started; the product's ordering was correct throughout. A
+`CountDownLatch` made the timeout a timeout and gave the cross-thread
+`var` the happens-before edge it never had: five clean runs after,
+against two failures in three before. Commits: 32040092 (spec), 1ba7d300 (the flake), cbb1000f (the conversion).
+
 ## di-guide-complete — the answers that lived only in a conversation
 
 A session of the operator's questions had been answered in chat and
