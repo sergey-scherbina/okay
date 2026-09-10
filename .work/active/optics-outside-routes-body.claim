@@ -1,0 +1,30 @@
+task: optics-outside-routes-body
+agent: opus5-optics-outside
+started: 2026-09-11
+heartbeat: 2026-09-11T00:55:00Z
+status: in-progress
+branch: feature/optics-outside-routes-body
+worktree: ../okay-wt-body
+spec: specs/optics-outside.md (stage 7)
+
+why: the consumer was found before the feature, as stage 4 established.
+  okay-demo's `/login` and `/login/confirm` pick their fields out of the
+  request body by string literal — `Chat.fieldOf(r.body, "email")` —
+  which is the same shape stage 2 removed from `BoardTools`, and it
+  carries a live defect: `fieldOf` answers `""` both for a MISSING
+  field and for a body that is not JSON at all, so the two are
+  indistinguishable. `/login` checks for the empty string and answers
+  400; `/login/confirm` does not, and passes ("", "") into
+  `Login.confirm`, so a malformed request is reported to the caller as
+  **401 "wrong or expired code"**. The routes are covered only by
+  `portTest`, which is Live-tagged and out of the default gate, so
+  nothing would have caught it.
+
+what: `Router.json[B]` declares the body's type. It decodes with
+  `Schema[B]` before the handler runs, answers 400 with data when the
+  body does not decode, and records the body's JSON Schema on the
+  entry so `describe` carries it — which is what a renderer will need
+  and what stage 2 already does for tools.
+
+next: spec stage 7, Router.json, a pure test of the mechanism, the two
+  ChatDemo routes, one Live assertion for the 400, docs
