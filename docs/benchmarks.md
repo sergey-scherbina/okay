@@ -1863,6 +1863,40 @@ tried to remove. The other two are the state itself and the step's
 return shape — `scan-step-allocation` is the second, and it is an
 interface change.
 
+**And the second share is gone** (scan-step-allocation, 2026-09-10).
+`step` does not answer a pair where it matters any more:
+`stepInto(s, c, out)` writes the finished tokens into the collection
+the driver is already filling and hands back only the state. That
+removes the `Tuple2` per character AND the `Vector` that wrapped every
+token on its way out. Additive — the default `stepInto` delegates to
+`step`, so a scanner that has not moved costs exactly what it cost;
+`Json` and `Bpe` moved, `Yaml`, `Markdown`, `Xml` and okay-rag's code
+scanner did not.
+
+| B/op | before | after | |
+|---|---|---|---|
+| element-wise lex | 425 832 | **301 056** | −29.3% |
+| chunked lex (64, unboxed) | 467 837 | **337 888** | −27.8% |
+| full parse | 788 913 | **664 137** | −15.8% |
+| BPE scan | 1 066 305 | **896 833** | −15.9% |
+
+Two rounds per side, alternating A/B on the same box: every byte count
+above reproduced TO THE BYTE (bars ±0.1 B). Nor does anything have to
+be inferred about where the bytes went — the change removes exactly
+two objects, one `Tuple2` per input character and one `Vector1` with
+its array per emitted token, plus the `:+` copy where a character
+finished one token and started another. That is −50 bytes per input
+character element-wise, and it leaves the state itself (~56 B) as the
+only named share still standing.
+
+TIME, with the caution this section has earned: the two LEX lanes are
+faster in BOTH rounds — 43.6 → 25.4 µs element-wise and 60.7 → 35.7
+chunked in the quiet round (per-lane minima), still 45.5 → 34.9 and
+59.3 → 41.3 in the round where the box's other tenant held eleven
+cores. The parse and BPE lanes moved WITH the box (71.2 against 87.0
+quiet, 100.4 against 90.1 loaded), so they are recorded as allocation
+results and nothing more.
+
 **Parsing, full vs incremental:**
 
 | full parse | incremental reparse (one-member edit) |

@@ -2255,22 +2255,28 @@ measure on our own data, never a predicted result.
       that stage, ~6% end to end — A/B'd in ONE run, because the first
       cross-run reading said 2x and was GC noise. Guarded by
       TestJsonValue's existing prefix sweep.
-- [ ] scan-step-allocation — NOW THE LARGEST NAMED SHARE, and priced
-      2026-09-09 by lexer-buf-without-concat: the `Tuple2` is ~19% of
-      lexing's ~171 B per character, second only to `S` itself (~33%).
-      The consumer this entry said it wanted is now here — three lanes
-      have measured this path — but note what the same work refuted:
-      the concat is the SMALLEST of the three shares, so an interface
-      change that removes only the tuple buys about a fifth. Was:
-      `Scan.step: (S, Char) => (S,
-      Vector[Token[K]])` allocates a tuple per CHARACTER, which is the
-      next wall on the lossless road (~26 ms of a 9.3 MB lex). An
-      additive `stepInto(s, c, out)` with a default delegating to
-      `step` would leave every scanner working and let one override.
-      NOT taken 2026-09-07 because no main-source caller uses the
-      lossless road at all — it serves `Json.parse`'s damage fallback,
-      the incremental reparse story and the tests. Wants a consumer
-      before it wants an interface change.
+- [x] scan-step-allocation — LANDED 2026-09-10, and it bought more
+      than it promised: −29.3% of the allocation element-wise
+      (425 832 → 301 056 B/op), −27.8% chunked, −15.8% on the full
+      parse, −15.9% on a BPE scan, two rounds per side reproducing to
+      the byte. The entry predicted "about a fifth" because it priced
+      only the `Tuple2`; giving the tokens somewhere else to go took
+      the `Vector` per token with it, which is not a per-character
+      cost and so nobody had counted it. `Scan.stepInto(s, c, out)`
+      with a default delegating to `step` (additive, every scanner
+      still works) plus `ScanInto` where `stepInto` is abstract and
+      `step` is final. The state itself (~56 B/char) is now the only
+      named share left, and it is inherent to a state that is a value.
+- [ ] scan-into-the-other-scanners — `Yaml`, `Markdown`, `Xml` and
+      okay-rag's `Code` scanner still answer the pair, so they still
+      pay the `Tuple2` per character and a `Vector` per token; the
+      default `stepInto` keeps them correct, not fast. Json's move
+      says the shape of the win (~29% of the allocation on that
+      scanner's road), but none of the four has a measured lane, and
+      `Code`/`Yaml` recurse into their own `step` — the conversion is
+      real work, not a rename. Wants a lane that measures one of them
+      first: okay-rag's code chunker over a real file is the honest
+      workload.
 - [x] r-subprocess — LANDED 2026-09-07, stage 0: okay-r with
       REval/RValue/RFrame, the versioned shim, the comonadic handler
       over a clean-env Rscript, conditions as data, verify, dead-

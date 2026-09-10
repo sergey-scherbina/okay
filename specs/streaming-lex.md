@@ -85,9 +85,10 @@ performance path; `lexer` derives both from one Scan.
       damaged region (probe: under half the input re-stepped; the
       key/rebase pair on Scan is what makes position-carrying states
       comparable across the shift)
-- [ ] the sink road answers exactly what the pair road answers, for
+- [x] the sink road answers exactly what the pair road answers, for
       every scanner and every character (a scanner overriding
-      `stepInto` and one that does not, over the same input)
+      `stepInto` and one that does not, over the same input) —
+      TestLex, TestBpe
 - [x] chunked lexing agrees with element-wise lexing — Scan.chunks:
       chunk of chars in, chunk of tokens out, one tight while per
       chunk, the same Scan deriving both paths
@@ -113,3 +114,12 @@ performance path; `lexer` derives both from one Scan.
   chunker, okay-llm's streaming structured parse, and the agent's BPE
   token count on every message — and the two hot scanners (`Json`,
   `Bpe`) are the two that moved.
+
+## Results
+- **−29% of the allocation, element-wise** (2026-09-10). 425 832 →
+  301 056 B/op on the 2.5 KB JSON document; chunked −27.8%, full parse
+  −15.8%, BPE −15.9%. Two rounds per side alternating on one box, every
+  byte count reproduced to the byte. Time: the two lex lanes are faster
+  in both rounds (43.6 → 25.4 µs quiet, 45.5 → 34.9 loaded); parse and
+  BPE moved with the box and are allocation results only.
+  docs/benchmarks.md §10 carries the table.

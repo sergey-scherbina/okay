@@ -12,7 +12,11 @@
 
  Open and named, for whoever picks next: json-strict-is-now-the-slow-door
  (likely a wontfix — its entry states the disqualifying condition),
- scan-step-allocation (a tuple per character, an interface change).
+ scan-into-the-other-scanners (Yaml/Markdown/Xml/Code still answer the
+ pair; wants a measured lane before the conversion).
+ scan-step-allocation LANDED 2026-09-10 — the sink road took 29% of
+ lexing's allocation, and the arithmetic that predicted a fifth is in
+ its CHANGELOG entry.
  lexer-buf-without-concat is GONE from this list: it landed 64d7af6a
  as a refutation (the array candidate measured 11-12% WORSE), which
  also prices what scan-step-allocation was waiting for.

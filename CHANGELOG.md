@@ -1,5 +1,60 @@
 # Changelog
 
+## scan-step-allocation — the pair every scanner answered, gone from the drivers
+
+The operator asked what else was worth optimising. The repository had
+already written the answer down: of lexing's ~171 bytes per input
+character, the `Tuple2` that `Scan.step` answers is ~19%, second only
+to the state itself (docs/benchmarks.md §10). The other two shares had
+been dealt with — the flat state won 6%, the string concat was
+measured and REFUTED — and this was the one left standing.
+
+`Scan.stepInto(s, c, out)` writes the finished tokens into the
+collection the driver is already filling and answers only the state.
+Additive by construction: its DEFAULT delegates to `step`, so every
+scanner written before it exists keeps working and costs exactly what
+it cost. `ScanInto` is the other side — `stepInto` abstract, `step`
+final on top of it — which makes the two mutually delegating defaults
+that would loop for ever impossible to write. `Scan.all`,
+`Scan.chunks`, `Scan.relex`, `Yaml.cst` and `Markdown.parse` read the
+sink road; `Scan.stage` keeps the pair, because a pipeline emits
+tokens one at a time and that is what it wants.
+
+| B/op | before | after | |
+|---|---|---|---|
+| element-wise lex | 425 832 | **301 056** | −29.3% |
+| chunked lex (64, unboxed) | 467 837 | **337 888** | −27.8% |
+| full parse | 788 913 | **664 137** | −15.8% |
+| BPE scan | 1 066 305 | **896 833** | −15.9% |
+
+Two rounds per side, alternating on one box: every byte count above
+reproduced to the byte. And there is nothing to infer about where they
+went — the change removes exactly one `Tuple2` per character and one
+`Vector1`-with-its-array per token, plus the `:+` copy where a
+character finished one token and started another. −50 bytes per input
+character, which leaves the state itself as the only named share left.
+
+**The entry predicted a fifth and got more than a quarter, for a
+reason worth keeping.** It priced only the tuple. Removing the tuple
+means the tokens have somewhere else to go, and that took the `Vector`
+per token with it — a second share nobody had counted because it is
+not per-character. The rule stands anyway: the byte counts decided
+this, the times could not (the parse and BPE lanes moved WITH the
+box, and are recorded as allocation results only).
+
+**Why now, when September refused it.** BACKLOG had said no for a
+good reason — an interface exists for its callers, and the lossless
+road then served the tests and a damage fallback. It has six
+main-source consumers now: `Yaml.cst`, `Markdown.parse`, okay-rag's
+window splitter and code chunker, okay-llm's streaming structured
+parse, and the agent's BPE token count on every message.
+
+Tests: the sink road answers what the pair road answers, for a scanner
+that overrides `stepInto` and for one that runs on the default — the
+compatibility promise the four un-moved scanners rely on. It was
+watched failing first (a default that drops a one-token answer) before
+it was kept.
+
 ## jdk-event-time-collector — an event-time window AS a `java.util.stream.Collector`
 
 The operator asked whether the JDK lane's problem was fixable on our
