@@ -355,11 +355,26 @@ containers. Text concatenates, numbers add, and a rule the givens do
 not have is passed in:
 
 ```scala
+import okay.given                              // see the note below
+
 object Notes  extends Fact[String]             // concatenation
 object Weight extends Fact[Int]                // numbers add
 object Newest extends Fact[Option[String]](
   using Monoid.of(Option.empty[String])((_, b) => b))   // last wins
 ```
+
+The import earns a line of its own, because two rules meet here and
+both were measured from outside the library (monoid-scope). `import
+okay.*` does NOT bring givens — Scala 3 wants `import okay.given` for
+those — and the base monoids are not all reachable the same way:
+`Monoid[Vector[A]]` lives in `Monoid`'s companion, so it is in the
+implicit scope of the type and needs no import at all, while
+`Monoid[String]` and `Monoid[List[A]]` are declared at package level
+and need one. Moving them into the companion looks like the fix and is
+not: the `|+|` on a bare value comes from the instance being in
+LEXICAL scope, so the move breaks `a |+| b` on a `String` (measured —
+it broke `TestLaws`). Import the givens; it is what every file in this
+repository already does.
 
 okay-deploy's own kind is one of the last sort: two modules on one
 volume declare one volume, not two, so its monoid dedups.

@@ -385,6 +385,31 @@ folding a container but COMBINING two contributions, which is the
 monoid; with it, a collection stops being special — a fact over
 `String` concatenates and one over `Int` sums, pinned by a test.
 
+## Where a Monoid instance lives (monoid-scope, 2026-09-10, MEASURED AND DECLINED)
+
+Asked where the `String` in `object Notes extends Fact[String]` gets
+its merge from, the answer turned up an asymmetry: `Monoid[Vector[A]]`
+is in `Monoid`'s companion (its own comment says "being here it needs
+no import"), while `Monoid[String]`, `Monoid[List[A]]` and the
+`Alternative` family are declared at package level. From okay-deploy,
+`Fact[Vector[Int]]` compiled and `Fact[String]` did not.
+
+Moving the two into the companion — the obvious fix — was tried and
+REVERTED. A companion instance is found by an implicit search for the
+TYPE, but the `|+|` extension it carries is found only when the given
+is in LEXICAL scope, so the move broke `a |+| b` on a `String` in
+`TestLaws`. The two placements have different powers and neither is
+strictly better; the cost of the move is larger than the cost of an
+import.
+
+What was measured, and is now in docs/di.md instead:
+`import okay.*` does NOT bring givens (Scala 3 asks for `import
+okay.given`), and that, not the placement, is what the sample was
+missing. A deeper fix exists and was not taken: a top-level
+`extension [A](x: A)(using Monoid[A]) def |+|` would work for every
+monoid from anywhere, at the price of touching the algebra every
+module uses.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

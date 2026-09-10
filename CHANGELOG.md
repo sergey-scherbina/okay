@@ -1,5 +1,32 @@
 # Changelog
 
+## monoid-scope — where a Monoid instance lives, measured and left alone
+
+Asked where the merge in `object Notes extends Fact[String]` comes
+from, the answer found an asymmetry: `Monoid[Vector[A]]` is in
+`Monoid`'s companion — its own comment says "being here it needs no
+import" — while `Monoid[String]`, `Monoid[List[A]]` and the
+`Alternative` family are declared at package level. From okay-deploy,
+`Fact[Vector[Int]]` compiled and `Fact[String]` did not, which made
+the guide's one-line sample wrong for any reader outside the library.
+
+Moving the two into the companion was tried and REVERTED: a companion
+instance is found by an implicit search for the TYPE, but the `|+|` it
+carries is found only when the given is in LEXICAL scope, so the move
+broke `a |+| b` on a `String` in `TestLaws`. The two placements have
+different powers; neither is strictly better, and an import costs less
+than the operator.
+
+What the sample was actually missing is in the guide now, with the
+measurement behind it: `import okay.*` does NOT bring givens (Scala 3
+wants `import okay.given`). `TestMonoidScope` pins all three cases
+from a package that is not `okay` — and it lives in its own file
+because `compileErrors` compiles its snippet in the ENCLOSING FILE's
+context: the same assertions in TestDiDocs passed while proving
+nothing, since that file imports the givens at the top. The deeper fix
+that would remove the asymmetry — a top-level `extension [A](x: A)
+(using Monoid[A]) def |+|` — is named in the spec and not taken.
+Commit: LANDING.
 ## dataflow-durable — a journal that keeps its history, and a defect it turned up
 
 The last two open dataflow entries were the same question twice: what
