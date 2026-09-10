@@ -518,7 +518,7 @@ taking any of these; it also records where the run-time tax lands (on
 the USER's data path now, so a per-element optic ships behind `Fuse`
 or not at all).
 
-- [ ] optics-outside-routes — a route is a prism. One declaration
+- [x] optics-outside-routes — DONE (2026-09-10, dcc1d76e). A route is a prism. One declaration
       answers three questions: does this path match (server), what is
       the path for these parameters (client, reverse routing), and
       what does it look like (OpenAPI, an MCP tool). The prism law
@@ -530,7 +530,21 @@ or not at all).
       parameters (okay-script's `Site.resolve`) hands them back as an
       untyped `Map[String, String]` and splits on `/` before decoding,
       so an encoded `%2F` inside a parameter becomes a segment
-      boundary. Stage 1 of the spec.
+      boundary. Stage 1 of the spec. Landed WITH a caller:
+      `Acceptance.routes` became a `Router`, and the conversion found
+      two live defects — `startsWith("/person")` answered `/personal`,
+      and every route answered every verb.
+- [ ] optics-outside-routes-adopt — the other hand-written routers.
+      okay-ops, okay-admin, okay-acme and okay-demo all still match
+      with `case r if r.method == Get && r.url == "/healthz"`, and
+      okay-script's `Site.resolve` still decodes before it splits.
+      Each conversion is small; each is a BEHAVIOUR change at a live
+      endpoint (a query string now matches, a wrong verb now misses),
+      so it wants its own lane and its own gate, not a sweep.
+- [ ] optics-outside-routes-query — stage 2 of the spec: query
+      parameters, headers and bodies. Same structure, a different
+      monoid, and it is what stage 3 (rendering OpenAPI and MCP tool
+      declarations out of `describe`) needs before it can start.
 - [ ] optics-outside-policy — a projection policy is a traversal:
       which fields of a record may be seen, embedded, logged. The
       interpreter that earns it is the AUDIT — "name the fields this

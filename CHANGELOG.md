@@ -1,5 +1,65 @@
 # Changelog
 
+## optics-outside-routes — a route is a prism, and it found two live defects
+
+The optics arc closed with optics INSIDE okay. The operator's
+direction opens the other one: optics, profunctors, arrows and
+categories as the vocabulary a USER of the library writes.
+`specs/optics-outside.md` states the test that decides which
+candidates are real, because most of what can be dressed as an optic
+should not be — a declaration earns one only when it must be handed to
+more than one interpreter and at least one of them DESCRIBES it
+instead of running it. A plain `S => A` cannot be asked what it looks
+at. Six candidates are ranked by that test in BACKLOG; this is the
+first.
+
+`Route` is a path with three interpreters: `unapply` matches (and IS
+the extractor, so a server writes `case Get(userPost(id, slug))` and
+gets an `Int` and a `String`), `url` builds — reverse routing from the
+SAME declaration the server matches with — and `describe` needs no
+request at all, which is what an OpenAPI operation or an MCP tool
+declaration will be generated from. `Router` assembles them into the
+`PartialFunction[Request, Response ! Async]` every server here already
+takes, plus a listing derived from the same values that dispatch, so a
+route cannot be documented and unrouted or routed and undocumented.
+`route.prism` hands the whole thing to the core optics as
+`Prism[String, String, A, A]`.
+
+The law is the feature: `unapply(url(a)) == Some(a)`, checked over
+integers, longs, booleans and strings that need escaping — `"a/b"`,
+`"100%"`, Cyrillic, an emoji. A hand-written `r.url == "/users/" + id`
+cannot state that property, let alone check it.
+
+**It shipped with a caller, and the caller is the finding.** A public
+api with no consumer would repeat the honest note this repository has
+already written twice about the aggregating optics. `Acceptance.routes`
+— the fixture all four backends (the JDK's server, Jetty, Netty, NIO)
+are held to — was three `case r if r.url.startsWith("/person")`
+guards. Converting it to a `Router` found two defects that had been
+there the whole time: `startsWith("/person")` also answered
+`/personal`, and every route answered every verb, so a POST to
+`/person` was served the JSON body. Both refusals are asserted now.
+
+Three decisions worth the words. `Concat` is a typeclass and not
+`Tuple.Concat`: the match type composes forwards and will not come
+apart, `url` needs `A` and `B` back out of `c.Out`, and the compiler
+cannot prove associativity — an `asInstanceOf` would have closed it in
+one line and is exactly what AGENTS.md forbids. A handler needs the
+REQUEST, not only the path: the first cut could not express `/echo`,
+whose whole job is to read the body, so `at` is the primitive and `on`
+is written in terms of it. And percent-decoding happens per segment,
+AFTER the split, so an encoded `%2F` inside a parameter can never
+become a boundary — every hand-written router in this repository
+decodes before it splits, and okay-script's `Site.resolve` still does.
+
+One property is refused rather than papered over: an empty path
+segment is not a value, since `"/x//y"` and `"/x/y"` would build the
+same URL from different parameters, so `Param.string` refuses the
+empty capture and the law holds on the domain instead of "mostly".
+
+20 tests, green on JVM and JS; `docs/modules/okay-http.md` has the
+user-facing half. Commits: e3151b59 (spec + backlog), dcc1d76e (the route).
+
 ## dataflow-run-complete-panes — the rule the single-stage road never got
 
 The completeness rule was stage 3's and it went into the FAN only.
