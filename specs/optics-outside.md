@@ -768,13 +768,13 @@ what a renderer will need, and what stage 2 already gives tools.
 
 ### Behavior
 
-- [ ] a declared body arrives at the handler decoded
-- [ ] a body that is not JSON is answered 400, and never reaches the
+- [x] a declared body arrives at the handler decoded
+- [x] a body that is not JSON is answered 400, and never reaches the
       handler
-- [ ] a body missing a required field is answered 400
-- [ ] the answer is DATA naming what failed, not an exception
-- [ ] a route with no declared body is unchanged (`on`, `at`)
-- [ ] `/login` and `/login/confirm` are declared this way, and a
+- [x] a body missing a required field is answered 400
+- [x] the answer is DATA naming what failed, not an exception
+- [x] a route with no declared body is unchanged (`on`, `at`)
+- [x] `/login` and `/login/confirm` are declared this way, and a
       malformed body is a 400 rather than a 401
 
 ## Decisions
@@ -804,6 +804,34 @@ what a renderer will need, and what stage 2 already gives tools.
   and a typed query DSL comes fourth.
 
 ## Results
+
+### Stage 7 — LANDED 2026-09-11 (optics-outside-routes-body)
+
+`Router.json[B]` declares the body; `/login` and `/login/confirm` are
+declared with it, and a malformed body is a 400 rather than a 401.
+
+**The lane found a defect of mine, four stages old.** `Router.routes`
+was `Function.unlift(find)`, so `isDefinedAt` called the HANDLER to
+discover whether the route matched. That was harmless while every
+handler in the tree merely BUILT a program — `Acceptance`, `Ops` and
+`Site` all do — and wrong the moment one did work outside it.
+`Login.confirm` spends a one-time code, so an `isDefinedAt` followed by
+an `apply` spent it twice and answered **401 to a correct code**.
+
+`Entry` carries `matches` apart from `run` now; `isDefinedAt` asks only
+the method and the path, and `applyOrElse` keeps `orElse` composition
+from paying for a second search. Two tests pin the CAUSE rather than
+the symptom — `isDefinedAt` leaves the handler's counter at zero, and a
+route that did not match does not run — because the symptom test would
+have fixed `/login` and left the next effectful handler open.
+
+Three things about how it was found are worth keeping. It was invisible
+for four stages because no handler had an effect outside its program,
+so the defect had no witness. The property that made it visible is the
+one that makes `Login.confirm` correct: spending the code ONCE. And it
+surfaced in the Live suite, which the default gate does not run — the
+second time this session that explicitly running the Live tests of
+converted code paid for itself.
 
 ### Stage 6 — LANDED 2026-09-11 (optics-outside-route-labels)
 

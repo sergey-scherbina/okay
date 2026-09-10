@@ -1,5 +1,46 @@
 # Changelog
 
+## optics-outside-routes-body — a declared body, and a defect of my own it uncovered
+
+Stage 7 of `specs/optics-outside.md`. `Router.json[B]` declares the
+request body's type: `Schema[B]` decodes before the handler runs, so a
+handler never sees an undecoded body, and a body that does not decode
+is answered 400 with data. The entry records the body's JSON Schema,
+which is what a renderer will read and what stage 2 already gives
+tools.
+
+The consumer came first. okay-demo read its login fields with
+`Chat.fieldOf(r.body, "email")`, which answers the empty string both
+for a missing field and for a body that is not JSON — so the two could
+not be told apart. `/login` checked the empty string; `/login/confirm`
+did not, and a malformed request reached `Login.confirm("", "")` whose
+caller was told **401, wrong or expired code** — a verdict on their
+credentials for a broken request. Both routes are declared now.
+
+**And the lane found a defect I had introduced in stage 1.**
+`Router.routes` was `Function.unlift(find)`, so `isDefinedAt` called the
+HANDLER to discover whether the route matched. Harmless while every
+handler in the tree merely BUILT a program — `Acceptance`, `Ops` and
+`Site` all do — and wrong the moment one did work outside it.
+`Login.confirm` spends a one-time code, so an `isDefinedAt` followed by
+an `apply` spent it twice and answered 401 to a CORRECT code.
+`Router.Entry` carries `matches` apart from `run` now, `isDefinedAt`
+asks only the method and the path, and `applyOrElse` keeps `orElse`
+composition from paying for a second search.
+
+Two tests pin the cause rather than the symptom: `isDefinedAt` leaves
+the handler's counter at zero, and a route that did not match does not
+run. A test on the symptom would have fixed `/login` and left the next
+effectful handler — a counter, a log line, a quota — open.
+
+Three things about the finding are worth keeping. It was invisible for
+four stages because no handler had an effect outside its program, so
+the defect had no witness. The property that made it visible is the one
+that makes `Login.confirm` correct: spending the code ONCE. And it
+surfaced in the Live suite, which the default gate does not run — the
+second time this session that explicitly running the Live tests of
+converted code paid for itself. Commits: 60b37cb7 (spec), c7611518 (the body and the fix).
+
 ## optics-outside-route-labels — the names a positional mapping never checked
 
 Stage 6 of `specs/optics-outside.md`. `Route.Of[C]` maps a route's
