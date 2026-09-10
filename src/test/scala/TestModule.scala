@@ -131,9 +131,9 @@ class TestModule extends munit.FunSuite {
   }
 
   // module-facts: what a module says about itself, and when it can be read
-  object Tags extends Fact[Vector[String]]:
-    def empty = Vector.empty
-    def merge(a: Vector[String], b: Vector[String]) = a ++ b
+  // the whole declaration: how two contributions merge is the Monoid
+  // the core already has for Vector (fact-is-monoid)
+  object Tags extends Fact[Vector[String]]
 
   test("facts declared on modules merge left to right under and, by the kind's own rule") {
     val a = Module.value[Db](new Db { val q = "a" }).declare(Tags, Vector("db"))
@@ -188,6 +188,25 @@ class TestModule extends munit.FunSuite {
     // the built collection has everything, in acquisition order
     assertEquals(run(app { wire[Vector[String]] }), Vector("volume /data", "pool"))
     assertEquals(opened, 1)
+  }
+
+  // fact-is-monoid: a collection is not special — any monoid is a kind
+  object Notes extends Fact[String]          // the String monoid: concatenation
+  object Weight extends Fact[Int]            // numbers add (Group[N] is a Monoid)
+  object Newest extends Fact[Option[String]](
+    using Monoid.of(Option.empty[String])((_, b) => b))   // last wins
+
+  test("a fact is any monoid, not a collection: text concatenates, numbers add, a rule of your own wins") {
+    val a = Module.value[Db](new Db { val q = "a" })
+      .declare(Notes, "opened db").declare(Weight, 3).declare(Newest, Some("db"))
+    val b = Module.value[Log](new Log { val tag = "" })
+      .declare(Notes, ", opened log").declare(Weight, 4).declare(Newest, Some("log"))
+    val app = a and b
+    assertEquals(app.facts.get(Notes), "opened db, opened log")
+    assertEquals(app.facts.get(Weight), 7)
+    assertEquals(app.facts.get(Newest), Some("log"))
+    // and each kind installs on its own
+    assertEquals(run(app.installing(Weight) { wire[Int] }), 7)
   }
 
   test("shadowed names a capability installed twice, which a test double does on purpose") {

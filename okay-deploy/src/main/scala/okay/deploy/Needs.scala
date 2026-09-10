@@ -1,6 +1,6 @@
 package okay.deploy
 
-import okay.{Fact, Module}
+import okay.{Fact, Module, Monoid}
 import scala.quoted.*
 
 /**
@@ -40,9 +40,10 @@ object Needs:
    * asks. No wrapper, no method per kind: the `Need` constructors
    * themselves.
    */
-  object Declared extends Fact[Vector[Need]]:
-    def empty: Vector[Need] = Vector.empty
-    def merge(a: Vector[Need], b: Vector[Need]): Vector[Need] = (a ++ b).distinct
+  object Declared extends Fact[Vector[Need]](
+    // not the free monoid on Vector: two modules on one volume declare
+    // one volume, not two
+    using okay.Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
 
   extension [F[_]](m: Module[F])
     /** what this module needs from the place, said where it opens the thing */

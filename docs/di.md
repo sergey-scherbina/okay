@@ -340,15 +340,29 @@ as a FACT, and `installing` merges every piece by that kind's own rule
 and installs the result as an ordinary capability:
 
 ```scala
-object Routes extends Fact[Vector[Route]]:
-  def empty = Vector.empty
-  def merge(a: Vector[Route], b: Vector[Route]) = a ++ b
+object Routes extends Fact[Vector[Route]]      // the whole declaration
 
 val app = (admin.declare(Routes, Vector(adminRoutes)) and
            chat.declare(Routes, Vector(chatRoutes))).installing(Routes)
 
 app { serve(wire[Vector[Route]]) }
 ```
+
+**A collection is not special here.** How two contributions merge is a
+`Monoid`, the one this core already has, so the kind is declared by
+naming the type and nothing else — and any monoid works, not just
+containers. Text concatenates, numbers add, and a rule the givens do
+not have is passed in:
+
+```scala
+object Notes  extends Fact[String]             // concatenation
+object Weight extends Fact[Int]                // numbers add
+object Newest extends Fact[Option[String]](
+  using Monoid.of(Option.empty[String])((_, b) => b))   // last wins
+```
+
+okay-deploy's own kind is one of the last sort: two modules on one
+volume declare one volume, not two, so its monoid dedups.
 
 The pieces arrive in acquisition order, and a contribution declared
 BELOW an acquisition arrives too — the facts travel with the build,

@@ -74,14 +74,29 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
 
 /**
  * A KIND of fact a module may declare about itself (module-facts):
- * whoever READS the fact defines the key and how two declarations
- * merge — a deployment's needs are one such kind, defined in
- * okay-deploy, and the core knows no deployment word. Keys compare by
- * identity, so a `Fact` is an object, held as a val.
+ * whoever READS the fact defines the key, and HOW TWO DECLARATIONS
+ * MERGE IS A MONOID — the one this core has had in Fold.scala all
+ * along, with instances for Vector, List, String and every
+ * Alternative. So the usual declaration is one line and no methods:
+ *
+ * {{{
+ *   object Routes extends Fact[Vector[Route]]
+ * }}}
+ *
+ * A rule the givens do not have passes its own (fact-is-monoid):
+ *
+ * {{{
+ *   object Declared extends Fact[Vector[Need]](
+ *     using Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
+ * }}}
+ *
+ * A deployment's needs are one such kind, defined in okay-deploy, and
+ * the core knows no deployment word. Keys compare by identity, so a
+ * `Fact` is an object, held as a val.
  */
-trait Fact[V]:
-  def empty: V
-  def merge(a: V, b: V): V
+abstract class Fact[V](using val monoid: Monoid[V]):
+  private[okay] def empty: V = monoid.empty
+  private[okay] def merge(a: V, b: V): V = monoid.combine(a, b)
 
 object Fact:
   given Same[Fact] = Same.byIdentity[Fact]

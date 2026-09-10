@@ -363,6 +363,28 @@ and not an error because a test double is exactly a deliberate
 double, and refusing it would break the override idiom the arc has
 had since stage 0.
 
+## A fact's merge is a Monoid (fact-is-monoid, 2026-09-10)
+
+`Fact[V]` declared `empty` and `merge` — which is `Monoid[V]`, the
+one this core has had in Fold.scala all along, with instances for
+Vector, List, String and every Alternative, and `Group[N]` for
+numbers. Two names for one thing is what this repository forbids, and
+the cost fell on every contributor: two methods written by hand where
+the instance already existed.
+
+A `Fact[V]` now CARRIES its monoid, so the usual kind is one line and
+no methods (`object Routes extends Fact[Vector[Route]]`), and a rule
+the givens do not have is passed in — `Monoid.of(zero)(f)`, added for
+exactly this. okay-deploy's `Declared` is one of those: two modules on
+one volume declare one volume, so its merge dedups rather than
+appends.
+
+The operator's question was whether the collection should be
+abstracted (Foldable was the suggestion). The right abstraction is not
+folding a container but COMBINING two contributions, which is the
+monoid; with it, a collection stops being special — a fact over
+`String` concatenates and one over `Int` sums, pinned by a test.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

@@ -1,5 +1,27 @@
 # Changelog
 
+## fact-is-monoid — the merge a Fact declared was a Monoid all along
+
+`Fact[V]` asked a contributor for `empty` and `merge`. That is
+`Monoid[V]`, which this core has had in Fold.scala from the start,
+with instances for Vector, List, String, every Alternative, and
+`Group[N]` for numbers — so the multibinder's kind was making people
+write by hand what the givens already knew. Two names for one thing is
+the thing this repository forbids.
+
+A `Fact[V]` carries its monoid now. The usual kind is one line and no
+methods, `object Routes extends Fact[Vector[Route]]`, and a rule the
+givens do not have is passed in through `Monoid.of(zero)(f)`, added
+for exactly this. okay-deploy's `Declared` is one of those: two
+modules on one volume declare one volume, not two, so its merge
+dedups.
+
+The question behind it was whether the collection should be abstracted
+— Foldable was the suggestion. The right abstraction is not folding a
+container but combining two contributions, and with the monoid a
+collection stops being special: a test declares facts over `String`
+(concatenation), `Int` (addition) and `Option` with a last-wins rule
+of its own, and installs the summed `Int` as a capability. Commit: LANDING.
 ## dataflow-fan-overhead — the third that was not there
 
 Stage 3's decomposition summed the sinks to 104 ms against a fan of
