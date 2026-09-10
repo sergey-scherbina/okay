@@ -37,23 +37,30 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] merge-chunk-size-curve-inverted — okay's chunked merge gets
-      SLOWER as the chunk grows and every competitor's gets faster:
-      `okayChunkedComposed` reads 263.6 / 302.6 / 427.9 at k = 16 /
-      256 / 1024, reproduced across two sessions (2026-09-08: 274.6 /
-      305.6 / 458.7), against ZIO's 829.4 / 116.1 / 82.9 and fs2's
-      2 612 / 396 / 221. A bigger chunk should mean fewer channel
-      transactions for the same elements; ours behaves as if the
-      per-CHUNK work were superlinear in its length. Suspects, none
-      measured: `chunked(k)` accumulating into a growing buffer;
-      `.unchunked` walking it back out per element; the channel's
-      `slots = capacity / ChunkSize` arithmetic (capacity counts
-      elements, so at k = 1024 with capacity 64 the channel holds 4
-      slots of 1024 rather than 64 of 16). DISQUALIFYING: if the
-      curve is the LazyList source rather than the merge, a
-      `Chunks`-native source will show it flat — measure that first.
-      This is also the reason §6b's "own default" comparison goes to
-      ZIO: its default chunk is 4096 and ours is 16.
+- [ ] merge-chunk-size-curve-inverted — CAUSE ISOLATED, A QUARTER OF
+      IT FIXED (2026-09-10). okay's chunked merge gets slower as the
+      chunk grows where every competitor's gets faster. Measured, one
+      stage at a time, quiet box:
+        chunk building alone   154 / 197 / 167 us  — FLAT (and its
+          allocation flat to +-0.1 B/op, so the first suspect,
+          `Stage.chunked`'s per-chunk buffer, is refuted)
+        merge alone            245 / 237 / 280 us  — nearly flat
+        merge + unchunk        232 / 262 / 430 us  — the rise
+      So the k-dependence lives in `unchunked`. It was
+      `through(s)(Stage.unchunk)`: a Take/Writer COROUTINE PAIRING
+      with every element crossing the handshake. `Writer.expand`
+      replaces it — one walk, elements re-told into a plain Free
+      chain — and buys 7.3% of the lane's allocation (5 014 435 ->
+      4 643 659 B/op at k=16, 4 827 290 -> 4 474 639 at k=1024, both
+      exact) and 8% of its time at k=1024 (430.3 +-18 -> 396.4 +-7).
+      The premium `unchunked` charges over a bare merge fell from
+      ~150 us to ~111 at k=1024 — a quarter of it.
+      WHAT REMAINS: the other three quarters, and the curve still
+      rises. Refuted along the way, so nobody re-takes them: the
+      chunk buffer (flat), the channel's element BUDGET (a lane with
+      capacity scaled to hold 1 024 elements at every k rises
+      identically: 216 / 297 / 424), and allocation growth (flat at
+      every k, before and after).
 - [ ] merge-lane-variance — `ChunkFlushBenchmark.okayChunked` ignores
       its `k` parameter, so a three-parameter run samples the same
       lane three times: 1 049 ±218, 443 ±341, 234 ±19 in one run, and

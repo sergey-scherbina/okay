@@ -174,6 +174,46 @@ The example is compiled: `TestRouteFacts` in okay-http, real
 which is the merge every server in this stack already writes by hand.
 Three tests, including the one that shows the same shape as an INSTALL
 keeping only the last. Commits: d1d58775, and the JS fix beside it.
+## merge-chunk-size-curve-inverted — the cause isolated, and a quarter of it removed
+
+okay's chunked merge gets SLOWER as the chunk grows where ZIO's and
+fs2's get faster. Four measurements, one stage stripped at a time,
+and three of the four suspects are refuted rather than argued:
+
+  chunk building alone   154 / 197 / 167 us at k = 16 / 256 / 1024
+    — FLAT, and its allocation flat to +-0.1 B/op. `Stage.chunked`'s
+      per-chunk buffer is not it.
+  the channel's element BUDGET — a lane holding 1 024 elements at
+    every k (capacity scaled by 1024/k) rises identically:
+    216 / 297 / 424. Not it either, though the original lane really
+    did hand itself 64x the buffer across the sweep.
+  allocation — flat at every k, before and after. The curve is not
+    "more work per element".
+  merge alone            245 / 237 / 280 us  — nearly flat
+  merge + unchunk        232 / 262 / 430 us  — THE RISE
+
+So the k-dependence is `unchunked`, which was
+`through(s)(Stage.unchunk)`: a Take/Writer COROUTINE PAIRING where
+every element of every chunk crosses the handshake between two
+suspended programs, at a cost that grows with the chunk it came from.
+
+**`Writer.expand` is the fix for that part** — `map`'s one-to-many
+sibling: one walk over the program, each told value re-told as many
+(or none, which makes it a filter too), rebuilt as a plain Free chain
+the runner walks linearly. No element crosses a coroutine boundary any
+more. Priced in bytes, which a loaded box cannot blur:
+
+  k = 16    5 014 435 -> 4 643 659 B/op   (-7.4%)
+  k = 1024  4 827 290 -> 4 474 639 B/op   (-7.3%)
+
+and at k = 1024, 430.3 +-18 -> 396.4 +-7 us. The premium `unchunked`
+charges over a bare merge fell from ~150 us to ~111 — a quarter of it.
+
+The curve still rises, and the entry stays open with the three
+refutations attached so nobody re-takes them. `TestStream` pins
+`expand` (many, none, one — the last agreeing with `map`) and pins
+what the merge lane depends on: the same elements in the same order at
+chunk sizes 1, 3, 16 and 64.
 
 ## monoid-scope — where a Monoid instance lives, measured and left alone
 

@@ -56,6 +56,54 @@ class ChunkFlushBenchmark {
   def okayChunkedComposed(): Long =
     l.chunked(k).merge(r.chunked(k), capacity = 64).unchunked.toLazyList.foldLeft(0L)(_ + _)
 
+  /**
+   * WHERE THE CHUNK-SIZE CURVE COMES FROM (merge-chunk-size-curve-
+   * inverted, 2026-09-10). `okayChunkedComposed` gets SLOWER as the
+   * chunk grows — 264 / 303 / 428 us at k = 16 / 256 / 1024 —
+   * where ZIO and fs2 both get faster. These two strip one stage at
+   * a time off it, so the rise can be attributed rather than
+   * guessed:
+   *
+   *   - `okayChunkBuild` is the chunking alone: no merge, no
+   *     unchunk. If the curve is here, `Stage.chunked` is the
+   *     suspect (it allocates one `ChunkBuf(size)` per chunk).
+   *   - `okayChunkedNoUnchunk` merges the two chunked sources and
+   *     folds over the CHUNKS. If the curve is flat here and rises
+   *     in the composed lane, the cost is `Stage.unchunk`, whose
+   *     per-chunk recursion is `size` deep.
+   */
+  @Benchmark
+  def okayChunkBuild(): Long =
+    l.chunked(k).toLazyList.foldLeft(0L)((acc, c) =>
+      var sum = acc
+      var i = 0
+      while i < c.length do { sum += c(i); i += 1 }
+      sum)
+
+  @Benchmark
+  def okayChunkedNoUnchunk(): Long =
+    l.chunked(k).merge(r.chunked(k), capacity = 64).toLazyList.foldLeft(0L)((acc, c) =>
+      var sum = acc
+      var i = 0
+      while i < c.length do { sum += c(i); i += 1 }
+      sum)
+
+  /**
+   * THE SAME MERGE WITH A FIXED ELEMENT BUDGET (merge-chunk-size-
+   * curve-inverted, 2026-09-10). `okayChunkedComposed` passes
+   * `capacity = 64` to a merge whose ELEMENTS ARE CHUNKS, so the
+   * buffer it is handed measures 64 x k ELEMENTS: 1 024 at k = 16
+   * and 65 536 at k = 1024. That is a 64x change in the resource the
+   * lane hands itself across the sweep — lane rule 4 — and it is the
+   * first suspect for a curve that rises where every competitor's
+   * falls. Here the budget is held at 1 024 elements whatever k is.
+   */
+  @Benchmark
+  def okayChunkedFixedBudget(): Long =
+    val slots = math.max(1, 1024 / k)
+    l.chunked(k).merge(r.chunked(k), capacity = slots).unchunked
+      .toLazyList.foldLeft(0L)(_ + _)
+
   @Benchmark
   def okayChunkedFlush(): Long =
     l.merge(r, capacity = 1024, chunked = true, flushAfter = Some(1000))

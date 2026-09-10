@@ -357,7 +357,13 @@ extension [A](s: Source[Chunk[A]])
    * pipeline can batch where it crosses a channel and go back to
    * per-element semantics on the other side */
   def unchunked: Source[A] =
-    through(s)(!.widen[Unit, Take % Chunk[A] + Writer % A, Async](Stage.unchunk[A]))
+    // NOT `through(s)(Stage.unchunk)` any more: that paired two
+    // coroutines and made every element of every chunk cross the
+    // handshake, at a cost that GREW with the chunk it came from
+    // (merge-chunk-size-curve-inverted — the numbers are in
+    // `Writer.expand`'s scaladoc). `expand` walks the program once
+    // and re-tells the elements into a plain Free chain.
+    Writer.expand[Chunk[A], A, Unit, Async](s)(c => c)
 
 extension [A](s: Flushing[A])
   /**
