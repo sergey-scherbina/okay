@@ -78,6 +78,71 @@ class TestWroclawStream extends munit.FunSuite {
       f"   (spread ${ns.max.toDouble / ns.min}%.2fx over $rounds)")
     ms
 
+  /**
+   * ONE TABLE, EVERY LANE, ONE SIZE (bench-whole-field).
+   *
+   * The section grew lane by lane and its tables did too — okay and
+   * Flink at the full feed, the JDK roads at a quarter (they could not
+   * fit), the memory numbers in a third place. Each was internally
+   * honest and the set was hard to read, which is its own kind of
+   * wrong. This runs everything in one pass at one size, twice: at the
+   * size every lane fits, and at the full feed, where the two
+   * `groupingBy` roads are reported as what they are.
+   *
+   * Every lane's answer is asserted equal to okay's before its number
+   * is printed, so the table cannot contain a row that computed
+   * something else.
+   */
+  test("the whole field, one table") {
+    val only = sys.env.getOrElse("OKAY_FLINK_TABLE", "both")
+    val sizes = Seq(("every lane fits", jdkSize), ("the full feed", feed.events.length))
+      .filter((what, _) => only == "both" || what.contains(only))
+
+    for (what, size) <- sizes do
+      val part = feed.copy(events = feed.events.take(size))
+      val n = part.events.length.toLong
+      val answer = OkayLane.run(part)
+      val fits = size <= jdkSize
+
+      // the lanes as VALUES, so the rounds can be run round-robin: a
+      // lane measured last in a long test pays for every lane before
+      // it (measured, and badly — a first cut of this table read Flink
+      // 3.6x slower at the bottom than at the top)
+      val lanes: Seq[(String, () => Job.Result)] = Seq(
+        ("okay, 1 thread", () => OkayLane.run(part)),
+        ("okay, 2 fibres (merge)", () => OkayLane.parallel(part, 2)),
+        ("okay, 4 fibres (merge)", () => OkayLane.parallel(part, 4)),
+        ("okay, 8 fibres (merge)", () => OkayLane.parallel(part, 8)),
+        ("java.util.stream, windowed collector", () => JavaLane.windowed(part)),
+      ) ++ (if fits then Seq(
+        ("java.util.stream, groupingBy", () => JavaLane.run(part, parallel = false)),
+        ("java.util.stream, groupingBy, parallel", () => JavaLane.run(part, parallel = true)),
+      ) else Seq.empty) ++ Seq(
+        ("flink, parallelism 1", () => FlinkLane.run(part, 1)),
+        ("flink, parallelism 4", () => FlinkLane.run(part, 4)),
+      )
+
+      // TIME first, round-robin, no sampler and no GC in the way
+      val times = scala.collection.mutable.LinkedHashMap.empty[String, Long]
+      for _ <- 1 to rounds; (label, run) <- lanes do
+        val (r, ns) = timed(run())
+        assertEquals(r, answer, s"$label disagrees with the okay lane")
+        times.updateWith(label)(o => Some(math.min(o.getOrElse(Long.MaxValue), ns)))
+
+      // MEMORY second, one sampled run each: a full GC on a large heap
+      // costs more than some of these lanes do, so it is kept out of
+      // the timing rather than charged to whichever lane ran next
+      val heaps = lanes.map((label, run) => label -> (sampled(run())._3 / (1024L * 1024L))).toMap
+
+      println(f"%n  --- $what: $n%,d events, best of $rounds, round-robin")
+      println(f"  ${"lane"}%-40s ${"ev/s"}%12s ${"wall"}%10s ${"peak heap"}%12s")
+      for (label, _) <- lanes do
+        val ms = times(label) / 1000000L
+        println(f"  $label%-40s ${n * 1000L / math.max(1L, ms)}%,12d ${ms}%,7d ms ${heaps(label)}%,9d MB")
+      if !fits then
+        println(f"  ${"java.util.stream, groupingBy"}%-40s ${"OutOfMemoryError (8 GB heap)"}%32s")
+  }
+
   test("the two lanes compute the same answer") {
     val (okay, _) = timed(OkayLane.run(feed))
     println(s"  okay:  $okay")

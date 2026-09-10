@@ -3397,6 +3397,60 @@ and an order-SENSITIVE hash of each window's ranking. The suite
 asserts these EQUAL between okay and Flink at every parallelism before
 anything is timed. All eleven numbers match exactly.
 
+### The whole field, one table
+
+Everything in one place first, because the sections below grew lane by
+lane and their tables did too. Every row is the same job over the same
+events, its answer asserted equal to okay's before its number is
+printed; the lanes are timed ROUND-ROBIN across the rounds (a first cut
+that ran each lane's rounds together read Flink 3.6x slower at the
+bottom of the table than at the top), and the peak heap comes from a
+separate sampled pass so that a full GC is never charged to whichever
+lane ran next. Each size ran in its own JVM.
+
+**At 603 529 events — the size every lane fits in** (best of 3):
+
+| lane | ev/s | wall | peak heap |
+|---|---:|---:|---:|
+| okay, 1 thread | 3 110 974 | 194 ms | 390 MB |
+| okay, 2 fibres (merge) | 4 987 842 | 121 ms | 353 MB |
+| okay, 4 fibres (merge) | 9 579 825 | 63 ms | 400 MB |
+| okay, 8 fibres (merge) | 13 716 568 | 44 ms | 366 MB |
+| java.util.stream, windowed collector | 2 670 482 | 226 ms | 421 MB |
+| java.util.stream, `groupingBy` | 1 183 390 | 510 ms | 440 MB |
+| java.util.stream, `groupingBy`, parallel | 267 284 | 2 258 ms | 2 657 MB |
+| flink, parallelism 1 | 488 687 | 1 235 ms | 768 MB |
+| flink, parallelism 4 | 835 912 | 722 ms | 876 MB |
+
+**At 2 414 119 events — the full feed** (best of 3):
+
+| lane | ev/s | wall | peak heap |
+|---|---:|---:|---:|
+| okay, 1 thread | 3 262 322 | 740 ms | 519 MB |
+| okay, 2 fibres (merge) | 5 707 137 | 423 ms | 742 MB |
+| okay, 4 fibres (merge) | 10 186 156 | 237 ms | 689 MB |
+| okay, 8 fibres (merge) | 16 764 715 | 144 ms | 382 MB |
+| java.util.stream, windowed collector | 2 807 115 | 860 ms | 428 MB |
+| java.util.stream, `groupingBy` | — | — | OutOfMemoryError, 8 GB heap |
+| flink, parallelism 1 | 694 710 | 3 475 ms | 748 MB |
+| flink, parallelism 4 | 1 416 736 | 1 704 ms | 1 356 MB |
+
+Four things a reader should take from those two tables, all of them
+explained further down:
+
+- **Flink's wall clock carries ~0.4 s of engine start-up.** At the
+  quarter size that is most of its column; the fit below separates it
+  from the per-event cost, and per event Flink-at-four is 1.9M ev/s.
+- **okay's parallelism is a MERGE, not a shuffle** — slices of the
+  arrival order whose panes are combined by `Aggregator.merge`, with
+  the boundary rule computed rather than guessed.
+- **The JDK's two roads differ by their STATE MODEL, not their speed
+  alone.** `groupingBy` has no notion of a window closing, so it keeps
+  the history and cannot finish the feed at all; the windowed collector
+  evicts on a watermark and runs the whole thing in 428 MB.
+- **Every lane computes the same eleven checksums** — same windows,
+  same keyed state, same ranking. That is asserted, not hoped for.
+
 ### The numbers
 
 Host: 14 cpus, JVM 21, a working machine, `-Xmx8g` (the heap is 8 GB
