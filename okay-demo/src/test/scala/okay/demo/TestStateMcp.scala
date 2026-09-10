@@ -30,7 +30,7 @@ class TestStateMcp extends munit.FunSuite {
     val store = StateMcp.Store(file)
     val (client, server) = wire()
     Async.spawn(Server.run(server, Mcp.Info("okay-state", "0.1"),
-      StateMcp.tools, StateMcp.handlers(store))): Unit
+      StateMcp.tools(store), StateMcp.handlers(store))): Unit
     Client.connect(client, Mcp.Info("test", "1"), Duplex.Peer()).runWith
 
   def call(s: Session, name: String, args: Json): String =

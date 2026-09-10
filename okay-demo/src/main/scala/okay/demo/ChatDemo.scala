@@ -179,7 +179,7 @@ object ChatDemo {
     val prog = direct[[A] =>> A ! okay.agent.Agent] {
       Agent.remember(Turn.System(system)).reflect
       seed(history.toList).reflect
-      Agent.converse(text, BoardTools.specs).reflect
+      Agent.converse(text, BoardTools.specs(b)).reflect
     }
     prog.runWith
 
@@ -230,7 +230,7 @@ object ChatDemo {
   def mcpRoute(b: Board): Request => Response ! Async =
     McpHttp.route(McpServer.Serving(
       info = Mcp.Info("okay-demo-board", "0.1.0"),
-      tools = BoardTools.specs,
+      tools = BoardTools.specs(b),
       call = boardTable(b)))
 
   // ---- the streaming content cut (demo-streaming-cut) -----------------

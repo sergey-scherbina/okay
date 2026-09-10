@@ -107,7 +107,71 @@ Search.majority(Search.all(5)(complete)(ok))      // self-consistency
 | `Memory.run` / `runWithState` | the common cases | answer, or answer + transcript |
 | `Handlers.context/tools/gated/recording/scripted/observing/counter` | the policies | execute, approve, record, script, count |
 | `ToolSpec` / `.jsonSchema` / `.args` | derive a declaration, decode a call | one Schema for both |
+| `Toolbox.empty.on[A](name, desc)(run)` | declare and implement a tool at once | `specs` and `table` from one vector |
 | `Search.bestOf / validated / all / majority` | strategies over Choose + Logic | best-of-N, soft cut, self-consistency |
+
+## Declaring tools: one place, not three
+
+`ToolSpec` derives a declaration from `Schema[A]` and `ToolSpec.args`
+decodes a call with the same schema — but for a long time every caller
+still kept the two halves apart, and paid for it. `BoardTools` in
+okay-demo wrote its JSON Schema by hand, then kept a separate
+`Map[String, ToolCall => String]` that re-read the same field names as
+string literals, with the tool's name written twice.
+
+`Toolbox` (specs/optics-outside.md, stage 2) is the two halves in one
+value:
+
+```scala
+final case class Add(text: String, owner: String)
+given Schema[Add] = Schema.derived
+
+val tools = Toolbox.empty
+  .on[Add]("board_add", "Add a task. The owner is whoever asked for it.")(a =>
+    board.add(a.text, a.owner).fold(err)(ok))
+
+tools.specs   // Seq[ToolSpec]                      -- what the model is told
+tools.table   // Map[String, ToolCall => String]    -- the seam Mcp.Server takes
+```
+
+Three interpretations of one `Schema[A]`: **declare** (`JsonSchema.of`,
+which needs no call at all), **decode** (`Codecs.json`, the arguments of
+a real one), **dispatch** (your handler, over the value the decode
+produced). Rename a field and all three move together, because there is
+only one of them.
+
+`specs` and `table` are drawn from the same vector, so their name sets
+are equal by construction: a tool cannot be declared and undispatched,
+or dispatched and undeclared.
+
+**A call that does not decode answers with data.** `{"error": "<tool>:
+<why>"}`, not an exception — a model handed an exception learns
+nothing, one handed an error can explain itself or try again.
+
+**`raw` for arbitrary JSON.** A tool taking a JSON Merge Patch has no
+case class to derive from, and inventing one would be a lie about the
+protocol:
+
+```scala
+Toolbox.empty.raw("update_state", "Merge a patch...", objectSchema())(patch => ...)
+```
+
+It still buys the pairing — the name written once, the declaration and
+the handler unable to come apart — and not the derivation. Which half
+you get is worth knowing.
+
+**One inconsistency survives, and is reported rather than hidden.** A
+`Map` keeps the last of a duplicate name and a `Seq` keeps both, so the
+two shapes genuinely disagree; `duplicates` names them.
+
+**What converting okay-demo changed in the prompt.** The hand-written
+schemas never declared `required`, so the model was never told
+`board_add` needs both `text` and `owner`; the derived declaration says
+so. `board_assign`'s `id` also went from `"number"` to `"integer"`,
+which is what a `Long` is. Both are more accurate, and both are prompt
+text — a schema change is a model-facing change
+(`JsonSchema.of(s, vocabularies = false)` exists for exactly that
+reason).
 
 ## Gotchas
 

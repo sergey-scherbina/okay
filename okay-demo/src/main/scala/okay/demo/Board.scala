@@ -173,34 +173,37 @@ final class Board(topic: Topic):
  */
 object BoardTools:
 
-  import okay.agent.{ToolCall, ToolSpec}
+  import okay.agent.{ToolCall, ToolSpec, Toolbox}
+  import okay.codec.Schema
+
+  /**
+   * The arguments, which ARE the declaration
+   * (specs/optics-outside.md, stage 2).
+   *
+   * What stood here was a hand-written `schema("text" -> "string", ...)`
+   * beside a dispatch table that re-read those same field names as
+   * string literals — two places to change and no compiler between
+   * them. These four case classes are the single place now: the JSON
+   * Schema the model is told, and the decode of a real call, are two
+   * interpretations of one `Schema[A]`.
+   *
+   * The declaration got MORE accurate in the conversion, which is the
+   * finding worth keeping: the hand-written schemas never said which
+   * fields were required, so the model was never told `board_add`
+   * needs both of them; and `id` is an integer, which is what a `Long`
+   * is, not the "number" that was declared.
+   */
+  final case class Add(text: String, owner: String)
+  final case class Listing(who: Option[String])
+  final case class Assign(id: Long, who: String)
+  final case class Done(id: Long)
+
+  private given Schema[Add] = Schema.derived
+  private given Schema[Listing] = Schema.derived
+  private given Schema[Assign] = Schema.derived
+  private given Schema[Done] = Schema.derived
 
   private def obj(fs: (String, Json)*): Json = JObj(fs.toVector)
-
-  private def schema(props: (String, String)*): Json = obj(
-    "type" -> JStr("object"),
-    "properties" -> JObj(props.toVector.map((n, t) => n -> obj("type" -> JStr(t)))))
-
-  val specs: Seq[ToolSpec] = Seq(
-    ToolSpec("board_add",
-      "Add a task to the shared board. The owner is whoever asked for it.",
-      schema("text" -> "string", "owner" -> "string")),
-    ToolSpec("board_list",
-      "List the board. With `who`, only the tasks that person owns or was assigned.",
-      schema("who" -> "string")),
-    ToolSpec("board_assign",
-      "Assign an existing task, by number, to somebody.",
-      schema("id" -> "number", "who" -> "string")),
-    ToolSpec("board_done",
-      "Mark a task finished, by number."      ,
-      schema("id" -> "number")))
-
-  private def str(c: ToolCall, k: String): Option[String] = c.args match
-    case JObj(fs) => fs.collectFirst {
-      case (`k`, JStr(v)) => v
-      case (`k`, JNum(v)) => v.toLong.toString
-    }
-    case _ => None
 
   private def taskJson(t: Task): Json = obj(
     "id" -> JNum(t.id.toDouble), "text" -> JStr(t.text), "owner" -> JStr(t.owner),
@@ -209,20 +212,31 @@ object BoardTools:
 
   private def err(m: String): String = Json.print(obj("error" -> JStr(m)))
 
-  def table(board: Board): Map[String, ToolCall => String] = Map(
-    "board_add" -> (c =>
-      (for t <- str(c, "text"); o <- str(c, "owner") yield
-        board.add(t, o).map(x => Json.print(taskJson(x))).getOrElse(err("could not add")))
-        .getOrElse(err("board_add needs text and owner"))),
-    "board_list" -> (c =>
-      val ts = str(c, "who").map(board.of).getOrElse(board.all)
-      Json.print(JArr(ts.map(taskJson)))),
-    "board_assign" -> (c =>
-      (for id <- str(c, "id").flatMap(_.toLongOption); w <- str(c, "who") yield
-        board.assign(id, w).map(x => Json.print(taskJson(x))).getOrElse(err(s"no task $id")))
-        .getOrElse(err("board_assign needs id and who"))),
-    "board_done" -> (c =>
-      str(c, "id").flatMap(_.toLongOption)
-        .map(id => board.complete(id).map(x => Json.print(taskJson(x)))
-          .getOrElse(err(s"no task $id")))
-        .getOrElse(err("board_done needs id"))))
+  /** a tool that cannot do the thing answers with DATA */
+  private def one(t: Option[Task], missing: => String): String =
+    t.map(x => Json.print(taskJson(x))).getOrElse(err(missing))
+
+  /** the four tools: name, purpose, argument type and answer, each
+   * written once. `specs` and `table` below both come from here, so
+   * a tool cannot be declared and undispatched or the other way. */
+  def of(board: Board): Toolbox = Toolbox.empty
+    .on[Add]("board_add",
+      "Add a task to the shared board. The owner is whoever asked for it.")(a =>
+      one(board.add(a.text, a.owner), "could not add"))
+    .on[Listing]("board_list",
+      "List the board. With `who`, only the tasks that person owns or was assigned.")(l =>
+      Json.print(JArr(l.who.map(board.of).getOrElse(board.all).map(taskJson))))
+    .on[Assign]("board_assign",
+      "Assign an existing task, by number, to somebody.")(a =>
+      one(board.assign(a.id, a.who), s"no task ${a.id}"))
+    .on[Done]("board_done",
+      "Mark a task finished, by number.")(d =>
+      one(board.complete(d.id), s"no task ${d.id}"))
+
+  /** the two interpreters the callers ask for, both out of `of` —
+   * DECLARE for the model, DISPATCH for the wire. There is no
+   * board-free `specs`: every caller has a board, and a fake one to
+   * render a declaration would be machinery nobody needs. */
+  def specs(board: Board): Seq[ToolSpec] = of(board).specs
+
+  def table(board: Board): Map[String, ToolCall => String] = of(board).table

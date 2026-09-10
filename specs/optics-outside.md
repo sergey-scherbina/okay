@@ -305,21 +305,21 @@ changes.
 
 ### Behavior
 
-- [ ] a tool's spec is derived from its argument type: the properties
+- [x] a tool's spec is derived from its argument type: the properties
       are the fields, and `required` names every field that is not an
       `Option` and has no default
-- [ ] the SAME `Schema` decodes the call, so a renamed field cannot
+- [x] the SAME `Schema` decodes the call, so a renamed field cannot
       leave the declaration and the handler disagreeing
-- [ ] a call whose arguments do not decode answers with DATA naming
+- [x] a call whose arguments do not decode answers with DATA naming
       the tool, not an exception — a model given an exception learns
       nothing
-- [ ] `specs` and `table` are drawn from one vector, so their name
+- [x] `specs` and `table` are drawn from one vector, so their name
       sets are equal by construction
-- [ ] a duplicate name is the one inconsistency left (a `Map` keeps
+- [x] a duplicate name is the one inconsistency left (a `Map` keeps
       the last, a `Seq` keeps both) and `duplicates` names it
-- [ ] a raw tool keeps the schema it was given and passes the
+- [x] a raw tool keeps the schema it was given and passes the
       arguments through untouched
-- [ ] `BoardTools` and `StateMcp` are declared this way, and their
+- [x] `BoardTools` and `StateMcp` are declared this way, and their
       existing suites pass unchanged
 
 ### Design
@@ -355,6 +355,50 @@ rather than `String` — the same, and the MCP wire says string.
   and a typed query DSL comes fourth.
 
 ## Results
+
+### Stage 2 — LANDED 2026-09-10 (optics-outside-tools)
+
+`okay-agent/src/main/scala/okay/agent/Toolbox.scala`, 9 tests in
+`TestToolbox`, plus two coupling tests in okay-demo's `TestBoard`.
+`docs/modules/okay-agent.md` has the user-facing half. Both converted
+callers' suites pass unchanged: okay-agent 136, okay-demo 56.
+
+**The name was taken, and the collision improved the API.**
+`okay.agent.Tool` already exists — it is the EFFECT signature
+(`enum Tool[+A] derives Effect`), the thing `Agent.call` performs. So
+the element could not be `Tool`, and rather than inventing a synonym
+the builder moved onto the box: `Toolbox.empty.on[A](name, desc)(run)`.
+That reads exactly like stage 1's `Router.empty.on(...)` — one
+vocabulary across the arc — and it makes the element type
+MONOMORPHIC: `A` is consumed by `on`, where the `Schema[A]` is still
+in scope, so a box of tools with different argument types is an
+ordinary `Vector[Entry]` needing neither an existential wrapper nor a
+cast. Stage 1's `Router.Entry` had already found the same road.
+
+**A phantom requirement, caught before it was built.** The first cut
+of the conversion wanted `BoardTools.specs` to stay a board-free
+`val`, which meant either a fake `Board` that exists only to be
+ignored, or generalising `Toolbox[-R]` so handlers are
+`R => A => String`. Both were written down before the call sites were
+read; BOTH callers already had a board in scope. `specs(board)` it is,
+and the generalisation stays unbuilt until something actually needs to
+render a declaration away from its environment.
+
+**What the conversion changed in the prompt — the finding.** The
+hand-written schemas never declared `required`, so no model was ever
+told that `board_add` needs both `text` and `owner`. The derived
+declaration says so, and `TestBoard` now pins it. `board_assign`'s
+`id` went from `"number"` to `"integer"`, which is what a `Long` is.
+A schema change is a model-facing change
+(`jsonschema-render-is-prompt-text`), and this one makes the
+declaration more accurate rather than less.
+
+**`raw` earns its place and only half the win.** `StateMcp`'s three
+tools take a JSON Merge Patch — arbitrary by definition, with
+`additionalProperties: true`. There is no case class, so there is no
+derivation; what the toolbox still gives is the PAIRING, the name
+written once instead of twice. Saying which half applies is the point
+of the constructor existing.
 
 ### Stage 1 — LANDED 2026-09-10 (optics-outside-routes)
 

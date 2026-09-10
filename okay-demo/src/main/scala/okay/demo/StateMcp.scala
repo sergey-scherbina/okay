@@ -1,7 +1,7 @@
 package okay.demo
 
 import okay.given
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, ToolSpec, Toolbox}
 import okay.codec.Json
 import okay.mcp.{Mcp, Server, Stdio}
 
@@ -90,37 +90,46 @@ object StateMcp {
       persist(empty)
       empty
 
+  /**
+   * The three tools, each written ONCE (specs/optics-outside.md,
+   * stage 2).
+   *
+   * `raw` rather than a derived schema, and deliberately: a JSON Merge
+   * Patch (RFC 7396) is arbitrary JSON by definition, so there is no
+   * case class to derive from and inventing one would be a lie about
+   * the protocol. What the toolbox still buys here is the PAIRING —
+   * the name is written once instead of twice, and the declaration and
+   * the handler cannot come apart.
+   */
   private def objectSchema(extra: (String, Json)*): Json =
     Json.JObj(Vector("type" -> Json.JStr("object"), "additionalProperties" -> Json.JBool(true)) ++ extra)
 
-  def tools: Seq[ToolSpec] = Seq(
-    ToolSpec("get_state",
+  def of(store: Store): Toolbox = Toolbox.empty
+    .raw("get_state",
       "Read the durable task state (a JSON object), independent of the conversation. " +
         "Call this at the start of a task, and always right after a compaction or a " +
         "fresh session, to recover exactly where the task stood — the conversation " +
         "history may be gone or summarized; this is not.",
-      objectSchema()),
-    ToolSpec("update_state",
+      objectSchema())(_ => Json.print(store.get))
+    .raw("update_state",
       "Merge a JSON Merge Patch (RFC 7396) into the durable task state and persist it. " +
         "An object field merges recursively; setting a field to null DELETES it; any " +
         "other value replaces it wholesale. Omit fields that did not change. Call this " +
         "whenever a fact is learned or a decision is made that must survive to the next " +
         "turn or a fresh session — do not rely on the conversation to carry it.",
-      objectSchema()),
-    ToolSpec("reset_state",
-      "Clear the durable task state back to an empty object. Call this only when " +
-        "starting a genuinely new task, not between steps of the same one.",
-      objectSchema()))
-
-  def handlers(store: Store): Map[String, ToolCall => String] = Map(
-    "get_state" -> { (_: ToolCall) => Json.print(store.get) },
-    "update_state" -> { (c: ToolCall) =>
-      c.args match
-        case _: Json.JObj => Json.print(store.merge(c.args))
+      objectSchema()) {
+        case patch: Json.JObj => Json.print(store.merge(patch))
         case other => throw RuntimeException(
           s"update_state expects a JSON object patch (RFC 7396), got: ${Json.print(other)}")
-    },
-    "reset_state" -> { (_: ToolCall) => Json.print(store.reset()) })
+      }
+    .raw("reset_state",
+      "Clear the durable task state back to an empty object. Call this only when " +
+        "starting a genuinely new task, not between steps of the same one.",
+      objectSchema())(_ => Json.print(store.reset()))
+
+  def tools(store: Store): Seq[ToolSpec] = of(store).specs
+
+  def handlers(store: Store): Map[String, ToolCall => String] = of(store).table
 
   def main(args: Array[String]): Unit =
     val file = File(args.headOption.getOrElse(
@@ -128,5 +137,5 @@ object StateMcp {
     val store = Store(file)
     System.err.println(s"state-mcp: state file ${file.getAbsolutePath}")
 
-    Server.run(Stdio.std, Mcp.Info("okay-state", "0.1"), tools, handlers(store)).runWith
+    Server.run(Stdio.std, Mcp.Info("okay-state", "0.1"), tools(store), handlers(store)).runWith
 }
