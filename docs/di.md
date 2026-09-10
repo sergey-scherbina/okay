@@ -398,7 +398,9 @@ anything opens; the two are not the same thing.
 The three uses this repository has, in order of how much they earn
 their keep: a deployment's needs (shipped — the module that opens the
 board's log declares the volume it lives on, and the manifest mounts
-it), a service's routes (above, compiled as `TestRouteFacts`), and
+it), a service's routes (above, compiled as `TestRouteFacts` — on both platforms, so it uses
+`runAsync` rather than the blocking runner, which Scala.js does not
+have at compile time), and
 anything a reader collects without knowing its contributors — health
 checks, metrics reporters, migrations.
 

@@ -52,8 +52,12 @@ class TestRouteFacts extends munit.FunSuite {
       case r if r.url == "/admin/count" => text(wire[Board].items.size.toString)
     }: Routes)
 
-  private def body(res: Response ! Async): String =
-    Async.run(res.flatMap(Http.text)).runWith
+  // `runAsync`, not `run(...).runWith`: this file is compiled for JS
+  // too, where the blocking API does not exist at compile time (that
+  // is the platform law, not an accident) — so the assertions come
+  // back as a Future and munit awaits it
+  private def body(res: Response ! Async): scala.concurrent.Future[String] =
+    Async.runAsync(res.flatMap(Http.text))
 
   test("every module's routes are served, and each still sees its own capabilities") {
     val app = (board and admin and boardApi and adminApi).installing(Surface)
@@ -61,7 +65,9 @@ class TestRouteFacts extends munit.FunSuite {
       val routes = wire[Routes]
       Vector("/board", "/admin", "/admin/count").map(u => body(routes(Request.get(u))))
     })
-    assertEquals(answers, Vector("one,two", "t0ken", "2"))
+    import scala.concurrent.ExecutionContext.Implicits.global
+    scala.concurrent.Future.sequence(answers).map(got =>
+      assertEquals(got, Vector("one,two", "t0ken", "2")))
   }
 
   test("the same shape as an INSTALL keeps only the last — which is why this is a fact") {
