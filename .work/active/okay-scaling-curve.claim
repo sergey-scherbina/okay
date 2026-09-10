@@ -1,6 +1,0 @@
-feature/okay-scaling-curve 2026-09-10T23:10:00Z
-agent: claude-code
-heartbeat: 2026-09-10T23:10:00Z
-status: in-progress
-done-so-far: claimed
-next: sweep OkayLane.parallel 1..16 on the Wroclaw job, compute the Karp-Flatt serial fraction per point, say where it stops scaling and why
