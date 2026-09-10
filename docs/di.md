@@ -17,6 +17,29 @@ The application example is okay-demo's `ChatDemo`; the design record,
 with what was refuted along the way, is
 [specs/di.md](../specs/di.md).
 
+## What you are holding: a recipe, not a running thing
+
+Everything on this page builds ONE kind of value. A `Module` is a
+description of what to construct — nothing in it has run. Composing
+two modules makes a bigger description. Reading `plan` or the declared
+needs reads the description. Nothing opens a file, binds a port or
+allocates a connection until a region runs it:
+
+```scala
+val app = (db and pool).installing(Routes)   // nothing has happened yet
+Resource.scoped(app { serve(wire[Routes]) }) // NOW it opens, serves, and closes
+```
+
+So `app` is to the running service roughly what a Dockerfile is to a
+container. That distinction is what makes the rest possible: a
+deployment can read what an application needs without starting it, a
+test can print the plan without a database, and the same description
+can be handed to Spring, to Guice or to nothing at all.
+
+The region is also what ends it. Whatever the modules acquired is
+released when the region closes — in reverse order, at a value, at a
+throw, at a cancellation.
+
 ## A module is an installer that has not been built yet
 
 `providing[Db](db)` holds a value that already exists. A `Module[F]`
@@ -389,8 +412,9 @@ capability, and the usual one. `declare(k)(v)` computes it outside, so
 it sees only what came BEFORE (which is right for a fact derived from
 the config, like a deployment's volume). `Module.contributing(k) { … }`
 installs nothing at all, for a feature written over somebody else's
-capabilities. All three are curried, so the block takes its type from
-`Fact[V]` and needs no ascription.
+capabilities — it is `Module.nothing`, the module with no capability
+and no acquisition, carrying one fact. All three are curried, so the
+block takes its type from `Fact[V]` and needs no ascription.
 
 **The merge rule is the kind's, not the collection's.** `Routes`
 merge with `orElse`; a deployment's needs merge with dedup (two

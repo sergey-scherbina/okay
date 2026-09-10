@@ -1,5 +1,26 @@
 # Changelog
 
+## di-docs-gaps — the guide never said what a Module IS
+
+Reading the guide, the operator asked what `app` actually is — and the
+page did not answer. The recipe-versus-running distinction lived in
+one cell of a comparison table, `Module.nothing` was not mentioned at
+all, and the typepedia — the reference people grep — had no entry for
+`Module`, `Fact` or `New`. An explanation that exists only in a
+conversation is not documentation.
+
+docs/di.md opens with it now: everything on the page builds ONE kind of
+value, a description of what to construct; composing makes a bigger
+description; `plan` and the declared needs read it; nothing opens a
+file or binds a port until a region runs it — `app` is to the running
+service what a Dockerfile is to a container, and that is exactly what
+lets a deployment read an application's needs without starting it.
+`Module.nothing` is named beside `contributing`, and the typepedia
+gained three entries — `Module[F]`, `Fact[V]`, `New[A]` — each with
+the sentence that matters (installing SHADOWS, declaring ACCUMULATES;
+`fresh` is always a program so a provider can start closing without
+touching a consumer). Commit: LANDING.
+
 ## pipe-arrow — a partial function, infix, chosen by precedence rather than taste
 
 `PartialFunction[Request, Response ! Async]` is the type this stack

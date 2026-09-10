@@ -25,6 +25,28 @@ same material with the measurements attached.
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
   signature — in scopes importing `!.*` write `okay.Pure` (the
   Free.Pure case shadows it).
+- **`Module[F]`** (specs/di.md, [the guide](di.md)) — a description of
+  what to build, not a built thing: `module[Db](open)(close)` acquires
+  in a `Resource` region, `Module.value` needs no building,
+  `moduleAs[A, R]` acquires an `R` and installs it as an `A`, and
+  `prototype` installs the ability to MAKE one. `and` composes (the
+  right side is built inside the left's context, so a dependent module
+  is written `Db ?=> Module[…]`), `m { body }` / `m.use { body }` run
+  it inside the region, `plan` and `exports` read it, `shadowed` names
+  a capability installed twice.
+- **`Fact[V]`** — a kind of thing modules DECLARE about themselves and
+  somebody else collects; how two declarations merge is a `Monoid[V]`,
+  so `object Routes extends Fact[Vector[Route]]` is the whole
+  declaration. `declaring(k)(v)` computes it inside the module's own
+  installer (so it can read what that module installs), `declare(k)(v)`
+  outside it, `Module.contributing(k)(v)` installs nothing at all, and
+  `installing(k)` turns the merged value into a capability. Installing
+  SHADOWS, declaring ACCUMULATES — that is the whole reason the type
+  exists.
+- **`New[A]`** — the ability to make an `A`: `fresh[A]` answers
+  `A ! Resource`, and the region it runs in releases the instance.
+  Always a program, even where nothing is released, so a provider can
+  start closing what it makes without touching a consumer.
 - **`A |=> B`** — a partial function, infix: `Request |=> Response !
   Async` is the type every route in this stack has. The spelling is
   forced by precedence, not taste: an infix type takes its precedence
