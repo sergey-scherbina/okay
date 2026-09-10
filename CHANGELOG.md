@@ -1,5 +1,44 @@
 # Changelog
 
+## parse-quadratic-stack-length — List.length in a hot per-token loop, 74s to 39ms
+
+json-lossless-quadratic-depth (found the same day, building a test
+fixture for json-decode-threshold-trampoline) traced to one level
+below Json.scala: `Parse.fullWith`'s per-token loop checked
+`b.stack.length <= 1` to decide when to take a reconvergence
+snapshot. `.length` on a `List` walks the whole thing — no cached
+size — and `b.stack`'s length IS the current nesting depth, which
+grows to the INPUT's own depth. A check that costs O(depth) run once
+per token, with depth growing to O(depth) itself, is the textbook
+O(depth²): 1 000 levels 50ms, 5 000 880ms, 20 000 15.6s, 50 000 74s.
+
+Bisected before touching anything (verify-assumptions-before-acting):
+timed the lexer (linear), the instruction generation (linear), and
+the CST-to-value projection (linear, confirmed directly) before
+finding the actual site by replicating `fullWith`'s loop structure in
+a probe until it reproduced the same curve outside `Json.scala`
+entirely. Two more decoys ruled out on the way — reconstructing the
+`Fold` value per token, and the per-token `Vector.foldLeft` call —
+both fast in isolation; only the interleaved shape with `.stack.length`
+included reproduced the slowdown.
+
+Fixed with `sizeIs`/`sizeCompare` (Scala's own answer to `.length`
+misuse in a hot loop) at the three sites: `fullWith`'s per-token check,
+and `reparseWith`'s matching check plus its `bo.stack.length ==
+b.stack.length` reconvergence comparison. No `Building` shape change.
+
+Not JSON-specific: `Parse.fullWith`/`reparseWith` are okay-parse's
+shared machinery — Xml, okay-rag's `Code` and okay-llm's `Structured`
+all call them and all paid this tax on deep input (Markdown and Yaml
+use a hand loop and never had it). 50 000 levels: 74 000ms → 39ms.
+`TestParseDepth` (okay-parse) gates the ratio (4x depth must not cost
+~16x time) rather than an absolute number, so it holds on a loaded
+box; A/B'd by reverting to `.length` — the 50 000-level test then
+timed out past 60s where the fix runs it in under 40ms.
+
+14 tests in okay-parse (JVM, JS and Native — 2 new), full green on
+okay-codec/okay-rag/okay-llm, all three platforms where cross-built.
+
 ## dataflow stage 5 — a worker dies and the job does not
 
 Stage 4b ended with the sentence "a worker that dies takes the run
