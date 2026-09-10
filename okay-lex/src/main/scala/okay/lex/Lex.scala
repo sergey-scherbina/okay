@@ -31,9 +31,11 @@ trait Scan[K, S]:
   /**
    * The same step, WRITING what it finished into a sink instead of
    * answering it. Every driver below reads this one, so a scanner
-   * that overrides it pays neither the `Tuple2` nor a `Vector` per
-   * character — priced at ~19% and ~23% of lexing's ~171 bytes per
-   * input character in docs/benchmarks.md §10.
+   * that overrides it pays neither the `Tuple2` per character nor the
+   * `Vector` that wrapped each token. docs/benchmarks.md §10 priced
+   * the tuple ALONE at ~19% of lexing's ~171 bytes per input
+   * character; the Vector per token was not in that table, and the
+   * two together measured −29%.
    *
    * Additive on purpose: the default delegates to `step`, so a
    * scanner written before this existed keeps working untouched and
