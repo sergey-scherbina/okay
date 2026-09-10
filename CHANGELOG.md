@@ -20,7 +20,7 @@ The example is compiled: `TestRouteFacts` in okay-http, real
 `Request`/`Response`, `PartialFunction` under `orElse` as the monoid —
 which is the merge every server in this stack already writes by hand.
 Three tests, including the one that shows the same shape as an INSTALL
-keeping only the last. Commit: LANDING.
+keeping only the last. Commits: d1d58775, and the JS fix beside it.
 
 ## monoid-scope — where a Monoid instance lives, measured and left alone
 
