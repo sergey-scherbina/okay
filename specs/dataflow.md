@@ -190,10 +190,11 @@ than trusting the author.
   4b: the worker protocol — jobs by name, typed parameters, framed
   transport, partials back — and four real processes.
   Acceptance: the full Wrocław `Result` across four OS processes.
-- **5 — failure.** Batch: recompute a lost partition from lineage —
-  a `Chunks` partition is a value, so this is nearly free. Streaming:
-  barrier checkpoints into okay-persist with source offsets.
-  Deterministic under `Sim` seeds, not under luck.
+- **5 — failure.** DONE for the batch half: a lost partition is
+  recomputed on a survivor, under seeded schedules and with a real
+  process killed mid-run. The streaming half — barrier checkpoints
+  into okay-persist with source offsets — belongs to stage 6, where
+  there is an unbounded source to checkpoint.
 - **6 — streaming, properly.** Unbounded sources, the watermark as
   the minimum over input channels, keyed state in a backend, and
   exactly-once OUTCOME at the sink.
@@ -301,7 +302,24 @@ Stage 4b — across processes (TestDistributed):
       know, not a crash
 - [ ] a worker that dies mid-run — stage 5
 
-Stage 5 and later: written when the stage is claimed.
+Stage 5 — failure (TestFailure):
+- [x] a worker that throws is buried and its partition is computed on
+      a survivor; the answer, the drops and the merged count do not
+      move
+- [x] a worker is buried ONCE, not once per partition that met it
+- [x] forty SEEDED failure schedules — a different subset of workers
+      dying at a different request each time — and the answer never
+      moves
+- [x] one survivor is enough
+- [x] when every worker is gone the run says so and names the FIRST
+      cause rather than an empty-collection error
+- [x] a considered refusal (`Resp.Failed`) is returned, not retried
+      on every worker in turn
+- [x] A REAL WORKER PROCESS killed mid-run, at a chosen request, and
+      the job finishes with the same answer
+- [ ] a coordinator that dies — see the limits below
+
+Stage 6 and later: written when the stage is claimed.
 
 ## The watermark, and why a slice is not a stream
 
@@ -671,6 +689,50 @@ no recomputation yet, and a partition being a thunk is what will make
 that cheap in stage 5. One request is in flight per connection. The
 coordinator is a single point of failure. None of that is hidden
 behind a hopeful word.
+
+### Stage 5 — a worker dies and the job does not
+
+A thrown error is a DEAD WORKER: it leaves the rotation and its
+partition is asked of a survivor. What makes that nearly free is
+structural rather than clever — a partition is a THUNK and its
+partial is a pure function of the four things every worker is given
+(the parameters, the index, the count, the bounds). There is no
+lineage graph to walk and no checkpoint to restore, because nothing
+was mutated. `Run.retried` reports the burials, so a suite asserts
+that recovery HAPPENED rather than inferring it from the answer being
+right.
+
+**A `Resp.Failed` is not retried**, and the reason is worth stating:
+it is the worker's considered answer — it decoded the request and
+refused — and every worker runs the same build, so asking three more
+produces the identical refusal. Retrying a deterministic "no" is not
+resilience, it is noise in front of the same message.
+
+**Not exactly-once EXECUTION.** A worker that dies after computing
+but before its reply arrives has its partition computed twice, and
+that is correct because the coordinator keeps exactly one partial per
+partition — exactly-once OUTCOME, the words specs/persist.md already
+settled on.
+
+**The failures are seeded, not lucky.** Forty schedules, each dooming
+a different subset of workers at a different request. A red run names
+the seed that produced it.
+
+**A limit the first version of that test found by asking for it.** A
+buried worker never returns, and that is the honest model rather than
+a simplification: a `Serve` from `Served.connect` IS a connection, and
+a broken connection does not heal. It also means a run cannot survive
+a blip on EVERY worker — the first seeded test made all four flaky and
+correctly died with "no workers left". Reconnection, and burial only
+after k consecutive failures, are a different lane and are named in
+the backlog rather than half-built here.
+
+**Two things still fatal, said rather than implied.** The coordinator
+is a single point of failure: if it dies, the run dies with it, and
+nothing is journaled. And a job longer than the workers' patience has
+no checkpoint to resume from — every recovery here is a recompute
+from the source. For a batch job over a replayable source that is the
+right trade; for an unbounded stream it is not, and that is stage 6.
 
 **The seeding is not decoration.** On a feed whose jitter exceeds the
 window's lateness, an unseeded parallel run drops FEWER late elements

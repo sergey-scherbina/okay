@@ -75,20 +75,21 @@ object Cluster {
     require(workers.nonEmpty, "a job needs at least one worker")
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    def worker(i: Int): Serve = workers(i % workers.length)
+    val living = Living(workers.length)
 
     val bounds: Vector[Vector[Bounds]] ! Async =
       if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
       else
-        Flows.spread(parts)(i => worker(i)(Req.Extent(job.name, encoded, i, parts)) match
-          case Resp.Extents(cols) => cols
-          case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
-          case other => throw IllegalStateException(s"partition $i answered $other to a pre-pass"))
+        Flows.spread(parts)(i =>
+          ask(workers, living, i, Req.Extent(job.name, encoded, i, parts)) match
+            case Resp.Extents(cols) => cols
+            case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
+            case other => throw IllegalStateException(s"partition $i answered $other to a pre-pass"))
           .map(Flows.edges)
 
     bounds.flatMap: bs =>
       Flows.spread(parts) { i =>
-        worker(i)(Req.Run(job.name, encoded, i, parts, bs(i))) match
+        ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i))) match
           case Resp.Partial(bytes) =>
             Codecs.cbor(sink.wire).decode(bytes) match
               case Right(w) => w
@@ -96,7 +97,72 @@ object Cluster {
           case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
           case other => throw IllegalStateException(s"partition $i answered $other to a run")
       }.map: ws =>
-        Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws))
+        Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws), living.retries)
+
+  /**
+   * ASK A LIVING WORKER, AND KEEP ASKING (specs/dataflow.md, stage 5).
+   *
+   * A thrown error is a DEAD WORKER: the transport failed, the
+   * process is gone, and the same request on a survivor is the right
+   * next move. The worker leaves the rotation and the partition is
+   * recomputed elsewhere — which costs nothing structural, because a
+   * partition is a thunk and its partial is a pure function of the
+   * four things every worker is given: the parameters, the index, the
+   * count and the bounds. There is no lineage graph to walk and no
+   * checkpoint to restore, because nothing was mutated.
+   *
+   * A `Resp.Failed` is NOT retried. It is the worker's considered
+   * answer — it decoded the request and refused — and since every
+   * worker runs the same build, asking another one produces the
+   * identical refusal. Retrying a deterministic "no" four times is
+   * not resilience, it is noise in front of the same message.
+   *
+   * NOT exactly-once EXECUTION: a worker that dies after computing
+   * but before its reply arrives has its partition computed twice.
+   * That is correct because the coordinator keeps exactly one partial
+   * per partition — exactly-once OUTCOME, the words specs/persist.md
+   * already settled on.
+   */
+  private def ask(workers: Vector[Serve], living: Living, part: Int, req: Req): Resp =
+    def go(tried: Int, first: Throwable | Null): Resp =
+      living.pick(part + tried) match
+        case None =>
+          val why = IllegalStateException(
+            s"partition $part: no workers left (${workers.length} were given)")
+          if first != null then why.initCause(first.nn): Unit
+          throw why
+        case Some(w) =>
+          try workers(w)(req)
+          catch case t: Throwable =>
+            living.bury(w)
+            go(tried + 1, if first == null then t else first)
+    go(0, null)
+
+  /**
+   * Who is still answering.
+   *
+   * Shared by every partition's fibre, so it is synchronized — and
+   * that is the whole of the concurrency here. Two fibres may bury
+   * the same worker; the second is a no-op, which is what
+   * `filterNot` gives for free.
+   */
+  private final class Living(n: Int):
+    private var alive: Vector[Int] = (0 until n).toVector
+    private var buried: Long = 0L
+
+    /** a survivor for this attempt, or None when there are none */
+    def pick(turn: Int): Option[Int] = synchronized {
+      if alive.isEmpty then None else Some(alive(math.floorMod(turn, alive.length)))
+    }
+
+    def bury(w: Int): Unit = synchronized {
+      if alive.contains(w) then { alive = alive.filterNot(_ == w); buried += 1 }
+    }
+
+    /** how many attempts were lost to a dead worker — reported so a
+     * suite can assert that recovery HAPPENED rather than infer it
+     * from the answer being right */
+    def retries: Long = synchronized(buried)
 
   /**
    * A worker made of a registry: answer a request by looking the job

@@ -1,5 +1,51 @@
 # Changelog
 
+## dataflow stage 5 — a worker dies and the job does not
+
+Stage 4b ended with the sentence "a worker that dies takes the run
+with it". It no longer does: a thrown error is a dead worker, it
+leaves the rotation, and its partition is asked of a survivor.
+
+What makes that nearly free is structural rather than clever. A
+partition is a THUNK and its partial is a pure function of the four
+things every worker is given — the parameters, the index, the count,
+the bounds. There is no lineage graph to walk and no checkpoint to
+restore, because nothing was mutated. `Run.retried` reports the
+burials so a suite asserts recovery HAPPENED rather than inferring it
+from the answer being right.
+
+A `Resp.Failed` is NOT retried: it is the worker's considered answer,
+and every worker runs the same build, so asking three more produces
+the identical refusal. Retrying a deterministic "no" is noise in
+front of the same message.
+
+Not exactly-once EXECUTION: a worker that dies after computing but
+before its reply arrives has its partition computed twice, which is
+correct because the coordinator keeps exactly one partial per
+partition — exactly-once OUTCOME, the words specs/persist.md settled
+on.
+
+**Seeded, not lucky.** Forty schedules, each dooming a different
+subset of workers at a different request; a red run names its seed.
+And the headline: a REAL WORKER PROCESS destroyed mid-run, at a
+chosen request, with the job finishing on the same answer.
+
+**Two tests were wrong before the code was**, and both are recorded
+rather than quietly fixed. The first seeded test made all four
+workers flaky and died with "no workers left" — correctly, because a
+buried worker never returns. That is the honest model (a `Serve` is a
+connection, and a broken connection does not heal), and the limit it
+implies is now in the backlog as `dataflow-reconnect` instead of
+being smoothed over. The second asserted `retried == doomed`, which
+is too strong: a worker doomed at its sixth request may never be
+asked six times, because the run finishes first. Seed 2 found it.
+
+Still fatal, and said rather than implied: the coordinator is a
+single point of failure — it holds the bounds and the partials,
+journals nothing, and its death ends the run (`dataflow-coordinator`).
+And every recovery here is a recompute from the source, which is
+right for a batch job over a replayable source and wrong for an
+unbounded stream. That is stage 6.
 ## fresh-says-why — the error a singleton-vs-prototype mixup deserves
 
 `fresh[Db]` where a `module[Db]` installed the singleton is the

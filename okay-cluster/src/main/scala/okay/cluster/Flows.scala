@@ -12,7 +12,7 @@ import scala.collection.mutable
  * during the run and is otherwise unknowable from the outside.
  */
 final case class Run[O](value: O, dropped: Long, partitions: Int, reducers: Int,
-                       merged: Long = 0L)
+                       merged: Long = 0L, retried: Long = 0L)
 
 /**
  * What one partition may finish BY ITSELF, in one event-time column.

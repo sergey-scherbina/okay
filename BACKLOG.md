@@ -531,6 +531,21 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that section carries is in BACKLOG-ARCHIVE.md)
 
 ## okay-cluster / dataflow
+- [ ] dataflow-reconnect — a buried worker never returns, because a
+      `Serve` from `Served.connect` is a single connection and a
+      broken one does not heal. So a run cannot survive a transient
+      blip on EVERY worker (stage 5's first seeded test discovered
+      exactly that by asking for it). Two halves, and they are
+      separable: reconnecting a socket, and burying only after k
+      consecutive failures rather than the first. Measure whether the
+      second alone is enough before building the first.
+- [ ] dataflow-coordinator — the coordinator is a single point of
+      failure: it holds the bounds and the partials, journals
+      nothing, and its death ends the run. What would fix it is not a
+      second coordinator but a JOURNAL — okay-persist already has the
+      log, the offsets and the election — so this is an assembly, not
+      an invention. Not started, and not pretended otherwise in any
+      doc.
 - [x] dataflow-exchange — LANDED. The crossover is ~100 000
       accumulators and the Wrocław job is three orders of magnitude
       under it, so `Auto` declines the exchange there.

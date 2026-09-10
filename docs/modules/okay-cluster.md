@@ -150,8 +150,21 @@ registers what this build can run.
 Tested in three levels — in-process, sockets in one JVM, then four
 real operating-system processes — with the same bar at each: the
 answer, the drop count and the merged count must EQUAL what
-`Flows.fan` computes alone. A worker that dies still takes the run
-with it; failure is stage 5.
+`Flows.fan` computes alone.
+
+**A worker that dies is buried and its partition is recomputed on a
+survivor**, which is nearly free because a partition is a thunk and
+its partial is a pure function of (parameters, index, count, bounds).
+`Run.retried` reports the burials. A `Resp.Failed` is returned rather
+than retried — it is the worker's considered answer, and every worker
+runs the same build. Tested under forty seeded failure schedules and
+with a real worker process killed mid-run.
+
+Two limits, named rather than implied: a buried worker never returns
+(a `Serve` is a connection, and a broken one does not heal), so a
+blip on EVERY worker still ends the run; and the coordinator is a
+single point of failure that journals nothing. Both are in the
+backlog, neither is pretended away.
 
 ## Tutorial
 
