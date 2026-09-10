@@ -24,7 +24,7 @@ a feature owning its capability, one reading the capability before it,
 and a contributor owning none. docs/di.md says what it buys in one
 line: the composition names no URL and no `orElse`, so the surface is
 a by-product of wiring rather than a second list kept by hand.
-Commit: LANDING.
+Commit: a293d20b.
 
 ## flows-pane-tuple — a pair built for a branch that never uses it
 
