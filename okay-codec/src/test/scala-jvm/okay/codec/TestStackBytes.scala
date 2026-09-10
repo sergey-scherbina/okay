@@ -7,31 +7,35 @@ package okay.codec
  * runs on — which is what makes this number a property of the DOOR and
  * not of whatever `-Xss` the runner happened to pass.
  *
- * MEASURED 2026-09-10, Java 21 on aarch64, powers of two from 16 KB,
- * BEFORE cbor-decode-threshold-trampoline:
+ * MEASURED 2026-09-10, Java 21 on aarch64, BEFORE either threshold
+ * lane, at `Codecs.maxDepth` = 64 (a correction: an earlier version of
+ * this comment carried "512 KB" for the two `JsonStrict`-based doors,
+ * copied forward from a measurement taken at the OLDER `maxDepth` =
+ * 256 without re-measuring at 64 — checked here by re-running against
+ * the untouched `Json.scala` before writing this sentence, per
+ * verify-assumptions-before-acting):
  *
- *   JsonValue.parse      256 KB      Json.readStrict[Tree]   512 KB
- *   Json.lossless        512 KB      Staged.strict[Tree]     512 KB
- *   Json.read[Tree]     1024 KB      Staged.cbor[Tree]      1024 KB
- *   Cbor.read[Tree]     1024 KB
+ *   JsonValue.parse        16 KB      Json.readStrict[Tree]   16 KB
+ *   Json.lossless          16 KB      Staged.strict[Tree]     16 KB
+ *   Json.read[Tree]       256 KB      Staged.cbor[Tree]      256 KB
+ *   Cbor.read[Tree]       256 KB
  *
- * The finding that mattered, and it was the opposite of what
- * stack-depth-margin predicted: the tight platform is not the browser,
- * it is a JVM thread with the DEFAULT 1 MB stack, where a full-depth
- * decode of a RECURSIVE schema (~8 KB of stack per tree level) left
- * nothing for the caller. sbt's `-Xss8m` and the 8 MB main thread on
- * macOS are what hid it.
+ * At `Codecs.maxDepth` = 64, only the two doors that fold a RECURSIVE
+ * schema through `Json.decode`/`Cbor.get` (`Json.read[Tree]`,
+ * `Cbor.read[Tree]`, and `Staged.cbor[Tree]` which falls back to
+ * `Cbor.get` for the recursive case) show a real cost at this shallow
+ * a depth; the `JsonStrict`-based doors' per-level cost is genuinely
+ * lower and does not show up until deeper than `Codecs.maxDepth`
+ * allows constructing (stack-depth-margin's ORIGINAL 512 KB figure for
+ * them was measured at maxDepth=256's full 127 levels, four times this
+ * deep).
  *
- * AFTER cbor-decode-threshold-trampoline (same day): `Cbor.read[Tree]`
- * and `Staged.cbor[Tree]` — both routed through `Cbor.get` — dropped to
- * 16 KB, this probe's own floor: past `NativeThreshold` levels, depth
- * no longer costs native stack at all. `Json.read[Tree]` and the two
- * `JsonStrict`-based doors are UNCHANGED (256/512 KB) — `Json.decode`
- * and `JsonStrict.Reader.get` are the other root
- * (`specs/iterative-recursive-decode.md`), not yet fixed. This is why
- * the "honest" self-check below reads `Json.read[Tree]`, not
- * `Cbor.read[Tree]` — the door whose cost still scales with depth is
- * the one that can still prove the probe measures something real.
+ * AFTER cbor-decode-threshold-trampoline AND json-decode-threshold-
+ * -trampoline (both same day): every door in the list is flat at
+ * 16 KB — both recursive-schema roots of
+ * `specs/iterative-recursive-decode.md` are closed. `JsonStrict.
+ * Reader.get` was never the third root this file's history implied;
+ * it did not need fixing at this depth.
  */
 class TestStackBytes extends munit.FunSuite:
 
@@ -82,39 +86,42 @@ class TestStackBytes extends munit.FunSuite:
       kb
     }.max
 
-  test("a full-depth decode fits in 2 MB on every door, and the fast parse in 512 KB") {
+  test("every door fits in 2 MB at Codecs.maxDepth") {
     val measured = doors.map((name, door) => (name, needs(door)))
     measured.foreach((name, kb) => println(f"[stack] $name%-22s needs $kb%5d KB at depth ${Codecs.maxDepth}"))
     val worst = measured.maxBy(_._2)
     assert(worst._2 <= 2048, s"${worst._1} needs ${worst._2} KB — a default JVM thread has 1024")
-    val fast = measured.find(_._1 == "JsonValue.parse").get._2
-    assert(fast <= 512, s"the fast value parser needs $fast KB, which it used not to")
   }
 
-  test("the measurement is honest: one level LESS of nesting costs less stack") {
-    // the guard against a probe that measures something other than the
-    // recursion — if these were equal, the number would not be the
-    // door's depth cost at all. Cbor.read[Tree] no longer serves this
-    // check: past NativeThreshold its cost is flat by design
-    // (cbor-decode-threshold-trampoline) — Json.read[Tree] still
-    // recurses natively all the way, so it is still proof of life
-    def treeAt(d: Int): () => Boolean = () => Json.read[Tree](jsonTree(d)).isRight
-    val deep = needs(treeAt(levels))
-    val shallow = needs(treeAt(8))
-    assert(shallow < deep, s"a tree of 8 levels needs $shallow KB and one of $levels needs $deep KB")
-    println(f"[stack] Json.read[Tree]: $shallow%d KB at 8 levels, $deep%d KB at $levels levels")
+  test("the measurement is honest: the probe itself, decoupled from any door") {
+    // this USED TO read a door's own cost at two depths (first
+    // Cbor.read[Tree], then Json.read[Tree]) — fragile, because fixing
+    // a door (the whole point of this file's two lanes) retires it as
+    // a witness, and this test then measures nothing. A synthetic,
+    // non-tail recursion — nothing to do with Schema or codecs —
+    // proves `onStack`/`needs` measure real stack, permanently, no
+    // matter which door in this file is fixed next
+    def burn(n: Int): Int = if n <= 0 then 1 else 1 + burn(n - 1) - 1
+    def at(n: Int): () => Boolean = () => burn(n) == 1
+    val deep = needs(at(200000))
+    val shallow = needs(at(8))
+    assert(shallow < deep, s"200 000 frames of plain recursion needs $shallow KB, same as 8 — the probe measures nothing")
+    println(f"[stack] synthetic recursion: $shallow%d KB at 8 frames, $deep%d KB at 200 000 frames")
   }
 
-  test("cbor-decode-threshold-trampoline: Cbor.read[Tree]'s cost is now FLAT past the threshold") {
-    // the fix's own signature: a door whose native-recursion cost used
-    // to scale with depth (1024 KB at `levels`) now costs the same at
-    // 8 levels (below NativeThreshold, unchanged) as at `levels`
-    // (crosses it, trampolines) — proving the switch actually happens
-    // rather than merely compiling
-    def treeAt(d: Int): () => Boolean = () => Cbor.read[Tree](cborTree(d)).isRight
-    val shallow = needs(treeAt(8))
-    val deep = needs(treeAt(levels))
-    println(f"[stack] Cbor.read[Tree]: $shallow%d KB at 8 levels, $deep%d KB at $levels levels")
-    assertEquals(deep, shallow, s"expected the trampoline to flatten the cost past the threshold")
-    assert(deep <= 64, s"Cbor.read[Tree] at $levels levels needs $deep KB — the trampoline should cost near nothing")
+  test("both threshold lanes: every door is flat at Codecs.maxDepth") {
+    // the combined signature of cbor-decode-threshold-trampoline and
+    // json-decode-threshold-trampoline: at 8 levels (well below
+    // NativeThreshold) and at `levels` (Codecs.maxDepth's own limit,
+    // crossing it), every recursive-schema door costs the SAME —
+    // proving the switch happens, not just compiles, for both roots
+    for (name, doorAt) <- List(
+      "Json.read[Tree]" -> ((d: Int) => () => Json.read[Tree](jsonTree(d)).isRight),
+      "Cbor.read[Tree]" -> ((d: Int) => () => Cbor.read[Tree](cborTree(d)).isRight),
+    ) do
+      val shallow = needs(doorAt(8))
+      val deep = needs(doorAt(levels))
+      println(f"[stack] $name%-16s $shallow%d KB at 8 levels, $deep%d KB at $levels levels")
+      assertEquals(deep, shallow, s"$name: expected the trampoline to flatten the cost past the threshold")
+      assert(deep <= 64, s"$name at $levels levels needs $deep KB — the trampoline should cost near nothing")
   }

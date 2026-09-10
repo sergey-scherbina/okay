@@ -108,24 +108,42 @@ Root 1 of 2, `Cbor.get` (cbor-decode-threshold-trampoline, 2026-09-10):
       own signature) — `TestStackBytes`, A/B'd: reverting
       `NativeThreshold` to an unreachable value makes this ONE test
       fail and nothing else, confirming it is what tests the fix
-- [x] MEASURED, JMH not a hand-timed loop (`compare/CodecBenchmark`):
-      `cborDecodeInterp` (Order, a non-recursive product — the
-      below-threshold, common-case shape) at 3 forks, 5×1s
-      measurement/3×1s warmup each: **1438 ± 58 ns/op before, 1338 ±
-      14 ns/op after** — NOT a regression (the single-fork run this
-      lane started from showed 2166 vs 1419, a false 53% alarm that
-      evaporated once the box's own JIT-warmup noise was averaged out
-      across forks — `bench-one-round-lies`, again). The eff-
-      -stack-safety comparison (+11%/+14% for one `Defer` node) was
-      the fallback expectation if this had gone the other way; it did
-      not need spending.
-- [ ] `Json.decode` and `JsonStrict.Reader.get` (root 2 of 2) — NOT
-      done by this lane; BACKLOG stays open for them
-- [ ] `TestVector`'s recursion test, and `Codecs.maxDepth` itself,
+- [x] MEASURED, JMH not a hand-timed loop, 3 forks not 1
+      (`compare/CodecBenchmark.cborDecodeInterp`, Order — the
+      below-threshold, common-case shape): **1438 ± 58 ns/op before,
+      1338 ± 14 ns/op after** — NOT a regression (a single-fork run
+      first showed 2166 vs 1419, a false 53% alarm that evaporated at
+      3 forks — `bench-one-round-lies`, again; this is why root 2's own
+      gate started at 3 forks instead of repeating the mistake)
+
+Root 2 of 2, `Json.decode` (json-decode-threshold-trampoline,
+2026-09-10):
+
+- [x] `Json.decode` has NO reader object and NO existing depth counter
+      (unlike `Cbor.In`) — depth threaded as an explicit parameter
+      through new `decodeAt`/`decodeNative`, the public `decode[A](s)(j)`
+      signature unchanged
+- [x] `Json.decode` does not enforce `Codecs.maxDepth` itself — that
+      refusal already lives upstream at `Json.isCut` (parse time); this
+      lane's threshold is a PURE stack-safety switch, so `Json.decode`
+      is now safe on ANY input depth, including a `Json` value built
+      directly and never cut — `TestJsonTrampoline`
+- [x] `Json.read` (which parses through the cut first) still refuses a
+      too-deep document exactly as before — `TestJsonTrampoline`
+- [x] ordinary shapes below the threshold, and a damaged list element
+      past it (the skip-damage rule, not a fault), both unchanged —
+      `TestJsonTrampoline`
+- [x] `Json.read[Tree]`'s stack cost is FLAT past the threshold,
+      A/B'd the same way as root 1 — `TestStackBytes`
+- [x] MEASURED, JMH, 3 forks from the start
+      (`compare/CodecBenchmark.decodeSumInterpAst`/`decodeSeamAst`):
+      615±12→622±11 and 642±26→626±6 ns/op — both within noise, no
+      regression, confirmed on the first attempt this time
+- [x] `TestVector`'s recursion test, and `Codecs.maxDepth` itself,
       moving back toward their pre-lower-maxdepth-real-margin shape —
-      deferred until root 2 lands too (raising the wire limit before
-      BOTH decoders are fixed would leave `Json.decode` exposed to
-      exactly the risk this arc closed for `Cbor.get`)
+      BOTH roots are now closed, so this is unblocked; left as a
+      SEPARATE deliberate decision (a wire-contract number, not
+      assumed here) rather than bundled into this lane
 
 ## Out of scope
 
@@ -194,4 +212,40 @@ to 16 KB (this probe's own floor) at `Codecs.maxDepth`'s current depth
 (64) — `TestStackBytes`. `Json.read[Tree]` and the `JsonStrict`-based
 doors are unchanged (256/512 KB): root 2, not yet built.
 
-**Root 2, `Json.decode` + `JsonStrict.Reader.get`: not yet built.**
+**Root 2, `Json.decode` (json-decode-threshold-trampoline, landed
+2026-09-10).** Same design as root 1, one real difference and one real
+surprise, both found in the doing:
+
+- **The difference:** no `Cbor.In`-style mutable reader to hang a
+  counter on, so depth is an explicit parameter through
+  `decodeAt`/`decodeNative`/`decodeC`/`fieldC` — otherwise the SAME
+  `Cont.defer`-at-the-recursive-step shape, zero casts, for the same
+  reason (one `.map` where `decodeNative` widens via `Either`'s
+  covariance, since `Cont` does not share it).
+- **The surprise:** writing this root's own `TestStackBytes` update
+  surfaced that its PREDECESSOR's numbers were wrong. Root 1's doc
+  comment claimed "`Json.read[Tree]`/`JsonStrict`-based doors UNCHANGED
+  (256/512 KB)" without re-measuring — re-measured here, fresh, against
+  the untouched `Json.scala`: `Json.readStrict[Tree]`/`Staged.strict[Tree]`
+  were ALREADY 16 KB at `Codecs.maxDepth`'s current depth (64), not
+  512 KB — that number was carried forward from an EARLIER measurement
+  taken at the OLD `maxDepth` = 256 (four times the depth) and never
+  re-verified after `lower-maxdepth-real-margin` changed the constant.
+  `JsonStrict.Reader.get` was never a needed third root at this depth;
+  root 2 turned out to be the LAST one, not one of three.
+- **A second surprise, unrelated to either root:** proving "`Json.decode`
+  is safe past `Codecs.maxDepth`" needed a document built directly (not
+  parsed), because `Json.lossless` (the CST→value projection) turned
+  out to be QUADRATIC in depth for this shape — 50 000 levels took 74
+  seconds. Completely out of this lane's scope (it is the raw
+  container-nesting walk, not the schema-recursion one) and NOT
+  something either threshold lane touches; recorded as
+  `json-lossless-quadratic-depth` in BACKLOG rather than chased here.
+
+JMH, 3 forks from the start this time (`decodeSumInterpAst`,
+`decodeSeamAst`): 615±12→622±11 ns/op and 642±26→626±6 ns/op — both
+within noise on the first attempt, no false alarm to write up.
+
+**Both roots of this spec are closed.** `Codecs.maxDepth` and
+`TestVector`'s stress depth moving back up is a separate, deliberate
+follow-up (a wire-contract number, not assumed by either lane).

@@ -1,5 +1,64 @@
 # Changelog
 
+## json-decode-threshold-trampoline — Json.decode, the second and LAST root; two surprises, neither one it
+
+Root 2 of specs/iterative-recursive-decode.md, closing the spec.
+Same design as root 1 (cbor-decode-threshold-trampoline): native
+recursion to NativeThreshold (24), then Cont.defer. One structural
+difference — Json.decode has no Cbor.In-style mutable reader, so
+depth threads as an explicit parameter through new
+decodeAt/decodeNative/decodeC/fieldC, the public decode[A](s)(j)
+signature unchanged. Json.decode does not enforce Codecs.maxDepth
+itself (Json.isCut already does, upstream, at parse time), so this
+lane's threshold is a pure stack-safety switch — Json.decode is now
+safe on ANY input depth, including a Json value built directly and
+never cut, not only ones that survived the parser's own limit.
+
+Zero casts again, same reason as root 1: Cont's invariance needs one
+.map at the two spots decodeNative already widens for free via
+Either's covariance.
+
+Two surprises, found while writing this root's own tests, neither
+one Json.decode's fault:
+
+Root 1's own TestStackBytes doc comment was WRONG. It claimed
+Json.read[Tree] and the JsonStrict-based doors were "unchanged
+(256/512 KB)" without re-measuring at the time. Re-measured here,
+fresh, against untouched Json.scala: Json.readStrict[Tree] and
+Staged.strict[Tree] were ALREADY 16 KB at Codecs.maxDepth's CURRENT
+depth (64) -- the 512 KB figure was carried forward from an earlier
+measurement at the OLD maxDepth=256 (four times deeper) and never
+re-verified after lower-maxdepth-real-margin changed the constant.
+JsonStrict.Reader.get was never a needed third root at this depth --
+this WAS the last one, not one of three. TestStackBytes's "honest
+self-check" (which depended on SOME door still scaling with depth to
+prove the probe measures something real) is retired in favor of a
+synthetic non-tail recursion, decoupled from every door in this
+file -- the old design broke a second time the moment a second door
+got fixed, which is exactly the kind of test that should not depend
+on which door happens to still be slow today.
+
+Separately: proving "Json.decode is safe past Codecs.maxDepth" needed
+a document built directly rather than parsed, because Json.lossless
+(the CST-to-value projection) turned out to be QUADRATIC in depth for
+this shape -- 50 000 levels took 74 seconds while building a test
+fixture. Completely out of scope for either threshold lane (it is
+the raw container-nesting walk, not schema recursion) and not
+reachable through any real door today (Json.isCut cuts long before
+this matters) -- recorded as json-lossless-quadratic-depth, not
+chased here.
+
+The JMH gate learned root 1's lesson and started at 3 forks instead
+of 1: decodeSumInterpAst 615+-12 -> 622+-11 ns/op, decodeSeamAst
+642+-26 -> 626+-6 ns/op, both within noise on the first attempt, no
+false alarm to write up this time.
+
+177 tests in okay-codec (5 new, TestJsonTrampoline; TestStackBytes
+reworked). Both roots of iterative-recursive-decode.md are closed.
+Codecs.maxDepth and TestVector's stress depth moving back up is a
+separate, deliberate follow-up -- a wire-contract number, not
+assumed by either lane.
+
 ## dataflow-complete-panes — 5.5x becomes 1.14x: a partition finishes what no other partition can touch
 
 Stage 3 measured the engine at 5.5x the hand-written §20 lane and

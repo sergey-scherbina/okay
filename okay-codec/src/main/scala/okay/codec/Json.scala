@@ -1,5 +1,6 @@
 package okay.codec
 
+import okay.{Cont, reset, />}
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 import okay.parse.{Cst, JsonParse, Parse}
@@ -355,13 +356,39 @@ object Json {
     // the newtype node: A travels as B, so encode is `from` then under's
     case Schema.SIso(u, _, from) => encode(u())(from(a))
 
+  /**
+   * How deep `decode` recurses NATIVELY before switching to
+   * `decodeC`'s `Cont`-based trampoline (iterative-recursive-decode,
+   * json-decode-threshold-trampoline — the same design as
+   * `Cbor.get`'s, cbor-decode-threshold-trampoline). `Json.decode` has
+   * no reader object to hang a counter on (it is a pure function of
+   * `Schema`/`Json`), so depth is an explicit parameter here instead
+   * of `Cbor.In`'s mutable `open`.
+   *
+   * Unlike CBOR, this is not also a refusal check: a too-deep DOCUMENT
+   * is already cut before `decode` ever sees it (`Json.isCut`, at the
+   * parse/projection layer) — this threshold exists only so a
+   * RECURSIVE schema's native call depth cannot grow with input depth,
+   * independent of whether that input came through the cut at all
+   * (`decode` is public and callable on any `Json` value directly).
+   */
+  private val NativeThreshold = 24
+
+  /** the public entry, signature unchanged: dispatches on depth,
+   * starting at 0 */
+  def decode[A](s: Schema[A])(j: Json): Either[String, A] = decodeAt(s, j, 0)
+
+  private def decodeAt[A](s: Schema[A], j: Json, depth: Int): Either[String, A] =
+    if depth >= NativeThreshold then reset(decodeC[A, Either[String, A]](s, j))
+    else decodeNative(s, j, depth)
+
   /** one field at its own type; the value joins the product's erased
    * parts (Mirror's fromProduct takes Any) */
-  private def field[X](sc: Schema[X], v: Json): Either[String, Any] = decode(sc)(v)
+  private def field[X](sc: Schema[X], v: Json, depth: Int): Either[String, Any] = decodeAt(sc, v, depth)
 
   /** the decoding algebra: fold the schema, read the value back —
    * errors are values (Left), never faults */
-  def decode[A](s: Schema[A])(j: Json): Either[String, A] = (s, j) match
+  private def decodeNative[A](s: Schema[A], j: Json, depth: Int): Either[String, A] = (s, j) match
     case (Schema.SInt, JNum(n)) => Right(n.toInt)
     case (Schema.SLong, JNum(n)) => Right(n.toLong)
     case (Schema.SDouble, JNum(n)) => Right(n)
@@ -371,7 +398,7 @@ object Json {
     case (Schema.SChar, JStr(x)) => Left(s"expected one character, got ${x.length}")
     case (Schema.SBytes, JStr(x)) => Base64.decode(x)
     case (Schema.SOption(of), JNull) => Right(None)
-    case (Schema.SOption(of), v) => decode(of())(v).map(Some(_))
+    case (Schema.SOption(of), v) => decodeAt(of(), v, depth + 1).map(Some(_))
     case (l: Schema.SList[a], JArr(vs)) =>
       // A truncated document leaves an "unclosed" marker where its
       // last element would be, and a damaged one leaves a JErr in
@@ -383,14 +410,14 @@ object Json {
       // wants to know that the document was damaged.
       vs.filterNot(_.isInstanceOf[JErr])
         .foldLeft(Right(Nil): Either[String, List[a]]) { (acc, v) =>
-          acc.flatMap(xs => decode(l.of())(v).map(xs :+ _))
+          acc.flatMap(xs => decodeAt(l.of(), v, depth + 1).map(xs :+ _))
         }
     case (vec: Schema.SVector[a], JArr(vs)) =>
       // the same totality rule as SList above: damaged elements are
       // skipped, the ones that arrived survive
       vs.filterNot(_.isInstanceOf[JErr])
         .foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, v) =>
-          acc.flatMap(xs => decode(vec.of())(v).map(xs :+ _))
+          acc.flatMap(xs => decodeAt(vec.of(), v, depth + 1).map(xs :+ _))
         }
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
@@ -410,16 +437,102 @@ object Json {
             // cut cannot reach here: it propagates to the root)
             case (Some(JErr(_)), _: Schema.SOption[?]) => absent.map(xs :+ _)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
-              .flatMap(field(sc, _)).map(xs :+ _)
+              .flatMap(field(sc, _, depth + 1)).map(xs :+ _)
         }
       }.map(p.make)
     case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
       su.cases.find(_._1 == name)
         .toRight(s"unknown case '$name' of ${su.name}")
-        .flatMap((_, sc) => decode(sc())(v))
-    case (Schema.SIso(u, to, _), v) => decode(u())(v).flatMap(to)
+        .flatMap((_, sc) => decodeAt(sc(), v, depth + 1))
+    case (Schema.SIso(u, to, _), v) => decodeAt(u(), v, depth + 1).flatMap(to)
     case (_, JErr(m)) => Left(m)
     case (want, got) => Left(s"expected ${want.getClass.getSimpleName}, got $got")
+
+  // ---------------------------------------------------------------
+  // the trampoline (json-decode-threshold-trampoline): PAST
+  // NativeThreshold, `decodeAt` runs this instead of `decodeNative`.
+  // Same fold, same rules — the ONLY difference is that a descent into
+  // a NESTED schema is `Cont.defer`red rather than called directly, so
+  // the trampoline forces it inside `/`'s own loop, one level per
+  // iteration, at constant native stack. See `Cbor.scala`'s own
+  // `getC`/`insideC`/`fieldC` (cbor-decode-threshold-trampoline) for
+  // the mechanism in full — this is the same design against a
+  // different fold. `R` is fixed once, at `decodeAt`'s `reset` call,
+  // to `Either[String, A]` for whatever `A` was being decoded when
+  // depth first crossed the threshold, and threaded unchanged through
+  // every nested call below.
+  //
+  // No cast (no-casts-without-necessity): the two widenings
+  // `decodeNative` gets for free from `Either`'s covariance (a
+  // product's field joining `Vector[Any]`, a sum's case narrowing to
+  // its parent type) need one explicit `.map` each here, since `Cont`
+  // is invariant in its value type.
+  // ---------------------------------------------------------------
+
+  /** `field`'s Cont-shaped twin, widened to `Any` the same way `field`
+   * widens via Either's covariance */
+  private def fieldC[X, R](sc: Schema[X], v: Json): Either[String, Any] /> R =
+    decodeC(sc, v).map(e => e: Either[String, Any])
+
+  private def decodeC[A, R](s: Schema[A], j: Json): Either[String, A] /> R = (s, j) match
+    case (Schema.SInt, JNum(n)) => Cont.Pure(Right(n.toInt))
+    case (Schema.SLong, JNum(n)) => Cont.Pure(Right(n.toLong))
+    case (Schema.SDouble, JNum(n)) => Cont.Pure(Right(n))
+    case (Schema.SBool, JBool(b)) => Cont.Pure(Right(b))
+    case (Schema.SString, JStr(x)) => Cont.Pure(Right(x))
+    case (Schema.SChar, JStr(x)) if x.length == 1 => Cont.Pure(Right(x.head))
+    case (Schema.SChar, JStr(x)) => Cont.Pure(Left(s"expected one character, got ${x.length}"))
+    case (Schema.SBytes, JStr(x)) => Cont.Pure(Base64.decode(x))
+    case (Schema.SOption(of), JNull) => Cont.Pure(Right(None))
+    case (Schema.SOption(of), v) =>
+      Cont.defer(() => decodeC(of(), v))(r => Cont.Pure(r.map(Some(_))))
+    case (l: Schema.SList[a], JArr(vs)) =>
+      def loop(rest: List[Json], acc: List[a]): Either[String, List[a]] /> R = rest match
+        case Nil => Cont.Pure(Right(acc.reverse))
+        case v :: more => Cont.defer(() => decodeC(l.of(), v)) {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(x) => loop(more, x :: acc)
+        }
+      loop(vs.filterNot(_.isInstanceOf[JErr]).toList, Nil)
+    case (vec: Schema.SVector[a], JArr(vs)) =>
+      def loop(rest: List[Json], acc: Vector[a]): Either[String, Vector[a]] /> R = rest match
+        case Nil => Cont.Pure(Right(acc))
+        case v :: more => Cont.defer(() => decodeC(vec.of(), v)) {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(x) => loop(more, acc :+ x)
+        }
+      loop(vs.filterNot(_.isInstanceOf[JErr]).toList, Vector.empty)
+    case (p: Schema.SProduct[A], JObj(fs)) =>
+      val m = fs.toMap
+      def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
+        remaining match
+          case Nil => Cont.Pure(Right(acc))
+          case (f, i) :: more =>
+            def absent: Either[String, Any] = p.defaults.lift(i).flatten match
+              case Some(d) => Right(d())
+              case None => f._2() match
+                case _: Schema.SOption[?] => Right(None)
+                case _ => Left(s"missing field '${f._1}' in ${p.name}")
+            (m.get(f._1), f._2()) match
+              case (None, _) => absent match
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(v) => loop(more, acc :+ v)
+              case (Some(JErr(_)), _: Schema.SOption[?]) => absent match
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(v) => loop(more, acc :+ v)
+              case (Some(v), sc) => Cont.defer(() => fieldC(sc, v)) {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(x) => loop(more, acc :+ x)
+              }
+      loop(p.fields.zipWithIndex.toList, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
+    case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
+      su.cases.find(_._1 == name) match
+        case None => Cont.Pure(Left(s"unknown case '$name' of ${su.name}"))
+        case Some((_, sc)) => decodeC(sc(), v).map(e => e: Either[String, A])
+    case (Schema.SIso(u, to, _), v) =>
+      Cont.defer(() => decodeC(u(), v))(r => Cont.Pure(r.flatMap(to)))
+    case (_, JErr(m)) => Cont.Pure(Left(m))
+    case (want, got) => Cont.Pure(Left(s"expected ${want.getClass.getSimpleName}, got $got"))
 
   /** text to value in one move, through the total pipeline */
   def read[A](input: String)(using s: Schema[A]): Either[String, A] =

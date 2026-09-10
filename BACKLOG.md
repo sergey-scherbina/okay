@@ -1,22 +1,23 @@
 # Backlog
 
-## iterative-recursive-decode (root 2 of 2 open — Json.decode, JsonStrict.Reader.get)
+## json-lossless-quadratic-depth (2026-09-10, found by json-decode-threshold-trampoline)
 
-- [ ] Root 1 (`Cbor.get`) landed as cbor-decode-threshold-trampoline
-      (2026-09-10): native recursion to `NativeThreshold` (24), then
-      `Cont.defer` — `Cbor.read[Tree]`'s stack cost dropped from
-      1024 KB to 16 KB at `Codecs.maxDepth`'s current depth (64),
-      JMH-confirmed no regression on the common (non-recursive)
-      shape (`cborDecodeInterp`, 3 forks: 1438→1338 ns/op, within
-      noise). Root 2 is the same design (specs/iterative-recursive-
-      -decode.md), applied to `Json.decode` (which has no existing
-      depth counter — `Json.isCut` bounds it upstream differently,
-      so this root needs its OWN counter, not a reused one) and
-      `JsonStrict.Reader.get` (which already has `open`/`enter`/
-      `leave`, same shape as `Cbor.In`'s did). Once both land,
-      `Codecs.maxDepth` and `TestVector`'s stress depth can move back
-      up — deferred until then, so `Json.decode` is never left
-      exposed to the risk `Cbor.get` just closed.
+- [ ] `Json.lossless`'s CST-to-value projection is QUADRATIC in depth
+      for a nested-container shape (`{"kids":[{"kids":[...]}]}`):
+      measured while building a test fixture, NOT while decoding —
+      1 000 levels 50ms, 5 000 levels 880ms, 20 000 levels 15.6s,
+      50 000 levels 74s. Neither threshold lane touches this path (it
+      is the raw JSON container-nesting walk `Json.into`/`pairs`, out
+      of `specs/iterative-recursive-decode.md`'s scope, which is only
+      the schema-recursion doors); `Json.decode`/`Cbor.get` themselves
+      decode such documents in single-digit milliseconds once past the
+      projection. `Json.isCut`/`Codecs.maxDepth` cut a document this
+      deep long before it matters for any REAL input (64 levels), so
+      this is not reachable through the normal `Json.read` door — only
+      through `Json.lossless` called directly, or a caller measuring
+      at a depth nobody ships. Worth a look because "not reachable
+      today" was also true of the recursive-schema stack cost until
+      someone built the wrong test fixture and waited a minute for it.
 
 Open work only, grouped by the module that owns it. Everything closed —
 landed, refuted, declined or answered — moved VERBATIM to
