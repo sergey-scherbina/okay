@@ -57,15 +57,30 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       already-sorted list would allocate the prefix and nothing else.
       Small, and only worth doing with the probe in front of you —
       `compare/runMain okay.TopKProbe 10000 8` prints the exact bytes.
-- [ ] aggregator-zip-flat-general — the general case is still open:
-      `count zip sum` allocates a `Tuple2` and boxes both `Long`
-      accumulators, and nothing catches it. Directions: an `OfLong`
-      overload of `zip` whose accumulator is a flat two-`long` object;
-      an N-ary `Aggregator.longs(...)` over an `Array[Long]`; or a
-      `Fold`-level product that never builds the pair. DISQUALIFYING:
-      any of them that makes the accumulator's identity observable
-      breaks `OkayLane.parallel`, which merges accumulators other
-      threads still hold.
+- [x] aggregator-zip-flat-general — DONE (2026-09-10):
+      `OfLong.zipLong` keeps the specialization through the pair — a
+      flat `Longs2` accumulator, both sides stepped by `addLong` — and
+      `AggregatorZipBenchmark` prices it in BYTES, which a loaded box
+      cannot blur: 90.5 B/element for `count zip sumLong` against 50.8
+      for `count zipLong sumLong`, error ±0.4 B/op. A new name rather
+      than an overload of `zip`, so no inferred accumulator type
+      changes under a caller who did not ask.
+- [x] parse-depth-test-asserts-wall-clock — DONE the same day
+      (parse-depth-tests-out-of-the-gate, 63db4156): the suite is
+      `Live` and runs in `sbt integrationTest`. The minimum-of-three
+      repair was tried and MEASURED to fail — 19.6x and 11.5x with
+      minima on both sides, and the 50 000-level test hit munit's 30 s
+      timeout at three runs, because the two sides of the ratio differ
+      20x in duration and a contended scheduler perturbs the long one
+      far more often. The gate that proved the fix ran green at load
+      average 65, the condition that had produced five reds.
+- [ ] aggregator-sum-hides-its-specialization — `sum[N]`'s declared
+      return type is `Aggregator[N, N, N]`, so the `OfLong` underneath
+      is invisible and `zipLong` cannot be reached from the idiomatic
+      spelling (it needs `Aggregator.sumLong`). A match type on the
+      return, or an `OfLong`-returning overload for the `Long` case,
+      would close it. The same shape as `zip` hiding the
+      specialization, one level down.
 - [ ] windows-int-key-panes — the OTHER third of the same gap
       (docs/benchmarks.md §20, "Why one core loses"): `okay.Windows`
       keys panes by `HashMap[K, LongMap[Acc]]`, which boxes an `Int`

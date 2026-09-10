@@ -27,6 +27,26 @@ class TestAggregate extends munit.FunSuite {
     assert(math.abs(A.stddev[Double].run(xs) - math.sqrt(ref)) < 1e-9)
   }
 
+  test("zipLong: the flat pair answers what the tuple pair answers") {
+    val ns = List(3L, 1L, 4L, 1L, 5L, 9L, 2L, 6L)
+    // the UNBOXED spellings: `sum[N]`'s declared return type is
+    // `Aggregator[N, N, N]`, which hides the `OfLong` underneath it —
+    // so the flat pair is reached through `sumLong`, and this line is
+    // the whole usability cost of the specialization
+    val tupled = A.count[Long].zip(A.sumLong)
+    val flat = A.count[Long].zipLong(A.sumLong)
+    assertEquals(flat.run(ns), tupled.run(ns))
+    assertEquals(flat.run(Nil), tupled.run(Nil))
+    // and it merges like the pair it replaces, at every cut
+    for cut <- 0 to ns.length do
+      def half[Acc](agg: Aggregator[Long, Acc, ?], part: List[Long]): Acc =
+        part.foldLeft(agg.init)(agg.add)
+      assertEquals(
+        flat.present(flat.merge(half(flat, ns.take(cut)), half(flat, ns.drop(cut)))),
+        tupled.present(tupled.merge(half(tupled, ns.take(cut)), half(tupled, ns.drop(cut)))),
+        s"a cut at $cut disagrees")
+  }
+
   test("summary: the flat accumulator answers what the zip answers") {
     val ns = List(3L, 1L, 4L, 1L, 5L, 9L, 2L, 6L)
     val zipped = A.count[Long]

@@ -111,11 +111,77 @@ object Aggregator {
 
   /** an aggregator whose accumulator is a `long` */
   trait OfLong[-In, +Out] extends Aggregator[In, Long, Out] with Fold.OfLong[In]:
+    self =>
     def mergeLong(a: Long, b: Long): Long
     final def merge(a: Long, b: Long): Long = mergeLong(a, b)
     /** it IS its own fold — no delegating wrapper, so one virtual call
      * per element instead of two, and nothing allocated to hand it over */
     final override def fold[In2 <: In]: Fold.OfLong[In2] = this
+
+    /**
+     * `zip`, with the specialization kept: the accumulator is a
+     * `Longs2` rather than a `(Long, Long)`, so one object is
+     * allocated per `add` where the generic form allocates three.
+     * Both sides step through `addLong`, unboxed.
+     *
+     * MEASURED in bytes rather than in seconds, and that choice is
+     * the point: allocation is exact and independent of what else the
+     * machine is doing, where this box's wall clock moves 30% and
+     * cannot resolve the effect at all. `compare/src/jmh`'s
+     * `AggregatorZipBenchmark`, `-prof gc`, 10 000 elements per op:
+     *
+     *   - `count zip sumLong`      905 136 B/op — **90.5 B/element**
+     *   - `count zipLong sumLong`  508 264 B/op — **50.8 B/element**
+     *   - `Aggregator.summary`     668 112 B/op — 66.8 B/element, for
+     *     FOUR statistics rather than two
+     *
+     * — error ±0.4 B/op, which is what "exact" looks like. Time moved
+     * the same way (138 us against 52) but with ±40% bars, so read the
+     * direction and not the ratio.
+     *
+     * Sixteen of every one of those bytes is the harness's own: a
+     * generic `add(acc: Acc, in: In)` boxes a primitive input, which
+     * is what `fold` and `Fold.OfLong` exist to avoid and what a fold
+     * through them does not pay. It is the same in all three lanes, so
+     * the comparison stands; the accumulator itself is 32 B here
+     * against about 74.
+     *
+     * REACHING IT NEEDS THE UNBOXED SPELLINGS. `sum[N]`'s declared
+     * return type is `Aggregator[N, N, N]`, which hides the `OfLong`
+     * underneath, so this composes `Aggregator.count` with
+     * `Aggregator.sumLong` — and that spelling is the whole usability
+     * cost of the specialization.
+     */
+    final def zipLong[In2 <: In, Out2](that: OfLong[In2, Out2])
+    : Aggregator[In2, Longs2, (Out, Out2)] =
+      new Aggregator[In2, Longs2, (Out, Out2)]:
+        def init: Longs2 = Longs2(self.initLong, that.initLong)
+        def add(acc: Longs2, in: In2): Longs2 =
+          Longs2(self.addLong(acc.a, in), that.addLong(acc.b, in))
+        def merge(x: Longs2, y: Longs2): Longs2 =
+          Longs2(self.mergeLong(x.a, y.a), that.mergeLong(x.b, y.b))
+        def present(acc: Longs2): (Out, Out2) = (self.present(acc.a), that.present(acc.b))
+
+  /**
+   * TWO LONG-ACCUMULATED STATISTICS IN ONE PASS, without a tuple.
+   *
+   * `zip` composes any two aggregators, and its accumulator is
+   * `(Acc, Acc2)` — which for two `OfLong`s is three allocations per
+   * `add`: the tuple, and a box for each `long`, because a `Tuple2`'s
+   * fields are `Object` once the types are abstract. That is fine for
+   * a fold over a list and expensive in a window, where `add` runs
+   * once per element PER PANE.
+   *
+   * This is one allocation of two `long` fields, and the two sides are
+   * stepped through `addLong`, so nothing is boxed on the way either.
+   * The accumulator type is different from `zip`'s on purpose — a new
+   * name rather than an overload, so no inferred type anywhere changes
+   * under a caller who did not ask (`Longs2` is public and matchable).
+   *
+   * For THREE statistics of one measure — count, sum, min, max — reach
+   * for `Aggregator.summary`, which is flatter still.
+   */
+  final case class Longs2(a: Long, b: Long)
 
   /** an aggregator whose accumulator is a `double` */
   trait OfDouble[-In, +Out] extends Aggregator[In, Double, Out] with Fold.OfDouble[In]:

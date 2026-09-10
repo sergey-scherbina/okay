@@ -476,6 +476,52 @@ own practice, not just advice for others.
 181 tests in okay-codec (4 new, TestCborSkipTrampoline), 178 on JS
 and Native. Three of four sites remain: JsonValue's fast parser,
 Json.lossless's projection, JsonStrict.Reader.get.
+## aggregator-zip-flat-general — the specialization survives a pair now, and the proof is in bytes
+
+`Aggregator.summary` fixed the common triple; the general composition
+was still allocating. `count zip sumLong` carries a `(Long, Long)`
+accumulator, which is three allocations per `add` — the tuple and a
+box per side, because a `Tuple2`'s fields are `Object` once the types
+are abstract. `OfLong.zipLong` keeps the specialization through the
+pair: a flat `Longs2`, both sides stepped by `addLong`, one
+allocation.
+
+**Priced in BYTES, deliberately.** This box is carrying sibling builds
+and its wall clock moves 30-40%, which cannot resolve the effect at
+all — but allocation is exact and does not care what else is running.
+`compare/src/jmh`'s `AggregatorZipBenchmark`, `-prof gc`, 10 000
+elements per op:
+
+  - `count zip sumLong`      905 136 B/op — 90.5 B/element
+  - `count zipLong sumLong`  508 264 B/op — 50.8 B/element
+  - `Aggregator.summary`     668 112 B/op — 66.8 B/element, for FOUR
+    statistics rather than two
+
+error ±0.4 B/op. Time moved the same way (138 us against 52) with
+±40% bars, so the direction is the claim and the ratio is not.
+
+A NEW NAME, not an overload of `zip`: `Job.Acc` in the benchmark is
+written out as `((Long, Long), Option[Int])`, and an overload would
+have silently changed inferred accumulator types under callers who
+never asked. `Longs2` is public and matchable.
+
+TWO THINGS THE BENCHMARK SHOWED THAT WERE NOT THE POINT. Sixteen of
+every measured byte is a generic `add(acc: Acc, in: In)` boxing a
+primitive input — which is what `fold`/`Fold.OfLong` exist to avoid,
+and it is the same in all three lanes. And `sum[N]`'s declared return
+type hides the `OfLong` underneath it, so the flat pair must be
+spelled with `Aggregator.sumLong`; filed as
+`aggregator-sum-hides-its-specialization`.
+
+A PROCEDURAL FAILURE ON THE WAY, recorded because it cost someone
+else: `lsof` on `$TMPDIR/jmh.lock` printed nothing and I read that as
+stale. It was not — a sibling's JMH run held it, its fork was in `ps`
+at 349% CPU, and my `pgrep -f org.openjdk.jmh` had matched my own
+shell rather than their process. I deleted their lock, ran on top of
+them for ~40 s, and warned them in the room. The check that works is
+`ps` on every `ForkedMain` pid and reading the CLASSPATH, which names
+the worktree; the rule is to wait on the lock and never delete one you
+did not orphan.
 
 ## dataflow stage 6a — the epoch loop, and the same bug three times
 
