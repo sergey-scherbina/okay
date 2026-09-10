@@ -27,7 +27,14 @@ import scala.collection.mutable
  * exactly-once OUTCOME on a keyed writer, at-least-once execution
  * underneath, and no protocol between them.
  */
-object Store {
+object Written {
+  // named `Written` and not `Store`: a test fixture at package level
+  // squats on a name the MAIN sources may later want, and this one
+  // did — `okay.cluster.Store` (the packed pane store) arrived later
+  // and this object shadowed it on the test classpath. The compiler
+  // sees no clash (a test's own definition simply wins) and the JVM
+  // reports it as a NoSuchMethodError on a constructor that is right
+  // there in the main classes.
   private val rows = mutable.HashMap.empty[(Long, Int), Long]
   private var offers = 0L
   private var clashes = 0L
@@ -62,7 +69,7 @@ object WriteJob extends Job[Feed, Long] {
   def params: Schema[Feed] = summon[Schema[Feed]]
   def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
   def sink(f: Feed): Wire[Ev, Long] =
-    Wire.tumblingTo(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(Store.write)
+    Wire.tumblingTo(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(Written.write)
 }
 
 class TestOnce extends munit.FunSuite {
@@ -104,17 +111,17 @@ class TestOnce extends munit.FunSuite {
         case _ => out
 
   test("batch, nothing dies: each window is written once, and the run counts them") {
-    Store.reset()
+    Written.reset()
     val got = Cluster.run(WriteJob, feed, 8, Vector(Cluster.local, Cluster.local)).runWith
-    assertEquals(Store.snapshot, expected)
-    assertEquals(Store.offered, expected.size.toLong, "a pane was offered twice on a quiet run")
-    assertEquals(Store.clashed, 0L)
+    assertEquals(Written.snapshot, expected)
+    assertEquals(Written.offered, expected.size.toLong, "a pane was offered twice on a quiet run")
+    assertEquals(Written.clashed, 0L)
     assertEquals(got.value, expected.size.toLong, "the run's own count is not the panes it wrote")
     assertEquals(got.retried, 0L)
   }
 
   test("A REPLY IS LOST: the writer is offered more than there are panes, and the store still holds each once") {
-    Store.reset()
+    Written.reset()
     val workers = Vector(losing(Cluster.local, 1), Cluster.local, Cluster.local)
     val got = Cluster.run(WriteJob, feed, 8, workers).runWith
 
@@ -123,11 +130,11 @@ class TestOnce extends munit.FunSuite {
     // the injection fired at all
     assert(got.failed > 0, "the loss was never noticed — the injection is not working")
     // THE OUTCOME: keyed by (window, key), and therefore right
-    assertEquals(Store.snapshot, expected)
-    assertEquals(Store.clashed, 0L, "a repeated offer carried a DIFFERENT value — replay is not deterministic")
+    assertEquals(Written.snapshot, expected)
+    assertEquals(Written.clashed, 0L, "a repeated offer carried a DIFFERENT value — replay is not deterministic")
     // THE EXECUTION: at-least-once, and this is the number that says so
-    assert(Store.offered > expected.size.toLong,
-      s"${Store.offered} offers for ${expected.size} panes — the recomputed partition wrote nothing, " +
+    assert(Written.offered > expected.size.toLong,
+      s"${Written.offered} offers for ${expected.size} panes — the recomputed partition wrote nothing, " +
         "so this test is not exercising the repeat it exists for")
     // and the ANSWER is the panes, not the offers: the lost partial
     // took its count with it and the recomputed one replaced it
@@ -137,14 +144,14 @@ class TestOnce extends munit.FunSuite {
   test("seeded losses: whichever reply goes missing, the store is the batch answer") {
     var seen = 0L
     for seed <- 1L to 12L do
-      Store.reset()
+      Written.reset()
       val at = 1 + math.floorMod(mix(seed), 4L).toInt
       val workers = Vector(losing(Cluster.local, at), Cluster.local, losing(Cluster.local, at + 1))
       val got = Cluster.run(WriteJob, feed, 8, workers).runWith
-      assertEquals(Store.snapshot, expected, s"seed $seed, losing run $at")
-      assertEquals(Store.clashed, 0L, s"seed $seed")
+      assertEquals(Written.snapshot, expected, s"seed $seed, losing run $at")
+      assertEquals(Written.clashed, 0L, s"seed $seed")
       assertEquals(got.value, expected.size.toLong, s"seed $seed")
-      seen += Store.offered - expected.size
+      seen += Written.offered - expected.size
     assert(seen > 0, "twelve schedules and not one pane was ever rewritten")
   }
 
@@ -160,10 +167,10 @@ class TestOnce extends munit.FunSuite {
    */
   test("streaming: the panes are written once, from the coordinator, and match the batch") {
     for parts <- Vector(1, 4); take <- Vector(64, 1000) do
-      Store.reset()
+      Written.reset()
       val got = Cluster.stream(WriteJob, feed, parts, Vector(Cluster.local), take).runWith
-      assertEquals(Store.snapshot, expected, s"$parts partitions, epochs of $take")
-      assertEquals(Store.offered, expected.size.toLong, s"$parts partitions, epochs of $take")
+      assertEquals(Written.snapshot, expected, s"$parts partitions, epochs of $take")
+      assertEquals(Written.offered, expected.size.toLong, s"$parts partitions, epochs of $take")
       assertEquals(got.value, expected.size.toLong, s"$parts partitions, epochs of $take")
   }
 }

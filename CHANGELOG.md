@@ -1,5 +1,52 @@
 # Changelog
 
+## windows-packed-key — written, measured and reverted
+
+The entry said to measure before writing it. The ceiling justified
+writing it and the engine refused it, which is the whole story and the
+reason both instruments land.
+
+THE CEILING, on the two map shapes alone at Wrocław's own boundary
+count — 122 679 entries, each inserted by a partition and merged by
+the coordinator, carrying the accumulator the job really uses:
+
+  tuple-keyed HashMap   21 991 us, 32 503 104 bytes
+  packed LongMap        12 253 us, 27 921 208 bytes    1.79x
+
+about 9 ms of a fan that runs in 111. Worth a seam, so one was
+written: a `Store` packing (window index, Int key) into one `Long`,
+with a per-ENTRY fallback rather than a decision at construction —
+whether the packing fits depends on the DATA (an Int key, a start that
+is a multiple of the slide, an index inside 32 bits), and being wrong
+about one pane is a wrong answer rather than a slow one.
+
+IN PLACE IT LOST, and not narrowly. On the Wrocław job:
+
+  road                        |        tuple |       packed | delta
+  the source alone (control)  |   97,761,592 |   97,761,072 |  -520 B
+  route windows (tumbling)    |  299,215,192 |  304,934,640 |  +1.9%
+  stop windows (sliding)      | 1,079,484,728| 1,221,399,464| +13.1%
+  THE FAN                     | 1,377,755,184| 1,506,199,512|  +9.3%
+
+The ceiling had been measured on the wrong SHAPE: one map with 122 679
+entries, where the engine has eighteen maps that grow into that total.
+An open-addressing LongMap copies its whole table on every growth
+where a HashMap allocates a node once and never moves it — and against
+accumulators that are objects anyway, the trade loses. Reverted.
+
+WHAT STAYS IS THE INSTRUMENTS. `MeasurePaneStore` prices the two map
+shapes; `MeasureWroclawBytes` prices what the real job allocates per
+road, and it is the one that decided this, because allocation is
+deterministic where this lane's wall clock moves 10% between two runs
+minutes apart. Anyone reopening this needs a number from the second.
+
+AND A LATENT COLLISION, found by the attempt. `TestOnce` had an
+`object Store` at package level in test scope; the new main-source
+`okay.cluster.Store` was shadowed by it on the test classpath, and the
+JVM reported that as a NoSuchMethodError on a constructor sitting
+right there in the main classes — invisible to the compiler, since a
+test's own definition simply wins. The fixture is `Written` now.
+
 ## optics-outside-ops-routes — a deployment could name a probe path nothing served
 
 Stage 4 of `specs/optics-outside.md`, and the lane that gives stage 1's

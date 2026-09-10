@@ -36,6 +36,46 @@ class MeasurePaneBytes extends munit.FunSuite:
     f(): Unit
     bean.getTotalThreadAllocatedBytes - before
 
+  /**
+   * A FEED WITH MANY KEYS, which is the shape the boundary set cares
+   * about.
+   *
+   * `Feeds.events` has sixteen keys, so after the completeness rule
+   * only a handful of panes span a partition edge and the boundary
+   * maps are nearly empty — a fine feed for correctness and the wrong
+   * one for pricing a pane STORE. Wrocław's boundary set is 122 679
+   * accumulators because it has 2 482 stop keys, not because it has
+   * many events. This makes that shape: the same events over `keys`
+   * distinct keys.
+   */
+  def wide(n: Int, keys: Int): IndexedSeq[Ev] =
+    (0 until n).map { i =>
+      val h = mix(i.toLong)
+      Ev(i * 10L - math.floorMod(h, Late - 1), math.floorMod(h >>> 20, keys.toLong).toInt,
+        math.floorMod(h >>> 40, 100).toInt)
+    }
+
+  test("the bytes a WIDE-KEY plan allocates — the shape a pane store is for") {
+    for keys <- Vector(1_000, 8_000) do
+      val xs = wide(100_000, keys)
+      val run = Flows.run(Flow.slices(xs, 8).tumbling(Size, Late)(_.key)(_.ts)(value),
+        paneSum).runWith
+      val fan = Flows.fan(Flow.slices(xs, 8),
+        Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)).runWith
+      assertEquals(run.value, fan.value, s"$keys keys: the two roads disagree")
+
+      val runBytes = bytesOf(() =>
+        Flows.run(Flow.slices(xs, 8).tumbling(Size, Late)(_.key)(_.ts)(value), paneSum).runWith)
+      val fanBytes = bytesOf(() =>
+        Flows.fan(Flow.slices(xs, 8),
+          Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)).runWith)
+      println(f"%n  ${xs.length}%,d events over $keys%,d keys: ${run.value.n}%,d panes, " +
+        f"${run.merged}%,d of them at the merge (${100.0 * run.merged / run.value.n}%.1f%%)")
+      println(f"    Flows.run  ${runBytes}%,14d bytes")
+      println(f"    Flows.fan  ${fanBytes}%,14d bytes")
+    println()
+  }
+
   test("the bytes a windowed plan allocates, per road") {
     val xs = events(Feed(20000, Late - 1))
     val panes = Flows.run(Flow.slices(xs, 1).tumbling(Size, Late)(_.key)(_.ts)(value),

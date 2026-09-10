@@ -903,32 +903,33 @@ or not at all).
       that has to survive a version change. The COORDINATOR's state
       does go to okay-persist — stage 8 — because that one cannot be
       replayed from anywhere.
-- [ ] windows-packed-key — `Flows`'s windowed partial keys panes by
-      `(Long, K)`, a tuple per update. §20's hand-written operator
-      packs window and key into one Long and is faster for it; the
-      general operator cannot, but a specialisation for small integer
-      keys could. Measure before writing it.
-      TWO THINGS HAVE MOVED UNDER THIS ENTRY since it was filed, and
-      the next reader needs both. (1) It is NOT the same question as
-      `windows-int-key-panes`, which is one heading up: that one is
-      `okay.Windows`'s own pane store in the CORE
-      (`HashMap[K, LongMap[Acc]]`, an Int boxed and hashed twice);
-      this one is okay-cluster's PARTIAL (`HashMap[(Long, K), Acc]`).
-      Different maps, different modules, same idea. (2) The
-      completeness rule now keeps most panes out of that map
-      altogether — 122 679 boundary accumulators against 1 734 893
-      panes on the Wrocław job — so the traffic this entry prices is
-      about 7% of what it was when the entry was written. Whatever a
-      packed store buys, it buys it on that 7%.
-      (`flows-pane-tuple` took the part that was not this: a pair
-      allocated on the branch that never used it — 147 824 bytes of
-      2 865 232, 5.2%, on the synthetic feed.) AND IT LEFT THE
-      INSTRUMENT: `MeasurePaneBytes` prints what each road allocates
-      from `getTotalThreadAllocatedBytes`, which is DETERMINISTIC
-      where a wall clock on a 180 ms lane is not — the box moved 10%
-      between the two halves of the A/B that prompted it, in the
-      wrong direction, on a lane the change cannot touch. A packed
-      store should be judged there.
+- [x] windows-packed-key — WRITTEN, MEASURED AND REVERTED
+      (2026-09-11). The entry said to measure before writing it; the
+      ceiling justified writing it and the engine refused it.
+      THE CEILING, on the two map shapes alone at Wrocław's own
+      boundary count (122 679 entries, each inserted by a partition
+      and merged by the coordinator, carrying the accumulator the job
+      really uses): tuple-keyed HashMap 21 991 us and 32 503 104
+      bytes, packed LongMap 12 253 us and 27 921 208 — 1.79x, about
+      9 ms of a fan that runs in 111. Worth a seam, so one was
+      written: a `Store` packing (window index, Int key) into one
+      `Long` with a per-ENTRY fallback, because whether the packing
+      fits depends on the data and not the types.
+      IN PLACE IT LOST, and not narrowly. On the Wrocław job the fan
+      allocated 1 506 199 512 bytes against 1 377 755 184 — 9.3%
+      WORSE — and the sliding stage 13.1% worse, with the control (the
+      source alone) unmoved at 0.0005%. The ceiling was measured on
+      the wrong SHAPE: one map with 122 679 entries, where the engine
+      has eighteen maps that grow into that total. An open-addressing
+      `LongMap` copies its whole table on every growth where a
+      `HashMap` allocates a node once and never moves it, and against
+      accumulators that are objects anyway, the trade loses.
+      The mechanism is reverted. WHAT STAYS IS THE INSTRUMENTS:
+      `MeasurePaneStore` (the two shapes, the ceiling) and
+      `MeasureWroclawBytes` (what the real job allocates, per road) —
+      the second is the one that decided it, because allocation is
+      deterministic where this lane's wall clock moves 10% between
+      runs. Anyone reopening this needs a number from the second.
 
 ## okay-spark
 - [ ] spark-4-2 — bump `spark-sql` 4.0.0 -> 4.2.0 and move
