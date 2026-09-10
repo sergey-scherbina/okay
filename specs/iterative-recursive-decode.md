@@ -249,3 +249,44 @@ within noise on the first attempt, no false alarm to write up.
 **Both roots of this spec are closed.** `Codecs.maxDepth` and
 `TestVector`'s stress depth moving back up is a separate, deliberate
 follow-up (a wire-contract number, not assumed by either lane).
+
+## The four sites the two roots left as a rescue, not a policy (2026-09-10)
+
+The operator asked directly: since both roots are closed, why keep
+`Codecs.maxDepth` at all — can it be removed? Checked before answering:
+NO, not yet. Both roots covered exactly the DECLARED-schema recursion
+in `Cbor.get`/`Json.decode`. Four more native-recursion sites exist,
+each STILL protected only by the hard `Codecs.maxDepth` refusal —
+raising or removing that number today would reopen
+`input-depth-both-wires`'s original overflow in every one of them:
+
+1. **`JsonValue`'s fast parser** (`value`/`obj`/`arr`) — raw `[`/`{`
+   literal nesting, no schema involved. Uniformly typed (`Json | Null`
+   throughout), so `Cont.defer`'s `R` is fixed once and never varies —
+   simpler than either root, no cross-type threading.
+2. **`Json.lossless`'s projection** (`into`/`pairs`) — the CST-to-value
+   walk. `into` is `Unit`-returning, side-effecting into a
+   `Builder[Json, Vector[Json]]` rather than combining typed values —
+   a genuinely different shape from the two roots' fold-and-combine.
+   Whether `Cont.defer` is still the right mechanism here or a plainer
+   explicit stack fits the side-effecting shape better is this lane's
+   own decision, not assumed here.
+3. **`JsonStrict.Reader.get`** (`product`/`array`/`sum`) — decodes a
+   declared `Schema`, the SAME shape as both closed roots (combines
+   heterogeneously-typed values, needs `R` fixed at the entry point
+   and threaded through). This one is the direct third instance of the
+   root 1/root 2 pattern, not a new design.
+4. **`Cbor.In.skipItem`** — skips an UNDECLARED field's value, one
+   complete CBOR item read and discarded. Uniformly typed
+   (`Either[String, Unit]`), like target 1 — no schema, no cross-type
+   `R`. Missed when the spec was first scoped to "two roots": the
+   decision to skip an undeclared field is exactly as INPUT-depth-
+   -driven as decoding a declared one, and got no threshold at all.
+
+Four follow-up lanes, one per target — each gets its own claim, tests,
+and a JMH gate at 3 forks from the start (both roots' own lesson).
+Once all four land, `Codecs.maxDepth` has no stack-safety motivation
+left: raising it, or removing the refusal entirely, becomes a
+deliberate wire-contract choice with no reopened risk, not assumed to
+be safe by this entry alone — that decision still wants its own lane
+to state it and update `TestVector`/the two roots' own tests together.
