@@ -1,0 +1,38 @@
+task: dataflow-numbers
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-numbers
+worktree: ../okay-wt-dfn1
+spec: specs/dataflow.md, stage 7
+
+why: the engine has been measured against ITSELF and against a
+  hand-written lane in one JVM (1.14x of §20's eight-thread lane).
+  Nothing has ever measured what the DISTRIBUTED road costs: the
+  coordinator's two round trips, the CBOR partials, four operating-
+  system processes instead of eight fibres. Claim 1 of the spec — the
+  shuffle is optional and the plan can tell — is an argument about
+  what crosses a wire, and no wire has ever been weighed.
+
+what: the Wroclaw job as a `Job[P, R]` a worker process can build
+  from its parameters, and a §20 lane that runs it three ways on one
+  machine — eight fibres in this JVM, eight partitions over sockets
+  in this JVM, eight partitions over four real OS processes — with
+  the eleven checksums asserted equal before anything is timed, and
+  the BYTES that cross counted rather than described.
+
+what this is NOT, and the boundary must be in the section itself: it
+  is not okay-on-a-cluster against Flink-on-a-cluster. §20's Flink is
+  a MiniCluster and its Spark is `local[4]`; both are one JVM, and a
+  real cluster number for either would need a real cluster. What the
+  new rows compare is our own in-process road against our own
+  distributed road on the same box, plus what each engine's fixed
+  cost buys — and every row says which of those it is.
+
+predict: the wire is cheap for THIS job and the spec's own numbers
+  say why before the measurement does (122,679 accumulators reach the
+  coordinator where 1.7 million panes would), so the distributed lane
+  should land within a small multiple of the in-process one and the
+  bytes should be a few megabytes rather than a few hundred. The risk
+  is elsewhere: a worker process must BUILD the feed to take its
+  slice, and if that is charged to the engine the row measures the
+  GTFS parser. It has to be paid once per process and named.
