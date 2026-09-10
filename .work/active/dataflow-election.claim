@@ -1,0 +1,47 @@
+task: dataflow-election
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-election
+worktree: ../okay-wt-del1
+spec: specs/dataflow.md, stage 10
+
+why: stage 8 made a successor POSSIBLE and stage 9 made its writes
+  safe, but nobody starts one. `Cluster.stream` has to be called
+  again, by something, and until that something exists the journal is
+  a recovery story a human has to run.
+
+  There is a second hole and it is the dangerous one. Two coordinators
+  over one journal is worse than none: a paused leader that wakes up
+  believing it still leads will commit over its successor's state, and
+  the next resume reads whichever landed last. Nothing today stops it.
+
+what: leadership as a seam, and a fence on the journal.
+
+  `Lease` — take(): Option[Long], held(term), release(term) — three
+  methods, no dependency, exactly as `Checkpoint` is two methods over
+  bytes. okay-persist's `Election` already answers all three
+  (`tryTakeover` returns the epoch, `leader` says who holds it,
+  `heartbeat` renews) so the binding is a handful of lines in TEST
+  scope, like the journal's.
+
+  `Cluster.leading(...)` takes the lease, wraps the journal in a fence
+  bound to the term, runs the stream and releases. It does NOT loop
+  waiting to be elected: a single attempt composes, a retry loop is
+  the caller's supervisor and needs a clock nothing here should own.
+
+  `Checkpoint.fenced(term, lease, under)` refuses a commit once the
+  lease is gone, so a deposed coordinator STOPS at its next epoch
+  rather than writing over its successor.
+
+what this is NOT, and it must be in the doc rather than discovered: a
+  compare-and-set. The fence is a check before a write, so a leader
+  deposed between the check and the write can still land one commit.
+  What closes that is a conditional write in the store, and the seam
+  already permits it — `save` may throw. The window is one commit
+  wide and named.
+
+predict: the mechanism is small and the test is the work. A zombie
+  leader is the case that matters and the easy version of it proves
+  nothing: the test has to depose the leader BETWEEN its epochs and
+  show the next commit refused, not merely show a fresh candidate
+  taking a vacant seat.
