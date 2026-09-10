@@ -1719,9 +1719,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-10	d8d985ea	5	okay-live-panes-exact	4918	-	-	panes open at once, okay's operator, INDEPENDENT of the replay rate (its watermark advances per element); 138 routes + 2,482 stops x 3 sliding panes
 2026-09-10	f25a22ea	5	jdk-windowed-collector-vs-groupingby	2493921	1160632	2.15	ev/s, higher better: okay.java.Windowed (an event-time window AS a Collector, panes evicted on the watermark) vs Collectors.groupingBy on the same sequential JDK stream, §20's job at 603,529 events; peak heap 403 MB vs 652 MB
 2026-09-10	f25a22ea	5	jdk-windowed-full-feed	2431201	0	-	ev/s at 2,414,119 events, 992 ms, 825 MB peak: the size at which the groupingBy road dies with an OutOfMemoryError on 8 GB — the reference is 0 because there is no number to compare, only a failure
-2026-09-10	233ea05d	2	lex-elementwise-alloc	301056	425832	0.71	B/op, lower better: Scan.stepInto (sink) vs step (pair); two rounds per side alternating, reproduced to the byte
-2026-09-10	233ea05d	2	lex-chunked64-alloc	337888	467837	0.72	B/op, lower better: same change, unboxed char chunks of 64
-2026-09-10	233ea05d	2	json-parse-full-alloc	664137	788913	0.84	B/op, lower better: lex+drive+build; the lex share is what moved
-2026-09-10	233ea05d	2	bpe-scan-alloc	896833	1066305	0.84	B/op, lower better: Bpe on the sink road (no intermediate word Vector, no :+ for the whitespace token)
-2026-09-10	233ea05d	2	lex-elementwise-time	25.4	43.6	0.58	us/op, lower better: per-lane minimum of 2 alternating rounds; faster in BOTH (34.9 vs 45.5 in the round where another tenant held 11 cores)
-2026-09-10	233ea05d	2	lex-chunked64-time	35.7	60.7	0.59	us/op, lower better: same; 41.3 vs 59.3 in the loaded round. parseFull and bpeScan times moved WITH the box and are NOT claimed
+2026-09-10	a3af5089	2	lex-elementwise-alloc	301056	425832	0.71	B/op, lower better: Scan.stepInto (sink) vs step (pair); two rounds per side alternating, reproduced to the byte
+2026-09-10	a3af5089	2	lex-chunked64-alloc	337888	467837	0.72	B/op, lower better: same change, unboxed char chunks of 64
+2026-09-10	a3af5089	2	json-parse-full-alloc	664137	788913	0.84	B/op, lower better: lex+drive+build; the lex share is what moved
+2026-09-10	a3af5089	2	bpe-scan-alloc	896833	1066305	0.84	B/op, lower better: Bpe on the sink road (no intermediate word Vector, no :+ for the whitespace token)
+2026-09-10	a3af5089	2	lex-elementwise-time	25.4	43.6	0.58	us/op, lower better: per-lane minimum of 2 alternating rounds; faster in BOTH (34.9 vs 45.5 in the round where another tenant held 11 cores)
+2026-09-10	a3af5089	2	lex-chunked64-time	35.7	60.7	0.59	us/op, lower better: same; 41.3 vs 59.3 in the loaded round. parseFull and bpeScan times moved WITH the box and are NOT claimed
