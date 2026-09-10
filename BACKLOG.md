@@ -688,11 +688,16 @@ or not at all).
       small, and the FENCE it forced is the part that mattered. A
       deposed coordinator now stops at its next commit instead of
       writing over its successor.
-- [ ] dataflow-fenced-commit — stage 10's fence is a CHECK before a
-      write, so a leader deposed between the two can land one commit.
-      Closing it needs a store that offers "save only if the term is
-      still mine"; the seam already permits one (`save` may throw).
-      One commit wide, named in specs/dataflow.md.
+- [x] dataflow-fenced-commit — CLOSED, on the READ side rather than
+      with a compare-and-set no store here offers. `Folded` carries
+      the term, `Checkpoint.newest` takes the highest (term, epoch)
+      out of a journal's history, and a stale commit is shadowed for
+      ever instead of being read back — which a log can do and a cell
+      cannot. The honest half: the rows were right either way, because
+      a stale resume costs WORK and not correctness as long as the
+      source replays and the writer is keyed. For a source that does
+      not replay, the fence is still a check and that window stays
+      named.
 - [x] dataflow-commit-window — LANDED as stage 9, and the entry above
       was wrong about the roads: both the ones it named are worse than
       the window, and the one it did not name is what every engine
@@ -701,10 +706,16 @@ or not at all).
       told BEFORE the journal, so the worst case is a repeated epoch
       rather than a lost one, and a writer that records the epoch
       beside its rows is exactly-once.
-- [ ] dataflow-durable-stage — stage 9's staging sink keeps its epoch
-      in memory, so the two-phase commit survives the COORDINATOR's
-      death and not the WRITER's. A durable stage (a transaction, a
-      temp file per epoch) closes that; the seam already fits.
+- [x] dataflow-durable-stage — CLOSED by being answered smaller than
+      it was asked. The staging contract already requires the writer
+      to record the epoch in ONE write with its rows; a writer that
+      cannot be atomic cannot have exactly-once, and that is a
+      property of the store rather than of the engine. Nothing was
+      built to justify the lane. What the lane DID produce is the
+      defect it turned up: a resume of a run that was already over
+      retired the tail panes a second time out of one partition's
+      half — 29 of 3 204 wrong — because a finished run did not record
+      that it was finished. It does now (`Folded.done`).
 - [x] dataflow-exchange — LANDED. The crossover is ~100 000
       accumulators and the Wrocław job is three orders of magnitude
       under it, so `Auto` declines the exchange there.

@@ -1,5 +1,45 @@
 # Changelog
 
+## dataflow-durable — a journal that keeps its history, and a defect it turned up
+
+The last two open dataflow entries were the same question twice: what
+a real STORE buys that a cell cannot. Both close here, one of them
+smaller than it was asked, and one by a defect found on the way.
+
+THE TERM GOES INTO THE RECORD. `Folded` carries the term its commit
+was made under and `Checkpoint.newest` takes the highest (term, epoch)
+out of everything a journal still holds, so a stale commit from a
+deposed leader is shadowed for ever instead of being read back — no
+compare-and-set, which no store here offers. A store that keeps only
+the last write has nothing to choose from, and that is the honest
+difference between a log and a cell. Tested by writing the ghost's
+record by hand and reading the same log two ways.
+
+And the honest half, smaller than the entry implied: the rows are
+right EITHER WAY. A stale resume costs work, not correctness, as long
+as the source replays and the writer is keyed by (window, key). The
+fence and the history keep a run from paying for a ghost; they are not
+what keep it from being wrong. For a source that does not replay, the
+fence is still a check and that window stays named.
+
+THE DEFECT, and it falsifies a sentence stage 8 wrote. That stage
+claimed a coordinator dying between the last Close and the answer
+could resume, ask for one more epoch and re-answer the same value. It
+could not: the fresh sessions a resumed run opens replay the whole
+source, DISCARD every pane their catch-up closes and hand over only
+what is still open at the end — so the tail panes were retired a
+second time out of one partition's half. 62 extra offers and 29 of
+3 204 panes overwritten with a partial value. A finished run records
+that it is finished now (`Folded.done`) and a resume answers from the
+state instead of asking anybody, which is also the cheap thing to do.
+Controlled: without the flag, the two tests that found it fail again.
+
+dataflow-durable-stage needed no code. The staging contract already
+requires the writer to record the epoch in ONE write with its rows,
+and a writer that cannot be atomic cannot have exactly-once — a
+property of the store, not the engine. Saying so is the answer; no
+mechanism was invented to justify the lane.
+
 ## dataflow-reconnect — a failure is not yet a death
 
 Stage 5 buried a worker on its FIRST throw, so a run could not survive

@@ -256,8 +256,12 @@ commit and throws `Checkpoint.Deposed` instead of writing, so a
 predecessor that wakes up mid-run stops at its next epoch rather than
 committing over its successor's state. It is a check before a write
 and not a compare-and-set — a leader deposed between the two can land
-one commit — and the seam permits a conditional write where a store
-offers one.
+one commit — so every record also carries its TERM, and
+`Checkpoint.newest` takes the highest (term, epoch) out of a journal's
+history: a stale commit is shadowed rather than read back. A log can
+defend itself that way and a single cell cannot. The rows were right
+either way, mind: a stale resume costs work, not correctness, as long
+as the source replays and the writer is keyed.
 
 **The commit window, and who closes it.** A coordinator that dies
 between WRITING a pane and COMMITTING its epoch re-offers that epoch's

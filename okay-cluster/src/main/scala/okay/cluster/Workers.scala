@@ -308,7 +308,7 @@ object Cluster {
    * batch one is wrong rather than different.
    */
   def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
-                   journal: Checkpoint = Checkpoint.none)
+                   journal: Checkpoint = Checkpoint.none, term: Long = 0L)
                   (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
@@ -331,9 +331,9 @@ object Cluster {
     def opening(i: Int): Req.Open = Req.Open(job.name, encoded, i, parts, sessions(i))
 
     def commit(round: Int, st: sink.S, seen: Vector[Vector[Flows.Extent]],
-               drops: Long, merged: Long): Unit =
+               drops: Long, merged: Long, over: Boolean = false): Unit =
       journal.save(round,
-        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base)))
+        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over)))
 
     // NO UPFRONT OPEN. The first `Advance` finds no session and opens
     // one, which is the identical path a replacement worker takes —
@@ -436,17 +436,19 @@ object Cluster {
               val end = sink.absorb(next, lw, Long.MaxValue)
               val dd = d + sink.drops(lw)
               val mm = m + sink.merged(lw)
-              // the sweep is an epoch too: a coordinator that dies
-              // between the last Close and the answer resumes here,
-              // asks for one more epoch, is told everything is
-              // drained, and re-answers the same value
+              // the sweep is an epoch too, and it is the one that
+              // records the run as OVER. Stage 8 said a coordinator
+              // that died between the last Close and the answer could
+              // resume here, ask for one more epoch and re-answer the
+              // same value; it could not, and dataflow-durable's test
+              // found it — see `Folded.done`.
               // THE SWEEP IS ITS OWN EPOCH, and the number has to
               // move: a writer that recognises a repeat by its epoch
               // number would drop the close's panes as a duplicate of
               // the last round's, which is exactly what happened the
               // first time this was written.
               sink.committed(round + 1)
-              commit(round + 1, end, grown, dd, mm)
+              commit(round + 1, end, grown, dd, mm, over = true)
               Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
           else epoch(next, grown, d, m, round + 1)
@@ -469,6 +471,16 @@ object Cluster {
           held.decode(f.state) match
             case Left(why) =>
               throw IllegalStateException(s"the journal's fold at epoch ${f.epoch}: $why")
+            case Right(st) if f.done =>
+              // THE RUN WAS ALREADY OVER. Asking the workers for one
+              // more epoch would open fresh sessions, replay the
+              // whole source, discard every pane the catch-up closed
+              // and hand back only what is open at the end — which
+              // retires the tail panes a second time out of one
+              // partition's half. The answer is in the state; take it
+              // (dataflow-durable).
+              pure[Async, Run[R]](
+                Run(sink.emit(st), f.drops, parts, 1, f.merged, living.retries, living.lost))
             case Right(st) =>
               // everything a previous coordinator did AFTER this
               // epoch was lost with it and never happened — the one
@@ -511,7 +523,11 @@ object Cluster {
     lease.take() match
       case None => pure[Async, Option[Run[R]]](None)
       case Some(term) =>
-        stream(job, p, parts, workers, take, Checkpoint.fenced(term, lease, journal))
+        // the term goes two ways: into the FENCE, which refuses a
+        // commit once the lease is gone, and into every RECORD, so a
+        // stale commit that got past the fence is shadowed rather
+        // than read back (dataflow-durable)
+        stream(job, p, parts, workers, take, Checkpoint.fenced(term, lease, journal), term)
           .map { run => lease.release(term); Some(run) }
 
   /**

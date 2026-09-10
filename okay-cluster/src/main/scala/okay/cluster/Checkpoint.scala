@@ -122,6 +122,19 @@ object Checkpoint:
       under.save(epoch, bytes)
     def latest: Option[(Int, Array[Byte])] = under.latest
 
+  /**
+   * THE RECORD A RESUME SHOULD BELIEVE, out of everything a journal
+   * still holds (dataflow-durable).
+   *
+   * Later TERM wins; within a term, later EPOCH wins. A store that
+   * keeps its history hands this its records and is immune to a
+   * stale commit that got past the fence; a store that keeps only the
+   * last write has nothing to choose from and is not.
+   */
+  def newest(records: Iterable[Folded]): Option[Folded] =
+    if records.isEmpty then None
+    else Some(records.maxBy(f => (f.term, f.epoch.toLong)))
+
   /** what a coordinator that has lost the seat is told, at the
    * moment it would have written */
   final case class Deposed(term: Long, epoch: Int)
@@ -161,7 +174,56 @@ final case class Folded(epoch: Int,
                          * would sit on every worker for ever, since
                          * the party that could close them is gone.
                          */
-                        base: Long)
+                        base: Long,
+                        /**
+                         * THE TERM THIS COMMIT WAS MADE UNDER, and
+                         * why a record carries it (dataflow-durable).
+                         *
+                         * `Checkpoint.fenced` asks the lease before
+                         * writing, which stops a ghost cheaply and at
+                         * the right moment — and is a check before a
+                         * write, so a leader deposed between the two
+                         * can still land one stale commit. Closing
+                         * THAT needs a compare-and-set no store here
+                         * offers.
+                         *
+                         * It does not need one. A journal that keeps
+                         * its history can defend itself on the READ
+                         * side: a resume takes the record with the
+                         * highest (term, epoch) rather than the last
+                         * one written, and since terms only rise, a
+                         * stale commit is shadowed for ever instead
+                         * of being read back. `Checkpoint.newest`
+                         * does that selection, and a store that keeps
+                         * only the last write cannot — which is the
+                         * honest difference between a log and a cell.
+                         *
+                         * Zero when nobody is fencing.
+                         */
+                        term: Long = 0L,
+                        /**
+                         * IS THE STREAM OVER? (dataflow-durable)
+                         *
+                         * Stage 8 said a coordinator that died
+                         * between the last Close and the answer could
+                         * resume, ask for one more epoch, be told
+                         * everything was drained and re-answer the
+                         * same value. It could not, and a test found
+                         * it: the fresh sessions a resumed run opens
+                         * replay the whole source, DISCARD the panes
+                         * their catch-up closed, and hand over only
+                         * what is still open at the end — so the
+                         * tail panes were retired a second time out
+                         * of one partition's half and overwritten
+                         * with a partial value. 29 of 3 204 on the
+                         * synthetic feed.
+                         *
+                         * A finished run says so here, and a resume
+                         * that reads it answers from the state
+                         * instead of asking anybody. Which is also
+                         * the cheap thing to do.
+                         */
+                        done: Boolean = false)
 
 object Folded:
   given Schema[Flows.Extent] = Resp.given_Schema_Extent

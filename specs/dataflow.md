@@ -1609,3 +1609,61 @@ does not. Handed `Served.connect`, the run dies with "no workers
 left"; handed `Served.reconnecting`, it finishes with the same answer
 and nobody buried. Same server, same job, same tolerance: the only
 difference is which `Serve` the coordinator was given.
+
+### dataflow-durable — what a journal that keeps its history buys
+
+The last two open entries were the same question asked twice.
+`dataflow-fenced-commit`: stage 10's fence is a check before a write,
+so a leader deposed between the two can land one stale commit.
+`dataflow-durable-stage`: stage 9's staging sink keeps its epoch in
+memory. Both are about what a real STORE buys that a cell cannot, and
+both close here — one of them by being answered smaller than it was
+asked, and one by a defect it turned up on the way.
+
+**The term goes into the record, and a resume takes the newest.**
+`Folded` carries the term its commit was made under, and
+`Checkpoint.newest` picks the highest (term, epoch) out of everything
+a journal still holds. A stale commit from a deposed leader is then
+shadowed for ever instead of being read back — no compare-and-set
+required, and none of the stores here offers one. A store that keeps
+only the LAST write has nothing to choose from, and that is the honest
+difference between a log and a cell. The test writes the ghost's
+record by hand — faking a lease would only prove the fence works, and
+the point is what happens when it does not — and reads the same log
+two ways: defended, the run picks up where the real leader left off;
+naive, it resumes from the ghost and redoes the work.
+
+**And the honest half, which is smaller than the entry implied.** The
+rows are right EITHER WAY. A stale resume costs work, not
+correctness, as long as the source replays and the writer is keyed by
+(window, key) — which is stage 6c's argument, and stages 5 through 8
+already rest on it. The fence and the history are what keep a run from
+paying for a ghost, not what keep it from being wrong. For a source
+that does NOT replay the fence is the only thing between two
+coordinators and divergence, and it is still a check, so that window
+is real and stays named.
+
+**THE DEFECT THIS TURNED UP, and it falsifies a sentence stage 8
+wrote.** That stage claimed a coordinator dying between the last Close
+and the answer could resume, ask for one more epoch, be told
+everything was drained, and re-answer the same value. It could not.
+The fresh sessions a resumed run opens replay the whole source,
+DISCARD every pane their catch-up closes, and hand over only what is
+still open at the end — so the tail panes were retired a second time
+out of one partition's half and overwritten with a partial value. On
+the synthetic feed: 62 extra offers and **29 of 3 204 panes wrong**.
+
+The fix is a boolean. A finished run records that it is finished
+(`Folded.done`), and a resume that reads it answers from the state
+instead of asking anybody — which is also the cheap thing to do.
+Controlled: with the flag not set, the two tests that found it fail
+again.
+
+**What `dataflow-durable-stage` turned out to need: nothing.** The
+staging sink's contract already requires the writer to record the
+epoch in ONE write with its rows, and a writer that cannot do that
+cannot have exactly-once — which is a property of the store, not of
+the engine. The entry asked for a durable stage to survive the
+writer's own death; what survives it is atomicity at the writer, and
+saying so is the whole of the answer. No mechanism was invented to
+justify the lane.
