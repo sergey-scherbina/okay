@@ -437,6 +437,28 @@ installing nothing, the server serving `wire[Routes]`. `PartialFunction`
 under `orElse` is the monoid, which is also the merge every server in
 this stack already uses by hand.
 
+## A feature is one module (fact-declaring, 2026-09-10)
+
+Reading the routes example, the operator asked what `board` and
+`admin` were doing beside `boardApi` and `adminApi` — and the honest
+answer was that a feature had been split in two because of a
+limitation, not a design. A contribution could not read the capability
+its own module installs: `declare` runs outside that installer.
+
+`declaring(k)(v: F[V])` lifts it — the value is computed inside the
+module's own installer (`p(v)`), so `wire[Board]` in a contribution is
+the `Board` that module installs. For an acquired module it is
+computed when the module BUILDS, since there is nothing to read before
+that; it reaches the collection, not the early preview. A feature is
+now one module, its capability and its routes together, and
+`contributing` remains for a feature that owns no capability.
+
+Also here, from the same reading: `declare` and `contributing` are
+CURRIED. With both arguments in one list the block needed a `: Routes`
+ascription; with the value in its own list its type comes from
+`Fact[V]` and the ascription is gone. The same reason `provide(db) { … }`
+works — braces as an argument with a known expected type.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

@@ -1,5 +1,31 @@
 # Changelog
 
+## fact-declaring — a feature is one module, and the block needs no ascription
+
+Two things the operator found by reading the routes example, both
+small and both real.
+
+A contribution could not read the capability its OWN module installs,
+because `declare` runs outside that installer — which is why the
+example had a `board` module beside a `boardApi` module, a split
+forced by a limitation rather than chosen. `declaring(k)(v: F[V])`
+computes the fact inside the module's own installer, so a feature is
+one module now: its capability and the routes that use it, together.
+For an acquired module the value is computed when it builds, since
+there is nothing to read before that.
+
+And `declare`/`contributing` are curried. With both arguments in one
+list a routes block needed a `: Routes` ascription; with the value in
+its own list its type comes from `Fact[V]` and the ascription is gone
+— the same reason `provide(db) { … }` reads the way it does.
+
+The example now shows all three shapes and serves four URLs from them:
+a feature owning its capability, one reading the capability before it,
+and a contributor owning none. docs/di.md says what it buys in one
+line: the composition names no URL and no `orElse`, so the surface is
+a by-product of wiring rather than a second list kept by hand.
+Commit: LANDING.
+
 ## flows-pane-tuple — a pair built for a branch that never uses it
 
 Checking `windows-packed-key` turned up something that is not it, and

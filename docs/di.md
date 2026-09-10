@@ -351,34 +351,46 @@ type Routes = PartialFunction[Request, Response ! Async]
 given Monoid[Routes] = Monoid.of(PartialFunction.empty[Request, Response ! Async])(_ orElse _)
 object Surface extends Fact[Routes]
 
-// the capabilities, installed once by whoever owns them
-val board = Module.value[Board](Board(...))
-val admin = Module.value[Admin](Admin(...))
-
-// the features: each adds its part and installs NOTHING
-def boardApi: Board ?=> Module[[X] =>> X] =
-  Module.contributing(Surface, {
+// A FEATURE IS ONE MODULE: its capability and the routes that use it
+val boardFeature: Module[[X] =>> Board ?=> X] =
+  Module.value[Board](Board(...)).declaring(Surface) {
     case r if r.url == "/board" => text(wire[Board].items.mkString(","))
-  }: Routes)
+  }
 
-def adminApi: (Board, Admin) ?=> Module[[X] =>> X] =
-  Module.contributing(Surface, {
+// it may read what came before it, like any module
+def adminFeature: Board ?=> Module[[X] =>> Admin ?=> X] =
+  Module.value[Admin](Admin(...)).declaring(Surface) {
     case r if r.url == "/admin"       => text(wire[Admin].token)
     case r if r.url == "/admin/count" => text(wire[Board].items.size.toString)
-  }: Routes)
+  }
 
-val app = (board and admin and boardApi and adminApi).installing(Surface)
+// and a feature that owns NO capability installs nothing
+def health: Board ?=> Module[[X] =>> X] =
+  Module.contributing(Surface) {
+    case r if r.url == "/healthz" => text(if wire[Board].items.nonEmpty then "ok" else "empty")
+  }
+
+val app = (boardFeature and adminFeature and health).installing(Surface)
 app { serve(wire[Routes]) }
 ```
 
+**What this buys, in one line:** `app`'s definition names no URL and
+no `orElse`. The service's surface is a by-product of wiring its
+features, not a second list somebody maintains by hand — and the
+failure it removes is a feature that is wired, compiles, and silently
+answers nothing because its routes were never added to that list.
+
 Three things in that shape are worth naming.
 
-**A contribution reads the capabilities that came BEFORE it**, and
-not the one its own module installs — `declare` runs outside that
-installer. So a feature is written `Board ?=> Module[…]`, the same
-shape a dependent module has, and for the same reason.
-`Module.contributing` is the module that installs nothing and carries
-one fact, which is what a feature usually is.
+**Three ways to declare, and which to reach for.** `declaring(k) { … }`
+computes the fact INSIDE the module's own installer, so it can read
+what that module installs — that is the feature that owns its
+capability, and the usual one. `declare(k)(v)` computes it outside, so
+it sees only what came BEFORE (which is right for a fact derived from
+the config, like a deployment's volume). `Module.contributing(k) { … }`
+installs nothing at all, for a feature written over somebody else's
+capabilities. All three are curried, so the block takes its type from
+`Fact[V]` and needs no ascription.
 
 **The merge rule is the kind's, not the collection's.** `Routes`
 merge with `orElse`; a deployment's needs merge with dedup (two

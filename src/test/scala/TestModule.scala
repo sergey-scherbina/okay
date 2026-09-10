@@ -136,8 +136,8 @@ class TestModule extends munit.FunSuite {
   object Tags extends Fact[Vector[String]]
 
   test("facts declared on modules merge left to right under and, by the kind's own rule") {
-    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags, Vector("db"))
-    val b = Module.value[Log](new Log { val tag = "" }).declare(Tags, Vector("log")).declare(Tags, Vector("log2"))
+    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags)(Vector("db"))
+    val b = Module.value[Log](new Log { val tag = "" }).declare(Tags)(Vector("log")).declare(Tags)(Vector("log2"))
     assertEquals((a and b).facts.get(Tags), Vector("db", "log", "log2"))
     assertEquals(a.facts.get(Tags), Vector("db"))
     assertEquals(module[Db](new Db { val q = "" })(_ => ()).facts.get(Tags), Vector.empty)
@@ -148,7 +148,7 @@ class TestModule extends munit.FunSuite {
     val conf = Module.value[Conf](Conf("/data/log"))
     val store: Conf ?=> Module[[X] =>> Db ?=> X] =
       module[Db]({ opened += 1; new Db { val q = wire[Conf].url } })(_ => ())
-        .declare(Tags, Vector(s"volume ${wire[Conf].url}"))
+        .declare(Tags)(Vector(s"volume ${wire[Conf].url}"))
     val app = conf and store
     assertEquals(app.facts.get(Tags), Vector("volume /data/log"))   // read off the value: nothing opened
     assertEquals(opened, 0)
@@ -159,16 +159,16 @@ class TestModule extends munit.FunSuite {
   test("a right side behind an acquisition keeps its facts until the scope runs — stated, not hidden") {
     val db = module[Db](new Db { val q = "" })(_ => ())
     val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
-      module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ()).declare(Tags, Vector("pool"))
+      module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ()).declare(Tags)(Vector("pool"))
     assertEquals((db and pool).facts.get(Tags), Vector.empty)
     assertEquals((db and pool).ready, None)
   }
 
   // di-multibind: several contributors, one collection
   test("installing merges every contribution into a capability the body reads") {
-    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags, Vector("from db"))
+    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags)(Vector("from db"))
     val b: Db ?=> Module[[X] =>> Log ?=> X] =
-      Module.value[Log](new Log { val tag = "" }).declare(Tags, Vector("from log"))
+      Module.value[Log](new Log { val tag = "" }).declare(Tags)(Vector("from log"))
     val app = (a and b).installing(Tags)
     assertEquals(run(app { wire[Vector[String]] }), Vector("from db", "from log"))
   }
@@ -178,10 +178,10 @@ class TestModule extends munit.FunSuite {
     val conf = Module.value[Conf](Conf("/data"))
     val store: Conf ?=> Module[[X] =>> Db ?=> X] =
       module[Db]({ opened += 1; new Db { val q = wire[Conf].url } })(_ => ())
-        .declare(Tags, Vector("volume /data"))
+        .declare(Tags)(Vector("volume /data"))
     val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
       module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ())
-        .declare(Tags, Vector("pool"))          // below an acquisition: invisible early
+        .declare(Tags)(Vector("pool"))          // below an acquisition: invisible early
     val app = (conf and store and pool).installing(Tags)
     // the early PREVIEW stops at the first acquisition, as it must
     assertEquals((conf and store and pool).facts.get(Tags), Vector("volume /data"))
@@ -198,9 +198,9 @@ class TestModule extends munit.FunSuite {
 
   test("a fact is any monoid, not a collection: text concatenates, numbers add, a rule of your own wins") {
     val a = Module.value[Db](new Db { val q = "a" })
-      .declare(Notes, "opened db").declare(Weight, 3).declare(Newest, Some("db"))
+      .declare(Notes)("opened db").declare(Weight)(3).declare(Newest)(Some("db"))
     val b = Module.value[Log](new Log { val tag = "" })
-      .declare(Notes, ", opened log").declare(Weight, 4).declare(Newest, Some("log"))
+      .declare(Notes)(", opened log").declare(Weight)(4).declare(Newest)(Some("log"))
     val app = a and b
     assertEquals(app.facts.get(Notes), "opened db, opened log")
     assertEquals(app.facts.get(Weight), 7)

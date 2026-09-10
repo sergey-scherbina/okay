@@ -192,8 +192,8 @@ final class Module[F[_]](val built: (Providing[F], Facts) ! Resource,
    *     def empty = Vector.empty
    *     def merge(a: Vector[Route], b: Vector[Route]) = a ++ b
    *
-   *   (admin.declare(Routes, Vector(adminRoute)) and
-   *    chat.declare(Routes, Vector(chatRoute))).installing(Routes) { serve(wire[Vector[Route]]) }
+   *   (admin.declare(Routes)(Vector(adminRoute)) and
+   *    chat.declare(Routes)(Vector(chatRoute))).installing(Routes) { serve(wire[Vector[Route]]) }
    * }}}
    *
    * The fact's VALUE type is the capability type, so name it (an
@@ -215,9 +215,41 @@ final class Module[F[_]](val built: (Providing[F], Facts) ! Resource,
    * site. Flattening it belongs here, once.
    */
   def use[B](body: F[B ! Resource]): B ! Resource = build.flatMap(p => p(body))
-  /** declare a fact of kind `k` about this module; a reader merges it with the rest */
-  def declare[V](k: Fact[V], v: V): Module[F] =
+  /**
+   * Declare a fact of kind `k` about this module; a reader merges it
+   * with the rest. Curried, so the value's type comes from `Fact[V]`
+   * and a block needs no ascription (fact-declaring):
+   *
+   * {{{
+   *   m.declare(Surface) { case r if r.url == "/board" => … }
+   * }}}
+   */
+  def declare[V](k: Fact[V])(v: V): Module[F] =
     new Module(built.map((p, f) => (p, f.add(k, v))), ready, facts.add(k, v))
+
+  /**
+   * The same, for a fact computed INSIDE this module's own installer,
+   * so it may read what THIS module installs (fact-declaring).
+   *
+   * `declare` runs outside the installer, which is why a contribution
+   * sees the capabilities that came before it and not its own. That
+   * forced a feature to be two pieces — a module installing `Board`
+   * and another contributing the routes that use it. With this one it
+   * is one:
+   *
+   * {{{
+   *   Module.value[Board](Board(...)).declaring(Surface) {
+   *     case r if r.url == "/board" => text(wire[Board].items.mkString(","))
+   *   }
+   * }}}
+   *
+   * For an acquired module the value is computed when the module
+   * BUILDS (it has to be — there is nothing to read before that), so
+   * it reaches the collection but not the early preview.
+   */
+  def declaring[V](k: Fact[V])(v: F[V]): Module[F] =
+    new Module(built.map((p, f) => (p, f.add(k, p(v)))),
+               ready, ready.fold(facts)(p => facts.add(k, p(v))))
 
 /**
  * AN INSTANCE PER CONSUMER, not per scope (di-prototype).
@@ -345,7 +377,7 @@ object Module:
   val nothing: Module[[X] =>> X] = ready(Providing([X] => (body: X) => body))
 
   /** the contributor's one-liner: install nothing, declare one fact */
-  def contributing[V](k: Fact[V], v: V): Module[[X] =>> X] = nothing.declare(k, v)
+  def contributing[V](k: Fact[V])(v: V): Module[[X] =>> X] = nothing.declare(k)(v)
 
   import scala.quoted.*
   /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;

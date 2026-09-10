@@ -30,27 +30,34 @@ class TestRouteFacts extends munit.FunSuite {
 
   private def text(s: String): Response ! Async = pure(Response(200, Nil, Http.one(s.getBytes("UTF-8"))))
 
-  // THE CAPABILITIES, installed once, by whoever owns them
-  val board: Module[[X] =>> Board ?=> X] = Module.value[Board](Board())
-  val admin: Module[[X] =>> Admin ?=> X] = Module.value[Admin](Admin())
-
   /**
-   * THE CONTRIBUTIONS. A feature adds its part of the surface and
-   * installs nothing, so it is written `… ?=> Module[…]` over what it
-   * reads — the same shape a dependent module has, and for the same
-   * reason: a fact is declared OUTSIDE its own module's installer, so
-   * it sees the capabilities that came BEFORE it.
+   * A FEATURE IS ONE MODULE: its capability and the routes that use
+   * it, together (fact-declaring). `declaring` computes the fact
+   * inside this module's own installer, so `wire[Board]` here is the
+   * `Board` this very module installs.
    */
-  def boardApi: Board ?=> Module[[X] =>> X] =
-    Module.contributing(Surface, {
+  val boardFeature: Module[[X] =>> Board ?=> X] =
+    Module.value[Board](Board()).declaring(Surface) {
       case r if r.url == "/board" => text(wire[Board].items.mkString(","))
-    }: Routes)
+    }
 
-  def adminApi: (Board, Admin) ?=> Module[[X] =>> X] =
-    Module.contributing(Surface, {
+  /** a feature may still read what came BEFORE it, like any module */
+  def adminFeature: Board ?=> Module[[X] =>> Admin ?=> X] =
+    Module.value[Admin](Admin()).declaring(Surface) {
       case r if r.url == "/admin" => text(wire[Admin].token)
       case r if r.url == "/admin/count" => text(wire[Board].items.size.toString)
-    }: Routes)
+    }
+
+  /**
+   * And a contributor that owns NO capability — a feature written
+   * over somebody else's — is `Module.contributing`, which installs
+   * nothing. Both spellings are curried, so the block takes its type
+   * from `Fact[V]` and needs no ascription.
+   */
+  def health: Board ?=> Module[[X] =>> X] =
+    Module.contributing(Surface) {
+      case r if r.url == "/healthz" => text(if wire[Board].items.nonEmpty then "ok" else "empty")
+    }
 
   // `runAsync`, not `run(...).runWith`: this file is compiled for JS
   // too, where the blocking API does not exist at compile time (that
@@ -59,20 +66,20 @@ class TestRouteFacts extends munit.FunSuite {
   private def body(res: Response ! Async): scala.concurrent.Future[String] =
     Async.runAsync(res.flatMap(Http.text))
 
-  test("every module's routes are served, and each still sees its own capabilities") {
-    val app = (board and admin and boardApi and adminApi).installing(Surface)
+  test("a feature's own capability, one it reads, and a contributor that has none — all served") {
+    val app = (boardFeature and adminFeature and health).installing(Surface)
     val answers = Resource.scoped(app {
       val routes = wire[Routes]
-      Vector("/board", "/admin", "/admin/count").map(u => body(routes(Request.get(u))))
+      Vector("/board", "/admin", "/admin/count", "/healthz").map(u => body(routes(Request.get(u))))
     })
     import scala.concurrent.ExecutionContext.Implicits.global
     scala.concurrent.Future.sequence(answers).map(got =>
-      assertEquals(got, Vector("one,two", "t0ken", "2")))
+      assertEquals(got, Vector("one,two", "t0ken", "2", "ok")))
   }
 
   test("the same shape as an INSTALL keeps only the last — which is why this is a fact") {
     // both modules install `Routes` instead of contributing it
-    val a = Module.value[Routes]({ case r if r.url == "/board" => text("board") })
+    val a = Module.value[Routes]({ case r if r.url == "/board" => text("board") }: Routes)
     val b: Routes ?=> Module[[X] =>> Routes ?=> X] =
       Module.value[Routes]({ case r if r.url == "/admin" => text("admin") })
     val onlyLast = Resource.scoped((a and b) { wire[Routes].isDefinedAt(Request.get("/board")) })

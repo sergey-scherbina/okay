@@ -47,7 +47,7 @@ object Needs:
 
   extension [F[_]](m: Module[F])
     /** what this module needs from the place, said where it opens the thing */
-    def needs(n: Need*): Module[F] = m.declare(Declared, n.toVector)
+    def needs(n: Need*): Module[F] = m.declare(Declared)(n.toVector)
 
   /** everything the composed application declared, in acquisition order */
   def declared[F[_]](m: Module[F]): Vector[Need] = m.facts.get(Declared)
