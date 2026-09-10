@@ -1,5 +1,47 @@
 # Changelog
 
+## bench-spark-streaming-and-tuning — Spark's own event-time engine, and a JVM per lane
+
+Two asks in one lane, because both change how every number in §20 is
+produced.
+
+**Spark's own window.** The Structured Streaming lane runs
+`withWatermark("event", …)` and `window($"event", "5 minutes")` —
+Spark's operator, its state store, its micro-batches — and agrees with
+okay on all eleven checksums. Three things had to be found by
+experiment and are now written into the lane: `SparkSession` cannot
+start on this repository's ordinary Scala 3.9 classpath (its companion
+lookup is Scala 2 reflection) and okay-spark's two-stdlib fix BREAKS
+the compilation of anything inlining okay's core, so the Spark lanes
+cannot live beside the Flink one; the file source hands files to
+batches by modification time, and eight files written at once gave an
+arbitrary batch order that lost 5 344 windows silently; and append mode
+never flushes a bounded stream, because a batch's watermark update
+takes effect in the next batch and `Trigger.AvailableNow` stops before
+it. One semantic difference is worth more than all three: **Spark drops
+late data per ROW, Flink and okay per WINDOW** — five rows of 234 950
+and two whole windows, with the job's own 30 s.
+
+**A JVM per lane, and the rest of the methodology the operator asked
+for.** The benchmark's shared half (feed, job definition, okay's lanes,
+the measurement) moved to `compare/src/main`; every engine's lane now
+lives in ITS OWN interop module — okay-java, okay-fs2, okay-zio,
+okay-kyo, okay-flink, okay-spark — each with a `main` and a Live test
+of its own, and `scripts/wroclaw-bench.sh` runs each in a forked JVM
+and prints one table. With it come the floor (the same job as a bare
+`while` loop), bytes per event from `getTotalThreadAllocatedBytes`,
+cores as a column, and the answer asserted before any row is printed.
+
+The floor is not the fastest row: 3 044 286 ev/s against `Chunks`'s
+3 131 153, with fs2, ZIO and kyo within 6% of both. On this job the
+carrier is not the cost — the 5x against Flink and the
+OutOfMemoryError against `groupingBy` are engines and state models.
+
+Filed, not done: `bench-native-lanes` — the fs2/ZIO/kyo rows still
+carry okay's window operator, and the operator's rule is that a
+competitor's row should measure THEIR api. The same applies to Flink's
+`toFlink(Job.stats)` and the Spark RDD lane's `SparkInterop`.
+
 ## bench-spark-lane — the fifth engine, and what an RDD does with an event-time question
 
 `SparkInterop.aggregateByKey` hands an okay `Aggregator` to Spark as

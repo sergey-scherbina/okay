@@ -217,7 +217,7 @@ lazy val okayCats = (project in file("okay-cats"))
 
 /** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
 lazy val okayZio = (project in file("okay-zio"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-zio",
     libraryDependencies ++= Seq(
@@ -229,7 +229,7 @@ lazy val okayZio = (project in file("okay-zio"))
 
 /** interop with kyo: value and Async bridges (P3) */
 lazy val okayKyo = (project in file("okay-kyo"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-kyo",
     libraryDependencies ++= Seq(
@@ -245,7 +245,7 @@ lazy val okayKyo = (project in file("okay-kyo"))
  * java.util.function. No dependency to add — it is the platform.
  */
 lazy val okayJava = (project in file("okay-java"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-java",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -253,7 +253,7 @@ lazy val okayJava = (project in file("okay-java"))
 
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-fs2",
     libraryDependencies ++= Seq(
@@ -339,7 +339,7 @@ lazy val LegacyStdlib = config("legacyStdlib").hide
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
 lazy val okaySpark = (project in file("okay-spark"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
@@ -444,7 +444,7 @@ lazy val okayFlink = (project in file("okay-flink"))
   // okay-java is TEST only, and only for §20's third lane: the same
   // job over java.util.stream, whose `Collector` an okay Aggregator
   // already is (okay-java's Collect.collector)
-  .dependsOn(okay.jvm, okayJava % Test, okaySpark % Test)
+  .dependsOn(okay.jvm, okayJava % Test, compare % "test->compile")
   .settings(
     name := "okay-flink",
     libraryDependencies ++= Seq(
@@ -467,8 +467,6 @@ lazy val okayFlink = (project in file("okay-flink"))
       "co.fs2" %% "fs2-core" % "3.10.2" % Test,
       "dev.zio" %% "zio-streams" % "2.1.14" % Test,
       "io.getkyo" %% "kyo-core" % "0.16.2" % Test,
-      ("org.apache.spark" %% "spark-core" % "4.0.0" % Test).cross(CrossVersion.for3Use2_13),
-      "org.scala-lang" % "scala-reflect" % "2.13.16" % Test,
     ),
     // Flink 1.20 on JDK 21 reaches into java.base by reflection (Kryo,
     // its own MemorySegment); the same list okay-spark needs, and for
@@ -1779,6 +1777,14 @@ lazy val compare = (project in file("compare"))
   .settings(
     name := "okay-compare",
     publish / skip := true,
+    // §20's SHARED HALF lives in this project's `src/main`: the Wrocław
+    // feed, the definition every engine computes, okay's own lanes and
+    // the measurement (docs/benchmarks.md §20). Each engine's lane lives
+    // in ITS OWN interop module's tests and depends on this — which is
+    // also what gives the benchmark a JVM per lane, and the only
+    // arrangement in which Spark can be measured at all: its
+    // `SparkSession` needs a two-stdlib classpath that breaks the
+    // compilation of anything inlining okay's core.
     // The comparison lanes are written in the COMPETITORS' idioms on
     // purpose — a benchmark that rewrites a library's natural shape to
     // please our linter is measuring the rewrite, not the library. Two

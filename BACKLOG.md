@@ -14,6 +14,26 @@ New work goes under its module's heading; a cross-module or unscoped item
 goes under "not yet scoped". When a heading grows past a screen, the
 skill's next step is that module's own `<module>/BACKLOG.md`.
 
+## bench-native-lanes — a competitor's row should measure THEIR api, not ours
+
+- [ ] §20's fs2, zio-streams and kyo lanes carry `okay.Windows`, because
+      none of the three has an event-time window. That makes the rows a
+      plumbing comparison, and the operator's rule (2026-09-10) is the
+      right one: measure what the LIBRARY gives its user. For these
+      three that is a fold into a map that never evicts — the JDK's
+      `groupingBy` shape, with the same memory consequence — written in
+      each library's own vocabulary (`scan`/`mapAccum`/`fold`), with no
+      okay type in the lane at all. The same applies to the two lanes
+      that still borrow our aggregation: Flink's window takes
+      `toFlink(Job.stats)` where it should take a Flink
+      `AggregateFunction` as a Flink user would write one, and the
+      Spark RDD lane calls `SparkInterop.aggregateByKey` where it
+      should call Spark's own. `toFlink` and `Collect.collector` stay
+      in the correctness tests, where "one value answers on every
+      engine" is a claim about the interop rather than a benchmark row.
+      The equality assertion carries over unchanged: whatever API a
+      lane uses, its eleven checksums must equal okay's.
+
 ## okay core
 - [ ] handler-fusion-flat — GATED OFF by stage 0 (the ceiling for pass
       fusion measured 1.13–1.29x); reopen only with a new number. Was:

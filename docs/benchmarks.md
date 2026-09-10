@@ -3397,84 +3397,100 @@ and an order-SENSITIVE hash of each window's ranking. The suite
 asserts these EQUAL between okay and Flink at every parallelism before
 anything is timed. All eleven numbers match exactly.
 
-### The whole field, one table
+### What is compared with what — and how
 
-Everything in one place first, because the sections below grew lane by
-lane and their tables did too. Every row is the same job over the same
-events, its answer asserted equal to okay's before its number is
-printed; the lanes are timed ROUND-ROBIN across the rounds (a first cut
-that ran each lane's rounds together read Flink 3.6x slower at the
-bottom of the table than at the top), and the peak heap comes from a
-separate sampled pass so that a full GC is never charged to whichever
-lane ran next. Each size ran in its own JVM.
+**The rule this section now follows: single node against single node.**
+Flink and Spark are distributed engines being run on one machine, in
+the mode they are least suited to; okay has no distributed lane at all
+yet. Comparing a cluster's numbers with a fold's would be comparing two
+different products, so until okay-cluster carries this job the tables
+below are one machine, one process per lane, and the distributed
+comparison is not attempted. What the engines' fixed costs buy —
+recovery, rescale, running across machines — is named where it belongs
+and never priced as if it were free.
 
-**At 603 529 events — the size every lane fits in** (best of 3):
+**How a row is produced** (the operator's list, all of it implemented):
 
-| lane | ev/s | wall | peak heap |
-|---|---:|---:|---:|
-| okay, 1 thread | 3 143 380 | 192 ms | 490 MB |
-| okay, 2 fibres (merge) | 5 294 114 | 114 ms | 443 MB |
-| okay, 4 fibres (merge) | 8 746 797 | 69 ms | 371 MB |
-| okay, 8 fibres (merge) | 13 716 568 | 44 ms | 508 MB |
-| java.util.stream, windowed collector | 2 590 253 | 233 ms | 459 MB |
-| fs2 (pure), our window operator | 2 860 327 | 211 ms | 411 MB |
-| zio-streams, our window operator | 2 860 327 | 211 ms | 451 MB |
-| kyo streams, our window operator | 2 682 351 | 225 ms | 443 MB |
-| java.util.stream, `groupingBy` | 1 359 299 | 444 ms | 507 MB |
-| java.util.stream, `groupingBy`, parallel | 267 403 | 2 257 ms | 2 779 MB |
-| spark, local[4], batch RDD | 277 357 | 2 176 ms | 1 135 MB |
-| flink, parallelism 1 | 500 024 | 1 207 ms | 613 MB |
-| flink, parallelism 4 | 841 741 | 717 ms | 681 MB |
+1. **A JVM per lane.** Every lane lives in its own interop module —
+   `okay-java`, `okay-fs2`, `okay-zio`, `okay-kyo`, `okay-flink`,
+   `okay-spark` — with its own `main`, and `scripts/wroclaw-bench.sh`
+   runs each in a forked JVM. No lane inherits another's heap, JIT
+   state or garbage; the first version of this table, one JVM for
+   everything, read Flink 3.6x slower at the bottom than at the top. It
+   is also the only arrangement in which Spark can be measured at all
+   (see "Spark's own engine" below).
+2. **A floor.** `the floor (a while loop)` is the same five stages as a
+   bare loop over the array — no stream machinery of any kind. Every
+   other row is readable as a multiple of the work itself.
+3. **Bytes per event**, beside the time. Allocation is nearly
+   independent of what else the machine is doing, which on a shared box
+   makes it the steadier of the two numbers, and it explains the time.
+   It is read from `getTotalThreadAllocatedBytes`, so it counts every
+   thread a lane fans out to.
+4. **Cores as a column**, so one-against-one and four-against-four are
+   visible rather than reconstructed.
+5. **The answer first.** Every lane asserts its eleven checksums
+   against okay's before its number is printed. A row that computed
+   something else is not fast or slow, it is wrong, and it never
+   reaches the table.
 
-**At 2 414 119 events — the full feed** (best of 3):
+The shared half — the feed, the job's definition, okay's own lanes and
+the measurement — lives in `compare/src/main/scala/okay/wroclaw/`,
+which is also where a new engine's lane would start.
 
-| lane | ev/s | wall | peak heap |
-|---|---:|---:|---:|
-| okay, 1 thread | 3 320 658 | 727 ms | 562 MB |
-| okay, 2 fibres (merge) | 5 524 299 | 437 ms | 1 221 MB |
-| okay, 4 fibres (merge) | 9 579 837 | 252 ms | 489 MB |
-| okay, 8 fibres (merge) | 16 764 715 | 144 ms | 421 MB |
-| java.util.stream, windowed collector | 2 860 330 | 844 ms | 993 MB |
-| fs2 (pure), our window operator | 2 973 052 | 812 ms | 509 MB |
-| zio-streams, our window operator | 2 965 748 | 814 ms | 670 MB |
-| kyo streams, our window operator | 3 098 997 | 779 ms | 509 MB |
-| java.util.stream, `groupingBy` | — | — | OutOfMemoryError, 8 GB heap |
-| spark, local[4], batch RDD | 301 878 | 7 997 ms | 3 096 MB |
-| flink, parallelism 1 | 693 313 | 3 482 ms | 1 011 MB |
-| flink, parallelism 4 | 1 436 975 | 1 680 ms | 1 368 MB |
 
-Six things a reader should take from those two tables, all of them
-explained further down:
+### The table
 
-- **The four in-process roads are at PARITY on the full feed** — okay
-  3 307 012 ev/s, zio-streams 3 325 232, fs2 3 275 602, kyo 3 021 425,
-  the JDK's windowed collector 2 833 473 — and that is the result, not
-  a disappointment. They are all running the SAME window operator
-  (`okay.Windows`, because none of the three libraries has an
-  event-time window at all), so once the work per element is a real
-  windowed fold, the plumbing is not what decides. The libraries'
-  numbers are what they cost to CARRY an element, and on this job that
-  is single-digit percent.
-- **Flink's wall clock carries ~0.4 s of engine start-up.** At the
-  quarter size that is most of its column; the fit below separates it
-  from the per-event cost, and per event Flink-at-four is ~1.9M ev/s.
-- **okay's parallelism is a MERGE, not a shuffle** — slices of the
-  arrival order whose panes are combined by `Aggregator.merge`, with
-  the boundary rule computed rather than guessed. That is the only row
-  group in the table that goes past one core without an engine.
-- **The JDK's two roads differ by their STATE MODEL, not their speed
-  alone.** `groupingBy` has no notion of a window closing, so it keeps
-  the history and cannot finish the feed at all; the windowed collector
-  evicts on a watermark and runs the whole thing in 471 MB.
-- **Spark's row is a BATCH job and says so.** An RDD has no event time
-  and no watermark, so a window is a key — the `groupingBy` shape,
-  distributed — and the bunching stage has to carry the arrival index
-  through the shuffle because an RDD has no encounter order to
-  preserve. Spark's event-time engine is Structured Streaming, which is
-  a different lane and is filed rather than guessed at.
-- **Every lane computes the same eleven checksums** — same windows,
-  same keyed state, same ranking, on six engines. That is asserted
-  before any row is printed, not hoped for.
+Host: 14 cpus, JVM 21, `-Xmx8g` per lane, 2 414 119 events (eight
+service days), best of 3 rounds, one JVM per lane
+(`scripts/wroclaw-bench.sh 8 3 1`).
+
+| lane | cores | ev/s | wall | B/event | peak heap |
+|---|---:|---:|---:|---:|---:|
+| okay, 8 fibres (merge) | 8 | 14 542 885 | 166 ms | 1 099 | 1 944 MB |
+| okay, 4 fibres (merge) | 4 | 8 155 807 | 296 ms | 1 090 | 1 463 MB |
+| okay, 2 fibres (merge) | 2 | 5 136 423 | 470 ms | 1 084 | 1 563 MB |
+| okay, 1 thread, packed-key windows | 1 | 3 302 488 | 731 ms | 1 007 | 1 557 MB |
+| zio-streams, okay's window operator | 1 | 3 240 428 | 745 ms | 1 066 | 1 598 MB |
+| okay, 1 thread (`Chunks`) | 1 | 3 131 153 | 771 ms | 1 101 | 1 513 MB |
+| fs2 (pure), okay's window operator | 1 | 3 110 978 | 776 ms | 1 075 | 1 580 MB |
+| **the floor (a while loop)** | 1 | 3 044 286 | 793 ms | 1 087 | 1 539 MB |
+| kyo streams, okay's window operator | 1 | 2 661 652 | 907 ms | 1 192 | 1 689 MB |
+| java.util.stream, windowed collector | 1 | 2 581 945 | 935 ms | 1 268 | 1 553 MB |
+| flink, parallelism 4 | 4 | 1 457 801 | 1 656 ms | 2 189 | 1 636 MB |
+| flink, parallelism 4 + checkpoints 5 s | 4 | 1 263 936 | 1 910 ms | 2 195 | 1 621 MB |
+| flink, parallelism 4, object reuse off | 4 | 1 192 746 | 2 024 ms | 2 388 | 1 380 MB |
+| flink, parallelism 1 | 1 | 705 264 | 3 423 ms | 2 182 | 1 035 MB |
+| spark, local[4], batch RDD | 4 | 277 580 | 8 697 ms | 16 171 | 2 044 MB |
+| spark, local[4], **structured streaming** | 4 | 271 279 | 8 899 ms | 3 861 | 2 016 MB |
+| java.util.stream, `groupingBy` | 1 | — | — | — | OutOfMemoryError, 8 GB |
+
+**The floor is not the fastest row, and that is the first thing to
+read.** A bare `while` loop over the array — no `Chunks`, no producer,
+no fold combinator — runs at 3 044 286 ev/s, and the same job through
+`Chunks` runs at 3 131 153. Three of the competitors' stream libraries
+are within 6% of both. What that says is blunt and useful: **on this
+job the carrier is not the cost.** Every in-process lane is doing the
+same ~1 KB of allocation per event, and it is the windowing and the
+aggregation — not the pipeline — that the machine is busy with. The
+5x spread against Flink and the OutOfMemoryError against `groupingBy`
+are about ENGINES and STATE MODELS, and nothing in this table is about
+one stream library being faster than another.
+
+**Bytes per event says the same thing more precisely**: ~1.0–1.1 KB
+for every in-process lane (the shared aggregator's tuples), 1.27 KB for
+the JDK's collector, 2.2 KB for Flink — where the extra kilobyte is the
+serialization across three shuffles — and 16 KB for Spark's RDD lane,
+which is Java serialization doing what okay-spark's own doc warned it
+does. It is the steadiest column in the table: it barely moves between
+runs, while wall-clock moves by 10-20% with the machine's mood.
+
+**And it is where Spark's two lanes separate.** They finish within 2%
+of each other in wall time (8 697 ms and 8 899 ms), but Structured
+Streaming allocates 3 861 B/event against the RDD lane's 16 171 — four
+times less, because Catalyst's rows are a binary format and the RDD
+lane's are Java-serialized objects. Same engine, same machine, same
+answer; the column that shows the difference is not the clock.
 
 ### The numbers
 
@@ -3805,85 +3821,30 @@ rule computed from the whole stream's shape; a `Collector` has neither,
 so it can bound its state only where it knows it holds a prefix — which
 is to say, sequentially.
 
-### fs2, zio-streams and kyo — what a stream library costs to CARRY an element
+### fs2, zio-streams and kyo — and what these three rows do NOT yet say
 
 The three in-process stream libraries are in the table, and what they
-are being asked is narrower than what Flink and the JDK are asked, so
-it is said first: **none of them has an event-time window.** fs2 has
-`groupWithin`, ZIO `groupedWithin`; both are PROCESSING time, which
-answers a different question, and kyo has neither. So each lane gets
-`okay.Windows` — the same operator okay's own lane and the windowed JDK
-lane use — and what the numbers differ by is the plumbing around
-identical work: how an element reaches a fold, and what `map` and
-`filter` cost on the way.
+are being asked is narrower than what Flink and Spark are asked. **None
+of them has an event-time window** — fs2 has `groupWithin`, ZIO
+`groupedWithin`, both PROCESSING time, and kyo has neither — so each
+lane currently carries `okay.Windows`, and the numbers therefore
+compare the PLUMBING around identical work: how an element reaches a
+fold, and what `map` and `filter` cost on the way.
 
-Each source is the library's own chunked constructor, sliced to 256 to
-match `Chunks.fromIterator(_, 256)` (this document's lane rules: a
-competitor is priced from the source its author intended, at a matched
-granularity):
+**That is not the comparison this section should end on, and it is
+being replaced.** A row that hands a competitor our operator measures
+our operator; what a reader wants to know is what the library gives
+THEM — which for these three is a fold into a map that never evicts,
+the same shape as the JDK's `groupingBy`, with the same consequence for
+memory. Rewriting the three lanes in each library's own vocabulary is
+filed as `bench-native-lanes`, and until it lands these rows are
+labelled for what they are.
 
-- fs2: `Stream.chunk(Chunk.array(...))` re-chunked by `chunkLimit(256)`,
-  and PURE — `Stream[Pure, *]` compiles with no cats-effect runtime, so
-  this lane does not pay the 7.6 µs `unsafeRunSync` handoff §0 prices;
-- ZIO: `ZStream.fromChunk(Chunk.fromArray(...)).rechunk(256)`, run once
-  through `Unsafe.unsafe`;
-- kyo: `Stream.init(ArraySeq.unsafeWrapArray(...), 256)`, `.eval`.
-
-On the full feed they finish within 9% of each other and of okay:
-3 325 232 (zio), 3 307 012 (okay), 3 275 602 (fs2), 3 021 425 (kyo).
-Read that as the honest thing it is — **on a job whose per-element work
-is a windowed fold with keyed state, the stream library is not the
-cost.** The numbers this section opened with, where the same lanes
-differ by 5x and 20x, are about engines and state models: a job graph
-and a shuffle on one side, a `groupingBy` that never evicts on the
-other. Between four in-process carriers of the same fold there is
-almost nothing to choose on speed, and the choice is properly made on
-what else the library gives you.
-
-At the quarter size the same four spread a little wider (okay
-2 483 658, fs2 2 376 098, zio 2 235 292, kyo 2 178 805, the JDK's
-collector 2 110 241) — less work per JIT-warm run, so the fixed parts
-weigh more. The ordering is stable across both sizes; the gaps are not
-worth a sentence beyond that.
-
-### Spark — the fifth engine, and the second distributed one
-
-`SparkInterop.aggregateByKey` hands an okay `Aggregator` to Spark as
-its `(zero, seqOp, combOp)` triple — the same value Flink takes through
-`toFlink`, the JDK through `Collect.collector`, and the three stream
-libraries fold with directly. Five engines, one definition of the
-arithmetic, and the eleven checksums agree across all of them.
-
-**Spark's answer to this job is a batch one, and the lane renders it as
-such.** An RDD carries no event time and no watermark: a window is a
-KEY, exactly the `groupingBy` shape, distributed. Two consequences are
-visible in the row:
-
-- **7 997 ms and 3 096 MB for the full feed** (301 878 ev/s), against
-  Flink's 1 680 ms and okay's 727. Local mode pays a shuffle per stage
-  for a job whose state fits in a few thousand panes, and the sliding
-  stage expands every element into three shuffled pairs. This is not
-  Spark being bad at what it is for; it is what happens when a
-  batch engine is asked an event-time question.
-- **The bunching stage needs the arrival INDEX carried through the
-  shuffle.** An RDD has no encounter order, so `zipWithIndex` runs
-  before the partitioning and each key's group is sorted by it. Every
-  other lane in the table gets that order for free from the stream.
-
-**Two build facts found on the way, both worth more than the row.**
-okay-spark's own tests need a two-stdlib classpath because
-`SparkSession`'s companion lookup goes through Scala 2 runtime
-reflection, which cannot bootstrap against the Scala 3.9 stdlib. The
-RDD API needs none of that — measured here: `new SparkContext` starts
-and runs on this module's ordinary classpath, which is why the lane
-sits beside the others instead of dragging a mixed stdlib onto them.
-But **Kryo is closed to it**: Spark's `KryoSerializer` registers a
-serializer for `scala.Enumeration$Value` that reflects for
-`scala$Enumeration$$outerEnum`, a 2.13 accessor the 3.9 stdlib does not
-have, and the first shuffle dies with `NoSuchMethodException`. The lane
-therefore runs on Java serialization, which okay-spark's own doc
-already prices (18 s against 4.3 s on the Wrocław demo's persist) — so
-some of that 7 997 ms is a serializer this module cannot reach.
+The sources are each library's own chunked constructor at a matched 256
+(fs2 `Stream.chunk` + `chunkLimit`, PURE so no cats-effect runtime and
+no `unsafeRunSync`; `ZStream.fromChunk(...).rechunk(256)`; kyo
+`Stream.init(seq, 256)`), which is the half of the lane that IS
+idiomatic today.
 
 ### What the okay lane cost to WRITE — and what closing that gap cost
 

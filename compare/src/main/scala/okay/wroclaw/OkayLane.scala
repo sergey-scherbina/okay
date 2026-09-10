@@ -1,4 +1,4 @@
-package okay.flink.wroclaw
+package okay.wroclaw
 
 import okay.*
 import okay.given
@@ -31,7 +31,10 @@ object OkayLane {
    * below share it and the numbers must be produced identically by
    * each — a lane that computes a different answer measures nothing.
    */
-  private[wroclaw] final class Sink(tram: Array[Boolean]) {
+  /** PUBLIC because the lanes in okay-flink and okay-spark fold into
+   * it too: every engine's answer is assembled by the same code, so a
+   * difference between lanes cannot be an assembly difference */
+  final class Sink(tram: Array[Boolean]) {
     private var routeWins = 0L; private var routeEvents = 0L
     private var routeDelay = 0L; private var routeHash = 0L
     private var stopWins = 0L; private var stopEvents = 0L; private var stopHash = 0L
@@ -153,6 +156,37 @@ object OkayLane {
     routeWindows.close()(sink.route)
     stopWindows.close()(sink.stop)
     (sink.result, peak)
+  }
+
+  /**
+   * THE FLOOR: the same five stages as a bare `while` loop over the
+   * array, with no stream machinery of any kind — no `Chunks`, no
+   * producer, no fold combinator. The window operator and the
+   * aggregator are the same ones every other lane uses, so what this
+   * row measures is THE WORK, and every other row in §20's table is
+   * readable as a multiple of it.
+   */
+  def floor(feed: Feed): Job.Result = {
+    val tram = tramTable(feed)
+    val sink = new Sink(tram)
+    val routeWindows = Windows.tumbling[Int, Ride, Job.Acc, Job.Stats](
+      Job.WindowMs, Job.Lateness)(_.route)(_.ts)(Job.stats)
+    val stopWindows = Windows.sliding[Int, Ride, Job.Acc, Job.Stats](
+      Job.SlideWindowMs, Job.SlideMs, Job.Lateness)(_.stop)(_.ts)(Job.stats)
+    val lastSeen = mutable.LongMap.empty[Long]
+    val events = feed.events
+    var i = 0
+    while i < events.length do
+      val d = events(i)
+      if d.route >= 0 && d.route < tram.length then
+        val r = new Ride(d.ts, d.route, d.stop, d.vehicle, d.delay, tram(d.route))
+        routeWindows.add(r)(sink.route)
+        stopWindows.add(r)(sink.stop)
+        bunching(lastSeen, r, sink)
+      i += 1
+    routeWindows.close()(sink.route)
+    stopWindows.close()(sink.stop)
+    sink.result
   }
 
   /**

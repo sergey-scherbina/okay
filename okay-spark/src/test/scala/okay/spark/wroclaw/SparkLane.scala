@@ -1,4 +1,6 @@
-package okay.flink.wroclaw
+package okay.spark.wroclaw
+
+import okay.wroclaw.{Depart, Feed, Job, Ride}
 
 import okay.Aggregator
 import okay.spark.SparkInterop

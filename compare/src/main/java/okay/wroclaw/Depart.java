@@ -1,4 +1,4 @@
-package okay.flink.wroclaw;
+package okay.wroclaw;
 
 /**
  * One scheduled departure that actually happened: a vehicle leaving a

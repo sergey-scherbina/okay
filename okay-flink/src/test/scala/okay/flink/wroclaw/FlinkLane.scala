@@ -1,5 +1,7 @@
 package okay.flink.wroclaw
 
+import okay.wroclaw.{Depart, Feed, Job, Ride}
+
 import okay.flink.FlinkInterop.toFlink
 import org.apache.flink.api.common.accumulators.LongCounter
 import org.apache.flink.api.common.eventtime.{SerializableTimestampAssigner, WatermarkStrategy}

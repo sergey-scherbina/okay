@@ -1,4 +1,4 @@
-package okay.flink.wroclaw
+package okay.wroclaw
 
 import okay.Aggregator
 

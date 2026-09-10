@@ -1,4 +1,6 @@
-package okay.flink.wroclaw
+package okay.java.wroclaw
+
+import okay.wroclaw.{Depart, Feed, Job, Ride}
 
 import okay.java.{Collect, Streams, Windowed}
 import okay.{Aggregator, Chunks, Pane}

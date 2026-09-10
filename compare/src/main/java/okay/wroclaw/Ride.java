@@ -1,4 +1,4 @@
-package okay.flink.wroclaw;
+package okay.wroclaw;
 
 /**
  * A departure after the enrichment stage: the same event, plus what

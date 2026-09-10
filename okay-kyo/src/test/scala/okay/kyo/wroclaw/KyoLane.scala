@@ -1,4 +1,6 @@
-package okay.flink.wroclaw
+package okay.kyo.wroclaw
+
+import okay.wroclaw.{Depart, Feed, Job, OkayLane, Ride}
 
 import okay.Windows
 import scala.collection.mutable
@@ -36,7 +38,7 @@ import scala.collection.mutable
  *     run once through `Unsafe.unsafe`
  *   - kyo: `Stream.init(ArraySeq.unsafeWrapArray(...), 256)`, `.eval`
  */
-object LibLanes {
+object KyoLane {
 
   /** the per-element work, identical in all three lanes */
   private final class Fold(feed: Feed) {
@@ -69,30 +71,8 @@ object LibLanes {
       sink.result
   }
 
-  /** fs2, pure: no cats-effect runtime in the lane at all */
-  def fs2(feed: Feed): Job.Result = {
-    val f = new Fold(feed)
-    _root_.fs2.Stream.chunk(_root_.fs2.Chunk.array(feed.events))
-      .chunkLimit(256).flatMap(_root_.fs2.Stream.chunk)
-      .filter(f.known).map(f.enrich)
-      .compile.fold(())((_, r) => f.add(r))
-    f.result
-  }
-
-  /** zio-streams, run once through the default runtime */
-  def zio(feed: Feed): Job.Result = {
-    import _root_.zio.*
-    val f = new Fold(feed)
-    val program = _root_.zio.stream.ZStream
-      .fromChunk(Chunk.fromArray(feed.events)).rechunk(256)
-      .filter(f.known).map(f.enrich)
-      .runFold(())((_, r) => f.add(r))
-    Unsafe.unsafe(implicit u => Runtime.default.unsafe.run(program).getOrThrowFiberFailure())
-    f.result
-  }
-
   /** kyo, evaluated where it is built */
-  def kyo(feed: Feed): Job.Result = {
+  def run(feed: Feed): Job.Result = {
     import _root_.kyo.*
     val f = new Fold(feed)
     Stream.init(scala.collection.immutable.ArraySeq.unsafeWrapArray(feed.events), 256)
