@@ -25,7 +25,7 @@ left to be found.
 
 `plan` keeps a capability's type argument now, so a prototype reads as
 `New[Conn]` rather than `New`. 5 tests, docs/di.md gained "Three
-lifetimes, and who chooses them". Commit: 99ee89af.
+lifetimes, and who chooses them". Commits: b0ff12b4, 6264becd.
 
 ## dataflow stage 1 — our own distributed engine: the plan is a value, and the keyed stage does not shuffle
 
