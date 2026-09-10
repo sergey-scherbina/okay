@@ -1972,6 +1972,67 @@ Filed rather than claimed: the same walk on Scala Native and Scala.js,
 where the Vector's array is not the only thing the JVM's collector
 makes cheap.
 
+## 9h. The top-k aggregator stopped sorting the corpus
+
+`MemoryStore.search` — the whole retrieval path of the vector store —
+folds every segment in the corpus through `Aggregator.topK`. That
+aggregator kept its k best in a `List` and, for every element,
+consed onto it and re-sorted the result:
+
+```scala
+def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
+apply(List.empty[A])((s, a: A) => keep(a :: s))(...)
+```
+
+So selecting 8 records out of a corpus paid a sort and a rebuilt list
+per record, whether or not the record was anywhere near the best
+eight. The accumulator is already sorted descending and capped at k,
+so the element to beat is the last one held: `s.drop(k - 1)` reaches
+it in at most k conses and allocates nothing, and an element that
+does not beat it is refused there.
+
+**The selection alone, priced exactly.** JMH's `gc.alloc.rate.norm`
+is an average of a sampled rate, and at `-i 5 -f 2` on a box at load
+79 it read 342 073 ± 3 824 and 251 778 ± 147 725 for the SAME
+implementation on both sides of the pair — an instrument whose bars
+are half its reading. Allocation is deterministic, so it does not
+need an average: `compare/runMain okay.TopKProbe` reads
+`getThreadAllocatedBytes` around one call and prints the exact bytes
+(and the same probe, run with the fix stashed, printed the two sides
+equal to the byte — which is what makes the numbers below trustworthy).
+
+| 10 000 records, k = 8 | bytes | µs |
+|---|---|---|
+| sort every element | 5 358 168 | 4111 |
+| guarded | **30 328** | **118** |
+
+**−99.4% of the allocation.** 536 bytes per record became 3. What is
+left is the accept path: an element that DOES make the cut still
+sorts k+1, and with a random corpus about `k · ln(n/k)` of them do —
+57 of the 10 000, which is where the 30 KB is. Filed, not done: the
+accept could insert into a sorted list instead.
+
+**Where a user meets it**, matched pair in one JMH run, 200 segments
+at provider dimension (1536), k = 8:
+
+| lane | µs/op | B/op |
+|---|---|---|
+| `searchVectorsSortEveryElement` | 2542 ± 593 | 351 713 ± 3.8 |
+| `searchVectorsGuarded` | **1036 ± 157** | **49 943 ± 26** |
+
+**−85.8% of the allocation and 2.45x the speed**, and the time is
+claimed here — unusually for a run on a box at load 68 — because the
+ranges do not overlap at all: [1949, 3135] against [880, 1193]. The
+49 KB that remain are the similarity's and the `Scored` records', not
+the selection's: the same corpus already scored (`topKGuarded`) reads
+21 167 B, and that is the ~26 accepts a 200-item corpus makes.
+
+The behaviour changed in one visible way, deliberately: an element
+that only TIES the k-th is now refused, so among equal scores the
+first seen survives. The old code displaced it, because `sorted` is
+stable and the newcomer was consed at the head. Same scores either
+way; the new answer does not move when the corpus is re-ordered.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

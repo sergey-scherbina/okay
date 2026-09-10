@@ -340,10 +340,35 @@ object Aggregator {
   def last[A]: Aggregator[A, Option[A], Option[A]] =
     apply(Option.empty[A])((_, a: A) => Some(a))((a, b) => b.orElse(a))(identity)
 
-  /** the k greatest elements, descending */
+  /**
+   * The k greatest elements, descending.
+   *
+   * The accumulator is kept sorted descending and capped at k, so the
+   * element to beat is the LAST one held, and an element that does
+   * not beat it is refused with one comparison and no allocation at
+   * all. Without that guard every element consed onto the list and
+   * re-sorted it — measured over 10 000 elements at k = 8: 5 271 728
+   * bytes to select eight of them, 527 per element, where the guard
+   * costs 26 736 (docs/benchmarks.md §9h). `MemoryStore.search` folds
+   * a whole corpus through this on every query, which is what made
+   * the difference worth having.
+   *
+   * `drop(k - 1)` walks at most k conses and allocates nothing; it is
+   * empty exactly while fewer than k are held.
+   *
+   * Ties: an element EQUAL to the k-th is refused, so among equals the
+   * first seen survives. The old code displaced it (`sorted` is
+   * stable and the newcomer was consed at the head). The multiset of
+   * SCORES is the same either way; which equal-scoring record you get
+   * is not, and "the first one seen" is the answer that does not
+   * depend on the corpus's order changing under you.
+   */
   def topK[A](k: Int)(using O: Ordering[A]): Aggregator[A, List[A], List[A]] =
     def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
-    apply(List.empty[A])((s, a: A) => keep(a :: s))((a, b) => keep(a ++ b))(identity)
+    apply(List.empty[A]) { (s, a: A) =>
+      val kth = s.drop(k - 1)
+      if kth.isEmpty || O.gt(a, kth.head) then keep(a :: s) else s
+    }((a, b) => keep(a ++ b))(identity)
 
   /** the distinct elements, exactly (bounded data; sketches for the rest) */
   def distinct[A]: Aggregator[A, Set[A], Long] =

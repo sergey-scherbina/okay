@@ -1,5 +1,52 @@
 # Changelog
 
+## topk-stops-sorting-the-corpus — the retrieval path stopped paying a sort per segment
+
+The operator asked where else aggregation could earn its keep. It
+already had, in a place nobody had priced: `Aggregator.topK` is what
+`MemoryStore.search` folds the entire vector corpus through on every
+query, and it kept its k best in a `List` that it consed onto and
+RE-SORTED for every element — whether or not the element was anywhere
+near the best k.
+
+The accumulator is already sorted descending and capped at k, so the
+element to beat is the last one held. `s.drop(k - 1)` reaches it in at
+most k conses and allocates nothing; an element that does not beat it
+is refused there, with one comparison.
+
+| 10 000 records, k = 8 | bytes | µs |
+|---|---|---|
+| sort every element | 5 358 168 | 4111 |
+| guarded | **30 328** | **118** |
+
+**536 bytes per record became 3.** And where a user meets it — a
+matched pair in one JMH run, 200 segments at provider dimension:
+`searchVectors` goes from 351 713 B/op and 2542 ± 593 µs to **49 943
+B/op and 1036 ± 157 µs**. The time is claimed, unusually for a box at
+load 68, because the ranges do not overlap at all.
+
+**The instrument is part of the result.** JMH's `gc.alloc.rate.norm`
+is an average of a sampled rate, and at `-i 5 -f 2` under load it
+returned 342 073 ± 3 824 and 251 778 ± 147 725 for the SAME
+implementation on both sides of the pair — bars half the reading, on
+the quantity the whole lane is about. Allocation is deterministic and
+does not need an average: `compare/runMain okay.TopKProbe` reads
+`getThreadAllocatedBytes` around one call and prints exact bytes. Run
+with the fix stashed it printed both sides equal to the byte, which is
+what makes the numbers above worth anything.
+
+One behaviour changed, deliberately and in the doc comment: an element
+that only TIES the k-th is now refused, so among equal scores the
+FIRST seen survives. The old code displaced it — `sorted` is stable
+and the newcomer was consed at the head. The scores are the same
+either way; the new answer does not move when the corpus is
+re-ordered. The test for it fails on the old implementation, which is
+how it was written.
+
+Filed rather than done: the accept path still sorts k+1, and about
+`k · ln(n/k)` elements take it — 57 of 10 000, the whole 30 KB
+residual.
+
 ## json-raw-nesting-threshold-trampoline — targets 1+2, and the JMH gate deferred honestly
 
 depth-is-policy-not-rescue's targets 1 and 2, combined into one lane:
@@ -39,6 +86,7 @@ json-raw-nesting-jmh-pending.
 
 184 tests in okay-codec (3 new, TestJsonRawTrampoline), 181 on JS and
 Native. Two of four sites remain: JsonStrict.Reader.get.
+
 
 ## di-multibind — several contributors, one collection; and memoisation answered
 
@@ -143,6 +191,7 @@ single sample again for the timeout's sake.
 
 No claim was held on okay-parse when this was taken; the room was told
 before and after.
+
 
 ## scan-fold-without-tokens — the sink road's first consumer, and one door that stays shut
 

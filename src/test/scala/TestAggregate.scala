@@ -94,6 +94,36 @@ class TestAggregate extends munit.FunSuite {
     assertEquals(A.min[Double].run(Nil), None)
   }
 
+  // ---- topK, once it stopped sorting every element
+
+  final case class Row(id: Int, score: Double)
+  given Ordering[Row] = Ordering.by(_.score)
+
+  test("topK refuses an element that only TIES the k-th, so the FIRST seen survives") {
+    // the old implementation consed the newcomer at the head and
+    // re-sorted, and `sorted` is stable, so an equal score displaced
+    // the record already held. Both answers carry the same scores;
+    // this one does not depend on the corpus's order changing.
+    val rows = Vector(Row(1, 5.0), Row(2, 9.0), Row(3, 5.0), Row(4, 1.0))
+    assertEquals(A.topK[Row](2).run(rows).map(_.id), List(2, 1))
+  }
+
+  test("topK agrees with sorting the whole input, at every k") {
+    val rnd = new scala.util.Random(7)
+    val ys = Vector.fill(500)(rnd.nextDouble())
+    for k <- List(0, 1, 2, 8, 64, 499, 500, 501) do
+      assertEquals(A.topK[Double](k).run(ys), ys.sorted.reverse.take(k).toList,
+        s"k = $k")
+  }
+
+  test("topK holds at most k however the input arrives") {
+    val agg = A.topK[Double](3)
+    for order <- List(xs, xs.reverse, xs.sorted, xs.sorted.reverse) do
+      val acc = order.foldLeft(agg.init)(agg.add)
+      assert(acc.length <= 3, s"held ${acc.length} for $order")
+      assertEquals(acc, order.sorted.reverse.take(3))
+  }
+
   test("groupBy: one aggregator per key, one pass, mergeable") {
     val agg = A.groupBy((x: Double) => x < 4)(A.sum[Double].zip(A.count[Double]))
     assertEquals(agg.run(xs), Map(true -> (7.0, 4L), false -> (24.0, 4L)))

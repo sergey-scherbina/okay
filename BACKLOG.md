@@ -43,6 +43,20 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       windowed lane from 810 ms to 580 (1.40x) — level with a
       hand-written MUTABLE cell, while keeping the value semantics
       `merge` needs. 83 B per `add` becomes 37.
+- [x] topk-stops-sorting-the-corpus — DONE (2026-09-10):
+      `Aggregator.topK` consed and re-sorted for EVERY element, and
+      `MemoryStore.search` folds a whole corpus through it. Guarded on
+      the k-th kept element: 5 358 168 B to select 8 of 10 000 records
+      became 30 328 (docs/benchmarks.md §9h), and the store's search
+      lane 351 713 B/op and 2542 us became 49 943 and 1036.
+- [ ] topk-insert-instead-of-sort — what §9h left on the table. An
+      element that DOES make the cut still sorts k+1 through
+      `List.sorted` (array copy out, sort, list back), and about
+      `k · ln(n/k)` elements make the cut: 57 of 10 000 at k = 8,
+      which is the whole 30 KB residual. Inserting into the
+      already-sorted list would allocate the prefix and nothing else.
+      Small, and only worth doing with the probe in front of you —
+      `compare/runMain okay.TopKProbe 10000 8` prints the exact bytes.
 - [ ] aggregator-zip-flat-general — the general case is still open:
       `count zip sum` allocates a `Tuple2` and boxes both `Long`
       accumulators, and nothing catches it. Directions: an `OfLong`
