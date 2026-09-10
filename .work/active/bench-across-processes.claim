@@ -1,0 +1,43 @@
+task: bench-across-processes
+agent: opus-dataflow
+started: 2026-09-11
+branch: feature/bench-across-processes
+worktree: ../okay-wt-bap1
+spec: docs/benchmarks.md §20
+
+why: §20 names its own asymmetry and has never been able to remove it.
+  okay has a distributed lane across four OS processes (stage 7);
+  Flink is a MiniCluster and Spark is `local[4]`, both one JVM. So the
+  section can say what okay's distribution costs and cannot say what
+  theirs does, and the row a reader most wants — the three engines in
+  the same deployment mode — is missing.
+
+  It is missing for a reason that turns out to be false: both engines'
+  standalone entry points are on the test classpath already
+  (StandaloneSessionClusterEntrypoint, TaskManagerRunner,
+  deploy.master.Master, deploy.worker.Worker), so a real multi-process
+  cluster needs no distribution tarball, only processes and a jar.
+
+what: each engine run ACROSS PROCESSES on this machine, same job, same
+  eleven checksums, and the fixed cost separated from the marginal one
+  by §20's own least-squares split — because a cluster's startup is
+  seconds and the job is a second, and charging that to the events
+  would be a statement about the benchmark rather than the engine.
+
+  okay: the stage 7 road (four workers, one coordinator).
+  Flink: a JobManager and TaskManagers as JVMs, the job submitted to
+    them, not to a MiniCluster.
+  Spark: a Master and Workers as JVMs, `spark://` rather than local[4].
+
+what this is NOT: a cluster. One machine, several processes — the
+  network is loopback and the disks are one. That is a fair
+  DEPLOYMENT-MODE comparison and not a distributed-systems one, and
+  §20 has to say so where the rows are.
+
+predict: the two engines lose more to their own deployment than okay
+  does, because their fixed cost is a cluster coming up and okay's is
+  two round trips; and their marginal rates move less than their fixed
+  ones. The risk is entirely in getting the submissions to work —
+  Flink needs the job in a jar it can ship, Spark needs its executors
+  to find the classes — and if one of them cannot be made to run
+  honestly I will say which and why rather than quietly compare two.
