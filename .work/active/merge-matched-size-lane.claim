@@ -1,6 +1,0 @@
-feature/merge-matched-size-lane 2026-09-10T20:27:30Z
-agent: claude-code
-heartbeat: 2026-09-10T20:27:30Z
-status: in-progress
-done-so-far: claimed
-next: zioChunked regroups AFTER the merge, so §6b's 'matched size 16' row is our 16 against ZIO's 4096; add a ZIO lane chunked at the SOURCE and re-measure
