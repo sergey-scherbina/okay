@@ -1,0 +1,48 @@
+task: dataflow-resume
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-resume
+worktree: ../okay-wt-dfr
+spec: specs/dataflow.md, stage 6b
+
+why: stage 6a's worker keeps its operator state in memory, so a
+  worker that dies mid-stream takes its partition's open panes with
+  it. Worse than the batch engine, which survives that since stage 5:
+  a streaming run today does not even fail cleanly, it fails with
+  "no session $n on this worker" from the survivor the retry reached.
+
+what, and the design decision is the whole lane:
+
+  A SNAPSHOT IS NOT THE ONLY ROAD, and here it is the wrong one. To
+  snapshot an operator you must describe its insides — a live
+  `Windows`, its pane map, its watermark — and every one of those
+  becomes a wire format that has to survive a version change.
+
+  The other road is the one this engine has taken since stage 1: a
+  partition is a RECIPE and its epoch partials are a pure function of
+  (parameters, index, count, epoch size, epoch NUMBER). So a
+  replacement worker does not need the state — it can rebuild it, by
+  replaying the partition and DISCARDING the epochs the coordinator
+  has already absorbed.
+
+  Concretely: `Advance` carries the epoch INDEX rather than merely
+  meaning "next". A session behind that index catches up silently; a
+  session at it answers. Recovery is then the ordinary case of the
+  same mechanism, not a second one.
+
+  The cost, stated rather than buried: recovery is O(elements
+  consumed so far), not O(state). For a source that can seek — a
+  topic offset, a file position — that becomes O(elements since the
+  oldest open pane), and the seam for it is `Flow.Src`'s thunk. Not
+  built here, because nothing has asked for it.
+
+NOT in this lane: durable checkpointing. If the COORDINATOR dies the
+  run still dies with it, because it holds the folded state and
+  journals nothing. That is `dataflow-coordinator`, and it is an
+  assembly of okay-persist's log rather than an invention.
+
+predict: the replay itself is a while loop. The interesting half is
+  the coordinator — it has to notice "no session", open a fresh one
+  on a survivor, and re-ask the SAME epoch, and I expect the first
+  version to re-ask the next one instead and lose an epoch's data
+  without failing.
