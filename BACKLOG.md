@@ -570,10 +570,26 @@ or not at all).
       Each conversion is small; each is a BEHAVIOUR change at a live
       endpoint (a query string now matches, a wrong verb now misses),
       so it wants its own lane and its own gate, not a sweep.
-- [ ] optics-outside-routes-query — stage 2 of the spec: query
-      parameters, headers and bodies. Same structure, a different
-      monoid, and it is what stage 3 (rendering OpenAPI and MCP tool
-      declarations out of `describe`) needs before it can start.
+- [x] optics-outside-routes-query — DONE (2026-09-10, d0398ff6).
+      Stage 3 of the spec: the query string, as its own `Query` type
+      composed with `&` and handed over by `?`. The finding was a rule
+      attached to the wrong layer — `Param.string` refused the empty
+      string for the PATH's sake and broke `?tag=` the day the query
+      arrived. `Route.Concat` also became `Route.Split` in the same
+      lane, after the operator read the old name as the standard
+      library's.
+- [ ] optics-outside-describe — the renderer stage 1's DESCRIBE
+      interpreter still has no consumer for. A `Router` plus its
+      routes' `describe`/`params`/`queries` is an OpenAPI paths object
+      already; okay-agent's `Toolbox` is the same shape for MCP. Do
+      NOT start it as "generate OpenAPI": start it by naming which
+      consumer reads the output, or it lands with no caller — the trap
+      this arc has now recorded three times.
+- [ ] optics-outside-routes-body — headers and request/response
+      bodies. `Request`/`Response` already carry a `Body` and okay-codec
+      has `Schema`, so a body declaration is the `Toolbox` shape
+      (stage 2) rather than the `Query` shape. Wanted BEFORE the
+      renderer if the renderer is to describe anything but paths.
 - [x] optics-outside-tools — DONE (2026-09-10, 21bc8a5c), and it was not
       on this list. Stage 2 of the spec: a tool was declared three
       times (hand-written JSON Schema, a dispatch map re-reading the

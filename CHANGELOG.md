@@ -1,5 +1,69 @@
 # Changelog
 
+## optics-outside-routes-query — the query string, and a rule that was attached to the wrong layer
+
+Stage 3 of `specs/optics-outside.md`. Stage 1's DESCRIBE interpreter
+still has no consumer that renders anything, which is the "no
+production caller" trap this arc has already named twice; a renderer
+is the next lane, and it would be out of date the day it landed if a
+route could not describe the rest of a request. So the query comes
+first — and it is not filler, because a path is ORDERED and a query is
+not, so this is where `unapply(url(a)) == Some(a)` first has to
+survive a shape in which many urls mean one value.
+
+```scala
+val search = Route.lit("search") ? (Query[String]("q") & Query.opt[Int]("page"))
+search.url(("cats", Some(2)))            // "/search?q=cats&page=2"
+search.unapply("/search?page=2&q=cats")  // Some(("cats", Some(2)))
+```
+
+`Query` is its own type rather than more `Route` combinators: handed
+over whole by `?`, the split between the path's tuple and the query's
+is exactly one `Split`, and the path's parameters keep their positions
+whatever the query does. Required, `opt` and `all` cover the three
+shapes; `describe` stays the PATH, which is what OpenAPI wants, and
+`queries` carries `name`, `kind`, `required` and `repeated` beside it.
+
+**The route becomes visibly a prism.** `url` writes the query in
+declaration order, so it picks the canonical url among the many the
+route accepts: `unapply(url(a)) == Some(a)` holds and
+`url(unapply(u)) == u` does not, because `url` normalises. That was
+already true of `/users/007`; the query makes it unmistakable.
+
+**Present and unparseable is a MISS, not `None`.** `?page=abc` on an
+`Int` is a request that meant something and got it wrong, and
+answering it as though the parameter had been omitted hides the
+caller's mistake behind a page of results. Unknown parameters, by
+contrast, are ignored, or every `utm_source` would break the route.
+
+**A bug the query exposed.** `Param.string` refused the empty string,
+so that an empty PATH segment could not build the same url from
+different parameters. That is a rule about the POSITION and not about
+the type: `?tag=` is a perfectly good empty value and
+`Query.all[String]` has to round-trip one. The refusal moved into the
+path capture. It was invisible until a SECOND consumer of the same
+`Param` existed, which is the general shape worth keeping — a
+constraint belonging to one use site, written into a shared type,
+stays correct exactly until the second use site arrives.
+
+**And a rename, because the operator misread it within the hour.**
+`Route.Concat` is `Route.Split`: the standard library gives the
+forward direction and only that (the match type, and `++` for the
+values), so `split` is the whole addition. The doc comment now states
+the real reason not to build on `scala.Tuple.Concat`, which is not
+"the compiler will not prove associativity" — that is the symptom —
+but that the match type does not NORMALISE: with
+`Out = Tuple.Concat[A, B]` the accumulated type becomes a stuck
+`Tuple.Concat[A1, A2]` with no head to peel, so the NEXT `/` in the
+chain cannot resolve. `Decisions` also records the nested-pair
+encoding (`Route[(A, B)]`) as considered and rejected: the flattening
+has to happen somewhere, and pairs move it from the combinator to
+every consumer.
+
+No `Router` change was needed, which is the small confirmation that
+stage 1's seam was cut in the right place. 13 new tests in
+`TestRoute`, green on JVM and JS. Commits: 188e9c36 (the rename and the Decisions entry), d0398ff6 (the query).
+
 ## di-facts-examples — what a Fact is for, on a case that earns it
 
 The Facts section explained the machinery with `Fact[String]` and
