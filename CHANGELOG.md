@@ -46,7 +46,7 @@ declaration rather than a request.
 One cost, stated plainly: a field deliberately named differently from
 its url parameter is now refused and must be renamed on one side. That
 was the doubt in the backlog entry, and it survives the lane — it is
-the price of the check, not an oversight. Commits: 3c22b52a (spec), 3d6df43f (the check).
+the price of the check, not an oversight. Commits: 3c22b52a (spec), a450ff85 (the check).
 
 ## optics-outside-route-syntax — five questions about brevity, three answers from the language
 

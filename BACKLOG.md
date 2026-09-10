@@ -680,7 +680,7 @@ or not at all).
       are claimed.
 
 ## okay-http
-- [x] optics-outside-route-of-labels — DONE (2026-09-11, 3d6df43f). The
+- [x] optics-outside-route-of-labels — DONE (2026-09-11, a450ff85). The
       operator settled the open question ("it will be needed"), and
       the entry's own doubt was half wrong: the check catches more
       than a documentation typo, since `describe` publishes those
