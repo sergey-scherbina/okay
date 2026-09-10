@@ -228,12 +228,26 @@ object Json {
    * or many", with `kids.flatMap(values)` allocating an intermediate
    * at every level. That is one Vector per token on a road whose
    * whole job is to walk tokens (json-projection-alloc).
+   *
+   * PAST `Codecs.NativeThreshold`, dispatches to `intoC`'s
+   * `Cont.defer` trampoline (json-raw-nesting-threshold-trampoline).
+   * `Unit`-returning and side-effecting into `out` rather than
+   * combining typed values — the one target of the four whose SHAPE
+   * differs from the other three — but the mechanism is unchanged: a
+   * mutable `Builder`/`var` closed over by a deferred step still
+   * mutates in the SAME order once the trampoline reaches that step,
+   * so `Cont.defer` composes with side effects exactly as it composes
+   * with values.
    */
-  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit = c match
+  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(intoC[Unit](c, out, open))
+    else intoNative(c, out, open)
+
+  private def intoNative(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit = c match
     case Cst.Node("object", kids) =>
       if open >= maxDepth then out += tooDeep
       else
-        val fs = pairs(kids, open + 1)
+        val fs = pairs(kids, open + 1)      // the DISPATCHER
         // a container holding the cut IS the cut: depth is a property
         // of the DOCUMENT, not damage at a spot (cut-refuses-the-document)
         out += (if fs.exists((_, v) => isCut(v)) then tooDeep else JObj(fs))
@@ -241,12 +255,12 @@ object Json {
       if open >= maxDepth then out += tooDeep
       else
         val vs = Vector.newBuilder[Json]
-        kids.foreach(into(_, vs, open + 1))
+        kids.foreach(into(_, vs, open + 1))   // the DISPATCHER
         val es = vs.result()
         out += (if es.exists(isCut) then tooDeep else JArr(es))
     // a node that is not a container is not a level: the wrappers the
     // grammar puts between them must not spend the budget
-    case Cst.Node(_, kids) => kids.foreach(into(_, out, open))
+    case Cst.Node(_, kids) => kids.foreach(into(_, out, open))   // the DISPATCHER
     case Cst.Leaf(t) => t.kind match
       case K.Str => out += JStr(unquote(t.lexeme))
       case K.Num =>
@@ -268,8 +282,12 @@ object Json {
    * place of a flatMap into a Vector and a grouped(2) that allocated
    * another Vector per field */
   private def pairs(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
+    if open >= Codecs.NativeThreshold then reset(pairsC[Vector[(String, Json)]](kids, open))
+    else pairsNative(kids, open)
+
+  private def pairsNative(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
     val vs = Vector.newBuilder[Json]
-    kids.foreach(into(_, vs, open))
+    kids.foreach(into(_, vs, open))          // the DISPATCHER
     val flat = vs.result()
     val out = Vector.newBuilder[(String, Json)]
     var i = 0
@@ -282,6 +300,67 @@ object Json {
         case _ => ()
       i += 2
     out.result()
+
+  // ---- the trampoline: mirrors intoNative/pairsNative exactly,
+  // deferring each element/field of a SIBLING loop through
+  // Cont.defer, and the ONE recursive descent (a nested container)
+  // through the same mechanism ----
+
+  private def intoC[R](c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit /> R = c match
+    case Cst.Node("object", kids) =>
+      if open >= maxDepth then { out += tooDeep; Cont.Pure(()) }
+      else pairsC[R](kids, open + 1).flatMap { fs =>
+        out += (if fs.exists((_, v) => isCut(v)) then tooDeep else JObj(fs))
+        Cont.Pure(())
+      }
+    case Cst.Node("array", kids) =>
+      if open >= maxDepth then { out += tooDeep; Cont.Pure(()) }
+      else
+        val vs = Vector.newBuilder[Json]
+        def loop(rest: Vector[Cst[K]]): Unit /> R =
+          if rest.isEmpty then Cont.Pure(())
+          else Cont.defer(() => intoC[R](rest.head, vs, open + 1))(_ => loop(rest.tail))
+        loop(kids).flatMap { _ =>
+          val es = vs.result()
+          out += (if es.exists(isCut) then tooDeep else JArr(es))
+          Cont.Pure(())
+        }
+    case Cst.Node(_, kids) =>
+      def loop(rest: Vector[Cst[K]]): Unit /> R =
+        if rest.isEmpty then Cont.Pure(())
+        else Cont.defer(() => intoC[R](rest.head, out, open))(_ => loop(rest.tail))
+      loop(kids)
+    case Cst.Leaf(t) =>
+      t.kind match
+        case K.Str => out += JStr(unquote(t.lexeme))
+        case K.Num => t.lexeme.toDoubleOption match
+          case Some(d) => out += JNum(d)
+          case None => out += JErr(s"malformed number '${t.lexeme}'")
+        case K.Bool => out += JBool(t.lexeme == "true")
+        case K.Null => out += JNull
+        case _ => ()
+      Cont.Pure(())
+    case Cst.Err(t, m) =>
+      out += JErr(m + t.fold("")(x => s" at '${x.lexeme}'"))
+      Cont.Pure(())
+
+  private def pairsC[R](kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] /> R =
+    val vs = Vector.newBuilder[Json]
+    def loop(rest: Vector[Cst[K]]): Unit /> R =
+      if rest.isEmpty then Cont.Pure(())
+      else Cont.defer(() => intoC[R](rest.head, vs, open))(_ => loop(rest.tail))
+    loop(kids).flatMap { _ =>
+      val flat = vs.result()
+      val out = Vector.newBuilder[(String, Json)]
+      var i = 0
+      while i + 1 < flat.length do
+        flat(i) match
+          case JStr(k) => out += ((k, flat(i + 1)))
+          case JErr(m) => out += ((s"<$m>", flat(i + 1)))
+          case _ => ()
+        i += 2
+      Cont.Pure(out.result())
+    }
 
   // ----------------------------------------------------------------
   // the two Schema algebras
@@ -356,30 +435,20 @@ object Json {
     // the newtype node: A travels as B, so encode is `from` then under's
     case Schema.SIso(u, _, from) => encode(u())(from(a))
 
-  /**
-   * How deep `decode` recurses NATIVELY before switching to
-   * `decodeC`'s `Cont`-based trampoline (iterative-recursive-decode,
-   * json-decode-threshold-trampoline — the same design as
-   * `Cbor.get`'s, cbor-decode-threshold-trampoline). `Json.decode` has
-   * no reader object to hang a counter on (it is a pure function of
-   * `Schema`/`Json`), so depth is an explicit parameter here instead
-   * of `Cbor.In`'s mutable `open`.
-   *
-   * Unlike CBOR, this is not also a refusal check: a too-deep DOCUMENT
-   * is already cut before `decode` ever sees it (`Json.isCut`, at the
+  /** the public entry, signature unchanged: dispatches on depth,
+   * starting at 0. `Json.decode` has no reader object to hang a
+   * counter on (it is a pure function of `Schema`/`Json`), so depth is
+   * an explicit parameter rather than `Cbor.In`'s mutable `open`. Not
+   * also a refusal check the way CBOR's is: a too-deep DOCUMENT is
+   * already cut before `decode` ever sees it (`Json.isCut`, at the
    * parse/projection layer) — this threshold exists only so a
    * RECURSIVE schema's native call depth cannot grow with input depth,
    * independent of whether that input came through the cut at all
-   * (`decode` is public and callable on any `Json` value directly).
-   */
-  private val NativeThreshold = 24
-
-  /** the public entry, signature unchanged: dispatches on depth,
-   * starting at 0 */
+   * (`decode` is public and callable on any `Json` value directly). */
   def decode[A](s: Schema[A])(j: Json): Either[String, A] = decodeAt(s, j, 0)
 
   private def decodeAt[A](s: Schema[A], j: Json, depth: Int): Either[String, A] =
-    if depth >= NativeThreshold then reset(decodeC[A, Either[String, A]](s, j))
+    if depth >= Codecs.NativeThreshold then reset(decodeC[A, Either[String, A]](s, j))
     else decodeNative(s, j, depth)
 
   /** one field at its own type; the value joins the product's erased

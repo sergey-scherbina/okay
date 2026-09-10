@@ -330,3 +330,45 @@ Target 4 done. Of the four native-recursion sites this section
 named, one is closed alongside the two already-closed roots; three
 remain open: `JsonValue`'s fast parser (target 1), `Json.lossless`'s
 projection (target 2), `JsonStrict.Reader.get` (target 3).
+
+### Targets 1+2 done: `JsonValue`'s fast parser, `Json.lossless`'s projection (json-raw-nesting-threshold-trampoline, 2026-09-10)
+
+Combined into one lane — the same kind of recursion (raw JSON
+container nesting, no schema), already tested together in
+`TestStackBytes`. `NativeThreshold` centralized to `Codecs.NativeThreshold`
+along the way (it was a `private val = 24` duplicated in `Cbor.scala`
+and `Json.scala`; this lane was about to add a third and fourth copy).
+
+`JsonValue.Parser.value`/`obj`/`arr` mirrors `Cbor.In.skipItem`'s
+shape exactly — uniformly typed (`Json | Null`), no cross-type `R`.
+`Json.into`/`pairs` needed the shape this section predicted might
+differ: `Unit`-returning, side-effecting into a
+`Builder[Json, Vector[Json]]` rather than combining values. `Cont.defer`
+still works — a mutable `Builder`/`var` closed over by a deferred step
+mutates in the SAME order once the trampoline reaches that step, so
+side effects compose with the mechanism exactly as values do; the
+sibling loop over a container's `kids` (previously a plain `foreach`)
+became an explicit `loop` deferring each element.
+
+**Verified correctly, but the FIRST verification attempt was wrong
+in an instructive way.** A 100 000-level test using `assertEquals` to
+compare the two roads' answers threw its OWN `StackOverflowError` —
+not in the fix, in the TEST: comparing two 100 000-deep case-class
+trees via structural `==` recurses natively just as much as building
+them did. Rewritten with an iterative `depthOf` check (the same class
+of self-inflicted mistake `TestCborTrampoline`'s first draft made with
+a recursive `depthOf` — this arc keeps re-teaching the same lesson).
+With that fixed: both roads answer correctly at 100 000 levels with
+the fix, and A/B (`Codecs.NativeThreshold` disabled, `Codecs.maxDepth`
+scratch-raised) throws at the same depth without it.
+
+**The JMH gate is DEFERRED, not skipped.** System load climbed from
+~20 to 88 while measuring (unrelated to this session; flagged in the
+room) — `parseOnly` and `parseValueOnly`, two benchmarks with
+IDENTICAL bodies (`Json.parse(text)`), read 282±26 vs 600±237 ns/op in
+the SAME run, which is proof by itself that no number taken under this
+load means anything, regardless of fork count
+(`jmh-load-not-just-forks`). Correctness is fully proven (184 tests,
+three platforms, the A/B above); the perf number is BACKLOG's
+`json-raw-nesting-jmh-pending` — measure once the box is quiet, before
+trusting either direction.

@@ -74,6 +74,25 @@ object Codecs {
    */
   val maxDepth: Int = 64
 
+  /**
+   * How deep the interpreted fold recurses NATIVELY before switching
+   * to a `Cont.defer` trampoline (iterative-recursive-decode; the
+   * design landed once for `Cbor.get`/`Cbor.In.skipItem`, once for
+   * `Json.decode`, both reusing this same number). Centralized here,
+   * beside `maxDepth`, rather than a `private val = 24` copied into
+   * every file that needs it — cbor-decode-threshold-trampoline and
+   * json-decode-threshold-trampoline each carried their own before
+   * this, and json-raw-nesting-threshold-trampoline was about to add
+   * a third and fourth copy.
+   *
+   * Well under any depth a real message reaches (this arc's own
+   * repo-wide grep found no consumer nesting real data past a
+   * handful of levels), so the switch is never on a caller's hot
+   * path, and well under `maxDepth` so a document at the wire's own
+   * limit still costs no native stack proportional to its depth.
+   */
+  val NativeThreshold: Int = 24
+
   trait Provider:
     def name: String
     def json[A](s: Schema[A]): JsonCodec[A]

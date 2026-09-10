@@ -1,5 +1,45 @@
 # Changelog
 
+## json-raw-nesting-threshold-trampoline — targets 1+2, and the JMH gate deferred honestly
+
+depth-is-policy-not-rescue's targets 1 and 2, combined into one lane:
+the same kind of recursion (raw JSON container nesting, no schema),
+already tested together. NativeThreshold centralized to
+Codecs.NativeThreshold (it was a private val = 24 copied into
+Cbor.scala and Json.scala; this lane was about to add a third and
+fourth copy).
+
+JsonValue.Parser.value/obj/arr mirrors Cbor.In.skipItem's shape
+exactly - uniformly typed (Json | Null), no cross-type R. Json.into/
+pairs needed the genuinely different shape this arc's own spec
+predicted might be needed: Unit-returning, side-effecting into a
+Builder rather than combining values. Cont.defer still works - a
+mutable Builder/var closed over by a deferred step mutates in the
+SAME order once the trampoline reaches that step, so side effects
+compose with the mechanism exactly as values do.
+
+Verified correctly, but the first verification attempt was wrong in
+an instructive way: a 100 000-level test comparing both roads via
+assertEquals threw ITS OWN StackOverflowError - structural == on a
+100 000-deep case-class tree recurses natively as much as building it
+did. The same self-inflicted mistake TestCborTrampoline's first draft
+made with a recursive depthOf helper, a second time. Rewritten with
+an iterative depth check: both roads answer correctly at 100 000
+levels with the fix; A/B (NativeThreshold disabled, maxDepth
+scratch-raised) throws at the same depth without it.
+
+The JMH gate is DEFERRED, not skipped. System load climbed from ~20
+to 88 while measuring (a shared box, unrelated to this session,
+flagged in the room) - parseOnly and parseValueOnly, two benchmarks
+with IDENTICAL bodies, read 282+-26 vs 600+-237 ns/op in the SAME
+run, proof no number taken under this load means anything regardless
+of fork count (jmh-load-not-just-forks). Correctness is fully proven
+(184 tests, three platforms); the perf number is BACKLOG's
+json-raw-nesting-jmh-pending.
+
+184 tests in okay-codec (3 new, TestJsonRawTrampoline), 181 on JS and
+Native. Two of four sites remain: JsonStrict.Reader.get.
+
 ## di-multibind — several contributors, one collection; and memoisation answered
 
 The comparison table named four gaps and called two of them small.

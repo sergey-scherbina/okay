@@ -1,6 +1,7 @@
 package okay.codec
 
 import Json.*
+import okay.{Cont, reset, />}
 
 /**
  * The fast VALUE parser beside the lossless one (specs/codecs.md,
@@ -63,12 +64,23 @@ object JsonValue {
      * value: a recursive descent recurses on the depth of the INPUT,
      * which the SENDER chose, so it is bounded (`Json.maxDepth`) and
      * a document past the limit is simply one this road is not sure
-     * of — `Json.parse` then gets the lossless road's JErr. */
+     * of — `Json.parse` then gets the lossless road's JErr.
+     *
+     * PAST `Codecs.NativeThreshold`, dispatches to a `Cont.defer`
+     * trampoline (json-raw-nesting-threshold-trampoline) — the same
+     * design as the three already-closed sites, simpler than the two
+     * schema-decoding ones: uniformly typed (`Json | Null` throughout,
+     * like `Cbor.In.skipItem`'s `Either[String, Unit]`), so no
+     * cross-type `R` to thread. */
     def value(open: Int): Json | Null =
+      if open >= Codecs.NativeThreshold then reset(valueC[Json | Null](open))
+      else valueNative(open)
+
+    private def valueNative(open: Int): Json | Null =
       if at >= n then null
       else s.charAt(at) match
-        case '{' => if open >= Json.maxDepth then null else obj(open + 1)
-        case '[' => if open >= Json.maxDepth then null else arr(open + 1)
+        case '{' => if open >= Json.maxDepth then null else objNative(open + 1)
+        case '[' => if open >= Json.maxDepth then null else arrNative(open + 1)
         case '"' => str() match { case null => null; case x => JStr(x) }
         case 't' => lit("true", JBool(true))
         case 'f' => lit("false", JBool(false))
@@ -79,7 +91,7 @@ object JsonValue {
     private def lit(word: String, v: Json): Json | Null =
       if s.startsWith(word, at) then { at += word.length; v } else null
 
-    private def obj(open: Int): Json | Null =
+    private def objNative(open: Int): Json | Null =
       at += 1
       val b = Vector.newBuilder[(String, Json)]
       skipWs()
@@ -99,7 +111,9 @@ object JsonValue {
               else
                 at += 1
                 skipWs()
-                val v = value(open)
+                val v = value(open)          // the DISPATCHER: depth
+                                              // may cross the threshold
+                                              // mid-object
                 if v == null then ok = false
                 else
                   b += ((k, v))
@@ -111,7 +125,7 @@ object JsonValue {
                     case _ => ok = false
         if ok then JObj(b.result()) else null
 
-    private def arr(open: Int): Json | Null =
+    private def arrNative(open: Int): Json | Null =
       at += 1
       val b = Vector.newBuilder[Json]
       skipWs()
@@ -121,7 +135,7 @@ object JsonValue {
         var done = false
         while ok && !done do
           skipWs()
-          val v = value(open)
+          val v = value(open)              // the DISPATCHER
           if v == null then ok = false
           else
             b += v
@@ -132,6 +146,76 @@ object JsonValue {
               case ']' => at += 1; done = true
               case _ => ok = false
         if ok then JArr(b.result()) else null
+
+    // ---- the trampoline: mirrors valueNative/objNative/arrNative
+    // exactly, deferring the ONE point each descends into a fresh
+    // value through Cont.defer, so the reader's mutable `at` cursor
+    // still advances in the same order, just inside `/`'s loop
+    // instead of the native call stack ----
+
+    private def valueC[R](open: Int): (Json | Null) /> R =
+      if at >= n then Cont.Pure(null)
+      else s.charAt(at) match
+        case '{' => if open >= Json.maxDepth then Cont.Pure(null) else objC[R](open + 1)
+        case '[' => if open >= Json.maxDepth then Cont.Pure(null) else arrC[R](open + 1)
+        case '"' => Cont.Pure(str() match { case null => null; case x => JStr(x) })
+        case 't' => Cont.Pure(lit("true", JBool(true)))
+        case 'f' => Cont.Pure(lit("false", JBool(false)))
+        case 'n' => Cont.Pure(lit("null", JNull))
+        case c if c == '-' || (c >= '0' && c <= '9') => Cont.Pure(num())
+        case _ => Cont.Pure(null)
+
+    private def objC[R](open: Int): (Json | Null) /> R =
+      at += 1
+      val b = Vector.newBuilder[(String, Json)]
+      skipWs()
+      if at < n && s.charAt(at) == '}' then { at += 1; Cont.Pure(JObj(Vector.empty)) }
+      else
+        def loop(): (Json | Null) /> R =
+          skipWs()
+          if at >= n || s.charAt(at) != '"' then Cont.Pure(null)
+          else
+            val k = str()
+            if k == null then Cont.Pure(null)
+            else
+              skipWs()
+              if at >= n || s.charAt(at) != ':' then Cont.Pure(null)
+              else
+                at += 1
+                skipWs()
+                Cont.defer(() => valueC[R](open)) { v =>
+                  if v == null then Cont.Pure(null)
+                  else
+                    b += ((k, v))
+                    skipWs()
+                    if at >= n then Cont.Pure(null)
+                    else s.charAt(at) match
+                      case ',' => at += 1; loop()
+                      case '}' => at += 1; Cont.Pure(JObj(b.result()))
+                      case _ => Cont.Pure(null)
+                }
+        loop()
+
+    private def arrC[R](open: Int): (Json | Null) /> R =
+      at += 1
+      val b = Vector.newBuilder[Json]
+      skipWs()
+      if at < n && s.charAt(at) == ']' then { at += 1; Cont.Pure(JArr(Vector.empty)) }
+      else
+        def loop(): (Json | Null) /> R =
+          skipWs()
+          Cont.defer(() => valueC[R](open)) { v =>
+            if v == null then Cont.Pure(null)
+            else
+              b += v
+              skipWs()
+              if at >= n then Cont.Pure(null)
+              else s.charAt(at) match
+                case ',' => at += 1; loop()
+                case ']' => at += 1; Cont.Pure(JArr(b.result()))
+                case _ => Cont.Pure(null)
+          }
+        loop()
 
     /** the string's content; the fast road is the slice when no
      * escape appears, the builder otherwise */

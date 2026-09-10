@@ -227,7 +227,7 @@ object Cbor {
      * declared ones is 400 levels of the same stack
      * (input-depth-both-wires).
      *
-     * PAST `Cbor.NativeThreshold` this dispatches to the SAME
+     * PAST `Codecs.NativeThreshold` this dispatches to the SAME
      * `Cont.defer` trampoline `Cbor.get` uses, for the same reason:
      * skipping an undeclared field is exactly as input-depth-driven as
      * decoding a declared one, and was the one site the two closed
@@ -239,7 +239,7 @@ object Cbor {
      * its signature.
      */
     def skipItem(): Either[String, Unit] =
-      if depth >= Cbor.NativeThreshold then reset(skipItemInsideC[Either[String, Unit]])
+      if depth >= Codecs.NativeThreshold then reset(skipItemInsideC[Either[String, Unit]])
       else skipItemNative()
 
     private def skipItemNative(): Either[String, Unit] =
@@ -312,24 +312,12 @@ object Cbor {
       in.leave()
       out
 
-  /**
-   * How deep the interpreted fold recurses NATIVELY before switching
-   * to `getC`'s `Cont`-based trampoline (iterative-recursive-decode,
-   * cbor-decode-threshold-trampoline). Chosen the way `Cont.Fuse` and
-   * this reader's own budget are — well under any depth a real
-   * message reaches, so the switch is never on a caller's hot path,
-   * and well under `Codecs.maxDepth` so a document that IS this deep
-   * still decodes rather than costing native stack proportional to
-   * its depth.
-   */
-  private val NativeThreshold = 24
-
   /** the public entry: below the threshold, today's recursive fold,
    * unchanged; at or past it, `getC`'s trampoline — checked on EVERY
    * call, so the switch happens at whatever level actually crosses
    * it, not only at the top */
   private def get[A](in: In, s: Schema[A]): Either[String, A] =
-    if in.depth >= NativeThreshold then reset(getC[A, Either[String, A]](in, s))
+    if in.depth >= Codecs.NativeThreshold then reset(getC[A, Either[String, A]](in, s))
     else getNative(in, s)
 
   private def getNative[A](in: In, s: Schema[A]): Either[String, A] = s match
