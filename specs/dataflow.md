@@ -200,6 +200,12 @@ than trusting the author.
   partitions), 6b (a dying worker's partition is replayed on a
   survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
   execution underneath, and the offers counted rather than promised).
+- **9 — the commit window.** DONE. `Sink.committed(epoch)` and
+  `Sink.recovered(epoch)` — the two moments a writer needs — and
+  `Sink.staging`, a sink that hands a whole epoch over when that
+  epoch is final. The engine cannot close the window alone; a writer
+  that records the epoch beside its rows can, and now has what it
+  needs to.
 - **8 — the coordinator survives.** DONE. `Wire.state` makes the
   coordinator's fold a value, `Checkpoint` is where it writes it
   down, and a second `Cluster.stream` over the same journal picks the
@@ -380,6 +386,31 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
       rather than closed
 - [x] durable checkpointing, so a COORDINATOR restart can resume —
       stage 8
+
+Stage 9 — the commit window (TestStaged):
+- [x] `Sink.committed(epoch)` / `Sink.recovered(epoch)`, defaulting
+      to nothing, forwarded by `and` and by every `Wire` wrapper
+- [x] the sink hears the commit BEFORE the journal does — told after,
+      a writer would lose every epoch the coordinator died inside
+- [x] the final sweep is its own epoch (`round + 1`), or a writer
+      that recognises a repeat by its number drops the close's panes
+      as a duplicate of the last round's
+- [x] a batch run is one epoch and says so: `Flows.fan` and
+      `Cluster.run` call `committed(1)` when the fold is done
+- [x] `Sink.staging` / `Wire.tumblingStaged`: an epoch's panes handed
+      over as one batch, with the epoch number
+- [x] under the death that makes a plain writer repeat, a staging
+      writer that drops an epoch it has applied writes each pane
+      EXACTLY once — and the test asserts the repeat REACHED it
+- [x] under a death after the commit, nothing repeats at all
+- [x] a staging sink REFUSES a batch run rather than dropping the
+      panes the completeness rule wrote on a worker
+- [x] both controlled: journalling before telling the writer loses
+      panes, and makes the window test say it is not exercising
+      anything
+- [ ] a writer whose stage is DURABLE, so the two-phase commit
+      survives the writer's own death as well as the coordinator's.
+      The seam is enough for one; nothing here has asked yet
 
 Stage 8 — the coordinator survives (TestResume, TestPersisted):
 - [x] `Wire.state: Schema[S]` — the coordinator's fold is a value,
@@ -1219,3 +1250,75 @@ and restarting it is the answer rather than a mechanism. And nobody
 ELECTS the successor — `Cluster.stream` has to be called again, by
 something. okay-persist has `Election`; wiring it here would be a
 lane, not a line, and nothing has asked.
+
+### Stage 9 — the commit window, closed by the writer
+
+Stage 8 left one window open and named it. A pane is written while its
+epoch is being ABSORBED and the epoch is COMMITTED afterwards, so a
+coordinator that dies in between has written panes the journal does
+not know about, and its successor writes them again. For a keyed
+writer that is harmless — same key, same value, one row — and the
+backlog entry said the ways to close it were worse than it is.
+
+**That was true of the two roads named there and both were the wrong
+shape.** Write-ahead the pane set and the journal carries the output;
+commit before writing and a death loses panes instead of repeating
+them, which trades at-least-once for at-most-once. The road not named
+is the one every engine actually takes: **the engine cannot close the
+window, because the write left the engine — so it hands the writer the
+two moments that let the writer close it.**
+
+```scala
+def committed(epoch: Int): Unit = ()   // the journal now holds this epoch
+def recovered(epoch: Int): Unit = ()   // resuming; anything after this never happened
+```
+
+Two no-op defaults on `Sink`, forwarded by `and` and by every `Wire`
+wrapper. A sink that only computes ignores them. `Sink.staging`
+collects the panes an epoch retires and hands the whole epoch to
+`move(epoch, panes)` when it is final.
+
+**THE ORDER IS THE CONTRACT, and it is the one thing here that had to
+be argued rather than chosen.** The sink hears the commit BEFORE the
+journal records the epoch. Told afterwards, a coordinator that died in
+between would leave the journal claiming an epoch that the writer was
+never asked for — panes lost, at-most-once, the trade this stage
+exists to refuse. Told first, the worst case is being asked for the
+same epoch TWICE across a restart, and never for two different epochs
+under one number. So a writer that records the epoch beside its rows
+in one atomic write recognises the repeat and drops it: exactly-once,
+by the same argument stage 6c used for a keyed writer, one level up,
+with the epoch as the key.
+
+That is a two-phase-commit sink. It is twenty lines rather than a
+framework for the same reason the checkpoint was a `save` call — the
+epoch loop is lock-step, so "this epoch is final" is a fact the
+coordinator already has.
+
+**The bug this produced immediately, and it is the good kind.** The
+final sweep committed under the LAST ROUND'S NUMBER, so the writer
+recognised it as a repeat and dropped the panes the close swept out.
+The rows came out wrong on the very first quiet run. The sweep is its
+own epoch now (`round + 1`), which is also the honest description of
+it.
+
+**What a staging sink REFUSES, loudly.** Every pane has to retire in
+ONE place for a single stage to see them all. That is true of
+`Cluster.stream`, where a partition finishes nothing locally, and
+false of a batch run, where the completeness rule finishes panes
+inside each partition — on a WORKER, whose stage no coordinator will
+ever commit. So `finish` throws rather than dropping them, and names
+the alternative: `Sink.writing` with a writer keyed by `(start, key)`,
+which is stage 6c's answer and needs no commit at all.
+
+**Both directions controlled.** Journalling before telling the writer
+makes the after-the-commit test lose panes, and makes the window test
+report that it is no longer exercising anything — which is the
+assertion that stops this suite from passing for the wrong reason.
+
+**What is still open**: the writer's stage is in memory here, so the
+two-phase commit survives the COORDINATOR's death and not the
+WRITER's. A durable stage — a transaction, a temp file per epoch —
+closes that too, and the seam is already the right one: `recovered`
+says where to resume, `committed` says what to finalize. Nothing has
+asked, so nothing is built.

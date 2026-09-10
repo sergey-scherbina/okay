@@ -218,9 +218,27 @@ the caller's: okay-cluster's compile graph stays at okay-codec, and
 `TestPersisted` binds the seam to okay-persist's compacted log in
 eight lines.
 
-The window that remains, named rather than closed: a coordinator that
-dies between WRITING a pane and COMMITTING its epoch re-offers that
-epoch's panes. One epoch wide, and harmless to a keyed writer.
+**The commit window, and who closes it.** A coordinator that dies
+between WRITING a pane and COMMITTING its epoch re-offers that epoch's
+panes — one epoch wide, harmless to a keyed writer. The engine cannot
+close it alone, because the write left the engine; what it does is
+hand the writer two moments: `Sink.committed(epoch)`, called BEFORE
+the journal records the epoch, and `Sink.recovered(epoch)`, called
+once when a run resumes. Both default to nothing.
+
+`Sink.staging` / `Wire.tumblingStaged` collect the panes an epoch
+retires and hand the batch to `move(epoch, panes)` when it is final.
+Because the sink is told before the journal is written, `move` may be
+asked for the same epoch twice across a restart and never for two
+epochs under one number — so a writer that records the epoch beside
+its rows in one atomic write drops the repeat and is exactly-once.
+That is a two-phase-commit sink, in twenty lines, for the same reason
+the checkpoint is a `save` call.
+
+A staging sink belongs to `Cluster.stream` and says so by throwing: a
+batch run finishes panes inside each partition, on a WORKER, whose
+stage no coordinator will ever commit. Use `Sink.writing` with a
+writer keyed by `(start, key)` there.
 
 **A pane that LEAVES the engine.** `Sink.tumblingTo` / `slidingTo`
 (and `Wire`'s twins, for a job at a distance) hand each retired pane
@@ -347,6 +365,8 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator, for a bounded source |
 | `Cluster.stream` | `(Job[P,R], P, parts, Vector[Serve], take, journal) => Run[R] ! Async` | the same, epoch by epoch, with the state kept on the workers; `journal` defaults to `Checkpoint.none` |
 | `Checkpoint` | `save(epoch, bytes)` / `latest` | where a coordinator writes down what it has folded; `Checkpoint.none`, `Checkpoint.Memory` |
+| `Sink.committed / recovered` | `(epoch: Int) => Unit` | the two moments a writer needs; no-ops by default |
+| `Sink.staging` / `Wire.tumblingStaged` | `…(move: (Int, Vector[Pane[K, O]]) => Unit)` | an epoch's panes as one batch when the epoch is final — exactly-once for a writer that records the epoch |
 | `Wire.state` | `Schema[S]` | how the COORDINATOR's own state travels — what makes the journal possible |
 | `Cluster.local` | `Req => Resp` | a worker made of the registry — in-process, and what a served process runs |
 | `Served.serve / connect` | `(ServerSocket, Serve)` / `(host, port) => Serve` | the same worker on a socket |

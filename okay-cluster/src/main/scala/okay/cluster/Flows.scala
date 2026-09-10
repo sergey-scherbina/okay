@@ -148,7 +148,12 @@ object Flows {
         Chunks.foldLeft(src(i))(())((_, a) => sink.step(p, a))
         handOver(sink.finish(p))
       }.map: ws =>
-        Run(sink.result(ws), sink.drops(ws), n, 1, sink.merged(ws))
+        val out = Run(sink.result(ws), sink.drops(ws), n, 1, sink.merged(ws))
+        // A BATCH RUN IS ONE EPOCH, and it is over: a staging writer
+        // has to hear that or it would never move anything in
+        // (specs/dataflow.md, stage 9)
+        sink.committed(1)
+        out
 
   /**
    * THE SAME RUN, WITH EVERY PARTIAL FORCED THROUGH ITS CODEC

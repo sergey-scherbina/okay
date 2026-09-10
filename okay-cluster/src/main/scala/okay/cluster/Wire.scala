@@ -78,6 +78,10 @@ abstract class Wire[A, R] extends Sink[A, R]:
         self.drops(ws.map(_._1)) + that.drops(ws.map(_._2))
       def merged(ws: Vector[W]): Long =
         self.merged(ws.map(_._1)) + that.merged(ws.map(_._2))
+      override def committed(epoch: Int): Unit =
+        { self.committed(epoch); that.committed(epoch) }
+      override def recovered(epoch: Int): Unit =
+        { self.recovered(epoch); that.recovered(epoch) }
 
 object Wire {
 
@@ -103,6 +107,10 @@ object Wire {
       def peek(p: P): W = local.peek(p)
       def drops(ws: Vector[W]): Long = local.drops(ws)
       def merged(ws: Vector[W]): Long = local.merged(ws)
+      // the two moments reach the SINK this wire wraps — a writing
+      // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
+      override def committed(epoch: Int): Unit = local.committed(epoch)
+      override def recovered(epoch: Int): Unit = local.recovered(epoch)
 
   /** one accumulator per key: the partial is the key/accumulator pairs */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -126,6 +134,10 @@ object Wire {
       def peek(p: P): W = local.peek(p)
       def drops(ws: Vector[W]): Long = local.drops(ws)
       def merged(ws: Vector[W]): Long = local.merged(ws)
+      // the two moments reach the SINK this wire wraps — a writing
+      // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
+      override def committed(epoch: Int): Unit = local.committed(epoch)
+      override def recovered(epoch: Int): Unit = local.recovered(epoch)
 
   /**
    * An event-time windowed aggregation.
@@ -159,6 +171,10 @@ object Wire {
       def peek(p: P): W = local.peek(p)
       def drops(ws: Vector[W]): Long = local.drops(ws)
       def merged(ws: Vector[W]): Long = local.merged(ws)
+      // the two moments reach the SINK this wire wraps — a writing
+      // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
+      override def committed(epoch: Int): Unit = local.committed(epoch)
+      override def recovered(epoch: Int): Unit = local.recovered(epoch)
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
@@ -211,6 +227,53 @@ object Wire {
                              (write: Pane[K, O] => Unit)
                              (using Schema[K], Schema[Acc]): Wire[A, Long] =
     writing(size, slide, lateness, key, at, agg, seeded)(write)
+
+  /**
+   * A STAGING SINK AT A DISTANCE (specs/dataflow.md, stage 9).
+   *
+   * The contract is `Sink.staging`'s and so is the refusal: it
+   * belongs to `Cluster.stream`, where every pane retires at the
+   * coordinator, and a batch `Cluster.run` finishes panes on the
+   * WORKERS, where `finish` will refuse to hand over a partition
+   * holding staged panes rather than dropping them.
+   *
+   * `move` therefore runs in the coordinator's process — which is the
+   * one place that knows an epoch is final — and, like every other
+   * writer here, it is built from the job's parameters on whichever
+   * machine is running the coordinator. No closure crosses.
+   */
+  def staging[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
+                            key: A => K, at: A => Long,
+                            agg: Aggregator[A, Acc, O])
+                           (move: (Int, Vector[Pane[K, O]]) => Unit)
+                           (using sk: Schema[K], sa: Schema[Acc]): Wire[A, Long] =
+    val local = Sink.staging(size, slide, lateness, key, at, agg)(move)
+    new Wire[A, Long]:
+      type P = local.P
+      type W = local.W
+      type S = local.S
+      def wire: Schema[W] = handed(sk, sa, Schema.SLong)
+      def state: Schema[S] = open(sk, sa, Schema.SLong)
+      def empty: S = local.empty
+      def absorb(st: S, ws: Vector[W], watermark: Long): S = local.absorb(st, ws, watermark)
+      def emit(st: S): Long = local.emit(st)
+      def slack: Long = local.slack
+      def times: Vector[A => Long] = local.times
+      def start(bounds: Vector[Bounds]): P = local.start(bounds)
+      def step(p: P, a: A): Unit = local.step(p, a)
+      def finish(p: P): W = local.finish(p)
+      def peek(p: P): W = local.peek(p)
+      def drops(ws: Vector[W]): Long = local.drops(ws)
+      def merged(ws: Vector[W]): Long = local.merged(ws)
+      override def committed(epoch: Int): Unit = local.committed(epoch)
+      override def recovered(epoch: Int): Unit = local.recovered(epoch)
+
+  def tumblingStaged[A, K, Acc, O](size: Long, lateness: Long,
+                                   key: A => K, at: A => Long,
+                                   agg: Aggregator[A, Acc, O])
+                                  (move: (Int, Vector[Pane[K, O]]) => Unit)
+                                  (using Schema[K], Schema[Acc]): Wire[A, Long] =
+    staging(size, size, lateness, key, at, agg)(move)
 
   // -----------------------------------------------------------------
   // Schemas built from Schema VALUES

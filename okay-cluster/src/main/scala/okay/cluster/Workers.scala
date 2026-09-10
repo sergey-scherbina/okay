@@ -124,7 +124,9 @@ object Cluster {
           case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
           case other => throw IllegalStateException(s"partition $i answered $other to a run")
       }.map: ws =>
-        Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws), living.retries)
+        val out = Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws), living.retries)
+        sink.committed(1)   // a batch run is ONE epoch, and it is over
+        out
 
   /**
    * ASK A LIVING WORKER, AND KEEP ASKING (specs/dataflow.md, stage 5).
@@ -353,6 +355,15 @@ object Cluster {
           // lock-step: every partition has contributed exactly rounds
           // 1..round, so what the coordinator holds now is a
           // consistent cut with nothing in flight (stage 8).
+          // THE SINK HEARS IT FIRST, and the order is the contract
+          // (specs/dataflow.md, stage 9). A writer told after the
+          // journal would lose an epoch whenever the coordinator died
+          // in between — the journal would say the epoch happened and
+          // the writer would never have been asked for it. Told
+          // BEFORE, the worst case is being asked for the same epoch
+          // twice, which a writer that records the epoch number with
+          // its data ignores.
+          sink.committed(round)
           commit(round, next, grown, d, m)
           if es.forall(_.drained) then
             // THE CLOSE CARRIES A PARTIAL. Every pane still open when
@@ -383,7 +394,13 @@ object Cluster {
               // between the last Close and the answer resumes here,
               // asks for one more epoch, is told everything is
               // drained, and re-answers the same value
-              commit(round, end, grown, dd, mm)
+              // THE SWEEP IS ITS OWN EPOCH, and the number has to
+              // move: a writer that recognises a repeat by its epoch
+              // number would drop the close's panes as a duplicate of
+              // the last round's, which is exactly what happened the
+              // first time this was written.
+              sink.committed(round + 1)
+              commit(round + 1, end, grown, dd, mm)
               Run(sink.emit(end), dd, parts, 1, mm, living.retries)
             }
           else epoch(next, grown, d, m, round + 1)
@@ -406,7 +423,13 @@ object Cluster {
           held.decode(f.state) match
             case Left(why) =>
               throw IllegalStateException(s"the journal's fold at epoch ${f.epoch}: $why")
-            case Right(st) => epoch(st, f.seen, f.drops, f.merged, f.epoch + 1)
+            case Right(st) =>
+              // everything a previous coordinator did AFTER this
+              // epoch was lost with it and never happened — the one
+              // thing a writer needs to know before the first pane of
+              // the resumed run reaches it
+              sink.recovered(f.epoch)
+              epoch(st, f.seen, f.drops, f.merged, f.epoch + 1)
 
   /**
    * ADVANCE ONE PARTITION, WHEREVER IT CAN BE DONE

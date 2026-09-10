@@ -588,12 +588,18 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       nobody starts it: `Cluster.stream` has to be called again, by
       something. okay-persist has `Election`; wiring it is a lane, not
       a line, and nothing has asked yet.
-- [ ] dataflow-commit-window — a coordinator that dies between
-      WRITING a pane and COMMITTING its epoch re-offers that epoch's
-      panes (stage 8, tested and asserted to happen). Harmless to a
-      keyed writer, and the only ways to close it are worse than it
-      is: write-ahead the pane set, or commit before writing and lose
-      panes instead of repeating them. Named, not closed.
+- [x] dataflow-commit-window — LANDED as stage 9, and the entry above
+      was wrong about the roads: both the ones it named are worse than
+      the window, and the one it did not name is what every engine
+      does. The engine cannot close it (the write left the engine), so
+      it hands the writer `committed(epoch)` and `recovered(epoch)` —
+      told BEFORE the journal, so the worst case is a repeated epoch
+      rather than a lost one, and a writer that records the epoch
+      beside its rows is exactly-once.
+- [ ] dataflow-durable-stage — stage 9's staging sink keeps its epoch
+      in memory, so the two-phase commit survives the COORDINATOR's
+      death and not the WRITER's. A durable stage (a transaction, a
+      temp file per epoch) closes that; the seam already fits.
 - [x] dataflow-exchange — LANDED. The crossover is ~100 000
       accumulators and the Wrocław job is three orders of magnitude
       under it, so `Auto` declines the exchange there.

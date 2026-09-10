@@ -1,5 +1,50 @@
 # Changelog
 
+## dataflow stage 9 — the commit window, closed by the writer
+
+Stage 8 left one window open and named it: a pane is written while its
+epoch is absorbed and the epoch is committed afterwards, so a
+coordinator that dies in between wrote panes the journal does not know
+about and its successor writes them again. The backlog entry said the
+two ways to close it were worse than it is — write-ahead the pane set,
+or commit before writing and lose panes instead of repeating them.
+Both were the wrong shape.
+
+THE ENGINE CANNOT CLOSE IT, because the write left the engine. What it
+can do is hand the writer the two moments that let the writer close
+it: `Sink.committed(epoch)` and `Sink.recovered(epoch)`, two no-op
+defaults forwarded by `and` and by every `Wire` wrapper.
+`Sink.staging` / `Wire.tumblingStaged` collect an epoch's panes and
+hand the batch over when it is final.
+
+THE ORDER IS THE CONTRACT. The sink hears the commit BEFORE the
+journal records the epoch. Told afterwards, a death in between leaves
+the journal claiming an epoch the writer was never asked for — panes
+lost. Told first, the worst case is being asked for the same epoch
+twice, and never for two epochs under one number, so a writer that
+records the epoch beside its rows recognises the repeat and drops it.
+Exactly-once, by stage 6c's argument one level up with the epoch as
+the key — and it is twenty lines rather than a framework because the
+epoch loop is lock-step.
+
+The bug this produced on the first quiet run, and it is the good kind:
+the final sweep committed under the LAST ROUND'S number, so the writer
+dropped the close's panes as a duplicate. The sweep is its own epoch
+now, which is also the honest description of it.
+
+A staging sink REFUSES a batch run rather than dropping panes: the
+completeness rule finishes panes on the workers, whose stage no
+coordinator will ever commit, and `finish` throws naming the
+alternative (`Sink.writing` keyed by (start, key), stage 6c's answer).
+
+Both directions controlled: journalling before telling the writer
+loses panes after a committed death, and makes the window test report
+that it is no longer exercising anything.
+
+Still open: the stage is in memory, so this survives the
+COORDINATOR's death and not the WRITER's. A durable stage closes that
+too and the seam is already the right one.
+
 ## windows-int-key-panes — the cheap half of the pane store, measured and refuted
 
 §20 left okay's single-core row about a third slower than a plain map

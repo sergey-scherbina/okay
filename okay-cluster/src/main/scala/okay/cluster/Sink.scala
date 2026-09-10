@@ -129,6 +129,34 @@ abstract class Sink[A, R]:
    * assert it rather than a benchmark merely notice it */
   def merged(ws: Vector[W]): Long
 
+  /**
+   * THE TWO MOMENTS A WRITER NEEDS (specs/dataflow.md, stage 9), and
+   * the reason they are on `Sink` rather than inside one:
+   *
+   *   `committed(epoch)` — the journal now holds this epoch. What was
+   *      retired into it is final: no restart will produce it again.
+   *   `recovered(epoch)` — this run is resuming from that epoch.
+   *      Anything a previous coordinator did after it was lost with
+   *      the coordinator and never happened.
+   *
+   * A sink that only computes ignores both, which is why they default
+   * to nothing. A sink that WRITES uses them to close stage 8's one
+   * remaining window: a pane is written while its epoch is absorbed
+   * and the epoch is committed afterwards, so a coordinator that dies
+   * in between has written what the journal does not know about. The
+   * engine cannot close that alone — the write left the engine — but
+   * a writer that STAGES an epoch and moves it in on `committed` can,
+   * and these are the two moments it needs. That is the shape Flink
+   * calls a two-phase-commit sink; it is a pair of no-op defaults here
+   * because the epoch loop is lock-step (stage 8).
+   *
+   * A batch run is ONE epoch: `Flows.fan` and `Cluster.run` call
+   * `committed(1)` when the fold is finished.
+   */
+  def committed(epoch: Int): Unit = ()
+
+  def recovered(epoch: Int): Unit = ()
+
   /** two sinks over one pass */
   final def and[R2](that: Sink[A, R2]): Sink[A, (R, R2)] =
     val self = this
@@ -153,6 +181,10 @@ abstract class Sink[A, R]:
         self.drops(ws.map(_._1)) + that.drops(ws.map(_._2))
       def merged(ws: Vector[W]): Long =
         self.merged(ws.map(_._1)) + that.merged(ws.map(_._2))
+      override def committed(epoch: Int): Unit =
+        { self.committed(epoch); that.committed(epoch) }
+      override def recovered(epoch: Int): Unit =
+        { self.recovered(epoch); that.recovered(epoch) }
 
 object Sink {
 
@@ -366,6 +398,89 @@ object Sink {
                              (write: Pane[K, O] => Unit)
   : Sink[A, Long] { type W = Handed[K, Acc, Long]; type S = Open[K, Acc, Long] } =
     writing(size, slide, lateness, key, at, agg, seeded)(write)
+
+  /**
+   * A WINDOWED SINK THAT STAGES AN EPOCH AND MOVES IT IN ON THE
+   * COMMIT (specs/dataflow.md, stage 9) — the writer that closes
+   * stage 8's one remaining window.
+   *
+   * `Sink.writing` hands each pane over as it retires, which happens
+   * BEFORE its epoch reaches the journal; a coordinator that dies in
+   * between has written what no journal knows about, and its
+   * successor writes it again. Harmless to a keyed writer and not to
+   * an appending one. This sink instead collects the panes an epoch
+   * retires and hands the whole epoch to `move` when that epoch is
+   * final:
+   *
+   *   move(epoch, panes)
+   *
+   * THE EPOCH NUMBER IS THE POINT. `committed` is called before the
+   * journal records the epoch — it has to be, or a death in between
+   * would lose an epoch the journal claims happened — so `move` may
+   * be called TWICE for the same epoch across a restart, and never
+   * for two different epochs with the same number. A writer that
+   * records the epoch beside its rows, in one atomic write, therefore
+   * gets exactly-once: the repeat is recognised and dropped. That is
+   * the whole of a two-phase-commit sink, and it is this small
+   * because the epoch loop is lock-step.
+   *
+   * `recovered(epoch)` says the journal holds up to `epoch` and
+   * anything staged above it never happened; the stage is dropped.
+   *
+   * THIS BELONGS TO A STREAM, and it says so by throwing. Every pane
+   * must retire in ONE place for a single stage to see them all, and
+   * that is true of `Cluster.stream` (a streaming partition finishes
+   * nothing locally) and false of a batch run, where the completeness
+   * rule finishes panes inside each partition — on a WORKER, whose
+   * stage no coordinator will ever commit. So `finish` refuses to
+   * hand over a partition holding staged panes rather than dropping
+   * them quietly. In a batch run use `Sink.writing` with a writer
+   * keyed by `(start, key)`, which is stage 6c's answer and needs no
+   * commit at all.
+   */
+  def staging[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
+                            key: A => K, at: A => Long,
+                            agg: Aggregator[A, Acc, O])
+                           (move: (Int, Vector[Pane[K, O]]) => Unit)
+  : Sink[A, Long] { type W = Handed[K, Acc, Long]; type S = Open[K, Acc, Long] } =
+    val stage = mutable.ArrayBuffer.empty[Pane[K, O]]
+    val base = windowed(size, slide, lateness, key, at, agg, seeded = true)(
+      Aggregator[Pane[K, O], Long, Long](0L)((n, p) => { stage.synchronized { val _ = stage += p }; n + 1L })(
+        (a, b) => a + b)(identity))
+    new Sink[A, Long]:
+      type P = base.P
+      type W = Handed[K, Acc, Long]
+      type S = Open[K, Acc, Long]
+      def times: Vector[A => Long] = base.times
+      def start(bounds: Vector[Bounds]): P = base.start(bounds)
+      def step(p: P, a: A): Unit = base.step(p, a)
+      def finish(p: P): W =
+        val out = base.finish(p)
+        if stage.synchronized(stage.nonEmpty) then
+          throw IllegalStateException(
+            "a staging sink finished a PARTITION holding staged panes: the completeness rule " +
+              "wrote them on this worker, where no commit will ever reach them. A staging sink " +
+              "belongs to Cluster.stream; in a batch run use Sink.writing with a writer keyed " +
+              "by (start, key) — specs/dataflow.md, stage 9")
+        out
+      def peek(p: P): W = base.peek(p)
+      def empty: S = base.empty
+      def absorb(s: S, ws: Vector[W], watermark: Long): S = base.absorb(s, ws, watermark)
+      def emit(s: S): Long = base.emit(s)
+      def drops(ws: Vector[W]): Long = base.drops(ws)
+      def slack: Long = base.slack
+      def merged(ws: Vector[W]): Long = base.merged(ws)
+      override def committed(epoch: Int): Unit =
+        val batch = stage.synchronized { val b = stage.toVector; stage.clear(); b }
+        if batch.nonEmpty then move(epoch, batch)
+      override def recovered(epoch: Int): Unit = stage.synchronized(stage.clear())
+
+  def tumblingStaged[A, K, Acc, O](size: Long, lateness: Long,
+                                   key: A => K, at: A => Long,
+                                   agg: Aggregator[A, Acc, O])
+                                  (move: (Int, Vector[Pane[K, O]]) => Unit)
+  : Sink[A, Long] { type W = Handed[K, Acc, Long]; type S = Open[K, Acc, Long] } =
+    staging(size, size, lateness, key, at, agg)(move)
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
