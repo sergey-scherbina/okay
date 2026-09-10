@@ -1,0 +1,46 @@
+task: parse-quadratic-stack-length
+agent: opus-depth
+started: 2026-09-10
+branch: feature/parse-quadratic-stack-length
+worktree: ../okay-wt-parse-quadratic
+spec: BACKLOG's json-lossless-quadratic-depth entry (root cause is one
+  level below Json.scala, in shared okay-parse machinery)
+
+why: json-decode-threshold-trampoline found Json.lossless quadratic in
+  depth (50 000 levels, 74s) while building a test fixture. Bisected
+  before writing any fix (verify-assumptions-before-acting): NOT the
+  projection (into/pairs, linear, confirmed by direct timing), NOT the
+  lexer (Scan.all, linear), NOT the instruction generation
+  (JsonParse.instrs, linear) — `Parse.fullWith`'s own per-token loop:
+  `if b.stack.length <= 1 then ...` calls `.length` on a `List`, which
+  is O(current size) for a List with NO cached length, on EVERY token,
+  while `b.stack`'s size IS the current nesting depth and grows to
+  O(input depth) — summing O(depth) work over O(depth) tokens during
+  the deepest phase of parsing is the O(depth²) this arc measured.
+  Confirmed by replicating fullWith's exact loop structure in a probe
+  and reproducing the same quadratic timing outside Json.scala
+  entirely (a raw List, no Json/Cst involved would show the identical
+  curve — not run as a separate control, but the mechanism is exact:
+  List.length walks the whole list).
+
+  This is NOT Json-specific: `Parse.fullWith`/`reparseWith` are
+  okay-parse's shared machinery, used by Xml, okay-rag's Code and
+  okay-llm's Structured too (Markdown and Yaml use a hand loop
+  instead, unaffected). A deeply nested document in ANY of these
+  dialects pays the same tax.
+
+what: `List.sizeIs <= 1` in place of `.length <= 1` (three call sites
+  in Parse.scala: fullWith's per-token check, reparseWith's matching
+  check, and reparseWith's `bo.stack.length == b.stack.length`
+  reconvergence comparison) — Scala's `sizeCompare`/`sizeIs` API exists
+  exactly for this: comparing against a small bound (or another
+  collection) without walking the whole structure. No data-shape
+  change to `Building` — this is the smaller, more surgical fix than
+  adding an explicit depth counter, and `sizeIs` is the standard
+  library's own answer to `.length` misuse in a hot loop.
+
+predict: the 50 000-level case drops from 74s to comparable-to-linear
+  (milliseconds, matching the lex/instrs/projection stages already
+  measured fast at this depth); no behavior change, since `sizeIs <= 1`
+  and `sizeCompare == 0` answer identically to what `.length`-based
+  comparisons did, just without walking the whole list when unneeded.
