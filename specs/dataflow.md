@@ -200,9 +200,12 @@ than trusting the author.
   partitions), 6b (a dying worker's partition is replayed on a
   survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
   execution underneath, and the offers counted rather than promised).
-- **7 — the numbers.** A distributed lane in docs/benchmarks.md §20,
-  measured against Flink and Spark in the mode they are built for,
-  with what their fixed costs buy named where it belongs.
+- **7 — the numbers.** DONE. A distributed lane in
+  docs/benchmarks.md §20 — the Wrocław job across four real OS
+  processes, its wire weighed, and its FIXED cost separated from its
+  marginal one by the same least-squares split that section already
+  applies to Flink. What is NOT there, and says so: a cluster number
+  for Flink or Spark, which would need a cluster.
 
 ## Behavior
 
@@ -370,7 +373,28 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
 - [ ] durable checkpointing, so a COORDINATOR restart can resume —
       `dataflow-coordinator`
 
-Stage 7: written when the stage is claimed.
+Stage 7 — the numbers (MeasureWroclawCluster in compare, `Live`):
+- [x] the Wrocław job as a `Job[Days, R]`: submitted by NAME, its
+      plan built on every worker from one `Int`, its three partials
+      described by Schemas written once
+- [x] the eleven checksums equal on all four roads — eight fibres in
+      one JVM, the coordinator with in-JVM workers, over sockets, and
+      over four real OS processes — asserted before anything is timed
+- [x] the four roads timed, interleaved, best of five rounds: 1.00x /
+      1.65x / 2.00x / 1.83x, with the worst beside each
+- [x] the FIXED cost split from the marginal one over three feed
+      sizes: 14 ms and 18.1M ev/s in one JVM, 79 ms and 15.9M ev/s
+      over four processes — the distribution costs a constant, not a
+      rate
+- [x] what crosses, in BYTES: 6 830 878 for 1 255 298 events, in 16
+      requests, with the per-stage breakdown beside it
+- [x] Claim 2 priced: stage 4's keyed state crosses as 68 091
+      accumulators where a shuffle would move 1 255 298 records
+- [x] the codec's share measured on its own (111 ms decode, 67 ms
+      encode, single-threaded) — which is why the road adds only 70 ms
+- [ ] a real CLUSTER, and Flink and Spark on one too. Not measured
+      and not estimated: it needs machines this benchmark does not
+      have, and a number for it would be an invention
 
 ## The watermark, and why a slice is not a stream
 
@@ -984,3 +1008,85 @@ wire.
 dies and starts again re-offers everything, because it journals
 nothing. Within a run the identity is enough; across runs it needs
 the journal, which is `dataflow-coordinator`.
+
+### Stage 7 — the distributed road, weighed
+
+Stages 4 to 6 proved the same answer comes back across processes.
+None of them asked what that costs, and the engine's only published
+number (1.14x of §20's eight-thread hand-written lane) was measured
+inside one JVM. Stage 7 puts the Wrocław job — the whole five-stage
+one, eleven checksums — through the coordinator across four real OS
+processes and prices every step of the way there.
+
+**The four roads, and the money is where the second one is.**
+
+```
+  road                                            |   ms | (worst) |    ev/s | vs best
+  ------------------------------------------------|------|---------|---------|--------
+  8 fibres, one JVM (Flows.fan)                   |   84 |      89 | 14,944,023 | 1.00x
+  8 partitions, coordinator, workers in this JVM  |  139 |     155 |  9,030,920 | 1.65x
+  8 partitions, over sockets, one JVM             |  168 |     175 |  7,472,011 | 2.00x
+  8 partitions, over 4 OS PROCESSES               |  154 |     170 |  8,151,285 | 1.83x
+```
+
+The protocol and the CBOR are 1.65x; the sockets take it to 2.00x;
+and four separate processes cost nothing further. Repeated, the rows
+read 86, 144, 177 and 135 — the two transported roads swap places
+between runs, so what is true is that they are within a tenth of each
+other, and that FOUR PROCESSES ARE NOT SLOWER THAN FOUR SOCKETS IN
+ONE JVM. The codec measurement says why: encoding all eight partials
+on one thread is 67 ms and decoding them 111 ms, so in the one-JVM
+lanes the coordinator's decoding and the partitions' encoding share a
+heap and a collector, and in the process lane they do not.
+
+**The cost is FIXED, not marginal**, which is the finding this stage
+exists to produce:
+
+```
+  lane                                  | fixed cost |     marginal
+  --------------------------------------|------------|--------------
+  okay, 8 fibres, one JVM               |      14 ms | 18,098,329 ev/s
+  okay, 8 partitions over 4 processes   |      79 ms | 15,873,168 ev/s
+  flink, parallelism 4 (§20's own fit)  |     433 ms |  1,870,582 ev/s
+```
+
+Distributing costs about 65 ms ONCE and then a rate within about a
+tenth of the in-JVM one. The Flink row is there because the method is
+identical — §20 has fitted it the same way for two lanes since the
+section was written — and not because the deployments are comparable:
+Flink's 433 ms buys checkpointing and rescale in a MiniCluster, and
+neither engine here is on a cluster.
+
+**Claim 1, weighed.** 6 830 878 bytes cross for 1 255 298 events —
+5.44 per event, 3.94 per pane — in SIXTEEN requests, because a
+partition is a recipe: a job name and one `Int` go out, and the worker
+builds the plan and reads its own slice. Per stage:
+
+```
+  stage                                       | accumulators |     bytes | per event
+  --------------------------------------------|--------------|-----------|----------
+  2 — tumbling per route (138 keys)           |        1,458 |   265,240 |     0.211
+  3 — sliding per stop (2,482 keys x 3 panes) |       53,130 | 2,513,430 |     2.002
+  4 — keyed state, no window                  |       68,091 | 4,052,096 |     3.228
+```
+
+**Claim 2, priced.** Stage 4 is keyed state that depends on per-key
+order — Flink's `KeyedProcessFunction` over `ValueState`, and
+therefore a shuffle of all 1 255 298 records. Here it crosses as
+68 091 accumulators, 18 times fewer objects, because the question has
+an answer that combines.
+
+**A number that looked like a distribution cost and was arithmetic.**
+The first version of the route terminal held its ranking in a `Vector`
+compacted when it passed a threshold, and the threshold (4 096) was
+BELOW the compacted size (1 152 windows x 5 entries) — so it compacted
+on every add, and the lane read 973 ms where its own in-JVM reference
+reads 84. The fix was not a tuning: the accumulator is now a
+`LongMap`, exactly as `OkayLane.Sink`'s is, and it travels as a value
+through `Schema.SIso` — the codec's own newtype node, so the wire form
+is a case class and nothing in the engine knows the difference.
+
+**What stage 7 does not have, and will not invent**: a cluster. Both
+engines here run on one machine; a Flink or Spark number across
+machines needs machines, and the section says so where the rows are
+rather than in a footnote.

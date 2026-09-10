@@ -227,6 +227,17 @@ finishes nothing locally: offers equal panes exactly.
 Across RUNS there is no such promise. A coordinator that dies and
 starts again re-offers everything, because it journals nothing.
 
+**What the distributed road costs**, measured on §20's Wrocław job
+(docs/benchmarks.md, "The engine at a DISTANCE"): about 65 ms ONCE,
+and then a marginal rate within a tenth of the in-JVM one — 79 ms
+fixed and 15.9M ev/s over four OS processes against 14 ms and 18.1M
+in one JVM. Four processes are not slower than four sockets in one
+JVM, because in the one-JVM lanes the coordinator's decoding and the
+partitions' encoding share a heap. What crosses is 5.44 bytes per
+event in SIXTEEN requests for 1.26 million events, since a partition
+is a recipe: a job name and one `Int` go out, and the worker builds
+the plan and reads its own slice.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
@@ -360,9 +371,9 @@ val wire: Cluster.Worker[Double, Double] = c =>
   producing that merge rather than to parallelise it. See
   `dataflow-complete-panes`.
 
-Next per specs/dataflow.md: stage 7, the distributed lane in
-docs/benchmarks.md §20. Then the backlog —
-`dataflow-run-complete-panes`, `dataflow-fan-overhead` (about a third
-of a fan's time is in none of its sinks), and `dataflow-coordinator`,
-which is what a journalled coordinator would need for exactly-once
-ACROSS runs.
+Every stage of specs/dataflow.md is landed. What is left is the
+backlog: `dataflow-run-complete-panes`, `dataflow-fan-overhead` (about
+a third of a fan's time is in none of its sinks), and
+`dataflow-coordinator`, which is what a journalled coordinator would
+need for exactly-once ACROSS runs — and a real CLUSTER, which §20's
+distributed section declines to estimate.

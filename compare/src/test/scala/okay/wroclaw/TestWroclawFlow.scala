@@ -91,28 +91,13 @@ class TestWroclawFlow extends munit.FunSuite {
    * the gap ACROSS the boundary is short — and that question is not
    * the same one in the other order, which is exactly why this is a
    * `Sequential` and not an `Aggregator`.
+   *
+   * The value itself now lives in `src/main` beside the distributed
+   * job, which builds the same algebra on a worker from a name
+   * (specs/dataflow.md, stage 7).
    */
-  final case class Runs(first: Long, last: Long, n: Long, bunches: Long, gap: Long)
-  val bunching: Sequential[Ride, Runs, (Long, Long)] = new Sequential[Ride, Runs, (Long, Long)]:
-    def init: Runs = Runs(0, 0, 0, 0, 0)
-    def add(a: Runs, r: Ride): Runs =
-      if a.n == 0 then Runs(r.ts, r.ts, 1, 0, 0)
-      else
-        val g = Math.abs(r.ts - a.last)
-        if g < Job.BunchMs then Runs(a.first, r.ts, a.n + 1, a.bunches + 1, a.gap + g)
-        else Runs(a.first, r.ts, a.n + 1, a.bunches, a.gap)
-    def merge(a: Runs, b: Runs): Runs =
-      if a.n == 0 then b else if b.n == 0 then a
-      else
-        val g = Math.abs(b.first - a.last)
-        val hit = if g < Job.BunchMs then 1L else 0L
-        val add = if hit == 1L then g else 0L
-        Runs(a.first, b.last, a.n + b.n, a.bunches + b.bunches + hit, a.gap + b.gap + add)
-    def present(a: Runs): (Long, Long) = (a.bunches, a.gap)
-
-  val totals: Aggregator[(Long, (Long, Long)), (Long, Long), (Long, Long)] =
-    Aggregator[(Long, (Long, Long)), (Long, Long), (Long, Long)]((0L, 0L))((t, kv) =>
-      (t._1 + kv._2._1, t._2 + kv._2._2))((a, b) => (a._1 + b._1, a._2 + b._2))(identity)
+  val bunching: Sequential[Ride, Bunching.Runs, (Long, Long)] = Bunching.algebra
+  val totals: Aggregator[(Long, (Long, Long)), (Long, Long), (Long, Long)] = Bunching.totals
 
   test("stage 4 — keyed state as a Sequential: no shuffle, and the same count") {
     for p <- Vector(1, 2, 4, 8) do

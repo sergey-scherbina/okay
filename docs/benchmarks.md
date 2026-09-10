@@ -3888,8 +3888,9 @@ to, and their fixed costs buy recovery, rescale and running across
 machines — none of which this benchmark can show and none of which the
 in-process lanes offer at all. The single-node table is the honest
 comparison against the libraries; against the engines it is a
-statement about ONE machine, and the distributed comparison waits for
-okay to have a distributed lane.
+statement about ONE machine. okay now has a distributed lane of its
+own — "The engine at a DISTANCE", below — and what it adds is our
+road against our road, not a cluster against a cluster.
 
 ### The engines' fixed cost, separated from the marginal one
 
@@ -4441,3 +4442,114 @@ would have charged it for the producer as well. Both forms compute the
 same panes (`TestWindows` asserts it), so this is a choice with a
 price on it: the class in a loop, the stage where a window must sit in
 a pipeline beside other stages.
+
+### The engine at a DISTANCE — the same job over four OS processes
+
+Every number above was measured inside one JVM. §20's okay lanes are
+fibres, §20's Flink is a MiniCluster, §20's Spark is `local[4]`: one
+heap each. This section runs the identical job — the five stages, the
+eleven checksums — through okay's coordinator across FOUR REAL
+OPERATING-SYSTEM PROCESSES, and prices the difference.
+
+**What is compared, and what is not.** This is not okay-on-a-cluster
+against Flink-on-a-cluster. A cluster number for either engine needs a
+cluster, and inventing one would be worse than not having it. What
+these rows compare is our own in-process road against our own
+distributed road on the same box, plus one thing that CAN be read
+across engines: the fixed cost each pays before it has seen an event.
+
+**Four roads, one job** (four service days, 1 255 298 events, eight
+partitions, best of five interleaved rounds — every lane once per
+round, so the machine's drift is shared):
+
+| road | ms | (worst) | ev/s | vs best |
+|---|---:|---:|---:|---:|
+| 8 fibres, one JVM (`Flows.fan`) | 84 | 89 | 14 944 023 | 1.00x |
+| 8 partitions, coordinator, workers in this JVM | 139 | 155 | 9 030 920 | 1.65x |
+| 8 partitions, over sockets, one JVM | 168 | 175 | 7 472 011 | 2.00x |
+| 8 partitions, over 4 OS PROCESSES | 154 | 170 | 8 151 285 | 1.83x |
+
+Read in that order the table says where the money goes: the protocol
+and the CBOR cost 1.65x, the sockets take it to 2.00x, and four
+separate processes cost NOTHING FURTHER — they are the same road as
+the sockets, within the noise. Run again, the same four rows read 86,
+144, 177 and 135: the two transported roads swap places between runs,
+so the honest statement is that they are within a tenth of each other
+and both cost between 1.6x and 2.0x the in-JVM fan.
+
+**The distributed road's cost is FIXED, not marginal**, which is the
+finding, and it is the same least-squares split this section already
+applies to Flink — the same three feed sizes, so the rows read beside
+each other:
+
+| lane | fixed cost | marginal | the points |
+|---|---:|---:|---|
+| okay, 8 fibres, one JVM | 14 ms | 18 098 329 ev/s | 575k:45ms 1 255k:85ms 2 414k:147ms |
+| okay, 8 partitions over 4 processes | 79 ms | 15 873 168 ev/s | 575k:112ms 1 255k:162ms 2 414k:229ms |
+| flink, parallelism 4 (from the table above) | 433 ms | 1 870 582 ev/s | 604k:779ms 1 207k:1 042ms 2 414k:1 735ms |
+
+Distributing the job costs about 65 ms once — two round trips, a plan
+built on every worker, the sockets — and then a marginal rate within
+about a tenth of the in-JVM one. The Flink row is in the same table
+because the METHOD is the same, not because the deployments are: it is
+a MiniCluster in one JVM, so it is paying its fixed cost for
+machinery this lane does not have (checkpointing, rescale, a real
+cluster), and its marginal rate is a single-node one.
+
+**What actually crosses, weighed rather than described** (8
+partitions, four service days):
+
+| | |
+|---|---:|
+| panes the job produces | 1 734 893 |
+| accumulators reaching the coordinator | 122 679 |
+| requests the coordinator made | 16 |
+| BYTES of partials that crossed | 6 830 878 |
+| bytes per event | 5.44 |
+| bytes per pane | 3.94 |
+
+Sixteen requests for a job of 1.26 million events, because a partition
+is a RECIPE: the coordinator sends a job NAME and one `Int`, and the
+worker builds the plan and reads its own slice. Nothing goes over the
+wire on the way in.
+
+**And what those bytes are made of** — the same flow, one stage at a
+time:
+
+| stage | accumulators | bytes | per event |
+|---|---:|---:|---:|
+| 2 — tumbling per route (138 keys) | 1 458 | 265 240 | 0.211 |
+| 3 — sliding per stop (2 482 keys x 3 panes) | 53 130 | 2 513 430 | 2.002 |
+| 4 — keyed state, no window | 68 091 | 4 052 096 | 3.228 |
+
+**Stage 4's row is Claim 2 of specs/dataflow.md with a number on it.**
+Bus bunching is keyed state that depends on per-key order; Flink
+answers it with a `KeyedProcessFunction` over `ValueState`, which
+requires every record of a key on one machine — a SHUFFLE of all
+1 255 298 records. Here it crosses as 68 091 accumulators, one per key
+per partition, because the question has an answer that combines. 18
+times fewer objects, and the wire carries 4 MB where a shuffle of the
+records themselves would carry tens.
+
+**The codec is most of the difference, and it parallelises.** Decoding
+all eight partials on one thread takes 111 ms and encoding them 67 ms
+— 178 ms of work against a road that adds only ~70 ms end to end,
+because the encoding happens on eight partitions at once (in four
+separate heaps, in the process lane) and the decoding on eight fibres.
+That is also the answer to why four processes are not slower than four
+sockets in one JVM: in the one-JVM lanes the coordinator's decoding
+and the partitions' encoding share a heap and a garbage collector.
+
+**Two things this lane does not measure, said plainly.** The workers
+DERIVE their partition from the parameters, which here means parsing
+1.16 million GTFS stop times per process — the benchmark's data, not
+the engine's work, so every worker is warmed before a row is timed; a
+real deployment reads a file range or a topic offset instead. And this
+lane's in-JVM row is NOT the engine row of the tables above and must
+not be subtracted from it: a partial has to be a VALUE to cross, so
+these terminals are values and their windows use `Job.summaryStats`'
+flat accumulator where the in-process lane uses the tuple tree. That
+is the swap already priced at 1.40x on the same job above, so the
+direction of the difference (84 ms here against 97 ms there) is the
+expected one — and `TestNativeLanes` asserts the eleven checksums do
+not move across it.

@@ -1,5 +1,43 @@
 # Changelog
 
+## dataflow stage 7 — the distributed road, weighed
+
+Stages 4 to 6 proved the same answer comes back across processes.
+None of them asked what that costs, and the engine's only published
+number — 1.14x of §20's eight-thread hand-written lane — was measured
+inside one JVM. docs/benchmarks.md §20 now has "The engine at a
+DISTANCE": the whole Wrocław job, five stages and eleven checksums,
+through the coordinator across four real OS processes.
+
+THE COST IS FIXED, NOT MARGINAL. Distributing costs about 65 ms once
+— two round trips, a plan built on every worker, the sockets — and
+then a marginal rate within about a tenth of the in-JVM one (79 ms
+and 15.9M ev/s against 14 ms and 18.1M). The four roads read 1.00x
+(8 fibres in one JVM), 1.65x (the coordinator, workers in this JVM),
+2.00x (over sockets) and 1.83x (over four processes): FOUR PROCESSES
+ARE NOT SLOWER THAN FOUR SOCKETS IN ONE JVM, because in the one-JVM
+lanes the coordinator's decoding and the partitions' encoding share a
+heap.
+
+WHAT CROSSES, WEIGHED: 6 830 878 bytes for 1 255 298 events — 5.44 per
+event — in SIXTEEN requests, because a partition is a recipe and only
+a job name and one `Int` go out. Claim 2 now has a price on it: stage
+4's keyed state crosses as 68 091 accumulators where Flink's
+`ValueState` would shuffle all 1 255 298 records.
+
+WHAT IS NOT THERE, and the section says so where the rows are: a
+cluster. §20's Flink is a MiniCluster and its Spark is `local[4]`;
+a cluster number for either needs a cluster, and inventing one would
+be worse than not having it. What IS comparable across engines is the
+fixed cost, and that row is in the same table by the same fit.
+
+The Wrocław job is now a `Job[Days, R]` a worker process builds from
+one `Int` (`okay.wroclaw.WroclawJob`), with its terminals as values:
+`Schema.SIso` carries a mutable `LongMap` accumulator as a case class,
+which is the codec's newtype node doing exactly what it is for. Stage
+4's algebra moved to `src/main` beside it, so the in-process lane and
+the distributed one share one value rather than two copies.
+
 ## topk-stops-sorting-the-corpus — the retrieval path stopped paying a sort per segment
 
 The operator asked where else aggregation could earn its keep. It

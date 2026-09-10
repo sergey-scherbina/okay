@@ -1818,6 +1818,24 @@ lazy val compare = (project in file("compare"))
       "-Wconf:msg=unused explicit parameter:s",
     ),
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    // THE TEST CLASSPATH, AS A RESOURCE. §20's distributed lane
+    // (specs/dataflow.md, stage 7) starts real worker PROCESSES with
+    // `java -cp`, and a test running inside sbt cannot read its own
+    // classpath — `java.class.path` there is sbt's launcher. okay-
+    // cluster hands the same string over as a `-D` because its tests
+    // fork; this project's do not, and forking every comparison lane
+    // to pass one property would be a heavier change than writing the
+    // string down.
+    // (`dependencyClasspath`, not `fullClasspath`: the full one
+    // contains this project's own resources, so asking for it here
+    // would be a task cycle. The two class directories are settings.)
+    Test / resourceGenerators += Def.task {
+      val f = (Test / resourceManaged).value / "okay-cluster-cp.txt"
+      val cp = (Test / classDirectory).value +: (Compile / classDirectory).value +:
+        (Test / dependencyClasspath).value.map(_.data)
+      IO.write(f, cp.map(_.getAbsolutePath).mkString(java.io.File.pathSeparator))
+      Seq(f)
+    }.taskValue,
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-free" % "2.12.0",
       "org.typelevel" %% "cats-effect" % "3.5.7",
