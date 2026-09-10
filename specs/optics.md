@@ -146,6 +146,9 @@ Stage 0 — the core (optics-core, LANDED 2026-09-09):
       accepted is 1.5x. CLEARED for the traversal (1.00x), MARGINAL
       for a one-field lens (1.7x, 1.2 ns absolute) and a fold (1.7x),
       NOT cleared for a composed optic (3.5x) and `Lens.field` (2.4x).
+      THOSE NUMBERS ARE THE INTERPRETATION'S, and stages 8-11 have
+      since removed most of what they measured — see "The verdict, and
+      what changed it" at the end of this file.
       So stage 2 keeps `Ui.patch`'s navigation; `Ui.path` and
       `Ui.key` are a convenience over it. The numbers, and what the
       first measurement taught, are in Results.
@@ -795,3 +798,51 @@ Still on the interpretation for an affine: `foldMap` and `toVector`
 (they need the Monoid's `empty` for the absent branch, which the
 macro would have to summon) and `traverseOf` (it needs the
 applicative's `pure`). Named rather than discovered later.
+
+## The verdict, and what changed it (optics-verdict-refresh, 2026-09-10)
+
+The verdict recorded above was measured before any fusion existed:
+"the bar was 1.5x; the traversal clears it, the one-field lens sits on
+it, composition does not — optics are a convenience and derivation
+layer, not a hot-path primitive". Four lanes on 2026-09-10 made it
+false, and a false verdict is worse than no verdict, so here is the
+one the measurements support now.
+
+| what you write | optic | hand-written | ratio | measured in |
+|---|---|---|---|---|
+| `o.get(s)`, one field | 0.431 | 0.433 (`p.age`) | 1.00x | §9e |
+| `o.preview(s)`, an affine | 3.370 | 4.172 (`p.f.map(_.g)`) | 0.81x | §9f |
+| `o.set(b)(s)`, one field | 1.803 | 1.543 (`copy`) | 1.17x | §9d |
+| `o.set(b)(s)`, lens ∘ prism ∘ lens | 4.212 | 4.666 (nested `copy`) | 0.90x | §9d |
+| `Fuse.set(o)(b)(s)`, one field | 1.479 | 1.488 | 0.99x | §9c |
+| `Traversal.each.modify` over 1000 | 2063 | 1961 (`Vector.map`) | 1.05x | §9e |
+
+Every row is a MATCHED PAIR from one run: the optic and its control
+measured together, same box, same minute. They are not one table from
+one run — the sections say which — and a full-table re-measure was
+attempted for this entry and is not here for a reason worth writing
+down. It died at 82% with exit 143, the RAM guard's SIGTERM, on a box
+carrying four other builds; the numbers it did produce are unusable
+because the CONTROL was inflated with everything else (`copySet` read
+3.410 ns where the same lane reads 1.488 in a quiet window). A run
+whose control moves 2.3x cannot price anything.
+
+**What an optic costs today: nothing you can see, where the path is
+known when the code is compiled.** The read is the field read. The
+affine preview is the hand-written `map`. A composed update is the
+hand-written nested `copy`, allocation identical to the byte. The
+one-field `set` keeps a lambda `set(b)` has to answer, worth about a
+quarter of a nanosecond, and `Fuse.set` — which takes the whole
+directly — does not even keep that.
+
+**Where the old verdict still holds, exactly.** An optic chosen at RUN
+time cannot be fused: nothing is known to emit. There the
+interpretation's prices stand, and they are the numbers above the
+line. The same is true for `Lens.field[S]("name")`, whose expansion
+the planner still cannot read, and for `foldMap`, `toVector` and
+`traverseOf` through an affine.
+
+So the guidance is no longer "optics are a convenience layer". It is:
+name the path in code and the optic is free; choose it at run time and
+you are paying an interpreter, which is the honest trade and always
+was.

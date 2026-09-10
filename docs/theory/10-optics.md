@@ -349,15 +349,44 @@ road — `Function1`'s lens is `s => set(s, p(get(s)))`
 (`Optic.scala:153`) — with a test holding every override to the
 default it replaces. After that: one field 1.7x of a `copy` (1.2 ns),
 a traversal 1.00x of `Vector.map`, a composed optic 3.5x. The bar was
-1.5x, so optics are a convenience and derivation layer in this
-library and not a hot-path primitive; the UI's patch application keeps
-its own navigation, and the optic that names the same path exists
-beside it, tested against it.
+1.5x, so optics were a convenience and derivation layer in this
+library and not a hot-path primitive.
 
-That is the honest shape of the thing. The abstraction is not free,
-the places where it is free are known by measurement, and the places
-where it is not are written down rather than hidden behind an
-`inline`.
+**That verdict is no longer true, and the reason is the rest of this
+section.** Those numbers price the INTERPRETATION — the profunctor
+chain run at `Function1` or `Forget`, with its closures and its
+`Forget` per level. Where the optic's shape can be read at compile
+time, none of that is emitted any more: `set` and `modify` are inline
+extensions bodied by a planner that emits the update a person would
+write, and `get`, `preview`, `toVector`, `foldMap` and `traverseOf`
+emit the projection. Matched pairs, each measured with its own control
+in one run:
+
+| what you write | optic | hand-written | ratio | measured in |
+|---|---|---|---|---|
+| `o.get(s)`, one field | 0.431 | 0.433 (`p.age`) | 1.00x | §9e |
+| `o.preview(s)`, an affine | 3.370 | 4.172 (`p.f.map(_.g)`) | 0.81x | §9f |
+| `o.set(b)(s)`, one field | 1.803 | 1.543 (`copy`) | 1.17x | §9d |
+| `o.set(b)(s)`, lens ∘ prism ∘ lens | 4.212 | 4.666 (nested `copy`) | 0.90x | §9d |
+| `Fuse.set(o)(b)(s)`, one field | 1.479 | 1.488 | 0.99x | §9c |
+| `Traversal.each.modify` over 1000 | 2063 | 1961 (`Vector.map`) | 1.05x | §9e |
+
+Every row is a MATCHED PAIR from one run: the optic and its control
+measured together, same box, same minute. They are not one table from
+one run — the sections say which — and a full-table re-measure was
+attempted for this entry and is not here for a reason worth writing
+down. It died at 82% with exit 143, the RAM guard's SIGTERM, on a box
+carrying four other builds; the numbers it did produce are unusable
+because the CONTROL was inflated with everything else (`copySet` read
+3.410 ns where the same lane reads 1.488 in a quiet window). A run
+whose control moves 2.3x cannot price anything.
+
+So the honest shape of the thing has changed shape. The abstraction is
+free where the path is named in code, and it costs an interpreter
+where the path is chosen at run time — which is not a tax on optics,
+it is what interpreting anything costs. The places where it is free
+are known by measurement, and the places where it is not are written
+down rather than hidden behind an `inline`.
 
 ## References
 
