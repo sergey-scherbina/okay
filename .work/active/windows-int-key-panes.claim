@@ -1,6 +1,0 @@
-feature/windows-int-key-panes 2026-09-10T13:42:23Z
-agent: claude-code
-heartbeat: 2026-09-10T13:42:23Z
-status: in-progress — HELD, waiting for a quiet box
-done-so-far: WindowsBenchmark (JMH, two lanes) written; the one-lookup pane store written and gated on branch feature/windows-int-key-panes (33d194ea); NOT landed
-next: re-run compare/Jmh WindowsBenchmark before/after on a machine that is not carrying three sibling builds; land if the 8-11% is real, revert if it is not
