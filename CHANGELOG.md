@@ -1,5 +1,26 @@
 # Changelog
 
+## di-comparison — what the containers offer, feature by feature
+
+The operator asked whether the arc covers what Spring Boot, Guice,
+Dagger, ZLayer and distage do. docs/di.md now answers it as a table:
+what each capability is FOR, how it is spelled here, and where we have
+nothing — 27 rows, each our-side cell true of the code today.
+
+Most of it is spelled differently rather than missing: scanning is
+refused because the graph is an expression, qualifiers are opaque
+types rather than strings, request scope is a region rather than a
+proxy, lifecycle callbacks are the module itself, conditional beans
+are `if`, and interception is a handler around an effect row instead
+of a proxy woven behind one.
+
+Four gaps are named rather than buried: no set-binding of all
+implementations of a type (pass the `Vector`, as `Ops.routes` does),
+no memoisation of a module composed twice (measured: two instances,
+the nearest wins), no method interception, no event bus. The first two
+are small and could be built; the last two are refusals, with their
+reasons in the rows. Commit: LANDING.
+
 ## dataflow stage 6b — a replacement worker replays rather than restores
 
 6a's worker kept its operator state in memory, so one that died

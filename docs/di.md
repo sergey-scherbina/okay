@@ -287,6 +287,50 @@ code needs and what only the place can say:
 needs = Needs.declared(conf and wiring) :+ Need.Port(8090)
 ```
 
+## Against the containers next door
+
+What Spring Boot, Guice, Dagger, ZLayer and distage offer, how it is
+spelled here, and where we have nothing. Rows marked **no** are not
+oversights unless they say so.
+
+| What it is for | There | Here |
+|---|---|---|
+| Declare a component | `@Component`, `@Bean`, `@Provides`, `ZLayer.apply` | `module` / `moduleAs` / `Module.value` / `prototype` — a value, not an annotation |
+| Find components | classpath scanning, `@ComponentScan` | **no, by design**: the graph is the `and` expression, so nothing is found by accident and nothing is missing at start-up |
+| Wire by type | autowiring | the type IS the wiring; a missing one is a COMPILE error |
+| Two of one type | `@Qualifier`, `@Named`, `@Primary` | an opaque type per role; the winner is the nearest `and`, not an annotation |
+| Constructor injection | the recommended style | the only style — plain parameters and `using` clauses |
+| Field / setter injection | supported | **no, by design**: it needs mutation and defeats the compile-time check |
+| Singleton scope | default, `@Singleton` | the default: one `module`, one value for the region |
+| Prototype scope | `@Scope("prototype")`, `Provider<T>` | `prototype` + `fresh[A]` — and `fresh` answers a program, so the provider can add a release without touching a consumer |
+| Request / session scope | `@RequestScope` and a proxy | a region per request (`Resource.scoped`), or a nested `provide` — no proxy, and it works on any thread |
+| Custom scopes | `Scope` SPI | there is no SPI because there is nothing to extend: a scope is the extent of an expression |
+| Lifecycle callbacks | `@PostConstruct`, `DisposableBean`, `SmartLifecycle` | acquisition and release ARE the module; order is composition order, reverse on the way out |
+| Lazy beans | `@Lazy` | a module is a recipe: nothing is built until the region runs. Within a region, acquisition is eager and ordered |
+| Circular dependencies | resolved for setter/field injection | **impossible to express** — that is the feature |
+| Conditional beans | `@ConditionalOnProperty`, `@Profile` | ordinary Scala: `if config.x then Module.value(...) else module(...)`. The demo picks a memory store this way |
+| Configuration binding | `@Value`, `@ConfigurationProperties` | okay-conf: a case class with a derived `Schema`, `Conf.layered` for defaults → file → environment; the config is a module like any other |
+| Auto-configuration | starters | okay-spring ships one FOR Spring. Ours needs none: there is nothing to discover |
+| A collection of all implementations | `List<T>` injection, `Multibinder`, `MapBinder` | **no**: pass the `Vector` yourself, as `Ops.routes(…, guards: Vector[Reporting[?]])` does. Honest gap — a `Set`-binding would need a merge rule per type, which is `Fact` territory |
+| Assisted injection | `@AssistedInject`, factories | a capability that is a function: install `Make[A]` of your own shape. `New[A]` is the no-argument case |
+| Provider indirection | `Provider<T>`, `ObjectProvider<T>` | `New[A]`, and `wire[New[A]]` if you want it by hand |
+| Memoisation of a shared dependency | ZLayer builds a layer once however many depend on it | **partly**: within one composition a capability is installed once and shared. Compose the SAME module twice and you get two instances (measured) — the nearest wins and the other is dead weight. Install once |
+| The plan as data | distage's plan, Spring's conditions report | `m.plan` (from the type, nothing built) and `m.exports` (what was built, with classes) |
+| Verify the graph in a test | distage's plan check | the compiler; plus `plan` and `Needs.of[Root]` as assertions |
+| Method interception | AOP, `@Transactional`, `@Cacheable`, `@Async` | **no proxies, by design**: a handler wraps an effect row (`Resilient.http`, `Tracer.traced`, `Typed.transact`), which is visible in the type instead of woven behind it |
+| Events | `ApplicationEventPublisher`, `@EventListener` | **no**: use a channel or a hub — okay-demo publishes board changes through `Hub` |
+| Test overrides | `@MockBean`, `Modules.override` | one more `and`, or `provide` in the test — no framework |
+| Child injectors / private modules | `createChildInjector`, `PrivateModule` | a nested region or a nested `provide`; what a module installs is scoped to where it is applied |
+| Runtime reflection | central to Spring and Guice | none anywhere — which is why this runs on Scala Native and Scala.js, and why there is no AOT story to write |
+| Startup diagnostics | failure analyzers, "consider defining a bean" | the compiler names the missing type; `New`'s message names both roads when a prototype is confused with a singleton |
+| Living inside one of them | — | `okay-spring`, `okay-guice`, `okay-cdi`, `okay-zio`: the module renders into their vocabulary, and their container is a source of values for ours |
+
+**The four honest gaps**, restated so they are not buried in the
+table: no set-binding of all implementations of a type, no memoisation
+of a module composed twice, no method interception, no event bus. The
+first two are small and could be built; the last two are refusals with
+reasons, and the reasons are in the rows.
+
 ## Gotchas
 
 - **`Module` is a class, not an alias over its program.** An
