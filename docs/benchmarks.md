@@ -1941,6 +1941,37 @@ nothing". Also still interpreted for an affine: `foldMap` and
 `toVector`, which need the Monoid's `empty` for the absent branch, and
 `traverseOf`, which needs the applicative's `pure`.
 
+## 9g. Counting tokens without building them
+
+`Scan.all` answers the tokens, and the agent's BPE token counter then
+threw them away: `Scan.all(bpe)(s).tokens.count(_.channel == Syntax)`,
+on every message. `Scan.fold` runs the same walk on the sink road and
+folds each token as it is produced (specs/streaming-lex.md).
+
+| lane | µs/op | B/op |
+|---|---|---|
+| `bpeCountMaterialised` — `Scan.all(...).tokens.count(...)` | 156.6 ± 29.0 | 896 913 |
+| `bpeCountFolded` — `Scan.fold(...)` | 177.9 ± 42.6 | **817 393** |
+
+**−8.9% of the allocation, and the time did not move.** The bytes are
+the Vector of Tokens, 79 520 of them, and they are gone: the bars on
+allocation are ±0.3 B, so that number is exact. The TIME reads 13%
+worse for the fold and the bars are ±29 and ±43 on a box whose load
+ran 20 to 70 — overlapping ranges, nothing to claim in either
+direction. If the fold is genuinely slower, that has not been shown
+here, and it is not the reason to make this change.
+
+And the honest scale of it: 817 KB still go somewhere. The Vector was
+never the bulk — the scanner's per-character state and the `Token`
+objects themselves are, and `fold` still allocates every Token, it
+only stops collecting them. A count that never builds a Token needs a
+different interface (spans out, not tokens), which is filed and not
+done.
+
+Filed rather than claimed: the same walk on Scala Native and Scala.js,
+where the Vector's array is not the only thing the JVM's collector
+makes cheap.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

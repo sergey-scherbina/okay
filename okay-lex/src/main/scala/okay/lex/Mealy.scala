@@ -63,6 +63,19 @@ object Mealy {
       cur = next
     out.result()
 
+  /** run it over an input, FOLDING the answers — without this a
+   * composed machine still materialises everything it emits, which is
+   * what made the arrow impractical for a consumer that only reduces */
+  def fold[A, B, R](m: Mealy[A, B], as: IterableOnce[A])(z: R)(f: (R, B) => R): R =
+    var acc = z
+    var cur = m
+    val it = as.iterator
+    while it.hasNext do
+      val (next, b) = cur.run(it.next())
+      acc = f(acc, b)
+      cur = next
+    acc
+
   /** run it over the characters of a string */
   def runString[B](m: Mealy[Char, B], input: String): Vector[B] =
     runAll(m, input)

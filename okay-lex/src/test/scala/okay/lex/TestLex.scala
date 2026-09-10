@@ -87,6 +87,24 @@ class TestLex extends munit.FunSuite {
       assertEquals(Chunks.fold(chunked), expected, s"chunk size $size")
   }
 
+  test("fold answers what the tokens answer, and aggregate says it with an algebra") {
+    // the law: folding as the tokens are produced is folding the
+    // tokens. Asserted on the driver that DOES materialise, so a
+    // divergence in either shows here.
+    for input <- List(sample, "{\"a\": [1, 2, 3]}", "", "   ", "@@ tru") do
+      val all = Scan.all(Json.scan)(input).tokens
+      assertEquals(Scan.fold(Json.scan)(input)(0)((n, _) => n + 1), all.length, input)
+      assertEquals(Scan.fold(Json.scan)(input)("")((acc, t) => acc + t.lexeme),
+        all.map(_.lexeme).mkString, input)
+      assertEquals(Scan.fold(Json.scan)(input)(0)((n, t) =>
+        if t.channel == Channel.Syntax then n + 1 else n),
+        all.count(_.channel == Channel.Syntax), input)
+      // and the same through an Aggregator, which is where the
+      // aggregation algebra meets lexing
+      assertEquals(Scan.aggregate(Json.scan)(input)(okay.Aggregator.count[Token[K]]),
+        all.length.toLong, input)
+  }
+
   test("the sink road lexes what the pair road lexes") {
     // `stepInto` is ADDITIVE: the drivers read it, `step` stays, and
     // the two must not drift. `Delegating` implements only `step`, so

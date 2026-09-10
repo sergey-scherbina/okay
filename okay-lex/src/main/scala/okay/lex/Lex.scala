@@ -2,7 +2,7 @@ package okay.lex
 
 import scala.annotation.unused
 import scala.collection.mutable.Growable
-import okay.{+, Chunks, Stage, Writer, pure}
+import okay.{+, Aggregator, Chunks, Stage, Writer, pure}
 
 /** an exact source position; length in chars */
 final case class Span(offset: Int, line: Int, column: Int, length: Int)
@@ -144,6 +144,49 @@ object Scan {
     }
 
     go(sc.init, chars)
+
+  /**
+   * A sink that FOLDS instead of collecting: the tokens go straight
+   * into an accumulator and no Vector is ever built.
+   *
+   * `clear` resets to the start value rather than doing nothing,
+   * because `Growable` says clear empties the thing and a fold's
+   * empty is where it began.
+   */
+  private final class Folding[K, R](z: R, f: (R, Token[K]) => R) extends Growable[Token[K]]:
+    private var acc: R = z
+    def addOne(t: Token[K]): this.type =
+      acc = f(acc, t)
+      this
+    def clear(): Unit = acc = z
+    def result: R = acc
+
+  /**
+   * Every token folded AS IT IS PRODUCED, with nothing materialised.
+   *
+   * `all` answers the tokens, and a caller that only wants a count, a
+   * sum or a maximum then pays for a Vector of Tokens — each with a
+   * lexeme String and a Span — to produce one number. The agent's BPE
+   * token count did exactly that on every message. This is the same
+   * walk on the sink road (`stepInto`), and the flush's tail is the
+   * only Vector left.
+   */
+  def fold[K, S, R](sc: Scan[K, S])(input: String)(z: R)(f: (R, Token[K]) => R): R =
+    val sink = new Folding[K, R](z, f)
+    var s = sc.init
+    var i = 0
+    while i < input.length do
+      s = sc.stepInto(s, input.charAt(i), sink)
+      i += 1
+    sink.addAll(sc.flush(s))
+    sink.result
+
+  /** the same, said with a named aggregation algebra: `Aggregator`
+   * carries init, step and presentation, so `Scan.aggregate(sc)(text)
+   * (Aggregator.count)` is a count and nothing is rebuilt to get it */
+  def aggregate[K, S, Acc, Out](sc: Scan[K, S])(input: String)(
+      agg: Aggregator[Token[K], Acc, Out]): Out =
+    agg.present(fold(sc)(input)(agg.init)(agg.add))
 
   /** everything lexed at once, with the snapshots incremental
    * relexing resumes from */

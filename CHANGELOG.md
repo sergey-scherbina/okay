@@ -1,5 +1,54 @@
 # Changelog
 
+## scan-fold-without-tokens — the sink road's first consumer, and one door that stays shut
+
+The operator named the two doors opened this morning that had no
+caller: the aggregating optics and the scanner-as-arrow. One of them
+has a real caller and the other does not, and this entry says which.
+
+**The scanner.** `Provider.counting` and `Handlers.counter` counted a
+message's BPE tokens as `Scan.all(bpe)(s).tokens.count(...)` — a
+Vector of every Token, each with a lexeme String and a Span,
+materialised to produce one Int, on every message. `Scan.fold` runs
+the same walk on the sink road and folds each token as it is produced;
+`Scan.aggregate` is the same with an `Aggregator`, so a count is
+`Aggregator.count` and nothing is rebuilt to get it; and `Mealy.fold`
+lets a composed machine be consumed without materialising what it
+emits, which is what made the arrow impractical for a reducer.
+
+| lane | µs/op | B/op |
+|---|---|---|
+| `bpeCountMaterialised` — `Scan.all(...).tokens.count(...)` | 156.6 ± 29.0 | 896 913 |
+| `bpeCountFolded` — `Scan.fold(...)` | 177.9 ± 42.6 | **817 393** |
+
+**−8.9% of the allocation, and the time did not move.** The bytes are
+the Vector of Tokens, 79 520 of them, and they are gone: the bars on
+allocation are ±0.3 B, so that number is exact. The TIME reads 13%
+worse for the fold and the bars are ±29 and ±43 on a box whose load
+ran 20 to 70 — overlapping ranges, nothing to claim in either
+direction. If the fold is genuinely slower, that has not been shown
+here, and it is not the reason to make this change.
+
+And the honest scale of it: 817 KB still go somewhere. The Vector was
+never the bulk — the scanner's per-character state and the `Token`
+objects themselves are, and `fold` still allocates every Token, it
+only stops collecting them. A count that never builds a Token needs a
+different interface (spans out, not tokens), which is filed and not
+done.
+
+**The aggregating optics still have no caller, and that is the honest
+report.** okay-intent's nearest-centroid classifier IS
+aggregate-then-classify in shape, and putting the kaleidoscope and the
+classifying lens into it would have been churn: the pooling is a tuned
+mutable loop over Float arrays that the optic does not replace, and
+the code groups by slot before aggregating, so the composite buys
+nothing there. The door stays open for a caller that wants to PASS
+"where to aggregate" as a value; okay's own code does not.
+
+The law is asserted the only way it can be: folding as the tokens are
+produced IS folding the tokens, checked against `Scan.all` on five
+inputs including the empty one and one that is all garbage.
+
 ## di-comparison — what the containers offer, feature by feature
 
 The operator asked whether the arc covers what Spring Boot, Guice,

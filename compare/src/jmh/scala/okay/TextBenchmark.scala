@@ -156,4 +156,16 @@ class TextBenchmark {
 
   @Benchmark
   def bpeScan: Int = Scan.all(bpe)(corpus).tokens.length
+
+  // scan-fold-without-tokens: what the agent's token counter does on
+  // every message, before and after. The pair is matched — the same
+  // scanner, the same corpus, the same answer — and the only
+  // difference is whether the tokens are built to be counted.
+  @Benchmark
+  def bpeCountMaterialised: Int =
+    Scan.all(bpe)(corpus).tokens.count(_.channel == okay.lex.Channel.Syntax)
+
+  @Benchmark
+  def bpeCountFolded: Int =
+    Scan.fold(bpe)(corpus)(0)((n, t) => if t.channel == okay.lex.Channel.Syntax then n + 1 else n)
 }

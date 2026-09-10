@@ -59,6 +59,16 @@ class TestMealy extends munit.FunSuite {
     assert(got.nonEmpty)
   }
 
+  test("fold consumes a composed machine without materialising it") {
+    val syntax = A.compose(
+      A.arr[Vector[Token[Json.K]], Int](_.count(_.channel == Channel.Syntax)),
+      Mealy.ofScan(Json.scan))
+    val counted = Mealy.fold(syntax, chars)(0)(_ + _)
+    assertEquals(counted, Scan.all(Json.scan)(chars).tokens.count(_.channel == Channel.Syntax))
+    // and it agrees with the materialising driver, which is the law
+    assertEquals(counted, Mealy.runString(syntax, chars).sum)
+  }
+
   test("two machines over ONE input: lex and count newlines side by side") {
     def counting(n: Int): Mealy[Char, Int] =
       Mealy(c => { val m = if c == '\n' then n + 1 else n; (counting(m), m) })

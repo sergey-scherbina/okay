@@ -115,6 +115,51 @@ performance path; `lexer` derives both from one Scan.
   token count on every message — and the two hot scanners (`Json`,
   `Bpe`) are the two that moved.
 
+## Folding instead of collecting (scan-fold-without-tokens, 2026-09-10)
+
+`all` answers the tokens, and a caller that wants a number then pays
+for a Vector of Tokens — each with a lexeme String and a Span — to
+produce it. The agent's BPE token counter did exactly that on every
+message: `Scan.all(bpe)(s).tokens.count(_.channel == Syntax)`.
+
+- [x] `Scan.fold(sc)(input)(z)(f)` — the same walk on the sink road,
+      folding each token as it is produced. The flush's tail is the
+      only Vector left.
+- [x] `Scan.aggregate(sc)(input)(agg)` — the same with an
+      `Aggregator`, which carries init, step and presentation, so a
+      count is `Aggregator.count` and nothing is rebuilt to get it.
+- [x] `Mealy.fold`, without which a composed machine still
+      materialises everything it emits — the thing that made the
+      arrow impractical for a consumer that only reduces.
+- [x] the two agent counters use it.
+- [x] the law: folding as the tokens are produced IS folding the
+      tokens, asserted against `Scan.all` on five inputs including
+      the empty one and one that is all garbage.
+
+This is the sink road's first consumer outside the drivers, which is
+what `stepInto` was built for and had not had.
+
+| lane | µs/op | B/op |
+|---|---|---|
+| `bpeCountMaterialised` — `Scan.all(...).tokens.count(...)` | 156.6 ± 29.0 | 896 913 |
+| `bpeCountFolded` — `Scan.fold(...)` | 177.9 ± 42.6 | **817 393** |
+
+**−8.9% of the allocation, and the time did not move.** The bytes are
+the Vector of Tokens, 79 520 of them, and they are gone: the bars on
+allocation are ±0.3 B, so that number is exact. The TIME reads 13%
+worse for the fold and the bars are ±29 and ±43 on a box whose load
+ran 20 to 70 — overlapping ranges, nothing to claim in either
+direction. If the fold is genuinely slower, that has not been shown
+here, and it is not the reason to make this change.
+
+And the honest scale of it: 817 KB still go somewhere. The Vector was
+never the bulk — the scanner's per-character state and the `Token`
+objects themselves are, and `fold` still allocates every Token, it
+only stops collecting them. A count that never builds a Token needs a
+different interface (spans out, not tokens), which is filed and not
+done.
+
+
 ## Results
 - **−29% of the allocation, element-wise** (2026-09-10). 425 832 →
   301 056 B/op on the 2.5 KB JSON document; chunked −27.8%, full parse
