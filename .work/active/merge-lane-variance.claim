@@ -1,6 +1,0 @@
-feature/merge-lane-variance 2026-09-10T22:03:18Z
-agent: claude-code
-heartbeat: 2026-09-10T22:03:18Z
-status: in-progress
-done-so-far: claimed
-next: is the 4.5x spread per-FORK (a JVM-level decision) or within a fork (scheduling)? six forks, per-iteration output
