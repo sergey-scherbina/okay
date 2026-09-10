@@ -10,16 +10,27 @@ spec: specs/optics-outside.md (stage 4)
 why: the DESCRIBE interpreter still has no consumer that reads it, and
   "generate OpenAPI" would be a lane with no caller — the trap this
   arc has recorded three times. There IS a consumer already in the
-  tree, and it is broken. A probe path lives in THREE independent
-  string literals: okay-ops serves `r.url == "/healthz"` and
-  `"/readyz"`; okay-deploy's `Health` defaults to `"/healthz"` and
-  `"/readyz"` as unrelated literals in the k8s manifest; and
-  okay-script's ScriptDeploy writes a third pair by hand. They have
-  ALREADY diverged: Site.opsRoutes serves only `/healthz`, there is no
-  `/readyz` there at all, which is why ScriptDeploy points readiness
-  at `/healthz` to compensate. Nothing in the system can say so — a
-  manifest may name a probe nothing serves, and Kubernetes finds out
-  first, by restarting the pod.
+  tree. A probe path lives in THREE independent string literals:
+  okay-ops serves `r.url == "/healthz"` and `"/readyz"`; okay-deploy's
+  `Health` defaults to those two as unrelated literals, rendered into
+  SIX targets (k8s probes, an AWS ALB health_check, Azure, GCP, a
+  compose healthcheck); and okay-script's ScriptDeploy writes a third
+  pair by hand.
+
+  CORRECTION, after reading ScriptDeploy rather than grepping it (the
+  first version of this claim said the three had already diverged):
+  they have NOT. `readinessPath = "/healthz"` there is deliberate and
+  explained in place — a Site is ready when it is live, because the
+  pages compile before the port binds. The defect is not a present
+  divergence but the ABSENCE OF ANYTHING THAT WOULD NOTICE ONE:
+  rename an ops path in `Site` and the manifest keeps the old literal,
+  with Kubernetes finding out first by restarting the pod.
+
+  The strongest form of the argument is that okay-script already holds
+  this principle for SETTINGS and simply never extended it to paths —
+  its own comment says the settings "are DERIVED from the value the
+  program itself reads ... a name this deployment could invent does
+  not exist".
 
 what: Ops.routes and Site.opsRoutes become Routers. `Health` is built
   from a Router rather than from literals, so the assertion a test can
