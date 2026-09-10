@@ -306,32 +306,44 @@ instead of per call. `o.compiled` and `o.compiledLens` do exactly
 that, with `TestOptics` holding every compiled form to the optic it
 came from, on every family and every operation.
 
-It is slower. Per-lane minima over three forks, on a quiet box:
+It is slower, and the FIRST account of why was wrong. What follows is
+the second, taken with `-prof gc`, which is what settled it — the
+bytes are the evidence the times alone could not give.
 
-| lane | ns | of the hand-written |
+| lane | ns/op | B/op |
 |---|---|---|
-| `copy` by hand | 1.8 | 1.00x |
-| `Lens[S](_.f).set` | 3.0 | 1.68x |
-| the same, compiled without `Either` (`Shop`) | 3.9 | 2.17x |
-| the same, compiled through `Market` | 8.0 | 4.43x |
-| nested `copy` by hand | 4.2 | 1.00x |
-| lens ∘ prism ∘ lens `.set` | 15.1 | 3.55x |
-| the same, compiled | 26.7 | 6.29x |
+| `copy` by hand | 1.8 | 32 |
+| `Lens[S](_.f).set` | 3.3 | 48 |
+| the same, compiled without `Either` (`Shop`) | 4.1 | 48 |
+| the same, compiled through `Market` | 9.8 | 48 |
+| nested `copy` by hand | 4.5 | 72 |
+| lens ∘ prism ∘ lens `.set` | 15.3 | 176 |
+| the same, compiled | 33.0 | 296 |
 
-Two findings, and the second corrects this spec.
+**The retracted account.** This section first said "the `Either`
+costs more than the chain", from the times alone (3.9 against 8.0 for
+one lens with the pair's Either and without). The bytes refute it:
+both allocate 48 B/op, the same as the live optic. The `Either` never
+reaches the heap there — escape analysis removes it — so its cost is
+instructions, not allocation, and calling it the expensive part was
+reading one number and inventing a mechanism for it.
 
-**The `Either` costs more than the chain.** 3.9 against 8.0 is the
-same compilation with the pair's `Either` and without it: the affine's
-shape, not the interpretation, is the expensive part. That also
-re-explains the 3.5x of the composed lane, which this document had
-attributed to re-interpretation.
+**What the bytes say instead.** Compiling the COMPOSED optic adds 120
+bytes per operation: 176 live, 296 compiled. One cause covers both
+rows of the table. A live optic held in a `val` inlines into the call
+site whole, so escape analysis flattens every intermediate — the
+prism's `Either`, the lens's tuple — and they never allocate. A
+compiled optic is a field holding a lambda; the JIT does not inline
+through it, the same intermediates escape, and they become real
+allocation. It is not Either-versus-chain. It is inlined-versus-not:
+the `Either` is free while the chain inlines and expensive when it
+does not, which is why the single lens loses instructions (0.8 ns for
+the indirect call, 6.5 more through `Market`'s plumbing) while the
+composed one loses bytes.
 
-**The JIT already does this compilation, and better.** An optic in a
-`val` gives a monomorphic call site the JIT inlines straight through;
-a compiled pair is a field holding a lambda, which is one indirect
-call it does not. Pre-compiling a small optic on the JVM is a
-pessimisation, and the measurement says so twice — with the `Either`
-and without.
+**So the JIT already does this compilation, and better.** That was the
+other half of the first account and it survives, now with the
+allocation figures behind it rather than an assertion.
 
 What ships: the code stays, the way `Fused` stayed after
 handler-fusion's gate — the artifact a measurement was taken on,
@@ -447,8 +459,9 @@ Mirror route's array became a one-element-replaced VIEW of the
 original product (7.8 → 4.3). What remains is real, and what it is was WRONG here until optics-fast
 measured it (below): this said the cost was a composed optic
 re-interpreting itself on every `set`. It is not — the JIT flattens
-that. The cost is the `Either` a prism in the chain must carry, and
-`set(b)` with a varying `b` cannot be hoisted.
+that. The cost is the allocation the composed shape still leaves after
+inlining (176 B/op against a nested copy's 72), and `set(b)` with a
+varying `b` cannot be hoisted.
 The fold's 1.7x is the `Monoid` dictionary call per element against
 an inlined `+`.
 

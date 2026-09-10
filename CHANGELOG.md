@@ -18,15 +18,26 @@ compiled without the `Either` 3.9, compiled through `Market` 8.0,
 against a hand-written `copy` at 1.8; a composed lens ∘ prism ∘ lens
 15.1 live and 26.7 compiled, against a nested `copy` at 4.2.
 
-Two findings, the second of which corrects the spec. THE `EITHER`
-COSTS MORE THAN THE CHAIN: 3.9 against 8.0 is the same compilation
-with the pair's `Either` and without, so the affine's shape is the
-expensive part — and specs/optics.md had attributed the composed
-lane's 3.5x to re-interpretation, which was wrong and is now
-corrected there. THE JIT ALREADY DOES THIS COMPILATION, AND BETTER: an
-optic held in a `val` gives a monomorphic call site the JIT inlines
-straight through, while a compiled pair is a field holding a lambda,
-one indirect call it does not.
+Two findings, the second of which corrects the spec — and the first of
+which was itself wrong for a few hours and is corrected below. THE JIT
+ALREADY DOES THIS COMPILATION, AND BETTER: an optic held in a `val`
+gives a monomorphic call site the JIT inlines straight through, while
+a compiled pair is a field holding a lambda, one indirect call it does
+not. And specs/optics.md had attributed the composed lane's 3.5x to
+re-interpretation, which was wrong and is corrected there.
+
+CORRECTION, the same day, after `-prof gc` (the entry is amended
+rather than rewritten, because the first account shipped): this said
+"the Either costs more than the chain", inferred from times alone.
+The bytes refute it — the compiled lens allocates 48 B/op with the
+Either and 48 without, the same as the live optic, because escape
+analysis removes it. What the bytes do show is the composed optic
+paying 120 extra bytes per operation when compiled (176 -> 296): a
+live chain inlines whole and its intermediates are flattened, a
+compiled one hides behind a field-held lambda the JIT will not inline
+through, so the same intermediates escape and allocate. Not
+Either-versus-chain; inlined-versus-not. specs/optics.md carries the
+full table and the retraction.
 
 What ships is the artifact, not a fast path — the way `Fused` stayed
 after handler-fusion's gate: lawful, tested, with the numbers in the
