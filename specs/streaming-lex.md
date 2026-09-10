@@ -27,8 +27,34 @@ trait Scan[K, S]:
   def init: S
   def step(s: S, c: Char): (S, Chunk[Token[K]])   // zero or more tokens out
   def flush(s: S): Chunk[Token[K]]                // end of input: finish the tail
+  // the same step, writing into a sink instead of answering a pair;
+  // the default delegates to `step`, so this is additive
+  def stepInto(s: S, c: Char, out: Growable[Token[K]]): S
+
+/** a scanner written on the sink road: implement `stepInto` and get
+ * `step` (final) for the callers that still want the pair */
+trait ScanInto[K, S] extends Scan[K, S]
+
 def lexer[K, S](sc: Scan[K, S]): Stage[Char, Token[K], S]
 ```
+
+### The two roads, and why there are two
+`step` answers `(S, tokens)`, which allocates a `Tuple2` for EVERY
+input character and a `Vector` for every token — priced at ~19% and
+~23% of lexing's ~171 bytes per character (docs/benchmarks.md §10).
+`stepInto` hands the scanner the collection the driver is filling
+anyway, so a scanner that overrides it allocates neither.
+
+It is ADDITIVE by construction: `stepInto`'s default is `step` plus a
+`++=`, so every scanner written before it existed keeps working and
+costs exactly what it cost before, and `ScanInto` (where `stepInto`
+is abstract and `step` is final on top of it) makes the mutually
+delegating pair that would loop for ever impossible to write.
+
+The drivers — `Scan.all`, `Scan.chunks`, `Scan.relex`, and the
+hand-rolled loops in `Yaml.cst` and `Markdown.parse` — all read
+`stepInto`. `Scan.stage` keeps `step`: a `Stage` emits tokens
+one at a time through the pipeline, so it wants the pair.
 
 Chunked variant over `Chunk[Char]` (a tight while per chunk) is the
 performance path; `lexer` derives both from one Scan.
@@ -59,6 +85,9 @@ performance path; `lexer` derives both from one Scan.
       damaged region (probe: under half the input re-stepped; the
       key/rebase pair on Scan is what makes position-carrying states
       comparable across the shift)
+- [ ] the sink road answers exactly what the pair road answers, for
+      every scanner and every character (a scanner overriding
+      `stepInto` and one that does not, over the same input)
 - [x] chunked lexing agrees with element-wise lexing — Scan.chunks:
       chunk of chars in, chunk of tokens out, one tight while per
       chunk, the same Scan deriving both paths
@@ -75,3 +104,12 @@ performance path; `lexer` derives both from one Scan.
   coroutine form is generated, not hand-written per dialect.
 - **Error is a token channel, not an effect** — Throws never appears
   in a lexing pipeline; totality is the design invariant.
+- **The sink road is an interface change, taken only once it had
+  consumers** (scan-step-allocation, 2026-09-10). BACKLOG had refused
+  it in September for a reason worth keeping: the lossless road served
+  the tests and a damage fallback, and an interface exists for its
+  callers. By the time it was taken, six main-source consumers read it
+  — `Yaml.cst`, `Markdown.parse`, okay-rag's window splitter and code
+  chunker, okay-llm's streaming structured parse, and the agent's BPE
+  token count on every message — and the two hot scanners (`Json`,
+  `Bpe`) are the two that moved.
