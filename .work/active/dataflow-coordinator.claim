@@ -1,0 +1,48 @@
+task: dataflow-coordinator
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-coordinator
+worktree: ../okay-wt-dfc1
+spec: specs/dataflow.md, stage 8
+
+why: every stage since 6a ends with the same sentence — if the
+  COORDINATOR dies the run dies with it. It holds the folded state
+  and journals nothing, and no amount of worker recovery helps. It is
+  also the exact boundary stage 6c had to draw around exactly-once:
+  within a run the pane's identity is enough, ACROSS runs a restarted
+  coordinator re-offers everything.
+
+what: the coordinator's state as a VALUE, and a journal to put it in.
+
+  1. `Wire.state: Schema[S]` — the coordinator's running state
+     described the same way `wire: Schema[W]` describes a partial.
+     Every S in the file is already a value in disguise: a fold's is
+     its accumulator, a keyed sink's is a map of accumulators, a
+     windowed sink's is the open panes plus what has been retired.
+     `Schema.SIso` carries the mutable ones, as it already carries
+     stage 7's terminals.
+
+  2. `Checkpoint` — save(epoch, bytes) / latest — an injectable seam,
+     NOT a dependency. okay-cluster's compile graph stays at
+     okay-codec; okay-persist joins in TEST scope and proves the
+     assembly against the real log, the way okay-tls already joins
+     okay-persist's tests.
+
+  3. `Cluster.stream` commits after each epoch's absorb and resumes
+     from the last committed one. The workers need nothing new: 6b's
+     `Advance` already carries the epoch INDEX, so a replacement
+     replays to it — a resumed coordinator is a replacement for
+     everyone at once.
+
+the argument that this is small: the epoch loop is LOCK-STEP. Every
+  partition contributes exactly rounds 1..N before the coordinator
+  folds, so a checkpoint taken after absorbing round N is consistent
+  by construction. There is no alignment protocol to write, no
+  barrier to inject, and nothing to reconcile — which is the whole
+  reason the epoch loop was built that way in 6a.
+
+predict: the mechanism lands small and the honest sentence is again
+  the hard part. The window between WRITING a pane and COMMITTING the
+  epoch is at-least-once, so 6c's promise across runs is the same
+  promise it is within one — an outcome, on a keyed writer — and the
+  spec has to say where the window is rather than claim there is none.
