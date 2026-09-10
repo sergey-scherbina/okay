@@ -1,0 +1,22 @@
+task: di-prototype
+agent: opus5-di
+started: 2026-09-10
+heartbeat: 2026-09-10T11:15:18Z
+status: in-progress
+branch: feature/di-prototype
+worktree: ../okay-wt-proto
+spec: specs/di.md (lifetimes), docs/di.md
+
+why: an instance per CONSUMER needs a named trait per capability today,
+  and the pure and the releasing shapes have different types — so a
+  provider that starts closing its instances breaks every consumer.
+  A consumer must not know whether what it asks for is closed.
+
+what: core — `New[A]` (one type, `apply(): A ! Resource`), `fresh[A]`
+  as the consumer one-liner, `prototype` in two spellings mirroring
+  Module.value/module; `Resource.scoped` for the per-call region that
+  is spelled with two type arguments today. Tests including the claim
+  that the CALL SITE does not change when the provider adds a release.
+  docs/di.md gains the three lifetimes, samples compiled in TestDiDocs.
+
+next: New/fresh/prototype, then scoped, then the docs
