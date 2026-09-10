@@ -1,5 +1,28 @@
 # Backlog
 
+## iterative-recursive-decode (2026-09-10, found by lower-maxdepth-real-margin)
+
+- [ ] `Json.decode`, `Cbor.get`, and the two staged generators recurse
+      on the JVM stack for every level of a RECURSIVE schema — roughly
+      4-8 KB of stack per level (measured, `specs/codecs.md` "The
+      margin, measured"). `Codecs.maxDepth` was lowered to 64 to buy
+      real margin back (512 KB, half the default 1 MB stack) but that
+      trades away legitimately-shaped documents between 65 and 256
+      levels that read before, and `TestVector`'s OWN recursion test
+      already sits close to the new limit (`deep(Codecs.maxDepth / 4)`
+      — a quarter of it, deliberately, not a coincidence). The two
+      JSON roads' CONTAINER nesting and `JsonStrict.skipValue` are
+      already not like this — `Json.cst`'s builder walked 100 000
+      levels in this arc's first probe because its stack is on the
+      heap, not the JVM's. Converting the three recursive-SCHEMA
+      decoders to the same shape (an explicit work stack, CPS over a
+      heap-allocated continuation rather than the call stack) removes
+      the tradeoff entirely: `maxDepth` becomes a policy choice again,
+      not a stack budget, and can go back up. Write the spec entry
+      (spec-dev) before touching code — this spans three decoders
+      (the fold, the compile-time macro, the run-time macro) and they
+      have drifted out of sync before (TestCompat's Wire removal).
+
 Open work only, grouped by the module that owns it. Everything closed —
 landed, refuted, declined or answered — moved VERBATIM to
 `BACKLOG-ARCHIVE.md` on 2026-09-10 (backlog-cleanup): 314 closed entries

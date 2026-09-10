@@ -1,5 +1,44 @@
 # Changelog
 
+## lower-maxdepth-real-margin — Codecs.maxDepth: 256 → 64, and what picking a number taught
+
+stack-depth-margin measured and did not choose. The operator asked for
+step 1 of two: pick a real number from the measurement instead of
+leaving the margin at zero.
+
+**32 looked right on paper** (a quarter of the default 1 MB stack,
+extrapolating the ~8 KB/level estimate) **and could not be trusted**:
+measured directly, both 32 and the levels near it landed inside the
+same noise this arc already found once — a coarse probe below ~128 KB
+reported a flat "16 KB" across a wide range of shallow depths, which
+turned out to be the JVM silently granting more stack than the
+thread's requested `stackSize`, not the door's real cost. 64 measured
+STABLE instead, across repeated rounds and separate JVM processes: the
+worst doors (`Cbor.read`, `Staged.cbor` of a recursive schema) need
+**512 KB** — half the default stack, confirmed with `TestStackBytes`'s
+`needs` now taking the MAX of 3 rounds rather than one shot.
+
+**What the number broke is the finding worth keeping.** `TestVector`'s
+own recursion stress test — "the type that filed the task", modelled on
+`okay-ui`'s tree — built a document 64 tree levels deep, 128 containers,
+which already needs real stack at the new limit. Grepped the whole
+repository: no real consumer (`okay-ui`'s own suites included) nests
+anywhere near that deep; `TestVector`'s hardcoded `64` was a stress
+number chosen before this limit existed, not a requirement, and now
+reads `Codecs.maxDepth / 4` so it cannot silently outlive the limit
+again. But the fact that an utterly ordinary-sounding "64-level tree"
+sits this close to the danger zone is the argument for the second half
+of the operator's plan: picking a bigger round number buys
+compatibility back at the direct cost of the margin this lane exists
+for, because the real problem is the ~4-8 KB of JVM stack every
+recursive-schema decoder spends PER LEVEL, not the specific number
+chosen. BACKLOG gets `iterative-recursive-decode`: an explicit
+heap-allocated work stack in place of call-stack recursion removes the
+tradeoff rather than budgeting around it, the way `Json.cst`'s builder
+and `JsonStrict.skipValue` already avoid it.
+
+153 tests in okay-codec (JVM), 151 on JS and Native.
+
 ## optics-arc-2 — aggregation, arrows, and the lens that may create
 
 The operator read the survey and said take all three, and put the

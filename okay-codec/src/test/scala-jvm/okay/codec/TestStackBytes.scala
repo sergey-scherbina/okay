@@ -60,11 +60,16 @@ class TestStackBytes extends munit.FunSuite:
     t.join()
     out
 
-  /** the smallest power-of-two stack the door completes on */
+  /** the smallest power-of-two stack the door completes on — MAX of 3
+    * rounds (bench-one-round-lies): a cold JIT state can need noticeably
+    * more than a warm one for the same door, so the min-of-3 that would
+    * be right for a PERFORMANCE number is wrong for a SAFETY one here */
   def needs(door: () => Boolean): Int =
-    var kb = 16
-    while kb <= 8192 && onStack(kb)(door) != Some(true) do kb *= 2
-    kb
+    (1 to 3).map { _ =>
+      var kb = 16
+      while kb <= 8192 && onStack(kb)(door) != Some(true) do kb *= 2
+      kb
+    }.max
 
   test("a full-depth decode fits in 2 MB on every door, and the fast parse in 512 KB") {
     val measured = doors.map((name, door) => (name, needs(door)))

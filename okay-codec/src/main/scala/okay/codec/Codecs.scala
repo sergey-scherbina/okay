@@ -44,13 +44,35 @@ object Codecs {
    * default stack; the CBOR decoder at 5 000 and the strict JSON door
    * at 20 000 levels of a RECURSIVE schema with sbt's `-Xss8m`.
    *
-   * 256 is deliberately well under every death measured and well over
-   * any message anyone writes: serde_json's limit is 128, Jackson's
-   * 1000, CPython's about 1000. The number is one number so that the
-   * two wires cannot drift into answering differently — which is the
-   * defect the whole unknown-fields arc was about.
+   * The number moved once already: 256 was chosen by precedent
+   * (serde_json's limit is 128, Jackson's 1000, CPython's about
+   * 1000), not by what THIS module's frames cost — and MEASURED
+   * 2026-09-10 (stack-depth-margin), a full-depth decode of a
+   * RECURSIVE schema at 256 needed the WHOLE default 1 MB JVM thread
+   * stack (`Cbor.read`, `Json.read`, `Staged.cbor`: 1024 KB), leaving
+   * no margin for the caller — the limit existed to convert an
+   * overflow into a refusal, and on a default-stack thread it was not
+   * reliably doing that.
+   *
+   * 64 is chosen from the same measurement (`TestStackBytes`, which
+   * this number must keep passing): the worst door needs 512 KB at
+   * this depth — half the default stack, confirmed stable across
+   * repeated runs and separate JVMs, not a one-off. It is still above
+   * serde_json's 128 in what it REFUSES (a message this shallow is
+   * not a message this stack cannot afford), while leaving the
+   * caller real room. The number is one number so the two wires
+   * cannot drift into answering differently — the defect the whole
+   * unknown-fields arc was about.
+   *
+   * This bounds the SYMPTOM, not the cause: the interpreted CBOR/JSON
+   * decoders still cost real per-level stack for a recursive schema
+   * (~8 KB/level, `TestStackBytes`'s "honest" test). Removing that
+   * cost — an iterative decoder with an explicit heap stack, as
+   * `Json.cst`'s builder and `JsonStrict.skipValue` already are — is
+   * BACKLOG's `iterative-recursive-decode`; once it lands, this
+   * number can go back up without the tradeoff it makes today.
    */
-  val maxDepth: Int = 256
+  val maxDepth: Int = 64
 
   trait Provider:
     def name: String

@@ -536,23 +536,58 @@ frames of slack rather than a fraction of a measurement.
 tight platform is not the browser. It is a JVM thread with the DEFAULT
 1 MB stack, where a full-depth decode of a RECURSIVE schema needs the
 whole megabyte and leaves nothing for the caller — `Cbor.read[Tree]`
-costs 16 KB at 8 levels and 1024 KB at 127, so about 8 KB of stack per
-tree level through the interpreted fold. sbt's `-Xss8m` and macOS's
-8 MB main thread are what hid it; the numbers in the section above
-(death between 1 000 and 5 000 levels) were measured there.
+costs 16 KB at 8 levels and 1024 KB at 127, roughly 4-8 KB of stack per
+tree level through the interpreted fold (the exact figure is
+threshold-y at small depths — a coarse probe kept reading a flat
+"16 KB" across a wide range of shallow depths, which turned out to be
+the JVM silently granting more than the requested `stackSize`, not the
+door's real cost; the numbers above ~128 KB, where independent runs
+agree, are the ones this arc trusts). sbt's `-Xss8m` and macOS's 8 MB
+main thread are what hid the finding in the first place; the "death
+between 1 000 and 5 000 levels" figures above were measured there.
 
-Nothing is deployed on a 1 MB thread decoding 256-deep recursive
-documents today, so this lane MEASURED and did not choose. The two
-roads, for whoever picks it up:
+**One round of the fix, lower-maxdepth-real-margin (2026-09-10):**
+`Codecs.maxDepth` is now **64**, chosen by measuring candidates rather
+than extrapolating arithmetic — 32 looked right on paper (a quarter of
+the default stack) but landed inside the same measurement noise as
+above and could not be trusted; 64 measured STABLE across repeated
+rounds and separate JVM processes: the worst doors (`Cbor.read`,
+`Staged.cbor` of a recursive schema) need **512 KB**, exactly half the
+default 1 MB stack — real room for the caller for the first time.
+`TestStackBytes.needs` takes the MAX of 3 rounds now, not one shot: a
+cold JIT state needs noticeably more than a warm one for this code,
+and a safety number built from the lucky round is not a safety number.
 
-- lower `Codecs.maxDepth` to ~64, which puts the worst door at 256 KB —
-  a quarter of a default thread. It is below serde_json's 128 and it
-  refuses documents between 65 and 256 levels that read today;
-- or take the per-level cost out: the two JSON roads and `Cbor.get`
-  recurse where `Json.cst`'s builder and `JsonStrict.skipValue` do not
-  — the CST road walked 100 000 levels in the first probe of this arc
-  because it carries its stack on the heap. Iterative decoders make the
-  limit a policy rather than a rescue, and then 256 is free.
+**What this broke, and what that is evidence of.** `TestVector`'s own
+recursion stress test — "the type that filed the task", modelled on
+`okay-ui`'s tree — built a document 64 tree LEVELS deep, which is 128
+CONTAINERS (an object holding an array, twice per level), and 128
+containers already needs real stack under the new limit. No consumer
+anywhere in this repository (`okay-ui`'s own suites included) nests a
+real tree anywhere near that deep — grepped across the whole tree,
+`TestVector`'s `deep(n)` was the only hardcoded recursion depth outside
+okay-codec itself — so its literal `64` was a stress number picked
+before this limit existed, not a compatibility requirement; it now
+reads `Codecs.maxDepth / 4`, staying a quarter of whatever the limit is
+instead of silently outliving it again. This is also the clearest
+argument for the second road below: an ordinary-sounding "64-level
+tree" already sits close to the danger zone, so picking a bigger round
+number for `maxDepth` buys compatibility back at the direct cost of the
+margin this lane exists for.
+
+The two roads, for whoever picks up the second:
+
+- **done, this lane:** `Codecs.maxDepth` = 64, worst door 512 KB (half
+  the default stack) — a real, measured, repeatable improvement over
+  256's zero margin, at the cost of refusing legitimately-shaped
+  documents between 65 and 256 levels that read today;
+- **iterative-recursive-decode (BACKLOG):** take the per-level cost out
+  instead of budgeting around it. The two JSON roads and `Cbor.get`
+  recurse on the JVM stack where `Json.cst`'s builder and
+  `JsonStrict.skipValue` do not — the CST road walked 100 000 levels in
+  the first probe of this arc because its stack is on the heap. Once
+  every decoder is iterative, `maxDepth` is a policy choice again, not
+  a stack budget, and can go back up without this lane's tradeoff.
 
 One more fact worth writing down, because it changed how this lane was
 written: a stack overflow on Scala Native 0.5.12 is a catchable
@@ -568,10 +603,23 @@ Behavior:
 - [x] the calibration recursion is proved to consume stack (JVM and JS;
       skipped on Native by the rule above) — a loop would make the law
       vacuous
-- [x] the JVM cost of every door at the limit is measured in bytes and
-      bounded: 2 MB for any door, 512 KB for the fast value parser
+- [x] the JVM cost of every door at the limit is measured in bytes,
+      taken as the MAX of 3 rounds, and bounded: 512 KB is the worst
+      door at `Codecs.maxDepth` = 64 — half the default 1 MB stack
 - [x] the measurement is proved to measure DEPTH: eight tree levels
       cost 16 KB where 127 cost 1024
+
+## The limit itself, lowered (2026-09-10, lower-maxdepth-real-margin)
+
+`Codecs.maxDepth`: 256 → **64**, picked by measuring candidates (32,
+64) rather than halving the earlier per-level estimate by arithmetic —
+32 measured inside noise too small to trust, 64 measured stable
+(512 KB, half the default stack) across repeated rounds and separate
+JVM processes. See "The margin, measured" above for the full finding,
+including what this broke (`TestVector`'s recursion stress test
+hardcoded a depth that outlived the limit — now `Codecs.maxDepth / 4`)
+and the road that removes the tradeoff entirely
+(`iterative-recursive-decode`, BACKLOG).
 
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends

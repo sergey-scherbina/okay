@@ -34,7 +34,13 @@ class TestVector extends munit.FunSuite {
     def deep(n: Int): Tree =
       if n == 0 then Tree("leaf", Vector.empty)
       else Tree(s"n$n", Vector(deep(n - 1), Tree(s"s$n", Vector.empty)))
-    val t = deep(64)
+    // a plain literal here once outlived Codecs.maxDepth (this test
+    // proves recursion WORKS, not how deep the wire's limit is) — a
+    // hardcoded 64 silently exceeded a maxDepth lowered to 64
+    // (lower-maxdepth-real-margin, 2026-09-10): each level of `deep`
+    // is an object holding an array, two containers, so this stays a
+    // comfortable quarter of whatever the limit is
+    val t = deep(Codecs.maxDepth / 4)
     assertEquals(Json.read[Tree](Json.write(t)), Right(t))
     assertEquals(Cbor.read[Tree](Cbor.write(t)), Right(t))
   }
