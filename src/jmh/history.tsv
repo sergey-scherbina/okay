@@ -1736,3 +1736,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-10	HEAD	20	optic-selector-lens-fused-time	1.479	1.488	0.99	ns/op, lower better: Fuse.set(Lens[P](_.age)) vs the hand-written copy; was 2.600 as a live optic
 2026-09-10	HEAD	20	optic-selector-lens-fused-alloc	24	24	1.00	B/op: identical to the hand-written copy; the live optic was 40
 2026-09-10	HEAD	20	optic-selector-composed-fused	4.213	3.713	1.13	ns/op vs the hand-written nested copy; allocation IDENTICAL at 64 B/op, against the live composed optic's 16.547 ns / 168 B
+2026-09-10	HEAD	47	optic-composed-set-by-default	4.212	16.547	0.25	ns/op, lower better: `o.set(b)(s)` on a val-held lens-prism-lens chain, fusing by default vs the interpretation; 64 vs 168 B/op, and a hand-written nested copy is 4.666 / 64
+2026-09-10	HEAD	47	optic-one-field-set-by-default	1.803	2.600	0.69	ns/op: the same for one field; 24 vs 40 B/op, hand-written 1.543 / 24. The 0.26 ns over Fuse.set is the lambda `set(b)` answers
+2026-09-10	HEAD	47	optic-fuse-by-default-compile	16	17	0.94	SECONDS, okayJVM/clean+Test/compile, per-side minimum of 3 alternating rounds with a fresh sbt each: the macro at every call site is NOT measurable. A 61-vs-32 reading in one warm sbt was JIT warm-up

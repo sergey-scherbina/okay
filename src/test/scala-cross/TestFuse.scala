@@ -23,6 +23,10 @@ class TestFuse extends munit.FunSuite {
   inline def zip = Lens[Address, Address, Int, Int](_.zip, (s, v) => s.copy(zip = v))
   inline def address =
     Lens[Person, Person, Option[Address], Option[Address]](_.address, (s, v) => s.copy(address = v))
+  /** an optic in a `val`, which is how one is normally stored: a
+   * private member is fixed by the call site's type, so it fuses */
+  private val ageVal: Lens[Person, Person, Int, Int] = Lens[Person](_.age)
+
   /** the same lens through the selector macro — FUSED since
    * optics-zero-tax, which is the shape most code actually writes */
   inline def ageBySelector = Lens[Person](_.age)
@@ -105,6 +109,38 @@ class TestFuse extends munit.FunSuite {
     assertEquals(Fuse.set(ageBySelector)(7)(p).age, 7)              // the selector macro
     assertEquals(Fuse.set(selectorChain)("K")(p).home.city, "K")    // two of them, composed
     assertEquals(Fuse.modify(ageBySelector)(_ + 1)(p).age, 2)
+
+    // and since optics-fuse-by-default, WITHOUT naming Fuse at all:
+    // `.set` and `.modify` are the same macro
+    assertEquals(age.set(7)(p).age, 7)
+    assertEquals(ageBySelector.set(7)(p).age, 7)
+    assertEquals(selectorChain.set("K")(p).home.city, "K")
+    // an optic stored in a private `val`, which is how code keeps one
+    assertEquals(ageVal.set(7)(p).age, 7)
+    assertEquals(ageVal.modify(_ + 1)(p).age, 2)
+  }
+
+  test("the boundary of what a `val` fixes, stated by what throws") {
+    // The planner follows a definition only where the call site's type
+    // FIXES it. A private member does; a `var` and an overridable one
+    // do not. This test does not assert the boundary in words: the
+    // poisoned instance makes the unfused side throw, so the
+    // assertions below say which side each shape is on.
+    given poisoned: Optic.Strong[Function1] with
+      def dimap[A, B, C, D](p: A => B)(f: C => A, g: B => D): C => D =
+        throw AssertionError("fell back")
+      def first[A, B, C](p: A => B): ((A, C)) => (B, C) = throw AssertionError("fell back")
+      override def lens[S, T, A, B](get: S => A, set: (S, B) => T)(p: A => B): S => T =
+        throw AssertionError("fell back")
+
+    val p = Person("ada", 1, None, Address("H", 3))
+    assertEquals(ageVal.set(5)(p).age, 5)                     // a private val: fused
+    var mutable: Lens[Person, Person, Int, Int] = Lens[Person](_.age)
+    // the message says it reached the interpretation, which is the
+    // whole point of the assertion — a `var` is never followed
+    assertEquals(intercept[AssertionError](mutable.set(5)(p)).getMessage, "fell back")
+    mutable = Lens[Person, Person, Int, Int](_.age, (s, v) => s.copy(age = v))
+    assertEquals(intercept[AssertionError](mutable.set(5)(p)).getMessage, "fell back")
   }
 
   test("the fused code allocates nothing the hand-written update does not") {

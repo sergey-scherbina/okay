@@ -1839,6 +1839,38 @@ fused, by definition, and `get`/`foldMap`/`traverseOf` are not fused
 at all — only `set` and `modify` are. The convenience layer's price
 stands where the path is not known until run time.
 
+## 9d. Fusing by default
+
+§9c removed the tax on `Fuse.set(Lens[S](_.f))`. It left the tax on
+`o.set(b)(s)`, which is what people write. `set` and `modify` are now
+inline extensions bodied by the same planner, and the planner follows
+a plain `val` (specs/optics.md stage 9).
+
+| lane | before | now | hand-written |
+|---|---|---|---|
+| `lensSet` — `age.set(n)(p)`, the optic in a `val` | 2.600 ns / 40 B | **1.803 / 24** | `copySet` 1.543 / 24 |
+| `composedSet` — a lens ∘ prism ∘ lens chain, all `val`s | 16.547 / 168 | **4.212 / 64** | `nestedCopy` 4.666 / 64 |
+| `fieldSet` — `Lens.field[S]("age")`, still unread | 4.3 / — | 3.919 / 56 | 1.543 / 24 |
+| `traversalOver` over 1000 | 1.00x of `map` | 2063 / 18 648 | `vectorMap` 1961 / 18 648 |
+
+The composed row is the one that matters: an optic chain held in
+`val`s, used as `o.set(b)(s)`, went from 16.5 ns and 168 bytes to 4.2
+and 64 — a hand-written nested `copy`, to the byte. The single-field
+row keeps a lambda the whole-taking `Fuse.set` does not, worth about
+0.2 ns, and allocates the hand-written 24 bytes either way.
+
+`Lens.field[S]("age")` is the row that did not move, as documented: its
+expansion is a block with a statement in it and the planner takes
+statement-free blocks. It is the slowest lens form and the least
+idiomatic.
+
+**The compile-time price is below this measurement's noise.**
+Alternating A/B with a fresh sbt per run: 27/16/17 s with the change
+against 20/17/22 s without, minima 16 and 17. An earlier 61-against-32
+reading was JIT warm-up inside one sbt — the first compile in a cold
+sbt is the slow one, and comparing a cold run against a warm one
+measures the JVM, not the code.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.

@@ -1,5 +1,44 @@
 # Changelog
 
+## optics-fuse-by-default — nobody has to name the fusion any more
+
+The operator asked why `Fuse` has to be called by name. It does not.
+`set` and `modify` are inline extensions now, with an inline receiver
+and the same planner as their body, so `o.set(b)(s)` emits the update
+a person would write wherever the shape can be read. It always
+compiles: what cannot be read falls back to the interpretation, which
+is what this extension did in every case before.
+
+The change that makes it worth anything is the second one. The planner
+followed only an `inline def`, and an optic lives in a `val`. It
+follows a `val` now, and the soundness argument is the planner itself:
+it succeeds only on pure optic CONSTRUCTIONS — a lens with its halves,
+a selector, `Prism.some`, an `andThen` of those — so following a
+definition can only ever emit what that expression means. What is
+excluded is anything the call site's type does not fix: a `var`, an
+overridable member. TestFuse states that boundary by what THROWS under
+a poisoned interpretation rather than in a comment.
+
+| lane | before | now | hand-written |
+|---|---|---|---|
+| `lensSet` — `age.set(n)(p)`, the optic in a `val` | 2.600 ns / 40 B | **1.803 / 24** | `copySet` 1.543 / 24 |
+| `composedSet` — a lens ∘ prism ∘ lens chain, all `val`s | 16.547 / 168 | **4.212 / 64** | `nestedCopy` 4.666 / 64 |
+| `fieldSet` — `Lens.field[S]("age")`, still unread | 4.3 / — | 3.919 / 56 | 1.543 / 24 |
+| `traversalOver` over 1000 | 1.00x of `map` | 2063 / 18 648 | `vectorMap` 1961 / 18 648 |
+
+The composed row is the point: a chain held in `val`s, used as
+`o.set(b)(s)`, went from 16.5 ns and 168 bytes to 4.2 and 64 — a
+hand-written nested `copy`, to the byte, 3.9x faster.
+
+**And the price everyone would expect is not there.** Every `.set` and
+`.modify` call site now runs a macro, so the compile time was the
+thing to measure before keeping this. Alternating A/B with a fresh
+sbt per run: minima 16 s against 17 s, ranges overlapping. An earlier
+61-against-32 reading was JIT warm-up inside one warm sbt, which is
+the JVM and not the code — worth writing down because it nearly
+argued the lane away.
+
+
 ## cbor-decode-threshold-trampoline — Cbor.get, native to a threshold then Cont.defer; a 53% "regression" that was one JMH fork lying
 
 Root 1 of iterative-recursive-decode.md's two-root design, landed.

@@ -403,17 +403,35 @@ given opticMarket[A, B]: (Strong[[S, T] =>> Market[A, B, S, T]] & Choice[[S, T] 
 
 // ---------------------------------------------------------------- the operations, on any optic the interpretation meets
 
+/**
+ * `set` and `modify` FUSE BY DEFAULT (optics-fuse-by-default).
+ *
+ * The receiver is inline and the body is the same planner `Fuse` uses,
+ * so `o.set(b)(s)` emits the update a person would write wherever the
+ * optic's shape can be read at compile time — a lens written literally
+ * or named by an `inline def`, `Lens[S](_.f)`, and chains of them. It
+ * ALWAYS compiles: anything unreadable (an optic behind a `val`, one
+ * chosen at run time, a traversal) falls back to the interpretation,
+ * which is what this extension used to do in every case.
+ *
+ * `Fuse.set(o)(b)(s)` remains as the form that takes the whole
+ * directly, which needs no lambda at all.
+ */
+extension [C[_[_, _]], S, T, A, B](inline o: Optic[C, S, T, A, B])
+  /** every focus through `f`, fused where the shape allows */
+  inline def modify(inline f: A => B)(using fn: C[Function1]): S => T =
+    ${ Fuse.modifyFnImpl('o, 'f, 'fn) }
+  /** every focus replaced, fused where the shape allows */
+  inline def set(inline b: B)(using fn: C[Function1]): S => T =
+    ${ Fuse.setFnImpl('o, 'b, 'fn) }
+
 extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
-  /** every focus through `f` */
-  def modify(f: A => B)(using C[Function1]): S => T = o[Function1](f)
   /** many wholes in, their focuses aggregated by `f`, one whole out */
   def aggregate(f: Vector[A] => B)(using C[Aggregating]): Vector[S] => T =
     o[Aggregating](Aggregating(f)).run
   /** the same, said with a named aggregation algebra */
   def aggregateWith[Acc](agg: Aggregator[A, Acc, B])(using C[Aggregating]): Vector[S] => T =
     aggregate(as => agg.present(as.foldLeft(agg.init)(agg.add)))
-  /** every focus replaced */
-  def set(b: B)(using C[Function1]): S => T = o[Function1](_ => b)
   /** the focus of a lens (or an iso) */
   def get(s: S)(using C[[X, Y] =>> Forget[A, X, Y]]): A =
     o[[X, Y] =>> Forget[A, X, Y]](Forget(identity)).run(s)

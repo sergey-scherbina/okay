@@ -122,7 +122,29 @@ object Fuse {
           case DefDef(_, _, _, Some(rhs)) => plan(rhs)
           case ValDef(_, _, Some(rhs)) => plan(rhs)
           case _ => None
+
+      // AND A PLAIN `val`, which is how an optic is actually stored.
+      // The soundness argument is `plan` itself: it succeeds only on
+      // pure optic CONSTRUCTIONS — a `Lens` with its halves,
+      // `Prism.some`, a selector, an `andThen` of those — so following
+      // a definition can only ever emit what that expression means,
+      // and it cannot run anything the program would not have run.
+      //
+      // What must be excluded is a definition the call site's type
+      // does not fix: a `var`, and a member a subclass may override.
+      // Hence `fixedValue`. Everything else still falls back.
+      case ref if !ref.symbol.isNoSymbol && ref.symbol.isValDef && fixedValue(ref.symbol) =>
+        ref.symbol.tree match
+          case ValDef(_, _, Some(rhs)) => plan(rhs)
+          case _ => None
       case _ => None
+
+  /** a definition whose value the call site's type really fixes */
+  private def fixedValue(using q: Quotes)(sym: q.reflect.Symbol): Boolean =
+    import q.reflect.*
+    !sym.flags.is(Flags.Mutable) && (
+      sym.flags.is(Flags.Final) || sym.flags.is(Flags.Private) ||
+      sym.maybeOwner.flags.is(Flags.Module) || sym.maybeOwner.flags.is(Flags.Final))
 
   // ---------------------------------------------------------------- emitting the update
 
@@ -219,12 +241,60 @@ object Fuse {
     import q.reflect.*
     plan(o.asTerm) match
       case Some(p) => emitSet(p, s.asTerm, b.asTerm).asExprOf[T]
-      case None => '{ $o.set($b)(using $fn)($s) }
+      // the fallback goes STRAIGHT to the interpretation, never back
+      // through `.set` — that extension is now this macro, and calling
+      // it here would be an infinite expansion
+      case None => '{ $o.apply[Function1]((_: A) => $b)(using $fn)($s) }
 
   @publicInBinary private[Fuse] def modifyImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
       o: Expr[Optic[C, S, T, A, B]], f: Expr[A => B], s: Expr[S], fn: Expr[C[Function1]]): Expr[T] =
     import q.reflect.*
     plan(o.asTerm) match
       case Some(p) => emitModify(p, s.asTerm, f.asTerm).asExprOf[T]
-      case None => '{ $o.modify($f)(using $fn)($s) }
+      case None => '{ $o.apply[Function1]($f)(using $fn)($s) }
+
+  // ---------------------------------------------------------------- fusing by default
+  //
+  // The same two, shaped for the EXTENSION methods, which answer a
+  // function rather than a value: the lambda is built inside the quote
+  // so the update can be emitted into its body. `o.set(b)(s)` then
+  // applies a lambda whose body is the hand-written update, and the
+  // one allocation left is the lambda itself — which escape analysis
+  // removes where it does not escape, and which the benchmark
+  // measures rather than assumes.
+
+  @publicInBinary private[okay] def setFnImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], b: Expr[B], fn: Expr[C[Function1]]): Expr[S => T] =
+    import q.reflect.*
+    plan(o.asTerm) match
+      case Some(p) => lambdaOf[S, T](s => emitSet(p, s, b.asTerm))
+      case None => '{ $o.apply[Function1]((_: A) => $b)(using $fn) }
+
+  @publicInBinary private[okay] def modifyFnImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], f: Expr[A => B], fn: Expr[C[Function1]]): Expr[S => T] =
+    import q.reflect.*
+    plan(o.asTerm) match
+      case Some(p) => lambdaOf[S, T](s => emitModify(p, s, f.asTerm))
+      case None => '{ $o.apply[Function1]($f)(using $fn) }
+
+  /**
+   * `(s: S) => body(s)`, built with the reflection API rather than as
+   * a quote — and the reason is not style. A nested quote opens a NEW
+   * `Quotes` context, and the plan holds terms from THIS one; the
+   * compiler refuses to mix them, which is the error this shape
+   * avoids. One context, one owner, and the body re-owned to the
+   * lambda.
+   */
+  private def lambdaOf[S: Type, T: Type](using q: Quotes)(
+      body: q.reflect.Term => q.reflect.Term): Expr[S => T] =
+    import q.reflect.*
+    Lambda(
+      Symbol.spliceOwner,
+      MethodType(List("s"))(_ => List(TypeRepr.of[S]), _ => TypeRepr.of[T]),
+      (owner, params) => params match
+        // the parameter of a Lambda is an Ident, which is a Term; the
+        // match says so instead of a cast
+        case List(p: Term) => body(p).changeOwner(owner)
+        case other => report.errorAndAbort(s"a one-parameter lambda, got: $other")
+    ).asExprOf[S => T]
 }

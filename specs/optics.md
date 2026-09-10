@@ -667,3 +667,40 @@ mystery: `Lens.field[S]("name")` expands to a BLOCK with a statement
 in it (`val i = constValue[...]`), and `plan` takes `Block(Nil, _)`
 only. It is also the slowest of the lens forms and the least
 idiomatic, so it waits for a caller who wants it.
+
+## Stage 9 — fusing by default (optics-fuse-by-default, 2026-09-10)
+
+The operator's next question was the right one: why does `Fuse` have
+to be called by name? It does not.
+
+- [x] `set` and `modify` are the EXTENSIONS now, inline, with an
+      inline receiver and the same planner as their body. `Fuse.set`
+      stays as the form that takes the whole and needs no lambda.
+- [x] the planner follows a plain `val`, which is how an optic is
+      actually stored. The soundness argument is the planner itself:
+      it succeeds only on pure optic CONSTRUCTIONS, so following a
+      definition can only emit what that expression means. Excluded
+      is anything the call site's type does not fix — a `var`, an
+      overridable member — and the test states that boundary by what
+      throws under a poisoned interpretation rather than in words.
+- [x] the fallbacks go straight to the interpretation instead of back
+      through `.set`, which is now this macro.
+
+| lane | before | now | hand-written |
+|---|---|---|---|
+| `lensSet` — `age.set(n)(p)`, the optic in a `val` | 2.600 ns / 40 B | **1.803 / 24** | `copySet` 1.543 / 24 |
+| `composedSet` — a lens ∘ prism ∘ lens chain, all `val`s | 16.547 / 168 | **4.212 / 64** | `nestedCopy` 4.666 / 64 |
+| `fieldSet` — `Lens.field[S]("age")`, still unread | 4.3 / — | 3.919 / 56 | 1.543 / 24 |
+| `traversalOver` over 1000 | 1.00x of `map` | 2063 / 18 648 | `vectorMap` 1961 / 18 648 |
+
+Composed optics are where it lands: 16.5 ns and 168 bytes become 4.2
+and 64, which is a hand-written nested `copy`. One field keeps a
+lambda that `Fuse.set`'s whole-taking form does not (1.803 against
+1.615), and its allocation is the hand-written 24 either way.
+
+**The compile-time price was the thing to fear, and it is not
+measurable.** Alternating A/B, a fresh sbt per run, `okayJVM/clean;
+Test/compile`: 27/16/17 s with the change against 20/17/22 s without.
+Minima 16 and 17, ranges overlapping. An earlier reading of 61 against
+32 was JIT warm-up in one sbt and is not evidence of anything — the
+first compile in a cold sbt is always the slow one.
