@@ -139,19 +139,56 @@ object Facts:
  * expected type, and the body eagerly applied (the E10 trap) — the
  * same body against a class method types as it does on `Providing`.
  */
-final class Module[F[_]](val build: Providing[F] ! Resource,
+final class Module[F[_]](val built: (Providing[F], Facts) ! Resource,
                          val ready: Option[Providing[F]] = None,
                          val facts: Facts = Facts.empty):
+  /**
+   * The installer alone. `built` carries the facts BESIDE it, because
+   * a contribution declared below an acquisition is not known until
+   * that acquisition has happened (di-multibind) — `facts` is the
+   * preview a deployment reads early, `built`'s half is the complete
+   * one a body can be given.
+   */
+  def build: Providing[F] ! Resource = built.map(_._1)
+
   /** compose; the right operand is built inside the left's context, and is the inner layer */
   infix def and[G[_]](that: F[Module[G]]): Module[[X] =>> F[G[X]]] =
     ready match
       case Some(p) =>
         // nothing to acquire on the left: the right exists NOW, and
-        // its facts with it; the build runs the right's build only
+        // its facts with it, so readiness and the preview travel; the
+        // build still merges both halves, in acquisition order
         val inner = p(that)
-        new Module(inner.build.map(q => p and q), inner.ready.map(q => p and q), facts ++ inner.facts)
+        new Module(built.flatMap((_, f1) => inner.built.map((q, f2) => (p and q, f1 ++ f2))),
+                   inner.ready.map(q => p and q), facts ++ inner.facts)
       case None =>
-        new Module(build.flatMap(p => p(that).build.map(q => p and q)), None, facts)
+        new Module(built.flatMap((p, f1) => p(that).built.map((q, f2) => (p and q, f1 ++ f2))),
+                   None, facts)
+
+  /**
+   * SEVERAL CONTRIBUTORS, ONE COLLECTION (di-multibind) — what a
+   * container calls a multibinder. Each module declares its piece as
+   * a FACT of kind `k`; `installing` merges every piece by that
+   * kind's own rule and installs the result as a capability, so the
+   * body reads it like any other:
+   *
+   * {{{
+   *   object Routes extends Fact[Vector[Route]]:
+   *     def empty = Vector.empty
+   *     def merge(a: Vector[Route], b: Vector[Route]) = a ++ b
+   *
+   *   (admin.declare(Routes, Vector(adminRoute)) and
+   *    chat.declare(Routes, Vector(chatRoute))).installing(Routes) { serve(wire[Vector[Route]]) }
+   * }}}
+   *
+   * The fact's VALUE type is the capability type, so name it (an
+   * opaque type, a wrapper) where a bare `Vector[X]` would collide
+   * with another collection of the same element.
+   */
+  def installing[V](k: Fact[V]): Module[[X] =>> F[V ?=> X]] =
+    new Module(built.map((p, f) => (p and providing[V](f.get(k)), f)),
+               ready.map(p => p and providing[V](facts.get(k))),
+               facts)
   /** install everything and run the body inside the scope */
   def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
   /**
@@ -164,7 +201,8 @@ final class Module[F[_]](val build: Providing[F] ! Resource,
    */
   def use[B](body: F[B ! Resource]): B ! Resource = build.flatMap(p => p(body))
   /** declare a fact of kind `k` about this module; a reader merges it with the rest */
-  def declare[V](k: Fact[V], v: V): Module[F] = new Module(build, ready, facts.add(k, v))
+  def declare[V](k: Fact[V], v: V): Module[F] =
+    new Module(built.map((p, f) => (p, f.add(k, v))), ready, facts.add(k, v))
 
 /**
  * AN INSTANCE PER CONSUMER, not per scope (di-prototype).
@@ -215,7 +253,7 @@ def prototype[A](acquire: => A)(release: A => Unit): Module[[X] =>> New[A] ?=> X
 
 /** acquire one capability in the scope; the scope releases it */
 def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
-  new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
+  new Module(Resource.acquire(acquire)(release).map(a => (providing[A](a), Facts.empty)))
 
 /**
  * Acquire an `R`, install it as `A`, release it as `R` — the shape an
@@ -231,7 +269,7 @@ def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
  * }}}
  */
 def moduleAs[A, R <: A](acquire: => R)(release: R => Unit): Module[[X] =>> A ?=> X] =
-  new Module(Resource.acquire(acquire)(release).map(r => providing[A](r)))
+  new Module(Resource.acquire(acquire)(release).map(r => (providing[A](r), Facts.empty)))
 
 /**
  * The plan is the TYPE (specs/di.md, stage 1): a module's `F` is the
@@ -259,10 +297,21 @@ final case class Installed(name: String, cls: Class[?], value: Any)
 
 extension [F[_]](m: Module[F])
   inline def exports: Vector[Installed] ! Resource = ${ Module.exportsImpl[F]('m) }
+  /**
+   * Capabilities this chain installs MORE THAN ONCE — read off the
+   * plan, so nothing is built to find out. The second install wins
+   * and the first is acquired for nothing, which is what a test
+   * double does ON PURPOSE (`base and Module.value[Db](fake)`); that
+   * is why this is a report and not an error (di-multibind).
+   */
+  inline def shadowed: Vector[String] =
+    val p = m.plan
+    p.diff(p.distinct).distinct
 
 object Module:
   /** a module with nothing to build or release — a test double, a config value */
-  def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p), Some(p))
+  def ready[F[_]](p: Providing[F]): Module[F] =
+    new Module(pure[Resource, (Providing[F], Facts)]((p, Facts.empty)), Some(p))
   /** the same, from the bare value */
   def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
 

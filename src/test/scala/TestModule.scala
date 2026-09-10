@@ -164,6 +164,41 @@ class TestModule extends munit.FunSuite {
     assertEquals((db and pool).ready, None)
   }
 
+  // di-multibind: several contributors, one collection
+  test("installing merges every contribution into a capability the body reads") {
+    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags, Vector("from db"))
+    val b: Db ?=> Module[[X] =>> Log ?=> X] =
+      Module.value[Log](new Log { val tag = "" }).declare(Tags, Vector("from log"))
+    val app = (a and b).installing(Tags)
+    assertEquals(run(app { wire[Vector[String]] }), Vector("from db", "from log"))
+  }
+
+  test("a contribution BELOW an acquisition still reaches the collection") {
+    var opened = 0
+    val conf = Module.value[Conf](Conf("/data"))
+    val store: Conf ?=> Module[[X] =>> Db ?=> X] =
+      module[Db]({ opened += 1; new Db { val q = wire[Conf].url } })(_ => ())
+        .declare(Tags, Vector("volume /data"))
+    val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
+      module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ())
+        .declare(Tags, Vector("pool"))          // below an acquisition: invisible early
+    val app = (conf and store and pool).installing(Tags)
+    // the early PREVIEW stops at the first acquisition, as it must
+    assertEquals((conf and store and pool).facts.get(Tags), Vector("volume /data"))
+    // the built collection has everything, in acquisition order
+    assertEquals(run(app { wire[Vector[String]] }), Vector("volume /data", "pool"))
+    assertEquals(opened, 1)
+  }
+
+  test("shadowed names a capability installed twice, which a test double does on purpose") {
+    val db = module[Db](new Db { val q = "real" })(_ => ())
+    val log = Module.value[Log](new Log { val tag = "t" })
+    assertEquals((db and log).shadowed, Vector.empty)
+    val withDouble = db and log and Module.value[Db](new Db { val q = "fake" })
+    assertEquals(withDouble.shadowed, Vector("Db"))
+    assertEquals(run(withDouble { wire[Db].q }), "fake")
+  }
+
   test("a failing acquisition releases what came before it") {
     var closed = List.empty[String]
     val a = module[String]("a")(_ => closed ::= "a")

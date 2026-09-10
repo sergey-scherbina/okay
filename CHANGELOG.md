@@ -1,5 +1,34 @@
 # Changelog
 
+## di-multibind — several contributors, one collection; and memoisation answered
+
+The comparison table named four gaps and called two of them small.
+Both are closed, one by building it and one by explaining why the
+question does not arise here.
+
+**Set-binding** rides the machinery that already merges: a module
+declares its piece as a `Fact`, and `installing(k)` merges every piece
+by that kind's own rule and installs the result as an ordinary
+capability — `(admin.declare(Routes, …) and chat.declare(Routes, …))
+.installing(Routes) { serve(wire[Vector[Route]]) }`. Building it moved
+facts through the BUILD as well as the eagerly-read value, because a
+contribution declared below an acquisition is not known until that
+acquisition happens and losing it would have made the feature a
+half-truth. `Module.built` carries `(Providing, Facts)` and `build` is
+its first half, so nothing outside the file changed.
+
+**Memoisation** is not built, and the reason is the shape. ZLayer
+memoises because a layer embeds its dependencies and a diamond would
+build the shared one twice; here a shared dependency is an INPUT
+(`Db ?=> Module[…]`), so the diamond does not arise — the application
+installs `Db` once and both readers see it. What can still bite is
+installing one capability twice, and `m.shadowed` names those off the
+plan with nothing built. A report rather than an error, because a test
+double is a deliberate double.
+
+3 tests, the comparison table's two rows rewritten, and docs/di.md
+gained "Several contributors, one collection". Commit: LANDING.
+
 ## dataflow stage 6c — a row that leaves the engine, and the identity a pane already has
 
 Five stages of recovery rest on one trade: a partition may be

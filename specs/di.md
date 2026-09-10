@@ -336,6 +336,33 @@ annotation never appears; through the context function it does. The
 respelling also says in the code what was only true in the prose —
 `fresh` IS `wire` at another type, one primitive underneath.
 
+## Set-binding, and why memoisation was the wrong question (di-multibind, 2026-09-10)
+
+The comparison table named four gaps and called two of them small.
+
+**Set-binding is built**, on the machinery that already merges: each
+module declares its piece as a `Fact`, and `installing(k)` merges
+every piece by that kind's rule and installs the result as a
+capability. Building it moved facts through the BUILD as well as the
+value — a contribution declared below an acquisition is not known
+until that acquisition has happened, and losing it would have made
+the feature a half-truth. `Module.built` carries `(Providing, Facts)`
+now and `build` is its first half, so nothing outside changed. The
+early `facts` preview still stops at the first acquisition, and that
+is right: a deployment reads it before anything opens.
+
+**Memoisation is not built, and the reason is the shape rather than
+the effort.** ZLayer memoises because a layer EMBEDS its
+dependencies, so a diamond builds the shared one twice. Here a shared
+dependency is an INPUT — `Db ?=> Module[…]` — so the diamond does not
+arise: the application installs `Db` once and every reader sees that
+one. What can still bite is installing one capability twice, where
+the second wins and the first is acquired for nothing. That gets
+`m.shadowed`, read off the plan with nothing built. It is a REPORT
+and not an error because a test double is exactly a deliberate
+double, and refusing it would break the override idiom the arc has
+had since stage 0.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

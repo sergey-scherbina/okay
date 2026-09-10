@@ -311,10 +311,10 @@ oversights unless they say so.
 | Conditional beans | `@ConditionalOnProperty`, `@Profile` | ordinary Scala: `if config.x then Module.value(...) else module(...)`. The demo picks a memory store this way |
 | Configuration binding | `@Value`, `@ConfigurationProperties` | okay-conf: a case class with a derived `Schema`, `Conf.layered` for defaults → file → environment; the config is a module like any other |
 | Auto-configuration | starters | okay-spring ships one FOR Spring. Ours needs none: there is nothing to discover |
-| A collection of all implementations | `List<T>` injection, `Multibinder`, `MapBinder` | **no**: pass the `Vector` yourself, as `Ops.routes(…, guards: Vector[Reporting[?]])` does. Honest gap — a `Set`-binding would need a merge rule per type, which is `Fact` territory |
+| A collection of all implementations | `List<T>` injection, `Multibinder`, `MapBinder` | each module declares its piece as a FACT, `installing(k)` merges them by that kind's own rule and installs the result as a capability — see "Several contributors, one collection" |
 | Assisted injection | `@AssistedInject`, factories | a capability that is a function: install `Make[A]` of your own shape. `New[A]` is the no-argument case |
 | Provider indirection | `Provider<T>`, `ObjectProvider<T>` | `New[A]`, and `wire[New[A]]` if you want it by hand |
-| Memoisation of a shared dependency | ZLayer builds a layer once however many depend on it | **partly**: within one composition a capability is installed once and shared. Compose the SAME module twice and you get two instances (measured) — the nearest wins and the other is dead weight. Install once |
+| Memoisation of a shared dependency | ZLayer builds a layer once however many depend on it | **not needed, and not built**: a shared dependency here is an INPUT (`Db ?=> Module[…]`), never embedded, so the diamond memoisation exists for does not arise — the application installs `Db` once and both readers see it. What can still bite is installing one capability TWICE, and `m.shadowed` names those (a test double is a deliberate one) |
 | The plan as data | distage's plan, Spring's conditions report | `m.plan` (from the type, nothing built) and `m.exports` (what was built, with classes) |
 | Verify the graph in a test | distage's plan check | the compiler; plus `plan` and `Needs.of[Root]` as assertions |
 | Method interception | AOP, `@Transactional`, `@Cacheable`, `@Async` | **no proxies, by design**: a handler wraps an effect row (`Resilient.http`, `Tracer.traced`, `Typed.transact`), which is visible in the type instead of woven behind it |
@@ -325,11 +325,45 @@ oversights unless they say so.
 | Startup diagnostics | failure analyzers, "consider defining a bean" | the compiler names the missing type; `New`'s message names both roads when a prototype is confused with a singleton |
 | Living inside one of them | — | `okay-spring`, `okay-guice`, `okay-cdi`, `okay-zio`: the module renders into their vocabulary, and their container is a source of values for ours |
 
-**The four honest gaps**, restated so they are not buried in the
-table: no set-binding of all implementations of a type, no memoisation
-of a module composed twice, no method interception, no event bus. The
-first two are small and could be built; the last two are refusals with
-reasons, and the reasons are in the rows.
+**What is left missing**, restated so it is not buried in the table:
+no method interception and no event bus. Both are refusals with
+reasons — a handler around an effect row instead of a proxy, a channel
+or a hub instead of a bus — and the reasons are in the rows. The two
+gaps this table named as small when it was first written are closed:
+set-binding below, and memoisation answered by the shape of the
+vocabulary rather than by machinery.
+
+## Several contributors, one collection
+
+What a container calls a multibinder. Each module declares its piece
+as a FACT, and `installing` merges every piece by that kind's own rule
+and installs the result as an ordinary capability:
+
+```scala
+object Routes extends Fact[Vector[Route]]:
+  def empty = Vector.empty
+  def merge(a: Vector[Route], b: Vector[Route]) = a ++ b
+
+val app = (admin.declare(Routes, Vector(adminRoutes)) and
+           chat.declare(Routes, Vector(chatRoutes))).installing(Routes)
+
+app { serve(wire[Vector[Route]]) }
+```
+
+The pieces arrive in acquisition order, and a contribution declared
+BELOW an acquisition arrives too — the facts travel with the build,
+not only with the value read early. (The early read, `Needs.declared`,
+still stops at the first acquisition; that is a preview for a
+deployment, and the two are not the same thing.)
+
+The fact's VALUE type becomes the capability type, so name it — an
+opaque type or a small wrapper — where a bare `Vector[X]` would
+collide with another collection of the same element.
+
+One capability installed twice is not a merge: the second wins and the
+first is acquired for nothing. `m.shadowed` reads those off the plan,
+building nothing. A test double is a deliberate one, which is why it
+is a report rather than an error.
 
 ## Gotchas
 
