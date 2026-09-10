@@ -102,6 +102,52 @@ Tested as the two roads side by side, against a server that serves one
 request per connection and hangs up: handed `connect` the run dies
 with "no workers left", handed `reconnecting` it finishes with the
 same answer and nobody buried.
+## merge-matched-size-lane — §6b's two opening rows were mis-paired in opposite directions
+
+The operator asked why we lose one row to ZIO. The answer is that we
+do not lose it, and that the row beside it was not a win either.
+
+**"chunked at a matched size (16): okay 293, ZIO 146"** — ZIO's lane
+is `a.merge(b).grouped(k).flattenChunks`: it REGROUPS AFTER a merge
+whose chunks are `ZStream.range`'s own 4096, so `k` never reaches the
+merge, which is why that column read the same number at every k. Ours
+carries `Source.ChunkSize = 16` through the channel. The row compared
+16 against 4096 — 256x the channel operations — under a heading
+claiming the granularity was matched.
+
+**"chunk-native: okay 24.0, ZIO 146"** — okay's 24.0 was
+`queue_okay_chunkNative` from `FairnessProbeBenchmark`, a
+single-producer channel DRAIN; ZIO's 146 was a two-stream MERGE from
+`ChunkFlushBenchmark`. Different operations, different classes, one
+row. That one flattered us sixfold.
+
+`zioChunkedSource` is the question asked properly — chunks of `k` at
+the SOURCE, ZIO's own spelling, the counterpart of the `chunkSize = 1`
+lane this section has had all along. Measured, one class, one
+operation:
+
+  k = 16    okay 263.6 +-50.8   ZIO   829.4 +-144.7   fs2 2 612 +-259
+  k = 256   okay 302.6 +-96.1   ZIO   116.1 +-6.0     fs2   396 +-69
+  k = 1024  okay 427.9 +-34.2   ZIO    82.9 +-10.2    fs2   221 +-90
+
+**At a genuinely matched 16 we are 3.1x ahead** — ZIO merging real
+16-element chunks costs ten times its native merge. **But our curve
+runs the wrong way**: every competitor gets faster as chunks grow and
+we get slower, reproduced across two sessions. At its own default
+ZIO's merge is 70 µs against ours at 234–1049, and the reason is that
+its default is 4096 and ours is 16 — on the wrong side of a curve that
+should reward it. Filed as `merge-chunk-size-curve-inverted`.
+
+Also filed: `merge-lane-variance`. `okayChunked` ignores its `k`, so
+one three-parameter run samples it three times — 1 049, 443, 234 —
+while ZIO's and fs2's lanes in the same runs hold steady. A 4.5x
+spread on unchanged code means that lane cannot be quoted as one
+number, and the table now carries its range.
+
+The section's own prose had been claiming the matched-size row was
+"now a TIE with ZIO" while the table two lines above read 293 against
+146. A claim disagreeing with its own evidence on one screen is how a
+mis-pairing survives three re-measurements.
 
 ## optics-outside-tools — a tool was declared three times, and the model was never told what it needed
 

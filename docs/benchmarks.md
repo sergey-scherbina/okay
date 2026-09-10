@@ -1220,17 +1220,78 @@ the 5.9% the single-threaded ones support, and 12% sits inside it.
 
 | 2x2000 elements | okay | ZIO | fs2 (re-paired 2026-09-06) | fs2 as first measured | reads as |
 |---|---|---|---|---|---|
-| chunk-native (each library's own default) | **24.0** | 146 | 134 | 49 150 | comparison |
-| chunked at a matched size (16) | **293** | 146 | 2 912 | 43 540 | comparison |
 | chunked + timed flush | **382** | 5 591 | 15 803 | 57 120 | comparison |
 | per-element (chunk of one, forced on ZIO/fs2) | **446** | 11 668 | 40 586 | 42 640 | diagnostic |
 
-(Re-measured 2026-09-08 under the `growing` default, k = 16, minimum
-of three rounds. The previous values were from 2026-09-06 and were the
-last stale table on this page — found by the operator asking whether
-the numbers had actually been updated, which they had not. The
-`chunked at a matched size` row is now a TIE with ZIO rather than 1.8x
-behind, and the timed-flush row is 15x ahead rather than 20x.)
+**THE TWO ROWS THIS TABLE USED TO OPEN WITH WERE BOTH MIS-PAIRED, in
+opposite directions** (merge-matched-size-lane, 2026-09-10). They are
+replaced by the table below, and what they were is worth keeping,
+because it is the third time this section has caught itself doing the
+same thing:
+
+- *"chunk-native (each library's own default): okay 24.0, ZIO 146"* —
+  okay's 24.0 was `queue_okay_chunkNative` from
+  `FairnessProbeBenchmark`, a single-producer CHANNEL DRAIN, and
+  ZIO's 146 was `zioChunked` from `ChunkFlushBenchmark`, a two-stream
+  MERGE. Different operations in different classes, read as one row,
+  and it flattered us about sixfold.
+- *"chunked at a matched size (16): okay 293, ZIO 146"* — ZIO's lane
+  is `a.merge(b).grouped(k).flattenChunks`, which REGROUPS AFTER a
+  merge whose own chunks are `ZStream.range`'s 4096. The `k` never
+  reaches the merge, which is why that column reads the same at every
+  k. okay's `chunked = true` carries `Source.ChunkSize = 16` through
+  the channel, so the row compared our 16 against their 4096 — 256x
+  the channel operations — under a heading claiming the granularity
+  was matched. That one ran against us.
+
+`zioChunkedSource` is the same question asked properly: chunks of `k`
+at the SOURCE, so the merge itself moves k elements at a time. It is
+ZIO's own spelling (`ZStream.range` takes the chunk size) and the
+counterpart of `zioPerElement`, which has been doing exactly this at
+chunkSize 1 since the section began.
+
+**The merge, one class, one operation, k at the source on both sides**
+(JMH, 2 forks, 6 iterations, quiet box, 2026-09-10):
+
+| 2x2000 merged | okay `chunked(k)` | ZIO `range(chunkSize = k)` | fs2 `chunkN(k)` |
+|---|---:|---:|---:|
+| k = 16 | **263.6 ±50.8** | 829.4 ±144.7 | 2 612.5 ±259.4 |
+| k = 256 | 302.6 ±96.1 | **116.1 ±6.0** | 395.5 ±68.9 |
+| k = 1024 | 427.9 ±34.2 | **82.9 ±10.2** | 221.1 ±89.7 |
+| each library's own default | 234–1049 (`ChunkSize` 16) | **70** (4096) | 128 (one chunk) |
+
+**Two findings, and the second is the one worth having.**
+
+**At a genuinely matched 16 okay is 3.1x ahead**, not 2x behind:
+263.6 against 829.4. ZIO merging real 16-element chunks costs ten
+times its native merge, because its whole design assumes chunks are
+large and its per-chunk machinery is priced accordingly.
+
+**But our curve runs the wrong way.** ZIO gets faster as chunks grow
+(829 → 116 → 83) and so does fs2 (2 613 → 396 → 221); okay gets
+SLOWER (264 → 303 → 428). Two independent sessions agree on the
+direction — 2026-09-08 read 274.6 → 305.6 → 458.7 for the same lane.
+So the honest summary of this pair is not "we win" or "we lose": at
+its own default granularity ZIO's merge is 70 µs against ours at
+234–1049, and the reason is that its default is 4096 and ours is 16 —
+a place where our default is not merely small, it is on the wrong
+side of a curve that should reward it. Filed as
+`merge-chunk-size-curve-inverted`.
+
+**And `okayChunked` is not stable enough to quote as one number.**
+The lane ignores `k`, so a three-parameter run samples it three
+times: 1 049 ±218, 443 ±341, 234 ±19 in one run, against 300.8 ±21.7
+an hour earlier. A 4.5x spread on an unchanged lane is a measurement
+defect of its own (`merge-lane-variance`), and until it is understood
+the row above carries the range rather than a mean.
+
+(The two surviving rows were re-measured 2026-09-08 under the
+`growing` default, k = 16, minimum of three rounds. This block used to
+end by claiming the matched-size row was "now a TIE with ZIO rather
+than 1.8x behind" while the table two lines above it read 293 against
+146 — a claim and its own evidence disagreeing in one screen, which is
+how the mis-pairing survived. The timed-flush row is 15x ahead rather
+than 20x.)
 
 **The fs2 column was the same methodology bug a fifth time, and this
 section had already named it four (fs2-chunked-merge-lanes,

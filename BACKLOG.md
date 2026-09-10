@@ -37,6 +37,35 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] merge-chunk-size-curve-inverted — okay's chunked merge gets
+      SLOWER as the chunk grows and every competitor's gets faster:
+      `okayChunkedComposed` reads 263.6 / 302.6 / 427.9 at k = 16 /
+      256 / 1024, reproduced across two sessions (2026-09-08: 274.6 /
+      305.6 / 458.7), against ZIO's 829.4 / 116.1 / 82.9 and fs2's
+      2 612 / 396 / 221. A bigger chunk should mean fewer channel
+      transactions for the same elements; ours behaves as if the
+      per-CHUNK work were superlinear in its length. Suspects, none
+      measured: `chunked(k)` accumulating into a growing buffer;
+      `.unchunked` walking it back out per element; the channel's
+      `slots = capacity / ChunkSize` arithmetic (capacity counts
+      elements, so at k = 1024 with capacity 64 the channel holds 4
+      slots of 1024 rather than 64 of 16). DISQUALIFYING: if the
+      curve is the LazyList source rather than the merge, a
+      `Chunks`-native source will show it flat — measure that first.
+      This is also the reason §6b's "own default" comparison goes to
+      ZIO: its default chunk is 4096 and ours is 16.
+- [ ] merge-lane-variance — `ChunkFlushBenchmark.okayChunked` ignores
+      its `k` parameter, so a three-parameter run samples the same
+      lane three times: 1 049 ±218, 443 ±341, 234 ±19 in one run, and
+      300.8 ±21.7 an hour earlier — a 4.5x spread on unchanged code,
+      where `zioElementwise` (72–102) and `fs2ChunkNative` (128–144)
+      in the same runs are steady. Until this is understood no single
+      number for that lane belongs in a table. NOT the flusher
+      fibres: `flush-premium` (ddc62408, 2026-09-09) cancelled those
+      and is an ancestor of every measurement above — ruled out
+      before the entry was filed. Remaining suspects: the `LazyList`
+      source's own allocation, and the channel's capacity
+      arithmetic (`slots = capacity / ChunkSize`).
 - [x] aggregator-zip-allocates — DONE (2026-09-10):
       `Aggregator.summary` is the flat count/sum/min/max accumulator,
       beside `Mean` and `Variance`, and it takes the Wrocław job's

@@ -164,6 +164,33 @@ class ChunkFlushBenchmark {
     val (a, b) = zioPair
     runZio(a.merge(b).grouped(k).flattenChunks.runFold(0L)(_ + _))
 
+  /**
+   * THE MATCHED-SIZE ROW, ASKED PROPERLY (merge-matched-size-lane,
+   * 2026-09-10).
+   *
+   * `zioChunked` above regroups AFTER the merge — `.grouped(k)` on a
+   * stream whose chunks are already ZIO's own 4096 — so `k` never
+   * reaches the merge and the lane reads the same at every k. Our
+   * `okayChunked` carries `Source.ChunkSize = 16` THROUGH the
+   * channel, one transaction per 16 elements. §6b called that pair
+   * "chunked at a matched size (16)" and it was nothing of the kind:
+   * 16 against 4096, 256x the channel operations, in a row whose
+   * whole claim was that the granularity was equal — and the error
+   * ran against us.
+   *
+   * This is the same question asked of ZIO: chunks of `k` at the
+   * SOURCE, so the merge itself moves k elements at a time. The
+   * spelling is ZIO's own (`ZStream.range` takes the chunk size),
+   * and it is the counterpart of `zioPerElement`, which has been
+   * doing exactly this with `chunkSize = 1` since the section began.
+   */
+  @Benchmark
+  def zioChunkedSource(): Long =
+    import _root_.zio.stream.ZStream
+    val a = ZStream.range(0, N, k).map(_.toLong)
+    val b = ZStream.range(N, 2 * N, k).map(_.toLong)
+    runZio(a.merge(b).runFold(0L)(_ + _))
+
   @Benchmark
   def zioGroupedWithin(): Long =
     import _root_.zio.*
