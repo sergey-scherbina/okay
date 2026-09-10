@@ -620,16 +620,22 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
 - [x] dataflow-complete-panes — LANDED. 5.50x -> 1.14x of the
       hand-written lane; 122 679 accumulators reach the coordinator
       where ~2.9 million did.
-- [ ] dataflow-run-complete-panes — `Flows.run`'s windowed node did
-      NOT get the completeness rule, so the single-stage road now
-      merges every pane while the fan merges 7% of one partition's
-      worth, and the measured gap between them is 7.6x. The obstacle
-      is structural rather than hard: `Wide.work` has no terminal
-      aggregator to fold a finished pane into, because `job(into)` is
-      built after it. Either thread `into` down, or have the
-      partition keep finished panes as a buffer the coordinator folds
-      without hashing (cheaper in time, dearer in memory — measure
-      which before choosing).
+- [x] dataflow-run-complete-panes — LANDED. The windowed `Wide` node
+      has the rule: a partition that can finish a pane alone PRESENTS
+      it into a per-bucket buffer, and only the boundary panes go into
+      the maps a reducer merges. The buffer road, not the threaded
+      terminal — the node never learns what it is folded into.
+      Measured back to back on one box: the three-plan road goes from
+      647 ms (8.19x the hand-written lane) to 182 (2.25x), 3.6x, with
+      every other lane unmoved. And the check is a COUNT, not a clock:
+      `Run.merged` is reported by the single-stage road now and
+      `TestFlow` asserts it equals the fan's exactly, at 2, 4 and 8
+      partitions. Two things fell out — `prepass` answers an `Extent`
+      rather than one Long (the road had been computing half of what
+      the rule needs), and the LAST partition has no upper bound at
+      all, since the two bounds guard two different neighbours and it
+      has no later one. That last is why a run at ONE partition now
+      merges nothing, asserted.
 - [x] dataflow-fan-overhead — CLOSED by measurement, and the third
       is not there (MeasureFanOverhead, Live). Re-measured lane for
       lane: the fan is 101-111 ms and its three sinks, each run as its

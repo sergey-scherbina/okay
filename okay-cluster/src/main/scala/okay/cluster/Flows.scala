@@ -69,15 +69,19 @@ object Flows {
     val job = shape(flow).job(into)
     val n = job.parts
     if !job.ordered then ordered(into)
-    val seeds: Vector[Long] ! Async =
+    val bounds: Vector[Bounds] ! Async =
       val pre = job.prepass
-      if pre == null then pure[Async, Vector[Long]](Vector.fill(n)(Long.MinValue))
-      else parallel(n)(i => pre.nn(i)).map(before)
-    seeds.flatMap: sd =>
-      parallel(n)(i => job.work(i, sd(i))).flatMap: ps =>
+      // `Bounds(MinValue, MinValue)` is the no-pre-pass shape and it
+      // says both things at once: nothing to seed the watermark with,
+      // and nothing may be finished locally — the same sentinel
+      // `Sink.windowed` uses (specs/dataflow.md, stage 6a).
+      if pre == null then pure[Async, Vector[Bounds]](Vector.fill(n)(Bounds(Long.MinValue, Long.MinValue)))
+      else parallel(n)(i => pre.nn(i)).map(es => edges(es.map(e => Vector(e))).map(_.head))
+    bounds.flatMap: bs =>
+      parallel(n)(i => job.work(i, bs(i))).flatMap: ps =>
         val r = job.reducers(ps)
         parallel(r)(k => job.reduce(ps, k, r)).map: accs =>
-          Run(into.present(accs.reduceLeft(into.merge)), job.drops(ps), n, r)
+          Run(into.present(accs.reduceLeft(into.merge)), job.drops(ps), n, r, job.merged(ps))
 
   /**
    * A keyed stage's output is a hash map's iteration order, not the
@@ -260,9 +264,22 @@ object Flows {
           // an element below the greatest seen in an EARLIER partition
           if lower(i) != Long.MinValue && e.min != Long.MaxValue && lower(i) - e.min > back then
             back = lower(i) - e.min
+        val last = lower.length - 1
         lower.indices.toVector.map { i =>
-          // an empty partition has nothing complete, and MinValue - back would wrap
-          val upper = if incl(i) == Long.MinValue then Long.MinValue else incl(i) - back
+          // THE LAST PARTITION HAS NO UPPER BOUND, and that is not an
+          // optimisation bolted on: the two bounds guard two
+          // different neighbours. `lower` says no EARLIER partition
+          // can contribute (the pane starts after everything they
+          // saw); `upper` says no LATER one can. For the last
+          // partition there is no later one, so its only limit is the
+          // first — which is what makes a run at ONE partition merge
+          // nothing at all, as it should, instead of holding back the
+          // final `back` of the stream (dataflow-run-complete-panes).
+          val upper =
+            if i == last then Long.MaxValue
+            // an empty partition has nothing complete, and MinValue - back would wrap
+            else if incl(i) == Long.MinValue then Long.MinValue
+            else incl(i) - back
           Bounds(lower(i), upper)
         }
       }
@@ -328,15 +345,29 @@ object Flows {
   private abstract class Job[Acc]:
     type P
     def parts: Int
-    def prepass: (Int => Long) | Null
+    /**
+     * WHAT ONE PARTITION'S EVENT TIMES LOOK LIKE, when the plan has
+     * any — the same `Extent` the fan's pre-pass computes, and for
+     * the same two reasons: the prefix maximum is a partition's
+     * watermark SEED, and the maximum with the backwardness is what
+     * decides which panes a partition may finish ALONE
+     * (dataflow-run-complete-panes). Until that lane it answered only
+     * the maximum, and the single-stage road could seed but not
+     * finish.
+     */
+    def prepass: (Int => Extent) | Null
     /** does this plan hand its elements to the terminal in the
      * input's order? true for a stateless plan, false out of a keyed
      * stage — see `ordered` */
     def ordered: Boolean
-    def work(i: Int, seed: Long): P
+    def work(i: Int, bounds: Bounds): P
     def reducers(ps: Vector[P]): Int
     def reduce(ps: Vector[P], r: Int, of: Int): Acc
     def drops(ps: Vector[P]): Long
+    /** how many accumulators reach the coordinator's merge — the work
+     * the completeness rule exists to remove, reported so a suite can
+     * assert it rather than a benchmark merely notice it */
+    def merged(ps: Vector[P]): Long
 
   private final class Pipe[A](val parts: Int, val at: Int => Chunks[A]) extends Shape[A]:
     def source: (Int => Chunks[A]) | Null = at
@@ -347,13 +378,15 @@ object Flows {
       new Job[Acc]:
         type P = Acc
         def parts: Int = self.parts
-        def prepass: (Int => Long) | Null = null
+        def prepass: (Int => Extent) | Null = null
         def ordered: Boolean = true
-        def work(i: Int, seed: Long): Acc =
+        def work(i: Int, bounds: Bounds): Acc =
           Chunks.foldLeft(self.at(i))(into.init)((acc, a) => into.add(acc, a))
         def reducers(ps: Vector[Acc]): Int = 1
         def reduce(ps: Vector[Acc], r: Int, of: Int): Acc = ps.reduceLeft(into.merge)
         def drops(ps: Vector[Acc]): Long = 0L
+        // one accumulator per partition, and nothing keyed
+        def merged(ps: Vector[Acc]): Long = ps.length.toLong
 
   /**
    * A stage wider than one partition. The map side writes `buckets`
@@ -363,14 +396,15 @@ object Flows {
    */
   private abstract class Wide[A] extends Shape[A]:
     type P
-    def prepass: (Int => Long) | Null
+    def prepass: (Int => Extent) | Null
     def buckets: Int
-    def work(i: Int, seed: Long): P
+    def work(i: Int, bounds: Bounds): P
     def reducers(ps: Vector[P]): Int
     /** the elements of buckets [lo, hi), merged across the partitions
      * IN INDEX ORDER */
     def out(ps: Vector[P], lo: Int, hi: Int): Chunks[A]
     def drops(ps: Vector[P]): Long
+    def merged(ps: Vector[P]): Long
 
     final def source: (Int => Chunks[A]) | Null = null
 
@@ -379,21 +413,22 @@ object Flows {
       new Wide[B]:
         type P = self.P
         def parts: Int = self.parts
-        def prepass: (Int => Long) | Null = self.prepass
+        def prepass: (Int => Extent) | Null = self.prepass
         def buckets: Int = self.buckets
-        def work(i: Int, seed: Long): P = self.work(i, seed)
+        def work(i: Int, bounds: Bounds): P = self.work(i, bounds)
         def reducers(ps: Vector[P]): Int = self.reducers(ps)
         def out(ps: Vector[P], lo: Int, hi: Int): Chunks[B] = f(self.out(ps, lo, hi))
         def drops(ps: Vector[P]): Long = self.drops(ps)
+        def merged(ps: Vector[P]): Long = self.merged(ps)
 
     final def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc] =
       val self = this
       new Job[Acc]:
         type P = self.P
         def parts: Int = self.parts
-        def prepass: (Int => Long) | Null = self.prepass
+        def prepass: (Int => Extent) | Null = self.prepass
         def ordered: Boolean = false
-        def work(i: Int, seed: Long): P = self.work(i, seed)
+        def work(i: Int, bounds: Bounds): P = self.work(i, bounds)
         def reducers(ps: Vector[P]): Int = self.reducers(ps)
         def reduce(ps: Vector[P], r: Int, of: Int): Acc =
           val b = self.buckets
@@ -401,6 +436,7 @@ object Flows {
           val hi = (b.toLong * (r + 1) / of).toInt
           Chunks.foldLeft(self.out(ps, lo, hi))(into.init)((acc, a) => into.add(acc, a))
         def drops(ps: Vector[P]): Long = self.drops(ps)
+        def merged(ps: Vector[P]): Long = self.merged(ps)
 
   private def shape[A](flow: Flow[A]): Shape[A] = flow match
     case Flow.Src(ps) =>
@@ -479,9 +515,9 @@ object Flows {
     new Wide[(K, O)]:
       type P = Array[mutable.HashMap[K, Acc]]
       def parts: Int = n
-      def prepass: (Int => Long) | Null = null
+      def prepass: (Int => Extent) | Null = null
       def buckets: Int = b
-      def work(i: Int, seed: Long): P =
+      def work(i: Int, bounds: Bounds): P =
         val ms = Array.fill(b)(mutable.HashMap.empty[K, Acc])
         Chunks.foldLeft(at(i))(())((_, x) =>
           val k = key(x)
@@ -499,6 +535,7 @@ object Flows {
           j += 1
         Chunks.fromIterator(all.iterator.map((k, a) => (k, agg.present(a))))
       def drops(ps: Vector[P]): Long = 0L
+      def merged(ps: Vector[P]): Long = entries(ps)
       private def entries(ps: Vector[P]): Long =
         var t = 0L
         for ms <- ps do for m <- ms do t += m.size
@@ -508,7 +545,26 @@ object Flows {
    * as an ACCUMULATOR (not a presented value — a presented mean
    * cannot be merged with another partition's), and the late
    * elements it dropped */
-  private final case class Panes[K, Acc](panes: Array[mutable.HashMap[(Long, K), Acc]], late: Long)
+  /**
+   * What a windowed partition hands the coordinator, and the shape is
+   * the completeness rule made visible (dataflow-run-complete-panes).
+   *
+   * `panes` are the BOUNDARY ones — the handful another partition can
+   * still contribute to — bucketed by (window, key) so a reducer owns
+   * a share of them. `done` are the ones this partition finished
+   * alone: already PRESENTED, so nothing merges them and nothing
+   * hashes them again; a reducer concatenates its range.
+   *
+   * The alternative was to thread the terminal aggregator down here
+   * and fold a finished pane into it on the spot. That would have
+   * saved holding them, at the price of the node knowing what it is
+   * folded into — and `job(into)` is built after the node exists, so
+   * it would have meant restructuring the plan to save memory the
+   * measurement says is not the problem.
+   */
+  private final case class Panes[K, Acc, O](panes: Array[mutable.HashMap[(Long, K), Acc]],
+                                            done: Array[mutable.ArrayBuffer[Pane[K, O]]],
+                                            late: Long)
 
   private def windowed[X, K, Acc, O](in: Shape[X], size: Long, slide: Long, lateness: Long,
                                      key: X => K, at: X => Long,
@@ -521,44 +577,68 @@ object Flows {
     // pane must carry so another partition's can be merged into it
     val partial = Aggregator[X, Acc, Acc](agg.init)(agg.add)(agg.merge)(identity)
     new Wide[Pane[K, O]]:
-      type P = Panes[K, Acc]
+      type P = Panes[K, Acc, O]
       def parts: Int = n
       def buckets: Int = b
-      def prepass: (Int => Long) | Null =
+      // the whole extent, not just the maximum: the prefix maximum
+      // seeds the watermark and the maximum with the backwardness is
+      // what lets a partition finish a pane alone
+      def prepass: (Int => Extent) | Null =
         if !seeded then null
-        else (i: Int) => Chunks.foldLeft(src(i))(Long.MinValue)((m, x) => math.max(m, at(x)))
-      def work(i: Int, seed: Long): P =
+        else (i: Int) => extent(src(i), Vector(at)).head
+      def work(i: Int, bounds: Bounds): P =
         val w = new Windows[K, X, Acc, Acc](size, slide, lateness, key, at, partial)
-        if seed != Long.MinValue then w.seed(seed)
+        if bounds.lower != Long.MinValue then w.seed(bounds.lower)
         val ms = Array.fill(b)(mutable.HashMap.empty[(Long, K), Acc])
-        // bucketed by the (window, key) PAIR, not by the key: the
-        // aggregation is per pane, so the pair spreads a hot key's
-        // windows over the reducers instead of piling them on one
+        val done = Array.fill(b)(mutable.ArrayBuffer.empty[Pane[K, O]])
+        // THE COMPLETENESS RULE, on the single-stage road at last. A
+        // pane that starts after everything the earlier partitions
+        // saw and ends before anything later can still go back to is
+        // this partition's alone: it is presented here and never
+        // merged. Otherwise it is a boundary pane and goes into the
+        // bucketed map — bucketed by the (window, key) PAIR, not the
+        // key, so the pair spreads a hot key's windows over the
+        // reducers instead of piling them on one.
         val keep: Pane[K, Acc] => Unit = p =>
           val id = (p.start, p.key)
-          val m = ms(bucketOf(id.##, b))
-          m.update(id, m.get(id).fold(p.value)(agg.merge(_, p.value)))
+          if p.start > bounds.lower && p.start + size <= bounds.upper then
+            done(bucketOf(id.##, b)) += Pane(p.start, p.start + size, p.key, agg.present(p.value))
+          else
+            val m = ms(bucketOf(id.##, b))
+            m.update(id, m.get(id).fold(p.value)(agg.merge(_, p.value)))
         Chunks.foldLeft(src(i))(())((_, x) => w.add(x)(keep))
         w.close()(keep)
-        Panes(ms, w.dropped)
+        Panes(ms, done, w.dropped)
       def reducers(ps: Vector[P]): Int =
         var t = 0L
         for p <- ps do for m <- p.panes do t += m.size
         chosen(finish, b, t)
       def out(ps: Vector[P], lo: Int, hi: Int): Chunks[Pane[K, O]] =
         val all = mutable.HashMap.empty[(Long, K), Acc]
+        val finished = Vector.newBuilder[Iterator[Pane[K, O]]]
         var j = lo
         while j < hi do
           for p <- ps do
             for (id, a) <- p.panes(j) do all.update(id, all.get(id).fold(a)(agg.merge(_, a)))
+            finished += p.done(j).iterator
           j += 1
-        Chunks.fromIterator(all.iterator.map { case ((start, k), a) =>
+        val merged = all.iterator.map { case ((start, k), a) =>
           Pane(start, start + size, k, agg.present(a))
-        })
+        }
+        // the panes nobody had to merge come out beside the ones that
+        // were merged; a windowed plan's output is a hash map's order
+        // either way (`ordered` is false), so nothing depends on which
+        Chunks.fromIterator(merged ++ finished.result().iterator.flatten)
       def drops(ps: Vector[P]): Long =
         var d = 0L
         for p <- ps do d += p.late
         d
+      // the BOUNDARY panes only: what a partition finished alone is
+      // already presented and never reaches a merge
+      def merged(ps: Vector[P]): Long =
+        var t = 0L
+        for p <- ps do for m <- p.panes do t += m.size
+        t
 
   // ---------------------------------------------------------------
   // the fibres

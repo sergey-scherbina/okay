@@ -439,11 +439,13 @@ val wire: Cluster.Worker[Double, Double] = c =>
   say `Merge` or `Shuffle` rather than consult a number measured on
   someone else's job.
 
-- **`Flows.run` is now much the slower road for a windowed job.** The
-  completeness rule is the fan's; the single-stage node still merges
-  every pane at the coordinator, and on the Wrocław job the measured
-  gap is 7.6x. Use `Flows.fan` with a `Sink` for anything windowed;
-  `dataflow-run-complete-panes` is the backlog item that closes it.
+- **`Flows.run` has the completeness rule too, since
+  `dataflow-run-complete-panes`.** It used to merge every pane at the
+  coordinator where the fan merged the boundary handful — 8.2x apart
+  on the Wrocław job. Both roads now merge the same accumulators, and
+  `TestFlow` asserts the two counts are EQUAL rather than trusting a
+  clock. What is left between them is what they are: a fan reads the
+  source once and a plan per stage reads it once each.
 - A fan finishes by MERGE — no exchange. Stage 3's own measurement
   found a stage that wants otherwise (~3x10^5 accumulators per
   partition, above the crossover), and the honest fix is to stop

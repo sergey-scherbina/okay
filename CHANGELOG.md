@@ -1,5 +1,42 @@
 # Changelog
 
+## dataflow-run-complete-panes — the rule the single-stage road never got
+
+The completeness rule was stage 3's and it went into the FAN only.
+`Flows.run` — the road every windowed plan that is not a fan takes —
+kept merging every pane the job produced, and the two roads were 8.2x
+apart on the same job.
+
+The obstacle was structural: to finish a pane is to fold it into the
+terminal, and a `Wide` node has no terminal, because `job(into)` is
+built after the node exists. So the way past it was to not go through
+it — a partition that can finish a pane PRESENTS it into a plain
+per-bucket buffer, and only the boundary panes go into the maps a
+reducer merges. `out` concatenates. The node still does not know what
+it is folded into.
+
+Measured back to back on one box, two worktrees, the before at the
+parent commit: the three-plan road goes from 647 ms (8.19x the
+hand-written 8-thread lane) to 182 (2.25x) — 3.6x — with every other
+lane inside the noise.
+
+And the check is a COUNT rather than a clock: `Run.merged` is reported
+by the single-stage road now, and TestFlow asserts it equals the fan's
+exactly at 2, 4 and 8 partitions.
+
+Two things fell out. `prepass` answers an `Extent` rather than one
+`Long` — the rule needs the prefix maximum AND the backwardness, and
+this road had been computing half of it. And the LAST partition has no
+upper bound at all: the two bounds guard two different neighbours, and
+it has no later one. Before this it held back the final `back` of the
+stream for nothing, which is why a run at ONE partition merged fifteen
+panes it was the only side of; it merges none now, asserted. The fan
+takes the same refinement: 122 679 accumulators to 122 649, checksums
+unmoved.
+
+Controlled: declaring every pane complete fails four of the Wrocław
+checksums.
+
 ## fact-is-monoid — the merge a Fact declared was a Monoid all along
 
 `Fact[V]` asked a contributor for `empty` and `merge`. That is

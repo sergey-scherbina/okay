@@ -769,17 +769,17 @@ what eight of them held before. `Run.merged` reports it and the suite
 asserts it drops, so this is not a benchmark's private knowledge.
 
 **The last row is not a measurement of the pass count.** It drives
-the single-stage road, `Flows.run`, which has no completeness rule
-and still merges every pane — the engine as it was an hour before.
+the single-stage road, `Flows.run`, which had no completeness rule
+and still merged every pane — the engine as it was an hour before.
 Stage 3 measured one pass against three at 3%; the 7.6x here is the
 completeness rule, not the fan. Those two numbers must not be added.
 
-**Two things this leaves open, both filed.** `Flows.run`'s windowed
-node keeps the old behaviour, so the single-stage road is now much
-the slower of the two and the docs say so; and the decomposition
-(source 5 ms, route 18, stop 71, bunching 25) sums to 104 against a
-fan of 154, so about a third of the fan's time is not in any of its
-sinks. Neither is explained here, and neither is guessed at.
+**Two things this left open, both since closed by their own lanes.**
+`Flows.run`'s windowed node has the rule now
+(`dataflow-run-complete-panes`, below: 647 ms to 182 on the same box,
+and the two roads' merge counts asserted EQUAL). And the "third of a
+fan's time in none of its sinks" did not survive being measured
+properly (`dataflow-fan-overhead`, below).
 
 ### Stage 4a — what crosses a wire, and its Schema
 
@@ -1454,3 +1454,58 @@ socket, and this feed is none of those — and no shuffle, which is what
 still unattributed, and this instrument's bars are wider than it.
 Pricing it needs JMH with forks rather than a wall clock in a suite.
 Nothing has asked.
+
+### dataflow-run-complete-panes — the rule the single-stage road never got
+
+The completeness rule was stage 3's and it went into the FAN only.
+`Flows.run` — the road every windowed plan that is not a fan takes —
+kept merging every pane the job produced, and the gap between the two
+roads on the same job was 8.2x. Not a fair 8.2x either: the slower one
+is the road a simpler plan takes.
+
+**The obstacle was structural and the way past it was to not go
+through it.** To finish a pane is to fold it into the terminal, and a
+`Wide` node has no terminal — `job(into)` is built after the node
+exists. So a partition that can finish a pane PRESENTS it and appends
+it to a plain per-bucket buffer, and only the boundary panes go into
+the maps a reducer merges. `out` concatenates its range's buffers with
+what it merged. Nothing is threaded down, and the node still does not
+know what it is folded into.
+
+**Measured back to back on one box** (the same suite, two worktrees,
+the before at the parent commit):
+
+```
+  lane                                              | before |  after
+  hand-written, 8 threads (OkayLane.parallel)       |     79 |     81
+  engine, 8 partitions, one pass (the fan)          |    115 |    111
+  engine, 8 partitions, three plans via Flows.run   |    647 |    182
+```
+
+**3.6x**, with every other lane inside the noise — which is what makes
+it the change rather than the machine.
+
+**And the check is a COUNT, not a clock.** `Run.merged` is reported by
+the single-stage road now, and `TestFlow` asserts it equals the FAN's
+exactly at 2, 4 and 8 partitions: same rule, same partitions, same
+number. A time says the road got faster; the count says it is doing
+the same thing the other road does.
+
+**Two things fell out of it.**
+
+  - `prepass` answers an `Extent` rather than one `Long`. The rule
+    needs the prefix maximum AND the backwardness, and this road had
+    been computing exactly half of that since stage 1 — enough to seed
+    a watermark, not enough to finish a pane.
+  - **the LAST partition has no upper bound at all.** The two bounds
+    guard two different neighbours: `lower` says no EARLIER partition
+    can contribute, `upper` says no LATER one can. The last partition
+    has no later one. Before this it held back the final `back` of the
+    stream for no reason — which is why a run at ONE partition merged
+    fifteen panes it was the only side of. It merges nothing now, and
+    the suite asserts that rather than describing it. The fan gets the
+    same refinement for free: 122 679 accumulators to 122 649.
+
+**Controlled**: declaring every pane complete (`if true`) fails four
+of the Wrocław checksums, so the tests can see a rule that fires when
+it should not.

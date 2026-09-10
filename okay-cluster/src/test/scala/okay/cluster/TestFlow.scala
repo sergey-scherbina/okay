@@ -233,6 +233,47 @@ class TestFlow extends munit.FunSuite {
   // stage 3: one pass, many sinks
   // -----------------------------------------------------------------
 
+  /**
+   * THE SINGLE-STAGE ROAD MERGES WHAT THE FAN MERGES
+   * (dataflow-run-complete-panes).
+   *
+   * The completeness rule was stage 3's and it went into the fan
+   * only, so `Flows.run` merged every pane the job produced where the
+   * fan merged the handful that span a partition boundary — 7.6x
+   * apart on the Wrocław job, the same answer either way. The rule is
+   * on both roads now, and the check is not a time: it is the COUNT
+   * of accumulators reaching the coordinator, which must be the fan's
+   * exactly, because it is the same rule over the same partitions.
+   */
+  test("Flows.run merges only the boundary panes, and the same ones the fan merges") {
+    val xs = feed(20000, Late - 1)
+    val panes = Flows.run(Flow.slices(xs, 1).tumbling(Size, Late)(_.key)(_.ts)(value),
+      paneSum).runWith.value.n
+    for p <- Vector(2, 4, 8) do
+      val road = Flows.run(Flow.slices(xs, p).tumbling(Size, Late)(_.key)(_.ts)(value),
+        paneSum).runWith
+      val fan = Flows.fan(Flow.slices(xs, p),
+        Sink.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)).runWith
+      assertEquals(road.value, fan.value, s"$p partitions")
+      assertEquals(road.merged, fan.merged,
+        s"$p partitions: the single-stage road merges ${road.merged} where the fan merges ${fan.merged}")
+      assert(road.merged * 4 < panes,
+        s"$p partitions: ${road.merged} of $panes panes still reach the merge — " +
+          "the completeness rule is not firing on this road")
+  }
+
+  test("with one partition there is nothing to merge, and nothing is") {
+    // the rule's own edge: a single partition finishes every pane it
+    // produces, so the coordinator merges NOTHING. It is also the
+    // case that would hide a rule that never fires, which is why the
+    // count is asserted at zero rather than at "small"
+    val xs = feed(20000, Late - 1)
+    val one = Flows.run(Flow.slices(xs, 1).tumbling(Size, Late)(_.key)(_.ts)(value),
+      paneSum).runWith
+    assertEquals(one.merged, 0L, "a lone partition sent panes to a merge it is the only side of")
+    assert(one.value.n > 100)
+  }
+
   test("a fan of three sinks answers exactly what three separate runs answer") {
     val xs = feed(20000, Late - 1)
     val route = Flows.fold(Flow.slices(xs, 4).tumbling(Size, Late)(_.key)(_.ts)(value), paneSum).runWith
