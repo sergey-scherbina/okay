@@ -147,7 +147,10 @@ class TestStream extends munit.FunSuite {
 
   test("the sessions are let go when the stream ends") {
     val before = Sessions.count
-    Cluster.stream(WindowJob, feed, 4, Vector.fill(2)(Cluster.local), 512).runWith: Unit
+    // `val _ =`, not `: Unit`: the ascription silences the non-unit
+    // STATEMENT lint but not value discard, and this line has been
+    // warning on a cold compile since 6a (master's, not this lane's)
+    val _ = Cluster.stream(WindowJob, feed, 4, Vector.fill(2)(Cluster.local), 512).runWith
     assertEquals(Sessions.count, before, "a finished stream left its state behind")
   }
 

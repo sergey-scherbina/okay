@@ -151,6 +151,44 @@ object Wire {
                                     (using Schema[K], Schema[Acc], Schema[IAcc]): Wire[A, R] =
     windowed(size, slide, lateness, key, at, agg, seeded)(into)
 
+  /**
+   * A WINDOWED WIRE WHOSE PANES ARE WRITTEN OUT, AT A DISTANCE
+   * (specs/dataflow.md, stage 6c).
+   *
+   * The promise and its two qualifiers are `Sink.writing`'s, and the
+   * distance is what makes them worth stating: the writer runs WHERE
+   * THE PANE IS RETIRED, which is not one place. A pane the
+   * completeness rule let a partition finish alone is written on that
+   * WORKER; a boundary pane is written on the COORDINATOR when the
+   * watermark passes it. So a `write` here is a closure over whatever
+   * the worker process can reach — a table, a topic, a file — and
+   * emphatically not over the submitting process's memory.
+   *
+   * Nothing about that is new machinery: `Job` has always built its
+   * sink from parameters ON the worker, so the writer is constructed
+   * there like everything else and no closure crosses the wire.
+   */
+  def writing[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
+                            key: A => K, at: A => Long,
+                            agg: Aggregator[A, Acc, O], seeded: Boolean)
+                           (write: Pane[K, O] => Unit)
+                           (using Schema[K], Schema[Acc]): Wire[A, Long] =
+    windowed(size, slide, lateness, key, at, agg, seeded)(Sink.writes(write))
+
+  def tumblingTo[A, K, Acc, O](size: Long, lateness: Long,
+                               key: A => K, at: A => Long,
+                               agg: Aggregator[A, Acc, O], seeded: Boolean = true)
+                              (write: Pane[K, O] => Unit)
+                              (using Schema[K], Schema[Acc]): Wire[A, Long] =
+    writing(size, size, lateness, key, at, agg, seeded)(write)
+
+  def slidingTo[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
+                              key: A => K, at: A => Long,
+                              agg: Aggregator[A, Acc, O], seeded: Boolean = true)
+                             (write: Pane[K, O] => Unit)
+                             (using Schema[K], Schema[Acc]): Wire[A, Long] =
+    writing(size, slide, lateness, key, at, agg, seeded)(write)
+
   // -----------------------------------------------------------------
   // Schemas built from Schema VALUES
   //

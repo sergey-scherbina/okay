@@ -287,6 +287,77 @@ object Sink {
         for w <- ws do t += w.boundary.length
         t
 
+  /**
+   * THE TERMINAL THAT WRITES A PANE OUT (specs/dataflow.md, stage 6c)
+   * instead of folding it into a value the caller reads at the end,
+   * and answers how many panes it wrote.
+   *
+   * It is an ordinary `Aggregator`, which is the point: a sink whose
+   * output LEAVES needs no new seam in the engine, because "leaves"
+   * is just what this particular fold does on the way past.
+   *
+   * WHAT THE ENGINE PROMISES, and it is not what this field usually
+   * says. See `writing` below.
+   */
+  def writes[K, O](write: Pane[K, O] => Unit): Aggregator[Pane[K, O], Long, Long] =
+    Aggregator[Pane[K, O], Long, Long](0L)((n, p) => { write(p); n + 1L })((a, b) => a + b)(identity)
+
+  /**
+   * A WINDOWED SINK WHOSE RETIRED PANES ARE WRITTEN OUT
+   * (specs/dataflow.md, stage 6c).
+   *
+   * THE IDENTITY IS ALREADY THERE. A retired pane is `(start, key)`,
+   * and that pair is unique by construction — a window is a half-open
+   * interval and a key is a key. So a writer that is KEYED by it needs
+   * no protocol at all: no transaction, no two-phase commit, no dedup
+   * table, nothing to tune.
+   *
+   * WHAT IS PROMISED, in the two halves that are actually true:
+   *
+   *   1. every (window, key) this run retires is offered to `write`
+   *      AT LEAST ONCE, in no particular order;
+   *   2. every offer of one identity carries the SAME value.
+   *
+   * and therefore a keyed writer ends with each identity present
+   * exactly once, holding the batch answer — an exactly-once OUTCOME,
+   * which is the phrase specs/persist.md already settled on.
+   *
+   * IT IS NOT EXACTLY-ONCE EXECUTION, and the difference is not
+   * pedantry — it is measured. `TestOnce` kills workers and counts:
+   * the offers outnumber the panes, because a partition that dies is
+   * recomputed and the panes it had already finished by itself are
+   * written again. That repeat is not a defect to be removed; every
+   * stage since 5 depends on a partition being recomputable, and (2)
+   * is what makes it harmless. A writer that COUNTS rather than keys —
+   * an append to a log, `+= 1` — gets at-least-once and nothing more,
+   * which is why the answer here is the number of OFFERS and is
+   * documented as such.
+   *
+   * The third qualifier is the run: a coordinator that dies and starts
+   * again re-offers everything, because it journals nothing
+   * (`dataflow-coordinator`). Within a run the identity is enough.
+   */
+  def writing[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
+                            key: A => K, at: A => Long,
+                            agg: Aggregator[A, Acc, O], seeded: Boolean)
+                           (write: Pane[K, O] => Unit)
+  : Sink[A, Long] { type W = Handed[K, Acc, Long] } =
+    windowed(size, slide, lateness, key, at, agg, seeded)(writes(write))
+
+  def tumblingTo[A, K, Acc, O](size: Long, lateness: Long,
+                               key: A => K, at: A => Long,
+                               agg: Aggregator[A, Acc, O], seeded: Boolean = true)
+                              (write: Pane[K, O] => Unit)
+  : Sink[A, Long] { type W = Handed[K, Acc, Long] } =
+    writing(size, size, lateness, key, at, agg, seeded)(write)
+
+  def slidingTo[A, K, Acc, O](size: Long, slide: Long, lateness: Long,
+                              key: A => K, at: A => Long,
+                              agg: Aggregator[A, Acc, O], seeded: Boolean = true)
+                             (write: Pane[K, O] => Unit)
+  : Sink[A, Long] { type W = Handed[K, Acc, Long] } =
+    writing(size, slide, lateness, key, at, agg, seeded)(write)
+
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
                                       agg: Aggregator[A, Acc, O], seeded: Boolean = true)

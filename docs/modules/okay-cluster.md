@@ -198,6 +198,35 @@ O(elements since the oldest open pane), and the seam for that is
 The COORDINATOR is still a single point of failure: it holds the
 folded state and journals nothing.
 
+**A pane that LEAVES the engine.** `Sink.tumblingTo` / `slidingTo`
+(and `Wire`'s twins, for a job at a distance) hand each retired pane
+to a writer instead of folding it into a value the submitter reads at
+the end, and answer how many they offered. What they hand over is the
+pane's identity — `(window start, key)` — which is unique by
+construction, so a writer keyed by it needs no protocol at all: no
+transaction, no two-phase commit, no dedup table, nothing to tune.
+
+The promise has two halves and both are true: every (window, key) a
+run retires is offered AT LEAST ONCE, and every offer of one identity
+carries the SAME value. A keyed writer therefore ends with each
+identity present once, holding the batch answer — exactly-once
+OUTCOME, not exactly-once execution. On 3,204 panes with one worker's
+reply lost the writer is offered 3,598 (394 rewritten by the
+recomputed partition) while the run's own answer stays 3,204; with two
+losses, 3,981. A writer that COUNTS rather than keys — an append, a
+`+= 1` — gets at-least-once and nothing more.
+
+The writer runs WHERE THE PANE RETIRES, which is not one place: a pane
+the completeness rule let a partition finish alone is written on that
+WORKER, a boundary pane on the COORDINATOR when the watermark passes
+it. So `write` is a closure over what the worker process can reach — a
+table, a topic, a file — never over the submitting process's memory.
+In a STREAM there is only one place, because a streaming partition
+finishes nothing locally: offers equal panes exactly.
+
+Across RUNS there is no such promise. A coordinator that dies and
+starts again re-offers everything, because it journals nothing.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
@@ -271,6 +300,8 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Flows.run` | `(Flow[A], Aggregator[A, Acc, O])(using Scheduler) => Run[O] ! Async` | the answer, the DROPPED count, the partitions and the reducers actually used |
 | `Flows.fan` | `(Flow[A], Sink[A, R])(using Scheduler) => Run[R] ! Async` | several sinks, ONE pass; the completeness rule lives here |
 | `Sink.fold / keyed / tumbling / sliding` | `… => Sink[A, R]` | one output: a stage plus its terminal |
+| `Sink.writing / tumblingTo / slidingTo` | `(…)(write: Pane[K, O] => Unit) => Sink[A, Long]` | retired panes are WRITTEN, keyed by `(start, key)`; answers how many were OFFERED |
+| `Wire.writing / tumblingTo / slidingTo` | the same, `(using Schema[K], Schema[Acc])` | the same for a `Job` — the writer is built on the worker, so no closure crosses the wire |
 | `Sink.and` | `Sink[A, R1] => Sink[A, R2] => Sink[A, (R1, R2)]` | two sinks over one pass — `Aggregator.zip` one level up |
 | `Flows.fold` / `Flows.collect` | as above / `Flow[A] => Vector[A] ! Async` | the answer alone; every element in partition order |
 | `Job[P, R]` | `name / params / flow / sink` | what a worker can be asked for, by name |
@@ -291,8 +322,11 @@ val wire: Cluster.Worker[Double, Double] = c =>
   write errors — death shows up as `readLine() == null`, throw there.
 - Scala.js `main(args)` does NOT receive `process.argv` — the Node
   client reads it explicitly.
-- Exactly-once is out of scope by design: at-least-once + idempotent
-  (combOp) merges.
+- `distribute`'s own contract is at-least-once + idempotent (combOp)
+  merges. For a job whose panes are WRITTEN somewhere, the precise
+  statement is `Sink.writing`'s: at-least-once offers with an
+  identity, therefore exactly-once outcome for a keyed writer, within
+  ONE run.
 
 - A `Flow` partition is a THUNK (`() => Chunks[A]`), not a `Chunks`.
   A pure chunked source replays as a value; one built over an
@@ -326,6 +360,9 @@ val wire: Cluster.Worker[Double, Double] = c =>
   producing that merge rather than to parallelise it. See
   `dataflow-complete-panes`.
 
-Next per specs/dataflow.md: `dataflow-run-complete-panes` and
-`dataflow-fan-overhead` (about a third of a fan's time is in none of
-its sinks), then stage 4 — across processes.
+Next per specs/dataflow.md: stage 7, the distributed lane in
+docs/benchmarks.md §20. Then the backlog —
+`dataflow-run-complete-panes`, `dataflow-fan-overhead` (about a third
+of a fan's time is in none of its sinks), and `dataflow-coordinator`,
+which is what a journalled coordinator would need for exactly-once
+ACROSS runs.

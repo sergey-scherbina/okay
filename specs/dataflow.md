@@ -195,10 +195,11 @@ than trusting the author.
   process killed mid-run. The streaming half — barrier checkpoints
   into okay-persist with source offsets — belongs to stage 6, where
   there is an unbounded source to checkpoint.
-- **6 — streaming, properly.** 6a DONE (the epoch loop, the
+- **6 — streaming, properly.** DONE. 6a (the epoch loop, the
   coordinator as a fold, the watermark as the minimum over the
-  partitions) and 6b DONE (a dying worker's partition is replayed on
-  a survivor). 6c: exactly-once OUTCOME at the sink.
+  partitions), 6b (a dying worker's partition is replayed on a
+  survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
+  execution underneath, and the offers counted rather than promised).
 - **7 — the numbers.** A distributed lane in docs/benchmarks.md §20,
   measured against Flink and Spark in the mode they are built for,
   with what their fixed costs buy named where it belongs.
@@ -342,7 +343,30 @@ Stage 6a — the epoch loop (TestStream, TestPanesOnce):
       the SAME partial (what a retry after a lost reply must get),
       and a FRESH session replayed to that epoch arrives at the same
       place
-- [ ] exactly-once outcome at the sink — 6c
+
+Stage 6c — a row that LEAVES the engine (TestOnce):
+- [x] a windowed sink whose retired panes are handed to a writer with
+      their identity — `(window start, key)` — and which answers how
+      many it OFFERED
+- [x] on a quiet batch run, offers == panes exactly
+- [x] WHEN A REPLY IS LOST — a worker that served the request in full
+      and then vanished, so its panes were written and its partial was
+      not received — the store holds each (window, key) once with the
+      batch value, and the offers EXCEED the panes: 3,598 offers for
+      3,204 panes on one loss, 3,981 on two
+- [x] every repeated offer carried the SAME value (a counter that
+      would see a differing one, asserted at zero, and shown to fire
+      when its predicate is inverted — 394 repeats reach it)
+- [x] twelve seeded loss schedules, and the store is the batch answer
+      in every one
+- [x] the run's own answer is the PANE count, not the offer count:
+      the lost partial took its count with it and the recomputed one
+      replaced it
+- [x] streaming writes from the COORDINATOR — offers == panes, at
+      every partition count crossed with every epoch size — because a
+      streaming partition finishes nothing locally
+- [ ] exactly-once ACROSS RUNS — a restarted coordinator re-offers
+      everything; that needs the journal, `dataflow-coordinator`
 - [ ] durable checkpointing, so a COORDINATOR restart can resume —
       `dataflow-coordinator`
 
@@ -877,3 +901,86 @@ it is an assembly of okay-persist's log rather than an invention.
 window's lateness, an unseeded parallel run drops FEWER late elements
 than the stream does and answers differently — asserted in both
 directions rather than described.
+
+### Stage 6c — a row the engine wrote, and the identity a pane already has
+
+Five stages of recovery rest on one trade: a partition may be
+COMPUTED twice, and that is correct because the coordinator keeps
+exactly one partial per partition. Nothing had ever LEFT the engine,
+so the trade never had to be defended. The moment a pane is written
+somewhere the question stops being "is the arithmetic right" and
+becomes "did this row land twice".
+
+**The identity was already there, and that is the whole mechanism.** A
+retired pane is `(window start, key)`, unique by construction — a
+window is a half-open interval and a key is a key. So `Sink.writing`
+hands the writer that pair and nothing else is needed: no transaction,
+no two-phase commit, no dedup table, no tuning. The terminal is an
+ordinary `Aggregator` (`Sink.writes`), because "leaves the engine" is
+just what this particular fold does on the way past — the engine grew
+no seam for it.
+
+**What is promised, in the two halves that are actually true.** Every
+(window, key) a run retires is offered to `write` AT LEAST ONCE, and
+every offer of one identity carries the SAME value. A keyed writer
+therefore ends with each identity present once, holding the batch
+answer: exactly-once OUTCOME, the words specs/persist.md already
+settled on.
+
+**It is not exactly-once EXECUTION, and that is measured rather than
+conceded.** `TestFailure`'s dying worker throws INSTEAD of serving, so
+its partition is never computed and nothing is ever written twice —
+which would have let this lane claim anything it liked. `TestOnce`
+injects the other failure, the one `Cluster.ask`'s comment has named
+since stage 5 and no test had produced: a worker that serves the
+request IN FULL — every pane the completeness rule lets it finish is
+written — and then loses the reply. The coordinator cannot tell the
+two apart, so the outcome has to survive both.
+
+```
+                                 panes    offers   rewritten   the run's answer
+  batch, nothing dies            3,204     3,204           0             3,204
+  batch, one reply lost          3,204     3,598         394             3,204
+  batch, two replies lost        3,204     3,981         777             3,204
+  streamed, any parts x take     3,204     3,204           0             3,204
+```
+
+Three readings, and each is a sentence the field usually blurs:
+
+  - **the offers exceed the panes by 12% on one lost reply.** That is
+    the recomputed partition rewriting what it had already written.
+    The repeat is not a defect to be removed — every stage since 5
+    depends on a partition being recomputable — and the identity is
+    what makes it harmless. A writer that COUNTS rather than keys (an
+    append, a `+= 1`) gets at-least-once and nothing more, which is
+    why the answer is documented as a count of OFFERS.
+  - **the run's own answer never moves.** The lost partial took its
+    count with it and the recomputed one replaced it, so the engine
+    reports 3,204 while the writer saw 3,598. Two different true
+    numbers about the same run.
+  - **a stream offers exactly once**, and that is not a second
+    mechanism: a streaming partition finishes nothing locally (6a), so
+    every pane reaches the coordinator as an accumulator and is
+    written in one place. The batch run trades an extra offer under
+    failure for the 1.7 million panes it never sends.
+
+**Both halves of the claim were controlled.** Keying the store on
+`key` alone fails all four tests; inverting the equal-value predicate
+fails the two that inject a loss and passes the two that do not —
+which is what proves 394 repeated identities actually reach that
+check, rather than an assertion that could never fire.
+
+**The boundary is sharp, and the writer runs where the pane retires.**
+A pane the completeness rule let a partition finish alone is written
+on that WORKER; a boundary pane is written on the COORDINATOR when
+the watermark passes it. A `write` is therefore a closure over what
+the worker process can reach — a table, a topic, a file — never over
+the submitting process's memory. Nothing new: `Job` has built its
+sink from parameters on the worker since 4b, so the writer is
+constructed there like everything else and no closure crosses the
+wire.
+
+**And what this is NOT: exactly-once across runs.** A coordinator that
+dies and starts again re-offers everything, because it journals
+nothing. Within a run the identity is enough; across runs it needs
+the journal, which is `dataflow-coordinator`.

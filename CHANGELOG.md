@@ -1,5 +1,47 @@
 # Changelog
 
+## dataflow stage 6c — a row that leaves the engine, and the identity a pane already has
+
+Five stages of recovery rest on one trade: a partition may be
+COMPUTED twice, and that is correct because the coordinator keeps
+exactly one partial per partition. Nothing had ever LEFT the engine,
+so the trade never had to be defended. The moment a pane is written
+somewhere, the question stops being "is the arithmetic right" and
+becomes "did this row land twice".
+
+THE IDENTITY WAS ALREADY THERE. A retired pane is `(window start,
+key)`, unique by construction — a window is a half-open interval and a
+key is a key. `Sink.writing` / `Sink.tumblingTo` / `Sink.slidingTo`
+(and their `Wire` twins, for a job at a distance) hand the writer that
+pair, and nothing else is needed: no transaction, no two-phase commit,
+no dedup table, nothing to tune. The terminal is an ordinary
+`Aggregator`, because "leaves the engine" is just what this fold does
+on the way past.
+
+What is promised, in the two halves that are true: every (window, key)
+a run retires is offered AT LEAST ONCE, and every offer of one
+identity carries the SAME value. A keyed writer therefore holds each
+identity once with the batch answer — exactly-once OUTCOME, the words
+specs/persist.md already settled on.
+
+IT IS NOT EXACTLY-ONCE EXECUTION, and that is measured rather than
+conceded. `TestOnce` injects the failure stage 5's comment named and
+no test had produced: a worker that serves the request IN FULL — its
+panes written — and then loses the reply. On 3,204 panes the writer is
+offered 3,598 with one reply lost and 3,981 with two, while the run's
+own answer stays 3,204: the store still holds each identity once with
+the batch value. A stream offers exactly once, because a streaming
+partition finishes nothing locally and every pane is written in one
+place.
+
+Both halves were controlled: keying the store on `key` alone fails all
+four tests, and inverting the equal-value predicate fails exactly the
+two that inject a loss — which is what proves 394 repeated identities
+reach that check.
+
+Not exactly-once ACROSS runs: a coordinator that dies re-offers
+everything, because it journals nothing. That is `dataflow-coordinator`.
+
 ## scan-fold-without-tokens — the sink road's first consumer, and one door that stays shut
 
 The operator named the two doors opened this morning that had no
