@@ -1,0 +1,41 @@
+task: dataflow-onepass
+agent: opus-dataflow
+started: 2026-09-10
+branch: feature/dataflow-onepass
+worktree: ../okay-wt-dfo
+
+spec: specs/dataflow.md, stage 3
+
+why: the engine reads Wrocław's feed THREE TIMES where §20's
+  hand-written lane reads it once, because stage 1 allows one keyed
+  stage per flow and the job has three. Until that is fixed no number
+  the engine produces is comparable with that table, and both
+  previous lanes said so rather than quoting one.
+
+  It is also where docs/benchmarks.md §20 locates the real asymmetry
+  between okay and an engine: "a fan-out in one JVM is calling three
+  methods with the same reference. In Flink the same fan-out is three
+  shuffles."
+
+what: `Sink[A, R]` — a keyed or windowed stage together with what its
+  output is folded into — and `and`, which pairs two of them into a
+  `Sink[A, (R1, R2)]`. One pass over the source feeds all of them.
+  The shape is deliberately `Aggregator.zip`'s: the core has computed
+  two statistics in one pass since P1, and this is the same idea one
+  level up.
+
+  Seeding survives the fan: a Sink declares the event-time functions
+  its windows need seeded, `and` concatenates them, and the driver's
+  one pre-pass computes a prefix maximum per column.
+
+scope, stated so it is not discovered later: a fan finishes by MERGE.
+  The exchange stays available to single-stage flows. That is not
+  laziness — stage 2 measured the crossover at ~100 000 accumulators
+  and a fan of Wrocław-sized stages is three orders under it, so
+  per-sink exchange inside a fan is machinery nothing has asked for.
+  If something asks, it goes in the backlog with this sentence.
+
+predict: the three-flow Wrocław run should collapse to roughly a
+  third of its passes and NOT to a third of its time — the windowing
+  and the aggregation dominate, not the source. Measure it rather
+  than assert it.
