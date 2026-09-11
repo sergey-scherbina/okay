@@ -1,6 +1,5 @@
 # Changelog
 
-<<<<<<< HEAD
 ## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
 
 The repository's thesis is one primitive, the durable log, and the
@@ -79,7 +78,7 @@ the alias is transparent in its own scope, the given's type then
 constrains R to nothing, and every row is satisfied by the macro run
 at some inferred R. `Distinct.unchecked` is the constructor that
 leaves, deliberately public, for the rows the macro cannot see.
-=======
+
 ## schema-fold stage 1 — the catamorphism, and the first algebra on it
 
 `Schema.scala`'s header promised that every derivation is a
@@ -99,7 +98,6 @@ RECURSIVE schema — where the old `of` descended for ever, which no
 caller had ever asked it — `$defs`/`$ref`. `Compat` does not move: it
 is a walk over two schemas, not a fold over one; the spec is
 corrected.
->>>>>>> 524966cc (schema-fold-1: Schema.fold, and JsonSchema.of as its first algebra)
 
 ## dataflow-direction — stages 11-13, and federation as a spec
 
