@@ -1,5 +1,35 @@
 # Changelog
 
+## openapi-render — the document as a rendering, stage 0
+
+The operator asked for OpenAPI support; the board already governed how
+to start it ("do NOT start this as generate OpenAPI — name the
+consumer"), so specs/openapi.md named the reader first and this lane
+renders what the input actually supports.
+
+New JVM module okay-openapi. `OpenApi.document(api, router)` reads
+`Router.entries` — the same vector that dispatches — and renders
+OpenAPI 3.1: paths in the order the code declared them, methods, path
+parameters from the template, and a request body whose schema is
+`JsonSchema.of` over the very `Schema` the decoder was derived from.
+3.1 because its schema dialect IS JSON Schema, so okay-codec's
+renderer is the whole schema story; the document is `Json` rather than
+a typed model of a standard this repository does not own.
+
+Eight tests, the first of which is the renderer's law: every entry
+appears exactly once and the document names no path the router does
+not dispatch.
+
+Two honesties. An operation whose responses nobody declared SAYS
+"undeclared" rather than claiming a `200` — the tree has no response
+declarations at all. And the spec is corrected where building
+disproved it: `Entry` carries the path TEMPLATE but not the
+parameters' kinds, so `Route[Int]("id")` renders as a string; the kind,
+the query parameters and the responses are declarations in okay-http,
+filed under BACKLOG "openapi" for the arc that owns that file. The
+third is what decides whether a document is worth serving, which is
+why this module does not serve one yet. Commit: LANDING.
+
 ## optics-outside-describe — the describing interpreter gets a consumer that can break
 
 Stage 8. Stage 1 built DESCRIBE and only stage 4 ever read it — once,

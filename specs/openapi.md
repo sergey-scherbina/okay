@@ -58,8 +58,12 @@ run, body):
 
 - **Paths and methods** — yes. `Entry.path` is the described form,
   and `Route.params` names the variable segments with their kinds.
-- **Path parameters** — yes, from `params`, each with a `kind`
-  ("string", "int", …) that maps onto a JSON Schema type.
+- **Path parameters** — their NAMES, yes: `Entry.path` is the
+  template, so `{id}` is there. Their KINDS, no — `Route.params`
+  knows that `Route[Int]("id")` is an int and the entry does not
+  carry it, so stage 0 declares every path parameter a string. This
+  sentence is a correction: the spec first claimed the kinds were
+  available, and building stage 0 measured otherwise.
 - **Request bodies** — yes. `Entry.body: Option[Json]` is already a
   JSON Schema, produced by the same derivation the decoder uses, so a
   declared body cannot drift from the parser.
@@ -102,19 +106,23 @@ it as types — it is written out and served.
 
 ## Behavior
 
-Stage 0 — the document, from what exists (this lane, after the input
-is agreed with the optics-outside owner):
-- [ ] `document(api, router)` renders paths, methods, path parameters
+Stage 0 — the document, from what exists — SHIPPED (openapi-render,
+okay-openapi):
+- [x] `document(api, router)` renders paths, methods, path parameters
       and request bodies for every router entry, as OpenAPI 3.1
-- [ ] a path with variables renders as `/board/{id}`, with each
-      parameter declared `in: path`, `required: true`, and the type
-      its `kind` says
-- [ ] an entry with a declared body renders `requestBody` with the
+- [x] a path with variables renders as `/board/{id}`, with each
+      parameter declared `in: path`, `required: true` — and `type:
+      string`, because the kind does not reach the entry (above)
+- [x] an entry with a declared body renders `requestBody` with the
       schema `JsonSchema.of` produced — byte for byte the one the
       decoder uses
-- [ ] the renderer's own law: every entry appears exactly once, and
+- [x] the renderer's own law: every entry appears exactly once, and
       the document names no path the router does not dispatch
-- [ ] the document parses as JSON and round-trips through okay-codec
+- [x] the document parses as JSON and round-trips through okay-codec
+- [x] an undeclared operation SAYS SO in its `responses` rather than
+      claiming a `200` nobody promised
+- [x] operation ids are derived from method and path, stable and
+      distinct
 
 Stage 1 — responses, which is what makes it worth serving:
 - [ ] a route may declare what it answers (status and `Schema`), in

@@ -1966,3 +1966,15 @@ lazy val okayCdi = (project in file("okay-cdi"))
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )
+
+/** The OpenAPI document as a rendering of the router that serves it
+ * (specs/openapi.md, stage 0): paths, methods, path parameters and
+ * request bodies from `Router.entries`, as OpenAPI 3.1 — whose schema
+ * dialect IS JSON Schema, so okay-codec's renderer is the whole schema
+ * story. JVM: a document is written out or served, and both are. */
+lazy val okayOpenapi = (project in file("okay-openapi"))
+  .dependsOn(okay.jvm, okayHttp.jvm, okayCodec.jvm)
+  .settings(
+    name := "okay-openapi",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
