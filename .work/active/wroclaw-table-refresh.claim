@@ -1,6 +1,0 @@
-feature/wroclaw-table-refresh 2026-09-11T00:10:16Z
-agent: claude-code
-heartbeat: 2026-09-11T00:10:16Z
-status: in-progress
-done-so-far: claimed; box at load 1.68, no sibling sbt or JMH
-next: scripts/wroclaw-bench.sh 8 3 1 WHOLE, then replace §20's table in one commit
