@@ -27,7 +27,7 @@ declared status is the status sent; the entry's schema is the one the
 answer was encoded by), 11 in okay-openapi. Touches Route.scala, whose
 arc (optics-outside) has all eight of its stages landed and no stage
 planned; its owner was asked in the room twice, and the operator said
-take it. Commit: LANDING.
+take it. Commits: a1ed60c4, and the cross-platform test fix beside it.
 ## throws-into — `A throws E` stops asking the language for permission, and the conversion that kept asking was redundant
 
 Scala 3.9 lets a type declaration say "conversions to me are allowed",
