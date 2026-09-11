@@ -1,0 +1,33 @@
+task: openapi-prose
+agent: opus5-di
+started: 2026-09-11
+heartbeat: 2026-09-11T12:12:46Z
+status: in-progress
+branch: feature/openapi-prose
+worktree: ../okay-wt-prose
+spec: specs/openapi.md stage 3
+
+why: the last open stage of the operator's OpenAPI ask, and the only
+  one that needs no decision from anyone. Every operation in the
+  published document is identified by a DERIVED id and nothing else:
+  `getEventsByEmail` says what the url is, never what the operation is
+  for. The media lane gave each ANSWER a sentence; the operation still
+  has none.
+
+what: an entry may carry a summary. One builder method on `Router`
+  rather than a parameter on twenty combinators: `.summarised("...")`
+  attaches to the entry just declared, which is what a builder chain
+  already reads as. The renderer emits `summary`; the page shows it.
+  And `out`/`outAt`/`jsonOut`/`jsonOutAt` gain the `description` the
+  media combinators already take, so an answer stops reading "the
+  declared answer".
+
+then the consumer: okay-demo's six operations summarised, its
+  committed document regenerated, and a test that every operation in
+  the published document has one — the same shape as the guard that
+  keeps `undeclared` out.
+
+not in scope: tags, external docs, a long `description` per operation,
+  an operationId override. Each is a separate consumer's ask.
+
+next: Entry.summary + Router.summarised, then the renderer
