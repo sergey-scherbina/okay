@@ -285,6 +285,32 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       first: okay-rag's code chunker over a real file is the honest
       workload.
 
+## Build
+- [ ] jdk-internal-bad-symbolic-reference — a COLD `okayJVM/compile`
+      can fail with no source position and one error:
+
+          [error] Bad symbolic reference. A signature
+          [error] refers to StackableScope/T in package jdk.internal.vm
+          [error] which is not available.
+
+      `StackableScope` is loom's own internal class behind
+      `StructuredTaskScope`; nothing of ours names `jdk.internal.vm`,
+      and the grep says so. MEASURED 2026-09-11
+      (optics-outside-remaining, a docs-only lane, so the tree could
+      not be the cause): the gate died at 1205 of ~4081 test results,
+      and an UNCHANGED `okayJVM/compile` immediately after recompiled
+      the same 69 sources clean in 9 s. The same shape as
+      `dotty-classfile-crash-transient` with different text: fails
+      cold, passes unchanged.
+      Three things before anyone teaches `scripts/gate.sh` to re-run
+      on it, which is the obvious next step and the dangerous one:
+      the signature must require ZERO `==> X` AND that the only
+      `[error]` lines are this one plus `one error found`; the re-run
+      must be scoped to the failing project, as the Native branch
+      already is; and the rate belongs in a ledger here, because a
+      re-run that hides a real compile failure is worse than a red
+      gate. Not done: seen once, and once is not a signature.
+
 ## okay-codec
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
       closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
@@ -765,6 +791,11 @@ its owner can price it:
       I/O has to close over its own runner today. Widening to
       `A => String ! Rest` is a separate decision with those three
       callers to carry; see the spec's Out of scope.
+      RE-VERIFIED 2026-09-11: `Persist.append(partition, key, value,
+      ack): Long` returns a value directly — okay-persist is
+      synchronous by design, so nothing in the tree gives a tool a
+      reason to suspend. TRIGGER: the first tool that must do I/O its
+      caller cannot do for it.
 - [x] optics-outside-tools-adopt — DONE (2026-09-11). The entry was
       wrong that only tests were left: okay-demo's `RepoAgent` is an
       application and held two `ToolSpec` vals beside a `Map` under
@@ -786,19 +817,37 @@ its owner can price it:
       paid for not having it: price and contact in a summary's text
       sank a priced offer from 0.63 to 0.13
       (`weighed-not-read-out-of-the-embedding`). Cheapest of the six.
+      RE-MEASURED 2026-09-11 against okay-leads, the closest seat this
+      repository has ever had: a `Lead` never travels redacted.
+      `Demand.Report` is aggregates and cannot carry a contact BY
+      CONSTRUCTION; `Demand.deliverable` is a row filter, not a field
+      projection; `TestNoCredentialLogs` is still a regex over
+      committed source with no value to audit. TRIGGER: the first
+      place that hands a record onward with SOME fields removed AND
+      must answer "which fields does this policy touch" with no
+      document in hand. Redaction alone is a function; the AUDIT is
+      what earns the traversal.
 - [ ] optics-outside-live — subscribe to a lens. The lens compiles to
       a wire path, the server pushes only the focused part of the
       document, and a client write comes back as `set`. The most
       valuable of the six to a user and the most work: the optic must
       be reifiable and must survive serialisation. okay-live,
       okay-persist, okay-crdt.
+      MEASURED 2026-09-11 at the only live consumer in the tree, and
+      it is already minimal: `ChatDemo` publishes a KIND
+      (`feed.publish("board")`) and the client re-fetches
+      `/board.json`. A lens-addressed delta would replace a cheap
+      re-fetch of a handful of tasks. TRIGGER: a document large enough
+      that re-fetching it on every change is the measured cost — with
+      the measurement, not the intuition.
 - [ ] optics-outside-query — a query is an optic. `Forget[Sql]`
       compiles it to SQL, `Function1` runs the SAME predicate over a
       `Vector` in a test, `set` compiles to UPDATE. The seat is empty
       — okay-sql is strings plus `Schema` for rows — but typed query
       DSLs are a swamp, which is why the spec ranks this fourth and
       not first. Do not start it before routes and policy have
-      measured the shape.
+      measured the shape. STILL BLOCKED 2026-09-11: routes did; policy
+      has no seat (above), so the shape is half-measured.
 - [ ] optics-outside-topology — a dataflow is an arrow. The ONLY one
       of the six that meets the staticness condition the spec sets for
       reaching for `Arrow` at all: the graph must exist as a value
@@ -806,6 +855,15 @@ its owner can price it:
       Wants `ArrowChoice` or branches fall out of the static picture.
       okay-flink / okay-kafka / okay-reactive, and dataflow's own plan
       value is the incumbent to compare against.
+      MEASURED 2026-09-11: nothing here meets the condition, and why
+      is the useful part. `Stage[I, O, A] = A ! (Take % I + Writer %
+      O)` is a PROGRAM, not a graph — a value before it runs, but
+      everything past the first effect lives in a continuation, so it
+      cannot be walked, drawn, fused or shipped without running it.
+      That is not an oversight: a monadic pipeline's shape legitimately
+      depends on its values. okay-flink is one file of interop with no
+      plan value of our own to compare against. TRIGGER: a second
+      consumer that needs the graph BEFORE it runs.
 - [x] optics-outside-conf — CLOSED 2026-09-11, with one test and no
       new abstraction. The PATH half is refused by a decision already
       in the tree: `Serve.Config` is "flat and scalar on purpose" and

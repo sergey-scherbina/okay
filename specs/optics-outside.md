@@ -845,6 +845,74 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### What stays open, and what each is waiting for — 2026-09-11 (optics-outside-remaining)
+
+Five candidates are closed: routes, tools, the query string, DESCRIBE
+with a consumer that can break, and conf. The four below were
+re-checked for a consumer against the tree AS IT IS TODAY, which
+includes `okay-leads` — a module that landed this morning and whose
+whole purpose is "the fields a provider would pay for, none of the
+data that would make passing them on illegal", the closest thing this
+repository has ever had to a projection policy.
+
+None of them opened. What follows is the measurement and the TRIGGER
+that would open each, written down so the next agent neither
+re-derives it nor, worse, builds one of these without a caller — the
+trap this arc has now recorded four times.
+
+**policy — no seat, and `okay-leads` is the sharpest test of that.**
+A `Lead` never travels redacted. `Demand.Report` is aggregates —
+counts, digests, pairs — and cannot carry a contact by construction
+rather than by policy; `Demand.deliverable` is a row FILTER (has a
+contact, is not finished), not a field projection. The other candidate
+seat, `TestNoCredentialLogs`, is still a regex over committed source
+with no value-level projection to audit, and the adapters it guards
+have no log lines at all. **Trigger:** the first place that hands a
+record to an outside eye with SOME fields removed AND has to answer
+"which fields does this policy touch" with no document in hand. The
+audit is the interpreter that earns the traversal; redaction alone is
+a function.
+
+**query — blocked behind policy, by the spec's own ranking.** okay-sql
+is still strings plus `Schema` for rows. Unchanged, deliberately: a
+typed query DSL is a swamp, and the spec asks for routes and policy to
+measure the shape first. Routes did; policy has not.
+
+**live — measured at the only live consumer in the tree, and it is
+already minimal.** `ChatDemo` publishes a KIND
+(`feed.publish("board")`) and the client re-fetches `/board.json`. A
+lens-addressed push would replace a cheap re-fetch of a handful of
+tasks with an optic that must be reifiable AND survive serialisation.
+**Trigger:** a document large enough that re-fetching it on every
+change is the measured cost — with the measurement, not the intuition.
+
+**topology — the staticness condition is met by nothing here, and WHY
+is the useful part.** `Stage[I, O, A] = A ! (Take % I + Writer % O)`
+is a program, not a graph. It is a value before it runs, but
+everything past the first effect lives inside a continuation, so it
+cannot be walked, drawn, fused or shipped without running it. That is
+not an oversight: a monadic pipeline's shape legitimately depends on
+its values, and an `Arrow` is exactly the trade — a static shape, at
+the price of needing `ArrowChoice` before a branch can exist at all.
+okay-flink is one file of interop with no plan value of our own to
+compare against. **Trigger:** a second consumer that needs the graph
+BEFORE it runs — a renderer, a fuser, or a cluster shipper.
+
+**tools-effectful — the premise re-verified rather than recalled.**
+`Persist.append(partition, key, value, ack): Long` returns a value
+directly; okay-persist is synchronous by design, so nothing in the
+tree gives a tool a reason to suspend. All three callers —
+`Mcp.Server`, `Handlers.tools`, `Stepper` — take `A => String`.
+**Trigger:** the first tool that must do I/O its caller cannot do for
+it.
+
+The rule the arc has been enforcing on itself, one more time, because
+it is the whole content of this section: **a declaration earns an
+optic when it is handed to more than one interpreter and at least one
+of them DESCRIBES rather than runs.** Every candidate that closed had
+that consumer in the tree already. Every candidate still open is
+waiting for one, and the waiting is the correct state.
+
 ### The conf candidate — CLOSED 2026-09-11 (optics-outside-conf)
 
 The sixth candidate asked for "a setting is a lens that knows its

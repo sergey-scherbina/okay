@@ -1,5 +1,52 @@
 # Changelog
 
+## optics-outside-remaining — the four that stay open, measured
+
+Five of the six candidates are closed. This entry is about the other
+four, and it adds no code: each was re-checked for a consumer against
+the tree as it is TODAY, and the measurement and the trigger are
+written into the spec and the backlog so the next agent neither
+re-derives them nor builds one without a caller.
+
+**policy** was tested against the sharpest seat this repository has
+ever had — `okay-leads`, which landed this morning and exists to hold
+"the fields a provider would pay for, none of the data that would make
+passing them on illegal". It still does not open: a `Lead` never
+travels redacted. `Demand.Report` is aggregates and cannot carry a
+contact BY CONSTRUCTION, and `deliverable` is a row filter, not a
+field projection. Redaction alone is a function; the AUDIT is the
+interpreter that earns a traversal, and nothing here asks for one.
+
+**topology** is the interesting refusal. The spec says a dataflow is
+the only candidate meeting its staticness condition — and nothing in
+this tree meets it. `Stage[I, O, A] = A ! (Take % I + Writer % O)` is
+a PROGRAM, not a graph: a value before it runs, but everything past
+the first effect lives inside a continuation, so it cannot be walked,
+drawn, fused or shipped without running it. That is not an oversight,
+it is what a monadic pipeline is: its shape may depend on its values.
+An `Arrow` is precisely that trade, priced in `ArrowChoice`.
+
+**live** was measured at the only live consumer in the tree, and it is
+already minimal — `ChatDemo` publishes a KIND and the client re-fetches
+`/board.json`, a handful of tasks. **query** stays blocked behind
+policy by the spec's own ranking. **tools-effectful**: `Persist.append`
+returns a `Long` directly, so nothing gives a tool a reason to suspend.
+
+Found on the way, and filed rather than swallowed: a COLD
+`okayJVM/compile` failed this lane's gate with `Bad symbolic
+reference ... jdk.internal.vm.StackableScope` — loom's own internal
+class, which nothing of ours names — and an UNCHANGED recompile of the
+same 69 sources passed in 9 s. A docs-only lane cannot have caused it.
+BACKLOG's `jdk-internal-bad-symbolic-reference` has the shape, and the
+three conditions that would have to hold before `gate.sh` is taught to
+re-run on it. Once is not a signature.
+
+The rule, once more, because it is the whole content: a declaration
+earns an optic when it is handed to more than one interpreter and at
+least one of them DESCRIBES rather than runs. Every candidate that
+closed had that consumer already. Every one still open is waiting for
+one, and waiting is the correct state.
+
 ## optics-outside-conf — declared, deployable, and in no guide
 
 The sixth optics candidate wanted "a setting is a lens that knows its
