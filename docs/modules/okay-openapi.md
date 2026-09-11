@@ -34,6 +34,11 @@ repository does not own, and nothing here reads the document as types
 → `getBoardById`), so they are stable: a document whose ids move when
 nothing moved is a document nobody diffs.
 
+**Parameters include headers.** A route that declares what it reads
+off the request (`:@ "last-event-id".opt[Long]`) renders it `in:
+header`, beside the template rather than inside it — a header is not
+part of a url (specs/route-headers.md).
+
 **Parameters carry their kind.** `Router.Entry` holds
 `Route.Described` — the path template AND its parameters — so
 `Route[Int]("id")` renders as `{"type": "integer"}` and a `Queried`
@@ -83,11 +88,13 @@ those answers was perfectly well defined.
 
 ## What it cannot say, and why
 
-**Headers.** A route declares a path, its parameters, its query and
-its body; a handler that reads a header reads it off the `Request`
-with nothing declared anywhere. This renderer therefore says nothing
-about headers rather than guessing, and the fix — if one is wanted —
-is a declaration in okay-http, not a heuristic here.
+**Authentication.** A protected route is protected by a wrapper around
+the finished table (`Secure.granted`), so the requirement never
+reaches the entry: the document shows an open door where there is a
+lock. The fix is a declaration in okay-http that the ROUTER enforces
+(specs/route-headers.md, stage B), not a heuristic here — guessing
+"this looks protected" is how a document starts lying in the other
+direction.
 
 **Prose.** A route has no place to carry a sentence about itself, so
 summaries and tags are absent and operation ids are derived. That is

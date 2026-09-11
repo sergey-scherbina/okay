@@ -1,5 +1,62 @@
 # Changelog
 
+## route-headers — a header is a Named[T] in a third place (spec + stage A)
+
+The operator asked for a generalized mechanism for headers in the
+routing API. specs/route-headers.md is the design; stage A is the
+request half, landed with it.
+
+**Nothing new was invented, because the general unit already existed.**
+`Route.Named[T]`'s own comment has said since stage 1 that there is
+one type and not two *"because the OPERATOR says where it goes"*. A
+request header is the third place: `/` into the path, `:?` into the
+query, `:@` into the headers, with the same `as`/`opt`/`all`
+spellings. One builder serves query and header alike, because a header
+block IS a `Map[String, Vector[String]]` — the very shape a query
+string is. There is no parallel set of header combinators to keep in
+step.
+
+**The design fact that decides everything: a header cannot join `A`.**
+The law the arc rests on is `unapply(url(a)) == Some(a)`, and if `A`
+carried an `Authorization` value, `url(a)` would have nowhere to put
+it — the law would hold "mostly", which this repository refuses on
+principle (`Param.string` already refuses an empty capture for the
+same reason). So `Routed[A]` stays a prism on the URL, untouched, and
+`:@` produces `Headed[A, H]`, the request-shaped declaration, with a
+law of the same shape: `readHeaders(requestWith(h)) == Some(h)`.
+
+Two behaviours are decided rather than defaulted. A REQUIRED header
+that is absent is a MISS, not a 400 — a router answering 400 would be
+claiming no other route could have matched, which it cannot know.
+Names match case-insensitively whichever casing the declaration used,
+because that is what they are on the wire; the lookup map is built
+under the DECLARED names and filled from whatever arrived.
+
+okay-openapi renders a declared header `in: header`, beside the
+template rather than inside it.
+
+**Found while building it, by the rule that landed an hour earlier:**
+the first name for the description type was `Route.H`, and the
+compiler answered with E226 — it shadows the `H` in
+`Split.cons[H, T, B]` three screens away. Warnings are red in the gate
+now, so that was not a thing to argue with over one letter. It is
+`Route.Hdr`.
+
+Stages B (security declared AND enforced) and C (response headers) are
+specced and filed, not built: B is where the document currently lies,
+and C falls out of it.
+
+**Met on the way, and filed rather than swallowed:** this lane's gate
+caught `okay.TestGrowing`'s "each producer's own order survives the
+swap" a SECOND time, and the signature matches the occurrence recorded
+on 2026-09-10 — producer 1 both times, one element hoisted forward
+past its own predecessors across a part swap, `5, 13, 7, 11, 15`
+against `49, 57, 51, 55, 59`. Two trees, two days, one shape. That
+moves BACKLOG's `growing-channel-order-under-load` from "seen once"
+towards the first of its two hypotheses: a real race in the
+adoption/swap path that needs contention to show. Not tagged, not
+retried into green; the entry has the detail and the log name.
+
 ## openapi-media — the pages and the streams declare too
 
 The lane before this one shipped okay-demo's document and every one of

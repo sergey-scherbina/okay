@@ -23,18 +23,22 @@ final case class Api(title: String, version: String,
  * `JsonSchema.of` drops straight in, where 3.0 would need a
  * translation layer with a drift of its own.
  *
- * WHAT THIS STAGE CANNOT SAY, stated rather than faked: headers. A
- * route declares a path, its parameters, its query and its body, and
- * a handler that reads a header reads it from the `Request` with
- * nothing declared — so this renderer says nothing about headers
- * rather than guessing at them.
+ * WHAT THIS STAGE CANNOT SAY, stated rather than faked: AUTHENTICATION.
+ * A route that is protected is protected by a wrapper around the
+ * finished table (`Secure.granted`), so the requirement never reaches
+ * the entry and this renderer cannot say it — which means the document
+ * shows an open door where there is a lock. That is stage B of
+ * specs/route-headers.md, and it is a declaration in okay-http rather
+ * than a heuristic here: guessing "this looks protected" is how a
+ * document starts lying in the other direction.
  *
- * The three gaps this comment used to list are closed.
- * `Router.Entry` now carries `Route.Described` — the template AND its
- * parameters — so a path parameter is rendered with the KIND its
- * `Param` declared and query parameters are rendered at all
- * (openapi-parameters); and an operation says what it ANSWERS when
- * the handler's type said so (openapi-responses).
+ * Every gap this comment used to list is closed. `Router.Entry`
+ * carries `Route.Described` — the template, its parameters, its query
+ * AND the headers it declares — so a path parameter is rendered with
+ * the KIND its `Param` declared, query parameters are rendered at all
+ * (openapi-parameters), a declared request header is rendered `in:
+ * header` (route-headers stage A), and an operation says what it
+ * ANSWERS when the handler's type said so (openapi-responses).
  */
 object OpenApi:
 
@@ -92,7 +96,9 @@ object OpenApi:
    * A path parameter is always `required` — a template with a hole
    * does not match without it. A query parameter says what its
    * declaration said: `:?` is required, `opt` is not, and `all` is a
-   * repeated one whose schema is an array.
+   * repeated one whose schema is an array. A header says the same, and
+   * is rendered `in: header` — it is BESIDE the template rather than
+   * in it, because a header is not part of a url.
    */
   private def parameters(e: Router.Entry): Option[(String, Json)] =
     val path = e.params.map(v => JObj(Vector(
@@ -105,7 +111,12 @@ object OpenApi:
       "in" -> JStr("query"),
       "required" -> JBool(q.required),
       "schema" -> q.schema)))
-    val all = path ++ query
+    val header = e.headers.map(h => JObj(Vector(
+      "name" -> JStr(h.name),
+      "in" -> JStr("header"),
+      "required" -> JBool(h.required),
+      "schema" -> h.schema)))
+    val all = path ++ query ++ header
     if all.isEmpty then None else Some("parameters" -> JArr(all))
 
   /** the schema the DECODER was derived from, not a second one */

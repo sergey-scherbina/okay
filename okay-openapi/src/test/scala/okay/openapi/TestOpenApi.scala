@@ -28,12 +28,15 @@ class TestOpenApi extends munit.FunSuite:
   val byId  = Route / "board" / Route[Int]("id")
   // one of each kind of query declaration: required, optional, repeated
   val search = Route / "search" :? "q".as[String] :? "page".opt[Int] :? "tag".all[String]
+  // a declared REQUEST HEADER (specs/route-headers.md, stage A)
+  val resume = Route / "events" :@ "last-event-id".opt[Long]
 
   val router: Router = Router.empty
     .on(Method.Get, board)(_ => ok("all"))
     .on(Method.Get, byId)(id => ok(s"one $id"))
     .json[EmptyTuple, NewTask](Method.Post, board)((_, t) => ok(t.title))
     .on(Method.Get, search)(_ => ok("found"))
+    .on(Method.Get, resume)((_, _) => ok("stream"))
 
   val api = Api("Board", "1.0", servers = Vector("https://board.example"))
   def doc: Json = OpenApi.document(api, router)
@@ -87,6 +90,16 @@ class TestOpenApi extends munit.FunSuite:
         "required" -> JBool(false),
         "schema" -> JObj(Vector("type" -> JStr("array"),
           "items" -> JObj(Vector("type" -> JStr("string"))))))))))
+  }
+
+  test("a declared request header is rendered in: header, beside the template") {
+    val get = at(at(at(doc, "paths"), "/events"), "get")
+    assertEquals(at(get, "parameters"), JArr(Vector(
+      JObj(Vector("name" -> JStr("last-event-id"), "in" -> JStr("header"),
+        "required" -> JBool(false),
+        "schema" -> JObj(Vector("type" -> JStr("integer"))))))))
+    // and it is not in the path
+    assert(!obj(at(doc, "paths")).map(_._1).exists(_.contains("last-event-id")))
   }
 
   test("the query is NOT part of the path template, and the path is the one that dispatches") {

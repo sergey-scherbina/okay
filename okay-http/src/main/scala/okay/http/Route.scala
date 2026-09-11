@@ -114,6 +114,28 @@ sealed trait Routed[A <: Tuple]:
   def described: Route.Described = Route.Described(describe, params, queries)
 
   /**
+   * A REQUEST HEADER, declared (specs/route-headers.md).
+   *
+   * `:@` because `@` reads as *at* — metadata carried AT the request
+   * rather than in the url — and because its first character is `:`,
+   * so it shares `:?`'s precedence and stays left-associative. The
+   * precedence reasoning is in `:?`'s own comment.
+   *
+   * The result is NOT a `Routed`. A header cannot join `A` without
+   * breaking `unapply(url(a)) == Some(a)`: `url` would have nowhere
+   * to put it, and the law would hold "mostly". `Routed[A]` is a
+   * prism on the URL and keeps its law; `Headed[A, H]` is the
+   * request-shaped declaration, and they are different types on
+   * purpose.
+   */
+  def :@[B <: Tuple](q: Query[B]): Headed[A, B] =
+    new Headed[A, B](this, q.declared.map(Route.headerOf), q.declared.map(_.name), q.decode)
+
+  /** one declared header: `:@ "last-event-id".as[String]` */
+  def :@[T](n: Route.Named[T]): Headed[A, T *: EmptyTuple] =
+    this :@ Query[T](n.name)(using n.param)
+
+  /**
    * the bridge to `specs/optics.md`. A miss leaves the path unchanged,
    * which is exactly `Prism`'s `Either[T, A]`, and `review` is `url`.
    */
@@ -248,6 +270,56 @@ final class Queried[A <: Tuple] private[http] (
   def :?[T](n: Route.Named[T])(using c: Route.Split[A, T *: EmptyTuple]): Queried[c.Out] =
     this :? Query[T](n.name)(using n.param)
 
+/**
+ * The HEADER stage: a url declaration plus what it reads off the
+ * request (specs/route-headers.md).
+ *
+ * It WRAPS a `Routed[A]` rather than extending it, so nothing holding
+ * a `Routed` can be handed a value whose law is different. The url
+ * half is untouched — `route.unapply`, `route.url` and `route.prism`
+ * are the same prism they were — and the header half has a law of the
+ * same shape: `readHeaders(requestWith(h)) == Some(h)`.
+ */
+final class Headed[A <: Tuple, Hs <: Tuple] private[http] (
+    val route: Routed[A],
+    /** the description: the headers, with no request in hand */
+    val headers: Vector[Route.Hdr],
+    private[http] val names: Vector[String],
+    private[http] val decodeHeaders: Route.Params => Option[Hs]):
+
+  def :@[B <: Tuple](q: Query[B])(using c: Route.Split[Hs, B]): Headed[A, c.Out] =
+    new Headed[A, c.Out](route, headers ++ q.declared.map(Route.headerOf),
+      names ++ q.declared.map(_.name),
+      hs => decodeHeaders(hs).flatMap(a => q.decode(hs).map(b => c.join(a, b))))
+
+  def :@[T](n: Route.Named[T])(using c: Route.Split[Hs, T *: EmptyTuple]): Headed[A, c.Out] =
+    this :@ Query[T](n.name)(using n.param)
+
+  /**
+   * The headers this route declares, read off a request.
+   *
+   * A HEADER BLOCK IS A `Map[String, Vector[String]]` — the very shape
+   * a query string is, which is why one builder (`Query`) serves both
+   * and there is no parallel set of header combinators to keep in
+   * step. The one difference is CASE: header names are
+   * case-insensitive on the wire, so the map is built under the names
+   * the DECLARATION used, each filled from whatever casing arrived.
+   */
+  def readHeaders(r: Request): Option[Hs] =
+    val lower = r.headers.map((k, v) => (k.toLowerCase, v))
+    val m: Route.Params = names.map { n =>
+      val ln = n.toLowerCase
+      n -> lower.collect { case (k, v) if k == ln => v }.toVector
+    }.toMap
+    decodeHeaders(m)
+
+  /** the whole match: the url's parameters and the request's headers */
+  def read(r: Request): Option[(A, Hs)] =
+    route.unapply(r.url).flatMap(a => readHeaders(r).map(h => (a, h)))
+
+  def describe: String = route.describe
+  def described: Route.Described = route.described.copy(headers = headers)
+
 object Route:
 
   /** a segment of the description.
@@ -268,6 +340,25 @@ object Route:
                      schema: okay.codec.Json = Param.schemaOf("string"))
 
   /**
+   * a REQUEST HEADER of the description (specs/route-headers.md).
+   *
+   * `Q`'s shape exactly, because a header parameter and a query
+   * parameter differ only in where they are read — and they are
+   * separate TYPES rather than one, so a renderer cannot put `in:
+   * query` on a header by holding the wrong vector.
+   *
+   * `Hdr` and not `H`: `H` is the conventional name for the head of a
+   * tuple and `Split.cons[H, T, B]` below uses it, so a case class of
+   * that name shadows a type parameter three screens away. The
+   * compiler says so (E226), and a warning the gate now refuses is
+   * not a thing to argue with over one letter.
+   */
+  final case class Hdr(name: String, kind: String, required: Boolean, repeated: Boolean,
+                       schema: okay.codec.Json = Param.schemaOf("string"))
+
+  private[http] def headerOf(q: Q): Hdr = Hdr(q.name, q.kind, q.required, q.repeated, q.schema)
+
+  /**
    * The description of one url, whole: the template AND what its
    * parameters are (openapi-parameters).
    *
@@ -281,7 +372,11 @@ object Route:
    * without its parts is the fix; two more fields would have been the
    * patch.
    */
-  final case class Described(path: String, params: Vector[Seg.Var], queries: Vector[Q])
+  final case class Described(path: String, params: Vector[Seg.Var], queries: Vector[Q],
+                            /** request headers the route declares; a header is
+                             * not part of the url, so it is beside the
+                             * template rather than in it */
+                            headers: Vector[Hdr] = Vector.empty)
 
   /**
    * A NAMED TYPED PARAMETER — the same thing in a path and in a query,
@@ -780,6 +875,30 @@ final class Router private (val entries: Vector[Router.Entry]):
       r => if r.method != method then None else route.unapply(r.url).map(a => h(ar(a), r))))
 
   /**
+   * the same, for a route that also declares what it reads off the
+   * request's HEADERS (specs/route-headers.md).
+   *
+   * A declared header that is REQUIRED and absent is a MISS, exactly
+   * as a required query parameter is: the route does not match, and
+   * the caller's 404 stays the caller's. It is not a 400 — a router
+   * that answered 400 would be claiming no other route could have
+   * matched, which it cannot know.
+   */
+  def on[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out) => Response ! Async): Router =
+    at(method, route)((a, hs, _) => h(a, hs))
+
+  def at[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out, Request) => Response ! Async): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map((a, hs) => h(ar(a), hr(hs), r))))
+
+  /**
    * a handler whose request carries a declared JSON body
    * (specs/optics-outside.md, stage 7).
    *
@@ -1049,6 +1168,16 @@ object Router:
                     (h: (ar.Out, Request) => Response ! Async): Router =
     empty.at(method, route)(h)
 
+  def on[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out) => Response ! Async): Router =
+    empty.on(method, route)(h)
+
+  def at[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out, Request) => Response ! Async): Router =
+    empty.at(method, route)(h)
+
   def json[A <: Tuple, B](method: Method, route: Routed[A])(using ar: Route.Arity[A])
                          (h: (ar.Out, B) => Response ! Async)
                          (using okay.codec.Schema[B]): Router =
@@ -1172,6 +1301,8 @@ object Router:
     def params: Vector[Route.Seg.Var] = described.params
     /** the query parameters this route declares */
     def queries: Vector[Route.Q] = described.queries
+    /** the request headers this route declares (specs/route-headers.md) */
+    def headers: Vector[Route.Hdr] = described.headers
 
   /** the shape of the router's own error answer — declared, because
    * the router produces it whether or not the author thought about it */

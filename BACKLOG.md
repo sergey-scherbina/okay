@@ -282,6 +282,31 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       only place this guarantee is stated. Reproduce with load, not
       with repetition — that is what distinguished the two runs. The
       gate log is okay-gate.ySVIJbPIg1 (the diff is in it).
+      **SEEN A SECOND TIME, 2026-09-11 13:12** (route-headers gate, a
+      lane that touches only okay-http and okay-openapi), and the
+      SIGNATURE MATCHES, which is what makes this more than a flake:
+
+          round 27: producer 1 came back out of its own order
+             5, +13, 7, 11, -13, 15
+
+      Both occurrences are PRODUCER 1, and both are ONE element
+      hoisted forward past its own predecessors across a part swap —
+      2026-09-10 was 49, **57**, 51, 55, 59 at round 34. Two
+      independent trees, two days, the same shape and the same
+      producer index. That is the first of the two hypotheses above
+      (a real race in the adoption/swap path that needs contention to
+      show), not the second.
+      Load at the failure: `{ 11.75 20.87 24.93 }` — a box coming down
+      off a long busy stretch, which again is contention rather than
+      repetition. The run was afterwards SIGTERM-killed at 3089 test
+      results; `gate.sh` reported RED rather than KILLED, correctly,
+      because a suite that failed and was then killed is red (the
+      ordering that branch was given on 2026-09-11 exists for exactly
+      this case).
+      Still NOT tagged and NOT retried into green by the gate. The
+      lane that met it re-ran its matrix after filing this, which is a
+      person deciding on an unrelated module — not the script hiding a
+      defect. The gate log is okay-gate.dHgXx2UyXr.
 
 - [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
       Conversion each way; GATED: no consumer named
@@ -963,6 +988,30 @@ its owner can price it:
       "every OKAY_ in the guide is a setting" is false.
 
 ## okay-http
+- [x] route-headers-a — DONE 2026-09-11. A request header is a
+      `Named[T]` in a third place: `:@`, the same spellings
+      (`as`/`opt`/`all`), rendered `in: header`. The design fact worth
+      keeping: a header CANNOT join the route's `A` without breaking
+      `unapply(url(a)) == Some(a)`, so `Routed[A]` stays a prism on the
+      url and `Headed[A, H]` is the request-shaped declaration. One
+      builder serves both query and header because a header block IS a
+      `Map[String, Vector[String]]`.
+- [ ] route-headers-b — security is DECLARED and ENFORCED, not only
+      rendered (specs/route-headers.md). `Secure.granted` wraps the
+      finished table, so the requirement cannot reach `Entry` and the
+      document shows an open door where there is a lock. The router
+      answers 401/403 from the declaration, the entry's `answers`
+      gains them, and the law is: what the document calls protected is
+      what the router refuses. Consumer in the tree: okay-admin's
+      `/admin/replay`, and the demo's login.
+- [ ] route-headers-c — response headers on `Answer`. Falls out of B:
+      the 401 that B produces carries `WWW-Authenticate`.
+- [ ] route-headers-adopt — the live routes that read a header by hand
+      today: `McpHttp`'s `mcp-session-id` and `last-event-id` (its GET
+      branch is a `Request => Response` function, not a `Router`, so
+      this is a conversion and not a one-liner), and okay-script's
+      `host`. Wanted AFTER B, so a converted route can declare both
+      halves at once.
 - [x] route-arity-one-tuple — DONE 2026-09-11. The entry asked for a
       second sighting; there were four, three by authors other than
       the one who wrote the entry: the sibling who wrote `TestOpenApi`

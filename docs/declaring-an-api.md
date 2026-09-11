@@ -250,6 +250,53 @@ path and nothing else. This matters for any handler that does work
 outside the program it returns — a counter, a log line, a one-time
 code — and it was not true of the first cut; see "What it found".
 
+## A header
+
+A url is a path and a query; a header is neither, and that is the
+whole design.
+
+```scala
+val resume = Route / "events" :@ "last-event-id".opt[Long]
+
+Router.on(Method.Get, resume)((_, from) => stream(from))
+```
+
+Same unit, same spellings: `"name".as[T]` is required, `.opt[T]`
+tolerates absence, `.all[T]` collects repeats. The OPERATOR says where
+it goes — `/` into the path, `:?` into the query, `:@` into the
+headers — which is what `Route.Named`'s own comment has said since
+stage 1. A header block IS a `Map[String, Vector[String]]`, the very
+shape a query string is, so one builder serves both and there is no
+second set of combinators to keep in step.
+
+**`:@` produces a different type, and that is not a detail.** The law
+the url rests on is `unapply(url(a)) == Some(a)`, and a header cannot
+join `A` without breaking it — `url` would have nowhere to put it. So
+`Routed[A]` stays a prism on the URL and `Headed[A, H]` is the
+request-shaped declaration:
+
+```scala
+resume.route.unapply("/events")   // the url prism, untouched
+resume.readHeaders(request)       // Some(Tuple1(Some(41L)))
+resume.read(request)              // both halves: Option[(A, H)]
+```
+
+The header half has a law of the same shape —
+`readHeaders(requestWith(h)) == Some(h)` — and a test holds it.
+
+**A required header that is absent is a MISS, not a 400.** The route
+simply does not match and the caller's 404 stays the caller's: a
+router that answered 400 would be claiming no other route could have
+matched, which it cannot know. Present-and-unparseable is also a miss,
+for the reason `Query.opt` already gives — `?page=abc` meant something
+and got it wrong.
+
+**Names are case-insensitive**, whichever casing the declaration used,
+because that is what they are on the wire.
+
+A declared header is rendered `in: header` in the OpenAPI document,
+beside the template rather than inside it.
+
 ## A body
 
 ```scala
@@ -430,10 +477,16 @@ and the document was deliberately not generated, is out of date; what
 survives it is the rule that produced it, which is that the consumer
 came first.
 
-**Headers are still not declared.** A route declares a path, its
-parameters, its query and its body; a handler that wants a header
-reads it off the `Request`, and no renderer can say anything about it.
-That is the one structural gap left in the description.
+**Authentication is not declared yet.** A protected route is protected
+by a wrapper around the finished table (`Secure.granted`), so the
+requirement never reaches the entry and the document shows an open
+door where there is a lock. That is stage B of specs/route-headers.md,
+and the point of it is that the router must ENFORCE what the route
+declares — a declaration nobody executes is a comment with a type.
+
+**Response headers are not declared either** — stage C, and it falls
+out of B, because the 401 stage B produces carries
+`WWW-Authenticate`.
 
 **Prose is not declared either** — a route has no place to carry a
 sentence about itself, so an OpenAPI summary is absent and operation
