@@ -1,0 +1,35 @@
+task: optics-outside-chat-route
+agent: opus5-optics-outside
+started: 2026-09-11
+heartbeat: 2026-09-11T08:35:00Z
+status: in-progress
+branch: feature/optics-outside-chat-route
+worktree: ../okay-wt-chat
+
+why: two defects in one route, and it is the chat application's main
+  endpoint (`Chat.chatRoute`, used by okay-demo and by Okay!Chat).
+
+  (1) `r.url == "/chat"` compares the WHOLE request target, so
+      `/chat?x=1` is a 404 — the same class the demo lane just fixed,
+      live since e9901797 stopped Jetty dropping the query.
+  (2) `messagesOf(r.body)` picks the conversation out by string
+      literal and loses things SILENTLY: a body that is not JSON
+      becomes `Vector.empty`, so the model answers an empty
+      conversation with a 200; and a single message missing `role`,
+      or carrying a non-string `content`, is DROPPED from the list —
+      the model is handed a conversation with a hole in it and no one
+      is told. That is worse than the empty case.
+
+what: `Router.json[ChatRequest]` with
+  `case class ChatRequest(messages: Vector[Anthropic.Message] = Vector.empty)`.
+  `Anthropic.Message` already has a derived `Schema`.
+
+  The default is deliberate: `{}` keeps answering as it does today
+  (an empty conversation), while a body that does not PARSE is a 400
+  instead of a reply to nothing. Malformed is refused; absent stays
+  absent. A client sending `{}` is not broken by this lane.
+
+first: a test that FAILS on master — a body with a hole reaches the
+  model as a shorter conversation.
+
+next: the failing test, the conversion, okay-demo's Live suite, docs
