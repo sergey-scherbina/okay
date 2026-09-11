@@ -1,5 +1,70 @@
 # Changelog
 
+## json-literals — the JSON transparency that was refused, in the shape that makes it safe
+
+`throws-into` had refused `into` on `Json`, and the refusal was right
+about the danger and wrong about the cause. The danger: `Json.parse(s)`
+answers a `Json`, so with an ambient `Conversion[String, Json]` a
+caller who passes an already-serialized document gets `JStr(document)`
+with nothing to catch it — double encoding, in the module whose job is
+encoding. The cause is not `into`, which only says "conversions to me
+need no language import". The cause is an AMBIENT conversion, and the
+operator's shape removes it: the conversions live behind an import, and
+the dangerous one is refused by the compiler rather than by a warning.
+
+    import Json.literals.given
+    obj("name" -> "ada", "age" -> 36, "ok" -> true)
+
+**A string LITERAL converts, a `String` value does not.** That is the
+whole design, and it is a type-level refusal:
+
+    inline given [L <: String & Singleton] => Conversion[L, Json] =
+      inline constValueOpt[L] match
+        case Some(_) => (s: L) => JStr(s)
+        case None    => error("only a string LITERAL converts to Json here. " +
+                              "For a String value write JStr(x); if it holds a " +
+                              "serialized document you want Json.parse(x).")
+
+A conversion is chosen by TYPE and both meanings of a `String` have the
+same type, so it cannot read intent. Restricting it to constant types
+is what separates "text I am writing here" from "a value I am carrying".
+
+**The refuted step is a test.** The singleton bound ALONE does not
+work: every stable `val` has a singleton type, so `f(doc)` type-checked
+with `L = doc.type` and the first attempt let exactly the dangerous
+case through. `constValueOpt` is what distinguishes a constant type
+from a reference to one, and `TestJsonLiterals` pins it.
+
+`Int`, `Double` and `Boolean` convert plainly, since no document can
+hide inside them. **`Long` is deliberately absent**: `JNum` holds a
+`Double`, so a `Long` past 2^53 would convert with silent precision
+loss, which is the same defect one paragraph up.
+
+`===` compares a `Json` with anything the import converts, so
+`json === "x"` reads as the comparison it is. It is sugar, not a guard,
+and the guard was never needed: `json == "x"` does not compile with or
+without this import, because Scala 3 derives `CanEqual` for enums and
+refuses comparison with an unrelated type. An earlier note in this
+repository claimed that comparison silently answered `false`; it does
+not, and the note is corrected.
+
+Every assertion in `TestJsonLiterals` is PAIRED with a positive twin it
+differs from by one word — with the import against without it, a
+literal against a `val`, an `Int` against a `Long` — because a `false`
+from `typeChecks` says "no", not "no for the reason I meant". Coverage,
+measured before building: 239 of 566 string construction sites here are
+literals, so this shortens 42% by design and leaves the other 58%, the
+ones carrying values, spelled `JStr(...)` exactly as before.
+
+Landed as 4ddc07be (the spec, before the code), 678ce272 (the API and
+its test) and 22afc87b (the spec's boxes). Gate: the full matrix, 4353
+tests, 0 failures; a COLD repo-wide `Test/compile` for the warnings,
+since the matrix now says out loud that a warm run checks none, and it
+reported zero across every module; both Jmh configurations, which
+`Test/compile` does not reach. The `into` keyword sits on an enum the
+whole repository uses, and that compile is what priced it: nothing
+outside `Json.literals` changed.
+
 ## route-headers-answers — what an answer carries, and which half is load-bearing
 
 Stage C, the last of specs/route-headers.md. `Answer` gains `headers`,
