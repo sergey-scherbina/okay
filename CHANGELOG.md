@@ -28,6 +28,47 @@ answer was encoded by), 11 in okay-openapi. Touches Route.scala, whose
 arc (optics-outside) has all eight of its stages landed and no stage
 planned; its owner was asked in the room twice, and the operator said
 take it. Commits: a1ed60c4, and the cross-platform test fix beside it.
+## instances-of-any-effect — the fourth corner: instances of ANY effect, made at run time
+
+Three routes to several instances of one effect existed and left one
+shape unserved:
+
+                 | named at compile time | made at run time
+    -------------|-----------------------|------------------
+    one effect   | `Keyed`/`Tag` at State| `Refs`
+    any effect   | `Tag`                 | nothing
+
+The empty cell is what real systems ask for: one `Users` per tenant,
+one `Cache` per shard, where the tenants come out of a config file
+nobody has read at compile time. `Tag` needs a literal per instance;
+`Refs` makes instances from data but only of state.
+
+`Instances[F]` fills it — `Tag` with the key read at run time:
+
+  at(h)(op)          perform one operation at one instance
+  route(h)(p)        send an ALREADY WRITTEN program to one instance
+  handler(pick)      one pass, the handler chosen by handle
+  only(h)(p)         strip ONE instance back to the plain signature,
+                     leaving the others in the row for their turn
+  exhausted(p)       assert none survived, naming the handle if one did
+
+One row member per SIGNATURE, however many instances — the same trade
+`Refs` makes, and for the same reason. The test asks the signature
+first and the handle never, which is one more than `Tag` does: two
+signatures under instances are an ordinary row, and only a shared
+handle within one signature could confuse anything — and a handle is a
+fresh object, so sharing one is deliberate.
+
+NO CAST, which `Refs` cannot say: the handle is compared by reference
+and the operation is already typed, so nothing is recovered from
+erasure. What is given up instead is the row's knowledge of which
+instances exist — hence `exhausted`, where the caller asserts what the
+type cannot.
+
+`TestInstances` pins five cases, and the third is the point: instances
+made IN A LOOP from a list of tenant names, which neither of the other
+two routes could serve.
+
 ## throws-into — `A throws E` stops asking the language for permission, and the conversion that kept asking was redundant
 
 Scala 3.9 lets a type declaration say "conversions to me are allowed",

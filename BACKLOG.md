@@ -63,18 +63,17 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Tag.Of[K, F]` would need `TypeableK[F]` in scope, which is a
       source-compatibility change. Measure the breakage before
       writing it.
-- [ ] instances-of-any-effect — the gap the three routes leave open.
-      `Refs` gives instances MADE at run time, but only for state;
-      `Tag` gives any effect, but only instances NAMED at compile
-      time. Nothing gives run-time instances of an ARBITRARY effect —
-      one `Users` per tenant, one `Cache` per shard, where the shards
-      are read from config. The shape would be `Tag` with a runtime
-      key: one row member, `Instances.at(handle)(op)`, handlers
-      installed per handle, identity by handle rather than by literal
-      — which is exactly what `Refs` does for cells, generalised. The
-      cast question is the same one `Refs` answers, and its answer
-      should carry over: a handle is made by the same call that fixes
-      its type.
+- [x] instances-of-any-effect — DONE (2026-09-11): `Instances[F]` is
+      `Tag` with the key read at RUN time — one row member per
+      signature, however many instances, identity by a fresh `Handle`
+      compared by reference. `at`/`route` to perform and to send an
+      already-written program to an instance, `handler(pick)` to run
+      them all in one pass, `only(h)` to strip one back to the plain
+      signature for the effect's own runner (the others stay in the
+      row), `exhausted` to assert none survived. No cast: the handle
+      is compared by reference and the operation is already typed.
+      `TestInstances` pins instances made IN A LOOP, which is the
+      case neither `Tag` nor `Refs` could serve.
 - [x] wroclaw-table-refresh — DONE (2026-09-11): §20's table is one
       whole `scripts/wroclaw-bench.sh 8 3 1` at load 1.7-3.1, every
       engine, after okay's lanes changed underneath the old one. It

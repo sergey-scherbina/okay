@@ -159,7 +159,58 @@ clause, and its own documented example is a heap `get` whose value
 type depends on the key. Tried here (refs-typed-heap, 2026-09-11) it
 does not remove the cast — `Refs.scala` carries the detail.
 
-## Route 3: a fresh PROMPT — the instances are NESTED
+## Route 3: `Instances` — any effect, instances MADE at run time
+
+`Tag` gives any effect, named at compile time. `Refs` gives instances
+made at run time, but only of state. The corner they leave open is the
+one real systems ask for: **one `Users` per tenant, one `Cache` per
+shard, where the tenants come out of a config file** nobody has read at
+compile time.
+
+`Instances` is `Tag` with the key read at run time:
+
+```scala
+val tenants = List("alpha", "beta", "gamma")      // data, not literals
+val handles = tenants.map(Instances.handle)
+
+val p: List[String] ! Instances.Of[Store] =
+  handles.foldRight(pure[Instances.Of[Store], List[String]](Nil)) { (h, rest) =>
+    Instances.at[Store](h)(Store.Get()).flatMap(x => rest.map(x :: _))
+  }
+```
+
+One row member per SIGNATURE, however many instances of it — the same
+trade `Refs` makes, for the same reason: a type cannot list what does
+not exist yet. `route(h)(p)` sends an already-written program's
+operations to one instance, exactly as `Tag.tag` does with a literal.
+
+**Handling, two ways.** `Instances.handler(pick)` chooses a handler by
+handle and runs every instance in one pass — `pick` is an ordinary
+function, so per-instance state is the caller's to keep. When an
+instance wants the effect's OWN runner instead, at its own initial
+state, `only(h)` strips that handle back to the plain signature and
+leaves the others in the row:
+
+```scala
+val afterSmall = State.handle(1)(Instances.only[State % Int](small)(p))
+val done       = State.handle(10)(Instances.only[State % Int](big)(afterSmall))
+Instances.exhausted[State % Int, ...](done)   // asserts none survived
+```
+
+`exhausted` is the honest end of that: a type cannot know the instances
+are used up, so the assertion is made where the caller believes it, and
+a survivor names the handle that was never stripped.
+
+**The test asks the SIGNATURE first and the handle never**, which is
+one more than `Tag` does — so `Of[Store] + Of[Reader % Int]` is an
+ordinary row, and only a shared handle within one signature can confuse
+anything. A handle is a fresh object, so sharing one is deliberate.
+
+**Cost:** one wrapper per operation, a row that no longer says which
+instances exist, and — unlike `Refs` — no cast: the handle is compared
+by reference and the operation is already typed.
+
+## Route 4: a fresh PROMPT — the instances are NESTED
 
 `Delim` already offers the third route: each handler installation
 creates a fresh prompt, and a prompt is a first-class tag. An instance
@@ -172,14 +223,16 @@ invasive, because the program carries the prompt.
 
 ## Choosing
 
-| the instances are… | route | identity is | cost |
-|---|---|---|---|
-| named when you write the type | `Tag` | a compile-time key | a wrapper per operation, no cast |
-| made at run time | `Refs` | the cell | a heap and one cast |
-| nested and separated dynamically | `Delim` prompt | the installation | the program carries the prompt |
+| the instances are… | of which effect | route | identity is | cost |
+|---|---|---|---|---|
+| named when you write the type | any | `Tag` | a compile-time key | a wrapper per operation, no cast |
+| made at run time | state | `Refs` | the cell | a heap and one cast |
+| made at run time | any | `Instances` | the handle | a wrapper per operation, no cast |
+| nested and separated dynamically | any | `Delim` prompt | the installation | the program carries the prompt |
 
-Use a key when the instances can be named, cells when they are made, a
-prompt when they must nest.
+Use a key when the instances can be named, `Refs` when they are cells,
+`Instances` when they are instances of something bigger made from data,
+and a prompt when they must nest.
 
 ## What this means for the bare rule
 
@@ -193,6 +246,12 @@ cannot list. Every one of those places now points here.
 
 ## Where the code is
 
+- `src/main/scala/Instances.scala` — the run-time handle: `at`,
+  `route`, `handler`, `only`, `exhausted`
+- `src/test/scala/TestInstances.scala` — two instances of a signature
+  that carries nothing, instances made IN A LOOP, an already-written
+  program routed to one, `only` handing one instance to `State.handle`
+  at its own state, and two signatures as an ordinary row
 - `src/main/scala/Tag.scala` — 84 lines: the case class, the
   key-testing `Effect` instance, `one`, `tag`, `untag`, `handler`
 - `src/main/scala/Refs.scala` — the cells, the heap, the one cast and
