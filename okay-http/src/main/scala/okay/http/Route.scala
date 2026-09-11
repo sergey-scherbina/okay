@@ -737,6 +737,29 @@ final class Router private (val entries: Vector[Router.Entry]):
   /** every entry, from the same values that dispatch */
   def describe: Vector[(Method, String)] = entries.map(e => (e.method, e.path))
 
+  /**
+   * The table as markdown, for a module's documentation
+   * (specs/optics-outside.md, stage 8).
+   *
+   * The point is not the rendering, it is the DRIFT TEST it makes
+   * possible: a doc block generated from the entries that dispatch can
+   * be asserted against the file that ships, so a route cannot be
+   * served and undocumented, or documented and unserved. That is the
+   * property `describe` was built for, and this is the first consumer
+   * that makes it load-bearing — the repository already keeps
+   * deployment renderings honest the same way.
+   *
+   * A declared request body shows as its type's name rather than its
+   * schema: the table is a map of the surface, and a reader who needs
+   * the shape has the type to look at.
+   */
+  def markdown: String =
+    val rows = entries.map { e =>
+      val body = e.body.fold("—")(_ => "yes")
+      s"| `${e.method.name}` | `${e.path}` | $body |"
+    }
+    ("| verb | path | body |" +: "|---|---|---|" +: rows).mkString("\n")
+
 object Router:
   /** the zero: what a fold over several tables starts from, and what a
    * module answers when it contributes no routes */

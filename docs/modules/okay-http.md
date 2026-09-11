@@ -62,8 +62,8 @@ userPost.describe                                 // DESCRIBE "/users/{id}/posts
 | `prism` | the route as `Prism[String, String, A, A]` (specs/optics.md) |
 | `of[C]` | the same route reading a case class; checks the field NAMES against the parameters |
 | `Routed` / `Route` / `Queried` | what a declared url can do; the path stage; the query stage, which has no `/` |
-| `Router.on` / `.at` / `.json[B]` / `.of` | a table: parameters only, parameters and request, a declared JSON body, a case class |
-| `Router.routes` / `.describe` / `.entries` | the `PartialFunction` every server here takes, the listing, the rows |
+| `Router.on` / `.at` / `.json[B]` / `.jsonAt[B]` / `.of` | a table: parameters only, parameters and request, a declared JSON body, a declared body with the request, a case class |
+| `Router.routes` / `.describe` / `.markdown` / `.entries` | the `PartialFunction` every server here takes, the listing, the listing as a doc table, the rows |
 | `okay.http.syntax.*` | the terse form: `"id".as[Int]`, `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` |
 
 Five properties the reference will not tell you but the guide will,

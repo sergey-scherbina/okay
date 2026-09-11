@@ -29,6 +29,20 @@ Ops.router(store, …)   // the four, declared once
 Ops.routes(store, …)   // the same, as the PartialFunction every server takes
 ```
 
+The surface itself, rendered from the router that serves it —
+`TestOpsSurface` asserts this block is what `Ops.router(...).markdown`
+produces, so an endpoint cannot be served and undocumented, or
+documented and unserved:
+
+<!-- generated: Ops.router(store).markdown -->
+| verb | path | body |
+|---|---|---|
+| `GET` | `/healthz` | — |
+| `GET` | `/readyz` | — |
+| `GET` | `/stats` | — |
+| `GET` | `/metrics` | — |
+<!-- /generated -->
+
 `paths` exists apart from the router because a deployment has to name a
 probe and has no `Store` to build a router with — that is exactly what
 a describing interpreter is for. `TestOpsSurface` asserts that `paths`

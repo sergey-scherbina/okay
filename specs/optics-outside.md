@@ -777,6 +777,46 @@ what a renderer will need, and what stage 2 already gives tools.
 - [x] `/login` and `/login/confirm` are declared this way, and a
       malformed body is a 400 rather than a 401
 
+## Stage 8 — DESCRIBE gets a consumer that can break
+
+Stage 1 built the describing interpreter and only stage 4 has read it,
+once, to name a probe path. Everything else asserted it against itself.
+An interpreter nothing depends on is a claim, not a property.
+
+**The consumer is the documentation, and the backlog entry's rule
+picked it.** That entry — written in stage 3 — says do NOT start this
+as "generate OpenAPI", name the consumer that reads the output first,
+because a lane with no caller is the trap this arc has recorded three
+times. OpenAPI has no reader in this repository. Module documentation
+does, it lists endpoints in prose, and prose drifts: that is exactly
+what stage 4 found by hand between `Ops` and `Site`.
+
+`Router.markdown` renders the table from the entries that dispatch;
+`docs/modules/okay-ops.md` commits the block between
+`<!-- generated: ... -->` markers; `TestOpsSurface` asserts the
+committed block is still what the live router renders. The repository
+already keeps deployment renderings honest the same way.
+
+**The drift test was verified by causing drift.** A passing drift test
+proves nothing — it is equally green when the documentation is right
+and when the test compares something with itself. `/readyz` was
+changed to `/readyz-typo` in the committed block and the suite went
+red, on the assertion and for the stated reason; the file was restored
+in the same command. That is "no failing test, no fix" applied to a
+test whose only claim IS its ability to catch.
+
+The test does not depend on okay-deploy for `repoRoot`: three lines
+walking up to `build.sbt` cost less than a monitoring module depending
+on a deployment one, which is the same judgement stage 4 made about
+okay-deploy not learning what a `Route` is.
+
+### Behavior
+
+- [x] `markdown` renders the verb, the path and whether a body is
+      declared, from the entries that dispatch
+- [x] the committed doc block equals what the router renders
+- [x] a perturbed doc block fails the suite
+
 ## Decisions
 
 - **2026-09-10 — nested pairs instead of a flat tuple: considered,

@@ -140,6 +140,12 @@ tables, and what a module answers when it contributes no routes.
 
 **`describe` is derived from the same vector that dispatches**, so a
 route cannot be documented and unrouted, or routed and undocumented.
+`router.markdown` renders that as a table, and a module's docs commit
+the block between `<!-- generated: ... -->` markers with a test
+asserting it still matches what the live router renders —
+`docs/modules/okay-ops.md` is the worked example. That is the property
+made load-bearing: prose about endpoints drifts, and this is the drift
+stage 4 found by hand between `Ops` and `Site`, now caught by a test.
 That property is the whole reason to reify a path instead of writing a
 `case`, and it is what lets a deployment name a probe path it did not
 invent:
@@ -301,11 +307,12 @@ visible is the one that makes `Login.confirm` correct.
 
 ## Not done yet
 
-A renderer — an OpenAPI document or an MCP tool declaration generated
-from `describe` — is the obvious next step and is deliberately NOT
-started as "generate OpenAPI": the backlog entry says to name the
-consumer that reads the output first, because a lane with no caller is
-the trap this arc has recorded three times. Headers are not declared.
+An OpenAPI document is still not generated, deliberately: the backlog
+entry says to name the consumer that reads the output first, and
+OpenAPI has none in this repository. `describe`, `params`, `queries`
+and the entry's body schema are the input when one appears. What DOES
+have a consumer — the module documentation — is rendered and held by a
+drift test, which is what stage 8 built. Headers are not declared.
 `Toolbox` handlers are pure `A => String`, because that is the seam
 `Mcp.Server`, `Handlers.tools` and `Stepper` already take; widening it
 is a separate decision with those three callers to carry.
