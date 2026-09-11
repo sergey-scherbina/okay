@@ -45,7 +45,7 @@ by a test that refuses a published operation with no summary — or with
 one under ten characters, since a placeholder passes a presence check
 and says nothing.
 
-Commit: LANDING.
+Commit: 8fb278dc.
 
 ## route-headers — a header is a Named[T] in a third place (spec + stage A)
 
