@@ -1,4 +1,4 @@
-package okay.leads
+package okay.chat.leads
 
 import okay.intent.Amount
 import java.time.{Instant, LocalDate, ZoneOffset}

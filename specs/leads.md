@@ -1,5 +1,10 @@
 # Leads — what the chat learned, as a countable thing
 
+Lives in **okay-chat** (`okay.chat.leads`), not in a module of its own:
+recording is a decorator of `Chat.chatRoute`'s `TurnOverride`, which is
+the one seam that already sees every turn, and a ledger in a separate
+module would have needed a second such seam to exist.
+
 ## Overview
 The prototype chat finds people jobs, housing, services, goods and
 things to do. Before any of that can be charged for, one question has
@@ -19,7 +24,8 @@ final case class Lead(at: Instant, session: String,           // a SALTED HASH, 
 
 Capture.lead(message, sessionId, salt): Lead     // cues + okay-intent's parsers, no model
 Capture.refine(lead, category = …, city = …)      // a later tier fills HOLES, never overwrites
-Leads.watch(ledger, salt)(sessionId, message)     // the whole chat integration
+Leads.watch(ledger, salt)(sessionId, message)     // one turn, by hand
+Recording.turns(ledger, salt)(next)               // …or as the route's TurnOverride
 Leads.outcome(ledger, lead, Matched, contact)     // appended: the ledger keeps history
 Demand.report(leads): Report                      // every figure in ONE pass
 Demand.deliverable(leads): Vector[Lead]           // only what may be passed on
@@ -63,6 +69,13 @@ Demand.deliverable(leads): Vector[Lead]           // only what may be passed on
   "who are these people at 1500?" is the one thing a ledger must not
   start doing.
 
+- **The hook never intercepts.** `Recording.turns` returns whatever the
+  override it wraps returned, so a ledger cannot change what a person is
+  told — the same rule that answers the sponsored-results question from
+  the other side. A write failure is swallowed: a full disk must not
+  take the chat down, and a lost row is worth less than a refused
+  answer.
+
 ## Behavior
 - [x] a cue fires per category in each of the three languages; nothing
       else is classified, no city is guessed, no budget invented
@@ -79,6 +92,8 @@ Demand.deliverable(leads): Vector[Lead]           // only what may be passed on
 - [x] median budgets per category from the digest, absent where nobody
       wrote one
 - [x] rolling demand over days, by the Group's window
+- [x] the route hook records the last user message and defers to the
+      override it wraps
 
 ## Out of scope
 - charging for anything: this is the ledger the pricing conversation

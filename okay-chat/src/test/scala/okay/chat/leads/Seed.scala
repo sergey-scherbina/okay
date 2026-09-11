@@ -1,12 +1,12 @@
-package okay.leads
+package okay.chat.leads
 
-import okay.leads.Lead.Outcome
+import okay.chat.leads.Lead.Outcome
 import java.time.Instant
 
 /**
  * A ledger with plausible traffic in it, so `Report` can be seen doing
  * its job before a single real user exists:
- * `sbt "okayLeads/Test/runMain okay.leads.Seed /tmp/leads.csv"`.
+ * `sbt "okayChat/Test/runMain okay.chat.leads.Seed /tmp/leads.csv"`.
  */
 object Seed:
   private val messages = Vector(

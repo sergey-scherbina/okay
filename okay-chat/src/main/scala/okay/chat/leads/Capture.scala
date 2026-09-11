@@ -1,7 +1,7 @@
-package okay.leads
+package okay.chat.leads
 
 import okay.intent.{Amount, Temporal}
-import okay.leads.Lead.{Category, Outcome, Urgency}
+import okay.chat.leads.Lead.{Category, Outcome, Urgency}
 import java.time.{Instant, ZoneOffset}
 
 /**

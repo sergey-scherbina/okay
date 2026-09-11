@@ -1,4 +1,4 @@
-package okay.leads
+package okay.chat.leads
 
 import okay.{Aggregator, Bulk, Csv}
 import java.nio.charset.StandardCharsets.UTF_8

@@ -251,20 +251,6 @@ lazy val okayJava = (project in file("okay-java"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
-/**
- * The lead ledger (specs/leads.md): what the chat learned from one
- * request, appended to a CSV nobody needs a database for, and the
- * demand it adds up to. JVM-only because it writes files; it depends
- * on okay-intent for the parsers that read a budget and a date out of
- * a sentence, and on the core for the aggregation algebra.
- */
-lazy val okayLeads = (project in file("okay-leads"))
-  .dependsOn(okay.jvm, okayIntent.jvm)
-  .settings(
-    name := "okay-leads",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
-  )
-
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
   .dependsOn(okay.jvm, compare % "test->compile")
@@ -1510,7 +1496,9 @@ lazy val okayAdmin = project
 
 lazy val okayChat = project
   .in(file("okay-chat"))
-  .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm)
+  // okayIntent: the lead ledger's capture path reads a budget and a date
+  // out of a sentence with the parsers that module already ships (leads)
+  .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm, okayIntent.jvm)
   .settings(
     name := "okay-chat",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -1798,7 +1786,7 @@ lazy val root = (project in file("."))
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayR,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayFrame.jvm, okayFrame.js,
-    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayLeads, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
+    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
