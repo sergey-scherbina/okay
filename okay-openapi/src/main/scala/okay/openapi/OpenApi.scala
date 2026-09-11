@@ -2,7 +2,7 @@ package okay.openapi
 
 import okay.codec.Json
 import okay.codec.Json.*
-import okay.http.{Method, Router}
+import okay.http.Router
 
 /** what a document says about the service, which the router cannot know */
 final case class Api(title: String, version: String,
@@ -22,15 +22,18 @@ final case class Api(title: String, version: String,
  * `JsonSchema.of` drops straight in, where 3.0 would need a
  * translation layer with a drift of its own.
  *
- * WHAT THIS STAGE CANNOT SAY, stated rather than faked. `Router.Entry`
- * carries the method, the path TEMPLATE and the request body's
- * schema, and that is all it carries: the path parameters' KINDS live
- * on `Route.params` and never reach the entry, so every path
- * parameter is declared a string here; query parameters are not on
- * the entry either; and nothing in the tree declares what an
- * operation ANSWERS. The first two are small; the third decides
- * whether a document is worth publishing, and all three are
- * declarations in okay-http (BACKLOG "openapi").
+ * WHAT THIS STAGE CANNOT SAY, stated rather than faked: headers. A
+ * route declares a path, its parameters, its query and its body, and
+ * a handler that reads a header reads it from the `Request` with
+ * nothing declared — so this renderer says nothing about headers
+ * rather than guessing at them.
+ *
+ * The three gaps this comment used to list are closed.
+ * `Router.Entry` now carries `Route.Described` — the template AND its
+ * parameters — so a path parameter is rendered with the KIND its
+ * `Param` declared and query parameters are rendered at all
+ * (openapi-parameters); and an operation says what it ANSWERS when
+ * the handler's type said so (openapi-responses).
  */
 object OpenApi:
 
@@ -59,7 +62,7 @@ object OpenApi:
 
   private def operation(e: Router.Entry): Json =
     JObj(Vector("operationId" -> JStr(operationId(e))) ++
-      parameters(e.path).toVector ++
+      parameters(e).toVector ++
       e.body.map(b => "requestBody" -> requestBody(b)).toVector ++
       Vector("responses" -> responses(e)))
 
@@ -75,18 +78,34 @@ object OpenApi:
   private def capitalise(s: String): String =
     if s.isEmpty then s else s.head.toUpper.toString + s.tail
 
-  /** the `{name}` segments of the template. Their KIND is not on the
-   * entry (see the class comment), so they are strings until okay-http
-   * carries it */
-  private def parameters(path: String): Option[(String, Json)] =
-    val names = path.split('/').filter(s => s.startsWith("{") && s.endsWith("}"))
-      .map(_.drop(1).dropRight(1)).toVector
-    if names.isEmpty then None
-    else Some("parameters" -> JArr(names.map(n => JObj(Vector(
-      "name" -> JStr(n),
+  /**
+   * The route's own parameters, path then query, in declaration
+   * order — not `{name}` re-parsed out of the template.
+   *
+   * The difference is the whole of `openapi-parameters`: the template
+   * is a string and a string cannot say that `id` is an integer. The
+   * entry carries `Route.Seg.Var` and `Route.Q`, each with the JSON
+   * Schema its `Param` declared, so what the document says a caller
+   * may send is what the route actually parses.
+   *
+   * A path parameter is always `required` — a template with a hole
+   * does not match without it. A query parameter says what its
+   * declaration said: `:?` is required, `opt` is not, and `all` is a
+   * repeated one whose schema is an array.
+   */
+  private def parameters(e: Router.Entry): Option[(String, Json)] =
+    val path = e.params.map(v => JObj(Vector(
+      "name" -> JStr(v.name),
       "in" -> JStr("path"),
       "required" -> JBool(true),
-      "schema" -> JObj(Vector("type" -> JStr("string"))))))))
+      "schema" -> v.schema)))
+    val query = e.queries.map(q => JObj(Vector(
+      "name" -> JStr(q.name),
+      "in" -> JStr("query"),
+      "required" -> JBool(q.required),
+      "schema" -> q.schema)))
+    val all = path ++ query
+    if all.isEmpty then None else Some("parameters" -> JArr(all))
 
   /** the schema the DECODER was derived from, not a second one */
   private def requestBody(schema: Json): Json =

@@ -845,6 +845,46 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### Stage 1, finished — LANDED 2026-09-11 (openapi-parameters)
+
+The DESCRIBE interpreter got the consumer this arc refused to build
+for it — a sibling wrote `okay-openapi`, quoting the backlog rule back
+at us — and the consumer immediately found that the description was
+being flattened at the router's door.
+
+`Router.Entry` took `route.describe`: a String. Every parameter KIND
+the route knew (`Seg.Var(name, kind)`) and every query declaration
+(`Q(name, kind, required, repeated)`) stopped there, so the renderer
+re-parsed `{name}` out of the template and declared every path
+parameter a string. `Route[Int]("id")` was published as text, in a
+document whose entire claim is that it cannot drift from the router
+that serves it. okay-openapi's own test pinned the wrong answer and
+said, in a comment, "the day okay-http carries the kind this assertion
+changes" — which is the politest possible bug report.
+
+**The fix is a value, not two fields.** `Route.Described(path, params,
+queries)`, built by `Routed.described`, is what an entry carries now.
+Two more constructor arguments would have fixed the document today and
+left the next `Router` constructor free to pass a path without its
+parameters; a description that cannot be passed apart cannot come
+apart.
+
+**A parameter carries its own JSON Schema**, not just the word for its
+kind, and it comes from okay-codec's `JsonSchema.of` rather than a
+second mapping written next to the renderer — a document with two
+vocabularies for "integer" disagrees with itself. `Param.jsonSchema`
+is concrete, so the three lines a new parameter type costs stay three,
+and overridable, so a `Param[UUID]` can say `format: uuid` and have it
+reach the document. Capturing it at DECLARATION time is what keeps
+that override alive: a renderer handed only the kind would re-derive
+the common cases correctly and silently lose exactly the parameters
+whose author took the trouble.
+
+Two stale claims were corrected while the files were open: this
+guide's "an OpenAPI document is still not generated, deliberately"
+(the consumer arrived), and three backlog boxes left unticked after
+their work landed.
+
 ### What stays open, and what each is waiting for — 2026-09-11 (optics-outside-remaining)
 
 Five candidates are closed: routes, tools, the query string, DESCRIBE

@@ -1,5 +1,41 @@
 # Changelog
 
+## openapi-parameters — the description was being thrown away at the door
+
+okay-openapi renders the document from `Router.entries`, and it was
+publishing a lie: `Route[Int]("id")` came out as `{"type": "string"}`,
+and query parameters came out not at all. Not because the routes did
+not know — `Seg.Var` carries the kind and `Q` carries
+name/required/repeated — but because `Router.Entry` took
+`route.describe`, a STRING, so everything structured stopped at the
+router's door and the renderer re-parsed `{name}` out of the template.
+
+The consumer had said so in a comment on its own assertion: *"the day
+okay-http carries the kind this assertion changes"*. It changed.
+
+**`Route.Described(path, params, queries)`** is what an entry carries
+now. Two extra fields would have fixed today's document and left the
+next `Router` constructor free to pass a path without its parameters;
+a value that cannot be passed apart cannot come apart. `Param` gained
+a concrete, overridable `jsonSchema` — concrete so a new parameter
+type still costs three lines, overridable so a `Param[UUID]` can say
+`format: uuid` and have that reach the document. It is derived through
+okay-codec's `JsonSchema.of`, not a second mapping beside the
+renderer, because a document with two vocabularies for "integer"
+disagrees with itself.
+
+A repeated query (`"tag".all[String]`) declares an ARRAY of the
+element's shape, which is what `?tag=a&tag=b` actually is.
+
+**Stale claims corrected while the files were open.**
+`docs/declaring-an-api.md` still said an OpenAPI document was
+deliberately not generated and had no consumer — both true when
+written, neither true now. Three backlog boxes (openapi-responses,
+openapi-render, openapi-queries) were left unticked after their work
+landed. And three unused imports in okay-openapi had ridden through
+every green gate, because `scripts/gate.sh` does not look at warnings
+— the second time that has cost something today.
+
 ## gate-signal-and-warnings — a signal is not a verdict, and the gate now reads warnings
 
 Two defects in the gate, both found by using it, one of them mine from

@@ -1,10 +1,10 @@
 package okay.openapi
 
 import okay.*
-import okay.given
 import okay.codec.{Json, Schema}
 import okay.codec.Json.*
-import okay.http.{Method, Request, Response, Route, Router}
+import okay.http.{Method, Response, Route, Router}
+import okay.http.syntax.*
 
 /**
  * The document is a rendering of the router (specs/openapi.md stage 0).
@@ -25,11 +25,14 @@ class TestOpenApi extends munit.FunSuite:
 
   val board = Route / "board"
   val byId  = Route / "board" / Route[Int]("id")
+  // one of each kind of query declaration: required, optional, repeated
+  val search = Route / "search" :? "q".as[String] :? "page".opt[Int] :? "tag".all[String]
 
   val router: Router = Router.empty
     .on(Method.Get, board)(_ => ok("all"))
     .on(Method.Get, byId)(t => ok(s"one ${t.head}"))
     .json[EmptyTuple, NewTask](Method.Post, board)((_, t) => ok(t.title))
+    .on(Method.Get, search)(_ => ok("found"))
 
   val api = Api("Board", "1.0", servers = Vector("https://board.example"))
   def doc: Json = OpenApi.document(api, router)
@@ -56,16 +59,39 @@ class TestOpenApi extends munit.FunSuite:
     assertEquals(rendered.sorted, dispatched.sorted)
   }
 
-  test("a path with a variable is a template, and its parameter is declared") {
+  test("a path with a variable is a template, and its parameter is declared WITH ITS KIND") {
     val item = at(at(doc, "paths"), "/board/{id}")
     val params = at(at(item, "get"), "parameters")
+    // `Route[Int]("id")` is an integer, and it is an integer because
+    // the entry carries the route's own `Seg.Var`, not a `{name}`
+    // re-parsed out of the template (openapi-parameters)
     assertEquals(params, JArr(Vector(JObj(Vector(
       "name" -> JStr("id"), "in" -> JStr("path"),
       "required" -> JBool(true),
-      // the KIND is not on the entry — see OpenApi's comment and
-      // BACKLOG "openapi": `Route.int("id")` is a string here, and the
-      // day okay-http carries the kind this assertion changes
-      "schema" -> JObj(Vector("type" -> JStr("string"))))))))
+      "schema" -> JObj(Vector("type" -> JStr("integer"))))))))
+  }
+
+  test("query parameters are declared too, with required and repeated") {
+    val get = at(at(at(doc, "paths"), "/search"), "get")
+    assertEquals(at(get, "parameters"), JArr(Vector(
+      JObj(Vector("name" -> JStr("q"), "in" -> JStr("query"),
+        "required" -> JBool(true),
+        "schema" -> JObj(Vector("type" -> JStr("string"))))),
+      JObj(Vector("name" -> JStr("page"), "in" -> JStr("query"),
+        "required" -> JBool(false),
+        "schema" -> JObj(Vector("type" -> JStr("integer"))))),
+      // `all` is a repeated parameter: an array of the element's kind,
+      // which is what the route actually accepts
+      JObj(Vector("name" -> JStr("tag"), "in" -> JStr("query"),
+        "required" -> JBool(false),
+        "schema" -> JObj(Vector("type" -> JStr("array"),
+          "items" -> JObj(Vector("type" -> JStr("string"))))))))))
+  }
+
+  test("the query is NOT part of the path template, and the path is the one that dispatches") {
+    val paths = obj(at(doc, "paths")).map(_._1)
+    assert(paths.contains("/search"), paths.toString)
+    assert(!paths.exists(_.contains("?")), paths.toString)
   }
 
   test("a route without variables declares no parameters") {

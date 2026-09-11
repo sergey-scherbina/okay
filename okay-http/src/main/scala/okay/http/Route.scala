@@ -90,7 +90,7 @@ sealed trait Routed[A <: Tuple]:
   def describe: String =
     segments.map {
       case Route.Seg.Lit(v) => v
-      case Route.Seg.Var(n, _) => "{" + n + "}"
+      case v: Route.Seg.Var => "{" + v.name + "}"
     }.mkString("/", "/", "")
 
   /** the whole thing, for a human: `/search?q={q}&page={page}` */
@@ -102,6 +102,16 @@ sealed trait Routed[A <: Tuple]:
    * generated OpenAPI operation or MCP tool schema is built from */
   def params: Vector[Route.Seg.Var] =
     segments.collect { case v: Route.Seg.Var => v }
+
+  /**
+   * The description as ONE value — the whole of what a renderer is
+   * given, and the only thing a `Router.Entry` carries about the url.
+   *
+   * `describe` alone was what the router used to take, and a template
+   * without its parameters is a description that has already lost the
+   * interesting half (`Route.Described`).
+   */
+  def described: Route.Described = Route.Described(describe, params, queries)
 
   /**
    * the bridge to `specs/optics.md`. A miss leaves the path unchanged,
@@ -240,13 +250,38 @@ final class Queried[A <: Tuple] private[http] (
 
 object Route:
 
-  /** a segment of the description */
+  /** a segment of the description.
+   *
+   * `Var` carries the parameter's JSON Schema as well as its `kind`,
+   * because the kind is a WORD and a renderer needs a shape — and
+   * because a custom `Param` may say more about itself than four
+   * words can (a format, an enum). Capturing it at declaration time is
+   * what keeps that override alive; a renderer handed only the kind
+   * would have to re-derive it and would lose exactly the parameters
+   * whose author took the trouble. */
   enum Seg:
     case Lit(value: String)
-    case Var(name: String, kind: String)
+    case Var(name: String, kind: String, schema: okay.codec.Json = Param.schemaOf("string"))
 
   /** a query parameter of the description */
-  final case class Q(name: String, kind: String, required: Boolean, repeated: Boolean)
+  final case class Q(name: String, kind: String, required: Boolean, repeated: Boolean,
+                     schema: okay.codec.Json = Param.schemaOf("string"))
+
+  /**
+   * The description of one url, whole: the template AND what its
+   * parameters are (openapi-parameters).
+   *
+   * It exists as ONE value because the halves came apart. `Router`
+   * used to take `route.describe` — a String — so the path template
+   * reached a renderer without its parameters' kinds, and the
+   * renderer re-parsed `{name}` out of the template and declared
+   * every one of them a string. An `Int` path parameter was
+   * documented as text, in a document whose whole claim is that it
+   * cannot drift from the router. A value that cannot be passed
+   * without its parts is the fix; two more fields would have been the
+   * patch.
+   */
+  final case class Described(path: String, params: Vector[Seg.Var], queries: Vector[Q])
 
   /**
    * A NAMED TYPED PARAMETER — the same thing in a path and in a query,
@@ -268,7 +303,43 @@ object Route:
     def parse(s: String): Option[T]
     def print(t: T): String
 
+    /**
+     * The DECLARE interpreter of a parameter: its shape as JSON
+     * Schema, for whoever renders the route (okay-openapi today).
+     *
+     * Concrete rather than abstract, so the three lines a new
+     * parameter type has to supply stay three. Override it to say
+     * more than the kind can — `{"type":"string","format":"uuid"}`
+     * for a `Param[UUID]`, or an `enum` for a closed vocabulary.
+     */
+    def jsonSchema: okay.codec.Json = Param.schemaOf(kind)
+
   object Param:
+    /**
+     * A kind's shape, through okay-codec's OWN mapping rather than a
+     * second one written here: `JsonSchema.of` is what every other
+     * declaration in this repository renders with — a tool's
+     * arguments, a request body, a declared answer — and a document
+     * with two vocabularies for "integer" is a document that
+     * disagrees with itself.
+     *
+     * An unrecognised kind is a string, which is what a url segment
+     * is; a custom `Param` that wants to say otherwise overrides
+     * `jsonSchema` rather than hoping this function learns its word.
+     */
+    /** a REPEATED parameter is an array of the element's shape —
+     * `"tag".all[String]` accepts `?tag=a&tag=b`, and a document that
+     * declared it a string would be describing a different service */
+    def arrayOf[T](p: Param[T]): okay.codec.Json =
+      okay.codec.Json.JObj(Vector(
+        "type" -> okay.codec.Json.JStr("array"),
+        "items" -> p.jsonSchema))
+
+    def schemaOf(kind: String): okay.codec.Json = kind match
+      case "int" | "long" => okay.codec.JsonSchema.of(okay.codec.Schema.SInt)
+      case "boolean" => okay.codec.JsonSchema.of(okay.codec.Schema.SBool)
+      case _ => okay.codec.JsonSchema.of(okay.codec.Schema.SString)
+
     given string: Param[String] with
       def kind = "string"
       def parse(s: String): Option[String] = Some(s)
@@ -366,7 +437,7 @@ object Route:
    * the query arrived.
    */
   def apply[T](name: String)(using p: Param[T]): Route[T *: EmptyTuple] =
-    new Route(Vector(Seg.Var(name, p.kind)), Vector.empty,
+    new Route(Vector(Seg.Var(name, p.kind, p.jsonSchema)), Vector.empty,
       (ss, _) => ss match
         case Vector(one) if one.nonEmpty => p.parse(one).map(_ *: EmptyTuple)
         case _ => None,
@@ -403,6 +474,7 @@ object Route:
     def describeFull: String = r.describeFull
     def segments: Vector[Seg] = r.segments
     def queries: Vector[Q] = r.queries
+    def described: Described = r.described
     def prism: Prism[String, String, C, C] = Prism(s => unapply(s).toRight(s), url)
 
   /**
@@ -552,7 +624,7 @@ object Query:
 
   /** required: the route misses without it */
   def apply[T](name: String)(using p: Route.Param[T]): Query[T *: EmptyTuple] =
-    new Query(Vector(Route.Q(name, p.kind, required = true, repeated = false)),
+    new Query(Vector(Route.Q(name, p.kind, required = true, repeated = false, p.jsonSchema)),
       qs => qs.get(name).flatMap(_.headOption).flatMap(p.parse).map(_ *: EmptyTuple),
       t => Vector(name -> p.print(t.head)))
 
@@ -565,7 +637,7 @@ object Query:
    * caller's mistake behind a page of results.
    */
   def opt[T](name: String)(using p: Route.Param[T]): Query[Option[T] *: EmptyTuple] =
-    new Query(Vector(Route.Q(name, p.kind, required = false, repeated = false)),
+    new Query(Vector(Route.Q(name, p.kind, required = false, repeated = false, p.jsonSchema)),
       qs => qs.get(name).flatMap(_.headOption) match
         case None => Some(None *: EmptyTuple)
         case Some(v) => p.parse(v).map(x => Some(x) *: EmptyTuple),
@@ -574,7 +646,7 @@ object Query:
   /** repeated: every occurrence in wire order, and an empty vector
    * writes nothing */
   def all[T](name: String)(using p: Route.Param[T]): Query[Vector[T] *: EmptyTuple] =
-    new Query(Vector(Route.Q(name, p.kind, required = false, repeated = true)),
+    new Query(Vector(Route.Q(name, p.kind, required = false, repeated = true, Route.Param.arrayOf(p))),
       qs =>
         val parsed = qs.getOrElse(name, Vector.empty).map(p.parse)
         if parsed.forall(_.isDefined) then Some(parsed.map(_.get) *: EmptyTuple) else None,
@@ -667,7 +739,7 @@ final class Router private (val entries: Vector[Router.Entry]):
    * peer. Most do, which is why `on` is defined in terms of this one
    * and not the other way round. */
   def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe,
+    new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r => if r.method != method then None else route.unapply(r.url).map(a => h(a, r))))
 
@@ -701,7 +773,7 @@ final class Router private (val entries: Vector[Router.Entry]):
   def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])
                            (h: (A, B, Request) => Response ! Async)
                            (using sc: okay.codec.Schema[B]): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe,
+    new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r =>
         if r.method != method then None
@@ -730,7 +802,7 @@ final class Router private (val entries: Vector[Router.Entry]):
   /** the same, with the request in hand */
   def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
                           (h: (A, Request) => R ! Async)(using sr: okay.codec.Schema[R]): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe,
+    new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r =>
         if r.method != method then None
@@ -748,7 +820,7 @@ final class Router private (val entries: Vector[Router.Entry]):
   def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
                                  (h: (A, B, Request) => R ! Async)
                                  (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe,
+    new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r =>
         if r.method != method then None
@@ -768,7 +840,7 @@ final class Router private (val entries: Vector[Router.Entry]):
 
   def ofAt[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])
                                     (h: (C, Request) => Response ! Async): Router =
-    new Router(entries :+ new Router.Entry(method, route.describe,
+    new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r => if r.method != method then None else route.unapply(r.url).map(c => h(c, r))))
 
@@ -868,14 +940,25 @@ object Router:
    */
   final case class Answer(status: Int, schema: Option[okay.codec.Json], description: String)
 
-  final class Entry private[http] (val method: Method, val path: String,
+  final class Entry private[http] (val method: Method,
+                                   /** the url's whole description — template AND
+                                    * parameters; see `Route.Described` for why the
+                                    * two may not be passed apart */
+                                   val described: Route.Described,
                                    private[http] val matches: Request => Boolean,
                                    private[http] val run: Request => Option[Response ! Async],
                                    /** the declared body's JSON Schema, when there is one —
                                     * what a renderer reads, as `Toolbox` already gives tools */
                                    val body: Option[okay.codec.Json] = None,
                                    /** what it answers, when the handler's type said so */
-                                   val answers: Vector[Answer] = Vector.empty)
+                                   val answers: Vector[Answer] = Vector.empty):
+
+    /** the path template that dispatches — the query is not part of it */
+    def path: String = described.path
+    /** the path parameters, each with its kind and its JSON Schema */
+    def params: Vector[Route.Seg.Var] = described.params
+    /** the query parameters this route declares */
+    def queries: Vector[Route.Q] = described.queries
 
   /** the shape of the router's own error answer — declared, because
    * the router produces it whether or not the author thought about it */

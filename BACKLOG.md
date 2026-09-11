@@ -753,33 +753,41 @@ The spec is written and names the consumer first, as
 a document is worth serving belongs to THAT arc and is listed here so
 its owner can price it:
 
-- [ ] openapi-responses — a route declares what it answers (status and
-      `Schema`), beside the request body it already declares. Without
-      it every operation says "200, unspecified" and the document is
-      not worth publishing. THE decider for this whole arc.
-- [ ] openapi-queries — `Router.Entry` carries the body schema but not
-      the query declarations a `Queried` route knows. Small.
-- [ ] openapi-render — stage 0: `okay-openapi`, `document(api, router)`
-      over paths, methods, path parameters and request bodies, with
-      the renderer's law (every entry once, no path the router does
-      not dispatch). Can land before responses; must not claim to be
-      OpenAPI support until they exist.
+- [x] openapi-responses — DONE (`Router.out`/`outAt`/`jsonOut`/
+      `jsonOutAt`, `Entry.answers`); the box was left unticked after
+      the work landed and is corrected here.
+- [x] openapi-queries — DONE 2026-09-11 as openapi-parameters, and it
+      was two gaps rather than one: the query declarations AND the
+      path parameters' kinds, both for the same reason. `Router.Entry`
+      took `route.describe` — a STRING — so the renderer re-parsed
+      `{name}` out of the template and called every path parameter a
+      string; `Route[Int]("id")` was published as text. The entry now
+      carries `Route.Described` (template + params + queries), and the
+      value exists so the two can never be passed apart again. A
+      `Param` carries its own JSON Schema, through okay-codec's
+      `JsonSchema.of` rather than a second mapping, and a custom
+      `Param` may override it (`format: uuid`) — tested.
+- [x] openapi-render — DONE (`okay-openapi`, the law included); box
+      corrected 2026-09-11 alongside openapi-responses.
 - [ ] openapi-serve — stage 2: `/openapi.json` and a page that renders
       it with no network, plus okay-demo's committed document and its
       drift test — the shape okay-demo/deploy already has.
 - [ ] openapi-prose — stage 3: a summary per route; operation ids are
       derived until then.
 
-- [ ] optics-outside-describe — the renderer stage 1's DESCRIBE
-      interpreter still has no consumer for. A `Router` plus its
-      routes' `describe`/`params`/`queries` is an OpenAPI paths object
-      already; okay-agent's `Toolbox` is the same shape for MCP. Do
-      NOT start it as "generate OpenAPI": start it by naming which
-      consumer reads the output, or it lands with no caller — the trap
-      this arc has now recorded three times. Stage 4 is the worked
-      example of doing it the other way round: the consumer (a
-      deployment naming a probe path) was found in the tree first, and
-      the description was shaped to fit it.
+- [x] optics-outside-describe — CLOSED 2026-09-11. The consumer
+      arrived and was not built by this arc: a sibling wrote
+      `okay-openapi`, quoting this entry's own rule back at it. The
+      description then had to be made worth reading — see
+      openapi-queries above — and the shape of that work is the
+      lesson: the renderer had ALL the names it needed and none of the
+      kinds, because the router flattened `Routed` to a String at its
+      door. A DESCRIBE interpreter is only as good as what survives
+      the boundary it is read across.
+      What remains undeclared is HEADERS, and that is a route
+      declaration, not a renderer feature: a handler reads a header
+      off the `Request` with nothing declared anywhere. Not started —
+      no consumer has asked.
 - [x] optics-outside-routes-body — request bodies DONE (2026-09-11,
       stage 7, `Router.json[B]`); headers and RESPONSE bodies remain. `Request`/`Response` already carry a `Body` and okay-codec
       has `Schema`, so a body declaration is the `Toolbox` shape

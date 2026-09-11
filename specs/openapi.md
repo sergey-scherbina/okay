@@ -58,24 +58,33 @@ run, body):
 
 - **Paths and methods** — yes. `Entry.path` is the described form,
   and `Route.params` names the variable segments with their kinds.
-- **Path parameters** — their NAMES, yes: `Entry.path` is the
-  template, so `{id}` is there. Their KINDS, no — `Route.params`
-  knows that `Route[Int]("id")` is an int and the entry does not
-  carry it, so stage 0 declares every path parameter a string. This
-  sentence is a correction: the spec first claimed the kinds were
-  available, and building stage 0 measured otherwise.
+- **Path parameters** — names AND kinds, since
+  `openapi-parameters`. The entry carries `Route.Described`, not a
+  template string, so `Route[Int]("id")` renders as an integer. This
+  paragraph has now been wrong twice in opposite directions: the spec
+  first claimed the kinds were available, stage 0 measured that they
+  were not, and the fix was to stop flattening the description at the
+  router's door rather than to teach the renderer to guess.
 - **Request bodies** — yes. `Entry.body: Option[Json]` is already a
   JSON Schema, produced by the same derivation the decoder uses, so a
   declared body cannot drift from the parser.
-- **Query parameters** — NO. A `Queried` route knows them, the entry
-  does not carry them. This is the first gap.
+- **Query parameters** — YES, since `openapi-parameters`, with the
+  `required` each declaration gave and an `array` schema where `all`
+  made one repeatable. They are NOT part of the path template: the
+  path is what dispatches and a query is a separate list, which is
+  the shape OpenAPI wants and the split `describe`/`describeFull`
+  already made.
 - **Responses** — YES since openapi-responses, for a handler that
   answers a VALUE. The declaration is the handler's type: the router
   encodes with the same `Schema` the entry carries. A handler that
   builds its own `Response` declares nothing, and the document says
   so; that is a choice the author makes per route rather than a hole
   in the model.
-- **Summaries, tags, operation ids** — NO, and the third gap is the
+- **Headers** — NO, and this is now the only structural gap. A route
+  declares a path, parameters, a query and a body; a header is read
+  off the `Request` with nothing declared, so the renderer says
+  nothing rather than guessing.
+- **Summaries, tags, operation ids** — NO, and this gap is the
   smallest: a route has no place to carry a sentence about itself.
 
 The order those gaps matter in is responses, queries, prose — and the
