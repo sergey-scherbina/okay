@@ -22,9 +22,24 @@ object DemoOpenApi:
     version = "1.0",
     description = Some("the demo's HTTP surface, rendered from the router that answers it"))
 
-  /** the document, over the routes this service declares */
+  /**
+   * The document, over the routes this service declares WHEN
+   * PACKAGED.
+   *
+   * `withApp = true` is not a detail: the demo serves `/app.js` only
+   * where the linked bundle is present, so the surface varies with
+   * the working directory — and a document that varies with the
+   * machine cannot be committed or diffed. The drift test found that
+   * on its first full run, which is the argument for having one. What
+   * is published is therefore what a DEPLOYED service offers, which
+   * is also what DemoDeploy's image contains.
+   */
   def document(using okay.conf.Secrets, Board, okay.persist.Store): okay.codec.Json =
-    OpenApi.document(api, ChatDemo.declaredRouter(okay.chat.Chat.scripted, 512))
+    OpenApi.document(api, router)
+
+  /** the router the document describes: the packaged surface */
+  def router(using okay.conf.Secrets, Board, okay.persist.Store): okay.http.Router =
+    ChatDemo.declaredRouter(okay.chat.Chat.scripted, 512, withApp = true)
 
   def main(args: Array[String]): Unit =
     val store = Board.store(":memory:")

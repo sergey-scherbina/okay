@@ -304,7 +304,8 @@ object ChatDemo {
    * capabilities `routes` takes — and the two cannot disagree,
    * because `routes` calls it.
    */
-  def declaredRouter(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
+  def declaredRouter(m: Chat.Model, budget: Int, withApp: Boolean = Chat.appJs.isDefined)
+                    (using Secrets, Board, okay.persist.Store)
   : okay.http.Router =
     val board = summon[Board]
     val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
@@ -381,7 +382,7 @@ object ChatDemo {
             pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
           }
-        if Chat.appJs.isEmpty then base
+        if !withApp then base
         else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
             pure(Response(200, Seq("content-type" -> "text/javascript"),
               Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))

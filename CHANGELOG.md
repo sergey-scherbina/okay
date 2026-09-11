@@ -28,6 +28,15 @@ paths was to answer a request with them. It is `ChatDemo.declaredRouter`
 now, with the same capabilities, and `routes` calls it — so the
 document and the dispatch cannot disagree.
 
+The drift test earned its keep on its first full run: the demo serves
+`/app.js` only where the linked bundle is present, so its surface
+varied with the working directory and the committed document did not
+match. What is published is now the PACKAGED surface — what a deployed
+service offers, which is what DemoDeploy's image contains — and
+`declaredRouter` takes that as a parameter rather than reading the
+disk. A document that varies with the machine cannot be diffed, and
+nothing but a drift test would have said so.
+
 17 tests in okay-openapi, 3 in okay-demo. Landed alongside a sibling's
 openapi-parameters, which gave path parameters their kinds and brought
 the queries through — their note is worth keeping: a DESCRIBE
