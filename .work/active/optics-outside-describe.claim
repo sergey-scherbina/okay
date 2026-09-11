@@ -1,0 +1,33 @@
+task: optics-outside-describe
+agent: opus5-optics-outside
+started: 2026-09-11
+heartbeat: 2026-09-11T08:45:00Z
+status: in-progress
+branch: feature/optics-outside-describe
+worktree: ../okay-wt-desc
+
+why: stage 1 built DESCRIBE and only stage 4 has read it (a deployment
+  naming a probe path). The backlog entry says NOT to start this as
+  "generate OpenAPI", because an OpenAPI document has no in-repo
+  consumer and a lane with no caller is the trap this arc has recorded
+  three times. It says: name the consumer first.
+
+  The consumer is the DOCUMENTATION. `docs/modules/okay-ops.md` lists
+  the endpoints in prose, and prose drifts — that is precisely what
+  stage 4 found between `Ops` and `Site`, and what the repository
+  already solved elsewhere with committed renderings and a drift test
+  ("two committed deploy renderings, each with its own drift test").
+
+what: `Router.markdown` renders a table from the same entries that
+  dispatch, and a test asserts the block committed in the module docs
+  is what the live router renders. A route cannot then be served and
+  undocumented, or documented and unserved — the property `describe`
+  was built for, finally load-bearing.
+
+  okay-ops, okay-demo and okay-chat all have Routers now, so there is
+  something real to render.
+
+not in scope: OpenAPI. When a consumer for it exists, the input is
+  ready — `describe`, `params`, `queries` and the entry's body schema.
+
+next: the renderer, the doc blocks, the drift test, docs
