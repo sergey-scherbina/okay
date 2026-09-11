@@ -2,7 +2,7 @@ package okay.mcp
 
 import okay.*
 import okay.given
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, ToolSpec, Toolbox}
 import okay.codec.{Json, Schema}
 
 /**
@@ -15,15 +15,14 @@ class TestServer extends munit.FunSuite {
   final case class Add(a: Int, b: Int)
   given Schema[Add] = Schema.derived
 
-  val spec = ToolSpec[Add]("add", "add two numbers")
-  val table = Map[String, ToolCall => String]("add" -> { c =>
-    ToolSpec.args[Add](c).fold(e => s"bad args: $e", x => (x.a + x.b).toString)
-  })
+  // one declaration, two interpreters: `specs` is what the
+  // model is told, `table` is what the wire dispatches
+  val box = Toolbox.on[Add]("add", "add two numbers")(x => (x.a + x.b).toString)
   val info = Mcp.Info("okay-test", "0.1")
 
   /** drive the stage with a list of messages, collect what it tells */
   def talk(msgs: Rpc*): Seq[Rpc] =
-    !.run(Writer.run(through(Writer.of(msgs.toList))(Server.serve(info, Seq(spec), table))))._1
+    !.run(Writer.run(through(Writer.of(msgs.toList))(Server.serve(info, box.specs, box.table))))._1
 
   val hello = Rpc.Request(Json.JNum(1), Mcp.Initialize,
     Mcp.initializeParams(Mcp.Info("client", "1")))

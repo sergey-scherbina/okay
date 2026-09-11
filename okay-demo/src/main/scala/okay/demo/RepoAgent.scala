@@ -79,30 +79,44 @@ object RepoAgent {
   given Schema[Definition] = Schema.derived
   given Schema[ReadFile] = Schema.derived
 
-  val definitionTool: ToolSpec =
-    ToolSpec[Definition]("definition", "the source of a named definition")
-  val readTool: ToolSpec =
-    ToolSpec[ReadFile]("read_file", "read a file, optionally from a line")
+  /**
+   * The two tools, each written once (specs/optics-outside.md, stage
+   * 2). What stood here was the pair this application was supposed to
+   * demonstrate the absence of: two `ToolSpec` vals beside a `Map`
+   * keyed by the same two names, with the decode spelled out per
+   * handler. `RepoMcp` then handed the two structures to one server,
+   * and nothing but care kept their name sets equal.
+   *
+   * The conversion is not only a tidy: the hand-written decode
+   * answered `"bad args: ..."` as PROSE, while every tool that went
+   * through `Toolbox` — `BoardTools`, `StateMcp` — answers
+   * `{"error": ...}`. A model calling both got two shapes of failure
+   * decided by which module happened to declare the tool. `Toolbox`
+   * answers with data for all of them.
+   */
+  def toolbox(repo: Repo): Toolbox = Toolbox
+    .on[Definition]("definition", "the source of a named definition")(a =>
+      repo.index.definition(a.name).headOption
+        .flatMap(sym => repo.corpus.sources.get(sym.source).map(src =>
+          s"${sym.source}:${sym.span.line + 1}\n${Symbols.segment(sym, src).text}"))
+        .getOrElse(s"no definition named '${a.name}'"))
+    .on[ReadFile]("read_file", "read a file, optionally from a line")(a =>
+      repo.corpus.sources.get(a.path) match
+        case None => s"no such file '${a.path}'"
+        case Some(src) =>
+          val all = src.text.linesIterator.toVector
+          val from = a.from.getOrElse(1).max(1)
+          val n = a.lines.getOrElse(60).max(1)
+          all.slice(from - 1, from - 1 + n).zipWithIndex
+            .map((l, i) => f"${from + i}%5d  $l").mkString("\n"))
 
-  def tools(repo: Repo): Map[String, ToolCall => String] = Map(
-    "definition" -> { c =>
-      ToolSpec.args[Definition](c).fold(e => s"bad args: $e", a =>
-        repo.index.definition(a.name).headOption
-          .flatMap(sym => repo.corpus.sources.get(sym.source).map(src =>
-            s"${sym.source}:${sym.span.line + 1}\n${Symbols.segment(sym, src).text}"))
-          .getOrElse(s"no definition named '${a.name}'"))
-    },
-    "read_file" -> { c =>
-      ToolSpec.args[ReadFile](c).fold(e => s"bad args: $e", a =>
-        repo.corpus.sources.get(a.path) match
-          case None => s"no such file '${a.path}'"
-          case Some(src) =>
-            val all = src.text.linesIterator.toVector
-            val from = a.from.getOrElse(1).max(1)
-            val n = a.lines.getOrElse(60).max(1)
-            all.slice(from - 1, from - 1 + n).zipWithIndex
-              .map((l, i) => f"${from + i}%5d  $l").mkString("\n"))
-    })
+  /** DECLARE and DISPATCH, both out of `toolbox` — and no repo-free
+   * `specs`, for the reason `BoardTools` gives: every caller has a
+   * repository, and a fake one built to render a declaration would be
+   * machinery nobody needs */
+  def specs(repo: Repo): Seq[ToolSpec] = toolbox(repo).specs
+
+  def tools(repo: Repo): Map[String, ToolCall => String] = toolbox(repo).table
 
   // ---------------------------------------------------------------- run
 
@@ -149,7 +163,7 @@ object RepoAgent {
     val prog = Agent.remember(Turn.System(
       "You answer questions about a codebase. Relevant source is " +
         "already provided in the context. Cite file names. Be brief."))
-      .flatMap(_ => Agent.converse(question, Seq(definitionTool, readTool)))
+      .flatMap(_ => Agent.converse(question, specs(repo)))
 
     (prog.runWith, seen.lastOption.getOrElse(state.recall))
 

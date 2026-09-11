@@ -1,5 +1,41 @@
 # Changelog
 
+## optics-outside-tools-adopt — the last hand-written tool, and the shape of a failure
+
+BACKLOG had this down as test tables only. One of the six was
+okay-demo's `RepoAgent`: two `ToolSpec` vals beside a `Map` keyed by
+the same two names, with `RepoMcp` handing both structures to one
+`Server.Serving`. That is an application, not a test.
+
+**What the conversion changed is not only the drift.** The
+hand-written decode answered `"bad args: ..."` — prose — where every
+tool declared through `Toolbox` answers `{"error": "<tool>: <why>"}`.
+So the same agent reported failure in two shapes, and which shape you
+got was decided by which module happened to declare the tool. A model
+cannot parse its way out of that. `TestRepoTools` was written first
+and failed on exactly it:
+
+    bad args: missing field 'name' in Definition
+
+It lives in the default gate, on a two-file in-memory repository,
+because the suite that did cover these tools (`TestRepoAgent`) is
+`Live`-tagged: it indexes this entire repository, so the tools'
+CONTRACT had no fast test at all.
+
+`RepoAgent.toolbox` / `specs` / `tools` replace the pair, following
+`BoardTools`' rule that there is no repo-free `specs` — every caller
+has a repository. The five test tables in okay-mcp and okay-http
+became one `Toolbox` each; they matter more than a test usually does,
+being what a reader of okay-mcp copies. So does the tutorial in
+`docs/modules/okay-agent.md`, which still showed the hand-written
+`Map` and now does not.
+
+Alongside: one unused import (`okay.given` in `TestRouterOut`, from
+the openapi-responses lane) removed after checking both JVM and JS
+compile clean without it. `scripts/gate.sh` does not look at warnings
+— that check is still a person's job, and this one had gone unseen
+through two green gates.
+
 ## gate-retry-script — the loop that recovered seven lost gates
 
 Every agent here waits for a quiet box before starting a matrix. That

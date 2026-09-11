@@ -236,6 +236,18 @@ One inconsistency survives and is reported rather than hidden: a `Map`
 keeps the last of a duplicate name and a `Seq` keeps both, so
 `duplicates` names them.
 
+**The sweep is finished, and it found a second thing.** No module
+declares a tool by hand any more: `RepoAgent` was the last production
+pair — two `ToolSpec` vals beside a `Map` keyed by the same two names,
+handed to one MCP server as two arguments — and the five test tables
+that copied it followed. What the drift argument had not predicted is
+that the two ways of declaring a tool also disagreed about FAILURE:
+the hand-written decode answered `bad args: ...` as prose, `Toolbox`
+answers `{"error": ...}`, and a model calling one of each had to guess
+which shape it was reading. Converting the declaration fixed the
+answer as a side effect, which is the usual sign that the two things
+were one thing.
+
 ## The terse syntax, and why it is spelled that way
 
 ```scala

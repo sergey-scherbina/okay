@@ -845,6 +845,35 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### Stage 2, finished — LANDED 2026-09-11 (optics-outside-tools-adopt)
+
+Stage 2 gave `Toolbox` and converted `BoardTools`; the rest of the
+tree kept the hand-written pair, and BACKLOG recorded the remainder as
+test tables — "the cost of the drift is lower". That was wrong about
+one of them. okay-demo's `RepoAgent` is an APPLICATION, and it held
+two `ToolSpec` vals beside a `Map` keyed by the same two names;
+`RepoMcp` handed the two structures to one `Server.Serving` as two
+arguments, so nothing but care kept the name sets equal. Five test
+tables copied the same shape, which matters more than a test usually
+does: they are what a reader of okay-mcp copies.
+
+**The conversion changed behaviour, and that is the finding.** The
+hand-written decode answered `"bad args: $e"` — prose — while every
+tool declared through `Toolbox` answers `{"error": "<tool>: <why>"}`.
+The same agent therefore reported failure in two shapes, decided by
+which module happened to declare the tool, and a model calling both
+had to guess which one it was reading. The red test was written
+against that (`TestRepoTools`, in the default gate; `TestRepoAgent` is
+`Live`-tagged and indexes this whole repository, which is why the
+tools' CONTRACT had no fast test at all).
+
+Two smaller things. `Json.parse` is lossless on a non-JSON string, so
+prose comes back as a `JStr` and the test's `errorOf` returns `None` —
+the distinction under test needs no string matching. And the tutorial
+in `docs/modules/okay-agent.md` still SHOWED the hand-written table;
+documentation is the copy source of record, so a sweep that leaves it
+is not finished.
+
 ### Stage 7 — LANDED 2026-09-11 (optics-outside-routes-body)
 
 `Router.json[B]` declares the body; `/login` and `/login/confirm` are
