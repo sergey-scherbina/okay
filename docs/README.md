@@ -171,7 +171,7 @@ API reference, gotchas.
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
-| [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo; and the leads ledger that decorates its turn seam (category, budget and date from cues, the message itself never stored) |
+| [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |
 | [`okay-live`](modules/okay-live.md) | broadcast (Hub) and per-key channels (Registry) over the core's own Channel |
