@@ -1,5 +1,54 @@
 # Changelog
 
+## optics-outside-demo-routes — a stale comment that became a defect when somebody else's fix landed
+
+Nobody introduced this one. ChatDemo matched every route on
+`r.url == "..."`, the WHOLE request target, and the `/events/` route
+carried a comment explaining that a query string never reached it
+because Jetty dropped one. That was true when it was written. It
+stopped being true at e9901797 (http-request-query, 2026-09-03), which
+fixed Jetty to carry `path?query` as the JDK and Netty backends always
+had — and the comment stayed behind, documenting an assumption that no
+longer held.
+
+From that day every exact match silently began to miss. `/?x=1`
+answered **404** on a live server, which is how it was confirmed before
+anything was changed: the test was written first and watched to fail.
+
+**The worst instance was not a 404.** `/events/board` is matched
+exactly and `/events/` by PREFIX, in that order. With a query the exact
+match failed, the prefix one took it, and the caller was handed an
+inbox stream for the "email" `board?t=1` instead of the board feed —
+silently wrong rather than refused. It has no test of its own because
+it is an SSE stream that never ends and would hang the suite; the test
+says so in place, and checks the same root cause on `/?x=1`,
+`/board?x=1` and `/board.json?x=1`.
+
+The routes are a `Router` now, which cuts the query before it matches,
+so the class goes at once. Two things kept deliberately: the board feed
+is declared BEFORE `/events/{email}`, so "board" is never read as an
+address; and `/mcp` stays a guard, because it answers ANY verb —
+`McpHttp` reads the method itself, GET for the stream and POST for a
+message — which a table entry cannot say. It matches through the route
+value, so it drops the query like everything else. Forcing it into the
+table would have bought uniformity by lying about the behaviour.
+
+**A second bug came along unlooked for.** The subscriber's email used
+to come out of `URLDecoder.decode(..., "UTF-8")`, which turns `+` into
+a space by the FORM rules, so a plus-addressed
+`ann+tag@example.com` arrived as `ann tag@example.com`. A path segment
+is not a form; the route's segment decoder leaves `+` alone, which is
+what RFC 3986 says.
+
+**And the API's own author tripped over its one known wart.** A single
+captured parameter arrives as a `Tuple1`, documented in stage 1 and
+judged tolerable; writing `{ email => ... }` here needed the compiler
+to recall that warning. Filed as `route-arity-one-tuple` with that as
+the evidence — a second sighting should decide whether the cure costs
+less than the wart.
+
+Landed as 181ae6e4.
+
 ## optics-outside-guide — the arc documented as one thing rather than seven passes
 
 Seven stages landed in a session and their documentation grew by
