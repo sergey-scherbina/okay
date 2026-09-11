@@ -1,5 +1,47 @@
 # Changelog
 
+## optics-outside-guide — the arc documented as one thing rather than seven passes
+
+Seven stages landed in a session and their documentation grew by
+accretion: `docs/modules/okay-http.md`'s route section had reached 200
+lines written in five separate passes, and read as layers rather than
+as something a person could follow from the top — stage 5 explained
+the operators before stage 3 had introduced the query. Incremental
+documentation edits produce a correct and unreadable result, and that
+is its own kind of debt, visible only when somebody tries to read the
+whole thing.
+
+`docs/declaring-an-api.md` is the user-facing story: one declaration
+and its interpreters, worked from a path through a query, a body, a
+table, a case-class view and a tool. It states the test that makes the
+idea worth anything (a declaration earns more than a function only
+when one of its interpreters DESCRIBES rather than runs), the law
+`unapply(url(a)) == Some(a)` and what it forces, and the rules chosen
+rather than inherited — percent-decoding per segment AFTER the split,
+present-and-unparseable as a MISS, a path that cannot follow a query,
+and an `isDefinedAt` that does not run the handler.
+
+It also writes down what the language refused, so the next person does
+not spend an evening rediscovering it: `:?[String]("q")` does not
+parse, `"id"[Int]` never reaches you because `StringOps` already has
+an `apply`, and generalized method syntax does not rescue the infix
+form. And it lists what the conversions found, including the defect
+that was mine and four stages old.
+
+The split is by READER, not by size: the guide leads a person from a
+path to a tool, `okay-http.md` is a reference table for somebody who
+already knows and wants a name, and `specs/optics-outside.md` keeps
+the decisions and refutations for somebody about to change it. Three
+readers, three texts; before this, all three read the same one.
+
+Every signature quoted was checked against the source.
+
+Landed as 3a75d36f. NOTE: its release-claim commit (050d87d8) names
+b9671a3e, which the pre-gate rebase had rewritten — the check added to
+AGENTS.md an hour earlier caught it, on my own landing, one commit too
+late to edit a pushed message. The ledger is where a reader looks, so
+the correct sha is here.
+
 ## wroclaw-table-refresh — one run, every engine, and a claim of mine corrected by it
 
 §20's table was a quiet run from 2026-09-10; okay's lanes have since
