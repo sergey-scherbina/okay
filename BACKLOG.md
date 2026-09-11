@@ -667,6 +667,30 @@ or not at all).
       one module and missed in the other. Also fixed `TestSignals`,
       which used a spin budget as a timeout and failed 2 of 3 runs on
       untouched master.
+## openapi — the document as a rendering (specs/openapi.md, operator's ask 2026-09-11)
+
+The spec is written and names the consumer first, as
+`optics-outside-describe` demands. What it needs from okay-http before
+a document is worth serving belongs to THAT arc and is listed here so
+its owner can price it:
+
+- [ ] openapi-responses — a route declares what it answers (status and
+      `Schema`), beside the request body it already declares. Without
+      it every operation says "200, unspecified" and the document is
+      not worth publishing. THE decider for this whole arc.
+- [ ] openapi-queries — `Router.Entry` carries the body schema but not
+      the query declarations a `Queried` route knows. Small.
+- [ ] openapi-render — stage 0: `okay-openapi`, `document(api, router)`
+      over paths, methods, path parameters and request bodies, with
+      the renderer's law (every entry once, no path the router does
+      not dispatch). Can land before responses; must not claim to be
+      OpenAPI support until they exist.
+- [ ] openapi-serve — stage 2: `/openapi.json` and a page that renders
+      it with no network, plus okay-demo's committed document and its
+      drift test — the shape okay-demo/deploy already has.
+- [ ] openapi-prose — stage 3: a summary per route; operation ids are
+      derived until then.
+
 - [ ] optics-outside-describe — the renderer stage 1's DESCRIBE
       interpreter still has no consumer for. A `Router` plus its
       routes' `describe`/`params`/`queries` is an OpenAPI paths object
