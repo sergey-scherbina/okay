@@ -845,6 +845,46 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### The conf candidate — CLOSED 2026-09-11 (optics-outside-conf)
+
+The sixth candidate asked for "a setting is a lens that knows its
+path: the error names `server.tls.port`". Half of it is refused by a
+decision already in the tree and half of it was already built, which
+is worth writing down rather than discovering twice.
+
+**The path half is refused.** `Serve.Config` says *flat and scalar on
+purpose*: an environment carries text, numbers, yes/no and a secret
+REFERENCE, and the pairs a program actually wants — a certificate WITH
+its key, an ACME account WITH its domains — are assembled where half
+of one can be a named refusal instead of a silent fallback. There is
+no nested config in this repository, so a path lens would be
+machinery for a shape nothing has. `Conf.fromEnv` refuses a nested
+field BY NAME, which is the same decision stated at run time.
+
+**The description half was built and under-consumed.** `envName`
+derives `OKAY_TLS_RELOAD` from `tlsReload`, one derivation for the
+program that reads and the deployment that renders, and
+`Serve.Config.names` publishes the list. `TestScriptConfig` held that
+list against the DEPLOYMENT and against nothing a person opens — so a
+setting could be declared, rendered into a unit file, read at boot and
+still be undiscoverable. `OKAY_ACME_EAB` was exactly that: the
+external account binding a commercial CA hands you out of band, in
+specs/acme.md and in no guide. The red test named it; the fix is two
+rows and a paragraph in `docs/okay-script-guide.md`.
+
+**The law is one-directional, and the measurement is why.** The
+obvious form — every `OKAY_*` the guide names is a setting — is false
+twice over. `OKAY_CONF` names the config FILE, so it cannot be a field
+of what that file parses into; `OKAY_STAGING` is okay-staging's codec
+switch, which every program in the tree shares. A program's
+environment is strictly larger than its config, and only the inclusion
+that says "nothing declared is undiscoverable" holds.
+
+So the candidate closes with one test and no new abstraction. That is
+the arc's own criterion applied honestly: the declaration was already
+going to three interpreters, and what it needed was not a fourth
+algebra but a consumer that could break.
+
 ### Stage 2, finished — LANDED 2026-09-11 (optics-outside-tools-adopt)
 
 Stage 2 gave `Toolbox` and converted `BoardTools`; the rest of the

@@ -1,5 +1,37 @@
 # Changelog
 
+## optics-outside-conf — declared, deployable, and in no guide
+
+The sixth optics candidate wanted "a setting is a lens that knows its
+path". It closes with one test and no new abstraction, because half of
+it is refused by a decision already in the tree and half of it was
+already built.
+
+**Refused:** `Serve.Config` is *flat and scalar on purpose* — an
+environment carries text, numbers, yes/no and a secret REFERENCE, and
+the pairs a program wants (a certificate WITH its key) are assembled
+where half of one can be a named refusal. `Conf.fromEnv` says the same
+thing at run time, by name. Nothing here is nested, so a lens into
+`server.tls.port` would be machinery for a shape nothing has.
+
+**Built, and under-consumed:** `envName` already derives
+`OKAY_TLS_RELOAD` from `tlsReload`, one derivation for the program
+that reads and the deployment that renders, and `Serve.Config.names`
+publishes the list. That list was held against the DEPLOYMENT and
+against nothing a person opens. So a setting could be declared,
+rendered into a unit file, read at boot — and undiscoverable.
+`OKAY_ACME_EAB` was: the external account binding a commercial CA
+hands you out of band, without which it refuses the order. It was in
+specs/acme.md and in no guide. The red test named it.
+
+**The law runs one way, and measuring is what said so.** The obvious
+form — every `OKAY_*` in the guide is a setting — is false twice:
+`OKAY_CONF` names the config FILE, so it cannot be a field of what
+that file parses into, and `OKAY_STAGING` is okay-staging's codec
+switch that every program shares. A program's environment is strictly
+larger than its config; only "nothing declared is undiscoverable"
+holds.
+
 ## optics-outside-tools-adopt — the last hand-written tool, and the shape of a failure
 
 BACKLOG had this down as test tables only. One of the six was
