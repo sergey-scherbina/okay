@@ -1,7 +1,7 @@
-package okay.leads
+package okay.chat.leads
 
 import okay.{Aggregator, Bulk, Csv}
-import okay.leads.Lead.Outcome
+import okay.chat.leads.Lead.Outcome
 import java.time.Instant
 
 /**
@@ -45,7 +45,7 @@ object Leads:
       Aggregator.count[Csv.Row]))
 
 /**
- * The report, as a command: `sbt "okayLeads/runMain okay.leads.Report leads.csv"`.
+ * The report, as a command: `sbt "okayChat/runMain okay.chat.leads.Report leads.csv"`.
  *
  * It exists because the first customer conversation is not a dashboard
  * — it is a person reading five lines out loud to somebody who might

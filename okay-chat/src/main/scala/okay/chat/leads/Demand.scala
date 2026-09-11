@@ -1,8 +1,8 @@
-package okay.leads
+package okay.chat.leads
 
 import okay.{Aggregator, Sketch, sliding}
 import okay.given
-import okay.leads.Lead.{Category, Outcome, Urgency}
+import okay.chat.leads.Lead.{Category, Outcome, Urgency}
 import java.time.LocalDate
 
 /**

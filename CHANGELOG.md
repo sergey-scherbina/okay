@@ -29,6 +29,29 @@ erased before the test could see it. `tag-distinct-keys` is the
 compile-time check that would end that half too.
 
 
+## leads-in-chat — the ledger moves into okay-chat, where the seam it hooks is
+
+`okay-leads` is gone as a module; the code is `okay.chat.leads` inside
+okay-chat (operator's call, and the right one): `Chat.chatRoute` already
+hands a `TurnOverride` first refusal at every turn with the request and
+the history in hand, so recording is a DECORATOR of that seam —
+
+    Chat.chatRoute(model, budget, Recording.turns(ledger, salt)())
+
+— and a separate module would have needed a second interception point to
+exist. `Recording` is the new piece: the last USER message is the ask,
+the hook never intercepts (it returns whatever the wrapped override
+returned, so a ledger cannot change what a person is told), and a write
+failure is swallowed — a full disk must not take the chat down, and a
+lost row is worth less than a refused answer. Session identity is a
+header by default, hashed anyway by `Lead.pseudonym`.
+
+okayChat gains one dependency, okayIntent.jvm, for the budget and date
+parsers the capture path uses. 29 tests in okay-chat, the ledger's 13
+among them; `docs/modules/okay-leads.md` folds into okay-chat's page,
+and the report is now `sbt "okayChat/runMain okay.chat.leads.Report
+leads.csv"`.
+
 ## optics-outside-remaining — the four that stay open, measured
 
 Five of the six candidates are closed. This entry is about the other

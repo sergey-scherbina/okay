@@ -1,9 +1,9 @@
-package okay.leads
+package okay.chat.leads
 
 import okay.Csv
 import okay.given
 import okay.intent.Amount
-import okay.leads.Lead.{Category, Outcome, Urgency}
+import okay.chat.leads.Lead.{Category, Outcome, Urgency}
 import java.nio.file.Files
 import java.time.{Instant, ZoneOffset}
 
