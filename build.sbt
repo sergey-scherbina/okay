@@ -1496,9 +1496,7 @@ lazy val okayAdmin = project
 
 lazy val okayChat = project
   .in(file("okay-chat"))
-  // okayIntent: the lead ledger's capture path reads a budget and a date
-  // out of a sentence with the parsers that module already ships (leads)
-  .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm, okayIntent.jvm)
+  .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm)
   .settings(
     name := "okay-chat",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

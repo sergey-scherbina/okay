@@ -1,5 +1,29 @@
 # Changelog
 
+## leads-out — the lead ledger leaves the platform; it was product code in the wrong repository
+
+`okay.chat.leads` is deleted. It was written for the operator's chat
+prototype, and the prototype is a SEPARATE repository (Okay!Chat, where
+`okay` rides as a submodule) — not the `okay-chat` module here, which is
+the chat MECHANICS: the model seam, the SSE framing, the route. Two
+things followed from putting product code in a library module, and both
+are reasons this is a revert rather than a move:
+
+- it duplicated, worse, what the product already had — a journal of
+  turns carrying router verdicts, a funnel that separates real people
+  from the operator's own probes, an operator report, and taxonomies for
+  kinds, places, money and time;
+- it made a reusable component depend on one market's vocabulary, which
+  is exactly what the module's own history says stayed out of it (the
+  demo's market-flavoured logic was left in okay-demo when okay-chat was
+  extracted).
+
+What stays is `Csv.line`, the inverse of `Csv.fields` — a real gap in
+the core, now with a round-trip test of its own; the product uses it
+through the submodule. okayChat's dependency on okayIntent goes back
+out. The demand view landed in the product repository instead, over its
+own journal and with its own readers.
+
 ## route-arity-one-tuple — one parameter is a value, not a Tuple1 of one
 
 The backlog entry asked for a second sighting before deciding whether
