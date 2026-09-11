@@ -122,6 +122,29 @@ class TestOpenApi extends munit.FunSuite:
       okay.codec.JsonSchema.of(summon[Schema[Task]]))
   }
 
+  test("a page declares text/html, and the content is keyed by the media it answers") {
+    val r = Router.empty.html(Method.Get, board)(_ => pure("<h1>the board</h1>"))
+    val op = at(at(at(OpenApi.document(api, r), "paths"), "/board"), "get")
+    val ok = at(at(op, "responses"), "200")
+    // the key is the media type; there is no schema, because HTML has
+    // none — and an empty schema object is how OpenAPI says "content
+    // of this type, shape unstated" rather than lying about a shape
+    assertEquals(obj(at(ok, "content")).map(_._1), Vector("text/html"))
+    assert(!Json.print(ok).contains("application/json"), Json.print(ok))
+    assert(!Json.print(ok).contains("undeclared"), Json.print(ok))
+  }
+
+  test("a stream and a bundle each carry their own media") {
+    val r = Router.empty
+      .events(Method.Get, Route / "feed")(_ => pure(okay.http.Http.one("x".getBytes)))
+      .bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(Array[Byte](1)))
+    val doc2 = OpenApi.document(api, r)
+    val feed = at(at(at(at(at(at(doc2, "paths"), "/feed"), "get"), "responses"), "200"), "content")
+    val js = at(at(at(at(at(at(doc2, "paths"), "/app.js"), "get"), "responses"), "200"), "content")
+    assertEquals(obj(feed).map(_._1), Vector("text/event-stream"))
+    assertEquals(obj(js).map(_._1), Vector("text/javascript"))
+  }
+
   test("the router declares the failure IT produces, without the author writing it") {
     val r = Router.empty.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(Task(1, t.title)))
     val op = at(at(at(OpenApi.document(api, r), "paths"), "/board"), "post")

@@ -311,22 +311,26 @@ object ChatDemo {
     val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
 
     val base = okay.http.Router
-          .on(okay.http.Method.Get, okay.http.Route.root) { _ =>
-            val html = (if Chat.appJs.isDefined then reactPage else page)
-              .replace("MODE", Chat.modeName)
-            pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-              Http.one(html.getBytes(UTF_8))))
-
+          // `html`, not `on`: the handler answers the PAGE and the
+          // router writes the content-type, so the entry declares
+          // text/html and the document stops saying `undeclared`
+          // (openapi-media). Every operation below is the same move.
+          .html(okay.http.Method.Get, okay.http.Route.root,
+                description = "the chat page: the React bundle when one is packaged, " +
+                  "the server-rendered page otherwise") { _ =>
+            pure((if Chat.appJs.isDefined then reactPage else page)
+              .replace("MODE", Chat.modeName))
           }
-          .on(okay.http.Method.Get, okay.http.Route / "board") { _ =>
+          .html(okay.http.Method.Get, okay.http.Route / "board",
+                description = "the board as a page, rendered at load so it works without " +
+                  "JavaScript, then re-rendered from /board.json on every feed ping") { _ =>
             // server-rendered at load (it works without JS), then re-rendered
             // from /board.json on every feed ping
             def rows = board.all.map(t =>
               s"<li>${t.id}) ${t.text}" +
                 t.assignee.fold("")(a => s" <span style='color:#7a869c'>— $a</span>") +
                 (if t.done then " ✓" else "") + "</li>").mkString
-            pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-              Http.one(s"""<!doctype html><meta charset="utf-8"><title>board</title>
+            pure(s"""<!doctype html><meta charset="utf-8"><title>board</title>
                 |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
                 |h2{color:#7a869c} li{margin:.2rem 0}
                 |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer}</style>
@@ -348,44 +352,45 @@ object ChatDemo {
                 |  await fetch('/admin/replay', {method:'POST', headers:{authorization:'Bearer ' + t}});
                 |  render();
                 |};
-                |</script>""".stripMargin.getBytes(UTF_8))))
+                |</script>""".stripMargin)
 
           }
-          .on(okay.http.Method.Get, okay.http.Route / "board.json") { _ =>
-            pure(Response(200, Seq("content-type" -> "application/json"),
-              Http.one(Json.print(JObj(Vector("tasks" -> JArr(board.all.map(t => JObj(Vector(
-                "id" -> JNum(t.id.toDouble), "text" -> JStr(t.text), "owner" -> JStr(t.owner),
-                "assignee" -> t.assignee.map(JStr(_)).getOrElse(JNull),
-                "done" -> JBool(t.done)))))))).getBytes(UTF_8))))
-
+          // the one JSON answer: `out`, so the document carries the
+          // SCHEMA of what it sends. The object built by hand here
+          // named every field of `Task` again — the schema is derived
+          // from the type instead, and `None` encodes as `null`
+          // exactly as the hand-built object did
+          .out[EmptyTuple, BoardView](okay.http.Method.Get, okay.http.Route / "board.json") { _ =>
+            pure(BoardView(board.all))
           }
           // the board-wide feed is declared BEFORE the per-email one, so
           // "board" is never read as an address
-          .on(okay.http.Method.Get, okay.http.Route / "events" / "board") { _ =>
+          .events(okay.http.Method.Get, okay.http.Route / "events" / "board",
+                  description = "the board feed: a `hello` event, then one `board` event " +
+                    "naming the kind of every change") { _ =>
             // the board-wide feed — matched BEFORE the /events/<email>
             // prefix route: "board" must not parse as an email
             val src: Source[Chunk[Byte]] =
               effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
                 .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
                       Chat.sse("board", Json.print(JStr(kind)))))
-            pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
-
+            pure(src)
           }
-          .on(okay.http.Method.Get, eventsFor) { email =>
+          .events(okay.http.Method.Get, eventsFor,
+                  description = "one person's inbox, held open: a `hello`, then a `note` " +
+                    "event per assignment — a task assigned tomorrow becomes a frame then") { email =>
             // the inbox as a LIVE stream: jetty holds it open, and a task
             // assigned tomorrow becomes a frame then
             val src: Source[Chunk[Byte]] =
               effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
                 .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
                       Chat.sse("note", Json.print(JStr(note)))))
-            pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
-
+            pure(src)
           }
     if !withApp then base
-    else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
-        pure(Response(200, Seq("content-type" -> "text/javascript"),
-          Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
-
+    else base.bytes(okay.http.Method.Get, okay.http.Route / "app.js", "text/javascript",
+                    description = "the packaged React bundle the chat page loads") { _ =>
+      pure(java.nio.file.Files.readAllBytes(Chat.appJs.get))
     }
 
   def routes(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)

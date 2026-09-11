@@ -808,8 +808,29 @@ its owner can price it:
       JSON only, so the answer is an `Answer` that carries a MEDIA
       TYPE and combinators that encode it — same declaration-by-
       construction, wider than JSON.
+- [x] openapi-media — DONE 2026-09-11. `Router.Answer` carries a media
+      type; `html`/`bytes`/`events`/`media` declare content that has
+      no schema the same way `out` declares a value — the router
+      writes the content-type, so the declaration cannot drift. The
+      demo declares all six operations and its document says
+      `undeclared` zero times.
 - [ ] openapi-prose — stage 3: a summary per route; operation ids are
-      derived until then.
+      derived until then. The media combinators already take a
+      `description` for the ANSWER, so what is left is the operation's
+      own sentence — and a `description` for `out`/`jsonOut`, whose
+      answers still read "the declared answer".
+- [ ] openapi-ops — okay-ops builds all four of its responses by hand,
+      so its operations are the `undeclared` ones left in the
+      repository. `/stats` is a straight `out` over `Store.Stats`,
+      whose `Schema` it already summons to encode. `/metrics` is
+      `media` with Prometheus's own content-type. `/healthz` and
+      `/readyz` are the interesting pair and the shape of the next
+      decision: their STATUS is chosen per request (200 or 503), and
+      every declaring combinator fixes the status at declaration
+      time — so they need either two declared answers and a handler
+      that picks between them, or an answer type that carries its
+      status. Worth deciding on that case rather than widening the
+      whole surface for it.
 
 - [x] optics-outside-describe — CLOSED 2026-09-11. The consumer
       arrived and was not built by this arc: a sibling wrote

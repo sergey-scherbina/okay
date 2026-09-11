@@ -58,6 +58,29 @@ two cannot drift, and it adds the failures it produces itself —
 its own `Response` declares nothing, and the document says "undeclared"
 rather than inventing a 200.
 
+**And an answer that is not JSON declares too** (openapi-media).
+Nothing in that argument was ever about JSON: it needs only that the
+ROUTER, not the handler, decides what goes on the wire. So a page, a
+stream and a bundle declare the same way:
+
+```scala
+router.html(Method.Get, Route.root)(_ => pure(page))
+router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+router.media(Method.Get, Route / "report", "application/pdf", 200, "last night's run")(...)
+```
+
+The handler answers the CONTENT and the router writes the
+content-type, from the same value the entry declares, so an
+operation's `content` key in the document is the media type a client
+will actually receive. Each takes a `description`, which is the one
+sentence about an answer that does not have to wait for stage 3.
+
+The first consumer is the reason the shape exists: okay-demo answers
+HTML, two event streams and a JavaScript bundle, and its committed
+document said `undeclared` six times out of six while every one of
+those answers was perfectly well defined.
+
 ## What it cannot say, and why
 
 **Headers.** A route declares a path, its parameters, its query and

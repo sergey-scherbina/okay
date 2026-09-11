@@ -44,6 +44,46 @@ class TestDemoOpenApi extends munit.FunSuite:
     }
   }
 
+  test("no operation in the published document says `undeclared`") {
+    // the openapi-serve lane shipped a document that said `undeclared`
+    // six times out of six, because every handler built its own
+    // Response. It is a regression guard now: a handler added with
+    // `on`/`at` where a declaring combinator exists puts the word back.
+    withCaps {
+      val printed = Json.print(DemoOpenApi.document)
+      assert(!printed.contains("undeclared"),
+        "an operation declares no answer — use html/bytes/events/out, not on/at")
+    }
+  }
+
+  test("what the document says an operation answers is what the service sends") {
+    // the law of openapi-media on a REAL service: for each operation,
+    // the content-type on the wire is the media type the document
+    // files it under. A declaration is worth what it costs to check.
+    withCaps {
+      val routes = DemoOpenApi.router.routes
+      val doc = DemoOpenApi.document
+      def obj(j: Json): Vector[(String, Json)] = j match
+        case Json.JObj(fs) => fs
+        case _ => Vector.empty
+      def get(j: Json, k: String): Json = obj(j).collectFirst { case (`k`, v) => v }.getOrElse(Json.JNull)
+      // `/app.js` reads the packaged bundle off disk, and the document
+      // describes the PACKAGED surface — so it is in the document on
+      // every machine and answerable only where the bundle was built
+      // (the same asymmetry openapi-serve found)
+      val answerable = obj(get(doc, "paths")).filter((path, _) =>
+        path != "/app.js" || okay.chat.Chat.appJs.isDefined)
+      answerable.foreach { (path, item) =>
+        val media = obj(get(get(get(get(item, "get"), "responses"), "200"), "content")).map(_._1)
+        val url = path.replace("{email}", "a@b.c")
+        val res = Async.run(routes(Request.get(url))).runWith
+        val sent = res.headers.collectFirst {
+          case (k, v) if k.equalsIgnoreCase("content-type") => v.takeWhile(_ != ';').trim }
+        assertEquals(sent, media.headOption, s"$url: the document says $media")
+      }
+    }
+  }
+
   test("every path the document names is a path the router dispatches") {
     withCaps {
       val routes = DemoOpenApi.router.routes

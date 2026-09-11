@@ -875,6 +875,118 @@ final class Router private (val entries: Vector[Router.Entry]):
       Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"),
              Router.badRequestAnswer)))
 
+  /**
+   * A DECLARED ANSWER THAT IS NOT JSON (openapi-media).
+   *
+   * `out` declares by construction because the router encodes: the
+   * entry carries `JsonSchema.of[R]` and the answer is written with
+   * the same `Schema[R]`, so a document cannot promise one thing
+   * while the service sends another. Nothing about that argument is
+   * specific to JSON — it needs only that the ROUTER, and not the
+   * handler, decides what goes on the wire.
+   *
+   * So these three take the same shape for the media that has no
+   * `Schema` at all. The handler answers the CONTENT — a page's text,
+   * a bundle's bytes, a stream's chunks — and the router writes the
+   * content-type from the same value the entry declares. A handler
+   * that builds its own `Response` is still allowed and still
+   * declares nothing; what changes is that it no longer has to.
+   *
+   * The demo's six operations were the argument for this: every one
+   * of them answered HTML, an event stream or a byte bundle, so its
+   * committed document said `undeclared` six times while the service
+   * answered perfectly well-defined content.
+   */
+  def html[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                       description: String = "an HTML page")
+                      (using ar: Route.Arity[A])
+                      (h: ar.Out => String ! Async): Router =
+    htmlAt[A](method, route, status, description)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def htmlAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "an HTML page")
+                        (using ar: Route.Arity[A])
+                        (h: (ar.Out, Request) => String ! Async): Router =
+    // the charset is declared because the ROUTER did the encoding: it
+    // took a `String` and wrote UTF-8 bytes, so it can say so. Where
+    // the handler hands over bytes, nobody here knows, and the header
+    // stays the bare media type
+    media[A](method, route, Router.textHtml, status, description,
+             contentType = Some(Router.textHtml + "; charset=utf-8"))(
+      (a, r) => h(a, r).map(t => Http.one(t.getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+
+  /**
+   * bytes under a media type the author names: a bundle, an image, a
+   * PDF — anything whose content-type is known and whose shape is not
+   * a schema's business
+   */
+  def bytes[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                        description: String = "a body of the declared media type")
+                       (using ar: Route.Arity[A])
+                       (h: ar.Out => Array[Byte] ! Async): Router =
+    bytesAt[A](method, route, media, status, description)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def bytesAt[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                          description: String = "a body of the declared media type")
+                         (using ar: Route.Arity[A])
+                         (h: (ar.Out, Request) => Array[Byte] ! Async): Router =
+    this.media[A](method, route, media, status, description)(
+      (a, r) => h(a, r).map(Http.one))
+
+  /**
+   * a server-sent-event stream.
+   *
+   * The handler answers the SOURCE and not a `Response`, so the one
+   * header that makes a stream a stream is written in one place. What
+   * OpenAPI can say about it is the media type; the event NAMES a
+   * client should listen for are not its vocabulary, so they belong
+   * in the description rather than in a schema that pretends.
+   */
+  def events[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "a server-sent-event stream, held open")
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => Source[Chunk[Byte]] ! Async): Router =
+    eventsAt[A](method, route, status, description)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def eventsAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "a server-sent-event stream, held open")
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    media[A](method, route, Router.eventStream, status, description)(h)
+
+  /**
+   * what the three above are: the handler answers a BODY, the router
+   * writes the header and the entry declares the same media.
+   *
+   * Public because the list of media types is not ours to close — a
+   * service that answers `application/xml` or an image gets the same
+   * property without waiting for a combinator to be added here.
+   */
+  def media[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int, description: String,
+                        /** what goes on the wire, when that is more than the
+                         * media type: a charset the router itself applied.
+                         * The DECLARATION stays bare either way, which is
+                         * what `TestRouterMedia`'s law checks. `None` sends the
+                         * media type as it stands — the default cannot be
+                         * written as `= media`, since a default in the same
+                         * parameter list reads the enclosing METHOD of that
+                         * name, not the parameter. */
+                        contentType: Option[String] = None)
+                       (using ar: Route.Arity[A])
+                       (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r =>
+        if r.method != method then None
+        else route.unapply(r.url).map(a =>
+          h(ar(a), r).map(src =>
+            Response(status, Seq("content-type" -> contentType.getOrElse(media)), src))),
+      None,
+      Vector(Router.Answer(status, None, description, media))))
+
   /** the same, reading a case class */
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     ofAt(method, route)((c, _) => h(c))
@@ -950,6 +1062,51 @@ object Router:
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     empty.of(method, route)(h)
 
+  /** a page, from the companion — `Router.html(Get, Route.root) { … }`
+   * is how a small service's whole table begins (openapi-media) */
+  def html[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                       description: String = "an HTML page")
+                      (using ar: Route.Arity[A])
+                      (h: ar.Out => String ! Async): Router =
+    empty.html(method, route, status, description)(h)
+
+  def htmlAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "an HTML page")
+                        (using ar: Route.Arity[A])
+                        (h: (ar.Out, Request) => String ! Async): Router =
+    empty.htmlAt(method, route, status, description)(h)
+
+  def bytes[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                        description: String = "a body of the declared media type")
+                       (using ar: Route.Arity[A])
+                       (h: ar.Out => Array[Byte] ! Async): Router =
+    empty.bytes(method, route, media, status, description)(h)
+
+  def bytesAt[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                          description: String = "a body of the declared media type")
+                         (using ar: Route.Arity[A])
+                         (h: (ar.Out, Request) => Array[Byte] ! Async): Router =
+    empty.bytesAt(method, route, media, status, description)(h)
+
+  def events[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "a server-sent-event stream, held open")
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => Source[Chunk[Byte]] ! Async): Router =
+    empty.events(method, route, status, description)(h)
+
+  def eventsAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "a server-sent-event stream, held open")
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    empty.eventsAt(method, route, status, description)(h)
+
+  def media[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int, description: String,
+                        contentType: Option[String] = None)
+                       (using ar: Route.Arity[A])
+                       (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    empty.media(method, route, media, status, description, contentType)(h)
+
+
   def ofAt[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])
                                     (h: (C, Request) => Response ! Async): Router =
     empty.ofAt(method, route)(h)
@@ -982,7 +1139,19 @@ object Router:
    * A handler that still builds its own `Response` declares nothing,
    * and a renderer says exactly that rather than inventing a 200.
    */
-  final case class Answer(status: Int, schema: Option[okay.codec.Json], description: String)
+  final case class Answer(status: Int, schema: Option[okay.codec.Json], description: String,
+                         /**
+                          * the media type it answers, BARE — `text/html`, not
+                          * `text/html; charset=utf-8` (openapi-media).
+                          *
+                          * Bare because this is the key a document files the
+                          * answer under, and a charset is a wire detail of one
+                          * response rather than a kind of content. The router
+                          * adds the charset when it writes the header, which is
+                          * also why the two cannot disagree: both come from
+                          * this one value.
+                          */
+                         media: String = "application/json")
 
   final class Entry private[http] (val method: Method,
                                    /** the url's whole description — template AND
@@ -1015,6 +1184,9 @@ object Router:
 
   private[http] val badRequestAnswer: Answer =
     Answer(400, Some(errorSchema), "the body did not parse; the answer names what was wrong")
+
+  private[http] val textHtml: String = "text/html"
+  private[http] val eventStream: String = "text/event-stream"
 
   /** the declared answer, encoded by the schema the entry carries */
   private[http] def encoded[R](status: Int, r: R)(using okay.codec.Schema[R]): Response =

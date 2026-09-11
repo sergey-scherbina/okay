@@ -155,6 +155,54 @@ it. It was `t => t.head` for four stages, and four sightings — three
 by authors other than the one who wrote the wart down — are what
 settled that the wart cost more than the cure.
 
+## What it answers
+
+`on` and `at` hand back a `Response` the handler built, which is the
+widest thing a handler can do and the least it can say: the table
+knows the path, the method and the body, and nothing at all about
+what comes back. Two shapes close that, and both work the same way —
+the ROUTER encodes, so the declaration cannot drift from the wire.
+
+```scala
+// a value, encoded by the schema the entry declares
+router.out[Int *: EmptyTuple, Task](Method.Get, byId)(id => pure(load(id)))
+router.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(store(t)))
+
+// content that has no schema: a page, a stream, a bundle
+router.html(Method.Get, Route.root)(_ => pure(page))
+router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+router.media(Method.Get, Route / "report", "application/pdf", 200, "last night's run")(...)
+```
+
+`out` answers a value and the entry carries `JsonSchema.of[R]`, so a
+document promises exactly what the service sends; `jsonOut` declares
+both sides, and the 400 it answers for a body that does not parse is
+declared too, because the ROUTER produces it whether or not the
+author thought about it.
+
+The three media combinators are the same argument without a schema.
+The handler answers the CONTENT — a page's text, a stream's chunks, a
+bundle's bytes — and the router writes the content-type from the same
+value the entry declares. `media` is what the three are written in
+terms of, and it is public because the list of media types is not
+ours to close.
+
+**The charset is declared only where the router did the encoding.**
+`html` takes a `String` and writes UTF-8 bytes, so it sends
+`text/html; charset=utf-8`; `bytes` and `events` are handed bytes by
+the handler, and nobody in the router knows what encoded them, so the
+header stays the bare media type. The DECLARATION is bare either
+way — a charset is a detail of one response, not a kind of content —
+and `TestRouterMedia` holds that as a law: for every entry, the media
+it declares is the media its own answer's content-type names.
+
+A handler that still builds its own `Response` is allowed and
+declares nothing; what changed is that it no longer has to. okay-demo
+is the worked example, and it is the reason the shape exists: six
+operations answering HTML, two event streams and a JavaScript bundle,
+whose committed document said `undeclared` six times out of six.
+
 `routes` is deliberately **not** a new protocol: it is the same
 `PartialFunction` every server in this stack already takes, so
 adopting `Router` changes nothing downstream. `Router.empty` is still

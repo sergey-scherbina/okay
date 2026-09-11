@@ -123,16 +123,26 @@ object OpenApi:
    * itself — `jsonOut`'s 400 for a body that does not parse. A handler
    * that builds its own `Response` declares nothing, and this says
    * exactly that rather than inventing a 200 nobody promised.
+   *
+   * The media type is the entry's too (`Router.html`, `bytes`,
+   * `events`, `media`): the same value the router wrote into the
+   * content-type header, so what a document files an answer under is
+   * what a client will actually receive.
    */
   private def responses(e: Router.Entry): Json =
     if e.answers.isEmpty then
       JObj(Vector("default" -> JObj(Vector(
         "description" -> JStr("undeclared — this operation builds its own Response")))))
     else JObj(e.answers.sortBy(_.status).map(a =>
-      a.status.toString -> JObj(
-        Vector("description" -> JStr(a.description)) ++
-        a.schema.map(sch => "content" -> JObj(Vector(
-          "application/json" -> JObj(Vector("schema" -> sch))))).toVector)))
+      a.status.toString -> JObj(Vector(
+        "description" -> JStr(a.description),
+        // keyed by the media the ENTRY declares, and an answer whose
+        // media has no schema still gets a content block: an empty
+        // schema object is how OpenAPI says "this media type, shape
+        // unstated", while leaving content out says the operation
+        // answers with no body at all (openapi-media)
+        "content" -> JObj(Vector(
+          a.media -> JObj(a.schema.map(sch => "schema" -> sch).toVector)))))))
 
   /** the document as text, for a file or a handler */
   def print(api: Api, router: Router): String = Json.print(document(api, router))
@@ -216,7 +226,10 @@ ${ops.mkString("\n")}
       if e.answers.isEmpty then
         """<div class="none">answers: undeclared — this handler builds its own Response</div>"""
       else e.answers.sortBy(_.status).map(a =>
-        s"<div>answers <b>${a.status}</b> — ${esc(a.description)}</div>" +
+        // the media type is on the page too: a reader deciding whether
+        // to point a JSON client at an operation should not have to
+        // open the document to find out that it answers a stream
+        s"<div>answers <b>${a.status}</b> <code>${esc(a.media)}</code> — ${esc(a.description)}</div>" +
           a.schema.fold("")(sch => s"<pre>${esc(Json.print(sch))}</pre>")).mkString
     s"""<div class="op"><span class="m">${e.method.name}</span> <span class="p">${esc(e.path)}</span>
 $paramRows$bodyBlock$answers</div>"""

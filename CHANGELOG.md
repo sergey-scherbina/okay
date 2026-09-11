@@ -1,5 +1,74 @@
 # Changelog
 
+## openapi-media — the pages and the streams declare too
+
+The lane before this one shipped okay-demo's document and every one of
+its six operations said the same thing: `undeclared`. That is not a
+renderer's failure. `out` and `jsonOut` declare an answer BY
+CONSTRUCTION — the router encodes with the same `Schema` the entry
+carries, so the document and the wire are one derivation — but they
+can only encode JSON, and the demo answers a page, two event streams
+and a JavaScript bundle.
+
+Nothing in that argument was ever about JSON. It needs only that the
+ROUTER, and not the handler, decides what goes on the wire. So
+`Router.Answer` carries a media type now, and three combinators keep
+the property for content that has no schema at all:
+
+```scala
+router.html(Method.Get, Route.root)(_ => pure(page))
+router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+```
+
+The handler answers the CONTENT and the router writes the
+content-type, so an operation's `content` key in the document is the
+media type a client will actually receive. `media` is what the three
+are written in terms of, and it is public: the list of media types is
+not ours to close, and a service answering `application/pdf` gets the
+same property without waiting for a combinator here.
+
+**The charset is declared only where the router did the encoding.**
+`html` takes a `String` and writes UTF-8 bytes, so it sends
+`text/html; charset=utf-8`. `bytes` and `events` are handed bytes, and
+nobody in the router knows what encoded them, so the header stays the
+bare media type. The DECLARATION is bare either way — a charset is a
+detail of one response, not a kind of content — and that split is a
+law rather than a convention: for every entry, the media it declares
+is the media its own answer's content-type names. A combinator that
+wrote a header the entry did not declare would fail it, which is the
+whole reason the header is written in the router.
+
+An answer with no schema still gets a `content` block, keyed by its
+media with an empty schema object. `{}` is how OpenAPI says "this
+media type, shape unstated"; leaving content out would say the
+operation answers with no body at all, which is a different and false
+claim.
+
+The demo declares all six operations, and its committed document now
+contains the word `undeclared` zero times. Two tests hold that: one
+that the published document never says it, and one that runs the REAL
+service and checks, for every path the document names, that the
+content-type on the wire is the media type the document files it
+under. `/board.json` went the other way, to `out` over a `BoardView`
+derived from `Board`'s own `Task` — the JSON object it used to build
+by hand named every field a second time, and `None` encodes as `null`
+exactly as that object sent it.
+
+Each combinator takes a `description`, so an answer carries one true
+sentence — "the board feed: a `hello` event, then one `board` event
+naming the kind of every change" — without waiting for stage 3. Per
+operation SUMMARIES, and a description for `out`, are still that
+stage's work.
+
+One Scala note worth keeping: a default argument may not name a
+sibling in the SAME parameter list. `contentType: String = media`
+compiled and resolved `media` to the enclosing METHOD of that name,
+which typechecked as a function value and failed a dozen lines later.
+It is `Option[String] = None` instead.
+
+Commit: LANDING.
+
 ## openapi-serve — the document gets its readers
 
 A document nobody serves rots, and the spec named two readers. Both

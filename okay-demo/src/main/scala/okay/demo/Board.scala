@@ -27,6 +27,20 @@ import okay.persist.{Ack, Policy, Store, Topic}
  */
 final case class Task(id: Long, text: String, owner: String,
                       assignee: Option[String], done: Boolean)
+                      derives okay.codec.Schema
+
+/**
+ * What `/board.json` answers (openapi-media).
+ *
+ * A wrapper and not a bare array, because that is the shape the page
+ * already reads (`d.tasks`) and because an object leaves room to add
+ * a field without breaking a client. The `Schema` is what puts the
+ * board's rows into the published document: the handler answers this
+ * value and the router encodes it, so the document and the wire are
+ * one derivation. `assignee: None` encodes as `null`, which is what
+ * the hand-built object it replaced sent.
+ */
+final case class BoardView(tasks: Vector[Task]) derives okay.codec.Schema
 
 object Board:
 
