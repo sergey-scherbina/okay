@@ -14,7 +14,7 @@ import okay.parse.{Cst, JsonParse, Parse}
  * damaged document projects to a value with JErr leaves instead of
  * failing.
  */
-enum Json:
+into enum Json:
   case JNull
   case JBool(b: Boolean)
   case JNum(n: Double)
@@ -24,6 +24,62 @@ enum Json:
   case JErr(message: String)
 
 object Json {
+
+  /**
+   * OPT-IN literal transparency: `import Json.literals.given` and a
+   * JSON literal may be written where a `Json` is expected.
+   *
+   *     import Json.literals.given
+   *     obj("name" -> "ada", "age" -> 36, "ok" -> true)
+   *
+   * Nothing here applies unless that import is written. `Json` is
+   * declared `into`, which only means "conversions to me need no
+   * `import scala.language.implicitConversions`"; the conversions
+   * themselves live in this object, so a file that does not ask for
+   * them sees the ordinary, safe API and a plain type error.
+   *
+   * A STRING LITERAL CONVERTS, A `String` VALUE DOES NOT, and that is
+   * the point rather than an omission. `Json.parse(s)` answers a
+   * `Json`, so in a file with an unrestricted `Conversion[String,
+   * Json]` a caller who passes an already-serialized document would
+   * get `JStr(document)` — double encoding, silently, in the module
+   * whose job is encoding. A conversion is chosen by TYPE and both
+   * meanings are `String`, so it cannot read the intent. The
+   * conversion below therefore accepts constant types only and tells
+   * a value what to write instead.
+   *
+   * `Int`, `Double` and `Boolean` convert plainly: no document can
+   * hide inside them. `Long` is DELIBERATELY ABSENT — `JNum` holds a
+   * `Double`, so a `Long` past 2^53 would convert with silent
+   * precision loss, which is the same defect one paragraph up. Write
+   * `JNum(x.toDouble)` where that is what you mean.
+   *
+   * `===` compares a `Json` with anything this import converts, so
+   * `json === "x"` reads as the comparison it is. It is sugar, not a
+   * guard: `json == "x"` does not compile with or without this
+   * import, because Scala 3 derives `CanEqual` for enums and refuses
+   * comparison with an unrelated type.
+   *
+   * specs/codecs.md, "Literal transparency, opt-in".
+   */
+  object literals:
+    import scala.compiletime.{constValueOpt, error}
+
+    /** a string LITERAL, and nothing else */
+    inline given [L <: String & Singleton] => Conversion[L, Json] =
+      inline constValueOpt[L] match
+        case Some(_) => (s: L) => Json.JStr(s)
+        case None => error(
+          "only a string LITERAL converts to Json here. For a String " +
+          "value write JStr(x); if it holds a serialized document you " +
+          "want Json.parse(x). See Json.literals.")
+
+    given Conversion[Int, Json] = i => Json.JNum(i.toDouble)
+    given Conversion[Double, Json] = Json.JNum(_)
+    given Conversion[Boolean, Json] = Json.JBool(_)
+
+    /** compare a Json with anything this import converts */
+    extension (j: Json) def ===(that: Json): Boolean = j == that
 
   // ----------------------------------------------------------------
   // parse: scanner -> per-token instructions -> CST -> projection

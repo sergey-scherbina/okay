@@ -555,14 +555,24 @@ and nothing else in the library casts for that reason:
     `Conversion[F[A], A]`: the target is a bare type variable, and
     `into` marks a declaration. There is nothing to write it on.
     Auto-coloring keeps asking the language for consent, and should.
-  - `Json` was REFUSED although it fits mechanically (`into enum`
-    compiles, and ~850 construction sites of `JStr`/`JNum`/`JBool`
-    would become bare literals). A `Conversion[String, Json]` turns an
-    already-serialized document into a JSON string LITERAL with no
-    error anywhere — double encoding, in the module whose job is
-    encoding. The feature's own advice is the same: restrict `into` to
-    the absolute minimum, and never write it in case someone might
-    want a conversion later.
+  - `Json` TAKES it, but only behind an import and only for literals
+    (json-literals, 2026-09-11 — the first reading of this entry
+    refused it outright, and the operator's shape is what resolved
+    it). The hazard was never `into`: it was an AMBIENT
+    `Conversion[String, Json]`, which would turn an already-serialized
+    document into a JSON string literal with no error anywhere, since
+    `Json.parse` answers a `Json` and a conversion cannot read intent
+    when both meanings are `String`. So the conversions live in
+    `Json.literals`, a file sees them only by importing them, and the
+    string one accepts CONSTANT types only:
+    `inline given [L <: String & Singleton]` whose body matches
+    `constValueOpt[L]` and calls `compiletime.error` for anything
+    else. A literal converts, a `String` value is a compile error
+    naming `JStr` and `Json.parse`. `Int`/`Double`/`Boolean` convert
+    plainly; `Long` is left out because `JNum` is a `Double` and the
+    loss past 2^53 would be silent. The singleton bound ALONE does not
+    work — every `val` has a singleton type — and that refuted step is
+    kept as a test.
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for
