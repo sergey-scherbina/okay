@@ -1,5 +1,40 @@
 # Changelog
 
+## optics-topology-corrected — I measured Stage and wrote about the repo
+
+`ca26605f` recorded, for the topology candidate, that "nothing here
+meets the staticness condition", and explained at length why
+`Stage[I, O, A] = A ! (Take % I + Writer % O)` is a program rather
+than a graph. Every word of that is true of `Stage`. None of it is an
+answer about the tree.
+
+**`okay.Tables.Plan[A]` is the static graph the candidate asks for**,
+and its own comment says why it is a GADT and not a `Free`: *"A `Free`
+program could not offer this (its continuations are functions); the
+tree can."* It carries the three interpreters an `Arrow` would have
+been reached for:
+
+- `Plan.show` DRAWS it — okay-spark's `TestWroclawAlgebra` collects
+  rendered plans;
+- `Plan.optimize` FUSES it — a projection into its `Read`, the small
+  join side to the right — under the law *"the turned join answers
+  exactly what the written one does"*;
+- `compile(B)` RUNS it over any `Bulk[D]`, local `Chunks` and Spark
+  alike.
+
+Drawn, fused, shipped to a cluster: the three things specs/optics-
+outside.md named as the reason to want staticness at all. So the
+candidate is ANSWERED rather than waiting — and answered the way
+`conf` was, by something already in the tree, built from an ordinary
+datatype with no profunctor in it. Reopen it if a plan must branch on
+a VALUE and still be drawable; that is the `ArrowChoice` shape, and it
+is the one thing `Plan` cannot do.
+
+**The lesson is this arc's own, turned on its author.** A measurement
+names what it measured. "Nothing in the tree does X" is a claim about
+the tree, and it costs one more grep than the claim I was entitled to
+make. The entry was written the same day as the rule it broke.
+
 ## route-secured-with-a-value — a declaring route declares its answer
 
 The backlog said "mechanical when something asks". Something asked.
