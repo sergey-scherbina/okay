@@ -158,6 +158,35 @@ class TestOpenApi extends munit.FunSuite:
     assertEquals(obj(js).map(_._1), Vector("text/javascript"))
   }
 
+  test("an author's sentence is the operation's summary, and absence is absence") {
+    val r = Router
+      .html(Method.Get, board)(_ => pure("<p>b</p>")).summarised("the board as a page")
+      .html(Method.Get, Route / "other")(_ => pure("<p>o</p>"))
+    val doc2 = OpenApi.document(api, r)
+    val said = at(at(at(doc2, "paths"), "/board"), "get")
+    assertEquals(at(said, "summary"), JStr("the board as a page"))
+    // no summary is no field: an empty string would promise prose
+    // that nobody wrote
+    val silent = at(at(at(doc2, "paths"), "/other"), "get")
+    assert(!obj(silent).map(_._1).contains("summary"), Json.print(silent))
+    // and the derived id is still there either way
+    assertEquals(at(silent, "operationId"), JStr("getOther"))
+  }
+
+  test("the page carries the sentence too") {
+    val r = Router.html(Method.Get, board)(_ => pure("<p>b</p>"))
+      .summarised("the board as a page")
+    val html = OpenApi.page(api, r, "/openapi.json")
+    assert(html.contains("the board as a page"), html)
+  }
+
+  test("a declared answer may say what it is") {
+    val r = Router.out[EmptyTuple, Int](Method.Get, Route / "count",
+      description = "how many tasks are open")(_ => pure(7))
+    val ok = at(at(at(at(at(OpenApi.document(api, r), "paths"), "/count"), "get"), "responses"), "200")
+    assertEquals(at(ok, "description"), JStr("how many tasks are open"))
+  }
+
   test("the router declares the failure IT produces, without the author writing it") {
     val r = Router.empty.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(Task(1, t.title)))
     val op = at(at(at(OpenApi.document(api, r), "paths"), "/board"), "post")

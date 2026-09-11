@@ -860,6 +860,30 @@ object Delete:
  */
 final class Router private (val entries: Vector[Router.Entry]):
 
+  /**
+   * What the operation just declared is FOR (openapi-prose).
+   *
+   * It attaches to the LAST entry, which is what a builder chain
+   * already reads as, and it is one method rather than a parameter on
+   * each of twenty combinators. Writing it second is deliberate: the
+   * declaration says what the operation IS — its path, its body, what
+   * it answers — and the sentence is about that, so it reads in the
+   * order it is written.
+   *
+   * {{{
+   *   Router.html(Get, Route.root)(_ => pure(page)).summarised("the chat page")
+   * }}}
+   *
+   * Summarising an empty router throws, HERE, when the table is
+   * built: a builder method that silently did nothing would put the
+   * sentence on no operation at all and report that nowhere.
+   */
+  def summarised(text: String): Router =
+    if entries.isEmpty then
+      throw IllegalStateException(
+        "summarised: there is no operation to summarise — it attaches to the entry just declared")
+    else new Router(entries.init :+ entries.last.saying(text))
+
   /** a handler that needs only the path's parameters */
   def on[A <: Tuple](method: Method, route: Routed[A])(using ar: Route.Arity[A])
                     (h: ar.Out => Response ! Async): Router =
@@ -951,13 +975,15 @@ final class Router private (val entries: Vector[Router.Entry]):
    * its own `Response` is still allowed (`on`, `at`) — it simply
    * declares nothing, and a renderer says so.
    */
-  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
+  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "the declared answer")
                         (using ar: Route.Arity[A])
                         (h: ar.Out => R ! Async)(using sr: okay.codec.Schema[R]): Router =
-    outAt[A, R](method, route, status)((a, _) => h(a))
+    outAt[A, R](method, route, status, description)((a, _) => h(a))
 
   /** the same, with the request in hand */
-  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
+  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "the declared answer")
                           (using ar: Route.Arity[A])
                           (h: (ar.Out, Request) => R ! Async)(using sr: okay.codec.Schema[R]): Router =
     new Router(entries :+ new Router.Entry(method, route.described,
@@ -966,17 +992,19 @@ final class Router private (val entries: Vector[Router.Entry]):
         if r.method != method then None
         else route.unapply(r.url).map(a => h(ar(a), r).map(Router.encoded(status, _))),
       None,
-      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"))))
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description))))
 
   /** both sides declared: a body in, a value out */
-  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
+  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                description: String = "the declared answer")
                                (using ar: Route.Arity[A])
                                (h: (ar.Out, B) => R ! Async)
                                (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
-    jsonOutAt[A, B, R](method, route, status)((a, b, _) => h(a, b))
+    jsonOutAt[A, B, R](method, route, status, description)((a, b, _) => h(a, b))
 
   /** the same, with the request in hand */
-  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
+  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                  description: String = "the declared answer")
                                  (using ar: Route.Arity[A])
                                  (h: (ar.Out, B, Request) => R ! Async)
                                  (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
@@ -991,7 +1019,7 @@ final class Router private (val entries: Vector[Router.Entry]):
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sb)),
-      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"),
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description),
              Router.badRequestAnswer)))
 
   /**
@@ -1191,6 +1219,35 @@ object Router:
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     empty.of(method, route)(h)
 
+  /** the value-answering forms from the companion too, so every
+   * declaring shape can begin a table (openapi-prose found the gap:
+   * `out` was reachable only through `Router.empty`) */
+  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "the declared answer")
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => R ! Async)(using okay.codec.Schema[R]): Router =
+    empty.out(method, route, status, description)(h)
+
+  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "the declared answer")
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => R ! Async)(using okay.codec.Schema[R]): Router =
+    empty.outAt(method, route, status, description)(h)
+
+  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                description: String = "the declared answer")
+                               (using ar: Route.Arity[A])
+                               (h: (ar.Out, B) => R ! Async)
+                               (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    empty.jsonOut(method, route, status, description)(h)
+
+  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                  description: String = "the declared answer")
+                                 (using ar: Route.Arity[A])
+                                 (h: (ar.Out, B, Request) => R ! Async)
+                                 (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    empty.jsonOutAt(method, route, status, description)(h)
+
   /** a page, from the companion — `Router.html(Get, Route.root) { … }`
    * is how a small service's whole table begins (openapi-media) */
   def html[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
@@ -1293,7 +1350,23 @@ object Router:
                                     * what a renderer reads, as `Toolbox` already gives tools */
                                    val body: Option[okay.codec.Json] = None,
                                    /** what it answers, when the handler's type said so */
-                                   val answers: Vector[Answer] = Vector.empty):
+                                   val answers: Vector[Answer] = Vector.empty,
+                                   /**
+                                    * one sentence about what this operation is FOR
+                                    * (openapi-prose).
+                                    *
+                                    * The only part of an entry that cannot be derived
+                                    * from something already written: a path comes from
+                                    * the route, a parameter's kind from its `Param`, an
+                                    * answer from the handler's type. This is the
+                                    * author's, or it is absent — and absent is a fine
+                                    * answer, which is why it is an `Option` and not an
+                                    * empty string pretending to be prose.
+                                    */
+                                   val summary: Option[String] = None):
+
+    private[http] def saying(text: String): Entry =
+      new Entry(method, described, matches, run, body, answers, Some(text))
 
     /** the path template that dispatches — the query is not part of it */
     def path: String = described.path

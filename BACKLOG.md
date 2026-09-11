@@ -849,11 +849,12 @@ its owner can price it:
       writes the content-type, so the declaration cannot drift. The
       demo declares all six operations and its document says
       `undeclared` zero times.
-- [ ] openapi-prose — stage 3: a summary per route; operation ids are
-      derived until then. The media combinators already take a
-      `description` for the ANSWER, so what is left is the operation's
-      own sentence — and a `description` for `out`/`jsonOut`, whose
-      answers still read "the declared answer".
+- [x] openapi-prose — DONE 2026-09-11. `Router.summarised(text)` on
+      the entry just declared; the document renders `summary` and the
+      page shows it; `out`/`jsonOut` took the answer `description`
+      too. okay-demo summarises all six, with a test that refuses a
+      published operation without one. Tags, a long description and an
+      operationId override stay undeclared — each wants a consumer.
 - [ ] openapi-ops — okay-ops builds all four of its responses by hand,
       so its operations are the `undeclared` ones left in the
       repository. `/stats` is a straight `out` over `Store.Stats`,

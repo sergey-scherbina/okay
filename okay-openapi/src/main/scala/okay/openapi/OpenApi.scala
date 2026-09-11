@@ -38,7 +38,15 @@ final case class Api(title: String, version: String,
  * the KIND its `Param` declared, query parameters are rendered at all
  * (openapi-parameters), a declared request header is rendered `in:
  * header` (route-headers stage A), and an operation says what it
- * ANSWERS when the handler's type said so (openapi-responses).
+ * ANSWERS when the handler's type said so (openapi-responses) — in
+ * whatever media, not only JSON (openapi-media).
+ *
+ * The one thing here that is not derived is the SUMMARY: a sentence
+ * about what an operation is for cannot be computed from a path, a
+ * parameter or a type, so `Router.summarised` is where an author
+ * writes it and this renders it (openapi-prose). Absent stays absent;
+ * an operation id derived from method and path is what identifies an
+ * operation nobody described.
  */
 object OpenApi:
 
@@ -67,6 +75,11 @@ object OpenApi:
 
   private def operation(e: Router.Entry): Json =
     JObj(Vector("operationId" -> JStr(operationId(e))) ++
+      // the author's sentence, when there is one. It comes FIRST after
+      // the id because that is the order a reader wants it in, and it
+      // is absent rather than empty when nobody wrote one: an empty
+      // summary would be a promise of prose that is not there
+      e.summary.map(t => "summary" -> JStr(t)).toVector ++
       parameters(e).toVector ++
       e.body.map(b => "requestBody" -> requestBody(b)).toVector ++
       Vector("responses" -> responses(e)))
@@ -215,6 +228,7 @@ object OpenApi:
  td,th{border-bottom:1px solid #eee;text-align:left;padding:.25rem .5rem;font-size:.9em}
  pre{background:#f6f6f6;padding:.5rem;border-radius:.3rem;overflow:auto;font-size:.85em}
  .none{color:#999}
+ .says{margin:.3rem 0 .4rem;font-size:.95em}
 </style></head><body>
 <h1>${esc(api.title)}</h1>
 <div class="sub">version ${esc(api.version)}${api.servers.headOption.fold("")(u => " &middot; " + esc(u))}</div>
@@ -242,8 +256,9 @@ ${ops.mkString("\n")}
         // open the document to find out that it answers a stream
         s"<div>answers <b>${a.status}</b> <code>${esc(a.media)}</code> — ${esc(a.description)}</div>" +
           a.schema.fold("")(sch => s"<pre>${esc(Json.print(sch))}</pre>")).mkString
+    val says = e.summary.fold("")(t => s"""<div class="says">${esc(t)}</div>""")
     s"""<div class="op"><span class="m">${e.method.name}</span> <span class="p">${esc(e.path)}</span>
-$paramRows$bodyBlock$answers</div>"""
+$says$paramRows$bodyBlock$answers</div>"""
 
   private def esc(s: String): String =
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

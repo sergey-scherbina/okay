@@ -200,9 +200,28 @@ what it finds. Two declared answers with a handler that picks, or an
 answer type carrying its status, are both real designs; neither has a
 consumer yet, and okay-ops is the one that will name it.
 
-Stage 3 — the prose, last and smallest:
-- [ ] a route may carry a summary; the document renders it. Until
-      then an operation's id is derived from method and path
+Stage 3 — the prose, last and smallest — SHIPPED (openapi-prose):
+- [x] an entry may carry a SUMMARY, and it is the one part of a
+      declaration that cannot be derived: a path comes from the route,
+      a parameter's kind from its `Param`, an answer from the
+      handler's type. `Router.summarised(text)` attaches it to the
+      entry just declared — one builder method rather than a parameter
+      on each of twenty combinators
+- [x] summarising an empty router THROWS where the table is built: a
+      builder method that silently did nothing would put the sentence
+      on no operation at all
+- [x] the document renders `summary` when there is one and omits the
+      field when there is not — an empty string would promise prose
+      nobody wrote. The derived operation id stays either way
+- [x] the page shows it under the method and path
+- [x] `out`/`outAt`/`jsonOut`/`jsonOutAt` take the `description` the
+      media combinators already had, so an answer can stop reading
+      "the declared answer"
+- [x] okay-demo summarises all six operations, and a test refuses a
+      published operation with no summary (or one under ten characters)
+- [x] found on the way: `out` and its three siblings were reachable
+      only through `Router.empty`, since the companion mirrored only
+      `on`/`at`/`json`/`of`. Every declaring form can begin a table now
 
 ## Decisions
 

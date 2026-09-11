@@ -56,6 +56,26 @@ class TestDemoOpenApi extends munit.FunSuite:
     }
   }
 
+  test("every operation in the published document says what it is for") {
+    // the derived id names the URL a second time; a reader deciding
+    // whether an operation is the one they want needs a sentence, and
+    // nothing but an author can write it (openapi-prose)
+    withCaps {
+      def obj(j: Json): Vector[(String, Json)] = j match
+        case Json.JObj(fs) => fs
+        case _ => Vector.empty
+      def get(j: Json, k: String): Json = obj(j).collectFirst { case (`k`, v) => v }.getOrElse(Json.JNull)
+      val ops = obj(get(DemoOpenApi.document, "paths")).flatMap((path, item) =>
+        obj(item).map((method, op) => (s"$method $path", get(op, "summary"))))
+      assert(ops.nonEmpty)
+      ops.foreach { (name, summary) =>
+        summary match
+          case Json.JStr(t) => assert(t.length > 10, s"$name: a summary of '$t' says nothing")
+          case _ => fail(s"$name has no summary — add .summarised(\"...\") to its declaration")
+      }
+    }
+  }
+
   test("what the document says an operation answers is what the service sends") {
     // the law of openapi-media on a REAL service: for each operation,
     // the content-type on the wire is the media type the document

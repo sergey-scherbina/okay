@@ -1,5 +1,52 @@
 # Changelog
 
+## openapi-prose — the operation says what it is for
+
+The last open stage of the OpenAPI spec, and the smallest. Every
+operation in the demo's published document was identified by a derived
+id and nothing else: `getEventsByEmail` names the url a second time and
+never says what the operation is FOR. A reader deciding whether it is
+the one they want has nowhere to look.
+
+That sentence is the only part of a declaration nothing else can
+derive. A path comes from the route, a parameter's kind from its
+`Param`, an answer from the handler's type; purpose comes from the
+author or from nowhere. So it is written where the operation is
+declared:
+
+```scala
+Router.html(Method.Get, Route.root)(_ => pure(page))
+  .summarised("open the chat: talk to the agent, which moves the board")
+```
+
+`summarised` attaches to the entry just declared. That is one builder
+method instead of a parameter on each of twenty combinators, and a
+builder chain already reads that way — the declaration says what the
+operation IS, and the sentence is about that, in the order it is
+written. Summarising an EMPTY router throws where the table is built,
+because a method that silently did nothing would put the sentence on
+no operation at all and report that nowhere.
+
+An operation nobody summarised carries no `summary` field rather than
+an empty one: an empty string is a promise of prose that is not there.
+Its derived id is unchanged, which is what identifies an operation
+nobody described.
+
+`out`, `outAt`, `jsonOut` and `jsonOutAt` gained the `description` the
+media combinators already took, so a declared answer can stop reading
+"the declared answer" — okay-demo's `/board.json` now says "every task
+on the board, open and done alike".
+
+Two smaller things found on the way. `out` and its three siblings were
+reachable only through `Router.empty`, because the companion mirrored
+`on`/`at`/`json`/`of` and stopped there; every declaring form can
+begin a table now. And the demo's six operations are summarised, held
+by a test that refuses a published operation with no summary — or with
+one under ten characters, since a placeholder passes a presence check
+and says nothing.
+
+Commit: LANDING.
+
 ## route-headers — a header is a Named[T] in a third place (spec + stage A)
 
 The operator asked for a generalized mechanism for headers in the

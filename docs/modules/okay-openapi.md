@@ -96,9 +96,10 @@ lock. The fix is a declaration in okay-http that the ROUTER enforces
 "this looks protected" is how a document starts lying in the other
 direction.
 
-**Prose.** A route has no place to carry a sentence about itself, so
-summaries and tags are absent and operation ids are derived. That is
-stage 3 of specs/openapi.md.
+**Tags, and prose beyond one line.** An operation carries a `summary`
+now (`Router.summarised`, openapi-prose) and the page shows it; tags,
+a long CommonMark `description` and an operationId override are not
+declared anywhere, and each waits for a consumer that needs it.
 
 ## Serving it
 

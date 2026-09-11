@@ -321,6 +321,9 @@ object ChatDemo {
             pure((if Chat.appJs.isDefined then reactPage else page)
               .replace("MODE", Chat.modeName))
           }
+          // `summarised` says what the operation is FOR, which no
+          // path, parameter or type can be asked (openapi-prose)
+          .summarised("open the chat: talk to the agent, which moves the board")
           .html(okay.http.Method.Get, okay.http.Route / "board",
                 description = "the board as a page, rendered at load so it works without " +
                   "JavaScript, then re-rendered from /board.json on every feed ping") { _ =>
@@ -355,14 +358,17 @@ object ChatDemo {
                 |</script>""".stripMargin)
 
           }
+          .summarised("read the board in a browser, without a JavaScript client")
           // the one JSON answer: `out`, so the document carries the
           // SCHEMA of what it sends. The object built by hand here
           // named every field of `Task` again — the schema is derived
           // from the type instead, and `None` encodes as `null`
           // exactly as the hand-built object did
-          .out[EmptyTuple, BoardView](okay.http.Method.Get, okay.http.Route / "board.json") { _ =>
+          .out[EmptyTuple, BoardView](okay.http.Method.Get, okay.http.Route / "board.json",
+               description = "every task on the board, open and done alike") { _ =>
             pure(BoardView(board.all))
           }
+          .summarised("the board as data, for a client that renders its own view")
           // the board-wide feed is declared BEFORE the per-email one, so
           // "board" is never read as an address
           .events(okay.http.Method.Get, okay.http.Route / "events" / "board",
@@ -376,6 +382,7 @@ object ChatDemo {
                       Chat.sse("board", Json.print(JStr(kind)))))
             pure(src)
           }
+          .summarised("follow the board: stay subscribed and re-read it when it changes")
           .events(okay.http.Method.Get, eventsFor,
                   description = "one person's inbox, held open: a `hello`, then a `note` " +
                     "event per assignment — a task assigned tomorrow becomes a frame then") { email =>
@@ -387,11 +394,12 @@ object ChatDemo {
                       Chat.sse("note", Json.print(JStr(note)))))
             pure(src)
           }
+          .summarised("follow one person's assignments as they happen")
     if !withApp then base
     else base.bytes(okay.http.Method.Get, okay.http.Route / "app.js", "text/javascript",
                     description = "the packaged React bundle the chat page loads") { _ =>
       pure(java.nio.file.Files.readAllBytes(Chat.appJs.get))
-    }
+    }.summarised("the client the chat page loads; present only in a packaged build")
 
   def routes(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
   : PartialFunction[Request, Response ! Async] =

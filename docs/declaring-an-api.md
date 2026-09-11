@@ -488,9 +488,24 @@ declares — a declaration nobody executes is a comment with a type.
 out of B, because the 401 stage B produces carries
 `WWW-Authenticate`.
 
-**Prose is not declared either** — a route has no place to carry a
-sentence about itself, so an OpenAPI summary is absent and operation
-ids are derived from method and path.
+**Prose is declared where it cannot be derived.** An operation may
+carry one sentence saying what it is FOR:
+
+```scala
+Router.html(Method.Get, Route.root)(_ => pure(page))
+  .summarised("open the chat: talk to the agent, which moves the board")
+```
+
+`summarised` attaches to the entry just declared, which is what a
+builder chain already reads as, and it is one method rather than a
+parameter on each of twenty combinators. Everything else in an entry
+is derived from something already written — the path from the route,
+a parameter's kind from its `Param`, the answer from the handler's
+type — and a sentence about purpose is not, which is the whole reason
+it is the author's to write. Summarising an empty router throws where
+the table is built, because a builder method that silently did nothing
+would put the sentence on no operation at all. An operation nobody
+summarised carries no `summary` field and keeps its derived id.
 
 `Toolbox` handlers are pure `A => String`, because that is the seam
 `Mcp.Server`, `Handlers.tools` and `Stepper` already take; widening it
