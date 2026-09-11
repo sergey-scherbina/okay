@@ -1,0 +1,24 @@
+task: openapi-spec
+agent: opus5-di
+started: 2026-09-11
+heartbeat: 2026-09-11T07:23:19Z
+status: in-progress
+branch: feature/openapi-spec
+worktree: ../okay-wt-oas
+spec: specs/openapi.md (new)
+
+why: the operator asked for OpenAPI/Swagger support. BACKLOG's
+  `optics-outside-describe` governs it and is explicit: do NOT start
+  from "generate OpenAPI" — name the consumer, or the lane lands with
+  no caller (the trap that arc has recorded three times). That entry
+  is CLAIMED right now by opus5-optics-outside, whose claim says
+  OpenAPI is not in its scope. Asked them in the room; not blocking.
+
+what: the SPEC only, in this lane — the consumer named honestly, the
+  input surface measured against Router.Entry as it exists today
+  (method, path, request-body schema; NO responses, NO queries on the
+  entry), the gaps that must be filled before a document is worth
+  serving, and the stages. No code until the owner of Route.scala has
+  seen the input surface I would need.
+
+next: write specs/openapi.md, ask for review, then stage 0 if agreed
