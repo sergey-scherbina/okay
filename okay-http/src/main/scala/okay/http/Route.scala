@@ -364,6 +364,40 @@ object Route:
       def print(t: Boolean): String = t.toString
 
   /**
+   * ARITY 1 COLLAPSES, at the handler boundary and nowhere else.
+   *
+   * A route's `A` is a tuple because a path may capture any number of
+   * things, and `unapply`/`url` keep it: `Some(Tuple1(7))` is the
+   * honest answer for a prism whose focus is one value, and the optic
+   * laws are stated over `A`. But a HANDLER is written by a person,
+   * and `t => t.head` is what a person writes when the API hands them
+   * a `Tuple1`. Three sightings, one of them by another author and one
+   * by the API's own, are what opened this.
+   *
+   * A witness rather than a match type, for the reason `Split` above
+   * is one: a match type says what `Out` IS and leaves you to produce
+   * it, which here would mean a cast. This carries the conversion.
+   */
+  sealed trait Arity[A <: Tuple]:
+    type Out
+    def apply(a: A): Out
+
+  object Arity extends Arity.Whole:
+    /** the one that collapses */
+    given one[T]: (Arity[T *: EmptyTuple] { type Out = T }) =
+      new Arity[T *: EmptyTuple]:
+        type Out = T
+        def apply(a: T *: EmptyTuple): T = a.head
+
+    /** everything else is itself — including `EmptyTuple`, which a
+     * handler already writes as `_ => ...` */
+    trait Whole:
+      given whole[A <: Tuple]: (Arity[A] { type Out = A }) =
+        new Arity[A]:
+          type Out = A
+          def apply(a: A): A = a
+
+  /**
    * The witness that `A` and `B` concatenate — and, unlike
    * `scala.Tuple.Concat`, come apart again. `split` is the whole
    * addition: `join` could have been the standard library's `++`.
@@ -732,16 +766,18 @@ object Delete:
 final class Router private (val entries: Vector[Router.Entry]):
 
   /** a handler that needs only the path's parameters */
-  def on[A <: Tuple](method: Method, route: Routed[A])(h: A => Response ! Async): Router =
+  def on[A <: Tuple](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                    (h: ar.Out => Response ! Async): Router =
     at(method, route)((a, _) => h(a))
 
   /** a handler that needs the request too — its body, its headers, its
    * peer. Most do, which is why `on` is defined in terms of this one
    * and not the other way round. */
-  def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
+  def at[A <: Tuple](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                    (h: (ar.Out, Request) => Response ! Async): Router =
     new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
-      r => if r.method != method then None else route.unapply(r.url).map(a => h(a, r))))
+      r => if r.method != method then None else route.unapply(r.url).map(a => h(ar(a), r))))
 
   /**
    * a handler whose request carries a declared JSON body
@@ -755,7 +791,8 @@ final class Router private (val entries: Vector[Router.Entry]):
    * caller given `{"error": …}` can see what was wrong with their
    * request, while one given a diagnosis about something else cannot.
    */
-  def json[A <: Tuple, B](method: Method, route: Routed[A])(h: (A, B) => Response ! Async)
+  def json[A <: Tuple, B](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                         (h: (ar.Out, B) => Response ! Async)
                          (using okay.codec.Schema[B]): Router =
     jsonAt[A, B](method, route)((a, b, _) => h(a, b))
 
@@ -770,8 +807,8 @@ final class Router private (val entries: Vector[Router.Entry]):
    * that may not see the request is a demo, not an api — so `jsonAt`
    * is the primitive and `json` is written in terms of it.
    */
-  def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])
-                           (h: (A, B, Request) => Response ! Async)
+  def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                           (h: (ar.Out, B, Request) => Response ! Async)
                            (using sc: okay.codec.Schema[B]): Router =
     new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
@@ -780,7 +817,7 @@ final class Router private (val entries: Vector[Router.Entry]):
         else route.unapply(r.url).map { a =>
           okay.codec.Codecs.json(sc).decode(
             okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
-            case Right(b) => h(a, b, r)
+            case Right(b) => h(ar(a), b, r)
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sc))))
@@ -796,29 +833,33 @@ final class Router private (val entries: Vector[Router.Entry]):
    * declares nothing, and a renderer says so.
    */
   def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
-                        (h: A => R ! Async)(using sr: okay.codec.Schema[R]): Router =
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => R ! Async)(using sr: okay.codec.Schema[R]): Router =
     outAt[A, R](method, route, status)((a, _) => h(a))
 
   /** the same, with the request in hand */
   def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
-                          (h: (A, Request) => R ! Async)(using sr: okay.codec.Schema[R]): Router =
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => R ! Async)(using sr: okay.codec.Schema[R]): Router =
     new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r =>
         if r.method != method then None
-        else route.unapply(r.url).map(a => h(a, r).map(Router.encoded(status, _))),
+        else route.unapply(r.url).map(a => h(ar(a), r).map(Router.encoded(status, _))),
       None,
       Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"))))
 
   /** both sides declared: a body in, a value out */
   def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
-                               (h: (A, B) => R ! Async)
+                               (using ar: Route.Arity[A])
+                               (h: (ar.Out, B) => R ! Async)
                                (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
     jsonOutAt[A, B, R](method, route, status)((a, b, _) => h(a, b))
 
   /** the same, with the request in hand */
   def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
-                                 (h: (A, B, Request) => R ! Async)
+                                 (using ar: Route.Arity[A])
+                                 (h: (ar.Out, B, Request) => R ! Async)
                                  (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
     new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
@@ -827,7 +868,7 @@ final class Router private (val entries: Vector[Router.Entry]):
         else route.unapply(r.url).map { a =>
           okay.codec.Codecs.json(sb).decode(
             okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
-            case Right(b) => h(a, b, r).map(Router.encoded(status, _))
+            case Right(b) => h(ar(a), b, r).map(Router.encoded(status, _))
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sb)),
@@ -888,18 +929,21 @@ object Router:
 
   /** start a table from the companion, as `Route / "users"` starts a
    * path — so a declaration never opens with `.empty.` */
-  def on[A <: Tuple](method: Method, route: Routed[A])(h: A => Response ! Async): Router =
+  def on[A <: Tuple](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                    (h: ar.Out => Response ! Async): Router =
     empty.on(method, route)(h)
 
-  def at[A <: Tuple](method: Method, route: Routed[A])(h: (A, Request) => Response ! Async): Router =
+  def at[A <: Tuple](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                    (h: (ar.Out, Request) => Response ! Async): Router =
     empty.at(method, route)(h)
 
-  def json[A <: Tuple, B](method: Method, route: Routed[A])(h: (A, B) => Response ! Async)
+  def json[A <: Tuple, B](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                         (h: (ar.Out, B) => Response ! Async)
                          (using okay.codec.Schema[B]): Router =
     empty.json(method, route)(h)
 
-  def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])
-                           (h: (A, B, Request) => Response ! Async)
+  def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])(using ar: Route.Arity[A])
+                           (h: (ar.Out, B, Request) => Response ! Async)
                            (using okay.codec.Schema[B]): Router =
     empty.jsonAt(method, route)(h)
 

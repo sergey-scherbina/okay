@@ -1,5 +1,45 @@
 # Changelog
 
+## route-arity-one-tuple — one parameter is a value, not a Tuple1 of one
+
+The backlog entry asked for a second sighting before deciding whether
+the wart cost more than the cure. Four arrived, three of them from
+authors other than the one who wrote the entry: `TestOpenApi` reached
+for `t.head`, `TestRouterOut` did the same, okay-demo's
+`/events/{email}` carried a comment saying `.head` is "the spelling
+until it has a better one", and I wrote `Tuple1(id)` to build a url an
+hour before starting this. A wart other people's code keeps
+reproducing has stopped being a note in a document.
+
+**Neither remedy on paper was taken.** An `on1` overload doubles a
+surface that already has eight methods. An `Extract[A]` match type
+says what the parameter IS and leaves the router holding an `A` to
+cast into it, which AGENTS.md forbids without a real necessity.
+`Route.Arity[A] { type Out }` is a witness that CARRIES the
+conversion — the same argument that made `Split` a witness rather than
+`Tuple.Concat`: a type-level function tells you the answer and cannot
+hand it to you.
+
+```scala
+Router.on(Method.Get, Route / "users" / "id".as[Int])(id => byId(id))
+Router.on(Method.Get, userPost)((id, slug) => post(id, slug))
+Router.on(Method.Get, healthz)(_ => live)
+```
+
+**The collapse is the handler's, not the route's.** `unapply` still
+answers `Some(Tuple1(7))` and `url` still takes one: the optic's laws
+are stated over `A`, and a prism whose focus is one value has a
+one-tuple focus.
+
+The risk was never the call sites — it was whether the compiler's
+untupling of `(id, slug) => ...` survives a handler whose parameter
+type is the dependent `ar.Out`. It does, and that was measured before
+anything else was touched: the first compile after wiring `on`/`at`
+produced exactly one error, at the one `t.head`.
+
+Priced: 8 signatures on `Router`, 4 on its companion, FOUR call-site
+edits in the whole repository.
+
 ## openapi-parameters — the description was being thrown away at the door
 
 okay-openapi renders the document from `Router.entries`, and it was

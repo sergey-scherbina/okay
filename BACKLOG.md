@@ -896,17 +896,24 @@ its owner can price it:
       "every OKAY_ in the guide is a setting" is false.
 
 ## okay-http
-- [ ] route-arity-one-tuple — one captured parameter arrives at a
-      handler as a `Tuple1`, because the route's `A` is
-      `String *: EmptyTuple` and Scala binds the whole tuple to a
-      single sub-pattern. Documented since stage 1 and judged
-      tolerable; the evidence that it is not came from the API's own
-      author, who wrote `{ email => ... }` in the okay-demo conversion
-      and needed the compiler to remember his own warning. A remedy
-      exists on paper — an `on1`-shaped overload, or an `Extract[A]`
-      match type collapsing arity 1 — and both add surface, so the
-      question is whether the wart costs more than the cure. Record a
-      second sighting before deciding.
+- [x] route-arity-one-tuple — DONE 2026-09-11. The entry asked for a
+      second sighting; there were four, three by authors other than
+      the one who wrote the entry: the sibling who wrote `TestOpenApi`
+      reached for `t.head`, `TestRouterOut` did the same, okay-demo's
+      `/events/{email}` carried a comment saying `.head` is "the
+      spelling until it has a better one", and I wrote `Tuple1(id)` to
+      build a url. That settled it.
+      Neither remedy on paper was taken. An `on1` overload doubles the
+      surface, and an `Extract[A]` MATCH TYPE says what the parameter
+      is and leaves the router to cast into it — which AGENTS.md
+      forbids. `Route.Arity[A] { type Out }` is a witness that CARRIES
+      the conversion, the same reason `Split` is a witness and not
+      `Tuple.Concat`. It collapses at the HANDLER only: `unapply` and
+      `url` still speak in tuples, because the optic's laws are stated
+      over `A`.
+      Measured: 8 signatures on `Router`, 4 on its companion, and the
+      whole repository needed FOUR call-site edits. Arity 2 still
+      untuples as `(id, slug) => ...` and arity 0 is still `_ => ...`.
 - [x] optics-outside-route-of-labels — DONE (2026-09-11, a450ff85). The
       operator settled the open question ("it will be needed"), and
       the entry's own doubt was half wrong: the check catches more

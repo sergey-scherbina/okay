@@ -386,11 +386,7 @@ object ChatDemo {
           pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
         }
-        // one captured parameter arrives as a Tuple1, which is the
-        // arity-1 wart docs/declaring-an-api.md names; `.head` is the
-        // spelling until it has a better one
-        .on(okay.http.Method.Get, eventsFor) { t =>
-          val email = t.head
+        .on(okay.http.Method.Get, eventsFor) { email =>
           // the inbox as a LIVE stream: jetty holds it open, and a task
           // assigned tomorrow becomes a frame then
           val src: Source[Chunk[Byte]] =

@@ -845,6 +845,38 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### The arity wart — CLOSED 2026-09-11 (route-arity-one-tuple)
+
+Stage 1 documented it and judged it tolerable: one captured parameter
+reaches a handler as a `Tuple1`, so people write `t => t.head`. The
+entry asked for a second sighting before deciding. Four arrived, and
+three of them were not the entry's author — the sibling who wrote
+`TestOpenApi`, the same shape again in `TestRouterOut`, and a comment
+in okay-demo's `/events/{email}` reading "`.head` is the spelling
+until it has a better one". A wart that other people's code keeps
+reproducing has stopped being a note in a document.
+
+**Neither remedy on paper was taken.** An `on1` overload doubles a
+surface that already has eight methods. An `Extract[A]` match type
+says what the parameter IS and leaves the router holding an `A` it
+must cast into that — and this repository forbids a cast without a
+real necessity. `Route.Arity[A] { type Out }` is a witness that
+CARRIES the conversion, which is the same argument that made `Split` a
+witness rather than `Tuple.Concat`: a type-level function tells you
+the answer and cannot hand it to you.
+
+**The collapse is at the HANDLER and nowhere else.** `unapply` still
+answers `Some(Tuple1(7))` and `url` still takes one, because the
+optic's laws are stated over `A` and a prism whose focus is one value
+has a one-tuple focus. What changed is the boundary where a person
+writes code.
+
+The cure was priced before it was paid: 8 signatures on `Router`, 4 on
+its companion, and FOUR call-site edits in the whole repository. Arity
+2 still untuples to `(id, slug) => ...` — the compiler's own adaptation
+survives the dependent `ar.Out` parameter type, which was the one thing
+that could have killed this — and arity 0 is still `_ => ...`.
+
 ### Stage 1, finished — LANDED 2026-09-11 (openapi-parameters)
 
 The DESCRIBE interpreter got the consumer this arc refused to build

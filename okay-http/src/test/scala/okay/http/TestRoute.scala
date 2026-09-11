@@ -331,7 +331,8 @@ class TestRoute extends munit.FunSuite {
     var seen = ""
     val r = Router.empty
       .on(Method.Get, userPost)((id, slug) => { seen = s"$id:$slug"; blank })
-      .on(Method.Post, userId)(t => { seen = s"posted ${t.head}"; blank })
+      // one captured parameter arrives as the VALUE, not a Tuple1
+      .on(Method.Post, userId)(id => { seen = s"posted $id"; blank })
     val _ = r.routes(Request.get("/users/7/posts/hello%20world"))
     assertEquals(seen, "7:hello world")
     val _ = r.routes(Request.post("/users/9", Body.Empty))

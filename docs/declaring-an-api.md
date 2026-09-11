@@ -132,6 +132,29 @@ request as well — its body, its headers, its peer. `at` is the
 primitive and `on` is written in terms of it, because most handlers
 need the request.
 
+**One parameter arrives as the VALUE, not a `Tuple1` of it.**
+
+```scala
+Router.on(Method.Get, Route / "users" / "id".as[Int])(id => byId(id))
+Router.on(Method.Get, userPost)((id, slug) => post(id, slug))
+Router.on(Method.Get, healthz)(_ => live)
+```
+
+Two parameters arrive as two, none as none, and this is the ONLY place
+the collapse happens — the route itself still speaks in tuples,
+because that is what the optic's laws are stated over:
+
+```scala
+one.unapply("/users/7")   // Some(Tuple1(7))
+one.url(Tuple1(7))        // "/users/7"
+```
+
+A `Route.Arity` witness carries the conversion, rather than a match
+type saying what the parameter IS and leaving the router to cast into
+it. It was `t => t.head` for four stages, and four sightings — three
+by authors other than the one who wrote the wart down — are what
+settled that the wart cost more than the cure.
+
 `routes` is deliberately **not** a new protocol: it is the same
 `PartialFunction` every server in this stack already takes, so
 adopting `Router` changes nothing downstream. `Router.empty` is still

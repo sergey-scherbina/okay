@@ -30,7 +30,7 @@ class TestOpenApi extends munit.FunSuite:
 
   val router: Router = Router.empty
     .on(Method.Get, board)(_ => ok("all"))
-    .on(Method.Get, byId)(t => ok(s"one ${t.head}"))
+    .on(Method.Get, byId)(id => ok(s"one $id"))
     .json[EmptyTuple, NewTask](Method.Post, board)((_, t) => ok(t.title))
     .on(Method.Get, search)(_ => ok("found"))
 
@@ -114,7 +114,7 @@ class TestOpenApi extends munit.FunSuite:
   final case class Task(id: Int, title: String) derives Schema
 
   test("a handler that answers a VALUE declares its response by its own type") {
-    val r = Router.empty.out[Int *: EmptyTuple, Task](Method.Get, byId)(t => pure(Task(t.head, "x")))
+    val r = Router.empty.out[Int *: EmptyTuple, Task](Method.Get, byId)(id => pure(Task(id, "x")))
     val op = at(at(at(OpenApi.document(api, r), "paths"), "/board/{id}"), "get")
     val ok = at(at(op, "responses"), "200")
     assertEquals(at(at(at(ok, "content"), "application/json"), "schema"),
