@@ -67,7 +67,7 @@ compiled and resolved `media` to the enclosing METHOD of that name,
 which typechecked as a function value and failed a dozen lines later.
 It is `Option[String] = None` instead.
 
-Commit: LANDING.
+Commit: 8881bed2.
 
 ## openapi-serve — the document gets its readers
 
