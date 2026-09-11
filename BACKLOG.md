@@ -1016,9 +1016,14 @@ its owner can price it:
       The law is asserted twice, as set equalities: `enforcing`
       refuses exactly the secured entries, and the document marks
       exactly those operations.
-- [ ] route-headers-c — response headers on `Answer`. Falls out of B:
-      the 401 that B produces carries `WWW-Authenticate`, and the
-      document's `responses[*].headers` is empty. Nobody has asked.
+- [x] route-headers-c — DONE 2026-09-11. `Answer.headers` and
+      `Router.answering(status, names*)`, rendered as
+      `responses[*].headers`. The distinction the stage exists to
+      state: a secured route's `www-authenticate` is declared AND
+      written from one value, so it is true by construction; an
+      author's declaration is DESCRIPTION, and enforcing it would turn
+      a documentation slip into a 500. Saying which half is
+      load-bearing beats pretending both are.
 - [ ] route-secured-with-a-value — `out`/`jsonOut` take a `Routed` and
       `secured` produces a `Headed`, so a route cannot declare both a
       requirement and a response VALUE. Nothing in the tree wants

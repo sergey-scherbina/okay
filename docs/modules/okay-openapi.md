@@ -96,9 +96,6 @@ those answers was perfectly well defined.
 
 ## What it cannot say, and why
 
-**Response headers.** An operation's `responses[*].headers` is empty:
-nothing declares them yet (specs/route-headers.md, stage C).
-
 **A policy richer than scopes.** A route declares a scheme and its
 scopes, which is what OpenAPI models; a rule that reads the action or
 the resource lives in `okay.security.Secure.granted` and is

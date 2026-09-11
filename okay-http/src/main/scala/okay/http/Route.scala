@@ -929,6 +929,35 @@ final class Router private (val entries: Vector[Router.Entry]):
    * built: a builder method that silently did nothing would put the
    * sentence on no operation at all and report that nowhere.
    */
+  /**
+   * The headers an answer carries, declared (stage C).
+   *
+   * It attaches to the entry just declared, as `summarised` does, and
+   * for the same reason: one method rather than a parameter on twenty
+   * combinators. A status this entry does not already answer gets an
+   * answer with no schema — "it sends this header" is a fact worth
+   * stating even when the body is undeclared.
+   *
+   * {{{
+   *   Router.out(Get, task)(byId).answering(200, "etag".as[String])
+   * }}}
+   *
+   * THIS IS DESCRIPTION, and the doc comment on `Answer.headers` says
+   * why it cannot be more: the handler builds its own `Response`, and
+   * refusing a request because a declared header was missing would
+   * turn a documentation slip into a 500. The headers the ROUTER
+   * itself writes — a secured route's `WWW-Authenticate` — are the
+   * other kind, and they are true by construction.
+   */
+  def answering(status: Int, headers: Route.Named[?]*): Router =
+    if entries.isEmpty then
+      throw IllegalStateException(
+        "answering: there is no operation to describe — it attaches to the entry just declared")
+    else
+      val hs = headers.toVector.map(n =>
+        Route.Hdr(n.name, n.param.kind, required = true, repeated = false, n.param.jsonSchema))
+      new Router(entries.init :+ entries.last.answeringWith(status, hs))
+
   def summarised(text: String): Router =
     if entries.isEmpty then
       throw IllegalStateException(
@@ -1450,7 +1479,23 @@ object Router:
                           * also why the two cannot disagree: both come from
                           * this one value.
                           */
-                         media: String = "application/json")
+                         media: String = "application/json",
+                         /**
+                          * the headers this answer carries
+                          * (specs/route-headers.md, stage C).
+                          *
+                          * TWO KINDS, and blurring them would be the whole
+                          * mistake. What the ROUTER sends is true by
+                          * construction — the 401 a secured route answers
+                          * declares `www-authenticate`, and `challenge` is
+                          * what writes it, from this same value. What an
+                          * AUTHOR declares with `answering` is DESCRIPTION:
+                          * the handler builds its own `Response` and nothing
+                          * here checks the claim, because failing a request
+                          * over a documentation slip would be worse than the
+                          * slip.
+                          */
+                         headers: Vector[Route.Hdr] = Vector.empty)
 
   final class Entry private[http] (val method: Method,
                                    /** the url's whole description — template AND
@@ -1489,6 +1534,15 @@ object Router:
                                     * declaration at all.
                                     */
                                    private[http] val enforced: Boolean = false):
+
+    /** the same entry, with headers declared on one of its answers —
+     * or a new answer, when the status had none */
+    private[http] def answeringWith(status: Int, hs: Vector[Route.Hdr]): Entry =
+      val updated =
+        if answers.exists(_.status == status) then
+          answers.map(a => if a.status == status then a.copy(headers = a.headers ++ hs) else a)
+        else answers :+ Answer(status, None, "declared", headers = hs)
+      new Entry(method, described, matches, run, body, updated, summary, enforced)
 
     private[http] def saying(text: String): Entry =
       new Entry(method, described, matches, run, body, answers, Some(text), enforced)
@@ -1557,8 +1611,16 @@ object Router:
   private[http] def securityAnswers(d: Route.Described): Vector[Answer] =
     if d.security.isEmpty then Vector.empty
     else Vector(
-      Answer(401, None, "no credential, or one that did not verify"),
-      Answer(403, None, "verified, and not permitted"))
+      Answer(401, None, "no credential, or one that did not verify",
+        headers = Vector(challengeHeader)),
+      Answer(403, None, "verified, and not permitted",
+        headers = Vector(challengeHeader)))
+
+  /** declared because `challenge` writes it — the document and the
+   * wire read one value, not two that agree by care */
+  private[http] val challengeHeader: Route.Hdr =
+    Route.Hdr("www-authenticate", "string", required = true, repeated = false,
+      Route.Param.schemaOf("string"))
 
   private[http] val textHtml: String = "text/html"
   private[http] val eventStream: String = "text/event-stream"

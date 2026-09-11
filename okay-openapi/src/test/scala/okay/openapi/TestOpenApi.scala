@@ -107,6 +107,17 @@ class TestOpenApi extends munit.FunSuite:
     assert(!ps.exists(p => Json.print(p).toLowerCase.contains("authorization")), ps.toString)
   }
 
+  test("an answer's headers are rendered, and the 401's is the one the router sends") {
+    val r401 = at(at(at(at(at(doc, "paths"), "/admin/replay"), "post"), "responses"), "401")
+    assertEquals(at(at(at(r401, "headers"), "www-authenticate"), "schema"),
+      JObj(Vector("type" -> JStr("string"))))
+  }
+
+  test("an operation that declares no response header carries no headers key") {
+    val r200 = at(at(at(at(at(doc, "paths"), "/board"), "get"), "responses"), "default")
+    assert(!obj(r200).exists(_._1 == "headers"), r200)
+  }
+
   test("a protected operation answers 401 and 403, without the author writing them") {
     val rs = obj(at(at(at(at(doc, "paths"), "/admin/replay"), "post"), "responses")).map(_._1)
     assertEquals(rs.filter(Set("401", "403")).sorted, Vector("401", "403"))

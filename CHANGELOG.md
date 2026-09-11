@@ -1,5 +1,36 @@
 # Changelog
 
+## route-headers-answers — what an answer carries, and which half is load-bearing
+
+Stage C, the last of specs/route-headers.md. `Answer` gains `headers`,
+`Router.answering(status, names*)` declares them on the entry just
+built, and the document renders `responses[*].headers`.
+
+**The stage exists to state a distinction, not to add a field.** There
+are two kinds of declared response header:
+
+- What the ROUTER sends is true BY CONSTRUCTION. A secured route's 401
+  declares `www-authenticate`, and `Router.challenge` writes it from
+  that same value — the document and the wire read one value, not two
+  that agree by care. A test asserts both ends: declared, and present
+  on the response.
+- What an AUTHOR declares is DESCRIPTION. The handler builds its own
+  `Response` and nothing checks the claim.
+
+The second could have been enforced — refuse a response whose declared
+header is missing — and deliberately is not: that turns a
+documentation slip into a 500, which is worse than the slip. Saying
+which half is load-bearing is more useful than pretending both are.
+
+`answering` on an empty table throws where the mistake is, as
+`summarised` does; a status the entry does not answer gets an answer
+with no schema, because "it sends this header" is worth stating even
+when the body is undeclared.
+
+With this the three stages the operator asked for are done: a header
+is a `Named[T]` in a third place, a route declares what it requires
+and the table refuses, and an answer says what it carries.
+
 ## route-headers-security — the document stops showing an open door
 
 Stage B of specs/route-headers.md. `POST /admin/replay` rendered as an

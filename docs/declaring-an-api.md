@@ -338,6 +338,23 @@ The law is asserted twice: `enforcing` refuses exactly the entries
 whose `security` is non-empty, and the document marks exactly those
 operations.
 
+## What an answer carries
+
+```scala
+Router.out(Method.Get, task)(byId).answering(200, "etag".as[String])
+```
+
+`answering` attaches to the entry just declared, as `summarised` does,
+and the document gains `responses[200].headers`.
+
+**Two kinds, and the difference is stated rather than blurred.** What
+the ROUTER sends is true by construction: a secured route's 401
+declares `www-authenticate`, and the router writes it from that same
+value, so the document and the wire cannot disagree. What an AUTHOR
+declares here is DESCRIPTION — the handler builds its own `Response`,
+and nothing checks the claim, because refusing a request over a
+documentation slip would be worse than the slip.
+
 ## A body
 
 ```scala
@@ -517,11 +534,6 @@ derived from. This guide's earlier sentence, that no consumer existed
 and the document was deliberately not generated, is out of date; what
 survives it is the rule that produced it, which is that the consumer
 came first.
-
-**Response headers are not declared** — stage C of
-specs/route-headers.md. It falls out of B, because the 401 that a
-secured route produces already carries `WWW-Authenticate`; nothing has
-asked for it yet.
 
 **A secured route cannot also declare a response VALUE.** `out` and
 `jsonOut` take a `Routed` and `secured` produces a `Headed`, so the

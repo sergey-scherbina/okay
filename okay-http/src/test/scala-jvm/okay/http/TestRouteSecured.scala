@@ -2,6 +2,7 @@ package okay.http
 
 import okay.*
 import okay.given
+import okay.http.syntax.*
 
 /**
  * A ROUTE DECLARES WHAT IT REQUIRES, AND THE TABLE ENFORCES IT
@@ -111,4 +112,28 @@ class TestRouteSecured extends munit.FunSuite:
     val e = table.entries.find(_.security.nonEmpty).getOrElse(fail("no secured entry"))
     assertEquals(e.answers.map(_.status).sorted, Vector(401, 403))
     assertEquals(e.security.map(_.scopes), Vector(Set("admin")))
+  }
+
+  test("the challenge header is DECLARED, and it is the one the wire carries") {
+    // stage C: the router writes it from the same value the document
+    // reads, so the two cannot disagree
+    val e = table.entries.find(_.security.nonEmpty).getOrElse(fail("no secured entry"))
+    assertEquals(e.answers.flatMap(_.headers).map(_.name).distinct, Vector("www-authenticate"))
+    val sent = header(table.enforcing(verify).routes, post(None), "www-authenticate")
+    assert(sent.isDefined, "declared and not sent")
+  }
+
+  test("an author's declared response header is DESCRIPTION, and attaches to the status") {
+    val r = Router
+      .on(Method.Get, Route / "t")(_ => ok("x"))
+      .answering(200, "etag".as[String])
+    val a = r.entries.head.answers.find(_.status == 200).getOrElse(fail("no 200"))
+    assertEquals(a.headers.map(_.name), Vector("etag"))
+    // nothing checks the claim: failing a request over a documentation
+    // slip would be worse than the slip
+    assertEquals(status(r.routes, Request.get("/t")), 200)
+  }
+
+  test("answering an empty table throws, here, where the mistake is") {
+    intercept[IllegalStateException](Router.empty.answering(200, "etag".as[String]))
   }

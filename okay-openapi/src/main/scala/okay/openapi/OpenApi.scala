@@ -185,7 +185,8 @@ object OpenApi:
         "description" -> JStr("undeclared — this operation builds its own Response")))))
     else JObj(e.answers.sortBy(_.status).map(a =>
       a.status.toString -> JObj(Vector(
-        "description" -> JStr(a.description),
+        "description" -> JStr(a.description)) ++
+        answerHeaders(a) ++ Vector(
         // keyed by the media the ENTRY declares, and an answer whose
         // media has no schema still gets a content block: an empty
         // schema object is how OpenAPI says "this media type, shape
@@ -193,6 +194,17 @@ object OpenApi:
         // answers with no body at all (openapi-media)
         "content" -> JObj(Vector(
           a.media -> JObj(a.schema.map(sch => "schema" -> sch).toVector)))))))
+
+  /** what an answer carries beside its body (specs/route-headers.md,
+   * stage C). A secured route's `WWW-Authenticate` is here because the
+   * router writes it from the same value; anything else is what the
+   * author said they send. */
+  private def answerHeaders(a: Router.Answer): Vector[(String, Json)] =
+    if a.headers.isEmpty then Vector.empty
+    else Vector("headers" -> JObj(a.headers.map(h =>
+      h.name -> JObj(Vector(
+        "description" -> JStr(if h.required then "always sent" else "sent when it applies"),
+        "schema" -> h.schema)))))
 
   /** the document as text, for a file or a handler */
   def print(api: Api, router: Router): String = Json.print(document(api, router))

@@ -192,17 +192,43 @@ stage-7 family: asking "does this match?" through machinery only the
 ANSWER needs. With the requirement on the entry, definedness is
 `entries.exists(_.matches(r))` and no dummy exists.
 
-## Stage C — response headers
+## Stage C — response headers — LANDED 2026-09-11
 
 ### Interface
 
-    Router.out(Method.Get, r, status = 200)(h)
-          .answering(200, "etag".as[String])
+    Router.out(Get, task)(byId).answering(200, "etag".as[String])
 
-`Answer` gains `headers: Vector[Route.H]`. The 401 that stage B
-produces carries `WWW-Authenticate` by construction, which is the
-first consumer and the reason this stage is third rather than never:
-it falls out of B nearly for free.
+`Answer` gains `headers: Vector[Hdr]`, and `answering` attaches to the
+entry just declared — the shape `summarised` already has, for the same
+reason: one method rather than a parameter on twenty combinators.
+Describing a status the entry does not answer adds an answer with no
+schema, because "it sends this header" is worth stating even when the
+body is undeclared. Describing an EMPTY table throws, here, where the
+mistake is.
+
+### The distinction this stage exists to state
+
+**There are two kinds of declared response header, and blurring them
+would be the whole mistake.**
+
+- What the ROUTER sends is true BY CONSTRUCTION. A secured route's 401
+  declares `www-authenticate`, and `Router.challenge` writes it from
+  that same value: the document and the wire read one value, not two
+  that agree by care. A test asserts both ends.
+- What an AUTHOR declares is DESCRIPTION. The handler builds its own
+  `Response`, and nothing checks the claim.
+
+The second could have been enforced — the router could refuse a
+response whose declared header is missing — and it deliberately is
+not: that turns a documentation slip into a 500, which is worse than
+the slip. Saying which half is load-bearing is more useful than
+pretending both are.
+
+### Behavior
+
+- `responses[*].headers` in the document, with the parameter's own
+  JSON Schema, exactly as a request header gets one.
+- An operation that declares none carries no `headers` key at all.
 
 ## Decisions
 
