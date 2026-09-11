@@ -1,0 +1,14 @@
+task: schema-fold-3
+agent: opus-depth
+started: 2026-09-11
+branch: feature/schema-fold-3
+worktree: ../okay-wt-schema-fold-3
+spec: specs/schema-fold.md, stage 3
+
+what: `Validate` — the accumulating (applicative) decoder as an
+  algebra on fold+Step: every error, dotted path per error, the typed
+  value on success. Laws against `Json.decode`: same verdict on every
+  fixture, same value on success, decode's one error among Validate's
+  many on failure. Whether `Form.errors` switches to it is decided by
+  the UI tests, not assumed — Form's whole-vs-walk rules for options
+  and wrappers are pinned behaviour.
