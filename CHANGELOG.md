@@ -1,5 +1,125 @@
 # Changelog
 
+## generalized-method-syntax — three of our APIs were shaped around a limit the compiler no longer has
+
+Scala 3 lets a method take type parameters in more than one clause, so
+some are written and the rest inferred. The operator brought the
+feature; the question was where it pays. The rule that decides it,
+checked with the compiler rather than read off the page: **two type
+clauses may not be adjacent**, a term or `using` clause must separate
+them. Our row combinators all carry a context bound, and that is the
+separator, so the workarounds written around its absence can go.
+
+**`split`, `over` and `<|>` are one method each.** Each was a method
+plus a value class whose only purpose was to make `A` and `R`
+inferable while `F` and `G` were written by hand — the doc comments
+said "second stage" in as many words. The syntax now says it directly:
+
+    inline def split[F[+_], G[+_]](using T: TypeableK[F])[A, R]
+                                  (e: F[A] | G[A])
+                                  (inline onF: F[A] => R)
+                                  (inline onG: G[A] => R): R
+
+Not one of the 60-odd call sites changed: `split[F, G](e)(f)(g)` parses
+the same before and after. One exception, and it is the reason the
+survey was redone: `okay-resilience` spelled the old second stage out
+by name, `okay.<|>[Async, F].apply[X](e)`, and now writes
+`okay.<|>[Async, F][X](e)` — the second clause given explicitly, which
+is the same feature from the other side. The first survey missed it
+because its pattern excluded a dot before the name, meaning to skip
+method calls and skipping qualified ones too.
+
+The generated code did not change either. Two checks, not one: the two
+forms compiled side by side before the work, read with `javap`, showed
+no `invokedynamic` in either and both branches beta-reduced; and
+afterwards, on the real class rather than a model, `okay.State$` carries
+7 `invokedynamic` in `handle` and its loop and 21 in the whole class —
+before and after, identically. The zero-allocation property `split`
+exists for was established rather than assumed.
+
+**Two APIs take their rows first, and four that look identical do
+not.** The plan was to reorder every row combinator so the rows come
+first and the answer types are read off the program. The compiler
+refused, and the reason is the feature's real cost: splitting the
+clauses puts a `using` between them, and that clause is resolved
+BEFORE any value argument is typed. The first clause's parameters
+therefore stop being inferable and become mandatory. Sites that write
+nothing today, like `!.tracing(prog)(show)`, fail with "Ambiguous
+given instances ... TypeableK[F]" — F is still a variable when the
+context bound is searched. 156 errors said so across the tree.
+
+So the rule, counted rather than argued: **the reorder is a win only
+where every call site already writes those parameters.**
+
+| combinator | call sites writing the rows | inferring them | outcome |
+|---|---|---|---|
+| `tracing` | 0 | 8 | one clause, unchanged |
+| `interpret` | 3 | 9 | one clause, unchanged |
+| `translate` | 10 | 5 | one clause, unchanged |
+| `relay` | 7 | 1 | one clause, unchanged |
+| `Effects.handle` | 21 | 0 | two clauses |
+| `Tag.tag` / `untag` / `one` | all | 0 | two clauses |
+
+What the two winners look like:
+
+    E.handle[Throws % String, Produce, Int, Int](m)  ->  E.handle[Throws % String, Produce](m)
+    Tag.tag["small", State % Int, Int, Pure](p)      ->  Tag.tag["small", State % Int](p)
+
+The second line is worth pausing on: it is exactly what `Tag.scala`'s
+own doc comment had been showing since the day it was written. The
+documentation described a syntax the compiler could not give, every
+call site spelled out four arguments instead, and nobody reconciled
+them. Now the doc is true.
+
+**`State.handle[Int](0)(p)`**, where the separator is the state itself
+rather than a using clause. Thirteen call sites across tests, probes
+and both jmh trees lose two arguments each; the forwarded row is read
+off the program.
+
+What the feature CANNOT do here, measured before the work and recorded
+so nobody retries it: a row inferred from a single OPERATION widens
+(`op: F[A]` infers `[X0] =>> St[Int, Int | X0]`, not `St % Int`), which
+is why `Tag.one` still names its row and infers only the answer type;
+and `pure[F, A]` cannot be split at all, since nothing separates `F`
+from `A`, so its 128 call sites keep both arguments.
+
+The claim predicted stage 1 would land with no call-site edits, and it
+did. It also predicted stages 2 and 3 would find "at least one site
+where the row does not infer and must stay explicit". That was wrong in
+both directions: every site I had listed inferred fine, including
+`Effects.handle`'s `B` from its `ret` function, which was the one I
+expected to fail; and the sites that broke were the ones my survey
+never looked at, because they write NO type arguments at all and so
+matched no grep for explicit ones. The survey asked "who writes these
+arguments" when the question was "who does not".
+
+Landed as ef6664f7 (code), 9731b23a (the rule, written into
+docs/typepedia.md) and 919ab4cf (BACKLOG's twonode-fixed-ports, below).
+Gate: the full matrix twice on this tree and once more after the
+rebase, 4181 tests, 0 failures, 0 warnings; `Test/compile` repo-wide
+before any of it, since a signature change reaches every module, and
+both Jmh configurations, which `Test/compile` does not reach.
+
+The first matrix was RED on one test and it was not this lane's:
+`okay.demo.TestTwoNode` failed in 0.337 s with "HTTP/1.1 header parser
+received no bytes", and passed alone a minute later in 3.763 s. The
+timing settles it rather than the re-run: the suite spawns two real
+JVMs on hardcoded ports 18091/18092, two JVMs cannot boot in 300 ms,
+and its own readiness check swallows every exception and waits 15 s —
+so something was already answering on those ports, and nothing else in
+the repository uses them. A sibling's matrix running the same suite is
+the only candidate left. Filed as `twonode-fixed-ports` with the two
+fixes priced rather than chosen.
+
+Method note, because it cost a commit: the release ran a scripted board
+edit and a `git commit` in ONE tool call, separated by a NEWLINE rather
+than `&&`. The script asserted and stopped — a sibling had added a
+`dataflow` entry to the sprint's Doing section, so "my entry is the
+only one" was no longer true — and the commit ran anyway, removing the
+claim and nothing else. Same family as `pipe-masks-exit-status`: a
+compound line hides which step actually ran. Repaired in the next
+commit.
+
 ## bench-across-processes — the three engines in the same deployment mode
 
 §20 has named its own asymmetry since it was written: okay was
