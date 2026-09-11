@@ -340,11 +340,14 @@ what covariance is actually FOR: the `Typeable[F[Nothing]]` instance,
 and declaring an operation that never answers once as `Tx[Nothing]`.
 
 **One instance per signature, unless the operation carries identity.**
-`State % S`'s `Get()` carries no trace of S, so a row holds ONE of it
-and two at different S misroute — loudly (a ClassCastException at the
-first wrong answer), which `TestRowIdentity` demonstrates. `Writer`
-escapes this without trying, its operation being the value told. `Tag`
-and `Refs` above are the general fixes.
+`State % S`'s `Get()` carries no trace of S, so a BARE row holds ONE
+of it and two at different S misroute — loudly (a ClassCastException
+at the first wrong answer), which `TestRowIdentity` demonstrates.
+`Writer` escapes this without trying, its operation being the value
+told. `Tag` and `Refs` above are the general fixes, and
+[many-instances.md](many-instances.md) is the whole story: which of
+the three routes — key, cell or prompt — fits which shape of problem,
+and what each costs.
 
 **A `Handler` cannot get or tell.** If your interpretation needs other
 effects, it is an interpreter (`!.interpret`), not a handler.

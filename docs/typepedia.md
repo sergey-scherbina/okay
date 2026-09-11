@@ -421,7 +421,10 @@ blanket suppression; the categories and what each turned out to be:
   class as its whole identity, so the test is total — `typeableK` says
   that once per signature. Where the limitation is real (`Reader`,
   `State`, `Take`, `Throws` keep no runtime trace of their parameter)
-  it is named and `TestRowIdentity` demonstrates it.
+  it is named and `TestRowIdentity` demonstrates it — and it binds the
+  BARE row only: [several instances of one
+  effect](many-instances.md) are had by key (`Tag`), by cell (`Refs`)
+  or by prompt (`Delim`).
 - **100 "match may not be exhaustive" → 0.** All one claim: `resume`
   normalizes two of `Free`'s cases away, so a three-case match is
   correct and the type cannot say so. Written `(x.resume: @unchecked)`

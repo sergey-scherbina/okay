@@ -43,6 +43,39 @@ and the entry's body schema are the input the day a reader exists.
 Documentation moved in the same lane, as asked: the guide gains the
 renderer and the drift story, `okay-http.md` gains `markdown` and
 `jsonAt`. Landed as 79bdd7da.
+## many-instances-doc — "a row holds ONE State" was true and had stopped being the whole story
+
+The operator read `State`'s scaladoc — "the operations carry no
+runtime trace of S, and a row may therefore hold ONE State" — and
+asked whether that was still true. It is, of a BARE row, and it has
+not been the end of the story since `Tag` generalised what `Keyed`
+once did for `State` alone.
+
+docs/many-instances.md is that story in one place: why a row is split
+by a RUNTIME test and what that buys (rows cost nothing to carry) and
+what it costs (two members are told apart only when the operation
+carries something to compare — which is why `Writer % Int + Writer %
+String` routes correctly and `State % Int + State % String` does not).
+Then the three routes, with the shape of problem each fits:
+
+  Tag    the instances are NAMED in the type. `Tag.tag` walks a
+         FINISHED program and puts every operation of F under a key,
+         so an already-written function runs twice at two states
+         without being written for it. `untag` hands the plain
+         signature back to the effect's own handler. No cast.
+  Refs   the instances are MADE at run time — one per request, one
+         per node, cells in a loop that no type could list. One row
+         member however many there are, identity by cell, at the
+         price of a heap and one sound cast.
+  Delim  a fresh PROMPT per handler installation: instances that nest
+         and separate dynamically, at the price of the program
+         carrying the prompt.
+
+Every place that stated the bare limitation now points at it —
+`State`'s scaladoc, typepedia's warnings table, your-own-effect's
+gotcha list, and `TestRowIdentity`, which keeps proving what happens
+when none of the three is used. That test is what makes the choice a
+choice rather than a hope.
 
 ## optics-outside-chat-route — a conversation with a hole in it, and nobody told
 

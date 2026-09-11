@@ -76,6 +76,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   by measuring its own last sixteen tasks, what blocking inside a
   worker costs and what `adaptive` buys back, the nine laws every
   member owes, and the numbers against kyo and the JDK pool.
+- **[Several instances of one effect](many-instances.md)** — two
+  counters in one row: why a bare row holds one of each signature, and
+  the three routes that lift it (a key with `Tag`, a cell with `Refs`,
+  a fresh `Delim` prompt), with what each costs.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[Dependency injection](di.md)** — the module vocabulary: a

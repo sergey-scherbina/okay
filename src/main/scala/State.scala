@@ -10,11 +10,18 @@ import okay.!.*
  */
 /**
  * PARAMETERISED, so the derived test is by CLASS only: the operations
- * carry no runtime trace of S, and a row may therefore hold ONE
+ * carry no runtime trace of S, and a BARE row may therefore hold ONE
  * State. Two — `State % Int + State % String` — misroute, loudly
  * (TestRowIdentity): the first handler answers both asks and the
  * second continuation gets a ClassCastException, rather than a
  * plausible wrong answer.
+ *
+ * THAT IS THE BARE ROW, NOT THE LIBRARY. Several instances of one
+ * signature are had three ways, and docs/many-instances.md is the
+ * whole story: `Tag` names them in the type (`Tag.Of["small", State %
+ * Int]`, and `Tag.tag` puts an ALREADY WRITTEN program's operations
+ * under a key), `Refs` makes them at run time when a type cannot list
+ * them, and a fresh `Delim` prompt separates them dynamically.
  */
 enum State[S, +A] derives okay.Effect {
   /** read the current state */
