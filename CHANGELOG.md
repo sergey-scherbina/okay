@@ -1,5 +1,65 @@
 # Changelog
 
+## throws-into — `A throws E` stops asking the language for permission, and the conversion that kept asking was redundant
+
+Scala 3.9 lets a type declaration say "conversions to me are allowed",
+so a caller no longer writes `import scala.language.implicitConversions`
+at every site. The operator brought the feature; the question, as
+before, was where it pays. It may be written only on a class, a trait
+or an opaque type alias, and it marks the conversion's TARGET — which
+decides everything.
+
+**One type in this repository takes it.** `throws` is an opaque alias
+whose whole design is absorbing four shapes — a value, a raw error, an
+`Either`, a `Try` — and its four `Conversion` givens were already
+written. The import was ceremony on top of a decision the type had
+already made:
+
+    into opaque infix type throws[+A, +E <: Unsafe] =
+      A | E | Either[E, A] | Try[A]
+
+`TestThrows.scala` now carries a comment where its import used to be,
+because deleting that line IS the test.
+
+**The fifth conversion went with it, and was redundant rather than
+lost.** `Conversion[A throws E, Either[E | Unsafe, A]]` ran the other
+way, so its target was `Either`, which is not ours to mark — it was
+the one thing still demanding the import. Its body was literally
+`_.wrap`, and `.wrap` is public, is what `??` calls, and is used
+explicitly 38 times here. Eliminating a `throws` is an act now, not a
+coercion. Nothing in the repository relied on it implicitly: `catching`
+already called `.wrap` by hand, and a full `Test/compile` found no
+other site, which is what the claim predicted.
+
+The measurement that pinned it, before any of this was written: with
+the fifth conversion's use present, a `-feature` compile reports
+exactly one warning; with it removed, zero. Afterwards, a clean
+`-feature -deprecation` compile of the core and its tests: zero.
+
+**Two candidates were refused, and the reasons are the useful part.**
+`Direct` cannot take `into` at all — its conversions are
+`Conversion[F[A], A]`, the target is a bare type variable, and there is
+no declaration to write the modifier on. Four of the repository's five
+language imports are auto-coloring's and they stay, which for the
+feature where "the danger lives" is the right answer anyway; the note
+now sits in docs/direct-style.md beside the import, so the next reader
+does not retry it. `Json` fits mechanically — `into enum` compiles, and
+~850 construction sites of `JStr`/`JNum`/`JBool` would become bare
+literals — and was refused on a concrete hazard rather than taste: a
+`Conversion[String, Json]` turns an already-serialized document into a
+JSON string LITERAL silently, which is double encoding in the module
+whose job is encoding. The feature's own documentation gives the same
+advice, to keep `into` types to the absolute minimum.
+
+Landed as ab4d6a7c (the type and the test) and ada48b5e (the rule and
+the two refusals, in docs/typepedia.md and docs/direct-style.md).
+Gate: the full matrix twice, 4185 then 4186 tests, 0 failures, 0
+warnings, the second run after a rebase because master had gained
+`Tag.scala` under the lane; `Test/compile` repo-wide before both,
+since deleting a public conversion reaches every module, and a clean
+`-feature -deprecation` compile, because the warning this lane is
+about does not appear without that flag.
+
 ## tag-key-collision — the key restores identity only if the keys differ, and nothing said so
 
 `Tag` exists so a row can hold two instances of one signature, and its
