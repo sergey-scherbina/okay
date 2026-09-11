@@ -132,13 +132,15 @@ sites in this repository are literals. So the import shortens 42% of
 them by design and leaves the other 58% — the ones holding values,
 which is where the danger is — spelled `JStr(...)` as before.
 
-- [ ] a string literal converts under the import; a `String` value is
+- [x] a string literal converts under the import; a `String` value is
       a compile error whose message names `JStr` and `Json.parse`
       (TestJsonLiterals, both directions by
-      `compiletime.testing.typeChecks`)
-- [ ] without the import nothing converts: the same literal is a plain
+      `compiletime.testing.typeChecks`, and every refusal PAIRED with
+      the positive twin it differs from by one word — a `false` from
+      `typeChecks` says "no", not "no for the reason I meant")
+- [x] without the import nothing converts: the same literal is a plain
       type error
-- [ ] `Int`, `Double`, `Boolean` convert; `Long` does not resolve
+- [x] `Int`, `Double`, `Boolean` convert; `Long` does not resolve
 
 ## Out of scope
 - schema languages/validation; a transport module (its own, later)
