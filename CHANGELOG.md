@@ -1,5 +1,26 @@
 # Changelog
 
+## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
+
+The repository's thesis is one primitive, the durable log, and the
+dataflow engine had never read from it. `Streams.chunks(topic, p,
+from)` is a blocking, iterator-backed `Chunks[Record]` over a topic
+partition, and `Flow.of` takes the thunk: three lines, no dependency in
+either direction, because both halves were built to the same shape.
+
+A job over a MemoryStore topic answers what the fan over the array
+answers at 1, 4 and 8 partitions, batch and streamed — and `merged` is
+the same count, because partition p holds the p-th contiguous slice,
+the cut `Flow.slices` makes.
+
+`TooEarly` is a `DroppedHistory` rather than a resume: a partition that
+silently started later than asked would answer a different question.
+
+Box 2 — seeking by epoch, so a resumed run reads from the last epoch
+instead of replaying from zero — is designed in the lane's claim and
+in the spec, not built: the session records its offset beside its
+extent, and `Flow.Src` thunks take a start.
+
 ## Distinct — the row's members, told apart at compile time
 
 `split` decides a union by a runtime test on the left member and takes

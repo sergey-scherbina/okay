@@ -408,10 +408,16 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
 - [x] durable checkpointing, so a COORDINATOR restart can resume —
       stage 8
 
-Stage 11 — the log is the source (not started):
-- [ ] `Flow.topic(topic, decode)`: one partition per topic partition,
-      read through `Streams.stream`, positioned by (epoch, take) —
-      the partition is still a RECIPE, the recipe now names an offset
+Stage 11 — the log is the source (box 1 landed; TestSourceLog):
+- [x] a partition IS a topic partition: `Streams.chunks(topic, p,
+      from)` is a `Chunks[Record]` and `Flow.of` takes the thunk —
+      three lines, no dependency in either direction. A job over a
+      MemoryStore topic answers what the fan over the array answers at
+      1, 4 and 8 partitions, batch and streamed, `merged` included
+- [ ] positioned by epoch — box 2, designed in the lane's claim: the
+      session records the offset it reached beside `extent`, and a
+      fresh session asked for epoch N opens at N-1's offset instead of
+      replaying; `Flow.Src` thunks take a start
 - [ ] a resumed coordinator's workers open at the journal's epoch and
       read from there: recovery is O(elements since the last epoch),
       asserted by counting what the topic was asked for
@@ -1726,3 +1732,37 @@ the engine. The entry asked for a durable stage to survive the
 writer's own death; what survives it is atomicity at the writer, and
 saying so is the whole of the answer. No mechanism was invented to
 justify the lane.
+
+### Stage 11, box 1 — the partition is a topic partition
+
+The repository's thesis is one primitive, the durable log, and until
+this box the dataflow engine had never read from it: a worker DERIVED
+its partition from parameters, which was the honest choice for a
+benchmark and is not a source.
+
+**It cost three lines, and that is the finding.** `Streams.chunks` is
+a blocking, iterator-backed `Chunks[Record]` over a topic partition —
+okay-persist already sees `Chunks` — and `Flow.of` takes any thunk. No
+dependency runs in either direction, and the connector is the user's
+one line: `Flow.of(Vector.tabulate(parts)(p => () => chunks(t, p, 0)))`.
+Both halves fit because both were built to the same shape, and the
+assembly is what the log-as-stream claim was supposed to mean.
+
+**Blocking on purpose.** `Streams.stream` is the effectful producer
+for a consumer that composes; a dataflow partition runs on its own
+fibre and pulls until the source is dry, and an iterator is the whole
+of what it needs. And `TooEarly` is a `DroppedHistory` here rather
+than a resume: a partition that silently started later than it was
+asked to would answer a different question.
+
+**Asserted equal, not close.** Partition p of the topic holds the
+p-th contiguous slice — the cut `Flow.slices` makes — so the two plans
+run over the same partitions and `merged` is the same count, not only
+the answer. Batch and streamed, 1, 4 and 8 partitions.
+
+**What box 1 does not do, and box 2's design is in the claim so the
+next session starts rather than re-derives**: seek. A resumed session
+still catches up by replaying from offset zero. The session has to
+record the offset it reached beside its extent, and a fresh session
+asked for epoch N opens at N-1's — which means `Flow.Src` thunks take
+a start. One Long on the wire and one signature; the whole of box 2.
