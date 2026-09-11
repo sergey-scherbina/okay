@@ -677,8 +677,8 @@ or not at all).
       example of doing it the other way round: the consumer (a
       deployment naming a probe path) was found in the tree first, and
       the description was shaped to fit it.
-- [ ] optics-outside-routes-body — headers and request/response
-      bodies. `Request`/`Response` already carry a `Body` and okay-codec
+- [x] optics-outside-routes-body — request bodies DONE (2026-09-11,
+      stage 7, `Router.json[B]`); headers and RESPONSE bodies remain. `Request`/`Response` already carry a `Body` and okay-codec
       has `Schema`, so a body declaration is the `Toolbox` shape
       (stage 2) rather than the `Query` shape. Wanted BEFORE the
       renderer if the renderer is to describe anything but paths.
@@ -735,6 +735,17 @@ or not at all).
       are claimed.
 
 ## okay-http
+- [ ] route-arity-one-tuple — one captured parameter arrives at a
+      handler as a `Tuple1`, because the route's `A` is
+      `String *: EmptyTuple` and Scala binds the whole tuple to a
+      single sub-pattern. Documented since stage 1 and judged
+      tolerable; the evidence that it is not came from the API's own
+      author, who wrote `{ email => ... }` in the okay-demo conversion
+      and needed the compiler to remember his own warning. A remedy
+      exists on paper — an `on1`-shaped overload, or an `Extract[A]`
+      match type collapsing arity 1 — and both add surface, so the
+      question is whether the wart costs more than the cure. Record a
+      second sighting before deciding.
 - [x] optics-outside-route-of-labels — DONE (2026-09-11, a450ff85). The
       operator settled the open question ("it will be needed"), and
       the entry's own doubt was half wrong: the check catches more

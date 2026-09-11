@@ -323,6 +323,32 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
+  portTest("a query string does not hide a route (optics-outside-demo-routes)") {
+    // The defect: every route here matched `r.url == "..."`, the WHOLE
+    // request target. Jetty used to drop the query string and the
+    // /events/ route's comment said so; e9901797 (http-request-query,
+    // 2026-09-03) fixed Jetty to carry `path?query` as the JDK and
+    // Netty backends always had, and the comment stayed behind. From
+    // that day a query string made every exact match miss.
+    //
+    // The worst instance is not tested here because it is an SSE
+    // stream that never ends: `/events/board` is matched exactly and
+    // `/events/` by PREFIX, in that order, so with a query the exact
+    // match fails, the prefix one takes it, and the caller is given an
+    // inbox stream for the "email" board?t=1 instead of the board
+    // feed. Silently wrong rather than refused. The fix is the same
+    // one these three assertions check: the router cuts the query
+    // before it matches.
+    withServer(512) { port =>
+      for path <- Seq("/?x=1", "/board?x=1", "/board.json?x=1") do
+        val r = client.send(
+          HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
+            .timeout(java.time.Duration.ofSeconds(5)).GET().build(),
+          HttpResponse.BodyHandlers.ofString())
+        assertEquals(r.statusCode(), 200, s"$path answered ${r.statusCode()}")
+    }
+  }
+
   portTest("ops-monitoring: /healthz, /readyz, /stats, /metrics are wired into the demo's own routes") {
     withServer(512) { port =>
       val h = client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/healthz")).GET().build(),
