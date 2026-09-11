@@ -105,7 +105,9 @@ class TestSchemaFold extends munit.FunSuite:
     // a toolchain without the stack guard would take the process down
     assume(platform != "native", "a deliberate stack overflow is not run on Native")
     val overflowed =
-      try { legacy(summon[Schema[Tree]]); false }
+      // `val _` and not a bare call: a discarded non-Unit value is a
+      // warning here, and the point of the call is that it never returns
+      try { val _ = legacy(summon[Schema[Tree]]); false }
       catch case _: Throwable => true
     assert(overflowed, "legacy `of` returned on Tree — the recursion it is claimed to have had is not there")
   }

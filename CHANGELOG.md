@@ -44,6 +44,13 @@ the queries through — their note is worth keeping: a DESCRIBE
 interpreter is only as good as what survives the boundary it is read
 across. Commit: LANDING.
 
+One thing outside the lane came with it, because the gate could not
+go green otherwise: `schema-fold-1`'s deliberate-overflow witness in
+okay-codec discarded a `Json`, which is a warning on all three
+platforms, and "no warnings, ever" makes that a red gate for every
+lane that rebases onto master. `val _ =`, not a `: Unit` ascription —
+the ascription does not silence a value discard.
+
 ## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
 
 The repository's thesis is one primitive, the durable log, and the
