@@ -93,12 +93,20 @@ class TestSchemaFold extends munit.FunSuite:
     case Num(n: Int)
     case Add(l: Expr, r: Expr)
 
+  val platform: String =
+    val vm = System.getProperty("java.vm.name", "")
+    if vm.contains("Scala.js") then "js" else if vm.contains("Native") then "native" else "jvm"
+
   test("the hand-rolled fold never returned on a recursive schema") {
     // the claim this stage makes about the past, checked rather than
-    // stated: an overflow is an Error, caught here and nowhere else
+    // stated. The same rule as TestStackMargin's deliberate overflow:
+    // a StackOverflowError on the JVM, a JavaScriptException
+    // (RangeError) on JS — so Throwable — and not run on Native, where
+    // a toolchain without the stack guard would take the process down
+    assume(platform != "native", "a deliberate stack overflow is not run on Native")
     val overflowed =
       try { legacy(summon[Schema[Tree]]); false }
-      catch case _: StackOverflowError => true
+      catch case _: Throwable => true
     assert(overflowed, "legacy `of` returned on Tree — the recursion it is claimed to have had is not there")
   }
 
