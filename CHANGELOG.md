@@ -69,6 +69,26 @@ It is `Option[String] = None` instead.
 
 Commit: 8881bed2.
 
+## schema-fold stage 3 — Validate, the accumulating decoder
+
+`Validate.decode` is `Json.decode`'s applicative twin: every refusal,
+each at its dotted path, the typed value on success — the same rules,
+read off `decodeNative` line by line, as the ninth algebra over
+`Schema`, on `fold` + `Step`. Laws against `decode` on shared
+fixtures: same verdict on every input, same value on success, decode's
+one message among Validate's many.
+
+Two findings. A dotted-path STRING carried per level is O(depth²)
+bytes — a 100 000-level value exhausted the heap on it (the same
+finding as Form.render's keys, TestFormDepth); Validate carries a cons
+list of segments and renders only on error, and the deep test passes.
+And the membership law caught `Json.decode`'s own wording defect:
+`want.getClass.getSimpleName` is empty for an enum's singleton cases,
+so a wrong scalar read "expected , got JStr(x)" — now the node's kind.
+
+`Form.errors` does NOT switch to Validate: its whole-vs-walk rules
+and wording are pinned UI behaviour; filed as `form-errors-on-validate`.
+
 ## openapi-serve — the document gets its readers
 
 A document nobody serves rots, and the spec named two readers. Both

@@ -521,6 +521,25 @@ object Json {
 
   /** the decoding algebra: fold the schema, read the value back —
    * errors are values (Left), never faults */
+  /** the node's kind, for a refusal — `getClass.getSimpleName` was
+    * used here and is EMPTY for an enum's singleton cases, so a wrong
+    * scalar read "expected , got JStr(x)" (found by Validate's law
+    * against decode, schema-fold stage 3) */
+  private def kindOf(s: Schema[?]): String = s match
+    case Schema.SInt => "SInt"
+    case Schema.SLong => "SLong"
+    case Schema.SDouble => "SDouble"
+    case Schema.SBool => "SBool"
+    case Schema.SString => "SString"
+    case Schema.SChar => "SChar"
+    case Schema.SBytes => "SBytes"
+    case _: Schema.SOption[?] => "SOption"
+    case _: Schema.SList[?] => "SList"
+    case _: Schema.SVector[?] => "SVector"
+    case p: Schema.SProduct[?] => p.name
+    case su: Schema.SSum[?] => su.name
+    case _: Schema.SIso[?, ?] => "SIso"
+
   private def decodeNative[A](s: Schema[A], j: Json, depth: Int): Either[String, A] = (s, j) match
     case (Schema.SInt, JNum(n)) => Right(n.toInt)
     case (Schema.SLong, JNum(n)) => Right(n.toLong)
@@ -578,7 +597,7 @@ object Json {
         .flatMap((_, sc) => decodeAt(sc(), v, depth + 1))
     case (Schema.SIso(u, to, _), v) => decodeAt(u(), v, depth + 1).flatMap(to)
     case (_, JErr(m)) => Left(m)
-    case (want, got) => Left(s"expected ${want.getClass.getSimpleName}, got $got")
+    case (want, got) => Left(s"expected ${kindOf(want)}, got $got")
 
   // ---------------------------------------------------------------
   // the trampoline (json-decode-threshold-trampoline): PAST
@@ -664,7 +683,7 @@ object Json {
     case (Schema.SIso(u, to, _), v) =>
       Cont.defer(() => decodeC(u(), v))(r => Cont.Pure(r.flatMap(to)))
     case (_, JErr(m)) => Cont.Pure(Left(m))
-    case (want, got) => Cont.Pure(Left(s"expected ${want.getClass.getSimpleName}, got $got"))
+    case (want, got) => Cont.Pure(Left(s"expected ${kindOf(want)}, got $got"))
 
   /** text to value in one move, through the total pipeline */
   def read[A](input: String)(using s: Schema[A]): Either[String, A] =

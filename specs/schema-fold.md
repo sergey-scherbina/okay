@@ -197,14 +197,27 @@ Stage 2 — `Step`, and the value algebras move:
       are DELETED, not kept beside the fold
 
 Stage 3 — the ninth algebra, validation:
-- [ ] `Validate[A]: Json => Validated[Vector[(String, String)], A]` —
-      applicative, ALL errors, dotted paths — as a fold; `Form.errors`
-      becomes `Validate` (it already collects everything, by hand)
-- [ ] `Json.decode` is NOT changed: it stays `Either` (first error,
-      monadic), and the two are the same fold under two applicatives
-      — a test proves `Validate(j).toEither.left.map(_.head) ==
-      decode(j)` on the error cases where decode's first error is
-      Validate's first
+- [x] `Validate.decode[A](s)(j): Either[Vector[(Path, String)], A]` —
+      applicative, ALL errors, dotted paths, the typed value on
+      success — as a fold on `Step`; `Validate.errors` is the
+      paths-and-messages view
+- [x] laws against `Json.decode` on shared fixtures (`TestValidate`):
+      the same verdict on every input; the same value on success;
+      on failure decode's one message is among Validate's many (the
+      "first error" law of stage 0 was over-stated: decode's message
+      carries no path and its ORDER of refusal is not a contract —
+      what is provable is membership, and that is what is proved)
+- [x] `Json.decode` is NOT changed in behaviour — one wording defect
+      fixed that the law itself found: `expected ${want.getClass.
+      getSimpleName}` is EMPTY for an enum's singleton cases, so a
+      wrong scalar read "expected , got JStr(x)"; now the node's kind
+- [ ] ~~`Form.errors` becomes `Validate`~~ — NOT done, deliberately:
+      `Form.errors`' rules are UI behaviour its own tests pin (an
+      option or a wrapper is handed WHOLE to the decoder, a nested
+      product is walked; "required"/"choose one" wording), and
+      `Validate` walks options and wrappers (better errors, a different
+      form). Switching is a UI decision with its own tests, filed in
+      BACKLOG (`form-errors-on-validate`), not smuggled in here.
 
 ## Out of scope
 
@@ -307,3 +320,19 @@ that. `Staged` is untouched and reads the same.
 What did NOT move: `Json.print` (walks a `Json`, not a schema — not a
 fold), and `Json.decode`/`Cbor.get`/`JsonStrict` by the spec's own
 scope.
+
+Stage 3 (2026-09-11, schema-fold-3): `Validate` (okay-codec), the
+accumulating decoder on `fold` + `Step`, rules read off
+`Json.decodeNative` line by line (defaults, None-if-optional, damaged
+optional is absent, damaged list element skipped, sum as one-entry
+object, wrapper decodes then refines). Two things it found. The path
+must NOT be a dotted string carried per level: that is O(depth²)
+bytes and a 100 000-level `Tree` exhausted the heap on it — the same
+finding as `Form.render`'s keys, now with a fix: the path is a cons
+list of segments, shared with the parent, rendered only when an error
+is recorded; the deep test passes. And `Json.decode`'s own wording
+was broken for scalars ("expected , got ...") — caught by the
+membership law, fixed. `Step`'s uniform answer type costs two marked
+casts (root and wrapper), the price of a TYPED decoder on a
+fixed-`R` walk; the alternative — a typed per-node answer — is not a
+trampoline. `Form.errors` stays its own algebra (Behavior, stage 3).
