@@ -1,5 +1,46 @@
 # Changelog
 
+## optics-outside-chat-route — a conversation with a hole in it, and nobody told
+
+Two defects in the chat application's main endpoint, both watched to
+fail before anything was changed.
+
+`r.url == "/chat"` compares the WHOLE request target, so `/chat?t=1`
+was a 404 — live since e9901797 stopped Jetty dropping the query, and
+the same class the demo lane fixed an hour earlier.
+
+The second is worse than a miss. `messagesOf(r.body)` picked the
+conversation out by string literal and lost things SILENTLY: a body
+that was not JSON became `Vector.empty`, so the model answered an
+empty conversation with a 200; and a single message missing `role`, or
+carrying a non-string `content`, was DROPPED from the list. Valid-
+looking JSON produced a conversation SHORTER than the client sent,
+with a hole in the middle, and nothing anywhere said so. A 404 is
+noticed in an afternoon; this is noticed in weeks, if at all.
+
+The body is declared now — `Turns(messages: Vector[Message] =
+Vector.empty)` over the `Schema` `Anthropic.Message` already had.
+**The default is the whole compatibility story**: `{}` still means
+"nothing to say" and still answers 200, while a body that does not
+parse is refused with a 400 — and refused BEFORE the model is called,
+which for a paid provider is also money not spent on a request that
+was going to be rejected anyway. A test pins that boundary in both
+directions, because a lane fixing a silent data loss must not quietly
+break a working client.
+
+`messagesOf` stays for callers that already hold a `Body`; its comment
+now says what it loses.
+
+**`Router` gains `jsonAt`, and not for symmetry.** `json` alone could
+not express this route: `turnOverride` is handed the `Request` so a
+verified session can identify the speaker over anything the body
+claims. The first real consumer of `json` found the gap immediately —
+the same story as `on`/`at` in stage 7, reaching the same conclusion,
+that the primitive is the one which sees the request.
+
+okay-chat 16 tests, okay-http 62, and okay-demo's Live suite green
+against the converted route. Landed as 043f43da.
+
 ## optics-outside-demo-routes — a stale comment that became a defect when somebody else's fix landed
 
 Nobody introduced this one. ChatDemo matched every route on
