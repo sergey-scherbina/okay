@@ -1,6 +1,9 @@
 package okay
 
-import scala.language.implicitConversions
+// NO `import scala.language.implicitConversions` here, and that is the
+// point of this file since throws-into: `throws` is declared `into`,
+// so the four absorbing conversions apply without the caller asking
+// the language for permission. Deleting this import is the test.
 
 case class Fault(msg: String) extends Exception(msg)
 
