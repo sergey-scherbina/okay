@@ -178,10 +178,15 @@ is read from the REQUEST, and `Routed[A]` is the url's prism.
   ambient-principal road for handlers that do. Widening the declared
   form to carry a principal is a separate decision with its own
   callers.
-- **`out`/`jsonOut` on a secured route.** Those take a `Routed`, and
-  `secured` produces a `Headed`, so a route cannot yet declare both a
-  requirement and a response VALUE. Nothing in the tree wants both;
-  when something does, the overloads are mechanical.
+- ~~**`out`/`jsonOut` on a secured route.**~~ CLOSED the same day
+  (route-secured-with-a-value). "Nothing in the tree wants both" was
+  wrong within the hour: okay-demo's document rendered `/admin/replay`
+  with a 401, a 403 and no success case. Every combinator has a
+  `Headed` form now. The one thing a caller must know is that they
+  carry no default arguments — Scala allows defaults on one overload
+  of a name — so `status` and `description` go positionally, since a
+  named argument narrows overload resolution before the argument types
+  are read.
 
 ### A smell it removes
 

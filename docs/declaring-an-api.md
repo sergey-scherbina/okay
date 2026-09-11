@@ -548,14 +548,24 @@ and the document was deliberately not generated, is out of date; what
 survives it is the rule that produced it, which is that the consumer
 came first.
 
-**A secured route can declare a PAGE but not yet a value.** `html` and
-`media` have `Headed` forms — a secured route that could not state its
-success case rendered as an operation that only fails, which the
-demo's own document guard caught within the hour. `out`/`jsonOut`/
-`bytes`/`events` still take a `Routed` only; mechanical when something
-asks. Note that the `Headed` forms carry no default arguments (Scala
-allows them on one overload of a name), so `status` and `description`
-go positionally.
+**A declaring route declares its answer too.** Every combinator has a
+`Headed` form — `html`, `htmlAt`, `bytes`, `bytesAt`, `events`,
+`eventsAt`, `media`, `json`, `jsonAt`, `out`, `outAt`, `jsonOut`,
+`jsonOutAt` — and each carries the 401/403 beside whatever it says
+itself:
+
+```scala
+Router.out(Method.Get, (Route / "t" / "id".as[Int]).secured("admin"),
+           200, "the task")((id, _) => fetch(id))
+```
+
+One wrinkle worth knowing: **the `Headed` forms carry no default
+arguments, and `status`/`description` must be passed POSITIONALLY.**
+Scala allows defaults on only one overload of a name and the `Routed`
+forms have them; and a named argument narrows overload resolution
+before the argument types are read, so `description = "…"` picks the
+`Routed` overload and fails to typecheck. It is a compile error rather
+than a wrong answer, but an obscure one.
 
 **Prose is declared where it cannot be derived.** An operation may
 carry one sentence saying what it is FOR:

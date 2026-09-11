@@ -1,5 +1,37 @@
 # Changelog
 
+## route-secured-with-a-value — a declaring route declares its answer
+
+The backlog said "mechanical when something asks". Something asked.
+
+`html` and `media` got their `Headed` forms this morning because
+okay-demo's committed document rendered `/admin/replay` with a 401, a
+403 and no success case. The rest follow now: `htmlAt`, `bytes`,
+`bytesAt`, `events`, `eventsAt`, `json`, `jsonAt`, `out`, `outAt`,
+`jsonOut`, `jsonOutAt` — on the class and on the companion. Each is
+its `Routed` twin with one difference repeated: the match is
+`route.read(r)`, which answers the url's tuple AND the headers', the
+handler takes both, and the entry's answers begin with the 401 and 403
+a requirement implies.
+
+```scala
+Router.out(Method.Get, (Route / "t" / "id".as[Int]).secured("admin"),
+           200, "the task")((id, _) => fetch(id))
+```
+
+`events` is the one worth pointing at: a stream that resumes from
+`last-event-id` is the shape stage A declared a header FOR, and until
+now it could declare the header or its media, not both.
+
+**One wrinkle, written down in three places because it is obscure.**
+The `Headed` forms carry NO default arguments — Scala allows defaults
+on only one overload of a name and the `Routed` forms have them — so
+`status` and `description` go POSITIONALLY. A named argument narrows
+overload resolution before the argument types are read, so
+`description = "…"` picks the `Routed` overload and fails to
+typecheck. A compile error rather than a wrong answer, but not an
+obvious one.
+
 ## demo-admin-declared — the demo broke its own law, for one route
 
 `grep -c admin okay-demo/openapi.json` was **0**. `/admin/replay` was

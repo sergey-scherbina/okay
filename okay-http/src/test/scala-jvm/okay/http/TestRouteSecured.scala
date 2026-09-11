@@ -137,3 +137,53 @@ class TestRouteSecured extends munit.FunSuite:
   test("answering an empty table throws, here, where the mistake is") {
     intercept[IllegalStateException](Router.empty.answering(200, "etag".as[String]))
   }
+
+  // ---- a declaring route can declare its ANSWER too
+  // (route-secured-with-a-value). Every combinator has a `Headed`
+  // form now, and each one carries the 401/403 beside what it says
+  // itself — an operation that could state a requirement but not a
+  // success case read as one that cannot succeed.
+
+  final case class Task(id: Int, title: String) derives okay.codec.Schema
+  final case class NewTask(title: String) derives okay.codec.Schema
+
+  test("out: a secured route declares its VALUE beside its refusals") {
+    val r = Router.out(Method.Get, (Route / "t" / "id".as[Int]).secured("admin"),
+      200, "the task")((id, _) => pure(Task(id, "x")))
+    val e = r.entries.head
+    assertEquals(e.answers.map(_.status).sorted, Vector(200, 401, 403))
+    assertEquals(e.answers.find(_.status == 200).flatMap(_.schema),
+      Some(okay.codec.JsonSchema.of(summon[okay.codec.Schema[Task]])))
+    // and it still refuses without a credential
+    val served = r.enforcing(verify).routes
+    assertEquals(status(served, Request.get("/t/7")), 401)
+    assertEquals(status(served, Request.get("/t/7", Seq("authorization" -> "Bearer t:admin"))), 200)
+  }
+
+  test("jsonOut: a body in, a value out, and the refusals — all declared") {
+    val r = Router.jsonOut[EmptyTuple, EmptyTuple, NewTask, Task](
+      Method.Post, (Route / "t").secured("admin"), 201, "the task created")(
+      (_, _, n) => pure(Task(1, n.title)))
+    val e = r.entries.head
+    assertEquals(e.answers.map(_.status).sorted, Vector(201, 400, 401, 403))
+    assert(e.body.isDefined, "the body schema the decoder was derived from")
+  }
+
+  test("events: the shape `last-event-id` was declared for") {
+    val resume = Route / "events" :@ "last-event-id".opt[Long]
+    var seen: Any = null
+    val r = Router.events(Method.Get, resume, 200, "the stream")((_, from) =>
+      { seen = from; pure(Http.one(Array.empty[Byte])) })
+    assertEquals(r.entries.head.answers.map(_.media), Vector("text/event-stream"))
+    val _ = r.routes(Request.get("/events", Seq("last-event-id" -> "41")))
+    assertEquals(seen, Some(41L))
+  }
+
+  test("bytes and htmlAt reach a declaring route too") {
+    val b = Router.bytes(Method.Get, (Route / "b").secured("admin"), "application/pdf",
+      200, "a pdf")((_, _) => pure(Array.empty[Byte]))
+    assertEquals(b.entries.head.answers.find(_.status == 200).map(_.media), Some("application/pdf"))
+    val h = Router.htmlAt(Method.Get, (Route / "h").secured("admin"), 200, "a page")(
+      (_, _, _) => pure("<p>x</p>"))
+    assertEquals(h.entries.head.answers.find(_.status == 200).map(_.media), Some("text/html"))
+  }
