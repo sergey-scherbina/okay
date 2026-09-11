@@ -1,5 +1,45 @@
 # Changelog
 
+## leads — the ledger the monetisation conversation starts from (specs/leads.md)
+
+The operator's question was how to make the chat prototype pay for its
+hosting without a subscription and without users to charge. The answer
+that comes first, before any pricing: **a lead you cannot count is a
+lead you cannot sell.** `okay-leads` is that count — the fields a
+provider would pay for (what, where, how much, how soon, what came of
+it), none of the data that would make passing them on illegal, and the
+demand they add up to.
+
+- `Capture` reads a turn with NO model: cues in Polish, Russian and
+  English for the five categories, `okay-intent`'s `Amount` for a
+  budget, `Temporal` for a date when no urgent word appears ("od 15
+  października" is an urgency). What none of them read stays
+  `Unknown`; `refine` lets a later tier fill a hole and refuses to let
+  it overwrite what a person wrote. A measurement that costs a token
+  per turn is one that stops when the bill arrives.
+- The message is NOT stored. `session` is `SHA-256(salt ++ id)`
+  truncated — two requests from one conversation are joinable, a person
+  is not identifiable, and rotating the salt forgets everybody.
+  `contact` exists only where somebody asked to be contacted, and
+  `Demand.deliverable` is the only door that returns rows carrying one.
+- `Ledger` is one append-only CSV: survives a restart, opens in a
+  spreadsheet (which is how the first buyer will read it), and
+  `Bulk.csv` aggregates it on one JVM or a cluster unchanged. An
+  unreadable row is reported, never dropped. An outcome changes later,
+  so the file keeps history and `Demand.latest` takes the last row per
+  request.
+- `Demand` is the report, every figure one `Aggregator` zipped into one
+  pass: totals, distinct people, by category, by city, by (category,
+  city) — the pair a provider buys — urgency, outcome, conversion,
+  median budgets from a t-digest (with the count beside them, because
+  "median 2800" over four people is not a median), and rolling demand
+  by the Group's window. `okay.leads.Report` prints it, because the
+  first customer conversation is five lines read out loud, not a
+  dashboard.
+
+13 tests, and `Csv.line` in the core — the inverse of `Csv.fields`, so
+a ledger this writes is a ledger this reads.
+
 ## bulk-plan — the whole plan as a tree, and two rewrites that pay
 
 The effect layer could see one operation at a time (a `Free`

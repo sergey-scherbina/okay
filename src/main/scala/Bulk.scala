@@ -135,6 +135,15 @@ object Csv:
     out += cur.result()
     out.result()
 
+  /** one row back OUT: a field with a comma, a quote or a newline in
+   * it is quoted and its quotes doubled — the inverse of `fields`, so
+   * a ledger this writes is a ledger this reads */
+  def line(values: IterableOnce[String]): String =
+    values.iterator.map { v =>
+      if v.exists(c => c == ',' || c == '"' || c == '\n' || c == '\r')
+      then "\"" + v.replace("\"", "\"\"") + "\"" else v
+    }.mkString(",")
+
   /** lines to rows: the first line names the columns (a BOM is stripped);
    * `keep` prunes at the parser — a dropped column never enters a Map */
   def rows(lines: Iterator[String], keep: Option[Set[String]] = None): Iterator[Row] =
