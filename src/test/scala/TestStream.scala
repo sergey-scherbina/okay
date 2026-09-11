@@ -101,7 +101,7 @@ class TestStream extends munit.FunSuite {
         effect[F, Unit](Writer(s"n$n+$s")).flatMap: _ =>
           effect[F, Int](State.Set(s + n)).flatMap(_ => emits(n - 1))
     val residue: (Int, Unit) ! (Writer % String + Async) =
-      State.handle[Int, Unit, Writer % String + Async](0)(emits(3))
+      State.handle[Int](0)(emits(3))
     assertEquals(residue.toLazyList.toList, List("n3+0", "n2+3", "n1+5"))
   }
 
@@ -132,6 +132,37 @@ class TestStream extends munit.FunSuite {
     assertEquals(ran.toList, List("effect"))
   }
 
+  test("Writer.expand: one told value becomes many, none, or one") {
+    type F = Writer % String + Async
+    val ran = collection.mutable.ListBuffer[String]()
+    val talk: Int ! F =
+      effect[F, Unit](Writer("ab")).flatMap: _ =>
+        effect[F, Unit](Async.Run(() => { ran += "effect"; () })).flatMap: _ =>
+          effect[F, Unit](Writer("")).flatMap: _ =>
+            effect[F, Unit](Writer("cd")).map(_ => 7)
+
+    // each told string becomes its characters: "ab" -> a, b; "" -> nothing
+    val split = Writer.expand[String, Char, Int, Async](talk)(_.toVector)
+    assertEquals(split.toLazyList.toList, List('a', 'b', 'c', 'd'))
+    // the forwarded operation ran once, in its own place in the order
+    assertEquals(ran.toList, List("effect"))
+
+    // one-for-one agrees with `map`, which is expand's degenerate case
+    val loud = Writer.expand[String, String, Int, Async](talk)(w => Vector(w.toUpperCase))
+    assertEquals(loud.toLazyList.toList,
+      Writer.map[String, String, Int, Async](talk)(_.toUpperCase).toLazyList.toList)
+  }
+
+  test("unchunked is expand: chunk boundaries leave no trace in the elements") {
+    // the property the merge lane depends on — the same elements in
+    // the same order whatever the chunk size (merge-chunk-size-curve-
+    // inverted rewired this onto `Writer.expand`)
+    val src: Source[Int] = Source.of(LazyList.range(0, 50))
+    for size <- List(1, 3, 16, 64) do
+      assertEquals(src.chunked(size).unchunked.toLazyList.toList, (0 until 50).toList,
+        s"chunk size $size changed the elements")
+  }
+
   test("a Source is a stream in Async — the instance merge asks for") {
     val src: Source[Int] = Source(1, 2, 3)
     assertEquals(src.toLazyList.toList, List(1, 2, 3))
@@ -154,8 +185,17 @@ class TestStream extends munit.FunSuite {
     // the union survives: each element is one side or the other
     assertEquals(chunked.collect { case i: Int => i }.sorted, (1 to 50).toList)
     assertEquals(chunked.collect { case s: String => s.toInt }.sorted, (51 to 100).toList)
-    // and each source's own order is preserved within the merge
+    // and EACH source's own order is preserved within the merge --
+    // both sides, and the plain merge too. Only the first of these
+    // four was asserted, and only the first caught the day the
+    // channel's buffer stopped keeping a producer's order
+    // (merge-chunked-order, 2026-09-09); the plain merge was breaking
+    // 21 times in 500 at its own default capacity with nothing to
+    // say so.
     assertEquals(chunked.collect { case i: Int => i }, (1 to 50).toList)
+    assertEquals(chunked.collect { case s: String => s.toInt }, (51 to 100).toList)
+    assertEquals(plain.collect { case i: Int => i }, (1 to 50).toList)
+    assertEquals(plain.collect { case s: String => s.toInt }, (51 to 100).toList)
   }
 
   test("merge(chunked): a partial final chunk is flushed, not dropped") {

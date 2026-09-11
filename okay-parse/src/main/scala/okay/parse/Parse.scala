@@ -150,7 +150,14 @@ object Parse {
     var d = initD
     var i = 0
     while i < lexed.tokens.length do
-      if b.stack.length <= 1 then snaps += ((i, b, d))
+      // `.length` on a List walks the whole thing; `.stack`'s
+      // length IS the current nesting depth, so a per-token `.length`
+      // check turned this loop O(depth) per token — O(depth²) total
+      // for a deeply nested document (parse-quadratic-stack-length,
+      // found by json-decode-threshold-trampoline building a test
+      // fixture: 50 000 levels took 74s here alone). `sizeIs` stops
+      // after at most 2 elements for this comparison.
+      if b.stack.sizeIs <= 1 then snaps += ((i, b, d))
       val (d2, is) = step(d, lexed.tokens(i))
       d = d2
       b = is.foldLeft(b)(build[K].add)
@@ -218,7 +225,7 @@ object Parse {
     var d = d0
     var i = start
     while i < toks.length do
-      if b.stack.length <= 1 then
+      if b.stack.sizeIs <= 1 then
         snaps += ((i, b, d))
         // reconverged? the rest of the token stream is the old one,
         // the old run stood at a matching boundary here, AND its
@@ -227,7 +234,7 @@ object Parse {
         if i >= toks.length - l then
           val o = i - tokenDelta
           oldSnaps.get(o) match
-            case Some((bo, dOld)) if bo.stack.length == b.stack.length
+            case Some((bo, dOld)) if bo.stack.sizeCompare(b.stack) == 0
               && bo.stack.map(_._1) == b.stack.map(_._1) && dOld == d =>
               val suffixTop = oldRootKids.drop(bo.done.length)
               val kids = (b.stack, bo.stack) match

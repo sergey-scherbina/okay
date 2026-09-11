@@ -125,7 +125,7 @@ class FusionBenchmark {
   /** State first, then Writer: Writer operations rebuilt once */
   @Benchmark
   def nestedWS(): Int =
-    !.run(Writer.run[String, (Int, Int), Pure](State.handle[Int, Int, Writer % String](0)(sw)))._2._2
+    !.run(Writer.run[String, (Int, Int), Pure](State.handle[Int](0)(sw)))._2._2
 
   @Benchmark
   def fusedSW(): Int =
@@ -148,7 +148,7 @@ class FusionBenchmark {
   @Benchmark
   def nestedTSW(): Int =
     !.run(runEither[(Int, (Seq[String], Int)), Pure, String](
-      State.handle[Int, (Seq[String], Int), Throws % String](0)(
+      State.handle[Int](0)(
         Writer.run[String, Int, Throws % String + State % Int](tsw)))).toOption.get._2._2
 
   @Benchmark

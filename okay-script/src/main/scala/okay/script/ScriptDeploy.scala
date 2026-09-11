@@ -64,8 +64,18 @@ object ScriptDeploy:
         Need.Volume("/app/data", name = "data"),
         Need.Tls(TlsMode.Proxy)),
       // a Site is ready when it is live: the pages were compiled
-      // before the port was bound (okay-script-warm)
-      health = Health(livenessPath = "/healthz", readinessPath = "/healthz"))))
+      // before the port was bound (okay-script-warm) -- so BOTH probes
+      // name the liveness path, deliberately.
+      //
+      // The paths come from `Site.Ops`, not from literals
+      // (specs/optics-outside.md, stage 4). This module already
+      // derives its SETTINGS from the value the program itself reads,
+      // for the reason stated above; a probe path is the same kind of
+      // claim, and until now was the one thing here a deployment could
+      // invent. `TestSiteOps` asserts that every path named here is one
+      // the Site actually serves, which nothing could state before.
+      health = Health(livenessPath = Site.Ops.healthz.describe,
+                      readinessPath = Site.Ops.healthz.describe))))
 
   def main(args: Array[String]): Unit =
     val root = Deployment.repoRoot()

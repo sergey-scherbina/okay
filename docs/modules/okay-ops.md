@@ -8,6 +8,53 @@
 Depends on: `okay`, `okay-codec`, `okay-persist`, `okay-http`. Tests:
 a real socket (`okay-jetty`, JVM test scope).
 
+## The surface is a value, so a deployment can read it
+
+`Ops.routes` used to match with `r.url == "/healthz"`, and a manifest
+that had to name that path wrote its own literal. Three copies of one
+string — the route, `okay-deploy`'s `Health` defaults, and whatever
+each deployment wrote by hand — with nothing able to tell you when one
+of them was wrong.
+
+The four endpoints are values now (specs/optics-outside.md, stage 4):
+
+```scala
+Ops.healthz   // Route[EmptyTuple], describes as "/healthz"
+Ops.readyz
+Ops.stats
+Ops.metrics
+Ops.paths     // Set("/healthz", "/readyz", "/stats", "/metrics")
+
+Ops.router(store, …)   // the four, declared once
+Ops.routes(store, …)   // the same, as the PartialFunction every server takes
+```
+
+The surface itself, rendered from the router that serves it —
+`TestOpsSurface` asserts this block is what `Ops.router(...).markdown`
+produces, so an endpoint cannot be served and undocumented, or
+documented and unserved:
+
+<!-- generated: Ops.router(store).markdown -->
+| verb | path | body |
+|---|---|---|
+| `GET` | `/healthz` | — |
+| `GET` | `/readyz` | — |
+| `GET` | `/stats` | — |
+| `GET` | `/metrics` | — |
+<!-- /generated -->
+
+`paths` exists apart from the router because a deployment has to name a
+probe and has no `Store` to build a router with — that is exactly what
+a describing interpreter is for. `TestOpsSurface` asserts that `paths`
+is precisely what `router(…).describe` dispatches, so the two cannot
+drift; okay-script does the same for its own three with `Site.Ops`, and
+its `ScriptDeploy` names both probes from there.
+
+One behaviour changed, and it was a disagreement nobody had noticed:
+`Ops` compared the whole url while okay-script's `Site` compared only
+the path, so `/healthz?probe=1` was served by one and missed by the
+other. Both behave like `Site` now.
+
 ## Guide
 
 **Wire it in.** `Ops.routes(store)` is a `PartialFunction[Request,

@@ -185,6 +185,47 @@ class RagBenchmark {
   @Benchmark
   def searchVectors: Int = store.search(probe, 8).runWith.size
 
+  // ---- the top-k aggregator, isolated from the similarity
+  //
+  // `MemoryStore.search` folds the whole corpus through
+  // `Aggregator.topK`. Its accumulator is a List of the k best, and
+  // before this lane every element consed onto it and re-sorted the
+  // result — a sort and ~k allocations per corpus item, to keep 8 of
+  // them. The old implementation is kept here verbatim so the pair
+  // runs in ONE JMH invocation: the cosine swamps the difference if
+  // the two are measured end to end alone, so the fold is priced on
+  // ALREADY-SCORED items first and end to end second.
+
+  private given Ordering[Scored] = Ordering.by(_.score)
+
+  private def topKSorting[A](k: Int)(using O: Ordering[A]): Aggregator[A, List[A], List[A]] =
+    def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
+    Aggregator(List.empty[A])((s, a: A) => keep(a :: s))((a, b) => keep(a ++ b))(identity)
+
+  /** the corpus already scored: what remains is the selection alone */
+  val scored: Vector[Scored] =
+    store.snapshot.map((s, e) => Scored(s, Vectors.cosine(probe, e)))
+
+  private def select(agg: Aggregator[Scored, List[Scored], List[Scored]]): Int =
+    agg.present(scored.foldLeft(agg.init)(agg.add)).size
+
+  @Benchmark
+  def topKSortEveryElement: Int = select(topKSorting[Scored](8))
+
+  @Benchmark
+  def topKGuarded: Int = select(Aggregator.topK[Scored](8))
+
+  /** the same two, with the similarity back in: what a query pays */
+  private def searchWith(agg: Aggregator[Scored, List[Scored], List[Scored]]): Int =
+    agg.present(store.snapshot.foldLeft(agg.init)((acc, it) =>
+      agg.add(acc, Scored(it._1, Vectors.cosine(probe, it._2))))).size
+
+  @Benchmark
+  def searchVectorsSortEveryElement: Int = searchWith(topKSorting[Scored](8))
+
+  @Benchmark
+  def searchVectorsGuarded: Int = searchWith(Aggregator.topK[Scored](8))
+
   /** the whole per-query cost an agent actually pays */
   @Benchmark
   def retrieveAndAssemble: Int =

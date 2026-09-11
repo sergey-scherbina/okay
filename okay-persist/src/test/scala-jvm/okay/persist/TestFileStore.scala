@@ -235,6 +235,96 @@ class TestFileStore extends StoreSuite:
  * another thread or another JVM. Eight of them on one barrier
  * reproduces it every run.
  */
+
+  // ── a SECOND handle on one directory ────────────────────────────
+  //
+  // specs/persist.md ticks "poll-on-end", and the header above calls
+  // several processes on one shared log the arrangement this module's
+  // two-node story describes. Both were true only within ONE handle:
+  // `segments` is memory, so a reader opened before an append never
+  // saw it. Found 2026-09-09 by okay-chat's reading replica, which
+  // applied 0 records while the log had grown by four.
+
+  test("a reader opened BEFORE an append sees it — the two-node contract") {
+    val dir = tmp()
+    val writer = FileStore.open(dir).topic("t", 1, Policy.default)
+    writer.append(0, "k".getBytes, "one".getBytes, Ack.Durable): Unit
+
+    // the follower opens here, and everything below is appended after
+    val follower = FileStore.open(dir).topic("t", 1, Policy.default)
+    assertEquals(read(follower, 0).map(v => String(v)), Vector("one"))
+
+    writer.append(0, "k".getBytes, "two".getBytes, Ack.Durable): Unit
+    writer.append(0, "k".getBytes, "three".getBytes, Ack.Durable): Unit
+    assertEquals(read(follower, 1).map(v => String(v)), Vector("two", "three"),
+      "the follower tailed nothing: a second handle cannot see appends")
+    assertEquals(follower.end(0), writer.end(0))
+  }
+
+  test("…and across a segment the writer rolled") {
+    val dir = tmp()
+    // segments so small that three records roll one
+    val tiny = Policy(segmentBytes = 120)
+    val writer = FileStore.open(dir).topic("t", 1, tiny)
+    writer.append(0, "k".getBytes, "one".getBytes, Ack.Durable): Unit
+    val follower = FileStore.open(dir).topic("t", 1, tiny)
+    assertEquals(read(follower, 0).map(v => String(v)), Vector("one"))
+
+    for i <- 2 to 8 do writer.append(0, "k".getBytes, s"r$i".getBytes, Ack.Durable): Unit
+    val files = Files.list(dir.resolve("t").resolve("0"))
+    val n = try files.iterator.asScala.count(_.getFileName.toString.endsWith(".log")) finally files.close()
+    assert(n > 1, s"the fixture did not roll a segment: $n files")
+    assertEquals(read(follower, 1).map(v => String(v)).length, 7,
+      "the follower stopped at the segment it had open when it started")
+  }
+
+  test("a segment DELETED behind an open reader: the directory decides, and the reader says TooEarly rather than crashing or serving a ghost") {
+    val dir = tmp()
+    val writer = FileStore.open(dir).topic("t", 1, tinyRetention)
+    (0 until 50).foreach(i => writer.append(0, Array.empty, bytes(s"payload-$i"), Ack.Durable))
+    // the reader opens with EVERY segment still on disk and reads from
+    // the front, so its derived segment list holds them all
+    val reader = FileStore.open(dir).topic("t", 1, tinyRetention)
+    val begin = reader.begin(0)
+    assert(read(reader, begin).nonEmpty)
+    val before = segmentsOf(dir, "t").length
+
+    // the writer's retention now drops whole segments from the front —
+    // files the reader still has in its list
+    (50 until 120).foreach(i => writer.append(0, Array.empty, bytes(s"payload-$i"), Ack.Durable))
+    val after = segmentsOf(dir, "t")
+    assert(after.length < before + 3 && writer.begin(0) > begin,
+      s"the fixture dropped nothing: $before -> ${after.length}, begin ${writer.begin(0)}")
+
+    // reading from an offset whose file is GONE must answer TooEarly at
+    // what survives — never a crash, never a record from a deleted file
+    reader.read(0, begin, 64) match
+      case Topic.Read.TooEarly(b) =>
+        assert(b >= writer.begin(0), s"TooEarly($b) points before the surviving front ${writer.begin(0)}")
+      case Topic.Read.Records(rs) =>
+        assert(rs.isEmpty || rs.head.offset >= writer.begin(0),
+          s"served a record at ${rs.head.offset} from below the surviving front ${writer.begin(0)}")
+    // and the reader goes on to serve what IS there, in one piece
+    val tail = read(reader, writer.begin(0)).map(v => String(v))
+    assertEquals(tail.length, (writer.end(0) - writer.begin(0)).toInt)
+    assertEquals(tail.last, "payload-119")
+  }
+
+  /** every record from `from`, in one or more polls, the way a tail
+   * reads: a follower asks again until nothing new comes back */
+  private def read(t: Topic, from: Long): Vector[Array[Byte]] =
+    var out = Vector.empty[Array[Byte]]
+    var at = from
+    var going = true
+    while going do
+      t.read(0, at, 64) match
+        case Topic.Read.Records(rs) if rs.isEmpty => going = false
+        case Topic.Read.Records(rs) =>
+          out ++= rs.map(_.value); at = rs.last.offset + 1
+        case Topic.Read.TooEarly(b) => at = b
+    out
+
+
 class TestFileStoreRace extends munit.FunSuite {
 
   test("several openers on one empty directory all succeed") {

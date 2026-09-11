@@ -20,16 +20,19 @@ class TestTag extends munit.FunSuite {
   test("one function, two states, one row — and it was not written for it") {
     val p: (Int, Int) ! Both =
       for
-        a <- Tag.tag["small", State % Int, Int, okay.Pure](bump(1)).plus[Big]
-        b <- Tag.tag["big", State % Int, Int, okay.Pure](bump(10)).at[Both]
+        a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
+        // the second clause, written: `G` infers from the program,
+        // and a program of State alone gives back State rather than
+        // Pure — `.at[Both]` needs the Pure row (generalized-method-syntax)
+        b <- Tag.tag["big", State % Int][Int, okay.Pure](bump(10)).at[Both]
       yield (a, b)
 
     // handling is the effect's OWN: untag one key, run State, repeat
     val afterSmall: (Int, (Int, Int)) ! Big =
-      State.handle[Int, (Int, Int), Big](1)(Tag.untag["small", State % Int, (Int, Int), Big](p))
+      State.handle[Int](1)(Tag.untag["small", State % Int](p))
     val (big, (small, answer)) =
-      !.run(State.handle[Int, (Int, (Int, Int)), okay.Pure](100)(
-        Tag.untag["big", State % Int, (Int, (Int, Int)), okay.Pure](afterSmall)))
+      !.run(State.handle[Int](100)(
+        Tag.untag["big", State % Int](afterSmall)))
     assertEquals(answer, (1, 100))
     assertEquals(small, 2)     // 1 + 1
     assertEquals(big, 110)     // 100 + 10
@@ -40,13 +43,13 @@ class TestTag extends munit.FunSuite {
     type B = Tag.Of["b", Reader % Int]
     val p: (Int, Int) ! (A + B) =
       for
-        x <- Tag.one["a", Reader % Int, Int](Reader.Ask()).plus[B]
-        y <- Tag.one["b", Reader % Int, Int](Reader.Ask()).at[A + B]
+        x <- Tag.one["a", Reader % Int](Reader.Ask()).plus[B]
+        y <- Tag.one["b", Reader % Int](Reader.Ask()).at[A + B]
       yield (x, y)
     val inner = Reader.run[Int, (Int, Int), A](7)(
-      Tag.untag["b", Reader % Int, (Int, Int), A](p.at[B + A]))
+      Tag.untag["b", Reader % Int](p.at[B + A]))
     val out = !.run(Reader.run[Int, (Int, Int), okay.Pure](1)(
-      Tag.untag["a", Reader % Int, (Int, Int), okay.Pure](inner)))
+      Tag.untag["a", Reader % Int](inner)))
     assertEquals(out, (1, 7))
   }
 
@@ -55,7 +58,7 @@ class TestTag extends munit.FunSuite {
       case Boop() extends Beep[Int]
     val h: Handler[Beep] = new:
       def handle[A](e: Beep[A]): A = e match { case Beep.Boop() => 42 }
-    val p: Int ! Tag.Of["x", Beep] = Tag.one["x", Beep, Int](Beep.Boop())
+    val p: Int ! Tag.Of["x", Beep] = Tag.one["x", Beep](Beep.Boop())
     assertEquals(p.runWith(using Tag.handler["x", Beep](h)), 42)
   }
 }

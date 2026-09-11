@@ -49,4 +49,18 @@ class TestBpe extends munit.FunSuite {
     val corpus = "hello  world\n her"
     assertEquals(Scan.all(bpe)(corpus).tokens.map(_.lexeme).mkString, corpus)
   }
+
+  test("the sink road tokenizes what the pair road tokenizes") {
+    val text = "hello world  here\nworld hell"
+    var s = bpe.init
+    val pair = Vector.newBuilder[Token[String]]
+    text.foreach { c =>
+      val (s2, ts) = bpe.step(s, c)
+      pair ++= ts
+      s = s2
+    }
+    pair ++= bpe.flush(s)
+    assertEquals(Scan.all(bpe)(text).tokens, pair.result())
+    assertEquals(pair.result().map(_.lexeme).mkString, text)   // still lossless
+  }
 }

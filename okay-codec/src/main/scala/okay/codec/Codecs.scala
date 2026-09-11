@@ -25,6 +25,51 @@ package okay.codec
  */
 object Codecs {
 
+  /**
+   * There is deliberately NO depth limit here — `Codecs.maxDepth`
+   * (256, then 64) lived for one reason: the interpreted CBOR/JSON
+   * decoders cost real native stack per level of a RECURSIVE schema,
+   * MEASURED 2026-09-10 at ~4-8 KB/level, so an unbounded message
+   * from an adversarial sender was a `StackOverflowError` in a module
+   * whose doors promise an `Either` or a value. That reason is gone:
+   * `iterative-recursive-decode.md`'s arc gave every recursive door
+   * (`Cbor.get`, `Json.decode`, `Cbor.In.skipItem`, `JsonValue`'s fast
+   * parser, `Json.lossless`'s projection, `JsonStrict.Reader.get`) a
+   * `Cont.defer` trampoline past `NativeThreshold`, so native stack no
+   * longer scales with input depth anywhere in this module — measured
+   * directly (a scratch depth of 100 000-500 000 decodes correctly on
+   * each door before this removal landed) rather than assumed.
+   *
+   * Removing the number is not "depth is now free": a `Cont.defer`
+   * trampoline still allocates one node per level, and the decoded
+   * value tree still lives on the heap. An adversarially deep message
+   * now costs HEAP instead of native stack — a different failure mode
+   * (a whole-JVM `OutOfMemoryError` rather than one thread's
+   * `StackOverflowError`), not no failure mode. Reintroducing a limit,
+   * if that trade is ever wanted back, is a pure wire-contract policy
+   * choice at this point — nothing in the decoders needs it for their
+   * own correctness or safety.
+   */
+
+  /**
+   * How deep the interpreted fold recurses NATIVELY before switching
+   * to a `Cont.defer` trampoline (iterative-recursive-decode; the
+   * design landed once for `Cbor.get`/`Cbor.In.skipItem`, once for
+   * `Json.decode`, both reusing this same number). Centralized here,
+   * beside `maxDepth`, rather than a `private val = 24` copied into
+   * every file that needs it — cbor-decode-threshold-trampoline and
+   * json-decode-threshold-trampoline each carried their own before
+   * this, and json-raw-nesting-threshold-trampoline was about to add
+   * a third and fourth copy.
+   *
+   * Well under any depth a real message reaches (this arc's own
+   * repo-wide grep found no consumer nesting real data past a
+   * handful of levels), so the switch is never on a caller's hot
+   * path, and well under `maxDepth` so a document at the wire's own
+   * limit still costs no native stack proportional to its depth.
+   */
+  val NativeThreshold: Int = 24
+
   trait Provider:
     def name: String
     def json[A](s: Schema[A]): JsonCodec[A]

@@ -183,6 +183,10 @@ object Cluster extends Target:
                 |""".stripMargin
     }
     sb ++= "          resources:\n            {{- toYaml $v.resources | nindent 12 }}\n"
+    // the drain's budget: the process answers SIGTERM itself
+    // (okay-ops Signals), so there is no preStop hook — this is only
+    // Kubernetes being told to WAIT for it (deploy-stop-grace)
+    sb ++= s"      terminationGracePeriodSeconds: ${s.health.stopSeconds}\n"
     if s.volumes.nonEmpty then
       sb ++= "      volumes:\n"
       for v <- s.volumes do

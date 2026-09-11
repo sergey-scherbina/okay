@@ -2,6 +2,14 @@
 // index children in order — docs/protocol/frontend.md), and the HYBRID
 // rule: a Form's fields fold here, its button submits once, a live
 // input speaks per change, everything else crosses the wire.
+//
+// On the Scala side each of these has a name in the optics
+// (specs/optics.md stage 2), and porting one is easier knowing which:
+//   apply(_:_:)  ~ Ui.path(patch.path)  — the affine at an index path
+//   map(_:_:)    ~ Ui.everywhere        — the traversal over every node
+//   keys / forms ~ Ui.shown             — only what is on screen
+//   the key work ~ Ui.key(k)            — every node a key names
+// A port needs none of that machinery; the names are the map.
 
 public enum Tree {
 

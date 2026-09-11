@@ -55,8 +55,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenc
  * part asked of the whole — so it is a law, not an argument.
  */
 final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = false,
-                           first: Buffer[A] | Null = null,
-                           firstOwner: Thread | Null = null)
+                           first: Buffer[A] | Null = null)
     extends Buffer[A] {
 
   private val cap = if limit < 1 then 1 else limit
@@ -88,16 +87,49 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * a reader never has to walk the array to count */
   private val open = AtomicInteger(if eager then cap else 1)
 
+  /**
+   * READ THE ADOPTED PART FIRST, whenever it has anything in it.
+   *
+   * An adopted part 0 is a ring PRODUCERS WERE ALREADY PUSHING INTO,
+   * and every one of them is about to be handed a part of its own.
+   * Their earlier elements stay in part 0, their later ones go to the
+   * new parts, and parts drain independently -- so without this a
+   * producer's own later elements can be read before its earlier
+   * ones. Measured with two plain threads (which never migrate, so
+   * this is the swap and not a thread-keyed route): 73 rounds in 300.
+   * It reached the gate as a merge whose source came back
+   * 1..16, 49, 50, 17..48 (merge-chunked-order, 2026-09-09).
+   *
+   * The fix orders the READ, not the producers: everything in part 0
+   * was pushed before anything in a part opened after it, so taking
+   * part 0 first puts each producer's own elements back in order and
+   * nobody waits.
+   *
+   * A RULE, NOT A PHASE, and that is the second correction. The first
+   * cut made this a one-shot barrier that lifted the first time part
+   * 0 came up empty -- and a send whose route was read from the ring
+   * BEFORE the swap can still arrive at part 0 after that, so one
+   * element landed behind its own successors: 1 run in 400, as
+   * `... 27 29 31 33 23 35 37`, where the mass reordering it replaced
+   * was 73 in 300. Standing on the rule costs one `pop` on an empty
+   * ring per read once part 0 is drained, and has no window at all.
+   *
+   * Only a buffer that ADOPTED one has a part 0 like this; the
+   * others open every part themselves and no producer ever moves.
+   */
+  private val adopted: Boolean = first != null
+
   /** set once the channel is closing: no part may be opened after
    * that, or its end mark would never be placed */
   private val frozen = AtomicBoolean(false)
 
   /** the next part to hand out, and the route each thread keeps */
-  // an ADOPTED part 0 already has an owner: the producer that filled
-  // the ring this buffer grew out of. Its elements are in there, so it
-  // must keep pushing there, and the next claimer must not be given
-  // the same part
-  private val nextPart = AtomicInteger(if firstOwner != null then 1 else 0)
+  // an ADOPTED part 0 is never handed out: it is read to the end
+  // before anything opened after it, and until then nobody's home is
+  // there. It used to be handed to the producer whose ring it was --
+  // which is what a `firstOwner` parameter named, and that parameter
+  // is gone with the reason for it (merge-chunked-order).
+  private val nextPart = AtomicInteger(if first != null then 1 else 0)
   /** a producer's own part: the index the channel routes its parked
    * senders by, and the BUFFER itself, so the hot push is one
    * thread-local read and the ring's own push — no `open` read, no
@@ -108,10 +140,42 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   private val mine = new ThreadLocal[Home]:
     override def initialValue(): Home =
-      if (Thread.currentThread() eq firstOwner) then Home(0, slots.get(0).nn)
-      else
-        val i = claimPart()
-        Home(i.intValue, slots.get(i.intValue).nn)
+      // AN ADOPTED PART 0 IS DRAIN-ONLY, its former owner included.
+      // Part 0 used to be kept for the producer that filled the ring
+      // — its elements were in there, so it had to stay — and that
+      // producer then REFILLED it as fast as the consumer emptied it.
+      // Harmless while nothing waited on part 0; not harmless now
+      // that the read order does. The rule above keeps that
+      // producer's order without pinning it, which was the only
+      // reason to pin it, so nobody is pinned.
+      val i = claimPart()
+      Home(i.intValue, slotAt(i.intValue))
+
+  /**
+   * The slot for an index the COUNT already covers.
+   *
+   * `claimPart` publishes the count (`open.getAndIncrement()`) before
+   * the slot (`slots.set`), so a producer that SHARES an existing
+   * part — more producers than parts, or a frozen buffer — can arrive
+   * between the two and read a null. Every other reader here expects
+   * that and comes back: `partAt` falls back to part 0, the pop and
+   * seal scans skip the null. A producer's HOME cannot fall back —
+   * its whole order lives in the part it takes, and part 0 belongs to
+   * someone else — so it waits, and what it waits for is the opener's
+   * very next statement (the same reasoning `seal` states for its own
+   * spin, and no `onSpinWait` here for the same portability reason).
+   *
+   * MEASURED (channel-lost-part, 2026-09-09): without the wait, a
+   * first send threw `NullPointerException` within three rounds of 16
+   * producers over 2 parts, and at 16x16 through a channel it killed
+   * the producer thread outright — which the many-to-many law then
+   * reported as "the channel lost one producer's 1000 elements",
+   * because nothing had ever asked whether a producer finished.
+   */
+  private def slotAt(i: Int): Buffer[A] =
+    var b = slots.get(i)
+    while b == null do b = slots.get(i)
+    b.nn
 
   /**
    * ONE CONSUMER AT A TIME PER PART (consumer-claim, 2026-09-07, the
@@ -182,7 +246,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   private def claimPart(): Integer =
     val want = nextPart.getAndIncrement()
     if want == 0 then Integer.valueOf(0)
-    else if frozen.get then Integer.valueOf(Math.floorMod(want, opened))
+    else if frozen.get then share(want, opened)
     else
       val idx = open.getAndIncrement()
       if idx < cap then
@@ -191,7 +255,26 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       else
         // the cap is reached: give the count back and share
         open.decrementAndGet(): Unit
-        Integer.valueOf(Math.floorMod(want, cap))
+        share(want, cap)
+
+  /**
+   * More producers than parts: they SHARE, and on an adopted buffer
+   * they share everything except part 0.
+   *
+   * Part 0 is read before the parts opened after it, so a producer
+   * given it as a home would refill the very part the others wait
+   * behind and starve them — the wrap-around used to hand it out
+   * freely, which turned an ordering rule into a fairness bug the
+   * moment the parts ran out (merge-chunked-order, 2026-09-09).
+   * Sharing a part costs nothing in order: a part is a FIFO, so each
+   * of its producers still reads back in the order it pushed.
+   *
+   * With one part and nothing else to share, part 0 is all there is,
+   * and reading "part 0 first" is then just reading the buffer.
+   */
+  private def share(want: Int, n: Int): Integer =
+    if !adopted || n <= 1 then Integer.valueOf(Math.floorMod(want, n))
+    else Integer.valueOf(1 + Math.floorMod(want, n - 1))
 
   /** the open count, never past the cap: a claimer may have taken the
    * count one past it for the instant before it gives it back */
@@ -308,7 +391,16 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     // 112.4) -- and the hand-tuned relaxed lane costs the same, so
     // that price is partitioning itself rather than adapting. This
     // shaves what can be shaved off it.
-    if open.get == 1 then { myRoute.set(0); slots.get(0).nn.pop() }
+    if adopted then popAdoptedFirst()
+    else if open.get == 1 then { myRoute.set(0); slots.get(0).nn.pop() }
+    else popScanning()
+
+  /** part 0 before anything opened after it; empty, and this is the
+   * ordinary read with one spent `pop` in front of it */
+  private def popAdoptedFirst(): A | Null =
+    val out = slots.get(0).nn.pop()
+    if out != null then { myRoute.set(0); out }
+    else if open.get == 1 then null
     else popScanning()
 
   private def popScanning(): A | Null =
@@ -325,7 +417,20 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     out
 
   override def popMany(max: Int)(sink: A => Unit): Int =
-    if open.get == 1 then { myRoute.set(0); slots.get(0).nn.popMany(max)(sink) }
+    if adopted then popManyAdoptedFirst(max)(sink)
+    else if open.get == 1 then { myRoute.set(0); slots.get(0).nn.popMany(max)(sink) }
+    else popManyScanning(max)(sink)
+
+  private def popManyAdoptedFirst(max: Int)(sink: A => Unit): Int =
+    // the claim, for the same reason `popManyScanning` takes it: two
+    // consumers must not drain one part's head at once. A consumer
+    // that cannot have it moves on rather than waits — the holder is
+    // draining part 0, which is the thing this wanted done
+    var took = 0
+    if claimed.compareAndSet(0, 0, 1) then
+      try took = slots.get(0).nn.popMany(max)(sink) finally claimed.set(0, 0)
+    if took > 0 then { myRoute.set(0); took }
+    else if open.get == 1 then 0
     else popManyScanning(max)(sink)
 
   private def popManyScanning(max: Int)(sink: A => Unit): Int =
@@ -361,6 +466,9 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     eachOpen(b => if !b.isEmpty then empty = false)
     empty
 
+  // no adopted case here, and that is the point of a rule over a
+  // phase: every part stays readable, part 0 is merely read FIRST, so
+  // what is ready is what it always was
   override def hasReady: Boolean =
     if open.get == 1 then slots.get(0).nn.hasReady
     else hasReadyScanning

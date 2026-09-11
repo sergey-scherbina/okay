@@ -55,12 +55,71 @@ class TestDsl extends munit.FunSuite {
     assertEquals(Term.render(words(lit("this"), lit("week"))), "this\\s+week")
   }
 
+  test("`unless`: not these words, and then this — «хочу сделать» and not «хочу найти»") {
+    val verb = seq(raw("\\w+", "a word"), any(lit("ть"), lit("ти")))
+    val t = unless(any(lit("найти"), lit("искать")))(verb)
+    assertEquals(Term.render(t), "(?!найти|искать)\\w+(?:ть|ти)")
+    val p = java.util.regex.Pattern.compile((rule(lit("хочу")) space t).pattern)
+    assert(p.matcher("хочу сделать ремонт").find())
+    assert(!p.matcher("хочу найти мастера").find(), "«найти» is the word it must not be")
+    // the lookahead consumes nothing, so a quoted fragment inside either side is still counted
+    assertEquals(Term.raws(t).map(_._2), Vector("a word"))
+  }
+
+  test("letters, endings, a word said twice, a stem that stops — shapes, not gaps") {
+    // one of these characters, and not a stem: «мою» «моя» «мои», never «моего»
+    assertEquals(Term.render(seq(lit("мо"), chars("юяи"))), "мо[юяи]")
+    assertEquals(Term.render(seq(lit("перестал"), maybeChars("аои"), lit(" работать"))), "перестал[аои]? работать")
+    // an ending of more than one letter, or a choice of them; an alternation is already a group
+    assertEquals(Term.render(seq(lit("удали"), maybe(any(lit("ть"))))), "удали(?:ть)?")
+    assertEquals(Term.render(seq(lit("cancel"), maybe(any(lit("ling"), lit("led"))))), "cancel(?:ling|led)?")
+    assertEquals(Term.render(seq(lit("эт"), any(lit("ой"), lit("у")))), "эт(?:ой|у)")
+    assertEquals(Term.render(seq(maybe(lit("my ")), lit("deals"))), "(?:my )?deals")
+    // the qualifiers before «заявку», any number of them
+    assertEquals(Term.render(manyThen(any(lit("мою"), lit("все")))), "(?:(?:мою|все)\\s+)*")
+    // a stem that may not run on
+    assertEquals(Term.render(stemUpTo("мо", 3)), "мо\\w{1,3}")
+    val p = java.util.regex.Pattern.compile("(?iU)\\b" + Term.render(stemUpTo("мо", 3)) + "\\s+заявк\\w*")
+    assert(p.matcher("моей заявке").find())
+    assert(!p.matcher("монитор заявка").find(), "«монитор» is not a form of «мой»")
+    // a rule that ends on a colon
+    assertEquals(rule(any(lit("can"), lit("offer"))).colon.pattern, "(?iU)\\b(?:can|offer)\\s*:")
+    // and every one of them is counted through
+    assertEquals(Term.raws(manyThen(maybe(raw("x", "why")))), Vector("x" -> "why"))
+  }
+
   test("a quoted fragment carries its reason, and `either` joins whole rules under one flag") {
     val e = either(rule(lit("кто я")), RawRule("\\bпокажи\\b.*\\bпрофиль\\b", "the `.*` branch"))
     assertEquals(e.pattern, "(?iU)\\bкто я\\b|\\bпокажи\\b.*\\bпрофиль\\b")
     assertEquals(rawsOf(e).map(_._2), Vector("the `.*` branch"))
     val t = rule(any(lit("что"), raw("what(?:'s| is)?", "an inline optional")))
     assertEquals(rawsOf(t).map(_._2), Vector("an inline optional"))
+  }
+
+  test("a slot: one capture, read wherever it stands, the rest of the message only at its end") {
+    // a deal number, anywhere in the message
+    val deal = slot("deal")(anywhere(capture(number)))
+    assertEquals(deal.pattern, "(?iU)(\\d+)")
+    val m = java.util.regex.Pattern.compile(deal.pattern).matcher("беру 12")
+    assert(m.find()); assertEquals(m.group(1), "12")
+    // the thing after «нужен:», to the end — and the whole message will do without it
+    val what = slot("what")((anywhere(any(lit("нужен"), lit("need"))) loose maybeChars(":") loose capture(rest)).end).orWhole
+    assertEquals(what.pattern, "(?iU)(?:нужен|need)\\s*[:]?\\s*(.+)$")
+    assert(what.fallback)
+    val w = java.util.regex.Pattern.compile(what.pattern).matcher("нужен: электрик в субботу")
+    assert(w.find()); assertEquals(w.group(1), "электрик в субботу")
+    // the scenario after «сценарий», one token; the parties, the rest
+    val scenario = slot("scenario")(anywhere(any(lit("сценарий"), lit("scenario"))) space capture(token))
+    assertEquals(scenario.pattern, "(?iU)(?:сценарий|scenario)\\s+(\\S+)")
+    // numbers with their separators: «1, 2 и 3»
+    val numbers = slot("numbers")(anywhere(capture(seq(number, many(seq(blank, someChars(",и and"), blank, number))))))
+    assertEquals(numbers.pattern, "(?iU)(\\d+(?:\\s*[,и and]+\\s*\\d+)*)")
+    val n = java.util.regex.Pattern.compile(numbers.pattern).matcher("спроси 1, 2 и 3")
+    assert(n.find()); assertEquals(n.group(1), "1, 2 и 3")
+    // and the shapes on their own
+    assertEquals(Term.render(digits(6)), "\\d{6}")
+    assertEquals(Term.render(seq(lit("допоможи"), maybeAfter(lit("мені")))), "допоможи(?:\\s+мені)?")
+    assertEquals(rule(capture(any(lit("все"), lit("all")))).pattern, "(?iU)\\b(все|all)\\b")
   }
 
   test("a proof travels with the rule") {

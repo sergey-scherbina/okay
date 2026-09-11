@@ -1,0 +1,23 @@
+task: openapi-render
+agent: opus5-di
+started: 2026-09-11
+heartbeat: 2026-09-11T07:28:20Z
+status: in-progress
+branch: feature/openapi-render
+worktree: ../okay-wt-oasr
+spec: specs/openapi.md stage 0
+
+why: the spec is on master and the operator said take it. Stage 0
+  touches no file the optics-outside arc owns: it READS
+  `Router.entries` and renders.
+
+what: new JVM module okay-openapi — `Api`, `OpenApi.document(api,
+  router)` rendering OpenAPI 3.1 paths, methods, path parameters and
+  request bodies from the entries; the renderer's law (every entry
+  once, no path the router does not dispatch); docs page + README row.
+  AND a correction to the spec: `Entry` carries the path TEMPLATE but
+  not the parameters' KINDS (they live on `Route.params`), so stage 0
+  declares path parameters as strings and the kind joins the two input
+  gaps already filed for okay-http's owner.
+
+next: module, renderer, tests, docs, spec correction

@@ -105,9 +105,21 @@ as a workaround.
 ## codec-defaults — decode falls back to the declaration
 
 The reason this was filed is the design: Mirrors do not carry
-defaults, so the ONE macro this library allows itself reads what the
-compiler already wrote — the companion's `<init>$default$N` methods —
-and nothing else. Everything downstream stays ordinary values:
+defaults, so the macro here reads what the compiler already wrote —
+the companion's `<init>$default$N` methods — and nothing else. (This
+was "the ONE macro this library allows itself" until optics-core,
+2026-09-09, whose field selector `Lens[S](_.f)` is a second of the
+same kind; the policy was then stated as what both
+obeyed: a macro only reads, it never writes. optics-fuse (2026-09-10)
+is the third and breaks that half — `Fuse` reads an optic and WRITES
+the nested update — so the policy is amended rather than quietly
+dropped: A MACRO MAY WRITE ONLY WHAT THE READER COULD HAVE WRITTEN,
+AND A TEST MUST SAY SO. `Fuse` emits the update a person writes by
+hand; its tests assert the emitted ANSWER equals the optic's on every
+shape, and its benchmark asserts the emitted CODE equals the
+hand-written one by allocation. A macro whose output cannot be checked
+against something that already exists still does not belong here.
+specs/optics.md, optics-fuse.) Everything downstream stays ordinary values:
 
 - `SProduct` gains `defaults: Vector[Option[() => Any]]` (aligned
   with `fields`, empty when underived/unknown — every existing
@@ -262,14 +274,23 @@ outcome):
 - an absent field takes its declared default, then None-if-optional,
   then a refusal by name (codec-defaults);
 - an unknown CASE is a refusal, on both wires;
-- an unknown FIELD is **ignored by Json** (only declared fields are
-  looked up) and **refused by Cbor** (`unknown field '<k>'`).
+- an unknown FIELD is **skipped**, on both wires.
 
-That last asymmetry is the one surprise, and it is why a verdict
-names its wire rather than pretending there is one answer. It also
-says something operational: a service pair that adds fields freely
-is doing so on JSON; the same change on CBOR needs the readers
-upgraded first.
+The last line is the interesting one, because it used to say
+something else, and the history is the point of writing a check
+against the decoders instead of against a belief. When this section
+was first written, Json skipped an unknown field and Cbor REFUSED it
+(`unknown field '<k>'`), so a verdict had to name its WIRE. The
+check reported that faithfully — and reporting it is what made
+someone look. Nothing had chosen it: no test pinned the refusal, no
+spec stated it, and `JsonStrict`, the door that IS strict, skips
+unknown fields by design. It was a divergence, not a decision, and
+the operationally worse half of it: it made adding a field a
+breaking change for every reader already deployed.
+
+Fixed by cbor-unknown-fields (see below). The two wires answer
+alike now, and the `Wire` parameter went with the defect it existed
+to describe.
 
 Two directions, and they answer different questions:
 
@@ -283,17 +304,17 @@ for ever.
 
 ```scala
 val report = Compat.compare(summon[Schema[OrderV1]], summon[Schema[OrderV2]])
-report.backward(Compat.Wire.Cbor).compatible   // deploy-safe against the log?
-report.render                                  // the operator's paragraph
+report.backward.compatible   // deploy-safe against the log?
+report.render                // the operator's paragraph
 ```
 
 Behavior:
 - [x] a new REQUIRED field breaks backward on both wires; a new
       OPTIONAL or DEFAULTED one does not
-- [x] a new field breaks FORWARD on Cbor and not on Json — the
-      decoders' own asymmetry, asserted by decoding, not assumed
-- [x] a removed required field breaks forward; on Cbor it breaks
-      backward too
+- [x] a new field is safe FORWARD on both wires — asserted by
+      decoding on both and requiring them to agree, not assumed
+- [x] a removed required field breaks forward only: the new reader
+      skips what it dropped
 - [x] a retyped field breaks both directions and names both types
 - [x] a new case breaks forward only; a removed case breaks backward
       only
@@ -310,6 +331,410 @@ deployment fact, and the log already carries the envelope version,
 specs/persist.md); a migration generator (an upcast is a function
 someone writes, `Typed.step`); field RENAMES read as a remove plus
 an add, which is what the wire sees.
+
+
+
+## Unknown fields, on both wires (2026-09-09, cbor-unknown-fields)
+
+`Json.decode` skipped a field it did not declare; `Cbor.get` refused
+one, for the same `Schema` and the same value. The section above
+found it and reported it; this one fixes it.
+
+**Why skipping is the right half.** Ignoring an unknown field is what
+makes a schema evolve: a writer that adds a field keeps every
+deployed reader working. Refusing turns every addition into a flag
+day. And this module's own `JsonStrict` — the door whose whole point
+is strictness — skips unknown fields by design, so "strict" here has
+never meant this refusal. Nothing had chosen the CBOR behaviour: no
+test pinned it, no spec stated it, and specs/codecs.md said CBOR
+carries "the same content as JSON".
+
+**`Cbor.In.skipItem` reads one complete item and discards it**, by
+major type: an integer's argument IS the value, a string takes its
+length, an array skips its elements, a map skips twice its pairs, a
+tag skips the item after it, and a simple value or a float is
+already consumed by the head. The interpreted decoder and the staged
+one both call it, so the generated reader answers exactly what the
+fold answers.
+
+**The depth limit is the part worth reading** — and the reason given
+for it here was WRONG, which the section below is what came of
+checking it. What is true: a skip recurses on the depth of the INPUT,
+which the sender wrote, so a hundred thousand nested arrays in a field
+nobody declared would be a stack overflow where this module promises a
+value. What was false: that "every other read recurses on the depth of
+the SCHEMA, which the program wrote". Both JSON roads recurse on the
+input too, and a RECURSIVE schema lets the sender pick the depth of a
+DECLARED value on either wire. The bound is now one number for every
+door (`Codecs.maxDepth`, 256, and `Cbor.maxSkipDepth` is gone with the
+half-truth its name carried).
+
+Behavior:
+- [x] a value written by a newer schema decodes as the older one on
+      both wires, to the same answer
+- [x] every CBOR major type skips to exactly the next field —
+      integer, negative, text, byte string, boolean, double, array,
+      null, nested product — proved by a DECLARED field after the
+      skipped one, which would not decode if the skip mis-counted
+- [x] a skipped value nested past the limit is a named refusal, and
+      one just under it still skips
+- [x] a TRUNCATED unknown field is still damage, not a silent skip
+- [x] what stays refused: an unknown CASE (which value this IS, not
+      an extra detail about it) and a required field nobody sent
+
+## How deep a message may be, on both wires (2026-09-10, input-depth-both-wires)
+
+The section above bounded ONE read — the CBOR skip — and justified it
+with a claim nobody had checked: that every other read recurses on the
+depth of the schema, which the program wrote. The operator asked for
+the claim to be made true. It was false in three places, and each one
+was a real fault.
+
+**What was measured first** (2026-09-10, a `java -cp` probe on a
+default stack, then sbt's `-Xss8m` for the rest): `JsonValue.parse`
+threw a `StackOverflowError` on `"[" * 20000` — a 20 KB document —
+where its own doc says "never a throw"; the lossless projection
+(`Json.value`) died between 1 000 and 5 000, where `Json.parse`
+promises a value; `Cbor.read` died at a 5 000-level value of a
+RECURSIVE schema and `Json.readStrict` at 20 000, both of which
+promise an `Either`. Nesting is the one dimension a decoder walks that
+the SENDER chooses, which is the whole reason a limit has to exist.
+
+**One number, in one place.** `Codecs.maxDepth` (256) is it, stated
+where neither wire owns it, because the defect this arc is about is
+the two wires answering differently. 256 is far under every death
+measured and far over any message anyone writes — serde_json's limit
+is 128, Jackson's 1000, CPython's about 1000. Each door refuses in the
+idiom it already had for damage:
+
+- the fast JSON value parser is NOT SURE (`None`), exactly as it is
+  about every other damaged document;
+- the lossless road makes the cut a `JErr` in place, so `Json.parse`
+  still answers a value and the two roads still agree (the law in
+  TestJsonValue holds unchanged);
+- `Cbor.In` and `JsonStrict.Reader` each carry ONE budget for the
+  whole frame (`enter`/`leave`), spent by declared reads and by skips
+  alike — an unknown field 200 items deep inside 200 declared ones is
+  400 levels of the same stack — and the staged decoders' containers
+  (`Staged.cborProduct`, `strictElems`, …) spend the same budget, so
+  the three decoders still refuse at the same depth.
+
+**The cut is not damage at a SPOT — it is the document**
+(cut-refuses-the-document, the same day). Written in place first, it
+made things worse than the overflow it replaced: `Json.decode` skips a
+damaged list element and reads a damaged optional as absent — right
+for a half-arrived document — so a 256-level tree came back as a
+128-level tree with `Right`, a wrong value with no error. Three rules
+in three files were taught the exception (`Json.arrived`, the
+optional-field guard, `Staged.elems` and both staged optional
+lookups), and then a FOURTH case showed the shape was wrong: a cut
+inside a field nobody DECLARED is a field nobody visits, so the JSON
+roads still read such a document while CBOR refused it. The first
+reading of that was "the totality difference, not a divergence anybody
+chose" — which is the same excuse this arc already disproved once.
+
+So the projection PROPAGATES it: a container holding the cut is the
+cut, `Json.parse` of a too-deep document answers the cut at its root,
+and every decoder's existing `JErr` refusal catches it wherever it
+sits. One rule in one place, four exceptions deleted, and the
+undeclared case refuses on both wires. `JsonStrict` has no tree for a
+cut to travel through, so its own bracket counter carries the budget —
+`skipValue` refuses past `Codecs.maxDepth` counted from the reader's
+current depth. What is given up is the partial value of a document
+nested past 256, which no caller can use: a reader cannot say what it
+did not descend into.
+
+Behavior:
+- [x] `"[" * 20000` is a value, not a `StackOverflowError`, on both
+      JSON roads; the fast road says None, the lossless one cuts with
+      a `JErr` naming the limit, `Json.parse` equals `Json.lossless`
+- [x] a document AT the limit still reads as the value it is; the
+      limit counts every container, objects as well as arrays
+- [x] a recursive schema's value past the limit is refused by EVERY
+      door with the limit named — `Cbor.read`, `Json.read`,
+      `Json.readStrict` and all three of `Staged.cbor`/`json`/`strict`
+      — and never answered as a SHORTER tree
+- [x] a recursive value at the limit reads to the same value on both
+      wires (each level is two containers on both, so the two wires
+      refuse at the same tree depth)
+- [x] one budget per frame: a skip inside declared containers cannot
+      exceed the total, on either wire (`Cbor.In`'s counter,
+      `JsonStrict.skipValue` counting from the reader's depth)
+- [x] an UNDECLARED field nested past the limit refuses on every door,
+      as CBOR always did — the document is the cut, so `Json.decode`,
+      `Json.read`, `Json.readStrict` and `Staged.strict` all name the
+      limit
+- [x] a cut never arrives as a damaged ELEMENT, so no list silently
+      gets shorter (the regression that made the first shape worse
+      than the crash)
+- [x] an MCP frame nested past the limit is JSON-RPC `-32700` with the
+      limit in its message — `Rpc.damaged` already walked the whole
+      tree, so the six `case Json.JErr(_) => Nil/None` projections in
+      `Client` are the error channel answering correctly, and the
+      backlog entry that guessed otherwise is deleted with a test in
+      its place (TestRpc)
+- [x] TestCompat's law holds for every case that has a value, the
+      removed-case mirror included (it asserted verdicts and asked no
+      decoder anything until this lane: five of its asserts read
+      `x.compatible && x.compatible`, which is what
+      `x(Wire.Json) && x(Wire.Cbor)` decayed into when `Wire` was
+      removed)
+
+### The margin, measured (2026-09-10, stack-depth-margin)
+
+The operator asked the obvious question: why 256, and could the limit
+come from measuring the real stack instead of a default? The answer has
+two halves, and only one of them is a measurement.
+
+**The limit stays a fixed number, and that is not laziness.** It is a
+WIRE contract: two services must agree on whether a message is
+readable, so a limit that varies with the reader's `-Xss` means the
+same bytes decode on one box and refuse on another. The log is replayed
+(specs/persist.md), and a decode outcome that depends on a JVM flag
+cannot be replayed. And the three platforms would disagree with each
+other on one document, which is the exact defect this whole arc has
+been about. 256 itself is inherited from `Cbor.maxSkipDepth` and
+justified by precedent — serde_json 128, Jackson 1000, CPython ~1000.
+
+**The MARGIN is a measurement, and it is now a test.** "Far under every
+death measured" was written after measuring one platform on the one
+stack sbt gives (`-Xss8m`), which turns out to have been the generous
+case.
+
+Method, because the obvious probe lies twice. Frames-to-death is not
+stable: the same door in one run survived 32 000 foreign frames cold
+and 256 000 warm, and a trivial recursion reported 128 000 frames in
+one suite and 512 000 in another — JIT state, not stack. And the first
+calibration recursion was TAIL-recursive, so Scala compiled it to a
+loop and it consumed no stack at all while reporting success at every
+depth. So: on the JVM the number is measured in BYTES, by running the
+door on a thread with a chosen `stackSize` (`TestStackBytes`, the only
+API in this build that can ask); everywhere else the door runs at full
+depth with a fixed 1 000 frames of somebody else's recursion under it
+(`TestStackMargin`), which needs no thread API and nothing to overflow.
+
+Measured 2026-09-10, Java 21 on aarch64, Node, Native 0.5.12, at the
+limit (256 containers = 127 tree levels):
+
+| door | JVM stack needed |
+|---|---|
+| `JsonValue.parse` (the fast road) | 256 KB |
+| `Json.lossless` (the projection) | 512 KB |
+| `Json.readStrict[Tree]`, `Staged.strict[Tree]` | 512 KB |
+| `Json.read[Tree]`, `Cbor.read[Tree]`, `Staged.cbor[Tree]` | **1024 KB** |
+
+and in frames, where bytes cannot be chosen — with the spread, because
+these move between runs as much as the JVM's do: a trivial non-tail
+recursion got ~8 000 frames on Node in one run and ~4 000 in the gate,
+~16 000 on Native, while a full-depth door survived 4 000–8 000 and
+8 000–16 000 of them respectively. So the frame numbers say "the same
+order of magnitude as the door needs", not "2x": that is as much as a
+frame count can honestly claim, and it is why the law asserts 1 000
+frames of slack rather than a fraction of a measurement.
+
+**The finding, which is the opposite of what the lane predicted.** The
+tight platform is not the browser. It is a JVM thread with the DEFAULT
+1 MB stack, where a full-depth decode of a RECURSIVE schema needs the
+whole megabyte and leaves nothing for the caller — `Cbor.read[Tree]`
+costs 16 KB at 8 levels and 1024 KB at 127, roughly 4-8 KB of stack per
+tree level through the interpreted fold (the exact figure is
+threshold-y at small depths — a coarse probe kept reading a flat
+"16 KB" across a wide range of shallow depths, which turned out to be
+the JVM silently granting more than the requested `stackSize`, not the
+door's real cost; the numbers above ~128 KB, where independent runs
+agree, are the ones this arc trusts). sbt's `-Xss8m` and macOS's 8 MB
+main thread are what hid the finding in the first place; the "death
+between 1 000 and 5 000 levels" figures above were measured there.
+
+**One round of the fix, lower-maxdepth-real-margin (2026-09-10):**
+`Codecs.maxDepth` is now **64**, chosen by measuring candidates rather
+than extrapolating arithmetic — 32 looked right on paper (a quarter of
+the default stack) but landed inside the same measurement noise as
+above and could not be trusted; 64 measured STABLE across repeated
+rounds and separate JVM processes: the worst doors (`Cbor.read`,
+`Staged.cbor` of a recursive schema) need **512 KB**, exactly half the
+default 1 MB stack — real room for the caller for the first time.
+`TestStackBytes.needs` takes the MAX of 3 rounds now, not one shot: a
+cold JIT state needs noticeably more than a warm one for this code,
+and a safety number built from the lucky round is not a safety number.
+
+**What this broke, and what that is evidence of.** `TestVector`'s own
+recursion stress test — "the type that filed the task", modelled on
+`okay-ui`'s tree — built a document 64 tree LEVELS deep, which is 128
+CONTAINERS (an object holding an array, twice per level), and 128
+containers already needs real stack under the new limit. No consumer
+anywhere in this repository (`okay-ui`'s own suites included) nests a
+real tree anywhere near that deep — grepped across the whole tree,
+`TestVector`'s `deep(n)` was the only hardcoded recursion depth outside
+okay-codec itself — so its literal `64` was a stress number picked
+before this limit existed, not a compatibility requirement; it now
+reads `Codecs.maxDepth / 4`, staying a quarter of whatever the limit is
+instead of silently outliving it again. This is also the clearest
+argument for the second road below: an ordinary-sounding "64-level
+tree" already sits close to the danger zone, so picking a bigger round
+number for `maxDepth` buys compatibility back at the direct cost of the
+margin this lane exists for.
+
+The two roads, for whoever picks up the second:
+
+- **done, this lane:** `Codecs.maxDepth` = 64, worst door 512 KB (half
+  the default stack) — a real, measured, repeatable improvement over
+  256's zero margin, at the cost of refusing legitimately-shaped
+  documents between 65 and 256 levels that read today;
+- **iterative-recursive-decode (spec written):** take the per-level
+  cost out instead of budgeting around it. `Json.decode`/`Cbor.get`
+  recurse on the JVM stack where `Json.cst`'s builder and
+  `JsonStrict.skipValue` do not — the CST road walked 100 000 levels in
+  the first probe of this arc because its stack is on the heap.
+  `specs/iterative-recursive-decode.md` has the design: a threshold —
+  native recursion as today up to ~24-32 levels, `Cont.defer` for the
+  rest (the mechanism `eff-stack-safety.md` already uses and measured:
+  +11% B/op / +14% time for one node on a hot path, which is why this
+  is a THRESHOLD and not a rewrite of the whole decoder). Once it
+  lands, `maxDepth` is a policy choice again, not a stack budget, and
+  can go back up without this lane's tradeoff.
+
+One more fact worth writing down, because it changed how this lane was
+written: a stack overflow on Scala Native 0.5.12 is a catchable
+`java.lang.StackOverflowError`, not a fault. The deliberate-overflow
+calibration is still skipped there — a toolchain without that guard
+would take the test process down, and a dead Native process is the
+gate's known false red (native-runner-error), which no assertion is
+worth.
+
+Behavior:
+- [x] every door reads a full-depth document with 1 000 frames of
+      foreign recursion already on the stack, on all three platforms
+- [x] the calibration recursion is proved to consume stack (JVM and JS;
+      skipped on Native by the rule above) — a loop would make the law
+      vacuous
+- [x] the JVM cost of every door at the limit is measured in bytes,
+      taken as the MAX of 3 rounds, and bounded: 512 KB is the worst
+      door at `Codecs.maxDepth` = 64 — half the default 1 MB stack
+- [x] the measurement is proved to measure DEPTH: eight tree levels
+      cost 16 KB where 127 cost 1024
+
+## The limit itself, lowered (2026-09-10, lower-maxdepth-real-margin)
+
+`Codecs.maxDepth`: 256 → **64**, picked by measuring candidates (32,
+64) rather than halving the earlier per-level estimate by arithmetic —
+32 measured inside noise too small to trust, 64 measured stable
+(512 KB, half the default stack) across repeated rounds and separate
+JVM processes. See "The margin, measured" above for the full finding,
+including what this broke (`TestVector`'s recursion stress test
+hardcoded a depth that outlived the limit — now `Codecs.maxDepth / 4`)
+and the road that removes the tradeoff entirely
+(`iterative-recursive-decode`, specs/iterative-recursive-decode.md).
+
+## `Codecs.maxDepth` removed (2026-09-10, remove-codecs-maxdepth)
+
+`iterative-recursive-decode.md`'s road landed: `Cbor.get`, `Json.decode`,
+`Cbor.In.skipItem`, `JsonValue`'s fast parser, `Json.lossless`'s
+projection, and `JsonStrict.Reader.get` all trampoline (`Cont.defer`)
+past `Codecs.NativeThreshold` (24) now, so none of them costs native
+stack proportional to input depth any more. Asked directly whether the
+number that used to budget that cost should go back up or away
+entirely, the operator chose away: **"прибрав Codecs.maxDepth - так"**
+(removed `Codecs.maxDepth` — yes).
+
+`Codecs.maxDepth`, `Cbor.In.tooDeep`, `Json.isCut`/`Json.tooDeep`/
+`Json.cutMessage`, and every refusal built on them are deleted, not
+raised. `TestVector`'s `deep(Codecs.maxDepth / 4)` — the direct
+casualty of the "64 broke a 64-level stress test" finding two sections
+up — is now a fixed, ordinary depth with no wire number to stay a
+fraction of. `Codecs.NativeThreshold` is untouched: it still decides
+where the native/trampoline switch happens, which has nothing to do
+with refusing a message.
+
+This does not make depth free. `Cont.defer` still allocates one node
+per level, and the decoded tree lives on the heap regardless of which
+decoder built it — so an adversarial sender's message now costs HEAP,
+not native stack: a `StackOverflowError` that used to take down one
+thread is now an `OutOfMemoryError` that can take down the whole JVM.
+Nothing in this module currently reintroduces a cap for that; a future
+wire contract that wants one gets to pick its own number, informed by
+this arc's measurements, not by resurrecting this one.
+
+## The write side gets the same trampoline (2026-09-10, encode-side-depth-safety)
+
+`Codecs.maxDepth`'s removal only ever bounded how deep DECODE could
+hand a value back — nothing on the WRITE side was ever part of
+`iterative-recursive-decode.md`'s arc, because it was named "decode".
+`Json.print`, `Cbor.put`/`write`, and `Json.mergePatch` were all still
+plain native recursion, and the section above's own logic applies to
+them unchanged: a value that used to need the removed cap to DECODE
+can now exist in memory, from untrusted input, with nothing bounding
+it — and writing it back out (a proxy, a relay, a log that decodes
+then re-encodes) crashed on the write half of a round trip the read
+half had just been proven safe on. Found while answering an operator
+question about `Cont`'s fusion budget, not from a bug report.
+
+Same fix, same shape: `Codecs.NativeThreshold`-then-`Cont.defer`,
+mirroring `into`/`intoC` (the CST-to-`Json` projection above, on this
+same file) exactly — side-effecting into a `StringBuilder` (`print`)
+or an `Out` (`Cbor.put`) rather than combining a decoded value.
+`mergePatch` mirrors `pairsC`'s fold instead, since it returns a
+`Json`, not `Unit`.
+
+Two more native-recursion sites turned up by the same grep that found
+these, unrelated to the write side but the same defect shape:
+`okay-demo/StateMcp.scala`'s `damaged` was a byte-for-byte duplicate of
+`okay-mcp/Rpc.damaged` (the one `remove-codecs-maxdepth` already fixed
+once) — same explicit-work-list fix, second time.
+
+**A real defect this lane found, not just a safety one.** `Schema.
+SProduct#eachField`'s own map is EAGER: it calls its callback for
+EVERY field synchronously, before any deferred step runs. The first
+`putC` draft wrote each field's KEY inside that eager callback and
+only deferred the VALUE — so a two-field product wrote key, key,
+value, value onto the wire instead of key, value, key, value, which
+is not a CBOR map at all. `Cbor.read` answered "missing field 'kids'"
+on the first two-field recursive type tested (`TestVector`'s own
+`Tree`, one field only, could not have caught it — the regression
+witness in `TestEncodeTrampoline` is a NEW two-field type for exactly
+this reason). Fixed by moving the key-write inside the same deferred
+thunk as the value-write, so both happen as one atomic step in the
+trampoline's own sequencing — the general rule: when a schema
+combinator's own API is an eager per-item callback (unlike a
+hand-written recursive loop, which naturally steps one item at a
+time), every side effect for one item must be INSIDE that item's own
+`Cont.defer`, not split across the eager collection phase and the
+deferred one.
+
+Every test proving a fixed function safe builds its deep value
+DIRECTLY (a loop, never a decode), so none of them depend on decode's
+own depth safety — only on the write side's, which is what changed
+here.
+
+## The one this lane's own audit missed: `Json.encode` (2026-09-11, form-recursive-depth-safety)
+
+`Json.write` does not call `Json.print` — it calls `Json.encode`, a
+SEPARATE Schema-driven String-building function, entirely missed by
+the audit above. Found only because `okay-ui/Form`'s own depth-safety
+tests (form-recursive-depth-safety, specs/ui-toolkit.md) needed
+`Json.write` on a genuinely deep fixture and hit its native recursion
+directly — the exact same shape as `Cbor.put`, on the JSON side.
+
+Fixed the same way, and the FIRST fix was itself a defect: `encode`
+built its result by STRING INTERPOLATION (`s"\"$n\":${encode(sc)(x)}"`)
+and `.mkString`, combining each level's already-large child string
+into a new, longer one — quadratic, because immutable string
+concatenation re-copies everything built so far at every level. On
+the JVM this passed at a tolerable 10-22s for 100 000 levels (String
+concatenation is a JIT-favorite); on Scala Native (no JIT) the SAME
+test ran 1276s before timing out at a 120s limit — caught by this
+lane's own three-platform gate, not assumed away as "Native is just
+slower". Rewritten to side-effect into a `StringBuilder`
+(`encodeInto`/`encodeIntoC`), exactly the discipline `Json.print`
+already had for exactly this reason. Fixed: 0.13-0.18s for the same
+100 000-level fixtures, on par with `Cbor.write`.
+
+`Schema.SProduct#eachField`'s eager-callback trap (two sections up)
+applies here too, and the fix is the same: each field's key-write and
+its value's `Cont.defer` live in the SAME thunk, never split — string
+combination has no wire-order hazard the way `Cbor.putC`'s mutable
+`Out` buffer did, but the ordering discipline generalizes regardless
+of whether the shared state is a byte buffer or a `StringBuilder`.
 
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends

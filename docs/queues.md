@@ -538,14 +538,38 @@ nothing gained.
 
 `Queues.strong[A].growing(capacity, parts)` is a plain ring until more
 than one producer is seen pushing, and an `AdaptiveFifo` after that —
-one that ADOPTS the ring as its part 0, so no element moves and the
-producer that filled it keeps pushing there (its order lives in that
-part). The trigger is sampled: a counter every push, and every 64th
+one that ADOPTS the ring as its part 0, so no element moves. The
+adopted part is then READ FIRST, before any part opened after it, and
+every producer including the one that filled the ring takes a part of
+its own. The trigger is sampled: a counter every push, and every 64th
 one compares the pushing thread with the last one sampled. A refused
 push is NOT the trigger, and that was measured: a ring at sixteen
 producers is 17x slower than a partitioned buffer with room to spare,
 so fullness is backpressure and says nothing about how many producers
 there are.
+
+**THE ADOPTED PART IS READ FIRST, and that is a correctness rule, not
+a tuning choice** (merge-chunked-order, 2026-09-09). What stood here
+said the producer that filled the ring "keeps pushing there (its
+order lives in that part)" — right about the order, wrong about
+everyone else. At the swap every OTHER producer was handed a new
+part while its earlier elements were still in the adopted one, and
+parts drain independently, so a producer's own later elements could
+be read first. Two plain threads reproduced it 73 times in 300, and
+it reached the gate as a `merge` whose source came back
+`1..16, 49, 50, 17..48`. Everything in the adopted part was pushed
+before anything in a part opened after it, so reading it out first
+restores each producer's order without making any producer wait —
+and nobody is pinned to part 0, which mattered: a pinned producer
+REFILLS the part the rule waits on, so on an endless source it need
+never be seen empty.
+
+Two things let it ship for a day, both now closed. `TestChannelLaws`
+runs its list of mechanisms and `growing` — the default since
+2026-09-08 — was never added to that list. And its order law used ONE
+producer, which is the one width at which this buffer never
+partitions at all. Both are fixed: the default answers for the whole
+contract, and the law now sends from two.
 
 **AT THE SAME MEMORY BUDGET — 1 024 slots each** (lane-fairness,
 2026-09-08). Read the note below before the numbers: the version of

@@ -16,9 +16,23 @@ class TestManyToMany extends munit.FunSuite {
   private def run(name: String, mk: () => Channel[Long], p: Int, c: Int, total: Int): Unit =
     val ch = mk()
     val per = total / p
+    // `sendBlocking` ANSWERS whether the channel took the element, and
+    // this loop used to discard it (channel-lost-part): a refused send
+    // and a lost delivery then looked identical in the failure message
+    // — which is exactly the question the 2026-09-09 flake asked.
+    val refused = java.util.concurrent.ConcurrentHashMap[Int, Integer]()
+    val died = java.util.concurrent.ConcurrentHashMap[Int, String]()
+    val sent = java.util.concurrent.ConcurrentHashMap[Int, Integer]()
     val ps = (0 until p).map(w => Thread.ofVirtual().start { () =>
       var i = 0L
-      while i < per do { val _ = ch.sendBlocking(w.toLong * per + i); i += 1 }
+      try
+        while i < per do
+          if !ch.sendBlocking(w.toLong * per + i) then refused.merge(w, 1, (a, b) => a + b): Unit
+          i += 1
+      catch case t: Throwable =>
+        died.put(w, s"${t.getClass.getName}: ${t.getMessage} at i=$i FRAMES " +
+          t.getStackTrace.nn.take(6).map(String.valueOf).mkString(" <- ")): Unit
+      sent.put(w, Integer.valueOf(i.toInt)): Unit
     })
     val sums = new Array[Long](c)
     val seen = java.util.concurrent.ConcurrentHashMap[Long, Integer]()
@@ -31,6 +45,14 @@ class TestManyToMany extends munit.FunSuite {
       sums(j) = s
     })
     ps.foreach(_.join())
+    // A PRODUCER THAT DIED IS THE ANSWER, not a missing thousand
+    // (channel-lost-part, 2026-09-09). `join` is happy with a thread
+    // that threw, so this law used to report a producer's whole output
+    // as elements the channel had lost — twice, before anyone asked
+    // whether the producer had finished. The throw was real: a first
+    // send met a part slot that `claimPart` had counted but not yet
+    // published, and `AdaptiveFifo` now waits for it.
+    assert(died.isEmpty, s"$name ${p}x$c: a producer threw instead of sending: $died")
     ch.close()
     val deadline = System.currentTimeMillis() + 10000
     cs.foreach { t =>
@@ -43,7 +65,10 @@ class TestManyToMany extends munit.FunSuite {
       val dups = seen.asScala.filter(_._2 > 1)
       val missing = (0 until p).flatMap(w => (0L until per.toLong).map(i => w.toLong * per + i)).filterNot(seen.containsKey)
       val byPart = missing.groupBy(v => (v / per).toInt).view.mapValues(_.size).toMap
-      fail(s"$name ${p}x$c: received ${seen.size} distinct of ${p * per}; missing ${missing.size} (by producer: $byPart, first ${missing.take(5)}); duplicated ${dups.size}")
+      import scala.jdk.CollectionConverters.given
+      fail(s"$name ${p}x$c: received ${seen.size} distinct of ${p * per}; missing ${missing.size} " +
+        s"(by producer: $byPart, first ${missing.take(5)}); duplicated ${dups.size}; " +
+        s"refused by sendBlocking: ${refused.asScala.toMap}")
 
   private val shapes = Seq((1, 1), (1, 4), (4, 1), (4, 4), (16, 16))
 

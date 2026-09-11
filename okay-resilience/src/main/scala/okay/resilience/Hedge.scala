@@ -38,14 +38,32 @@ object Hedge:
           // hedge now would be a retry, which this is not
           if failed.incrementAndGet() == started.get then settle(r)
 
-      // called at most `max` times: once here, then once per timer
-      // firing, and the timer is armed only while there is room
+      /**
+       * Called at most `max` times: once here, then once per timer
+       * firing, and the timer is armed only while there is room.
+       *
+       * EVERY PUBLICATION IS RE-CHECKED (hedge-start-races,
+       * 2026-09-09). The `done` at the top is not enough: an attempt
+       * already in flight can answer while this one is forking, and
+       * `settle` cancels the fibers it can SEE and disarms the timer
+       * it can see. So a fiber added after that sweep would run on
+       * with nobody to stop it — for a hedged request, a duplicate
+       * that outlives the answer — and a timer armed after it would
+       * sit until it fired. Each is undone here, by the thread that
+       * published it, and both undos are idempotent: `settle` may
+       * have cancelled the same fiber, and cancelling a spent timer
+       * does nothing.
+       */
       def start(): Unit =
         if !done.get then
           val n = started.incrementAndGet()
           val f = S.fork(() => prog)
           fibers.updateAndGet(_ :+ f)
-          if n < max then timer.set(T.after(afterMillis)(() => start()))
+          if done.get then f.cancel()          // answered while we forked
+          if n < max then
+            val disarm = T.after(afterMillis)(() => start())
+            timer.set(disarm)
+            if done.get then disarm()          // answered while we armed
           f.onComplete(finish)
 
       start()

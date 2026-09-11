@@ -32,7 +32,7 @@ object ProbeWhatInGives:
   def main(args: Array[String]): Unit =
     def run(p: Int ! Mix3): (Int, (Seq[String], Int)) =
       !.run(Reader.run[Boolean, (Int, (Seq[String], Int)), Pure](true)(
-        State.handle[Int, (Seq[String], Int), Reader % Boolean](7)(
+        State.handle[Int](7)(
           Writer.run[String, Int, State % Int + Reader % Boolean](p))))
     println("A " + run(useA))
     println("B " + run(useB))

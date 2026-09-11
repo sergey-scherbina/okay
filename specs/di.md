@@ -85,6 +85,15 @@ Stage 0 (core, `Providing.scala`, TestModule):
 - [x] a dependency no module installs is a COMPILE error naming the
       type (`compileErrors`, the message quoted)
 - [x] a failing acquisition releases what was acquired before it
+- [x] the vocabulary runs on EVERY platform, not only where it was
+      written (di-cross): `TestModuleCross` in `src/test/scala-cross`
+      covers acquisition order and reverse release, a dependent
+      module, the override, `plan` off the type, `exports` with the
+      erased class and `Resource.open`'s closer — JVM, JS and Native.
+      It found nothing: the code was already right, the guard was
+      missing. `Module` is shared core, and both non-JVM platforms
+      replace the test sources with `scala-cross` alone, so the JVM
+      suite could never have said this
 
 Stage 1 — qualifiers and the plan as a value (SHIPPED, di-stage1):
 - [x] two capabilities of one type are told apart by TYPE, never by
@@ -185,6 +194,271 @@ constructor parameters and `using` clauses; that is the condition of
 portability, not a loss), hot reload, and Spring's actuator (okay-ops
 is the actuator, and a Boot app can mount both).
 
+## Components declare their own needs (module-facts, 2026-09-09)
+
+The operator's question after needs-runtime — can a provider declare
+itself, without a method per kind of dependency? — exposed the hole
+in stage 3 as first built: it read only a root's UNRESOLVED inputs,
+and a module that opens its infrastructure itself was invisible. The
+demo opened `okay-board.log` and its manifest declared a port and no
+volume. The component that opens the thing is the one that knows what
+it needs; it had nowhere to say so.
+
+**The model.** A module carries FACTS beside its installer. A fact is
+a typed key with its own merge (`Fact[V]`, held in `TMap`, the core's
+honest runtime-keyed map); the core knows no deployment word.
+okay-deploy defines one kind, `Needs.Declared`, and the spelling is
+the `Need` constructors themselves at the point of opening:
+
+```scala
+moduleAs[Store, FileStore](FileStore.open(file))(_.close())
+  .needs(Need.Volume(dir))
+```
+
+`and` merges facts left to right; `Needs.declared(app)` reads them
+off the composed value. No wrapper, no factory per kind; `Needs[A]`
+stays only for an input a place hands in from outside.
+
+**When they can be read: after config, before infrastructure.** A
+dependent module's facts hide behind its function until its input
+exists — the wall `plan` met, and why `plan` reads the type. So a
+module now knows whether it is READY: `Module.value`/`ready` are,
+acquired ones are not. When the left of `and` is ready, the right is
+applied at once and its facts and readiness carried up; behind an
+acquisition they wait for the scope. The config is a value, the
+module that opens a log at a path from that config declares the
+volume, and the deployment reads it with nothing opened — which is
+exactly when a manifest is written. Modules downstream of an
+acquisition seldom need anything from a place, and the limit is
+stated in a test rather than hidden.
+
+**What it found, first use.** The demo's settings shipped `chatLog`
+— `OKAY_CHAT_LOG`, the two-node log DIR — set to `:memory:`, while
+the store reads `OKAY_CHAT_DB`: the container wrote its board to an
+unmounted file believing it ran in memory. `ChatConf` is now one
+value read the same way by `main` (the environment) and by the
+deployment (its own settings), the key is `chatDb`, and the volume
+the store declares reaches every rendered target — a PVC in the
+chart, a volume in compose, `ReadWritePaths` and an `install -d` in
+the unit — from one line where the file is opened.
+
+## What using it taught (di-dogfood, 2026-09-09)
+
+The arc was complete and had never built an application: outside the
+core's own tests, the only user of `Module` was okay-deploy's test of
+`Needs`. So okay-demo's `ChatDemo` — four capabilities, one of them a
+log on disk — was rewired by it. The app boots and prints its own
+plan (`chat: modules Store, Board, Transport, Secrets`). Three things
+the tests could not have told us:
+
+- **A capability is installed under one type and released under
+  another.** The store is a `FileStore` to open and close, and a
+  `Store` to everything that reads it — `Store` has no `close` and
+  should not grow one for this. `module[A]` forces both to be `A`,
+  which leaves an application choosing between over-specifying every
+  consumer and a type test in the release. `moduleAs[A, R <: A]` is
+  the missing spelling and is now in the core.
+- **An application's body is itself a program in the scope.** A
+  server is `Server ! Resource`, not a value, so `m { body }` answers
+  a program inside a program and the discarded-value lint fires at
+  the call site. `Module.use` flattens it once, where it belongs.
+- **A global `lazy val` is exactly what a module replaces, and every
+  reader of it becomes a door.** `routes` built its ops surface from
+  the global store, so a module's store beside it would have opened
+  one log twice — the failure the code's own comment describes.
+  `routes` takes `Store` as a capability now. That is the cost of the
+  conversion, and it is the whole point: the graph moves from a
+  global into the type.
+
+Two things improved by construction rather than by intent: the log is
+CLOSED when the region ends (the `lazy val` it replaced never was),
+and the demo's tests no longer reach the repository's real
+`okay-board.log` through that global when they touch an ops route.
+
+Stage 3 on this app was declined at first and then FIXED, because the
+reason was a gap rather than a mismatch (needs-runtime). The demo's
+root asks for a `Timer`, which no place provides, and `Needs.of`
+treated every unresolved input as the place's business — so the only
+answers were a lie (declaring a `Need` for a timer) or dropping the
+guarantee that an undeclared input stops the build. A root's inputs
+are MIXED, and the declaration now says which kind each is:
+`Needs(Need.Database(…))` for the place, `Needs.runtime` for what the
+process brings. `Timer` and `Scheduler` are declared runtime in
+`Needs`'s own companion, once, for every application. The undeclared
+input is still a compile error, and its message now offers both
+answers.
+
+What that leaves for the demo is a true statement rather than a
+missing feature: `ChatDemo.Root` is named in the app, and
+`Needs.of[ChatDemo.Root]` is EMPTY — it provisions its own store,
+transport and secrets, and its one remaining input is the runtime's.
+okay-demo's deployment test pins that, so the day the root gains a
+database it did not provision, the build stops until someone says
+what that is.
+
+## Lifetimes (di-prototype, 2026-09-10)
+
+The arc had one lifetime: a `module` installs one value for a region.
+An instance per consumer needed a named trait per capability, and the
+pure and the releasing shapes had DIFFERENT types — so a provider
+that began closing what it made broke every consumer.
+
+`New[A]` is the one type, `fresh[A]` the one consumer word, and
+`prototype` comes in the two spellings that mirror
+`Module.value`/`module`. `New[A].apply()` answers `A ! Resource`
+ALWAYS, including where nothing is released: uniformity at the call
+site is worth a program wrapper, because the alternative is that
+every consumer learns whether its instance is closed. Pinned by a
+test that runs ONE consumer against both providers.
+
+The instance is released by the region its `fresh` runs in, which
+makes the caller the one who chooses the lifetime — a per-request
+region (`Resource.scoped`, the region as an expression, since `run`
+forwards a row and a per-call region has nothing to forward) or the
+application's. Inside a long-lived region every `fresh` accumulates
+until it ends; stated in the docs and in a test rather than left to
+be discovered.
+
+Also here: `plan` now keeps a capability's type ARGUMENT, so a
+prototype reads as `New[Conn]` rather than `New` — the difference
+between a plan and a list of type constructors.
+
+FOLLOW-UP (fresh-says-why, 2026-09-10). `fresh[Db]` where a
+`module[Db]` installed the singleton is the mistake this pair
+invites, and the answer was "No given instance of type okay.New[Db]
+… for parameter n of method fresh": the type, not the fix. `New`
+carries an `@implicitNotFound` naming both roads now — `wire` the one
+the region installed, or have the PROVIDER offer a prototype — and
+`fresh` is respelled `New[A] ?=> (A ! Resource) = wire[New[A]]()`,
+because that is what carries the message to the call site. MEASURED:
+as a `using` parameter the compiler prints its own text and the
+annotation never appears; through the context function it does. The
+respelling also says in the code what was only true in the prose —
+`fresh` IS `wire` at another type, one primitive underneath.
+
+## Set-binding, and why memoisation was the wrong question (di-multibind, 2026-09-10)
+
+The comparison table named four gaps and called two of them small.
+
+**Set-binding is built**, on the machinery that already merges: each
+module declares its piece as a `Fact`, and `installing(k)` merges
+every piece by that kind's rule and installs the result as a
+capability. Building it moved facts through the BUILD as well as the
+value — a contribution declared below an acquisition is not known
+until that acquisition has happened, and losing it would have made
+the feature a half-truth. `Module.built` carries `(Providing, Facts)`
+now and `build` is its first half, so nothing outside changed. The
+early `facts` preview still stops at the first acquisition, and that
+is right: a deployment reads it before anything opens.
+
+**Memoisation is not built, and the reason is the shape rather than
+the effort.** ZLayer memoises because a layer EMBEDS its
+dependencies, so a diamond builds the shared one twice. Here a shared
+dependency is an INPUT — `Db ?=> Module[…]` — so the diamond does not
+arise: the application installs `Db` once and every reader sees that
+one. What can still bite is installing one capability twice, where
+the second wins and the first is acquired for nothing. That gets
+`m.shadowed`, read off the plan with nothing built. It is a REPORT
+and not an error because a test double is exactly a deliberate
+double, and refusing it would break the override idiom the arc has
+had since stage 0.
+
+## A fact's merge is a Monoid (fact-is-monoid, 2026-09-10)
+
+`Fact[V]` declared `empty` and `merge` — which is `Monoid[V]`, the
+one this core has had in Fold.scala all along, with instances for
+Vector, List, String and every Alternative, and `Group[N]` for
+numbers. Two names for one thing is what this repository forbids, and
+the cost fell on every contributor: two methods written by hand where
+the instance already existed.
+
+A `Fact[V]` now CARRIES its monoid, so the usual kind is one line and
+no methods (`object Routes extends Fact[Vector[Route]]`), and a rule
+the givens do not have is passed in — `Monoid.of(zero)(f)`, added for
+exactly this. okay-deploy's `Declared` is one of those: two modules on
+one volume declare one volume, so its merge dedups rather than
+appends.
+
+The operator's question was whether the collection should be
+abstracted (Foldable was the suggestion). The right abstraction is not
+folding a container but COMBINING two contributions, which is the
+monoid; with it, a collection stops being special — a fact over
+`String` concatenates and one over `Int` sums, pinned by a test.
+
+## Where a Monoid instance lives (monoid-scope, 2026-09-10, MEASURED AND DECLINED)
+
+Asked where the `String` in `object Notes extends Fact[String]` gets
+its merge from, the answer turned up an asymmetry: `Monoid[Vector[A]]`
+is in `Monoid`'s companion (its own comment says "being here it needs
+no import"), while `Monoid[String]`, `Monoid[List[A]]` and the
+`Alternative` family are declared at package level. From okay-deploy,
+`Fact[Vector[Int]]` compiled and `Fact[String]` did not.
+
+Moving the two into the companion — the obvious fix — was tried and
+REVERTED. A companion instance is found by an implicit search for the
+TYPE, but the `|+|` extension it carries is found only when the given
+is in LEXICAL scope, so the move broke `a |+| b` on a `String` in
+`TestLaws`. The two placements have different powers and neither is
+strictly better; the cost of the move is larger than the cost of an
+import.
+
+What was measured, and is now in docs/di.md instead:
+`import okay.*` does NOT bring givens (Scala 3 asks for `import
+okay.given`), and that, not the placement, is what the sample was
+missing. A deeper fix exists and was not taken: a top-level
+`extension [A](x: A)(using Monoid[A]) def |+|` would work for every
+monoid from anywhere, at the price of touching the algebra every
+module uses.
+
+## What a Fact is FOR (di-facts-examples, 2026-09-10)
+
+The operator read the Facts section and said the examples motivate
+nothing — `Fact[String]`, `Fact[Int]`, machinery without a reason.
+Right, and writing an honest one found two things.
+
+**The reason a fact is not a capability**: installing SHADOWS (a test
+double must be able to replace one), contributing ACCUMULATES. Stated
+first in the section now, with a test that shows the same shape as an
+install keeping only the last.
+
+**A contribution cannot read the capability its own module installs.**
+`declare` runs outside that installer, so `Module.value[Board](…)
+.declare(Surface, routes reading wire[Board])` does not compile — met
+while writing the example. The rule is the one a dependent module
+already obeys: a contribution sees what came BEFORE it, so a feature
+is `Board ?=> Module[…]`. That made a module which installs NOTHING
+the natural shape for a contributor, and there was none:
+`Module.nothing` and `Module.contributing(k, v)` fill it.
+
+The worked example is routes, compiled as `TestRouteFacts` in
+okay-http against real `Request`/`Response`: the capabilities
+installed once by whoever owns them, each feature adding its part and
+installing nothing, the server serving `wire[Routes]`. `PartialFunction`
+under `orElse` is the monoid, which is also the merge every server in
+this stack already uses by hand.
+
+## A feature is one module (fact-declaring, 2026-09-10)
+
+Reading the routes example, the operator asked what `board` and
+`admin` were doing beside `boardApi` and `adminApi` — and the honest
+answer was that a feature had been split in two because of a
+limitation, not a design. A contribution could not read the capability
+its own module installs: `declare` runs outside that installer.
+
+`declaring(k)(v: F[V])` lifts it — the value is computed inside the
+module's own installer (`p(v)`), so `wire[Board]` in a contribution is
+the `Board` that module installs. For an acquired module it is
+computed when the module BUILDS, since there is nothing to read before
+that; it reaches the collection, not the early preview. A feature is
+now one module, its capability and its routes together, and
+`contributing` remains for a feature that owns no capability.
+
+Also here, from the same reading: `declare` and `contributing` are
+CURRIED. With both arguments in one list the block needed a `: Routes`
+ascription; with the value in its own list its type comes from
+`Fact[V]` and the ascription is gone. The same reason `provide(db) { … }`
+works — braces as an argument with a known expected type.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**
@@ -224,7 +498,11 @@ is the actuator, and a Boot app can mount both).
   both restating a check already made (`Class.cast`, the registry's
   class test).
 - **Needs are a given per capability, not a field on `module`**
-  (stage 3). The first sketch had the deployment fact ride on the
+  (stage 3) — REFINED by module-facts: the given stays for an input
+  the place hands in; a component that opens its own infrastructure
+  declares its need as a FACT on the module, typed by a key the
+  reader defines, so no deployment word enters the core and the
+  declaration sits where the thing is opened. The first sketch had the deployment fact ride on the
   module (`module[Pg](…).needs(Need.Database(…))`), which puts a
   deployment word into every module that touches a database and
   into the core. A `Needs[A]` given lives where the capability is

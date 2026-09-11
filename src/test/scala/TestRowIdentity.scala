@@ -68,7 +68,13 @@ class TestRowIdentity extends munit.FunSuite {
     assert(thrown.getMessage.contains("String"), thrown.getMessage)
   }
 
-  test("the rule, stated positively: one instance per signature in a row") {
+  // THE RULE BINDS A BARE ROW. Several instances of one signature are
+  // had three ways — a key (`Tag`), a cell (`Refs`) or a fresh
+  // `Delim` prompt — and docs/many-instances.md is the whole story.
+  // `TestTag` and `TestRefs` are the ones that prove it; this suite
+  // keeps proving what happens when none of the three is used, which
+  // is what makes the choice a choice.
+  test("the rule, stated positively: one instance per signature in a BARE row") {
     // a row with ONE reader is exact, whatever the environment type
     val prog: Int ! (Reader % Int + Pure) =
       okay.effect[Reader % Int + Pure, Int](Reader.Ask()).map(_ * 2)

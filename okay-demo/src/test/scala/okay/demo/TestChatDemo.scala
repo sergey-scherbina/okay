@@ -64,8 +64,15 @@ class TestChatDemo extends munit.FunSuite {
    * test would inherit their tasks and prove nothing */
   def memoryBoard: Board = Board(Board.topicOf(Board.store(":memory:")))
 
+  /** the store the ops routes report on. `routes` takes it as a
+   * capability now (di-dogfood), and a memory one per server is what
+   * the comment above `memoryBoard` already asks for: before this,
+   * every test that touched an ops route read the repository's real
+   * `okay-board.log` through a global. */
+  def memoryStore: okay.persist.Store = Board.store(":memory:")
+
   def withServer[A](budget: Int, board: Board = memoryBoard)(f: Int => A): A =
-    provide(deadWire, noSecrets, board)(Resource.run[A, Pure](
+    provide(deadWire, noSecrets, board, memoryStore)(Resource.run[A, Pure](
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, budget))()
         .map(s => f(Jetty.port(s)))).runWith)
 
@@ -133,7 +140,7 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
-    provide(okay.llm.Transports.http(), noSecrets, memoryBoard)(Resource.run[Unit, Pure](
+    provide(okay.llm.Transports.http(), noSecrets, memoryBoard, memoryStore)(Resource.run[Unit, Pure](
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
@@ -171,7 +178,7 @@ class TestChatDemo extends munit.FunSuite {
         .foldLeft(pure(()): Unit ! F)((acc, l) =>
           acc.flatMap(_ => effect[F, Unit](Writer(l))))
     def run(wire: okay.llm.Transport, secrets: okay.conf.Secrets): String =
-      provide(wire, secrets, memoryBoard)(
+      provide(wire, secrets, memoryBoard, memoryStore)(
         Resource.run[String, Pure](
           Jetty.serve(0)(ChatDemo.handler(512))().map { s =>
             new String(post(Jetty.port(s),
@@ -264,6 +271,18 @@ class TestChatDemo extends munit.FunSuite {
       HttpResponse.BodyHandlers.ofString())
     (res.statusCode(), res.body())
 
+  portTest("a malformed login body is 400, not a verdict about the credentials") {
+    // optics-outside stage 7: Chat.fieldOf answered "" both for a
+    // missing field and for a body that was not JSON, so this request
+    // used to reach Login.confirm("", "") and its caller was told 401,
+    // wrong or expired code
+    withServer(512) { port =>
+      assertEquals(postJson(port, "/login/confirm", "not json")._1, 400)
+      assertEquals(postJson(port, "/login/confirm", """{"email":"ann@example.com"}""")._1, 400)
+      assertEquals(postJson(port, "/login", "{")._1, 400)
+    }
+  }
+
   portTest("demo-sessions: confirm-and-sign — the login+confirm exchange mints a token, a wrong code is refused") {
     withServer(512) { port =>
       val (s1, b1) = postJson(port, "/login", """{"email":"ann@example.com"}""")
@@ -301,6 +320,32 @@ class TestChatDemo extends munit.FunSuite {
       // could have claimed about itself
       val mine = board.all.filter(_.text.contains("покрасить дверь"))
       assertEquals(mine.map(_.owner), Vector("real@example.com"))
+    }
+  }
+
+  portTest("a query string does not hide a route (optics-outside-demo-routes)") {
+    // The defect: every route here matched `r.url == "..."`, the WHOLE
+    // request target. Jetty used to drop the query string and the
+    // /events/ route's comment said so; e9901797 (http-request-query,
+    // 2026-09-03) fixed Jetty to carry `path?query` as the JDK and
+    // Netty backends always had, and the comment stayed behind. From
+    // that day a query string made every exact match miss.
+    //
+    // The worst instance is not tested here because it is an SSE
+    // stream that never ends: `/events/board` is matched exactly and
+    // `/events/` by PREFIX, in that order, so with a query the exact
+    // match fails, the prefix one takes it, and the caller is given an
+    // inbox stream for the "email" board?t=1 instead of the board
+    // feed. Silently wrong rather than refused. The fix is the same
+    // one these three assertions check: the router cuts the query
+    // before it matches.
+    withServer(512) { port =>
+      for path <- Seq("/?x=1", "/board?x=1", "/board.json?x=1") do
+        val r = client.send(
+          HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
+            .timeout(java.time.Duration.ofSeconds(5)).GET().build(),
+          HttpResponse.BodyHandlers.ofString())
+        assertEquals(r.statusCode(), 200, s"$path answered ${r.statusCode()}")
     }
   }
 

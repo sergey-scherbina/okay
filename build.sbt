@@ -217,7 +217,7 @@ lazy val okayCats = (project in file("okay-cats"))
 
 /** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
 lazy val okayZio = (project in file("okay-zio"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-zio",
     libraryDependencies ++= Seq(
@@ -229,7 +229,7 @@ lazy val okayZio = (project in file("okay-zio"))
 
 /** interop with kyo: value and Async bridges (P3) */
 lazy val okayKyo = (project in file("okay-kyo"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-kyo",
     libraryDependencies ++= Seq(
@@ -245,7 +245,7 @@ lazy val okayKyo = (project in file("okay-kyo"))
  * java.util.function. No dependency to add — it is the platform.
  */
 lazy val okayJava = (project in file("okay-java"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-java",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -267,11 +267,15 @@ lazy val okayLeads = (project in file("okay-leads"))
 
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-fs2",
     libraryDependencies ++= Seq(
       "co.fs2" %% "fs2-core" % "3.10.2",
+      // the benchmark lane only: fs2 parallelism needs `Concurrent`,
+      // so §20's multi-core fs2 rows run on IO and the runtime comes
+      // with them. The interop itself stands on fs2-core alone.
+      "org.typelevel" %% "cats-effect" % "3.5.7" % Test,
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )
@@ -292,9 +296,16 @@ lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-actor",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
-  // the laws need a Scheduler to fork with, and that is platform
-  // work -- so the module is cross-built and its LAWS are checked on
-  // the JVM, the same split the core uses
+  // The laws run on ALL THREE platforms (src/test/scala), and that is
+  // new (actor-on-js, 2026-09-09). Until then the loop read with
+  // `receiveBlocking` and ran behaviours with `runWith`, both of which
+  // need `CanBlock` — which JS does not have — so the module
+  // cross-built for a platform on which no actor could ever be
+  // spawned. The loop is an Async program now, driven by whatever the
+  // platform's Scheduler is, and on JS that is the event loop itself.
+  //
+  // `scala-jvm` keeps the tests that genuinely need a thread: the
+  // poison/supervision laws that assert across a blocking join.
   .jvmSettings(
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
@@ -346,7 +357,7 @@ lazy val LegacyStdlib = config("legacyStdlib").hide
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
 lazy val okaySpark = (project in file("okay-spark"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, compare % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
@@ -410,6 +421,14 @@ lazy val okaySpark = (project in file("okay-spark"))
     libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.16" % LegacyStdlib,
     Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
     Test / fork := true,
+    // bench-across-processes: SparkClusterBench starts a REAL
+    // standalone cluster — a Master and Workers as their own JVMs —
+    // and the driver must come out of THIS build, or it serialises a
+    // collection from a different scala-library and the master
+    // answers InvalidClassException.
+    Test / javaOptions += "-Dokay.spark.cp=" +
+      (Test / fullClasspath).value.map(_.data.getAbsolutePath)
+        .mkString(java.io.File.pathSeparator),
     Test / javaOptions ++= Seq(
       // Run the fork on the JDK the tests were compiled for. Without
       // this the fork inherits sbt's JVM, and if sbt itself was
@@ -448,12 +467,74 @@ lazy val okaySpark = (project in file("okay-spark"))
 
 /** Flink via the same Aggregator triple (P4); flink-core is pure Java */
 lazy val okayFlink = (project in file("okay-flink"))
-  .dependsOn(okay.jvm)
+  // okay-java is TEST only, and only for §20's third lane: the same
+  // job over java.util.stream, whose `Collector` an okay Aggregator
+  // already is (okay-java's Collect.collector)
+  .dependsOn(okay.jvm, okayJava % Test, compare % "test->compile")
   .settings(
     name := "okay-flink",
+    // bench-across-processes: FlinkClusterBench starts a REAL
+    // standalone cluster — a JobManager and TaskManagers as their own
+    // JVMs — and a process needs a classpath the test cannot
+    // reconstruct. Written down as a RESOURCE rather than handed over
+    // as a `-D`, because this module's tests do not fork and forking
+    // them to pass one property would change how every existing lane
+    // here runs. (okay-spark forks already, so its own copy of this
+    // is a javaOption.) Same arrangement as `compare`.
+    Test / resourceGenerators += Def.task {
+      val f = (Test / resourceManaged).value / "okay-flink-cp.txt"
+      val cp = (Test / classDirectory).value +: (Compile / classDirectory).value +:
+        (Test / dependencyClasspath).value.map(_.data)
+      IO.write(f, cp.map(_.getAbsolutePath).mkString(java.io.File.pathSeparator))
+      Seq(f)
+    }.taskValue,
     libraryDependencies ++= Seq(
       "org.apache.flink" % "flink-core" % "1.20.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
+      // the ENGINE, for the comparison benchmark only (docs/benchmarks.md
+      // section 20): flink-streaming-java is the DataStream API,
+      // flink-clients brings the MiniCluster a local environment runs on.
+      // The Scala DataStream API is not used and could not be: it is
+      // published for 2.13 and its TypeInformation macros do not exist for
+      // Scala 3 — Flink's own advice since 1.18 is to call the Java API,
+      // which is what the lanes do (explicit `.returns(...)` everywhere a
+      // Scala lambda erases the type Flink would have extracted).
+      "org.apache.flink" % "flink-streaming-java" % "1.20.0" % Test,
+      "org.apache.flink" % "flink-clients" % "1.20.0" % Test,
+      // §20's three in-process stream libraries. TEST only, and they
+      // are here rather than in `compare` because the lane they serve
+      // is this job: none of them has an event-time window, so each
+      // gets okay.Windows and what is measured is the plumbing.
+      "co.fs2" %% "fs2-core" % "3.10.2" % Test,
+      "dev.zio" %% "zio-streams" % "2.1.14" % Test,
+      "io.getkyo" %% "kyo-core" % "0.16.2" % Test,
+    ),
+    // Flink 1.20 on JDK 21 reaches into java.base by reflection (Kryo,
+    // its own MemorySegment); the same list okay-spark needs, and for
+    // the same reason
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      // 8 GB because of ONE lane: java.util.stream has no event time, so
+      // its "windows" are keys and the whole history stays resident.
+      // Measured 2026-09-10: the parallel JDK lane dies with an
+      // OutOfMemoryError at 2.4M events on 4 GB, where the okay and
+      // Flink lanes — both of which EVICT on a watermark — never came
+      // near it. The heap is a lane's requirement, so it is stated here
+      // rather than tuned until the red went away.
+      "-Xmx8g",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/java.text=ALL-UNNAMED",
+      "--add-opens=java.base/java.time=ALL-UNNAMED",
     ),
   )
 
@@ -656,10 +737,15 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
   // scala-jvm: `Staging.autoInstall()` reaches okay-staging by name
-  // (staging-seam) — reflection, so the JVM only
+  // (staging-seam) — reflection, so the JVM only. The JVM-only TEST
+  // dir holds what needs a thread with a CHOSEN stack size
+  // (TestStackBytes, stack-depth-margin): the only API that measures a
+  // decoder's stack cost in bytes, and it exists on no other platform
   .jvmSettings(
     Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm")
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
 
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of
@@ -1048,6 +1134,13 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-cluster"))
   .dependsOn(okayCodec)
+  // okay-persist joins in TEST scope only, for the coordinator's
+  // journal (specs/dataflow.md, stage 8): `Checkpoint` is two methods
+  // over bytes and the STORE is the caller's, so okay-cluster's
+  // compile graph stays at okay-codec and `TestPersisted` shows the
+  // assembly against the real compacted log. Same arrangement
+  // okay-persist itself uses for okay-tls.
+  .jvmConfigure(_.dependsOn(okayPersist.jvm % Test))
   .settings(
     name := "okay-cluster",
   )
@@ -1065,6 +1158,14 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
         ("scala-" + scalaVersion.value) / "okay-cluster-fastopt" / "main.js"
       s"-Dokay.client.js=${client.getAbsolutePath}"
     },
+    // stage 4b (specs/dataflow.md): TestDistributed spawns REAL
+    // worker processes — `java -cp … okay.cluster.WorkerMain` — and a
+    // process needs a classpath. Handed over exactly the way the
+    // linked JS client's path above is, for the same reason: the test
+    // cannot reconstruct what sbt already knows.
+    Test / javaOptions += "-Dokay.cluster.cp=" +
+      (Test / fullClasspath).value.map(_.data.getAbsolutePath)
+        .mkString(java.io.File.pathSeparator),
     // hang the JS client's linking off Test/compile, not Test/test:
     // `test` is an InputTask in sbt 2 and a Task in sbt 1, while
     // `compile` is a plain TaskKey in both — and compiling before the
@@ -1533,7 +1634,9 @@ lazy val okayDeploy = (project in file("okay-deploy"))
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
+  // okayResilience: the guards around the one live outbound call
+  // (demo-guarded-llm) — the arc's worked instance
+  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayResilience.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
   // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
   .settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(
@@ -1600,6 +1703,28 @@ lazy val okayLangchain4jEmbed = (project in file("okay-langchain4j-embed"))
       "dev.langchain4j" % "langchain4j-embeddings-all-minilm-l6-v2" % "1.19.0-beta29",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
+  )
+
+/**
+ * The direct ONNX session (specs/intent-spans.md): the same model file
+ * `okay-langchain4j-embed` wraps, opened by this repository's own
+ * hands so that the TOKEN vectors come back beside the pooled one —
+ * one forward pass, both readings. The operator's name for the
+ * module. A native runtime and a model on disk, so — as with
+ * okayLangchain4jEmbed — DELIBERATELY NOT in the root `.aggregate`:
+ * `sbt okayOnnx/test`, with OKAY_ONNX_MODEL naming a model directory
+ * (model.onnx + tokenizer.json), and the suite says SKIPPED without it.
+ */
+lazy val okayOnnx = (project in file("okay-onnx"))
+  .dependsOn(okayRag.jvm)
+  .settings(
+    name := "okay-onnx",
+    libraryDependencies ++= Seq(
+      "com.microsoft.onnxruntime" % "onnxruntime" % "1.20.0",
+      "ai.djl.huggingface" % "tokenizers" % "0.36.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    Test / fork := true,
   )
 
 /**
@@ -1713,6 +1838,14 @@ lazy val compare = (project in file("compare"))
   .settings(
     name := "okay-compare",
     publish / skip := true,
+    // §20's SHARED HALF lives in this project's `src/main`: the Wrocław
+    // feed, the definition every engine computes, okay's own lanes and
+    // the measurement (docs/benchmarks.md §20). Each engine's lane lives
+    // in ITS OWN interop module's tests and depends on this — which is
+    // also what gives the benchmark a JVM per lane, and the only
+    // arrangement in which Spark can be measured at all: its
+    // `SparkSession` needs a two-stdlib classpath that breaks the
+    // compilation of anything inlining okay's core.
     // The comparison lanes are written in the COMPETITORS' idioms on
     // purpose — a benchmark that rewrites a library's natural shape to
     // please our linter is measuring the rewrite, not the library. Two
@@ -1729,6 +1862,24 @@ lazy val compare = (project in file("compare"))
       "-Wconf:msg=unused explicit parameter:s",
     ),
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    // THE TEST CLASSPATH, AS A RESOURCE. §20's distributed lane
+    // (specs/dataflow.md, stage 7) starts real worker PROCESSES with
+    // `java -cp`, and a test running inside sbt cannot read its own
+    // classpath — `java.class.path` there is sbt's launcher. okay-
+    // cluster hands the same string over as a `-D` because its tests
+    // fork; this project's do not, and forking every comparison lane
+    // to pass one property would be a heavier change than writing the
+    // string down.
+    // (`dependencyClasspath`, not `fullClasspath`: the full one
+    // contains this project's own resources, so asking for it here
+    // would be a task cycle. The two class directories are settings.)
+    Test / resourceGenerators += Def.task {
+      val f = (Test / resourceManaged).value / "okay-cluster-cp.txt"
+      val cp = (Test / classDirectory).value +: (Compile / classDirectory).value +:
+        (Test / dependencyClasspath).value.map(_.data)
+      IO.write(f, cp.map(_.getAbsolutePath).mkString(java.io.File.pathSeparator))
+      Seq(f)
+    }.taskValue,
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-free" % "2.12.0",
       "org.typelevel" %% "cats-effect" % "3.5.7",

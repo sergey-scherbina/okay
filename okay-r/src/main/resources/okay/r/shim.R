@@ -1,4 +1,4 @@
-# okay-r shim, version 1 (specs/r.md). One JSON object per line each
+# okay-r shim, version 2 (specs/r.md). One JSON object per line each
 # way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -7,7 +7,7 @@
 # has no JSON reader, and our own parser at the trust boundary is a
 # worse thing to own than one package every R installation has.
 
-SHIM <- 1
+SHIM <- 2
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
@@ -28,15 +28,44 @@ enc <- function(v) {
   if (is.null(v)) return(NULL)
   if (is.raw(v)) return(list(t = "raw", b64 = jsonlite::base64_enc(v)))
   if (is.data.frame(v) || (is.list(v) && !is.null(names(v)) && all(names(v) != ""))) {
-    cols <- lapply(names(v), function(n) list(n, enc_col(v[[n]])))
-    return(list(t = "frame", cols = cols))
+    cols <- lapply(names(v), function(n) enc_column(n, v[[n]]))
+    return(list(t = "frame", v = 2L, cols = cols))
   }
   if (is.list(v)) return(lapply(v, enc))
   enc_col(v)
 }
 
+# A COLUMN, columnar (r-frame-columnar-wire): one type for the whole
+# column, a PLAIN array of values, and the absences as index lists.
+# jsonlite serialises an atomic vector on its fast C path; the
+# per-cell form below made a 100k-row frame hundreds of thousands of
+# little objects, which is where the 13.7 s went. The placeholder at
+# an absent position is the type's zero and not null on purpose: a
+# null would force a list and undo the whole point. A column the four
+# atomic types cannot carry keeps the per-cell form under `cells`.
+enc_column <- function(name, v) {
+  short <- if (is.logical(v)) "l"
+    else if (is.integer(v)) "i"
+    else if (is.double(v)) "d"
+    else if (is.character(v)) "s"
+    else NULL
+  if (is.null(short) || is.list(v))
+    return(list(name = name, cells = enc_col(v)))
+  nan_ix <- if (is.double(v)) which(is.nan(v)) else integer(0)
+  na_ix <- setdiff(which(is.na(v)), nan_ix)
+  vals <- v
+  zero <- switch(short, l = FALSE, i = 0L, d = 0, s = "")
+  if (length(na_ix) > 0 || length(nan_ix) > 0) vals[c(na_ix, nan_ix)] <- zero
+  out <- list(name = name, type = short,
+              values = unname(vals),
+              na = as.integer(na_ix - 1L))
+  if (short == "d") out$nan <- as.integer(nan_ix - 1L)
+  out
+}
+
 # an atomic vector -> a list of encoded scalars, one per element,
-# so an NA keeps the vector's own type on the way back
+# so an NA keeps the vector's own type on the way back (the per-cell
+# form, kept for columns the four atomic types cannot carry)
 enc_col <- function(v) {
   ty <- if (is.logical(v)) "logical"
     else if (is.integer(v)) "integer"
@@ -52,6 +81,24 @@ enc_col <- function(v) {
   })
 }
 
+# one column off the wire: the columnar shape (a type, a plain array
+# and the absence indices) or the per-cell `cells`, or v1's [name,
+# cells] pair — a reader accepts all three, an encoder writes one
+dec_column <- function(c) {
+  if (!is.null(c$values)) {
+    xs <- unlist(c$values, use.names = FALSE)
+    if (length(xs) == 0)
+      xs <- switch(c$type, l = logical(0), i = integer(0), d = double(0), s = character(0))
+    xs <- switch(c$type, l = as.logical(xs), i = as.integer(xs),
+                 d = as.double(xs), s = as.character(xs))
+    if (!is.null(c$na) && length(c$na) > 0) xs[as.integer(c$na) + 1L] <- NA
+    if (!is.null(c$nan) && length(c$nan) > 0) xs[as.integer(c$nan) + 1L] <- NaN
+    return(xs)
+  }
+  cells <- if (!is.null(c$cells)) c$cells else c[[2]]
+  simplify_col(lapply(cells, dec))
+}
+
 # wire -> R. A tagged object becomes the value it names; an array
 # becomes a LIST, and a caller wanting a vector says so with unlist().
 dec <- function(v) {
@@ -64,8 +111,11 @@ dec <- function(v) {
     if (t == "i") return(as.integer(v$v))
     if (t == "raw") return(jsonlite::base64_dec(v$b64))
     if (t == "frame") {
-      cols <- lapply(v$cols, function(c) simplify_col(lapply(c[[2]], dec)))
-      names(cols) <- vapply(v$cols, function(c) c[[1]], character(1))
+      fv <- if (is.null(v$v)) 1L else as.integer(v$v)
+      if (fv > 2L) stop(sprintf("frame format v%d: this shim reads up to v2", fv))
+      cols <- lapply(v$cols, dec_column)
+      names(cols) <- vapply(v$cols, function(c)
+        if (!is.null(c$name)) c$name else c[[1]], character(1))
       return(as.data.frame(cols, stringsAsFactors = FALSE, check.names = FALSE))
     }
     stop(sprintf("unknown tagged value: %s", t))

@@ -172,24 +172,98 @@ they are operations, not because the modules know each other.
 
 ## Behavior
 
-- [ ] a Call round-trips scalars and vectors (NULL/NA distinct from
-      absent; the R NA story stated, not papered over)
-- [ ] a frame maps to a Seq of a flat case class and back; row
+**Hardened 2026-09-09 (r-measure-harden):** `start(…, require)` runs
+`verify` at CONSTRUCTION and refuses to hand out an engine whose
+packages drift, the Sql seam's verify-at-startup posture in the same
+words. And one edge is now stated where a reader meets it: a respawn
+that FAILS after a timeout (R gone between two calls) throws rather
+than answering data — the dead-process story one step later, and an
+engine whose interpreter no longer exists is not something a program
+can handle as a value.
+
+**Audited 2026-09-09 (spec-truth)** against what RUNS, not what exists:
+`okayR/test` alone runs the 6 mock tests, and `TestR`'s 18 are Live —
+they skip where no R is found and otherwise build their own container
+(r-base 4.4.1 + jsonlite). This audit ran them: 17 passed, 1 skipped
+(named in its box below). A box checked here names the test that
+proves it.
+
+- [x] a Call round-trips scalars and vectors (NULL/NA distinct from
+      absent; the R NA story stated, not papered over) — TestR: NULL vs
+      NA, an NA keeps its TYPE (R's four NAs are four values), NA vs
+      NaN, integer vs double kept apart where JSON would merge them,
+      raw bytes and strings; TestRMock walks every RValue shape with no
+      R present (checked 2026-09-09, spec-truth)
+- [x] a frame maps to a Seq of a flat case class and back; row
       count and column order survive; a column the Schema does not
-      name is an error naming the column
-- [ ] an R error (stop()) surfaces as a condition value with the
-      message; the process survives for the next call
-- [ ] a killed R process makes the in-flight call THROW; a
+      name is an error naming the column — HALF BUILT, and the half
+      that WAS not is the case class (BUILT since, see below): `RFrame` is
+      `Vector[(String, Vector[RValue])]` and okay-r names no `Schema`
+      at all. What IS proven: a frame goes out as columns and comes
+      back with order and count intact, over the wire too; a column
+      carries NA in place; a function answering something that is not
+      a frame is a condition naming what arrived. The Schema mapping
+      and its unnamed-column error were BACKLOG `r-frame-schema`, and
+      are BUILT 2026-09-09 (r-finish): `RFrame.rows[A: Schema]` and
+      `RFrame.of[A: Schema]`, fields matched to columns BY NAME with
+      the field order as the column order; every mismatch a
+      `Condition` naming what does not line up — a column no field
+      names, a field with no column, a cell that does not fit (naming
+      the column AND the row). An absent cell keeps its COLUMN's type,
+      so an `Option` field writes `NA_character_` in a text column
+      rather than a logical NA; R's widening is admitted where R
+      admits it (an integer column into a Double field) and nowhere
+      else. Tested without R (TestRMock) and over the dockerized one
+      (TestR: a frame through `identity` and back into the case class)
+- [x] an R error (stop()) surfaces as a condition value with the
+      message; the process survives for the next call — TestR, plus a
+      missing function and a missing package as conditions
+- [~] a killed R process makes the in-flight call THROW; a
       supervisor retry gets a fresh process (the dead-worker
-      protocol)
-- [ ] a timeout kills the call, reports as data, and the engine is
-      usable after
-- [ ] verify reports a missing package and a version mismatch by
-      name; a passing verify then runs the program's calls
-- [ ] no API accepts runtime-built R source; args reach R only as
-      RValue/RFrame (structural: the enum has no Eval-a-string case)
-- [ ] the R process starts with a clean environment: a parent env
-      var is invisible in R unless the config names it
+      protocol) — the NEXT call after a death throws, and that is
+      tested ("a DEAD process makes the next call THROW — the
+      supervisor decides, not us"). Killing a call already IN FLIGHT,
+      and the retry that gets a fresh process, are not covered: okay-r
+      has no supervisor of its own (by design — the caller's is the
+      one that decides), so the second half is a claim about a
+      CONSUMER, and belongs in the lane that writes one. UPDATE
+      (r-finish): the in-flight half now has an answer, and a better
+      one than a throw — with a deadline set, the call whose process
+      is killed answers `Condition("timeout", …)` as DATA and the
+      engine respawns itself
+- [x] a timeout kills the call, reports as data, and the engine is
+      usable after — BUILT 2026-09-09 (r-finish), where the audit had
+      found nothing at all: `RSubprocess.start(…, timeoutMillis)`. The
+      blocking read moves to one daemon thread per engine, and only
+      where a deadline asks for it; on expiry the PROCESS is killed —
+      the only way to stop R mid-call, since a sleeping or optimising
+      R is busy in C and no polite protocol reaches it — a fresh one
+      takes its place, and the call answers
+      `Left(Condition("timeout", …))`. Proven against the dockerized
+      R: a 120-second sleep behind a 2-second deadline answers in ~2s
+      as data, and the very next call on the same engine is correct.
+      With no deadline the engine blocks exactly as before
+- [x] verify reports a missing package and a version mismatch by
+      name; a passing verify then runs the program's calls — TestR
+      names all three (a missing package, a version mismatch, a
+      passing verify that says nothing and then runs), and two more
+      the box did not ask for: a shim from another version and a shim
+      without jsonlite each refuse BY NAME
+- [x] no API accepts runtime-built R source; args reach R only as
+      RValue/RFrame (structural: the enum has no Eval-a-string case) —
+      read on the current tree: `REval` has exactly `Call(fn, args)`
+      and `Frame(fn, in, args)`, both taking a NAME and `RValue`s;
+      TestR pins the addressing (`pkg::name`, a base name, "the
+      program is data rather than code")
+- [~] the R process starts with a clean environment: a parent env
+      var is invisible in R unless the config names it — the FIRST
+      half is proven ("the R process sees EXACTLY what the config
+      names, and nothing else we passed", green against the
+      dockerized R). The second, a real parent variable being
+      invisible, SKIPS wherever R is reached through the container
+      shim (the shim forwards the environment on purpose, or it would
+      measure docker rather than us) — so it is proven only on a box
+      with R on the PATH, and this audit's run was not one
 - [~] a journaled R step is skipped on Durable replay — NOT as
       written: `Durable` journals `Tool`, not any operation type. An
       R call reached through a tool is journalled because the TOOL is;
@@ -249,6 +323,188 @@ present), and on a consumer that actually uses a restart.
   "loud refusal naming forecast==8.x". Rejected: discovering drift
   in the answers.
 
+## What the wire costs (r-measure-harden, 2026-09-09)
+
+`MeasureRFrame` (Live, medians of five against the dockerized R 4.4.1,
+`identity` on a 3-column frame) — the number `r-arrow` was filed to
+wait for:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000 | 0.30 MB | 6.5 ms | 1 546 ms | 7.3 ms | 2.2 ms | 0.9% |
+| 100 000 | 3.21 MB | 20.4 ms | 13 686 ms | 18.3 ms | 6.0 ms | 0.3% |
+
+It is the opposite of the Python twin's result, where 60% of the trip
+was our own parser. Here our two halves are 0.3%, and it is not the
+pipe either: 3.21 MB in 13.7 s is ~230 KB/s while we encode and decode
+the same bytes at ~83 MB/s. The cost is R walking the STRUCTURE we
+hand it, and the structure is the suspect: `Wire.enc` tags PER CELL —
+an integer, an NA and an integral double are each a small object,
+because JSON cannot otherwise keep R's integer apart from its double
+nor its four NAs apart — so a 100k-row frame is hundreds of thousands
+of objects for jsonlite to build, on the one path it cannot take fast.
+A frame is columnar and a column is homogeneous, so the tag belongs to
+the COLUMN (BACKLOG `r-frame-columnar-wire`): one type, one plain
+array, absences as an index list. That costs no dependency, where
+Arrow costs a native package on R's side and a reader on ours — so it
+goes first, and `r-arrow` waits for the number after it.
+
+## The columnar frame wire (r-frame-columnar-wire)
+
+Written before the code, because the code is a WIRE FORMAT and a wire
+format is the one thing a spec must fix first.
+
+### Why, with the number
+
+r-measure-harden measured a 3-column frame through `identity` (medians
+of five, dockerized R 4.4.1): 100 000 rows is 3.21 MB of JSON and
+13.7 s of round trip, of which our encode and decode together are
+0.3%. It is not the pipe either — 230 KB/s through R against 83 MB/s
+through our own codec on the same bytes. What is left is R building
+the STRUCTURE we hand it, and the structure is per-CELL:
+
+```json
+{"t":"frame","cols":[["id",[{"t":"i","v":1},{"t":"i","v":2}, …]], …]}
+```
+
+An integer cell, an NA cell and an integral double cell are each a
+small tagged object, because JSON alone cannot keep R's integer apart
+from its double, its four NAs apart from each other, or NA apart from
+NaN. Those distinctions are not negotiable — three checked Behavior
+boxes rest on them — but the PLACE of the tag is: a data.frame column
+is homogeneous by construction, so one tag serves the whole column.
+
+### The format
+
+A frame is a list of columns; a column is a type, a plain array of
+values, and the positions that are absent:
+
+```json
+{"t":"frame","v":2,"cols":[
+  {"name":"id",   "type":"i", "values":[1,2,3],        "na":[]},
+  {"name":"temp", "type":"d", "values":[1.5,0,2.5],    "na":[1], "nan":[]},
+  {"name":"site", "type":"s", "values":["a","b","c"],  "na":[]},
+  {"name":"ok",   "type":"l", "values":[true,false,true], "na":[]},
+  {"name":"blob", "type":"raw","values":["AQI=","Aw=="], "na":[]}
+]}
+```
+
+- **`type`** is R's own vocabulary, the four already in `RType` plus
+  raw: `l` logical, `i` integer, `d` double, `s` character, `raw`.
+  It is the COLUMN's type and it is what an absence takes: this is how
+  the four NAs stay four without a tag per cell.
+- **`values`** is a plain JSON array of that type's scalars — the path
+  jsonlite takes fastest, and the reason this change exists. A `raw`
+  column's values are base64 strings, as today.
+- **`na`** holds the 0-based positions that are absent; the `values`
+  array still has an entry at those positions (JSON `null`, or the
+  type's zero — the reader takes `na` as the authority and never the
+  placeholder). Empty in the common case, so it costs a pair of
+  brackets per column.
+- **`nan`** is the same list for a double column's NaNs, which R
+  distinguishes from NA. Absent for other types.
+- **`v`** is the frame format's own version inside the envelope: 2 is
+  this shape, and a reader that meets a `v` it does not know refuses
+  by name rather than guessing — the module's habit at every seam.
+
+Scalars in `Call` arguments are NOT touched. They are small, the
+per-value tagging costs nothing there, and changing two things at once
+would leave the measurement unable to say which one moved.
+
+### What must survive, and is already tested
+
+- an integer column stays integer; a double column stays double
+- the four NAs stay four values, and a column of NAs keeps its type
+- NA and NaN stay different
+- raw bytes and strings round-trip
+- an EMPTY column keeps its type (the shape carries `type` even with
+  no values, where the old per-cell form had nowhere to put it)
+- the typed layer (`RFrame.rows` / `RFrame.of`) is untouched: it works
+  on `RFrame`, above the wire
+
+### The shim moves with it
+
+The shim is a resource inside this module's jar and the handshake
+refuses drift by version, so both sides change together and no old
+shim exists anywhere: `ShimVersion` goes to 2, `enc`/`dec` gain the
+columnar branch, and a host meeting a v1 shim refuses as it always
+did. No compatibility window is needed and none is offered.
+
+### The gate
+
+`MeasureRFrame` is the measurement, and it already has the BEFORE row.
+The rule this lane is held to:
+
+- the same table AFTER, medians of five, same box, same container
+- the win must be visible at 100 000 rows in the ROUND TRIP column;
+  the honest threshold is 2x, since a change that costs a format
+  version and a shim bump should not be bought for less
+- if it lands under 2x, the entry says so and `r-arrow` stops waiting
+  behind it — the next measurement is then INSIDE the shim, to find
+  whether jsonlite's parse or its serialise holds the time
+
+### Out of scope
+
+- Arrow, until this number exists (r-arrow, filed and waiting)
+- changing the scalar wire
+- a compatibility mode for the v1 frame shape — the shim ships with
+  the host, so there is nothing to be compatible with
+
+### Behavior
+
+- [x] a frame of every column type round-trips through a real R
+      unchanged, including an integer column, a double column with a
+      NaN, a character column, a logical column and a raw column (the
+      raw one on the `cells` road — see the correction below)
+- [x] a column of NAs keeps its type across the wire (all four), and
+      an NA in a double column stays distinct from a NaN in the same
+      column — over a real R, and an all-NA column too
+- [~] an empty frame and an empty column keep their column names and
+      types — NAMES yes, TYPES no, and the reason is a fact about
+      `RFrame` rather than about the wire: it types VALUES, not
+      columns (`Vector[(String, Vector[RValue])]`), so an empty column
+      has no type on our side to send or to restore. The wire CAN
+      carry it (a column object holds `type` with an empty `values`),
+      and R's own answer for an untyped empty vector is `logical`,
+      which is what we send. Making this box true would mean changing
+      `RFrame` to carry a per-column type — a change to a public type
+      for a case no consumer has, so it is stated rather than made.
+- [x] a `v` the reader does not know refuses by name, and a v1 shim
+      refuses at the handshake as before; the v1 FRAME shape still
+      reads, so a fixture or a journal holding one is not stranded
+- [x] MEASURED: the same `MeasureRFrame` table after the change, beside
+      the before, in this spec — with the verdict against the 2x bar
+      written whichever way it goes
+
+### The number, and the verdict
+
+Same box, same container, medians of five, an hour apart:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000, before | 0.30 MB | 5.0 ms | 1 121 ms | 5.3 ms | 2.5 ms | 0.9% |
+| 10 000, after | 0.17 MB | 3.7 ms | **20.9 ms** | 5.2 ms | 3.7 ms | 42.3% |
+| 100 000, before | 3.21 MB | 20.5 ms | 10 505 ms | 16.5 ms | 6.1 ms | 0.4% |
+| 100 000, after | 1.88 MB | 28.0 ms | **179.7 ms** | 18.0 ms | 6.6 ms | 25.6% |
+
+**58x at 100 000 rows against a 2x bar**, and 54x at 10 000; the
+payload also fell by 41% because a tagged object per cell is bigger
+than a number. The diagnosis was right about where the time was: it
+was R building the structure, and the structure was ours to choose.
+
+The balance has flipped, which is the useful part of the after-column:
+R held 99.6% before and holds under 75% now, so the next thing worth
+measuring — if anyone ever needs more — is our own encode. Nobody is
+hurting at 180 ms for a 100k-row frame, and `r-arrow` now has to beat
+that number with a native dependency on both sides rather than beat
+10.5 seconds. It stays filed and it stays waiting.
+
+One thing the implementation had to learn from R rather than from the
+design: jsonlite UNBOXES a length-1 vector, so a column of one row
+arrives as a scalar and a single absence as a bare number, not as
+arrays of one. The reader accepts both shapes; the round trip lost
+exactly one NA until it did.
+
 ## Results (stage 0)
 
 **r-subprocess, 2026-09-07.** okay-r with `REval`/`RValue`/`RFrame`,
@@ -290,3 +546,25 @@ And one correction that was not about R: see the overview on
 
 (after implementation — round-trip counts, the clean-environment
 check, a real forecast package through both engines)
+
+## Wire depth safety (2026-09-11, subprocess-wire-depth-safety)
+
+`Wire.enc`/`Wire.dec` recursed natively on `RValue.Vec`/`Json.JArr`
+depth — an R `list()` nests as deep as a script chooses, and nothing
+bounded it. The same defect shape `okay-mcp/Rpc.damaged` and
+`okay-demo/StateMcp.damaged` already had fixed twice
+(`okay-codec`'s `remove-codecs-maxdepth`/`encode-side-depth-safety`),
+found alongside `okay-py`'s own identical defect by a full-repo grep
+for `Schema`/`Json` recursion.
+
+Lower-severity threat model than the codec's own network wire — the R
+side is normally the same user's own subprocess — but the mechanism
+is identical. Rewritten as an explicit work-list (`todo`/`Combine(n)`
+markers), not a `Cont.defer` trampoline: `enc`/`dec` are simple
+tree-rebuild functions with no monadic combination to preserve. The
+frame-row `decode`/`encode` (`product`, `decode[X]`, `encode[X]`
+above) needed no change — they are already flat by design (no
+`SProduct`/`SSum`/`SList`/`SVector` case at all: "R has no ... nesting
+inside a data.frame column"), refusing anything nested rather than
+recursing into it. `TestWireDepth` proves a 100 000-level round trip,
+built directly (never through a live subprocess).

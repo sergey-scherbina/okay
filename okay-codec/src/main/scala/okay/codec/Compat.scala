@@ -14,10 +14,16 @@ package okay.codec
  *  - an absent field takes its declared default, then
  *    None-if-optional, then a refusal by name;
  *  - an unknown case is a refusal, on both wires;
- *  - an unknown FIELD is IGNORED by Json (only declared fields are
- *    looked up) and REFUSED by Cbor (`unknown field '<k>'`). That
- *    asymmetry is the one surprise here, and it is why a verdict
- *    names its wire instead of pretending there is one answer.
+ *  - an unknown FIELD is SKIPPED, on both wires.
+ *
+ * That last line used to read differently, and the history is worth
+ * a sentence. When this was first written, Json skipped an unknown
+ * field and Cbor refused it, so a verdict had to name its WIRE. The
+ * check reported the difference faithfully — and reporting it is what
+ * made someone look at it. Nothing had chosen it: no test pinned the
+ * refusal and no spec stated it. It was fixed (cbor-unknown-fields),
+ * the two wires now answer alike, and the `Wire` parameter went with
+ * the defect it existed to describe.
  *
  * Two directions, and they are not the same question:
  *
@@ -29,15 +35,6 @@ package okay.codec
  * A rolling deploy needs both; a log needs backward for ever.
  */
 object Compat:
-
-  /** the wires this codec module writes, and what each does with a
-    * field the reader does not know */
-  enum Wire:
-    case Json, Cbor
-    /** true when a field the reader does not declare is skipped */
-    def ignoresUnknownFields: Boolean = this match
-      case Json => true
-      case Cbor => false
 
   /** where in the message the change is: field and case names from
     * the root, `""` for the root itself */
@@ -63,18 +60,15 @@ object Compat:
 
     /** why a direction breaks, or None when this change is safe there.
       * `newReader` = backward (new schema reading old bytes). */
-    def breaks(newReader: Boolean, wire: Wire): Option[String] = this match
+    def breaks(newReader: Boolean): Option[String] = this match
       case FieldAdded(p, f, optional, defaulted) =>
         if newReader then
           // old bytes lack the field: the decoder needs a fallback
           if defaulted || optional then None
           else Some(s"$p$f is new and required: old bytes have no value for it")
-        else if wire.ignoresUnknownFields then None
-        else Some(s"$p$f is new: a $wire reader refuses a field it does not declare")
+        else None                       // an old reader skips what it does not declare
       case FieldRemoved(p, f, optional, defaulted) =>
-        if newReader then
-          if wire.ignoresUnknownFields then None
-          else Some(s"$p$f is gone: a $wire reader refuses a field it does not declare")
+        if newReader then None          // the new reader skips it
         else if defaulted || optional then None
         else Some(s"$p$f is gone and was required: the old reader has no value for it")
       case CaseAdded(p, n) =>
@@ -96,14 +90,14 @@ object Compat:
     * each wire */
   final case class Report(changes: Vector[Change]):
     /** the NEW reader over OLD bytes */
-    def backward(wire: Wire): Verdict = verdict(newReader = true, wire)
+    def backward: Verdict = verdict(newReader = true)
     /** the OLD reader over NEW bytes */
-    def forward(wire: Wire): Verdict = verdict(newReader = false, wire)
+    def forward: Verdict = verdict(newReader = false)
     /** both directions — what a rolling deploy needs */
-    def rolling(wire: Wire): Verdict = backward(wire).and(forward(wire))
+    def rolling: Verdict = backward.and(forward)
 
-    private def verdict(newReader: Boolean, wire: Wire): Verdict =
-      val why = changes.flatMap(_.breaks(newReader, wire))
+    private def verdict(newReader: Boolean): Verdict =
+      val why = changes.flatMap(_.breaks(newReader))
       Verdict(why.isEmpty, why)
 
     def isEmpty: Boolean = changes.isEmpty
@@ -115,12 +109,11 @@ object Compat:
       else
         sb ++= s"${changes.size} change(s):\n"
         changes.foreach(c => sb ++= s"  $c\n")
-      for wire <- Wire.values do
-        def line(what: String, v: Verdict): Unit =
-          sb ++= s"$wire $what: ${if v.compatible then "compatible" else "INCOMPATIBLE"}\n"
-          v.reasons.foreach(r => sb ++= s"    $r\n")
-        line("backward (new reader, old bytes)", backward(wire))
-        line("forward (old reader, new bytes)", forward(wire))
+      def line(what: String, v: Verdict): Unit =
+        sb ++= s"$what: ${if v.compatible then "compatible" else "INCOMPATIBLE"}\n"
+        v.reasons.foreach(r => sb ++= s"    $r\n")
+      line("backward (new reader, old bytes)", backward)
+      line("forward (old reader, new bytes)", forward)
       sb.result()
 
   /** every change from `old` to `next`, deepest paths included */

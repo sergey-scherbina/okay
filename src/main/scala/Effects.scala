@@ -43,6 +43,24 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 /** a computation of A performing the operations of F: A ! F */
 infix type ![A, F[+_]] = Free[F, A]
 
+/**
+ * A partial function, infix: `Request |=> Response ! Async`.
+ *
+ * The type this stack writes most and reads worst — every route in
+ * every server is one. The spelling is the operator's choice, made
+ * against THIS file's own `!`: an infix type's precedence comes from
+ * its FIRST character, `!` sits at the `=`/`!` level, and anything
+ * tighter binds the wrong way — `A ~> B ! F`, `A -?> B ! F` and
+ * `A =?> B ! F` all parse as `(A ~> B) ! F`, measured. Only `|`, `^`
+ * and `&` are looser, `^` is already `Cont`, and `=?>` would sit one
+ * transposition away from the language's `?=>` besides.
+ *
+ * `|` reads as the alternatives a partial function is made of, and a
+ * union on the left binds first, so `Get | Post |=> Res` means what
+ * it looks like.
+ */
+infix type |=>[A, B] = PartialFunction[A, B]
+
 /** a value as a computation */
 inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 
@@ -156,7 +174,7 @@ object Handler {
   def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
   : Handler[F + G] = new Handler[F + G]:
     def handle[A](a: F[A] | G[A]): A =
-      // the split is the kernel's (`Split.apply`), the one place the
+      // the split is the kernel's (`split`), the one place the
       // union's excluded middle is claimed — and with no Either on
       // the way (split-without-either)
       split[F, G](a)(f => hf.handle(f))(g => hg.handle(g))
@@ -192,9 +210,9 @@ trait Effects[M[_[+_], _]]:
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
-  def handle[F[+_] : TypeableK, G[+_], A, B](m: M[F + G, A])
-                                            (ret: A => M[G, B])
-                                            (h: F !> M[G, B]): M[G, B] =
+  def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
+                                                   (ret: A => M[G, B])
+                                                   (h: F !> M[G, B]): M[G, B] =
     m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))) / ret
 
 /** the staging entry for effect programs, as staged is for Control */
@@ -385,16 +403,16 @@ object Effect:
  * TypeableK), taking G by exclusion: a type test on an abstract G
  * would erase to an always-true test.
  */
-inline def <|>[F[+_] : TypeableK as T, G[+_]]: [A] => (F[A] | G[A]) => Either[F[A], G[A]] =
+inline def <|>[F[+_], G[+_]](using T: TypeableK[F])[A](e: F[A] | G[A]): Either[F[A], G[A]] =
   // the trusted kernel, sound by the excluded middle of the union: a
   // value of F[A] | G[A] that passes F's test is an F[A], and one that
   // does not is a G[A]. `test` rather than the extractor
   // (split-without-either, 2026-09-09): the extractor answered an
   // Option per operation on top of this Either, and B/op showed both
   // survive escape analysis. The left cast is what the extractor's
-  // `x.type & F[A]` said, made explicit; nothing outside this function
-  // and `Split.apply` casts on a row.
-  [A] => e => if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
+  // `x.type & F[A]` said, made explicit; nothing outside this
+  // function, `split` and `over` casts on a row.
+  if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
 
 /**
  * The same split with NO wrapper on the way out (split-without-either,
@@ -405,22 +423,34 @@ inline def <|>[F[+_] : TypeableK as T, G[+_]]: [A] => (F[A] | G[A]) => Either[F[
  * no Option — and the test is `TypeableK.test`, a plain class test for
  * a derived signature.
  *
- * Both casts live HERE and nowhere else, licensed by the one test:
+ * Both casts live HERE — with `over`'s below, the reverse direction —
+ * and nowhere else, licensed by the one test:
  * the left one is what the extractor's `x.type & F[A]` said, made
  * explicit; the right one is `<|>`'s excluded middle. A runner that
  * uses `split` still refines the answer type by matching the
  * constructor inside `onF` (`case Get() =>`), exactly as after
  * `case Left(...)` — so no cast reaches a runner.
  */
-inline def split[F[+_] : TypeableK as T, G[+_]]: Split[F, G] = Split(T)
+inline def split[F[+_], G[+_]](using T: TypeableK[F])[A, R]
+                              (e: F[A] | G[A])
+                              (inline onF: F[A] => R)
+                              (inline onG: G[A] => R): R =
+  if T.test(e) then onF(e.asInstanceOf[F[A]]) else onG(e.asInstanceOf[G[A]])
 
-/** `split`'s second stage, so that A and R are inferred from the
- * operation and the branches (the `Bind` arm's answer type is
- * existential; naming it is not possible, inferring it is). A value
- * class: nothing is allocated to carry the test. */
-final class Split[F[+_], G[+_]](val T: TypeableK[F]) extends AnyVal:
-  inline def apply[A, R](e: F[A] | G[A])(inline onF: F[A] => R)(inline onG: G[A] => R): R =
-    if T.test(e) then onF(e.asInstanceOf[F[A]]) else onG(e.asInstanceOf[G[A]])
+/**
+ * Rewrite the operations of ONE member of a row in place and leave the
+ * others as they are — a prism's modify, over the row: the class test
+ * proves the operation IS an F, `f` keeps it an F at the same answer
+ * type, and the row is erased, so the result goes back under the
+ * row's type by the claim `split` makes, made once more here. Any
+ * nesting, any position, an abstract row: what the test reads is the
+ * OPERATION, not the shape. This is how a typeclass instance written
+ * for one effect is lifted into an instance for every row that holds
+ * it (`Failing.anyRow` over `Failing.async`).
+ */
+inline def over[F[+_], R[+_]](using T: TypeableK[F])[A]
+                             (e: R[A])(inline f: F[A] => F[A]): R[A] =
+  if T.test(e) then f(e.asInstanceOf[F[A]]).asInstanceOf[R[A]] else e
 
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:

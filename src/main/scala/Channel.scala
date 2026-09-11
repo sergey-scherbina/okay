@@ -595,6 +595,12 @@ object Channel {
    * name — `Queues.strong[A].fifo(capacity)` is the ring this default
    * used to be.
    *
+   * The per-producer half of that is a LAW and is tested as one
+   * (`TestGrowing`, "each producer's own order survives the swap").
+   * It was broken for a day when this became the default: the swap
+   * moved producers to new parts while their earlier elements were
+   * still in the adopted one (merge-chunked-order, 2026-09-09).
+   *
    * WHY NOT `adaptive`, which this comment argued for until the
    * measurement came in: it splits its capacity across parts up
    * front, so at an equal memory budget a lone producer gets a

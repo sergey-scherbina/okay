@@ -25,6 +25,37 @@ same material with the measurements attached.
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
   signature — in scopes importing `!.*` write `okay.Pure` (the
   Free.Pure case shadows it).
+- **`Module[F]`** (specs/di.md, [the guide](di.md)) — a description of
+  what to build, not a built thing: `module[Db](open)(close)` acquires
+  in a `Resource` region, `Module.value` needs no building,
+  `moduleAs[A, R]` acquires an `R` and installs it as an `A`, and
+  `prototype` installs the ability to MAKE one. `and` composes (the
+  right side is built inside the left's context, so a dependent module
+  is written `Db ?=> Module[…]`), `m { body }` / `m.use { body }` run
+  it inside the region, `plan` and `exports` read it, `shadowed` names
+  a capability installed twice.
+- **`Fact[V]`** — a kind of thing modules DECLARE about themselves and
+  somebody else collects; how two declarations merge is a `Monoid[V]`,
+  so `object Routes extends Fact[Vector[Route]]` is the whole
+  declaration. `declaring(k)(v)` computes it inside the module's own
+  installer (so it can read what that module installs), `declare(k)(v)`
+  outside it, `Module.contributing(k)(v)` installs nothing at all, and
+  `installing(k)` turns the merged value into a capability. Installing
+  SHADOWS, declaring ACCUMULATES — that is the whole reason the type
+  exists.
+- **`New[A]`** — the ability to make an `A`: `fresh[A]` answers
+  `A ! Resource`, and the region it runs in releases the instance.
+  Always a program, even where nothing is released, so a provider can
+  start closing what it makes without touching a consumer.
+- **`A |=> B`** — a partial function, infix: `Request |=> Response !
+  Async` is the type every route in this stack has. The spelling is
+  forced by precedence, not taste: an infix type takes its precedence
+  from its FIRST character, `!` sits at the `=`/`!` level, and every
+  tighter arrow (`~>`, `-?>`, `=?>`) parses `A ~> B ! F` as
+  `(A ~> B) ! F` — measured. `|`, `^` and `&` are the looser ones, `^`
+  is already `Cont`, and `=?>` would sit one transposition away from
+  the language's `?=>`. A union on the left binds first, so
+  `Get | Post |=> Res` reads as it looks.
 - **`F !> S`** — a handler: `F ==> ([X] =>> X /> S)`; handlers are
   continuations, literally.
 - **`Parse.Step[K, D]`** (okay-parse) — a driver as a pure step
@@ -390,7 +421,10 @@ blanket suppression; the categories and what each turned out to be:
   class as its whole identity, so the test is total — `typeableK` says
   that once per signature. Where the limitation is real (`Reader`,
   `State`, `Take`, `Throws` keep no runtime trace of their parameter)
-  it is named and `TestRowIdentity` demonstrates it.
+  it is named and `TestRowIdentity` demonstrates it — and it binds the
+  BARE row only: [several instances of one
+  effect](many-instances.md) are had by key (`Tag`), by cell (`Refs`)
+  or by prompt (`Delim`).
 - **100 "match may not be exhaustive" → 0.** All one claim: `resume`
   normalizes two of `Free`'s cases away, so a three-case match is
   correct and the type cannot say so. Written `(x.resume: @unchecked)`
@@ -446,7 +480,59 @@ and nothing else in the library casts for that reason:
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the
-  ascription is where the refined value meets the loop's type.
+  ascription is where the refined value meets the loop's type. Both
+  are ONE method each since 2026-09-11 (see "Two type clauses" below);
+  the value classes that used to carry the test between two stages are
+  gone, and no call site changed.
+- **`over`** — the row PRISM, `split`'s reverse direction: rewrite the
+  operations of one member of a row in place (`over[F, R](e)(f)`,
+  `f: F[A] => F[A]`), leaving the others as they are. The class test
+  proves the operation is an F, `f` keeps it one at the same answer
+  type, and the row is erased — one cast, beside `split`'s, for what
+  no witness can say about an abstract row. It is how a typeclass
+  instance written for ONE effect becomes the instance for every row
+  holding it: `Failing.anyRow` (Resource's forwarded-failure hook, the
+  TOTAL default of the recipe below) is `Failing[Async]` lifted by
+  `over`, and Failing.scala itself casts nowhere (failing-over,
+  2026-09-09). The alternative to a total default was measured and was
+  SILENCE (see the recipe).
+- **Two type clauses, and what it is worth** (generalized-method-syntax,
+  2026-09-11). Scala 3 allows a method to take type parameters in more
+  than one clause, so some may be written and the rest inferred. The
+  rule that decides where it applies: **two type clauses may not be
+  adjacent** — a term or `using` clause must separate them, which our
+  row combinators already have as a context bound. Three uses here:
+  - `split`, `over` and `<|>` are single methods. They were a method
+    plus a value class each, whose only purpose was to make `A`/`R`
+    inferable while `F`/`G` were written. Call sites did not change,
+    and the bytecode did not either: no `invokedynamic`, branches
+    beta-reduced, checked with `javap` against the old form before the
+    change was made.
+  - `Effects.handle[F, G](m)(ret)(h)` and the `Tag` trio take their
+    ROWS first and read the answer types off the program:
+    `Tag.tag["small", State % Int](p)`, which is the syntax Tag's own
+    doc comment had been showing since the day it was written, before
+    the compiler could give it.
+  - **and the four combinators that look identical do NOT get it, by
+    measurement.** Splitting the clauses puts a `using` between them,
+    and that clause is resolved BEFORE any value argument is typed —
+    so the first clause's parameters stop being inferable and become
+    mandatory. `!.tracing(prog)(show)` turns into "Ambiguous given
+    instances ... TypeableK[F]", because F is still a variable when
+    the context bound is searched. The rule that follows: **the
+    reorder is a win only where EVERY call site already writes those
+    parameters, and a loss anywhere inference is used.** Counted
+    before deciding: `tracing` 0 explicit against 8 inferred,
+    `interpret` 3 against 9, `translate` 10 against 5, `relay` 7
+    against 1 — all four keep one clause; `Effects.handle` 21 against
+    0 and the `Tag` trio all-explicit — both take two.
+  - `State.handle[Int](0)(p)`, where the separator is the state
+    itself rather than a using clause.
+  What it CANNOT do, measured before the work: a row inferred from a
+  single OPERATION widens (`op: F[A]` gives `[X0] =>> St[Int, Int|X0]`,
+  not `St % Int`), which is why `Tag.one` still names its row; and
+  `pure[F, A]` cannot be split at all, since nothing separates `F`
+  from `A` — its 128 call sites keep both arguments.
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for
@@ -521,6 +607,70 @@ val s2 = step("two");   import s2.given   // sees s1's ctx
 Mechanism: NAME shadowing (different member names restore
 ambiguity — E7). FOOTGUN, stated: a forgotten `import sN.given`
 silently uses the stale context; there is no error.
+
+## The row-typeclass recipe: a typeclass over `F + G` (row-typeclass-recipe)
+
+A typeclass indexed by a ROW — `Failing[F]` is the worked example, and
+`Handler` is the older one — cannot be derived the obvious way, and the
+reasons are measured rather than argued:
+
+- **An unanchored `given [F[+_], G[+_]]: TC[F + G]` does not work.**
+  dotty selects it and then cannot pin `F`: splitting needs
+  `TypeableK[F]`, and against a free `F` that query is ambiguous
+  (`TypeableK[Vector]` and `TypeableK[Op]` both match). `Handler`
+  meets the same wall one step earlier and worse — an implicit row
+  given enters scope for EVERY `Handler` query and crashes the 3.7.1
+  type comparer — which is why `Handler.union[F, G]` is called BY
+  NAME at a concrete call site and never given implicitly.
+- **Anchor the instance on the CONCRETE effect instead.**
+  `given [G]: TC[Async + G]` and `given [F]: TC[F + Async]` pin
+  everything: the split runs on `Async`'s own `TypeableK` through the
+  kernel `<|>`, the branches come back by plain upcast, and no cast
+  appears. This is the typed road, and it covers `Async`, `Async + G`
+  and `G + Async` — which is every row a `Resource.run` in this
+  repository passes today.
+- **The anchors are NOT the whole story, and the gap is silent.**
+  `A + B + C` nests to the left, so `(Async + S) + P` is not
+  `Async + ?G` to the implicit search and no anchored instance
+  matches. With only anchors plus an identity default, such a row
+  compiles, resolves, and does NOTHING — the finalizers are abandoned
+  exactly as before the fix, with no error anywhere. That was measured
+  (TestFailing) after a first probe read `summon` succeeding as
+  "resolved" when what had answered was the identity.
+- **So the default must be TOTAL, not typed.** `Failing.anyRow` tests
+  the OPERATION's own class rather than the row's shape — through the
+  kernel's `over`, which casts once — and is correct for every
+  nesting.
+- **And then the anchored ROW instances are decoration — delete
+  them.** They were written and they work; once the default is total
+  they answer nothing it does not answer the same way, at the same
+  cost (the anchored road also runs a class test, inside `<|>`). What
+  is worth keeping from that road is the SINGLE-EFFECT instance —
+  `Failing[Async]` — because one effect is a shape the compiler pins,
+  it is what most call sites pass, and it needs no cast. Two
+  instances, not four (failing-simplify, the operator's call).
+- **The total default's cast is the kernel's, not the typeclass's
+  (failing-over).** Asked to avoid the cast, or at least to move it
+  under an implicit, the implicit road was probed first: a
+  `RowLift.In[Async, F]` witness plus a `NotGiven` identity. `In`
+  walks the left spine only, so `(S + P) + Async` and a right-nested
+  row resolve no witness and would take the identity; and on an
+  ABSTRACT `F` — a polymorphic `Resource.run` caller — `NotGiven`
+  reads "unknown" as "absent". Refuted twice, before a line was
+  written. What moves is the cast: `over[F, R](using TypeableK[F])[A]` in
+  Effects.scala is the prism over the row — test, rewrite, back under
+  the row's type — and `Failing.anyRow` is
+  `over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed
+  instance lifted over any row, the logic written once, no cast in
+  the typeclass.
+
+The rule that survives all of it: **a typeclass over rows gets a TOTAL
+default that reads the value — the single-effect instance lifted by
+`over` — plus typed instances only for the shapes the compiler can pin
+and that callers actually pass.** An identity
+default is the one thing to refuse — it turns a type-level miss into a
+runtime silence. And the corollary that cost this repository two
+lanes: prove an instance by CALLING it, never by `summon` succeeding.
 
 ## The capability recipe: adding a door to any API (ctx-everywhere)
 

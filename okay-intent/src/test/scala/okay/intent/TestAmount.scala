@@ -25,6 +25,9 @@ class TestAmount extends munit.FunSuite {
       "1,5 тыс. грн" -> amt("1500", "UAH"),
       "200 гривень" -> amt("200", "UAH"), "двісті гривень" -> amt("200", "UAH"), "20 євро" -> amt("20", "EUR"), "50 доларів" -> amt("50", "USD"),
       "20 zł" -> amt("20", "PLN"), "20zł" -> amt("20", "PLN"), "dwadzieścia złotych" -> amt("20", "PLN"), "sto złotych" -> amt("100", "PLN"),
+      // the abbreviation a Russian speaker types on a phone, and its
+      // unaccented Polish twin — exact tokens, so «злой» stays a mood
+      "за 90 зл" -> amt("90", "PLN"), "90зл" -> amt("90", "PLN"), "20 zl" -> amt("20", "PLN"),
       "20 euro" -> amt("20", "EUR"), "50 dolarów" -> amt("50", "USD"), "1000 PLN" -> amt("1000", "PLN"),
       "3000円" -> amt("3000", "JPY"), "3,000円" -> amt("3000", "JPY"), "¥500" -> amt("500", "JPY"), "20ドル" -> amt("20", "USD"))
     val wrong = cases.filter((s, a) => !Amount.parse(s).contains(a)).map((s, a) => s"'$s' -> ${Amount.parse(s)} (expected $a)")

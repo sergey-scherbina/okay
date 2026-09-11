@@ -180,7 +180,9 @@ object Provider {
         OpenAi.request(model, ctx.map(message), tools.map(declaration),
           stream = false, maxTokens), url).map(reply), count)(prog)
 
-  /** the local tokenizer as the counter, when a dictionary is at hand */
+  /** the local tokenizer as the counter, when a dictionary is at hand.
+   * `Scan.fold`, not `Scan.all`: a count does not need the tokens, and
+   * this runs on every message */
   def counting(bpe: Bpe): String => Int = s =>
-    Scan.all(bpe)(s).tokens.count(_.channel == okay.lex.Channel.Syntax)
+    Scan.fold(bpe)(s)(0)((n, t) => if t.channel == okay.lex.Channel.Syntax then n + 1 else n)
 }

@@ -100,6 +100,12 @@ final class Tracer(topic: Topic, sample: Sample = Sample.Always,
     case Some((t, s)) => run(name, t, Some(s), attrs.toVector)(body)
     case None => run(name, Trace.freshTraceId(), None, attrs.toVector)(body)
 
+  /** the trace this tracer is inside, as ids: `(traceId, spanId)`,
+   * or None when nothing is open (or sampling is off). What `Log`'s
+   * handler stamps onto a line — the correlation the program never
+   * has to carry (obs-log). */
+  def context: Option[(String, String)] = current
+
   /** the traceparent an outgoing call should carry */
   def outbound: Option[String] =
     current.map((t, s) => Trace.render(t, s))

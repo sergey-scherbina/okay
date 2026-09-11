@@ -116,7 +116,15 @@ agrees with the nested meaning.
 
 ## Behavior
 
-- [ ] `Handler.flat` agrees with `Handler.union` on every operation of
+**Read the Results first.** Stage 0's gate was NOT cleared (1.13–1.29x
+against a 1.3x bar) and stages 1–2 as designed DO NOT START, so the
+boxes marked GATED OFF below describe machinery that is deliberately
+absent — they are not work waiting to be picked up. What IS built and
+proven: the hand-written `Fused` loops of stage 0, and stages A and B
+of the reordered arc (see "After stage 0").
+
+- [ ] (GATED OFF, stage 2 — `Handler.flat` is not built; see Results)
+      `Handler.flat` agrees with `Handler.union` on every operation of
       a four-effect row (the agent's `Model + (Tool + (Context + Async))`
       shape), for all four positions.
 - [x] `Fused.run(s, Vector())(p)` over `State % S + Writer % W` agrees
@@ -127,7 +135,9 @@ agrees with the nested meaning.
 - [x] A fused loop is stack-safe on any bind shape: 1M operations,
       left- and right-nested, no StackOverflowError (the `runFree`
       bar).
-- [ ] Multi-shot survives fusion: a row `Choice + State % S + Writer % W`
+- [ ] (GATED OFF, stages 1–2 — the generic fused run is not built; the
+      hand-written `Fused` covers State+Writer and Throws+State+Writer only)
+      Multi-shot survives fusion: a row `Choice + State % S + Writer % W`
       run fused equals the nested run for BOTH orders of State and
       Choice — global state and backtracking state — on generated
       programs; the fused product state is immutable (the residual
@@ -136,11 +146,16 @@ agrees with the nested meaning.
 - [x] Abort survives fusion: `Throws % E` in a fused row aborts with
       the same value and the same log/state visibility as the nested
       run, for both nestings of Throws relative to Writer.
-- [ ] The fused product state has the row's layout: `((accF, accG), a)`
+- [ ] (GATED OFF, stage 1 — the generic `Step`/`Fused.run` is not built)
+      The fused product state has the row's layout: `((accF, accG), a)`
       for `F + G`, nested for a nested row — asserted, so that the
       layout is a documented contract and not an artifact.
-- [ ] Every existing suite stays green; no existing runner changes
-      behavior (this spec ADDS a road, it does not move the old one).
+- [x] Every existing suite stays green; no existing runner changes
+      behavior (this spec ADDS a road, it does not move the old one) —
+      held through stage 0, stage A (split-without-either, which DID
+      touch every hot runner) and stage B, each landed on a green full
+      matrix; checked here 2026-09-09 (spec-truth) because it is a
+      claim about what was built, not about the gated stages.
 - [x] MEASURED before any of the above is built (stage 0, the gate):
       a hand-written fused loop for `State + Writer` on the
       RowLift-style program (N = 1000) is ≥ 1.3x faster than
@@ -148,11 +163,13 @@ agrees with the nested meaning.
       names the saved Bind+closure per forwarded operation. If the
       hand-written ceiling does not clear 1.3x, this spec's Results
       record the refutation and stages 1–2 do not start.
-- [ ] MEASURED after: the `inline`-composed `Fused.run` is within 10%
+- [ ] (GATED OFF, stages 1–2 — nothing to measure until they start)
+      MEASURED after: the `inline`-composed `Fused.run` is within 10%
       of the hand-written loop (staging did not leave the win on the
       table), and the three-effect row (`+ Throws`) gains more than the
       two-effect one (the win grows with k, as the cost model says).
-- [ ] MEASURED: `Handler.flat` on the four-effect agent row is not
+- [ ] (GATED OFF, stage 2 — `Handler.flat` is not built)
+      MEASURED: `Handler.flat` on the four-effect agent row is not
       slower than `Handler.union` at any position, and faster at the
       last (the position that pays four tests today).
 
@@ -413,7 +430,9 @@ Built: `TypeableK.test` (a boolean beside `unapply`; `typeableK`,
 `Effect.of`, Pure and Writer's own instance answer it without an
 Option), `split[F, G](e)(onF)(onG)` (a value class carrying the test,
 `inline apply`, both branches beta-reduced; the two casts on a row now
-live in `<|>` and `Split.apply` and nowhere else), `<|>` itself on
+live in `<|>` and `Split.apply` and nowhere else — the value class was
+DELETED on 2026-09-11, see generalized-method-syntax below, and the
+casts live in `split` itself now), `<|>` itself on
 `test` (so every one of its 50-odd walk sites loses the Option with no
 churn), and the hot loops on `split`: `State.handle`, `Writer.foldWith`,
 `relay`, `Effects.handle`, `Handler.union`, `Fused.*`.

@@ -1,7 +1,8 @@
 package okay.lex
 
 import scala.annotation.unused
-import okay.{+, Chunks, Stage, Writer, pure}
+import scala.collection.mutable.Growable
+import okay.{+, Aggregator, Chunks, Stage, Writer, pure}
 
 /** an exact source position; length in chars */
 final case class Span(offset: Int, line: Int, column: Int, length: Int)
@@ -27,6 +28,26 @@ trait Scan[K, S]:
   /** consume one character; emit zero or more finished tokens */
   def step(s: S, c: Char): (S, Vector[Token[K]])
 
+  /**
+   * The same step, WRITING what it finished into a sink instead of
+   * answering it. Every driver below reads this one, so a scanner
+   * that overrides it pays neither the `Tuple2` per character nor the
+   * `Vector` that wrapped each token. docs/benchmarks.md §10 priced
+   * the tuple ALONE at ~19% of lexing's ~171 bytes per input
+   * character; the Vector per token was not in that table, and the
+   * two together measured −29%.
+   *
+   * Additive on purpose: the default delegates to `step`, so a
+   * scanner written before this existed keeps working untouched and
+   * costs exactly what it cost before. A scanner that wants the sink
+   * road extends `ScanInto`, which turns the pair around — there,
+   * this is the abstract one and `step` is written on top of it.
+   */
+  def stepInto(s: S, c: Char, out: Growable[Token[K]]): S =
+    val (s2, ts) = step(s, c)
+    out ++= ts
+    s2
+
   /** end of input: finish the tail */
   def flush(s: S): Vector[Token[K]]
 
@@ -41,7 +62,39 @@ trait Scan[K, S]:
    * interface's documentation and usable as named arguments. */
   def rebase(s: S, @unused offsetDelta: Int, @unused lineDelta: Int): S = s
 
+/**
+ * A scanner written on the sink road: implement `stepInto`, and
+ * `step` comes for free for the callers that still want a pair (the
+ * `Stage` pipeline, the tests, a scanner recursing into itself).
+ *
+ * The trait exists to make the pair impossible to get wrong. With
+ * `step` FINAL here there is no way to write the two mutually
+ * delegating defaults that would loop for ever — the compiler asks
+ * for exactly one of them, and which one is the choice.
+ */
+trait ScanInto[K, S] extends Scan[K, S]:
+  override def stepInto(s: S, c: Char, out: Growable[Token[K]]): S
+
+  final def step(s: S, c: Char): (S, Vector[Token[K]]) =
+    val sink = new Scan.Sink[K]
+    val s2 = stepInto(s, c, sink)
+    (s2, sink.result())
+
 object Scan {
+
+  /**
+   * What a `step` written on `stepInto` collects into. Most
+   * characters finish nothing and most of the rest finish exactly
+   * one token, so this keeps a `Vector` rather than reserving a
+   * `VectorBuilder`'s 32-slot array for every character.
+   */
+  final class Sink[K] extends Growable[Token[K]]:
+    private var acc: Vector[Token[K]] = Vector.empty
+    def addOne(t: Token[K]): this.type =
+      acc = acc :+ t
+      this
+    def clear(): Unit = acc = Vector.empty
+    def result(): Vector[Token[K]] = acc
 
   /** the scanner as a pipeline Stage: awaits chars, tells tokens,
    * answers its final state */
@@ -80,21 +133,60 @@ object Scan {
             case cs: scala.collection.immutable.ArraySeq.ofChar =>
               val arr = cs.unsafeArray
               while i < arr.length do
-                val (s2, ts) = sc.step(st, arr(i))
-                out ++= ts
-                st = s2
+                st = sc.stepInto(st, arr(i), out)
                 i += 1
             case _ =>
               while i < c.length do
-                val (s2, ts) = sc.step(st, c(i))
-                out ++= ts
-                st = s2
+                st = sc.stepInto(st, c(i), out)
                 i += 1
           emit(out.result(), go(st, r))
         case None => emit(sc.flush(s), Chunks.end)
     }
 
     go(sc.init, chars)
+
+  /**
+   * A sink that FOLDS instead of collecting: the tokens go straight
+   * into an accumulator and no Vector is ever built.
+   *
+   * `clear` resets to the start value rather than doing nothing,
+   * because `Growable` says clear empties the thing and a fold's
+   * empty is where it began.
+   */
+  private final class Folding[K, R](z: R, f: (R, Token[K]) => R) extends Growable[Token[K]]:
+    private var acc: R = z
+    def addOne(t: Token[K]): this.type =
+      acc = f(acc, t)
+      this
+    def clear(): Unit = acc = z
+    def result: R = acc
+
+  /**
+   * Every token folded AS IT IS PRODUCED, with nothing materialised.
+   *
+   * `all` answers the tokens, and a caller that only wants a count, a
+   * sum or a maximum then pays for a Vector of Tokens — each with a
+   * lexeme String and a Span — to produce one number. The agent's BPE
+   * token count did exactly that on every message. This is the same
+   * walk on the sink road (`stepInto`), and the flush's tail is the
+   * only Vector left.
+   */
+  def fold[K, S, R](sc: Scan[K, S])(input: String)(z: R)(f: (R, Token[K]) => R): R =
+    val sink = new Folding[K, R](z, f)
+    var s = sc.init
+    var i = 0
+    while i < input.length do
+      s = sc.stepInto(s, input.charAt(i), sink)
+      i += 1
+    sink.addAll(sc.flush(s))
+    sink.result
+
+  /** the same, said with a named aggregation algebra: `Aggregator`
+   * carries init, step and presentation, so `Scan.aggregate(sc)(text)
+   * (Aggregator.count)` is a count and nothing is rebuilt to get it */
+  def aggregate[K, S, Acc, Out](sc: Scan[K, S])(input: String)(
+      agg: Aggregator[Token[K], Acc, Out]): Out =
+    agg.present(fold(sc)(input)(agg.init)(agg.add))
 
   /** everything lexed at once, with the snapshots incremental
    * relexing resumes from */
@@ -109,9 +201,7 @@ object Scan {
     var i = 0
     while i < input.length do
       if i % snapshotEvery == 0 then snaps += ((i, s))
-      val (s2, ts) = sc.step(s, input.charAt(i))
-      tokens ++= ts
-      s = s2
+      s = sc.stepInto(s, input.charAt(i), tokens)
       i += 1
     tokens ++= sc.flush(s)
     Lexed(tokens.result(), snaps.result(), s)
@@ -172,9 +262,7 @@ object Scan {
           snaps.result() ++ old.snapshots.dropWhile(_._1 < oldOff)
             .map((o, st) => (o + delta, sc.rebase(st, delta, lineDelta))),
           old.state)
-      val (s2, ts) = sc.step(s, newInput.charAt(i))
-      fresh ++= ts
-      s = s2
+      s = sc.stepInto(s, newInput.charAt(i), fresh)
       i += 1
     fresh ++= sc.flush(s)
     Lexed(keep ++ fresh.result(), snaps.result(), s)

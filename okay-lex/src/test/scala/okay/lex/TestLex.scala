@@ -86,4 +86,60 @@ class TestLex extends munit.FunSuite {
       val chunked = Scan.chunks(Json.scan)(Chunks.fromIterator(input.iterator, size))
       assertEquals(Chunks.fold(chunked), expected, s"chunk size $size")
   }
+
+  test("fold answers what the tokens answer, and aggregate says it with an algebra") {
+    // the law: folding as the tokens are produced is folding the
+    // tokens. Asserted on the driver that DOES materialise, so a
+    // divergence in either shows here.
+    for input <- List(sample, "{\"a\": [1, 2, 3]}", "", "   ", "@@ tru") do
+      val all = Scan.all(Json.scan)(input).tokens
+      assertEquals(Scan.fold(Json.scan)(input)(0)((n, _) => n + 1), all.length, input)
+      assertEquals(Scan.fold(Json.scan)(input)("")((acc, t) => acc + t.lexeme),
+        all.map(_.lexeme).mkString, input)
+      assertEquals(Scan.fold(Json.scan)(input)(0)((n, t) =>
+        if t.channel == Channel.Syntax then n + 1 else n),
+        all.count(_.channel == Channel.Syntax), input)
+      // and the same through an Aggregator, which is where the
+      // aggregation algebra meets lexing
+      assertEquals(Scan.aggregate(Json.scan)(input)(okay.Aggregator.count[Token[K]]),
+        all.length.toLong, input)
+  }
+
+  test("the sink road lexes what the pair road lexes") {
+    // `stepInto` is ADDITIVE: the drivers read it, `step` stays, and
+    // the two must not drift. `Delegating` implements only `step`, so
+    // it runs on the trait's default — which is the compatibility
+    // promise every scanner outside okay-lex is relying on (Yaml,
+    // Markdown, Xml, okay-rag's code scanner). Json overrides it.
+    class Delegating extends Scan[K, Json.S]:
+      def init = Json.scan.init
+      def step(s: Json.S, c: Char) = Json.scan.step(s, c)
+      def flush(s: Json.S) = Json.scan.flush(s)
+
+    // `St`, not `S`: a type parameter named S here shadows Json.S
+    def pairRoad[St](sc: Scan[K, St])(in: String): Vector[Token[K]] =
+      var s = sc.init
+      val out = Vector.newBuilder[Token[K]]
+      in.foreach { c =>
+        val (s2, ts) = sc.step(s, c)
+        out ++= ts
+        s = s2
+      }
+      out ++= sc.flush(s)
+      out.result()
+
+    // an unterminated string (flush), garbage (the Error channel), an
+    // escaped quote (the in-string arm), and a word ending AT a
+    // structural character — the one arm that emits two tokens for
+    // one character, and the one whose order the lossless law reads
+    val inputs = List(sample, "{\"oops", "{\"x\": @@ 12 tru}", "true,null 1e-3",
+                      "{\"a\\\"b\": \"c\"}", "", "   ", "{}")
+    for in <- inputs do
+      val expected = pairRoad(Json.scan)(in)
+      assertEquals(pairRoad(new Delegating)(in), expected, in)
+      assertEquals(Scan.all(Json.scan)(in).tokens, expected, in)       // sink, overridden
+      assertEquals(Scan.all(new Delegating)(in).tokens, expected, in)  // sink, the default
+      assertEquals(Chunks.fold(Scan.chunks(new Delegating)(
+        Chunks.fromIterator(in.iterator, 4))), expected.toSeq, in)
+  }
 }

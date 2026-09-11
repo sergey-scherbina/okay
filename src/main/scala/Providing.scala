@@ -73,6 +73,48 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
     def flatMap[B](f: A => E ?=> B): E ?=> B = f(fa)
 
 /**
+ * A KIND of fact a module may declare about itself (module-facts):
+ * whoever READS the fact defines the key, and HOW TWO DECLARATIONS
+ * MERGE IS A MONOID — the one this core has had in Fold.scala all
+ * along, with instances for Vector, List, String and every
+ * Alternative. So the usual declaration is one line and no methods:
+ *
+ * {{{
+ *   object Routes extends Fact[Vector[Route]]
+ * }}}
+ *
+ * A rule the givens do not have passes its own (fact-is-monoid):
+ *
+ * {{{
+ *   object Declared extends Fact[Vector[Need]](
+ *     using Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
+ * }}}
+ *
+ * A deployment's needs are one such kind, defined in okay-deploy, and
+ * the core knows no deployment word. Keys compare by identity, so a
+ * `Fact` is an object, held as a val.
+ */
+abstract class Fact[V](using val monoid: Monoid[V]):
+  private[okay] def empty: V = monoid.empty
+  private[okay] def merge(a: V, b: V): V = monoid.combine(a, b)
+
+object Fact:
+  given Same[Fact] = Same.byIdentity[Fact]
+
+/** what a module has declared about itself, by kind */
+final class Facts private (private val m: TMap[Fact]):
+  def get[V](k: Fact[V]): V = m.get(k).getOrElse(k.empty)
+  def add[V](k: Fact[V], v: V): Facts = Facts(m.updated(k, k.merge(get(k), v)))
+  /** every kind either side declared, merged by its own rule */
+  def ++(that: Facts): Facts =
+    var out = this
+    that.m.foreach([A] => (k: Fact[A], v: A) => out = out.add(k, v))
+    out
+  def isEmpty: Boolean = m.isEmpty
+object Facts:
+  val empty: Facts = Facts(TMap.empty[Fact])
+
+/**
  * A module is an installer that has not been built yet (specs/di.md):
  * `Providing[F]` holds READY values, a `Module[F]` builds them in the
  * `Resource` effect — so opening a pool, starting a server, and
@@ -95,21 +137,186 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
  * acquires first, so the right (inner) releases first; nesting order
  * and the override story are `Providing.and`'s, unchanged.
  *
+ * READINESS AND FACTS (module-facts). A module that has nothing to
+ * acquire — `Module.value`, `Module.ready` — is `ready`: its values
+ * exist before any scope opens. When the LEFT side of `and` is ready,
+ * the right side is applied at once rather than inside the deferred
+ * build, so the right's `facts` (and readiness) are known now. That
+ * is what lets a deployment read what an application needs AFTER its
+ * config and BEFORE its first acquisition: the config is a value, the
+ * module that opens a log at a path from that config declares the
+ * volume, and nothing opens for the reading. A module downstream of
+ * an acquisition keeps its facts until the scope runs — and such
+ * modules seldom need anything from a place.
+ *
  * A class, not an alias over the program: an extension `apply` on
  * `Providing[F] ! Resource` typed `m { wire[Db].q }` without the
  * expected type, and the body eagerly applied (the E10 trap) — the
  * same body against a class method types as it does on `Providing`.
  */
-final class Module[F[_]](val build: Providing[F] ! Resource):
+final class Module[F[_]](val built: (Providing[F], Facts) ! Resource,
+                         val ready: Option[Providing[F]] = None,
+                         val facts: Facts = Facts.empty):
+  /**
+   * The installer alone. `built` carries the facts BESIDE it, because
+   * a contribution declared below an acquisition is not known until
+   * that acquisition has happened (di-multibind) — `facts` is the
+   * preview a deployment reads early, `built`'s half is the complete
+   * one a body can be given.
+   */
+  def build: Providing[F] ! Resource = built.map(_._1)
+
   /** compose; the right operand is built inside the left's context, and is the inner layer */
   infix def and[G[_]](that: F[Module[G]]): Module[[X] =>> F[G[X]]] =
-    new Module(build.flatMap(p => p(that).build.map(q => p and q)))
+    ready match
+      case Some(p) =>
+        // nothing to acquire on the left: the right exists NOW, and
+        // its facts with it, so readiness and the preview travel; the
+        // build still merges both halves, in acquisition order
+        val inner = p(that)
+        new Module(built.flatMap((_, f1) => inner.built.map((q, f2) => (p and q, f1 ++ f2))),
+                   inner.ready.map(q => p and q), facts ++ inner.facts)
+      case None =>
+        new Module(built.flatMap((p, f1) => p(that).built.map((q, f2) => (p and q, f1 ++ f2))),
+                   None, facts)
+
+  /**
+   * SEVERAL CONTRIBUTORS, ONE COLLECTION (di-multibind) — what a
+   * container calls a multibinder. Each module declares its piece as
+   * a FACT of kind `k`; `installing` merges every piece by that
+   * kind's own rule and installs the result as a capability, so the
+   * body reads it like any other:
+   *
+   * {{{
+   *   object Routes extends Fact[Vector[Route]]:
+   *     def empty = Vector.empty
+   *     def merge(a: Vector[Route], b: Vector[Route]) = a ++ b
+   *
+   *   (admin.declare(Routes)(Vector(adminRoute)) and
+   *    chat.declare(Routes)(Vector(chatRoute))).installing(Routes) { serve(wire[Vector[Route]]) }
+   * }}}
+   *
+   * The fact's VALUE type is the capability type, so name it (an
+   * opaque type, a wrapper) where a bare `Vector[X]` would collide
+   * with another collection of the same element.
+   */
+  def installing[V](k: Fact[V]): Module[[X] =>> F[V ?=> X]] =
+    new Module(built.map((p, f) => (p and providing[V](f.get(k)), f)),
+               ready.map(p => p and providing[V](facts.get(k))),
+               facts)
   /** install everything and run the body inside the scope */
   def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
+  /**
+   * The same, for a body that is ITSELF a program in the scope — a
+   * server that acquires further, a stream that opens a file. An
+   * application's body usually is one (di-dogfood: `Jetty.serve` is
+   * `Server ! Resource`), and `apply` would answer a program inside a
+   * program, which the discarded-value lint catches at every call
+   * site. Flattening it belongs here, once.
+   */
+  def use[B](body: F[B ! Resource]): B ! Resource = build.flatMap(p => p(body))
+  /**
+   * Declare a fact of kind `k` about this module; a reader merges it
+   * with the rest. Curried, so the value's type comes from `Fact[V]`
+   * and a block needs no ascription (fact-declaring):
+   *
+   * {{{
+   *   m.declare(Surface) { case r if r.url == "/board" => … }
+   * }}}
+   */
+  def declare[V](k: Fact[V])(v: V): Module[F] =
+    new Module(built.map((p, f) => (p, f.add(k, v))), ready, facts.add(k, v))
+
+  /**
+   * The same, for a fact computed INSIDE this module's own installer,
+   * so it may read what THIS module installs (fact-declaring).
+   *
+   * `declare` runs outside the installer, which is why a contribution
+   * sees the capabilities that came before it and not its own. That
+   * forced a feature to be two pieces — a module installing `Board`
+   * and another contributing the routes that use it. With this one it
+   * is one:
+   *
+   * {{{
+   *   Module.value[Board](Board(...)).declaring(Surface) {
+   *     case r if r.url == "/board" => text(wire[Board].items.mkString(","))
+   *   }
+   * }}}
+   *
+   * For an acquired module the value is computed when the module
+   * BUILDS (it has to be — there is nothing to read before that), so
+   * it reaches the collection but not the early preview.
+   */
+  def declaring[V](k: Fact[V])(v: F[V]): Module[F] =
+    new Module(built.map((p, f) => (p, f.add(k, p(v)))),
+               ready, ready.fold(facts)(p => facts.add(k, p(v))))
+
+/**
+ * AN INSTANCE PER CONSUMER, not per scope (di-prototype).
+ *
+ * A `module` installs one value and everyone downstream shares it —
+ * which is what most capabilities want. What a `New[A]` installs is
+ * the ability to MAKE an `A`: every `fresh[A]` answers a new one.
+ *
+ * Its `apply` answers a PROGRAM, always, even where nothing has to be
+ * closed, and that is the point rather than an oversight: a provider
+ * that starts closing what it makes — a connection instead of a
+ * counter — changes one line and no consumer moves. A consumer must
+ * not know whether what it asks for is released, or it would have to
+ * be rewritten every time the answer changes.
+ *
+ * The instance is released by the region its `fresh` RUNS in, so the
+ * caller chooses the lifetime by choosing the region: one per
+ * request (`Resource.scoped` inside the handler) or one per
+ * application (the region `main` holds open — where thousands of
+ * unreleased instances would pile up, which is the trade to know).
+ */
+@scala.annotation.implicitNotFound("no New[${A}]: nothing installed the ability to MAKE a ${A}.\n`fresh[${A}]` asks for a NEW instance per consumer. A `module[${A}](acquire)(release)` installs ONE\nfor the region, and that one is read with `wire[${A}]`.\nIf an instance per consumer is what you want, the PROVIDER says so:\n  prototype[${A}](make)                     // nothing to release\n  prototype[${A}](acquire)(release)         // released by the region each fresh runs in")
+trait New[A]:
+  def apply(): A ! Resource
+
+/**
+ * The consumer one-liner: a new `A`, in the region this runs in.
+ *
+ * Written as `wire` AT ANOTHER TYPE, which is what it is: one asks
+ * for the thing, the other for the ability to make it, and there is
+ * one primitive underneath. The spelling is not cosmetic — as a
+ * `using` parameter the compiler prints its own "No given instance
+ * … for parameter n of method fresh" and `New`'s message above never
+ * reaches the call site (measured, fresh-says-why). Through the
+ * context function it does.
+ */
+inline def fresh[A]: New[A] ?=> (A ! Resource) = wire[New[A]]()
+
+/** an instance per consumer, with nothing to release */
+def prototype[A](make: => A): Module[[X] =>> New[A] ?=> X] =
+  Module.value[New[A]](new New[A]:
+    def apply(): A ! Resource = pure[Resource, A](make))
+
+/** an instance per consumer, released by the region each one runs in */
+def prototype[A](acquire: => A)(release: A => Unit): Module[[X] =>> New[A] ?=> X] =
+  Module.value[New[A]](new New[A]:
+    def apply(): A ! Resource = Resource.acquire(acquire)(release))
 
 /** acquire one capability in the scope; the scope releases it */
 def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
-  new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
+  new Module(Resource.acquire(acquire)(release).map(a => (providing[A](a), Facts.empty)))
+
+/**
+ * Acquire an `R`, install it as `A`, release it as `R` — the shape an
+ * application actually has (di-dogfood): a `FileStore` is opened and
+ * closed, and what the program should SEE is `Store`, which has no
+ * `close` and should not grow one for this. `module` alone forces
+ * those to be the same type, which leaves a real app choosing between
+ * installing the concrete type (every consumer over-specified) and a
+ * type test in the release (a cast, which this repository refuses).
+ *
+ * {{{
+ *   moduleAs[Store, FileStore](FileStore.open(path))(_.close())
+ * }}}
+ */
+def moduleAs[A, R <: A](acquire: => R)(release: R => Unit): Module[[X] =>> A ?=> X] =
+  new Module(Resource.acquire(acquire)(release).map(r => (providing[A](r), Facts.empty)))
 
 /**
  * The plan is the TYPE (specs/di.md, stage 1): a module's `F` is the
@@ -137,12 +344,40 @@ final case class Installed(name: String, cls: Class[?], value: Any)
 
 extension [F[_]](m: Module[F])
   inline def exports: Vector[Installed] ! Resource = ${ Module.exportsImpl[F]('m) }
+  /**
+   * Capabilities this chain installs MORE THAN ONCE — read off the
+   * plan, so nothing is built to find out. The second install wins
+   * and the first is acquired for nothing, which is what a test
+   * double does ON PURPOSE (`base and Module.value[Db](fake)`); that
+   * is why this is a report and not an error (di-multibind).
+   */
+  inline def shadowed: Vector[String] =
+    val p = m.plan
+    p.diff(p.distinct).distinct
 
 object Module:
   /** a module with nothing to build or release — a test double, a config value */
-  def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p))
+  def ready[F[_]](p: Providing[F]): Module[F] =
+    new Module(pure[Resource, (Providing[F], Facts)]((p, Facts.empty)), Some(p))
   /** the same, from the bare value */
   def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
+
+  /**
+   * A module that installs NOTHING — the identity installer.
+   *
+   * It exists for the CONTRIBUTOR (di-facts-examples): a module that
+   * adds its routes, its health check, its migration to a collection
+   * somebody else reads, and offers no capability of its own. The
+   * alternative was installing a `Unit` nobody wants, and a fact
+   * cannot be declared on the module that installs the capability it
+   * reads anyway — `declare` runs OUTSIDE that installer, so a
+   * contribution reading `wire[Board]` belongs to a module written
+   * `Board ?=> Module[…]`, which is what this makes writable.
+   */
+  val nothing: Module[[X] =>> X] = ready(Providing([X] => (body: X) => body))
+
+  /** the contributor's one-liner: install nothing, declare one fact */
+  def contributing[V](k: Fact[V])(v: V): Module[[X] =>> X] = nothing.declare(k)(v)
 
   import scala.quoted.*
   /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;
@@ -162,7 +397,16 @@ object Module:
 
   def planImpl[F[_] : Type](using Quotes): Expr[Vector[String]] =
     import quotes.reflect.*
-    val names = chain(TypeRepr.of[F[Module.Marker]], TypeRepr.of[Module.Marker]).map(_._1.typeSymbol.name)
+    // an APPLIED capability keeps its argument: a prototype reads as
+    // `New[Conn]`, not `New`, which is the difference between a plan
+    // and a list of type constructors (di-prototype)
+    def name(using q: Quotes)(t: q.reflect.TypeRepr): String =
+      import q.reflect.*
+      t.dealias match
+        case AppliedType(tc, args) =>
+          s"${tc.typeSymbol.name}[${args.map(a => a.typeSymbol.name).mkString(", ")}]"
+        case other => other.typeSymbol.name
+    val names = chain(TypeRepr.of[F[Module.Marker]], TypeRepr.of[Module.Marker]).map(t => name(t._1))
     val list = Expr(names)
     '{ $list.toVector }
 

@@ -61,6 +61,14 @@ boundary — and the direct reading where a signal is a call that may
 return.
 *Goldberg & Robson 1983 · Steele 1990 · Pitman 2001 · Plotkin & Pretnar 2009/2013 · Zhang, Salvaneschi & Myers 2020*
 
+**[10 · Optics on profunctors](10-optics.md)**
+Why composition is the problem; the constraint as a type parameter and
+the meet as an intersection; Tambara modules and the Yoneda
+isomorphism; the traversal whose applicative slot is the effect row —
+and the line where a type-changing lens turns out to BE chapter 3's
+parameterised state.
+*Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Riley 2018 · Pastro & Street 2008 · Atkey 2009*
+
 ---
 
 The [map](README.md) explains the notation (`A ! F`, `%`, `+`, `/>`),

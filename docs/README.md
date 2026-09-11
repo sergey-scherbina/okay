@@ -28,6 +28,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   the Scala.js frontend whose logic is tested on the JVM, the tests
   over a real socket, and running it. Every command executed before it
   was written down.
+- **[Declaring an API](declaring-an-api.md)** — a path, a query, a
+  body and a tool, each written once and then asked several different
+  questions: does this url match, what is the url for these
+  parameters, and what does it look like with no request in hand. The
+  law that makes it worth reifying, the three spellings the language
+  refused, and the defects the conversions turned up.
 - **[Frontends: one application, any client](frontend-guide.md)** —
   the view as a value with two vocabulary levels, the hosts (terminal,
   React, DOM, Swing, GTK), the server-driven wire and its rendered
@@ -70,8 +76,18 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   by measuring its own last sixteen tasks, what blocking inside a
   worker costs and what `adaptive` buys back, the nine laws every
   member owes, and the numbers against kyo and the JDK pool.
+- **[Several instances of one effect](many-instances.md)** — two
+  counters in one row: why a bare row holds one of each signature, and
+  the three routes that lift it (a key with `Tag`, a cell with `Refs`,
+  a fresh `Delim` prompt), with what each costs.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
+- **[Dependency injection](di.md)** — the module vocabulary: a
+  capability that must be opened and closed, a graph that IS the
+  composition, qualifiers as types, reading a module before it is
+  built (`plan`, `exports`, declared needs), an application wired end
+  to end, the same modules inside Spring, Guice, CDI and ZIO, and
+  what a deployment reads from all of it.
 - **[Capabilities](capabilities.md)** — context functions as the
   wiring: doors, `provide`/`providing`, `wire`, the zero-framework
   dependency-injection story, the theory the compiler runs (the
@@ -150,6 +166,7 @@ API reference, gotchas.
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
 | [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
+| [`okay-onnx`](modules/okay-onnx.md) | the direct ONNX session: the pooled vector AND the token vectors with their characters, from one forward pass — the door `okay.intent.Spans` reads through |
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |

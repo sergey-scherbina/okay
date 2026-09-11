@@ -54,6 +54,7 @@ spec:
             failureThreshold: 6
           resources:
             {{- toYaml $v.resources | nindent 12 }}
+      terminationGracePeriodSeconds: 30
       volumes:
         - name: data
           persistentVolumeClaim:

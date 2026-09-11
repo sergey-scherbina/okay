@@ -10,9 +10,13 @@ services:
     envVars:
       - key: OKAY_CHAT_PORT
         value: "8090"
-      - key: OKAY_CHAT_LOG
-        value: ":memory:"
+      - key: OKAY_CHAT_DB
+        value: "/app/data/okay-board.log"
       - key: OKAY_CHAT_APP
         value: "/app/app.js"
       - key: PORT
         value: "8090"
+    disk:
+      name: data
+      mountPath: "/app/data"
+      sizeGB: 1

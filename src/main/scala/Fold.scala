@@ -206,6 +206,19 @@ trait Monoid[A]:
   extension (x: A)
     inline def |+|(y: A): A = combine(x, y)
 
+object Monoid:
+  /** a monoid from its two parts, for a rule the givens do not have
+   * (`Monoid.of(Vector.empty[A])((a, b) => (a ++ b).distinct)`) */
+  def of[A](zero: A)(f: (A, A) => A): Monoid[A] = new:
+    def empty: A = zero
+    def combine(x: A, y: A): A = f(x, y)
+
+  /** the free monoid on Vector — an optic's `toVector` walks with it
+   * (optics-core), and being here it needs no import */
+  given vector[A]: Monoid[Vector[A]] with
+    def empty: Vector[A] = Vector.empty
+    def combine(x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
+
 /**
  * A Monoid that can also UN-combine: the inverse turns a sliding
  * window from recompute-from-scratch into subtract-what-aged-out.

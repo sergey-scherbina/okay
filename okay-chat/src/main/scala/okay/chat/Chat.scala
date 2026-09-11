@@ -119,6 +119,29 @@ object Chat {
       case JObj(fs) => fs.collectFirst { case (`name`, JStr(v)) => v }.getOrElse("")
       case _ => ""
 
+  /**
+   * The request body of `POST /chat`, DECLARED
+   * (specs/optics-outside.md; docs/declaring-an-api.md).
+   *
+   * `messages` defaults, and that is the whole compatibility story:
+   * `{}` still means "nothing to say" and still answers 200, while a
+   * body that does not PARSE is refused with a 400 instead of being
+   * turned into an empty conversation the model then answers.
+   *
+   * What `messagesOf` did below, and what this replaces: it picked the
+   * conversation out by string literal and lost things SILENTLY. A
+   * body that was not JSON became `Vector.empty`; a single message
+   * missing `role`, or carrying a non-string `content`, was DROPPED
+   * from the list, so the model was handed a conversation with a hole
+   * in it and nobody was told. Valid-looking JSON producing a shorter
+   * conversation than the client sent is the kind of defect that goes
+   * unnoticed for weeks.
+   *
+   * `messagesOf` stays for callers that already have a `Body` in hand.
+   */
+  final case class Turns(messages: Vector[Anthropic.Message] = Vector.empty)
+  given okay.codec.Schema[Turns] = okay.codec.Schema.derived
+
   def messagesOf(body: Body): Seq[Anthropic.Message] =
     Json.parse(new String(body.bytes, UTF_8)) match
       case JObj(fs) => fs.collectFirst { case ("messages", JArr(ms)) => ms }
@@ -155,8 +178,9 @@ object Chat {
   def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = (_, _) => None,
                 policy: (Int, String) => Option[Cut.Violation] = (_, _) => None)
   : PartialFunction[Request, Response ! Async] =
-    case r if r.method == Method.Post && r.url == "/chat" =>
-      val messages = messagesOf(r.body)
-      pure(Response(200, Seq("content-type" -> "text/event-stream"),
-        turnOverride(r, messages).getOrElse(reply(m, budget, policy)(messages))))
+    okay.http.Router.jsonAt[EmptyTuple, Turns](
+      Method.Post, okay.http.Route / "chat") { (_, in, r) =>
+        pure(Response(200, Seq("content-type" -> "text/event-stream"),
+          turnOverride(r, in.messages).getOrElse(reply(m, budget, policy)(in.messages))))
+      }.routes
 }

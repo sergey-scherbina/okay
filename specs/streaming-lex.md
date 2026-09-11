@@ -27,8 +27,34 @@ trait Scan[K, S]:
   def init: S
   def step(s: S, c: Char): (S, Chunk[Token[K]])   // zero or more tokens out
   def flush(s: S): Chunk[Token[K]]                // end of input: finish the tail
+  // the same step, writing into a sink instead of answering a pair;
+  // the default delegates to `step`, so this is additive
+  def stepInto(s: S, c: Char, out: Growable[Token[K]]): S
+
+/** a scanner written on the sink road: implement `stepInto` and get
+ * `step` (final) for the callers that still want the pair */
+trait ScanInto[K, S] extends Scan[K, S]
+
 def lexer[K, S](sc: Scan[K, S]): Stage[Char, Token[K], S]
 ```
+
+### The two roads, and why there are two
+`step` answers `(S, tokens)`, which allocates a `Tuple2` for EVERY
+input character and a `Vector` for every token — priced at ~19% and
+~23% of lexing's ~171 bytes per character (docs/benchmarks.md §10).
+`stepInto` hands the scanner the collection the driver is filling
+anyway, so a scanner that overrides it allocates neither.
+
+It is ADDITIVE by construction: `stepInto`'s default is `step` plus a
+`++=`, so every scanner written before it existed keeps working and
+costs exactly what it cost before, and `ScanInto` (where `stepInto`
+is abstract and `step` is final on top of it) makes the mutually
+delegating pair that would loop for ever impossible to write.
+
+The drivers — `Scan.all`, `Scan.chunks`, `Scan.relex`, and the
+hand-rolled loops in `Yaml.cst` and `Markdown.parse` — all read
+`stepInto`. `Scan.stage` keeps `step`: a `Stage` emits tokens
+one at a time through the pipeline, so it wants the pair.
 
 Chunked variant over `Chunk[Char]` (a tight while per chunk) is the
 performance path; `lexer` derives both from one Scan.
@@ -59,6 +85,10 @@ performance path; `lexer` derives both from one Scan.
       damaged region (probe: under half the input re-stepped; the
       key/rebase pair on Scan is what makes position-carrying states
       comparable across the shift)
+- [x] the sink road answers exactly what the pair road answers, for
+      every scanner and every character (a scanner overriding
+      `stepInto` and one that does not, over the same input) —
+      TestLex, TestBpe
 - [x] chunked lexing agrees with element-wise lexing — Scan.chunks:
       chunk of chars in, chunk of tokens out, one tight while per
       chunk, the same Scan deriving both paths
@@ -75,3 +105,66 @@ performance path; `lexer` derives both from one Scan.
   coroutine form is generated, not hand-written per dialect.
 - **Error is a token channel, not an effect** — Throws never appears
   in a lexing pipeline; totality is the design invariant.
+- **The sink road is an interface change, taken only once it had
+  consumers** (scan-step-allocation, 2026-09-10). BACKLOG had refused
+  it in September for a reason worth keeping: the lossless road served
+  the tests and a damage fallback, and an interface exists for its
+  callers. By the time it was taken, six main-source consumers read it
+  — `Yaml.cst`, `Markdown.parse`, okay-rag's window splitter and code
+  chunker, okay-llm's streaming structured parse, and the agent's BPE
+  token count on every message — and the two hot scanners (`Json`,
+  `Bpe`) are the two that moved.
+
+## Folding instead of collecting (scan-fold-without-tokens, 2026-09-10)
+
+`all` answers the tokens, and a caller that wants a number then pays
+for a Vector of Tokens — each with a lexeme String and a Span — to
+produce it. The agent's BPE token counter did exactly that on every
+message: `Scan.all(bpe)(s).tokens.count(_.channel == Syntax)`.
+
+- [x] `Scan.fold(sc)(input)(z)(f)` — the same walk on the sink road,
+      folding each token as it is produced. The flush's tail is the
+      only Vector left.
+- [x] `Scan.aggregate(sc)(input)(agg)` — the same with an
+      `Aggregator`, which carries init, step and presentation, so a
+      count is `Aggregator.count` and nothing is rebuilt to get it.
+- [x] `Mealy.fold`, without which a composed machine still
+      materialises everything it emits — the thing that made the
+      arrow impractical for a consumer that only reduces.
+- [x] the two agent counters use it.
+- [x] the law: folding as the tokens are produced IS folding the
+      tokens, asserted against `Scan.all` on five inputs including
+      the empty one and one that is all garbage.
+
+This is the sink road's first consumer outside the drivers, which is
+what `stepInto` was built for and had not had.
+
+| lane | µs/op | B/op |
+|---|---|---|
+| `bpeCountMaterialised` — `Scan.all(...).tokens.count(...)` | 156.6 ± 29.0 | 896 913 |
+| `bpeCountFolded` — `Scan.fold(...)` | 177.9 ± 42.6 | **817 393** |
+
+**−8.9% of the allocation, and the time did not move.** The bytes are
+the Vector of Tokens, 79 520 of them, and they are gone: the bars on
+allocation are ±0.3 B, so that number is exact. The TIME reads 13%
+worse for the fold and the bars are ±29 and ±43 on a box whose load
+ran 20 to 70 — overlapping ranges, nothing to claim in either
+direction. If the fold is genuinely slower, that has not been shown
+here, and it is not the reason to make this change.
+
+And the honest scale of it: 817 KB still go somewhere. The Vector was
+never the bulk — the scanner's per-character state and the `Token`
+objects themselves are, and `fold` still allocates every Token, it
+only stops collecting them. A count that never builds a Token needs a
+different interface (spans out, not tokens), which is filed and not
+done.
+
+
+## Results
+- **−29% of the allocation, element-wise** (2026-09-10). 425 832 →
+  301 056 B/op on the 2.5 KB JSON document; chunked −27.8%, full parse
+  −15.8%, BPE −15.9%. Two rounds per side alternating on one box, every
+  byte count reproduced to the byte. Time: the two lex lanes are faster
+  in both rounds (43.6 → 25.4 µs quiet, 45.5 → 34.9 loaded); parse and
+  BPE moved with the box and are allocation results only.
+  docs/benchmarks.md §10 carries the table.

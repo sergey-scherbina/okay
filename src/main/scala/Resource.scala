@@ -61,6 +61,19 @@ object Resource {
         throw t
   }
 
+  /**
+   * The region as an expression: open, run, release, answer — for the
+   * scope that is the whole story, which is what a per-call region
+   * usually is (di-prototype). `run` forwards a row and needs both
+   * type arguments spelled; this one has nothing to forward.
+   *
+   * {{{
+   *   def handle(r: Request): New[Conn] ?=> Response =
+   *     Resource.scoped(fresh[Conn].map(c => answer(r, c)))
+   * }}}
+   */
+  def scoped[A](a: A ! Resource): A = !.run(run[A, Nothing](a))
+
   def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 

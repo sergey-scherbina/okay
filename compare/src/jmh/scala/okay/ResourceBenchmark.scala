@@ -4,6 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 import !.*
+import okay.RowLift.at
 
 /**
  * Resource safety across the ecosystem: N sequential bracketed
@@ -39,6 +40,37 @@ class ResourceBenchmark {
     val prog = (1 to N).foldLeft(pure[Resource, Int](0)): (m, _) =>
       m.flatMap(x => Resource.acquire(x + 1)(_ => c += 1))
     !.run(Resource.run[Int, Nothing](prog)) + c
+
+  /**
+   * `bracket` PAIRED with the region lane above: the same workload —
+   * N acquire/release pairs, one counter increment each, a value
+   * threaded — and nothing performed inside the scope. The lane that
+   * carried the "bracket costs 21%" reading is `okayBracket` above,
+   * which also performs a `Produce` effect per step and runs it
+   * through bracket's own nested drive; against a bare acquire that
+   * was never a pair (bracket-pairing, 2026-09-09).
+   */
+  @Benchmark
+  def okayBracketPure(): Int =
+    var c = 0
+    val r = (1 to N).foldLeft(pure[Produce, Int](0)): (m, _) =>
+      m.flatMap(x => bracket(x)(_ => c += 1)(r => pure[Produce, Int](r + 1)))
+    r.runWith + c
+
+  /**
+   * The region PAIRED with `okayBracket`, ZIO and cats: an effect is
+   * performed inside the scope, as `acquireReleaseWith`'s and
+   * `bracket`'s use bodies do. The row is `Resource + Produce`, the
+   * scope runs outermost and hands the residual to Produce's handler.
+   */
+  @Benchmark
+  def okayResourceUse(): Int =
+    var c = 0
+    val prog = (1 to N).foldLeft(pure[Resource + Produce, Int](0)): (m, _) =>
+      m.flatMap(x =>
+        Resource.acquire(x + 1)(_ => c += 1).at[Resource + Produce]
+          .flatMap(r => produce(r).at[Resource + Produce]))
+    Resource.run[Int, Produce](prog).runWith + c
 
   /** the region form, RIGHT-nested by recursion */
   @Benchmark

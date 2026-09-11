@@ -1,0 +1,432 @@
+# Iterative recursive decode: a threshold, not a rewrite
+
+## Overview
+
+`lower-maxdepth-real-margin` (2026-09-10) bought real stack margin back
+by lowering `Codecs.maxDepth` to 64, at a real cost: documents between
+65 and 256 levels that decoded before now refuse, and `TestVector`'s
+own recursion test already sits a quarter of the way to the new limit.
+The cause is `Json.decode` and `Cbor.get` costing real JVM stack PER
+LEVEL of a RECURSIVE schema (~4-8 KB, `specs/codecs.md` "The margin,
+measured") — every level is a native call frame, so raising the limit
+back up directly re-opens the risk the previous lane closed.
+
+**Scope is smaller than the BACKLOG entry that opened this spec
+claimed.** Reading `Staged.scala` before writing a line of code here:
+both staged generators (compile-time and run-time) already bottom out
+to the INTERPRETED decoder — `Json.decode`/`Cbor.get` — for a schema
+they have already seen in the current expansion (recursion) or cannot
+Mirror. They are bounded, unrolled code for everything else. So there
+are exactly TWO recursive roots to fix, not four: the
+`Json.decode`/`Cbor.get` pair (one fold, two entry points) and
+`JsonStrict.Reader.get`. Fixing them fixes every door, staged included,
+for free.
+
+## Design
+
+**A threshold, matching a shape this codebase already has twice.**
+`Cont.Fuse` fuses binds into native closures up to 128, then spills to
+a heap-backed `Bind` the trampoline runs at O(1) stack. `Cbor.In` and
+`JsonStrict.Reader` already carry an `enter`/`leave` counter. The fix
+here is a third instance of the same idea: recurse NATIVELY (today's
+code, today's speed) up to a small threshold, then switch the
+remaining descent to a stack-safe trampoline.
+
+**The trampoline is `Cont`, reused, not reinvented.** The ONE place a
+recursive-schema decoder calls itself one level deeper is wrapped in
+`Cont.defer`:
+
+```scala
+// today (Cbor.get, sketch):
+case p: Schema.SProduct[A] => /* … */ get(in, fieldSchema) /* recurses here */
+
+// past the threshold:
+case p: Schema.SProduct[A] if depth >= threshold =>
+  Cont.defer(() => getC(in, fieldSchema, depth + 1))(fieldResult => /* combine */)
+```
+
+`Cont.defer`'s thunk is forced inside `/`'s own `@tailrec` loop, one
+level per iteration (`eff-stack-safety.md` proved this exact mechanism
+for `Eff`'s left-nested binds: "the inward applications happen inside
+`/`'s loop… with `Bind(Defer(t,f), g)` rotated… exactly as
+`Bind(Bind(a,f),g)` is today"). A SPIKE (2026-09-10, deleted, not
+committed — `SpikeContDecode.scala`, a hand-rolled binary-tree CBOR
+decoder bypassing `Schema` entirely so only the recursion MECHANISM was
+measured) confirmed the mechanism on THIS shape of problem: a
+`Cont.defer`-based decode built a value from a 500 000-level chain
+where the plain recursive decoder overflowed at the default stack size,
+to the identical value.
+
+**Below the threshold, the decoder must be indistinguishable from
+today's.** This is the part that makes the fix safe to land: a program
+that never nests deeper than `threshold` never touches `Cont` at all —
+same code shape, same allocations, same speed. Only a document past
+the threshold pays for the trampoline, and it is paying to not crash.
+
+**The threshold is small and independent of `Codecs.maxDepth`.**
+Candidate: 24-32 — deep enough that no realistic document (this arc's
+own repo-wide grep found no consumer nesting real data past a handful
+of levels) ever leaves the fast path, shallow enough that the native
+frames below it cost nothing worth measuring (a few hundred KB at
+worst, per `specs/codecs.md`'s own per-level figures). Once this
+lands, `Codecs.maxDepth` can go back up — the number stops being a
+stack budget and becomes a policy choice again (a message this
+deeply nested is probably not a message, rather than a message this
+stack cannot afford).
+
+## Interface
+
+Nothing public changes shape: `Json.decode`, `Cbor.read`,
+`Json.readStrict`, `Staged.json/cbor/strict` all keep their signatures.
+Internal:
+
+- `Cbor.get` (and `JsonStrict.Reader.get`) thread a `depth: Int` (they
+  already have `Cbor.In.open` / `JsonStrict.Reader.open` for the
+  budget — the SAME counter drives the native/trampoline switch, no
+  second counter).
+- A `getC`/`decodeC`-shaped twin returning a `Cont`-wrapped result,
+  used only past the threshold; the public `get`/`decode` call it and
+  `reset` the result at the point they cross into it, so a caller
+  above the threshold never sees `Cont` in its type.
+
+## Behavior
+
+Root 1 of 2, `Cbor.get` (cbor-decode-threshold-trampoline, 2026-09-10):
+
+- [x] a recursive schema decodes correctly at the deepest depth
+      `Codecs.maxDepth` currently allows (well past `NativeThreshold`,
+      so the switch is exercised) — `TestCborTrampoline`
+- [x] ordinary shapes (products, sums, lists, options, isos) below the
+      threshold decode unchanged — `TestCborTrampoline`
+- [x] errors past the threshold still refuse rather than silently
+      succeeding — `TestCborTrampoline`
+- [x] `Codecs.maxDepth`'s own refusal is unchanged in both paths —
+      `TestCborTrampoline`, `TestInputDepth`, `TestUnknownFields`,
+      `TestCompat` all still green
+- [x] `Cbor.read[Tree]`/`Staged.cbor[Tree]`'s stack cost is FLAT past
+      the threshold rather than scaling with depth (the mechanism's
+      own signature) — `TestStackBytes`, A/B'd: reverting
+      `NativeThreshold` to an unreachable value makes this ONE test
+      fail and nothing else, confirming it is what tests the fix
+- [x] MEASURED, JMH not a hand-timed loop, 3 forks not 1
+      (`compare/CodecBenchmark.cborDecodeInterp`, Order — the
+      below-threshold, common-case shape): **1438 ± 58 ns/op before,
+      1338 ± 14 ns/op after** — NOT a regression (a single-fork run
+      first showed 2166 vs 1419, a false 53% alarm that evaporated at
+      3 forks — `bench-one-round-lies`, again; this is why root 2's own
+      gate started at 3 forks instead of repeating the mistake)
+
+Root 2 of 2, `Json.decode` (json-decode-threshold-trampoline,
+2026-09-10):
+
+- [x] `Json.decode` has NO reader object and NO existing depth counter
+      (unlike `Cbor.In`) — depth threaded as an explicit parameter
+      through new `decodeAt`/`decodeNative`, the public `decode[A](s)(j)`
+      signature unchanged
+- [x] `Json.decode` does not enforce `Codecs.maxDepth` itself — that
+      refusal already lives upstream at `Json.isCut` (parse time); this
+      lane's threshold is a PURE stack-safety switch, so `Json.decode`
+      is now safe on ANY input depth, including a `Json` value built
+      directly and never cut — `TestJsonTrampoline`
+- [x] `Json.read` (which parses through the cut first) still refuses a
+      too-deep document exactly as before — `TestJsonTrampoline`
+- [x] ordinary shapes below the threshold, and a damaged list element
+      past it (the skip-damage rule, not a fault), both unchanged —
+      `TestJsonTrampoline`
+- [x] `Json.read[Tree]`'s stack cost is FLAT past the threshold,
+      A/B'd the same way as root 1 — `TestStackBytes`
+- [x] MEASURED, JMH, 3 forks from the start
+      (`compare/CodecBenchmark.decodeSumInterpAst`/`decodeSeamAst`):
+      615±12→622±11 and 642±26→626±6 ns/op — both within noise, no
+      regression, confirmed on the first attempt this time
+- [x] `TestVector`'s recursion test, and `Codecs.maxDepth` itself,
+      moving back toward their pre-lower-maxdepth-real-margin shape —
+      BOTH roots are now closed, so this is unblocked; left as a
+      SEPARATE deliberate decision (a wire-contract number, not
+      assumed here) rather than bundled into this lane
+
+## Out of scope
+
+- The two raw-JSON-nesting walks (`JsonValue`'s fast parser,
+  `Json.value`'s CST-to-semantic projection) cost much less per level
+  (~1-2 KB, `specs/codecs.md`) and are a separate, smaller,
+  mechanically different fix (a classic explicit-stack recursive-
+  -descent-to-iterative conversion, no `Cont` needed since there is no
+  monadic combination to preserve — just container assembly). Not
+  blocking: at any threshold-based `maxDepth` decided here, they are
+  already safe at today's numbers.
+- Making the interpreted decoder as fast as the staged one, or any
+  other performance work unrelated to depth.
+- Removing `Codecs.maxDepth` entirely. A wire contract still needs ONE
+  number two services can agree on (`specs/codecs.md`,
+  input-depth-both-wires) — this lane changes what that number costs,
+  not whether one exists. (Revisited and reversed once all four sites
+  closed — see remove-codecs-maxdepth below: the number ended up
+  costing nothing to protect against, so it was removed, not raised.)
+
+## Decisions
+
+- **`Cont.defer`, not a bespoke explicit-frame stack.** A hand-rolled
+  frame-stack interpreter (sketched and rejected before writing this
+  spec) would likely cost less per level than `Cont`'s generic
+  `Shift`/`Bind` machinery, but it is new, untested machinery solving a
+  problem `Cont` already solves and already has tests and a JMH history
+  for. Reuse is the smaller change and the better-understood risk;
+  revisit ONLY if the JMH gate in Behavior fails and a bespoke stack
+  measurably closes the gap.
+- **A threshold, not "always trampoline".** The spike's own numbers
+  argued for this directly: three unscientific timing rounds of a
+  pure-`Cont` decode at realistic depth (5-50 levels) swung from 0.8x
+  to 1.6x of native — noisy, but never confidently free, and
+  `eff-stack-safety.md`'s properly-measured +11%/+14% for one `Defer`
+  node on a hot path is the trustworthy number in the same direction.
+  A tax on every decode, for a hazard only pathological input creates,
+  is the wrong trade for a module whose whole pitch is 1.5-2.5x circe.
+
+## Results
+
+**Root 1, `Cbor.get` (cbor-decode-threshold-trampoline, landed
+2026-09-10).** The spike (SpikeContDecode.scala, deleted, not a
+benchmark) found what it was for — feasibility, not a number:
+
+| check | result |
+|---|---|
+| `Cont.defer`-based decode of a 500 000-level chain | succeeds, correct value (native overflows at default stack) |
+| hybrid (native to 24, then `Cont`) at depth 5/20 (below threshold) | ~native speed, noise-level difference |
+| pure-`Cont` decode at depth 5/20/50, 3 independent timing rounds | 0.8x, 1.6x, 1.0x of native — too noisy to trust, not too noisy to see it is not free (this is WHY the threshold exists) |
+
+The real gate, `compare/CodecBenchmark.cborDecodeInterp` (Order, a
+non-recursive product — the below-threshold shape every real caller
+hits), JMH, 3 forks, 5×1s/3×1s:
+
+| | before | after |
+|---|---|---|
+| ns/op | 1438 ± 58 | 1338 ± 14 |
+
+Read generously: within noise of unchanged; read exactly: not worse.
+A SINGLE-fork run first showed 2166 vs 1419 (a 53% "regression") —
+`bench-one-round-lies` again, on the same box that has produced this
+exact shape of false alarm before in this session. 3 forks, not 1, is
+what this spec's own Behavior item should have said from the start.
+
+`Cbor.read[Tree]`/`Staged.cbor[Tree]`'s stack cost dropped from 1024 KB
+to 16 KB (this probe's own floor) at `Codecs.maxDepth`'s current depth
+(64) — `TestStackBytes`. `Json.read[Tree]` and the `JsonStrict`-based
+doors are unchanged (256/512 KB): root 2, not yet built.
+
+**Root 2, `Json.decode` (json-decode-threshold-trampoline, landed
+2026-09-10).** Same design as root 1, one real difference and one real
+surprise, both found in the doing:
+
+- **The difference:** no `Cbor.In`-style mutable reader to hang a
+  counter on, so depth is an explicit parameter through
+  `decodeAt`/`decodeNative`/`decodeC`/`fieldC` — otherwise the SAME
+  `Cont.defer`-at-the-recursive-step shape, zero casts, for the same
+  reason (one `.map` where `decodeNative` widens via `Either`'s
+  covariance, since `Cont` does not share it).
+- **The surprise:** writing this root's own `TestStackBytes` update
+  surfaced that its PREDECESSOR's numbers were wrong. Root 1's doc
+  comment claimed "`Json.read[Tree]`/`JsonStrict`-based doors UNCHANGED
+  (256/512 KB)" without re-measuring — re-measured here, fresh, against
+  the untouched `Json.scala`: `Json.readStrict[Tree]`/`Staged.strict[Tree]`
+  were ALREADY 16 KB at `Codecs.maxDepth`'s current depth (64), not
+  512 KB — that number was carried forward from an EARLIER measurement
+  taken at the OLD `maxDepth` = 256 (four times the depth) and never
+  re-verified after `lower-maxdepth-real-margin` changed the constant.
+  `JsonStrict.Reader.get` was never a needed third root at this depth;
+  root 2 turned out to be the LAST one, not one of three.
+- **A second surprise, unrelated to either root:** proving "`Json.decode`
+  is safe past `Codecs.maxDepth`" needed a document built directly (not
+  parsed), because `Json.lossless` (the CST→value projection) turned
+  out to be QUADRATIC in depth for this shape — 50 000 levels took 74
+  seconds. Completely out of this lane's scope (it is the raw
+  container-nesting walk, not the schema-recursion one) and NOT
+  something either threshold lane touches; recorded as
+  `json-lossless-quadratic-depth` in BACKLOG rather than chased here.
+
+JMH, 3 forks from the start this time (`decodeSumInterpAst`,
+`decodeSeamAst`): 615±12→622±11 ns/op and 642±26→626±6 ns/op — both
+within noise on the first attempt, no false alarm to write up.
+
+**Both roots of this spec are closed.** `Codecs.maxDepth` and
+`TestVector`'s stress depth moving back up is a separate, deliberate
+follow-up (a wire-contract number, not assumed by either lane).
+
+## The four sites the two roots left as a rescue, not a policy (2026-09-10)
+
+The operator asked directly: since both roots are closed, why keep
+`Codecs.maxDepth` at all — can it be removed? Checked before answering:
+NO, not yet. Both roots covered exactly the DECLARED-schema recursion
+in `Cbor.get`/`Json.decode`. Four more native-recursion sites exist,
+each STILL protected only by the hard `Codecs.maxDepth` refusal —
+raising or removing that number today would reopen
+`input-depth-both-wires`'s original overflow in every one of them:
+
+1. **`JsonValue`'s fast parser** (`value`/`obj`/`arr`) — raw `[`/`{`
+   literal nesting, no schema involved. Uniformly typed (`Json | Null`
+   throughout), so `Cont.defer`'s `R` is fixed once and never varies —
+   simpler than either root, no cross-type threading.
+2. **`Json.lossless`'s projection** (`into`/`pairs`) — the CST-to-value
+   walk. `into` is `Unit`-returning, side-effecting into a
+   `Builder[Json, Vector[Json]]` rather than combining typed values —
+   a genuinely different shape from the two roots' fold-and-combine.
+   Whether `Cont.defer` is still the right mechanism here or a plainer
+   explicit stack fits the side-effecting shape better is this lane's
+   own decision, not assumed here.
+3. **`JsonStrict.Reader.get`** (`product`/`array`/`sum`) — decodes a
+   declared `Schema`, the SAME shape as both closed roots (combines
+   heterogeneously-typed values, needs `R` fixed at the entry point
+   and threaded through). This one is the direct third instance of the
+   root 1/root 2 pattern, not a new design.
+4. **`Cbor.In.skipItem`** — skips an UNDECLARED field's value, one
+   complete CBOR item read and discarded. Uniformly typed
+   (`Either[String, Unit]`), like target 1 — no schema, no cross-type
+   `R`. Missed when the spec was first scoped to "two roots": the
+   decision to skip an undeclared field is exactly as INPUT-depth-
+   -driven as decoding a declared one, and got no threshold at all.
+
+Four follow-up lanes, one per target — each gets its own claim, tests,
+and a JMH gate at 3 forks from the start (both roots' own lesson).
+Once all four land, `Codecs.maxDepth` has no stack-safety motivation
+left: raising it, or removing the refusal entirely, becomes a
+deliberate wire-contract choice with no reopened risk, not assumed to
+be safe by this entry alone — that decision still wants its own lane
+to state it and update `TestVector`/the two roots' own tests together.
+
+### Target 4 done: `Cbor.In.skipItem` (cbor-skip-threshold-trampoline, 2026-09-10)
+
+Same design, uniformly typed (`Either[String, Unit]`) so no cross-type
+`R` to thread — simpler than either closed root. The dispatcher
+(`skipItem`) checks `depth >= Cbor.NativeThreshold` and calls either
+`skipItemNative` (today's code, renamed, its `case 6`/`many` still call
+the DISPATCHER `skipItem()` so a mid-flight crossing switches over) or
+`reset(skipItemInsideC)` (the `Cont.defer`-based twin, `skipHereC`
+mirroring `skipHereNative`'s major-type dispatch exactly).
+
+**Verifying it mattered needed a scratch-only `Codecs.maxDepth` bump.**
+Unlike `Json.decode` (whose depth bound is separate, upstream, at
+`Json.isCut`), `Cbor.In`'s `enter`/`leave` IS both the wire-contract
+refusal AND the only thing that would have prevented overflow — the
+two are inseparable, so at today's `maxDepth` = 64 there is no way to
+even CONSTRUCT a document deep enough to exercise the fix through the
+public API (the same discovery `JsonStrict.Reader.get` produced in
+root 2, now confirmed a second time). Temporarily raising `maxDepth`
+in a scratch, uncommitted copy (never landed) found: native
+`skipItem` overflows around 50 000 levels; with `NativeThreshold`
+restored, 400 000 levels succeeds. `skipItem`'s own per-level cost is
+noticeably cheaper than `Cbor.get`'s schema fold (which failed around
+5 000) — no schema dispatch, just header parsing.
+
+**The JMH gate itself needed a second look.** The first 3-fork
+before/after pair read 1918±218 → 2184±65 ns/op, a 14% "regression"
+— taken while system load averaged 34 (another agent's JMH run
+sharing the box; an orphaned JMH lock from a THIRD, unrelated
+worktree was found and cleared along the way, `jmh-lock-orphan`).
+Re-run at 5 forks once load dropped to ~5: **1350±85 before, 1367±75
+after** — indistinguishable. `bench-one-round-lies` was never about
+fork count alone; box load matters as much as warmup, and this arc's
+own JMH runs are not exempt from checking `uptime` before trusting a
+delta.
+
+Target 4 done first (it was the simplest); targets 1+2 and target 3
+followed. See below — all four are closed.
+
+### Targets 1+2 done: `JsonValue`'s fast parser, `Json.lossless`'s projection (json-raw-nesting-threshold-trampoline, 2026-09-10)
+
+Combined into one lane — the same kind of recursion (raw JSON
+container nesting, no schema), already tested together in
+`TestStackBytes`. `NativeThreshold` centralized to `Codecs.NativeThreshold`
+along the way (it was a `private val = 24` duplicated in `Cbor.scala`
+and `Json.scala`; this lane was about to add a third and fourth copy).
+
+`JsonValue.Parser.value`/`obj`/`arr` mirrors `Cbor.In.skipItem`'s
+shape exactly — uniformly typed (`Json | Null`), no cross-type `R`.
+`Json.into`/`pairs` needed the shape this section predicted might
+differ: `Unit`-returning, side-effecting into a
+`Builder[Json, Vector[Json]]` rather than combining values. `Cont.defer`
+still works — a mutable `Builder`/`var` closed over by a deferred step
+mutates in the SAME order once the trampoline reaches that step, so
+side effects compose with the mechanism exactly as values do; the
+sibling loop over a container's `kids` (previously a plain `foreach`)
+became an explicit `loop` deferring each element.
+
+**Verified correctly, but the FIRST verification attempt was wrong
+in an instructive way.** A 100 000-level test using `assertEquals` to
+compare the two roads' answers threw its OWN `StackOverflowError` —
+not in the fix, in the TEST: comparing two 100 000-deep case-class
+trees via structural `==` recurses natively just as much as building
+them did. Rewritten with an iterative `depthOf` check (the same class
+of self-inflicted mistake `TestCborTrampoline`'s first draft made with
+a recursive `depthOf` — this arc keeps re-teaching the same lesson).
+With that fixed: both roads answer correctly at 100 000 levels with
+the fix, and A/B (`Codecs.NativeThreshold` disabled, `Codecs.maxDepth`
+scratch-raised) throws at the same depth without it.
+
+**The JMH gate is DEFERRED, not skipped.** System load climbed from
+~20 to 88 while measuring (unrelated to this session; flagged in the
+room) — `parseOnly` and `parseValueOnly`, two benchmarks with
+IDENTICAL bodies (`Json.parse(text)`), read 282±26 vs 600±237 ns/op in
+the SAME run, which is proof by itself that no number taken under this
+load means anything, regardless of fork count
+(`jmh-load-not-just-forks`). Correctness is fully proven (184 tests,
+three platforms, the A/B above); the perf number is BACKLOG's
+`json-raw-nesting-jmh-pending` — measure once the box is quiet, before
+trusting either direction.
+
+### Target 3 done, and the arc closed: `JsonStrict.Reader.get` (jsonstrict-threshold-trampoline, 2026-09-10)
+
+The third and last instance of the root 1/2 pattern — not a new
+design. `JsonStrict.Reader` already had `enter`/`leave`/`tooDeep`
+(cut-refuses-the-document); `get` becomes the dispatcher
+(`open >= Codecs.NativeThreshold`), `getNative` is the renamed
+original body (unchanged, its calls already go through `get`), and
+`getC`/`arrayC`/`productC`/`sumC` mirror `getNative`/`array`/`product`/
+`sum` with `Cont.defer` at each recursive descent. `skipValue` is
+UNCHANGED — it was already an explicit bracket-counting loop with no
+native recursion at all (cut-refuses-the-document already said so).
+Verified the same way as the other three: a scratch `Codecs.maxDepth`
+bump to construct a 100 000-level document, A/B on `NativeThreshold`.
+
+**The JMH gate, done right this time.** `uptime` checked FIRST (load
+3-6, quiet) before spending a single fork —
+`compare/CodecBenchmark.textToOrderStrict`, 5 forks: **971±14 before,
+1002±41 after**, overlapping error bars, not a regression. The two
+staged variants (`textToOrderStrictStaged`/`RuntimeStaged`, which fall
+back to the now-fixed interpreted `get` only for the recursive case —
+`Order` is not recursive, so mostly unaffected) confirm: 317.8→317.9
+and 376.7→367.6, both flat. A clean result on the first attempt,
+because the box was actually checked before trusting it
+(`jmh-load-not-just-forks`, learned two lanes ago).
+
+**All four native-recursion sites `depth-is-policy-not-rescue` named
+are closed.** `Codecs.maxDepth` has no remaining stack-safety
+motivation anywhere in this module: `Cbor.get`, `Json.decode`,
+`Cbor.In.skipItem`, `JsonValue`'s fast parser, `Json.lossless`'s
+projection, and `JsonStrict.Reader.get` all recurse natively only up
+to `Codecs.NativeThreshold`, then trampoline. Raising `Codecs.maxDepth`
+back up — or removing the refusal it enforces entirely — is now a
+PURE wire-contract decision (what counts as a message two services
+still agree to read), not a stack-safety one. That decision, and
+moving `TestVector`'s stress depth with it, is left as its own
+deliberate follow-up, stated here rather than assumed: this arc
+measured and fixed the COST of depth; it does not choose the LIMIT.
+
+**That follow-up decision: removed, not raised (remove-codecs-maxdepth,
+2026-09-10).** Asked directly — operator answered "прибрав
+Codecs.maxDepth - so" (removed `Codecs.maxDepth` — yes). `Codecs.maxDepth`,
+`Cbor.In.tooDeep`, `Json.isCut`/`Json.tooDeep`/`Json.cutMessage`, and
+every `enter()`-returns-`Boolean`/refusal call site built on them are
+deleted outright, not raised to a bigger number: once all four sites
+above trampoline, there was no remaining party the number was
+protecting — it was pure leftover wire policy with no test or spec
+depending on ITS value (only on depth being safe at all). `Codecs.
+NativeThreshold` (24) is untouched — it still decides where the
+native/trampoline switch happens, unrelated to any refusal.
+
+This is not "depth is now free": a `Cont.defer` trampoline still
+allocates one node per level and the decoded tree still lives on the
+heap, so an adversarially deep message now costs HEAP, not native
+stack — a `StackOverflowError` confined to one thread became a
+whole-JVM `OutOfMemoryError` risk. Reintroducing a cap, if a future
+wire contract wants one, is a fresh policy decision with its own
+number, not a restoration of this one.

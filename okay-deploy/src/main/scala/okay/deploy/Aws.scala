@@ -320,9 +320,10 @@ object Aws extends Target:
                 |
                 |""".stripMargin
     sb ++= s"""  container_definitions = jsonencode([{
-              |    name      = ${str(n)}
-              |    image     = ${str(imageOf(d, s))}
-              |    essential = true
+              |    name        = ${str(n)}
+              |    image       = ${str(imageOf(d, s))}
+              |    essential   = true
+              |    stopTimeout = ${s.health.stopSeconds}
               |""".stripMargin
     if s.ports.nonEmpty then
       sb ++= "    portMappings = [\n"

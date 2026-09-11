@@ -92,7 +92,9 @@ object Staged {
     found
 
   /** the fold's list rule: damaged elements are skipped, the rest
-   * decode in order, the first Left ends it */
+   * decode in order, the first Left ends it. A depth cut needs no
+   * exception here: it propagates to the root of the document, so it
+   * never arrives as an element (cut-refuses-the-document) */
   def elems[X](vs: Vector[Json])(f: Json => Either[String, X]): Either[String, List[X]] =
     val b = List.newBuilder[X]
     var i = 0
@@ -115,6 +117,14 @@ object Staged {
    * declared count, the first Left ends it — there is no sentinel
    * item to skip, so no damaged-element rule to keep */
   def cborElems[X](in: Cbor.In, n: Long)(f: Cbor.In => Either[String, X]): Either[String, List[X]] =
+    // the generated code's containers are these helpers, so they spend
+    // the reader's nesting counter too (input-depth-both-wires)
+    in.enter()
+    val out = cborElemsHere(in, n)(f)
+    in.leave()
+    out
+
+  private def cborElemsHere[X](in: Cbor.In, n: Long)(f: Cbor.In => Either[String, X]): Either[String, List[X]] =
     val b = List.newBuilder[X]
     var i = 0L
     var failed: Option[String] = None
@@ -137,8 +147,16 @@ object Staged {
   def cborProduct[T](in: Cbor.In, n: Long, names: Array[String],
                      readers: Array[Cbor.In => Either[String, Any]],
                      absents: Array[Either[String, Any]],
-                     tname: String,
                      make: Array[Any] => T): Either[String, T] =
+    in.enter()
+    val out = cborProductHere(in, n, names, readers, absents, make)
+    in.leave()
+    out
+
+  private def cborProductHere[T](in: Cbor.In, n: Long, names: Array[String],
+                                 readers: Array[Cbor.In => Either[String, Any]],
+                                 absents: Array[Either[String, Any]],
+                                 make: Array[Any] => T): Either[String, T] =
     val slots = new Array[Any](names.length)
     val filled = new Array[Boolean](names.length)
     var i = 0L
@@ -148,7 +166,11 @@ object Staged {
         case Left(e) => err = Some(e)
         case Right(k) =>
           val idx = names.indexOf(k)
-          if idx < 0 then err = Some(s"unknown field '$k' of $tname")
+          // skipped, not refused — the generated reader answers
+          // exactly what the interpreted one does (cbor-unknown-fields)
+          if idx < 0 then in.skipItem() match
+            case Left(e) => err = Some(e)
+            case Right(()) => ()
           else readers(idx)(in) match
             case Left(e) => err = Some(e)
             case Right(v) => slots(idx) = v; filled(idx) = true
@@ -170,6 +192,14 @@ object Staged {
   /** `[` v (`,` v)* `]`, each element at its own staged reader; the
    * first Left ends it, as the interpreted reader ends it */
   def strictElems[X](r: JsonStrict.Reader)(f: JsonStrict.Reader => Either[String, X]): Either[String, List[X]] =
+    // the generated code's containers are these helpers, so they spend
+    // the reader's nesting counter too — one source of truth for depth
+    r.enter()
+    val out = strictElemsHere(r)(f)
+    r.leave()
+    out
+
+  private def strictElemsHere[X](r: JsonStrict.Reader)(f: JsonStrict.Reader => Either[String, X]): Either[String, List[X]] =
     r.expect('[').flatMap { _ =>
       r.skipWs()
       if r.peek == ']' then { r.at += 1; Right(Nil) }
@@ -200,6 +230,15 @@ object Staged {
                        readers: Array[JsonStrict.Reader => Either[String, Any]],
                        absents: Array[Either[String, Any]],
                        make: Array[Any] => T): Either[String, T] =
+    r.enter()
+    val out = strictProductHere(r, names, readers, absents, make)
+    r.leave()
+    out
+
+  private def strictProductHere[T](r: JsonStrict.Reader, names: Array[String],
+                                   readers: Array[JsonStrict.Reader => Either[String, Any]],
+                                   absents: Array[Either[String, Any]],
+                                   make: Array[Any] => T): Either[String, T] =
     r.expect('{').flatMap { _ =>
       val slots = new Array[Any](names.length)
       val filled = new Array[Boolean](names.length)
@@ -245,6 +284,12 @@ object Staged {
     }
   /** the one-entry object a sum is written as: `{"Case": value}` */
   def strictSum[T](r: JsonStrict.Reader)(byName: String => Either[String, T]): Either[String, T] =
+    r.enter()
+    val out = strictSumHere(r)(byName)
+    r.leave()
+    out
+
+  private def strictSumHere[T](r: JsonStrict.Reader)(byName: String => Either[String, T]): Either[String, T] =
     r.expect('{').flatMap { _ =>
       r.skipWs()
       r.string().flatMap { name =>
@@ -636,7 +681,7 @@ object Staged {
                 '{ if $ok then {
                      $in.mapHeader().flatMap(n =>
                        Staged.cborProduct[T]($in, n, $namesArr, $readersArr, $absentsArr,
-                         ${ Expr(tname) }, xs => $m.fromProduct(Tuple.fromArray(xs))))
+                         xs => $m.fromProduct(Tuple.fromArray(xs))))
                    } else $fold }
               case Some((Shape.Sum, types, names, _)) =>
                 val ok = okFor[T](Shape.Sum, names, schema)

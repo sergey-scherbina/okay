@@ -16,8 +16,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  * producers have been refused by it, installs an `AdaptiveFifo` that
  * ADOPTS that ring as its part 0. No element moves, nothing is
  * copied, and a reader holding either reference reaches the same part
- * 0, so every element is still read exactly once and in its
- * producer's order.
+ * 0, so every element is still read exactly once.
+ *
+ * AND IN ITS PRODUCER'S ORDER — which that sentence used to claim in
+ * the same breath and did not deliver (merge-chunked-order,
+ * 2026-09-09). Every producer was pushing into the ring; the swap
+ * gave each of them a part of its own; their earlier elements stayed
+ * in part 0, parts drain independently, and a producer's later
+ * elements could be read before its earlier ones. Two plain threads
+ * reproduced it 73 times in 300, and it reached the gate as a merge
+ * whose source came back 1..16, 49, 50, 17..48. The adopted part is
+ * now READ FIRST while it holds anything — see `adopted` in
+ * `AdaptiveFifo`, which is where the guarantee lives.
  *
  * WHAT COUNTS AS CONTENTION, corrected by measurement (2026-09-07).
  * The first cut grew on a REFUSED push, reasoning that a full ring
@@ -34,12 +44,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  * has to be right eventually, and a volatile read per push was
  * measured at 1.49x elsewhere in this codebase.
  *
- * What growth does NOT do is rescue the producer that triggered it.
- * That producer keeps part 0 — the ring it filled — because its own
- * elements are in there and its order is only preserved while it
- * pushes to the same part. It waits for room exactly as it would
- * have; what changes is that every OTHER producer stops queueing
- * behind it.
+ * WHERE THE PRODUCERS GO: every one of them takes a fresh part, the
+ * one that filled the ring included, and the adopted part 0 is left
+ * to drain. Corrected here too. Part 0 used to be kept for the
+ * triggering producer, on the reasoning that its elements were in
+ * there and "its order is only preserved while it pushes to the same
+ * part" — right about the elements, wrong about the cure. It pinned
+ * one producer to a part it kept REFILLING, so on an endless source
+ * part 0 need never be seen empty; the first fix waited for exactly
+ * that and would have waited for ever. Reading part 0 first keeps
+ * that producer's order without pinning it, so nothing is pinned.
  *
  * `maxParts` reports the grown shape from the start, so a channel
  * sizes its per-part waiter queues once and never resizes them.
@@ -176,7 +190,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
     counter.doneGrowing = true
     if grown.compareAndSet(false, true) then
       // part 0 is the ring, and its owner is the producer that filled it
-      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner, firstOwner = sampled)
+      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner)
       inner = partitioned
       partitioned
     else inner

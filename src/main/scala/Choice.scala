@@ -49,7 +49,7 @@ given [F[+_]]: MonadPlus[[A] =>> A ! (Choose + F)] with
 
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
-  Effects[Free].handle[Choose, F, A, Seq[A]](a)(x => pure(Seq(x))):
+  Effects[Free].handle[Choose, F](a)(x => pure(Seq(x))):
     [X] => c => shift: k =>
       c.as.foldLeft(pure[F, Seq[A]](Seq.empty)): (acc, x) =>
         acc.flatMap(s => k(x).map(s ++ _))
@@ -78,7 +78,7 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  * same handler is the point.
  */
 def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! (S + F))(using TypeableK[S]): Seq[A] ! F =
-  Effects[Free].handle[S, F, A, Seq[A]](p)(x => pure(Seq(x))):
+  Effects[Free].handle[S, F](p)(x => pure(Seq(x))):
     [X] => (s: S[X]) => shift: k =>
       s.foldLeft(pure[F, Seq[A]](Seq.empty)): (acc, x) =>
         acc.flatMap(prev => k(x).map(prev ++ _))

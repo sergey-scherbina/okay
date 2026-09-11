@@ -1,7 +1,6 @@
 package okay.actor
 
 import okay.*
-import okay.given
 
 /**
  * An actor: a mailbox, a loop that reads it one message at a time,
@@ -49,7 +48,11 @@ enum Supervise[+S]:
  * producer that outlives its actor is ordinary, not exceptional, and
  * that is the reading `Channel.send` already takes.
  */
-final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
+final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M],
+                                       /** closed by the loop as it EXITS, which is
+                                        * exactly when every accepted message has
+                                        * been handled — the signal `stop` waits on */
+                                       private[actor] val done: Channel[Unit]):
 
   private val children =
     java.util.concurrent.atomic.AtomicReference[List[ActorRef[?]]](Nil)
@@ -67,7 +70,7 @@ final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
   def spawnChild[S2, M2](init: S2, mailbox2: Channel[M2] = Channel[M2](256),
                          supervise: Supervise[S2] = Supervise.Stop)
                         (b: Behavior[S2, M2])
-                        (using Scheduler, CanBlock): ActorRef[M2] ! Async =
+                        (using Scheduler): ActorRef[M2] ! Async =
     Actor.spawn(init, mailbox2, supervise)(b).map: child =>
       var go = true
       while go do
@@ -108,24 +111,53 @@ final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
    * true. A caller who needs them handled wanted `Resume` or
    * `Restart`; a caller who needs to know they were dropped watches
    * `stopped` on a `tell` that answered true. */
-  def stop(): Unit ! Async = async {
+  def stop(): Unit ! Async =
     // LEAVES INWARD: a child must not outlive its parent's mailbox,
     // so the parent's stop completes only after every child has
     // closed AND drained. Closing the parent first would leave a
-    // child holding messages nobody will ever read
-    children.get.foreach: c =>
-      c.stopBlocking()
-    mailbox.close()
-  }
+    // child holding messages nobody will ever read.
+    //
+    // Written with `flatMap` rather than as one `async { }` block
+    // because `async` SUSPENDS A THUNK — it is not a direct block, so
+    // an `! Async` inside it would have to be run, and running it is
+    // blocking, which is exactly what JS cannot do.
+    def stopAll(cs: List[ActorRef[?]]): Unit ! Async = cs match
+      case Nil => async(())
+      case c :: rest => c.stop().flatMap(_ => stopAll(rest))
+    stopAll(children.get)
+      .flatMap(_ => async(mailbox.close()))
+      .flatMap(_ => drained)
 
-  private[actor] def stopBlocking(): Unit =
-    children.get.foreach(_.stopBlocking())
-    mailbox.close()
-    // drained, not merely closed: the strong contract says the
-    // accepted messages are still coming, and law 8 says a parent
-    // waits for them
-    val deadline = System.currentTimeMillis() + 5000
-    while !mailbox.finished && System.currentTimeMillis() < deadline do Thread.`yield`()
+  /**
+   * Wait for the loop to EXIT, which is exactly the moment every
+   * accepted message has been handled.
+   *
+   * ASYNCHRONOUS, not blocking, and that is not a stylistic
+   * preference. What stood here was
+   *
+   *     val deadline = System.currentTimeMillis() + 5000
+   *     while !mailbox.finished && now < deadline do Thread.`yield`()
+   *
+   * — a busy spin that GAVE UP after five seconds and said nothing, so
+   * the caller believed the law two comments above had held. Measured
+   * (actor-stop-drain): with a handler taking 20 ms, `stop` returned
+   * in 5.038 s having handled 219 of 300 accepted messages and thrown
+   * the other 81 away silently. With a fast handler the deadline
+   * almost sufficed, which is why it had only ever shown up as "299 of
+   * 300, sometimes, under load" — and the spin fed the failure, since
+   * the busier the machine the more of the budget the waiting itself
+   * burned.
+   *
+   * The blocking shape was also wrong for JS, where `CanBlock` does
+   * not exist at all: there are no threads, so a spin cannot yield to
+   * the loop it is waiting for and the five seconds could only ever
+   * be spent, never used. Waiting on the signal asynchronously is what
+   * makes this work on every platform rather than on one.
+   */
+  private[actor] def drained: Unit ! Async =
+    Async.await[Unit]: k =>
+      done.receiveAsync(_ => k(Right(())))
+      () => ()
 
   def stopped: Boolean = mailbox.finished
 
@@ -172,7 +204,7 @@ object Actor:
 
   /** the unsupervised spawn: a behaviour that throws stops the actor */
   def spawn[S, M](init: S)(b: Behavior[S, M])
-                 (using Scheduler, CanBlock): ActorRef[M] ! Async =
+                 (using Scheduler): ActorRef[M] ! Async =
     // the loop is the mailbox's only reader, by construction: a
     // single-consumer ring, whose pop is a store where a CAS was
     spawn(init, Queues.strong[M].bounded(256, singleConsumer = true).build, Supervise.Stop)(b)
@@ -183,38 +215,62 @@ object Actor:
    */
   def spawn[S, M](init: S, mailbox: Channel[M], supervise: Supervise[S])
                  (b: Behavior[S, M])
-                 (using sch: Scheduler, cb: CanBlock): ActorRef[M] ! Async =
+                 (using sch: Scheduler): ActorRef[M] ! Async =
     async {
-      sch.fork { () => async {
-        var state = init
-        var running = true
-        // A supervised Stop or Escalate closes the mailbox with the
-        // messages behind the poisonous one still ACCEPTED inside it.
-        // Nobody will ever read them, so drain and discard them here:
-        // otherwise `finished` -- "every accepted element handed over"
-        // -- never comes true and `ActorRef.stopped` lies for ever
-        // (actor-stop-strands). The channel has been failed, so the
-        // drain ends in the failure; that is the end it is waiting for.
-        def discardRest(): Unit =
-          try while mailbox.receiveBlocking().isDefined do ()
-          catch case _: Throwable => ()
-        while running do
-          mailbox.receiveBlocking() match
-            case None => running = false
-            case Some(m) =>
-              try state = b(state, m).runWith
-              catch case e: Throwable =>
+      // the loop's completion signal: closed as the loop exits, which
+      // is what `stop` waits on. A channel rather than a flag, because
+      // waiting on a flag is the spin this replaced.
+      val done = Channel[Unit](2)
+
+      // A supervised Stop or Escalate closes the mailbox with the
+      // messages behind the poisonous one still ACCEPTED inside it.
+      // Nobody will ever read them, so drain and discard them here:
+      // otherwise `finished` -- "every accepted element handed over"
+      // -- never comes true and `ActorRef.stopped` lies for ever
+      // (actor-stop-strands). The channel has been failed, so the
+      // drain ends in the failure; that is the end it is waiting for.
+      def discardRest(): Unit ! Async =
+        Async.attempt(mailbox.receive).flatMap:
+          case Right(Some(_)) => discardRest()
+          case _ => async(())          // empty, or the failure it was closed with
+
+      // THE LOOP, as a PROGRAM rather than a while over blocking reads
+      // (actor-on-js). `receiveBlocking` and `runWith` both need
+      // `CanBlock`, which exists on the JVM and Native and NOT on JS —
+      // deliberately, since "there is no CanBlock on JS, so a blocking
+      // join is a compile error, not a frozen loop". So the module
+      // cross-built for a platform on which no actor could ever be
+      // spawned. Written this way the loop IS an Async program, driven
+      // by whatever the platform's Scheduler is — and on JS that is the
+      // event loop itself.
+      def loop(state: S): Unit ! Async =
+        mailbox.receive.flatMap:
+          case None => async(())
+          case Some(m) =>
+            // the behaviour's failure as DATA, on this fiber: the
+            // effect-world try/catch, and the only way to keep
+            // supervision when there is no stack to unwind
+            Async.attempt(b(state, m)).flatMap:
+              case Right(next) => loop(next)
+              case Left(e) =>
                 // THE FAILED MESSAGE IS GONE, never retried. Redelivery
                 // is how a system loops for ever on one poisonous
                 // message, and the loop hides because every attempt
                 // looks like a fresh failure
                 supervise match
-                  case Supervise.Resume => ()
-                  case Supervise.Restart(fresh) => state = fresh()
+                  case Supervise.Resume => loop(state)
+                  case Supervise.Restart(fresh) => loop(fresh())
                   case Supervise.Escalate(to) =>
-                    to(e); mailbox.fail(e); mailbox.close(); discardRest(); running = false
+                    async { to(e); mailbox.fail(e); mailbox.close() }
+                      .flatMap(_ => discardRest())
                   case Supervise.Stop =>
-                    mailbox.fail(e); mailbox.close(); discardRest(); running = false
-      }}: Unit
-      ActorRef(mailbox)
+                    async { mailbox.fail(e); mailbox.close() }
+                      .flatMap(_ => discardRest())
+
+      sch.fork { () =>
+        loop(init).flatMap(_ => async {
+          done.close()        // the loop has exited: every accepted
+        })                    // message is handled, and `stop` may return
+      }: Unit
+      ActorRef(mailbox, done)
     }

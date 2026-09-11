@@ -115,6 +115,32 @@ val client = Resilient.http(Transports.http(), breaker = Some(breaker), balanced
 client.send(Request.get("http://orders/v1/orders/42"))
 ```
 
+**Seams that stream.** `Resilient.http` fits `Request => Response !
+Async`. The repo's other seams — `okay.llm.Transport`, `okay.mcp
+.Link`, `okay.cluster.Remote` — post and then TELL their answer, so
+their programs are `A ! (F + Async)`. `Resilient.guarded` is the same
+order for those, and the pieces have row variants of their own
+(`protectIn`, `limitIn`, `admitIn`):
+
+```scala
+val guardedTransport: Transport = new Transport:
+  def post(url: String, headers: Map[String, String], body: String) =
+    Resilient.guarded(inner.post(url, headers, body),
+      breaker = Some(breaker), limiter = Some(limiter), key = "anthropic")
+```
+
+The permit and the circuit span the WHOLE stream, not its first
+line — a guard that released early would let N callers into a seam
+with one permit, and the test that proves otherwise parks a seam
+mid-stream. okay-resilience takes no dependency on llm, mcp or
+cluster: this is wired at the caller's edge.
+
+**A worked instance.** okay-demo guards its Anthropic transport this
+way (`ChatDemo.guarded`), publishes the breaker and the bucket to
+`/metrics` through `Ops.routes(guards = ...)`, and its tests drive
+both to their refusals without touching a wire. If you want to see
+the arc used rather than described, read that.
+
 **Testing the composite: `Faults.http`.** A seeded adversary between
 your client and a fake far end: `Faults.http(seed, Faults.Plan(dropAt
 = Set(2, 3), slowAt = Map(1L -> 5000L), failRate = 0.2))(far)`. A
@@ -122,6 +148,24 @@ call's fate is a pure function of the seed and its ordinal, so a
 hedged race replays exactly; `log` says what each ordinal met, and a
 found bug is a seed. This is how `TestFaults` proves the pieces'
 contracts hold through the whole stack rather than one at a time.
+
+## Why the bulkhead has no "auto" mode
+
+Because it was measured and it lost (specs/resilience.md, "The
+controller that did not earn its place"). A gradient controller —
+permits following observed latency, Netflix's shape — delivers 0.54
+of what a well-chosen constant delivers on steady capacity, and the
+ratio does not move when the run is twenty times longer: it does not
+converge, it orbits, because the only way it learns its limit is too
+high is by exceeding it. It does win about 10% when capacity halves
+mid-run, which is the honest other half of the result.
+
+So pick the number, and pick it from what `/metrics` already
+publishes: `okay_bulkhead_in_flight` and `okay_bulkhead_waiting` say
+whether the permits are used, and
+`okay_http_request_duration_seconds` says what they cost. The
+measurement is kept as a test (`TestAdaptive`) and will fail if
+someone builds a controller that actually wins.
 
 ## Gotchas
 

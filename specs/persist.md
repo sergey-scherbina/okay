@@ -455,14 +455,47 @@ at stage 0 and never rebind.
       again from there sees an append made after its first read —
       the contract tailing stands on (ui-durable, resumable SSE),
       tested in both engines rather than assumed by the consumer
+- [x] …AND SO DOES A SECOND HANDLE. The same contract across
+      PROCESSES, which is the arrangement `FileStore`'s own header
+      calls this module's two-node story: a reader opened before an
+      append sees it, and sees records in a segment the writer rolled
+      after that. It did not — `segments` is memory, `read` asked the
+      in-memory `count` where the active segment ended, and a follower
+      tailed nothing at all. Found 2026-09-09 by a consumer's reading
+      replica, which applied 0 records while the log had grown by four
+      and had to reopen the whole journal on every poll. The end of the
+      active segment is a property of the FILE: `read` refreshes from
+      it and scans on from the last valid end — the scan checks length
+      and CRC and stops at a torn frame, the same authority recovery
+      uses — and looks at the directory for a rolled segment when a
+      reader at the end would otherwise answer nothing. A writer takes
+      one `Files.size` and no branch
 - [x] a process killed between append and ack leaves the partition
       readable: the record is either wholly present or wholly
       absent, never a corrupt log (torn frame truncates on recovery)
 - [x] recovery after a torn tail serves every earlier record intact,
       and the next append continues the offset sequence (dense over
       restart)
-- [ ] a damaged index is rebuilt from segments; log content decides,
-      never the index (index deleted between runs; reads agree)
+- [x] the DIRECTORY decides, never a reader's cache of it
+      (persist-index-box, 2026-09-09 — the box used to say "a damaged
+      index is rebuilt from segments", and there is no index: a segment
+      carries its base offset in its header and a read scans within it,
+      which is the design and is now recorded as such below. What the
+      engine does keep is a derived list of segments, and THAT is what
+      the invariant is about). A reader already saw a writer's appends
+      and its rolled segments; the untested direction was deletion, and
+      it was BROKEN: retention on another handle removed a file the
+      reader still listed, and the read threw NoSuchFileException off
+      the mmap. Now the deep refresh drops what the directory no longer
+      has — after adopting what it has gained, so a reader whose every
+      known segment was dropped keeps the new ones rather than the dead
+      ones — and a file that vanishes between the refresh and the map
+      is retention one instant later: the read re-reads the directory
+      and answers `TooEarly` at the surviving front instead of
+      failing. Tested end to end (TestFileStore: 120 appends under a
+      tiny retention with a reader open across the drops; it never
+      serves a record from below the surviving front and then serves
+      the whole tail)
 - [x] keyed appends land deterministically: same key, same
       partition, order preserved per key across concurrent writers
       (routing pure and platform-stable; interleaved writers)
@@ -567,6 +600,14 @@ through the Typed envelope.
       `Saga.Status` as `okay_saga_*` rows (Live)
 
 ## Out of scope
+
+- an INDEX beside the log — stated here because a Behavior box once
+  implied one (persist-index-box): a segment carries its base offset
+  in its header, a read scans within the segment, and the only derived
+  state is the in-memory segment list, rebuilt from the directory. A
+  reader that needs an offset in the middle of a large segment pays
+  the scan; no consumer has asked for less, and an index is a second
+  thing to keep true.
 
 - transactions in the OWN engine (atomic multi-partition writes) —
   the consumer-side idempotency story covers the named consumers;

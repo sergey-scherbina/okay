@@ -8,6 +8,7 @@ class TestModule extends munit.FunSuite {
   trait Db { def q: String }
   trait Pool { def db: Db; def size: Int }
   trait Log { def tag: String }
+  final case class Conf(url: String)
 
   def run[A](p: A ! Resource): A = !.run(Resource.run[A, Nothing](p))
 
@@ -107,6 +108,114 @@ class TestModule extends munit.FunSuite {
     val boom = module[Int](throw RuntimeException("boom"))(_ => closed ::= "never")
     intercept[RuntimeException](Resource.open((a and boom) { wire[Int] })): Unit
     assertEquals(closed, List("a"))
+  }
+
+  test("moduleAs: acquired as the concrete type, installed as the capability, released as the concrete type") {
+    class Conn(val name: String) extends Db { def q = s"row from $name"; var closed = false }
+    val c = Conn("primary")
+    val m = moduleAs[Db, Conn](c)(_.closed = true)
+    assertEquals(run(m { wire[Db].q }), "row from primary")
+    assertEquals(c.closed, true)
+    // and what it installs is the CAPABILITY, not the concrete class
+    assert(compileErrors("import okay.*; okay.Module.value[Int](1) { wire[String] }").nonEmpty)
+  }
+
+  test("use: a body that is itself a program in the scope, flattened once") {
+    var log = List.empty[String]
+    val db = module[Db]({ log ::= "open db"; new Db { val q = "row" } })(_ => log ::= "close db")
+    // the body acquires further IN the same region, as a server would
+    val body: Db ?=> (String ! Resource) =
+      Resource.acquire({ log ::= "open server"; wire[Db].q })(_ => log ::= "close server")
+    assertEquals(run(db.use(body)), "row")
+    assertEquals(log.reverse, List("open db", "open server", "close server", "close db"))
+  }
+
+  // module-facts: what a module says about itself, and when it can be read
+  // the whole declaration: how two contributions merge is the Monoid
+  // the core already has for Vector (fact-is-monoid)
+  object Tags extends Fact[Vector[String]]
+
+  test("facts declared on modules merge left to right under and, by the kind's own rule") {
+    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags)(Vector("db"))
+    val b = Module.value[Log](new Log { val tag = "" }).declare(Tags)(Vector("log")).declare(Tags)(Vector("log2"))
+    assertEquals((a and b).facts.get(Tags), Vector("db", "log", "log2"))
+    assertEquals(a.facts.get(Tags), Vector("db"))
+    assertEquals(module[Db](new Db { val q = "" })(_ => ()).facts.get(Tags), Vector.empty)
+  }
+
+  test("a ready left side lets the dependent right side be read before anything opens") {
+    var opened = 0
+    val conf = Module.value[Conf](Conf("/data/log"))
+    val store: Conf ?=> Module[[X] =>> Db ?=> X] =
+      module[Db]({ opened += 1; new Db { val q = wire[Conf].url } })(_ => ())
+        .declare(Tags)(Vector(s"volume ${wire[Conf].url}"))
+    val app = conf and store
+    assertEquals(app.facts.get(Tags), Vector("volume /data/log"))   // read off the value: nothing opened
+    assertEquals(opened, 0)
+    assertEquals(run(app { wire[Db].q }), "/data/log")
+    assertEquals(opened, 1)
+  }
+
+  test("a right side behind an acquisition keeps its facts until the scope runs — stated, not hidden") {
+    val db = module[Db](new Db { val q = "" })(_ => ())
+    val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
+      module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ()).declare(Tags)(Vector("pool"))
+    assertEquals((db and pool).facts.get(Tags), Vector.empty)
+    assertEquals((db and pool).ready, None)
+  }
+
+  // di-multibind: several contributors, one collection
+  test("installing merges every contribution into a capability the body reads") {
+    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags)(Vector("from db"))
+    val b: Db ?=> Module[[X] =>> Log ?=> X] =
+      Module.value[Log](new Log { val tag = "" }).declare(Tags)(Vector("from log"))
+    val app = (a and b).installing(Tags)
+    assertEquals(run(app { wire[Vector[String]] }), Vector("from db", "from log"))
+  }
+
+  test("a contribution BELOW an acquisition still reaches the collection") {
+    var opened = 0
+    val conf = Module.value[Conf](Conf("/data"))
+    val store: Conf ?=> Module[[X] =>> Db ?=> X] =
+      module[Db]({ opened += 1; new Db { val q = wire[Conf].url } })(_ => ())
+        .declare(Tags)(Vector("volume /data"))
+    val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
+      module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ())
+        .declare(Tags)(Vector("pool"))          // below an acquisition: invisible early
+    val app = (conf and store and pool).installing(Tags)
+    // the early PREVIEW stops at the first acquisition, as it must
+    assertEquals((conf and store and pool).facts.get(Tags), Vector("volume /data"))
+    // the built collection has everything, in acquisition order
+    assertEquals(run(app { wire[Vector[String]] }), Vector("volume /data", "pool"))
+    assertEquals(opened, 1)
+  }
+
+  // fact-is-monoid: a collection is not special — any monoid is a kind
+  object Notes extends Fact[String]          // the String monoid: concatenation
+  object Weight extends Fact[Int]            // numbers add (Group[N] is a Monoid)
+  object Newest extends Fact[Option[String]](
+    using Monoid.of(Option.empty[String])((_, b) => b))   // last wins
+
+  test("a fact is any monoid, not a collection: text concatenates, numbers add, a rule of your own wins") {
+    val a = Module.value[Db](new Db { val q = "a" })
+      .declare(Notes)("opened db").declare(Weight)(3).declare(Newest)(Some("db"))
+    val b = Module.value[Log](new Log { val tag = "" })
+      .declare(Notes)(", opened log").declare(Weight)(4).declare(Newest)(Some("log"))
+    val app = a and b
+    assertEquals(app.facts.get(Notes), "opened db, opened log")
+    assertEquals(app.facts.get(Weight), 7)
+    assertEquals(app.facts.get(Newest), Some("log"))
+    // and each kind installs on its own
+    assertEquals(run(app.installing(Weight) { wire[Int] }), 7)
+  }
+
+  test("shadowed names a capability installed twice, which a test double does on purpose") {
+    val db = module[Db](new Db { val q = "real" })(_ => ())
+    val log = Module.value[Log](new Log { val tag = "t" })
+    assertEquals((db and log).shadowed, Vector.empty)
+    val withDouble = db and log and Module.value[Db](new Db { val q = "fake" })
+    assertEquals(withDouble.shadowed, Vector("Db"))
+    assertEquals(run(withDouble { wire[Db].q }), "fake")
   }
 
   test("a failing acquisition releases what came before it") {

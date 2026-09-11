@@ -1,5 +1,6 @@
 package okay.codec
 
+import okay.{Cont, reset, />}
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 import okay.parse.{Cst, JsonParse, Parse}
@@ -54,16 +55,86 @@ object Json {
   /** render = the lossless law made a function */
   def render(c: Cst[K]): String = Cst.lexemes(c)
 
-  /** print a Json VALUE back to text — the projection's other
-   * direction (render is the CST's; this one is the value's) */
-  def print(j: Json): String = j match
-    case JNull => "null"
-    case JBool(b) => b.toString
-    case JNum(n) => if n == n.floor && n.abs < 1e15 then n.toLong.toString else n.toString
-    case JStr(s) => "\"" + escape(s) + "\""
-    case JArr(vs) => vs.map(print).mkString("[", ",", "]")
-    case JObj(fs) => fs.map((k, v) => "\"" + escape(k) + "\":" + print(v)).mkString("{", ",", "}")
-    case JErr(m) => "\"<error: " + escape(m) + ">\""
+  /**
+   * print a Json VALUE back to text — the projection's other
+   * direction (render is the CST's; this one is the value's).
+   *
+   * `remove-codecs-maxdepth` made every DECODE door safe at any input
+   * depth but never touched this one — the write half of the same
+   * pipe. A value big enough to have needed the removed cap to
+   * DECODE can now exist in memory, and printing it back out was
+   * still plain native recursion (encode-side-depth-safety): the same
+   * `Codecs.NativeThreshold`-then-`Cont.defer` split `into`/`intoC`
+   * above already carry, side-effecting into a `StringBuilder` the
+   * way `into` side-effects into a `Builder`.
+   */
+  def print(j: Json): String =
+    val sb = new StringBuilder
+    printInto(j, sb, 0)
+    sb.toString
+
+  private def printInto(j: Json, sb: StringBuilder, open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(printIntoC[Unit](j, sb, open))
+    else printIntoNative(j, sb, open)
+
+  private def printIntoNative(j: Json, sb: StringBuilder, open: Int): Unit = j match
+    case JArr(vs) =>
+      sb.append('[')
+      var first = true
+      vs.foreach { v =>
+        if !first then sb.append(',')
+        first = false
+        printInto(v, sb, open + 1)          // the DISPATCHER
+      }
+      sb.append(']'): Unit
+    case JObj(fs) =>
+      sb.append('{')
+      var first = true
+      fs.foreach { (k, v) =>
+        if !first then sb.append(',')
+        first = false
+        val _ = sb.append('"').append(escape(k)).append("\":")
+        printInto(v, sb, open + 1)          // the DISPATCHER
+      }
+      sb.append('}'): Unit
+    case leaf => printLeaf(leaf, sb)
+
+  private def printLeaf(j: Json, sb: StringBuilder): Unit = j match
+    case JNull => sb.append("null"): Unit
+    case JBool(b) => sb.append(b): Unit
+    case JNum(n) =>
+      sb.append(if n == n.floor && n.abs < 1e15 then n.toLong.toString else n.toString): Unit
+    case JStr(s) => sb.append('"').append(escape(s)).append('"'): Unit
+    case JErr(m) => sb.append("\"<error: ").append(escape(m)).append(">\""): Unit
+    case JArr(_) | JObj(_) => () // unreachable: the caller handles containers
+
+  // ---- the trampoline: mirrors printIntoNative exactly, deferring
+  // each element/field of a sibling loop through Cont.defer, and the
+  // one recursive descent (a nested container) through the same
+  // mechanism, exactly as intoC does above ----
+
+  private def printIntoC[R](j: Json, sb: StringBuilder, open: Int): Unit /> R = j match
+    case JArr(vs) =>
+      sb.append('[')
+      def loop(rest: Vector[Json], first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          Cont.defer(() => printIntoC[R](rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(vs, true)
+    case JObj(fs) =>
+      sb.append('{')
+      def loop(rest: Vector[(String, Json)], first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append('}'); Cont.Pure(()) }
+        else
+          val (k, v) = rest.head
+          if !first then sb.append(',')
+          val _ = sb.append('"').append(escape(k)).append("\":")
+          Cont.defer(() => printIntoC[R](v, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(fs, true)
+    case leaf =>
+      printLeaf(leaf, sb)
+      Cont.Pure(())
 
   /**
    * The total pipeline: any string yields a Json (JErr for damage).
@@ -104,8 +175,19 @@ object Json {
    * a caller composing patches across a boundary it does not control
    * the whole history of should apply them in order, not combine
    * them first.
+   *
+   * Recurses on the PATCH's own depth, not a schema's — the same
+   * exposure `print`/`into` have (encode-side-depth-safety): the same
+   * `Codecs.NativeThreshold`-then-`Cont.defer` split, folding the
+   * patch's fields the way `pairsC` above folds a CST's.
    */
-  def mergePatch(target: Json, patch: Json): Json = patch match
+  def mergePatch(target: Json, patch: Json): Json = mergePatchAt(target, patch, 0)
+
+  private def mergePatchAt(target: Json, patch: Json, open: Int): Json =
+    if open >= Codecs.NativeThreshold then reset(mergePatchC[Json](target, patch, open))
+    else mergePatchNative(target, patch, open)
+
+  private def mergePatchNative(target: Json, patch: Json, open: Int): Json = patch match
     case JObj(patchFields) =>
       val base = target match
         case JObj(fs) => fs
@@ -117,10 +199,28 @@ object Json {
           case JNull => without
           case _ =>
             val orig = acc.find(_._1 == k).map(_._2).getOrElse(JNull)
-            without :+ (k -> mergePatch(orig, v))
+            without :+ (k -> mergePatchAt(orig, v, open + 1))     // the DISPATCHER
       }
       JObj(merged)
     case other => other
+
+  private def mergePatchC[R](target: Json, patch: Json, open: Int): Json /> R = patch match
+    case JObj(patchFields) =>
+      val base = target match
+        case JObj(fs) => fs
+        case _ => Vector.empty
+      def loop(rest: Vector[(String, Json)], acc: Vector[(String, Json)]): Vector[(String, Json)] /> R =
+        if rest.isEmpty then Cont.Pure(acc)
+        else
+          val (k, v) = rest.head
+          val without = acc.filterNot(_._1 == k)
+          v match
+            case JNull => loop(rest.tail, without)
+            case _ =>
+              val orig = acc.find(_._1 == k).map(_._2).getOrElse(JNull)
+              Cont.defer(() => mergePatchC[R](orig, v, open + 1))(merged => loop(rest.tail, without :+ (k -> merged)))
+      loop(patchFields, base).flatMap(merged => Cont.Pure(JObj(merged)))
+    case other => Cont.Pure(other)
 
     /** the projection of an ALREADY PARSED tree — the door for anyone
    * holding a session (an incremental reparse, say) who should not
@@ -177,7 +277,7 @@ object Json {
    * punctuation fall away; errors stay, as JErr) */
   private def values(c: Cst[K]): Vector[Json] =
     val out = Vector.newBuilder[Json]
-    into(c, out)
+    into(c, out, 0)
     out.result()
 
   /**
@@ -188,14 +288,31 @@ object Json {
    * or many", with `kids.flatMap(values)` allocating an intermediate
    * at every level. That is one Vector per token on a road whose
    * whole job is to walk tokens (json-projection-alloc).
+   *
+   * PAST `Codecs.NativeThreshold`, dispatches to `intoC`'s
+   * `Cont.defer` trampoline (json-raw-nesting-threshold-trampoline).
+   * `Unit`-returning and side-effecting into `out` rather than
+   * combining typed values — the one target of the four whose SHAPE
+   * differs from the other three — but the mechanism is unchanged: a
+   * mutable `Builder`/`var` closed over by a deferred step still
+   * mutates in the SAME order once the trampoline reaches that step,
+   * so `Cont.defer` composes with side effects exactly as it composes
+   * with values.
    */
-  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]]): Unit = c match
-    case Cst.Node("object", kids) => out += JObj(pairs(kids))
+  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(intoC[Unit](c, out, open))
+    else intoNative(c, out, open)
+
+  private def intoNative(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit = c match
+    case Cst.Node("object", kids) =>
+      out += JObj(pairs(kids, open + 1))      // the DISPATCHER
     case Cst.Node("array", kids) =>
       val vs = Vector.newBuilder[Json]
-      kids.foreach(into(_, vs))
+      kids.foreach(into(_, vs, open + 1))     // the DISPATCHER
       out += JArr(vs.result())
-    case Cst.Node(_, kids) => kids.foreach(into(_, out))
+    // a node that is not a container is not a level: the wrappers the
+    // grammar puts between them must not spend the budget
+    case Cst.Node(_, kids) => kids.foreach(into(_, out, open))   // the DISPATCHER
     case Cst.Leaf(t) => t.kind match
       case K.Str => out += JStr(unquote(t.lexeme))
       case K.Num =>
@@ -216,9 +333,13 @@ object Json {
   /** a field is a key and the value after it — read in ONE pass, in
    * place of a flatMap into a Vector and a grouped(2) that allocated
    * another Vector per field */
-  private def pairs(kids: Vector[Cst[K]]): Vector[(String, Json)] =
+  private def pairs(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
+    if open >= Codecs.NativeThreshold then reset(pairsC[Vector[(String, Json)]](kids, open))
+    else pairsNative(kids, open)
+
+  private def pairsNative(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
     val vs = Vector.newBuilder[Json]
-    kids.foreach(into(_, vs))
+    kids.foreach(into(_, vs, open))          // the DISPATCHER
     val flat = vs.result()
     val out = Vector.newBuilder[(String, Json)]
     var i = 0
@@ -231,6 +352,57 @@ object Json {
         case _ => ()
       i += 2
     out.result()
+
+  // ---- the trampoline: mirrors intoNative/pairsNative exactly,
+  // deferring each element/field of a SIBLING loop through
+  // Cont.defer, and the ONE recursive descent (a nested container)
+  // through the same mechanism ----
+
+  private def intoC[R](c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit /> R = c match
+    case Cst.Node("object", kids) =>
+      pairsC[R](kids, open + 1).flatMap { fs => out += JObj(fs); Cont.Pure(()) }
+    case Cst.Node("array", kids) =>
+      val vs = Vector.newBuilder[Json]
+      def loop(rest: Vector[Cst[K]]): Unit /> R =
+        if rest.isEmpty then Cont.Pure(())
+        else Cont.defer(() => intoC[R](rest.head, vs, open + 1))(_ => loop(rest.tail))
+      loop(kids).flatMap { _ => out += JArr(vs.result()); Cont.Pure(()) }
+    case Cst.Node(_, kids) =>
+      def loop(rest: Vector[Cst[K]]): Unit /> R =
+        if rest.isEmpty then Cont.Pure(())
+        else Cont.defer(() => intoC[R](rest.head, out, open))(_ => loop(rest.tail))
+      loop(kids)
+    case Cst.Leaf(t) =>
+      t.kind match
+        case K.Str => out += JStr(unquote(t.lexeme))
+        case K.Num => t.lexeme.toDoubleOption match
+          case Some(d) => out += JNum(d)
+          case None => out += JErr(s"malformed number '${t.lexeme}'")
+        case K.Bool => out += JBool(t.lexeme == "true")
+        case K.Null => out += JNull
+        case _ => ()
+      Cont.Pure(())
+    case Cst.Err(t, m) =>
+      out += JErr(m + t.fold("")(x => s" at '${x.lexeme}'"))
+      Cont.Pure(())
+
+  private def pairsC[R](kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] /> R =
+    val vs = Vector.newBuilder[Json]
+    def loop(rest: Vector[Cst[K]]): Unit /> R =
+      if rest.isEmpty then Cont.Pure(())
+      else Cont.defer(() => intoC[R](rest.head, vs, open))(_ => loop(rest.tail))
+    loop(kids).flatMap { _ =>
+      val flat = vs.result()
+      val out = Vector.newBuilder[(String, Json)]
+      var i = 0
+      while i + 1 < flat.length do
+        flat(i) match
+          case JStr(k) => out += ((k, flat(i + 1)))
+          case JErr(m) => out += ((s"<$m>", flat(i + 1)))
+          case _ => ()
+        i += 2
+      Cont.Pure(out.result())
+    }
 
   // ----------------------------------------------------------------
   // the two Schema algebras
@@ -276,42 +448,146 @@ object Json {
   private inline def needsEscape(c: Char): Boolean =
     c == '"' || c == '\\' || c == '\n' || c == '\t' || c == '\r' 
 
-  /** the encoding algebra: fold the schema, render the value */
-  def encode[A](s: Schema[A])(a: A): String = s match
-    case Schema.SInt => a.toString
-    case Schema.SLong => a.toString
-    case Schema.SDouble => a.toString
-    case Schema.SBool => a.toString
-    case Schema.SString => s"\"${escape(a)}\""
-    case Schema.SChar => s"\"${escape(a.toString)}\""
+  /**
+   * `encode` walks a VALUE's own recursive-schema depth — the exact
+   * shape `Cbor.put`/`Json.print` already had fixed
+   * (encode-side-depth-safety) — and was still plain native recursion
+   * itself, unnoticed alongside its two siblings until `form-
+   * recursive-depth-safety`'s own tests (`Json.write` on a genuinely
+   * deep value, needed to build a test fixture for `okay-ui/Form`)
+   * hit it directly. Same `Codecs.NativeThreshold`-then-`Cont.defer`
+   * split as `print`/`into`, side-effecting into a `StringBuilder` —
+   * NOT the first draft, which returned `String` and combined child
+   * results by interpolation/`mkString`: that is quadratic (each
+   * level re-copies the whole string built so far into a longer one),
+   * passed the JVM suite at a tolerable few seconds for 100 000
+   * levels, and then took 1276s on Scala Native (no JIT to hide it)
+   * before this file's own gate caught it. `StringBuilder.append` is
+   * what `print` already used for exactly this reason; `encode` gets
+   * the same discipline. As with `Cbor.putC`'s `SProduct` case, each
+   * field's KEY write and its value's `Cont.defer` live in the SAME
+   * thunk — `eachField`'s own map is eager, so splitting them
+   * reproduces that bug's ordering hazard on a mutable buffer.
+   */
+  def encode[A](s: Schema[A])(a: A): String =
+    val sb = new StringBuilder
+    encodeInto(s, a, sb, 0)
+    sb.toString
+
+  private def encodeInto[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit =
+    if open >= Codecs.NativeThreshold then reset(encodeIntoC[A, Unit](s, a, sb, open))
+    else encodeIntoNative(s, a, sb, open)
+
+  private def encodeIntoNative[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit = s match
+    case Schema.SInt => sb.append(a.toString): Unit
+    case Schema.SLong => sb.append(a.toString): Unit
+    case Schema.SDouble => sb.append(a.toString): Unit
+    case Schema.SBool => sb.append(a.toString): Unit
+    case Schema.SString => sb.append('"').append(escape(a)).append('"'): Unit
+    case Schema.SChar => sb.append('"').append(escape(a.toString)).append('"'): Unit
     // JSON has no bytes. Base64 is what everyone means by them here,
     // and it is also what makes a dump READABLE: a thousand float
     // literals are not something anyone reads, and one opaque token
     // says "binary payload" without burying the fields that matter.
-    case Schema.SBytes => s"\"${Base64.encode(a)}\""
+    case Schema.SBytes => sb.append('"').append(Base64.encode(a)).append('"'): Unit
     case Schema.SOption(of) =>
       a match
-        case Some(x) => encode(of())(x)
-        case None => "null"
+        case Some(x) => encodeInto(of(), x, sb, open + 1)
+        case None => sb.append("null"): Unit
     case Schema.SList(of) =>
-      a.map(encode(of())).mkString("[", ",", "]")
+      sb.append('[')
+      var first = true
+      a.foreach { x => if !first then sb.append(','); first = false; encodeInto(of(), x, sb, open + 1) }
+      sb.append(']'): Unit
     case Schema.SVector(of) =>
-      a.map(encode(of())).mkString("[", ",", "]")
+      sb.append('[')
+      var first = true
+      a.foreach { x => if !first then sb.append(','); first = false; encodeInto(of(), x, sb, open + 1) }
+      sb.append(']'): Unit
     case p: Schema.SProduct[A] =>
-      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => s"\"$n\":${encode(sc)(x)}")
-        .mkString("{", ",", "}")
+      sb.append('{')
+      var first = true
+      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => {
+        if !first then sb.append(',')
+        first = false
+        val _ = sb.append('"').append(n).append("\":")
+        encodeInto(sc, x, sb, open + 1)
+      }): Unit
+      sb.append('}'): Unit
     case su: Schema.SSum[A] =>
-      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => s"{\"$n\":${encode(sc)(x)}}")
+      sb.append('{')
+      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => {
+        val _ = sb.append('"').append(n).append("\":")
+        encodeInto(sc, x, sb, open + 1)
+      })
+      sb.append('}'): Unit
     // the newtype node: A travels as B, so encode is `from` then under's
-    case Schema.SIso(u, _, from) => encode(u())(from(a))
+    case Schema.SIso(u, _, from) => encodeInto(u(), from(a), sb, open)
+
+  private def encodeIntoC[A, R](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit /> R = s match
+    case Schema.SInt => sb.append(a.toString); Cont.Pure(())
+    case Schema.SLong => sb.append(a.toString); Cont.Pure(())
+    case Schema.SDouble => sb.append(a.toString); Cont.Pure(())
+    case Schema.SBool => sb.append(a.toString); Cont.Pure(())
+    case Schema.SString => val _ = sb.append('"').append(escape(a)).append('"'); Cont.Pure(())
+    case Schema.SChar => val _ = sb.append('"').append(escape(a.toString)).append('"'); Cont.Pure(())
+    case Schema.SBytes => val _ = sb.append('"').append(Base64.encode(a)).append('"'); Cont.Pure(())
+    case Schema.SOption(of) => a match
+      case Some(x) => Cont.defer(() => encodeIntoC(of(), x, sb, open + 1))(_ => Cont.Pure(()))
+      case None => sb.append("null"); Cont.Pure(())
+    case Schema.SList(of) =>
+      sb.append('[')
+      def loop(rest: A, first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(a, true)
+    case Schema.SVector(of) =>
+      sb.append('[')
+      def loop(rest: A, first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+      loop(a, true)
+    case p: Schema.SProduct[A] =>
+      sb.append('{')
+      val steps: Vector[Unit /> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
+        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
+      def loop(rest: Vector[Unit /> R], first: Boolean): Unit /> R =
+        if rest.isEmpty then { sb.append('}'); Cont.Pure(()) }
+        else
+          if !first then sb.append(',')
+          rest.head.flatMap(_ => loop(rest.tail, false))
+      loop(steps, true)
+    case su: Schema.SSum[A] =>
+      sb.append('{')
+      val step: Unit /> R = su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
+        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
+      step.flatMap(_ => { sb.append('}'); Cont.Pure(()) })
+    case Schema.SIso(u, _, from) => Cont.defer(() => encodeIntoC(u(), from(a), sb, open))(_ => Cont.Pure(()))
+
+  /** the public entry, signature unchanged: dispatches on depth,
+   * starting at 0. `Json.decode` has no reader object to hang a
+   * counter on (it is a pure function of `Schema`/`Json`), so depth is
+   * an explicit parameter rather than `Cbor.In`'s mutable `open`. This
+   * counter drives ONLY the native/trampoline switch (`decode` never
+   * refused a depth, before or after remove-codecs-maxdepth — the
+   * refusal removed was upstream, at the parse/projection layer). */
+  def decode[A](s: Schema[A])(j: Json): Either[String, A] = decodeAt(s, j, 0)
+
+  private def decodeAt[A](s: Schema[A], j: Json, depth: Int): Either[String, A] =
+    if depth >= Codecs.NativeThreshold then reset(decodeC[A, Either[String, A]](s, j))
+    else decodeNative(s, j, depth)
 
   /** one field at its own type; the value joins the product's erased
    * parts (Mirror's fromProduct takes Any) */
-  private def field[X](sc: Schema[X], v: Json): Either[String, Any] = decode(sc)(v)
+  private def field[X](sc: Schema[X], v: Json, depth: Int): Either[String, Any] = decodeAt(sc, v, depth)
 
   /** the decoding algebra: fold the schema, read the value back —
    * errors are values (Left), never faults */
-  def decode[A](s: Schema[A])(j: Json): Either[String, A] = (s, j) match
+  private def decodeNative[A](s: Schema[A], j: Json, depth: Int): Either[String, A] = (s, j) match
     case (Schema.SInt, JNum(n)) => Right(n.toInt)
     case (Schema.SLong, JNum(n)) => Right(n.toLong)
     case (Schema.SDouble, JNum(n)) => Right(n)
@@ -321,7 +597,7 @@ object Json {
     case (Schema.SChar, JStr(x)) => Left(s"expected one character, got ${x.length}")
     case (Schema.SBytes, JStr(x)) => Base64.decode(x)
     case (Schema.SOption(of), JNull) => Right(None)
-    case (Schema.SOption(of), v) => decode(of())(v).map(Some(_))
+    case (Schema.SOption(of), v) => decodeAt(of(), v, depth + 1).map(Some(_))
     case (l: Schema.SList[a], JArr(vs)) =>
       // A truncated document leaves an "unclosed" marker where its
       // last element would be, and a damaged one leaves a JErr in
@@ -333,14 +609,14 @@ object Json {
       // wants to know that the document was damaged.
       vs.filterNot(_.isInstanceOf[JErr])
         .foldLeft(Right(Nil): Either[String, List[a]]) { (acc, v) =>
-          acc.flatMap(xs => decode(l.of())(v).map(xs :+ _))
+          acc.flatMap(xs => decodeAt(l.of(), v, depth + 1).map(xs :+ _))
         }
     case (vec: Schema.SVector[a], JArr(vs)) =>
       // the same totality rule as SList above: damaged elements are
       // skipped, the ones that arrived survive
       vs.filterNot(_.isInstanceOf[JErr])
         .foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, v) =>
-          acc.flatMap(xs => decode(vec.of())(v).map(xs :+ _))
+          acc.flatMap(xs => decodeAt(vec.of(), v, depth + 1).map(xs :+ _))
         }
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
@@ -359,16 +635,102 @@ object Json {
             // a damaged optional value is the same as an absent one
             case (Some(JErr(_)), _: Schema.SOption[?]) => absent.map(xs :+ _)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
-              .flatMap(field(sc, _)).map(xs :+ _)
+              .flatMap(field(sc, _, depth + 1)).map(xs :+ _)
         }
       }.map(p.make)
     case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
       su.cases.find(_._1 == name)
         .toRight(s"unknown case '$name' of ${su.name}")
-        .flatMap((_, sc) => decode(sc())(v))
-    case (Schema.SIso(u, to, _), v) => decode(u())(v).flatMap(to)
+        .flatMap((_, sc) => decodeAt(sc(), v, depth + 1))
+    case (Schema.SIso(u, to, _), v) => decodeAt(u(), v, depth + 1).flatMap(to)
     case (_, JErr(m)) => Left(m)
     case (want, got) => Left(s"expected ${want.getClass.getSimpleName}, got $got")
+
+  // ---------------------------------------------------------------
+  // the trampoline (json-decode-threshold-trampoline): PAST
+  // NativeThreshold, `decodeAt` runs this instead of `decodeNative`.
+  // Same fold, same rules — the ONLY difference is that a descent into
+  // a NESTED schema is `Cont.defer`red rather than called directly, so
+  // the trampoline forces it inside `/`'s own loop, one level per
+  // iteration, at constant native stack. See `Cbor.scala`'s own
+  // `getC`/`insideC`/`fieldC` (cbor-decode-threshold-trampoline) for
+  // the mechanism in full — this is the same design against a
+  // different fold. `R` is fixed once, at `decodeAt`'s `reset` call,
+  // to `Either[String, A]` for whatever `A` was being decoded when
+  // depth first crossed the threshold, and threaded unchanged through
+  // every nested call below.
+  //
+  // No cast (no-casts-without-necessity): the two widenings
+  // `decodeNative` gets for free from `Either`'s covariance (a
+  // product's field joining `Vector[Any]`, a sum's case narrowing to
+  // its parent type) need one explicit `.map` each here, since `Cont`
+  // is invariant in its value type.
+  // ---------------------------------------------------------------
+
+  /** `field`'s Cont-shaped twin, widened to `Any` the same way `field`
+   * widens via Either's covariance */
+  private def fieldC[X, R](sc: Schema[X], v: Json): Either[String, Any] /> R =
+    decodeC(sc, v).map(e => e: Either[String, Any])
+
+  private def decodeC[A, R](s: Schema[A], j: Json): Either[String, A] /> R = (s, j) match
+    case (Schema.SInt, JNum(n)) => Cont.Pure(Right(n.toInt))
+    case (Schema.SLong, JNum(n)) => Cont.Pure(Right(n.toLong))
+    case (Schema.SDouble, JNum(n)) => Cont.Pure(Right(n))
+    case (Schema.SBool, JBool(b)) => Cont.Pure(Right(b))
+    case (Schema.SString, JStr(x)) => Cont.Pure(Right(x))
+    case (Schema.SChar, JStr(x)) if x.length == 1 => Cont.Pure(Right(x.head))
+    case (Schema.SChar, JStr(x)) => Cont.Pure(Left(s"expected one character, got ${x.length}"))
+    case (Schema.SBytes, JStr(x)) => Cont.Pure(Base64.decode(x))
+    case (Schema.SOption(of), JNull) => Cont.Pure(Right(None))
+    case (Schema.SOption(of), v) =>
+      Cont.defer(() => decodeC(of(), v))(r => Cont.Pure(r.map(Some(_))))
+    case (l: Schema.SList[a], JArr(vs)) =>
+      def loop(rest: List[Json], acc: List[a]): Either[String, List[a]] /> R = rest match
+        case Nil => Cont.Pure(Right(acc.reverse))
+        case v :: more => Cont.defer(() => decodeC(l.of(), v)) {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(x) => loop(more, x :: acc)
+        }
+      loop(vs.filterNot(_.isInstanceOf[JErr]).toList, Nil)
+    case (vec: Schema.SVector[a], JArr(vs)) =>
+      def loop(rest: List[Json], acc: Vector[a]): Either[String, Vector[a]] /> R = rest match
+        case Nil => Cont.Pure(Right(acc))
+        case v :: more => Cont.defer(() => decodeC(vec.of(), v)) {
+          case Left(e) => Cont.Pure(Left(e))
+          case Right(x) => loop(more, acc :+ x)
+        }
+      loop(vs.filterNot(_.isInstanceOf[JErr]).toList, Vector.empty)
+    case (p: Schema.SProduct[A], JObj(fs)) =>
+      val m = fs.toMap
+      def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
+        remaining match
+          case Nil => Cont.Pure(Right(acc))
+          case (f, i) :: more =>
+            def absent: Either[String, Any] = p.defaults.lift(i).flatten match
+              case Some(d) => Right(d())
+              case None => f._2() match
+                case _: Schema.SOption[?] => Right(None)
+                case _ => Left(s"missing field '${f._1}' in ${p.name}")
+            (m.get(f._1), f._2()) match
+              case (None, _) => absent match
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(v) => loop(more, acc :+ v)
+              case (Some(JErr(_)), _: Schema.SOption[?]) => absent match
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(v) => loop(more, acc :+ v)
+              case (Some(v), sc) => Cont.defer(() => fieldC(sc, v)) {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(x) => loop(more, acc :+ x)
+              }
+      loop(p.fields.zipWithIndex.toList, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
+    case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
+      su.cases.find(_._1 == name) match
+        case None => Cont.Pure(Left(s"unknown case '$name' of ${su.name}"))
+        case Some((_, sc)) => decodeC(sc(), v).map(e => e: Either[String, A])
+    case (Schema.SIso(u, to, _), v) =>
+      Cont.defer(() => decodeC(u(), v))(r => Cont.Pure(r.flatMap(to)))
+    case (_, JErr(m)) => Cont.Pure(Left(m))
+    case (want, got) => Cont.Pure(Left(s"expected ${want.getClass.getSimpleName}, got $got"))
 
   /** text to value in one move, through the total pipeline */
   def read[A](input: String)(using s: Schema[A]): Either[String, A] =

@@ -1,0 +1,8 @@
+The claims directory is tracked even when it is empty.
+
+Without this file git drops the directory as soon as the last claim is
+released — which happened on 2026-09-11 00:45, when three lanes landed
+in a row and the next agent found no `.work/active` at all. Nothing was
+lost (a claim is a committed file, and the history shows each release),
+but a missing claims directory reads like a broken protocol for exactly
+as long as it takes to check, and checking is not free at 1am.

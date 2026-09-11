@@ -30,7 +30,7 @@ class TestStateMcp extends munit.FunSuite {
     val store = StateMcp.Store(file)
     val (client, server) = wire()
     Async.spawn(Server.run(server, Mcp.Info("okay-state", "0.1"),
-      StateMcp.tools, StateMcp.handlers(store))): Unit
+      StateMcp.tools(store), StateMcp.handlers(store))): Unit
     Client.connect(client, Mcp.Info("test", "1"), Duplex.Peer()).runWith
 
   def call(s: Session, name: String, args: Json): String =
@@ -101,5 +101,21 @@ class TestStateMcp extends munit.FunSuite {
     Files.writeString(file.toPath, "{not json")
     val s = connected(file)
     assertEquals(Json.parse(call(s, "get_state", obj())), obj())
+  }
+
+  test("a genuinely deep, undamaged state file still loads — no cap, no stack overflow (encode-side-depth-safety)") {
+    // Store.damaged used to recurse natively over the parsed file —
+    // safe only because Codecs.maxDepth capped every parse. This also
+    // exercises get_state's own Json.print(store.get) on the way back
+    // out, end to end: both encode-side-depth-safety fixes, on the
+    // real path a client actually drives.
+    val dir = Files.createTempDirectory("state-mcp")
+    val file = dir.resolve("state.json").toFile
+    val n = 100000
+    Files.writeString(file.toPath, ("{\"a\":" * n) + "1" + ("}" * n))
+    val s = connected(file)
+    // still loaded as the file's own value, not reset to empty by a
+    // false "damaged" verdict
+    assert(call(s, "get_state", obj()).startsWith("{\"a\":"))
   }
 }

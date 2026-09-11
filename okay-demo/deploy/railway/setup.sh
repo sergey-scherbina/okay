@@ -11,7 +11,9 @@ railway init --name 'demo-chat' || echo 'project exists; `railway link` it inste
 railway add --service 'chat'
 railway variables --service 'chat' \
   --set 'OKAY_CHAT_PORT=8090' \
-  --set 'OKAY_CHAT_LOG=:memory:' \
+  --set 'OKAY_CHAT_DB=/app/data/okay-board.log' \
   --set 'OKAY_CHAT_APP=/app/app.js' \
   --set 'PORT=8090' \
   --skip-deploys
+# railway volumes are made in the dashboard: Service -> Settings -> Volumes
+#   chat: mount /app/data (1Gi)

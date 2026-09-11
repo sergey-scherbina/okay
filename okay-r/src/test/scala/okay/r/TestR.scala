@@ -84,8 +84,9 @@ class TestR extends munit.FunSuite {
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
 
   private var sessions = List.empty[RSubprocess]
-  private def session(env: Map[String, String] = Map.empty): RSubprocess =
-    val s = RSubprocess.start(TestR.rscript.get, env)
+  private def session(env: Map[String, String] = Map.empty,
+                      timeoutMillis: Option[Long] = None): RSubprocess =
+    val s = RSubprocess.start(TestR.rscript.get, env, timeoutMillis)
     sessions = s :: sessions
     s
   override def afterAll(): Unit = sessions.foreach(_.close())
@@ -291,5 +292,75 @@ class TestR extends munit.FunSuite {
     r.close()
     val thrown = intercept[Exception](call(r, "sqrt", Vec(Vector(F64(4)))))
     assert(thrown.getMessage != null && thrown.getMessage.nonEmpty, "a dead process threw nothing to act on")
+  }
+
+  // ---- the timeout (r-finish, specs/r.md) -----------------------------
+
+  test("a call that never answers is killed at the deadline, reported as DATA, and the engine takes the next call") {
+    val r = session(timeoutMillis = Some(2000L))
+    val started = System.nanoTime()
+    // Sys.sleep is the honest hang: R is busy in C, and no polite
+    // protocol can interrupt it — only the process can be stopped
+    val out = call(r, "Sys.sleep", F64(120))
+    val waited = (System.nanoTime() - started) / 1000000L
+    out match
+      case Left(c) =>
+        assertEquals(c.kind, "timeout")
+        assert(c.message.contains("2000ms"), c.message)
+      case Right(v) => fail(s"the call answered instead of timing out: $v")
+    assert(waited >= 1900L && waited < 30000L, s"waited ${waited}ms for a 2000ms deadline")
+    // …and the engine is USABLE: a fresh process took the dead one's place
+    assertEquals(call(r, "sqrt", Vec(Vector(F64(16)))), Right(Vec(Vector(F64(4)))))
+    assertEquals(call(r, "paste", Str("a"), Str("b")), Right(Vec(Vector(Str("a b")))))
+  }
+
+  test("with no deadline set, nothing changes: the engine blocks as it always did (and answers)") {
+    val r = session()
+    assertEquals(r.timeoutMillis, None)
+    assertEquals(call(r, "sqrt", Vec(Vector(F64(25)))), Right(Vec(Vector(F64(5)))))
+  }
+
+  test("a frame goes out and comes back as a Seq of a case class, over a REAL R") {
+    final case class Point(x: Double, y: Double) derives okay.codec.Schema
+    val r = session()
+    val sent = Vector(Point(1.0, 2.0), Point(3.0, 4.0))
+    val frame = RFrame.of(sent).fold(c => fail(s"of: $c"), identity)
+    // identity in R: the frame survives the wire in both directions
+    r.handler.handle(REval.Frame("identity", frame, Vector.empty)) match
+      case Right(back) => assertEquals(back.rows[Point], Right(sent))
+      case Left(c) => fail(s"identity on a frame: $c")
+  }
+
+  test("require: a session that names a package it must have refuses at START, naming the drift") {
+    // the version is deliberately impossible, so this measures the
+    // refusal and not the box's R installation
+    val e = intercept[IllegalStateException](
+      RSubprocess.start(TestR.rscript.get, Map.empty, None, Map("stats" -> "99.9")))
+    assert(e.getMessage.contains("stats"), e.getMessage)
+    assert(e.getMessage.contains("99.9"), e.getMessage)
+    // …and a requirement the environment DOES meet hands the engine over
+    val ok = RSubprocess.start(TestR.rscript.get, Map.empty, None, Map("stats" -> ""))
+    sessions = ok :: sessions
+    assertEquals(call(ok, "sqrt", Vec(Vector(F64(81)))), Right(Vec(Vector(F64(9)))))
+  }
+
+  test("the columnar wire over a REAL R: four NA types, a NaN, and an all-NA column come back intact") {
+    val r = session()
+    val in = RFrame(Vector(
+      "l" -> Vector(Bool(true), NA(RType.Logical)),
+      "i" -> Vector(I32(1), NA(RType.Integer)),
+      "d" -> Vector(F64(Double.NaN), NA(RType.Double)),
+      "s" -> Vector(Str("a"), NA(RType.Character)),
+      "allna" -> Vector(NA(RType.Double), NA(RType.Double))))
+    r.handler.handle(REval.Frame("identity", in, Vector.empty)) match
+      case Right(back) =>
+        assertEquals(back.cols.map(_._1), in.cols.map(_._1))
+        // NaN and NA are different values in the same column, and R agrees
+        assertEquals(back.cols(2)._2.head match { case F64(d) => d.isNaN; case o => fail(s"$o") }, true)
+        assertEquals(back.cols(2)._2(1), NA(RType.Double))
+        assertEquals(back.cols(1)._2, Vector(I32(1), NA(RType.Integer)))
+        assertEquals(back.cols(3)._2, Vector(Str("a"), NA(RType.Character)))
+        assertEquals(back.cols(4)._2, Vector(NA(RType.Double), NA(RType.Double)))
+      case Left(c) => fail(s"identity on the frame: $c")
   }
 }

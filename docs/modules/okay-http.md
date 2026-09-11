@@ -32,7 +32,46 @@ that module, and it is small because the vocabulary decided most of it:
 | `Ws.over(socket)(session)` | run a `Stage[Frame, Frame, A]` over a socket |
 | `Ws.link(socket)` | a socket AS an `mcp.Link` |
 | `Transports.http` / `.sockets` (JVM), `.fetch` / `.sockets` (JS) | the two platform seams |
+| `Route` / `Queried` / `Query` / `Router` | a typed path and query: match, build and describe from one declaration; `okay.http.syntax` is the terse form |
 | `Server.serve(port)(route)` | a REST server, JVM only |
+
+## Routes: one declaration, three interpreters
+
+The module's typed path and query. The full story, worked from a path
+through a query, a body, a table and a tool, is
+**[Declaring an API](../declaring-an-api.md)**; the decisions and the
+refuted alternatives are in `specs/optics-outside.md`. What follows is
+the reference.
+
+```scala
+val userPost = Route / "users" / Route[Int]("id") / "posts" / Route[String]("slug")
+val search   = Route / "search" :? Query[String]("q") :? Query.opt[Int]("page")
+
+userPost.unapply("/users/7/posts/hello%20world")  // MATCH    Some((7, "hello world"))
+userPost.url((7, "hello world"))                  // BUILD    "/users/7/posts/hello%20world"
+userPost.describe                                 // DESCRIBE "/users/{id}/posts/{slug}"
+```
+
+| member | meaning |
+|---|---|
+| `Route / "lit"` / `Route[T](name)` | a literal segment, a captured one; `T` needs a `Route.Param[T]` (`String`, `Int`, `Long`, `Boolean`) |
+| `:?` / `+&` | append a query to a route; compose two queries |
+| `Query[T]` / `.opt[T]` / `.all[T]` | required, optional, repeated |
+| `unapply` / `url` / `describe` / `describeFull` | the three interpreters, and the query rendered for a human |
+| `params` / `queries` | the description as data — `Seg.Var(name, kind)` and `Q(name, kind, required, repeated)` |
+| `prism` | the route as `Prism[String, String, A, A]` (specs/optics.md) |
+| `of[C]` | the same route reading a case class; checks the field NAMES against the parameters |
+| `Routed` / `Route` / `Queried` | what a declared url can do; the path stage; the query stage, which has no `/` |
+| `Router.on` / `.at` / `.json[B]` / `.jsonAt[B]` / `.of` | a table: parameters only, parameters and request, a declared JSON body, a declared body with the request, a case class |
+| `Router.routes` / `.describe` / `.markdown` / `.entries` | the `PartialFunction` every server here takes, the listing, the listing as a doc table, the rows |
+| `okay.http.syntax.*` | the terse form: `"id".as[Int]`, `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` |
+
+Five properties the reference will not tell you but the guide will,
+each chosen rather than inherited: the law `unapply(url(a)) == Some(a)`
+and what it forces; percent-decoding per segment, AFTER the split;
+present-and-unparseable is a MISS rather than `None`; a path cannot
+follow a query, structurally; and `isDefinedAt` does not run the
+handler.
 
 ## What it buys okay-mcp
 

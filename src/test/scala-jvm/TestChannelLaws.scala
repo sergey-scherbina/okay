@@ -48,6 +48,15 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
       cap => Queues.strong[Int].adaptive.parts(4).each(math.max(8, cap)).build),
     ("SentinelChannel/relaxed", true,
       cap => Queues.strong[Int].relaxed.parts(4).each(math.max(2, cap)).build),
+    // THE DEFAULT ANSWERS HERE TOO, and did not until 2026-09-09.
+    // `growing` became `Channel.apply`'s buffer on 2026-09-08 and was
+    // never added to this list, so the one mechanism every caller
+    // gets by default was the one mechanism these laws never ran. It
+    // was breaking law 4 the whole time — for two producers, which is
+    // the only width at which it partitions at all
+    // (merge-chunked-order).
+    ("SentinelChannel/growing", true,
+      cap => Queues.strong[Int].growing(math.max(2, cap), parts = 8).build),
     // the single-consumer ring answers for every law but the one with
     // contending consumers, which it declines by construction (see
     // `oneConsumer` below): its head moves by a store, not a CAS
@@ -192,6 +201,45 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     // owes that what it DID deliver came in the order it was sent, so
     // the law reads as a prefix and the drain tier owns the tail
     assertEquals(out, sent.take(out.length), s"$n: FIFO per producer")
+  }
+
+  each("law: TWO producers each arrive in the order they sent") { (n, mk) =>
+    // one producer is not enough to state this law, and that gap is
+    // how a reordering default shipped: a buffer that partitions by
+    // producer has nothing to partition until there are two, so with
+    // one it is only ever the plain ring underneath
+    // (merge-chunked-order, 2026-09-09).
+    // A FRESH CONSUMER THREAD PER ROUND, and that is not decoration.
+    // A partitioned buffer gives each consumer a starting part from
+    // its thread's identity hash, so ONE consumer asks the same
+    // rotation every time -- and a consumer that happens to start at
+    // the part holding the older elements reads them first and sees
+    // nothing wrong. Measured on the defect this law was written for:
+    // one drain on the test's own thread caught it in one run out of
+    // three; five rounds on fresh threads caught it in every run.
+    val each = (1 to 1000).toList
+    var round = 0
+    while round < 5 do
+      val c = mk(16)
+      val live = java.util.concurrent.atomic.AtomicInteger(2)
+      val ps = (0 to 1).map(p => Thread.ofVirtual().start { () =>
+        each.foreach(i => { val _ = c.sendBlocking(2 * i + p) })
+        if live.decrementAndGet() == 0 then c.close()
+      })
+      var out = List.empty[Int]
+      val consumer = Thread.ofVirtual().start { () =>
+        out = Iterator.continually(c.receiveBlocking()).takeWhile(_.isDefined).flatten.toList
+      }
+      consumer.join()
+      ps.foreach(_.join())
+      // a prefix per producer, for the same reason law 4 reads as one
+      (0 to 1).foreach { p =>
+        val own = out.filter(_ % 2 == p)
+        val sent = each.map(2 * _ + p)
+        assertEquals(own, sent.take(own.length),
+          s"$n: round $round, producer $p out of its own order")
+      }
+      round += 1
   }
 
   // ── LAW: a failure records, it does not close ────────────────────

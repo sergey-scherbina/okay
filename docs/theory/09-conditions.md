@@ -111,3 +111,7 @@ here waits, for a consumer.
 - <a id="ref-zhang-2020"></a>Yizhou Zhang, Guido Salvaneschi,
   Andrew C. Myers. *Handling bidirectional control flow.*
   OOPSLA 2020 — the typed account of signal-up/resume-down.
+
+---
+
+← [8 · Direct style](08-direct-style.md) · [Contents](index.md) · [10 · Optics on profunctors](10-optics.md) →

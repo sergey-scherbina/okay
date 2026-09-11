@@ -33,6 +33,33 @@ import okay.!.*
  * out of a slot is what the same S put in. It is the cast `TMap`
  * makes, for the same reason, and it is the whole difference between
  * the two halves.
+ *
+ * AND THE FEATURE THAT LOOKS LIKE IT WOULD REMOVE THE CAST DOES NOT
+ * (measured 2026-09-11, refs-typed-heap). Scala 3's generalized
+ * method syntax lets a type clause follow a term clause, and its own
+ * documented example is `def getOrElse(k: Key)[V >: k.Value](default:
+ * V): V` — the shape of `slot` below, to the letter. Two roads were
+ * compiled and both are refused:
+ *
+ *   - `Ref` carrying `type Value`, the heap a `Map[Ref, Slot]` where
+ *     `Slot(ref: Ref, value: ref.Value)`, and
+ *     `def slot(h, c: Ref)[V >: c.Value]`. The compiler answers that
+ *     `s.value` has type `s.ref.Value`, and nothing proves `s.ref`
+ *     IS `c`. A `Map` cannot record that its value's type depends on
+ *     the key it was filed under.
+ *   - the heap as a DEPENDENT FUNCTION, `(c: Ref) => Option[c.Value]`,
+ *     which does express that dependence. It breaks one step later, at
+ *     `put`: inside the lambda the key is `k` and the value is
+ *     `c.Value`, and `k eq c` is a run-time fact the types never
+ *     learn.
+ *
+ * The rule the two failures share is worth more than either: the
+ * feature fixes SIGNATURES, not STORAGE. It lets a type depend on a
+ * term that is present; it does not recover a type that erasure has
+ * already thrown away, and the cell's type is thrown away the moment a
+ * heap of run-time-created cells is a value rather than a row. Which
+ * is what the paragraph above says about `Keyed`, arrived at from the
+ * other end.
  */
 enum Refs[+A]:
   case New[S](init: S) extends Refs[Refs.Ref[S]]

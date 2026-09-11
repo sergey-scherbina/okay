@@ -87,4 +87,25 @@ class TestBoard extends munit.FunSuite {
     assert(call("board_done", "id" -> JNum(99)).contains("error"), call("board_done", "id" -> JNum(99)))
     assert(call("board_assign", "id" -> JNum(1)).contains("error"))
   }
+
+  test("the declaration and the dispatch cannot come apart") {
+    val b = fresh
+    // both come from one Toolbox (specs/optics-outside.md, stage 2),
+    // so a tool cannot be declared and undispatched or the reverse
+    assertEquals(BoardTools.specs(b).map(_.name).toSet, BoardTools.table(b).keySet)
+    assertEquals(BoardTools.of(b).duplicates, Vector.empty)
+  }
+
+  test("the declaration says which fields are required, which it never used to") {
+    val b = fresh
+    def required(name: String): Vector[String] =
+      BoardTools.specs(b).find(_.name == name).get.schema match
+        case JObj(fs) => fs.collectFirst { case ("required", JArr(rs)) =>
+          rs.collect { case JStr(x) => x } }.getOrElse(Vector.empty)
+        case _ => Vector.empty
+    assertEquals(required("board_add"), Vector("text", "owner"))
+    assertEquals(required("board_assign"), Vector("id", "who"))
+    // `who` is an Option, so listing is the one tool with nothing required
+    assertEquals(required("board_list"), Vector.empty)
+  }
 }

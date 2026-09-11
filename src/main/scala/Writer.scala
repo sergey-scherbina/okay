@@ -166,6 +166,46 @@ object Writer {
       case Right(Say(w)) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f))
 
   /**
+   * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
+   * 2026-09-10) — `map`'s one-to-many sibling, and the reason it
+   * exists is measured rather than aesthetic.
+   *
+   * `Source.unchunked` was `through(s)(Stage.unchunk)`: a Take/Writer
+   * COROUTINE PAIRING, where every element of every chunk crosses the
+   * handshake between two suspended programs. Its cost per element
+   * grows with the chunk it came from — measured on §6b's merge at
+   * chunk 16 / 256 / 1024, quiet box, with the merge alone flat
+   * beside it:
+   *
+   *   merge alone       245.2 -> 237.4 -> 280.0 us
+   *   merge + unchunk   231.7 -> 262.3 -> 430.3 us
+   *   unchunk costs       ~0  ->  ~25  ->  ~150
+   *
+   * This walks the program ONCE and re-tells each element directly,
+   * so no element crosses a coroutine boundary: what is rebuilt is a
+   * plain Free chain the runner walks linearly.
+   *
+   * `f` may return any number of values, including none — an empty
+   * result drops the told value, which makes this a filter as well as
+   * an expansion.
+   */
+  def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => IndexedSeq[V])
+  : A ! (Writer % V + G) =
+    def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer % V + G) =
+      if i >= vs.length then Free.Pure(())
+      else Effect(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
+
+    (a.resume: @unchecked) match
+      case Free.Pure(x) => Free.Pure(x)
+      case Effect(e) => <|>[G, Writer % W](e) match
+        case Left(g) => Effect(g)
+        case Right(Say(w)) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)]
+      case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
+        case Left(g) => Effect(g).flatMap(x => expand[W, V, A, G](k(x))(f))
+        case Right(Say(w)) =>
+          tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f))
+
+  /**
    * Re-tell at a WIDER element type with NO transform — `map`'s
    * identity case, priced separately because it is common (every
    * merge of differently-typed sources goes through it) and cheaper

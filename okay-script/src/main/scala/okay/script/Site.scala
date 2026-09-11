@@ -270,15 +270,15 @@ final class Site(
    * not part of `routes`: ops endpoints are a caller's decision about
    * exposure, chained with `orElse` (or served on another port), never
    * something a page directory silently gains. */
-  def opsRoutes: PartialFunction[Request, HttpResponse ! Async] = {
-    case r if r.method == okay.http.Method.Get && pathOf(r.url) == "/healthz" =>
-      pure(plain(200, "live=true"))
-    case r if r.method == okay.http.Method.Get && pathOf(r.url) == "/stats" =>
-      pure(HttpResponse(200, Vector("Content-Type" -> "application/json"), Http.one(stats.json.getBytes(UTF_8))))
-    case r if r.method == okay.http.Method.Get && pathOf(r.url) == "/metrics" =>
+  def opsRouter: okay.http.Router = okay.http.Router.empty
+    .on(okay.http.Method.Get, Site.Ops.healthz)(_ => pure(plain(200, "live=true")))
+    .on(okay.http.Method.Get, Site.Ops.stats)(_ =>
+      pure(HttpResponse(200, Vector("Content-Type" -> "application/json"), Http.one(stats.json.getBytes(UTF_8)))))
+    .on(okay.http.Method.Get, Site.Ops.metrics)(_ =>
       pure(HttpResponse(200, Vector("Content-Type" -> "text/plain; version=0.0.4; charset=utf-8"),
-        Http.one(stats.prometheus.getBytes(UTF_8))))
-  }
+        Http.one(stats.prometheus.getBytes(UTF_8)))))
+
+  def opsRoutes: PartialFunction[Request, HttpResponse ! Async] = opsRouter.routes
 
   // ---- caching (okay-script-cache)
 
@@ -713,6 +713,28 @@ final class Site(
       }.toMap
 
 object Site:
+
+  /**
+   * The ops surface as VALUES (specs/optics-outside.md, stage 4).
+   *
+   * A deployment has to name a probe path and has no `Site` to ask,
+   * so the paths exist apart from the router that serves them —
+   * `ScriptDeploy` names its liveness and readiness from here instead
+   * of writing a literal of its own. That is the same principle this
+   * module already applied to SETTINGS ("derived from the value the
+   * program itself reads ... a name this deployment could invent does
+   * not exist"), extended at last to paths. `TestSiteOps` asserts that
+   * `paths` is exactly what `opsRouter` dispatches, so the two cannot
+   * drift.
+   */
+  object Ops:
+    val healthz: okay.http.Route[EmptyTuple] = okay.http.Route / "healthz"
+    val stats: okay.http.Route[EmptyTuple] = okay.http.Route / "stats"
+    val metrics: okay.http.Route[EmptyTuple] = okay.http.Route / "metrics"
+
+    /** every path a Site's ops surface serves */
+    val paths: Set[String] = Vector(healthz, stats, metrics).map(_.describe).toSet
+
 
   /** what a Site has done and what it holds (okay-script-warm) --
    * plain values, `Store.Stats`' own shape: counters since the Site

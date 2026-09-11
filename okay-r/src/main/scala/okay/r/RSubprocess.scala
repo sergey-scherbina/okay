@@ -13,29 +13,87 @@ import okay.codec.Json
  * A dead process makes the in-flight call THROW (the supervisor
  * decides — the parallel-resilience fault model); a failing call is a
  * Condition and the process survives.
+ *
+ * One edge, stated because a reader will meet it rather than read it
+ * (r-measure-harden): if the RESPAWN after a timeout fails — R gone
+ * from the environment between two calls, a container stopped — that
+ * failure THROWS rather than answering data. It is the dead-process
+ * story arriving one step later, and the honest answer is the same
+ * one: an engine whose interpreter no longer exists is not something
+ * a program can handle as a value.
+ *
+ * A TIMEOUT is the third outcome (r-finish): R is a language where a
+ * plausible call runs for ever (an unconverged optimiser, a regex on
+ * a big frame), and the shim is line-oriented, so a host that just
+ * blocks on `readLine` waits for ever with it. With `timeoutMillis`
+ * set, a call that does not answer in time has its PROCESS killed —
+ * the only way to stop R mid-call — a fresh one is started in its
+ * place, and the call answers `Left(Condition("timeout", …))`. The
+ * respawn is invisible to the program, and that is a property of the
+ * no-source design rather than luck: the API has no way to assign
+ * anything in the R session, so a fresh process has nothing to have
+ * lost. Data,
+ * not an exception, and the engine is usable for the next call: the
+ * dead-process THROW stays what it is, an engine nobody can revive.
  */
-final class RSubprocess private (proc: Process,
-                                 out: java.io.BufferedWriter,
-                                 in: java.io.BufferedReader,
-                                 val rVersion: String):
+final class RSubprocess private (private var proc: Process,
+                                 private var out: java.io.BufferedWriter,
+                                 private var in: java.io.BufferedReader,
+                                 val rVersion: String,
+                                 /** how the engine gets a FRESH process after a
+                                  * timeout kills this one; `None` for a handle
+                                  * that cannot respawn (the handshake test's) */
+                                 private val respawn: Option[() => (Process, java.io.BufferedWriter, java.io.BufferedReader)],
+                                 val timeoutMillis: Option[Long]):
 
   private var nextId = 0
+  /** one daemon thread per engine, and only where a timeout asks for
+   * it: the blocking `readLine` has to happen off the caller's thread
+   * for the caller to be able to give up on it */
+  private lazy val reader: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r =>
+      val t = Thread(r, "okay-r-reader"); t.setDaemon(true); t
+    }
 
-  private def exchange(req: Json): Json =
+  private def exchange(req: Json): Either[Condition, Json] =
     nextId += 1
     val id = nextId
     val body = req match
       case Json.JObj(fs) => Json.JObj(("id" -> Json.JNum(id.toDouble)) +: fs)
       case other => other
     out.write(Json.print(body)); out.write("\n"); out.flush()
-    val line = in.readLine()
-    if line == null then
-      throw IllegalStateException(
-        "the R process is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
-    Json.parse(line)
+    readLine() match
+      case Left(c) => Left(c)
+      case Right(null) =>
+        throw IllegalStateException(
+          "the R process is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
+      case Right(line) => Right(Json.parse(line))
 
-  private def answer[A](j: Json)(ok: Json => Either[Condition, A]): Either[Condition, A] =
-    j match
+  /** the answer line, or the timeout as data. Without a deadline this
+   * is `in.readLine()` and nothing else happens. */
+  private def readLine(): Either[Condition, String | Null] = timeoutMillis match
+    case None => Right(in.readLine())
+    case Some(ms) =>
+      val task = reader.submit(() => in.readLine())
+      try Right(task.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS))
+      catch
+        case _: java.util.concurrent.TimeoutException =>
+          task.cancel(true): Unit
+          // the ONLY way to stop R mid-call, and it takes the wire
+          // with it — so the engine gets a new process or becomes one
+          // nobody can revive
+          proc.destroyForcibly().waitFor(): Unit
+          respawn match
+            case Some(fresh) =>
+              val (p, o, i) = fresh()
+              proc = p; out = o; in = i
+            case None => ()
+          Left(Condition("timeout",
+            s"the R call did not answer within ${ms}ms — the process was killed" +
+              (if respawn.isDefined then " and a fresh one took its place" else "")))
+
+  private def answer[A](e: Either[Condition, Json])(ok: Json => Either[Condition, A]): Either[Condition, A] =
+    e.flatMap { j => j match
       case Json.JObj(fs) =>
         val m = fs.toMap
         m.get("condition") match
@@ -52,6 +110,7 @@ final class RSubprocess private (proc: Process,
             case Some(v) => ok(v)
             case None => Left(Condition("WireError", s"no ok and no condition in $j"))
       case other => Left(Condition("WireError", s"not an answer: $other"))
+    }
 
   /** the comonadic handler — one operation, one exchange */
   def handler: Handler[REval] = new:
@@ -95,13 +154,20 @@ final class RSubprocess private (proc: Process,
     case Some(Json.JArr(Vector(Json.JStr(v)))) => Some(v)
     case _ => None
 
+  /** the fresh process's three parts, for a handle that is replacing
+   * its own (r-finish): the new handle is abandoned after this, so
+   * nothing is closed twice */
+  private[r] def take(): (Process, java.io.BufferedWriter, java.io.BufferedReader) =
+    (proc, out, in)
+
   def close(): Unit =
     try { out.close(); in.close() } catch case _: Exception => ()
     proc.destroy()
+    if timeoutMillis.isDefined then reader.shutdownNow(): Unit
 
 object RSubprocess:
 
-  val ShimVersion = 1
+  val ShimVersion = 2
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH
@@ -110,18 +176,39 @@ object RSubprocess:
    * what `env` names.
    */
   def start(rscript: String = "Rscript",
-            env: Map[String, String] = Map.empty): RSubprocess =
+            env: Map[String, String] = Map.empty,
+            /** a call that does not answer in this long has its process
+             * killed and answers `Condition("timeout", …)`; the engine
+             * takes the next call on a fresh process (r-finish) */
+            timeoutMillis: Option[Long] = None,
+            /** packages this session REQUIRES, name -> version prefix:
+             * checked here, at construction, and a drift refuses with
+             * the engine never handed out (r-measure-harden). The same
+             * verify-at-startup posture the Sql seam takes, for the
+             * same reason — an analyst's environment drifts, and the
+             * alternative to a loud refusal is a wrong number later */
+            require: Map[String, String] = Map.empty): RSubprocess =
     val shim = java.nio.file.Files.createTempFile("okay-r-shim", ".R")
     val res = getClass.getResourceAsStream("/okay/r/shim.R")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
     try java.nio.file.Files.copy(res, shim, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     finally res.close()
     shim.toFile.deleteOnExit()
-    startWith(rscript, shim, env)
+    val engine = startWith(rscript, shim, env, timeoutMillis)
+    if require.isEmpty then engine
+    else
+      val drift = engine.verify(require)
+      if drift.isEmpty then engine
+      else
+        engine.close()
+        throw IllegalStateException(
+          s"the R environment does not meet what this session requires:\n  " +
+            drift.mkString("\n  "))
 
   /** the seam the handshake test uses: any shim file */
   private[r] def startWith(rscript: String, shim: java.nio.file.Path,
-                           env: Map[String, String]): RSubprocess =
+                           env: Map[String, String],
+                           timeoutMillis: Option[Long] = None): RSubprocess =
     val exe = resolve(rscript)
     // --vanilla: no site file, no profile, no saved workspace — the
     // clean-environment rule extended to R's OWN startup, which reads
@@ -164,7 +251,14 @@ object RSubprocess:
       proc.destroy()
       throw IllegalStateException(
         s"shim/host version drift: the shim says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
-    new RSubprocess(proc, out, in, one("r").getOrElse("?"))
+    // the respawn a timeout needs is this very function, minus the
+    // handshake's refusals — a fresh process of the same shape
+    new RSubprocess(proc, out, in, one("r").getOrElse("?"),
+      Some(() => {
+        val again = startWith(rscript, shim, env, None)
+        (again.take())
+      }),
+      timeoutMillis)
 
   private def resolve(rscript: String): String =
     if rscript.contains("/") then rscript

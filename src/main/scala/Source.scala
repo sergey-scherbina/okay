@@ -199,6 +199,14 @@ extension [A](s: Source[A])
    * build-then-widen — was TRIED and MEASURED WORSE, not better:
    * specs/writer-covariance.md Results.)
    *
+   * EACH SOURCE KEEPS ITS OWN ORDER. Which of the two arrives next
+   * is a race and that is the whole point, but a source's elements
+   * come out in the order that source told them, `chunked` either
+   * way. This went unwritten until the code stopped doing it and a
+   * source came back 1..16, 49, 50, 17..48 (merge-chunked-order,
+   * 2026-09-09). The defect was in the channel's buffer rather than
+   * here, but the promise belongs where a caller reads it.
+   *
    * Lazy at the seam: the fibers start at the FIRST PULL, not when
    * this is called — a source nobody consumes drains nothing.
    *
@@ -349,7 +357,13 @@ extension [A](s: Source[Chunk[A]])
    * pipeline can batch where it crosses a channel and go back to
    * per-element semantics on the other side */
   def unchunked: Source[A] =
-    through(s)(!.widen[Unit, Take % Chunk[A] + Writer % A, Async](Stage.unchunk[A]))
+    // NOT `through(s)(Stage.unchunk)` any more: that paired two
+    // coroutines and made every element of every chunk cross the
+    // handshake, at a cost that GREW with the chunk it came from
+    // (merge-chunk-size-curve-inverted — the numbers are in
+    // `Writer.expand`'s scaladoc). `expand` walks the program once
+    // and re-tells the elements into a plain Free chain.
+    Writer.expand[Chunk[A], A, Unit, Async](s)(c => c)
 
 extension [A](s: Flushing[A])
   /**

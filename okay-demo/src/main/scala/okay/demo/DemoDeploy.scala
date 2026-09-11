@@ -1,6 +1,8 @@
 package okay.demo
 
-import okay.deploy.{Copy, Deployment, Need, Run, Service, Settings, Targets}
+
+import okay.{Module, given}
+import okay.deploy.{Copy, Deployment, Need, Needs, Run, Service, Settings, Targets}
 
 /**
  * DemoChat's deployment as ONE value (specs/deployment.md): the ONLY
@@ -18,6 +20,20 @@ import okay.deploy.{Copy, Deployment, Need, Run, Service, Settings, Targets}
  * `metricsPath`, which the old chart annotated a pod with.
  */
 object DemoDeploy:
+  /** the settings, ONCE: the process reads them as environment, and
+   * the needs above are derived from the same values */
+  val settings: Settings = Settings.of("okay")(
+    "chatPort" -> "8090",
+    // the board's log, on a volume the store module declares for it.
+    // Before module-facts this key was `chatLog` — OKAY_CHAT_LOG, the
+    // two-node log DIR — set to ":memory:", so the container wrote its
+    // board to an unmounted file while the manifest believed it ran
+    // in memory
+    "chatDb" -> "/app/data/okay-board.log",
+    // Chat.appJs reads this first (demo-package)
+    "chatApp" -> "/app/app.js")
+  private val conf: ChatDemo.ChatConf = ChatDemo.ChatConf.from(settings.env.toMap.get)
+
   val system: Deployment = Deployment(
     name = "demo-chat",
     services = Vector(Service(
@@ -34,13 +50,14 @@ object DemoDeploy:
       // Settings.of("okayChat")("port") is OKAYCHAT_PORT, which no
       // part of this program reads. Caught by writing the port down
       // twice and looking.
-      settings = Settings.of("okay")(
-        "chatPort" -> "8090",
-        // a real deployment mounts a volume and points this at it
-        "chatLog" -> ":memory:",
-        // Chat.appJs reads this first (demo-package)
-        "chatApp" -> "/app/app.js"),
-      needs = Vector(Need.Port(8090)))))
+      settings = settings,
+      // what the APPLICATION declares it needs from the place, read off
+      // its own modules with the settings above as their config and
+      // nothing opened (module-facts) — the board's volume comes from
+      // the component that opens the board — plus what only the place
+      // can say
+      needs = Needs.declared(Module.value[ChatDemo.ChatConf](conf) and ChatDemo.wiring) :+ Need.Port(8090))))
+
 
   def main(args: Array[String]): Unit =
     val root = Deployment.repoRoot()

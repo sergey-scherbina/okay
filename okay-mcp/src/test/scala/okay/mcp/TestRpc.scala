@@ -42,6 +42,19 @@ class TestRpc extends munit.FunSuite {
         case other => fail(s"'$bad' decoded to $other")
   }
 
+  test("a genuinely deeply nested frame still decodes — no cap (remove-codecs-maxdepth)") {
+    // this used to be refused as a ParseError naming a depth limit
+    // (`Codecs.maxDepth`, via `Json.lossless`'s cut) — the limit is
+    // gone (remove-codecs-maxdepth), so a well-formed deep frame is
+    // read to the bottom like any other
+    val n = 100000
+    val deep = s"{${q}jsonrpc$q:${q}2.0$q,${q}id$q:1,${q}result$q:" +
+      ("[" * n) + "1" + ("]" * n) + "}"
+    Rpc.decode(deep) match
+      case Rpc.Answer(id, Json.JArr(_)) => assertEquals(id, Json.JNum(1))
+      case other => fail(s"expected an Answer, got: $other")
+  }
+
   test("a parse error answers with id null, which is what JSON-RPC owes") {
     val Rpc.Failed(id, code, _) = Rpc.decode("{oops"): @unchecked
     assertEquals(id, Json.JNull)

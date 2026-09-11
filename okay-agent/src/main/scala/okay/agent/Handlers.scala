@@ -95,9 +95,10 @@ object Handlers {
 
   // ---------------------------------------------------------------- model
 
-  /** the local tokenizer: counting needs no provider */
+  /** the local tokenizer: counting needs no provider, and no tokens
+   * either — `Scan.fold` folds them as they are produced */
   def counter(bpe: Bpe): String => Int = s =>
-    Scan.all(bpe)(s).tokens.count(_.channel == okay.lex.Channel.Syntax)
+    Scan.fold(bpe)(s)(0)((n, t) => if t.channel == okay.lex.Channel.Syntax then n + 1 else n)
 
   /**
    * A scripted model: the canned replies in order, then a final

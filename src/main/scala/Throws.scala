@@ -33,7 +33,7 @@ inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
 
 /** handle Throws by aborting into Either, forwarding the effects F */
 inline def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
-  Effects[Free].handle[Throws % E, F, A, Either[E, A]](a)(a => pure(Right(a))):
+  Effects[Free].handle[Throws % E, F](a)(a => pure(Right(a))):
     [X] => e => shift(_ => pure(Left(e.e)))
 
 /** handle Throws into the throws union (an Either already is one) */
@@ -64,7 +64,7 @@ inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
 
 /** handle Throws by actually throwing: the JVM is the handler */
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
-  Effects[Free].handle[Throws % E, F, A, A](a)(a => pure(a)):
+  Effects[Free].handle[Throws % E, F](a)(a => pure(a)):
     [X] => e => shift(_ => throw e.e)
 
 /**

@@ -58,7 +58,7 @@ final class GrowingCheap[A](initial: Buffer[A], cap: Int, each: () => Buffer[A])
   private def grow(): Buffer[A] =
     doneGrowing = true
     if grown.compareAndSet(false, true) then
-      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner, firstOwner = sampled)
+      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner)
       inner = partitioned
       partitioned
     else inner
