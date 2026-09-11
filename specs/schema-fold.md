@@ -75,7 +75,21 @@ spec's claim is narrower and true: an algebra that composes with
 ```scala
 object Schema:
 
-  /** what an algebra answers per node; F is the algebra's carrier */
+  /** a lazily folded edge at the schema's own existential type — a
+    * product field's `?`, a sum case's `? <: A`. A type MEMBER, not
+    * `F[?]`: applying an abstract `F` to a wildcard is unreducible in
+    * Scala 3 (found at the first compile of stage 1). Forcing twice
+    * folds once. */
+  trait Edge[F[_], +B]:
+    type X <: B
+    def apply(): F[X]
+
+  /** what an algebra answers per node; F is the algebra's carrier.
+    * A PARAmorphism, not a plain cata: `product`/`sum`/`iso` get the
+    * node itself beside its folded edges, because a JSON Schema
+    * renders a field's DEFAULT with the field's own schema
+    * (`defaultAt`), an enumeration's vocabulary with `under`'s, and a
+    * value algebra needs `parts`/`make`/`caseOf` — all on the node. */
   trait Algebra[F[_]]:
     def int: F[Int]
     def long: F[Long]
@@ -87,25 +101,24 @@ object Schema:
     def option[A](of: () => F[A]): F[Option[A]]
     def list[A](of: () => F[A]): F[List[A]]
     def vector[A](of: () => F[A]): F[Vector[A]]
-    def product[A](name: String, fields: Vector[(String, () => F[?])],
-                   make: Seq[Any] => A, parts: A => Seq[Any],
-                   defaults: Vector[Option[() => Any]]): F[A]
-    def sum[A](name: String, cases: Vector[(String, () => F[? <: A])],
-               caseOf: A => Int): F[A]
-    def iso[A, B](under: () => F[B], to: B => Either[String, A], from: A => B,
-                  vocabulary: Option[Vector[B]]): F[A]
+    def product[A](p: SProduct[A], fields: Vector[(String, Edge[F, Any])]): F[A]
+    def sum[A](su: SSum[A], cases: Vector[(String, Edge[F, A])]): F[A]
+    def iso[A, B](iso: SIso[A, B], under: () => F[B]): F[A]
+    /** a NAMED node met again while still being folded — the back edge
+      * of a recursive type. Only a strict algebra sees it; a lazy one
+      * forces the edge after the node finished and gets the memoised
+      * node. A JSON Schema answers `{"$ref": "#/$defs/name"}` here. */
+    def ref[A](name: String): F[A]
 
   /**
-   * The catamorphism. Edges stay THUNKED in the algebra's own
-   * signature — that is not a convenience, it is how a recursive type
-   * folds to a finite value: `fold` memoises by schema IDENTITY
-   * (`Schema.once` makes a thunk answer the same instance, which is
-   * what makes identity meaningful), so the second time it meets
-   * `Tree` it hands back the `() => F[Tree]` already in flight, and
-   * the knot is tied. No cast anywhere: `product`'s `F[?]` per field
-   * and `sum`'s `F[? <: A]` per case are the same existentials the
-   * GADT already carries; the one unavoidable cast stays in
-   * `eachField`/`theCase` where it is today.
+   * The catamorphism. Memoised by schema IDENTITY (`Schema.once`
+   * makes every edge answer the same instance, a derived given is
+   * evaluated once): a finished node is answered from the table, a
+   * named node still on the path is handed to the algebra as `ref`.
+   * Three casts, each restoring only what erasure took: the table
+   * read-back, and the two edge thunks whose `?`/`? <: A` the schema
+   * stored erased — the same position `derived` and `eachField` are
+   * in. No value is ever cast.
    */
   def fold[A, F[_]](s: Schema[A])(alg: Algebra[F]): F[A]
 
@@ -141,19 +154,26 @@ each algebra's discipline.
 ## Behavior
 
 Stage 1 — `fold`:
-- [ ] `JsonSchema.of` rewritten as `fold(s)(JsonSchemaAlgebra)`
+- [x] `JsonSchema.of` rewritten as `fold(s)(JsonSchemaAlgebra)`
       answers byte-for-byte what it answers today, over every schema
       in the repo's test suite (the model-facing rendering is prompt
       text: `jsonschema-render-is-prompt-text` — `TestEvalJournal`
       before the gate)
-- [ ] a recursive schema (`Tree`, `Chain`, okay-ui's own `Ui`) folds
+- [x] a recursive schema (`Tree`, `Chain`, okay-ui's own `Ui`) folds
       to a FINITE value: the fold terminates, and the result refers
       to itself through the thunk (`fold(tree)(alg)` forced twice at
       the `kids` edge is the SAME `F[Tree]` — identity, not equality)
-- [ ] no cast introduced (no-casts-without-necessity); `eachField`/
-      `theCase` remain the only two
-- [ ] `Compat.compare` on the fold agrees with today's on the
-      existing `TestCompat` cases
+- [x] no VALUE cast introduced; three type-restoring casts in `fold`,
+      isolated and named (the table read-back, the two erased edge
+      thunks) — the same class as `derived`'s own on a sum's cases
+- [x] ~~`Compat.compare` on the fold~~ — WRONG in stage 0, corrected
+      in stage 1: `Compat` walks TWO schemas zipped, with its own
+      cycle set, a zygomorphism over a pair. Not a fold over one
+      schema; it stays as it is.
+- [x] a recursive schema through `JsonSchema.of` answers `$defs`/`$ref`
+      where the hand-rolled `of` recursed for ever — checked against a
+      verbatim copy of the old code (StackOverflowError on `Tree`),
+      not asserted from memory
 
 Stage 2 — `Step`, and the value algebras move:
 - [ ] `Json.encode` as `fold` + `Step`: the `TestEncodeTrampoline`
@@ -240,4 +260,12 @@ Stage 3 — the ninth algebra, validation:
 
 ## Results
 
-(stage 0 is this document; stages 1-3 record here)
+Stage 1 (2026-09-11, schema-fold-1): `Schema.Edge`, `Schema.Algebra`,
+`Schema.fold`; `JsonSchema.of` moved. Two things the spec got wrong at
+stage 0, corrected above: `F[?]` is unreducible (so `Edge` with a
+type member), and `Compat` is not a fold. One thing it did not know:
+the hand-rolled `JsonSchema.of` looped for ever on any recursive
+schema — no caller had ever asked it one. It now answers `$defs`/
+`$ref`, which is what a model or an OpenAPI document needs for a
+`Tree`. `TestSchemaFold` keeps the old `of` verbatim and proves
+byte-for-byte on every non-recursive shape, both vocabulary settings.

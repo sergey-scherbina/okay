@@ -1,5 +1,6 @@
 # Changelog
 
+<<<<<<< HEAD
 ## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
 
 The repository's thesis is one primitive, the durable log, and the
@@ -78,6 +79,27 @@ the alias is transparent in its own scope, the given's type then
 constrains R to nothing, and every row is satisfied by the macro run
 at some inferred R. `Distinct.unchecked` is the constructor that
 leaves, deliberately public, for the rows the macro cannot see.
+=======
+## schema-fold stage 1 — the catamorphism, and the first algebra on it
+
+`Schema.scala`'s header promised that every derivation is a
+catamorphism; `Schema.fold` now exists. `Algebra[F]` is a
+paramorphism (the node comes with its folded edges — defaults and
+vocabularies need it), edges are `Edge[F, B]` with a type member
+because `F[?]` is unreducible for an abstract `F`, and the knot of a
+recursive type is tied by schema IDENTITY: a finished node is
+memoised, a named node still on the path is handed to the algebra as
+`ref(name)`. Three casts, each restoring only what erasure took, none
+on a value.
+
+`JsonSchema.of` is the first algebra moved: byte-for-byte what the
+hand-rolled version answered on every non-recursive shape (proved
+against a verbatim copy of the old code kept in the test), and on a
+RECURSIVE schema — where the old `of` descended for ever, which no
+caller had ever asked it — `$defs`/`$ref`. `Compat` does not move: it
+is a walk over two schemas, not a fold over one; the spec is
+corrected.
+>>>>>>> 524966cc (schema-fold-1: Schema.fold, and JsonSchema.of as its first algebra)
 
 ## dataflow-direction — stages 11-13, and federation as a spec
 

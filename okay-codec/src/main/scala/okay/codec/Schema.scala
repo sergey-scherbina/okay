@@ -85,6 +85,120 @@ object Schema {
       def one[X <: A](sc: Schema[X]): R = f(name, sc, a.asInstanceOf[X])
       one(sc())
 
+  /**
+   * A lazily folded edge at the schema's own existential type — a
+   * product field's `?`, a sum case's `? <: A`. A type MEMBER, not
+   * `F[?]`: applying an abstract `F` to a wildcard is unreducible in
+   * Scala 3. An algebra sees `X` abstract, exactly as the GADT keeps
+   * it, and can apply `F[X]` only to an `X` — which, for a value
+   * algebra, is the `Any` a product's `parts` hands it re-stated at
+   * the field's type, the cast `eachField` already isolates. Forcing
+   * twice folds once.
+   */
+  trait Edge[F[_], +B]:
+    type X <: B
+    def apply(): F[X]
+
+  trait Algebra[F[_]]:
+    def int: F[Int]
+    def long: F[Long]
+    def double: F[Double]
+    def bool: F[Boolean]
+    def string: F[String]
+    def char: F[Char]
+    def bytes: F[Array[Byte]]
+    def option[A](of: () => F[A]): F[Option[A]]
+    def list[A](of: () => F[A]): F[List[A]]
+    def vector[A](of: () => F[A]): F[Vector[A]]
+    /** the node itself comes along with its folded edges — a
+      * PARAmorphism, not a plain cata: a JSON Schema renders a field's
+      * DEFAULT with the field's own schema (`defaultAt`) and an
+      * enumeration's vocabulary with `under`'s, and a value algebra
+      * needs `parts`/`make`/`theCase` — all of which live on the node */
+    def product[A](p: SProduct[A], fields: Vector[(String, Edge[F, Any])]): F[A]
+    def sum[A](su: SSum[A], cases: Vector[(String, Edge[F, A])]): F[A]
+    def iso[A, B](iso: SIso[A, B], under: () => F[B]): F[A]
+    /** a NAMED node (product or sum) met again while it is still being
+      * folded — the back edge of a recursive type. Only a strict
+      * algebra ever sees this; a lazy one forces the edge after the
+      * node finished and gets the memoised node instead. */
+    def ref[A](name: String): F[A]
+
+  /**
+   * The catamorphism the header promises (specs/schema-fold.md,
+   * stage 1). Memoised by schema IDENTITY: `once` makes every edge
+   * answer the same instance, a `given ... = Schema.derived` is
+   * evaluated once, so the `Tree` inside `kids` IS the `Tree` at the
+   * root — and identity is how the fold knows it is back there. A
+   * schema whose edges answer fresh instances per call (a `def` given,
+   * a thunk built without `once`) folds to an infinite unfolding; a
+   * derived one never does.
+   *
+   * Two tables: `done` holds finished nodes (the second `go(Tree)`,
+   * at value time, answers the same `F[Tree]` — no re-fold per value
+   * node, the defect `schema-thunks-fresh-instances` already met once);
+   * `inProgress` holds the named nodes on the current path, so a
+   * strict algebra forcing an edge back into one gets `ref(name)`
+   * instead of an infinite descent.
+   *
+   * Three casts, each restoring what erasure took and nothing more
+   * (no-casts-without-necessity): `remembered` reads back the `F[X]`
+   * stored under its own `Schema[X]`; `fieldEdge`/`caseEdge` re-state
+   * a thunk's type the way `derived` itself does for a sum's cases —
+   * the schema stored the thunk as `Schema[?]`, so the fold can only
+   * name it as a member. No value is ever cast.
+   */
+  def fold[A, F[_]](s: Schema[A])(alg: Algebra[F]): F[A] =
+    val done = java.util.IdentityHashMap[Schema[?], Any]()
+    val inProgress = java.util.IdentityHashMap[Schema[?], String]()
+
+    def remembered[X](s: Schema[X]): Option[F[X]] =
+      Option(done.get(s)).map(_.asInstanceOf[F[X]])
+
+    def edge[X](s: () => Schema[X]): () => F[X] =
+      lazy val v = go(s())
+      () => v
+    def fieldEdge(s: () => Schema[?]): Edge[F, Any] = new Edge[F, Any]:
+      type X = Any
+      lazy val v: F[Any] = go(s().asInstanceOf[Schema[Any]])
+      def apply(): F[Any] = v
+    def caseEdge[A](s: () => Schema[? <: A]): Edge[F, A] = new Edge[F, A]:
+      type X = A
+      lazy val v: F[A] = go(s().asInstanceOf[Schema[A]])
+      def apply(): F[A] = v
+
+    def go[X](s: Schema[X]): F[X] = remembered(s) match
+      case Some(f) => f
+      case None =>
+        val name = s match
+          case p: SProduct[?] => p.name
+          case su: SSum[?] => su.name
+          case _ => null
+        if name != null && inProgress.containsKey(s) then alg.ref[X](name)
+        else
+          if name != null then inProgress.put(s, name): Unit
+          val out: F[X] = s match
+            case SInt => alg.int
+            case SLong => alg.long
+            case SDouble => alg.double
+            case SBool => alg.bool
+            case SString => alg.string
+            case SChar => alg.char
+            case SBytes => alg.bytes
+            case SOption(of) => alg.option(edge(of))
+            case SList(of) => alg.list(edge(of))
+            case SVector(of) => alg.vector(edge(of))
+            case p: SProduct[X] =>
+              alg.product(p, p.fields.map((n, f) => (n, fieldEdge(f))))
+            case su: SSum[X] =>
+              alg.sum(su, su.cases.map((n, c) => (n, caseEdge(c))))
+            case iso: SIso[X, b] => alg.iso(iso, edge(iso.under))
+          if name != null then inProgress.remove(s): Unit
+          done.put(s, out): Unit
+          out
+
+    go(s)
+
   given Schema[Int] = Schema.SInt
   given Schema[Long] = Schema.SLong
   given Schema[Double] = Schema.SDouble

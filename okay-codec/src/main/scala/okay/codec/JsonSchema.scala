@@ -13,6 +13,15 @@ package okay.codec
  * the agent loop. It was never about agents: it is a fold over
  * `Schema`, and it belongs beside the folds it is a sibling of.
  * `ToolSpec.jsonSchema` still exists and delegates here.
+ *
+ * Since schema-fold stage 1 it is literally that: `Schema.fold` with
+ * this file's `Algebra`, no `match` on the GADT here. Byte-for-byte
+ * what the hand-rolled version answered on every non-recursive
+ * schema; on a RECURSIVE one the hand-rolled version descended for
+ * ever, and this answers `$defs`/`$ref` — the back edge the fold
+ * hands the algebra as `ref(name)` becomes `{"$ref": "#/$defs/name"}`,
+ * and every name referenced that way is declared once under `$defs`
+ * at the root.
  */
 object JsonSchema {
 
@@ -23,40 +32,45 @@ object JsonSchema {
    * 4B model 1.7 macro-F1 points on the fixture, deterministically
    * (codec-jsonschema-refinement-enum) — the prompt states the
    * vocabulary in prose, once, where it was measured to help */
-  def of[A](s: Schema[A], vocabularies: Boolean = true): Json = s match
-    // a wrapper does not exist to the tool schema — a Secret is a string —
-    // unless it names its vocabulary (`Schema.enumeration`), which the
-    // declaration carries as `enum` beside the underlying type
-    case iso @ Schema.SIso(u, _, _) => iso.vocabulary match
-      case Some(vs) if vocabularies => of(u(), vocabularies) match
-        case Json.JObj(fs) => Json.JObj(fs :+ ("enum" -> Json.JArr(vs.map(v => Json.parse(Json.encode(u())(v))))))
-        case other => other
-      case _ => of(u(), vocabularies)
-    case Schema.SInt | Schema.SLong => obj("type" -> Json.JStr("integer"))
-    case Schema.SDouble => obj("type" -> Json.JStr("number"))
-    case Schema.SBool => obj("type" -> Json.JStr("boolean"))
-    case Schema.SString => obj("type" -> Json.JStr("string"))
-    case Schema.SChar => obj("type" -> Json.JStr("string"),
+  def of[A](s: Schema[A], vocabularies: Boolean = true): Json =
+    val alg = Algebra(vocabularies)
+    val root = Schema.fold(s)(alg)
+    if alg.defs.isEmpty then root
+    else root match
+      case Json.JObj(fs) => Json.JObj(fs :+ ("$defs" -> Json.JObj(alg.defs.toVector)))
+      case other => other
+
+  /** the constant carrier: every node answers a Json, whatever its A */
+  private type K[A] = Json
+
+  private final class Algebra(vocabularies: Boolean) extends Schema.Algebra[K]:
+    /** the named nodes some back edge pointed at, in first-seen order */
+    val defs = scala.collection.mutable.LinkedHashMap.empty[String, Json]
+    private val referenced = scala.collection.mutable.LinkedHashSet.empty[String]
+
+    def int = obj("type" -> Json.JStr("integer"))
+    def long = obj("type" -> Json.JStr("integer"))
+    def double = obj("type" -> Json.JStr("number"))
+    def bool = obj("type" -> Json.JStr("boolean"))
+    def string = obj("type" -> Json.JStr("string"))
+    def char = obj("type" -> Json.JStr("string"),
       "minLength" -> Json.JNum(1), "maxLength" -> Json.JNum(1))
     // the JSON Schema vocabulary for bytes, and it matches what the
     // Json algebra actually writes — a tool taking binary input tells
     // the model exactly how to send it
-    case Schema.SBytes => obj("type" -> Json.JStr("string"),
+    def bytes = obj("type" -> Json.JStr("string"),
       "contentEncoding" -> Json.JStr("base64"))
-    case Schema.SOption(inner) => of(inner(), vocabularies)   // optionality is in `required`
-    case Schema.SList(inner) => obj(
-      "type" -> Json.JStr("array"),
-      "items" -> of(inner(), vocabularies))
-    case Schema.SVector(inner) => obj(
-      "type" -> Json.JStr("array"),
-      "items" -> of(inner(), vocabularies))
-    case p: Schema.SProduct[A] =>
+    def option[A](of: () => Json) = of()   // optionality is in `required`
+    def list[A](of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
+    def vector[A](of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
+
+    def product[A](p: Schema.SProduct[A], fields: Vector[(String, Schema.Edge[K, Any])]) =
       // a DEFAULTED field is not required (the model may omit it —
       // decode falls back to the declaration) and advertises its
       // default, encoded by the field's own schema
       def defaulted(i: Int) = p.defaults.lift(i).flatten
-      val props = p.fields.zipWithIndex.map { case ((n, f), i) =>
-        val base = of(f(), vocabularies)
+      val props = fields.zipWithIndex.map { case ((n, e), i) =>
+        val base = e()
         (n, defaulted(i) match
           case Some(_) => base match
             case Json.JObj(fs) => Json.JObj(fs :+
@@ -68,19 +82,40 @@ object JsonSchema {
         case ((n, f), i) if !f().isInstanceOf[Schema.SOption[?]]
           && defaulted(i).isEmpty => Json.JStr(n)
       }
-      obj(
+      declared(p.name, obj(
         "type" -> Json.JStr("object"),
         "properties" -> Json.JObj(props),
-        "required" -> Json.JArr(required))
-    case su: Schema.SSum[A] =>
+        "required" -> Json.JArr(required)))
+
+    def sum[A](su: Schema.SSum[A], cases: Vector[(String, Schema.Edge[K, A])]) =
       // a sum is one-of, each case tagged by its name (the same
       // encoding Json and Cbor use, so decode round-trips)
-      obj("oneOf" -> Json.JArr(su.cases.map { (n, c) =>
+      declared(su.name, obj("oneOf" -> Json.JArr(cases.map { (n, c) =>
         obj(
           "type" -> Json.JStr("object"),
-          "properties" -> Json.JObj(Vector((n, of(c(), vocabularies)))),
+          "properties" -> Json.JObj(Vector((n, c()))),
           "required" -> Json.JArr(Vector(Json.JStr(n))))
-      }))
+      })))
+
+    // a wrapper does not exist to the tool schema — a Secret is a string —
+    // unless it names its vocabulary (`Schema.enumeration`), which the
+    // declaration carries as `enum` beside the underlying type
+    def iso[A, B](iso: Schema.SIso[A, B], under: () => Json) = iso.vocabulary match
+      case Some(vs) if vocabularies => under() match
+        case Json.JObj(fs) => Json.JObj(fs :+ ("enum" -> Json.JArr(vs.map(v => Json.parse(Json.encode(iso.under())(v))))))
+        case other => other
+      case _ => under()
+
+    def ref[A](name: String) =
+      referenced += name
+      obj("$ref" -> Json.JStr(s"#/$$defs/$name"))
+
+    /** a named node's finished schema: inline where it stands (so a
+      * non-recursive schema is byte-for-byte what it was), and ALSO
+      * under `$defs` if a back edge pointed at it while it was built */
+    private def declared(name: String, built: Json): Json =
+      if referenced.contains(name) then defs(name) = built
+      built
 
   private def obj(fs: (String, Json)*): Json = Json.JObj(fs.toVector)
 

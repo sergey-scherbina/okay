@@ -337,6 +337,15 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       Occurrences: 2026-09-11, src/test/scala/TestInstances.scala.
 
 ## okay-codec
+
+- [ ] schema-typed-paths — `Schema.path[A].field("address").field("city")`
+      → a checked `Lens[A, String]`: the field NAME verified at compile
+      time against the Mirror, the focus typed. The operator's third
+      ask in the schema-fold conversation (2026-09-11); `JsonOptic.path`
+      is most of it over `Json`, over `A` it is a macro over the
+      Mirror's labels. Filed by specs/schema-fold.md (Out of scope),
+      to be taken after stage 3; a different risk (macro) from the fold.
+
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
       closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
       binary's connection ends and it exits 0 while sbt still has a
