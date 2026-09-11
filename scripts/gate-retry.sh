@@ -14,9 +14,17 @@
 # one gate.sh already makes: a run that reaches a verdict (`gate: RED`
 # or `gate: GREEN`) has SAID something about the tree, and its word
 # stands -- the exit code is passed straight through. Only a run that
-# produced NO verdict, which is what a killed run looks like, is worth
-# starting again. Retrying a red would be a machine for landing broken
-# trees, which is the opposite of what a gate is for.
+# said nothing, or said `gate: KILLED`, is started again. Retrying a
+# red would be a machine for landing broken trees, which is the
+# opposite of what a gate is for.
+#
+# `gate: KILLED` is why this comment changed on the day it was written.
+# A killed sbt does not always die before gate.sh can speak: it exits
+# 143, gate.sh saw no `==> X`, and the FIRST version of this pair
+# called that "RED -- a failure this script does not recognise". The
+# loop then read a verdict and passed 143 through, refusing the one
+# case it exists for. gate.sh names a signal now, and a signal is not
+# a verdict.
 #
 # On the kills themselves see AGENTS.md ("THE 143, SOLVED") and
 # scripts/gate-sentinels.sh, which tells an external signal apart from
@@ -52,6 +60,7 @@ quiet() {
 verdict() {
   if grep -q "gate: GREEN" "$1"; then echo green
   elif grep -q "gate: RED" "$1"; then echo red
+  elif grep -q "gate: KILLED" "$1"; then echo killed
   else echo none
   fi
 }
@@ -59,9 +68,10 @@ verdict() {
 if [ "${1:-}" = "--read" ]; then
   L="${2:?--read needs a log}"
   case "$(verdict "$L")" in
-    green) echo "$L: gate: GREEN — done, exit 0" ;;
-    red)   echo "$L: gate: RED — done, the gate's exit code stands; NOT retried" ;;
-    none)  echo "$L: no verdict — the box took it; retry" ;;
+    green)  echo "$L: gate: GREEN — done, exit 0" ;;
+    red)    echo "$L: gate: RED — done, the gate's exit code stands; NOT retried" ;;
+    killed) echo "$L: gate: KILLED — a signal, not a verdict; retry" ;;
+    none)   echo "$L: no verdict — the box took it; retry" ;;
   esac
   exit 0
 fi
@@ -90,7 +100,13 @@ while [ "$i" -le "$N" ]; do
   done
 
   echo "== attempt $i at $(date +%H:%M) load $(sysctl -n vm.loadavg)" >> "$LOG"
-  ( cd "$WT" && sh scripts/gate.sh ) >> "$LOG" 2>&1 && rc=0 || rc=$?
+  # BASH, not `sh`: gate.sh is `#!/usr/bin/env bash` and uses process
+  # substitution, and `sh` here is bash in POSIX mode where `<(...)` is
+  # a syntax error. It only shows on the branch that compares the
+  # failed projects against the known-lost ones, which is why it went
+  # unseen — that branch runs exactly when a gate has already gone
+  # wrong.
+  ( cd "$WT" && bash scripts/gate.sh ) >> "$LOG" 2>&1 && rc=0 || rc=$?
 
   case "$(verdict "$LOG")" in
     green) echo "GATE EXIT=0"   >> "$LOG"; exit 0 ;;

@@ -40,7 +40,11 @@ if [ "${1:-}" = "--read" ]; then replay="${2:?--read needs a log}"; fi
 
 if [ -n "$replay" ]; then
   log="$replay"
-  status=$(grep -cE "^\[error\]" "$log" > /dev/null && echo 1 || echo 0)
+  # A log does not carry the exit status of the process that wrote it,
+  # and one of the branches below is keyed on exactly that (a signal).
+  # `GATE_STATUS=143 scripts/gate.sh --read <log>` is how that branch
+  # is exercised without waiting to be killed again.
+  status="${GATE_STATUS:-$(grep -cE "^\[error\]" "$log" > /dev/null && echo 1 || echo 0)}"
   echo "gate: reading $log (no sbt run)"
 else
   cmd="${1:-test}"
@@ -60,14 +64,87 @@ strip() { cat "$clean"; }
 
 tests=$(awk '/Passed: Total|Error: Total/ {for (i=1;i<=NF;i++) if ($i=="Total") {gsub(",","",$(i+1)); s+=$(i+1)}} END {print s+0}' "$clean")
 echo "gate: sbt exited $status, $tests test results"
-[ $status -eq 0 ] && { echo "gate: GREEN"; exit 0; }
 
-# a real test failure ends it here
+# ORDER MATTERS HERE, and each step earns its place.
+#
+#   1  a failed test is final, whatever else happened afterwards
+#   2  a SIGNAL is not a verdict, and its log is TRUNCATED — so it is
+#      answered before anything reads that log for absences
+#   3  warnings, which only a log of a finished run can be trusted on
+#   4  green
+
+# 1. A REAL TEST FAILURE ENDS IT, whatever the exit status was: a
+# suite that failed and was then killed is red, not killed.
 if grep -q "==> X" "$clean"; then
   echo "gate: RED — tests failed:"
   grep "==> X" "$clean" | head -20
-  exit $status
+  exit "${status:-1}"
 fi
+
+# 2. A SIGNAL IS NOT A VERDICT.
+#
+# 143 is SIGTERM and 137 is SIGKILL, and on this box they come from
+# launchd's RAM guard and idle reaper, not from anything about the
+# tree (AGENTS.md, "THE 143, SOLVED"; scripts/gate-sentinels.sh tells
+# an external signal from a process-group kill by blast radius).
+#
+# This mattered more than a wrong word. `scripts/gate-retry.sh` retries
+# a run that produced NO VERDICT and passes a `gate: RED` straight
+# through, deliberately — a loop that re-rolls a red is a machine for
+# landing broken trees. Calling a kill RED therefore disabled the
+# retry in exactly the case it was written for: measured 2026-09-11, a
+# matrix died at 147 module compiles with zero `==> X`, zero `[error]`
+# lines and the log simply stopping mid-suite, and the loop reported it
+# as a failure of the tree.
+#
+# Nothing else may read this log for an ABSENCE, which is why this
+# comes before the warning check: half a matrix that warned about
+# nothing has not told you the tree is clean.
+if [ "$status" -eq 143 ] || [ "$status" -eq 137 ]; then
+  echo "gate: KILLED — sbt took signal $((status - 128)) and no test failed"
+  echo "gate: this is NOT a verdict about the tree; run it again on a quiet box"
+  exit "$status"
+fi
+
+# 3. WARNINGS, which this script did not look at until 2026-09-11 and
+# which AGENTS.md has required all along ("no warnings, ever"). Three
+# unused imports in okay-openapi and one in the core's own tests had
+# ridden through every green gate.
+#
+# Two facts decide the shape. A warning is a COMPILE diagnostic, so a
+# warm run emits none and its silence is not evidence — the script
+# says which case it is in rather than letting a warm pass look like a
+# clean one. And a lane's gate runs in a fresh worktree, where nothing
+# is compiled yet, so the run that decides a landing is exactly the run
+# that sees them.
+#
+# The signature is dotty's own diagnostic header, `[warn] -- [Exxx]`,
+# and not any line sbt happens to call a warning: a resolution note or
+# "multiple main classes" is not what the rule is about.
+#
+# ONE FALSE POSITIVE IS KNOWN, and deleting the import it names breaks
+# the build. E198 "unused import" fired on `import okay.RowLift.{at as
+# liftAt, plus}` in the core's own tests, where `liftAt` IS used —
+# removing it failed with E008 "value liftAt is not a member of". A
+# RENAMED import reached only in extension-selection position is not
+# counted as used. The fix is to drop the RENAME, not the import
+# (`{at, plus}` and `.at[...]`, which compiles clean), and it is
+# written here so the next person does not delete a line the compiler
+# pointed at and then wonder why nothing builds.
+warns=$(grep -cE "^\[warn\] -- " "$clean")
+compiled=$(grep -cE "^\[info\] compiling " "$clean")
+if [ "$compiled" -eq 0 ]; then
+  echo "gate: warnings NOT checked — nothing was compiled (a warm run says nothing about them)"
+elif [ "$warns" -gt 0 ]; then
+  echo "gate: RED — $warns compile warning(s) over $compiled module compile(s); 'no warnings, ever' (AGENTS.md):"
+  grep -E "^\[warn\] -- " "$clean" | sed 's/^/  /' | head -20
+  exit 1
+else
+  echo "gate: no compile warnings ($compiled module compile(s) looked at)"
+fi
+
+# 4. GREEN
+[ "$status" -eq 0 ] && { echo "gate: GREEN"; exit 0; }
 
 # THE TWO SHAPES A LOST TEST PROCESS TAKES (native-runner-error).
 #

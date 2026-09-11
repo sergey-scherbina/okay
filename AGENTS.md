@@ -291,6 +291,21 @@ force, all already practiced, none previously written down:
   way. `scripts/gate.sh --read <log>` says what it would have done
   with a gate log you already have. The evidence, and what is ruled
   out, is in BACKLOG's `native-runner-error`.
+- **The gate now reads two more things, both added 2026-09-11 after
+  they cost something the same day.** A SIGNAL is not a verdict: sbt
+  exiting 143/137 with no `==> X` prints `gate: KILLED`, because it
+  used to print "RED — a failure this script does not recognise" and
+  `gate-retry.sh`, which never retries a red, therefore refused the
+  one case it was written for. And WARNINGS are checked: any
+  `[warn] -- [Exxx]` in a run that actually compiled something is red,
+  because "no warnings, ever" had no enforcement and four unused
+  imports had ridden through every green gate. A WARM run compiles
+  nothing and the script says so rather than letting silence look
+  like cleanliness — which is another reason a lane gates in a fresh
+  worktree.
+  One E198 false positive is known and recorded in the script: a
+  RENAMED import used only as an extension method reads as unused, and
+  deleting it fails with E008. Drop the rename, not the import.
 - **`scripts/gate-retry.sh <worktree> <log> [attempts]` is how a long
   gate is actually run here.** It waits for a quiet box, runs
   `gate.sh`, and starts over when the run produced NO VERDICT — which

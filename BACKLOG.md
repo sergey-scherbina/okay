@@ -309,6 +309,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       already is; and the rate belongs in a ledger here, because a
       re-run that hides a real compile failure is worse than a red
       gate. Not done: seen once, and once is not a signature.
+- [ ] dotty-e198-renamed-import-false-positive — RECURRENCE LEDGER.
+      `import okay.RowLift.{at as liftAt, plus}` warned "unused
+      import" while `liftAt` was used as an extension method;
+      deleting it failed with E008, which is the proof it was used.
+      Dropping the RENAME compiles clean. Recorded rather than
+      suppressed, because `scripts/gate.sh` is now red on warnings and
+      the next person must not delete the line the compiler points at.
+      Occurrences: 2026-09-11, src/test/scala/TestInstances.scala.
 
 ## okay-codec
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is

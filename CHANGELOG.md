@@ -1,5 +1,47 @@
 # Changelog
 
+## gate-signal-and-warnings — a signal is not a verdict, and the gate now reads warnings
+
+Two defects in the gate, both found by using it, one of them mine from
+this morning.
+
+**The retry loop refused the case it was written for.** A full matrix
+was SIGTERM-killed at 147 module compiles: zero `==> X`, zero
+`[error]` lines, the log simply stopping mid-suite. `gate.sh` printed
+`RED — a failure this script does not recognise`, and `gate-retry.sh`
+passes a RED straight through on purpose — so exit 143 landed as a
+verdict about the tree. `gate.sh` now says `gate: KILLED` for 143/137
+with no failed test, and the loop retries it. A failed test still
+wins: the `==> X` check runs first, so a suite that failed and was
+then killed is red, not killed.
+
+**`gate-retry.sh` ran a bash script with `sh`.** `sh` here is bash in
+POSIX mode, where `<(...)` is a syntax error — so the branch that
+compares failed projects against known-lost ones errored out. It only
+runs when a gate has already gone wrong, which is why nobody saw it.
+
+**The gate never looked at warnings.** "No warnings, ever" is in
+AGENTS.md and had no enforcement: three unused imports in okay-openapi
+and one in the core's own tests had ridden through every green gate.
+Any `[warn] -- [Exxx]` is now red — with the honest caveat built in,
+because a WARM run compiles nothing and its silence is not evidence.
+The script says which case it is in. A lane's gate runs in a fresh
+worktree, so the run that decides a landing is the run that sees them.
+
+**And the first thing the new check found was a compiler false
+positive.** E198 "unused import" fired on `import okay.RowLift.{at as
+liftAt, plus}` where `liftAt` IS used — deleting it fails with E008,
+which is the proof. A RENAMED import reached only in
+extension-selection position is not counted as used. The fix is to
+drop the RENAME (`{at, plus}`, `.at[...]`), which compiles clean and
+reads better; it is recorded in the script and in AGENTS.md so nobody
+deletes the line the compiler pointed at and then wonders why nothing
+builds.
+
+All four branches were exercised with `--read` against real logs from
+today: a kill, the same log as if sbt had exited 0 (the warning is
+found), a compile failure, and a failed test under a kill.
+
 ## tag-test-the-signature-too — a key AND a signature
 
 `Tag`'s `Effect` given tested the key and nothing else. Two members
