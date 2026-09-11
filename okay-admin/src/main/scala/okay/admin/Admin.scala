@@ -23,12 +23,17 @@ object Admin {
              realm: String = "okay-admin")
             (replay: () => Long, onReplayed: () => Unit)
   : PartialFunction[Request, Response ! Async] =
+    // declared (docs/declaring-an-api.md): the route used to compare
+    // the WHOLE request target, so a cache-buster or a tracking
+    // parameter turned an authorised replay into a miss. A route cuts
+    // the query before it matches
     okay.security.Secure.granted(verify, policy, realm) {
-      case r if r.method == Method.Post && r.url == "/admin/replay" =>
+      okay.http.Router.on(Method.Post, okay.http.Route / "admin" / "replay") { _ =>
         val n = replay()
         onReplayed()
         pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
           Http.one(htmlFor(n).getBytes(UTF_8))))
+      }.routes
     }
 
   private def htmlFor(n: Long): String =

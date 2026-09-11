@@ -85,14 +85,18 @@ object TwoNode {
   def leaderGated(twoNode: TwoNode)
                  (inner: PartialFunction[Request, Response ! Async])
   : PartialFunction[Request, Response ! Async] = new PartialFunction[Request, Response ! Async] {
-    private val whoami: PartialFunction[Request, Response ! Async] = {
-      case r if r.method == Method.Get && r.url == "/whoami" =>
+    // only the identity route is a table: the wrapper below is what
+    // answers 503 to a POST from a follower, and folding that into the
+    // table would erase the difference between "wrong route" and
+    // "wrong node" (docs/declaring-an-api.md)
+    private val whoami: PartialFunction[Request, Response ! Async] =
+      okay.http.Router.on(Method.Get, okay.http.Route / "whoami") { _ =>
         pure(Response(200, Seq("content-type" -> "application/json"),
           Http.one(Json.print(JObj(Vector(
             "node" -> JStr(twoNode.node),
             "leader" -> twoNode.leaderNode.fold[Json](JNull)(JStr(_)),
             "isLeader" -> JBool(twoNode.isLeader)))).getBytes(UTF_8))))
-    }
+      }.routes
     private val gated = whoami.orElse(inner)
     def isDefinedAt(r: Request): Boolean = gated.isDefinedAt(r)
     def apply(r: Request): Response ! Async =

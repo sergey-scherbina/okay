@@ -305,6 +305,18 @@ correct code answered with a 401. It had no witness for four stages
 because no handler had an effect; the property that finally made it
 visible is the one that makes `Login.confirm` correct.
 
+## Where it is used
+
+Every route-serving module in this repository declares its routes now —
+okay-ops, okay-script, okay-http's acceptance fixture, okay-demo,
+okay-chat, okay-admin — which is also how most of the defects above
+were found. Two places deliberately do not, and the reasons are worth
+knowing before you convert something that looks similar: **okay-acme**
+was already right, cutting the query with its own `path(url)` before
+comparing; and **okay-security's `McpAuth`** matches a prefix because
+RFC 9728 allows the resource's path as a suffix of the well-known URI,
+so the prefix is the specification rather than an oversight.
+
 ## Not done yet
 
 An OpenAPI document is still not generated, deliberately: the backlog
