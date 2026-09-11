@@ -1,5 +1,47 @@
 # Changelog
 
+## demo-admin-declared — the demo broke its own law, for one route
+
+`grep -c admin okay-demo/openapi.json` was **0**. `/admin/replay` was
+mounted with `.orElse(Admin.routes(...))`, outside `declaredRouter`,
+so it was served and documented nowhere — the one thing this arc's law
+forbids. It could not have been otherwise until stage B: in the
+document it would have rendered as an open door.
+
+`Router.++` is the operation `empty` has been the zero of since stage
+1, finally written down. A service mounting several modules' tables
+had to fall back to `orElse` over `PartialFunction`s, which serves
+them and DESCRIBES NONE — a renderer reads `entries`, and `orElse` has
+none.
+
+**The first real document found two defects in stage B that no
+synthetic test had.**
+
+A secured route could only be declared with `on`/`at`, which say
+nothing about the answer, so `/admin/replay` rendered a 401, a 403 and
+no success case — an operation that reads as unable to succeed. The
+demo's own guard, "no operation in the published document says
+`undeclared`", caught it. `media` and `html` have `Headed` forms now.
+And the renderer says `default: undeclared` whenever nothing declares
+a 2xx, which is the general rule the case belonged to.
+
+The 401 and 403 declared `application/json` by default and send no
+body at all. An answer with no media renders without a `content` key,
+which is how OpenAPI says "no body"; an empty object under a media
+type describes a body nobody sends.
+
+**And two of the demo's document tests assumed every path answers
+GET** — invisible while the document was all-GET, false the moment one
+operation was POST-only. They drive each (path, METHOD) now, and
+compare the content-type against the media the document files THAT
+STATUS under, rather than 200 always. A third was added for stage B's
+set equality on a real service: what the document marks `security` is
+what the table refuses without a credential.
+
+`/admin/replay` now reads: a summary, `security: [{bearer: [admin]}]`,
+200 `text/html`, 401 and 403 each carrying `www-authenticate` and no
+body.
+
 ## json-literals — the JSON transparency that was refused, in the shape that makes it safe
 
 `throws-into` had refused `into` on `Json`, and the refusal was right

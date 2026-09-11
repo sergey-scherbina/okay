@@ -76,43 +76,80 @@ class TestDemoOpenApi extends munit.FunSuite:
     }
   }
 
+  /** the document's keys are lowercase verbs; a test that drove every
+   * path with GET passed only because every operation WAS a GET, and
+   * said so the moment one was not (demo-admin-declared) */
+  private def verb(name: String): okay.http.Method = name match
+    case "get" => okay.http.Method.Get
+    case "post" => okay.http.Method.Post
+    case "put" => okay.http.Method.Put
+    case "patch" => okay.http.Method.Patch
+    case "delete" => okay.http.Method.Delete
+    case other => fail(s"the document names a method the test cannot drive: $other")
+
+  private def obj(j: Json): Vector[(String, Json)] = j match
+    case Json.JObj(fs) => fs
+    case _ => Vector.empty
+  private def get(j: Json, k: String): Json =
+    obj(j).collectFirst { case (`k`, v) => v }.getOrElse(Json.JNull)
+
+  /** every (path, method) the document names, with its operation */
+  private def operations(doc: Json): Vector[(String, String, Json)] =
+    obj(get(doc, "paths")).flatMap((path, item) => obj(item).map((m, op) => (path, m, op)))
+
   test("what the document says an operation answers is what the service sends") {
-    // the law of openapi-media on a REAL service: for each operation,
-    // the content-type on the wire is the media type the document
-    // files it under. A declaration is worth what it costs to check.
+    // the law of openapi-media on a REAL service: drive each operation
+    // and compare the content-type on the wire with the media the
+    // document files THAT STATUS under. Comparing against 200 only
+    // worked while nothing answered anything else; a secured operation
+    // answers 401 with no body, and the document says no body.
     withCaps {
       val routes = DemoOpenApi.router.routes
       val doc = DemoOpenApi.document
-      def obj(j: Json): Vector[(String, Json)] = j match
-        case Json.JObj(fs) => fs
-        case _ => Vector.empty
-      def get(j: Json, k: String): Json = obj(j).collectFirst { case (`k`, v) => v }.getOrElse(Json.JNull)
       // `/app.js` reads the packaged bundle off disk, and the document
       // describes the PACKAGED surface — so it is in the document on
       // every machine and answerable only where the bundle was built
       // (the same asymmetry openapi-serve found)
-      val answerable = obj(get(doc, "paths")).filter((path, _) =>
+      val answerable = operations(doc).filter((path, _, _) =>
         path != "/app.js" || okay.chat.Chat.appJs.isDefined)
-      answerable.foreach { (path, item) =>
-        val media = obj(get(get(get(get(item, "get"), "responses"), "200"), "content")).map(_._1)
+      answerable.foreach { (path, m, op) =>
         val url = path.replace("{email}", "a@b.c")
-        val res = Async.run(routes(Request.get(url))).runWith
+        val res = Async.run(routes(okay.http.Request(verb(m), url, Nil))).runWith
+        val media = obj(get(get(get(op, "responses"), res.status.toString), "content")).map(_._1)
         val sent = res.headers.collectFirst {
           case (k, v) if k.equalsIgnoreCase("content-type") => v.takeWhile(_ != ';').trim }
-        assertEquals(sent, media.headOption, s"$url: the document says $media")
+        assertEquals(sent, media.headOption,
+          s"$m $url answered ${res.status}: the document files it under $media")
       }
     }
   }
 
-  test("every path the document names is a path the router dispatches") {
+  test("every operation the document names is one the router dispatches") {
     withCaps {
       val routes = DemoOpenApi.router.routes
-      val paths = DemoOpenApi.document match
-        case Json.JObj(fs) => fs.collectFirst { case ("paths", Json.JObj(ps)) => ps.map(_._1) }.getOrElse(Vector.empty)
-        case _ => Vector.empty
-      assert(paths.nonEmpty)
-      // a template's variable is filled with something concrete
-      paths.map(_.replace("{email}", "a@b.c")).foreach(p =>
-        assert(routes.isDefinedAt(Request.get(p)), s"the document names $p and the router does not dispatch it"))
+      val ops = operations(DemoOpenApi.document)
+      assert(ops.nonEmpty)
+      ops.foreach { (path, m, _) =>
+        val url = path.replace("{email}", "a@b.c")
+        assert(routes.isDefinedAt(okay.http.Request(verb(m), url, Nil)),
+          s"the document names $m $url and the router does not dispatch it")
+      }
+    }
+  }
+
+  test("a protected operation is one the router REFUSES, and the document says which") {
+    // the set equality of specs/route-headers.md stage B, on a real
+    // service: what the document marks `security` is what the table
+    // will not serve without a credential
+    withCaps {
+      val doc = DemoOpenApi.document
+      val marked = operations(doc).collect {
+        case (path, m, op) if get(op, "security") != Json.JNull => (path, m) }.toSet
+      assertEquals(marked, Set(("/admin/replay", "post")))
+      val routes = DemoOpenApi.router.routes
+      marked.foreach { (path, m) =>
+        val res = Async.run(routes(okay.http.Request(verb(m), path, Nil))).runWith
+        assertEquals(res.status, 401, s"$m $path is marked protected and answered ${res.status}")
+      }
     }
   }

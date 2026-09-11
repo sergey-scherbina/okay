@@ -73,8 +73,13 @@ class TestAdmin extends munit.FunSuite {
     val e = Admin.router()(() => 0L, () => ()).entries.head
     assertEquals(e.security.map(_.scopes), Vector(Set("admin")))
     assertEquals(e.security.map(_.realm), Vector("okay-admin"))
-    // and the answers it produces without the author writing them
-    assertEquals(e.answers.map(_.status).sorted, Vector(401, 403))
+    // the answers it produces without the author writing them, beside
+    // the one it declares itself — a secured route that could not
+    // state its SUCCESS case rendered as an operation that only fails
+    // (demo-admin-declared)
+    assertEquals(e.answers.map(_.status).sorted, Vector(200, 401, 403))
+    assertEquals(e.answers.find(_.status == 200).map(_.media), Some("text/html"))
+    assert(e.summary.isDefined, "a declared operation says what it is for")
   }
 
   test("FAIL CLOSED: the declared table with no verifier serves nobody") {

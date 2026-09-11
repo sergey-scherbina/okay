@@ -1,9 +1,8 @@
 package okay.admin
 
 import okay.{!, Async, pure}
-import okay.http.{Http, Method, Request, Response}
+import okay.http.{Method, Request, Response}
 import okay.security.{Secure, SessionIssuer, Verified}
-import java.nio.charset.StandardCharsets.UTF_8
 
 /**
  * Protected admin routes (specs/admin.md): a small named ACTION
@@ -47,14 +46,21 @@ object Admin {
     // the WHOLE request target, so a cache-buster or a tracking
     // parameter turned an authorised replay into a miss. A route cuts
     // the query before it matches
-    okay.http.Router.on(Method.Post,
+    // `html`, not `on`: the handler answers the PAGE and the router
+    // writes the content-type, so the entry declares text/html and the
+    // document stops saying `undeclared` beside the 401 and the 403
+    // (openapi-media, demo-admin-declared)
+    okay.http.Router.html(Method.Post,
       (okay.http.Route / "admin" / "replay")
-        .securedBy(okay.http.Route.Security(scopes = scopes, realm = realm))) { (_, _) =>
+        .securedBy(okay.http.Route.Security(scopes = scopes, realm = realm)),
+      // POSITIONAL, not named: a named argument narrows overload
+      // resolution before the argument types are read, and this name
+      // has a `Routed` form too
+      200, "the projection rebuilt, and how many turns it took") { (_, _) =>
       val n = replay()
       onReplayed()
-      pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-        Http.one(htmlFor(n).getBytes(UTF_8))))
-    }
+      pure(htmlFor(n))
+    }.summarised("rebuild the board projection from its log; admin scope required")
 
   /** the same table with a deployment's verifier installed — what a
    * consumer mounts. `Secure.verifier` is the adapter across the

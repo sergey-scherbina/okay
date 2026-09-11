@@ -1216,6 +1216,54 @@ final class Router private (val entries: Vector[Router.Entry]):
       None,
       Vector(Router.Answer(status, None, description, media))))
 
+  /**
+   * the same, for a route that DECLARES what it requires or reads
+   * (specs/route-headers.md).
+   *
+   * It exists because the first real document asked for it. A secured
+   * route could only be declared with `on`/`at`, which say nothing
+   * about the answer — so okay-demo's `/admin/replay` rendered its
+   * 401 and 403 and no success case at all, and the demo's own guard
+   * ("no operation says `undeclared`") caught it. A declaration that
+   * can state a requirement but not an answer is half a declaration.
+   */
+  def media[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], media: String,
+                                     status: Int, description: String,
+                                     /** NO DEFAULT, and it cannot have one: Scala
+                                      * allows defaults on only one overload of a
+                                      * name, and `media(Routed)` already has them.
+                                      * `html` below passes it. */
+                                     contentType: Option[String])
+                                    (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                    (h: (ar.Out, hr.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map((a, hs) =>
+          h(ar(a), hr(hs), r).map(src =>
+            Response(status, Seq("content-type" -> contentType.getOrElse(media)), src))),
+      None,
+      Router.securityAnswers(route.described) :+
+        Router.Answer(status, None, description, media)))
+
+  /**
+   * an HTML page from a route that declares a requirement or a header.
+   *
+   * `status` and `description` carry NO defaults, and cannot: Scala
+   * allows default arguments on only one overload of a name, and the
+   * `Routed` form above already has them. A declaring combinator is
+   * written for the sake of the description anyway, so passing one is
+   * no hardship.
+   */
+  def html[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                    description: String)
+                                   (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                   (h: (ar.Out, hr.Out) => String ! Async): Router =
+    media[A, Hs](method, route, Router.textHtml, status, description,
+      contentType = Some(Router.textHtml + "; charset=utf-8"))(
+      (a, hs, _) => h(a, hs).map(t => Http.one(t.getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+
   /** the same, reading a case class */
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     ofAt(method, route)((c, _) => h(c))
@@ -1275,6 +1323,22 @@ final class Router private (val entries: Vector[Router.Entry]):
                   Some(pure(Router.challenge(403, realm, "insufficient_scope")))
                 case Right(_) => e.run(r))
     })
+
+  /**
+   * TWO TABLES, IN ORDER — the operation `empty` has been the zero of
+   * since stage 1, finally written down.
+   *
+   * A module that contributes routes answers a `Router`; a service
+   * that mounts several had to fall back to `orElse` over the
+   * `PartialFunction`s, which serves them and DESCRIBES NONE OF THEM:
+   * a renderer reads `entries`, and `orElse` has none. okay-demo hit
+   * exactly that — `/admin/replay` was served through `orElse` and
+   * appeared in no document (demo-admin-declared).
+   *
+   * Order is kept, because dispatch is first-match and a diff of two
+   * documents should read as a diff of the code.
+   */
+  def ++(that: Router): Router = new Router(entries ++ that.entries)
 
   /** the existing convention, unchanged: a miss is simply undefined,
    * so the caller's 404 stays the caller's */
@@ -1404,6 +1468,14 @@ object Router:
                         (h: (ar.Out, Request) => String ! Async): Router =
     empty.htmlAt(method, route, status, description)(h)
 
+  /** a page from a route that DECLARES a requirement or a header — no
+   * defaults, for the reason the instance form gives */
+  def html[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                    description: String)
+                                   (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                   (h: (ar.Out, hr.Out) => String ! Async): Router =
+    empty.html(method, route, status, description)(h)
+
   def bytes[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
                         description: String = "a body of the declared media type")
                        (using ar: Route.Arity[A])
@@ -1478,6 +1550,12 @@ object Router:
                           * adds the charset when it writes the header, which is
                           * also why the two cannot disagree: both come from
                           * this one value.
+                          *
+                          * EMPTY means no body at all, which is a different
+                          * claim from "this media type, shape unstated": a
+                          * challenge answers with nothing, and a document
+                          * that offered an empty JSON object would be
+                          * describing a body nobody sends.
                           */
                          media: String = "application/json",
                          /**
@@ -1612,9 +1690,9 @@ object Router:
     if d.security.isEmpty then Vector.empty
     else Vector(
       Answer(401, None, "no credential, or one that did not verify",
-        headers = Vector(challengeHeader)),
+        media = "", headers = Vector(challengeHeader)),
       Answer(403, None, "verified, and not permitted",
-        headers = Vector(challengeHeader)))
+        media = "", headers = Vector(challengeHeader)))
 
   /** declared because `challenge` writes it — the document and the
    * wire read one value, not two that agree by care */

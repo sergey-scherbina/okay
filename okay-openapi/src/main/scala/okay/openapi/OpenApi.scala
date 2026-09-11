@@ -183,17 +183,28 @@ object OpenApi:
     if e.answers.isEmpty then
       JObj(Vector("default" -> JObj(Vector(
         "description" -> JStr("undeclared — this operation builds its own Response")))))
-    else JObj(e.answers.sortBy(_.status).map(a =>
-      a.status.toString -> JObj(Vector(
-        "description" -> JStr(a.description)) ++
-        answerHeaders(a) ++ Vector(
-        // keyed by the media the ENTRY declares, and an answer whose
-        // media has no schema still gets a content block: an empty
-        // schema object is how OpenAPI says "this media type, shape
-        // unstated", while leaving content out says the operation
-        // answers with no body at all (openapi-media)
-        "content" -> JObj(Vector(
-          a.media -> JObj(a.schema.map(sch => "schema" -> sch).toVector)))))))
+    else
+      // IF NOTHING SAYS WHAT SUCCESS LOOKS LIKE, SAY SO. A secured
+      // route declares 401 and 403 without the author writing them, so
+      // `answers` is non-empty while the 200 is still undeclared —
+      // and a document listing only the failures reads as an
+      // operation that cannot succeed. Found by the first real
+      // document (demo-admin-declared), not by a synthetic test.
+      val undeclared =
+        if e.answers.exists(a => a.status >= 200 && a.status < 300) then Vector.empty
+        else Vector("default" -> JObj(Vector(
+          "description" -> JStr("undeclared — this operation builds its own Response"))))
+      JObj(e.answers.sortBy(_.status).map(a =>
+        a.status.toString -> JObj(
+          Vector("description" -> JStr(a.description)) ++
+          answerHeaders(a) ++
+          // an answer with NO media has no body at all, and leaving
+          // `content` out is how OpenAPI says that; an empty object
+          // under a media type would describe a body nobody sends
+          (if a.media.isEmpty then Vector.empty
+           else Vector("content" -> JObj(Vector(
+             a.media -> JObj(a.schema.map(sch => "schema" -> sch).toVector))))))) ++
+        undeclared)
 
   /** what an answer carries beside its body (specs/route-headers.md,
    * stage C). A secured route's `WWW-Authenticate` is here because the

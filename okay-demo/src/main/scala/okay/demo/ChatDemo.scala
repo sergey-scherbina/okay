@@ -395,8 +395,26 @@ object ChatDemo {
             pure(src)
           }
           .summarised("follow one person's assignments as they happen")
-    if !withApp then base
-    else base.bytes(okay.http.Method.Get, okay.http.Route / "app.js", "text/javascript",
+    // /admin/replay is okay-admin's, and it belongs HERE rather than in
+    // an `orElse` beside the table. Served through `orElse` it was in
+    // NO DOCUMENT AT ALL — `grep -c admin okay-demo/openapi.json` was
+    // 0 — which is the one thing this arc's law forbids: a route
+    // cannot be served and undocumented (demo-admin-declared).
+    //
+    // It could not have been otherwise until a route could declare
+    // what it REQUIRES (specs/route-headers.md, stage B). Before that,
+    // putting it in the document would have rendered an open door
+    // where there is a lock, which is worse than the silence.
+    //
+    // This table is the DESCRIPTION; `routes` below installs the
+    // verifier. A secured entry with none fails closed, so the
+    // document's router answers 401 here and serves nobody — which is
+    // correct: describing is not serving.
+    val withAdmin = base ++ Admin.router()(
+      () => board.replay(), () => boardChanged("replay"))
+
+    if !withApp then withAdmin
+    else withAdmin.bytes(okay.http.Method.Get, okay.http.Route / "app.js", "text/javascript",
                     description = "the packaged React bundle the chat page loads") { _ =>
       pure(java.nio.file.Files.readAllBytes(Chat.appJs.get))
     }.summarised("the client the chat page loads; present only in a packaged build")
@@ -435,7 +453,11 @@ object ChatDemo {
     // cannot say, so this one stays a guard. It matches on the ROUTE,
     // so it drops the query like the rest.
     val core: PartialFunction[Request, Response ! Async] =
-      declared.routes
+      // the verifier the DEPLOYMENT has, installed on the table that
+      // DECLARES what it needs — `enforcing` refuses exactly the
+      // entries whose security is non-empty, which is exactly what the
+      // document marks (specs/route-headers.md, stage B)
+      declared.enforcing(Secure.verifier(Admin.Issuer.verify)).routes
         .orElse { case r if mcpPath.unapply(r.url).isDefined => mcpR(r) }
         .orElse(ops)
         .orElse(loginRoutes.routes)
@@ -461,11 +483,11 @@ object ChatDemo {
             Writer(t + " ")).flatMap(_ => stream(rest))
         Chat.reply(_ => stream(answer.split(' ').toList), budget)(messages)
       }
-    // admin routes are okay-admin (extracted 2026-09-02, specs/admin.md):
-    // /admin/replay is not reachable without an admin token
+    // admin routes are okay-admin (extracted 2026-09-02, specs/admin.md).
+    // /admin/replay is DECLARED in `declaredRouter` and enforced in
+    // `core` above — it used to be mounted here, through `orElse`,
+    // which served it and documented nothing of it.
     core.orElse(Chat.chatRoute(m, budget, boardTurnOverride, contentPolicy))
-      .orElse(Admin.routes(Admin.Issuer.verify)(
-        () => board.replay(), () => boardChanged("replay")))
 
   /** the whole demo as ONE value awaiting its environment
    * (demo-ctx-wiring): `main` wires production, a test wires stubs —

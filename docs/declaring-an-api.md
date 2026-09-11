@@ -116,6 +116,19 @@ answers a `Queried[A]`, which has no `/` at all. `Routed[A]` is what
 both stages share — `unapply`, `url`, `describe`, `params`, `queries`,
 `prism`, `of` — and what `Router` takes.
 
+## Two tables
+
+```scala
+val declared = mine ++ Admin.router()(replay, onReplayed)
+```
+
+`++` is the operation `Router.empty` has been the zero of all along. It
+matters more than tidiness: a service that mounted another module's
+routes with `orElse` over the `PartialFunction`s served them and
+**described none of them**, because a renderer reads `entries` and
+`orElse` has none. okay-demo served `/admin/replay` that way and it
+appeared in no document at all.
+
 ## A table
 
 ```scala
@@ -535,10 +548,14 @@ and the document was deliberately not generated, is out of date; what
 survives it is the rule that produced it, which is that the consumer
 came first.
 
-**A secured route cannot also declare a response VALUE.** `out` and
-`jsonOut` take a `Routed` and `secured` produces a `Headed`, so the
-two do not meet. Nothing in the tree wants both; when something does,
-the overloads are mechanical.
+**A secured route can declare a PAGE but not yet a value.** `html` and
+`media` have `Headed` forms — a secured route that could not state its
+success case rendered as an operation that only fails, which the
+demo's own document guard caught within the hour. `out`/`jsonOut`/
+`bytes`/`events` still take a `Routed` only; mechanical when something
+asks. Note that the `Headed` forms carry no default arguments (Scala
+allows them on one overload of a name), so `status` and `description`
+go positionally.
 
 **Prose is declared where it cannot be derived.** An operation may
 carry one sentence saying what it is FOR:

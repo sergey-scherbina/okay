@@ -1024,16 +1024,28 @@ its owner can price it:
       author's declaration is DESCRIPTION, and enforcing it would turn
       a documentation slip into a 500. Saying which half is
       load-bearing beats pretending both are.
-- [ ] route-secured-with-a-value — `out`/`jsonOut` take a `Routed` and
-      `secured` produces a `Headed`, so a route cannot declare both a
-      requirement and a response VALUE. Nothing in the tree wants
-      both; the overloads are mechanical when something does.
-- [ ] route-headers-adopt — the live routes that read a header by hand
-      today: `McpHttp`'s `mcp-session-id` and `last-event-id` (its GET
-      branch is a `Request => Response` function, not a `Router`, so
-      this is a conversion and not a one-liner), and okay-script's
-      `host`. Wanted AFTER B, so a converted route can declare both
-      halves at once.
+- [x] route-secured-with-a-value — PARTLY DONE 2026-09-11
+      (demo-admin-declared), and the "nothing wants both" was wrong
+      within the hour: okay-demo's document rendered `/admin/replay`
+      with a 401, a 403 and NO SUCCESS CASE, and the demo's own guard
+      ("no operation says `undeclared`") caught it. `media` and `html`
+      have `Headed` forms now, which is what a page-answering secured
+      route needs. `out`/`jsonOut`/`bytes`/`events` still do not —
+      mechanical when something asks.
+      Note for whoever adds them: Scala allows default arguments on
+      only ONE overload of a name, so the `Headed` forms carry none,
+      and a call must pass `status`/`description` POSITIONALLY — a
+      named argument narrows overload resolution before the argument
+      types are read.
+- [ ] route-headers-adopt — REDUCED 2026-09-11 after looking properly.
+      `McpHttp.route` is a TOTAL `Request => Response` by design —
+      `McpAuth` depends on that totality, and its comment says so — and
+      it answers any verb on one path, which a `Router` entry cannot
+      say. okay-script's header reads are all inside `Site`, a page
+      server rather than a table. So there is no clean seat for stage
+      A beyond the tests; the stage-B half found its consumer instead
+      (okay-admin, then okay-demo). Left open in case McpHttp ever
+      becomes a table, not as work waiting to be done.
 - [x] route-arity-one-tuple — DONE 2026-09-11. The entry asked for a
       second sighting; there were four, three by authors other than
       the one who wrote the entry: the sibling who wrote `TestOpenApi`
