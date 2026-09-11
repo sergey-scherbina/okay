@@ -1,6 +1,0 @@
-feature/instances-of-any-effect 2026-09-11T07:56:17Z
-agent: claude-code
-heartbeat: 2026-09-11T07:56:17Z
-status: in-progress
-done-so-far: claimed
-next: Instances[F] — run-time instances of an ARBITRARY effect (Tag with a runtime handle), the corner Refs and Tag leave open
