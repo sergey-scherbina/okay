@@ -1,5 +1,34 @@
 # Changelog
 
+## tag-test-the-signature-too — a key AND a signature
+
+`Tag`'s `Effect` given tested the key and nothing else. Two members
+that shared one had nothing left to compare, so `Of["k", Beep] +
+Of["k", Buzz]` misrouted into the `ClassCastException` a key exists to
+prevent — however different the two effects were.
+
+It now asks `TypeableK[F]` beside `ValueOf[K]` and tests both, which is
+what `Instances` does with its run-time handle. The row above is an
+ordinary row.
+
+The reason this sat in the backlog instead of being written on the spot
+is that asking for a second given STRENGTHENS the requirements, and
+that is a source-compatibility change: every existing `Of[K, F]` in
+every downstream build has to still resolve. That was measured before
+the change was kept, not argued about — `compile` and `Test/compile`
+across the whole tree, **zero errors**. The reason is structural and
+worth stating, because it means the cost stays zero: `Effect[F] extends
+TypeableK[F]`, and anything you would put under a key is an effect, so
+the instance the new requirement asks for is one the call site already
+had in scope.
+
+What no runtime test can reach is unchanged and still pinned by
+`TestTag`: the same SIGNATURE under the same key — `Of["same", Reader %
+Int] + Of["same", Reader % String]` — where the type argument was
+erased before the test could see it. `tag-distinct-keys` is the
+compile-time check that would end that half too.
+
+
 ## optics-outside-remaining — the four that stay open, measured
 
 Five of the six candidates are closed. This entry is about the other

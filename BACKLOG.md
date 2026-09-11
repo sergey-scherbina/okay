@@ -52,17 +52,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       very general API. DISQUALIFYING: if requiring it there measures
       as a compile-time cost on ordinary rows, or breaks inference at
       `.at`, it dies there and the rule stays a documented one.
-- [ ] tag-test-the-signature-too — a cheaper half-fix, also unproven:
-      `Tag`'s `Effect` instance tests the key ALONE. Given
-      `TypeableK[F]` it could test the key AND the inner operation, so
-      that two members sharing a key but differing in SIGNATURE
-      (`Of["k", Reader % Int]` vs `Of["k", Writer % String]`) route
-      correctly instead of colliding. It does nothing for the same
-      signature under one key, which is the commoner mistake, and it
-      strengthens the given's requirements — every row mentioning
-      `Tag.Of[K, F]` would need `TypeableK[F]` in scope, which is a
-      source-compatibility change. Measure the breakage before
-      writing it.
+- [x] tag-test-the-signature-too — DONE (2026-09-11), and the feared
+      cost was ZERO. `Tag`'s `Effect` given now asks `TypeableK[F]`
+      beside the key, so the test is key AND signature — what
+      `Instances` does — and `Of["k", Beep] + Of["k", Buzz]` is an
+      ordinary row instead of a collision. The source-compatibility
+      worry was measured before the change was kept: the whole build
+      and every test compile with zero errors, because an `Effect` IS
+      a `TypeableK` and every effect that goes under a key already
+      has one. The half no runtime test can reach — same signature,
+      same key — still misroutes and is still pinned.
 - [x] instances-of-any-effect — DONE (2026-09-11): `Instances[F]` is
       `Tag` with the key read at RUN time — one row member per
       signature, however many instances, identity by a fresh `Handle`

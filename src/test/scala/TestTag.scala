@@ -93,4 +93,43 @@ class TestTag extends munit.FunSuite {
         7)(Tag.untag["same", Reader % Int](inner)))
     }
   }
+
+  /**
+   * THE HALF THE SIGNATURE TEST BUYS (tag-test-the-signature-too,
+   * 2026-09-11). `Tag`'s test used to be the key ALONE, so two
+   * members sharing a key collided however different their effects
+   * were. It now asks the key AND the signature — which is what
+   * `Instances` does — so a shared key across DIFFERENT signatures
+   * routes correctly.
+   *
+   * The other half is unreachable by any runtime test and the suite
+   * above still proves it: same signature, same key, still a
+   * ClassCastException, because there is nothing left to compare.
+   */
+  test("one key, two SIGNATURES: the signature test tells them apart") {
+    enum Beep[+A] derives okay.Effect:
+      case Boop() extends Beep[Int]
+    enum Buzz[+A] derives okay.Effect:
+      case Bzz() extends Buzz[String]
+
+    type A = Tag.Of["same", Beep]
+    type B = Tag.Of["same", Buzz]
+
+    val p: (Int, String) ! (A + B) =
+      for
+        x <- Tag.one["same", Beep](Beep.Boop()).plus[B]
+        y <- Tag.one["same", Buzz](Buzz.Bzz()).at[A + B]
+      yield (x, y)
+
+    val hb: Handler[Beep] = new:
+      def handle[X](e: Beep[X]): X = e match { case Beep.Boop() => 42 }
+    val hz: Handler[Buzz] = new:
+      def handle[X](e: Buzz[X]): X = e match { case Buzz.Bzz() => "ada" }
+
+    assertEquals(
+      p.runWith(using Handler.union[A, B](
+        using summon[okay.Effect[A]], Tag.handler["same", Beep](hb),
+        Tag.handler["same", Buzz](hz))),
+      (42, "ada"))
+  }
 }
