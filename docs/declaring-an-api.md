@@ -297,6 +297,47 @@ because that is what they are on the wire.
 A declared header is rendered `in: header` in the OpenAPI document,
 beside the template rather than inside it.
 
+## A lock
+
+A route can say what it requires of a caller, and then the TABLE
+refuses — which is the whole point, because a requirement nobody
+executes is a comment with a type.
+
+```scala
+val replay = (Route / "admin" / "replay").secured("admin")
+
+Router.on(Method.Post, replay)((_, _) => doReplay())
+      .enforcing(Secure.verifier(verify))
+```
+
+`secured` produces a `Headed` for the same reason `:@` does: a
+credential is read from the REQUEST, and `Routed[A]` is the url's
+prism. The declaration is plain data — a scheme, the scopes, a realm —
+because okay-security depends on okay-http and not the other way
+round, so a `Policy` cannot appear in a route. A rule that reads the
+ACTION or the RESOURCE stays with `Secure.granted`; both roads exist.
+
+**Protection does not change WHICH requests a route answers, only who
+gets through.** A secured route still MATCHES a request with no
+credential, and answers 401. That is the opposite of a declared
+required header, which is a miss — and deliberately so: a route that
+missed would answer 404 to everyone without a token, which leaks less
+and lies more.
+
+**The handler never runs for a refused request**, and the entry gains
+401 and 403 in its `answers` without the author writing them — so the
+document says them too, beside a `security` requirement and a
+`securityScheme`.
+
+**FAIL CLOSED.** A secured entry whose table never got a verifier does
+not serve: it answers 401 `no_verifier`. Forgetting `.enforcing(...)`
+is a route that 401s everywhere — a loud mistake — rather than a hole
+the document swears is shut.
+
+The law is asserted twice: `enforcing` refuses exactly the entries
+whose `security` is non-empty, and the document marks exactly those
+operations.
+
 ## A body
 
 ```scala
@@ -477,16 +518,15 @@ and the document was deliberately not generated, is out of date; what
 survives it is the rule that produced it, which is that the consumer
 came first.
 
-**Authentication is not declared yet.** A protected route is protected
-by a wrapper around the finished table (`Secure.granted`), so the
-requirement never reaches the entry and the document shows an open
-door where there is a lock. That is stage B of specs/route-headers.md,
-and the point of it is that the router must ENFORCE what the route
-declares — a declaration nobody executes is a comment with a type.
+**Response headers are not declared** — stage C of
+specs/route-headers.md. It falls out of B, because the 401 that a
+secured route produces already carries `WWW-Authenticate`; nothing has
+asked for it yet.
 
-**Response headers are not declared either** — stage C, and it falls
-out of B, because the 401 stage B produces carries
-`WWW-Authenticate`.
+**A secured route cannot also declare a response VALUE.** `out` and
+`jsonOut` take a `Routed` and `secured` produces a `Headed`, so the
+two do not meet. Nothing in the tree wants both; when something does,
+the overloads are mechanical.
 
 **Prose is declared where it cannot be derived.** An operation may
 carry one sentence saying what it is FOR:

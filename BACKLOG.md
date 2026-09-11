@@ -997,16 +997,32 @@ its owner can price it:
       url and `Headed[A, H]` is the request-shaped declaration. One
       builder serves both query and header because a header block IS a
       `Map[String, Vector[String]]`.
-- [ ] route-headers-b — security is DECLARED and ENFORCED, not only
-      rendered (specs/route-headers.md). `Secure.granted` wraps the
-      finished table, so the requirement cannot reach `Entry` and the
-      document shows an open door where there is a lock. The router
-      answers 401/403 from the declaration, the entry's `answers`
-      gains them, and the law is: what the document calls protected is
-      what the router refuses. Consumer in the tree: okay-admin's
-      `/admin/replay`, and the demo's login.
+- [x] route-headers-b — DONE 2026-09-11. `.secured(scopes*)` on the
+      request-shaped declaration, `Router.enforcing(verify)` on the
+      table, 401/403 in `answers` without the author writing them, and
+      `securitySchemes` + a per-operation `security` in the document.
+      okay-admin converted: its seven existing ladder tests pass
+      through the new road unchanged, which is the evidence the
+      conversion preserved behaviour.
+      Two decisions worth keeping. The module boundary shaped the
+      interface — okay-security depends on okay-http, so a route
+      declares DATA (scheme, scopes, realm) and `Router.Verify` is
+      `String => Either[String, Set[String]]`, with `Secure.verifier`
+      adapting; a `Policy` that reads the action or resource stays
+      with `Secure.granted`. And FAIL CLOSED: a secured entry whose
+      table never got a verifier answers 401 `no_verifier`, because
+      declaring a requirement and forgetting to enforce it would open
+      a hole the document swears is shut.
+      The law is asserted twice, as set equalities: `enforcing`
+      refuses exactly the secured entries, and the document marks
+      exactly those operations.
 - [ ] route-headers-c — response headers on `Answer`. Falls out of B:
-      the 401 that B produces carries `WWW-Authenticate`.
+      the 401 that B produces carries `WWW-Authenticate`, and the
+      document's `responses[*].headers` is empty. Nobody has asked.
+- [ ] route-secured-with-a-value — `out`/`jsonOut` take a `Routed` and
+      `secured` produces a `Headed`, so a route cannot declare both a
+      requirement and a response VALUE. Nothing in the tree wants
+      both; the overloads are mechanical when something does.
 - [ ] route-headers-adopt — the live routes that read a header by hand
       today: `McpHttp`'s `mcp-session-id` and `last-event-id` (its GET
       branch is a `Request => Response` function, not a `Router`, so

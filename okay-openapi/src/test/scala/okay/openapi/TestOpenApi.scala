@@ -30,6 +30,8 @@ class TestOpenApi extends munit.FunSuite:
   val search = Route / "search" :? "q".as[String] :? "page".opt[Int] :? "tag".all[String]
   // a declared REQUEST HEADER (specs/route-headers.md, stage A)
   val resume = Route / "events" :@ "last-event-id".opt[Long]
+  // a declared REQUIREMENT (specs/route-headers.md, stage B)
+  val guarded = (Route / "admin" / "replay").secured("admin")
 
   val router: Router = Router.empty
     .on(Method.Get, board)(_ => ok("all"))
@@ -37,6 +39,7 @@ class TestOpenApi extends munit.FunSuite:
     .json[EmptyTuple, NewTask](Method.Post, board)((_, t) => ok(t.title))
     .on(Method.Get, search)(_ => ok("found"))
     .on(Method.Get, resume)((_, _) => ok("stream"))
+    .on(Method.Post, guarded)((_, _) => ok("replayed"))
 
   val api = Api("Board", "1.0", servers = Vector("https://board.example"))
   def doc: Json = OpenApi.document(api, router)
@@ -90,6 +93,36 @@ class TestOpenApi extends munit.FunSuite:
         "required" -> JBool(false),
         "schema" -> JObj(Vector("type" -> JStr("array"),
           "items" -> JObj(Vector("type" -> JStr("string"))))))))))
+  }
+
+  test("a protected operation says so, and the scheme is in components") {
+    val post = at(at(at(doc, "paths"), "/admin/replay"), "post")
+    assertEquals(at(post, "security"),
+      JArr(Vector(JObj(Vector("bearer" -> JArr(Vector(JStr("admin"))))))))
+    assertEquals(at(at(at(doc, "components"), "securitySchemes"), "bearer"),
+      JObj(Vector("type" -> JStr("http"), "scheme" -> JStr("bearer"))))
+    // and Authorization is NOT a parameter: a generated client must do
+    // a bearer flow, not put a literal string in a box
+    val ps = obj(post).collectFirst { case ("parameters", JArr(v)) => v }.getOrElse(Vector.empty)
+    assert(!ps.exists(p => Json.print(p).toLowerCase.contains("authorization")), ps.toString)
+  }
+
+  test("a protected operation answers 401 and 403, without the author writing them") {
+    val rs = obj(at(at(at(at(doc, "paths"), "/admin/replay"), "post"), "responses")).map(_._1)
+    assertEquals(rs.filter(Set("401", "403")).sorted, Vector("401", "403"))
+  }
+
+  test("an UNPROTECTED operation carries no security key at all") {
+    val get = at(at(at(doc, "paths"), "/board"), "get")
+    assert(!obj(get).exists(_._1 == "security"), get)
+  }
+
+  test("THE LAW: the document calls protected exactly what the router refuses") {
+    val declared = router.entries.filter(_.security.nonEmpty)
+      .map(e => (e.path, e.method.name.toLowerCase)).toSet
+    val rendered = obj(at(doc, "paths")).flatMap((p, item) =>
+      obj(item).collect { case (m, op) if obj(op).exists(_._1 == "security") => (p, m) }).toSet
+    assertEquals(rendered, declared)
   }
 
   test("a declared request header is rendered in: header, beside the template") {

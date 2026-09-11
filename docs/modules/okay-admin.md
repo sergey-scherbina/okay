@@ -1,21 +1,37 @@
 # okay-admin
 
-> Protected admin routes (specs/admin.md): a named action wrapped in
-> the same bearer-token 401/403 ladder every other protected route in
-> this stack uses. Extracted 2026-09-02 from `okay-demo`, fixing a
-> real gap found while extracting it — `POST /admin/replay` had
-> shipped with no authentication at all.
+> Protected admin routes (specs/admin.md): a named action that
+> DECLARES what it requires, and a table that refuses accordingly —
+> the same bearer-token 401/403 ladder, now visible to a document.
+> Extracted 2026-09-02 from `okay-demo`, fixing a real gap found while
+> extracting it — `POST /admin/replay` had shipped with no
+> authentication at all.
 
-Depends on: `okay-security` (`Secure`, `Jwt`, `Policy`, `Verified`),
+Depends on: `okay-security` (`Secure`, `Jwt`, `Verified`),
 `okay-http`. JVM-only.
 
 ## Guide
 
-**The route.** `Admin.routes(verify, policy = Policy.scoped("admin"),
-realm = "okay-admin")(replay, onReplayed)` answers `POST
-/admin/replay` behind `Secure.granted` — a missing or invalid token is
-401, a token without the `admin` scope is 403, both with
-`WWW-Authenticate`. `replay: () => Long` and `onReplayed: () => Unit`
+**The route.** `Admin.routes(verify, scopes = Set("admin"), realm =
+"okay-admin")(replay, onReplayed)` answers `POST /admin/replay` — a
+missing or invalid token is 401, a token without the `admin` scope is
+403, both with `WWW-Authenticate`.
+
+**The requirement is DECLARED, not wrapped** (specs/route-headers.md,
+stage B). `Admin.router(...)` is the table saying what it needs;
+`routes` is that table with a deployment's verifier installed, through
+`Secure.verifier`. The difference is that a renderer can now see it:
+`POST /admin/replay` used to appear in an OpenAPI document as an open
+door, because `Secure.granted` wrapped the finished `PartialFunction`
+and the requirement never reached the entry.
+
+`Admin.router(...)` on its own **fails closed** — a secured entry with
+no verifier answers 401 `no_verifier` rather than serving. Forgetting
+to enforce is a route that refuses everyone, not a hole.
+
+A policy richer than "these scopes" — one that reads the action or the
+resource — still belongs in `Secure.granted`; what a route can declare
+is what a document can render and a table can enforce. `replay: () => Long` and `onReplayed: () => Unit`
 are the caller's own concern; this module has no opinion on what
 "replay" means — `okay-demo` passes its `ChatDemo.replayProjections`
 and a market-feed ping.

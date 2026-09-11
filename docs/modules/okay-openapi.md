@@ -34,6 +34,14 @@ repository does not own, and nothing here reads the document as types
 → `getBoardById`), so they are stable: a document whose ids move when
 nothing moved is a document nobody diffs.
 
+**A protected operation says so.** A route that declares what it
+requires (`.secured("admin")`) renders a `security` requirement and a
+`securityScheme` in `components` — not an `Authorization` parameter,
+which would make a generated client put a literal string in a box
+instead of doing a bearer flow. The same vector is what
+`Router.enforcing` refuses on, and a test asserts the two sets are
+equal (specs/route-headers.md, stage B).
+
 **Parameters include headers.** A route that declares what it reads
 off the request (`:@ "last-event-id".opt[Long]`) renders it `in:
 header`, beside the template rather than inside it — a header is not
@@ -88,13 +96,14 @@ those answers was perfectly well defined.
 
 ## What it cannot say, and why
 
-**Authentication.** A protected route is protected by a wrapper around
-the finished table (`Secure.granted`), so the requirement never
-reaches the entry: the document shows an open door where there is a
-lock. The fix is a declaration in okay-http that the ROUTER enforces
-(specs/route-headers.md, stage B), not a heuristic here — guessing
-"this looks protected" is how a document starts lying in the other
-direction.
+**Response headers.** An operation's `responses[*].headers` is empty:
+nothing declares them yet (specs/route-headers.md, stage C).
+
+**A policy richer than scopes.** A route declares a scheme and its
+scopes, which is what OpenAPI models; a rule that reads the action or
+the resource lives in `okay.security.Secure.granted` and is
+deliberately not rendered, because a document that claimed to know it
+would be guessing.
 
 **Tags, and prose beyond one line.** An operation carries a `summary`
 now (`Router.summarised`, openapi-prose) and the page shows it; tags,

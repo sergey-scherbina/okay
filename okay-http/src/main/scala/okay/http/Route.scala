@@ -136,6 +136,22 @@ sealed trait Routed[A <: Tuple]:
     this :@ Query[T](n.name)(using n.param)
 
   /**
+   * WHAT THIS ROUTE REQUIRES OF A CALLER (stage B).
+   *
+   * It lives on the request-shaped declaration for stage A's own
+   * reason: a credential is read from the REQUEST, not from the url,
+   * and `Routed[A]` is the url's prism. So `secured` produces a
+   * `Headed`, exactly as `:@` does.
+   */
+  def secured(scopes: String*): Headed[A, EmptyTuple] =
+    new Headed[A, EmptyTuple](this, Vector.empty, Vector.empty,
+      _ => Some(EmptyTuple), Vector(Route.Security(scopes = scopes.toSet)))
+
+  def securedBy(s: Route.Security): Headed[A, EmptyTuple] =
+    new Headed[A, EmptyTuple](this, Vector.empty, Vector.empty,
+      _ => Some(EmptyTuple), Vector(s))
+
+  /**
    * the bridge to `specs/optics.md`. A miss leaves the path unchanged,
    * which is exactly `Prism`'s `Either[T, A]`, and `review` is `url`.
    */
@@ -285,15 +301,26 @@ final class Headed[A <: Tuple, Hs <: Tuple] private[http] (
     /** the description: the headers, with no request in hand */
     val headers: Vector[Route.Hdr],
     private[http] val names: Vector[String],
-    private[http] val decodeHeaders: Route.Params => Option[Hs]):
+    private[http] val decodeHeaders: Route.Params => Option[Hs],
+    /** what it requires of a caller (stage B); empty is "nothing" */
+    val security: Vector[Route.Security] = Vector.empty):
 
   def :@[B <: Tuple](q: Query[B])(using c: Route.Split[Hs, B]): Headed[A, c.Out] =
     new Headed[A, c.Out](route, headers ++ q.declared.map(Route.headerOf),
       names ++ q.declared.map(_.name),
-      hs => decodeHeaders(hs).flatMap(a => q.decode(hs).map(b => c.join(a, b))))
+      hs => decodeHeaders(hs).flatMap(a => q.decode(hs).map(b => c.join(a, b))),
+      security)
 
   def :@[T](n: Route.Named[T])(using c: Route.Split[Hs, T *: EmptyTuple]): Headed[A, c.Out] =
     this :@ Query[T](n.name)(using n.param)
+
+  /** see `Routed.secured` — a credential is read from the request */
+  def secured(scopes: String*): Headed[A, Hs] =
+    new Headed[A, Hs](route, headers, names, decodeHeaders,
+      security :+ Route.Security(scopes = scopes.toSet))
+
+  def securedBy(s: Route.Security): Headed[A, Hs] =
+    new Headed[A, Hs](route, headers, names, decodeHeaders, security :+ s)
 
   /**
    * The headers this route declares, read off a request.
@@ -318,7 +345,8 @@ final class Headed[A <: Tuple, Hs <: Tuple] private[http] (
     route.unapply(r.url).flatMap(a => readHeaders(r).map(h => (a, h)))
 
   def describe: String = route.describe
-  def described: Route.Described = route.described.copy(headers = headers)
+  def described: Route.Described =
+    route.described.copy(headers = headers, security = security)
 
 object Route:
 
@@ -359,6 +387,26 @@ object Route:
   private[http] def headerOf(q: Q): Hdr = Hdr(q.name, q.kind, q.required, q.repeated, q.schema)
 
   /**
+   * WHAT A PROTECTED ROUTE REQUIRES (specs/route-headers.md, stage B).
+   *
+   * Plain data, and deliberately vocabulary-free: okay-security
+   * depends on okay-http and not the other way round, so a `Policy`
+   * or a `Verified` cannot appear here and okay-http must not grow an
+   * identity model of its own. What it owns is the HTTP half — a
+   * scheme name, the scopes an operation asks for, and the realm a
+   * challenge names — which is also exactly what an OpenAPI
+   * `securityScheme` carries.
+   *
+   * A richer rule than "these scopes" stays with
+   * `okay.security.Secure.granted`: this is the declaration a document
+   * can render and a table can enforce, not a replacement for a
+   * policy language.
+   */
+  final case class Security(scheme: String = "bearer",
+                            scopes: Set[String] = Set.empty,
+                            realm: String = "okay")
+
+  /**
    * The description of one url, whole: the template AND what its
    * parameters are (openapi-parameters).
    *
@@ -376,7 +424,10 @@ object Route:
                             /** request headers the route declares; a header is
                              * not part of the url, so it is beside the
                              * template rather than in it */
-                            headers: Vector[Hdr] = Vector.empty)
+                            headers: Vector[Hdr] = Vector.empty,
+                            /** what the route requires of a caller; empty is
+                             * "nothing", which is what most routes require */
+                            security: Vector[Security] = Vector.empty)
 
   /**
    * A NAMED TYPED PARAMETER — the same thing in a path and in a query,
@@ -920,7 +971,9 @@ final class Router private (val entries: Vector[Router.Entry]):
       r => r.method == method && route.read(r).isDefined,
       r =>
         if r.method != method then None
-        else route.read(r).map((a, hs) => h(ar(a), hr(hs), r))))
+        else route.read(r).map((a, hs) => h(ar(a), hr(hs), r)),
+      None,
+      Router.securityAnswers(route.described)))
 
   /**
    * a handler whose request carries a declared JSON body
@@ -1144,16 +1197,76 @@ final class Router private (val entries: Vector[Router.Entry]):
       r => r.method == method && route.unapply(r.url).isDefined,
       r => if r.method != method then None else route.unapply(r.url).map(c => h(c, r))))
 
+  /**
+   * THE TABLE, ENFORCING WHAT IT DECLARES (specs/route-headers.md,
+   * stage B).
+   *
+   * `Secure.granted` wraps the finished `PartialFunction`, which is
+   * why a protected route could never be described: the requirement
+   * was applied AFTER the table was built and never reached an entry.
+   * Here the declaration is on the entry and this reads it, so the
+   * document and the behaviour come from one value. The law is set
+   * equality — `enforcing` refuses exactly the entries whose
+   * `security` is non-empty, which is exactly the set a renderer
+   * calls protected.
+   *
+   * **Protection does not change WHICH requests a route answers, only
+   * who gets through.** `matches` is untouched, so a secured route
+   * still MATCHES a request with no credential and answers 401 — the
+   * opposite of a declared required HEADER, which is a miss. A route
+   * that missed instead would answer 404 to everyone without a token:
+   * it leaks less and lies more, and it breaks the invariant
+   * `Secure.bearer` states in its own comment.
+   *
+   * The handler is NOT run for a refused request. Definedness is
+   * `matches`, never `run` — the distinction that cost a one-time
+   * login code its 401 in stage 7.
+   *
+   * `verify` is the DEPLOYMENT's, not the route's: a declaration says
+   * what is required, a table says what to check it with.
+   * `okay.security.Secure.verifier` adapts a `String => Verified`.
+   */
+  def enforcing(verify: Router.Verify): Router =
+    new Router(entries.map { e =>
+      if e.security.isEmpty then e
+      else
+        val realm = e.security.head.realm
+        val wanted = e.security.flatMap(_.scopes).toSet
+        e.guarded(
+          r =>
+            if !e.matches(r) then None
+            else Router.bearerToken(r) match
+              case None => Some(pure(Router.challenge(401, realm, "no token")))
+              case Some(t) => verify(t) match
+                case Left(_) =>
+                  // the WHY stays server-side: a uniform refusal tells
+                  // an attacker nothing about how close the token was
+                  Some(pure(Router.challenge(401, realm, "invalid_token")))
+                case Right(scopes) if !wanted.subsetOf(scopes) =>
+                  Some(pure(Router.challenge(403, realm, "insufficient_scope")))
+                case Right(_) => e.run(r))
+    })
+
   /** the existing convention, unchanged: a miss is simply undefined,
    * so the caller's 404 stays the caller's */
   def routes: PartialFunction[Request, Response ! Async] =
+    // FAIL CLOSED. A secured entry with no verifier installed does not
+    // serve: declaring a requirement and forgetting `enforcing` would
+    // open a hole the document swears is shut, and a route that
+    // suddenly 401s everywhere is a loud mistake rather than a silent
+    // one.
+    val answer: Router.Entry => Request => Option[Response ! Async] = e =>
+      if e.security.isEmpty || e.enforced then e.run
+      else r =>
+        if !e.matches(r) then None
+        else Some(pure(Router.challenge(401, e.security.head.realm, "no_verifier")))
     new PartialFunction[Request, Response ! Async]:
       def isDefinedAt(r: Request): Boolean = entries.exists(_.matches(r))
       def apply(r: Request): Response ! Async =
-        entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x }
+        entries.iterator.map(e => answer(e)(r)).collectFirst { case Some(x) => x }
           .getOrElse(throw MatchError(r))
       override def applyOrElse[R <: Request, B >: Response ! Async](r: R, other: R => B): B =
-        entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x }.getOrElse(other(r))
+        entries.iterator.map(e => answer(e)(r)).collectFirst { case Some(x) => x }.getOrElse(other(r))
 
   /** every entry, from the same values that dispatch */
   def describe: Vector[(Method, String)] = entries.map(e => (e.method, e.path))
@@ -1363,10 +1476,27 @@ object Router:
                                     * answer, which is why it is an `Option` and not an
                                     * empty string pretending to be prose.
                                     */
-                                   val summary: Option[String] = None):
+                                   val summary: Option[String] = None,
+                                   /**
+                                    * has a verifier been installed for what this
+                                    * entry REQUIRES (`Router.enforcing`)?
+                                    *
+                                    * A secured entry that has none FAILS CLOSED —
+                                    * it answers 401 rather than serving. Declaring
+                                    * a requirement and forgetting to enforce it
+                                    * would otherwise open a hole the document
+                                    * swears is shut, which is worse than having no
+                                    * declaration at all.
+                                    */
+                                   private[http] val enforced: Boolean = false):
 
     private[http] def saying(text: String): Entry =
-      new Entry(method, described, matches, run, body, answers, Some(text))
+      new Entry(method, described, matches, run, body, answers, Some(text), enforced)
+
+    /** the same entry with its answer guarded — everything else kept,
+     * which is why this is a method and not five call sites */
+    private[http] def guarded(g: Request => Option[Response ! Async]): Entry =
+      new Entry(method, described, matches, g, body, answers, summary, enforced = true)
 
     /** the path template that dispatches — the query is not part of it */
     def path: String = described.path
@@ -1376,6 +1506,32 @@ object Router:
     def queries: Vector[Route.Q] = described.queries
     /** the request headers this route declares (specs/route-headers.md) */
     def headers: Vector[Route.Hdr] = described.headers
+    /** what it requires of a caller (stage B); empty is "nothing" */
+    def security: Vector[Route.Security] = described.security
+
+  /**
+   * A DEPLOYMENT'S VERIFIER, as a function rather than a type.
+   *
+   * okay-security depends on okay-http, so `Verified` and `Policy`
+   * cannot be named here and okay-http must not grow an identity
+   * model of its own. This is the whole seam: a bearer token in, and
+   * either the scopes it grants or a refusal.
+   * `okay.security.Secure.verifier` adapts `String => Verified` to it.
+   */
+  type Verify = String => Either[String, Set[String]]
+
+  /** `Authorization: Bearer <token>`, case-insensitively, and nothing
+   * else — a scheme this table does not know is no credential */
+  private[http] def bearerToken(r: Request): Option[String] =
+    r.headers.collectFirst {
+      case (k, v) if k.equalsIgnoreCase("authorization")
+        && v.length > 7 && v.take(7).equalsIgnoreCase("bearer ") => v.drop(7)
+    }
+
+  private[http] def challenge(status: Int, realm: String, error: String): Response =
+    Response(status,
+      Seq(("www-authenticate", s"""Bearer realm="$realm", error="$error"""")),
+      Http.one(Array.emptyByteArray))
 
   /** the shape of the router's own error answer — declared, because
    * the router produces it whether or not the author thought about it */
@@ -1388,6 +1544,21 @@ object Router:
 
   private[http] val badRequestAnswer: Answer =
     Answer(400, Some(errorSchema), "the body did not parse; the answer names what was wrong")
+
+  /**
+   * What a SECURED route answers, without the author writing it —
+   * the same way `json[B]`'s 400 already appears.
+   *
+   * 401 and 403 are different facts and the ladder keeps them apart:
+   * 401 is "I do not know who you are", 403 is "I know, and no". The
+   * WHY of a 401 stays server-side — a uniform refusal tells an
+   * attacker nothing about how close a token was.
+   */
+  private[http] def securityAnswers(d: Route.Described): Vector[Answer] =
+    if d.security.isEmpty then Vector.empty
+    else Vector(
+      Answer(401, None, "no credential, or one that did not verify"),
+      Answer(403, None, "verified, and not permitted"))
 
   private[http] val textHtml: String = "text/html"
   private[http] val eventStream: String = "text/event-stream"

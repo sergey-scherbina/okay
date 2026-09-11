@@ -58,6 +58,29 @@ object Secure {
   : PartialFunction[Request, Response ! Async] =
     bearer(verify, policy, realm, action, resource)(p => route(using p))
 
+  /**
+   * THE ADAPTER FOR A DECLARED ROUTE (specs/route-headers.md, stage B).
+   *
+   * `okay.http.Router.enforcing` reads what a route DECLARES and
+   * refuses accordingly, but okay-http cannot name `Verified` — it is
+   * the module this one depends on, and it must not grow an identity
+   * model of its own. So its seam is a function: a bearer token in,
+   * and either the scopes it grants or a refusal. This is that
+   * function, made from the verifier a deployment already has.
+   *
+   * The refusal's WHY crosses the seam and is then dropped by
+   * `enforcing`, deliberately: a caller gets a uniform 401 either way,
+   * and the reason is the deployment's to log.
+   *
+   * What does NOT cross is a `Policy`. A declared route says "these
+   * scopes"; a rule that reads the action or the resource stays with
+   * `granted` below, which is why both roads exist.
+   */
+  def verifier(verify: String => Verified): okay.http.Router.Verify =
+    t => verify(t) match
+      case Verified.Ok(p) => Right(p.claims.scopes)
+      case Verified.No(why) => Left(why)
+
   private def challenge(status: Int, realm: String, error: String): Response ! Async =
     pure(Response(status,
       Seq(("www-authenticate", s"""Bearer realm="$realm", error="$error"""")),

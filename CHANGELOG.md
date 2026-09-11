@@ -1,5 +1,58 @@
 # Changelog
 
+## route-headers-security — the document stops showing an open door
+
+Stage B of specs/route-headers.md. `POST /admin/replay` rendered as an
+unprotected operation, because `Secure.granted` wrapped the FINISHED
+`PartialFunction`: the requirement was applied after the table was
+built and never reached an entry, so no renderer could see it. A
+caller who believed the document got a 401 it never mentioned.
+
+```scala
+val replay = (Route / "admin" / "replay").secured("admin")
+
+Router.on(Method.Post, replay)((_, _) => doReplay())
+      .enforcing(Secure.verifier(verify))
+```
+
+**The module boundary shaped the interface, and improved it.**
+okay-security depends on okay-http, so `Policy` and `Verified` cannot
+appear in a route declaration and okay-http must not grow an identity
+model of its own. What a route declares is DATA — scheme, scopes,
+realm — which is exactly what an OpenAPI `securityScheme` carries; and
+`Router.Verify` is `String => Either[String, Set[String]]`, a bearer
+token in and the scopes it grants out. `Secure.verifier` adapts. A
+policy that reads the ACTION or the RESOURCE stays with
+`Secure.granted`: both roads exist, and neither is deprecated.
+
+**The behaviour inverts against stage A, deliberately.** A declared
+required HEADER that is absent is a MISS. A missing CREDENTIAL is a
+MATCH that answers 401 — because `Secure.bearer` states the invariant
+in its own comment: *protection must not change WHICH requests a route
+answers, only who gets through*. A secured route that missed would
+answer 404 to everyone without a token: it leaks less and lies more.
+
+**FAIL CLOSED.** A secured entry whose table never got a verifier does
+not serve — 401 `no_verifier`. Declaring a requirement and forgetting
+`enforcing` would otherwise open a hole the document swears is shut,
+which is worse than having no declaration at all; a route that 401s
+everywhere is a loud mistake.
+
+**The handler never runs for a refused request.** Definedness is
+`matches`, never `run` — the distinction that cost a one-time login
+code its 401 in optics-outside stage 7.
+
+**The law is asserted twice, as set equalities.** In okay-http:
+`enforcing` refuses exactly the entries whose `security` is non-empty.
+In okay-openapi: the operations carrying a `security` key are exactly
+those entries.
+
+okay-admin is converted, and the evidence that the conversion
+preserved behaviour is that its seven existing 401/403 tests pass
+through the new road unchanged. Two more were added for what is new:
+that the route DECLARES, and that the declared table with no verifier
+serves nobody.
+
 ## openapi-prose — the operation says what it is for
 
 The last open stage of the OpenAPI spec, and the smallest. Every

@@ -23,14 +23,13 @@ final case class Api(title: String, version: String,
  * `JsonSchema.of` drops straight in, where 3.0 would need a
  * translation layer with a drift of its own.
  *
- * WHAT THIS STAGE CANNOT SAY, stated rather than faked: AUTHENTICATION.
- * A route that is protected is protected by a wrapper around the
- * finished table (`Secure.granted`), so the requirement never reaches
- * the entry and this renderer cannot say it — which means the document
- * shows an open door where there is a lock. That is stage B of
- * specs/route-headers.md, and it is a declaration in okay-http rather
- * than a heuristic here: guessing "this looks protected" is how a
- * document starts lying in the other direction.
+ * AUTHENTICATION is rendered from the declaration, since
+ * specs/route-headers.md stage B: a route that says what it requires
+ * gets a `security` requirement on its operation and a
+ * `securityScheme` in `components`, and the very same vector is what
+ * `Router.enforcing` refuses on. Before that, protection lived in a
+ * wrapper around the finished table and the document showed an open
+ * door where there was a lock.
  *
  * Every gap this comment used to list is closed. `Router.Entry`
  * carries `Route.Described` — the template, its parameters, its query
@@ -64,7 +63,33 @@ object OpenApi:
         "version" -> JStr(api.version)) ++
         api.description.map(d => "description" -> JStr(d)).toVector),
     ) ++ serversField(api) ++ Vector(
-      "paths" -> JObj(order.map(p => p -> pathItem(byPath(p))))))
+      "paths" -> JObj(order.map(p => p -> pathItem(byPath(p))))) ++
+      componentsField(router))
+
+  /**
+   * The schemes the ROUTES declare, collected — not a list the author
+   * keeps beside them (specs/route-headers.md, stage B).
+   *
+   * OpenAPI models authentication as `securitySchemes` plus a
+   * `security` requirement per operation, NOT as a header parameter,
+   * and the difference is not cosmetic: a generated client does a
+   * bearer flow for one and puts a literal string in a box for the
+   * other. So `Authorization` is never rendered as a parameter, even
+   * though that is where it travels.
+   */
+  private def componentsField(router: Router): Vector[(String, Json)] =
+    val schemes = router.entries.flatMap(_.security).map(_.scheme).distinct.sorted
+    if schemes.isEmpty then Vector.empty
+    else Vector("components" -> JObj(Vector(
+      "securitySchemes" -> JObj(schemes.map(n =>
+        n -> JObj(Vector("type" -> JStr("http"), "scheme" -> JStr(n))))))))
+
+  /** what THIS operation requires, by scheme, with the scopes it asks
+   * for — the same vector `Router.enforcing` refuses on */
+  private def securityOf(e: Router.Entry): Option[(String, Json)] =
+    if e.security.isEmpty then None
+    else Some("security" -> JArr(e.security.map(sec =>
+      JObj(Vector(sec.scheme -> JArr(sec.scopes.toVector.sorted.map(JStr(_))))))))
 
   private def serversField(api: Api): Vector[(String, Json)] =
     if api.servers.isEmpty then Vector.empty
@@ -82,6 +107,7 @@ object OpenApi:
       e.summary.map(t => "summary" -> JStr(t)).toVector ++
       parameters(e).toVector ++
       e.body.map(b => "requestBody" -> requestBody(b)).toVector ++
+      securityOf(e).toVector ++
       Vector("responses" -> responses(e)))
 
   /** `GET /board/{id}` -> `getBoardById`-ish, and stable: a document
