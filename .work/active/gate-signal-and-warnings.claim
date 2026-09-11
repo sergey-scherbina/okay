@@ -1,0 +1,1 @@
+optics-outside session: a signal is not a verdict (143 classified as RED, so the retry loop refused the one case it exists for), and the gate never looked at warnings
