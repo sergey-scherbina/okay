@@ -11,8 +11,15 @@
 #   scripts/check-citations.sh FILE ...   # named files
 #
 # Exits non-zero and names every citation that is not an ancestor of
-# master. Run it immediately before `git merge --ff-only`, which is the
-# only moment the answer is still true.
+# HEAD. Run it from the lane's worktree immediately before
+# `git merge --ff-only`: HEAD there is the tip that is about to BECOME
+# master, so the lane's own commits count, which is the point.
+#
+# (It compared against `master` for its first hour, and the first real
+# use caught that: before the merge a lane's own commits are not on
+# master yet, so every fresh citation read as dangling. Checking
+# against the tip being merged is the same question asked at the right
+# moment.)
 set -e
 files="$*"
 [ -n "$files" ] || files="CHANGELOG.md BACKLOG.md"
@@ -22,11 +29,11 @@ for f in $files; do
   # shas appear as "Landed as <sha>", "Commits: <sha> (...)", "DONE (date, <sha>)"
   for h in $(grep -oE '\b[0-9a-f]{8}\b' "$f" | sort -u); do
     git cat-file -e "$h^{commit}" 2>/dev/null || continue   # not a commit: a hex word
-    if ! git merge-base --is-ancestor "$h" master 2>/dev/null; then
-      echo "$f: $h is a commit but is NOT on master"
+    if ! git merge-base --is-ancestor "$h" HEAD 2>/dev/null; then
+      echo "$f: $h is a commit but is NOT an ancestor of HEAD"
       bad=1
     fi
   done
 done
-if [ "$bad" -eq 0 ]; then echo "citations: all on master"; fi
+if [ "$bad" -eq 0 ]; then echo "citations: all reachable from HEAD"; fi
 exit $bad

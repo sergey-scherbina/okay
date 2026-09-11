@@ -25,6 +25,35 @@ class TestScriptConfig extends munit.FunSuite:
         s"the deployment sets $name and Serve.Config has no field for it; it would be read by nothing")
   }
 
+  /**
+   * The DESCRIBE interpreter's last consumer: the prose a user reads
+   * (optics-outside-conf).
+   *
+   * `Config.names` was already checked against the DEPLOYMENT — the
+   * test above — and against nothing a person opens. So a setting
+   * could be declared, rendered into a unit file, read at boot, and
+   * still be undiscoverable, which is what `OKAY_ACME_EAB` was: the
+   * external account binding a commercial CA hands you, named in
+   * specs/acme.md and in no guide.
+   *
+   * The law runs in ONE direction on purpose, and measuring told us
+   * why. A program reads variables its config case class does not
+   * declare — `OKAY_CONF` names the config FILE, so it cannot be a
+   * field of what that file parses into, and `OKAY_STAGING` belongs
+   * to okay-staging's codec switch, which every program shares. The
+   * naive "every OKAY_ in the guide is a setting" would have been
+   * false on both.
+   */
+  test("every setting the config declares is documented where a user would look") {
+    val guide = java.nio.file.Files.readString(
+      okay.deploy.Deployment.repoRoot().resolve("docs/okay-script-guide.md"))
+    // whole names, not substrings: OKAY_TLS is a prefix of three others
+    val named = "OKAY_[A-Z_]+".r.findAllIn(guide).toSet
+    assertEquals(Serve.Config.names.filterNot(named).toVector, Vector.empty,
+      "a setting the program reads that the guide never names: " +
+        "declared, deployable, and undiscoverable")
+  }
+
   test("the names are DERIVED, so this is the whole list and nothing else answers") {
     assert(Serve.Config.names.contains("OKAY_TLS_RELOAD"), Serve.Config.names.toString)
     assert(Serve.Config.names.contains("OKAY_ACME_DOMAINS"), Serve.Config.names.toString)

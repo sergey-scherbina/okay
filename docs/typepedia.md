@@ -145,7 +145,9 @@ same material with the measurements attached.
   `Cut.guard/violation`) — nested using-params resolve to the
   NEAREST scope, verified.
 - **`Throws % E`** — typed aborts; `runEither/runThrows`; the `throws`
-  union type for direct style.
+  union type for direct style, which is declared `into` (see below), so
+  a caller writes `val x: String throws Fault = "a"` with no language
+  import.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
   the canonical `MonadPlus`. A `LazyList` of alternatives is an
   INFINITE choice point (Seq is the parameter, laziness crosses).
@@ -533,6 +535,34 @@ and nothing else in the library casts for that reason:
   not `St % Int`), which is why `Tag.one` still names its row; and
   `pure[F, A]` cannot be split at all, since nothing separates `F`
   from `A` — its 128 call sites keep both arguments.
+- **`into`, on exactly one type** (throws-into, 2026-09-11). Scala 3.9
+  lets a type declaration say "conversions to me are allowed", so the
+  caller no longer writes `import scala.language.implicitConversions`
+  per call site. It may be written only on a class, a trait or an
+  opaque type alias, and it marks the conversion's TARGET — which is
+  the whole of where it applies and does not:
+  - `throws` TAKES it. It is an opaque alias whose design is absorbing
+    four shapes (a value, a raw error, an `Either`, a `Try`), the four
+    conversions were already written, and the import was pure
+    ceremony. The fifth conversion, which went the other way
+    (`A throws E => Either[E | Unsafe, A]`), was DELETED with it: its
+    target is `Either`, which is not ours to mark, so it was the one
+    thing still demanding the import — and it was redundant, being
+    `.wrap`, which is public and used explicitly 38 times. Eliminating
+    is an act now, not a coercion.
+  - `Direct` CANNOT take it, and this is where four of the
+    repository's five language imports are. Its conversions are
+    `Conversion[F[A], A]`: the target is a bare type variable, and
+    `into` marks a declaration. There is nothing to write it on.
+    Auto-coloring keeps asking the language for consent, and should.
+  - `Json` was REFUSED although it fits mechanically (`into enum`
+    compiles, and ~850 construction sites of `JStr`/`JNum`/`JBool`
+    would become bare literals). A `Conversion[String, Json]` turns an
+    already-serialized document into a JSON string LITERAL with no
+    error anywhere — double encoding, in the module whose job is
+    encoding. The feature's own advice is the same: restrict `into` to
+    the absolute minimum, and never write it in case someone might
+    want a conversion later.
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for

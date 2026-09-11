@@ -2,7 +2,7 @@ package okay.mcp
 
 import okay.*
 import okay.given
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, Toolbox}
 import okay.codec.{Json, Schema}
 
 import java.net.{InetAddress, ServerSocket, Socket}
@@ -33,14 +33,13 @@ class TestStdio extends munit.FunSuite {
     val remote = accepted.get()
     acceptor.join()
 
-    val spec = ToolSpec[Add]("add", "add two numbers")
-    val table = Map[String, ToolCall => String]("add" -> { c =>
-      ToolSpec.args[Add](c).fold(e => s"bad args: $e", x => (x.a + x.b).toString)
-    })
+    // one declaration, two interpreters: `specs` is what the
+    // model is told, `table` is what the wire dispatches
+    val box = Toolbox.on[Add]("add", "add two numbers")(x => (x.a + x.b).toString)
 
     val fiber = Async.spawn(Server.run(
       Stdio.of(remote.getInputStream, remote.getOutputStream),
-      Mcp.Info("okay-mcp", "0.1"), Seq(spec), table))
+      Mcp.Info("okay-mcp", "0.1"), box.specs, box.table))
 
     val session = Client.connect(
       Stdio.of(client.getInputStream, client.getOutputStream),

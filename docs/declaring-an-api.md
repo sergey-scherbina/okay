@@ -236,6 +236,18 @@ One inconsistency survives and is reported rather than hidden: a `Map`
 keeps the last of a duplicate name and a `Seq` keeps both, so
 `duplicates` names them.
 
+**The sweep is finished, and it found a second thing.** No module
+declares a tool by hand any more: `RepoAgent` was the last production
+pair — two `ToolSpec` vals beside a `Map` keyed by the same two names,
+handed to one MCP server as two arguments — and the five test tables
+that copied it followed. What the drift argument had not predicted is
+that the two ways of declaring a tool also disagreed about FAILURE:
+the hand-written decode answered `bad args: ...` as prose, `Toolbox`
+answers `{"error": ...}`, and a model calling one of each had to guess
+which shape it was reading. Converting the declaration fixed the
+answer as a side effect, which is the usual sign that the two things
+were one thing.
+
 ## The terse syntax, and why it is spelled that way
 
 ```scala
@@ -304,6 +316,18 @@ outside it, which is how a one-time code came to be spent twice and a
 correct code answered with a 401. It had no witness for four stages
 because no handler had an effect; the property that finally made it
 visible is the one that makes `Login.confirm` correct.
+
+## Where it is used
+
+Every route-serving module in this repository declares its routes now —
+okay-ops, okay-script, okay-http's acceptance fixture, okay-demo,
+okay-chat, okay-admin — which is also how most of the defects above
+were found. Two places deliberately do not, and the reasons are worth
+knowing before you convert something that looks similar: **okay-acme**
+was already right, cutting the query with its own `path(url)` before
+comparing; and **okay-security's `McpAuth`** matches a prefix because
+RFC 9728 allows the resource's path as a suffix of the well-known URI,
+so the prefix is the specification rather than an oversight.
 
 ## Not done yet
 

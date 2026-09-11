@@ -67,16 +67,17 @@ import okay.codec.Schema
 
 case class SearchArgs(query: String, limit: Option[Int])
 given Schema[SearchArgs] = Schema.derived
-val spec = ToolSpec[SearchArgs]("search", "look something up")  // schema derived
+
+// declared and implemented in one place; the schema is derived
+val box = Toolbox.on[SearchArgs]("search", "look something up")(a => search(a.query))
 
 // the agent: no message list, no truncation, no "if context too big"
-val conversation: String ! Agent = Agent.converse("find okay", Seq(spec))
+val conversation: String ! Agent = Agent.converse("find okay", box.specs)
 
 // policy lives here — and only here:
 val (state, ctx) = Handlers.context(Compact.window(4000)(Compact.chars))
-val tools = Handlers.gated(Map("search" -> { c =>
-  ToolSpec.args[SearchArgs](c).fold(e => s"bad args: $e", a => search(a.query))
-}))(approve = c => askTheHuman(c))          // or: execute, sandbox, record
+val tools = Handlers.gated(box.table)(approve = c => askTheHuman(c))
+                                            // or: execute, sandbox, record
 ```
 
 Swap the model handler for a scripted one and the same program is a
@@ -168,6 +169,18 @@ you get is worth knowing.
 **One inconsistency survives, and is reported rather than hidden.** A
 `Map` keeps the last of a duplicate name and a `Seq` keeps both, so the
 two shapes genuinely disagree; `duplicates` names them.
+
+**Nothing in this repository declares a tool by hand any more**
+(optics-outside-tools-adopt, 2026-09-11). The last production pair was
+okay-demo's `RepoAgent`, which kept two `ToolSpec` vals beside a `Map`
+under the same two names and handed both to `RepoMcp`'s server; the
+five test tables that copied that shape went the same way. The
+conversion found something the drift argument had not predicted: the
+hand-written decode answered `"bad args: ..."` as PROSE, while every
+tool declared through `Toolbox` answers `{"error": ...}`. A model
+calling both got two shapes of failure, decided by which module
+happened to declare the tool. That is now one shape, and
+`TestRepoTools` pins it.
 
 **What converting okay-demo changed in the prompt.** The hand-written
 schemas never declared `required`, so the model was never told

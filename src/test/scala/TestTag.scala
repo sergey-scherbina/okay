@@ -61,4 +61,36 @@ class TestTag extends munit.FunSuite {
     val p: Int ! Tag.Of["x", Beep] = Tag.one["x", Beep](Beep.Boop())
     assertEquals(p.runWith(using Tag.handler["x", Beep](h)), 42)
   }
+
+  /**
+   * THE KEY'S OWN LIMIT, pinned the way `TestRowIdentity` pins the
+   * bare row's (tag-key-collision, 2026-09-11).
+   *
+   * `Tag`'s test is BY KEY — "everything else about F is already
+   * erased" — which is what lets one signature appear twice. Read the
+   * other way it is a requirement: two members that share a key have
+   * nothing left to compare, and the row is back where it started.
+   * Measured: this misroutes into the same ClassCastException the key
+   * was introduced to prevent.
+   *
+   * So the rule is not "use a key" but "use a DISTINCT key per member",
+   * and nothing checks it today — docs/many-instances.md says so, and
+   * `tag-distinct-keys` in BACKLOG.md is the compile-time check.
+   */
+  test("two members under ONE key are not told apart — keys must be distinct") {
+    type A = Tag.Of["same", Reader % Int]
+    type B = Tag.Of["same", Reader % String]
+    val p: (Int, String) ! (A + B) =
+      for
+        x <- Tag.one["same", Reader % Int](Reader.Ask()).plus[B]
+        y <- Tag.one["same", Reader % String](Reader.Ask()).at[A + B]
+      yield (x, y)
+
+    intercept[ClassCastException] {
+      val inner = Reader.run[String, (Int, String), A](
+        "ada")(Tag.untag["same", Reader % String](p.at[B + A]))
+      !.run(Reader.run[Int, (Int, String), okay.Pure](
+        7)(Tag.untag["same", Reader % Int](inner)))
+    }
+  }
 }

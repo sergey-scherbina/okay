@@ -118,8 +118,19 @@ type Unsafe = Throwable
  * a plain A, a raw error E, an Either or a Try are all accepted as
  * they are (see the Conversion givens below) and only normalized
  * on elimination by wrap.
+ *
+ * `into` (Scala 3.9, throws-into): the four conversions BELOW may
+ * then be applied without the caller writing
+ * `import scala.language.implicitConversions`. That import is the
+ * language asking for consent per CALL SITE; `into` is the same
+ * consent given once, here, by the type that was designed to absorb
+ * those four shapes and nothing else. It is written on exactly one
+ * type in this repository, which is the discipline the feature asks
+ * for — `Json` was measured as a candidate (850 construction sites)
+ * and REFUSED, because a conversion from String would turn an
+ * already-serialized document into a string literal silently.
  */
-opaque infix type throws[+A, +E <: Unsafe] =
+into opaque infix type throws[+A, +E <: Unsafe] =
   A | E | Either[E, A] | Try[A]
 
 /**
@@ -136,7 +147,15 @@ object throws {
   given [A, E <: Throwable] => Conversion[E, A throws E] = identity
   given [A, E <: Throwable] => Conversion[Either[E, A], A throws E] = identity
   given [A, E <: Throwable] => Conversion[Try[A], A throws E] = identity
-  given [A, E <: Throwable] => Conversion[A throws E, Either[E | Unsafe, A]] = _.wrap
+
+  // The ELIMINATING conversion that used to stand here —
+  // `Conversion[A throws E, Either[E | Unsafe, A]] = _.wrap` — is
+  // gone (throws-into). Its target is `Either`, which is not ours to
+  // mark `into`, so it was the one thing still demanding the language
+  // import from every caller; and it was redundant, its body being
+  // literally `.wrap`, which is public, is what `??` calls, and is
+  // used explicitly 38 times in this repository. Eliminating is an
+  // ACT here, not a coercion: `a.wrap` or `a.??`.
 
   extension [A, E <: Unsafe](a: A throws E)
     // The type ARGUMENTS of Either and Try are erased, so these tests

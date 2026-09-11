@@ -68,4 +68,12 @@ class TestAdmin extends munit.FunSuite {
   test("definedness is the route's own — protection does not widen it") {
     assert(!route.isDefinedAt(Request(Method.Get, "/other", Nil)))
   }
+
+  test("a query string does not hide /admin/replay (optics-outside-routes-adopt)") {
+    // the route compared the WHOLE request target, so a cache-buster
+    // or a tracking parameter turned an authorised replay into a 404.
+    // Live since e9901797 stopped Jetty dropping the query string
+    val ok = post("/admin/replay?t=1", "authorization" -> s"Bearer ${Admin.Issuer.issue()}")
+    assertEquals(ok.status, 200, s"a query string hid the route: ${ok.status}")
+  }
 }

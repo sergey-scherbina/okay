@@ -44,7 +44,9 @@ object RepoMcp {
 
     Server.run(Stdio.std, Server.Serving(
       info = Mcp.Info("okay-repo", "0.1"),
-      tools = Seq(RepoAgent.definitionTool, RepoAgent.readTool),
+      // one declaration, two interpretations: the name sets cannot
+      // disagree because both come from the same vector
+      tools = RepoAgent.specs(repo),
       call = RepoAgent.tools(repo),
       resources = sources.map(s =>
         Mcp.Resource(scheme + s.id, s.id, "a file of this repository",

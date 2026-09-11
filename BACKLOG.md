@@ -37,6 +37,43 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] tag-distinct-keys — a row of `Tag.Of[K, F]` members is only as
+      good as the keys being different, and nothing checks it:
+      measured 2026-09-11, `Of["same", Reader % Int] + Of["same",
+      Reader % String]` misroutes into the ClassCastException the key
+      exists to prevent (pinned in `TestTag`). The check wants to be
+      a `Distinct[R]` given, derived by a macro that walks the row
+      type, collects the singleton keys of its `Tag.Of` members and
+      refuses duplicates with a message naming the two members and
+      pointing at docs/many-instances.md. WHERE to require it is the
+      design question: `Tag.one`/`Tag.tag` cannot see the whole row,
+      so the natural seam is `RowLift.at`/`plus`, which is where two
+      members first coexist in one type — and that is a very hot,
+      very general API. DISQUALIFYING: if requiring it there measures
+      as a compile-time cost on ordinary rows, or breaks inference at
+      `.at`, it dies there and the rule stays a documented one.
+- [ ] tag-test-the-signature-too — a cheaper half-fix, also unproven:
+      `Tag`'s `Effect` instance tests the key ALONE. Given
+      `TypeableK[F]` it could test the key AND the inner operation, so
+      that two members sharing a key but differing in SIGNATURE
+      (`Of["k", Reader % Int]` vs `Of["k", Writer % String]`) route
+      correctly instead of colliding. It does nothing for the same
+      signature under one key, which is the commoner mistake, and it
+      strengthens the given's requirements — every row mentioning
+      `Tag.Of[K, F]` would need `TypeableK[F]` in scope, which is a
+      source-compatibility change. Measure the breakage before
+      writing it.
+- [x] instances-of-any-effect — DONE (2026-09-11): `Instances[F]` is
+      `Tag` with the key read at RUN time — one row member per
+      signature, however many instances, identity by a fresh `Handle`
+      compared by reference. `at`/`route` to perform and to send an
+      already-written program to an instance, `handler(pick)` to run
+      them all in one pass, `only(h)` to strip one back to the plain
+      signature for the effect's own runner (the others stay in the
+      row), `exhausted` to assert none survived. No cast: the handle
+      is compared by reference and the operation is already typed.
+      `TestInstances` pins instances made IN A LOOP, which is the
+      case neither `Tag` nor `Refs` could serve.
 - [x] wroclaw-table-refresh — DONE (2026-09-11): §20's table is one
       whole `scripts/wroclaw-bench.sh 8 3 1` at load 1.7-3.1, every
       engine, after okay's lanes changed underneath the old one. It
@@ -247,6 +284,32 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       real work, not a rename. Wants a lane that measures one of them
       first: okay-rag's code chunker over a real file is the honest
       workload.
+
+## Build
+- [ ] jdk-internal-bad-symbolic-reference — a COLD `okayJVM/compile`
+      can fail with no source position and one error:
+
+          [error] Bad symbolic reference. A signature
+          [error] refers to StackableScope/T in package jdk.internal.vm
+          [error] which is not available.
+
+      `StackableScope` is loom's own internal class behind
+      `StructuredTaskScope`; nothing of ours names `jdk.internal.vm`,
+      and the grep says so. MEASURED 2026-09-11
+      (optics-outside-remaining, a docs-only lane, so the tree could
+      not be the cause): the gate died at 1205 of ~4081 test results,
+      and an UNCHANGED `okayJVM/compile` immediately after recompiled
+      the same 69 sources clean in 9 s. The same shape as
+      `dotty-classfile-crash-transient` with different text: fails
+      cold, passes unchanged.
+      Three things before anyone teaches `scripts/gate.sh` to re-run
+      on it, which is the obvious next step and the dangerous one:
+      the signature must require ZERO `==> X` AND that the only
+      `[error]` lines are this one plus `one error found`; the re-run
+      must be scoped to the failing project, as the Native branch
+      already is; and the rate belongs in a ledger here, because a
+      re-run that hides a real compile failure is worse than a red
+      gate. Not done: seen once, and once is not a signature.
 
 ## okay-codec
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
@@ -642,13 +705,22 @@ or not at all).
       `Acceptance.routes` became a `Router`, and the conversion found
       two live defects — `startsWith("/person")` answered `/personal`,
       and every route answered every verb.
-- [ ] optics-outside-routes-adopt — the other hand-written routers.
-      okay-ops, okay-admin, okay-acme and okay-demo all still match
-      with `case r if r.method == Get && r.url == "/healthz"`, and
-      okay-script's `Site.resolve` still decodes before it splits.
-      Each conversion is small; each is a BEHAVIOUR change at a live
-      endpoint (a query string now matches, a wrong verb now misses),
-      so it wants its own lane and its own gate, not a sweep.
+- [x] optics-outside-routes-adopt — DONE (2026-09-11). Every
+      hand-written router in the tree is a `Router` now: okay-ops and
+      okay-script (stage 4), okay-http's acceptance fixture (stage 1),
+      okay-demo (stage 8's lane), okay-chat, and finally okay-admin's
+      `/admin/replay` and okay-demo's `/whoami`. Each conversion found
+      something; the list is in the CHANGELOG entries.
+
+      TWO WERE LEFT ALONE ON PURPOSE, so nobody converts them later by
+      matching on shape. okay-acme is already correct — it has its own
+      `path(url)` cutting the query before it compares, the only module
+      that did. okay-security's `McpAuth` matches
+      `startsWith("/.well-known/oauth-protected-resource")`, which
+      looks like the `/person` → `/personal` sloppiness and is not:
+      RFC 9728 allows the resource's path as a suffix, so the prefix
+      is probably deliberate and converting it would break spec
+      compliance.
 - [x] optics-outside-routes-query — DONE (2026-09-10, 6468e90a).
       Stage 3 of the spec: the query string, as its own `Query` type
       composed with `&` and handed over by `?`. The finding was a rule
@@ -719,10 +791,23 @@ its owner can price it:
       I/O has to close over its own runner today. Widening to
       `A => String ! Rest` is a separate decision with those three
       callers to carry; see the spec's Out of scope.
-- [ ] optics-outside-tools-adopt — the remaining hand-written pairs.
-      okay-mcp's and okay-http's test tables build a `ToolSpec` and a
-      `Map` side by side the same way; they are tests, so the cost of
-      the drift is lower, but they are also the examples people copy.
+      RE-VERIFIED 2026-09-11: `Persist.append(partition, key, value,
+      ack): Long` returns a value directly — okay-persist is
+      synchronous by design, so nothing in the tree gives a tool a
+      reason to suspend. TRIGGER: the first tool that must do I/O its
+      caller cannot do for it.
+- [x] optics-outside-tools-adopt — DONE (2026-09-11). The entry was
+      wrong that only tests were left: okay-demo's `RepoAgent` is an
+      application and held two `ToolSpec` vals beside a `Map` under
+      the same names, handed to `RepoMcp`'s server as two arguments.
+      It and the five test tables are one `Toolbox` each now. The
+      finding is a BEHAVIOUR one the drift argument had not predicted:
+      the hand-written decode answered `bad args: ...` as prose while
+      `Toolbox` answers `{"error": ...}`, so the same agent reported
+      failure in two shapes depending on which module declared the
+      tool. `TestRepoTools` pins it, in the default gate — the
+      existing `TestRepoAgent` is `Live`-tagged and indexes the whole
+      repository, so the tools' contract had no fast test.
 - [ ] optics-outside-policy — a projection policy is a traversal:
       which fields of a record may be seen, embedded, logged. The
       interpreter that earns it is the AUDIT — "name the fields this
@@ -732,19 +817,37 @@ its owner can price it:
       paid for not having it: price and contact in a summary's text
       sank a priced offer from 0.63 to 0.13
       (`weighed-not-read-out-of-the-embedding`). Cheapest of the six.
+      RE-MEASURED 2026-09-11 against okay-leads, the closest seat this
+      repository has ever had: a `Lead` never travels redacted.
+      `Demand.Report` is aggregates and cannot carry a contact BY
+      CONSTRUCTION; `Demand.deliverable` is a row filter, not a field
+      projection; `TestNoCredentialLogs` is still a regex over
+      committed source with no value to audit. TRIGGER: the first
+      place that hands a record onward with SOME fields removed AND
+      must answer "which fields does this policy touch" with no
+      document in hand. Redaction alone is a function; the AUDIT is
+      what earns the traversal.
 - [ ] optics-outside-live — subscribe to a lens. The lens compiles to
       a wire path, the server pushes only the focused part of the
       document, and a client write comes back as `set`. The most
       valuable of the six to a user and the most work: the optic must
       be reifiable and must survive serialisation. okay-live,
       okay-persist, okay-crdt.
+      MEASURED 2026-09-11 at the only live consumer in the tree, and
+      it is already minimal: `ChatDemo` publishes a KIND
+      (`feed.publish("board")`) and the client re-fetches
+      `/board.json`. A lens-addressed delta would replace a cheap
+      re-fetch of a handful of tasks. TRIGGER: a document large enough
+      that re-fetching it on every change is the measured cost — with
+      the measurement, not the intuition.
 - [ ] optics-outside-query — a query is an optic. `Forget[Sql]`
       compiles it to SQL, `Function1` runs the SAME predicate over a
       `Vector` in a test, `set` compiles to UPDATE. The seat is empty
       — okay-sql is strings plus `Schema` for rows — but typed query
       DSLs are a swamp, which is why the spec ranks this fourth and
       not first. Do not start it before routes and policy have
-      measured the shape.
+      measured the shape. STILL BLOCKED 2026-09-11: routes did; policy
+      has no seat (above), so the shape is half-measured.
 - [ ] optics-outside-topology — a dataflow is an arrow. The ONLY one
       of the six that meets the staticness condition the spec sets for
       reaching for `Arrow` at all: the graph must exist as a value
@@ -752,11 +855,30 @@ its owner can price it:
       Wants `ArrowChoice` or branches fall out of the static picture.
       okay-flink / okay-kafka / okay-reactive, and dataflow's own plan
       value is the incumbent to compare against.
-- [ ] optics-outside-conf — a setting is a lens that knows its path:
-      the error names `server.tls.port` and the reference table
-      generates itself from the same values that read the config.
-      Smallest and least urgent; take it as a warm-up if the others
-      are claimed.
+      MEASURED 2026-09-11: nothing here meets the condition, and why
+      is the useful part. `Stage[I, O, A] = A ! (Take % I + Writer %
+      O)` is a PROGRAM, not a graph — a value before it runs, but
+      everything past the first effect lives in a continuation, so it
+      cannot be walked, drawn, fused or shipped without running it.
+      That is not an oversight: a monadic pipeline's shape legitimately
+      depends on its values. okay-flink is one file of interop with no
+      plan value of our own to compare against. TRIGGER: a second
+      consumer that needs the graph BEFORE it runs.
+- [x] optics-outside-conf — CLOSED 2026-09-11, with one test and no
+      new abstraction. The PATH half is refused by a decision already
+      in the tree: `Serve.Config` is "flat and scalar on purpose" and
+      `Conf.fromEnv` refuses a nested field by name, so a lens into
+      `server.tls.port` would be machinery for a shape nothing here
+      has. The REFERENCE-TABLE half was already built — `envName` is
+      one derivation for the reader and the renderer — and was
+      under-consumed: the list was held against the deployment and
+      against nothing a person opens, so `OKAY_ACME_EAB` was
+      declared, deployable, read at boot and named in no guide.
+      `TestScriptConfig` now asks that question of
+      docs/okay-script-guide.md. The law runs one way only: a program
+      reads variables its config does not declare (`OKAY_CONF` names
+      the config FILE; `OKAY_STAGING` is okay-staging's switch), so
+      "every OKAY_ in the guide is a setting" is false.
 
 ## okay-http
 - [ ] route-arity-one-tuple — one captured parameter arrives at a

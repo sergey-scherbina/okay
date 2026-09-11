@@ -23,6 +23,391 @@ among them; `docs/modules/okay-leads.md` folds into okay-chat's page,
 and the report is now `sbt "okayChat/runMain okay.chat.leads.Report
 leads.csv"`.
 
+## optics-outside-remaining — the four that stay open, measured
+
+Five of the six candidates are closed. This entry is about the other
+four, and it adds no code: each was re-checked for a consumer against
+the tree as it is TODAY, and the measurement and the trigger are
+written into the spec and the backlog so the next agent neither
+re-derives them nor builds one without a caller.
+
+**policy** was tested against the sharpest seat this repository has
+ever had — `okay-leads`, which landed this morning and exists to hold
+"the fields a provider would pay for, none of the data that would make
+passing them on illegal". It still does not open: a `Lead` never
+travels redacted. `Demand.Report` is aggregates and cannot carry a
+contact BY CONSTRUCTION, and `deliverable` is a row filter, not a
+field projection. Redaction alone is a function; the AUDIT is the
+interpreter that earns a traversal, and nothing here asks for one.
+
+**topology** is the interesting refusal. The spec says a dataflow is
+the only candidate meeting its staticness condition — and nothing in
+this tree meets it. `Stage[I, O, A] = A ! (Take % I + Writer % O)` is
+a PROGRAM, not a graph: a value before it runs, but everything past
+the first effect lives inside a continuation, so it cannot be walked,
+drawn, fused or shipped without running it. That is not an oversight,
+it is what a monadic pipeline is: its shape may depend on its values.
+An `Arrow` is precisely that trade, priced in `ArrowChoice`.
+
+**live** was measured at the only live consumer in the tree, and it is
+already minimal — `ChatDemo` publishes a KIND and the client re-fetches
+`/board.json`, a handful of tasks. **query** stays blocked behind
+policy by the spec's own ranking. **tools-effectful**: `Persist.append`
+returns a `Long` directly, so nothing gives a tool a reason to suspend.
+
+Found on the way, and filed rather than swallowed: a COLD
+`okayJVM/compile` failed this lane's gate with `Bad symbolic
+reference ... jdk.internal.vm.StackableScope` — loom's own internal
+class, which nothing of ours names — and an UNCHANGED recompile of the
+same 69 sources passed in 9 s. A docs-only lane cannot have caused it.
+BACKLOG's `jdk-internal-bad-symbolic-reference` has the shape, and the
+three conditions that would have to hold before `gate.sh` is taught to
+re-run on it. Once is not a signature.
+
+The rule, once more, because it is the whole content: a declaration
+earns an optic when it is handed to more than one interpreter and at
+least one of them DESCRIBES rather than runs. Every candidate that
+closed had that consumer already. Every one still open is waiting for
+one, and waiting is the correct state.
+
+## optics-outside-conf — declared, deployable, and in no guide
+
+The sixth optics candidate wanted "a setting is a lens that knows its
+path". It closes with one test and no new abstraction, because half of
+it is refused by a decision already in the tree and half of it was
+already built.
+
+**Refused:** `Serve.Config` is *flat and scalar on purpose* — an
+environment carries text, numbers, yes/no and a secret REFERENCE, and
+the pairs a program wants (a certificate WITH its key) are assembled
+where half of one can be a named refusal. `Conf.fromEnv` says the same
+thing at run time, by name. Nothing here is nested, so a lens into
+`server.tls.port` would be machinery for a shape nothing has.
+
+**Built, and under-consumed:** `envName` already derives
+`OKAY_TLS_RELOAD` from `tlsReload`, one derivation for the program
+that reads and the deployment that renders, and `Serve.Config.names`
+publishes the list. That list was held against the DEPLOYMENT and
+against nothing a person opens. So a setting could be declared,
+rendered into a unit file, read at boot — and undiscoverable.
+`OKAY_ACME_EAB` was: the external account binding a commercial CA
+hands you out of band, without which it refuses the order. It was in
+specs/acme.md and in no guide. The red test named it.
+
+**The law runs one way, and measuring is what said so.** The obvious
+form — every `OKAY_*` in the guide is a setting — is false twice:
+`OKAY_CONF` names the config FILE, so it cannot be a field of what
+that file parses into, and `OKAY_STAGING` is okay-staging's codec
+switch that every program shares. A program's environment is strictly
+larger than its config; only "nothing declared is undiscoverable"
+holds.
+
+## optics-outside-tools-adopt — the last hand-written tool, and the shape of a failure
+
+BACKLOG had this down as test tables only. One of the six was
+okay-demo's `RepoAgent`: two `ToolSpec` vals beside a `Map` keyed by
+the same two names, with `RepoMcp` handing both structures to one
+`Server.Serving`. That is an application, not a test.
+
+**What the conversion changed is not only the drift.** The
+hand-written decode answered `"bad args: ..."` — prose — where every
+tool declared through `Toolbox` answers `{"error": "<tool>: <why>"}`.
+So the same agent reported failure in two shapes, and which shape you
+got was decided by which module happened to declare the tool. A model
+cannot parse its way out of that. `TestRepoTools` was written first
+and failed on exactly it:
+
+    bad args: missing field 'name' in Definition
+
+It lives in the default gate, on a two-file in-memory repository,
+because the suite that did cover these tools (`TestRepoAgent`) is
+`Live`-tagged: it indexes this entire repository, so the tools'
+CONTRACT had no fast test at all.
+
+`RepoAgent.toolbox` / `specs` / `tools` replace the pair, following
+`BoardTools`' rule that there is no repo-free `specs` — every caller
+has a repository. The five test tables in okay-mcp and okay-http
+became one `Toolbox` each; they matter more than a test usually does,
+being what a reader of okay-mcp copies. So does the tutorial in
+`docs/modules/okay-agent.md`, which still showed the hand-written
+`Map` and now does not.
+
+Alongside: one unused import (`okay.given` in `TestRouterOut`, from
+the openapi-responses lane) removed after checking both JVM and JS
+compile clean without it. `scripts/gate.sh` does not look at warnings
+— that check is still a person's job, and this one had gone unseen
+through two green gates.
+
+## gate-retry-script — the loop that recovered seven lost gates
+
+Every agent here waits for a quiet box before starting a matrix. That
+protects the first minute of a forty-minute run and nothing after it:
+seven gates died in one session on 2026-09-11, every one of them
+started on an idle machine and overtaken by a sibling's build, and the
+RAM guard takes the heaviest JVM — which is always the run furthest
+along. The missing half was starting over.
+
+`scripts/gate-retry.sh` waits, runs `gate.sh`, and retries only when
+the attempt produced NO VERDICT. That line is the whole design. A run
+that printed `gate: RED` has said something true about the tree, so
+its exit code is passed through untouched; a loop that re-rolled a red
+until it came up green would be a machine for landing broken trees.
+The killed run is distinguishable precisely because it says nothing,
+and `gate.sh` was already the thing that decides what "says something"
+means — this script only reads its verdict.
+
+`--probe` prints the box reading the wait is made of, so a lane that
+seems to be hanging can be told from one that is queued. It was
+written against its own first run: it reported `busy` and named the
+gate JVM that was making it busy.
+
+`--read <log>` borrows `gate.sh`'s own idea: it answers what the loop
+would do with a log you already have, calling the same one function
+the loop calls, so the safety claim is checkable without waiting for
+the box to kill something. All three branches were run against real
+logs from this session — the merged-tree RED (not retried), this
+lane's predecessor GREEN, and an ops log the box took (retry).
+
+## docs-index-leads-row — the index caught a page nobody linked
+
+`TestDocsIndex` went red on the merged tree, and the failing side was
+not this session's: a1deaf4a shipped `docs/modules/okay-leads.md`
+without its row in the `docs/README.md` table. That is exactly the
+drift the test was written for — eight rows had gone missing once
+before anyone noticed — so the test did its job across a lane
+boundary, and the fix is the row.
+
+Landing it here rather than handing it back, because master is red
+until it lands and every lane's push queues behind that.
+
+## optics-outside-routes-adopt — the last two, and two left alone with reasons
+
+okay-admin's `POST /admin/replay` and okay-demo's `GET /whoami` were
+the last routes in the tree comparing the WHOLE request target, so both
+missed on a query string — live since e9901797 stopped Jetty dropping
+it. A test watched the admin one fail first, and the failure was
+sharper than a 404: a `MatchError`, because calling the partial
+function directly leaves nothing to turn "undefined" into a status.
+
+Both are `Router`s now. `TwoNode` keeps its own `isDefinedAt`/`apply`
+wrapper, because that is what answers 503 to a POST from a follower —
+folding the leader gate into the table would erase the difference
+between a wrong route and a wrong node, which are 404 and 503 to a
+caller.
+
+**Two were surveyed and deliberately NOT converted**, and the reasons
+are recorded in BACKLOG and in the guide, because in a sweep the
+dangerous places are not the ones that look similar and need changing
+— they are the ones that look similar and do not. okay-acme is already
+correct: it has its own `path(url)` cutting the query before it
+compares, the only module in the repository that did. okay-security's
+`McpAuth` matches `startsWith("/.well-known/oauth-protected-resource")`,
+which looks exactly like the `/person` → `/personal` sloppiness stage 1
+found and is not — RFC 9728 allows the resource's path as a suffix of
+the well-known URI, so the prefix is the specification, and converting
+it would have broken compliance.
+
+That closes `optics-outside-routes-adopt`, open since stage 1: every
+route-serving module in this repository declares its routes. Landed as
+8da5992a.
+
+## openapi-responses — the declaration is the handler's type
+
+Nothing in the tree declared what an operation answers: a handler
+built `Response(200, …)` by hand, so every operation in the rendered
+document said "undeclared". That was the decider for whether a
+document is worth serving.
+
+The fix is not an annotation beside the handler but a change to its
+TYPE. `Router.out` / `outAt` / `jsonOut` / `jsonOutAt` take a handler
+that answers a VALUE, and the router encodes it with the same `Schema`
+the entry carries — the output side of `json[B]`, and a declaration by
+construction: a document cannot promise what the service does not
+send. `Entry` gained `answers: Vector[Answer]`, and okay-openapi
+renders them sorted by status, each with its schema.
+
+Two things fall out. The router declares the failures IT produces —
+`jsonOut` answers 400 with `{"error": …}` when a body does not parse,
+so the entry says so without the author writing anything. And a
+handler that still builds its own `Response` (`on`, `at`) declares
+nothing and the document says exactly that, which makes the hole a
+per-route choice rather than a hole in the model.
+
+5 tests in okay-http holding the declaration and the wire together (a
+declared status is the status sent; the entry's schema is the one the
+answer was encoded by), 11 in okay-openapi. Touches Route.scala, whose
+arc (optics-outside) has all eight of its stages landed and no stage
+planned; its owner was asked in the room twice, and the operator said
+take it. Commits: a1ed60c4, and the cross-platform test fix beside it.
+## instances-of-any-effect — the fourth corner: instances of ANY effect, made at run time
+
+Three routes to several instances of one effect existed and left one
+shape unserved:
+
+                 | named at compile time | made at run time
+    -------------|-----------------------|------------------
+    one effect   | `Keyed`/`Tag` at State| `Refs`
+    any effect   | `Tag`                 | nothing
+
+The empty cell is what real systems ask for: one `Users` per tenant,
+one `Cache` per shard, where the tenants come out of a config file
+nobody has read at compile time. `Tag` needs a literal per instance;
+`Refs` makes instances from data but only of state.
+
+`Instances[F]` fills it — `Tag` with the key read at run time:
+
+  at(h)(op)          perform one operation at one instance
+  route(h)(p)        send an ALREADY WRITTEN program to one instance
+  handler(pick)      one pass, the handler chosen by handle
+  only(h)(p)         strip ONE instance back to the plain signature,
+                     leaving the others in the row for their turn
+  exhausted(p)       assert none survived, naming the handle if one did
+
+One row member per SIGNATURE, however many instances — the same trade
+`Refs` makes, and for the same reason. The test asks the signature
+first and the handle never, which is one more than `Tag` does: two
+signatures under instances are an ordinary row, and only a shared
+handle within one signature could confuse anything — and a handle is a
+fresh object, so sharing one is deliberate.
+
+NO CAST, which `Refs` cannot say: the handle is compared by reference
+and the operation is already typed, so nothing is recovered from
+erasure. What is given up instead is the row's knowledge of which
+instances exist — hence `exhausted`, where the caller asserts what the
+type cannot.
+
+`TestInstances` pins five cases, and the third is the point: instances
+made IN A LOOP from a list of tenant names, which neither of the other
+two routes could serve.
+
+## throws-into — `A throws E` stops asking the language for permission, and the conversion that kept asking was redundant
+
+Scala 3.9 lets a type declaration say "conversions to me are allowed",
+so a caller no longer writes `import scala.language.implicitConversions`
+at every site. The operator brought the feature; the question, as
+before, was where it pays. It may be written only on a class, a trait
+or an opaque type alias, and it marks the conversion's TARGET — which
+decides everything.
+
+**One type in this repository takes it.** `throws` is an opaque alias
+whose whole design is absorbing four shapes — a value, a raw error, an
+`Either`, a `Try` — and its four `Conversion` givens were already
+written. The import was ceremony on top of a decision the type had
+already made:
+
+    into opaque infix type throws[+A, +E <: Unsafe] =
+      A | E | Either[E, A] | Try[A]
+
+`TestThrows.scala` now carries a comment where its import used to be,
+because deleting that line IS the test.
+
+**The fifth conversion went with it, and was redundant rather than
+lost.** `Conversion[A throws E, Either[E | Unsafe, A]]` ran the other
+way, so its target was `Either`, which is not ours to mark — it was
+the one thing still demanding the import. Its body was literally
+`_.wrap`, and `.wrap` is public, is what `??` calls, and is used
+explicitly 38 times here. Eliminating a `throws` is an act now, not a
+coercion. Nothing in the repository relied on it implicitly: `catching`
+already called `.wrap` by hand, and a full `Test/compile` found no
+other site, which is what the claim predicted.
+
+The measurement that pinned it, before any of this was written: with
+the fifth conversion's use present, a `-feature` compile reports
+exactly one warning; with it removed, zero. Afterwards, a clean
+`-feature -deprecation` compile of the core and its tests: zero.
+
+**Two candidates were refused, and the reasons are the useful part.**
+`Direct` cannot take `into` at all — its conversions are
+`Conversion[F[A], A]`, the target is a bare type variable, and there is
+no declaration to write the modifier on. Four of the repository's five
+language imports are auto-coloring's and they stay, which for the
+feature where "the danger lives" is the right answer anyway; the note
+now sits in docs/direct-style.md beside the import, so the next reader
+does not retry it. `Json` fits mechanically — `into enum` compiles, and
+~850 construction sites of `JStr`/`JNum`/`JBool` would become bare
+literals — and was refused on a concrete hazard rather than taste: a
+`Conversion[String, Json]` turns an already-serialized document into a
+JSON string LITERAL silently, which is double encoding in the module
+whose job is encoding. The feature's own documentation gives the same
+advice, to keep `into` types to the absolute minimum.
+
+Landed as ab4d6a7c (the type and the test) and ada48b5e (the rule and
+the two refusals, in docs/typepedia.md and docs/direct-style.md).
+Gate: the full matrix twice, 4185 then 4186 tests, 0 failures, 0
+warnings, the second run after a rebase because master had gained
+`Tag.scala` under the lane; `Test/compile` repo-wide before both,
+since deleting a public conversion reaches every module, and a clean
+`-feature -deprecation` compile, because the warning this lane is
+about does not appear without that flag.
+
+## tag-key-collision — the key restores identity only if the keys differ, and nothing said so
+
+`Tag` exists so a row can hold two instances of one signature, and its
+`Effect` instance tests BY KEY — "everything else about F is already
+erased". Read the other way that is a requirement nobody had written
+down, and a probe answered it: two members sharing a key have nothing
+left to compare.
+
+    type A = Tag.Of["same", Reader % Int]
+    type B = Tag.Of["same", Reader % String]
+
+    THREW: java.lang.ClassCastException: class java.lang.String
+           cannot be cast to class java.lang.Integer
+
+That is exactly the failure a key exists to prevent, reached by using
+one carelessly. It is now pinned in `TestTag` beside the cases that
+work, stated in `Tag`'s own scaladoc, and written into
+docs/many-instances.md where the route is taught — the rule is not
+"use a key" but "use a DISTINCT key per member".
+
+Three follow-ups filed rather than guessed at:
+
+  tag-distinct-keys — a `Distinct[R]` given, derived by a macro over
+    the row type, refusing duplicates at compile time. The design
+    question is WHERE to require it: `Tag.one`/`tag` cannot see the
+    whole row, so the seam is `RowLift.at`/`plus` — very hot, very
+    general. Disqualified if it costs compile time on ordinary rows.
+  tag-test-the-signature-too — test the key AND the inner operation,
+    so members sharing a key but differing in signature route
+    correctly. Does nothing for the commoner mistake (same signature,
+    same key) and strengthens the given's requirements, which is a
+    source-compatibility change. Measure the breakage first.
+  instances-of-any-effect — the gap the three routes leave: `Refs`
+    gives run-time instances but only of state, `Tag` gives any
+    effect but only compile-time names. Nothing gives run-time
+    instances of an arbitrary effect — one `Users` per tenant read
+    from config. `Tag` with a runtime key is the shape.
+
+## openapi-render — the document as a rendering, stage 0
+
+The operator asked for OpenAPI support; the board already governed how
+to start it ("do NOT start this as generate OpenAPI — name the
+consumer"), so specs/openapi.md named the reader first and this lane
+renders what the input actually supports.
+
+New JVM module okay-openapi. `OpenApi.document(api, router)` reads
+`Router.entries` — the same vector that dispatches — and renders
+OpenAPI 3.1: paths in the order the code declared them, methods, path
+parameters from the template, and a request body whose schema is
+`JsonSchema.of` over the very `Schema` the decoder was derived from.
+3.1 because its schema dialect IS JSON Schema, so okay-codec's
+renderer is the whole schema story; the document is `Json` rather than
+a typed model of a standard this repository does not own.
+
+Eight tests, the first of which is the renderer's law: every entry
+appears exactly once and the document names no path the router does
+not dispatch.
+
+Two honesties. An operation whose responses nobody declared SAYS
+"undeclared" rather than claiming a `200` — the tree has no response
+declarations at all. And the spec is corrected where building
+disproved it: `Entry` carries the path TEMPLATE but not the
+parameters' kinds, so `Route[Int]("id")` renders as a string; the kind,
+the query parameters and the responses are declarations in okay-http,
+filed under BACKLOG "openapi" for the arc that owns that file. The
+third is what decides whether a document is worth serving, which is
+why this module does not serve one yet. Commit: 48c1c36f.
+
 ## leads — the ledger the monetisation conversation starts from (specs/leads.md)
 
 The operator's question was how to make the chat prototype pay for its

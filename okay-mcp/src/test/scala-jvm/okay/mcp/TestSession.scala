@@ -2,7 +2,7 @@ package okay.mcp
 
 import okay.*
 import okay.given
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, ToolSpec, Toolbox}
 import okay.codec.{Json, Schema}
 
 /**
@@ -15,10 +15,9 @@ class TestSession extends munit.FunSuite {
   final case class Add(a: Int, b: Int)
   given Schema[Add] = Schema.derived
 
-  val spec = ToolSpec[Add]("add", "add two numbers")
-  val table = Map[String, ToolCall => String]("add" -> { c =>
-    ToolSpec.args[Add](c).fold(e => s"bad args: $e", x => (x.a + x.b).toString)
-  })
+  // one declaration, two interpreters: `specs` is what the
+  // model is told, `table` is what the wire dispatches
+  val box = Toolbox.on[Add]("add", "add two numbers")(x => (x.a + x.b).toString)
 
   /** two Links, wired to each other: the wire, in memory */
   def wire(): (Link, Link) =
@@ -38,12 +37,12 @@ class TestSession extends munit.FunSuite {
   val serverInfo = Mcp.Info("okay-mcp", "0.1")
 
   test("the handshake happens, and the server says who it is") {
-    val s = connected(Server.serve(serverInfo, Seq(spec), table))
+    val s = connected(Server.serve(serverInfo, box.specs, box.table))
     assertEquals(s.server, Some(serverInfo))
   }
 
   test("tools/list and tools/call, across a real wire") {
-    val s = connected(Server.serve(serverInfo, Seq(spec), table))
+    val s = connected(Server.serve(serverInfo, box.specs, box.table))
     assertEquals(s.tools.runWith.map(_.name), Seq("add"))
     val call = ToolCall("c1", "add", Json.JObj(Vector(
       "a" -> Json.JNum(20), "b" -> Json.JNum(22))))
@@ -51,7 +50,7 @@ class TestSession extends munit.FunSuite {
   }
 
   test("a tool the server does not have answers, and the session lives on") {
-    val s = connected(Server.serve(serverInfo, Seq(spec), table))
+    val s = connected(Server.serve(serverInfo, box.specs, box.table))
     val bad = s.call(ToolCall("c1", "nope", Json.JObj(Vector.empty))).runWith
     assert(bad.startsWith("error:"), bad)
     // the session is not poisoned: the next call still works

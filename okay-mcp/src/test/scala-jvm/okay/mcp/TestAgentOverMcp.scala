@@ -20,15 +20,14 @@ class TestAgentOverMcp extends munit.FunSuite {
   final case class SearchArgs(query: String, limit: Option[Int])
   given Schema[SearchArgs] = Schema.derived
 
-  val spec = ToolSpec[SearchArgs]("search", "look something up")
-
-  val table = Map[String, ToolCall => String]("search" -> { c =>
-    ToolSpec.args[SearchArgs](c).fold(e => s"bad args: $e",
-      a => s"${a.limit.getOrElse(10)} hits for '${a.query}'")
-  })
+  // one declaration; `specs` is what the agent is told about and
+  // `table` is what answers the call, so the two runs below cannot be
+  // comparing a tool against a differently-declared one
+  val box = Toolbox.on[SearchArgs]("search", "look something up")(a =>
+    s"${a.limit.getOrElse(10)} hits for '${a.query}'")
 
   /** the program under test — note what it does NOT say */
-  def program: String ! Agent = Agent.converse("find okay", Seq(spec))
+  def program: String ! Agent = Agent.converse("find okay", box.specs)
 
   val call = ToolCall("c1", "search", Json.JObj(Vector(
     "query" -> Json.JStr("okay"), "limit" -> Json.JNum(3))))
@@ -53,11 +52,11 @@ class TestAgentOverMcp extends munit.FunSuite {
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
       def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
-    Async.spawn(Server.run(link(down, up), Mcp.Info("okay-mcp", "0.1"), Seq(spec), table)): Unit
+    Async.spawn(Server.run(link(down, up), Mcp.Info("okay-mcp", "0.1"), box.specs, box.table)): Unit
     Client.connect(link(up, down), Mcp.Info("agent", "1")).runWith.handler
 
   test("the same agent program, local tools and MCP tools, same answer") {
-    val local = run(program)(Handlers.tools(table))
+    val local = run(program)(Handlers.tools(box.table))
     val overMcp = run(program)(mcpTools)
     assertEquals(overMcp, local)
     assertEquals(overMcp, "done")
@@ -86,13 +85,13 @@ class TestAgentOverMcp extends munit.FunSuite {
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
       def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
-    Async.spawn(Server.run(link(down, up), Mcp.Info("okay-mcp", "0.1"), Seq(spec), table)): Unit
+    Async.spawn(Server.run(link(down, up), Mcp.Info("okay-mcp", "0.1"), box.specs, box.table)): Unit
     val session = Client.connect(link(up, down), Mcp.Info("agent", "1")).runWith
 
     // discovered, not declared: the specs a model is told about can
     // come from the server, schema and all
     val discovered = session.tools.runWith
-    assertEquals(discovered, Seq(spec))
+    assertEquals(discovered, box.specs)
     assertEquals(run(Agent.converse("find okay", discovered))(session.handler), "done")
   }
 }

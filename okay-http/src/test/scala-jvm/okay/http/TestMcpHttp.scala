@@ -4,7 +4,7 @@ import okay.*
 import okay.given
 import okay.codec.{Json, Schema}
 import okay.mcp.{Client, Duplex, Mcp, Rpc, Server as McpServer}
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, Toolbox}
 
 /**
  * MCP over streamable HTTP, against a real server on a real port —
@@ -24,11 +24,10 @@ class TestMcpHttp extends munit.FunSuite {
   given Schema[Add] = Schema.derived
 
   val info = Mcp.Info("okay-http-mcp", "0.1")
-  val spec = ToolSpec[Add]("add", "add two numbers")
-  val table = Map[String, ToolCall => String]("add" -> { c =>
-    ToolSpec.args[Add](c).fold(e => s"bad args: $e", x => (x.a + x.b).toString)
-  })
-  val serving = McpServer.Serving(info, tools = Seq(spec), call = table)
+  // one declaration, two interpreters: `specs` is what the
+  // model is told, `table` is what the wire dispatches
+  val box = Toolbox.on[Add]("add", "add two numbers")(x => (x.a + x.b).toString)
+  val serving = McpServer.Serving(info, tools = box.specs, call = box.table)
 
   val http = Transports.http()
 
@@ -124,7 +123,7 @@ class TestMcpHttp extends munit.FunSuite {
           pure(Response(200, Seq(("content-type", "text/event-stream")),
             Http.one(s"data: $msg\n\n".getBytes("UTF-8"))))
         case Rpc.Request(id, Mcp.ToolsList, _) =>
-          val msg = Rpc.encode(Rpc.Answer(id, Mcp.toolsResult(Seq(spec))))
+          val msg = Rpc.encode(Rpc.Answer(id, Mcp.toolsResult(box.specs)))
           pure(Response(200, Seq(("content-type", "text/event-stream")),
             Http.one(s"data: $msg\n\n".getBytes("UTF-8"))))
         case _ => pure(Response(202, Nil, Http.one(Array.empty)))

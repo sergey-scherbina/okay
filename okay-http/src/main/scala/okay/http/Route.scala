@@ -713,6 +713,55 @@ final class Router private (val entries: Vector[Router.Entry]):
         },
       Some(okay.codec.JsonSchema.of(sc))))
 
+  /**
+   * THE HANDLER ANSWERS A VALUE, NOT A RESPONSE (openapi-responses).
+   *
+   * This is the output side of `json[B]`, and it is a declaration by
+   * construction: the router encodes the handler's answer with the
+   * same `Schema` the entry carries, so what a document says and what
+   * a client receives are the same derivation. A handler that builds
+   * its own `Response` is still allowed (`on`, `at`) — it simply
+   * declares nothing, and a renderer says so.
+   */
+  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
+                        (h: A => R ! Async)(using sr: okay.codec.Schema[R]): Router =
+    outAt[A, R](method, route, status)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
+                          (h: (A, Request) => R ! Async)(using sr: okay.codec.Schema[R]): Router =
+    new Router(entries :+ new Router.Entry(method, route.describe,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r =>
+        if r.method != method then None
+        else route.unapply(r.url).map(a => h(a, r).map(Router.encoded(status, _))),
+      None,
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"))))
+
+  /** both sides declared: a body in, a value out */
+  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
+                               (h: (A, B) => R ! Async)
+                               (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
+    jsonOutAt[A, B, R](method, route, status)((a, b, _) => h(a, b))
+
+  /** the same, with the request in hand */
+  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
+                                 (h: (A, B, Request) => R ! Async)
+                                 (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
+    new Router(entries :+ new Router.Entry(method, route.describe,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r =>
+        if r.method != method then None
+        else route.unapply(r.url).map { a =>
+          okay.codec.Codecs.json(sb).decode(
+            okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
+            case Right(b) => h(a, b, r).map(Router.encoded(status, _))
+            case Left(why) => pure(Router.badRequest(why))
+        },
+      Some(okay.codec.JsonSchema.of(sb)),
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"),
+             Router.badRequestAnswer)))
+
   /** the same, reading a case class */
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     ofAt(method, route)((c, _) => h(c))
@@ -802,12 +851,48 @@ object Router:
    * so an `isDefinedAt` followed by an `apply` spent it twice and
    * answered 401 to a correct code (optics-outside stage 7).
    */
+  /**
+   * What an operation ANSWERS, declared (openapi-responses): a status
+   * and, when there is one, the JSON Schema of what it sends.
+   *
+   * There are two ways for this to be true rather than hopeful. A
+   * handler that answers a VALUE declares by its own type — the
+   * router encodes with the same `Schema` the entry carries, so the
+   * declaration cannot drift from what is sent. And the router
+   * declares the failures IT produces itself: `json[B]` answers 400
+   * with `{"error": …}` when a body does not parse, so the entry says
+   * so without the author writing anything.
+   *
+   * A handler that still builds its own `Response` declares nothing,
+   * and a renderer says exactly that rather than inventing a 200.
+   */
+  final case class Answer(status: Int, schema: Option[okay.codec.Json], description: String)
+
   final class Entry private[http] (val method: Method, val path: String,
                                    private[http] val matches: Request => Boolean,
                                    private[http] val run: Request => Option[Response ! Async],
                                    /** the declared body's JSON Schema, when there is one —
                                     * what a renderer reads, as `Toolbox` already gives tools */
-                                   val body: Option[okay.codec.Json] = None)
+                                   val body: Option[okay.codec.Json] = None,
+                                   /** what it answers, when the handler's type said so */
+                                   val answers: Vector[Answer] = Vector.empty)
+
+  /** the shape of the router's own error answer — declared, because
+   * the router produces it whether or not the author thought about it */
+  private[http] val errorSchema: okay.codec.Json =
+    okay.codec.Json.JObj(Vector(
+      "type" -> okay.codec.Json.JStr("object"),
+      "properties" -> okay.codec.Json.JObj(Vector(
+        "error" -> okay.codec.Json.JObj(Vector("type" -> okay.codec.Json.JStr("string"))))),
+      "required" -> okay.codec.Json.JArr(Vector(okay.codec.Json.JStr("error")))))
+
+  private[http] val badRequestAnswer: Answer =
+    Answer(400, Some(errorSchema), "the body did not parse; the answer names what was wrong")
+
+  /** the declared answer, encoded by the schema the entry carries */
+  private[http] def encoded[R](status: Int, r: R)(using okay.codec.Schema[R]): Response =
+    Response(status, Seq("content-type" -> "application/json"),
+      Http.one(okay.codec.Codecs.writeJson(r).getBytes(java.nio.charset.StandardCharsets.UTF_8)))
 
   /** a request that does not decode is answered with data, never an
    * exception: the caller can see what was wrong with what they sent */

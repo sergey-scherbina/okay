@@ -845,6 +845,143 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### What stays open, and what each is waiting for — 2026-09-11 (optics-outside-remaining)
+
+Five candidates are closed: routes, tools, the query string, DESCRIBE
+with a consumer that can break, and conf. The four below were
+re-checked for a consumer against the tree AS IT IS TODAY, which
+includes `okay-leads` — a module that landed this morning and whose
+whole purpose is "the fields a provider would pay for, none of the
+data that would make passing them on illegal", the closest thing this
+repository has ever had to a projection policy.
+
+None of them opened. What follows is the measurement and the TRIGGER
+that would open each, written down so the next agent neither
+re-derives it nor, worse, builds one of these without a caller — the
+trap this arc has now recorded four times.
+
+**policy — no seat, and `okay-leads` is the sharpest test of that.**
+A `Lead` never travels redacted. `Demand.Report` is aggregates —
+counts, digests, pairs — and cannot carry a contact by construction
+rather than by policy; `Demand.deliverable` is a row FILTER (has a
+contact, is not finished), not a field projection. The other candidate
+seat, `TestNoCredentialLogs`, is still a regex over committed source
+with no value-level projection to audit, and the adapters it guards
+have no log lines at all. **Trigger:** the first place that hands a
+record to an outside eye with SOME fields removed AND has to answer
+"which fields does this policy touch" with no document in hand. The
+audit is the interpreter that earns the traversal; redaction alone is
+a function.
+
+**query — blocked behind policy, by the spec's own ranking.** okay-sql
+is still strings plus `Schema` for rows. Unchanged, deliberately: a
+typed query DSL is a swamp, and the spec asks for routes and policy to
+measure the shape first. Routes did; policy has not.
+
+**live — measured at the only live consumer in the tree, and it is
+already minimal.** `ChatDemo` publishes a KIND
+(`feed.publish("board")`) and the client re-fetches `/board.json`. A
+lens-addressed push would replace a cheap re-fetch of a handful of
+tasks with an optic that must be reifiable AND survive serialisation.
+**Trigger:** a document large enough that re-fetching it on every
+change is the measured cost — with the measurement, not the intuition.
+
+**topology — the staticness condition is met by nothing here, and WHY
+is the useful part.** `Stage[I, O, A] = A ! (Take % I + Writer % O)`
+is a program, not a graph. It is a value before it runs, but
+everything past the first effect lives inside a continuation, so it
+cannot be walked, drawn, fused or shipped without running it. That is
+not an oversight: a monadic pipeline's shape legitimately depends on
+its values, and an `Arrow` is exactly the trade — a static shape, at
+the price of needing `ArrowChoice` before a branch can exist at all.
+okay-flink is one file of interop with no plan value of our own to
+compare against. **Trigger:** a second consumer that needs the graph
+BEFORE it runs — a renderer, a fuser, or a cluster shipper.
+
+**tools-effectful — the premise re-verified rather than recalled.**
+`Persist.append(partition, key, value, ack): Long` returns a value
+directly; okay-persist is synchronous by design, so nothing in the
+tree gives a tool a reason to suspend. All three callers —
+`Mcp.Server`, `Handlers.tools`, `Stepper` — take `A => String`.
+**Trigger:** the first tool that must do I/O its caller cannot do for
+it.
+
+The rule the arc has been enforcing on itself, one more time, because
+it is the whole content of this section: **a declaration earns an
+optic when it is handed to more than one interpreter and at least one
+of them DESCRIBES rather than runs.** Every candidate that closed had
+that consumer in the tree already. Every candidate still open is
+waiting for one, and the waiting is the correct state.
+
+### The conf candidate — CLOSED 2026-09-11 (optics-outside-conf)
+
+The sixth candidate asked for "a setting is a lens that knows its
+path: the error names `server.tls.port`". Half of it is refused by a
+decision already in the tree and half of it was already built, which
+is worth writing down rather than discovering twice.
+
+**The path half is refused.** `Serve.Config` says *flat and scalar on
+purpose*: an environment carries text, numbers, yes/no and a secret
+REFERENCE, and the pairs a program actually wants — a certificate WITH
+its key, an ACME account WITH its domains — are assembled where half
+of one can be a named refusal instead of a silent fallback. There is
+no nested config in this repository, so a path lens would be
+machinery for a shape nothing has. `Conf.fromEnv` refuses a nested
+field BY NAME, which is the same decision stated at run time.
+
+**The description half was built and under-consumed.** `envName`
+derives `OKAY_TLS_RELOAD` from `tlsReload`, one derivation for the
+program that reads and the deployment that renders, and
+`Serve.Config.names` publishes the list. `TestScriptConfig` held that
+list against the DEPLOYMENT and against nothing a person opens — so a
+setting could be declared, rendered into a unit file, read at boot and
+still be undiscoverable. `OKAY_ACME_EAB` was exactly that: the
+external account binding a commercial CA hands you out of band, in
+specs/acme.md and in no guide. The red test named it; the fix is two
+rows and a paragraph in `docs/okay-script-guide.md`.
+
+**The law is one-directional, and the measurement is why.** The
+obvious form — every `OKAY_*` the guide names is a setting — is false
+twice over. `OKAY_CONF` names the config FILE, so it cannot be a field
+of what that file parses into; `OKAY_STAGING` is okay-staging's codec
+switch, which every program in the tree shares. A program's
+environment is strictly larger than its config, and only the inclusion
+that says "nothing declared is undiscoverable" holds.
+
+So the candidate closes with one test and no new abstraction. That is
+the arc's own criterion applied honestly: the declaration was already
+going to three interpreters, and what it needed was not a fourth
+algebra but a consumer that could break.
+
+### Stage 2, finished — LANDED 2026-09-11 (optics-outside-tools-adopt)
+
+Stage 2 gave `Toolbox` and converted `BoardTools`; the rest of the
+tree kept the hand-written pair, and BACKLOG recorded the remainder as
+test tables — "the cost of the drift is lower". That was wrong about
+one of them. okay-demo's `RepoAgent` is an APPLICATION, and it held
+two `ToolSpec` vals beside a `Map` keyed by the same two names;
+`RepoMcp` handed the two structures to one `Server.Serving` as two
+arguments, so nothing but care kept the name sets equal. Five test
+tables copied the same shape, which matters more than a test usually
+does: they are what a reader of okay-mcp copies.
+
+**The conversion changed behaviour, and that is the finding.** The
+hand-written decode answered `"bad args: $e"` — prose — while every
+tool declared through `Toolbox` answers `{"error": "<tool>: <why>"}`.
+The same agent therefore reported failure in two shapes, decided by
+which module happened to declare the tool, and a model calling both
+had to guess which one it was reading. The red test was written
+against that (`TestRepoTools`, in the default gate; `TestRepoAgent` is
+`Live`-tagged and indexes this whole repository, which is why the
+tools' CONTRACT had no fast test at all).
+
+Two smaller things. `Json.parse` is lossless on a non-JSON string, so
+prose comes back as a `JStr` and the test's `errorOf` returns `None` —
+the distinction under test needs no string matching. And the tutorial
+in `docs/modules/okay-agent.md` still SHOWED the hand-written table;
+documentation is the copy source of record, so a sweep that leaves it
+is not finished.
+
 ### Stage 7 — LANDED 2026-09-11 (optics-outside-routes-body)
 
 `Router.json[B]` declares the body; `/login` and `/login/confirm` are
