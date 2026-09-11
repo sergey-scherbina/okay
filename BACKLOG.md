@@ -796,9 +796,18 @@ its owner can price it:
       `Param` may override it (`format: uuid`) — tested.
 - [x] openapi-render — DONE (`okay-openapi`, the law included); box
       corrected 2026-09-11 alongside openapi-responses.
-- [ ] openapi-serve — stage 2: `/openapi.json` and a page that renders
-      it with no network, plus okay-demo's committed document and its
-      drift test — the shape okay-demo/deploy already has.
+- [x] openapi-serve — DONE 2026-09-11 (4758e8f7). `/openapi.json` and
+      a page rendered on the server with no network, plus okay-demo's
+      committed document and its drift test — the shape
+      okay-demo/deploy already has. The drift test earned its keep on
+      its first run: `/app.js` is served only where the linked bundle
+      exists, so the document describes the PACKAGED surface.
+      What it exposed for the next lane: all six demo operations still
+      render `undeclared`, because HTML, server-sent events and a byte
+      bundle have no `Schema` to declare them. `out`/`jsonOut` cover
+      JSON only, so the answer is an `Answer` that carries a MEDIA
+      TYPE and combinators that encode it — same declaration-by-
+      construction, wider than JSON.
 - [ ] openapi-prose — stage 3: a summary per route; operation ids are
       derived until then.
 

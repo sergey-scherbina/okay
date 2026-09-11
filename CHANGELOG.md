@@ -42,7 +42,7 @@ nothing but a drift test would have said so.
 openapi-parameters, which gave path parameters their kinds and brought
 the queries through — their note is worth keeping: a DESCRIBE
 interpreter is only as good as what survives the boundary it is read
-across. Commit: LANDING.
+across. Commit: 4758e8f7 (+456b5460, +1a93f90c, +ab836d23).
 
 One thing outside the lane came with it, because the gate could not
 go green otherwise: `schema-fold-1`'s deliberate-overflow witness in
