@@ -70,6 +70,28 @@ is a declaration in okay-http, not a heuristic here.
 summaries and tags are absent and operation ids are derived. That is
 stage 3 of specs/openapi.md.
 
+## Serving it
+
+```scala
+val all = app.routes orElse OpenApi.routes(api, app).routes
+```
+
+`/openapi.json` is the document; `/openapi` is a page for a person,
+RENDERED ON THE SERVER. No JavaScript and no CDN: this repository
+renders deployments for machines with no network, and a page that only
+works where the network does is not documentation there. The cost is
+that there is no "try it" button.
+
+The document describes the router you pass, so by default it describes
+the application and not the two routes that serve it. Pass the joined
+router if you want them in.
+
+okay-demo does this, and commits the result: `okay-demo/openapi.json`
+is the rendering, `sbt "okayDemo/runMain okay.demo.DemoOpenApi"`
+regenerates it, and a drift test refuses a difference — so an API
+change shows up in review as a changed file beside the code that
+changed it.
+
 ## Gotchas
 
 - The order of paths follows the order the router declared them, on

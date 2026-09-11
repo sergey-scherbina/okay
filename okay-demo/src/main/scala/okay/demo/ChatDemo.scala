@@ -295,6 +295,99 @@ object ChatDemo {
 
   // ---- the routes ----------------------------------------------------
 
+  /**
+   * THE DECLARED SURFACE, as a value (openapi-serve).
+   *
+   * It was a local `val` inside `routes`, which meant the only way to
+   * see this service's paths was to answer a request with them. A
+   * document is rendered from it now, so it is a method with the same
+   * capabilities `routes` takes — and the two cannot disagree,
+   * because `routes` calls it.
+   */
+  def declaredRouter(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
+  : okay.http.Router =
+    val board = summon[Board]
+    val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
+      val mcpPath = okay.http.Route / "mcp"
+
+              val base = okay.http.Router
+          .on(okay.http.Method.Get, okay.http.Route.root) { _ =>
+            val html = (if Chat.appJs.isDefined then reactPage else page)
+              .replace("MODE", Chat.modeName)
+            pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+              Http.one(html.getBytes(UTF_8))))
+
+          }
+          .on(okay.http.Method.Get, okay.http.Route / "board") { _ =>
+            // server-rendered at load (it works without JS), then re-rendered
+            // from /board.json on every feed ping
+            def rows = board.all.map(t =>
+              s"<li>${t.id}) ${t.text}" +
+                t.assignee.fold("")(a => s" <span style='color:#7a869c'>— $a</span>") +
+                (if t.done then " ✓" else "") + "</li>").mkString
+            pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+              Http.one(s"""<!doctype html><meta charset="utf-8"><title>board</title>
+                |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
+                |h2{color:#7a869c} li{margin:.2rem 0}
+                |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer}</style>
+                |<h2>the board</h2><ul id="tasks">$rows</ul>
+                |<p><a style="color:#6b9fff" href="/">← to the chat</a> · live</p>
+                |<button id="replay">rebuild from the log</button>
+                |<span style="color:#7a869c;font-size:.85em"> — drop the projection and derive it again from the durable log (needs an admin token)</span>
+                |<script>
+                |async function render() {
+                |  const d = await (await fetch('/board.json')).json();
+                |  document.getElementById('tasks').innerHTML = d.tasks.map(t =>
+                |    '<li>' + t.id + ') ' + t.text +
+                |    (t.assignee ? " <span style='color:#7a869c'>— " + t.assignee + '</span>' : '') +
+                |    (t.done ? ' ✓' : '') + '</li>').join('');
+                |}
+                |new EventSource('/events/board').addEventListener('board', render);
+                |document.getElementById('replay').onclick = async () => {
+                |  const t = prompt('admin token'); if (!t) return;
+                |  await fetch('/admin/replay', {method:'POST', headers:{authorization:'Bearer ' + t}});
+                |  render();
+                |};
+                |</script>""".stripMargin.getBytes(UTF_8))))
+
+          }
+          .on(okay.http.Method.Get, okay.http.Route / "board.json") { _ =>
+            pure(Response(200, Seq("content-type" -> "application/json"),
+              Http.one(Json.print(JObj(Vector("tasks" -> JArr(board.all.map(t => JObj(Vector(
+                "id" -> JNum(t.id.toDouble), "text" -> JStr(t.text), "owner" -> JStr(t.owner),
+                "assignee" -> t.assignee.map(JStr(_)).getOrElse(JNull),
+                "done" -> JBool(t.done)))))))).getBytes(UTF_8))))
+
+          }
+          // the board-wide feed is declared BEFORE the per-email one, so
+          // "board" is never read as an address
+          .on(okay.http.Method.Get, okay.http.Route / "events" / "board") { _ =>
+            // the board-wide feed — matched BEFORE the /events/<email>
+            // prefix route: "board" must not parse as an email
+            val src: Source[Chunk[Byte]] =
+              effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
+                .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
+                      Chat.sse("board", Json.print(JStr(kind)))))
+            pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
+
+          }
+          .on(okay.http.Method.Get, eventsFor) { email =>
+            // the inbox as a LIVE stream: jetty holds it open, and a task
+            // assigned tomorrow becomes a frame then
+            val src: Source[Chunk[Byte]] =
+              effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
+                .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
+                      Chat.sse("note", Json.print(JStr(note)))))
+            pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
+
+          }
+        if Chat.appJs.isEmpty then base
+        else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
+            pure(Response(200, Seq("content-type" -> "text/javascript"),
+              Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
+
+        }
+
   def routes(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
   : PartialFunction[Request, Response ! Async] =
     val board = summon[Board]
@@ -323,85 +416,7 @@ object ChatDemo {
     // the `+` of a plus-addressed ann+tag@example.com into a space.
     val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
     val mcpPath = okay.http.Route / "mcp"
-
-    val declared: okay.http.Router =
-      val base = okay.http.Router
-        .on(okay.http.Method.Get, okay.http.Route.root) { _ =>
-          val html = (if Chat.appJs.isDefined then reactPage else page)
-            .replace("MODE", Chat.modeName)
-          pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-            Http.one(html.getBytes(UTF_8))))
-
-        }
-        .on(okay.http.Method.Get, okay.http.Route / "board") { _ =>
-          // server-rendered at load (it works without JS), then re-rendered
-          // from /board.json on every feed ping
-          def rows = board.all.map(t =>
-            s"<li>${t.id}) ${t.text}" +
-              t.assignee.fold("")(a => s" <span style='color:#7a869c'>— $a</span>") +
-              (if t.done then " ✓" else "") + "</li>").mkString
-          pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-            Http.one(s"""<!doctype html><meta charset="utf-8"><title>board</title>
-              |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
-              |h2{color:#7a869c} li{margin:.2rem 0}
-              |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer}</style>
-              |<h2>the board</h2><ul id="tasks">$rows</ul>
-              |<p><a style="color:#6b9fff" href="/">← to the chat</a> · live</p>
-              |<button id="replay">rebuild from the log</button>
-              |<span style="color:#7a869c;font-size:.85em"> — drop the projection and derive it again from the durable log (needs an admin token)</span>
-              |<script>
-              |async function render() {
-              |  const d = await (await fetch('/board.json')).json();
-              |  document.getElementById('tasks').innerHTML = d.tasks.map(t =>
-              |    '<li>' + t.id + ') ' + t.text +
-              |    (t.assignee ? " <span style='color:#7a869c'>— " + t.assignee + '</span>' : '') +
-              |    (t.done ? ' ✓' : '') + '</li>').join('');
-              |}
-              |new EventSource('/events/board').addEventListener('board', render);
-              |document.getElementById('replay').onclick = async () => {
-              |  const t = prompt('admin token'); if (!t) return;
-              |  await fetch('/admin/replay', {method:'POST', headers:{authorization:'Bearer ' + t}});
-              |  render();
-              |};
-              |</script>""".stripMargin.getBytes(UTF_8))))
-
-        }
-        .on(okay.http.Method.Get, okay.http.Route / "board.json") { _ =>
-          pure(Response(200, Seq("content-type" -> "application/json"),
-            Http.one(Json.print(JObj(Vector("tasks" -> JArr(board.all.map(t => JObj(Vector(
-              "id" -> JNum(t.id.toDouble), "text" -> JStr(t.text), "owner" -> JStr(t.owner),
-              "assignee" -> t.assignee.map(JStr(_)).getOrElse(JNull),
-              "done" -> JBool(t.done)))))))).getBytes(UTF_8))))
-
-        }
-        // the board-wide feed is declared BEFORE the per-email one, so
-        // "board" is never read as an address
-        .on(okay.http.Method.Get, okay.http.Route / "events" / "board") { _ =>
-          // the board-wide feed — matched BEFORE the /events/<email>
-          // prefix route: "board" must not parse as an email
-          val src: Source[Chunk[Byte]] =
-            effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
-              .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
-                    Chat.sse("board", Json.print(JStr(kind)))))
-          pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
-
-        }
-        .on(okay.http.Method.Get, eventsFor) { email =>
-          // the inbox as a LIVE stream: jetty holds it open, and a task
-          // assigned tomorrow becomes a frame then
-          val src: Source[Chunk[Byte]] =
-            effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
-              .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
-                    Chat.sse("note", Json.print(JStr(note)))))
-          pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
-
-        }
-      if Chat.appJs.isEmpty then base
-      else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
-          pure(Response(200, Seq("content-type" -> "text/javascript"),
-            Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
-
-      }
+    val declared = declaredRouter(m, budget)
 
     // `/mcp` answers ANY verb — McpHttp reads the method itself, GET
     // for the stream and POST for a message — which a Router entry
@@ -412,6 +427,11 @@ object ChatDemo {
         .orElse { case r if mcpPath.unapply(r.url).isDefined => mcpR(r) }
         .orElse(ops)
         .orElse(loginRoutes.routes)
+        // the service describes itself: /openapi.json for a machine,
+        // /openapi for a person, both rendered from `declared` — the
+        // router above, so a path that answers is a path documented
+        // (specs/openapi.md stage 2)
+        .orElse(okay.openapi.OpenApi.routes(DemoOpenApi.api, declared).routes)
 
     // /chat itself is okay-chat (extracted 2026-09-02, specs/chat.md):
     // a "/board ..." turn rides the turnOverride seam rather than a

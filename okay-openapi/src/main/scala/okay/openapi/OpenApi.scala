@@ -2,7 +2,8 @@ package okay.openapi
 
 import okay.codec.Json
 import okay.codec.Json.*
-import okay.http.Router
+import okay.{!, Async, pure}
+import okay.http.{Method, Response, Route, Router}
 
 /** what a document says about the service, which the router cannot know */
 final case class Api(title: String, version: String,
@@ -135,3 +136,90 @@ object OpenApi:
 
   /** the document as text, for a file or a handler */
   def print(api: Api, router: Router): String = Json.print(document(api, router))
+
+  /**
+   * The two routes that serve it: the document, and a page for a
+   * person (specs/openapi.md stage 2).
+   *
+   * The page is RENDERED ON THE SERVER — no JavaScript and no CDN.
+   * The usual `<script src="…swagger-ui…">` makes a page that only
+   * works where the network does, and this repository renders
+   * deployments for machines that have none; a page that cannot
+   * explain the API in an air-gapped cluster is not documentation
+   * there. The cost is that it does not have a "try it" button, which
+   * a curl command in the page covers.
+   *
+   * Serve it beside the router it describes, the way every surface in
+   * this stack is joined:
+   * {{{
+   *   val all = app.routes orElse OpenApi.routes(api, app).routes
+   * }}}
+   * The document then describes the APPLICATION and not itself: the
+   * two extra routes are not in `router`, which is the right default —
+   * pass the joined router instead if you want them in.
+   */
+  def routes(api: Api, router: Router,
+             at: String = "/openapi.json", ui: String = "/openapi"): Router =
+    val doc = document(api, router)
+    Router.empty
+      .on(Method.Get, literal(at))(_ => pure(json(Json.print(doc))))
+      .on(Method.Get, literal(ui))(_ => pure(html(page(api, router, at))))
+
+  /** a path of literal segments, as a route */
+  private def literal(path: String): Route[EmptyTuple] =
+    path.split('/').filter(_.nonEmpty).foldLeft(Route.root)((r, seg) => r / seg)
+
+  private def json(text: String): Response =
+    Response(200, Seq("content-type" -> "application/json"),
+      okay.http.Http.one(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+
+  private def html(text: String): Response =
+    Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+      okay.http.Http.one(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+
+  /** the page a person reads: every operation, its parameters, its
+   * body and what it answers — as HTML, computed here */
+  def page(api: Api, router: Router, at: String = "/openapi.json"): String =
+    val ops = router.entries.map(operationHtml)
+    s"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>${esc(api.title)} ${esc(api.version)}</title>
+<style>
+ body{font:15px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:52rem;padding:0 1rem}
+ h1{margin-bottom:0} .sub{color:#666;margin-top:.2rem}
+ .op{border:1px solid #ddd;border-radius:.4rem;margin:1rem 0;padding:.8rem 1rem}
+ .m{font-weight:700;font-family:ui-monospace,monospace}
+ .p{font-family:ui-monospace,monospace}
+ table{border-collapse:collapse;margin:.5rem 0;width:100%}
+ td,th{border-bottom:1px solid #eee;text-align:left;padding:.25rem .5rem;font-size:.9em}
+ pre{background:#f6f6f6;padding:.5rem;border-radius:.3rem;overflow:auto;font-size:.85em}
+ .none{color:#999}
+</style></head><body>
+<h1>${esc(api.title)}</h1>
+<div class="sub">version ${esc(api.version)}${api.servers.headOption.fold("")(u => " &middot; " + esc(u))}</div>
+<p class="sub">This page is rendered by the service itself from the router that answers these
+paths, so it cannot describe a route that is not served. The machine-readable document is
+at <a href="${esc(at)}">${esc(at)}</a>.</p>
+${ops.mkString("\n")}
+</body></html>"""
+
+  private def operationHtml(e: Router.Entry): String =
+    val params = e.path.split('/').filter(s => s.startsWith("{") && s.endsWith("}"))
+      .map(_.drop(1).dropRight(1)).toVector
+    val paramRows =
+      if params.isEmpty then ""
+      else "<table><tr><th>path parameter</th><th>type</th></tr>" +
+        params.map(n => s"<tr><td>${esc(n)}</td><td>string</td></tr>").mkString + "</table>"
+    val bodyBlock = e.body.fold("")(b =>
+      s"<div>request body</div><pre>${esc(Json.print(b))}</pre>")
+    val answers =
+      if e.answers.isEmpty then
+        """<div class="none">answers: undeclared — this handler builds its own Response</div>"""
+      else e.answers.sortBy(_.status).map(a =>
+        s"<div>answers <b>${a.status}</b> — ${esc(a.description)}</div>" +
+          a.schema.fold("")(sch => s"<pre>${esc(Json.print(sch))}</pre>")).mkString
+    s"""<div class="op"><span class="m">${e.method.name}</span> <span class="p">${esc(e.path)}</span>
+$paramRows$bodyBlock$answers</div>"""
+
+  private def esc(s: String): String =
+    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

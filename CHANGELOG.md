@@ -1,5 +1,39 @@
 # Changelog
 
+## openapi-serve — the document gets its readers
+
+A document nobody serves rots, and the spec named two readers. Both
+have one now.
+
+`OpenApi.routes(api, router)` serves the document at `/openapi.json`
+and a page at `/openapi`. The page is RENDERED ON THE SERVER — no
+JavaScript, no CDN — and that is a decision rather than an omission:
+this repository renders deployments for machines with no network, and
+the usual `<script src="…swagger-ui…">` produces a page that cannot
+explain the API in an air-gapped cluster. The cost is no "try it"
+button; a test holds the line (`no <script>`, nothing fetched).
+
+The second reader is the integrator, who is not in this repository, so
+the proxy for them is a diff in review: okay-demo now serves both
+routes from the same router that answers its requests, and
+`okay-demo/openapi.json` is COMMITTED with a drift test —
+`sbt "okayDemo/runMain okay.demo.DemoOpenApi"` regenerates it, the way
+DemoDeploy does for the deployment. A third test makes the check
+stronger than drift alone: every path the document names is a path the
+service answers.
+
+One thing moved in the demo to make it possible: its router was a
+local `val` inside `routes`, so the only way to see the service's
+paths was to answer a request with them. It is `ChatDemo.declaredRouter`
+now, with the same capabilities, and `routes` calls it — so the
+document and the dispatch cannot disagree.
+
+17 tests in okay-openapi, 3 in okay-demo. Landed alongside a sibling's
+openapi-parameters, which gave path parameters their kinds and brought
+the queries through — their note is worth keeping: a DESCRIBE
+interpreter is only as good as what survives the boundary it is read
+across. Commit: LANDING.
+
 ## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
 
 The repository's thesis is one primitive, the durable log, and the

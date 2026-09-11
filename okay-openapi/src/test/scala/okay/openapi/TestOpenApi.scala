@@ -3,8 +3,9 @@ package okay.openapi
 import okay.*
 import okay.codec.{Json, Schema}
 import okay.codec.Json.*
-import okay.http.{Method, Response, Route, Router}
+import okay.http.{Method, Response, Route, Router, Request}
 import okay.http.syntax.*
+import okay.given
 
 /**
  * The document is a rendering of the router (specs/openapi.md stage 0).
@@ -141,6 +142,48 @@ class TestOpenApi extends munit.FunSuite:
     assertEquals(ids.distinct.size, ids.size)
     assert(ids.contains(JStr("getBoardById")), ids.toString)
     assertEquals(OpenApi.document(api, router), doc)   // same input, same document
+  }
+
+  // stage 2: the readers
+  test("the served document is the rendered one, byte for byte") {
+    val served = OpenApi.routes(api, router)
+    val res = Async.run(served.routes(Request.get("/openapi.json"))).runWith
+    assertEquals(res.status, 200)
+    assert(res.headers.exists((k, v) => k == "content-type" && v == "application/json"), res.headers.toString)
+    val text = Async.run(okay.http.Http.text(res)).runWith
+    assertEquals(Json.parse(text), doc)
+  }
+
+  test("the page is rendered by the server: no script, no network") {
+    val served = OpenApi.routes(api, router)
+    val res = Async.run(served.routes(Request.get("/openapi"))).runWith
+    assertEquals(res.status, 200)
+    val html = Async.run(okay.http.Http.text(res)).runWith
+    assert(html.contains("<!doctype html>"), html.take(80))
+    // every operation is IN the html, so a reader with no javascript
+    // sees the same thing a machine does
+    assert(html.contains("/board/{id}"), html)
+    assert(html.contains("GET") && html.contains("POST"), html)
+    // the page a browser cannot render offline is not documentation
+    // in an air-gapped cluster: nothing is fetched
+    assert(!html.contains("<script"), "the page must not need javascript")
+    assert(!html.contains("http://") && !html.contains("https://cdn"), "the page must not reach the network")
+  }
+
+  test("the document describes the APPLICATION, not the routes that serve it") {
+    val served = OpenApi.routes(api, router)
+    val paths = obj(at(OpenApi.document(api, router), "paths")).map(_._1)
+    assert(!paths.contains("/openapi.json"), paths.toString)
+    // and the two surfaces are joined where every surface in this
+    // stack is joined — `orElse` over the partial functions
+    val whole = router.routes orElse served.routes
+    assert(whole.isDefinedAt(Request.get("/openapi.json")))
+    assert(whole.isDefinedAt(Request.get("/board")))
+  }
+
+  test("the page says what an undeclared operation is, rather than implying a 200") {
+    val html = OpenApi.page(api, router)
+    assert(html.contains("undeclared"), html)
   }
 
   test("the document round-trips as JSON") {

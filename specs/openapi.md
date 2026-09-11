@@ -150,13 +150,22 @@ Stage 1 — responses — SHIPPED (openapi-responses):
 - [x] a handler that builds its own `Response` (`on`, `at`) still
       declares nothing, and the document says exactly that
 
-Stage 2 — the readers:
-- [ ] `routes` serves the document at `/openapi.json` and a page at
-      `/openapi` that renders it, self-contained enough to work with
-      no network (a CDN reference would make the page a liability in
-      an air-gapped deployment; decide it there, in the open)
-- [ ] okay-demo serves both, and its document is COMMITTED with a
-      drift test, the way `okay-demo/deploy` is
+Stage 2 — the readers — SHIPPED (openapi-serve):
+- [x] `OpenApi.routes(api, router)` serves the document at
+      `/openapi.json` and a page at `/openapi`
+- [x] the page is RENDERED ON THE SERVER: no JavaScript and no CDN,
+      decided in the open — this repository renders deployments for
+      machines with no network, and a page that cannot explain the API
+      there is not documentation there. The cost is no "try it"
+      button; the page carries the paths, parameters, bodies and
+      declared answers as HTML
+- [x] okay-demo serves both, from the same router that answers its
+      requests
+- [x] `okay-demo/openapi.json` is COMMITTED and a drift test refuses a
+      difference — `sbt "okayDemo/runMain okay.demo.DemoOpenApi"`
+      regenerates it, the way DemoDeploy does for the deployment
+- [x] and the stronger check the drift test alone would not make:
+      every path the document names is a path the service answers
 
 Stage 3 — the prose, last and smallest:
 - [ ] a route may carry a summary; the document renders it. Until
