@@ -1,6 +1,0 @@
-feature/tag-test-the-signature-too 2026-09-11T09:05:33Z
-agent: claude-code
-heartbeat: 2026-09-11T09:05:33Z
-status: in-progress
-done-so-far: claimed
-next: add `using TypeableK[F]` to Tag's Effect given so the test is key AND signature (what Instances already does); MEASURE the source breakage across the build before deciding
