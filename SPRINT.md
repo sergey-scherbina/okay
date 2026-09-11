@@ -39,6 +39,17 @@
  an unpaired comparison, the crossover is at one operation inside the
  scope, and there is nothing to fix)
 
+- schema-fold — specs/schema-fold.md (stage 0 landed 2026-09-11; the
+  operator's ask). Schema's header promises a catamorphism and there
+  is none: eight algebras hand-match the GADT, and the same depth fix
+  was hand-written five times on 2026-09-10/11. Stage 1: `Schema.fold`
+  + knot-tying by identity, `JsonSchema.of`/`Compat` moved (pure, no
+  value). Stage 2: `Step` (the depth-aware value walk, written once),
+  `Json.encode`/`Cbor.put`/`Form.render`/`Form.errorsOf` moved and
+  their hand-rolled `*C` twins DELETED — JMH bar: within error bars,
+  Staged untouched. Stage 3: `Validate`, the applicative (all-errors)
+  algebra; `Json.decode` unchanged. Each stage its own claim.
+
 ## Backlog gate
 Promote from BACKLOG.md when the sprint empties; a task enters the
 sprint only with a spec section it implements.

@@ -1,0 +1,20 @@
+task: schema-fold
+agent: opus-depth
+started: 2026-09-11
+branch: feature/schema-fold
+worktree: ../okay-wt-schema-fold
+spec: specs/schema-fold.md (this lane WRITES it — stage 0)
+
+why: Schema.scala's own header says every derivation "is a
+  CATAMORPHISM over this one structure with its own algebra" — and
+  there is no catamorphism. Eight algebras (Json, Cbor, Yaml, Xml,
+  JsonSchema, Form, ToolSpec, Typed, Compat) each hand-match the GADT
+  and hand-recurse. The last day proved what that costs: the same
+  depth defect in five of them, the same NativeThreshold+Cont.defer
+  fix written five times by hand (Cbor.get, Json.decode, Json.encode,
+  Form.render, Form.errorsOf). One missing primitive, not five bugs.
+  Operator asked for the API ("define the entity once, use it
+  everywhere: db, bytes, strings, validation, forms — uniform, cheap
+  at run time, strict at compile time") and for this spec.
+
+what: stage 0 only — the spec, and a SPRINT queue line. No code.
