@@ -28,7 +28,7 @@ parameters' kinds, so `Route[Int]("id")` renders as a string; the kind,
 the query parameters and the responses are declarations in okay-http,
 filed under BACKLOG "openapi" for the arc that owns that file. The
 third is what decides whether a document is worth serving, which is
-why this module does not serve one yet. Commit: LANDING.
+why this module does not serve one yet. Commit: 48c1c36f.
 
 ## optics-outside-describe — the describing interpreter gets a consumer that can break
 
