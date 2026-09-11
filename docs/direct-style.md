@@ -276,6 +276,14 @@ val prog: Int ! F = direct {
 }
 ```
 
+This import cannot be removed by Scala 3.9's `into`, and it is worth
+saying why, because `throws` lost its own import that way
+(throws-into): `into` marks the conversion's TARGET type, and
+auto-coloring's conversions are `Conversion[F[A], A]` — the target is
+the bare type variable `A`, and there is no declaration to write
+`into` on. The consent stays per call site here, which for the feature
+where "the danger lives" is the right answer anyway.
+
 **Gate 1 — the capability.** The block is a context function
 `DirectCtx[F] ?=> A`, and both conversions require
 `using DirectCtx[F]`. Outside a `direct` block the capability does
