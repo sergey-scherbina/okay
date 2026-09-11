@@ -120,13 +120,14 @@ okay-demo wrote its JSON Schema by hand, then kept a separate
 string literals, with the tool's name written twice.
 
 `Toolbox` (specs/optics-outside.md, stage 2) is the two halves in one
-value:
+value — and the same shape okay-http gives a route, worked end to end
+in **[Declaring an API](../declaring-an-api.md)**:
 
 ```scala
 final case class Add(text: String, owner: String)
 given Schema[Add] = Schema.derived
 
-val tools = Toolbox.empty
+val tools = Toolbox
   .on[Add]("board_add", "Add a task. The owner is whoever asked for it.")(a =>
     board.add(a.text, a.owner).fold(err)(ok))
 
@@ -139,6 +140,10 @@ which needs no call at all), **decode** (`Codecs.json`, the arguments of
 a real one), **dispatch** (your handler, over the value the decode
 produced). Rename a field and all three move together, because there is
 only one of them.
+
+A box starts from the companion, as a route starts from `Route`;
+`Toolbox.empty` remains the zero of a fold and the answer of a module
+that contributes no tools.
 
 `specs` and `table` are drawn from the same vector, so their name sets
 are equal by construction: a tool cannot be declared and undispatched,

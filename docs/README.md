@@ -28,6 +28,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   the Scala.js frontend whose logic is tested on the JVM, the tests
   over a real socket, and running it. Every command executed before it
   was written down.
+- **[Declaring an API](declaring-an-api.md)** — a path, a query, a
+  body and a tool, each written once and then asked several different
+  questions: does this url match, what is the url for these
+  parameters, and what does it look like with no request in hand. The
+  law that makes it worth reifying, the three spellings the language
+  refused, and the defects the conversions turned up.
 - **[Frontends: one application, any client](frontend-guide.md)** —
   the view as a value with two vocabulary levels, the hosts (terminal,
   React, DOM, Swing, GTK), the server-driven wire and its rendered

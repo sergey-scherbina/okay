@@ -37,207 +37,41 @@ that module, and it is small because the vocabulary decided most of it:
 
 ## Routes: one declaration, three interpreters
 
-`Route` (specs/optics-outside.md, stage 1) is the module's typed path.
-It exists because of a test the optics arc set for public APIs: a
-declaration earns an optic only when it must be handed to more than
-one interpreter, and at least one of them DESCRIBES it instead of
-running it. A path passes that three times.
+The module's typed path and query. The full story, worked from a path
+through a query, a body, a table and a tool, is
+**[Declaring an API](../declaring-an-api.md)**; the decisions and the
+refuted alternatives are in `specs/optics-outside.md`. What follows is
+the reference.
 
 ```scala
 val userPost = Route / "users" / Route[Int]("id") / "posts" / Route[String]("slug")
+val search   = Route / "search" :? Query[String]("q") :? Query.opt[Int]("page")
 
-userPost.unapply("/users/7/posts/hello%20world")  // Some((7, "hello world"))  -- MATCH
-userPost.url((7, "hello world"))                  // "/users/7/posts/hello%20world"  -- BUILD
-userPost.describe                                 // "/users/{id}/posts/{slug}"  -- DESCRIBE
+userPost.unapply("/users/7/posts/hello%20world")  // MATCH    Some((7, "hello world"))
+userPost.url((7, "hello world"))                  // BUILD    "/users/7/posts/hello%20world"
+userPost.describe                                 // DESCRIBE "/users/{id}/posts/{slug}"
 ```
 
-A server keeps the convention it already had — the routes are still a
-`PartialFunction[Request, Response ! Async]` — and gets typed
-parameters out of the same value:
+| member | meaning |
+|---|---|
+| `Route / "lit"` / `Route[T](name)` | a literal segment, a captured one; `T` needs a `Route.Param[T]` (`String`, `Int`, `Long`, `Boolean`) |
+| `:?` / `+&` | append a query to a route; compose two queries |
+| `Query[T]` / `.opt[T]` / `.all[T]` | required, optional, repeated |
+| `unapply` / `url` / `describe` / `describeFull` | the three interpreters, and the query rendered for a human |
+| `params` / `queries` | the description as data — `Seg.Var(name, kind)` and `Q(name, kind, required, repeated)` |
+| `prism` | the route as `Prism[String, String, A, A]` (specs/optics.md) |
+| `of[C]` | the same route reading a case class; checks the field NAMES against the parameters |
+| `Routed` / `Route` / `Queried` | what a declared url can do; the path stage; the query stage, which has no `/` |
+| `Router.on` / `.at` / `.json[B]` / `.of` | a table: parameters only, parameters and request, a declared JSON body, a case class |
+| `Router.routes` / `.describe` / `.entries` | the `PartialFunction` every server here takes, the listing, the rows |
+| `okay.http.syntax.*` | the terse form: `"id".as[Int]`, `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` |
 
-```scala
-def routes: PartialFunction[Request, Response ! Async] =
-  case Get(userPost(id, slug)) => ...   // id: Int, slug: String
-```
-
-or assembles a table that is also its own documentation:
-
-```scala
-val router = Router.empty
-  .on(Method.Get, healthz)(_ => ok("live"))
-  .on(Method.Get, userPost)((id, slug) => post(id, slug))
-
-router.routes     // the PartialFunction, unchanged convention
-router.describe   // Vector((Get, "/healthz"), (Get, "/users/{id}/posts/{slug}"))
-```
-
-`describe` is derived from the same values that dispatch, so a route
-cannot be documented and unrouted, or routed and undocumented — which
-is the whole reason to reify a path instead of writing a `case`.
-
-**The law is the feature.** `unapply(url(a)) == Some(a)` says the path
-a client builds is the path the server matches, from ONE declaration.
-A hand-written `r.url == "/users/" + id` cannot state that property,
-let alone check it; `TestRoute` checks it over integers, longs,
-booleans and strings that need escaping, including `"a/b"`, `"100%"`,
-Cyrillic and an emoji. `route.prism` hands the same route to the core
-optics as a `Prism[String, String, A, A]`, where the law is the prism
-law the repository already tests.
-
-**Three details worth knowing.**
-
-- *Percent-encoding is per segment, after the split.* A parameter
-  holding `"a/b"` builds `/users/7/posts/a%2Fb` and reads back as
-  `"a/b"`; `/users/7/posts/a/b` is a different path with one segment
-  too many, and does not match. Every hand-written router in this
-  repository splits before it decodes and is open to that confusion —
-  okay-script's `Site.resolve` still is. Malformed escaping is a MISS,
-  not a silent literal `%`.
-- *An empty capture is refused.* `"/x//y"` and `"/x/y"` would
-  otherwise build the same URL from different parameters. That is a
-  property of URLs, and refusing it is what keeps the law total.
-- *A route can read a case class.* `userPost.of[UserPost]` gives the
-  same three interpreters over `UserPost(id, slug)`, which is the form
-  to prefer once a path has parameters: `case Get(userPost(p)) => p.id`
-  reads better than a positional tuple at every arity.
-
-**The query string.** A route reads it as a `Query`, composed with
-`&` and handed over with `?`:
-
-```scala
-val search = Route / "search" :? Query[String]("q") +& Query.opt[Int]("page")
-// Route[(String, Option[Int])]
-
-search.url(("cats", Some(2)))            // "/search?q=cats&page=2"
-search.url(("cats", None))               // "/search?q=cats"
-search.unapply("/search?page=2&q=cats")  // Some(("cats", Some(2)))  -- order is irrelevant
-search.describeFull                      // "/search?q={q}&page={page}"
-```
-
-`Query[T](name)` is required, `Query.opt[T]` optional (absent is
-`None`, and `None` writes nothing), `Query.all[T]` repeated (every
-occurrence in wire order, and an empty vector writes nothing).
-
-The operators are `:?` and `+&` rather than `?` and `&` because of
-Scala's precedence table, not taste: precedence comes from an
-operator's FIRST character, and `?` is in the "all other special
-characters" group, which binds tighter than `/` — so
-`Route / "search" ? q` would parse as `Route / ("search" ? q)`. `:` is
-below `/` and `+` sits between them, so `r / "s" :? a +& b` groups the
-way it reads, with no parentheses anywhere. (Associativity comes from
-the LAST character, so `:?` stays left-associative.)
-
-Its own type rather than more `Route` combinators, because the path is
-ORDERED and the query is not: a path parameter is found by position, a
-query parameter by name, and a url that writes them in a different
-order is the same request. Four consequences worth knowing:
-
-- **`url` writes the query in declaration order**, so it is the
-  canonical url among the many the route accepts. This is where a
-  route stops resembling an iso and is plainly a prism:
-  `unapply(url(a)) == Some(a)` holds and `url(unapply(u)) == u` does
-  not, because `url` normalises.
-- **Present and unparseable is a MISS, not `None`.** `?page=abc` on an
-  `Int` is a request that meant something and got it wrong; answering
-  it as though the parameter had been omitted hides the caller's
-  mistake behind a page of results.
-- **Unknown parameters are ignored**, or every `utm_source` would
-  break the route.
-- **A raw `+` in a value is a space** — the form-encoding convention
-  every browser writes. `url` never emits one (`+` is not unreserved,
-  so it leaves as `%2B`), so the round trip is unaffected.
-
-`describe` stays the PATH (`/users/{id}`), which is the shape OpenAPI
-wants, with the query as a separate list: `queries` carries `name`,
-`kind`, `required` and `repeated` for each.
-
-**A shorter declaration, behind an import.** `import okay.http.syntax.*`
-adds three extensions on `String`:
-
-```scala
-import okay.http.syntax.*
-
-val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
-val search   = Route / "search" :? "q".as[String] :? "page".opt[Int]
-val tagged   = Route / "posts" / "id".as[Int] :? "tag".all[String]
-```
-
-One rule: **a bare string is a literal segment, `"name".as[T]` is a
-hole.** The operator says where the parameter goes — `/` into the path,
-`:?` into the query — because a named typed parameter is the same thing
-in both places. `Route[Int]("id")` and `Query[String]("q")` remain, and
-read better for someone meeting the api rather than using it.
-
-`:?` chains, so `+&` keeps only its real job — factoring out a query
-worth sharing:
-
-```scala
-val paging = Query.opt[Int]("page") +& Query.opt[Int]("size")
-val posts  = Route / "posts" :? paging
-val users  = Route / "users" :? paging
-```
-
-**A path segment cannot follow a query parameter, and that is
-structural.** `:?` answers a `Queried[A]`, which has no `/` at all;
-`Routed[A]` is what both stages share (`unapply`, `url`, `describe`,
-`prism`, `of`) and what `Router` takes. Three ways of getting it wrong
-are refused, each by a different mechanism, and `TestRoute` asserts all
-three with `compileErrors`.
-
-**What the parameter's NAME does** differs by position, which is worth
-knowing: in a query it is load-bearing at run time (parameters are
-matched by name, so wire order is irrelevant), while in a path the
-segment is found by POSITION and the name is the description — it is
-what `describe` prints as `{id}` and what a generated OpenAPI operation
-or MCP tool schema will carry. `Route.Of[C]` maps to a case class by
-position, so the compiler checks the types — and `of[C]` checks the
-NAMES, which position alone would never notice:
-
-```scala
-val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
-userPost.of[UserPost]                       // case class UserPost(id: Int, slug: String)
-userPost.of[Wrong]                          // case class Wrong(a: Int, b: String)
-// java.lang.IllegalArgumentException: route parameters (id, slug) do not
-// match the field names (a, b): the mapping is positional, so the types
-// already agree — rename one side so the declaration says what it means
-```
-
-The query's parameters count too, in tuple order. The check runs at
-construction rather than at compile time, because the labels are
-type-level while a route's names are values — and since routes are
-declared as `val`s it fires at class initialisation, which is start-up,
-before the first request.
-
-**A table starts from the companion:**
-
-```scala
-val router = Router
-  .on(Method.Get, healthz)(_ => text(200, "live"))
-  .at(Method.Post, userPost)((p, r) => …)
-```
-
-`Router.empty` is still there and still means something — it is the
-zero of a fold over several tables, and the answer a module gives when
-it contributes no routes.
-
-A handler that needs the request itself — its body, its headers, its
-peer — takes `at` instead of `on`: `at(Method.Post, echo)((_, r) =>
-Http.text(...))`. `at` is the primitive and `on` is written in terms
-of it, because most handlers need the request.
-
-**It has a caller in this module.** `Acceptance.routes` — the fixture
-all four backends (the JDK's server, Jetty, Netty, NIO) are held to —
-was three `case r if r.url.startsWith("/person")` guards and is now a
-`Router`. Converting it found two defects that had been there the
-whole time: `startsWith("/person")` also answered `/personal`, and
-every route answered every verb, so a POST to `/person` was served the
-JSON body. Both refusals are asserted now.
-
-A new parameter type is a `Route.Param[T]` — `kind`, `parse`, `print`,
-three lines. Query parameters, headers and bodies are stage 2 of the
-spec (stage 3 landed the query half); `describe` and `queries` are
-what an OpenAPI operation or an MCP tool declaration will be generated
-from in the stage after.
+Five properties the reference will not tell you but the guide will,
+each chosen rather than inherited: the law `unapply(url(a)) == Some(a)`
+and what it forces; percent-decoding per segment, AFTER the split;
+present-and-unparseable is a MISS rather than `None`; a path cannot
+follow a query, structurally; and `isDefinedAt` does not run the
+handler.
 
 ## What it buys okay-mcp
 
