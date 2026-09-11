@@ -1,5 +1,17 @@
 # Changelog
 
+## docs-index-leads-row — the index caught a page nobody linked
+
+`TestDocsIndex` went red on the merged tree, and the failing side was
+not this session's: a1deaf4a shipped `docs/modules/okay-leads.md`
+without its row in the `docs/README.md` table. That is exactly the
+drift the test was written for — eight rows had gone missing once
+before anyone noticed — so the test did its job across a lane
+boundary, and the fix is the row.
+
+Landing it here rather than handing it back, because master is red
+until it lands and every lane's push queues behind that.
+
 ## optics-outside-routes-adopt — the last two, and two left alone with reasons
 
 okay-admin's `POST /admin/replay` and okay-demo's `GET /whoami` were
