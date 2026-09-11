@@ -25,7 +25,8 @@ service answers.
 One thing moved in the demo to make it possible: its router was a
 local `val` inside `routes`, so the only way to see the service's
 paths was to answer a request with them. It is `ChatDemo.declaredRouter`
-now, with the same capabilities, and `routes` calls it — so the
+now, taking the capabilities the declarations actually read (the
+secrets and the board, not the store), and `routes` calls it — so the
 document and the dispatch cannot disagree.
 
 The drift test earned its keep on its first full run: the demo serves

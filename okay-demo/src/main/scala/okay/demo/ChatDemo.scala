@@ -304,14 +304,13 @@ object ChatDemo {
    * capabilities `routes` takes — and the two cannot disagree,
    * because `routes` calls it.
    */
-  def declaredRouter(m: Chat.Model, budget: Int, withApp: Boolean = Chat.appJs.isDefined)
-                    (using Secrets, Board, okay.persist.Store)
+  def declaredRouter(withApp: Boolean = Chat.appJs.isDefined)
+                    (using Secrets, Board)
   : okay.http.Router =
     val board = summon[Board]
     val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
-      val mcpPath = okay.http.Route / "mcp"
 
-              val base = okay.http.Router
+    val base = okay.http.Router
           .on(okay.http.Method.Get, okay.http.Route.root) { _ =>
             val html = (if Chat.appJs.isDefined then reactPage else page)
               .replace("MODE", Chat.modeName)
@@ -382,12 +381,12 @@ object ChatDemo {
             pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
           }
-        if !withApp then base
-        else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
-            pure(Response(200, Seq("content-type" -> "text/javascript"),
-              Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
+    if !withApp then base
+    else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
+        pure(Response(200, Seq("content-type" -> "text/javascript"),
+          Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
 
-        }
+    }
 
   def routes(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
   : PartialFunction[Request, Response ! Async] =
@@ -415,9 +414,8 @@ object ChatDemo {
     // goes at once — and the email now arrives percent-decoded by the
     // segment decoder rather than by URLDecoder, which used to turn
     // the `+` of a plus-addressed ann+tag@example.com into a space.
-    val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
     val mcpPath = okay.http.Route / "mcp"
-    val declared = declaredRouter(m, budget)
+    val declared = declaredRouter()
 
     // `/mcp` answers ANY verb — McpHttp reads the method itself, GET
     // for the stream and POST for a message — which a Router entry

@@ -34,16 +34,15 @@ object DemoOpenApi:
    * is published is therefore what a DEPLOYED service offers, which
    * is also what DemoDeploy's image contains.
    */
-  def document(using okay.conf.Secrets, Board, okay.persist.Store): okay.codec.Json =
+  def document(using okay.conf.Secrets, Board): okay.codec.Json =
     OpenApi.document(api, router)
 
   /** the router the document describes: the packaged surface */
-  def router(using okay.conf.Secrets, Board, okay.persist.Store): okay.http.Router =
-    ChatDemo.declaredRouter(okay.chat.Chat.scripted, 512, withApp = true)
+  def router(using okay.conf.Secrets, Board): okay.http.Router =
+    ChatDemo.declaredRouter(withApp = true)
 
   def main(args: Array[String]): Unit =
     val store = Board.store(":memory:")
-    given okay.persist.Store = store
     given Board = Board(Board.topicOf(store))
     given okay.conf.Secrets = okay.conf.Secrets.memory(Map.empty)
     val path = okay.deploy.Deployment.repoRoot().resolve("okay-demo/openapi.json")
