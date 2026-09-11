@@ -1,0 +1,6 @@
+feature/many-instances-doc 2026-09-11T07:18:24Z
+agent: claude-code
+heartbeat: 2026-09-11T07:18:24Z
+status: in-progress
+done-so-far: claimed
+next: docs/many-instances.md — the whole story of several instances of one effect in a row (Tag, Refs, Delim prompts); then point every place still stating the bare limitation at it
