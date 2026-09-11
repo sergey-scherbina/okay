@@ -1,6 +1,0 @@
-feature/tag-key-collision 2026-09-11T07:36:19Z
-agent: claude-code
-heartbeat: 2026-09-11T07:36:19Z
-status: in-progress
-done-so-far: claimed
-next: does Tag.Of[K, F] + Tag.Of[K, G] (SAME key, different signatures) misroute? If yes, that is the hole the key was meant to close — write the probe first
