@@ -1,5 +1,33 @@
 # Changelog
 
+## openapi-responses — the declaration is the handler's type
+
+Nothing in the tree declared what an operation answers: a handler
+built `Response(200, …)` by hand, so every operation in the rendered
+document said "undeclared". That was the decider for whether a
+document is worth serving.
+
+The fix is not an annotation beside the handler but a change to its
+TYPE. `Router.out` / `outAt` / `jsonOut` / `jsonOutAt` take a handler
+that answers a VALUE, and the router encodes it with the same `Schema`
+the entry carries — the output side of `json[B]`, and a declaration by
+construction: a document cannot promise what the service does not
+send. `Entry` gained `answers: Vector[Answer]`, and okay-openapi
+renders them sorted by status, each with its schema.
+
+Two things fall out. The router declares the failures IT produces —
+`jsonOut` answers 400 with `{"error": …}` when a body does not parse,
+so the entry says so without the author writing anything. And a
+handler that still builds its own `Response` (`on`, `at`) declares
+nothing and the document says exactly that, which makes the hole a
+per-route choice rather than a hole in the model.
+
+5 tests in okay-http holding the declaration and the wire together (a
+declared status is the status sent; the entry's schema is the one the
+answer was encoded by), 11 in okay-openapi. Touches Route.scala, whose
+arc (optics-outside) has all eight of its stages landed and no stage
+planned; its owner was asked in the room twice, and the operator said
+take it. Commit: LANDING.
 ## throws-into — `A throws E` stops asking the language for permission, and the conversion that kept asking was redundant
 
 Scala 3.9 lets a type declaration say "conversions to me are allowed",

@@ -61,7 +61,7 @@ object OpenApi:
     JObj(Vector("operationId" -> JStr(operationId(e))) ++
       parameters(e.path).toVector ++
       e.body.map(b => "requestBody" -> requestBody(b)).toVector ++
-      Vector("responses" -> undeclaredResponses))
+      Vector("responses" -> responses(e)))
 
   /** `GET /board/{id}` -> `getBoardById`-ish, and stable: a document
    * whose ids move when nothing moved is a document nobody diffs */
@@ -96,13 +96,23 @@ object OpenApi:
         "application/json" -> JObj(Vector("schema" -> schema))))))
 
   /**
-   * Nothing declares what an operation answers yet, and this says so
-   * rather than claiming a 200 nobody promised (specs/openapi.md,
-   * stage 1 is where that is fixed).
+   * What the operation answers, when it said so.
+   *
+   * A handler that answers a VALUE (`Router.out`, `jsonOut`) declares
+   * by its own type, and the router adds the failures it produces
+   * itself — `jsonOut`'s 400 for a body that does not parse. A handler
+   * that builds its own `Response` declares nothing, and this says
+   * exactly that rather than inventing a 200 nobody promised.
    */
-  private val undeclaredResponses: Json =
-    JObj(Vector("default" -> JObj(Vector(
-      "description" -> JStr("undeclared — this service does not yet declare its responses")))))
+  private def responses(e: Router.Entry): Json =
+    if e.answers.isEmpty then
+      JObj(Vector("default" -> JObj(Vector(
+        "description" -> JStr("undeclared — this operation builds its own Response")))))
+    else JObj(e.answers.sortBy(_.status).map(a =>
+      a.status.toString -> JObj(
+        Vector("description" -> JStr(a.description)) ++
+        a.schema.map(sch => "content" -> JObj(Vector(
+          "application/json" -> JObj(Vector("schema" -> sch))))).toVector)))
 
   /** the document as text, for a file or a handler */
   def print(api: Api, router: Router): String = Json.print(document(api, router))

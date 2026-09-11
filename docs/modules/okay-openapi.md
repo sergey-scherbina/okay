@@ -43,13 +43,22 @@ body's schema. That is all it carries, so:
   reaches the entry.
 - **query parameters are absent.** A `Queried` route knows them; the
   entry does not.
-- **responses are undeclared**, and the document says exactly that
-  rather than claiming a `200` nobody promised. Nothing in the tree
-  declares what an operation answers.
+Responses are no longer among them. A handler that answers a VALUE
+declares its response by its own type:
 
-All three are declarations in okay-http and are filed there (BACKLOG
-"openapi"); the third is the one that decides whether a document is
-worth publishing, which is why this module does not yet serve one.
+```scala
+router.out[Int *: EmptyTuple, Task](Method.Get, byId)(t => pure(Task(t.head)))
+router.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(store(t)))
+```
+
+The router encodes with the same `Schema` the document renders, so the
+two cannot drift, and it adds the failures it produces itself —
+`jsonOut`'s 400 for a body that does not parse. A handler that builds
+its own `Response` declares nothing, and the document says "undeclared"
+rather than inventing a 200.
+
+The two remaining gaps are declarations in okay-http and are filed
+there (BACKLOG "openapi").
 
 ## Gotchas
 

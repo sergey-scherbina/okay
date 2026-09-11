@@ -79,10 +79,35 @@ class TestOpenApi extends munit.FunSuite:
     assertEquals(schema, okay.codec.JsonSchema.of(summon[Schema[NewTask]]))
   }
 
-  test("responses say they are undeclared rather than claiming a 200") {
+  test("a handler that builds its own Response declares nothing, and the document says so") {
     val get = at(at(at(doc, "paths"), "/board"), "get")
     val d = at(at(at(get, "responses"), "default"), "description")
     assert(Json.print(d).contains("undeclared"), d)
+  }
+
+  final case class Task(id: Int, title: String) derives Schema
+
+  test("a handler that answers a VALUE declares its response by its own type") {
+    val r = Router.empty.out[Int *: EmptyTuple, Task](Method.Get, byId)(t => pure(Task(t.head, "x")))
+    val op = at(at(at(OpenApi.document(api, r), "paths"), "/board/{id}"), "get")
+    val ok = at(at(op, "responses"), "200")
+    assertEquals(at(at(at(ok, "content"), "application/json"), "schema"),
+      okay.codec.JsonSchema.of(summon[Schema[Task]]))
+  }
+
+  test("the router declares the failure IT produces, without the author writing it") {
+    val r = Router.empty.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(Task(1, t.title)))
+    val op = at(at(at(OpenApi.document(api, r), "paths"), "/board"), "post")
+    val codes = obj(at(op, "responses")).map(_._1)
+    assertEquals(codes, Vector("200", "400"))
+    val err = at(at(at(at(at(op, "responses"), "400"), "content"), "application/json"), "schema")
+    assertEquals(at(err, "required"), JArr(Vector(JStr("error"))))
+  }
+
+  test("a declared status other than 200 is what the document says") {
+    val r = Router.empty.out[EmptyTuple, Task](Method.Post, board, status = 201)(_ => pure(Task(1, "t")))
+    val op = at(at(at(OpenApi.document(api, r), "paths"), "/board"), "post")
+    assertEquals(obj(at(op, "responses")).map(_._1), Vector("201"))
   }
 
   test("operation ids are derived, stable, and distinct") {

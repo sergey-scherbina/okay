@@ -69,10 +69,12 @@ run, body):
   declared body cannot drift from the parser.
 - **Query parameters** — NO. A `Queried` route knows them, the entry
   does not carry them. This is the first gap.
-- **Responses** — NO. Nothing in the tree declares a response's status
-  or its schema; a handler answers a `Response` built by hand. This is
-  the second gap, and the larger one: a document whose every operation
-  says only "200, unspecified" is not worth publishing.
+- **Responses** — YES since openapi-responses, for a handler that
+  answers a VALUE. The declaration is the handler's type: the router
+  encodes with the same `Schema` the entry carries. A handler that
+  builds its own `Response` declares nothing, and the document says
+  so; that is a choice the author makes per route rather than a hole
+  in the model.
 - **Summaries, tags, operation ids** — NO, and the third gap is the
   smallest: a route has no place to carry a sentence about itself.
 
@@ -124,12 +126,20 @@ okay-openapi):
 - [x] operation ids are derived from method and path, stable and
       distinct
 
-Stage 1 — responses, which is what makes it worth serving:
-- [ ] a route may declare what it answers (status and `Schema`), in
-      okay-http, beside the body declaration it already has — the
-      shape to agree with the arc's owner, not to invent here
-- [ ] `document` renders those; an undeclared operation says so
-      rather than claiming 200
+Stage 1 — responses — SHIPPED (openapi-responses):
+- [x] a route declares what it answers by the handler's TYPE, not by
+      an annotation beside it: `Router.out`/`outAt`/`jsonOut`/
+      `jsonOutAt` take a handler answering a VALUE, and the router
+      encodes it with the same `Schema` the entry carries — so a
+      document cannot promise what the service does not send
+- [x] the router declares the failures IT produces: `jsonOut`'s 400
+      for a body that does not parse, with the error schema, without
+      the author writing anything
+- [x] a declared status other than 200 is the status sent and the
+      status rendered
+- [x] `document` renders them, sorted by status, each with its schema
+- [x] a handler that builds its own `Response` (`on`, `at`) still
+      declares nothing, and the document says exactly that
 
 Stage 2 — the readers:
 - [ ] `routes` serves the document at `/openapi.json` and a page at
