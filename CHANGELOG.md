@@ -1,5 +1,36 @@
 # Changelog
 
+## optics-outside-routes-adopt — the last two, and two left alone with reasons
+
+okay-admin's `POST /admin/replay` and okay-demo's `GET /whoami` were
+the last routes in the tree comparing the WHOLE request target, so both
+missed on a query string — live since e9901797 stopped Jetty dropping
+it. A test watched the admin one fail first, and the failure was
+sharper than a 404: a `MatchError`, because calling the partial
+function directly leaves nothing to turn "undefined" into a status.
+
+Both are `Router`s now. `TwoNode` keeps its own `isDefinedAt`/`apply`
+wrapper, because that is what answers 503 to a POST from a follower —
+folding the leader gate into the table would erase the difference
+between a wrong route and a wrong node, which are 404 and 503 to a
+caller.
+
+**Two were surveyed and deliberately NOT converted**, and the reasons
+are recorded in BACKLOG and in the guide, because in a sweep the
+dangerous places are not the ones that look similar and need changing
+— they are the ones that look similar and do not. okay-acme is already
+correct: it has its own `path(url)` cutting the query before it
+compares, the only module in the repository that did. okay-security's
+`McpAuth` matches `startsWith("/.well-known/oauth-protected-resource")`,
+which looks exactly like the `/person` → `/personal` sloppiness stage 1
+found and is not — RFC 9728 allows the resource's path as a suffix of
+the well-known URI, so the prefix is the specification, and converting
+it would have broken compliance.
+
+That closes `optics-outside-routes-adopt`, open since stage 1: every
+route-serving module in this repository declares its routes. Landed as
+70bb9a4e.
+
 ## openapi-responses — the declaration is the handler's type
 
 Nothing in the tree declared what an operation answers: a handler
