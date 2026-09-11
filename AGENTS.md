@@ -138,15 +138,21 @@ force, all already practiced, none previously written down:
   is gitignored). The main checkout is for reading state, claims, and
   fast-forward merges only. Never `git stash`/`reset --hard` in the
   main checkout: another agent's uncommitted work lives there.
-- **Check a CHANGELOG's commit citations AFTER the last rebase, not
-  before.** A rebase rewrites every sha on the branch, so hexes written
-  during the lane are stale the moment the branch moves again — and the
-  boards cite landed work BY sha. Caught 2026-09-11 in
-  optics-outside-routes-body: the shas were correct when the gate ran,
-  a claims-only rebase followed, and the entry reached master naming
-  two commits that were not on it. `git merge-base --is-ancestor <sha>
-  master` answers it in a second, and belongs in the same breath as the
-  merge.
+- **Run `scripts/check-citations.sh` immediately before
+  `git merge --ff-only`.** It reads every 8-hex word out of
+  CHANGELOG.md and BACKLOG.md, keeps the ones that are commits, and
+  fails on any that is not an ancestor of `master`. It exists because
+  the hand-run version of this check failed THREE TIMES in one session
+  — not from carelessness but from checking the wrong thing: the sha
+  in hand rather than the sha in the file. The first run of the script
+  found sixteen dangling citations, only two of them from that
+  session's lanes, so the mechanism has been quietly costing the
+  ledger for a long time. A check that requires remembering what to
+  check is not a check.
+- **Why they go stale at all: a rebase rewrites every sha on the
+  branch**, and the boards cite landed work BY sha, so hexes written
+  during a lane are wrong the moment the branch moves again. The
+  window is exactly the gap between gating and merging.
 - Before merging: rebase the branch on `master`, run `sbt test`, then
   `git merge --ff-only` — and READ the merge output; git refuses a
   fast-forward over a sibling's uncommitted files, and the refusal

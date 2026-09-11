@@ -42,7 +42,7 @@ and the entry's body schema are the input the day a reader exists.
 
 Documentation moved in the same lane, as asked: the guide gains the
 renderer and the drift story, `okay-http.md` gains `markdown` and
-`jsonAt`. Landed as 79bdd7da.
+`jsonAt`. Landed as 495b99b8.
 ## many-instances-doc — "a row holds ONE State" was true and had stopped being the whole story
 
 The operator read `State`'s scaladoc — "the operations carry no
@@ -204,7 +204,7 @@ readers, three texts; before this, all three read the same one.
 Every signature quoted was checked against the source.
 
 Landed as 3a75d36f. NOTE: its release-claim commit (050d87d8) names
-b9671a3e, which the pre-gate rebase had rewritten — the check added to
+3a75d36f, which the pre-gate rebase had rewritten — the check added to
 AGENTS.md an hour earlier caught it, on my own landing, one commit too
 late to edit a pushed message. The ledger is where a reader looks, so
 the correct sha is here.
@@ -1065,7 +1065,7 @@ gained its own `/`, so a declaration never begins with `Route.lit` or
 No `Router` change was needed, which is the small confirmation that
 stage 1's seam was cut in the right place. 13 new tests in
 `TestRoute`, green on JVM and JS. Commits: 3eb5f96b (the rename and
-the Decisions entry), 6468e90a (the query), 7ebaa196 (the operators).
+the Decisions entry), 6468e90a (the query), 0673719d (the operators).
 
 ## di-facts-examples — what a Fact is for, on a case that earns it
 
@@ -3062,11 +3062,11 @@ distributed comparison is not attempted. okay-cluster was 48 lines of
 round-robin chunk shipping with no plan, no partitioning and no
 exchange.
 
-**specs/dataflow.md** (bcba7012) is stage 0: what the engine is, what
+**specs/dataflow.md** (6669e2e0) is stage 0: what the engine is, what
 it refuses (a resource manager, SQL, exactly-once EXECUTION, a
 Spark/Flink API clone), and three claims written with what would
 FALSIFY each, so the spec cannot degenerate into the marketing every
-engine shares. **d4f6c426** is stage 1: `Flow`, the distributed plan
+engine shares. **7e6aa9d7** is stage 1: `Flow`, the distributed plan
 as a value, and `Flows`, an executor with a fibre per partition.
 
 **The idea, whole.** A keyed stage does not have to move its records
@@ -5693,7 +5693,7 @@ committed tree and refuses a credential-named value on any
 print/log/journal line of an adapter module; today there is no such
 line at all. Cassandra's session takes a 10 s request timeout (the 2 s
 default timed DDL out on the loaded box); okay-blob depends on
-okay-codec on every platform. Landed as 1c43e4a1 + db68b3f5. Gate: full
+okay-codec on every platform. Landed as 050e7658 + db68b3f5. Gate: full
 matrix, 3335 tests, 0 failures. The three Live containers (pg,
 dynamodb-local, cassandra) are stopped and removed.
 
@@ -6333,7 +6333,7 @@ at UTC into timestamptz, the UTC wall-clock LocalDateTime into
 timestamp) and reads by the column's JDBC code; SQLite-class drivers
 fall back to ISO text. Tests: Temporal on JVM+JS+Native; H2, pg wire
 (session zone Europe/Kyiv, a timestamptz[] into Vector[Instant]),
-R2DBC H2/pg round trips. Landed as e3c7d563 + 728ceb37; specs/sql.md
+R2DBC H2/pg round trips. Landed as ad95f380 + 728ceb37; specs/sql.md
 "Temporal, uuid and json values". Gate: full matrix, 3137 tests, 0
 failures, 0 warnings.
 
@@ -7118,7 +7118,7 @@ its usual 155. The rerun waits for the box to be quiet before it
 starts and re-checks between rounds. Everything above is from that
 second run.
 
-Commit: 6fd4ac1a.
+Commit: b4f8d56c.
 
 ## growing-onbehalf — a resumed push is not a second producer
 
@@ -7207,7 +7207,7 @@ regression against the standing table. It was the box settling.
 No same-session 3.7.4-vs-3.9.0 A/B was run, so no moved row is
 attributed to the compiler.
 
-Commit: 0c02929f.
+Commit: a6860846.
 
 ## scala-3-9 — the build moves to the new LTS, and okay-spark stops being a ceiling
 
@@ -7354,7 +7354,7 @@ growing-under-thieves shape. It fails on the old line in 29 ms and
 passes on the new one. The fix alone, with the real blocking park, ran
 120 forks clean.
 
-Commits: 8f8520ab (the ledger entry), 0815cbe8 (the fix and its law).
+Commits: 44e071fc (the ledger entry), 3f09bd9c (the fix and its law).
 
 ## growing — the buffer that becomes partitioned, shipped as the thing to improve
 
@@ -8644,7 +8644,7 @@ door".
 
 ## deploy-everywhere (spec) — one declaration, every place it runs
 Completed: 2026-09-07
-Landed as dabb948a. Spec only, by the operator's own order ("сначала
+Landed as 6b8dcd47. Spec only, by the operator's own order ("сначала
 спека"), for the ask that one declaration should deploy to a laptop,
 a rented server, a cluster, a PaaS and the three clouds and work like
 clockwork. Their three answers are taken as decisions and marked as
@@ -8861,7 +8861,7 @@ okay-acme green 3x.
 
 ## acme-pebble — our ACME client against Let's Encrypt's own test server, and the bug it found
 Completed: 2026-09-07
-Landed as d73eefae (spec then code, rebased). The in-process fake CA
+Landed as ee1a38b6 (spec then code, rebased). The in-process fake CA
 checks our reading of the protocol against our own writing of it;
 Pebble is someone else's implementation and deliberately strict. The
 first run against it failed — `badNonce` — and it was a real bug, not
@@ -9120,7 +9120,7 @@ green 3x.
 
 ## okay-script-measured — the first numbers for a runtime-compiled page
 Completed: 2026-09-07
-Landed as a609b485. Operator ask (first of four: measure, then warm +
+Landed as 9a03dce1. Operator ask (first of four: measure, then warm +
 stats, then an image, then a guide). The container had been built out
 for four days and never once measured, which in this repository is the
 gap that shows. `MeasureScript` — Live-tagged, in okay-script's own
@@ -10347,7 +10347,7 @@ not 2–3x — 2–3x is its distance from JS. No library code changed.
 
 ## okay-script-site — okay-script as a JSP-level web framework
 Completed: 2026-09-06
-Landed as c0b37da2 (spec 986d4708 → code b3ddc914, rebased). Operator
+Landed as c0b37da2 (spec 5a321360 → code c0b37da2, rebased). Operator
 ask: "полноценный web-framework уровня jsp", all of it in one arc.
 `Site(root).routes` serves a directory of `.md` pages through
 okay-http's `Request`/`Response`, so `Jetty.serve(port)(site.routes)()`
@@ -15013,7 +15013,7 @@ Full matrix green: 2121 tests, 0 failures.
 
 ## ring-channel — two channel implementations written, measured, and deliberately not landed
 Completed: 2026-09-03
-Landed as 03b6c55e (backlog and measurements only — the code is
+Landed as ea1413ba (backlog and measurements only — the code is
 withdrawn). Answers the operator's question, is a Michael-Scott
 channel better than the default, with numbers on one harness (one
 producer, one consumer, 4000 elements):
