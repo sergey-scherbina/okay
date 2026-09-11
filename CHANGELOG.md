@@ -1,5 +1,49 @@
 # Changelog
 
+## optics-outside-describe — the describing interpreter gets a consumer that can break
+
+Stage 8. Stage 1 built DESCRIBE and only stage 4 ever read it — once,
+to name a probe path in a deployment. Everything else asserted it
+against itself, and an interpreter nothing depends on is a claim, not
+a property.
+
+**The backlog entry picked the consumer, and it was not OpenAPI.**
+That entry, written in stage 3, says do not start this as "generate
+OpenAPI" — name the consumer that reads the output first, because a
+lane with no caller is the trap this arc has now recorded three times.
+OpenAPI has no reader in this repository. Module documentation does:
+it lists endpoints in prose, and prose drifts. That is exactly the
+drift stage 4 found by hand between `Ops` and `Site`, where one
+compared the whole url and the other only the path.
+
+`Router.markdown` renders the table from the entries that dispatch;
+`docs/modules/okay-ops.md` commits the block between
+`<!-- generated: ... -->` markers; `TestOpsSurface` asserts the
+committed block is still what the live router renders. An endpoint
+cannot now be served and undocumented, or documented and unserved —
+the property `describe` existed for, finally load-bearing. The
+repository already keeps its deployment renderings honest the same
+way.
+
+**The drift test was verified by causing drift.** A passing drift test
+proves nothing: it is equally green when the documentation is right
+and when the test compares something with itself. `/readyz` was
+changed to `/readyz-typo` in the committed block, the suite went red on
+that assertion and for the stated reason, and the file was restored in
+the same command. "No failing test, no fix", applied to a test whose
+only claim is its ability to catch.
+
+The test walks up to `build.sbt` for the repo root rather than
+depending on okay-deploy for three lines — the same judgement stage 4
+made when it declined to teach okay-deploy what a `Route` is.
+
+OpenAPI stays unbuilt deliberately. `describe`, `params`, `queries`
+and the entry's body schema are the input the day a reader exists.
+
+Documentation moved in the same lane, as asked: the guide gains the
+renderer and the drift story, `okay-http.md` gains `markdown` and
+`jsonAt`. Landed as 79bdd7da.
+
 ## optics-outside-chat-route — a conversation with a hole in it, and nobody told
 
 Two defects in the chat application's main endpoint, both watched to
