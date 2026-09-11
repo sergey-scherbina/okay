@@ -125,4 +125,42 @@ class TestChat extends munit.FunSuite {
     assertEquals(Chat.secret("ANTHROPIC_API_KEY"), None)
     assert(Chat.modeName.contains("scripted"))
   }
+
+  // ---- the route's own reading of a request (optics-outside-chat-route)
+
+  def post(route: PartialFunction[Request, Response ! Async], url: String, body: String): Response =
+    run(route(Request(Method.Post, url, Nil, Body.Text(body))))
+
+  test("a query string does not hide /chat") {
+    val route = Chat.chatRoute(Chat.scripted, budget = 512)
+    assert(route.isDefinedAt(Request(Method.Post, "/chat", Nil, Body.Text("""{"messages":[]}"""))))
+    assert(route.isDefinedAt(Request(Method.Post, "/chat?t=1", Nil, Body.Text("""{"messages":[]}"""))),
+      "a cache-buster hid the chat endpoint")
+  }
+
+  test("a message with a missing field is refused, not silently dropped") {
+    var seen: Seq[Anthropic.Message] = Nil
+    val route = Chat.chatRoute(Chat.scripted, budget = 512,
+      turnOverride = (_, ms) => { seen = ms; None })
+    // the middle message has no `role`: messagesOf used to drop it and
+    // hand the model a conversation with a hole, answering 200
+    val holed = """{"messages":[{"role":"user","content":"one"},{"content":"two"},{"role":"user","content":"three"}]}"""
+    assertEquals(post(route, "/chat", holed).status, 400)
+    assert(seen.isEmpty, s"a refused body still reached the model: $seen")
+  }
+
+  test("a body that is not JSON is refused, not answered as an empty conversation") {
+    val route = Chat.chatRoute(Chat.scripted, budget = 512)
+    assertEquals(post(route, "/chat", "not json").status, 400)
+  }
+
+  test("an absent messages field stays an empty conversation") {
+    // NOT a 400: {} meant "nothing to say" before this lane and still
+    // does. Malformed is refused; absent stays absent
+    var seen: Seq[Anthropic.Message] = Nil
+    val route = Chat.chatRoute(Chat.scripted, budget = 512,
+      turnOverride = (_, ms) => { seen = ms; None })
+    assertEquals(post(route, "/chat", "{}").status, 200)
+    assert(seen.isEmpty)
+  }
 }

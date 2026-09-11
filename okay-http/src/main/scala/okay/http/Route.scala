@@ -684,7 +684,23 @@ final class Router private (val entries: Vector[Router.Entry]):
    * request, while one given a diagnosis about something else cannot.
    */
   def json[A <: Tuple, B](method: Method, route: Routed[A])(h: (A, B) => Response ! Async)
-                         (using sc: okay.codec.Schema[B]): Router =
+                         (using okay.codec.Schema[B]): Router =
+    jsonAt[A, B](method, route)((a, b, _) => h(a, b))
+
+  /**
+   * a declared body AND the request — its headers, its peer, its
+   * session.
+   *
+   * The same relation `at` has to `on`, and discovered the same way:
+   * `json` alone could not express okay-chat's route, whose
+   * `turnOverride` seam is handed the request so a verified session
+   * can identify the speaker over anything the body claims. A handler
+   * that may not see the request is a demo, not an api — so `jsonAt`
+   * is the primitive and `json` is written in terms of it.
+   */
+  def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])
+                           (h: (A, B, Request) => Response ! Async)
+                           (using sc: okay.codec.Schema[B]): Router =
     new Router(entries :+ new Router.Entry(method, route.describe,
       r => r.method == method && route.unapply(r.url).isDefined,
       r =>
@@ -692,7 +708,7 @@ final class Router private (val entries: Vector[Router.Entry]):
         else route.unapply(r.url).map { a =>
           okay.codec.Codecs.json(sc).decode(
             okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
-            case Right(b) => h(a, b)
+            case Right(b) => h(a, b, r)
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sc))))
@@ -737,6 +753,11 @@ object Router:
   def json[A <: Tuple, B](method: Method, route: Routed[A])(h: (A, B) => Response ! Async)
                          (using okay.codec.Schema[B]): Router =
     empty.json(method, route)(h)
+
+  def jsonAt[A <: Tuple, B](method: Method, route: Routed[A])
+                           (h: (A, B, Request) => Response ! Async)
+                           (using okay.codec.Schema[B]): Router =
+    empty.jsonAt(method, route)(h)
 
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     empty.of(method, route)(h)
