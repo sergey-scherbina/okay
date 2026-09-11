@@ -1,0 +1,31 @@
+task: openapi-media
+agent: opus5-di
+started: 2026-09-11
+heartbeat: 2026-09-11T11:29:16Z
+status: in-progress
+branch: feature/openapi-media
+worktree: ../okay-wt-media
+spec: specs/openapi.md (stage 2 exposed it)
+
+why: okay-demo's committed document renders `undeclared` for all six
+  operations, so the integrator the openapi-serve lane built for still
+  reads nothing about what they get back. `out`/`jsonOut` declare an
+  answer BY CONSTRUCTION — the router encodes with the schema the
+  entry carries — but they can only encode JSON, and the demo answers
+  HTML, a server-sent-event stream and a byte bundle. The gap is not
+  the renderer's: nothing in those handlers is encoded by the router.
+
+what: `Router.Answer` gains a media type. Three combinators that
+  encode, so the handler's TYPE says the media rather than an
+  annotation beside it: `html` (String), `bytes` (Array[Byte] with a
+  media argument), `events` (Source[Chunk[Byte]], text/event-stream).
+  The renderer keys `content` by the answer's media instead of
+  hardcoding application/json. Then the consumer: okay-demo's six
+  operations declared, its committed document regenerated.
+
+note: okay-http/Route.scala is also being edited by route-headers-spec
+  (stage A committed on their branch). Different region — their work is
+  a third place for request headers, mine is Router.Answer and the
+  encoding combinators — but whoever lands second rebases.
+
+next: Answer.media + the three combinators, with the renderer
