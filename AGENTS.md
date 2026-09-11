@@ -141,7 +141,9 @@ force, all already practiced, none previously written down:
 - **Run `scripts/check-citations.sh` immediately before
   `git merge --ff-only`.** It reads every 8-hex word out of
   CHANGELOG.md and BACKLOG.md, keeps the ones that are commits, and
-  fails on any that is not an ancestor of `master`. It exists because
+  fails on any that is not an ancestor of HEAD — run it FROM THE
+  WORKTREE, where HEAD is the tip about to become master, so the
+  lane's own citations count. It exists because
   the hand-run version of this check failed THREE TIMES in one session
   — not from carelessness but from checking the wrong thing: the sha
   in hand rather than the sha in the file. The first run of the script

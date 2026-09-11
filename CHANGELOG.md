@@ -29,7 +29,7 @@ it would have broken compliance.
 
 That closes `optics-outside-routes-adopt`, open since stage 1: every
 route-serving module in this repository declares its routes. Landed as
-70bb9a4e.
+8da5992a.
 
 ## openapi-responses — the declaration is the handler's type
 
