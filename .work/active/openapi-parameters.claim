@@ -1,1 +1,0 @@
-optics-outside session: carry the route's parameter KINDS and query declarations onto Router.Entry; the document currently calls an Int a string
