@@ -200,6 +200,22 @@ than trusting the author.
   partitions), 6b (a dying worker's partition is replayed on a
   survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
   execution underneath, and the offers counted rather than promised).
+- **11 — the log is the source.** A `Flow` whose partitions are
+  okay-persist topic partitions that SEEK by epoch (offset = begin +
+  epoch x take), so a resumed run reads from the last epoch instead
+  of replaying the source from the start — and a staging sink whose
+  output offset commits with the epoch, so the run is exactly-once
+  from log to log on the repository's own primitive. Verifiable on
+  one machine with `MemoryStore`.
+- **12 — the network.** The cross-process harness on machines that
+  are not this one, or containers with injected latency and loss.
+  BLOCKED on machines; the boxes are written so that the day they
+  exist the work is a run and not a design.
+- **13 — rescale at an epoch boundary.** Partitions are fixed at
+  submission today. With the journal and 6b's replay, a stream can
+  change its partition count between two epochs: stop at N, re-cut
+  the source, resume at N+1 with the new count. Verifiable on one
+  machine.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -391,6 +407,49 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
       rather than closed
 - [x] durable checkpointing, so a COORDINATOR restart can resume —
       stage 8
+
+Stage 11 — the log is the source (not started):
+- [ ] `Flow.topic(topic, decode)`: one partition per topic partition,
+      read through `Streams.stream`, positioned by (epoch, take) —
+      the partition is still a RECIPE, the recipe now names an offset
+- [ ] a resumed coordinator's workers open at the journal's epoch and
+      read from there: recovery is O(elements since the last epoch),
+      asserted by counting what the topic was asked for
+- [ ] `Sink.stagingTo(topic)`: an epoch's panes appended as records
+      with the epoch in the key; `committed(epoch)` is the append and
+      `recovered(epoch)` reads the topic's tail to know what already
+      landed — the writer's atomicity is the log's append
+- [ ] exactly-once from log to log: kill the coordinator between the
+      append and the journal commit, resume, and the output topic
+      holds every pane once — the stage 9 window, closed by a store
+      that IS the journal's kind
+- [ ] the same on `KafkaStore` when a broker is available (Live)
+
+Stage 12 — the network (BLOCKED: needs machines that are not this one):
+- [ ] the three engines' cross-process harness over a real link, and
+      the fixed/marginal split re-measured — the first number this
+      repository will have about a wire that is not loopback
+- [ ] injected latency and loss (`tc netem`, or containers) against
+      the tolerance of `dataflow-reconnect`: at what loss rate does a
+      run stop finishing, and is three consecutive failures the right
+      count when a failure is a packet
+- [ ] a partition of the network between coordinator and a worker:
+      the worker is buried, the partition moves, and when the link
+      heals the worker's old session is NOT resumed into a run that
+      has moved on (the fence, from the worker's side)
+- [ ] what can be done on ONE machine meanwhile, and will be: a
+      `Serve` wrapper that delays and drops by a seeded schedule, so
+      the tolerance question above gets a number without a network
+
+Stage 13 — rescale at an epoch boundary (not started):
+- [ ] a stream running at `parts` stops at epoch N and resumes at N+1
+      with `parts'`; the answer equals the batch answer
+- [ ] the boundary panes of the old cut are re-bucketed rather than
+      re-read: the journal holds them, and the completeness rule
+      recomputes with the new extents
+- [ ] a worker added mid-stream takes partitions from the next epoch;
+      one removed hands its back — the same mechanism as death,
+      without the death
 
 Stage 10 — the election (TestElection, TestPersisted):
 - [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`

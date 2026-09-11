@@ -1231,6 +1231,27 @@ its owner can price it:
       (was filed under "deploy-everywhere" — the reasoning
       that section carries is in BACKLOG-ARCHIVE.md)
 
+## dataflow — direction (2026-09-11; specs/dataflow.md stages 11-13, specs/federation.md)
+- [ ] dataflow-source-log — stage 11: `Flow.topic` over okay-persist
+      partitions that SEEK by epoch, and `Sink.stagingTo(topic)` whose
+      append is the commit. Exactly-once from log to log on the
+      repository's own primitive; verifiable on one machine. FIRST.
+- [ ] dataflow-netem — stage 12's one-machine half: a `Serve` wrapper
+      that delays and drops by a seeded schedule, so the tolerance of
+      dataflow-reconnect gets a number before there is a network.
+- [ ] dataflow-rescale — stage 13: change the partition count between
+      two epochs.
+- [ ] federation-two-parties — specs/federation.md stage 1: two logs,
+      two processes, one job, the answer equal to the union's and the
+      bytes shown to be accumulators.
+- [ ] one-binary-story — the small-business path, as ONE worked
+      example rather than a module: events into a log, a windowed
+      report over them, a page that shows it, a backup that leaves the
+      machine — all in one process, run end to end in a test. The
+      thing the repository is FOR, told once.
+- [ ] dataflow-machines — stage 12 proper. BLOCKED: needs machines
+      that are not this one. Not to be pretended at.
+
 ## okay-resilience
 - [ ] resilience-timed-under-load — `TestResilienceTimed."hedge: max
       bounds the attempts in flight"` failed once in a full gate

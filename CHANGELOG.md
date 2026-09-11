@@ -1,5 +1,24 @@
 # Changelog
 
+## dataflow-direction — stages 11-13, and federation as a spec
+
+What is left, written where it can be checked instead of said in a
+chat. Stage 11: the log is the source — partitions that seek by epoch,
+a staging sink whose append is the commit, exactly-once from log to
+log on the repository's own primitive, all on one machine. Stage 12:
+the network, BLOCKED on machines that do not exist, with the boxes
+written so that the day they do the work is a run; and its one-machine
+half, a Serve that delays and drops by a seeded schedule. Stage 13:
+rescale at an epoch boundary.
+
+And specs/federation.md, from the one property the engine already has
+and had not named as a product: accumulators cross, records do not.
+Aggregation across parties where the records stay home — with the
+trust boundary, schema at the door and the bound on the leak named as
+the work rather than waved at, and Claim 3 said plainly: an aggregate
+can still be a record, and what the engine offers is that the leak is
+the Schema.
+
 ## leads-out — the lead ledger leaves the platform; it was product code in the wrong repository
 
 `okay.chat.leads` is deleted. It was written for the operator's chat

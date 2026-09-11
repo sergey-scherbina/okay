@@ -570,8 +570,10 @@ val wire: Cluster.Worker[Double, Double] = c =>
   producing that merge rather than to parallelise it. See
   `dataflow-complete-panes`.
 
-Every stage of specs/dataflow.md is landed. What is left is the
-backlog: `dataflow-run-complete-panes`, `dataflow-fan-overhead` (about
+Every stage of specs/dataflow.md up to 10 is landed. Stages 11-13
+(the log as the source, the network, rescale) and specs/federation.md
+are the direction, with boxes that say which can be checked on one
+machine and which wait for machines. What is left besides: `dataflow-run-complete-panes`, `dataflow-fan-overhead` (about
 a third of a fan's time is in none of its sinks), and
 `dataflow-coordinator`, which is what a journalled coordinator would
 need for exactly-once ACROSS runs — and a real CLUSTER, which §20's
