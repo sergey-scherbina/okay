@@ -83,6 +83,63 @@ design away, its direction is right (the user's assessment).
       unterminated tag at end of input is still a token. Lossless and
       total under generated input, incremental reparse included.
 
+## Literal transparency, opt-in (2026-09-11, json-literals)
+
+`Json` gains the `into` modifier and a `Json.literals` object. Neither
+changes anything for code that does not import the second: `into` says
+"conversions to me need no language import", and without a conversion
+in scope there is nothing to apply. The safe API is untouched, which
+was the operator's condition.
+
+What the import gives, and what it refuses:
+
+- **a string LITERAL converts, a `String` VALUE does not.** This is the
+  whole design. The hazard that made `throws-into` refuse `into` on
+  `Json` is that `Json.parse(s): Json` returns a `Json` directly, so in
+  a file with an ambient `Conversion[String, Json]` a caller who passes
+  a serialized document gets `JStr(document)` with no error anywhere —
+  double encoding, in the module whose job is encoding. A conversion
+  cannot read intent: both meanings have type `String`. So the
+  conversion is restricted to constant types and says the rest out
+  loud:
+
+      inline given [S <: String & Singleton] => Conversion[S, Json] =
+        inline constValueOpt[S] match
+          case Some(_) => (s: S) => JStr(s)
+          case None    => error("...JStr(x)... Json.parse(x)...")
+
+  REFUTED on the way, and worth the sentence: `S <: String & Singleton`
+  alone does NOT separate a literal from a variable. Every stable `val`
+  has a singleton type, so `f(doc)` type-checked with `S = doc.type`.
+  `constValueOpt` is what distinguishes a constant type from a
+  reference to one.
+- **`Int`, `Double` and `Boolean` convert plainly.** No document can
+  hide inside them, so there is no intent to misread.
+- **`Long` is deliberately absent.** `JNum` holds a `Double`, so a
+  `Long` above 2^53 would convert with silent precision loss — the
+  same shape of defect this section exists to prevent. Write
+  `JNum(x.toDouble)` where that is genuinely wanted.
+- **`===`** compares a `Json` with anything the import converts, so
+  `json === "x"` reads as the comparison it is. It is SUGAR, not a
+  guard: `json == "x"` does not compile today and never did, because
+  Scala 3 derives `CanEqual` for enums and sealed traits and rejects
+  comparison with an unrelated type without `strictEquality` and
+  without any declaration of ours. (An earlier note claimed that
+  comparison silently answered `false`. It does not.)
+
+Coverage, measured before building: 239 of 566 string construction
+sites in this repository are literals. So the import shortens 42% of
+them by design and leaves the other 58% — the ones holding values,
+which is where the danger is — spelled `JStr(...)` as before.
+
+- [ ] a string literal converts under the import; a `String` value is
+      a compile error whose message names `JStr` and `Json.parse`
+      (TestJsonLiterals, both directions by
+      `compiletime.testing.typeChecks`)
+- [ ] without the import nothing converts: the same literal is a plain
+      type error
+- [ ] `Int`, `Double`, `Boolean` convert; `Long` does not resolve
+
 ## Out of scope
 - schema languages/validation; a transport module (its own, later)
 
