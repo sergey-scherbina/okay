@@ -251,7 +251,53 @@ the limitation is no longer the end of the story — `Tag` generalised
 what `Keyed` once did for `State` alone, and `Refs` covers what a type
 cannot list. Every one of those places now points here.
 
+## The compiler will now tell you
+
+`summon[Distinct[R]]` refuses a row whose members cannot be told apart
+at run time, and says which two and what to do about it. It is the
+statement `TestRowIdentity` demonstrates, moved to the time you can
+still fix it:
+
+```scala
+summon[Distinct[Reader % Int + Writer % String]]        // fine
+summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
+summon[Distinct[Reader % Int + Reader % String]]        // refused
+```
+
+What it compares is **the test, not the type**, and that distinction is
+the whole design. `Writer % String + Writer % Int` is a good row — the
+two writers collect the right elements, because `writerK` reads the
+told VALUE with a `Typeable[W]` rather than testing the class. The
+same shape over `Reader` is broken, because `Ask()` is one class
+whatever `R` is. Nothing about the two TYPES says which is which; only
+the instance knows, so the instance declares it:
+
+```scala
+given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
+```
+
+Unmarked means "tests by erasure", which is the safe default: an
+instance that really is finer gets refused until someone adds the
+word, while the opposite default would pass a row that misroutes.
+
+The wrappers are read structurally. `Tag.Of[K, F]` collides only with
+the same key over a colliding `F`; `Instances.Of[F]` collides only
+with another `Instances.Of[F]`, which the language already forbids:
+`+` is a union, `F | F` is `F`, so a row cannot repeat a member at
+all, and two `Instances.Of[Ping]` are the single member it was written
+to be. What the check is for is the pair that is two *different types*
+with one runtime identity. An
+abstract member is always allowed: a residual `G` in an interpreter is
+unknown where it is written and checked where it is instantiated,
+which is the only place the answer exists.
+
 ## Where the code is
+
+- `src/main/scala/Distinct.scala` — the compile-time check: the row
+  walk, the identity a member is compared by, and the error
+- `src/test/scala/TestDistinct.scala` — every row `TestRowIdentity`
+  runs, at compile time: the two readers refused, the two writers
+  allowed, keys, `Instances`, an abstract member, `Pure`
 
 - `src/main/scala/Instances.scala` — the run-time handle: `at`,
   `route`, `handler`, `only`, `exhausted`

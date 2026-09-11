@@ -172,6 +172,7 @@ object Handler {
    * types at a call site are concrete.
    */
   def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
+                         (using Distinct[F + G])
   : Handler[F + G] = new Handler[F + G]:
     def handle[A](a: F[A] | G[A]): A =
       // the split is the kernel's (`split`), the one place the
@@ -262,7 +263,13 @@ def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
  * be acted on.
  *
  * The limitation, stated: a row may hold ONE instance of such a
- * signature. Two — `Reader % Int + Reader % String` — misroute, and
+ * signature — and `Distinct[R]`, which `Handler.union` requires, now
+ * refuses the row at COMPILE time rather than leaving it to be
+ * discovered at the first wrong answer. A test that is finer than the
+ * class says so in its declared type (`TypeableK.ByValue`) and is
+ * allowed to repeat; `writerK` is the one that does.
+ *
+ * Two — `Reader % Int + Reader % String` — misroute, and
  * `TestRowIdentity` demonstrates exactly how (the first handler
  * answers both asks and the second continuation gets a
  * ClassCastException, so it fails loudly at the first wrong answer
@@ -293,6 +300,26 @@ def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
  * exclusion, so every tested signature is atomic.
  */
 object TypeableK:
+
+  /**
+   * A TEST THAT READS THE OPERATION'S VALUE, and so tells two
+   * instances of one signature apart.
+   *
+   * The default is the opposite: a test is the erasure, and a row may
+   * hold ONE member of a signature (see `typeableKByClass`). An
+   * instance that does better says so HERE, in its declared type,
+   * because nothing else can be read by a macro — and `Distinct[R]`
+   * reads exactly this to decide whether `Writer % String + Writer %
+   * Int` is the good row it is, or the misroute that the same shape
+   * over `Reader` would be.
+   *
+   * One instance in this tree carries it: `writerK`, whose test is
+   * `Typeable[W]` on the told value. Marking a test that is NOT finer
+   * than the class defeats the check for that signature, so mark it
+   * only after reading the `unapply`.
+   */
+  trait ByValue[F[_]] extends TypeableK[F]
+
   /**
    * `enum Users[+A] derives TypeableK` — the instance every effect
    * needs, written by the compiler.

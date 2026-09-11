@@ -1,5 +1,63 @@
 # Changelog
 
+## Distinct — the row's members, told apart at compile time
+
+`split` decides a union by a runtime test on the left member and takes
+the right by exclusion. That is sound exactly when no member's test
+accepts another member's operations, and nothing checked it:
+`TestRowIdentity` has demonstrated the consequence for as long as it
+has existed — `Reader % Int + Reader % String` sends both asks to the
+Int handler, and the String continuation dies of a ClassCastException
+at its first wrong answer. `summon[Distinct[R]]` is that
+demonstration moved to the time you can still fix it, and
+`Handler.union` now requires it.
+
+**What it compares is the test, not the type**, and that is the whole
+design. The backlog asked for the keys to be compared; two
+measurements killed that plan in both directions. Comparing keys
+refuses `Of["k", Ping] + Of["k", Peng]`, which the morning's
+tag-test-the-signature-too made legal. Comparing erasures instead
+refuses `Writer % String + Writer % Int`, which routes correctly,
+because `writerK` reads the told VALUE with a `Typeable[W]` rather than
+testing a class. Nothing about the two TYPES separates those cases.
+So the instance says it: `TypeableK.ByValue` is the opt-in marker,
+`writerK` is the only instance in this tree that carries it, and
+unmarked means "tests by erasure". The default is the safe direction —
+an unmarked fine instance is refused and fixed by one word, while the
+opposite default would quietly pass a row that misroutes.
+
+That makes it not a Tag check at all. It catches the UNTAGGED
+`Reader % Int + Reader % String`, which is the defect `Tag`, `Refs`,
+`Instances` and `Delim` all exist to work around.
+
+**Where it is required**: `Handler.union`, in a second using clause.
+That is the one place `split`'s excluded middle is claimed, it is 15
+call sites rather than `RowLift.at`/`plus`'s 147, and a second clause
+leaves the sites that pass the first one explicitly alone. Both
+disqualifiers in the backlog entry were measured before the
+requirement was kept: zero breakage (the whole tree compiles, the gate
+is green at 4247 results, all ten okay-agent union sites included) and
+no compile-time cost worth naming (a full Test/compile in 44 s; a cold
+core of 70+105 sources in 34 s with zero warnings).
+
+**Three things the reflection taught, all written into the file.**
+`TypeRepr.of[R]` for a higher-kinded parameter arrives as an
+HKTypeLambda, never as the applied `+` the call site wrote — so the
+row is read from its applied body, where only a union is an `OrType`
+and `%` (also two arguments) is not. A `Tag.Of[K, F][A]` member is an
+applied ALIAS rather than an applied `Tag`, so `baseType(tagSym)` is
+what sees it and a structural match never does. And `F | F` is `F`: a
+row cannot repeat a member at all, so the check only ever fires on two
+DIFFERENT types with one runtime identity.
+
+The witness is a class, not an opaque `Unit`. `RowLift.In` can be the
+latter because it is summoned from outside `RowLift`, where the
+opacity holds; a witness summoned from inside `package okay` cannot —
+the alias is transparent in its own scope, the given's type then
+constrains R to nothing, and every row is satisfied by the macro run
+at some inferred R. `Distinct.unchecked` is the constructor that
+leaves, deliberately public, for the rows the macro cannot see.
+
 ## dataflow-direction — stages 11-13, and federation as a spec
 
 What is left, written where it can be checked instead of said in a

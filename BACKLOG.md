@@ -37,21 +37,39 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] tag-distinct-keys — a row of `Tag.Of[K, F]` members is only as
-      good as the keys being different, and nothing checks it:
-      measured 2026-09-11, `Of["same", Reader % Int] + Of["same",
-      Reader % String]` misroutes into the ClassCastException the key
-      exists to prevent (pinned in `TestTag`). The check wants to be
-      a `Distinct[R]` given, derived by a macro that walks the row
-      type, collects the singleton keys of its `Tag.Of` members and
-      refuses duplicates with a message naming the two members and
-      pointing at docs/many-instances.md. WHERE to require it is the
-      design question: `Tag.one`/`Tag.tag` cannot see the whole row,
-      so the natural seam is `RowLift.at`/`plus`, which is where two
-      members first coexist in one type — and that is a very hot,
-      very general API. DISQUALIFYING: if requiring it there measures
-      as a compile-time cost on ordinary rows, or breaks inference at
-      `.at`, it dies there and the rule stays a documented one.
+- [x] tag-distinct-keys — DONE (2026-09-11) as `Distinct[R]`, and
+      the entry's own plan did not survive the first measurement.
+      "Collect the singleton keys and refuse duplicates" would refuse
+      `Of["k", Ping] + Of["k", Peng]`, which tag-test-the-signature-too
+      had made legal that same morning. Comparing ERASURES instead
+      would refuse `Writer % String + Writer % Int`, which
+      `TestRowIdentity` runs and which routes correctly. Neither the
+      key nor the type decides it: the TEST does, so the instance
+      declares it — `TypeableK.ByValue`, carried by `writerK` alone,
+      with unmarked meaning "tests by erasure". That default is the
+      safe direction: an unmarked fine instance is refused and fixed
+      by one word, the reverse would pass a row that misroutes.
+      The check is therefore not Tag-specific at all. It catches the
+      UNTAGGED `Reader % Int + Reader % String` — the defect the whole
+      Tag/Refs/Delim machinery exists to work around — which is what
+      it was asked for and more.
+      WHERE: `Handler.union`, in a SECOND using clause (`(using
+      TypeableK, Handler, Handler)(using Distinct[F + G])`), not
+      `RowLift.at`/`plus`. That is where `split` claims the excluded
+      middle, it is 15 call sites against 147, and a second clause
+      leaves the sites that pass the first one explicitly alone.
+      MEASURED, both disqualifiers: zero breakage (whole tree
+      compiles, gate GREEN at 4247 results, all 10 okay-agent union
+      sites included) and no compile-time cost worth naming (full
+      Test/compile 44 s; cold core 70+105 sources 34 s, agent 16+22
+      6 s, zero warnings).
+      THREE TRAPS, all in `Distinct.scala`'s comments: `TypeRepr.of[R]`
+      for a higher-kinded parameter arrives as an HKTypeLambda, never
+      as the applied `+` the call site wrote; a `Tag.Of[K, F][A]`
+      member is an applied ALIAS, so `baseType(tagSym)` is the only
+      thing that sees it; and `F | F` is `F`, so a row CANNOT repeat a
+      member — the check only ever fires on two different types with
+      one runtime identity.
 - [x] tag-test-the-signature-too — DONE (2026-09-11), and the feared
       cost was ZERO. `Tag`'s `Effect` given now asks `TypeableK[F]`
       beside the key, so the test is key AND signature — what

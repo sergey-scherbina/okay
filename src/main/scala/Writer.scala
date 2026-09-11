@@ -349,7 +349,7 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
  * class-distinct from W. A `Say` is class-distinct from everything,
  * and the caveat is gone.
  */
-given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = new:
+given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
   def unapply[A](x: Any): Option[x.type & Writer[W, A]] = x match
     case s: Writer.Say[?, ?] =>
       t.unapply(s.w).map(_ => x.asInstanceOf[x.type & Writer[W, A]])

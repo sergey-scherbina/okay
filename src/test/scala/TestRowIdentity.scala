@@ -24,6 +24,11 @@ import okay.given
  * all, and handled by that signature's own handler after `untag`) and
  * `Refs` (state made at run time, one row member however many, one
  * stated cast in the heap).
+ *
+ * EVERY ROW BELOW IS ALSO IN `TestDistinct`, at compile time: the ones
+ * that route correctly here must summon a `Distinct` there, and the
+ * one that misroutes must be refused. The two suites are the same
+ * statement at the two times a row can be wrong.
  */
 class TestRowIdentity extends munit.FunSuite {
 
