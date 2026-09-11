@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{at as liftAt, plus}
+import okay.RowLift.{at, plus}
 
 /**
  * Instances of an ARBITRARY effect, made at run time — the corner
@@ -107,7 +107,7 @@ class TestInstances extends munit.FunSuite:
       for
         a <- Instances.at[Store](s)(Store.Get()).plus[Instances.Of[Reader % Int]]
         b <- Instances.at[Reader % Int](w)(Reader.Ask())
-               .liftAt[Instances.Of[Store] + Instances.Of[Reader % Int]]
+               .at[Instances.Of[Store] + Instances.Of[Reader % Int]]
       yield (a, b)
 
     val hs = Instances.handler[Store](_ => new:

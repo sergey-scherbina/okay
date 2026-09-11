@@ -52,17 +52,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       very general API. DISQUALIFYING: if requiring it there measures
       as a compile-time cost on ordinary rows, or breaks inference at
       `.at`, it dies there and the rule stays a documented one.
-- [ ] tag-test-the-signature-too — a cheaper half-fix, also unproven:
-      `Tag`'s `Effect` instance tests the key ALONE. Given
-      `TypeableK[F]` it could test the key AND the inner operation, so
-      that two members sharing a key but differing in SIGNATURE
-      (`Of["k", Reader % Int]` vs `Of["k", Writer % String]`) route
-      correctly instead of colliding. It does nothing for the same
-      signature under one key, which is the commoner mistake, and it
-      strengthens the given's requirements — every row mentioning
-      `Tag.Of[K, F]` would need `TypeableK[F]` in scope, which is a
-      source-compatibility change. Measure the breakage before
-      writing it.
+- [x] tag-test-the-signature-too — DONE (2026-09-11), and the feared
+      cost was ZERO. `Tag`'s `Effect` given now asks `TypeableK[F]`
+      beside the key, so the test is key AND signature — what
+      `Instances` does — and `Of["k", Beep] + Of["k", Buzz]` is an
+      ordinary row instead of a collision. The source-compatibility
+      worry was measured before the change was kept: the whole build
+      and every test compile with zero errors, because an `Effect` IS
+      a `TypeableK` and every effect that goes under a key already
+      has one. The half no runtime test can reach — same signature,
+      same key — still misroutes and is still pinned.
 - [x] instances-of-any-effect — DONE (2026-09-11): `Instances[F]` is
       `Tag` with the key read at RUN time — one row member per
       signature, however many instances, identity by a fresh `Handle`
@@ -310,6 +309,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       already is; and the rate belongs in a ledger here, because a
       re-run that hides a real compile failure is worse than a red
       gate. Not done: seen once, and once is not a signature.
+- [ ] dotty-e198-renamed-import-false-positive — RECURRENCE LEDGER.
+      `import okay.RowLift.{at as liftAt, plus}` warned "unused
+      import" while `liftAt` was used as an extension method;
+      deleting it failed with E008, which is the proof it was used.
+      Dropping the RENAME compiles clean. Recorded rather than
+      suppressed, because `scripts/gate.sh` is now red on warnings and
+      the next person must not delete the line the compiler points at.
+      Occurrences: 2026-09-11, src/test/scala/TestInstances.scala.
 
 ## okay-codec
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
@@ -746,33 +753,41 @@ The spec is written and names the consumer first, as
 a document is worth serving belongs to THAT arc and is listed here so
 its owner can price it:
 
-- [ ] openapi-responses — a route declares what it answers (status and
-      `Schema`), beside the request body it already declares. Without
-      it every operation says "200, unspecified" and the document is
-      not worth publishing. THE decider for this whole arc.
-- [ ] openapi-queries — `Router.Entry` carries the body schema but not
-      the query declarations a `Queried` route knows. Small.
-- [ ] openapi-render — stage 0: `okay-openapi`, `document(api, router)`
-      over paths, methods, path parameters and request bodies, with
-      the renderer's law (every entry once, no path the router does
-      not dispatch). Can land before responses; must not claim to be
-      OpenAPI support until they exist.
+- [x] openapi-responses — DONE (`Router.out`/`outAt`/`jsonOut`/
+      `jsonOutAt`, `Entry.answers`); the box was left unticked after
+      the work landed and is corrected here.
+- [x] openapi-queries — DONE 2026-09-11 as openapi-parameters, and it
+      was two gaps rather than one: the query declarations AND the
+      path parameters' kinds, both for the same reason. `Router.Entry`
+      took `route.describe` — a STRING — so the renderer re-parsed
+      `{name}` out of the template and called every path parameter a
+      string; `Route[Int]("id")` was published as text. The entry now
+      carries `Route.Described` (template + params + queries), and the
+      value exists so the two can never be passed apart again. A
+      `Param` carries its own JSON Schema, through okay-codec's
+      `JsonSchema.of` rather than a second mapping, and a custom
+      `Param` may override it (`format: uuid`) — tested.
+- [x] openapi-render — DONE (`okay-openapi`, the law included); box
+      corrected 2026-09-11 alongside openapi-responses.
 - [ ] openapi-serve — stage 2: `/openapi.json` and a page that renders
       it with no network, plus okay-demo's committed document and its
       drift test — the shape okay-demo/deploy already has.
 - [ ] openapi-prose — stage 3: a summary per route; operation ids are
       derived until then.
 
-- [ ] optics-outside-describe — the renderer stage 1's DESCRIBE
-      interpreter still has no consumer for. A `Router` plus its
-      routes' `describe`/`params`/`queries` is an OpenAPI paths object
-      already; okay-agent's `Toolbox` is the same shape for MCP. Do
-      NOT start it as "generate OpenAPI": start it by naming which
-      consumer reads the output, or it lands with no caller — the trap
-      this arc has now recorded three times. Stage 4 is the worked
-      example of doing it the other way round: the consumer (a
-      deployment naming a probe path) was found in the tree first, and
-      the description was shaped to fit it.
+- [x] optics-outside-describe — CLOSED 2026-09-11. The consumer
+      arrived and was not built by this arc: a sibling wrote
+      `okay-openapi`, quoting this entry's own rule back at it. The
+      description then had to be made worth reading — see
+      openapi-queries above — and the shape of that work is the
+      lesson: the renderer had ALL the names it needed and none of the
+      kinds, because the router flattened `Routed` to a String at its
+      door. A DESCRIBE interpreter is only as good as what survives
+      the boundary it is read across.
+      What remains undeclared is HEADERS, and that is a route
+      declaration, not a renderer feature: a handler reads a header
+      off the `Request` with nothing declared anywhere. Not started —
+      no consumer has asked.
 - [x] optics-outside-routes-body — request bodies DONE (2026-09-11,
       stage 7, `Router.json[B]`); headers and RESPONSE bodies remain. `Request`/`Response` already carry a `Body` and okay-codec
       has `Schema`, so a body declaration is the `Toolbox` shape
@@ -881,17 +896,24 @@ its owner can price it:
       "every OKAY_ in the guide is a setting" is false.
 
 ## okay-http
-- [ ] route-arity-one-tuple — one captured parameter arrives at a
-      handler as a `Tuple1`, because the route's `A` is
-      `String *: EmptyTuple` and Scala binds the whole tuple to a
-      single sub-pattern. Documented since stage 1 and judged
-      tolerable; the evidence that it is not came from the API's own
-      author, who wrote `{ email => ... }` in the okay-demo conversion
-      and needed the compiler to remember his own warning. A remedy
-      exists on paper — an `on1`-shaped overload, or an `Extract[A]`
-      match type collapsing arity 1 — and both add surface, so the
-      question is whether the wart costs more than the cure. Record a
-      second sighting before deciding.
+- [x] route-arity-one-tuple — DONE 2026-09-11. The entry asked for a
+      second sighting; there were four, three by authors other than
+      the one who wrote the entry: the sibling who wrote `TestOpenApi`
+      reached for `t.head`, `TestRouterOut` did the same, okay-demo's
+      `/events/{email}` carried a comment saying `.head` is "the
+      spelling until it has a better one", and I wrote `Tuple1(id)` to
+      build a url. That settled it.
+      Neither remedy on paper was taken. An `on1` overload doubles the
+      surface, and an `Extract[A]` MATCH TYPE says what the parameter
+      is and leaves the router to cast into it — which AGENTS.md
+      forbids. `Route.Arity[A] { type Out }` is a witness that CARRIES
+      the conversion, the same reason `Split` is a witness and not
+      `Tuple.Concat`. It collapses at the HANDLER only: `unapply` and
+      `url` still speak in tuples, because the optic's laws are stated
+      over `A`.
+      Measured: 8 signatures on `Router`, 4 on its companion, and the
+      whole repository needed FOUR call-site edits. Arity 2 still
+      untuples as `(id, slug) => ...` and arity 0 is still `_ => ...`.
 - [x] optics-outside-route-of-labels — DONE (2026-09-11, a450ff85). The
       operator settled the open question ("it will be needed"), and
       the entry's own doubt was half wrong: the check catches more

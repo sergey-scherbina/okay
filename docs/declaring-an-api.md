@@ -132,6 +132,29 @@ request as well — its body, its headers, its peer. `at` is the
 primitive and `on` is written in terms of it, because most handlers
 need the request.
 
+**One parameter arrives as the VALUE, not a `Tuple1` of it.**
+
+```scala
+Router.on(Method.Get, Route / "users" / "id".as[Int])(id => byId(id))
+Router.on(Method.Get, userPost)((id, slug) => post(id, slug))
+Router.on(Method.Get, healthz)(_ => live)
+```
+
+Two parameters arrive as two, none as none, and this is the ONLY place
+the collapse happens — the route itself still speaks in tuples,
+because that is what the optic's laws are stated over:
+
+```scala
+one.unapply("/users/7")   // Some(Tuple1(7))
+one.url(Tuple1(7))        // "/users/7"
+```
+
+A `Route.Arity` witness carries the conversion, rather than a match
+type saying what the parameter IS and leaving the router to cast into
+it. It was `t => t.head` for four stages, and four sightings — three
+by authors other than the one who wrote the wart down — are what
+settled that the wart cost more than the cure.
+
 `routes` is deliberately **not** a new protocol: it is the same
 `PartialFunction` every server in this stack already takes, so
 adopting `Router` changes nothing downstream. `Router.empty` is still
@@ -154,6 +177,25 @@ invent:
 Ops.paths                  // Set("/healthz", "/readyz", "/stats", "/metrics")
 Health(livenessPath = Site.Ops.healthz.describe, ...)
 ```
+
+**The table carries the whole description, not the template.** An
+entry holds `Route.Described` — the path AND its parameters, each
+with the kind and JSON Schema its `Param` declared, and the query
+list:
+
+```scala
+val e = router.entries.head
+e.path      // "/users/{id}/posts/{slug}"
+e.params    // Vector(Var("id", "int", {"type":"integer"}), Var("slug", "string", ...))
+e.queries   // Vector(Q("tag", "string", required = false, repeated = true, {"type":"array", ...}))
+```
+
+That it is ONE value is the point. The router used to take
+`route.describe`, a String, and okay-openapi re-parsed `{name}` out of
+it — so every path parameter was documented as a string and an `Int`
+route published a lie. Two extra fields would have fixed the symptom;
+a description that cannot be passed without its parts is why the next
+`Router` constructor cannot drop them again.
 
 **`isDefinedAt` does not run the handler.** It asks the method and the
 path and nothing else. This matters for any handler that does work
@@ -331,12 +373,24 @@ so the prefix is the specification rather than an oversight.
 
 ## Not done yet
 
-An OpenAPI document is still not generated, deliberately: the backlog
-entry says to name the consumer that reads the output first, and
-OpenAPI has none in this repository. `describe`, `params`, `queries`
-and the entry's body schema are the input when one appears. What DOES
-have a consumer — the module documentation — is rendered and held by a
-drift test, which is what stage 8 built. Headers are not declared.
+The OpenAPI consumer arrived: `okay-openapi` renders
+`OpenApi.document(api, router)` from `Router.entries` — paths,
+parameters with their kinds, request bodies, declared responses — and
+the entry carries every one of those as the schema its own codec was
+derived from. This guide's earlier sentence, that no consumer existed
+and the document was deliberately not generated, is out of date; what
+survives it is the rule that produced it, which is that the consumer
+came first.
+
+**Headers are still not declared.** A route declares a path, its
+parameters, its query and its body; a handler that wants a header
+reads it off the `Request`, and no renderer can say anything about it.
+That is the one structural gap left in the description.
+
+**Prose is not declared either** — a route has no place to carry a
+sentence about itself, so an OpenAPI summary is absent and operation
+ids are derived from method and path.
+
 `Toolbox` handlers are pure `A => String`, because that is the seam
 `Mcp.Server`, `Handlers.tools` and `Stepper` already take; widening it
 is a separate decision with those three callers to carry.

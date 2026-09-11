@@ -115,7 +115,7 @@ API reference, gotchas.
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
 | [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |
 | [`okay-guice`](modules/okay-guice.md) | a Module as Guice bindings by name and type, the closer bound beside them, an injector's instance as a module |
-| [`okay-openapi`](modules/okay-openapi.md) | the OpenAPI document as a rendering of the router that serves it; the body schema is the decoder's |
+| [`okay-openapi`](modules/okay-openapi.md) | the OpenAPI document as a rendering of the router that serves it; every schema is the codec's own — parameters with the kind their `Param` declared, the body the decoder's, the response the encoder's |
 | [`okay-cdi`](modules/okay-cdi.md) | a Module as CDI beans through a portable Extension, the closer at shutdown, a container's instance as a module |
 | [`okay-kyo`](modules/okay-kyo.md) | kyo bridges and the structural effect-row mapping |
 | [`okay-fs2`](modules/okay-fs2.md) | fs2 streams, chunk for chunk, native backpressure both sides |
@@ -171,11 +171,10 @@ API reference, gotchas.
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
-| [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
+| [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo; and the leads ledger that decorates its turn seam (category, budget and date from cues, the message itself never stored) |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |
 | [`okay-live`](modules/okay-live.md) | broadcast (Hub) and per-key channels (Registry) over the core's own Channel |
-| [`okay-leads`](modules/okay-leads.md) | what a chat request is worth as a countable thing: category, budget and date from cues, the message itself never stored, demand aggregated over an append-only CSV ledger |
 | [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); `ChatDemo`, the chat that runs the stack (streamed replies cut by a guard, a durable task board the model drives through tools, assignments ringing live pages — works with no model); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
 
 ## How the claims are checked

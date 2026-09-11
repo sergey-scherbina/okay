@@ -24,6 +24,153 @@ through the submodule. okayChat's dependency on okayIntent goes back
 out. The demand view landed in the product repository instead, over its
 own journal and with its own readers.
 
+## route-arity-one-tuple — one parameter is a value, not a Tuple1 of one
+
+The backlog entry asked for a second sighting before deciding whether
+the wart cost more than the cure. Four arrived, three of them from
+authors other than the one who wrote the entry: `TestOpenApi` reached
+for `t.head`, `TestRouterOut` did the same, okay-demo's
+`/events/{email}` carried a comment saying `.head` is "the spelling
+until it has a better one", and I wrote `Tuple1(id)` to build a url an
+hour before starting this. A wart other people's code keeps
+reproducing has stopped being a note in a document.
+
+**Neither remedy on paper was taken.** An `on1` overload doubles a
+surface that already has eight methods. An `Extract[A]` match type
+says what the parameter IS and leaves the router holding an `A` to
+cast into it, which AGENTS.md forbids without a real necessity.
+`Route.Arity[A] { type Out }` is a witness that CARRIES the
+conversion — the same argument that made `Split` a witness rather than
+`Tuple.Concat`: a type-level function tells you the answer and cannot
+hand it to you.
+
+```scala
+Router.on(Method.Get, Route / "users" / "id".as[Int])(id => byId(id))
+Router.on(Method.Get, userPost)((id, slug) => post(id, slug))
+Router.on(Method.Get, healthz)(_ => live)
+```
+
+**The collapse is the handler's, not the route's.** `unapply` still
+answers `Some(Tuple1(7))` and `url` still takes one: the optic's laws
+are stated over `A`, and a prism whose focus is one value has a
+one-tuple focus.
+
+The risk was never the call sites — it was whether the compiler's
+untupling of `(id, slug) => ...` survives a handler whose parameter
+type is the dependent `ar.Out`. It does, and that was measured before
+anything else was touched: the first compile after wiring `on`/`at`
+produced exactly one error, at the one `t.head`.
+
+Priced: 8 signatures on `Router`, 4 on its companion, FOUR call-site
+edits in the whole repository.
+
+## openapi-parameters — the description was being thrown away at the door
+
+okay-openapi renders the document from `Router.entries`, and it was
+publishing a lie: `Route[Int]("id")` came out as `{"type": "string"}`,
+and query parameters came out not at all. Not because the routes did
+not know — `Seg.Var` carries the kind and `Q` carries
+name/required/repeated — but because `Router.Entry` took
+`route.describe`, a STRING, so everything structured stopped at the
+router's door and the renderer re-parsed `{name}` out of the template.
+
+The consumer had said so in a comment on its own assertion: *"the day
+okay-http carries the kind this assertion changes"*. It changed.
+
+**`Route.Described(path, params, queries)`** is what an entry carries
+now. Two extra fields would have fixed today's document and left the
+next `Router` constructor free to pass a path without its parameters;
+a value that cannot be passed apart cannot come apart. `Param` gained
+a concrete, overridable `jsonSchema` — concrete so a new parameter
+type still costs three lines, overridable so a `Param[UUID]` can say
+`format: uuid` and have that reach the document. It is derived through
+okay-codec's `JsonSchema.of`, not a second mapping beside the
+renderer, because a document with two vocabularies for "integer"
+disagrees with itself.
+
+A repeated query (`"tag".all[String]`) declares an ARRAY of the
+element's shape, which is what `?tag=a&tag=b` actually is.
+
+**Stale claims corrected while the files were open.**
+`docs/declaring-an-api.md` still said an OpenAPI document was
+deliberately not generated and had no consumer — both true when
+written, neither true now. Three backlog boxes (openapi-responses,
+openapi-render, openapi-queries) were left unticked after their work
+landed. And three unused imports in okay-openapi had ridden through
+every green gate, because `scripts/gate.sh` does not look at warnings
+— the second time that has cost something today.
+
+## gate-signal-and-warnings — a signal is not a verdict, and the gate now reads warnings
+
+Two defects in the gate, both found by using it, one of them mine from
+this morning.
+
+**The retry loop refused the case it was written for.** A full matrix
+was SIGTERM-killed at 147 module compiles: zero `==> X`, zero
+`[error]` lines, the log simply stopping mid-suite. `gate.sh` printed
+`RED — a failure this script does not recognise`, and `gate-retry.sh`
+passes a RED straight through on purpose — so exit 143 landed as a
+verdict about the tree. `gate.sh` now says `gate: KILLED` for 143/137
+with no failed test, and the loop retries it. A failed test still
+wins: the `==> X` check runs first, so a suite that failed and was
+then killed is red, not killed.
+
+**`gate-retry.sh` ran a bash script with `sh`.** `sh` here is bash in
+POSIX mode, where `<(...)` is a syntax error — so the branch that
+compares failed projects against known-lost ones errored out. It only
+runs when a gate has already gone wrong, which is why nobody saw it.
+
+**The gate never looked at warnings.** "No warnings, ever" is in
+AGENTS.md and had no enforcement: three unused imports in okay-openapi
+and one in the core's own tests had ridden through every green gate.
+Any `[warn] -- [Exxx]` is now red — with the honest caveat built in,
+because a WARM run compiles nothing and its silence is not evidence.
+The script says which case it is in. A lane's gate runs in a fresh
+worktree, so the run that decides a landing is the run that sees them.
+
+**And the first thing the new check found was a compiler false
+positive.** E198 "unused import" fired on `import okay.RowLift.{at as
+liftAt, plus}` where `liftAt` IS used — deleting it fails with E008,
+which is the proof. A RENAMED import reached only in
+extension-selection position is not counted as used. The fix is to
+drop the RENAME (`{at, plus}`, `.at[...]`), which compiles clean and
+reads better; it is recorded in the script and in AGENTS.md so nobody
+deletes the line the compiler pointed at and then wonders why nothing
+builds.
+
+All four branches were exercised with `--read` against real logs from
+today: a kill, the same log as if sbt had exited 0 (the warning is
+found), a compile failure, and a failed test under a kill.
+
+## tag-test-the-signature-too — a key AND a signature
+
+`Tag`'s `Effect` given tested the key and nothing else. Two members
+that shared one had nothing left to compare, so `Of["k", Beep] +
+Of["k", Buzz]` misrouted into the `ClassCastException` a key exists to
+prevent — however different the two effects were.
+
+It now asks `TypeableK[F]` beside `ValueOf[K]` and tests both, which is
+what `Instances` does with its run-time handle. The row above is an
+ordinary row.
+
+The reason this sat in the backlog instead of being written on the spot
+is that asking for a second given STRENGTHENS the requirements, and
+that is a source-compatibility change: every existing `Of[K, F]` in
+every downstream build has to still resolve. That was measured before
+the change was kept, not argued about — `compile` and `Test/compile`
+across the whole tree, **zero errors**. The reason is structural and
+worth stating, because it means the cost stays zero: `Effect[F] extends
+TypeableK[F]`, and anything you would put under a key is an effect, so
+the instance the new requirement asks for is one the call site already
+had in scope.
+
+What no runtime test can reach is unchanged and still pinned by
+`TestTag`: the same SIGNATURE under the same key — `Of["same", Reader %
+Int] + Of["same", Reader % String]` — where the type argument was
+erased before the test could see it. `tag-distinct-keys` is the
+compile-time check that would end that half too.
+
+
 ## leads-in-chat — the ledger moves into okay-chat, where the seam it hooks is
 
 `okay-leads` is gone as a module; the code is `okay.chat.leads` inside

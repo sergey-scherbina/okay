@@ -1,8 +1,9 @@
 # okay-openapi
 
 > The OpenAPI document as a rendering of the router that serves it —
-> paths, methods, path parameters and request bodies, with the body's
-> schema being the one the decoder was derived from.
+> paths, methods, parameters (path and query, each with the kind its
+> `Param` declared), request bodies and declared responses, every
+> schema being the one the codec was derived from.
 
 Depends on: `okay` (JVM), `okay-http`, `okay-codec`.
 
@@ -33,18 +34,18 @@ repository does not own, and nothing here reads the document as types
 → `getBoardById`), so they are stable: a document whose ids move when
 nothing moved is a document nobody diffs.
 
-## What it cannot say yet, and why
+**Parameters carry their kind.** `Router.Entry` holds
+`Route.Described` — the path template AND its parameters — so
+`Route[Int]("id")` renders as `{"type": "integer"}` and a `Queried`
+route's query parameters are rendered at all, each with the
+`required` its declaration gave it and an `array` schema where `all`
+made it repeatable. Before `openapi-parameters` the entry carried the
+template as a STRING, and this renderer re-parsed `{name}` out of it:
+every path parameter came out a string and no query parameter came
+out at all.
 
-`Router.Entry` carries the method, the path template and the request
-body's schema. That is all it carries, so:
-
-- **path parameters are declared as strings.** `Route[Int]("id")`
-  knows it is an int; the kind lives on `Route.params` and never
-  reaches the entry.
-- **query parameters are absent.** A `Queried` route knows them; the
-  entry does not.
-Responses are no longer among them. A handler that answers a VALUE
-declares its response by its own type:
+**A handler that answers a VALUE declares its response by its own
+type:**
 
 ```scala
 router.out[Int *: EmptyTuple, Task](Method.Get, byId)(t => pure(Task(t.head)))
@@ -57,8 +58,17 @@ two cannot drift, and it adds the failures it produces itself —
 its own `Response` declares nothing, and the document says "undeclared"
 rather than inventing a 200.
 
-The two remaining gaps are declarations in okay-http and are filed
-there (BACKLOG "openapi").
+## What it cannot say, and why
+
+**Headers.** A route declares a path, its parameters, its query and
+its body; a handler that reads a header reads it off the `Request`
+with nothing declared anywhere. This renderer therefore says nothing
+about headers rather than guessing, and the fix — if one is wanted —
+is a declaration in okay-http, not a heuristic here.
+
+**Prose.** A route has no place to carry a sentence about itself, so
+summaries and tags are absent and operation ids are derived. That is
+stage 3 of specs/openapi.md.
 
 ## Gotchas
 

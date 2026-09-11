@@ -30,7 +30,7 @@ class TestRouterOut extends munit.FunSuite:
     Async.runAsync(r.routes(req).flatMap(res => Http.text(res).map(t => (res.status, t))))
 
   test("out: the answer is the value, encoded by the schema the entry declares") {
-    val r = Router.empty.out[Int *: EmptyTuple, Task](Method.Get, byId)(t => pure(Task(t.head, "x")))
+    val r = Router.empty.out[Int *: EmptyTuple, Task](Method.Get, byId)(id => pure(Task(id, "x")))
     // what the entry declares is the same derivation the answer used
     assertEquals(r.entries.head.answers.head.schema, Some(okay.codec.JsonSchema.of(summon[Schema[Task]])))
     answer(r, Request.get("/board/7")).map { (status, text) =>

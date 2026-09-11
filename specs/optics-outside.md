@@ -845,6 +845,78 @@ okay-deploy not learning what a `Route` is.
 
 ## Results
 
+### The arity wart — CLOSED 2026-09-11 (route-arity-one-tuple)
+
+Stage 1 documented it and judged it tolerable: one captured parameter
+reaches a handler as a `Tuple1`, so people write `t => t.head`. The
+entry asked for a second sighting before deciding. Four arrived, and
+three of them were not the entry's author — the sibling who wrote
+`TestOpenApi`, the same shape again in `TestRouterOut`, and a comment
+in okay-demo's `/events/{email}` reading "`.head` is the spelling
+until it has a better one". A wart that other people's code keeps
+reproducing has stopped being a note in a document.
+
+**Neither remedy on paper was taken.** An `on1` overload doubles a
+surface that already has eight methods. An `Extract[A]` match type
+says what the parameter IS and leaves the router holding an `A` it
+must cast into that — and this repository forbids a cast without a
+real necessity. `Route.Arity[A] { type Out }` is a witness that
+CARRIES the conversion, which is the same argument that made `Split` a
+witness rather than `Tuple.Concat`: a type-level function tells you
+the answer and cannot hand it to you.
+
+**The collapse is at the HANDLER and nowhere else.** `unapply` still
+answers `Some(Tuple1(7))` and `url` still takes one, because the
+optic's laws are stated over `A` and a prism whose focus is one value
+has a one-tuple focus. What changed is the boundary where a person
+writes code.
+
+The cure was priced before it was paid: 8 signatures on `Router`, 4 on
+its companion, and FOUR call-site edits in the whole repository. Arity
+2 still untuples to `(id, slug) => ...` — the compiler's own adaptation
+survives the dependent `ar.Out` parameter type, which was the one thing
+that could have killed this — and arity 0 is still `_ => ...`.
+
+### Stage 1, finished — LANDED 2026-09-11 (openapi-parameters)
+
+The DESCRIBE interpreter got the consumer this arc refused to build
+for it — a sibling wrote `okay-openapi`, quoting the backlog rule back
+at us — and the consumer immediately found that the description was
+being flattened at the router's door.
+
+`Router.Entry` took `route.describe`: a String. Every parameter KIND
+the route knew (`Seg.Var(name, kind)`) and every query declaration
+(`Q(name, kind, required, repeated)`) stopped there, so the renderer
+re-parsed `{name}` out of the template and declared every path
+parameter a string. `Route[Int]("id")` was published as text, in a
+document whose entire claim is that it cannot drift from the router
+that serves it. okay-openapi's own test pinned the wrong answer and
+said, in a comment, "the day okay-http carries the kind this assertion
+changes" — which is the politest possible bug report.
+
+**The fix is a value, not two fields.** `Route.Described(path, params,
+queries)`, built by `Routed.described`, is what an entry carries now.
+Two more constructor arguments would have fixed the document today and
+left the next `Router` constructor free to pass a path without its
+parameters; a description that cannot be passed apart cannot come
+apart.
+
+**A parameter carries its own JSON Schema**, not just the word for its
+kind, and it comes from okay-codec's `JsonSchema.of` rather than a
+second mapping written next to the renderer — a document with two
+vocabularies for "integer" disagrees with itself. `Param.jsonSchema`
+is concrete, so the three lines a new parameter type costs stay three,
+and overridable, so a `Param[UUID]` can say `format: uuid` and have it
+reach the document. Capturing it at DECLARATION time is what keeps
+that override alive: a renderer handed only the kind would re-derive
+the common cases correctly and silently lose exactly the parameters
+whose author took the trouble.
+
+Two stale claims were corrected while the files were open: this
+guide's "an OpenAPI document is still not generated, deliberately"
+(the consumer arrived), and three backlog boxes left unticked after
+their work landed.
+
 ### What stays open, and what each is waiting for — 2026-09-11 (optics-outside-remaining)
 
 Five candidates are closed: routes, tools, the query string, DESCRIBE

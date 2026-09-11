@@ -111,6 +111,13 @@ type B = Tag.Of["same", Reader % String]   // same key: back to square one
 
 That row misroutes into exactly the `ClassCastException` a key exists
 to prevent, which `TestTag` pins (tag-key-collision, 2026-09-11).
+
+**A shared key across DIFFERENT signatures is fine**, though — the test
+asks the key and the signature both (tag-test-the-signature-too), so
+`Of["k", Beep] + Of["k", Buzz]` is an ordinary row. What no runtime
+test can fix is the case above: same signature, same key, with the type
+parameter erased before anything could compare it.
+
 Nothing checks distinctness today; a compile-time check is filed as
 `tag-distinct-keys`. Until it exists, the rule is yours to keep — and
 it is cheap to keep, because keys are literals you can read side by

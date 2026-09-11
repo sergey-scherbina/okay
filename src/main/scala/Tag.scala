@@ -38,14 +38,22 @@ import okay.RowLift.plus
  *
  *     State.run(0)(Tag.untag["small", State % Int](twice))   // and so on
  *
- * THE KEY MUST BE DISTINCT WITHIN A ROW, and nothing checks it
- * (tag-key-collision, 2026-09-11). The test above is by key and by
- * key alone, so two members that SHARE one — `Of["same", Reader %
- * Int] + Of["same", Reader % String]` — have nothing left to compare
- * and misroute into the same ClassCastException a key exists to
- * prevent. `TestTag` pins that, docs/many-instances.md states the
- * rule, and `tag-distinct-keys` in BACKLOG.md is the compile-time
- * check that would make it unnecessary to state.
+ * THE TEST IS THE KEY AND THE SIGNATURE (tag-test-the-signature-too,
+ * 2026-09-11). It was the key alone, and then two members sharing a
+ * key collided however different their effects were. Asking
+ * `TypeableK[F]` as well — which `Instances` does, and which cost
+ * NOTHING to require, since an `Effect` IS a `TypeableK` and every
+ * effect that goes under a key already has one — makes `Of["k", Beep]
+ * + Of["k", Buzz]` an ordinary row.
+ *
+ * WHAT NO RUNTIME TEST CAN FIX, and what therefore stays your rule to
+ * keep: the same SIGNATURE under the same key. `Of["same", Reader %
+ * Int] + Of["same", Reader % String]` still misroutes into the
+ * ClassCastException a key exists to prevent, because `Int` and
+ * `String` were erased before the test could see them and the key is
+ * the same. `TestTag` pins both halves, docs/many-instances.md states
+ * the rule, and `tag-distinct-keys` in BACKLOG.md is the compile-time
+ * check that would make stating it unnecessary.
  *
  * AND THE OTHER TWO ROUTES. A key is a STATIC identity: the row lists
  * the instances, so the compiler knows how many there are and nothing
@@ -65,12 +73,14 @@ object Tag:
   /** one instance of F, named — a row member */
   type Of[K, F[+_]] = [A] =>> Tag[K, F, A]
 
-  /** the test is by KEY: everything else about F is already erased */
-  given of[K, F[+_]](using k: ValueOf[K]): okay.Effect[Of[K, F]] = okay.Effect.of(new:
-    def unapply[A](x: Any): Option[x.type & Tag[K, F, A]] = x match
-      case t: Tag[?, ?, ?] if t.key == k.value =>
-        Some(x.asInstanceOf[x.type & Tag[K, F, A]])
-      case _ => None)
+  /** the test is the KEY and the SIGNATURE; the type ARGUMENT under
+    * that signature is erased and no test can reach it */
+  given of[K, F[+_]](using k: ValueOf[K], t: TypeableK[F]): okay.Effect[Of[K, F]] =
+    okay.Effect.of(new:
+      def unapply[A](x: Any): Option[x.type & Tag[K, F, A]] = x match
+        case w: Tag[?, ?, ?] if w.key == k.value && t.test(w.op) =>
+          Some(x.asInstanceOf[x.type & Tag[K, F, A]])
+        case _ => None)
 
   /** perform one operation under the key */
   inline def one[K, F[+_]](using k: ValueOf[K])[A](op: F[A]): A ! Of[K, F] =

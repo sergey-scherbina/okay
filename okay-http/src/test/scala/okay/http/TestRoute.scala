@@ -331,7 +331,8 @@ class TestRoute extends munit.FunSuite {
     var seen = ""
     val r = Router.empty
       .on(Method.Get, userPost)((id, slug) => { seen = s"$id:$slug"; blank })
-      .on(Method.Post, userId)(t => { seen = s"posted ${t.head}"; blank })
+      // one captured parameter arrives as the VALUE, not a Tuple1
+      .on(Method.Post, userId)(id => { seen = s"posted $id"; blank })
     val _ = r.routes(Request.get("/users/7/posts/hello%20world"))
     assertEquals(seen, "7:hello world")
     val _ = r.routes(Request.post("/users/9", Body.Empty))
@@ -377,5 +378,52 @@ class TestRoute extends munit.FunSuite {
       (Method.Get, "/users/{id}/posts/{slug}"),
       (Method.Post, "/users/{id}")))
     assertEquals(router.describe.length, router.entries.length)
+  }
+
+  // ---- the description reaches the table whole (openapi-parameters)
+
+  private def typed(t: String) = okay.codec.Json.JObj(Vector("type" -> okay.codec.Json.JStr(t)))
+
+  test("a parameter carries its JSON Schema, not only the word for its kind") {
+    assertEquals(userPost.described.params.map(_.name), Vector("id", "slug"))
+    assertEquals(userPost.described.params.map(_.schema), Vector(typed("integer"), typed("string")))
+    // a REPEATED query is an array of the element's shape: `?tag=a&tag=b`
+    assertEquals(tagged.described.queries.map(_.schema), Vector(
+      okay.codec.Json.JObj(Vector(
+        "type" -> okay.codec.Json.JStr("array"),
+        "items" -> typed("string")))))
+    assertEquals(search.described.queries.map(_.schema), Vector(typed("string"), typed("integer")))
+  }
+
+  test("a custom Param may say more about itself than its kind can, and it survives") {
+    // the extension point: three lines to parse, and an override when
+    // the four words okay-http knows are not the whole truth
+    given Route.Param[java.util.UUID] with
+      def kind = "uuid"
+      def parse(s: String): Option[java.util.UUID] =
+        scala.util.Try(java.util.UUID.fromString(s)).toOption
+      def print(t: java.util.UUID): String = t.toString
+      override def jsonSchema: okay.codec.Json = okay.codec.Json.JObj(Vector(
+        "type" -> okay.codec.Json.JStr("string"),
+        "format" -> okay.codec.Json.JStr("uuid")))
+
+    val thing = Route / "things" / Route[java.util.UUID]("ref")
+    val id = java.util.UUID.fromString("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+    // it still routes, which is the half that matters first
+    assertEquals(thing.unapply(thing.url(Tuple1(id))), Some(Tuple1(id)))
+    // and the override is what a renderer is handed
+    assertEquals(thing.described.params.head.schema, okay.codec.Json.JObj(Vector(
+      "type" -> okay.codec.Json.JStr("string"),
+      "format" -> okay.codec.Json.JStr("uuid"))))
+    // an unknown kind with NO override is a string: a url segment is text
+    assertEquals(Route.Param.schemaOf("uuid"), typed("string"))
+  }
+
+  test("the router's table carries the whole description, path and query alike") {
+    val r = Router.empty.on(Method.Get, search)((_, _) => pure(Response(200, Nil, Http.one(Array.empty))))
+    assertEquals(r.entries.head.path, "/search")
+    assertEquals(r.entries.head.queries.map(_.name), Vector("q", "page"))
+    assertEquals(r.entries.head.queries.map(_.required), Vector(true, false))
+    assertEquals(r.entries.head.params, Vector.empty)
   }
 }
