@@ -1,0 +1,60 @@
+task: json-literals
+agent: fable51-core
+started: 2026-09-11
+branch: feature/json-literals
+worktree: ../okay-wt-json-literals
+spec: specs/codecs.md — a new section, written and committed before
+  the code; docs/typepedia.md's `into` entry gains its second use
+
+why: operator, 2026-09-11 — "отдельное опциональное тонкое API для
+  желающих получать этот эффект прозрачности ... явным образом
+  импортировать ... хорошо документировано ... а существующее
+  безопасное API мы не трогаем", then "да бери". throws-into had
+  REFUSED `into` on Json because a `Conversion[String, Json]` turns an
+  already-serialized document into a JSON string literal silently.
+  The operator's shape keeps that refusal true for everyone who does
+  not ask, and their question "как предотвращать" turned up a
+  mechanism better than a warning.
+
+what:
+  1. `into enum Json` — one word, and it does nothing on its own: the
+     conversions decide, and they live behind an import.
+  2. `object Json.literals`, opt-in per file:
+     - strings: ONLY a literal converts. `inline given [S <: String &
+       Singleton] => Conversion[S, Json]` whose body matches on
+       `constValueOpt[S]` and calls `compiletime.error` otherwise, so
+       a `String` VALUE is a compile error naming `JStr` and
+       `Json.parse`. That is the hazard, refused at the type level
+       rather than documented.
+     - `Int`, `Double`, `Boolean` convert plainly: no document can
+       hide in them.
+     - NOT `Long`: `JNum` holds a Double, so a Long above 2^53 would
+       lose precision silently — the same class of defect this lane
+       exists to prevent. It is left out on purpose and the doc says so.
+     - `===` as sugar, so `json === "x"` reads as the comparison it is.
+  3. docs: the Scaladoc on `literals` is the real documentation (that
+     is where a user looks), plus the spec section and the typepedia
+     entry.
+  4. test: BOTH sides, with `compiletime.testing.typeChecks` —
+     a literal converts, a String value does NOT, and the message
+     names the two ways out.
+
+measured before claiming (scratchpad probes, scala-cli 3.9.0):
+  - the import really gates it: without `import Json.literals.given`,
+    `f("x")` is a plain type error. Proven by UNCOMMENTING the bad
+    line, not by a green file with it commented out.
+  - `S <: String & Singleton` ALONE IS NOT ENOUGH — a `val` has a
+    singleton type too and passed. `constValueOpt` is what separates
+    a literal from a value; the refuted step is worth a sentence in
+    the spec.
+  - 239 of 566 string construction sites are literals, so this covers
+    42% by design and leaves the dangerous 58% explicit.
+  - and the correction that removes a warning I had written: `json ==
+    "x"` does NOT compile today and never did. Scala 3 derives
+    CanEqual for enums and sealed traits, so comparing with an
+    unrelated type is already an error, with no strictEquality and no
+    declaration of ours. `===` is therefore sugar, not a guard.
+
+predict: nothing outside the new object changes behaviour, so the
+  matrix should be green first time; the risk is the `into` keyword on
+  a widely-used enum, which the repo-wide Test/compile will price.

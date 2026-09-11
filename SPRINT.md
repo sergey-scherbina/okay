@@ -1,6 +1,11 @@
 # Sprint
 
 ## Doing
+- json-literals — the operator's opt-in transparency for JSON, behind
+  `import Json.literals.given`: string LITERALS convert, a String value
+  is a compile error naming `Json.parse`, numbers and booleans convert
+  plainly, Long deliberately absent. The safe API is untouched. Claimed
+  2026-09-11 (.work/active/json-literals.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
