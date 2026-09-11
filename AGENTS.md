@@ -291,6 +291,20 @@ force, all already practiced, none previously written down:
   way. `scripts/gate.sh --read <log>` says what it would have done
   with a gate log you already have. The evidence, and what is ruled
   out, is in BACKLOG's `native-runner-error`.
+- **`scripts/gate-retry.sh <worktree> <log> [attempts]` is how a long
+  gate is actually run here.** It waits for a quiet box, runs
+  `gate.sh`, and starts over when the run produced NO VERDICT — which
+  is what the RAM guard's kill looks like from outside. It never
+  retries a `gate: RED`: a run that reached a verdict has said
+  something about the tree and its exit code is passed straight
+  through, because a loop that re-rolls a red is a machine for landing
+  broken trees. Waiting for quiet is not enough on its own — seven
+  gates died in one session on 2026-09-11 and every one had started on
+  an idle machine; the spike arrives after the run does.
+  `scripts/gate-retry.sh --probe` prints the box reading the wait uses;
+  `--read <log>` says what the loop would do with a gate log you
+  already have, which is how the three branches are checked without
+  waiting for a kill — the same function the loop calls.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
 - **The full matrix PASSES: 2422 tests, 81 module runs, 0 failures, 83

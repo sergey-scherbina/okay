@@ -1,5 +1,35 @@
 # Changelog
 
+## gate-retry-script — the loop that recovered seven lost gates
+
+Every agent here waits for a quiet box before starting a matrix. That
+protects the first minute of a forty-minute run and nothing after it:
+seven gates died in one session on 2026-09-11, every one of them
+started on an idle machine and overtaken by a sibling's build, and the
+RAM guard takes the heaviest JVM — which is always the run furthest
+along. The missing half was starting over.
+
+`scripts/gate-retry.sh` waits, runs `gate.sh`, and retries only when
+the attempt produced NO VERDICT. That line is the whole design. A run
+that printed `gate: RED` has said something true about the tree, so
+its exit code is passed through untouched; a loop that re-rolled a red
+until it came up green would be a machine for landing broken trees.
+The killed run is distinguishable precisely because it says nothing,
+and `gate.sh` was already the thing that decides what "says something"
+means — this script only reads its verdict.
+
+`--probe` prints the box reading the wait is made of, so a lane that
+seems to be hanging can be told from one that is queued. It was
+written against its own first run: it reported `busy` and named the
+gate JVM that was making it busy.
+
+`--read <log>` borrows `gate.sh`'s own idea: it answers what the loop
+would do with a log you already have, calling the same one function
+the loop calls, so the safety claim is checkable without waiting for
+the box to kill something. All three branches were run against real
+logs from this session — the merged-tree RED (not retried), this
+lane's predecessor GREEN, and an ops log the box took (retry).
+
 ## docs-index-leads-row — the index caught a page nobody linked
 
 `TestDocsIndex` went red on the merged tree, and the failing side was
