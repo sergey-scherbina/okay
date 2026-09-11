@@ -449,124 +449,58 @@ object Json {
     c == '"' || c == '\\' || c == '\n' || c == '\t' || c == '\r' 
 
   /**
-   * `encode` walks a VALUE's own recursive-schema depth — the exact
-   * shape `Cbor.put`/`Json.print` already had fixed
-   * (encode-side-depth-safety) — and was still plain native recursion
-   * itself, unnoticed alongside its two siblings until `form-
-   * recursive-depth-safety`'s own tests (`Json.write` on a genuinely
-   * deep value, needed to build a test fixture for `okay-ui/Form`)
-   * hit it directly. Same `Codecs.NativeThreshold`-then-`Cont.defer`
-   * split as `print`/`into`, side-effecting into a `StringBuilder` —
-   * NOT the first draft, which returned `String` and combined child
-   * results by interpolation/`mkString`: that is quadratic (each
-   * level re-copies the whole string built so far into a longer one),
-   * passed the JVM suite at a tolerable few seconds for 100 000
-   * levels, and then took 1276s on Scala Native (no JIT to hide it)
-   * before this file's own gate caught it. `StringBuilder.append` is
-   * what `print` already used for exactly this reason; `encode` gets
-   * the same discipline. As with `Cbor.putC`'s `SProduct` case, each
-   * field's KEY write and its value's `Cont.defer` live in the SAME
-   * thunk — `eachField`'s own map is eager, so splitting them
-   * reproduces that bug's ordering hazard on a mutable buffer.
+   * The encoding algebra, as a fold (specs/schema-fold.md, stage 2):
+   * `Schema.fold` with `Enc` below, the value walk on `Schema.Step`.
+   * No `match` on the GADT here and no depth logic — the
+   * `NativeThreshold`-then-`Cont.defer` split lives in `Step.child`,
+   * once, where five doors used to each carry a copy (this one's was
+   * `encodeIntoNative`/`encodeIntoC`, now deleted). The fold is
+   * memoised per schema by identity (`Schema.Folded`): built once,
+   * reused per value.
    */
   def encode[A](s: Schema[A])(a: A): String =
     val sb = new StringBuilder
-    encodeInto(s, a, sb, 0)
+    Schema.Step.walk(encoder(s), sb, a)
     sb.toString
 
-  private def encodeInto[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit =
-    if open >= Codecs.NativeThreshold then reset(encodeIntoC[A, Unit](s, a, sb, open))
-    else encodeIntoNative(s, a, sb, open)
-
-  private def encodeIntoNative[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit = s match
-    case Schema.SInt => sb.append(a.toString): Unit
-    case Schema.SLong => sb.append(a.toString): Unit
-    case Schema.SDouble => sb.append(a.toString): Unit
-    case Schema.SBool => sb.append(a.toString): Unit
-    case Schema.SString => sb.append('"').append(escape(a)).append('"'): Unit
-    case Schema.SChar => sb.append('"').append(escape(a.toString)).append('"'): Unit
+  private type Enc[A] = Schema.Step[StringBuilder, A, Unit]
+  private val encoder = Schema.Folded[Enc](new Schema.Algebra[Enc]:
+    import Schema.Step
+    def int = Step.leaf((sb, a: Int) => sb.append(a.toString): Unit)
+    def long = Step.leaf((sb, a: Long) => sb.append(a.toString): Unit)
+    def double = Step.leaf((sb, a: Double) => sb.append(a.toString): Unit)
+    def bool = Step.leaf((sb, a: Boolean) => sb.append(a.toString): Unit)
+    def string = Step.leaf((sb, a: String) => sb.append('"').append(escape(a)).append('"'): Unit)
+    def char = Step.leaf((sb, a: Char) => sb.append('"').append(escape(a.toString)).append('"'): Unit)
     // JSON has no bytes. Base64 is what everyone means by them here,
     // and it is also what makes a dump READABLE: a thousand float
     // literals are not something anyone reads, and one opaque token
     // says "binary payload" without burying the fields that matter.
-    case Schema.SBytes => sb.append('"').append(Base64.encode(a)).append('"'): Unit
-    case Schema.SOption(of) =>
-      a match
-        case Some(x) => encodeInto(of(), x, sb, open + 1)
-        case None => sb.append("null"): Unit
-    case Schema.SList(of) =>
-      sb.append('[')
-      var first = true
-      a.foreach { x => if !first then sb.append(','); first = false; encodeInto(of(), x, sb, open + 1) }
-      sb.append(']'): Unit
-    case Schema.SVector(of) =>
-      sb.append('[')
-      var first = true
-      a.foreach { x => if !first then sb.append(','); first = false; encodeInto(of(), x, sb, open + 1) }
-      sb.append(']'): Unit
-    case p: Schema.SProduct[A] =>
-      sb.append('{')
-      var first = true
-      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => {
-        if !first then sb.append(',')
-        first = false
-        val _ = sb.append('"').append(n).append("\":")
-        encodeInto(sc, x, sb, open + 1)
-      }): Unit
-      sb.append('}'): Unit
-    case su: Schema.SSum[A] =>
-      sb.append('{')
-      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => {
-        val _ = sb.append('"').append(n).append("\":")
-        encodeInto(sc, x, sb, open + 1)
-      })
-      sb.append('}'): Unit
+    def bytes = Step.leaf((sb, a: Array[Byte]) => sb.append('"').append(Base64.encode(a)).append('"'): Unit)
+    def option[A](o: Schema.SOption[A], of: () => Enc[A]) = Step.option(sb => sb.append("null"): Unit, of)
+    def list[A](l: Schema.SList[A], of: () => Enc[A]) = Step.elems[StringBuilder, List[A], A, Unit, Unit](
+      (sb, _) => sb.append('['): Unit, identity, of,
+      (sb, i) => if i > 0 then sb.append(','): Unit,
+      (_, _) => (), (sb, _, _) => sb.append(']'): Unit)
+    def vector[A](v: Schema.SVector[A], of: () => Enc[A]) = Step.elems[StringBuilder, Vector[A], A, Unit, Unit](
+      (sb, _) => sb.append('['): Unit, identity, of,
+      (sb, i) => if i > 0 then sb.append(','): Unit,
+      (_, _) => (), (sb, _, _) => sb.append(']'): Unit)
+    def product[A](p: Schema.SProduct[A], fields: Vector[(String, Schema.Edge[Enc, Any])]) =
+      Step.fields[StringBuilder, A, Unit, Unit](
+        (sb, _) => sb.append('{'): Unit, p.parts, fields,
+        (sb, i, n) => { if i > 0 then sb.append(','); val _ = sb.append('"').append(n).append("\":") },
+        (_, _) => (), (sb, _, _) => sb.append('}'): Unit)
+    def sum[A](su: Schema.SSum[A], cases: Vector[(String, Schema.Edge[Enc, A])]) =
+      Step.one[StringBuilder, A, Unit, Unit](
+        (sb, _) => sb.append('{'): Unit, su.caseOf, cases,
+        (sb, n) => { val _ = sb.append('"').append(n).append("\":") },
+        (sb, _, _, _) => sb.append('}'): Unit)
     // the newtype node: A travels as B, so encode is `from` then under's
-    case Schema.SIso(u, _, from) => encodeInto(u(), from(a), sb, open)
-
-  private def encodeIntoC[A, R](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit /> R = s match
-    case Schema.SInt => sb.append(a.toString); Cont.Pure(())
-    case Schema.SLong => sb.append(a.toString); Cont.Pure(())
-    case Schema.SDouble => sb.append(a.toString); Cont.Pure(())
-    case Schema.SBool => sb.append(a.toString); Cont.Pure(())
-    case Schema.SString => val _ = sb.append('"').append(escape(a)).append('"'); Cont.Pure(())
-    case Schema.SChar => val _ = sb.append('"').append(escape(a.toString)).append('"'); Cont.Pure(())
-    case Schema.SBytes => val _ = sb.append('"').append(Base64.encode(a)).append('"'); Cont.Pure(())
-    case Schema.SOption(of) => a match
-      case Some(x) => Cont.defer(() => encodeIntoC(of(), x, sb, open + 1))(_ => Cont.Pure(()))
-      case None => sb.append("null"); Cont.Pure(())
-    case Schema.SList(of) =>
-      sb.append('[')
-      def loop(rest: A, first: Boolean): Unit /> R =
-        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
-        else
-          if !first then sb.append(',')
-          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
-      loop(a, true)
-    case Schema.SVector(of) =>
-      sb.append('[')
-      def loop(rest: A, first: Boolean): Unit /> R =
-        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
-        else
-          if !first then sb.append(',')
-          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
-      loop(a, true)
-    case p: Schema.SProduct[A] =>
-      sb.append('{')
-      val steps: Vector[Unit /> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
-        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
-      def loop(rest: Vector[Unit /> R], first: Boolean): Unit /> R =
-        if rest.isEmpty then { sb.append('}'); Cont.Pure(()) }
-        else
-          if !first then sb.append(',')
-          rest.head.flatMap(_ => loop(rest.tail, false))
-      loop(steps, true)
-    case su: Schema.SSum[A] =>
-      sb.append('{')
-      val step: Unit /> R = su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
-        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
-      step.flatMap(_ => { sb.append('}'); Cont.Pure(()) })
-    case Schema.SIso(u, _, from) => Cont.defer(() => encodeIntoC(u(), from(a), sb, open))(_ => Cont.Pure(()))
+    def iso[A, B](iso: Schema.SIso[A, B], under: () => Enc[B]) = Step.via(iso.from, under)
+    def ref[A](name: String) =
+      throw IllegalStateException(s"a lazy carrier never meets a back edge, got one at $name")
+  )
 
   /** the public entry, signature unchanged: dispatches on depth,
    * starting at 0. `Json.decode` has no reader object to hang a

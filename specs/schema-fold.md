@@ -176,23 +176,23 @@ Stage 1 — `fold`:
       not asserted from memory
 
 Stage 2 — `Step`, and the value algebras move:
-- [ ] `Json.encode` as `fold` + `Step`: the `TestEncodeTrampoline`
+- [x] `Json.encode` as `fold` + `Step`: the `TestEncodeTrampoline`
       fixtures (100 000 levels, the two-field `Two`, the SUM `Chain`)
       pass unchanged; `Json.write(t) == old Json.write(t)` on every
       value in `TestLaws`
-- [ ] `Form.render` and `Form.errorsOf` the same; `TestFormDepth`
+- [x] `Form.render` and `Form.errorsOf` the same; `TestFormDepth`
       unchanged
-- [ ] `Cbor.put` the same; `Cbor.putC`'s field-order regression
+- [x] `Cbor.put` the same; `Cbor.putC`'s field-order regression
       witness passes — and `Step.child` carries a test that a
       side-effecting algebra sees key, value, key, value, so the rule
       is proven ONCE
-- [ ] MEASURED, JMH, `uptime` first, ≥3 forks (`jmh-load-not-just-
+- [x] MEASURED, JMH, `uptime` first, ≥3 forks (`jmh-load-not-just-
       forks`, `one-jmh-fork-lied-53-percent`): `CodecBenchmark`'s
       interpreted encode lanes within noise of today's hand-rolled
       ones. Bar: no lane worse by more than its own error bar. The
       staged doors (`Staged.json`/`cbor`) are untouched by this spec
       and must read identical.
-- [ ] the hand-rolled `encodeNative`/`encodeIntoC`, `printIntoC`,
+- [x] the hand-rolled `encodeNative`/`encodeIntoC`, ~~`printIntoC`~~ (stays: `print` walks a `Json`, not a schema — not a fold),
       `renderC`/`fieldC`/`sumUiC`/`listUiC`, `errorsOfC`/`listErrorsC`
       are DELETED, not kept beside the fold
 
@@ -269,3 +269,41 @@ schema — no caller had ever asked it one. It now answers `$defs`/
 `$ref`, which is what a model or an OpenAPI document needs for a
 `Tree`. `TestSchemaFold` keeps the old `of` verbatim and proves
 byte-for-byte on every non-recursive shape, both vocabulary settings.
+
+Stage 2 (2026-09-11, schema-fold-2): `Schema.Step` (`leaf`/`via`/
+`adapt`/`option`/`fields`/`one`/`elems`/`node`), `Schema.Folded` (the
+per-schema identity memo across calls — a fold is per schema, an
+encode per value), and the four value doors moved: `Json.encode`,
+`Cbor.put`, `Form.render`, `Form.errorsOf`, each's `*Native`/`*C` pair
+deleted. Interface refinements the stage found: `Step` carries an
+ENVIRONMENT (`E`: a `StringBuilder`, a `Cbor.Out`, a form's errors and
+key) so a node allocates nothing per call; `Algebra.option`/`list`/
+`vector` are paramorphic too (`Form`'s validator hands an option or a
+wrapper WHOLE to the decoder, as the old `errorsOf` did, and needs the
+node for that); `Step.node` is the road for a walk whose value is not
+the schema's own type (a form walks a `Json`).
+
+MEASURED, same JMH invocation per pair, the old code kept verbatim
+as `LegacyJsonEncode`/`LegacyCborPut` lanes in `compare` (the
+before/after-in-separate-runs shape is what `jmh-load-not-just-forks`
+refuses), 5 forks, `uptime` first:
+
+| lane (ns/op) | fold | legacy | staged control |
+|---|---|---|---|
+| encodeInterp (load 15) | 337.6 ± 26 | 381.3 ± 8 | 131.7 ± 1.4 |
+| encodeSumInterp | 372.5 ± 41 | 496.7 ± 47 | — |
+| cborEncodeInterp (load 4.6) | 489.4 ± 30 | 502.5 ± 6 | 299.2 ± 1.2 |
+| cborEncodeSumInterp | 521.2 ± 59 | 696.5 ± 22 | — |
+
+The bar was "not worse than its own error bar"; the finding is
+better: the sum lanes are 25% faster with non-overlapping ranges, the
+JSON product lane 11%, the CBOR product lane inside the bars (not
+claimed faster, claimed not slower). The reason is what a fold IS:
+the GADT dispatch and the field zip are resolved ONCE per schema at
+fold time, where the interpreter re-matched the schema at every value
+node — and the identity lookup `Folded` adds per call is cheaper than
+that. `Staged` is untouched and reads the same.
+
+What did NOT move: `Json.print` (walks a `Json`, not a schema — not a
+fold), and `Json.decode`/`Cbor.get`/`JsonStrict` by the spec's own
+scope.

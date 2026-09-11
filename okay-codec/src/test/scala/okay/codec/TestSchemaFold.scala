@@ -155,9 +155,9 @@ class TestSchemaFold extends munit.FunSuite:
     type K[A] = Unit
     val counting = new Schema.Algebra[K]:
       def int = (); def long = (); def double = (); def bool = (); def string = (); def char = (); def bytes = ()
-      def option[A](of: () => Unit) = of()
-      def list[A](of: () => Unit) = of()
-      def vector[A](of: () => Unit) = of()
+      def option[A](o: Schema.SOption[A], of: () => Unit) = of()
+      def list[A](l: Schema.SList[A], of: () => Unit) = of()
+      def vector[A](v: Schema.SVector[A], of: () => Unit) = of()
       def product[A](p: Schema.SProduct[A], fields: Vector[(String, Schema.Edge[K, Any])]) =
         folded += p.name; fields.foreach(_._2())
       def sum[A](su: Schema.SSum[A], cases: Vector[(String, Schema.Edge[K, A])]) =
@@ -177,9 +177,9 @@ class TestSchemaFold extends munit.FunSuite:
     val alg = new Schema.Algebra[K]:
       def int = _ => (); def long = _ => (); def double = _ => (); def bool = _ => ()
       def string = _ => (); def char = _ => (); def bytes = _ => ()
-      def option[A](of: () => K[A]) = _.foreach(of())
-      def list[A](of: () => K[A]) = _.foreach(of())
-      def vector[A](of: () => K[A]) = _.foreach(of())
+      def option[A](o: Schema.SOption[A], of: () => K[A]) = _.foreach(of())
+      def list[A](l: Schema.SList[A], of: () => K[A]) = _.foreach(of())
+      def vector[A](v: Schema.SVector[A], of: () => K[A]) = _.foreach(of())
       def product[A](p: Schema.SProduct[A], fields: Vector[(String, Schema.Edge[K, Any])]) =
         products += 1
         // the kernel's own cast, restated: parts(a)(i) IS fields(i)'s X

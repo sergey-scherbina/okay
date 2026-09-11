@@ -130,9 +130,13 @@ class CodecBenchmark {
   val cborBytes: Array[Byte] = Cbor.write(order)
 
   @Benchmark def encodeInterp(): String = Json.encode(summon[Schema[Order]])(order)
+  /** the pre-fold encoder, verbatim (LegacyJsonEncode): the same-run reference for schema-fold stage 2 */
+  @Benchmark def encodeLegacyInterp(): String = LegacyJsonEncode.encode(summon[Schema[Order]])(order)
   @Benchmark def encodeSumInterp(): String = Json.encode(summon[Schema[Owner]])(owner)
+  @Benchmark def encodeSumLegacyInterp(): String = LegacyJsonEncode.encode(summon[Schema[Owner]])(owner)
   @Benchmark def decodeSumInterpAst(): Either[String, Owner] = Json.decode(summon[Schema[Owner]])(ownerAst)
   @Benchmark def cborEncodeSumInterp(): Array[Byte] = Cbor.write(owner)(using summon[Schema[Owner]])
+  @Benchmark def cborEncodeSumLegacyInterp(): Array[Byte] = LegacyCborPut.write(owner)(using summon[Schema[Owner]])
   @Benchmark def encodeStaged(): String = staged.encode(order)
   @Benchmark def decodeStagedAst(): Either[String, Order] = staged.decode(ast)
   @Benchmark def encodeRuntimeStaged(): String = runtimeStaged.encode(order)
@@ -152,6 +156,7 @@ class CodecBenchmark {
   @Benchmark def encodeCirce(): String = summon[io.circe.Encoder[Order]](order).noSpaces
 
   @Benchmark def cborEncodeInterp(): Array[Byte] = Cbor.write(order)(using summon[Schema[Order]])
+  @Benchmark def cborEncodeLegacyInterp(): Array[Byte] = LegacyCborPut.write(order)(using summon[Schema[Order]])
   @Benchmark def cborEncodeStaged(): Array[Byte] = stagedCbor.encode(order)
   @Benchmark def cborDecodeInterp(): Either[String, Order] = Cbor.read(cborBytes)(using summon[Schema[Order]])
   @Benchmark def cborDecodeStaged(): Either[String, Order] = stagedCbor.decode(cborBytes)

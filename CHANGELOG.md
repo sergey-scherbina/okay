@@ -51,6 +51,24 @@ platforms, and "no warnings, ever" makes that a red gate for every
 lane that rebases onto master. `val _ =`, not a `: Unit` ascription —
 the ascription does not silence a value discard.
 
+## schema-fold stage 2 — the value walk written once, and four doors on it
+
+`Schema.Step` is the depth-aware value walk: `NativeThreshold`, then
+`Cont.defer`, in ONE place (`Step.child`) where five doors carried a
+hand copy. `Schema.Folded` memoises a fold per schema by identity
+across calls — a fold is per schema, an encode per value. On them:
+`Json.encode`, `Cbor.put`, `Form.render`, `Form.errorsOf`, each's
+`*Native`/`*C` twin pair deleted, no `match` on the GADT and no depth
+logic left in any of the four.
+
+MEASURED against the old code kept verbatim as benchmark lanes in the
+SAME JMH invocation (5 forks): the sum lanes 25% faster on both wires
+with non-overlapping ranges, the JSON product lane 11%, the CBOR
+product lane inside the bars — a fold resolves the GADT dispatch once
+per schema where the interpreter re-matched it per value node, and
+that buys more than the identity lookup costs. `Staged` untouched.
+Rows in src/jmh/history.tsv.
+
 ## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
 
 The repository's thesis is one primitive, the durable log, and the

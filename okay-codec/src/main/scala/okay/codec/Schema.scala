@@ -2,6 +2,7 @@ package okay.codec
 
 import scala.compiletime.{constValueTuple, erasedValue, summonInline}
 import scala.deriving.Mirror
+import okay.{Cont, reset, />}
 
 /**
  * The reified shape of a datatype (specs/codecs.md): every derivation
@@ -107,9 +108,9 @@ object Schema {
     def string: F[String]
     def char: F[Char]
     def bytes: F[Array[Byte]]
-    def option[A](of: () => F[A]): F[Option[A]]
-    def list[A](of: () => F[A]): F[List[A]]
-    def vector[A](of: () => F[A]): F[Vector[A]]
+    def option[A](o: SOption[A], of: () => F[A]): F[Option[A]]
+    def list[A](l: SList[A], of: () => F[A]): F[List[A]]
+    def vector[A](v: SVector[A], of: () => F[A]): F[Vector[A]]
     /** the node itself comes along with its folded edges — a
       * PARAmorphism, not a plain cata: a JSON Schema renders a field's
       * DEFAULT with the field's own schema (`defaultAt`) and an
@@ -185,9 +186,9 @@ object Schema {
             case SString => alg.string
             case SChar => alg.char
             case SBytes => alg.bytes
-            case SOption(of) => alg.option(edge(of))
-            case SList(of) => alg.list(edge(of))
-            case SVector(of) => alg.vector(edge(of))
+            case o: SOption[a] => alg.option(o, edge(o.of))
+            case l: SList[a] => alg.list(l, edge(l.of))
+            case v: SVector[a] => alg.vector(v, edge(v.of))
             case p: SProduct[X] =>
               alg.product(p, p.fields.map((n, f) => (n, fieldEdge(f))))
             case su: SSum[X] =>
@@ -198,6 +199,198 @@ object Schema {
           out
 
     go(s)
+
+  /**
+   * A fold, memoised per schema by IDENTITY across calls (specs/
+   * schema-fold.md, stage 2): a fold is per SCHEMA, an encode is per
+   * VALUE, and the interpreter a lazy algebra answers must be built
+   * once and reused, not rebuilt per call. `Key` hashes and compares
+   * by reference — `Schema`'s own equality is structural and a
+   * recursive schema's would not terminate. One cast, the same table
+   * read-back `fold` isolates.
+   */
+  final class Folded[F[_]](alg: Algebra[F]):
+    private final class Key(val s: Schema[?]):
+      override def hashCode: Int = System.identityHashCode(s)
+      override def equals(o: Any): Boolean = o match
+        case k: Key => k.s eq s
+        case _ => false
+    private val cache = java.util.concurrent.ConcurrentHashMap[Key, Any]()
+    def apply[A](s: Schema[A]): F[A] =
+      cache.computeIfAbsent(Key(s), _ => fold(s)(alg)).asInstanceOf[F[A]]
+
+  /**
+   * The value walk, written ONCE (specs/schema-fold.md, stage 2).
+   *
+   * `Step[E, A, R]`: given an environment `E` (a `StringBuilder`, a
+   * `Cbor.Out`, a form's errors and prefix), a value `A` at nesting
+   * `open`, answer `R`. Two roads with one implementation each: `run`
+   * is native, `cont` the trampoline, and the ONE place a step
+   * descends into a child (`child`, below) takes the road by depth —
+   * `Codecs.NativeThreshold`, then `Cont.defer`. This is the split
+   * five doors carried by hand on 2026-09-10/11 (`encodeIntoC`,
+   * `putC`, `renderC`, `errorsOfC`, ...), lifted out of them: an
+   * algebra whose carrier is `Step` cannot have the depth defect, and
+   * `Cbor.putC`'s ordering rule — every side effect for one child
+   * inside that child's own defer — is `fields`/`elems`' contract
+   * here, not each algebra's discipline.
+   *
+   * `S` is the accumulator a container threads across its children:
+   * `Unit` for a side-effecting road (nothing allocated per child),
+   * a `Vector[Ui]` for a value-building one.
+   */
+  trait Step[E, -A, R]:
+    def run(e: E, a: A, open: Int): R
+    def cont(e: E, a: A, open: Int): R /> R
+
+  object Step:
+    /** the algebra carrier a value walk folds to */
+    type Walk[E, R] = [X] =>> Step[E, X, R]
+
+    /** the top: a value at depth 0 */
+    def walk[E, A, R](s: Step[E, A, R], e: E, a: A): R = s.run(e, a, 0)
+
+    /** THE descent: below the threshold native, at or past it the
+      * trampoline — one node forced per iteration of `/`'s loop */
+    private def child[E, X, R](s: Step[E, X, R], e: E, x: X, open: Int): R =
+      if open >= Codecs.NativeThreshold then reset(s.cont(e, x, open))
+      else s.run(e, x, open)
+
+    def leaf[E, A, R](f: (E, A) => R): Step[E, A, R] = new Step[E, A, R]:
+      def run(e: E, a: A, open: Int): R = f(e, a)
+      def cont(e: E, a: A, open: Int): R /> R = Cont.Pure(f(e, a))
+
+    /** the newtype node: not a level, exactly as it is not one on the
+      * read side — `A` travels as `B` at the SAME depth */
+    def via[E, A, B, R](from: A => B, under: () => Step[E, B, R]): Step[E, A, R] = new Step[E, A, R]:
+      def run(e: E, a: A, open: Int): R = under().run(e, from(a), open)
+      def cont(e: E, a: A, open: Int): R /> R = Cont.defer(() => under().cont(e, from(a), open))(r => Cont.Pure(r))
+
+    /** delegate at the SAME depth with the environment and the answer
+      * mapped — an option's "(optional)" label, a wrapper that only
+      * re-keys; not a level, like `via` */
+    def adapt[E, A, R](env: E => E, out: R => R, under: () => Step[E, A, R]): Step[E, A, R] = new Step[E, A, R]:
+      def run(e: E, a: A, open: Int): R = out(under().run(env(e), a, open))
+      def cont(e: E, a: A, open: Int): R /> R = Cont.defer(() => under().cont(env(e), a, open))(r => Cont.Pure(out(r)))
+
+    def option[E, A, R](none: E => R, some: () => Step[E, A, R]): Step[E, Option[A], R] = new Step[E, Option[A], R]:
+      def run(e: E, a: Option[A], open: Int): R = a match
+        case Some(x) => child(some(), e, x, open + 1)
+        case None => none(e)
+      def cont(e: E, a: Option[A], open: Int): R /> R = a match
+        case Some(x) => Cont.defer(() => some().cont(e, x, open + 1))(r => Cont.Pure(r))
+        case None => Cont.Pure(none(e))
+
+    /**
+     * A product's fields: fixed arity, values from `parts` in field
+     * order. `kids` are the folded edges at each field's own
+     * existential `X`; `parts(a)(i)` IS an `X` (the Mirror's
+     * productIterator in field order), re-stated here by the one cast
+     * `eachField` isolates for the same reason. `before(e, i, name)`
+     * runs before the i-th child (a comma, a key), INSIDE that child's
+     * own step on the trampoline road.
+     */
+    def fields[E, A, R, S](enter: (E, A) => S,
+                           parts: A => Seq[Any],
+                           kids: Vector[(String, Edge[Walk[E, R], Any])],
+                           before: (E, Int, String) => Unit,
+                           step: (S, R) => S,
+                           close: (E, A, S) => R): Step[E, A, R] = new Step[E, A, R]:
+      private def at(e: E, k: Edge[Walk[E, R], Any], v: Any, open: Int): R =
+        val st = k()
+        child(st, e, v.asInstanceOf[k.X], open)
+      private def atC(e: E, k: Edge[Walk[E, R], Any], v: Any, open: Int): R /> R =
+        val st = k()
+        st.cont(e, v.asInstanceOf[k.X], open)
+      def run(e: E, a: A, open: Int): R =
+        val ps = parts(a)
+        var s = enter(e, a)
+        var i = 0
+        while i < kids.length do
+          val (n, k) = kids(i)
+          before(e, i, n)
+          s = step(s, at(e, k, ps(i), open + 1))
+          i += 1
+        close(e, a, s)
+      def cont(e: E, a: A, open: Int): R /> R =
+        val ps = parts(a)
+        def loop(i: Int, s: S): R /> R =
+          if i >= kids.length then Cont.Pure(close(e, a, s))
+          else
+            val (n, k) = kids(i)
+            Cont.defer(() => { before(e, i, n); atC(e, k, ps(i), open + 1) })(r => loop(i + 1, step(s, r)))
+        loop(0, enter(e, a))
+
+    /** a sum: the ONE case the value is, by `which` (the Mirror's
+      * ordinal), typed at that case by the same cast `theCase` isolates */
+    def one[E, A, R, S](enter: (E, A) => S,
+                        which: A => Int,
+                        kids: Vector[(String, Edge[Walk[E, R], A])],
+                        before: (E, String) => Unit,
+                        close: (E, A, S, R) => R): Step[E, A, R] = new Step[E, A, R]:
+      def run(e: E, a: A, open: Int): R =
+        val s = enter(e, a)
+        val (n, k) = kids(which(a))
+        before(e, n)
+        val st = k()
+        close(e, a, s, child(st, e, a.asInstanceOf[k.X], open + 1))
+      def cont(e: E, a: A, open: Int): R /> R =
+        val s = enter(e, a)
+        val (n, k) = kids(which(a))
+        Cont.defer(() => { before(e, n); val st = k(); st.cont(e, a.asInstanceOf[k.X], open + 1) })(r => Cont.Pure(close(e, a, s, r)))
+
+    /**
+     * A child chosen by the ALGEBRA, with its own environment and
+     * value — for a walk whose value is not the node's own type (a
+     * form walks a `Json` by schema, an item's key and label come
+     * from the parent). One object per child; the road for the UI
+     * pipelines, not for the codecs (`fields`/`elems` allocate none).
+     */
+    final case class Kid[E, X, R](step: Step[E, X, R], env: E, value: X)
+
+    def node[E, A, R, S](enter: (E, A) => S,
+                         kids: (E, A) => Vector[Kid[E, ?, R]],
+                         step: (S, R) => S,
+                         close: (E, A, S) => R): Step[E, A, R] = new Step[E, A, R]:
+      private def at[X](k: Kid[E, X, R], open: Int): R = child(k.step, k.env, k.value, open)
+      private def atC[X](k: Kid[E, X, R], open: Int): R /> R = k.step.cont(k.env, k.value, open)
+      def run(e: E, a: A, open: Int): R =
+        var s = enter(e, a)
+        kids(e, a).foreach { k => s = step(s, at(k, open + 1)) }
+        close(e, a, s)
+      def cont(e: E, a: A, open: Int): R /> R =
+        val ks = kids(e, a)
+        def loop(i: Int, s: S): R /> R =
+          if i >= ks.length then Cont.Pure(close(e, a, s))
+          else Cont.defer(() => atC(ks(i), open + 1))(r => loop(i + 1, step(s, r)))
+        loop(0, enter(e, a))
+
+    /** a sequence: homogeneous elements, no per-element object */
+    def elems[E, A, X, R, S](enter: (E, A) => S,
+                             items: A => Iterable[X],
+                             each: () => Step[E, X, R],
+                             before: (E, Int) => Unit,
+                             step: (S, R) => S,
+                             close: (E, A, S) => R): Step[E, A, R] = new Step[E, A, R]:
+      def run(e: E, a: A, open: Int): R =
+        val st = each()
+        var s = enter(e, a)
+        var i = 0
+        items(a).foreach { x =>
+          before(e, i)
+          s = step(s, child(st, e, x, open + 1))
+          i += 1
+        }
+        close(e, a, s)
+      def cont(e: E, a: A, open: Int): R /> R =
+        val st = each()
+        val it = items(a).iterator
+        def loop(i: Int, s: S): R /> R =
+          if !it.hasNext then Cont.Pure(close(e, a, s))
+          else
+            val x = it.next()
+            Cont.defer(() => { before(e, i); st.cont(e, x, open + 1) })(r => loop(i + 1, step(s, r)))
+        loop(0, enter(e, a))
 
   given Schema[Int] = Schema.SInt
   given Schema[Long] = Schema.SLong

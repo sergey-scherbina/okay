@@ -60,9 +60,9 @@ object JsonSchema {
     // the model exactly how to send it
     def bytes = obj("type" -> Json.JStr("string"),
       "contentEncoding" -> Json.JStr("base64"))
-    def option[A](of: () => Json) = of()   // optionality is in `required`
-    def list[A](of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
-    def vector[A](of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
+    def option[A](o: Schema.SOption[A], of: () => Json) = of()   // optionality is in `required`
+    def list[A](l: Schema.SList[A], of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
+    def vector[A](v: Schema.SVector[A], of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
 
     def product[A](p: Schema.SProduct[A], fields: Vector[(String, Schema.Edge[K, Any])]) =
       // a DEFAULTED field is not required (the model may omit it —
