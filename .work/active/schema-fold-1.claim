@@ -1,0 +1,14 @@
+task: schema-fold-1
+agent: opus-depth
+started: 2026-09-11
+branch: feature/schema-fold-1
+worktree: ../okay-wt-schema-fold-1
+spec: specs/schema-fold.md, stage 1
+
+what: `Schema.Algebra[F[_]]` + `Schema.fold` (knot tied by schema
+  identity, cycles handed to the algebra as `ref(name)`), and
+  `JsonSchema.of` rewritten as a fold — byte-for-byte on every
+  non-recursive schema, and `$defs`/`$ref` for a recursive one where
+  today's hand-rolled `of` recurses for ever. `Compat` stays: it is a
+  walk over TWO schemas with its own cycle set, not a catamorphism over
+  one — the spec's stage-1 line on it is corrected in this lane.
