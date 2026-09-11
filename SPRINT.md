@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- throws-into — Scala 3.9's `into` on `throws`, so `A throws E` stops
+  demanding `import scala.language.implicitConversions`; the fifth
+  conversion goes with it, being redundant with `.wrap` and the only
+  one `into` cannot reach. Probed first: four conversions fire
+  import-free, the fifth is what warns. Claimed 2026-09-11
+  (.work/active/throws-into.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
