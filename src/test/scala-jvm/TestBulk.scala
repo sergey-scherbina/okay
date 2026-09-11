@@ -12,6 +12,13 @@ class TestBulk extends munit.FunSuite {
     assertEquals(Csv.fields(""), Vector(""))
   }
 
+  test("Csv.line is the inverse of Csv.fields, quoting only what needs it") {
+    val row = Vector("a", "b,c", "say \"hi\"", "", "plain")
+    assertEquals(Csv.line(row), "a,\"b,c\",\"say \"\"hi\"\"\",,plain")
+    assertEquals(Csv.fields(Csv.line(row)), row)
+    assertEquals(Csv.fields(Csv.line(Vector("x"))), Vector("x"))
+  }
+
   test("Csv.rows: the header names the columns and a BOM is stripped") {
     val rows = Csv.rows(Iterator("﻿id,name", "1,\"Krasińskiego\"", "2,KŁOKOCZYCE")).toList
     assertEquals(rows, List(Map("id" -> "1", "name" -> "Krasińskiego"), Map("id" -> "2", "name" -> "KŁOKOCZYCE")))

@@ -143,7 +143,8 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
       equal per-hour aggregates on `Bulk[Chunks]` and on Spark
 - [x] `Bulk[java.util.List]`: join and aggregate over parallel streams
       equal the local instance's on the same data
-- [x] `Csv.fields` handles quotes, doubled quotes and commas in quotes
+- [x] `Csv.fields` handles quotes, doubled quotes and commas in quotes,
+      and `Csv.line` is its inverse (quoting only what needs it)
 - [x] a local source is replayable: aggregating twice reads twice
 - [x] the effect layer: a `Tables` plan run on `localBulk` equals the
       direct computation; `!.tracing` lists its operations before any
