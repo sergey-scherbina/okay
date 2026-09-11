@@ -1,0 +1,26 @@
+task: optics-outside-guide
+agent: opus5-optics-outside
+started: 2026-09-11
+heartbeat: 2026-09-11T02:00:00Z
+status: in-progress
+branch: feature/optics-outside-guide
+worktree: ../okay-wt-guide
+spec: specs/optics-outside.md (the arc it documents)
+
+why: seven stages landed in one session and their documentation grew
+  by accretion — okay-http.md's route section is 200 lines written in
+  five passes, and reads as layers rather than as something a person
+  can follow from the top. The spec records DECISIONS for contributors;
+  what is missing is the user-facing story.
+
+what: a guide, `docs/declaring-an-api.md` — one declaration and its
+  interpreters, worked from a path through a query, a body, a table
+  and a tool, with the refusals explained where a reader would
+  otherwise try them. okay-http.md's section shrinks to a module
+  reference pointing at it; docs/README.md gets its index line.
+
+no code: documentation only. The claim exists because docs edits need
+  a worktree too, and because this one spans three files a sibling
+  might touch.
+
+next: the guide, then the module trim, then README
