@@ -1,0 +1,28 @@
+task: openapi-responses
+agent: opus5-di
+started: 2026-09-11
+heartbeat: 2026-09-11T07:48:16Z
+status: in-progress
+branch: feature/openapi-responses
+worktree: ../okay-wt-resp
+spec: specs/openapi.md stage 1, BACKLOG "openapi"
+
+why: nothing in the tree declares what an operation ANSWERS — a
+  handler builds `Response(200, …)` by hand — so every operation in
+  the rendered document says "undeclared". It is the decider for
+  whether a document is worth serving. TOUCHES okay-http (Route.scala),
+  the optics-outside arc's file: that arc's eight stages are all
+  landed, its spec plans no stage 9, the three `openapi-*` entries are
+  unclaimed, I asked its owner twice in the room with no reply, and
+  the operator said take it. Will say so in the room again on landing.
+
+what: the declaration is the handler's TYPE, not an annotation beside
+  it — `out`/`jsonOut` take a handler answering a VALUE, the router
+  encodes it with the same `Schema` the document renders, so the two
+  cannot drift. The router also declares the failures IT produces:
+  `json[B]`'s own 400 for a body that does not parse. `Entry` gains
+  the responses; okay-openapi renders them; "undeclared" stays for a
+  handler that still builds its own `Response`.
+
+next: Entry.responses, out/jsonOut, the 400 the router already emits,
+  the renderer, tests both sides
