@@ -1,5 +1,42 @@
 # Changelog
 
+## wroclaw-table-refresh — one run, every engine, and a claim of mine corrected by it
+
+§20's table was a quiet run from 2026-09-10; okay's lanes have since
+changed underneath it (wroclaw-flat-by-default took the single-thread
+row from 855 ms to 552). Copying the new okay rows beside the old
+competitor rows is exactly the mixed-run defect this section spent a
+day removing, so the whole script was re-run instead: every engine, a
+JVM per lane, best of 3, load average 1.7 at the start and 3.1 at the
+end.
+
+**It corrects something I said a few hours earlier.** With okay's new
+number beside the PREVIOUS run's competitors, okay's one-core row
+looked ahead of all of them. In one run it is a TIE:
+
+  java.util.stream  561 ms
+  okay              563 ms
+  plain JVM         574
+  fs2               579
+  zio-streams       583
+  kyo               610
+
+The competitors are simply faster in this run than in the last one —
+the box is in a better state — which is the whole reason a table has
+to be taken whole.
+
+**And the run measured its own noise floor.** Two rows —
+`okay, 1 thread (Chunks)` at 563 ms and `okay, 1 thread,
+Aggregator.summary` at 614 — are THE SAME CODE since
+wroclaw-flat-by-default; only the method name the harness calls
+differs. 9% apart in one JVM, minutes apart. The table now says so,
+and nothing in it should be read as a difference below that.
+
+What the run confirms: at two cores and beyond okay is alone — 317 /
+189 / 107 ms against the next lane's 417 / 357 / 337, a 3.2x lead at
+eight, because every competitor plateaus between 1.4x and 1.7x from
+one core to eight while okay reaches 5.3x.
+
 ## generalized-method-syntax — three of our APIs were shaped around a limit the compiler no longer has
 
 Scala 3 lets a method take type parameters in more than one clause, so

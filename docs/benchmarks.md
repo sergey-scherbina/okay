@@ -3830,56 +3830,65 @@ Host: 14 cpus (10 performance, 4 efficiency), 36 GB, JVM 21, macOS
 arm64. **2 414 119 events** (eight service days), best of 3 rounds per
 lane, one JVM per lane, every lane's eleven checksums asserted against
 okay's before its number was taken — `scripts/wroclaw-bench.sh 8 3 1`,
-ONE run of the script, every engine, on a box whose load average was
-under 5 for the whole of it (wroclaw-remeasure-quiet).
+ONE run of the script, every engine, load average 1.7 at the start and
+3.1 at the end (wroclaw-table-refresh, 2026-09-11).
 
-That last clause is not decoration. The previous version of this table
-was assembled from three sittings, one of them while sibling builds
-held the machine, and it carried a footnote saying which rows were
-pessimistic. This one has no footnote: every row below is from the
-same script invocation on a quiet machine, so the rows can be read
-against each other.
+That provenance line is the table's most important row. The previous
+version of this section was assembled from three sittings and carried
+a footnote saying which rows were pessimistic; the version before that
+put okay's new numbers beside competitors' old ones, which is how a
+6x "win" and a 2x "loss" both turned out to be mis-pairings. One run
+or no table.
 
-| lane | cores | ev/s | wall | B/event | peak heap |
-|---|---:|---:|---:|---:|---:|
-| okay, 8 fibres (merge) | 8 | 15 676 097 | 154 ms | 1 129 | 1 639 MB |
-| okay, 4 fibres (merge) | 4 | 9 320 922 | 259 ms | 1 120 | 1 942 MB |
-| zio-streams, 8 cores (`foreachPar`) | 8 | 6 668 837 | 362 ms | 508 | 1 851 MB |
-| java.util.stream, 8 cores | 8 | 6 632 195 | 364 ms | 823 | 2 687 MB |
-| fs2, 8 cores (`parEvalMap`) | 8 | 6 507 059 | 371 ms | 517 | 1 869 MB |
-| kyo, 8 cores (`Async.parallel`) | 8 | 6 286 768 | 384 ms | 638 | 1 960 MB |
-| fs2, 4 cores | 4 | 6 286 768 | 384 ms | 491 | 1 785 MB |
-| zio-streams, 4 cores | 4 | 6 238 033 | 387 ms | 481 | 1 767 MB |
-| java.util.stream, 4 cores | 4 | 5 946 105 | 406 ms | 740 | 2 495 MB |
-| plain JVM, 2 threads | 2 | 5 627 317 | 429 ms | 425 | 1 559 MB |
-| zio-streams, 2 cores | 2 | 5 511 687 | 438 ms | 438 | 1 665 MB |
-| kyo, 4 cores | 4 | 5 449 478 | 443 ms | 611 | 2 109 MB |
-| plain JVM, 4 threads | 4 | 5 329 181 | 453 ms | 468 | 1 693 MB |
-| okay, 2 fibres (merge) | 2 | 5 317 442 | 454 ms | 1 114 | 1 914 MB |
-| plain JVM, 8 threads | 8 | 5 236 700 | 461 ms | 495 | 1 765 MB |
-| fs2, 2 cores | 2 | 5 125 518 | 471 ms | 447 | 1 668 MB |
-| okay, 1 thread, packed + mutable cell | 1 | 4 742 866 | 509 ms | 590 | 1 756 MB |
-| kyo, 2 cores | 2 | 4 520 822 | 534 ms | 568 | 1 946 MB |
-| java.util.stream, 2 cores | 2 | 4 341 940 | 556 ms | 684 | 2 351 MB |
-| **plain JVM, while loop** | 1 | **3 951 094** | 611 ms | 338 | 1 335 MB |
-| fs2, 1 core (pure) | 1 | 3 912 672 | 617 ms | 360 | 1 453 MB |
-| okay, 1 thread, mutable-cell aggregator | 1 | 3 850 269 | 627 ms | 684 | 1 778 MB |
-| java.util.stream, 1 core | 1 | 3 813 774 | 633 ms | 338 | 1 382 MB |
-| **okay, 1 thread, `Aggregator.summary`** | 1 | **3 731 250** | 647 ms | 830 | 1 760 MB |
-| zio-streams, 1 core | 1 | 3 714 029 | 650 ms | 351 | 1 415 MB |
-| okay, 1 thread, packed-key windows | 1 | 3 227 431 | 748 ms | 970 | 1 756 MB |
-| kyo, 1 core | 1 | 2 901 585 | 832 ms | 477 | 1 708 MB |
-| okay, 1 thread (`Chunks`, `count zip sum zip max`) | 1 | 2 823 530 | 855 ms | 1 064 | 1 746 MB |
-| the floor (a while loop, okay's operator) | 1 | 2 730 903 | 884 ms | 1 050 | 1 766 MB |
-| java.util.stream, windowed collector | 1 | 2 445 915 | 987 ms | 1 265 | 1 719 MB |
-| flink, parallelism 8 | 8 | 1 658 048 | 1 456 ms | 1 773 | 1 238 MB |
-| flink, parallelism 4 | 4 | 1 473 821 | 1 638 ms | 1 767 | 1 135 MB |
-| flink, parallelism 4 + checkpoints 5 s | 4 | 1 461 331 | 1 652 ms | 1 772 | 1 108 MB |
-| flink, parallelism 4, object reuse off | 4 | 1 184 552 | 2 038 ms | 1 967 | 967 MB |
-| flink, parallelism 2 | 2 | 1 153 425 | 2 093 ms | 1 765 | 1 593 MB |
-| flink, parallelism 1 | 1 | 756 066 | 3 193 ms | 1 761 | 983 MB |
-| spark, local[4], batch RDD | 4 | 339 395 | 7 113 ms | 13 681 | 1 798 MB |
-| spark, local[4], structured streaming | 4 | 239 163 | 10 094 ms | 3 838 | 2 025 MB |
+| lane | cores | ev/s | wall | B/event |
+|---|---:|---:|---:|---:|
+| okay, 8 fibres (merge) | 8 | **22 561 859** | **107 ms** | 789 |
+| okay, 4 fibres (merge) | 4 | 12 773 116 | 189 ms | 781 |
+| okay, 2 fibres (merge) | 2 | 7 615 517 | 317 ms | 775 |
+| java.util.stream, 8 cores | 8 | 7 163 557 | 337 ms | 824 |
+| zio-streams, 8 cores (`foreachPar`) | 8 | 6 957 115 | 347 ms | 508 |
+| zio-streams, 4 cores | 4 | 6 762 238 | 357 ms | 481 |
+| fs2, 8 cores (`parEvalMap`) | 8 | 6 560 105 | 368 ms | 517 |
+| fs2, 4 cores | 4 | 6 403 498 | 377 ms | 491 |
+| kyo, 8 cores (`Async.parallel`) | 8 | 6 352 944 | 380 ms | 638 |
+| java.util.stream, 4 cores | 4 | 6 096 260 | 396 ms | 740 |
+| plain JVM, 4 threads | 4 | 6 065 625 | 398 ms | 468 |
+| plain JVM, 8 threads | 8 | 5 902 491 | 409 ms | 495 |
+| zio-streams, 2 cores | 2 | 5 789 254 | 417 ms | 438 |
+| kyo, 4 cores | 4 | 5 761 620 | 419 ms | 611 |
+| java.util.stream, 2 cores | 2 | 5 271 002 | 458 ms | 684 |
+| plain JVM, 2 threads | 2 | 5 125 518 | 471 ms | 425 |
+| fs2, 2 cores | 2 | 5 114 658 | 472 ms | 447 |
+| okay, 1 thread, packed + mutable cell | 1 | 4 770 986 | 506 ms | 590 |
+| kyo, 2 cores | 2 | 4 715 076 | 512 ms | 568 |
+| **java.util.stream, 1 core** | 1 | **4 303 242** | **561 ms** | 338 |
+| **okay, 1 thread (`Chunks`)** | 1 | **4 287 955** | **563 ms** | 751 |
+| the floor (a while loop, okay's operator) | 1 | 4 220 487 | 572 ms | 737 |
+| plain JVM, while loop | 1 | 4 205 782 | 574 ms | 338 |
+| okay, 1 thread, mutable-cell aggregator | 1 | 4 198 467 | 575 ms | 604 |
+| fs2, 1 core (pure) | 1 | 4 169 462 | 579 ms | 360 |
+| zio-streams, 1 core | 1 | 4 140 855 | 583 ms | 351 |
+| kyo, 1 core | 1 | 3 957 572 | 610 ms | 477 |
+| okay, 1 thread, `Aggregator.summary` (same code as row 21) | 1 | 3 931 789 | 614 ms | 869 |
+| okay, 1 thread, packed-key windows | 1 | 3 180 657 | 759 ms | 1 004 |
+| okay, 1 thread, `count zip sum zip max` | 1 | 2 781 243 | 868 ms | 1 136 |
+| java.util.stream + okay's windowed collector | 1 | 2 703 380 | 893 ms | 1 333 |
+| flink, parallelism 8 | 8 | 1 679 971 | 1 437 ms | 1 773 |
+| flink, parallelism 4 | 4 | 1 525 991 | 1 582 ms | 1 767 |
+| flink, p4 + checkpoints every 5 s | 4 | 1 524 065 | 1 584 ms | 1 771 |
+| flink, p4, object reuse off | 4 | 1 252 786 | 1 927 ms | 1 968 |
+| flink, parallelism 2 | 2 | 1 231 693 | 1 960 ms | 1 766 |
+| flink, parallelism 1 | 1 | 778 496 | 3 101 ms | 1 761 |
+| spark, local[4], batch RDD | 4 | 338 918 | 7 123 ms | 13 787 |
+| spark, local[4], structured streaming | 4 | 264 445 | 9 129 ms | 3 870 |
+
+**THE NOISE FLOOR IS IN THE TABLE, twice over, and it is 9%.** Rows 21
+and 28 — `okay, 1 thread (Chunks)` at 563 ms and `okay, 1 thread,
+Aggregator.summary` at 614 — are THE SAME CODE since
+wroclaw-flat-by-default: the lane's default accumulator IS the flat
+one, so the two lanes differ only in which method name the harness
+called. They read 9% apart in one JVM, minutes apart. Nothing in this
+table should be read as a difference unless it is bigger than that.
 
 **GIVING THE ENGINES THEIR OWN ARITHMETIC BACK WAS WORTH REAL MONEY,
 and this run is what says so.** The rows above replace ones taken while
@@ -3904,15 +3913,15 @@ Each cell is **wall / ev/s** for the whole 2 414 119-event replay:
 
 | engine | 1 core | 2 | 4 | 8 | 1 → 8 |
 |---|---:|---:|---:|---:|---:|
-| **okay** (merge-parallel) | 855 ms / 2 823 530 | 454 ms / 5 317 442 | 259 ms / 9 320 922 | **154 ms / 15 676 097** | **5.6x** |
-| zio-streams (`foreachPar`) | 650 ms / 3 714 029 | 438 ms / 5 511 687 | 387 ms / 6 238 033 | 362 ms / 6 668 837 | 1.8x |
-| fs2 (`parEvalMap`) | 617 ms / 3 912 672 | 471 ms / 5 125 518 | 384 ms / 6 286 768 | 371 ms / 6 507 059 | 1.7x |
-| `java.util.stream` (ForkJoinPool) | 633 ms / 3 813 774 | 556 ms / 4 341 940 | 406 ms / 5 946 105 | 364 ms / 6 632 195 | 1.7x |
-| kyo (`Async.parallel`) | 832 ms / 2 901 585 | 534 ms / 4 520 822 | 443 ms / 5 449 478 | 384 ms / 6 286 768 | 2.2x |
-| plain JVM (`Thread` + join) | **611 ms / 3 951 094** | 429 ms / 5 627 317 | 453 ms / 5 329 181 | 461 ms / 5 236 700 | **1.3x, and it PEAKS AT TWO** |
-| flink (MiniCluster) | 3 193 ms / 756 066 | 2 093 ms / 1 153 425 | 1 638 ms / 1 473 821 | 1 456 ms / 1 658 048 | 2.2x |
-| spark (local[4], RDD) | — | — | 7 113 ms / 339 395 | — | — |
-| spark (local[4], structured streaming) | — | — | 10 094 ms / 239 163 | — | — |
+| **okay** (merge-parallel) | 563 ms / 4 287 955 | **317 ms** / 7 615 517 | **189 ms** / 12 773 116 | **107 ms** / 22 561 859 | **5.3x** |
+| `java.util.stream` (ForkJoinPool) | **561 ms** / 4 303 242 | 458 ms / 5 271 002 | 396 ms / 6 096 260 | 337 ms / 7 163 557 | 1.7x |
+| plain JVM (`Thread` + join) | 574 ms / 4 205 782 | 471 ms / 5 125 518 | 398 ms / 6 065 625 | 409 ms / 5 902 491 | 1.4x, peaks at four |
+| fs2 (`parEvalMap`) | 579 ms / 4 169 462 | 472 ms / 5 114 658 | 377 ms / 6 403 498 | 368 ms / 6 560 105 | 1.6x |
+| zio-streams (`foreachPar`) | 583 ms / 4 140 855 | 417 ms / 5 789 254 | 357 ms / 6 762 238 | 347 ms / 6 957 115 | 1.7x |
+| kyo (`Async.parallel`) | 610 ms / 3 957 572 | 512 ms / 4 715 076 | 419 ms / 5 761 620 | 380 ms / 6 352 944 | 1.6x |
+| flink (MiniCluster) | 3 101 ms / 778 496 | 1 960 ms / 1 231 693 | 1 582 ms / 1 525 991 | 1 437 ms / 1 679 971 | 2.2x |
+| spark (local[4], RDD) | — | — | 7 123 ms / 338 918 | — | — |
+| spark (local[4], structured streaming) | — | — | 9 129 ms / 264 445 | — | — |
 
 The wall column is the one to read across a row (it is what a replay
 actually took); the rate is the same number per event, and only the
@@ -3934,21 +3943,27 @@ accumulators rather than the history.
 **Read the two halves of that separately, because they say opposite
 things.**
 
-**One core: the gap that used to be 1.4x is now 6%, and closing it was
-one value.** The lane as §20's `Job` defines it — `count zip sum zip
-max` — runs at 2 823 530 ev/s against the plain-JVM fold's 3 951 094.
-The SAME lane with `Aggregator.summary`, the flat accumulator the
-decomposition below called for, runs at **3 731 250: within 6% of a
-hand-written mutable fold, on an operator that also evicts and takes
-any key type.** The benchmark keeps both rows on purpose — `Job.stats`
-is the value handed to Flink and Spark through the interop, so the
-section can price the difference instead of hiding it — but the answer
-to "why is okay slower on one core" is now mostly historical.
+**One core: the gap is gone, and closing it was one value.** The lane
+used to fold `count zip sum zip max` and read 868 ms — behind every
+in-process competitor. It folds `Aggregator.summary` now
+(wroclaw-flat-by-default) and reads **563 ms against the fastest
+competitor's 561**: a tie inside the 9% noise floor this table
+measures on itself, on an operator that also evicts and takes any key
+type. The zip stays as its own row because it prices what
+composability costs: 868 against 563, the same job, the same
+operator.
 
-**More than one core: okay is 2.4x the best of them, and pulling
-away.** Every one of the five plateaus between 1.3x and 2.2x from one
-core to eight — the plain JVM actually peaks at TWO — while okay
-reaches 5.6x. Their merge is proportional to the
+**Said plainly, because it was said wrongly first:** okay is not
+"faster than all of them" on one core. That claim was made a few
+hours earlier by putting okay's new number beside the PREVIOUS run's
+competitor numbers, which is the mixed-run defect this section has
+now caught four times. In one run, on one box, one core is a tie.
+
+**More than one core: okay is 3.2x the best of them, and pulling
+away.** At eight cores okay is 107 ms against 337 for the next lane;
+every one of the five plateaus between 1.4x and 1.7x from one core to
+eight — the plain JVM actually peaks at FOUR and gets slower at eight
+— while okay reaches 5.3x. Their merge is proportional to the
 STATE — with no watermark every slice holds every pane the run ever
 opened, and the reduction walks all of them — while okay merges only
 the panes that span a slice boundary. **A watermark is not only a
