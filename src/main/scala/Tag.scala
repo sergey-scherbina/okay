@@ -38,6 +38,15 @@ import okay.RowLift.plus
  *
  *     State.run(0)(Tag.untag["small", State % Int](twice))   // and so on
  *
+ * THE KEY MUST BE DISTINCT WITHIN A ROW, and nothing checks it
+ * (tag-key-collision, 2026-09-11). The test above is by key and by
+ * key alone, so two members that SHARE one — `Of["same", Reader %
+ * Int] + Of["same", Reader % String]` — have nothing left to compare
+ * and misroute into the same ClassCastException a key exists to
+ * prevent. `TestTag` pins that, docs/many-instances.md states the
+ * rule, and `tag-distinct-keys` in BACKLOG.md is the compile-time
+ * check that would make it unnecessary to state.
+ *
  * AND THE OTHER TWO ROUTES. A key is a STATIC identity: the row lists
  * the instances, so the compiler knows how many there are and nothing
  * casts. `Refs` is the dynamic counterpart for state made at run

@@ -99,6 +99,23 @@ comonadic `Handler[F]` to `Handler[Of[K, F]]` for the same reason.
 and nothing casts. The row lists the instances, so the compiler knows
 how many there are.
 
+**The one thing you must get right: the keys must be DISTINCT within a
+row.** The test is by key and by key alone — that is what lets one
+signature appear twice — so two members sharing a key have nothing
+left to compare:
+
+```scala
+type A = Tag.Of["same", Reader % Int]
+type B = Tag.Of["same", Reader % String]   // same key: back to square one
+```
+
+That row misroutes into exactly the `ClassCastException` a key exists
+to prevent, which `TestTag` pins (tag-key-collision, 2026-09-11).
+Nothing checks distinctness today; a compile-time check is filed as
+`tag-distinct-keys`. Until it exists, the rule is yours to keep — and
+it is cheap to keep, because keys are literals you can read side by
+side in the type alias block.
+
 **The one syntactic wart**, worth knowing before you meet it: in the
 second line above, `G` is inferred from the program, and a program of
 `State` alone infers `G = State % Int` rather than `Pure`. `.plus`

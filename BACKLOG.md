@@ -37,6 +37,44 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] tag-distinct-keys — a row of `Tag.Of[K, F]` members is only as
+      good as the keys being different, and nothing checks it:
+      measured 2026-09-11, `Of["same", Reader % Int] + Of["same",
+      Reader % String]` misroutes into the ClassCastException the key
+      exists to prevent (pinned in `TestTag`). The check wants to be
+      a `Distinct[R]` given, derived by a macro that walks the row
+      type, collects the singleton keys of its `Tag.Of` members and
+      refuses duplicates with a message naming the two members and
+      pointing at docs/many-instances.md. WHERE to require it is the
+      design question: `Tag.one`/`Tag.tag` cannot see the whole row,
+      so the natural seam is `RowLift.at`/`plus`, which is where two
+      members first coexist in one type — and that is a very hot,
+      very general API. DISQUALIFYING: if requiring it there measures
+      as a compile-time cost on ordinary rows, or breaks inference at
+      `.at`, it dies there and the rule stays a documented one.
+- [ ] tag-test-the-signature-too — a cheaper half-fix, also unproven:
+      `Tag`'s `Effect` instance tests the key ALONE. Given
+      `TypeableK[F]` it could test the key AND the inner operation, so
+      that two members sharing a key but differing in SIGNATURE
+      (`Of["k", Reader % Int]` vs `Of["k", Writer % String]`) route
+      correctly instead of colliding. It does nothing for the same
+      signature under one key, which is the commoner mistake, and it
+      strengthens the given's requirements — every row mentioning
+      `Tag.Of[K, F]` would need `TypeableK[F]` in scope, which is a
+      source-compatibility change. Measure the breakage before
+      writing it.
+- [ ] instances-of-any-effect — the gap the three routes leave open.
+      `Refs` gives instances MADE at run time, but only for state;
+      `Tag` gives any effect, but only instances NAMED at compile
+      time. Nothing gives run-time instances of an ARBITRARY effect —
+      one `Users` per tenant, one `Cache` per shard, where the shards
+      are read from config. The shape would be `Tag` with a runtime
+      key: one row member, `Instances.at(handle)(op)`, handlers
+      installed per handle, identity by handle rather than by literal
+      — which is exactly what `Refs` does for cells, generalised. The
+      cast question is the same one `Refs` answers, and its answer
+      should carry over: a handle is made by the same call that fixes
+      its type.
 - [x] wroclaw-table-refresh — DONE (2026-09-11): §20's table is one
       whole `scripts/wroclaw-bench.sh 8 3 1` at load 1.7-3.1, every
       engine, after okay's lanes changed underneath the old one. It

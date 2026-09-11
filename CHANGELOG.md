@@ -1,5 +1,43 @@
 # Changelog
 
+## tag-key-collision — the key restores identity only if the keys differ, and nothing said so
+
+`Tag` exists so a row can hold two instances of one signature, and its
+`Effect` instance tests BY KEY — "everything else about F is already
+erased". Read the other way that is a requirement nobody had written
+down, and a probe answered it: two members sharing a key have nothing
+left to compare.
+
+    type A = Tag.Of["same", Reader % Int]
+    type B = Tag.Of["same", Reader % String]
+
+    THREW: java.lang.ClassCastException: class java.lang.String
+           cannot be cast to class java.lang.Integer
+
+That is exactly the failure a key exists to prevent, reached by using
+one carelessly. It is now pinned in `TestTag` beside the cases that
+work, stated in `Tag`'s own scaladoc, and written into
+docs/many-instances.md where the route is taught — the rule is not
+"use a key" but "use a DISTINCT key per member".
+
+Three follow-ups filed rather than guessed at:
+
+  tag-distinct-keys — a `Distinct[R]` given, derived by a macro over
+    the row type, refusing duplicates at compile time. The design
+    question is WHERE to require it: `Tag.one`/`tag` cannot see the
+    whole row, so the seam is `RowLift.at`/`plus` — very hot, very
+    general. Disqualified if it costs compile time on ordinary rows.
+  tag-test-the-signature-too — test the key AND the inner operation,
+    so members sharing a key but differing in signature route
+    correctly. Does nothing for the commoner mistake (same signature,
+    same key) and strengthens the given's requirements, which is a
+    source-compatibility change. Measure the breakage first.
+  instances-of-any-effect — the gap the three routes leave: `Refs`
+    gives run-time instances but only of state, `Tag` gives any
+    effect but only compile-time names. Nothing gives run-time
+    instances of an arbitrary effect — one `Users` per tenant read
+    from config. `Tag` with a runtime key is the shape.
+
 ## openapi-render — the document as a rendering, stage 0
 
 The operator asked for OpenAPI support; the board already governed how
