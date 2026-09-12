@@ -1,5 +1,72 @@
 # Changelog
 
+## named-tuples-stage0 — the names are free, the inference holds, and our own wildcard import is what blocks them
+
+A measurement, not a migration, on the job that already needed comments
+to say its types. `Gtfs.departures` writes the shape of every step of
+its join chain in a trailing comment, because the tuples cannot:
+
+    !stopTimes.join(trips)                                             // trip -> (time, (route, service))
+      .select { case (_, (time, (route, service))) => ... }            // route -> (time, service)
+
+Swap `time` and `service` there and it still compiles. `GtfsNamed` is
+the same pipeline with the payloads named and those comments deleted,
+and three questions were set against it before the work started.
+
+**Does it compute the same thing? Yes, on the real feed.** Both
+programs run over the Wrocław GTFS snapshot and are compared by a
+four-way summary (count, sum, min, max) of a measure mixing every
+field of `Dep`, so a swapped pair would move it: **4 593 288
+departures, identical summary**. The names cost nothing at runtime
+either, and that is not an assumption — `(route = "a", service = "b")`
+IS a `scala.Tuple2` and `==` to `("a", "b")`, probed before building.
+
+**Does inference survive our own generic API? Yes, and that was the
+coin toss.** `select[B](f: A => B)` and `join[B](r: Table[(K, B)]):
+Table[(K, (A, B))]` carry a named payload through the whole chain with
+no annotation anywhere. Had it needed one per step, the readability
+win would have been spent and the answer would have been no. What
+stays positional is `join`'s key pairing, by signature, and that is
+where the remaining `case (_, (dep, service))` ugliness lives.
+
+**How much would a declared row type cover? Most, and the exception is
+structural.** 56 reads by a literal column name in the files that read
+CSV rows, each declarable. Three read a column by a COMPUTED name —
+`Vector("monday", ..., "sunday").map(r(_) == "1")` in the calendar —
+which no field access can express, so any row type will need an escape
+hatch for it. This entry also corrects a figure quoted earlier in the
+lane: "410 reads" came from a pattern matching every `r("...")`-shaped
+call in the repository, most of which are not row reads. 56 is honest.
+
+**And the answer nobody asked for.** `import okay.*` disables named
+tuples outright. `Generate.scala:25` extends EVERY type with an
+`apply` so a loop can run as `seed(body)`, and a named tuple's field
+access desugars to an apply by index, so `t.route` reports
+`Found: (0 : Int)`. Reproduced standalone in four lines with a
+stand-in extension of the same shape, so it is the shape and nothing
+else; `import okay.given` alone is fine, it is the wildcard that
+carries it. Filed as `universal-apply-blocks-named-tuples` in BUGS.md
+with two one-line fixes priced and NEITHER TAKEN: both remove a
+spelling from the public API, and the `Loop`/`take` DSL it serves has
+no other user here — no test, no doc example, one mention in
+typepedia's type list. That is the operator's call, not a lane's.
+`GtfsNamed` imports okay's names one by one, which is the only reason
+this measurement could run at all.
+
+Nothing migrates on this stage, by the rule set in the claim. Stage 1,
+a declared row type for one file, is filed BLOCKED on that BUGS entry:
+a feature our own wildcard import disables is not one we can ask users
+to adopt.
+
+Landed as 17d82472. Gate: the full matrix, 4358 tests, 0 failures,
+and the gate's own warning check across 179 module compiles reported
+none. The measurement itself runs in `integrationTest`, not the gate:
+the suite is `Live`-tagged and reads a 48 MB feed, which is exactly
+the kind of test the gate must not depend on. Running it in a fresh
+worktree needs the data linked in, `okay-spark/target/data/gtfs`
+pointing at the main checkout's copy, the same shape as the
+model-gated suites.
+
 ## optics-topology-corrected — I measured Stage and wrote about the repo
 
 `ca26605f` recorded, for the topology candidate, that "nothing here

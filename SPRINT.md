@@ -1,13 +1,6 @@
 # Sprint
 
 ## Doing
-- named-tuples-stage0 — measure, not migrate: a named-tuple twin of
-  `Gtfs.departures` on the real Wrocław feed. Three questions — does
-  the number move (it must not, named tuples erase), does inference
-  survive our own generic `select`/`join`, and how much of the 410
-  string-key row reads a declared row type would cover. Lands as a
-  record either way. Claimed 2026-09-12
-  (.work/active/named-tuples-stage0.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
