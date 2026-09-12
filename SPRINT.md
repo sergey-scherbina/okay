@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- named-tuple-unblock — BUGS `universal-apply-blocks-named-tuples`:
+  guard the universal `apply` with `NotGiven[A <:< AnyNamedTuple]` so
+  it declines named tuples and the field access falls through. Removes
+  nothing from the API, unlike the two fixes the entry priced. Proof on
+  real code: GtfsNamed goes back to `import okay.*`. Claimed 2026-09-12
+  (.work/active/named-tuple-unblock.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
