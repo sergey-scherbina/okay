@@ -1,5 +1,59 @@
 # Changelog
 
+## named-tuple-unblock — the universal `apply` declines named tuples, and nothing leaves the API
+
+`named-tuples-stage0` found that `import okay.*` disables named
+tuples: `Generate.scala` offers an `apply` on EVERY type so a loop can
+run as `seed(body)`, a named tuple's field access desugars to an apply
+BY INDEX, and so `t.route` reported `Found: (0 : Int)`. The entry
+priced two one-line fixes — move the extension behind an explicit
+import, or drop the `seed(body)` spelling — and took neither, because
+both remove something from the public API and that is the operator's
+call, not a lane's.
+
+The operator asked for the problem solved. There is a third way, and
+it removes nothing:
+
+    extension [A](a: A)(using scala.util.NotGiven[A <:< NamedTuple.AnyNamedTuple])
+      inline def apply[R](f: A Loop R): R = loop(f)(a)
+
+The extension simply declines named tuples, so the selection falls
+through to the compiler's own, and `seed(body)` keeps working for
+every other seed.
+
+**The refuted step is in the entry, because it is the one a reader
+will try first.** Guarding on `Tuple` does NOT work: a named tuple is
+not `<:<` a `Tuple`, so `NotGiven` succeeds, the extension applies
+anyway and the error is unchanged. `NamedTuple.AnyNamedTuple` is the
+exact upper bound, and the difference is the whole fix.
+
+Pinned from both sides in `TestNamedTuples`: the fields are reachable
+under `import okay.*`; a named tuple still IS the plain `Tuple2` at
+runtime and `==` to it, so the names stay free; the `seed(body)`
+spelling still resolves, checked BY TYPE rather than run, since a bare
+`take` body is an infinite loop by construction; and a plain tuple
+still indexes, which is the compiler's own apply and not ours.
+
+And the regression test is real code rather than a snippet:
+`GtfsNamed.scala` went back to the plain wildcard import it had to
+avoid this morning. If the guard ever regresses, that file stops
+compiling, and its 4 593 288-departure equality against the original
+pipeline goes with it. It passes under the wildcard now.
+
+specs/bulk.md's stage 1 — a declared row type for one file, with the
+escape hatch its calendar's computed column names need — is no longer
+blocked.
+
+Landed as 1adff686 (the guard, the test and the twin's import) and
+0f13970a (typepedia's reason). Gate: the full matrix twice, 4378 then
+4380 tests, 0 failures, the second after a rebase because master had
+gained okay-demo's Ledger under a lane that changes the CORE it
+compiles against; a repo-wide `Test/compile` before both, 0 errors and
+0 warnings, which is the real check for a `using` added to a public
+extension. The Live half — the 4 593 288-departure equality under the
+wildcard import — runs in `integrationTest` and was run by hand, since
+the gate must not depend on a 48 MB feed.
+
 ## one-binary-story — the small-business path, run end to end in one process
 
 `okay.demo.Ledger`: a shop's sales into an okay-persist `FileStore`,
