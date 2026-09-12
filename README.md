@@ -309,13 +309,13 @@ windows and keyed state, one JVM per lane, 1/2/4/8 cores
 
 | lane | 1 core | 2 | 4 | 8 | 1→8 |
 |---|---|---|---|---|---|
-| **Okay** (merge) | 4.29M | 7.62M | 12.77M | **22.56M** | **5.3x** |
-| java.util.stream | 4.30M | 5.27M | 6.10M | 7.16M | 1.7x |
-| zio-streams | 4.14M | 5.79M | 6.76M | 6.96M | 1.7x |
-| kyo | 3.96M | 4.72M | 5.76M | 6.35M | 1.6x |
-| fs2 | 4.17M | 5.11M | 6.40M | 6.56M | 1.6x |
+| **Okay** (merge) | 563ms/4.29M | 317ms/7.62M | 189ms/12.77M | **107ms/22.56M** | **5.3x** |
+| java.util.stream | 561ms/4.30M | 458ms/5.27M | 396ms/6.10M | 337ms/7.16M | 1.7x |
+| zio-streams | 583ms/4.14M | 417ms/5.79M | 357ms/6.76M | 347ms/6.96M | 1.7x |
+| kyo | 610ms/3.96M | 512ms/4.72M | 419ms/5.76M | 380ms/6.35M | 1.6x |
+| fs2 | 579ms/4.17M | 472ms/5.11M | 377ms/6.40M | 368ms/6.56M | 1.6x |
 
-(ev/s. At one core every library is within a few percent — the
+(wall clock / ev/s. At one core every library is within a few percent — the
 measurement's own noise floor, doubled in the same run. What
 separates them is the SLOPE: Okay fans the job across fibres joined
 by `merge`; the others parallelize one `Stream`/`foreachPar` and hit

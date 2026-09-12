@@ -30,15 +30,17 @@ beside the microseconds it costs.
 2026-09-11): on a real streaming job across 1/2/4/8 cores, okay is the
 only in-process library that keeps climbing.
 
+Each cell: wall clock / events per second, lower/higher respectively better.
+
 | lane | 1 core | 2 cores | 4 cores | 8 cores | 1→8 |
 |---|---:|---:|---:|---:|---:|
-| **okay** (merge) | 4 287 955 | 7 615 517 | 12 773 116 | **22 561 859** | **5.3x** |
-| flink | 778 496 | 1 231 693 | 1 525 991 | 1 679 971 | 2.2x |
-| java.util.stream | 4 303 242 | 5 271 002 | 6 096 260 | 7 163 557 | 1.7x |
-| zio-streams | 4 140 855 | 5 789 254 | 6 762 238 | 6 957 115 | 1.7x |
-| kyo | 3 957 572 | 4 715 076 | 5 761 620 | 6 352 944 | 1.6x |
-| fs2 | 4 169 462 | 5 114 658 | 6 403 498 | 6 560 105 | 1.6x |
-| plain JVM, threads | 4 205 782 | 5 125 518 | 6 065 625 | 5 902 491 | 1.4x, and 8 is WORSE than 4 |
+| **okay** (merge) | 563 ms / 4,287,955 | 317 ms / 7,615,517 | 189 ms / 12,773,116 | **107 ms / 22,561,859** | **5.3x** |
+| flink | 3,101 ms / 778,496 | 1,960 ms / 1,231,693 | 1,582 ms / 1,525,991 | 1,437 ms / 1,679,971 | 2.2x |
+| java.util.stream | 561 ms / 4,303,242 | 458 ms / 5,271,002 | 396 ms / 6,096,260 | 337 ms / 7,163,557 | 1.7x |
+| zio-streams | 583 ms / 4,140,855 | 417 ms / 5,789,254 | 357 ms / 6,762,238 | 347 ms / 6,957,115 | 1.7x |
+| kyo | 610 ms / 3,957,572 | 512 ms / 4,715,076 | 419 ms / 5,761,620 | 380 ms / 6,352,944 | 1.6x |
+| fs2 | 579 ms / 4,169,462 | 472 ms / 5,114,658 | 377 ms / 6,403,498 | 368 ms / 6,560,105 | 1.6x |
+| plain JVM, threads | 574 ms / 4,205,782 | 471 ms / 5,125,518 | 398 ms / 6,065,625 | 409 ms / 5,902,491 | 1.4x, and 8 is WORSE than 4 |
 
 ev/s, higher better. At one core every lane but Flink is within a
 few percent of the others — the measurement's own 9% noise floor,
@@ -3912,15 +3914,17 @@ the shape of the story changes. Every number is the same row as
 above — this is a derived view of one run, not a second measurement —
 and the 9% noise floor below applies here exactly as it does there.
 
+Each cell: wall clock / events per second, lower/higher respectively better.
+
 | lane | 1 core | 2 cores | 4 cores | 8 cores | 1→8 |
 |---|---:|---:|---:|---:|---:|
-| **okay** (merge) | 4 287 955 | 7 615 517 | 12 773 116 | **22 561 859** | **5.3x** |
-| flink | 778 496 | 1 231 693 | 1 525 991 | 1 679 971 | 2.2x |
-| java.util.stream | 4 303 242 | 5 271 002 | 6 096 260 | 7 163 557 | 1.7x |
-| zio-streams | 4 140 855 | 5 789 254 | 6 762 238 | 6 957 115 | 1.7x |
-| kyo | 3 957 572 | 4 715 076 | 5 761 620 | 6 352 944 | 1.6x |
-| fs2 | 4 169 462 | 5 114 658 | 6 403 498 | 6 560 105 | 1.6x |
-| plain JVM, threads | 4 205 782 | 5 125 518 | 6 065 625 | 5 902 491 | 1.4x, and 8 is WORSE than 4 |
+| **okay** (merge) | 563 ms / 4,287,955 | 317 ms / 7,615,517 | 189 ms / 12,773,116 | **107 ms / 22,561,859** | **5.3x** |
+| flink | 3,101 ms / 778,496 | 1,960 ms / 1,231,693 | 1,582 ms / 1,525,991 | 1,437 ms / 1,679,971 | 2.2x |
+| java.util.stream | 561 ms / 4,303,242 | 458 ms / 5,271,002 | 396 ms / 6,096,260 | 337 ms / 7,163,557 | 1.7x |
+| zio-streams | 583 ms / 4,140,855 | 417 ms / 5,789,254 | 357 ms / 6,762,238 | 347 ms / 6,957,115 | 1.7x |
+| kyo | 610 ms / 3,957,572 | 512 ms / 4,715,076 | 419 ms / 5,761,620 | 380 ms / 6,352,944 | 1.6x |
+| fs2 | 579 ms / 4,169,462 | 472 ms / 5,114,658 | 377 ms / 6,403,498 | 368 ms / 6,560,105 | 1.6x |
+| plain JVM, threads | 574 ms / 4,205,782 | 471 ms / 5,125,518 | 398 ms / 6,065,625 | 409 ms / 5,902,491 | 1.4x, and 8 is WORSE than 4 |
 
 ev/s, higher better. At one core every lane but Flink sits within a
 few percent of the others — inside the 9% floor below, so nothing
