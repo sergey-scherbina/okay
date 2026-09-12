@@ -110,7 +110,9 @@ final class Site(
   /** a secure page's socket is checked the way its request is, from
    * the socket's own headers and cookie; refused is simply undefined */
   private def socketPermitted(r: Request): Boolean =
-    val (path, query) = splitUrl(r.url)
+    val split = splitUrl(r.url)
+    val path = split.path
+    val query = split.query
     resolve(path) match
       case Some(Hit.PageFile(f, params)) =>
         val web = webOf(r, path, query, params)
@@ -121,7 +123,9 @@ final class Site(
       case _ => true
 
   private def liveHit(r: Request): Option[(api.Live[?], String)] =
-    val (path, query) = splitUrl(r.url)
+    val split = splitUrl(r.url)
+    val path = split.path
+    val query = split.query
     parseQuery(query).get("__live").flatMap { id =>
       resolve(path) match
         case Some(Hit.PageFile(base, params)) =>
@@ -184,7 +188,9 @@ final class Site(
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse = counted {
-    val (path, query) = splitUrl(r.url)
+    val split = splitUrl(r.url)
+    val path = split.path
+    val query = split.query
     if httpsOnly && !secureFor(webOf(r, path, query, Map.empty)) then toHttps(r)
     else if path == api.Live.JsPath then
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
@@ -797,11 +803,22 @@ object Site:
   private val HtmlUtf8 = "text/html; charset=utf-8"
   private val TextUtf8 = "text/plain; charset=utf-8"
 
-  def splitUrl(url: String): (String, String) =
+  /**
+   * A url split at the '?', as a NAMED pair (split-url-named,
+   * 2026-09-12). Both halves are `String`, so while they were
+   * positional a caller could take them the wrong way round and get
+   * the query string as the path, compiling. This is public API, so
+   * the caller who could do that is not necessarily in this
+   * repository. A positional `val (a, b) = splitUrl(u)` still works
+   * and still binds by position; reading `.path` and `.query` is what
+   * makes the mistake impossible.
+   */
+  def splitUrl(url: String): (path: String, query: String) =
     val i = url.indexOf('?')
-    if i < 0 then (url, "") else (url.substring(0, i), url.substring(i + 1))
+    if i < 0 then (path = url, query = "")
+    else (path = url.substring(0, i), query = url.substring(i + 1))
 
-  def pathOf(url: String): String = splitUrl(url)._1
+  def pathOf(url: String): String = splitUrl(url).path
 
   def parseQuery(q: String): Map[String, String] =
     q.split("&").toVector.filter(_.nonEmpty).flatMap { kv =>

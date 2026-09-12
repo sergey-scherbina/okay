@@ -688,12 +688,21 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       | `Secrets.scheme` (okay-conf) | `(String, String)` | the scheme and the rest of the reference exchanged, so a `vault:` ref reads as a literal |
       | `KafkaStore.range` (okay-kafka) | `(Long, Long)` | begin and end offsets exchanged, an empty or backwards range |
       | `Smtp.stamp` (okay-mail) | `(String, String)` | the Date header holding a Message-ID and the reverse |
-      | `Site.splitUrl` (okay-script) | `(String, String)` | path and query string exchanged |
+      | ~~`Site.splitUrl` (okay-script)~~ | DONE 2026-09-12 | it was PUBLIC, see the correction below |
       | `FileStore.readHeader` (okay-persist) | a pair read off a buffer | (unread — check before taking) |
 
-      All are private or module-local, so the blast radius is small
-      and so is the value; that is why they were not taken with the
-      security two. Naming them costs nothing at runtime — a named
+      "All are private or module-local, so the blast radius is small
+      and so is the value" — THAT SENTENCE WAS WRONG, and it is left
+      standing rather than edited away because it is the reason the
+      row above was not taken with the security two. `Site.splitUrl`
+      carries no modifier at all: it is public API, its caller may not
+      be in this repository, and a swap hands them the query string as
+      the path. Corrected and done by `split-url-named` (2026-09-12)
+      when the operator asked "so nothing needs doing?" and the
+      question sent me back to check the claim instead of repeating
+      it. The remaining FOUR really are private or module-local
+      (`private[conf]`, `private[KafkaStore]`, `private`, `private`),
+      checked one at a time this time. Naming them costs nothing at runtime — a named
       tuple IS the plain tuple, measured in named-tuples-stage0 — and
       the call sites need no change, since a positional destructure
       still works. Take them when touching those files for another
