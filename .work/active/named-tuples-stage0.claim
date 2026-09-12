@@ -1,0 +1,51 @@
+task: named-tuples-stage0
+agent: fable51-core
+started: 2026-09-12
+branch: feature/named-tuples-stage0
+worktree: ../okay-wt-namedtuples
+spec: specs/ — a new section for the measurement (written and
+  committed before the code, spec-dev); docs/typepedia.md gains the
+  verdict whatever it is
+
+why: operator, 2026-09-11/12 — after `into` and generalized method
+  syntax, the third Scala 3 feature we have not evaluated. The target
+  is named in our own code: `Gtfs.departures` carries a COMMENT on
+  every line of its join chain saying what the tuple is
+  (`// trip -> (time, (route, service))`), because the type does not.
+  And `Csv.Row = Map[String, String]`, read by string key in 410
+  places, where a typo is a runtime miss.
+
+what — a MEASUREMENT, not a migration. Three questions, and the lane
+  answers them on the real Wrocław job (the GTFS snapshot is on this
+  box, 48 MB):
+  1. does the number move? It must not: a named tuple is erased. Shown
+     already in a probe (`(trip = "7", service = "w")` IS a
+     `scala.Tuple2` at runtime and `==` to `("7", "w")`), so the lane
+     proves it on OUR code by comparing the compiled twin, and by the
+     timed stage if the box is quiet enough to mean anything.
+  2. DOES INFERENCE SURVIVE our own API? This is the real risk and the
+     reason the lane exists. `select[B](f: A => B)` and
+     `join[B](r: Table[(K, B)]): Table[(K, (A, B))]` are generic; if
+     a named payload needs an annotation at every step, the
+     readability win is spent and the answer is no.
+  3. how much of the 410 string-key reads would a DECLARED row type
+     cover, without a macro that reads data files at compile time
+     (which I would refuse anyway)?
+
+how: `departuresNamed`, a twin of `Gtfs.departures` beside it, with
+  the payloads named and the comments deleted BECAUSE the types say
+  it. A test asserts the two produce identical output on the real
+  feed — the strongest correctness check available here, and it makes
+  the twin a fixture rather than a sketch.
+
+predict: (1) yes, identical. (2) the coin toss, and the thing worth
+  knowing: `join`'s `(K, A)` pairing is positional by signature, so
+  names can only ride the PAYLOAD, and I expect the key half to stay
+  ugly. (3) partial — the join keys and the columns actually read are
+  a small, declarable set per file; the `week.map(r(_) == "1")` shape
+  in calendar.txt reads a column by a computed name and cannot be
+  declared at all. Recorded so being wrong shows.
+
+verdict rule, set before the measurement: this lands as a RECORD
+  either way. If (2) comes back needing annotations, the entry says
+  so and nothing migrates.
