@@ -1,0 +1,52 @@
+task: named-pairs-security
+agent: fable51-core
+started: 2026-09-12
+branch: feature/named-pairs-security
+worktree: ../okay-wt-namedpairs
+spec: specs/security.md if it has a home for it, else the Scaladoc at
+  each function plus a BACKLOG entry for the rest of the survey
+
+why: operator, 2026-09-12 — "бери, и всё записывай". The survey after
+  named-tuples-stage0 found seven functions in main sources returning
+  a SAME-TYPED pair, where a positional swap compiles silently. Two of
+  them are security primitives and their doc comments already carry
+  the meaning the type does not:
+
+    /** a PKCE pair: the verifier stays, the S256 challenge travels */
+    def pkce()(using c: Crypto): (String, String)
+
+    /** (the key to hand out once, the digest to store) */
+    def issue()(using c: Crypto): (String, String)
+
+  Swap the first and the verifier travels while the challenge stays,
+  which defeats PKCE entirely. Swap the second and the secret is
+  stored in the clear while its digest is handed out. Both compile
+  today.
+
+what:
+  1. `OAuth2.pkce(): (verifier: String, challenge: String)` and
+     `ApiKey.issue(): (key: String, digest: String)`.
+  2. the call sites move to FIELD ACCESS, because that is where the
+     protection actually materialises — a positional destructure of a
+     named tuple still binds by position, which the probe confirmed,
+     so naming the return alone does not stop a caller swapping.
+  3. a test that a WRONG NAME does not compile, which is the guard
+     that did not exist before.
+  4. RECORD EVERYTHING, per the operator: the other five same-typed
+     pairs go to BACKLOG with what a swap costs in each, and so do
+     the two follow-ons named in the same breath — merging the
+     Wrocław twin into one named pipeline, and specs/bulk.md's now
+     unblocked stage 1.
+
+measured before claiming (scratchpad probe, 3.9.0):
+  - `val (a, b) = named()` still works, so no call site is FORCED to
+    change and the lane is not a churn.
+  - `val (challenge = c, verifier = v) = pkce()` binds BY NAME
+    regardless of the order written, which is the spelling that
+    protects.
+  - named tuples erase, so none of this costs a byte.
+
+predict: zero behaviour change, the gate green first time, and the
+  only real question is whether any caller outside okay-security
+  destructures these positionally in a way I have not found. The
+  repo-wide Test/compile answers that.

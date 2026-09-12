@@ -1,6 +1,13 @@
 # Sprint
 
 ## Doing
+- named-pairs-security — `OAuth2.pkce` and `ApiKey.issue` return
+  same-typed pairs whose meaning lives only in a comment; a swap
+  defeats PKCE or stores the secret in the clear, and compiles today.
+  Name them, move the call sites to field access (a positional
+  destructure still binds by position), and record the other five
+  pairs the survey found. Claimed 2026-09-12
+  (.work/active/named-pairs-security.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
