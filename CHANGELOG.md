@@ -1,5 +1,59 @@
 # Changelog
 
+## named-pairs-security — two pairs where a swap was a security defect that compiled, and the survey behind them kept whole
+
+After `named-tuples-stage0` showed that named tuples work here and cost
+nothing, the question was where they are actually needed. The survey
+found seven functions in main sources returning a SAME-TYPED pair, so
+that a positional swap compiles and no test catches it by type. Two are
+security primitives whose doc comments already carried what the type
+did not:
+
+    /** a PKCE pair: the verifier stays, the S256 challenge travels */
+    def pkce()(using c: Crypto): (String, String)
+
+    /** (the key to hand out once, the digest to store) */
+    def issue()(using c: Crypto): (String, String)
+
+Swap the first and the verifier travels while the challenge stays,
+which leaves PKCE protecting nothing. Swap the second and the secret
+is stored in the clear while its digest is handed out. Both compiled,
+and every existing test passed, because both components are `String`.
+
+They now answer `(verifier: String, challenge: String)` and
+`(key: String, digest: String)`.
+
+**The call sites moved to field access, and that is the part that
+matters.** A positional destructure of a named tuple still binds BY
+POSITION — measured before the work — so naming a return does not by
+itself stop a caller swapping. The protection lives where the value is
+READ: `p.verifier`, or a named destructure, which binds by name
+whatever order it is written in. `Oidc.login` and the two test call
+sites were changed for that reason and not for style.
+
+`TestNamedPairs` pins all of it: the challenge really is the S256 of
+the verifier, the swapped key pair does not verify, a named
+destructure written challenge-first still binds by name, and a WRONG
+name does not compile — each refusal paired with the right name, so
+what is refused is the name and nothing else about the snippet.
+
+**And the rest of the survey is recorded rather than dropped**, which
+is what the operator asked for. BACKLOG's `named-pairs-rest` carries
+the five remaining pairs with what a swap does in each — `Secrets.scheme`,
+`KafkaStore.range`, `Smtp.stamp`, `Site.splitUrl`, `FileStore.readHeader`
+— and why they were not taken here: all are private or module-local,
+so the blast radius and the value are both small. It also carries the
+method note, which is the reusable part: naming a return is not a
+guard; the call site's spelling is. `wroclaw-pipeline-named` records
+the other follow-on, merging the measurement twin into one named
+pipeline, which both named-tuple lanes deliberately left alone.
+
+Landed as 6a8546e5. Gate: the full matrix, 4388 tests, 0 failures,
+and a repo-wide `Test/compile` before it with 0 errors and 0 warnings
+— which is also what answers the one open question a signature change
+leaves, whether some call site outside okay-security destructured
+these pairs positionally in a way the survey missed. None did.
+
 ## named-tuple-unblock — the universal `apply` declines named tuples, and nothing leaves the API
 
 `named-tuples-stage0` found that `import okay.*` disables named
