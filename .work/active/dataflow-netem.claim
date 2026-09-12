@@ -1,0 +1,37 @@
+task: dataflow-netem
+agent: opus-dataflow
+started: 2026-09-12
+branch: feature/dataflow-netem
+worktree: ../okay-wt-dnm1
+spec: specs/dataflow.md, stage 12 — the one-machine half
+
+why: stage 12 proper needs machines that are not this one and is not
+  pretended at. But one of its boxes was always answerable here: the
+  tolerance `dataflow-reconnect` chose — three consecutive failures —
+  was a judgement, and the question it begs is measurable without a
+  wire: at what LOSS RATE does a run stop finishing?
+
+what: a `Serve` that loses requests by a SEEDED schedule — a splitmix
+  stream per worker, so a loss on one is not a loss on all — and a
+  sweep over loss rates and seeds that counts runs finished, attempts
+  lost and workers buried. Seeded, so it is deterministic: the same
+  seed drops the same requests, a red run names the seed, and the
+  sweep can live in the default gate rather than in Live.
+
+  Two claims the sweep makes and the test asserts: a lossless wire
+  always finishes, and tolerance 3 carries a 10% loss rate over forty
+  schedules. Everything above that is a TABLE the spec records —
+  where finishing stops being certain is the number this lane exists
+  to produce, and it is not guessed at before the run.
+
+what it does not model, said in the file: latency (a lost request
+  costs no time here), partial delivery, and a partition of the
+  network. All three are stage 12's and need the machines.
+
+predict: a 10% loss holds trivially and the knee is somewhere between
+  30% and 50%, because three consecutive losses on one worker at rate
+  p is p^3 per attempt and eight partitions give a run few enough
+  attempts that even 0.5^3 rarely lands three in a row — until the
+  survivors thin out. If the knee is lower than that, the interesting
+  question becomes whether the count should be per WORKER (as it is)
+  or per PARTITION.
