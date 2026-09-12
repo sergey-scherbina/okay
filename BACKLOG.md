@@ -1465,8 +1465,20 @@ its owner can price it:
       read as a dead machine. `tolerance` is a parameter of
       `Cluster.run`/`stream` now; telling the two failures apart BY
       THE ENGINE needs a real wire (stage 12).
-- [ ] dataflow-rescale — stage 13: change the partition count between
-      two epochs.
+- [x] dataflow-rescale — stage 13: change the partition count between
+      two epochs. LANDED (box 1 + box 3, TestRescale): a striped source
+      (`Flow.striped`, `Job.rescalable`) into a keyed/fold sink resumes
+      at a new width with the batch answer; the workers vector may
+      change too. Two conditions the build now ENFORCES: the source
+      must be striped (a contiguous cut has no global prefix) and the
+      sink must keep its state in the fold (a windowed sink's open
+      panes are not journalled). Both refuse rather than fake it.
+- [ ] dataflow-rescale-windowed — stage 13 box 2: journal a windowed
+      operator's OPEN panes so a re-cut can rescale it, rather than
+      relying on replay (which a re-cut cannot do). Found by
+      dataflow-rescale: today a windowed rescale is refused, naming
+      this. The boundary panes would be re-bucketed under the new
+      extents on resume.
 - [x] federation-two-parties — specs/federation.md stage 1: two logs,
       two processes, one job, the answer equal to the union's and the
       bytes shown to be accumulators. LANDED: `TestFederation`,

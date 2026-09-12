@@ -368,7 +368,16 @@ object Cluster {
         case Right(f) => Some(f)
         case Left(why) => throw IllegalStateException(s"the journal at epoch $at: $why")
     }
-    val base = resuming.fold(System.nanoTime())(_.base)
+    // A RESCALE (stage 13) is a resume whose new width differs from
+    // the journal's. It mints FRESH session ids rather than inheriting
+    // the predecessor's: those sessions were reading the OLD cut's
+    // slices, and reusing them under the new cut would read the wrong
+    // elements. (A same-width resume still inherits, so it strands
+    // none — the property TestResume pins.)
+    val rescaling: Boolean = resuming.exists(_.seen.length != parts)
+    val base =
+      if rescaling then System.nanoTime()
+      else resuming.fold(System.nanoTime())(_.base)
     val sessions = Vector.tabulate(parts)(i => base + i)
     /**
      * WHERE A SESSION OPENS — and it is the same question on a resume
@@ -376,9 +385,15 @@ object Cluster {
      * function. A seekable sink's session opens at the position the
      * last absorbed epoch left it, already at that epoch; a windowed
      * sink's opens at zero and replays (stage 11 box 2).
+     *
+     * A RESCALE opens at a position too, even for a windowed sink: the
+     * position is the clean global PREFIX the old run consumed, the
+     * same for every new partition, and a striped source skips it and
+     * re-stripes the rest (stage 13). So a re-cut reads only the
+     * suffix — no replay — and the fold carries the prefix.
      */
     def opening(i: Int, positions: Vector[Long], absorbed: Int): Req.Open =
-      if sink.seekable && positions.nonEmpty then
+      if (sink.seekable || rescaling) && positions.nonEmpty then
         Req.Open(job.name, encoded, i, parts, sessions(i), positions(i), absorbed)
       else Req.Open(job.name, encoded, i, parts, sessions(i))
 
@@ -540,7 +555,52 @@ object Cluster {
               // thing a writer needs to know before the first pane of
               // the resumed run reaches it
               sink.recovered(f.epoch)
-              epoch(st, f.seen, f.drops, f.merged, f.positions, f.epoch + 1)
+              // RESCALE (specs/dataflow.md, stage 13). The journal's
+              // per-partition vectors are as WIDE as the run that wrote
+              // them; a resume at a different `parts` re-cuts the source
+              // and they no longer fit. The FOLD (`st`) carries across
+              // untouched — it is keyed by (window, key), not by
+              // partition, which is the whole reason a re-cut is
+              // possible at all.
+              //
+              // Only a STRIPED source can be re-cut (`Job.rescalable`).
+              // Its consumed elements are a clean global PREFIX [0, G)
+              // after a lockstep run — the same set whatever the
+              // partition count — where G is the SUM of the
+              // per-partition positions (lockstep, so they tile [0, G)
+              // with no gap). Each NEW partition j then skips the count
+              // of its own elements that fall in [0, G) — ceil((G-j) /
+              // parts) — and reads the rest, so the re-striped
+              // partitions read exactly xs[G..] between them and the
+              // fold carries xs[..G). No replay: the skips are exact.
+              //
+              // Two refusals, both to avoid a quietly wrong answer:
+              //   - a CONTIGUOUS cut has no global prefix to skip (its
+              //     positions are offsets into slices a re-cut redraws);
+              //   - a WINDOWED sink keeps open panes in the WORKER, not
+              //     in the journal (they are rebuilt by replay on a
+              //     same-width resume), so a re-cut that does not replay
+              //     would lose the panes open at the stop point. A
+              //     keyed or fold sink keeps everything in the fold and
+              //     rescales cleanly. (Windowed rescale needs those
+              //     open panes journalled — stage 13's box 2.)
+              val (seen0, pos0) =
+                if f.seen.length == parts then (f.seen, f.positions)
+                else if !job.rescalable then throw IllegalStateException(
+                  s"job '${job.name}' cannot rescale ${f.seen.length} -> $parts partitions " +
+                    "(specs/dataflow.md stage 13): its source is a contiguous cut, whose " +
+                    "per-partition positions do not survive a re-cut. Only a striped source " +
+                    "(Job.rescalable) has a clean global prefix to resume from.")
+                else if !sink.seekable then throw IllegalStateException(
+                  s"job '${job.name}' cannot rescale a WINDOWED sink " +
+                    "(specs/dataflow.md stage 13, box 2): its open panes live in the worker and " +
+                    "are not in the journal, so a re-cut that does not replay would lose the " +
+                    "panes open at the stop point. A keyed or fold sink rescales.")
+                else
+                  val g = f.positions.sum
+                  (Vector.fill(parts)(Vector.empty[Flows.Extent]),
+                   Vector.tabulate(parts)(j => math.max(0L, (g - j + parts - 1) / parts)))
+              epoch(st, seen0, f.drops, f.merged, pos0, f.epoch + 1)
 
   /**
    * RUN THE JOB IF THIS PROCESS IS THE COORDINATOR

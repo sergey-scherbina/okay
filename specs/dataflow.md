@@ -211,11 +211,13 @@ than trusting the author.
   are not this one, or containers with injected latency and loss.
   BLOCKED on machines; the boxes are written so that the day they
   exist the work is a run and not a design.
-- **13 — rescale at an epoch boundary.** Partitions are fixed at
-  submission today. With the journal and 6b's replay, a stream can
-  change its partition count between two epochs: stop at N, re-cut
-  the source, resume at N+1 with the new count. Verifiable on one
-  machine.
+- **13 — rescale at an epoch boundary.** LANDED (box 1 and box 3;
+  see Results). A stream stops at N running `parts` ways and resumes
+  at N+1 running `parts'` ways, and the answer is the batch answer —
+  for a STRIPED source (a clean global prefix to skip) into a KEYED
+  or FOLD sink (all state in the coordinator's fold). Box 2 — the
+  same for a WINDOWED sink, whose open panes are not in the journal —
+  is refused rather than faked, and named below.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -466,15 +468,21 @@ Stage 12 — the network (BLOCKED: needs machines that are not this one):
       burial policy does; `tolerance` is a parameter of `Cluster.run`
       and `Cluster.stream` now
 
-Stage 13 — rescale at an epoch boundary (not started):
-- [ ] a stream running at `parts` stops at epoch N and resumes at N+1
-      with `parts'`; the answer equals the batch answer
-- [ ] the boundary panes of the old cut are re-bucketed rather than
-      re-read: the journal holds them, and the completeness rule
-      recomputes with the new extents
-- [ ] a worker added mid-stream takes partitions from the next epoch;
+Stage 13 — rescale at an epoch boundary (TestRescale):
+- [x] a stream running at `parts` stops at epoch N and resumes at N+1
+      with `parts'`; the answer equals the batch answer — for a
+      striped source (`Job.rescalable`, `Flow.striped`) into a keyed
+      or fold sink. Six width changes asserted (grow, shrink, 1->5,
+      6->1, unchanged), each equal to the batch answer.
+- [x] a worker added mid-stream takes partitions from the next epoch;
       one removed hands its back — the same mechanism as death,
-      without the death
+      without the death: the workers vector is a resume argument, so
+      a longer or shorter one on resume re-maps partitions.
+- [ ] box 2: the same for a WINDOWED sink. Its open panes live in the
+      worker, rebuilt by replay on a same-width resume; a re-cut does
+      not replay, so they must be JOURNALLED first. The engine refuses
+      a windowed rescale (a clear no over a lost pane) until they are.
+      A contiguous cut is refused too — it has no global prefix.
 
 Stage 10 — the election (TestElection, TestPersisted):
 - [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`
@@ -1901,3 +1909,52 @@ seed drops a worker's i-th request every time; which worker a
 partition's i-th attempt reaches is the fibres' order. The counts
 therefore move by a run or two between runs, the assertions sit far
 from any edge, and the sweep lives in the default gate on that basis.
+
+### Stage 13 — rescale, and the two things it turned out to require
+
+The plan read "stop at N, re-cut the source, resume at N+1". Building
+it found the two conditions that make a re-cut sound, and the engine
+now enforces both rather than assume them.
+
+**The source must be STRIPED, not sliced.** A contiguous cut
+(`Flow.slices`) consumes a scattered set of global elements — a
+contiguous prefix of each slice, which is not a prefix of the whole —
+so there is no single offset a new cut can resume from. A STRIPED
+source (`Flow.striped`: global element `i` to partition `i % parts`)
+consumed in lockstep leaves exactly `[0, G)` where `G` is the sum of
+the per-partition positions, the same set whatever the partition
+count. Resuming is then: each new partition skips the count of its own
+elements in `[0, G)` — `ceil((G - j) / parts)` — and reads the rest.
+No replay; the skips are exact. The refutation is in the test: with
+the skip forced to zero the new cut re-reads the whole feed and the
+answer doubles.
+
+**The sink must keep its state in the FOLD, not in open panes.** This
+was the sharp one. A windowed operator keeps its OPEN panes in the
+WORKER, not in the coordinator's journal; a same-width resume rebuilds
+them by REPLAYING the source and discarding the already-committed
+epochs (stage 6b). A re-cut cannot replay — the elements are cut
+differently — so the panes open at the stop point would simply vanish,
+and a diagnostic showed exactly one window (the one straddling the
+watermark frontier at the stop) lost per rescale. A KEYED or FOLD sink
+has no open panes: everything it has seen is in the coordinator's
+fold, which is keyed by KEY and carries across a re-cut untouched. So
+box 1 lands for keyed and fold sinks, and a windowed rescale is
+REFUSED with a message naming box 2 — journalling the open panes — as
+the work that would lift it. A refusal over a lost pane is the honest
+answer, and it is the same shape as stage 11 box 2's "windowed cannot
+seek".
+
+**Box 3 fell out for free.** "A worker added or removed mid-stream" is
+just a resume with a different-length `workers` vector: partition `i`
+runs on worker `i % workers.length`, so the mapping redraws itself and
+the recovery road (open a session, catch up) does the rest — a death
+without the death. The test rescales the partition count and the
+worker count together and the answer does not move.
+
+**Fresh sessions on a rescale.** A same-width resume INHERITS the
+predecessor's session ids so it strands none (stage 8); a rescale must
+NOT — those sessions were reading the old cut's partitions, and
+reusing an id would read the wrong elements under the new cut. So a
+width change mints fresh ids, and the old sessions are abandoned the
+way a dead worker's are.

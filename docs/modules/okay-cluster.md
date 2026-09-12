@@ -527,6 +527,13 @@ val wire: Cluster.Worker[Double, Double] = c =>
 
 ## Gotchas
 
+- A stream can change its partition count between epochs (`stage 13`,
+  `Job.rescalable`) only over a STRIPED source (`Flow.striped`) into a
+  KEYED or FOLD sink. A striped source leaves a clean global prefix to
+  skip on resume; a keyed/fold sink keeps all its state in the
+  coordinator's fold. A contiguous cut, or a WINDOWED sink (its open
+  panes live in the worker, not the journal), is refused with a reason
+  — a re-cut of either would silently lose data.
 - A job that must NOT compute a partition — it is another party's
   (specs/federation.md) — throws `Cluster.Refused`, and the
   coordinator gets a `Resp.Failed` it does not retry elsewhere. Any

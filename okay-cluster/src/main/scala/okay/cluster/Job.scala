@@ -39,6 +39,24 @@ abstract class Job[P, R]:
   /** the plan, for these parameters, cut into `parts` partitions */
   def flow(p: P, parts: Int): Flow[A]
 
+  /**
+   * CAN THIS JOB CHANGE ITS PARTITION COUNT MID-STREAM?
+   * (specs/dataflow.md, stage 13.)
+   *
+   * True only when `flow` STRIPES its source — assigns global element
+   * `i` to partition `i % parts`, reading in order — so that after a
+   * lockstep epoch the consumed elements are a clean global PREFIX,
+   * the same set whatever the partition count. A re-cut then skips
+   * that prefix and re-stripes the rest, and the coordinator's fold
+   * (keyed by window, not by partition) carries across untouched.
+   *
+   * A contiguous cut (`Flow.slices`) cannot: its per-partition
+   * positions are offsets into slices a re-cut redraws, so there is
+   * no prefix to skip. Such a job leaves this false and the engine
+   * refuses a width change rather than compute a wrong answer.
+   */
+  def rescalable: Boolean = false
+
   /** what the plan computes, and how its partials travel */
   def sink(p: P): Wire[A, R]
 

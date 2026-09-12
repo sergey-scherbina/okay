@@ -1,5 +1,35 @@
 # Changelog
 
+## dataflow-rescale — change the partition count between two epochs
+
+specs/dataflow.md stage 13, boxes 1 and 3 (TestRescale). A stream
+stops at epoch N running `parts` ways and resumes at N+1 running
+`parts'` ways, and the answer is the batch answer — six width changes
+asserted, grow and shrink, down to one partition and up from one.
+Building it found the two conditions a sound re-cut needs, and the
+engine enforces both:
+
+- the SOURCE must be striped, not sliced. `Flow.striped` (global
+  element i to partition i % parts) consumed in lockstep leaves a
+  clean global prefix [0, G); each new partition skips the count of
+  its own elements in it — ceil((G-j)/parts) — and reads the rest, no
+  replay. A contiguous cut has no such prefix and is refused.
+- the SINK must keep its state in the fold, not in open panes. A
+  windowed operator keeps open panes in the WORKER, rebuilt by replay
+  on a same-width resume; a re-cut cannot replay, so those panes would
+  vanish (a diagnostic showed exactly the window straddling the stop
+  watermark lost per rescale). A keyed or fold sink keeps everything
+  in the coordinator's fold, which carries across a re-cut untouched.
+  A windowed rescale is refused, naming box 2 (journal the open panes)
+  as the work that would lift it.
+
+New: `Job.rescalable` (default false), `Flow.striped`. Box 3 fell out
+free — the workers vector is a resume argument, so a different-length
+one re-maps partitions (a death without the death); the test changes
+partition count and worker count together. A rescale mints FRESH
+session ids (the old ones read the old cut). Refuted in place: forcing
+the per-partition skip to zero re-reads the whole feed and doubles the
+answer. Filed: dataflow-rescale-windowed (box 2).
 ## split-url-named — the one of the five that was public, and the record that said otherwise
 
 `named-pairs-security` named the two same-typed pairs where a swap is a
