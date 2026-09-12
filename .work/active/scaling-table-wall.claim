@@ -1,0 +1,22 @@
+task: scaling-table-wall
+agent: fable51-core
+started: 2026-09-12
+branch: feature/scaling-table-wall
+worktree: ../okay-wt-scalingwall
+spec: none — adds a column to an existing, already-sourced table
+
+why: operator, 2026-09-12 — "В матрице данные укажи два значения -
+  время (wall clock) / операций в секунду". The core-scaling digest
+  (scaling-table-docs, scaling-table-first) shows ev/s only; the wall
+  time for the same rows is already in §20's source table and needs
+  no new measurement, only pulling across.
+
+what: every scaling-digest table (docs/benchmarks.md's top-of-page
+  copy, §20's own copy, README.md's compact copy) gains the wall time
+  beside ev/s in each cell, pulled from the SAME source rows already
+  cited — checked programmatically against §20's raw table before
+  committing, same discipline as the two prior lanes.
+
+predict: no new measurement; the only risk is a transcription slip,
+  which the same verification script that caught nothing wrong last
+  time should catch here too.

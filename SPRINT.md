@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- scaling-table-wall — add wall-clock time beside ev/s in every copy
+  of the core-scaling digest (top of docs/benchmarks.md, §20, README).
+  No new measurement, the wall figures are already in §20's source
+  table. Claimed 2026-09-12 (.work/active/scaling-table-wall.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
