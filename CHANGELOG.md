@@ -1,5 +1,34 @@
 # Changelog
 
+## federation-two-parties — two logs, two processes, one job; the refusal is an answer
+
+specs/federation.md stage 1, landed on one machine because federation
+is about ownership and not distance. Two `WorkerMain` processes, each
+started as a party (`-Dokay.party=N`) holding its own okay-persist
+log, one tumbling job over both: the value, drop count and merged
+count equal the fan's over the whole feed; every partial that crossed
+decodes under the sink's `Wire.wire` AND re-encodes to the same bytes,
+so no byte is outside the Schema; 582 bytes crossed for 341 923 held
+(0.17%). In process, a counting store shows each party handing out
+exactly its own slice — twice, because a windowed sink's pre-pass
+reads the partition before the run does — and none of another's.
+
+The finding is `Cluster.Refused`. A party asked for a partition it
+does not hold refuses, and a refusal must reach the coordinator as a
+`Resp.Failed` — the worker's considered answer, which `ask` does not
+carry to the next worker. Over a socket that was already so
+(`Served.handle` answers any throwable as `Failed`); in process,
+`Cluster.local` let the throwable propagate and `ask` read it as a
+death, buried the refusing party and asked the dead one — "no
+workers left" instead of "partition 1 belongs to party 1; this is
+party 0". `Refused` is answered as `Failed` on both roads now; any
+other throwable keeps its meaning. Refuted in place: with the change
+stashed, both refusal tests fail with "no workers left". Killing
+party B across real processes fails the run naming B, and B's log
+counts zero reads. `TestFederation`, in the default gate. Next:
+federation-refusal (stage 2, the allow-list and the coordinator's
+identity).
+
 ## dataflow-netem — on a lossy wire the loss never ends a run; the burial policy does
 
 Stage 12 needs machines that are not this one, and one of its boxes

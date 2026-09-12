@@ -1412,9 +1412,16 @@ its owner can price it:
       THE ENGINE needs a real wire (stage 12).
 - [ ] dataflow-rescale — stage 13: change the partition count between
       two epochs.
-- [ ] federation-two-parties — specs/federation.md stage 1: two logs,
+- [x] federation-two-parties — specs/federation.md stage 1: two logs,
       two processes, one job, the answer equal to the union's and the
-      bytes shown to be accumulators.
+      bytes shown to be accumulators. LANDED: `TestFederation`,
+      `Cluster.Refused` (a refusal is a `Resp.Failed` in process too —
+      it was already one over a socket, and the split was the
+      finding); 0.17% of the records' bytes crossed.
+- [ ] federation-refusal — specs/federation.md stage 2: a worker with
+      an allow-list of jobs, and a coordinator identity checked before
+      the pre-pass; `okay-security` connected. `Cluster.Refused` is
+      the answer's shape already.
 - [ ] one-binary-story — the small-business path, as ONE worked
       example rather than a module: events into a log, a windowed
       report over them, a page that shows it, a backup that leaves the

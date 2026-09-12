@@ -81,7 +81,8 @@ precisely what it does and does not give.
   processes, a job over both, the answer equal to the union's, and
   the bytes that crossed shown to be accumulators. Everything on one
   machine — which is the honest first demonstration, since federation
-  is about ownership and not distance.
+  is about ownership and not distance. LANDED (TestFederation; see
+  Results).
 - **2 — the refusal.** A worker that runs only jobs its owner
   allowed; a submission from an unrecognised coordinator refused with
   a reason. `okay-security` connected.
@@ -95,18 +96,71 @@ precisely what it does and does not give.
 ## Behavior
 
 Stage 1:
-- [ ] two `MemoryStore` logs in two OS processes, one job, the
-      union's answer
-- [ ] the bytes that crossed decode as accumulators under
-      `Wire.wire` and as nothing else
-- [ ] a party's log is never read by the other's process (asserted
-      by the store, which counts its readers)
+- [x] two `MemoryStore` logs in two OS processes, one job, the
+      union's answer — `TestFederation`, two `WorkerMain` processes
+      each started as `-Dokay.party=N`, the run's value, drop count
+      and merged count equal to the fan's over the whole feed
+- [x] the bytes that crossed decode as accumulators under
+      `Wire.wire` and as nothing else — every partial decodes AND
+      re-encodes to the same bytes, so no byte is outside the Schema;
+      582 bytes crossed for 341 923 held (0.17%)
+- [x] a party's log is never read by the other's process (asserted
+      by the store, which counts its readers) — in-process, each
+      party's counting store hands out exactly its own slice (twice:
+      once to the windowed pre-pass, once to the run) and none of
+      another's; with party B dead, A is asked for B's partition and
+      REFUSES (`Cluster.Refused` → `Resp.Failed`, not retried), the
+      run fails naming B, and B's store counts zero reads
+- [ ] the same over `Cluster.stream` with a seekable sink resuming at
+      a position — a party that resumes must resume from ITS log; box
+      2 of dataflow stage 11 makes this a three-line test, not built
 
 Stage 2:
 - [ ] a worker with an allow-list refuses a job not on it, by name,
       with the list
 - [ ] a coordinator without a recognised identity is refused before
       the pre-pass
+
+## Results
+
+### Stage 1 — two parties, one machine
+
+What the stage found that the spec had not said:
+
+- **A refusal must be a distinguished answer on BOTH roads.** Over a
+  socket, `Served.handle` already answered any throwable as
+  `Resp.Failed`, which `ask` does not carry to another worker. In
+  process, `Cluster.local` let the throwable propagate, and `ask`
+  read it as a death: party A's refusal to compute B's share buried A
+  and asked B — then reported "no workers left". The union job was
+  correct on the socket road and wrong in process, which is the
+  worst kind of split, because tests without sockets are the fast
+  ones. `Cluster.Refused` is the fix: a throwable that MEANS "no",
+  answered as `Resp.Failed` by `local` too. A crash still propagates
+  in process and is retried as a death — only the refusal is set
+  apart. Refuted in place: with the change stashed, the two refusal
+  tests fail with "no workers left".
+- **The refusal comes before any read.** A party's store is a
+  ONE-partition topic — there is nothing else in it — and the party
+  checks the partition number against its own identity before it
+  opens the log. A store that answered "no records" for a foreign
+  partition would let a misplaced partition compute an EMPTY share
+  in silence, which is precisely the failure federation exists to
+  prevent. Emptiness is not a refusal.
+- **Identity is process state, not a parameter.** Every worker gets
+  the same encoded parameters, so "which party am I" cannot travel
+  in them; `-Dokay.party=N` at start, held in a `DynamicVariable` so
+  that one JVM can be several parties for a test (`Party.as(n)`
+  wraps `Cluster.local`) and the same code runs either way.
+- **A windowed job reads a party's log twice.** The pre-pass
+  (`Req.Extent`) reads the partition for its bounds before the run
+  reads it for its panes. The counting store made that visible; a
+  party paying for reads should know it, and a fold or keyed sink
+  (no pre-pass) reads once.
+- **What crossed:** 582 bytes for 20 000 records (341 923 bytes) —
+  0.17%, and every one of them re-encodes from the decoded panes.
+  This is a count, not a bound on what the panes REVEAL; the bound
+  is stage 4's.
 
 ## What this is not
 

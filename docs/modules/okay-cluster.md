@@ -527,6 +527,13 @@ val wire: Cluster.Worker[Double, Double] = c =>
 
 ## Gotchas
 
+- A job that must NOT compute a partition — it is another party's
+  (specs/federation.md) — throws `Cluster.Refused`, and the
+  coordinator gets a `Resp.Failed` it does not retry elsewhere. Any
+  OTHER throwable from a partition is a death in process (retried on
+  the next worker) and a `Resp.Failed` over a socket; only `Refused`
+  means the same on both roads. Refuse BEFORE reading: an empty
+  answer for a foreign partition is a silent wrong share.
 - `distribute` demands a REPLAYABLE source by type (pure `Chunks`);
   a live effectful stream does not fit the signature — deliberately.
 - Wire workers hold their connection lazily; a `PrintWriter` swallows

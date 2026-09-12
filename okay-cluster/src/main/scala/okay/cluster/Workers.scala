@@ -95,6 +95,17 @@ object Cluster {
   type Serve = Req => Resp
 
   /**
+   * A JOB'S CONSIDERED "NO" for a partition (specs/federation.md,
+   * stage 1). Thrown from a flow's partition thunk when this process
+   * must not compute that partition — it is another party's — and
+   * answered as `Resp.Failed`, which the coordinator does not retry
+   * elsewhere. Distinct from any other throwable on purpose: a crash
+   * in-process still propagates (and is retried as a death), a
+   * refusal never does.
+   */
+  final class Refused(why: String) extends RuntimeException(why)
+
+  /**
    * Run a registered job across workers, partition i on worker
    * `i % workers.length`.
    *
@@ -262,8 +273,19 @@ object Cluster {
    * up and running it. This is what a served process does, and it is
    * also what an in-process worker does — one function, so a test
    * without sockets exercises the same code a socket does.
+   *
+   * A `Refused` thrown by the job is answered as `Resp.Failed`, here
+   * as over a socket (`Served.handle` does the same for every
+   * throwable): a refusal is the worker's considered answer and must
+   * reach the coordinator as one, or `ask` would carry it to the next
+   * worker as if the first had died — which for a federated job means
+   * asking party A to compute party B's share (specs/federation.md).
    */
-  val local: Serve = {
+  val local: Serve = req =>
+    try serving(req)
+    catch case r: Refused => Resp.Failed(r.getMessage)
+
+  private val serving: Serve = {
     case Req.Known => Resp.Names(Jobs.names)
     case Req.Open(name, params, part, of, session, from, epoch) =>
       Jobs.find(name) match
