@@ -1,5 +1,34 @@
 # Changelog
 
+## dataflow-seek — a session opens at its position, for the sinks that can (stage 11, box 2)
+
+A resumed run replayed every partition from zero. With the log as the
+source that is the one cost a log exists to remove, and the claim for
+this box predicted "one Long on the wire and one signature". Reading
+the code first said that was wrong, and the correction is the finding:
+a WINDOWED operator cannot seek, because its open panes live inside
+the partition and are handed over only when they close — a fresh
+session at a position has none of them and their contributions from
+before it reach nobody. A fold and a keyed sink can, because what they
+hand over each epoch is a delta and `peek` empties the map.
+
+So `Sink.seekable` is a property of the sink (fold, keyed: true;
+windowed: false; `and`: both). `Flow.Src` thunks take a start —
+`Flow.slices` and `Streams.chunks` position themselves, `Flow.of`
+reads and drops, which is the replay named in one place. `Resp.Epoch`
+carries the position, the journal carries one per partition, and a
+seekable sink's sessions open AT it — on a resume and on a replacement
+worker mid-run, one road.
+
+Asserted by a counting Topic, not by the flag: a keyed job resumed
+after a coordinator death reads exactly `total - Σpositions`; a
+windowed job on the same schedule reads the whole topic again; a
+mid-run replacement reads its tail. Controlled: opening at zero fails
+both seek assertions.
+
+Box 2b — a windowed sink that seeks — is designed in the spec with its
+two roads and their costs, and not built.
+
 ## named-tuples-stage0 — the names are free, the inference holds, and our own wildcard import is what blocks them
 
 A measurement, not a migration, on the job that already needed comments

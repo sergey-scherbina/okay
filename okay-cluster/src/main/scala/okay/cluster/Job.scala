@@ -68,15 +68,21 @@ abstract class Job[P, R]:
    * state `P`. Neither ever leaves the worker — what leaves each
    * epoch is a `W`, the same value a batch run hands over.
    */
-  final def openAt(bytes: Array[Byte], part: Int, of: Int): Either[String, Session] =
+  final def openAt(bytes: Array[Byte], part: Int, of: Int,
+                   from: Long = 0L, epoch: Int = 0): Either[String, Session] =
     Codecs.cbor(params).decode(bytes).map { p =>
       val s = sink(p)
       new Session:
-        private var rest: Chunks[A] = Flows.partition(flow(p, of), part)
+        // OPENED AT A POSITION (stage 11 box 2): `from` elements in,
+        // already at `epoch`, so the first `advance` asks for the next
+        // one and nothing is replayed. Only a seekable sink's
+        // coordinator asks for this; a windowed one opens at zero.
+        private var rest: Chunks[A] = Flows.partition(flow(p, of), part, from)
         private var state: s.P | Null = null
         private var extent: Vector[Flows.Extent] = Vector.empty
+        private var consumed: Long = from
 
-        private var at: Int = 0
+        private var at: Int = epoch
 
         /**
          * Catch up to `epoch`, then answer for it.
@@ -117,16 +123,17 @@ abstract class Job[P, R]:
                 while i < c.length do { s.step(st, c(i)); i += 1 }
                 extent = grow(extent, Flows.extent(Chunks.fromIterator(c.iterator), s.times))
                 read += c.length
+                consumed += c.length
                 rest = r
               case None => drained = true
           // an epoch hands over what the operator has closed SO FAR;
           // `finish` is the same call the batch driver makes, and the
           // panes still open stay in the operator for the next epoch
-          Resp.Epoch(Codecs.cbor(s.wire).encode(s.peek(st)), extent, drained)
+          Resp.Epoch(Codecs.cbor(s.wire).encode(s.peek(st)), extent, drained, consumed)
 
         def finish(): Resp =
           val st = if state == null then s.start(Vector.empty) else state.nn
-          Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true)
+          Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true, consumed)
     }
 
   private def grow(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =

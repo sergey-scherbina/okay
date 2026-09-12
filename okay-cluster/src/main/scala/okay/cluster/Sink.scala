@@ -155,6 +155,26 @@ abstract class Sink[A, R]:
    */
   def committed(epoch: Int): Unit = ()
 
+  /**
+   * CAN A FRESH PARTITION START MID-STREAM? (specs/dataflow.md, stage
+   * 11 box 2) — true when what this sink hands over each epoch is a
+   * DELTA and the partition keeps nothing across epochs that must be
+   * rebuilt from earlier elements.
+   *
+   * A fold and a keyed sink hand over their accumulators and clear
+   * (`peek` empties the map), so a session opened at epoch N-1's
+   * position with an empty map is exactly right: its deltas from N on
+   * merge into what the coordinator already holds. A WINDOWED sink is
+   * not: its open panes live inside the partition and are handed
+   * over only when they close, so a fresh session at a position has
+   * none of them and their contributions from before it reach
+   * nobody. That sink replays from zero, as every session did before
+   * this box — and the two roads that would let it seek (delta
+   * handovers, or a replay bounded by the window horizon) are written
+   * in the spec as box 2b rather than half-built here.
+   */
+  def seekable: Boolean = false
+
   def recovered(epoch: Int): Unit = ()
 
   /** two sinks over one pass */
@@ -185,6 +205,7 @@ abstract class Sink[A, R]:
         { self.committed(epoch); that.committed(epoch) }
       override def recovered(epoch: Int): Unit =
         { self.recovered(epoch); that.recovered(epoch) }
+      override def seekable: Boolean = self.seekable && that.seekable
 
 object Sink {
 
@@ -213,6 +234,8 @@ object Sink {
       def slack: Long = 0L
       def drops(ws: Vector[W]): Long = 0L
       def merged(ws: Vector[W]): Long = ws.length.toLong
+      // hands its accumulator over and starts again: a delta
+      override def seekable: Boolean = true
 
   /** one accumulator per key, no window */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -256,6 +279,8 @@ object Sink {
         var t = 0L
         for m <- ws do t += m.length
         t
+      // `peek` empties the map: what leaves each epoch is a delta
+      override def seekable: Boolean = true
 
   /** an event-time windowed aggregation, keyed */
   def windowed[A, K, Acc, O, IAcc, R](size: Long, slide: Long, lateness: Long,
@@ -470,6 +495,7 @@ object Sink {
       def drops(ws: Vector[W]): Long = base.drops(ws)
       def slack: Long = base.slack
       def merged(ws: Vector[W]): Long = base.merged(ws)
+      override def seekable: Boolean = base.seekable
       override def committed(epoch: Int): Unit =
         val batch = stage.synchronized { val b = stage.toVector; stage.clear(); b }
         if batch.nonEmpty then move(epoch, batch)

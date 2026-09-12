@@ -223,7 +223,12 @@ final case class Folded(epoch: Int,
                          * instead of asking anybody. Which is also
                          * the cheap thing to do.
                          */
-                        done: Boolean = false)
+                        done: Boolean = false,
+                        /** where each partition stood after this
+                         * epoch, in elements consumed — what a
+                         * seekable sink's sessions open at on resume
+                         * (stage 11 box 2); empty before that box */
+                        positions: Vector[Long] = Vector.empty)
 
 object Folded:
   given Schema[Flows.Extent] = Resp.given_Schema_Extent

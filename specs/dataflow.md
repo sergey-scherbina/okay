@@ -414,10 +414,26 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       three lines, no dependency in either direction. A job over a
       MemoryStore topic answers what the fan over the array answers at
       1, 4 and 8 partitions, batch and streamed, `merged` included
-- [ ] positioned by epoch — box 2, designed in the lane's claim: the
-      session records the offset it reached beside `extent`, and a
-      fresh session asked for epoch N opens at N-1's offset instead of
-      replaying; `Flow.Src` thunks take a start
+- [x] positioned by epoch — box 2, FOR THE SINKS THAT CAN: `Flow.Src`
+      thunks take a start, `Resp.Epoch` carries the position, the
+      journal carries one per partition, and a session opens AT it —
+      on a resume and on a replacement worker mid-run, which is one
+      road. `Sink.seekable` says who can: fold and keyed (they hand
+      over deltas and clear), never windowed. A keyed job resumed
+      after a coordinator death reads exactly `total - Σpositions`
+      records, asserted by a counting Topic; a windowed one reads the
+      whole topic again. Controlled: opening at zero fails both seek
+      tests
+- [ ] box 2b — a WINDOWED sink that seeks. Two roads, neither free:
+      delta handovers of open panes every epoch (a change to
+      `okay.Windows`, and the merge traffic grows from panes-closed to
+      panes-open per epoch), or a replay bounded by the window horizon
+      (the session records a (position, max event time) pair per
+      epoch; a fresh one seeks to the epoch whose maximum is below the
+      oldest open pane's start and replays from there, seeded with
+      that maximum so late-drop decisions do not move). Measure the
+      merge traffic of the first against the replay length of the
+      second before choosing
 - [ ] a resumed coordinator's workers open at the journal's epoch and
       read from there: recovery is O(elements since the last epoch),
       asserted by counting what the topic was asked for
@@ -1766,3 +1782,54 @@ still catches up by replaying from offset zero. The session has to
 record the offset it reached beside its extent, and a fresh session
 asked for epoch N opens at N-1's — which means `Flow.Src` thunks take
 a start. One Long on the wire and one signature; the whole of box 2.
+
+### Stage 11, box 2 — a session opens at its position, and who can
+
+The claim written for this box predicted "one Long on the wire and
+one signature". Reading the code before writing it said that was
+wrong, and the correction is the finding.
+
+**A windowed operator cannot seek.** Its open panes live INSIDE the
+partition and are handed over only when they close. A fresh session
+opened at epoch N-1's position has none of them, and their
+contributions from before that position reach nobody — the answer
+would be silently short. That is why 6b replays from zero, and it was
+right to.
+
+**A fold and a keyed sink can**, because what they hand over each
+epoch is a DELTA: `peek` empties the map. A session opened at the
+position with an empty map is exactly right — its deltas from N on
+merge into what the coordinator already holds. So `Sink.seekable` is a
+property of the sink (fold, keyed: true; windowed: false; `and`:
+both), and the coordinator opens a seekable sink's sessions at the
+journalled position and epoch, and a windowed sink's at zero.
+
+**Positions, not offsets.** A position is elements consumed, which the
+session already counts; a source that can seek — `Flow.slices` over
+an array, `Streams.chunks` over a topic — positions itself, and one
+that cannot (`Flow.of` over any thunk) reads and drops, which is the
+replay a resumed run always paid, now in one place and named. For a
+topic that makes the contiguity of offsets load-bearing, and
+`Streams.chunks`'s `DroppedHistory` is what says so when it is not.
+
+**One road for two cases.** Where a session opens is the same
+question on a resume and on a replacement worker mid-run, so it is one
+function: a keyed job whose worker blips mid-stream has its partition
+reopened elsewhere at the position, not at zero — asserted by the
+same count.
+
+**Asserted by counting, not by trusting the flag.** A `Topic` that
+counts the records it hands out says a keyed job resumed after a
+coordinator death reads exactly `total - Σpositions`, and a windowed
+one on the same schedule reads at least the whole topic again. With
+the seek disabled, both seek assertions fail.
+
+**Box 2b — the windowed case — is designed and not built.** Two roads:
+delta handovers of open panes every epoch (a change to `okay.Windows`,
+and the merge traffic grows from panes-CLOSED to panes-OPEN per
+epoch), or a replay bounded by the window horizon (a (position,
+maximum event time) pair recorded per epoch; a fresh session seeks to
+the epoch whose maximum is below the oldest open pane's start, replays
+from there, and is SEEDED with that maximum so its late-drop decisions
+are the original's). The first costs every epoch, the second costs a
+horizon on resume; measure both before choosing.

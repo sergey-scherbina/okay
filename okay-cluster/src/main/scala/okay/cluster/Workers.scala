@@ -32,7 +32,11 @@ enum Req:
 
   /** begin an epoch-by-epoch run of one partition, and keep its
    * operator state between rounds */
-  case Open(job: String, params: Array[Byte], part: Int, of: Int, session: Long)
+  case Open(job: String, params: Array[Byte], part: Int, of: Int, session: Long,
+            /** where to open: `from` elements in and already at
+             * `epoch` — zero and zero is the start, and what a
+             * windowed sink always asks for (stage 11 box 2) */
+            from: Long = 0L, epoch: Int = 0)
   /**
    * Advance this partition to EPOCH `epoch` — by up to `take`
    * elements per epoch — and hand back what it closed in that one.
@@ -60,7 +64,10 @@ enum Resp:
    * coordinator needs the second to compute the watermark, which in a
    * stream is the MINIMUM over the partitions rather than the maximum
    * over everything */
-  case Epoch(bytes: Array[Byte], extent: Vector[Flows.Extent], drained: Boolean)
+  case Epoch(bytes: Array[Byte], extent: Vector[Flows.Extent], drained: Boolean,
+             /** elements consumed so far — the position a seekable
+              * sink's replacement opens at */
+             consumed: Long = 0L)
   case Opened(session: Long)
   case Failed(why: String)
 
@@ -247,11 +254,11 @@ object Cluster {
    */
   val local: Serve = {
     case Req.Known => Resp.Names(Jobs.names)
-    case Req.Open(name, params, part, of, session) =>
+    case Req.Open(name, params, part, of, session, from, epoch) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
-          job.openAt(params, part, of) match
+          job.openAt(params, part, of, from, epoch) match
             case Right(st) => { Sessions.put(session, st); Resp.Opened(session) }
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
     case Req.Advance(session, take, bounds, epoch) =>
@@ -328,12 +335,22 @@ object Cluster {
     }
     val base = resuming.fold(System.nanoTime())(_.base)
     val sessions = Vector.tabulate(parts)(i => base + i)
-    def opening(i: Int): Req.Open = Req.Open(job.name, encoded, i, parts, sessions(i))
+    /**
+     * WHERE A SESSION OPENS — and it is the same question on a resume
+     * and on a replacement worker mid-run, which is why it is one
+     * function. A seekable sink's session opens at the position the
+     * last absorbed epoch left it, already at that epoch; a windowed
+     * sink's opens at zero and replays (stage 11 box 2).
+     */
+    def opening(i: Int, positions: Vector[Long], absorbed: Int): Req.Open =
+      if sink.seekable && positions.nonEmpty then
+        Req.Open(job.name, encoded, i, parts, sessions(i), positions(i), absorbed)
+      else Req.Open(job.name, encoded, i, parts, sessions(i))
 
     def commit(round: Int, st: sink.S, seen: Vector[Vector[Flows.Extent]],
-               drops: Long, merged: Long, over: Boolean = false): Unit =
+               drops: Long, merged: Long, positions: Vector[Long], over: Boolean = false): Unit =
       journal.save(round,
-        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over)))
+        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over, positions)))
 
     // NO UPFRONT OPEN. The first `Advance` finds no session and opens
     // one, which is the identical path a replacement worker takes —
@@ -341,7 +358,7 @@ object Cluster {
     // than only when something has died.
     locally:
       def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long,
-                round: Int): Run[R] ! Async =
+                positions: Vector[Long], round: Int): Run[R] ! Async =
         // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
         // place the streaming engine had to stop copying the batch
         // one.
@@ -373,7 +390,7 @@ object Cluster {
         // upper bound at MinValue is what finishes nothing locally.
         val bs = Vector.fill(parts)(sink.times.map(_ => Bounds(Long.MinValue, Long.MinValue)))
         Flows.spread(parts) { i =>
-          advancing(workers, living, i, opening(i),
+          advancing(workers, living, i, opening(i, positions, round - 1),
             Req.Advance(sessions(i), take, bs(i), round)) match
             case e: Resp.Epoch => e
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
@@ -385,6 +402,7 @@ object Cluster {
               case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
           }
           val grown = seen.indices.toVector.map(i => merge(seen(i), es(i).extent))
+          val stood = es.map(_.consumed)
           // NOT `drained`: the SOURCES being exhausted is not the
           // stream being over. Every operator still holds the panes
           // its own watermark never closed, and those come out on the
@@ -410,7 +428,7 @@ object Cluster {
           // twice, which a writer that records the epoch number with
           // its data ignores.
           sink.committed(round)
-          commit(round, next, grown, d, m)
+          commit(round, next, grown, d, m, stood)
           if es.forall(_.drained) then
             // THE CLOSE CARRIES A PARTIAL. Every pane still open when
             // the source ran out is swept out by `finish` and comes
@@ -448,10 +466,10 @@ object Cluster {
               // the last round's, which is exactly what happened the
               // first time this was written.
               sink.committed(round + 1)
-              commit(round + 1, end, grown, dd, mm, over = true)
+              commit(round + 1, end, grown, dd, mm, stood, over = true)
               Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
-          else epoch(next, grown, d, m, round + 1)
+          else epoch(next, grown, d, m, stood, round + 1)
         }
 
       /**
@@ -466,7 +484,7 @@ object Cluster {
        * replacement worker for everyone at once.
        */
       resuming match
-        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, 1)
+        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, Vector.fill(parts)(0L), 1)
         case Some(f) =>
           held.decode(f.state) match
             case Left(why) =>
@@ -487,7 +505,7 @@ object Cluster {
               // thing a writer needs to know before the first pane of
               // the resumed run reaches it
               sink.recovered(f.epoch)
-              epoch(st, f.seen, f.drops, f.merged, f.epoch + 1)
+              epoch(st, f.seen, f.drops, f.merged, f.positions, f.epoch + 1)
 
   /**
    * RUN THE JOB IF THIS PROCESS IS THE COORDINATOR

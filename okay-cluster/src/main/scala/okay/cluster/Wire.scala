@@ -82,6 +82,7 @@ abstract class Wire[A, R] extends Sink[A, R]:
         { self.committed(epoch); that.committed(epoch) }
       override def recovered(epoch: Int): Unit =
         { self.recovered(epoch); that.recovered(epoch) }
+      override def seekable: Boolean = self.seekable && that.seekable
 
 object Wire {
 
@@ -111,6 +112,7 @@ object Wire {
       // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
 
   /** one accumulator per key: the partial is the key/accumulator pairs */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -138,6 +140,7 @@ object Wire {
       // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
 
   /**
    * An event-time windowed aggregation.
@@ -175,6 +178,7 @@ object Wire {
       // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
@@ -267,6 +271,7 @@ object Wire {
       def merged(ws: Vector[W]): Long = local.merged(ws)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
 
   def tumblingStaged[A, K, Acc, O](size: Long, lateness: Long,
                                    key: A => K, at: A => Long,
