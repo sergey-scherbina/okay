@@ -1422,11 +1422,23 @@ its owner can price it:
       an allow-list of jobs, and a coordinator identity checked before
       the pre-pass; `okay-security` connected. `Cluster.Refused` is
       the answer's shape already.
-- [ ] one-binary-story — the small-business path, as ONE worked
+- [x] one-binary-story — the small-business path, as ONE worked
       example rather than a module: events into a log, a windowed
       report over them, a page that shows it, a backup that leaves the
       machine — all in one process, run end to end in a test. The
-      thing the repository is FOR, told once.
+      thing the repository is FOR, told once. LANDED: `okay.demo.Ledger`
+      + `TestLedger`; every piece existed, the work was the seam and
+      the honest sentence about it (a backup is the books up to the
+      last roll). Two findings filed below.
+- [ ] backup-active-segment — `Backup.copy` leaves the active segment
+      home, so a backup is bounded by `segmentBytes` of unsaved books.
+      A shop wants "everything up to now": copy the active segment
+      under a distinct key (it changes, so it is not incremental) or
+      roll on demand before a backup. Found by one-binary-story.
+- [ ] ui-table-terminal-gap — `Frame`'s lowering of `Ui.Table` pads
+      cells to column width but puts no gap between columns
+      (`2023-11-14bread`); one space per column boundary. Found by
+      one-binary-story's page.
 - [ ] dataflow-machines — stage 12 proper. BLOCKED: needs machines
       that are not this one. Not to be pretended at.
 

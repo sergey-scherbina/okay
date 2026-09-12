@@ -10,10 +10,49 @@ stack end to end, and several double as acceptance tests.
 
 | | |
 |---|---|
+| `Ledger` | the one-binary story: a shop's sales into an okay-persist log, a daily report by okay-cluster's windowed engine over that log, the report as an okay-ui page, and a backup that leaves the directory through okay-blob — one process, function calls between the modules, run end to end in `TestLedger` (see below) |
 | `Combine` | the stream-exercise ported from Cats/FS2: `Stage.transduce` and `mapAccumulate` doing the same join in a fraction of the code — the example that extracted those primitives into core |
 | `RepoAgent` / `RepoMcp` | this repository indexed by its own lex/parse/rag machinery, served as an agent and as an MCP server on stdio; the test asserts the index finds the library's own definitions |
 | `IndexReport` | the index, reported |
 | `ChatDemo` | the chat over okay-http + okay-llm: streaming through the route, and a shared task board (`Board`) the model drives through tools — log-first, so `POST /admin/replay` derives it again from the durable log. Composed, not monolithic — okay-chat (the route and model seam), okay-admin (protected `/admin/replay`), okay-subscription (the pay gate), okay-live (Hub/Registry), okay-ops (health/metrics) and okay-deploy (its own committed deployment) are all extracted modules `ChatDemo.routes` wires together with `orElse` |
+
+## Ledger — the one-binary story
+
+What a small independent business needs from software, told once and
+run in one test: record what happened, see a report, keep a copy
+somewhere that is not this machine. `Ledger` is four modules the
+repository already had, with nothing between them but function calls:
+
+```scala
+val ledger = Ledger(root, segmentBytes = 4096)   // an okay-persist FileStore
+ledger.record(Sale(ts, "coffee", 350))           // durable before it returns
+val report = run(ledger.report())                // okay-cluster: a tumbling day, per item
+Ledger.lines(report.value)                       // okay-ui: a Table, rendered by Frame
+run(ledger.backup(Fs(offsite)))                  // okay-blob: closed segments to a Blob
+val (placed, verdict, copy) = run(Restored(Fs(offsite), fresh, 4096))
+verdict.restorable                               // the Doctor, before the incident
+run(copy.report())                               // the books up to the last roll
+```
+
+The report is a `Job` — the same one that would run on four machines
+through `WorkerMain` — over the stage-11 road (`Streams.chunks`), with
+`Cluster.local` as its one worker. The page is the same `Ui` tree the
+web, desktop and mobile hosts draw; the test shows the terminal one:
+
+```
+day itemtotal
+2023-11-14bread  710.93
+2023-11-14cheese 717.53
+2023-11-14coffee 765.49
+…
+```
+
+What it does not pretend: `Backup.copy` takes CLOSED segments and the
+active one stays home until it rolls, so a backup is the books up to
+the last roll and `segmentBytes` is the bound on what a lost disk
+costs. The test asserts exactly that — the report over the restored
+copy equals the report over that prefix, and is NOT the whole — rather
+than hiding it behind a fixture that happens to roll at the end.
 
 `run / fork := true` — RepoMcp owns its stdin (an MCP client
 launches the class directly; `sbt -batch` keeps stdin for itself).

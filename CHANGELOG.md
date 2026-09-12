@@ -1,5 +1,21 @@
 # Changelog
 
+## one-binary-story — the small-business path, run end to end in one process
+
+`okay.demo.Ledger`: a shop's sales into an okay-persist `FileStore`,
+a daily report per item by okay-cluster's windowed engine over that
+log (the stage-11 road, `Cluster.local` as the one worker — the same
+`Job` four machines would run), the report as an okay-ui `Table`
+rendered by `Frame`, and a backup of the closed segments to an
+okay-blob `Blob`, restored into a fresh directory and certified by
+the `Doctor`. One process, function calls between the modules,
+`TestLedger` runs it end to end. Every piece existed; the work was
+the seam — okay-demo now depends on okayCluster and okayBlob — and
+the honest sentence: a backup is the books up to the last roll,
+`segmentBytes` bounds what a lost disk costs, and the test asserts
+the restored report is that prefix and NOT the whole. Two findings
+filed: backup-active-segment, ui-table-terminal-gap.
+
 ## federation-two-parties — two logs, two processes, one job; the refusal is an answer
 
 specs/federation.md stage 1, landed on one machine because federation
