@@ -675,6 +675,52 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that section carries is in BACKLOG-ARCHIVE.md)
 
 ## okay-rag
+- [ ] named-pairs-rest — the SURVEY behind named-pairs-security, kept
+      whole because the operator asked for everything found. Seven
+      functions in main sources return a SAME-TYPED pair, so a
+      positional swap compiles and no test can catch it by type. Two
+      landed (`OAuth2.pkce` -> `(verifier, challenge)`,
+      `ApiKey.issue` -> `(key, digest)`), where a swap is a security
+      defect. These five remain, each with what a swap would do:
+
+      | where | returns | a swap gives you |
+      |---|---|---|
+      | `Secrets.scheme` (okay-conf) | `(String, String)` | the scheme and the rest of the reference exchanged, so a `vault:` ref reads as a literal |
+      | `KafkaStore.range` (okay-kafka) | `(Long, Long)` | begin and end offsets exchanged, an empty or backwards range |
+      | `Smtp.stamp` (okay-mail) | `(String, String)` | the Date header holding a Message-ID and the reverse |
+      | `Site.splitUrl` (okay-script) | `(String, String)` | path and query string exchanged |
+      | `FileStore.readHeader` (okay-persist) | a pair read off a buffer | (unread — check before taking) |
+
+      All are private or module-local, so the blast radius is small
+      and so is the value; that is why they were not taken with the
+      security two. Naming them costs nothing at runtime — a named
+      tuple IS the plain tuple, measured in named-tuples-stage0 — and
+      the call sites need no change, since a positional destructure
+      still works. Take them when touching those files for another
+      reason rather than as a sweep.
+
+      METHOD NOTE, which is the reusable part: `val (a, b) = named()`
+      still binds BY POSITION, so naming a return does not by itself
+      stop a caller swapping. The protection is at the call site,
+      through `p.verifier` or a named destructure
+      (`val (challenge = c, verifier = v) = pkce()`, which binds by
+      name whatever order it is written in). named-pairs-security
+      moved its call sites for exactly that reason.
+
+- [ ] wroclaw-pipeline-named — `Gtfs.departures` in okay-spark's
+      TestWroclawAlgebra still writes the shape of every join step in
+      a trailing comment (`// trip -> (time, (route, service))`),
+      because its tuples cannot. `GtfsNamed.departures` beside it is
+      the same pipeline with the payloads named and those comments
+      deleted, proven equal on the real feed (4 593 288 departures,
+      identical summary) — it exists as the measurement from
+      named-tuples-stage0 and as the regression test for
+      named-tuple-unblock. Merging the two into one named pipeline is
+      the obvious follow-on and was deliberately NOT done in either
+      lane: both had a rule that nothing migrates. Whoever takes it
+      keeps the equality test by comparing against a recorded summary
+      rather than against a twin that no longer exists.
+
 - [ ] twonode-fixed-ports — `okay.demo.TestTwoNode` spawns two REAL
       JVMs on HARDCODED ports 18091/18092 and is not `Live`-tagged, so
       two agents gating at once collide on them. Seen 2026-09-11 in

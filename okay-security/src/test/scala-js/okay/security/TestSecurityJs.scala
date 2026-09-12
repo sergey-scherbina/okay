@@ -34,7 +34,9 @@ class TestSecurityJs extends munit.FunSuite {
   }
 
   test("api keys issue and verify; the digest does not") {
-    val (key, digest) = ApiKey.issue()
+    val issued = ApiKey.issue()
+    val key = issued.key
+    val digest = issued.digest
     assert(ApiKey.verify(key, digest))
     assert(!ApiKey.verify(digest, digest))
   }

@@ -95,7 +95,9 @@ class TestFlows extends munit.FunSuite {
         s"http://127.0.0.1:$port/authorize", s"http://127.0.0.1:$port/token",
         "http://localhost/cb", Seq("read"))
 
-      val (verifier, challenge) = OAuth2.pkce()
+      val pkce = OAuth2.pkce()
+      val verifier = pkce.verifier
+      val challenge = pkce.challenge
       seenChallenge = challenge
       val url = OAuth2.authorizationUrl(client, "st4te", challenge)
       assert(url.contains("code_challenge=" + challenge), url)
