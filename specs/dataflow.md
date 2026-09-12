@@ -459,9 +459,12 @@ Stage 12 — the network (BLOCKED: needs machines that are not this one):
       the worker is buried, the partition moves, and when the link
       heals the worker's old session is NOT resumed into a run that
       has moved on (the fence, from the worker's side)
-- [ ] what can be done on ONE machine meanwhile, and will be: a
-      `Serve` wrapper that delays and drops by a seeded schedule, so
-      the tolerance question above gets a number without a network
+- [x] what can be done on ONE machine meanwhile: a `Serve` that loses
+      requests by a seeded schedule (TestNetem, in the default gate),
+      and the tolerance question answered without a network — see the
+      Results entry: on a lossy wire the loss never ends a run, the
+      burial policy does; `tolerance` is a parameter of `Cluster.run`
+      and `Cluster.stream` now
 
 Stage 13 — rescale at an epoch boundary (not started):
 - [ ] a stream running at `parts` stops at epoch N and resumes at N+1
@@ -1833,3 +1836,68 @@ the epoch whose maximum is below the oldest open pane's start, replays
 from there, and is SEEDED with that maximum so its late-drop decisions
 are the original's). The first costs every epoch, the second costs a
 horizon on resume; measure both before choosing.
+
+### dataflow-netem — the loss rate at which a run stops finishing, and why
+
+Stage 12 needs machines that are not this one. One of its boxes never
+did: `dataflow-reconnect` chose to bury a worker after three
+consecutive failures, called the number a judgement, and left the
+question that begs — at what LOSS RATE does a run stop finishing? —
+unanswered. A wire that loses requests by a seeded schedule answers it
+on one machine.
+
+**Four workers, eight partitions, forty schedules per rate, tolerance
+3:**
+
+```
+  loss rate | finished/40 | lost attempts per finished run | workers buried
+       0.00 |          40 |                            0.0 |             0
+       0.05 |          40 |                            0.8 |             0
+       0.10 |          40 |                            1.6 |             0
+       0.20 |          40 |                            3.6 |             2
+       0.30 |       36-37 |                            6.0 |          9-13
+       0.40 |          31 |                            8.6 |            20
+       0.50 |          20 |                           12.4 |            24
+       0.70 |           0 |                              — |             —
+```
+
+Twenty percent loss is carried with certainty; the knee is at thirty;
+half the runs die at fifty; none finish at seventy. And the column
+that explains it is the last one: the runs that die are the runs in
+which workers were BURIED.
+
+**So the same wire again, with the count as the second dimension**
+(finished of twenty):
+
+```
+  loss rate | tol 1 | tol 3 | tol 6 | tol 12 | tol 1000
+       0.10 |    19 |    20 |    20 |     20 |       20
+       0.30 |     1 |    17 |    20 |     20 |       20
+       0.50 |     0 |    10 |    20 |     20 |       20
+       0.70 |     0 |     0 |     7 |     20 |       20
+```
+
+**With burial off, a wire losing seventy percent of requests still
+finishes every run.** On a lossy wire the loss never ends a run — the
+burial policy does. Tolerance 3 reads three lost packets as a dead
+machine, and from thirty percent loss up it is what turns a cluster of
+live machines into "no workers left". Tolerance 12 carries seventy.
+
+**What that means for the count.** It couples two failures that are
+not the same: a machine that is gone, for which any number of retries
+is waste, and a link that drops, for which every retry has the same
+chance. Three is a good default for the first and a bad one for the
+second, and no single number serves both — which is why `tolerance`
+is a parameter of `Cluster.run` and `Cluster.stream` now rather than
+a constant, and why the honest sentence is that a deployment which
+knows its wire is lossy should say so. Stage 12 proper, with a real
+wire and real latency, is where the two failures can be told apart
+BY THE ENGINE (a lost packet answers late or not at all; a dead
+machine refuses the connection), and that is a design for machines
+that exist.
+
+**On the determinism.** The loss is seeded per worker, so the same
+seed drops a worker's i-th request every time; which worker a
+partition's i-th attempt reaches is the fibres' order. The counts
+therefore move by a run or two between runs, the assertions sit far
+from any edge, and the sweep lives in the default gate on that basis.

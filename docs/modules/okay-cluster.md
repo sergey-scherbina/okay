@@ -163,7 +163,14 @@ with a real worker process killed mid-run.
 **A failure is not yet a death.** A worker is buried after three
 CONSECUTIVE failures and any answer clears its count, so a machine
 that hiccups stays in the rotation and a run survives a blip on EVERY
-worker — which it could not before `dataflow-reconnect`. The partition
+worker — which it could not before `dataflow-reconnect`. Three is a
+default for a wire that is not known to be lossy: measured on one
+(`TestNetem`), it carries 20% loss with certainty and turns 50% loss
+into "no workers left" for half the runs — not because the loss stops
+progress, but because three lost packets are read as a dead machine.
+With burial off the same wire finishes every run at 70% loss. So
+`Cluster.run` and `Cluster.stream` take `tolerance` as a parameter,
+and a deployment that knows its wire is lossy should say so. The partition
 still moves to a survivor on every failure; the count changes who is
 asked next time, not who answers now. `Run.retried` counts workers
 BURIED and `Run.failed` counts attempts LOST, and they are different

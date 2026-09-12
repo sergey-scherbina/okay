@@ -103,13 +103,18 @@ object Cluster {
    * count mean the same thing whether the partitions ran here or on
    * four machines.
    */
-  def run[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve])
+  def run[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve],
+                /** consecutive failures that bury a worker — see
+                 * `Living.Tolerance` for the default and dataflow-netem
+                 * for what it means on a lossy wire */
+                tolerance: Int = Living.Tolerance)
                (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
+    require(tolerance > 0, "a worker is buried after at least one failure")
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    val living = Living(workers.length)
+    val living = Living(workers.length, tolerance)
 
     val bounds: Vector[Vector[Bounds]] ! Async =
       if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
@@ -238,7 +243,13 @@ object Cluster {
      * HOW MANY CONSECUTIVE FAILURES ARE A DEATH.
      *
      * Three, and the number is a judgement rather than a
-     * measurement: one is what the engine did and could not survive a
+     * measurement — and dataflow-netem then measured what it does on
+     * a LOSSY wire, where a failure is a packet and not a machine:
+     * the count converts loss into burials from about 30% loss up,
+     * and burying a worker whose wire is merely lossy is what ends a
+     * run. It is a default for a wire that is not known to be lossy;
+     * `Cluster.run` and `Cluster.stream` take it as a parameter.
+     * The original reasoning: one is what the engine did and could not survive a
      * blip, and a large number keeps asking a corpse. What makes
      * three cheap is that the count is per WORKER and per RUN, so a
      * worker that is really gone costs three attempts once, not three
@@ -315,14 +326,16 @@ object Cluster {
    * batch one is wrong rather than different.
    */
   def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
-                   journal: Checkpoint = Checkpoint.none, term: Long = 0L)
+                   journal: Checkpoint = Checkpoint.none, term: Long = 0L,
+                   tolerance: Int = Living.Tolerance)
                   (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
     require(take > 0, "an epoch advances by at least one element")
+    require(tolerance > 0, "a worker is buried after at least one failure")
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    val living = Living(workers.length)
+    val living = Living(workers.length, tolerance)
     val folded = Codecs.cbor(Folded.given_Schema_Folded)
     val held = Codecs.cbor(sink.state)
     // the ids this run's sessions carry — inherited from the journal

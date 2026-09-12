@@ -1,5 +1,33 @@
 # Changelog
 
+## dataflow-netem — on a lossy wire the loss never ends a run; the burial policy does
+
+Stage 12 needs machines that are not this one, and one of its boxes
+never did: `dataflow-reconnect` buried a worker after three
+consecutive failures and called the number a judgement. A `Serve`
+that loses requests by a seeded schedule prices it on one machine
+(TestNetem, in the default gate).
+
+Four workers, eight partitions, forty schedules per rate: tolerance 3
+carries 20% loss with certainty, the knee is at 30%, half the runs die
+at 50%, none finish at 70% — and the runs that die are the runs in
+which workers were BURIED. The same wire with the count as a second
+dimension: with burial off, a 70% wire finishes every run. Three lost
+packets are read as a dead machine, and from 30% up that reading is
+what turns a cluster of live machines into "no workers left".
+
+The count couples two failures that are not the same — a machine that
+is gone, for which every retry is waste, and a link that drops, for
+which every retry has the same chance — and no one number serves
+both. `tolerance` is a parameter of `Cluster.run` and `Cluster.stream`
+now. Telling the two apart BY THE ENGINE (a lost packet answers late
+or not at all; a dead machine refuses the connection) needs a real
+wire, and is stage 12's.
+
+Seeded per worker; which worker a partition's attempt reaches is the
+fibres' order, so the counts move by a run or two and the assertions
+sit far from any edge.
+
 ## dataflow-seek — a session opens at its position, for the sinks that can (stage 11, box 2)
 
 A resumed run replayed every partition from zero. With the log as the
