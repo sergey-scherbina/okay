@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- scaling-table-first — move the core-scaling digest to the top of
+  docs/benchmarks.md, right after "The short version" heading, so it
+  is the first table on the page. Found on the way: that section's own
+  §20 summary row cites pre-wroclaw-table-refresh numbers; fixed in
+  the same lane. Claimed 2026-09-12
+  (.work/active/scaling-table-first.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover

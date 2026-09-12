@@ -1,0 +1,33 @@
+task: scaling-table-first
+agent: fable51-core
+started: 2026-09-12
+branch: feature/scaling-table-first
+worktree: ../okay-wt-scalingfirst
+spec: none — documentation reordering plus one stale-figure fix found
+  on the way
+
+why: operator, 2026-09-12 — "поставь эту новую таблицу на первое
+  место чтобы ее сразу было видно". docs/benchmarks.md already opens
+  with "## The short version", a one-row-per-section digest with a
+  link to each detailed section — the page's own "first thing you
+  see". The core-scaling digest (scaling-table-docs, landed b7514589)
+  lives inside §20, near the bottom of a long page.
+
+what:
+  1. move the scaling digest table (or its content) to right after
+     "## The short version"'s heading, before its own per-section
+     table — the first table on the page.
+  2. found while touching the neighbouring row: "The short version"'s
+     OWN §20 summary row is STALE — it cites "8.9M on four fibres,
+     2.7M on one" against "Flink 1.87M at parallelism 4", numbers from
+     before wroclaw-table-refresh (2026-09-11). The current §20 table
+     reads 12 773 116 / 4 287 955 / 1 525 991 for the same three
+     figures. Fix it in the same lane, since leaving a stale number
+     one table away from a freshly-checked one is worse than either
+     alone.
+  3. §20's own digest stays where it is (the detailed section still
+     wants its full table beside the raw one); the top placement is a
+     duplicate for visibility, not a move that empties §20.
+
+predict: no new measurement, every number re-checked against the same
+  source table already used for scaling-table-docs.
