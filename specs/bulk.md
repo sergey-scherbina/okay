@@ -215,8 +215,8 @@ came from a pattern matching every `r("...")`-shaped call in the
 repository, most of which are not row reads at all. 56 is the honest
 figure.)
 
-**And the answer nobody asked for: `import okay.*` blocks named tuples
-entirely.** `Generate.scala`'s `extension [A](a: A) inline def
+**And the answer nobody asked for: `import okay.*` blocked named tuples
+entirely** (FIXED the same day, see below).** `Generate.scala`'s `extension [A](a: A) inline def
 apply[R](f: A Loop R)` is an `apply` on every type, and a named
 tuple's field access desugars to an apply by index, so `t.route` fails
 with `Found: (0 : Int)`. Filed in BUGS.md as
@@ -235,7 +235,13 @@ can ask users to adopt.
       (TestWroclawAlgebra, Live)
 - [x] named payloads flow through `select` and `join` with no
       annotations (GtfsNamed compiles)
-- [ ] stage 1, BLOCKED on `universal-apply-blocks-named-tuples`: a
-      declared row type for one file, with the computed-name escape
-      hatch its calendar needs
+- [x] the blocker is gone (named-tuple-unblock, 2026-09-12): the
+      universal `apply` now carries
+      `NotGiven[A <:< NamedTuple.AnyNamedTuple]`, so it declines named
+      tuples and the field access falls through, while `seed(body)`
+      keeps working for every other seed. Nothing left the public API.
+      `GtfsNamed` is back on the plain `import okay.*`, which makes it
+      the regression test on real code
+- [ ] stage 1, now UNBLOCKED: a declared row type for one file, with
+      the computed-name escape hatch its calendar needs
 

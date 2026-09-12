@@ -21,8 +21,23 @@ package okay
 infix type <<[A, R] = Loop[A, R]
 infix type Loop[A, R] = Cont[A, R, A => R]
 
-/** run a loop from this seed */
-extension [A](a: A) inline def apply[R](f: A Loop R): R = loop(f)(a)
+/**
+ * Run a loop from this seed.
+ *
+ * The `NotGiven` guard is not decoration (named-tuple-unblock,
+ * 2026-09-12): this extension offers an `apply` on EVERY type, and a
+ * named tuple's field access desugars to an apply BY INDEX, so
+ * without the guard `import okay.*` made `t.route` fail with
+ * "Found: (0 : Int)" and disabled a stable language feature for
+ * anyone importing this package. Declining named tuples lets the
+ * selection fall through to the compiler's own, and costs nothing
+ * else: `seed(body)` still works for any other seed, a plain tuple
+ * included. Guarding on `Tuple` instead does NOT work — a named tuple
+ * is not `<:<` one, so the guard passes and the extension captures
+ * the selection anyway. BUGS.md, `universal-apply-blocks-named-tuples`.
+ */
+extension [A](a: A)(using scala.util.NotGiven[A <:< NamedTuple.AnyNamedTuple])
+  inline def apply[R](f: A Loop R): R = loop(f)(a)
 /** the argument of the current iteration: shift identity captures the loop context */
 inline def take[A, R]: A Loop R = shift(identity)
 

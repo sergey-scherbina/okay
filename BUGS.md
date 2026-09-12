@@ -10,11 +10,13 @@ Newest first. Status lives in the machine-readable header, never in
 the prose.
 
 ## universal-apply-blocks-named-tuples — `import okay.*` makes a named tuple's field access a type error
-<!-- status: open
+<!-- status: fixed
      lane: all
      area: generate
      found-by: named-tuples-stage0 (2026-09-12)
-     repro: 4 lines, below -->
+     fixed-in: named-tuple-unblock (2026-09-12)
+     gate: src/test/scala/TestNamedTuples.scala, and GtfsNamed.scala
+       compiling under `import okay.*` on the real feed -->
 
 `src/main/scala/Generate.scala:25` defines
 
@@ -55,6 +57,29 @@ list. So:
 Both are one-line changes with zero call sites to update. The choice
 is the operator's, because either removes a spelling from the public
 API.
+
+FIXED 2026-09-12 (named-tuple-unblock) by a THIRD way, which removes
+nothing:
+
+```scala
+extension [A](a: A)(using scala.util.NotGiven[A <:< NamedTuple.AnyNamedTuple])
+  inline def apply[R](f: A Loop R): R = loop(f)(a)
+```
+
+The extension declines to apply to a named tuple, so the field access
+falls through to the compiler's own selection, and `seed(body)` keeps
+working for every other seed. Guarding on `Tuple` instead does NOT
+work and that is the refuted step worth keeping: a named tuple is not
+`<:<` a `Tuple`, so `NotGiven` succeeds and the extension captures the
+selection anyway. `NamedTuple.AnyNamedTuple` is the exact upper bound.
+
+Pinned from both sides in `src/test/scala/TestNamedTuples.scala` — the
+fields are reachable under `import okay.*`, a named tuple still IS the
+plain tuple at runtime and `==` to it, the `seed(body)` spelling still
+resolves, and a plain tuple still indexes. And on real code:
+`GtfsNamed.scala` went back to the plain wildcard import, so if the
+guard ever regresses that file stops compiling and the 4 593 288-row
+equality test goes with it.
 
 ## own-long-join-deadlock — 10k fibers joined inside a fiber on `Schedulers.Owned.forLongTasks` never completes
 <!-- status: fixed

@@ -1,13 +1,14 @@
 package okay.spark
 
-// NO `import okay.*`, and that is a FINDING rather than a style
-// choice: okay's `extension [A](a: A) inline def apply[R](f: A Loop R)`
-// (Generate.scala) is universal, and a named tuple's field access
-// desugars to an apply by index, so the wildcard import makes
-// `t.route` fail with "Found: (0 : Int)". Targeted imports are the
-// workaround that let this measurement happen at all.
-// See BUGS.md, `universal-apply-blocks-named-tuples`.
-import okay.{Tables, Aggregator, !}
+// `import okay.*`, and the wildcard is the POINT of this line
+// (named-tuple-unblock, 2026-09-12). While the universal `apply` in
+// Generate.scala was unguarded, this file had to import okay's names
+// one by one, because a named tuple's field access desugars to an
+// apply by index and the wildcard captured it. The guard on that
+// extension is what lets the ordinary import back in, and this file
+// is the proof on real code: if the guard regressed, the twin below
+// stops compiling. BUGS.md, `universal-apply-blocks-named-tuples`.
+import okay.*
 import okay.Tables.{Table, read}
 import okay.Direct.{direct, unary_!}
 
