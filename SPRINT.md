@@ -1,11 +1,6 @@
 # Sprint
 
 ## Doing
-- scaling-table-docs — the core-scaling matrix (okay vs the ecosystem
-  at 1/2/4/8 cores, already measured in docs/benchmarks.md §20) as a
-  digest table in §20 and a headline line in README's Fast bullet. No
-  new benchmark; a re-publication of the same run. Claimed 2026-09-12
-  (.work/active/scaling-table-docs.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover

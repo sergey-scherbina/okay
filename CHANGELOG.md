@@ -1,5 +1,32 @@
 # Changelog
 
+## scaling-table-docs — the core-scaling matrix, read by core count, published where okay's speed is pitched
+
+`docs/benchmarks.md`'s section 20 (Wrocław's timetable, 2.4M events
+against Flink, Spark and every stream library) carries a 38-row table
+sorted by throughput. Sorted that way it answers "who is fastest",
+which buries a different and more useful answer: read by CORE COUNT,
+okay scales 5.3x from 1 to 8 cores while every other in-process
+library — java.util.stream, zio-streams, kyo, fs2 — plateaus around
+1.6-1.7x, and the plain-JVM thread lane regresses past 4 cores.
+
+Added as a digest table right after the full one, sourced from the
+exact same run (`wroclaw-table-refresh`, 2026-09-11) — no new
+measurement, and every cited number was checked programmatically
+against the source table before committing. The 9% noise-floor
+caveat that sits beside the full table is repeated here too, because
+at ONE core every library but Flink is within a few percent of the
+others: the finding is the slope, not the starting point. The
+mechanism stated once: okay fans the job across fibres joined by
+`merge`, where the others parallelize a single `Stream`/`foreachPar`
+and hit its fan-in cost before they run out of cores.
+
+README's "Fast" bullet gains one sentence naming the result, and a
+compact version of the same table sits beside the existing Stream
+pipeline and Merge tables — the first core-scaling numbers in the
+file a first-time reader sees. Landed as b7514589 and pushed to
+origin/master, per the operator's ask to publish it.
+
 ## dataflow-rescale — change the partition count between two epochs
 
 specs/dataflow.md stage 13, boxes 1 and 3 (TestRescale). A stream
