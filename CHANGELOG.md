@@ -1,5 +1,26 @@
 # Changelog
 
+## scaling-table-first — the core-scaling digest moves to the top of the benchmarks page
+
+`docs/benchmarks.md` opens with "The short version" — a one-row digest
+of every section, linking into the detail. The core-scaling table
+landed an hour earlier (`scaling-table-docs`, b7514589) inside section
+20, which is where a reader least likely to keep scrolling would find
+it. It is now the first table on the page, ahead of even the
+per-section summary.
+
+Found on the way: the short version's own §20 summary row was itself
+stale, citing numbers from before `wroclaw-table-refresh`
+(2026-09-11) — 8.9M events/s on four fibres against Flink's 1.87M at
+parallelism 4. The current table reads 22 561 859 at eight fibres and
+Flink 1 679 971 at parallelism 8. Corrected in the same lane, along
+with the row's anchor link, which pointed at a heading that had since
+been reworded.
+
+No new measurement. Every number was checked programmatically against
+the same source table used for `scaling-table-docs`. Landed as
+4363dbe8 and pushed to origin/master.
+
 ## scaling-table-docs — the core-scaling matrix, read by core count, published where okay's speed is pitched
 
 `docs/benchmarks.md`'s section 20 (Wrocław's timetable, 2.4M events
