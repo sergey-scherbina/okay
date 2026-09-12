@@ -9,6 +9,53 @@ bin: an entry whose fix belongs to a module belongs in that module.
 Newest first. Status lives in the machine-readable header, never in
 the prose.
 
+## universal-apply-blocks-named-tuples — `import okay.*` makes a named tuple's field access a type error
+<!-- status: open
+     lane: all
+     area: generate
+     found-by: named-tuples-stage0 (2026-09-12)
+     repro: 4 lines, below -->
+
+`src/main/scala/Generate.scala:25` defines
+
+```scala
+extension [A](a: A) inline def apply[R](f: A Loop R): R = loop(f)(a)
+```
+
+an `apply` on EVERY type, so that a loop can be run as `seed(body)`.
+A named tuple's field access desugars to an apply by INDEX, and this
+extension answers that call first: with `import okay.*` in scope,
+
+```scala
+type Trip = (route: String, service: String)
+val t: Trip = (route = "a", service = "b")
+t.route      // Found: (0 : Int)   Required: (route: String, service: String) Loop String
+```
+
+Reproduced standalone in four lines, with a stand-in extension of the
+same shape, so it is the SHAPE and not anything else in the package:
+with the extension in scope the selection fails, without it compiles.
+`import okay.given` alone is fine — it is the wildcard that carries it.
+
+WHAT IT COSTS: named tuples, a stable Scala 3 feature, cannot be used
+by anyone who writes `import okay.*`, which is what every example in
+our own docs writes. Found while measuring whether a named row would
+suit the Wrocław job; the measurement had to import okay's names one
+by one to proceed, and that workaround is in GtfsNamed.scala's header.
+
+WHAT IT WOULD COST TO FIX, priced rather than chosen — the DSL this
+extension serves (`Loop`, `take`, `loop`) has NO other use in this
+repository: no test, no doc example, one mention in typepedia's type
+list. So:
+  - move the extension into an object users import explicitly
+    (`import okay.Loops.*`), leaving `loop(f)(a)` where it is. The
+    wildcard stops being greedy and nothing else changes.
+  - or drop the `seed(body)` spelling entirely: `loop(body)(seed)`
+    already exists and is what the extension calls.
+Both are one-line changes with zero call sites to update. The choice
+is the operator's, because either removes a spelling from the public
+API.
+
 ## own-long-join-deadlock — 10k fibers joined inside a fiber on `Schedulers.Owned.forLongTasks` never completes
 <!-- status: fixed
      lane: jvm

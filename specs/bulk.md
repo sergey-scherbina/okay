@@ -165,3 +165,77 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
   instance would do too.
 - optimisation across the seam (predicate pushdown, column pruning):
   the seam is the RDD level, not the Catalyst level, on purpose.
+
+## Named rows, measured (2026-09-12, named-tuples-stage0)
+
+A stage-0 MEASUREMENT, not a migration: what a named tuple buys and
+costs on the job we already run, `Gtfs.departures` over the Wrocław
+GTFS feed. Three questions were set before the work, and one answer
+arrived that nobody asked for.
+
+**The target, in our own code.** The original's join chain carries a
+comment on every line saying what the tuple holds, because the type
+does not:
+
+```scala
+!stopTimes.join(trips)                                                       // trip -> (time, (route, service))
+  .select { case (_, (time, (route, service))) => route -> (time, service) }  // route -> (time, service)
+  .join(routes)                                                              // route -> ((time, service), tram)
+  .select { case (route, ((time, service), tram)) => service -> (time, tram, route.hashCode) }
+```
+
+Swapping `time` and `service` there still compiles. `GtfsNamed` is the
+same pipeline with the payloads named, and the comments deleted
+because the types say it.
+
+**1. Does it compute the same thing? YES, on the real feed.**
+`TestWroclawAlgebra` runs both and compares a four-way summary (count,
+sum, min, max) of a measure that mixes all four fields of `Dep`, so a
+swapped pair would move it: **4 593 288 departures, identical
+summary**. A named tuple erases — `(route = "a", service = "b")` IS a
+`scala.Tuple2` at runtime and `==` to `("a", "b")` — so there is no
+allocation to pay for the names.
+
+**2. Does inference survive OUR generic API? YES, and this was the
+coin toss.** `select[B](f: A => B)` and `join[B](r: Table[(K, B)]):
+Table[(K, (A, B))]` carry a named payload with NO annotation anywhere
+in the chain. The names ride the payload; `join`'s key pairing stays
+positional by signature, which is the shape of the remaining ugliness
+(`case (_, (dep, service))`).
+
+**3. How much of the row reading would a declared row type cover?
+Most, but not all, and the exception is structural.** In the files
+that actually read CSV rows there are 56 reads by a literal column
+name, each declarable. Three places read a column by a COMPUTED name —
+`Vector("monday", ..., "sunday").map(r(_) == "1")` in the calendar —
+and no field access can express that. A declared row type would have
+to keep an escape hatch for it, which is worth knowing BEFORE anyone
+designs one. (An earlier note in this lane quoted "410 reads": that
+came from a pattern matching every `r("...")`-shaped call in the
+repository, most of which are not row reads at all. 56 is the honest
+figure.)
+
+**And the answer nobody asked for: `import okay.*` blocks named tuples
+entirely.** `Generate.scala`'s `extension [A](a: A) inline def
+apply[R](f: A Loop R)` is an `apply` on every type, and a named
+tuple's field access desugars to an apply by index, so `t.route` fails
+with `Found: (0 : Int)`. Filed in BUGS.md as
+`universal-apply-blocks-named-tuples` with a four-line standalone
+reproduction and two one-line fixes priced; the measurement above only
+happened because `GtfsNamed` imports okay's names one by one instead.
+
+**Verdict.** Named rows work here and cost nothing at runtime, and the
+readability they buy is real — the comments in the original are the
+evidence. Nothing migrates on this stage, by the rule set in the
+claim. What a stage 1 would need first is the BUGS entry resolved,
+because a feature our own wildcard import disables is not a feature we
+can ask users to adopt.
+
+- [x] the named twin computes the same departures on the real feed
+      (TestWroclawAlgebra, Live)
+- [x] named payloads flow through `select` and `join` with no
+      annotations (GtfsNamed compiles)
+- [ ] stage 1, BLOCKED on `universal-apply-blocks-named-tuples`: a
+      declared row type for one file, with the computed-name escape
+      hatch its calendar needs
+

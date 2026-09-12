@@ -88,7 +88,10 @@ object Gtfs:
       }
   }
 
-  private def epochDay(yyyymmdd: String): Long = LocalDate.parse(yyyymmdd, BASIC_ISO_DATE).toEpochDay
+  // `private[spark]` so the named-tuple twin (GtfsNamed) shares the
+  // EXACT helper rather than a copy — the twin's whole claim is that
+  // it computes the same thing (named-tuples-stage0)
+  private[spark] def epochDay(yyyymmdd: String): Long = LocalDate.parse(yyyymmdd, BASIC_ISO_DATE).toEpochDay
 
 /**
  * The aggregation algebra on the city's own timetable, on two
@@ -204,6 +207,22 @@ class TestWroclawAlgebra extends munit.FunSuite:
     val (plan, _) = okay.!.run(okay.Writer.run(handled))
     println(s"  plan: ${plan.mkString(" ")}")
     assertEquals(plan.count(_ == "Join"), 3)
+  }
+
+  test("the named-tuple twin computes the same departures (named-tuples-stage0)") {
+    // The twin in GtfsNamed names the payloads that this file's
+    // `departures` can only describe in comments. A named tuple erases
+    // to the plain one, so the two programs should be the same
+    // computation — asserted here on the real feed rather than
+    // assumed. The measure mixes all four fields, so a swapped pair
+    // would move `sum` even where `count` agreed.
+    def summarise(p: Table[Dep] ! Tables): Aggregator.Summary =
+      Tables.run(localBulk)(p.aggregate(Aggregator.summary[Dep](d =>
+        d.minute.toLong * 31 + d.hour * 7 + (if d.tram then 1L else 0L) + d.route)))
+    val plain = summarise(Gtfs.departures(file))
+    val named = summarise(GtfsNamed.departures(file))
+    assertEquals(named, plain)
+    println(f"  named-tuple twin: ${named.count}%,d departures, identical summary")
   }
 
   test("routes are counted by a hash, and the hash does not collide here") {
