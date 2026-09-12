@@ -1,5 +1,19 @@
 # Changelog
 
+## scaling-table-wall — wall clock beside ev/s in every copy of the core-scaling digest
+
+The core-scaling matrix (`scaling-table-docs`, `scaling-table-first`)
+showed events per second only. Every cell in all three copies — the
+headline table at the top of docs/benchmarks.md, section 20's own
+copy, and README's compact version — now reads wall clock time beside
+it, pulled from the same source rows in section 20's raw table. No new
+measurement.
+
+Every number was checked programmatically against the source before
+committing, in both the full-precision docs/benchmarks.md tables and
+README's M-suffix rounded ones. Landed as 1864fb01 and pushed to
+origin/master.
+
 ## scaling-table-first — the core-scaling digest moves to the top of the benchmarks page
 
 `docs/benchmarks.md` opens with "The short version" — a one-row digest
