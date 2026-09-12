@@ -3882,6 +3882,35 @@ or no table.
 | spark, local[4], batch RDD | 4 | 338 918 | 7 123 ms | 13 787 |
 | spark, local[4], structured streaming | 4 | 264 445 | 9 129 ms | 3 870 |
 
+### The scaling digest — same run, read by core count
+
+The table above is sorted by throughput; read instead by CORE COUNT,
+the shape of the story changes. Every number is the same row as
+above — this is a derived view of one run, not a second measurement —
+and the 9% noise floor below applies here exactly as it does there.
+
+| lane | 1 core | 2 cores | 4 cores | 8 cores | 1→8 |
+|---|---:|---:|---:|---:|---:|
+| **okay** (merge) | 4 287 955 | 7 615 517 | 12 773 116 | **22 561 859** | **5.3x** |
+| flink | 778 496 | 1 231 693 | 1 525 991 | 1 679 971 | 2.2x |
+| java.util.stream | 4 303 242 | 5 271 002 | 6 096 260 | 7 163 557 | 1.7x |
+| zio-streams | 4 140 855 | 5 789 254 | 6 762 238 | 6 957 115 | 1.7x |
+| kyo | 3 957 572 | 4 715 076 | 5 761 620 | 6 352 944 | 1.6x |
+| fs2 | 4 169 462 | 5 114 658 | 6 403 498 | 6 560 105 | 1.6x |
+| plain JVM, threads | 4 205 782 | 5 125 518 | 6 065 625 | 5 902 491 | 1.4x, and 8 is WORSE than 4 |
+
+ev/s, higher better. At one core every lane but Flink sits within a
+few percent of the others — inside the 9% floor below, so nothing
+there is a finding. What separates them is the SLOPE: okay keeps
+climbing through 8 cores while every other in-process library
+flattens around 1.6-1.7x, and the plain-JVM lane regresses past 4.
+The mechanism, stated once rather than per row: okay fans the job out
+over separate FIBRES joined by `merge`, where the others parallelize
+a single `Stream`/`foreachPar`/`parEvalMap` and hit its fan-in cost
+before they run out of cores. Flink and Spark are a different class
+(a distributed engine's own scheduling, not a library) and sit in the
+table above for that reason, not this one.
+
 **THE NOISE FLOOR IS IN THE TABLE, twice over, and it is 9%.** Rows 21
 and 28 — `okay, 1 thread (Chunks)` at 563 ms and `okay, 1 thread,
 Aggregator.summary` at 614 — are THE SAME CODE since

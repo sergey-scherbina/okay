@@ -24,7 +24,7 @@ What actually makes this different:
 
 4. Zero dependencies in the core. Nothing comes along for the ride.
 
-5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours.
+5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours. On a real streaming job across 1/2/4/8 cores, okay scales 5.3x while every other in-process stream library (zio-streams, fs2, kyo, java.util.stream) plateaus around 1.6-1.7x — the table is in [docs/benchmarks.md](docs/benchmarks.md), §20.
 
 What that buys you in practice: you don't choose between readable and fast, you don't choose between type-safe and ceremony-free, and you don't need anyone's permission to add an effect of your own. And only you control what every effect (even not yours) actually does in any particular case.
 
@@ -302,6 +302,26 @@ chunked lane here.)
 10 746 in the same run — 114x inside fs2, from the source alone — and
 quoting that against a chunked lane is the kind of number this page
 stopped printing.)
+
+**Core scaling** — Wrocław's timetable, 2.4M events, event-time
+windows and keyed state, one JVM per lane, 1/2/4/8 cores
+(docs/benchmarks.md §20):
+
+| lane | 1 core | 2 | 4 | 8 | 1→8 |
+|---|---|---|---|---|---|
+| **Okay** (merge) | 4.29M | 7.62M | 12.77M | **22.56M** | **5.3x** |
+| java.util.stream | 4.30M | 5.27M | 6.10M | 7.16M | 1.7x |
+| zio-streams | 4.14M | 5.79M | 6.76M | 6.96M | 1.7x |
+| kyo | 3.96M | 4.72M | 5.76M | 6.35M | 1.6x |
+| fs2 | 4.17M | 5.11M | 6.40M | 6.56M | 1.6x |
+
+(ev/s. At one core every library is within a few percent — the
+measurement's own noise floor, doubled in the same run. What
+separates them is the SLOPE: Okay fans the job across fibres joined
+by `merge`; the others parallelize one `Stream`/`foreachPar` and hit
+its fan-in cost before they run out of cores. Flink sits in the full
+table too, at a different scale — a distributed engine's scheduling,
+not a library.)
 
 **Resource** — 1000 bracketed acquire/use/release:
 
