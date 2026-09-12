@@ -16,7 +16,16 @@ same material with the measurements attached.
   inline away.
 - **`A /> S`** — `Cont[A, S, S]`, the diagonal. **`Loop[A, R]`**
   (alias `<<`) — `Cont[A, R, A => R]`: open recursion; `take` is the
-  loop's input, `loop` ties the knot.
+  loop's input, `loop` ties the knot. Its `seed(body)` spelling is an
+  `apply` extension on EVERY type, and it carries
+  `NotGiven[A <:< NamedTuple.AnyNamedTuple]` for a measured reason: a
+  named tuple's field access desugars to an apply BY INDEX, so without
+  the guard `import okay.*` turned `t.route` into "Found: (0 : Int)"
+  and disabled named tuples for anyone importing the package
+  (named-tuple-unblock, BUGS.md). Guarding on `Tuple` does not work —
+  a named tuple is not `<:<` one. The general lesson is in the entry:
+  a universal `extension [A](a: A)` competes with whatever the
+  compiler desugars into an apply on an arbitrary type.
 
 ## Effects (Effects.scala, Free.scala)
 
