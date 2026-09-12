@@ -1,0 +1,48 @@
+task: dataflow-rescale
+agent: opus-dataflow
+started: 2026-09-12
+branch: feature/dataflow-rescale
+worktree: ../okay-wt-rescale
+spec: specs/dataflow.md, stage 13
+
+why: the last unbuilt box of the dataflow arc, and the one the
+  journal + 6b replay were built to make possible. Partitions are
+  fixed at submission today; stage 13 changes the partition count
+  between two epochs — stop at N with parts, re-cut the source,
+  resume at N+1 with parts'. Verifiable on one machine, which is why
+  it is not BLOCKED like stage 12.
+
+what: box 1 first — a stream stops at epoch N and resumes at N+1 with
+  a different partition count, and the answer equals the batch answer.
+  The mechanism is already here: stopping at N is a coordinator death
+  after a commit (Checkpoint saves, then throws), resuming is the
+  ordinary journal resume, and a windowed sink REPLAYS from zero on
+  resume (stage 11 box 2) — so a re-cut source is read afresh by the
+  new partitions and the coordinator's folded state, which is NOT
+  per-partition, carries across unchanged. The resume path must seed
+  its per-partition vectors (seen, positions) at the NEW count rather
+  than the journal's old count; that is the whole of the change.
+
+  A SEEKABLE sink cannot rescale and must say so: its positions are
+  per-old-partition offsets that mean nothing under a re-cut. That
+  refusal is the same split stage 11 box 2 already found (windowed
+  replays, seekable hands over deltas), and it gets a test.
+
+  box 3 (add/remove a worker mid-stream) falls out of the same
+  change: the workers vector is a resume argument, so a longer or
+  shorter one on resume re-maps partitions to workers — the recovery
+  road, without a death.
+
+what this is NOT: box 2 (re-bucketing the boundary panes of a LATE
+  feed rather than re-reading them). A re-cut changes the watermark
+  trajectory, so a late feed's DROP set can move across a rescale;
+  box 1 is asserted on an IN-ORDER feed where nothing drops and the
+  answer is cut-invariant. The late-feed re-bucketing is box 2 and is
+  left as a stated finding, not faked.
+
+predict: box 1 and box 3 land in one gate; the seekable refusal is
+  one throw and one assertion. The risk is the coordinator's ABSORBED
+  state (panes retired below the watermark during epochs 1..N) not
+  lining up with the new cut's replay — mitigated by the in-order
+  contiguous cut (Flow.slices), where a retired pane's elements were
+  all consumed by the partition that owned that prefix.
