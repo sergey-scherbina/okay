@@ -1,5 +1,37 @@
 # Changelog
 
+## split-url-named — the one of the five that was public, and the record that said otherwise
+
+`named-pairs-security` named the two same-typed pairs where a swap is a
+security defect, and filed the other five with a sentence: "All are
+private or module-local, so the blast radius is small and so is the
+value". Four are. `Site.splitUrl` carries no modifier at all. It is
+public API answering `(String, String)` for `(path, query)`, so the
+caller who can take them the wrong way round need not be in this
+repository, and what they get is the query string as the path, with
+nothing to catch it.
+
+The operator asked whether anything was left to do. That question is
+what sent me back to CHECK the claim instead of repeating it, and the
+checking is the whole lane: `private[conf]`, `private[KafkaStore]`,
+`private`, `private` — and one with nothing.
+
+`splitUrl` now answers `(path: String, query: String)`. Its four call
+sites move off position: three destructures inside `Site`, and
+`pathOf`, which read `._1`. A named tuple has no `_1`, so it reads
+`.path`, which is what the line meant. `TestSplitUrl` pins the split
+both ways and that a wrong name does not compile, paired with the
+right one.
+
+The wrong sentence is left STANDING in BACKLOG's `named-pairs-rest`
+with the correction beside it, rather than edited away, because that
+sentence is the reason the row was not taken in the morning. A ledger
+that quietly fixes its own claims teaches nothing about how the claim
+got made.
+
+Landed as 060dbcdc. Gate: the full matrix, 4392 tests, 0 failures, and
+the gate's own warning check across 175 module compiles found none.
+
 ## named-pairs-security — two pairs where a swap was a security defect that compiled, and the survey behind them kept whole
 
 After `named-tuples-stage0` showed that named tuples work here and cost
