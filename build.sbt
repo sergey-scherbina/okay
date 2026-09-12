@@ -1,6 +1,6 @@
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
-ThisBuild / version := "0.1.0-SNAPSHOT"
+ThisBuild / version := "0.1.0"
 // Scala 3.9.0 — the LTS line, opened by 3.9 as 3.3's successor and
 // maintained for at least three years. Until 3.9 this build ran the
 // latest non-LTS release on purpose (specs/modules-infra.md), because

@@ -356,7 +356,7 @@ module with its own page under docs/modules:
   the JDK, Jetty or Netty behind one seam (`okay-jetty`,
   `okay-netty`); the distributed runtime (`okay-cluster`).
 
-Building: `sbt test` runs everything — 3024 tests across 84 module
+Building: `sbt test` runs everything — 4398 tests across 93 module
 runs, on the JVM, under Node and as a linked native binary (the
 live suites — a local model, an npx-spawned MCP server — skip where
 their endpoint is absent). Scala 3.9.0 — the LTS line — with 3.6 as
