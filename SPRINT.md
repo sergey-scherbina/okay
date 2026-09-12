@@ -1,6 +1,11 @@
 # Sprint
 
 ## Doing
+- split-url-named — `Site.splitUrl` is PUBLIC and returns `(String,
+  String)`, which my own BACKLOG entry wrongly filed as private. Name
+  it `(path, query)`, move its four call sites off position, and
+  correct the record. Claimed 2026-09-12
+  (.work/active/split-url-named.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover

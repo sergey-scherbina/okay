@@ -1,0 +1,37 @@
+task: split-url-named
+agent: fable51-core
+started: 2026-09-12
+branch: feature/split-url-named
+worktree: ../okay-wt-spliturl
+spec: BACKLOG `named-pairs-rest`, which this lane also CORRECTS
+
+why: operator, 2026-09-12 — "так что ничего не нужно делать?". The
+  question sent me back to check my own record, and it was wrong.
+  `named-pairs-rest` says of the five remaining same-typed pairs:
+  "All are private or module-local, so the blast radius is small".
+  Four are. `Site.splitUrl` is PUBLIC:
+
+    def splitUrl(url: String): (String, String)   // (path, query)
+
+  A user of okay-script calls it and destructures positionally, and a
+  swap gives them the query string as the path with nothing to catch
+  it. That is the same shape as the two security pairs this repository
+  named this morning, and it was dismissed on a claim I had not
+  checked.
+
+what:
+  1. `def splitUrl(url: String): (path: String, query: String)`.
+  2. its four call sites, all in Site.scala, move off position: three
+     `val (path, query) = splitUrl(r.url)` and `pathOf`, which reads
+     `._1` — a named tuple has no `_1`, so `pathOf` becomes
+     `splitUrl(url).path`, which is what it meant all along.
+  3. CORRECT the BACKLOG entry: four private, one public and now done,
+     with the sentence that was wrong marked rather than quietly
+     edited — the claim it made is the reason it was not taken.
+
+predict: `._1` is the one thing that will not compile, which is fine
+  because it is also the line that most wanted a name. If anything
+  outside this repository called `splitUrl` positionally it still
+  compiles, since a positional destructure of a named tuple binds by
+  position — so this is not a breaking change for a caller, only a
+  better one for a reader.
