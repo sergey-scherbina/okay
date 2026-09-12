@@ -26,7 +26,30 @@ beside the microseconds it costs.
 
 ## The short version
 
-Every number is microseconds per operation, lower better, JMH, from
+**The headline first** (core scaling, wroclaw-table-refresh,
+2026-09-11): on a real streaming job across 1/2/4/8 cores, okay is the
+only in-process library that keeps climbing.
+
+| lane | 1 core | 2 cores | 4 cores | 8 cores | 1→8 |
+|---|---:|---:|---:|---:|---:|
+| **okay** (merge) | 4 287 955 | 7 615 517 | 12 773 116 | **22 561 859** | **5.3x** |
+| flink | 778 496 | 1 231 693 | 1 525 991 | 1 679 971 | 2.2x |
+| java.util.stream | 4 303 242 | 5 271 002 | 6 096 260 | 7 163 557 | 1.7x |
+| zio-streams | 4 140 855 | 5 789 254 | 6 762 238 | 6 957 115 | 1.7x |
+| kyo | 3 957 572 | 4 715 076 | 5 761 620 | 6 352 944 | 1.6x |
+| fs2 | 4 169 462 | 5 114 658 | 6 403 498 | 6 560 105 | 1.6x |
+| plain JVM, threads | 4 205 782 | 5 125 518 | 6 065 625 | 5 902 491 | 1.4x, and 8 is WORSE than 4 |
+
+ev/s, higher better. At one core every lane but Flink is within a
+few percent of the others — the measurement's own 9% noise floor,
+doubled in the same run (§20 has the twin rows that prove it). The
+finding is the SLOPE: okay fans the job across fibres joined by
+`merge`, where the others parallelize a single
+`Stream`/`foreachPar`/`parEvalMap` and hit its fan-in cost before
+they run out of cores. Full table, methodology and the mechanism
+in [§20](#20-streams-against-an-engine-and-against-every-library--wrocławs-timetable).
+
+Every other number below is microseconds per operation, lower better, JMH, from
 one session on a quiet 14-core box. Where a competitor appears, both
 sides were checked against the Lane rules below — same shape, same
 granularity, same source, same resources — because five lanes that
@@ -50,7 +73,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | look up a symbol in an index | **0.56** | — | [§11](#11-retrieval--indexing-re-indexing-chunking-query) |
 | 4 000 elements through an unbounded channel, chunked | **56.0** | ZIO 439.7 | [§16](#16-every-capacity-a-ring--the-table-that-closes-the-arc) |
 | 8 000 elements, 16 producers (okay's own buffers) | **128** | — | [queues.md](queues.md) |
-| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **8.9M** on four fibres, 2.7M on one | Flink 1.87M at parallelism 4 | [§20](#20-streams-against-an-engine--wrocławs-timetable-through-okay-and-apache-flink) |
+| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **22.56M** on eight fibres, 4.29M on one | Flink 1.68M at parallelism 8 | [§20](#20-streams-against-an-engine-and-against-every-library--wrocławs-timetable) |
 
 **Where okay loses, and it is here rather than buried:** fork/join of
 100 fibers against kyo (24.0 against 18.5, §4), and the single-channel
