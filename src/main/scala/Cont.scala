@@ -41,6 +41,18 @@ inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)
 inline def reset[A, R](c: A ^ R): R = c / identity
 
 /**
+ * mark a call to a mutually-recursive function as a tail call, so `/`
+ * trampolines it instead of nesting a JVM stack frame per call: the
+ * thunk is not forced at construction, only when the runner's own
+ * tailrec loop reaches this node (Cont.defer, Cont.scala's Defer case).
+ * `Cont.Pure` as the continuation costs nothing extra —
+ * `Bind(Defer(t, Pure), g)` rotates through the same `Defer` case as
+ * any other continuation.
+ */
+inline def tailcall[A, S, R](thunk: => Cont[A, S, R]): Cont[A, S, R] =
+  Cont.defer(() => thunk)(Cont.Pure)
+
+/**
  * The parameterised continuation monad, defunctionalized (cf. Free):
  * Cont[A, S, R] computes A and, applied by `/` to a continuation A => S,
  * makes an answer R, i.e. it means (A => S) => R.

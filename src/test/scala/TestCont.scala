@@ -55,6 +55,15 @@ class TestCont extends munit.FunSuite {
     assertEquals(prog[Func](identity), 20)
   }
 
+  test("tailcall: mutual tail recursion across two functions, stack-safe") {
+    def isEven(n: Int): Boolean /> Boolean =
+      if n == 0 then Cont.Pure(true) else tailcall(isOdd(n - 1))
+    def isOdd(n: Int): Boolean /> Boolean =
+      if n == 0 then Cont.Pure(false) else tailcall(isEven(n - 1))
+    assert(reset(isEven(1000000)))
+    assert(!reset(isOdd(1000000)))
+  }
+
   test("the diagonal of a ParaMonad is an ordinary Monad") {
     def sum[F[_] : Monad](a: F[Int], b: F[Int]): F[Int] =
       a.flatMap(x => b.map(x + _))
