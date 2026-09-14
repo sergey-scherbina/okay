@@ -1,5 +1,22 @@
 # Changelog
 
+## scaling-table-sources — clickable links to the code behind the core-scaling table
+
+Section 20 of docs/benchmarks.md already named every path involved in
+the core-scaling table in prose — `compare/src/main/scala/okay/wroclaw/`,
+`scripts/wroclaw-bench.sh` — as inline code, which GitHub renders as
+plain text rather than a link. Added a Source table right beside that
+sentence: the Bench class the driver script actually invokes and the
+Lane file holding its logic, one row per library, plus the shared
+Job/Gtfs/Bench files and the script itself. 18 relative links,
+resolved against the filesystem before committing, 0 broken.
+
+Relative markdown links rather than a URL pinned to a commit — this
+document lives in the repo and every other cross-reference on the page
+already points at the current file by plain path; a pinned commit
+would go stale the moment a file moves. Landed as 61ea050c and pushed
+to origin/master.
+
 ## scaling-table-wall — wall clock beside ev/s in every copy of the core-scaling digest
 
 The core-scaling matrix (`scaling-table-docs`, `scaling-table-first`)
