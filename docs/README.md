@@ -102,6 +102,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   table, WHY the Okay number is what it is, why the competitors'
   numbers differ, and where the honest limits are. Raw history with
   protocols and refuted experiments: [history.tsv](../src/jmh/history.tsv).
+- **[The Wrocław streams benchmark](wroclaw-streams-benchmark.md)** —
+  okay against Flink, Spark, java.util.stream, fs2, zio-streams and
+  kyo on one real streaming job: event time, watermarks, keyed
+  windows, keyed state. The core-scaling headline, the full table,
+  five supporting findings each with its own table, and links to
+  every lane's source. Curated from [benchmarks.md](benchmarks.md)
+  §20, which carries the full derivation.
 
 ## The modules
 

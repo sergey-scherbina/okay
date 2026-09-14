@@ -24,7 +24,7 @@ What actually makes this different:
 
 4. Zero dependencies in the core. Nothing comes along for the ride.
 
-5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours. On a real streaming job across 1/2/4/8 cores, okay scales 5.3x while every other in-process stream library (zio-streams, fs2, kyo, java.util.stream) plateaus around 1.6-1.7x — the table is in [docs/benchmarks.md](docs/benchmarks.md), §20.
+5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours. On a real streaming job across 1/2/4/8 cores, okay scales 5.3x while every other in-process stream library (zio-streams, fs2, kyo, java.util.stream) plateaus around 1.6-1.7x — the full write-up, with source links, is [docs/wroclaw-streams-benchmark.md](docs/wroclaw-streams-benchmark.md) (raw derivation in [docs/benchmarks.md](docs/benchmarks.md), §20).
 
 What that buys you in practice: you don't choose between readable and fast, you don't choose between type-safe and ceremony-free, and you don't need anyone's permission to add an effect of your own. And only you control what every effect (even not yours) actually does in any particular case.
 
@@ -304,8 +304,9 @@ quoting that against a chunked lane is the kind of number this page
 stopped printing.)
 
 **Core scaling** — Wrocław's timetable, 2.4M events, event-time
-windows and keyed state, one JVM per lane, 1/2/4/8 cores
-(docs/benchmarks.md §20):
+windows and keyed state, one JVM per lane, 1/2/4/8 cores. Full
+write-up: [docs/wroclaw-streams-benchmark.md](docs/wroclaw-streams-benchmark.md).
+Raw derivation: docs/benchmarks.md §20.
 
 | lane | 1 core | 2 | 4 | 8 | 1→8 |
 |---|---|---|---|---|---|
