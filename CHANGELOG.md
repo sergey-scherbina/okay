@@ -1,5 +1,33 @@
 # Changelog
 
+## wroclaw-benchmark-page — a standalone page for the streams benchmark
+
+`docs/benchmarks.md`'s section 20 — okay against Flink, Spark,
+java.util.stream, fs2, zio-streams and kyo on one real streaming job —
+is 1100+ lines deep inside a 4000-line page, mixed with the
+corrections and refuted first readings that make it trustworthy but
+also make it long. `docs/wroclaw-streams-benchmark.md` is a curated
+entry point: the job and why the comparison is fair, methodology in
+six rules, the core-scaling headline, the full one-run table, five
+supporting findings each with their own table (fixed cost vs marginal,
+merge-parallel scaling with no shuffle, the one-core-loses/eight-core-
+wins reversal decomposed, java.util.stream's two roads, the four-
+process distributed numbers), and the source-code table.
+
+Every number was verified programmatically against section 20 before
+committing: the full 40-row table matched cell for cell, and five
+supporting tables matched value for value — one of them against the
+CORRECT one of two similarly-shaped source tables, after an initial
+mix-up the verification script itself caught. Subsection references
+back to section 20 are plain text rather than link anchors, since a
+prior lane's hand-computed GitHub anchor for that section's own
+heading turned out wrong; a silently-failing jump is worse than a
+name a reader can search for.
+
+Linked from docs/README.md's "Going deeper" list, the same shape as
+`existentials.md`, and from both of README's streaming-speed mentions.
+Landed as 14709b88 and pushed to origin/master.
+
 ## scaling-table-sources — clickable links to the code behind the core-scaling table
 
 Section 20 of docs/benchmarks.md already named every path involved in

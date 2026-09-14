@@ -1,13 +1,6 @@
 # Sprint
 
 ## Doing
-- wroclaw-benchmark-page — a standalone docs/wroclaw-streams-benchmark.md
-  for the streams benchmark (§20 is 1132 lines deep inside a 4000-line
-  page): the job, methodology, the core-scaling headline, the full
-  table, four supporting findings with their tables, source links, and
-  a pointer back to §20 for the full narrative. No new content — every
-  table is sourced from what §20 already says, verified again. Claimed
-  2026-09-14 (.work/active/wroclaw-benchmark-page.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
