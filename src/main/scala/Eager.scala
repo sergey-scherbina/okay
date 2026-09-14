@@ -49,6 +49,12 @@ object Eager {
   given Effects[Eager] with
     override inline def pure[F[+_], A](a: A): Eager[F, A] = a
     override inline def perform[F[+_], A](e: F[A]): Eager[F, A] = Free.Inject(e)
+    // a deferred call must not be forced to find out whether it would
+    // have taken the O(1) pure-value path — that IS the eagerness this
+    // exists to avoid — so it always commits to the tree side, same as
+    // every other Free.Defer-backed instance
+    override inline def defer[F[+_], A, B](thunk: () => Eager[F, A])(f: A => Eager[F, B]): Eager[F, B] =
+      Free.defer(() => toFree(thunk()))(a => toFree(f(a)))
 
     extension [F[+_], A](m: Eager[F, A])
       override def flatMap[B](f: A => Eager[F, B]): Eager[F, B] =

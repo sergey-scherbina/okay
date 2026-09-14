@@ -33,6 +33,19 @@ class TestEffects extends munit.FunSuite {
     assertEquals(e.runWith, n)
   }
 
+  test("Effects.tailcall: mutual tail recursion, tagless — Free and Eff agree") {
+    def isEven[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
+      val E = summon[Effects[M]]
+      if n == 0 then E.pure(true) else E.tailcall(isOdd[M](n - 1))
+    def isOdd[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
+      val E = summon[Effects[M]]
+      if n == 0 then E.pure(false) else E.tailcall(isEven[M](n - 1))
+    assertEquals(isEven[Free](1000000).runWith, true)
+    assertEquals(isEven[Eff](1000000).runWith, true)
+    assertEquals(isOdd[Free](1000000).runWith, false)
+    assertEquals(isOdd[Eff](1000000).runWith, false)
+  }
+
   test("!.tailcall: mutual tail recursion across two functions, stack-safe") {
     def isEven(n: Int): Boolean ! okay.Pure =
       if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))

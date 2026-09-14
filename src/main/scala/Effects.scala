@@ -190,6 +190,20 @@ object Handler {
 trait Effects[M[_[+_], _]]:
   def pure[F[+_], A](a: A): M[F, A]
   def perform[F[+_], A](e: F[A]): M[F, A]
+  /** a bind whose left side is deferred: the thunk is not forced at
+   * construction, only when the encoding's own interpreter reaches this
+   * node — Free's runners (fold/runFree/resume) force it one hop at a
+   * time in their own tailrec loop, Eff's defers into Cont's the same
+   * way its flatMap already does (eff-stack-safety). This is what lets
+   * two mutually-recursive functions returning M[F, A] call each other
+   * in tail position without nesting a JVM stack frame per call. */
+  def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
+  /** mark a call to a mutually-recursive function as a tail call — the
+   * tagless counterpart of Cont's top-level tailcall (Cont.scala) and
+   * Free's own !.tailcall (object !, this file), for code written
+   * polymorphically over `M: Effects` rather than committed to one
+   * encoding. */
+  inline def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
 
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
@@ -488,6 +502,8 @@ inline def over[F[+_], R[+_]](using T: TypeableK[F])[A]
 given Effects[Free] with
   override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Pure(a)
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
+  override inline def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
+    Free.defer(thunk)(f)
 
   extension [F[+_], A](m: Free[F, A])
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
@@ -536,6 +552,10 @@ given Effects[Eff] with
     [S] => (_: F !> S) => Cont.Pure(a)
   override inline def perform[F[+_], A](e: F[A]): Eff[F, A] =
     [S] => (h: F !> S) => h(e)
+  // same shape as flatMap below — the thunk stands where m sits there,
+  // forced by Cont's own runner instead of by this call
+  override inline def defer[F[+_], A, B](thunk: () => Eff[F, A])(f: A => Eff[F, B]): Eff[F, B] =
+    [S] => (h: F !> S) => Cont.defer(() => thunk()[S](h))(a => f(a)[S](h))
 
   extension [F[+_], A](m: Eff[F, A])
     // the inner application is DEFERRED into the Cont runner's loop

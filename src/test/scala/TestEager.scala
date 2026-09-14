@@ -34,6 +34,17 @@ class TestEager extends munit.FunSuite {
     assertEquals(steps, 1000)
   }
 
+  test("tailcall: a deferred call commits to the tree, not the O(1) value path") {
+    def isEven[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
+      val E = summon[Effects[M]]
+      if n == 0 then E.pure(true) else E.tailcall(isOdd[M](n - 1))
+    def isOdd[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
+      val E = summon[Effects[M]]
+      if n == 0 then E.pure(false) else E.tailcall(isEven[M](n - 1))
+    assertEquals(isEven[Eager](1000000).runWith, true)
+    assertEquals(isOdd[Eager](1000000).runWith, false)
+  }
+
   test("operations still suspend; toFree normalizes at any point") {
     val E = summon[Effects[Eager]]
     val m = E.flatMap(E.perform[Produce, Int](20))(x => E.pure(x + 22))
