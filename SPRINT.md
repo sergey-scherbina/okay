@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- scaling-table-sources — clickable links (relative markdown, not
+  pinned GitHub URLs) to the Bench/Lane files behind the core-scaling
+  table, added beside §20's existing prose naming the same paths.
+  Claimed 2026-09-14 (.work/active/scaling-table-sources.claim).
 - dataflow — our own distributed engine (specs/dataflow.md). Stage 0
   (the spec) and stage 1 (the plan as a value + the local runtime)
   have LANDED, and so has stage 2 (the exchange, with the crossover
