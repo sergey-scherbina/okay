@@ -3848,6 +3848,28 @@ The shared half — the feed, the job's definition, okay's own lanes and
 the measurement — lives in `compare/src/main/scala/okay/wroclaw/`,
 which is also where a new engine's lane would start.
 
+**Source, so a claim in this section is one click from the code that
+made it.** `scripts/wroclaw-bench.sh` invokes the Bench class in each
+row; Lane is where that class's lane logic actually lives.
+
+| lane | Bench (what the script runs) | Lane (the logic) |
+|---|---|---|
+| the job itself | [Job.scala](../compare/src/main/scala/okay/wroclaw/Job.scala), [Gtfs.scala](../compare/src/main/scala/okay/wroclaw/Gtfs.scala) | [Bench.scala](../compare/src/main/scala/okay/wroclaw/Bench.scala) (shared harness) |
+| okay (merge) | [OkayBench.scala](../compare/src/main/scala/okay/wroclaw/OkayBench.scala) | [OkayLane.scala](../compare/src/main/scala/okay/wroclaw/OkayLane.scala) |
+| plain JVM | [JvmBench.scala](../compare/src/main/scala/okay/wroclaw/JvmBench.scala) | [JvmLane.scala](../compare/src/main/scala/okay/wroclaw/JvmLane.scala) |
+| java.util.stream | [JavaBench.scala](../okay-java/src/test/scala/okay/java/wroclaw/JavaBench.scala) | [JavaLane.scala](../okay-java/src/test/scala/okay/java/wroclaw/JavaLane.scala) |
+| fs2 | [Fs2Bench.scala](../okay-fs2/src/test/scala/okay/fs2/wroclaw/Fs2Bench.scala) | [Fs2Lane.scala](../okay-fs2/src/test/scala/okay/fs2/wroclaw/Fs2Lane.scala) |
+| zio-streams | [ZioBench.scala](../okay-zio/src/test/scala/okay/zio/wroclaw/ZioBench.scala) | [ZioLane.scala](../okay-zio/src/test/scala/okay/zio/wroclaw/ZioLane.scala) |
+| kyo | [KyoBench.scala](../okay-kyo/src/test/scala/okay/kyo/wroclaw/KyoBench.scala) | [KyoLane.scala](../okay-kyo/src/test/scala/okay/kyo/wroclaw/KyoLane.scala) |
+| flink | [FlinkBench.scala](../okay-flink/src/test/scala/okay/flink/wroclaw/FlinkBench.scala) | [FlinkLane.scala](../okay-flink/src/test/scala/okay/flink/wroclaw/FlinkLane.scala) |
+
+Driver: [scripts/wroclaw-bench.sh](../scripts/wroclaw-bench.sh) — one
+`sbt` invocation per lane, in its own forked JVM (point 1 above says
+why), printing the `ROW`/`SKIP` lines the table is built from. Spark's
+lanes (`SparkBench`, under `okay-spark/src/test/scala/okay/spark/wroclaw/`)
+and the distributed/native variants added since this table was taken
+are a different, later measurement and are not linked here.
+
 
 ### The table — everything on one machine, one run
 
