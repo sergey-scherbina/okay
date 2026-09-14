@@ -19,6 +19,15 @@ object Free {
   /** an operation as a tree */
   inline def inject[F[+_], A](a: F[A]): Free[F, A] = Inject(a)
 
+  /** a bind whose LEFT side is deferred (mirrors Cont.defer, Cont.scala):
+   * the thunk is not forced at construction, only when the interpreter's
+   * own loop (`fold`, `runFree`, `resume`) reaches this node — which is
+   * what lets two mutually-recursive functions returning `A ! F` call
+   * each other in tail position without nesting a JVM stack frame per
+   * call. The constructor is public and the case private, for the same
+   * reason as Cont.defer: only the interpreters see the representation. */
+  def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] = Defer(thunk, f)
+
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
   given [F[+_]]: Monad[Free[F, *]] with
     override inline def pure[A](a: A): Free[F, A] = Pure(a)
@@ -36,6 +45,15 @@ enum Free[F[+_], A] {
   /** sequencing: run a, then feed its value to the plain-function continuation f */
   case Bind[F[+_], A, B](a: Free[F, A],
                          f: A => Free[F, B]) extends Free[F, B]
+
+  /** a bind whose left side is deferred into the interpreter's own loop.
+   * Public, like Bind/Pure/Inject above (unlike Cont's Defer, which stays
+   * private since Cont's own runner is the only place that ever matches
+   * it) — Free's interpreters live across files (Effects.scala's runFree
+   * and `!.resume`, Async.scala's own loop), so the case itself, not just
+   * the `Free.defer` smart constructor, has to be visible to them. */
+  case Defer[F[+_], A, B](thunk: () => Free[F, A],
+                          f: A => Free[F, B]) extends Free[F, B]
 
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
   inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
@@ -56,6 +74,10 @@ enum Free[F[+_], A] {
       case Bind(Inject(a), f) => h(a)(f)
       case Inject(a) => h(a)(Pure(_))
       case Pure(a) => p(a)
+      // the deferred left side is forced HERE, in the loop, and its own
+      // binds then rotate through the cases above — constant stack
+      case Defer(t, f) => Bind(t(), f).fold(p)(h)
+      case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)).fold(p)(h)
 
   /** interpret into F's own Monad, operation by operation */
   final def run(using M: Monad[F]): F[A] =

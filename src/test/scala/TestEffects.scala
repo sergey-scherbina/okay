@@ -33,6 +33,21 @@ class TestEffects extends munit.FunSuite {
     assertEquals(e.runWith, n)
   }
 
+  test("!.tailcall: mutual tail recursion across two functions, stack-safe") {
+    def isEven(n: Int): Boolean ! okay.Pure =
+      if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
+    def isOdd(n: Int): Boolean ! okay.Pure =
+      if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
+    // runFree (Effects.scala, the runWith fast path)
+    assert(!.run(isEven(1000000)))
+    assertEquals(!.run(isOdd(1000000)), false)
+    // fold, via foldIn/runIn[Cont] (Free.scala)
+    assert(isEven(1000000).runIn[Cont])
+    // resume and ? (Effects.scala's object !)
+    assertEquals(isEven(1000000).resume, Pure(true))
+    assertEquals(isEven(1000000).?, true)
+  }
+
   test("Effects.handle: abort and forwarding (Throws)") {
     type F = Throws % String + Produce
     def calc(b: Boolean): Int ! F =

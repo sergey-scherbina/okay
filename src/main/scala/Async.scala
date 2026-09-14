@@ -222,6 +222,14 @@ object Async {
               if next != null then
                 cur = next
                 looping = !stopped
+            // the deferred left side is forced HERE, in the loop
+            // (Free.scala's Defer case, mirrors runFree in Effects.scala)
+            case Free.Defer(t, f) =>
+              cur = Free.Bind(t(), f)
+              looping = !stopped
+            case Free.Bind(Free.Defer(t, f), g) =>
+              cur = Free.Defer(t, f(_).flatMap(g))
+              looping = !stopped
       catch case e: Throwable => fail(e)
 
     /** one operation: the continuation to drive next when the answer

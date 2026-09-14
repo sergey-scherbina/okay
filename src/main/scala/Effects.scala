@@ -504,6 +504,9 @@ given Effects[Free] with
     case Free.Bind(Free.Bind(a, f), g) => runFree(Free.Bind(a, f(_).flatMap(g)))
     case Free.Bind(Free.Pure(a), f) => runFree(f(a))
     case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
+    // the deferred left side is forced HERE, in the loop (Free.scala's Defer case)
+    case Free.Defer(t, f) => runFree(Free.Bind(t(), f))
+    case Free.Bind(Free.Defer(t, f), g) => runFree(Free.Defer(t, f(_).flatMap(g)))
 
 /**
  * Effects are continuation programs, literally: Eff is the final
@@ -620,6 +623,9 @@ object ! {
     @tailrec def resume: A ! F = self match
       case Bind(Bind(a, h), k) => a.flatMap(h(_).flatMap(k)).resume
       case Bind(Pure(a), k) => k(a).resume
+      // the deferred left side is forced HERE, in the loop (Free.scala's Defer case)
+      case Defer(t, f) => Bind(t(), f).resume
+      case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)).resume
       case a => a
 
     /**
@@ -654,10 +660,25 @@ object ! {
       case Bind(a, _) => a.?
       case Effect(e) => summon[Handler[F]].handle(e)
       case Pure(a) => a
+      // a peek forces the thunk too, same as `Bind(a, _) => a.?` discards
+      // its own continuation without applying it
+      case Defer(t, _) => t().?
   }
 
   /** run a closed computation */
   inline def run[A](e: A ! Nothing): A = e.runWith
+
+  /**
+   * mark a call to a mutually-recursive function returning `A ! F` as a
+   * tail call, so the interpreter (`fold`/`runFree`/`resume`) trampolines
+   * it instead of nesting a JVM stack frame per call — the Free.Defer
+   * counterpart of Cont's top-level `tailcall` (Cont.scala). Named
+   * `!.tailcall`, not a bare top-level def, because a second top-level
+   * `tailcall` in this package collides with Cont's (same failure as
+   * `pure`/`lift` in Cont.scala's own history).
+   */
+  inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
+    Free.defer(() => thunk)(okay.pure)
 
   /** re-inject into a wider row: effect subsumption. Free is invariant
    * in its signature, so widening walks the tree — one re-injected

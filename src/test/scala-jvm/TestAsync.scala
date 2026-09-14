@@ -78,6 +78,15 @@ class TestAsync extends munit.FunSuite {
     assertEquals(Async.spawn(async[Int](throw boom)).joinEither(), Left(boom))
   }
 
+  test("mutual tail recursion trampolines through Async's own driver loop") {
+    def isEven(n: Int): Boolean ! Async =
+      if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
+    def isOdd(n: Int): Boolean ! Async =
+      if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
+    assertEquals(Async.spawn(isEven(1000000)).join(), true)
+    assertEquals(Async.spawn(isOdd(1000000)).join(), false)
+  }
+
   test("async composes with other effects: telling across suspensions") {
     type F = Async + Writer % String
     val prog: Int ! F =
