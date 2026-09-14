@@ -250,12 +250,33 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
       if grownTo == null then false          // full, and not contention: the sender parks
       else grownTo.nn.push(a)                // a part of our own, if we are not part 0's owner
 
+  /**
+   * A ROUTE TAKEN BEFORE THE SWAP NAMES PART 0, and part 0 after the
+   * swap is the ADOPTED part — drain-only, and read first on purpose.
+   * A later element carried there overtakes this producer's earlier
+   * ones, which is the guarantee this class makes
+   * (growing-stale-route, 2026-09-14).
+   *
+   * On our own thread the question can be asked again and the answer
+   * is this producer's own part. The refusal path below already did
+   * this and said why; doing it only there was the hole, because a
+   * push that SUCCEEDS into part 0 never reaches the refusal path.
+   *
+   * `pushDecidingAtOnBehalf` does NOT do this and must not: it runs
+   * on whichever thread freed the slot, so asking there would answer
+   * with the consumer's part. Its caller re-takes the route on the
+   * producer's thread before parking instead.
+   */
+  private def ours(b: Buffer[A], route: Int): Int =
+    if grown.get then b.route() else route
+
   override def pushAt(route: Int, a: A): Boolean =
     val b = inner
-    if b.pushAt(route, a) then true
+    val r = ours(b, route)
+    if b.pushAt(r, a) then true
     else
       val grownTo = refused()
-      if grownTo == null then false else grownTo.nn.pushAt(route, a)
+      if grownTo == null then false else grownTo.nn.pushAt(grownTo.nn.route(), a)
 
   // the channel's own send path is `pushDecidingAt`, so the refusal
   // that means contention arrives HERE and not through `push` — the
@@ -273,7 +294,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   override def pushDecidingAt(route: Int, a: A, unless: AtomicBoolean, orElse: A): A | Null =
     sample()
     val b = inner
-    val out = b.pushDecidingAt(route, a, unless, orElse)
+    val out = b.pushDecidingAt(ours(b, route), a, unless, orElse)
     if out != null then out
     else
       val grownTo = refused()

@@ -9,6 +9,64 @@ bin: an entry whose fix belongs to a module belongs in that module.
 Newest first. Status lives in the machine-readable header, never in
 the prose.
 
+## growing-stale-route — a route taken before the swap names the adopted part, and overtakes its own producer
+<!-- status: fixed
+     lane: jvm
+     area: queues
+     found-by: TestGrowing "each producer's own order survives the swap" (reported 2026-09-14, round 40)
+     fixed-in: growing-stale-route (2026-09-14)
+     gate: src/test/scala-jvm/TestGrowing.scala, "a route taken before the swap
+       does not send later elements into the adopted part" — one producer, no
+       race, fails on the old line -->
+
+`TestGrowing`'s per-producer order law failed again, and the reported
+output says the whole of it: producer 1 came back
+
+    25, 33, 27, 31, 35
+
+`33` ahead of `27` and `31`, from one producer, which is exactly the
+shape `merge-chunked-order` was closed on. That fix is sound and is
+not the one at fault — this is a second road to the same place.
+
+**The mechanism.** `SentinelChannel.sendAsync` took the route ONCE,
+before the first attempt, and carried it through every retry. It must
+carry it: a parked send resumes on the waker's thread, so asking again
+there would answer with the CONSUMER's part and scatter one producer's
+elements. But taken before the swap the answer is `0`, because
+`Buffer.route()` is `0` for anything unpartitioned — and after the
+swap `0` is the ADOPTED PART, which `popAdoptedFirst` reads before
+every part opened after it, on purpose.
+
+So the producer's later element was carried into the one part that is
+read first, and overtook its earlier ones sitting in a part of its
+own. The rule that fixed `merge-chunked-order` is what carried it
+there. The same stale route also parked the sender on the waiter queue
+of a part it was not pushing to.
+
+**Why it shows only sometimes.** It needs part 0 to be FULL when the
+earlier elements are pushed — so they are refused into a part of their
+own — and to have ROOM when a later one is. 1 200 rounds on a quiet
+machine did not produce it; the reporter's run did, at round 40.
+
+**The fix, in two places, because the route has two owners.**
+
+- `SentinelChannel.attemptSend` takes the route AFTER reading the
+  buffer and only while it is on the producer's own thread
+  (`!granted`). A resumed send keeps the route it parked with, which
+  was taken correctly before it parked.
+- `Growing.pushAt` / `pushDecidingAt` correct a stale route before the
+  attempt rather than only after a refusal. Doing it only on the
+  refusal path was the hole: a push that SUCCEEDS into part 0 never
+  reaches the refusal path. `pushDecidingAtOnBehalf` deliberately does
+  NOT correct — it runs on whichever thread freed the slot, and the
+  honest answer there is the one its caller already took.
+
+**The gate is deterministic**, with one producer thread and latches
+rather than a race, and it was run both ways: it fails on the old line
+with `33, 27, 31` and passes on the new one. The round-based law
+passed 1 600 rounds after the fix — which is consistent with it and is
+not evidence, since it passed 1 200 before.
+
 ## universal-apply-blocks-named-tuples — `import okay.*` makes a named tuple's field access a type error
 <!-- status: fixed
      lane: all
