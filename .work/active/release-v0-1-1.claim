@@ -1,6 +1,0 @@
-feature/release-v0-1-1 2026-09-14T13:40:44Z
-agent: claude-code
-heartbeat: 2026-09-14T13:40:44Z
-status: in-progress
-done-so-far: claimed
-next: release commit, full gate, tag
