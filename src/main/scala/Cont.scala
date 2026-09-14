@@ -39,18 +39,21 @@ infix type ^[A, R] = Cont[A, A, R]
 inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)
 /** delimit: run the computation with the identity continuation */
 inline def reset[A, R](c: A ^ R): R = c / identity
+/** deliver a value as the answer directly, top-level alongside shift/reset (named `answer`, not `pure` or
+ * `lift` — both already exist as top-level/wildcard-imported names elsewhere in the package and collide) */
+inline def answer[A, R](a: A): A /> R = Cont.Pure(a)
 
 /**
  * mark a call to a mutually-recursive function as a tail call, so `/`
  * trampolines it instead of nesting a JVM stack frame per call: the
  * thunk is not forced at construction, only when the runner's own
  * tailrec loop reaches this node (Cont.defer, Cont.scala's Defer case).
- * `Cont.Pure` as the continuation costs nothing extra —
- * `Bind(Defer(t, Pure), g)` rotates through the same `Defer` case as
+ * `answer` as the continuation costs nothing extra —
+ * `Bind(Defer(t, answer), g)` rotates through the same `Defer` case as
  * any other continuation.
  */
 inline def tailcall[A, S, R](thunk: => Cont[A, S, R]): Cont[A, S, R] =
-  Cont.defer(() => thunk)(Cont.Pure)
+  Cont.defer(() => thunk)(answer)
 
 /**
  * The parameterised continuation monad, defunctionalized (cf. Free):
