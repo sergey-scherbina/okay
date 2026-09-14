@@ -290,13 +290,26 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     hit
 
   def sendAsync(a: A)(k: Accepted): Unit =
-    // the route is taken HERE, once, and carried through every retry:
-    // a parked send resumes on the waker's thread, so asking again
-    // there would scatter one producer's elements across parts
-    attemptSend(a, granted0 = false, ring.route())(k)
+    attemptSend(a, granted0 = false, route0 = 0)(k)
 
-  private def attemptSend(a: A, granted0: Boolean, route: Int)(k: Accepted): Unit =
+  private def attemptSend(a: A, granted0: Boolean, route0: Int)(k: Accepted): Unit =
     val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
+    // THE ROUTE IS TAKEN HERE, on the producer's own thread, and
+    // carried through every retry: a parked send resumes on the
+    // waker's thread, so asking again there would scatter one
+    // producer's elements across parts.
+    //
+    // AND IT IS TAKEN AFTER `buffer` IS READ, which is the whole of
+    // growing-stale-route (2026-09-14). It used to be taken in
+    // `sendAsync`, before the first attempt — so a send that began
+    // while the buffer was still the plain ring carried route 0, and
+    // `Buffer.route()` is 0 for anything unpartitioned. After the
+    // swap 0 is THE ADOPTED PART, which is read first on purpose, so
+    // this producer's later element was carried in front of its
+    // earlier ones and the rule that fixed merge-chunked-order was
+    // what carried it. It also parked the sender on the waiter queue
+    // of a part it was not pushing to.
+    val route = if granted0 then route0 else buffer.route()
     val granted = granted0
     var go = true
     while go do

@@ -189,6 +189,86 @@ class TestGrowing extends munit.FunSuite {
   }
 
   /**
+   * A ROUTE TAKEN BEFORE THE SWAP NAMES THE ADOPTED PART
+   * (growing-stale-route, 2026-09-14).
+   *
+   * The round-based law above found this again and could not say
+   * what it was: producer 1 came back `25, 33, 27, 31, 35`. This is
+   * the mechanism, with the race taken out.
+   *
+   * A channel takes its route ONCE, on the producer's thread, and
+   * carries it through every retry — it must, because a parked send
+   * resumes on the waker's thread and asking there would scatter one
+   * producer's elements across parts (`SentinelChannel.sendAsync`).
+   * Before the swap that route is 0, because `Buffer.route()` is 0
+   * for any unpartitioned buffer. After the swap 0 is THE ADOPTED
+   * PART — the one read first, on purpose.
+   *
+   * So the producer's later elements land in front of its earlier
+   * ones, and the very rule that fixed `merge-chunked-order` is what
+   * carries them there. It needs part 0 to be FULL when the earlier
+   * elements are pushed (so they are refused into a part of their
+   * own) and to have ROOM when a later one is, which is why it shows
+   * only sometimes.
+   */
+  test("a route taken before the swap does not send later elements into the adopted part") {
+    import java.util.concurrent.CountDownLatch
+    val Cap = 4
+    val b = Growing[Int](Ring[Int](Cap), 16, () => Ring[Int](Cap))
+    val flag = java.util.concurrent.atomic.AtomicBoolean(false)
+    def at(route: Int, v: Int): Boolean = b.pushDecidingAt(route, v, flag, -999) != null
+
+    // ONE THREAD is the producer for the whole sequence. Three threads
+    // would be three producers with three parts, and the thing under
+    // test is what happens to ONE producer's own order.
+    val filled, grown, pushedEarly, part0Free, done = CountDownLatch(1)
+    var stale = -1
+    val producer = Thread.ofPlatform().start { () =>
+      // the route is taken while the buffer is still the ring, which is
+      // what a channel does on its producer's thread
+      stale = b.route()
+      var i = 0
+      while i < Cap do { assert(at(stale, -(i + 1)), s"fill ${i + 1}"); i += 1 }
+      assert(!at(stale, -99), "a full ring must refuse")
+      filled.countDown(); grown.await()
+
+      // part 0 is still full, so these are refused into a part of its own
+      assert(at(stale, 27), "27"); assert(at(stale, 31), "31")
+      pushedEarly.countDown(); part0Free.await()
+
+      // …and this one, carrying the same route, meets a part 0 with room
+      assert(at(stale, 33), "33")
+      done.countDown()
+    }
+
+    filled.await()
+    assertEquals(stale, 0, "an unpartitioned buffer routes everything to 0")
+    assertEquals(b.parts, 1, "one producer must not have grown it")
+    // a SECOND producer refused by the same full ring is the contention
+    // this buffer grows on
+    val other = Thread.ofPlatform().start(() => { val _ = at(0, 2) })
+    other.join()
+    assert(b.parts > 1, "two producers refused by a full ring must have grown it")
+    grown.countDown()
+
+    pushedEarly.await()
+    // the consumer drains part 0, which is read first — so part 0 has
+    // room again while 27 and 31 wait in their producer's own part
+    var n = 0
+    while n < Cap do { assert(b.pop() != null, s"the filler ran out at $n"); n += 1 }
+    part0Free.countDown()
+
+    done.await()
+    producer.join()
+    val out = List.newBuilder[Int]
+    var x = b.pop()
+    while x != null do { out += x.nn; x = b.pop() }
+    val mine = out.result().filter(v => v == 27 || v == 31 || v == 33)
+    assertEquals(mine, List(27, 31, 33),
+      "a route taken before the swap put a later element in the adopted part, ahead of earlier ones")
+  }
+
+  /**
    * The same guarantee stated structurally, so that it does not
    * depend on a race to show: an ADOPTED part is read before any part
    * opened after it.
