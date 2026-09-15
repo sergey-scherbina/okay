@@ -1,0 +1,6 @@
+feature/freer-base-bind-public 2026-09-15T06:14:37Z
+agent: claude-code
+heartbeat: 2026-09-15T06:14:37Z
+status: in-progress
+done-so-far: spec amendment, prose only
+next: freer-base.md Bind public (operator decision), Defer and Absorbed private
