@@ -1,6 +1,0 @@
-feature/cont-tidy 2026-09-15T13:31:39Z
-agent: claude-code
-heartbeat: 2026-09-15T13:31:39Z
-status: in-progress
-done-so-far: survey done
-next: remove answer + Cont tailcall, Shift inside the companion, stale Free.scala comments, docs; gate
