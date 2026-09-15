@@ -1,6 +1,0 @@
-feature/fuse-consumers 2026-09-15T05:10:25Z
-agent: claude-code
-heartbeat: 2026-09-15T05:10:25Z
-status: in-progress
-done-so-far: measurement lane, no source change
-next: PState/Staged/okayCont/Direct lanes with fuse=1 vs 128, 3 rotated rounds
