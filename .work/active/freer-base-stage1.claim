@@ -1,0 +1,6 @@
+feature/freer-base-stage1 2026-09-15T12:00:15Z
+agent: claude-code
+heartbeat: 2026-09-15T12:00:15Z
+status: in-progress
+done-so-far: nothing yet
+next: Free as Freer[Lift[F]] at a pinned Unit index; object ! exports the cases; runFree/resume/relay/Async loop over the shared base; law extended; gate + measure
