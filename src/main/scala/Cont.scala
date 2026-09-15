@@ -189,6 +189,37 @@ object Cont:
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)
 
   /**
+   * Is this program already an ANSWER — and if so, continue on the
+   * answer itself instead of applying a continuation to it.
+   *
+   * `c / k` and `ifAnswer(a)` agree for an answer by the runner's own
+   * `Pure` case, so this decides nothing about meaning; what it
+   * decides is who builds the continuation. A handler that does NOT
+   * capture builds exactly `Pure` — every comonadic handler does, and
+   * they are the overwhelming majority — and a caller that can go on
+   * from the answer with a tail call then needs no trampoline node at
+   * all. `Effects.handle` is that caller, and the node it avoids was
+   * measured at 59 µs and 730 328 B on a 10 000-operation program
+   * (handle-forward-fast): a `Defer` whose continuation is `Pure`
+   * rotates into a LEFT-nested `Bind`, and left-nesting is the one
+   * shape this tree rewrites, so every following operation pays.
+   *
+   * Inline with inline branches, like `split`, so neither arm costs a
+   * closure or an `Option` on the hot path.
+   *
+   * It matches the representation, which the facade's own rule
+   * forbids — "facades are never matched". The rule is about matching
+   * a facade from OUTSIDE, where the tree is opaque and the indexes
+   * are a claim nobody can check; here the companion looks at its own
+   * tree, which is the one place that is allowed to.
+   */
+  inline def onAnswer[A, S, B](c: Rep[A, S, S])(inline ifAnswer: A => B)
+                                               (inline otherwise: => B): B =
+    c match
+      case Pure(a) => ifAnswer(a)
+      case _ => otherwise
+
+  /**
    * THE ONE CAST, and what makes it right.
    *
    * The tree stores a leaf as `Shift[X]`, its answer types erased.

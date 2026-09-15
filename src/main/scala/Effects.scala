@@ -519,6 +519,74 @@ given Effects[Free] with
       case Free.Inject(e) => H.handle(e)
       case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
+  /**
+   * The definition (Effects.handle) answers EVERY operation in `Cont`,
+   * including the ones the handler never claims: a forwarded operation
+   * costs `shift(k => perform(e).flatMap(k))`, a continuation capture
+   * spent on work that is pure copying. Measured at +112.7 bytes per
+   * forwarded operation and 1.51x overall against `relay` on the same
+   * pre-built tree (handle-decompose, docs/benchmarks.md §2, rows
+   * `hd-*`), and forwarding is the common case: in a row of four
+   * effects every handler forwards three quarters of what it sees.
+   *
+   * So the tree keeps what belongs to the tree. A forwarded operation
+   * is re-emitted on the G side exactly as `relay` does it, and `Cont`
+   * is entered ONLY for an operation the handler claims — where the
+   * capture is the point rather than an accident.
+   *
+   * WHY THIS IS THE SAME FUNCTION, and the argument is asymmetric on
+   * purpose: a forwarded operation is not the handler's business. It
+   * has already been committed to the G program, and a later abort
+   * cannot un-perform it — which is exactly what the definition does
+   * too, since `perform(e).flatMap(k)` puts `e` before `k` and an
+   * abort inside `k` cannot reach back past it. TestHandleForward is
+   * that claim as assertions rather than as this paragraph: what an
+   * ABORTING handler forwards, what a MULTI-SHOT handler forwards
+   * twice, and the order of both. Those tests were written against
+   * the definition, watched to FAIL against a deliberately wrong
+   * forwarding arm, and only then was this written.
+   *
+   * THE HANDLED ARM IS WHERE THE COST MOVED TO, and the measurement
+   * is worth more than the code. A handler that does not capture
+   * answers with `Cont.Pure`, and the loop simply CONTINUES on that
+   * answer — one tail call, nothing allocated. Only a handler that
+   * really captures needs the rest of the program reified, and it
+   * gets a `Defer` so that deep programs trampoline through the
+   * interpreter rather than the JVM stack (which is what `foldCont`'s
+   * `Cont` runner used to do for them).
+   *
+   * Taking that `Defer` on EVERY handled operation — the first version
+   * of this method — cost 59 µs and 730 328 B on the 10 000-operation
+   * lane, against a total gap of 61 µs: a `Defer` whose continuation
+   * is `Pure` rotates into a LEFT-nested `Bind`, left-nesting is the
+   * one shape `resume` rewrites, and every following operation pays
+   * for it. Measured, not reasoned: rows `hff-*`.
+   */
+  override def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: Free[F + G, A])
+                                                            (ret: A => Free[G, B])
+                                                            (h: F !> Free[G, B]): Free[G, B] =
+    // NOT @tailrec, and the reason is a limitation of the annotation
+    // rather than of the loop: the two arms that DEFER mention `loop`
+    // inside a closure, which @tailrec reads as a non-tail recursive
+    // call even though the closure is a separate method that the
+    // interpreter, not this loop, will enter. The answered arm below
+    // is a real tail call and is compiled as one; what guarantees the
+    // depth is TestHandleForward's three stack-safety tests, which is
+    // where a guarantee of this kind belongs anyway.
+    def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
+      case Free.Pure(a) => ret(a)
+      case Free.Inject(e) =>
+        split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
+      case Free.Bind(Free.Inject(e), k) =>
+        split[F, G](e)
+          // `h` is asked ONCE: the answered test and the fallback both
+          // read the same program, and a handler is not assumed pure
+          (e => { val c = h(e)
+                  Cont.onAnswer(c)(a => loop(k(a)))
+                                  (c / (x => Free.defer(() => loop(k(x)))(Free.Pure(_)))) })
+          (e => Free.Inject(e).flatMap(x => loop(k(x))))
+    loop(m)
+
 /**
  * Effects are continuation programs, literally: Eff is the final
  * (Church) encoding of the interface — a computation as the function
@@ -780,14 +848,15 @@ object ! {
           case Right(g) => Effect(g).flatMap(x => translate[A, F, G](k(x))(h))
 
   /**
-   * handle_relay (Kiselyov): tail-resumptive handling, measured
-   * **1.51x** faster than Effects.handle on forwarding-heavy work —
-   * priced like for like by handle-decompose (2026-09-15), on the same
-   * pre-built tree rather than on two numbers that each included
-   * construction, and the gap is ALLOCATION: +112.7 bytes per
-   * FORWARDED operation, because `handle` folds through `Cont` and
-   * spends a shift on an operation no handler touches, where this loop
-   * stays on the tree. docs/benchmarks.md §2, rows `hd-*`. g is
+   * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x
+   * faster than `Effects.handle` on forwarding-heavy work; since
+   * handle-forward-fast (2026-09-15) it is **1.03x**, and the two
+   * allocate the SAME NUMBER OF BYTES to the digit, because `handle`
+   * was given this loop's forwarding arm. What is left of the reason
+   * to reach for `relay` is therefore not speed: it is that an
+   * answer-polymorphic `g` cannot abort or perform G, which is a
+   * CLAIM about the handler that the type makes and `handle` cannot.
+   * docs/benchmarks.md §2, rows `hd-*` and `hff-*`. g is
    * answer-polymorphic, so by parametricity it must resume the
    * continuation (exactly once), which keeps the loop tail-recursive,
    * i.e. stack-safe on any number of handled operations. For handlers

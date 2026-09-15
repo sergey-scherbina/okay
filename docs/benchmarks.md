@@ -415,19 +415,45 @@ shape of effectful code.
 **Why Okay's numbers.** Reader runs at RELAY speed: a
 tail-resumptive handler must resume exactly once, so handling is one
 tail-recursive loop — no continuation capture, no allocation per ask.
-**Priced like for like (handle-decompose, 2026-09-15): 1.51x, and it
-is allocation.** The older 1.45x compared two numbers that each
-carried 24.6 µs of tree construction; `handlePrebuilt` beside
-`relayPrebuilt` relays and handles the SAME pre-built 10 000-node
-tree, and reads 223.3 µs against 148.1. The allocation is identical
-to the digit across two rounds in opposite lane order: 2 869 306 B/op
-against 1 753 945, which over 9 900 FORWARDED operations is **+112.7
-bytes per forwarded operation** — the operation the handler never
-touches. At ~12 GB/s that extra megabyte is ~93 µs, i.e. the whole
-75 µs gap. The mechanism is in the source: `Effects.handle` folds the
-program through `Cont` and spends a `shift` per forwarded operation,
-where `relay` stays on the `Free` tree. BACKLOG `handle-forward-fast`
-is the question that follows, and it is not yet answered.
+
+**The general handler now costs the same (handle-forward-fast,
+2026-09-15), and the honest way to read this section is as the
+sequence it happened in.** It had been quoted at 1.45x for a long
+time. `handlePrebuilt` beside `relayPrebuilt` — the same pre-built
+10 000-node tree, nothing different but the handler — first made the
+comparison like for like and made it WORSE: 1.51x, because the older
+pair of numbers each carried 24.6 µs of tree construction that
+diluted the ratio. That measurement also said what the gap WAS:
+allocation, +112.7 bytes on every FORWARDED operation, the operation
+the handler never touches, because `Effects.handle` folded the whole
+program through `Cont` and spent a `shift` on it.
+
+Giving `handle` relay's forwarding arm closes it:
+
+| | before | after |
+|---|---|---|
+| `handlePrebuilt` | 223.3 µs | **154.2 µs** |
+| allocation | 2 869 306 B/op | **1 753 945 B/op** |
+| `relayPrebuilt` (control) | 148.1 µs | 149.9 µs |
+
+The second row is the result. **`handle` allocates exactly what
+`relay` allocates, to the digit** — 1 753 945 against 1 753 945 — and
+the build-on-every-call pair agrees at 2 154 017 on both sides. What
+remains is 3% of TIME with identical bytes, which is the signature of
+code shape rather than structure and is filed as
+`handle-loop-inlining`.
+
+Two findings are worth more than the number. The `shift` was only a
+third of the gap. The other two thirds were introduced by the fix's
+own first version: trampolining EVERY handled operation through a
+`Defer` cost 59 µs of the 61, because a `Defer` whose continuation is
+`Pure` rotates into a LEFT-nested `Bind`, and left-nesting is the one
+shape this tree rewrites — so each handled operation taxed every
+operation after it. The shipped version keeps that node only for a
+handler that really captures the continuation; one that does not
+answers with `Cont.Pure`, and the loop simply goes on from the
+answer. Rows `hff-*`, and `hd-*` for the measurement that started it.
+
 Writer's `tell` is ZERO allocation: the operation is an
 opaque IDENTITY signature — telling w IS the value w, no wrapper
 node; the handler is a bespoke tail loop into a Vector.

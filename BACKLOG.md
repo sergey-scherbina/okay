@@ -70,30 +70,47 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that megabyte is ~93 µs against a 75 µs time delta, so there is
       nothing else to explain. Rows `hd-*`; the stale 1.45x is
       corrected in docs/benchmarks.md §2 and in `relay`'s own comment.
-- [ ] handle-forward-fast — the question handle-decompose leaves, with
-      its prize already priced: up to 33% off `Effects.handle` on
-      forwarding-heavy work, which is most real rows, since a row of
-      four effects forwards three quarters of its operations through
-      every handler but one.
-      THE MECHANISM, read out of the source and confirmed by the
-      bytes: `handle` folds the whole program through `Cont` and
-      answers a FORWARDED operation with `shift(k => perform(e)
-      .flatMap(k))`, so an operation the handler never touches still
-      pays a continuation capture. `relay` answers the same case with
-      `Effect(e).flatMap(x => relay(k(x))(f)(g))`, on the tree.
-      THE IDEA: give `handle` the same forwarding arm, entering `Cont`
-      only for operations the handler actually claims. `handle` must
-      stay general where `relay` cannot — a handler that ABORTS or
-      performs G — and the argument that forwarding is safe to move is
-      that forwarding is not the handler's business at all: the
-      forwarded operation has already been committed to the G program,
-      and an abort in a LATER handled operation cannot un-perform it.
-      THAT ARGUMENT IS NOT A PROOF, and it is where this entry can
-      die: write the aborting and multi-shot cases as tests FIRST
-      (TestEffects has both shapes), watch them fail against a
-      deliberately wrong forwarding arm, and only then believe a green
-      suite. DISQUALIFYING: any change in what a multi-shot or
-      aborting handler observes, or a `fusedSWr` floor that moves.
+- [x] handle-forward-fast — DONE (2026-09-15), and BOTH of its
+      numbers were wrong in the entry that proposed it. `Effects.handle`
+      now re-emits a FORWARDED operation on the tree the way `relay`
+      does and enters `Cont` only for one the handler claims.
+      RESULT: `handlePrebuilt` 223.3 -> **154.2 us**, and the row that
+      matters, allocation 2 869 306 -> **1 753 945 B/op**, which is
+      `relay`'s number TO THE DIGIT (the build-on-every-call pair
+      agrees too: 2 154 017 on both sides). The 1.51x gap is 1.03x.
+      WRONG #1, the entry's mechanism: the `shift` per forwarded
+      operation was only a THIRD of the gap.
+      WRONG #2, and this is the keeper: the other two thirds were
+      introduced by this lane's own first version. Trampolining every
+      handled operation through `Free.defer` cost 59 us of the 61 —
+      a `Defer` whose continuation is `Pure` rotates into a LEFT-nested
+      `Bind`, left-nesting is the one shape `resume` rewrites, so each
+      handled operation taxes every operation after it. Found by
+      removing the node and measuring (row `hff-defer-cost`): 151.3 us,
+      and only the 100k-handled test fails, by StackOverflow. The
+      shipped version keeps the node ONLY for a handler that really
+      captures; one that does not answers with `Cont.Pure`, and the
+      loop goes on from the answer with a tail call
+      (`Cont.onAnswer`, inline, no `Option`, no closure).
+      The order of work was the entry's own condition and it held:
+      TestHandleForward's seven tests were written first, passed
+      against the definition, and four of them were watched to FAIL
+      against a deliberately wrong forwarding arm before the real one
+      was written. Disqualifier checked: `fusedSWr` 13.2 us /
+      122 640 B against the recorded floor's 13.7 / 122 641.
+      Rows `hff-*`.
+- [ ] handle-loop-inlining — what handle-forward-fast left: 3% of TIME
+      with allocation IDENTICAL TO THE DIGIT, which is the signature
+      this repository has now paid for twice (see
+      `inlining-threshold-two-faces` in the session memory and the
+      `relay` bytecode comment). `relay`'s loop is deliberately tuned
+      under HotSpot's `FreqInlineSize` of 325 — its cold terminal arm
+      lives in `last` for exactly that reason — and `handle`'s new loop
+      has never been looked at with `-XX:+PrintInlining`. Do that
+      FIRST, before changing anything. And read the other face of the
+      rule before acting on what it says: a straight-line body wants to
+      be under the line, a LOOP does not, and `handle`'s body is a
+      loop, so the answer may well be "leave it".
 - [ ] runfree-inlined-rotation — the FIRST attempt is REFUTED and the
       refutation is the useful part. Diagnosing with
       -XX:+PrintInlining found the real cost of free-one-rotation:

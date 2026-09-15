@@ -1,5 +1,64 @@
 # Changelog
 
+## handle-forward-fast — the general handler now costs what the fast one costs
+
+`Effects.handle` re-emits a FORWARDED operation on the tree, the way
+`relay` has always done, and enters `Cont` only for an operation the
+handler actually claims. Forwarding is the common case: in a row of
+four effects every handler forwards three quarters of what it sees.
+
+| | before | after |
+|---|---|---|
+| `handlePrebuilt` | 223.3 µs | **154.2 µs** |
+| allocation | 2 869 306 B/op | **1 753 945 B/op** |
+| `relayPrebuilt` (control) | 148.1 µs | 149.9 µs |
+
+The second row is the result, not the first: **`handle` allocates
+exactly what `relay` allocates, to the digit**, and the
+build-on-every-call pair agrees at 2 154 017 on both sides. The 1.51x
+gap is 1.03x, and what is left is 3% of time with identical bytes —
+filed as `handle-loop-inlining`, with the warning that a loop is the
+face of the inlining rule that wants to be left alone.
+
+**Both numbers in the entry that proposed this were wrong, and that is
+the part worth keeping.** The `shift` per forwarded operation, which
+the entry named as the mechanism, was only a THIRD of the gap. The
+other two thirds were introduced by this lane's own first version:
+trampolining every handled operation through `Free.defer` cost 59 µs
+of the 61, because a `Defer` whose continuation is `Pure` rotates into
+a LEFT-nested `Bind`, left-nesting is the one shape `resume` rewrites,
+and so each handled operation taxed every operation after it. That was
+found by deleting the node and measuring — 151.3 µs, with only the
+100k-handled test failing, by StackOverflow — which named the cost and
+the reason the node was there in one run.
+
+So the shipped version pays for the trampoline only where it is
+earned. A handler that does not capture the continuation answers with
+`Cont.Pure`, and the loop goes on from the answer with a tail call;
+`Cont.onAnswer` is that test, inline with inline branches like
+`split`, so neither arm costs an `Option` or a closure. It matches the
+representation, which the facade's rule forbids from OUTSIDE — here
+the companion looks at its own tree, which is the one place allowed
+to.
+
+The order of work was the entry's own condition and it held.
+`TestHandleForward` was written FIRST and pins what a handler may
+observe: what an ABORTING handler forwards, what a MULTI-SHOT handler
+forwards twice, the order of both, and three depths. All seven passed
+against the definition, and four were watched to FAIL against a
+deliberately wrong forwarding arm before the real one existed. The
+disqualifier named in the entry was checked rather than assumed:
+`fusedSWr` reads 13.2 µs / 122 640 B against the recorded floor's
+13.7 / 122 641, and neither floor lane goes through the changed code
+(`State.run` has its own handler, `Writer.run` its own loop over
+`resume`) — also checked, not assumed.
+
+`@tailrec` is absent from the loop for a stated reason: the deferring
+arms mention `loop` inside a closure, which the annotation reads as a
+non-tail call although the closure is a separate method the
+interpreter enters. The three stack-safety tests are the guarantee,
+which is where a guarantee of this kind belongs.
+
 ## handle-decompose — the handler gap is 1.51x, and it is allocation
 
 `relay` and `Effects.handle` had been compared by two numbers that each
