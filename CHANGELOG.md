@@ -1,5 +1,41 @@
 # Changelog
 
+## runfree-inlined-rotation — refuted, and not in the way the entry expected
+
+The entry asked whether `runFree` should keep its own inlined copy of
+the rotation, to win back the 3–4% that free-one-rotation cost
+`relay`. `-XX:+PrintInlining` gave a better question first:
+`Free.resume` compiled to **352 bytes** against HotSpot's
+`FreqInlineSize` of 325 and refused to inline into ANY caller ("hot
+method too big", fifteen times in one run). So the cost was not the
+extra call — it was an extra call that could not be inlined away, and
+the fix looked like shrinking `resume` rather than duplicating it:
+one rotation kept, and every caller of `.resume` fixed at once, not
+just `runFree`.
+
+Extracting the two cold `Defer` shapes into their own method did
+exactly that — 352 → 306 bytes, and the log turns from "hot method
+too big" ×8 to "inline (hot)" ×8.
+
+**And it made things worse.** Four rounds on a quiet box, rounds tight
+within each arm (rows `rfinline-*`): `effCont24` **1.435**,
+`nestedSWr` 1.074, `fusedSWr` 1.063 — the floor — and
+`relayPrebuilt` **1.065**, which is worse than the 1.039 it set out to
+repair. Allocation is identical everywhere, so nothing structural
+moved; this is inlining shape alone.
+
+The reason is worth keeping: **`resume` is a LOOP**. Making a loop
+inlinable is not the same as making it faster — inlined into callers
+that are themselves loops (`fold`, `runFree`, `relay`'s `loop`) it
+produces nested loops and loses more than the call it saves. The
+325-byte threshold was protecting these lanes rather than obstructing
+them, which is the opposite of the morning's `relay` case, where the
+method over the line was straight-line code.
+
+Reverted; nothing of it lands but this note and the numbers. The
+original lever — `runFree` keeping its own copy — is still untried,
+and after this it should be measured before it is believed.
+
 ## free-one-rotation — five copies of the rotation become two
 
 The rotation that rebalances left-nested binds existed FIVE times:

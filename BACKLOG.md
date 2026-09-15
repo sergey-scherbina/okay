@@ -58,16 +58,26 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       relayForward 1.029 — those lanes end in `runWith` over a 9 900-op
       residual, so `runFree` pays a `resume` call per operation, which
       is where it was predicted. Rows `onerot-*`.
-- [ ] runfree-inlined-rotation — kind: perf. The lever for the 3–4%
-      that free-one-rotation cost `relay`: `runFree` may keep its own
-      inlined rotation instead of going through `Free.resume`, which
-      the spec already licenses (an eliminator may duplicate the four
-      lines when the law in TestFree checks the equation). Worth doing
-      only if relay's lanes matter more than one fewer copy — and the
-      measurement is cheap, one A/B on relayForward/relayPrebuilt plus
-      fusedSWr. NOTE the trap this lane already walked into once: the
-      first measurement ran at load 7–11 and swung 41% inside a single
-      arm; wait for quiet or the number is fiction.
+- [ ] runfree-inlined-rotation — the FIRST attempt is REFUTED and the
+      refutation is the useful part. Diagnosing with
+      -XX:+PrintInlining found the real cost of free-one-rotation:
+      `Free.resume` is 352 bytes against FreqInlineSize 325 and
+      inlines into NO caller. Shrinking it (the two cold `Defer`
+      shapes into their own method, 352 -> 306, confirmed to go from
+      "hot method too big" x8 to "inline (hot)" x8) made every lane
+      WORSE — effCont24 1.435, fusedSWr 1.063, and relayPrebuilt
+      1.065, worse than the 1.039 it was meant to fix. Allocation
+      identical throughout. WHY, and do not retry it: `resume` is a
+      LOOP, and inlining a loop into callers that are themselves loops
+      (`fold`, `runFree`, relay's `loop`) nests loops and costs more
+      than the call. The threshold was protecting these lanes. Rows
+      `rfinline-*`.
+      STILL UNTRIED: the entry's original idea, `runFree` keeping its
+      own inlined rotation while `resume` stays as it is — which is a
+      third copy rather than a smaller shared one, and after the above
+      it must be measured before it is believed. Also worth knowing
+      before anyone starts: relay's 3-4% buys four rotation copies
+      folded into one, and that trade was already accepted once.
 - [ ] freer-base — specs/freer-base.md. STAGE 0 IS LANDED: `Cont` is
       `Freer[Shift, …]`, one enum, one absorption rule, at parity or
       better on every core lane. NEXT IS STAGE 1: `Free` on the same
