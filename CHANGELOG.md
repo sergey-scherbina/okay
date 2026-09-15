@@ -1,5 +1,36 @@
 # Changelog
 
+## delay-node — a tail call carries no continuation, so nothing rotates
+
+The speed half of the Free/Cont/Effects review (specs/core-cleanup.md,
+"delay-node"). `Free.Delay(thunk)` beside `Defer`: `resume` forces it
+and continues AS IS, `Bind(Delay(t), g)` is `Bind(t(), g)` with nothing
+composed. `!.tailcall`, `Effects[Free].tailcall`, `handle`'s capturing
+arm and `Cbor`'s item skip build it instead of `Defer(thunk, pure)` —
+the spelling that resumed to `Bind(t(), pure)` and, whenever the thunk
+answered a `Bind`, pushed a `.flatMap(pure)` tail down every bind of
+the deferred subprogram (`hff-defer-cost` had priced that shape at 59
+of 61 µs inside `handle`).
+
+Lanes first, measured before the node existed, `-f 3`:
+
+| | before | after |
+|---|---|---|
+| `tailcallChain` (10 000 hops) | 127.7 µs, 1 359 969 B | **24.1 µs, 400 016 B** |
+| `handleCapture` (100 captures, 10k tree) | 214.1 µs, 2 486 713 B | **159.1 µs, 1 764 361 B** |
+
+5.3x and 1.35x; a capturing handler now costs what an answering one
+costs (`handlePrebuilt` 159.0 in the same run), and a hop is exactly
+one 40-byte node. Controls: B/op identical to the byte on fib10/100/
+1000, relayPrebuilt, handlePrebuilt, statePara; a 2% reading on
+`relayPrebuilt` got a three-round same-window A/B on a box carrying a
+VM at 575% CPU, and per-lane minima came out equal (153.6 vs 152.9).
+Rows `dn-*`. The `mapnode` fear — a fifth case costing the
+interpreter its inlining shape — did not materialise here, and the
+difference is worth naming: `Map` added a case on the HOT path (every
+element), `Delay` adds two type tests that the hot shape fails through
+and a case only a trampoline reaches.
+
 ## core-cleanup — Free, Cont, Effects: what nothing called, and one hop where there were two
 
 A review of the three core files (specs/core-cleanup.md), landed as

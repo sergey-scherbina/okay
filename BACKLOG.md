@@ -37,7 +37,9 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] delay-node — a `Delay(thunk)` case beside `Defer`, so that a
+- [x] delay-node — LANDED 2026-09-15 (tailcallChain 5.3x, handleCapture
+      1.35x, controls identical to the byte; specs/core-cleanup.md
+      "delay-node"). The entry as written, for the record: a `Delay(thunk)` case beside `Defer`, so that a
       deferred call with NOTHING to do afterwards does not pay for a
       continuation. Found by the Free/Cont/Effects review (2026-09-15,
       specs/core-cleanup.md Decisions). The mechanism is the one

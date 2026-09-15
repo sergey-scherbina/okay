@@ -124,3 +124,43 @@ is the claim this spec made: nothing moved. (`handlePrebuilt` reads
 window, load 7-8; the ratio to `relayPrebuilt` in-run is 1.10/1.12,
 not the 1.03 of a quiet box, and that is the load, not the lane:
 `jmh-load-not-just-forks`.)
+
+### delay-node — LANDED 2026-09-15 (the speed half)
+
+`Free.Delay(thunk)` beside `Defer`, `Free.delay`/`Cont.delay`;
+`!.tailcall`, `Effects[Free].tailcall`, `handle`'s capturing arm and
+`Cbor`'s skip build it. `resume`: `Delay(t) => t().resume`,
+`Bind(Delay(t), g) => Bind(t(), g).resume`; `Cont.step` the same two.
+`!.?` forces it like a `Defer`. `Effects.tailcall` became a plain
+`def` so the Free instance can override it (Eff and Eager keep the
+`defer(thunk)(pure)` default).
+
+Two lanes were written FIRST and measured before the node existed,
+`-f 3 -wi 3 -i 5 -prof gc` (rows `dn-*`):
+
+| lane | before | after | B/op before | B/op after |
+|---|---|---|---|---|
+| tailcallChain (10 000 hops) | 127.7 ± 1.1 µs | **24.1 ± 0.2 µs** | 1 359 969 | **400 016** |
+| handleCapture (100 captures over the 10k tree) | 214.1 ± 1.9 µs | **159.1 ± 2.7 µs** | 2 486 713 | **1 764 361** |
+
+5.3x and 1.35x. `handleCapture` now reads what `handlePrebuilt` reads
+(159.0 in the same run): a capture costs 104 B over an answer and
+nothing in time. `tailcallChain`'s 400 016 B is exactly one `Delay`
+(40 B) per hop — the 96 B per hop of the old shape were the closure,
+the `Bind` and the `Pure` the rotation built.
+
+Controls in the same run: fib10 184.2, fib100 1960.9, fib1000 28 422,
+relayPrebuilt 156.8, handlePrebuilt 159.0, statePara 27.9; B/op
+IDENTICAL TO THE BYTE against master on every one (fib100 19 936.013,
+relay/handle 1 753 945). `relayPrebuilt` read 2% over the morning's
+master number, so it got a same-window A/B, three rounds alternating:
+the box was carrying a VM at 575% CPU and rounds 2-3 had bars of
+±28-59 (master relay read 217 in round 3), so per-lane MINIMA are the
+reading — master 153.6, branch 152.9; fib10 master 183.9, branch
+184.2 in the clean run. Equal. The two extra type tests on `resume`'s
+fall-through path cost nothing the bars can see.
+
+Behavior of the node, by tests already in place: TestEffects'
+`isEven(1000000)` chain (stack safety of `tailcall`), TestHandleForward's
+three stack-safety tests (the capturing arm), TestCont's mutual
+recursion, the Cbor suite for the skip. Gate: see CHANGELOG.
