@@ -180,3 +180,18 @@ fib1000 1.12x. The 2026-08-29 gains stand. Consequence for the shared
 `Freer` base sketched in the Cont/Free discussion: fusion cannot be
 dropped to make `flatMap` generic — it stays the Shift leaf's own
 business (a `Sig[G]`-style fuse hook), and `Cont` keeps its depth.
+
+2026-09-15, same day (fuse-depth): how much of that win is the FIRST
+fusion step? `fuse=1`, `2`, `4` against `128`, three rounds with the
+config order rotated, per-lane minimum (history.tsv `fuse1-*`):
+fuse=1 reads 0.98 / 1.00 / 1.02 / 1.01 of fuse=128 on fib10/50/100/1000,
+fuse=2 and fuse=4 the same within JMH's ±1–3% bars. The budget of 128
+buys nothing the first step does not: the fib program builds one
+`shift` and one or two binds per element, so a segment never grows
+past depth one or two before the runner consumes it. Consequence: the
+depth is one bit ("already fused"), which needs no field at all — a
+named `Fused` function class the size of the lambda it replaces, and
+`Op(f)` in a shared base costs 40 B per shift against today's 48.
+Measured on the Fib lanes only; `PState` (HandlerBenchmark) and
+`Monadic.reflect` are Cont-fusion consumers not covered here, so
+lower the default only after those lanes agree.

@@ -1,5 +1,19 @@
 # Changelog
 
+## fuse-depth — one fusion step is the whole win; depth is a bit, not an Int
+
+Measurement only, the follow-up to fuse-bench below. `FibBenchmark`
+with `-Dokay.cont.fuse=1`, `2`, `4` against `128`, three rounds with
+the config order rotated, per-lane minimum: fuse=1 is 0.98/1.00/1.02/
+1.01 of fuse=128 on fib10/50/100/1000, and 2 and 4 sit in the same
+±1–3% bars. The 12–25% fusion win is entirely the first step; the
+128-deep budget never pays on these programs. For the shared `Freer`
+base this means the Shift leaf needs one bit ("already fused"), which
+a named function class carries for free, not a depth field or a
+`(fn, Int)` tuple. The default is NOT changed here: `PState` and
+`Monadic.reflect` lanes were not measured. Rows `fuse1-*` in
+`src/jmh/history.tsv`, paragraph in specs/interpreter-optimization.md.
+
 ## fuse-bench — Cont's closure fusion re-measured, still pays 12–25%
 
 Measurement only, no source change. The question came out of a design
