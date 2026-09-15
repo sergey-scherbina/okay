@@ -39,9 +39,10 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
 ## okay core
 - [ ] freer-base-stage0-verdict — kind: perf. STAGE 0 IS WRITTEN AND
       GREEN, ON THE BRANCH `feature/freer-base-stage0`, AND NOT
-      LANDED. 886 JVM core tests pass, the whole repo Test/compiles on
-      three platforms with zero warnings, and the rotation law
-      (TestFreer, 13 shapes against the `Func` reference) holds. It
+      LANDED. THE FULL MATRIX IS GREEN on it — 4 419 test results over
+      JVM/JS/Native, 182 module compiles, no failures, no warnings —
+      and the rotation law (TestFreer, 13 shapes against the `Func`
+      reference) holds, so correctness is not the open question. It
       allocates at or below master on every Cont path and runs
       `statePara` 14% and `fib10` 9% FASTER — but `fib50` 1.07,
       `fib1000` 1.05, `fib100` 1.04 and `relayForward` 1.08. Landing
@@ -51,8 +52,7 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       NEXT, if the answer is "make it faster first": `relayForward` is
       the clean signal — identical B/op to the digit, 8.2% slower — so
       `-prof perfasm` on it, not another redesign. If the answer is
-      "land it", the branch needs a full three-platform gate first
-      (only the JVM core suite has run).
+      "land it", it is a rebase and a fast-forward — the gate is done.
       SEPARABLE FROM ALL OF IT, and worth landing either way:
       `ParaMonad.map` was `inline`, hence final, hence no carrier could
       replace its `flatMap(x => pure(f(x)))` default, which builds a

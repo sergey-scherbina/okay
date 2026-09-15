@@ -349,11 +349,12 @@ Stage 2 — the index as typestate, Delim first:
 The code exists on `feature/freer-base-stage0`: `Freer.scala` (the enum
 and `resume`), `Cont.scala` rewritten as the alias plus the `Shift`
 leaf, `TestFreer.scala` (the law), `TestCont` rewritten for absorption.
-886 JVM core tests green, and `Test/compile` over the whole repository
-on JVM + JS + Native is clean — 398 compile invocations, zero errors,
-**zero warnings**. Two call sites outside the base changed, both named
-below. It is NOT merged, because it does not pass the gate this spec
-set for it: three Fib lanes and `relayForward` are 3.6–8.2% slower.
+**The full matrix is GREEN on the branch**: `scripts/gate.sh` reports
+4 419 test results across JVM, JS and Native, 182 module compiles, no
+failures and no warnings. Two call sites outside the base changed,
+both named below. It is NOT merged, because it does not pass the
+PERFORMANCE gate this spec set for it: three Fib lanes and
+`relayForward` are 3.6–8.2% slower.
 
 **The final A/B**, master against stage 0, three alternating rounds in
 one session, per-lane minimum, `-prof gc` (history.tsv `freer0-*`):
