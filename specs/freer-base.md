@@ -57,7 +57,7 @@ enum Freer[G[_, _, _], A, S, R]:
    *  interpreter anywhere matches `Bind(Op(e), k)` after `resume` */
   case Bind[G[_,_,_], A, B, S, T, R](a: Freer[G, A, T, R], f: A => Freer[G, B, S, T])          extends Freer[G, B, S, R]
   /** the runner's alone: `resume` forces it before anyone sees the tree */
-  private case Defer[G[_,_,_], A, B, S, T, R](thunk: () => Freer[G, A, T, R], f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
+  case Defer[G[_,_,_], A, B, S, T, R](thunk: () => Freer[G, A, T, R], f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
 
   /** ONE rotation, leaf-agnostic: normalizes to Pure | Op | Bind(Op, k).
    *  Composes continuations as Bind directly — the runner must never
@@ -115,7 +115,7 @@ infix type ![A, F[+_]] = Freer[Lift[F], A, Unit, Unit]
 object !:
   export Freer.{Pure, Bind}
   val Effect = Freer.Op                                   // the extractor, `case Bind(Effect(e), k)` unchanged
-  def defer[F[+_], A, B](t: () => A ! F)(f: A => B ! F): B ! F = Freer.Defer(t, f)   // Defer itself is never seen
+  def defer[F[+_], A, B](t: () => A ! F)(f: A => B ! F): B ! F = Freer.Defer(t, f)
   inline def effect[F[+_], A](e: F[A]): A ! F = Freer.Op(e)   // the factory, index pinned at Unit
   // resume, next, ?, tailcall, widen, translate, relay, interpret, tracing: as today, over Freer.resume
 
@@ -303,17 +303,21 @@ Stage 2 — the index as typestate, Delim first:
   handlers that capture the continuation; this library does. So the
   index complements the finalizer discipline of `Resource.run`, never
   replaces it — and stage 2 asserts it in a test.
-- **`Pure`, `Op`, `Bind` public; `Defer` and `Shift.Absorbed`
-  private.** Settled with the operator on 2026-09-15 in two steps: the
-  first asked whether `Bind` and `Defer` had to be public, the second
-  whether a public `Bind` costs anything. Privacy here guards
-  invariants, and the tree has exactly two: a shift absorbs a
-  continuation at most once (`Absorbed`, private in `Shift`'s
-  companion) and a thunk is forced only inside the runner (`Defer`,
-  private — it is matched outside Cont/Free only by `runFree`,
-  `!.resume`, `!.?` and Async's loop, all runners, all replaced by
-  `resume`; `Freer.defer`/`Cont.defer`/`!.defer` are the factories).
-  `Bind` guards nothing: a hand-built `Bind(Bind(a, f), g)` is a
+- **Every case public; only `Shift.Absorbed`/`Shift.Mapped` private.**
+  Settled with the operator on 2026-09-15 across three questions: must
+  `Bind` and `Defer` be public, does a public `Bind` cost anything,
+  and — the one that finished it — what does hiding `Defer` buy when
+  `Freer.defer` is a public factory that builds exactly one? Nothing:
+  hiding a case whose constructor is public does not stop anyone
+  MAKING the node, only MATCHING it, and matching is the half a
+  stepper, a rewriter or an outside interpreter needs. So the rule
+  came out simpler than it went in — privacy guards invariants, and
+  the only invariant a case could guard here is "a leaf absorbs at
+  most once", which lives in the leaf's own classes inside `Shift`'s
+  companion, not in the tree. `Freer.defer` stays the constructor
+  because the thunk shape reads better at a call site than
+  `Defer(() => …, f)`, not because it is the only way in.
+  `Bind` guards nothing either: a hand-built `Bind(Bind(a, f), g)` is a
   left-nested tree the rotation normalizes by the associativity law,
   and a hand-built `Bind(Op(s), f)` is the unabsorbed form — one
   rotation slower, correct. Public is also what the library says of

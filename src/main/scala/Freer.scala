@@ -52,23 +52,27 @@ enum Freer[G[_, _, _], A, S, R] {
                                        f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
 
   /**
-   * a bind whose LEFT side is deferred. It guards an invariant, unlike
-   * `Bind`: the thunk is forced only inside a runner's own loop, one
-   * hop per iteration, which is what lets two mutually recursive
-   * functions call each other in tail position without a JVM frame per
-   * call (`tailcall`, `!.tailcall`) and what makes `Eff` stack-safe on
-   * a left-nested bind (specs/eff-stack-safety.md). `Freer.defer` is
-   * the only way to BUILD one.
+   * a bind whose LEFT side is deferred: the thunk is forced inside a
+   * runner's own loop, one hop per iteration, which is what lets two
+   * mutually recursive functions call each other in tail position
+   * without a JVM frame per call (`tailcall`, `!.tailcall`) and what
+   * makes `Eff` stack-safe on a left-nested bind
+   * (specs/eff-stack-safety.md).
    *
-   * `private[okay]` rather than `private`, for the reason `Free.Defer`
-   * was public: the runners live across files (`Shift.run` in
-   * Cont.scala, and in stage 1 `runFree`, `!.resume`, Async's loop),
-   * and each of them may inline the rotation for speed — measured
-   * necessary, see specs/freer-base.md Results. Outside the library it
-   * stays invisible.
+   * PUBLIC, like `Bind` and like `Free.Defer` before it. It was
+   * private, then `private[okay]`, and neither survived the question
+   * of what that bought: `Freer.defer` is a public factory that builds
+   * exactly this node, so hiding the case never stopped anyone making
+   * one — it only stopped them MATCHING one, which is the half a tool
+   * needs. A stepper, a rewriter or an interpreter outside this
+   * package sees `Pure | Op | Bind | Defer` and can force the thunk in
+   * its own loop, which is the same discipline the runners here
+   * follow. `Freer.defer` stays as the constructor because the thunk
+   * shape reads better than `Defer(() => …, f)` at a call site, not
+   * because it is the only way in.
    */
-  private[okay] case Defer[G[_, _, _], A, B, S, T, R](thunk: () => Freer[G, A, T, R],
-                                                      f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
+  case Defer[G[_, _, _], A, B, S, T, R](thunk: () => Freer[G, A, T, R],
+                                        f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
 
   /**
    * THE rotation, and the only one: normalizes to a head form —
