@@ -43,6 +43,27 @@ class HandlerBenchmark {
   def relayForward(): Int =
     relay[Int, Int, Ask, Produce](prog)(pure(_))([X, Y] => a => Cont.Pure(a.a)).runWith
 
+  /**
+   * relayForward's `prog` is a `def`, so that lane BUILDS a 10 000-node
+   * Free tree on every invocation and then relays it. These two split
+   * the measurement, because a delta on the first is not a delta in
+   * any handler: `buildOnly` is construction alone, `relayPrebuilt`
+   * relays a tree built once (a program is a value here — relaying the
+   * same one twice is exactly the contract, not a trick).
+   */
+  @Benchmark
+  def buildOnly(): Any = prog
+
+  private var built: Int ! (Ask + Produce) = scala.compiletime.uninitialized
+
+  @Setup(Level.Trial)
+  def buildOnce(): Unit = built = prog
+
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def relayPrebuilt(): Int =
+    relay[Int, Int, Ask, Produce](built)(pure(_))([X, Y] => a => Cont.Pure(a.a)).runWith
+
   // relay/handle inline a type test on the operation type, which
   // erasure cannot verify for Ask[Nothing] — the trusted kernel's
   // warning (Effects.scala), not a cast this file adds

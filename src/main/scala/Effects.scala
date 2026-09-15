@@ -819,9 +819,28 @@ object ! {
    */
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
                                            (g: [X, Y] => F[X] => X /> Y): B ! G = {
+    /**
+     * The TERMINAL case — a bare operation with no continuation, which
+     * a program reaches at most once — in its own method, so that it
+     * does not occupy the hot loop's bytecode.
+     *
+     * `split` is an `inline def` taking `inline` branches, so both of
+     * its arms expand into whatever encloses them, and this loop is
+     * made of them. It compiles to 305 bytes against HotSpot's
+     * `FreqInlineSize` of 325 (read with -XX:+PrintInlining): twenty
+     * bytes from the cliff where it stops being inlined into `relay`
+     * and the lane loses over 10% at once. That is not a hypothetical
+     * — a sibling branch added 24 bytes here and paid exactly that,
+     * for five measurement sessions, while its allocation stayed
+     * identical to the digit and no data-structure theory fit.
+     * Extracting the cold arm leaves the loop at 244 bytes.
+     */
+    def last(e: F[A] | G[A]): B ! G =
+      split[F, G](e)(e => g(e)(f))(e => Effect(e).flatMap(f))
+
     @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
       case Bind(Effect(e), k) => split[F, G](e)(e => loop(g(e)(k)))(e => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
-      case Effect(e) => split[F, G](e)(e => g(e)(f))(e => Effect(e).flatMap(f))
+      case Effect(e) => last(e)
       case Pure(a) => f(a)
 
     loop(a)

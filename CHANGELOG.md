@@ -1,5 +1,36 @@
 # Changelog
 
+## relay-inline-headroom — 20 bytes from a cliff nobody could see
+
+`relay`'s inner loop compiled to 305 bytes. HotSpot stops inlining a
+hot method at `FreqInlineSize`, which is 325. Twenty bytes of margin,
+on the hottest handler in the library, invisible in any profile that
+reports time or allocation.
+
+That is not hypothetical. A sibling branch (specs/freer-base.md) added
+24 bytes to that loop — not to what it does, only to how much bytecode
+it is — and paid 10–12% on `relayForward` for five measurement
+sessions, while its allocation stayed identical to master's to the
+digit and every data-structure theory was refuted in turn. The cause
+was read in one command, `-XX:+PrintInlining`: 329 bytes, "hot method
+too big", and the loop no longer inlined into `relay`.
+
+`split` is an `inline def` taking `inline` branches, so both of its
+arms expand into whatever encloses them, and this loop is made of
+them. The terminal arm — a bare operation with no continuation, which
+a program reaches at most once — now lives in its own method. The loop
+is 256 bytes, and the margin is 69 instead of 20.
+
+Measured, and worth stating plainly: **no speed change**. Four
+alternating rounds, every `HandlerBenchmark` lane within ±0.8% with
+identical allocation (rows `relayheadroom-*`). The loop was already
+being inlined; this buys the margin, not a number. Two lanes land with
+it, because they are what made the diagnosis possible: `buildOnly`
+(construction alone — it measured 1.000 and exonerated the Free tree)
+and `relayPrebuilt` (relay over a tree built once). `relayForward`
+rebuilds 10 000 nodes per invocation, so without the split there is no
+way to say whether a delta is in building or in handling.
+
 ## fuse-consumers — fuse=1 is faster on the one lane that reached the 128 budget
 
 Measurement only, the third and last fusion run of the day. The
