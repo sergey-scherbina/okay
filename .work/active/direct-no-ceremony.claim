@@ -1,0 +1,15 @@
+direct-no-ceremony
+owner: fable-5.1 session 53f400ad
+started: 2026-09-15
+what: operator's ask (2026-09-15): `direct` auto-colouring without
+  `import scala.language.implicitConversions` and without `import
+  Direct.given`. Not `into` (parameter positions only; the block colours
+  at ascriptions, receivers and foreign arguments). Measured with scalac:
+  the missing import is a feature WARNING, `-language:implicitConversions`
+  removes it — one line in ThisBuild / scalacOptions, nine source imports
+  go. `Direct.given`: selfColor moves into Free's companion (the implicit
+  scope of Conversion[Free[R, A], A]), still gated by DirectCtx; opColor
+  stays opt-in in Direct. TestDirectDeep drops both imports as the proof.
+files: build.sbt, src/main/scala/Direct.scala, src/main/scala/Free.scala,
+  the nine files importing implicitConversions, specs/direct-auto-coloring.md,
+  CHANGELOG.md
