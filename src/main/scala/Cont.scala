@@ -92,40 +92,66 @@ object Shift:
   /**
    * A leaf that has ALREADY absorbed one continuation.
    *
-   * Absorption is a single bit, so the state is this CLASS and there
-   * is no depth field: a named function class carries the bit inside
-   * the object the composed closure had to allocate anyway, which is
-   * why `Op(Absorbed(s, g))` is 40 B where the old
-   * `Shift(closure, depth: Int)` node was 48.
+   * Absorption is a single bit, so the state is the CASE and there is
+   * no depth field. `Shift` itself stays the raw function, so an
+   * unabsorbed leaf is still `Op` plus the user's lambda and nothing
+   * else — an enum here costs no allocation at all, because a case IS
+   * a case class with the same two fields the classes had.
    *
-   * WHY EXACTLY ONE, swept rather than argued (specs/freer-base.md
-   * Results; history.tsv `fuse0-*`, `fuse1-*`, `freer0b-absorb-sweep`).
-   * Absorption itself pays 12–25%: turning it off loses on every Fib
-   * lane. One step is the whole of that: a budget of 1 equals the old
-   * 128 everywhere, inside the bars, with allocation identical at
-   * every depth. And depth COSTS — `statePara`, the one lane whose
-   * segment ever reached the old budget, reads 0.861 at depth 1
-   * against 1.19 / 1.15 / 1.17 at 4 / 16 / 128, because each further
-   * step nests one more closure call per run. That lane has the
-   * sharpest response in the suite; price any change here against it.
+   * WHY AN ENUM AND NOT TWO CLASSES (operator's proposal, measured
+   * 2026-09-15, history.tsv `once-*`): with `apply` written ONCE here
+   * instead of overridden per class, both cases share a vtable entry,
+   * so the runner's `s(k)` has a single target and the JIT inlines it
+   * instead of dispatching. That is worth 3.2–4.5% on every Fib lane —
+   * the residual that survived five sessions and four refuted
+   * structural theories (the `Op` wrapper, the absorption depth, the
+   * runner's shape, the rotation's composition). What it is NOT is a
+   * cure for megamorphism: splitting the call site to make it
+   * bimorphic was measured in the same session and did nothing, 0.996
+   * to 1.017 across the board. The cost was the number of call
+   * TARGETS, not the number of receiver types.
+   *
+   * One measured price, on a synthetic lane only: alternating the two
+   * cases at one site allocates +14 B/op (`leafMixed`), where a single
+   * body seems to lose escape analysis that two bodies kept. No real
+   * lane shows it — `statePara` 1.002, every Fib lane faster.
+   *
+   * WHY EXACTLY ONE absorption, swept rather than argued
+   * (specs/freer-base.md Results; history.tsv `fuse0-*`, `fuse1-*`,
+   * `freer0b-absorb-sweep`). Absorption itself pays 12–25%: turning it
+   * off loses on every Fib lane. One step is the whole of that: a
+   * budget of 1 equals the old 128 everywhere, inside the bars, with
+   * allocation identical at every depth. And depth COSTS — `statePara`
+   * reads 0.861 at depth 1 against 1.19 / 1.15 / 1.17 at 4 / 16 / 128,
+   * because each further step nests one more closure call per run.
+   * That lane has the sharpest response in the suite; price any change
+   * here against it.
    */
-  private sealed abstract class Once[A, S, R] extends ((A => S) => R)
+  private enum Once[A, S, R] extends ((A => S) => R):
+    /** flatMap's absorption: the continuation enters the leaf */
+    case Absorbed[A, B, S, T, R](s: (A => T) => R, g: A => Cont[B, S, T]) extends Once[B, S, R]
 
-  /** flatMap's absorption: the continuation enters the leaf */
-  private final class Absorbed[A, B, S, T, R](s: (A => T) => R, g: A => Cont[B, S, T])
-    extends Once[B, S, R]:
-    def apply(k: B => S): R = s(a => run(g(a))(k))
+    /**
+     * the same for `map`, and it has to be its own case rather than
+     * `Absorbed` over `a => Pure(f(a))`: that spelling allocates a
+     * `Pure` per element at RUN time, which measured +24 B/op and
+     * 8-19% on every Fib lane (specs/freer-base.md Results — the
+     * generator maps once per element, so this is its hot path).
+     */
+    case Mapped[A, B, S, R](s: (A => S) => R, g: A => B) extends Once[B, S, R]
 
-  /**
-   * the same for `map`, and it has to be its own class rather than
-   * `Absorbed` over `a => Pure(f(a))`: that spelling allocates a
-   * `Pure` per element at RUN time, which measured +24 B/op and
-   * 8-19% on every Fib lane (specs/freer-base.md Results — the
-   * generator maps once per element, so this is its hot path).
-   */
-  private final class Mapped[A, B, S, R](s: (A => S) => R, g: A => B)
-    extends Once[B, S, R]:
-    def apply(k: B => S): R = s(a => k(g(a)))
+    /**
+     * ONE body for both cases, which is the point of the enum: with
+     * `apply` defined here rather than overridden per class, both
+     * cases share a vtable entry, so the runner's call is monomorphic
+     * and inlinable instead of bimorphic. The allocation is unchanged
+     * — an enum case is a case class, two fields either way — and
+     * `Shift` stays the raw function, so an unabsorbed leaf still
+     * costs `Op` plus the user's lambda and nothing else.
+     */
+    def apply(k: A => S): R = this match
+      case Absorbed(s, g) => s(a => run(g(a))(k))
+      case Mapped(s, g) => s(a => k(g(a)))
 
   /**
    * flatMap, in prefix form. The extension below and the
@@ -139,7 +165,7 @@ object Shift:
       case Freer.Op(s) => s match
         // already absorbed one — see `Once` for why never twice
         case _: Once[?, ?, ?] => Freer.Bind(c, f)
-        case _ => Freer.Op(Absorbed(s, f))
+        case _ => Freer.Op(Once.Absorbed(s, f))
       // Pure receivers build a node too: fusing `pure(a).flatMap(f)` at
       // CONSTRUCTION would run `def forever = pure(()).flatMap(_ =>
       // forever)` at construction and diverge (interpreter-optimization)
@@ -150,7 +176,7 @@ object Shift:
     c match
       case Freer.Op(s) => s match
         case _: Once[?, ?, ?] => Freer.Bind(c, a => Freer.Pure(f(a)))
-        case _ => Freer.Op(Mapped(s, f))
+        case _ => Freer.Op(Once.Mapped(s, f))
       case _ => Freer.Bind(c, a => Freer.Pure(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */

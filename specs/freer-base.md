@@ -348,7 +348,33 @@ Stage 2 — the index as typestate, Delim first:
 
 ## Results
 
-### Stage 0 — implemented, green, NOT landed
+### Stage 0 — implemented, green, and at parity or better
+
+**The state to judge it by** (branch tip, four alternating rounds on a
+quiet box, every core JMH lane, `-prof gc`, history.tsv `once-*`):
+
+| lane | time | B/op vs master |
+|---|---|---|
+| `statePara` | **0.860** | −40 132 |
+| `fib10` | **0.884** | −96 |
+| `handleForward` | 0.974 | −158 400 |
+| `stepBulk` | 0.974 | −80 016 |
+| `stepOneByOne` | 0.984 | −80 016 |
+| `relayPrebuilt` | 0.986 | identical |
+| `effCont24` | 0.989 | identical |
+| `effInline24`, `func24`, `fib1000`, `relayForward`, `stateEffect` | 0.99–1.00 | identical or lower |
+| `buildOnly`, `fib100`, `cont24` | 1.00 | identical or lower |
+| `effFunc24` | 1.015 | identical |
+| `fib50` | 1.024 | −416 |
+
+Nothing is more than 2.4% slower, eight lanes are faster, and
+allocation is at or below master on every lane. Three things got it
+there, in this order, and each is written up below: `map` reaching the
+absorbing path, `relay`'s loop getting back under the JIT's inlining
+threshold (landed separately on master, 25102517), and `Once` becoming
+an enum.
+
+### Stage 0 — how it read before those three
 
 The code exists on `feature/freer-base-stage0`: `Freer.scala` (the enum
 and `resume`), `Cont.scala` rewritten as the alias plus the `Shift`
@@ -427,6 +453,33 @@ hypothesis available on this machine survives those four facts
 together. The next instrument is a disassembling profiler, and
 `-prof perfasm` needs Linux `perf`; on macOS that means `dtraceasm`
 under root, which is the operator's call and not a thing to take.
+
+### `Once` as an enum — the operator's proposal, and what closed the gap
+
+After four structural theories had been refuted, the residual on the
+Fib lanes was still 3–5% and unexplained. The operator proposed making
+`Once` an enum with cases `Absorbed` and `Mapped`, keeping `Shift`
+itself the raw opaque function. Measured on the branch, three rounds:
+**fib10 0.968, fib100 0.968, fib1000 0.955** — and that is the whole
+residual.
+
+The mechanism, and it is worth stating precisely because the obvious
+reading is wrong. `apply` written ONCE in the enum body instead of
+overridden in each of two classes gives both cases the same vtable
+entry, so the runner's `s(k)` has a single call TARGET and the JIT
+inlines it. It is not a cure for megamorphism: in the same session,
+splitting that call site so it tests `Once` first — a bimorphic site
+for the absorbed forms, a megamorphic one for user lambdas — did
+NOTHING, 0.996 to 1.017 across every lane. The number of receiver
+types was never the problem; the number of call targets was.
+
+Allocation is unchanged, by construction: an enum case is a case class
+with the same two fields, and `Shift` stays the raw function so an
+unabsorbed leaf is still `Op` plus the user's lambda. The one measured
+price is synthetic: `leafMixed`, which alternates the two cases at one
+site, allocates +14 B/op (225 760 against 211 792) where a single body
+appears to lose escape analysis that two bodies kept. No real lane
+shows it — `statePara` 1.002, every Fib lane faster.
 
 ### What was refuted on the way, with numbers
 
