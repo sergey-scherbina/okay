@@ -224,3 +224,45 @@ Behavior: gate green (see CHANGELOG); TestCont's mutual recursion and
 the codec trampoline suites (TestJsonTrampoline, TestCborTrampoline,
 TestCborSkipTrampoline, TestJsonStrictTrampoline, TestJsonRawTrampoline)
 cover `Bind(Delay, f)` where `Defer` was.
+
+### split-over-either — LANDED 2026-09-15, mostly a refutation
+
+Fifteen walkers, 39 `<|>` sites, converted to `split`; `Resource`
+keeps `<|>` because its arms `return` out of a `while`, which a lambda
+cannot. `Delim` had to write `okay.split` — its object has a `split`
+of its own, over the segment stack. Eight `Say` matches in Bind arms
+needed the `(w0: @unchecked) match` idiom `Writer.run` already uses
+(the checker cannot see `Say` is the only constructor under an
+existential answer type).
+
+Measured as a batch, before and after, `-f 3 -prof gc`, B/op first
+because the box carried a sibling's load (7-30) through both runs:
+
+| lane | B/op before | B/op after |
+|---|---|---|
+| fib10 / fib100 / fib1000 | 1 984.001 / 19 936.013 / 290 953 | identical |
+| delimGenerator / delimPushOnly / writerTell | 934 311 / 350 040 / 142 024 | identical |
+| offerReceive1k / sendReceiveProgram1k | 26 420.9 / 514 541 | identical |
+| viaWiden / interpretedTree | 287 984 / 235 616 | identical / 235 608 |
+| okayChoice / okayWriter / okayProducer / okayChunks | 14 318 107 / 2 078 073 / 1 318 433 / 129 832 | identical |
+| okaySourceMerge | 1 072 482 | **1 027 412** (−4.2%) |
+| elementwise 16/500, 16/2000, 64/500, 64/2000 | 1 057 026 / 4 549 336 / 1 052 235 / 4 430 252 | **1 037 608 / 4 303 523 / 993 851 / 4 150 077** (−1.8 … −6.3%) |
+
+**The `Either` per operation was a theory, and on every walker but the
+Source/Pipe road it was already gone:** escape analysis scalar-replaces
+a `Left`/`Right` that is matched in the same method, and these loops
+match it in the same method. Where it survived is where the walker's
+arms cross a closure boundary the JIT does not see through — the
+merge's pull under Async, `elementwise`'s stage pairing — and there
+the bytes moved. Time, same-window A/B on a box at load 4-7, two
+rounds: okaySourceMerge 101.7/103.8 → 100.8/101.7 µs, elementwise
+and okayProducer inside their bars (one round-2 outlier on each side
+at a load spike). Core lanes' time at the same load: fib10 172.3 →
+172.3, delimPushOnly 24.3 → 23.3, offerReceive1k 17.3 → 16.7, the
+rest inside bars.
+
+Kept anyway, all fifteen: one splitting idiom across the library
+(`split` is the documented kernel; `<|>` now has one user), no lane
+worse, four lanes lighter. What this closes: BACKLOG's
+`split-over-either` as a per-walker programme — there is no second
+walker worth a lane of its own.

@@ -1,5 +1,22 @@
 # Changelog
 
+## split-over-either — the Either per operation was mostly already gone
+
+Fifteen walkers (39 `<|>` sites: Pipe, Writer, Source, Logic, Refs,
+Generate, Condition, Channel, Delim) split their row through `split`
+now, the kernel State and Writer.run already use; Resource keeps `<|>`
+because its arms `return` out of a `while`. Measured first, bytes
+before time because the box was loaded: allocation IDENTICAL TO THE
+BYTE on fib10/100/1000, the Delim lanes, the Channel lanes, viaWiden,
+okayChoice, okayWriter, okayProducer — the JIT was scalar-replacing
+that `Left`/`Right` all along — and down on the one road where the
+arms cross a closure the JIT does not see through: okaySourceMerge
+1 072 482 → 1 027 412 B/op, `elementwise` −1.8…−6.3%. Time neutral in
+a same-window A/B. Landed for one idiom and four lighter lanes; the
+per-walker programme the BACKLOG entry planned is closed, because
+there is no second walker worth a lane. specs/core-cleanup.md,
+rows `so-*`.
+
 ## defer-eff-removal — one deferred node, one encoding fewer, and the JIT re-decides
 
 The operator's answer to two questions the Free/Cont/Effects review

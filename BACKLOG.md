@@ -70,7 +70,11 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       controls hold; a refutation with numbers is a fine outcome.
       Typed route, no cast: a `Defer(t, null)` or an identity-compared
       shared `pure` continuation were considered and refused.
-- [ ] split-over-either — sixteen walkers outside the three core files
+- [x] split-over-either — LANDED 2026-09-15 as mostly a refutation: the Either
+      was scalar-replaced on every walker but the Source/Pipe road (bytes
+      −2..−6% there, identical to the byte everywhere else, time neutral);
+      all fifteen converted for one idiom, Resource keeps `<|>` (its arms
+      `return`). specs/core-cleanup.md. The entry as written: sixteen walkers outside the three core files
       still split their row with `<|>`, an `Either` per operation:
       Pipe (10 sites), Writer (5), Source, Resource, Logic, Refs,
       Generate, Condition, Channel, Delim. `split` replaced it in
