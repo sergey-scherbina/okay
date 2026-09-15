@@ -1,6 +1,6 @@
 feature/freer-base-stage0 2026-09-15T06:17:18Z
 agent: claude-code
-heartbeat: 2026-09-15T06:28:29Z
+heartbeat: 2026-09-15T07:29:59Z
 status: in-progress
-done-so-far: Freer.scala + Cont.scala rewritten, TestCont 9/9 green on JVM
-next: whole-repo Test/compile + Jmh, then full gate, then measure
+done-so-far: stage 0 committed on the branch as 92ecc7ab; 886 core tests green, repo-wide Test/compile clean on 3 platforms, 5 A/B sessions measured, spec Results + history rows + BACKLOG verdict entry written
+next: full 3-platform gate running; NOT merging — 4 lanes 3.6-8.2 pct slower, landing is the operator's call (BACKLOG freer-base-stage0-verdict)
