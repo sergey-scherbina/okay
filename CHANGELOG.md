@@ -1,5 +1,43 @@
 # Changelog
 
+## cont-on-free — `Freer` deleted, `Free` is the base, `Cont` is a facade
+
+The refutation of stage 1 said where an index may not live: on the
+nodes, because a pattern match makes it existential. The operator
+drew the conclusion the other way round. `Free` stays exactly as it
+was — `Pure | Inject | Bind | Defer` — and IS the shared base;
+`Freer.scala` is gone; and `Cont[A, S, R]` is `Cont.Rep[A, S, R]`, an
+opaque type inside its companion over `Free[Shift, A]`, where
+`Shift[+X] = (X => Nothing) => Any` is the one type every
+`(X => S) => R` upcasts into. Answer-type modification lives in the
+companion's signatures and nowhere in the tree.
+
+Nothing about `Free` changed, so the 89 match sites are untouched and
+there is no alias, no `Lift`, no phantom `Unit`. Measured against
+master, four rounds, every core lane: **within ±1% everywhere,
+allocation identical to the byte on every lane** (rows `cof-*`) — the
+nodes are the same objects and the cast is erased.
+
+Two `asInstanceOf` lines under one invariant, "the facade typed it
+when it built it, and nothing else can build one": applying a leaf to
+its continuation, and the runner's `Pure` branch, where the GADT
+equality `S = R` an indexed `Pure` used to carry no longer exists.
+That is the price of the paramonad on a shared homogeneous tree, and
+the operator's rule met to the letter.
+
+Three other spellings were tried by compiling rather than argued:
+the precise leaf `(X => S) => R` types only the diagonal, because one
+`Bind` relates three leaf types and `Free.Bind` has one signature;
+`(X => ?) => R` and `(X => ?) => ?` fail at `shift` on variance — the
+argument slot needs a SUBtype of every `A => S`, which is `A =>
+Nothing`, not a wildcard. And a trap that cost an hour: a top-level
+`opaque type` is transparent to its whole PACKAGE, so the facade only
+seals anything from inside an object. specs/freer-base.md Results.
+
+The principle that carries into stage 2: the tree is syntax, an index
+is a claim about syntax, claims live on facades, facades are never
+matched.
+
 ## freer-base stage 1 — refuted, and the reason is worth more than the attempt
 
 `Free` cannot be an alias of the shared `Freer` while the library's

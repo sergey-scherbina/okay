@@ -840,7 +840,7 @@ object ! {
 
     @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
       // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
-      // `/` since Cont became an alias of Freer (specs/freer-base.md)
+      // `/` since Cont became a facade over Free (specs/freer-base.md)
       case Bind(Effect(e), k) => split[F, G](e)(e => loop(g(e) / k))(e => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
       case Effect(e) => last(e)
       case Pure(a) => f(a)

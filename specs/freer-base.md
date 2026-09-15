@@ -599,5 +599,71 @@ shape, and that is a decision, not a task.
 The branch holds the attempt, WIP and not mergeable, so the next
 person does not re-derive the leak.
 
-- Stage 1: REFUTED as specified, see above.
+### The turn after the refutation: indexes on facades, `Freer` deleted (landed)
+
+The refutation said where types may NOT live: on the nodes, because a
+match makes a node's index existential. The operator drew the
+conclusion the other way round — keep `Free` as the base, delete
+`Freer`, make `Cont` a facade — and that is what landed
+(`feature/cont-on-free`, rows `cof-*`).
+
+```scala
+enum Free[F[+_], A]              // the base, unchanged: Pure | Inject | Bind | Defer
+type Cont[A, S, R] = Cont.Rep[A, S, R]
+object Cont:
+  opaque type Rep[A, S, R] = Free[Shift, A]         // S, R phantom to the tree
+private type Shift[+X] = (X => Nothing) => Any      // every (X => S) => R conforms: an upcast
+```
+
+Danvy–Filinski's answer-type modification lives ONLY in the
+companion's signatures. The tree is the same `Pure | Inject | Bind |
+Defer` every effect program is made of, and `Free` needs no alias, no
+`Lift`, no phantom `Unit`: the 89 match sites are untouched because
+nothing about `Free` changed. **Measured against master: every core
+lane within ±1%, allocation identical to the byte on all of them** —
+the nodes are the same objects, the cast is erased.
+
+Two `asInstanceOf` lines, one invariant ("the facade typed it when
+it built it, and nothing else can build one"): `typed`, applying a
+leaf to a continuation, and `pinned`, the `Pure` branch of the runner
+— the GADT equality `S = R` that `Pure[A, R] extends …[A, R, R]` used
+to carry does not exist on an unindexed tree. That is the price of
+ATM on a shared homogeneous tree, and it is the operator's rule
+satisfied to the letter: one function each, one comment, sound by a
+sealed-module claim.
+
+The principle this settles, and it carries into stage 2: **the tree
+is syntax; an index is a claim about syntax; claims live on facades;
+facades are never pattern-matched.** Typestate for an effect program
+is one more facade over `Free[F, A]`, and the leak that killed stage 1
+cannot happen to it.
+
+Three spellings the operator proposed were each tried by compiling,
+because the session's rule is that an argument is not evidence:
+
+- **`Free[[X] =>> (X => S) => R, A]`, the precise leaf.** Types only
+  the diagonal. One `Bind` relates THREE leaf types — left
+  `(·=>S)=>R`, continuation results `(·=>S2)=>S`, whole `(·=>S2)=>R` —
+  and `Free.Bind[F, A, B]` has one `F`: the node's intermediate answer
+  type has no home. `PState.set` changes the answer type, so the
+  diagonal is not enough.
+- **`(X => ?) => R`.** Fails twice: at `shift`, because a wildcard is a
+  SUPERtype and a function's argument slot needs a SUBtype of every
+  `A => S`; and at `bind`, for the same reason as the precise leaf.
+- **`(X => ?) => ?`.** `bind` now passes — the two wildcards do unify
+  the three positions — and only `shift` fails, on the variance point
+  above. The one legal spelling of "unknown in the argument slot" is
+  `Nothing`, of "unknown in the result slot" `Any`; so this is `Shift`
+  before the variance check, and it needs the same cast at run.
+
+**A trap worth its own line: a top-level `opaque type` is transparent
+to its whole PACKAGE, not its file.** Declared at top level, `Cont`
+was plainly `Free[Shift, A]` in Generate.scala, `Stream`'s
+program-carrier `map` captured the for-comprehension, and — as a plain
+alias — `Free`'s MEMBERS beat `Cont`'s extensions and switched
+absorption off. The representation had to move inside `object Cont`.
+
+- Stage 1: REFUTED as specified; superseded by the facade above, which
+  gets the whole of its goal (one base, `Free` untouched) by the
+  opposite move.
 - Stage 2: not started.

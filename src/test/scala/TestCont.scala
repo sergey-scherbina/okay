@@ -42,13 +42,13 @@ class TestCont extends munit.FunSuite {
 
   test("absorption: the FIRST bind enters the leaf, the second is a node") {
     // the structural half of the one-step rule (specs/freer-base.md).
-    // `Op` and `Bind` are public cases of Freer, so this asserts the
-    // shape directly rather than reading a depth field, which no
-    // longer exists: absorption is the leaf function's class.
+    // `Cont` is an opaque facade over `Free[Shift, A]`, so from here
+    // the nodes are reached by a class test on `Any` — which is all a
+    // structural probe needs, and all the facade allows.
     val s = shift[Int, Int, Int](k => k(0))
     def succ(x: Int): Int /> Int = Cont.Pure(x + 1)
-    def isOp(c: Int /> Int) = c match { case Freer.Op(_) => true; case _ => false }
-    def isBind(c: Int /> Int) = c match { case Freer.Bind(_, _) => true; case _ => false }
+    def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
+    def isBind(c: Any) = c match { case Free.Bind(_, _) => true; case _ => false }
 
     assert(isOp(s), "a bare shift is a leaf")
     assert(isOp(s.flatMap(succ)), "the first bind is absorbed into the leaf")
@@ -71,15 +71,12 @@ class TestCont extends munit.FunSuite {
     // each leaf absorbs its OWN first bind; joining two absorbed
     // leaves makes a node and leaves both absorptions intact
     def leaf(i: Int) = shift[Int, Int, Int](k => k(i)).flatMap(x => Cont.Pure(x * 2))
-    // a structural probe, so it takes Any: a Bind's left side comes
-    // back at existential indexes AND with the leaf seen through the
-    // opaque type from outside Cont.scala, and neither is what this
-    // test is about
-    def isOp(c: Any) = c match { case Freer.Op(_) => true; case _ => false }
+    // a structural probe on Any: the facade is opaque from here
+    def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
 
     assert(isOp(leaf(1)) && isOp(leaf(2)), "each leaf absorbed its own bind")
     val joined = leaf(1).flatMap(x => leaf(2).map(_ + x))
-    assert(joined match { case Freer.Bind(a, _) => isOp(a); case _ => false },
+    assert(joined match { case Free.Bind(a, _) => isOp(a); case _ => false },
            "joining is a node over the still-absorbed left leaf")
     assertEquals(reset(joined), 6)
   }

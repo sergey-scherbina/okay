@@ -1,22 +1,22 @@
 package okay
 
 /**
- * The shared base (Freer.scala) and the LAW that licenses an
- * eliminator to inline its rotation.
+ * The shared tree (Free.scala) under both encodings, and the LAW that
+ * licenses `Cont`'s runner to hold its own copy of the rotation.
  *
- * `Freer.resume` is the one rotation; `Shift.step` (Cont.scala) holds
- * a second copy of those four lines, because going through `resume`
- * and matching its head forms measured 8-19% slower on the Fib lanes
- * (specs/freer-base.md Results). A duplicate implementation is only
- * safe while something checks the equation, and that is this file.
+ * `!.resume` is the rotation Free's interpreters use; `Cont.step`
+ * (Cont.scala) interleaves the same four cases with elimination and
+ * composes through `bind` so a rotated continuation can be absorbed.
+ * A second copy is only safe while something checks the equation,
+ * and that is this file.
  *
  * The reference is `Func`, which the library already calls "the
  * reference implementation of Control" (Cont.scala): it composes
  * closures and NEVER rotates, so agreeing with it over every
  * bind-tree shape — on the answer AND on the order the effects
- * happened in — is exactly the claim the inlined copy makes.
+ * happened in — is exactly the claim the runner's copy makes.
  */
-class TestFreer extends munit.FunSuite {
+class TestFree extends munit.FunSuite {
 
   /** one program, written once, runnable at any Control carrier */
   trait Shape:
@@ -95,17 +95,28 @@ class TestFreer extends munit.FunSuite {
 
   test("resume normalizes every shape to a head form") {
     // the contract the 89 `(x.resume: @unchecked) match` sites depend
-    // on, asserted on the shapes above rather than described
+    // on, asserted rather than described — on Free programs, since the
+    // Cont facade is opaque and its tree is its own business
+    import okay.!.*
     def headForm(c: Any): Boolean = c match
-      case Freer.Pure(_) => true
-      case Freer.Op(_) => true
-      case Freer.Bind(a, _) => a match { case Freer.Op(_) => true; case _ => false }
+      case Pure(_) => true
+      case Effect(_) => true
+      case Bind(a, _) => a match { case Effect(_) => true; case _ => false }
       case _ => false
 
-    for (name, shape) <- shapes do
-      val c: Int /> Int = shape[Cont](_ => ())
-      assert(headForm(c.resume), s"$name: resume left a head form")
-      assert(headForm(c.resume.resume), s"$name: resume is idempotent at the head")
+    def op(i: Int): Int ! Produce = effect(i)
+    val shapes: List[(String, Int ! Produce)] = List(
+      "a value" -> pure(7),
+      "one operation" -> op(1),
+      "a pure bound" -> pure(1).flatMap(x => pure(x + 1)),
+      "an operation then a bind" -> op(1).flatMap(x => pure(x + 1)),
+      "left-nested over an operation" -> (1 to 64).foldLeft(op(0))((m, _) => m.flatMap(x => pure(x + 1))),
+      "left-nested over a value" -> (1 to 64).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => pure(x + 1))),
+      "a deferred left side" -> !.tailcall(op(3)).flatMap(x => pure(x + 1)),
+    )
+    for (name, p) <- shapes do
+      assert(headForm(p.resume), s"$name: resume left a head form")
+      assert(headForm(p.resume.resume), s"$name: resume is idempotent at the head")
   }
 
 }

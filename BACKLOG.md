@@ -65,6 +65,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       one `apply` body beats two because the JIT counts call targets,
       not receiver types. Stage 2 (the indexes as typestate, Delim
       first) is independent and does not block it.
+      SUPERSEDED THE SAME DAY by cont-on-free: `Freer` deleted, `Free`
+      kept as the base untouched, `Cont` an opaque facade over
+      `Free[Shift, A]` with the indexes on the facade — every core lane
+      within 1% of master, allocation identical to the byte, two
+      trusted lines under one invariant. Stage 2 (typestate) is now one
+      more facade over `Free[F, A]` and cannot leak the way stage 1 did.
+      The refutation below is kept because it is why the facade is the
+      shape, not a step toward something else.
       STAGE 1 IS REFUTED AS SPECIFIED (2026-09-15, branch
       `feature/freer-base-stage1`, WIP commit kept and never to be
       merged). `Bind` carries the LEFT side's answer index, so a match
