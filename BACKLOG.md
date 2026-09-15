@@ -37,7 +37,22 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] cont-fuse-one-step — kind: perf. Lower `Cont.Fuse` from 128 to
+- [ ] freer-base — specs/freer-base.md (committed 2026-09-15 before
+      any code, per spec-dev). ONE enum `Freer[G, A, S, R]` — Pure,
+      Op, Bind, Defer, one `resume` rotation — under `Cont`
+      (`Freer[Shift]`, index = answer type) and `Free` (`Freer[Lift[F]]`
+      at a pinned `Unit` index, later typestate). Three stages, each
+      its own lane with its own gate and disqualifying numbers in the
+      spec: 0 = enum + Cont (absorbs cont-fuse-one-step below: fusion
+      becomes the `Shift.Absorbed` class, no budget, 40 B/shift vs 48);
+      1 = Free on it, `object !` exports the cases so the 89 `resume:
+      @unchecked` sites and 20 outside files compile unchanged, a
+      rotation law lets eliminators inline; 2 = the index as typestate,
+      Delim first (`NoPrompt` → compile error). Start with stage 0.
+- [ ] cont-fuse-one-step — kind: perf. ABSORBED by freer-base stage 0
+      (above): with `Shift.Absorbed` there is no budget to lower. Kept
+      here until that stage lands, so the evidence stays findable.
+      Original entry: lower `Cont.Fuse` from 128 to
       1 and turn `Shift`'s `depth: Int` into the one bit it then is.
       EVIDENCE (2026-09-15, three measurement lanes fuse-bench /
       fuse-depth / fuse-consumers, rows `fuse0-*` and `fuse1-*` in
