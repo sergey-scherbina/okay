@@ -666,4 +666,95 @@ absorption off. The representation had to move inside `object Cont`.
 - Stage 1: REFUTED as specified; superseded by the facade above, which
   gets the whole of its goal (one base, `Free` untouched) by the
   opposite move.
-- Stage 2: not started.
+- Stage 2: the LANGUAGE question is answered, the lane is not started.
+  See below.
+
+### Stage 2, the Delim half — the identity question, answered by compiling
+
+Stage 2's first behavior item is that `NoPrompt` — the exception
+`Delim.scala:223` throws when a shift names a prompt that is not
+installed — becomes a compile error. Everything in that item rests on
+one question nobody had asked the compiler: a `Prompt[R]` is made at
+RUN time by `reset`, so can its IDENTITY, not merely its answer type,
+reach the type level?
+
+**It can.** `scripts/stage2-prompt-identity-probe.scala` is the whole
+answer in one runnable file: five positives compile and three
+negatives are refused, including the case that matters most — a prompt
+that ESCAPES its `reset` and is shifted to afterwards, which is
+precisely today's throw.
+
+This was asked FIRST, before any lane was claimed, because stage 1
+died on exactly this class of question after the implementation was
+written. The two questions are cousins and their answers are
+opposite: stage 1 needed the compiler to SKOLEMIZE a free parameter in
+an `unapply` and it inferred `Nothing` instead; stage 2 needs a
+singleton `p.type` of a term parameter in a dependent signature, which
+the language supports outright.
+
+The shape that works, and each piece of it is scar tissue:
+
+```scala
+final class Stack[S0 <: Tuple]:      type S = S0   // the stack in force
+final class In[R, S <: Tuple](val p: Prompt[R]):
+  given stack: Stack[p.type *: S] = new Stack      // published, imported
+def reset[R](using st: Stack[?])(
+  body: (s: In[R, st.S]) => Prog[R, s.p.type *: st.S, s.p.type *: st.S]
+): Prog[R, st.S, st.S]
+def shift[R, A](p: Prompt[R])(using st: Stack[?], ev: Has[st.S, p.type])(
+  f: (A => Prog[R, st.S, st.S]) => Prog[R, st.S, st.S]
+): Prog[A, st.S, st.S]
+```
+
+**Four compiler facts were paid for to arrive at it**, each by a round
+that failed, and they are why the obvious spellings are absent:
+
+1. **An expected type is not enough.** It fixes the indexes for
+   `val x: Top[Int] = reset { … }` and for nesting, but the HEAD of a
+   for-comprehension has no expected type — `x.flatMap(…)` types `x`
+   first — so the stack index fell back to its bound `Tuple` and the
+   `Has` search failed. Since TestDelim, okay-ui and okay-agent all
+   write for-comprehensions, this alone decides that the stack must be
+   a GIVEN rather than an inferred parameter.
+2. **A curried dependent context function is refused outright**:
+   `(p: Prompt[R]) => Stack[p.type *: S] ?=> Prog[…]` — the obvious way
+   to hand the body both the prompt and the stack — answers
+   "Implementation restriction … not yet supported".
+3. **A non-curried one compiles**, and nested witnesses of the same
+   shape resolve to the INNER one with no ambiguity, which the nested
+   case needs. But carrying the stack through it CRASHES the compiler:
+   `java.lang.AssertionError: wildApprox failed to remove
+   uninstantiated R`, in implicit scope computation. That road is
+   closed by dotty, not by the design.
+4. **Clause ORDER decides inference.** A `using` clause after the
+   continuation loses: the lambda is typed first and pins the stack to
+   `Tuple`. It goes before — and the stack is a type MEMBER, so no
+   call site ever spells it and no method carries a stack type
+   parameter that inference can pin too early.
+
+**What it costs at the call site**, which is the number that decides
+whether the lane is worth taking: `reset { p => … }` becomes
+`reset { s => import s.given; … }`, one line per reset, and the prompt
+is `s.p`. `reset` in a generator position needs its answer type
+(`reset[Int] { … }`). The type arguments on `shift` are NOT a new
+cost: TestDelim writes `shift[Int, Int, okay.Pure](p)` at every call
+today.
+
+**What is still unpriced**, and what the lane must not assume:
+
+- Delim's four capture variants (`shift`, `shift0`, `control`,
+  `control0`) differ in whether the body CONSUMES the delimiter.
+  `shift0` and `control0` pop it, so their index is
+  `Prog[A, p.type *: S, S]` rather than the balanced shape — the
+  probe only exercised the balanced one.
+- `Delim.abort`, and the spec's own first caveat: an abort inside a
+  block promising a transition drops the continuation, so the
+  transition does not happen. The type says it did. That caveat is
+  already a required test in Behavior and it stays required.
+- The four files outside the core that name Delim — `Scope` and
+  `Screen` in okay-ui, `Stepper` in okay-agent, `Cut` in okay-llm —
+  are where the one-line-per-reset cost is actually paid, and none of
+  them has been read for this.
+- Nothing here is measured. The indexes are phantom and the facade
+  erases, so the expectation is allocation identical to the byte, the
+  way `cont-on-free` measured — but an expectation is not a number.

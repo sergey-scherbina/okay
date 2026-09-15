@@ -1,5 +1,60 @@
 # Changelog
 
+## stage2-probe — a prompt's identity DOES reach the type level
+
+`Delim.scala:223` throws `NoPrompt` when a shift names a prompt that is
+not installed, and freer-base stage 2's first behavior item is that
+this throw becomes a compile error. Everything in that item rests on
+one question nobody had put to the compiler: a `Prompt[R]` is made at
+RUN time inside `reset`, so can its IDENTITY — not merely its answer
+type — reach the type level?
+
+**It can.** `scripts/stage2-prompt-identity-probe.scala` is the answer
+in one runnable file: five positives compile (a bare reset/shift, a
+for-comprehension, an ordinary effect in the head position, nesting
+with a shift to the OUTER prompt, and a reset inside a larger program)
+and three negatives are refused by the compiler — a shift with no
+reset, a shift to a foreign prompt of the same type, and a prompt that
+ESCAPES its reset and is shifted to afterwards, which is exactly the
+case that throws today.
+
+The question was asked BEFORE the lane was claimed, and that ordering
+is the point. Stage 1 died on this same class of question — whether the
+compiler would skolemize a free parameter — after its implementation
+was written. The two answers are opposite: `unapply` inferred
+`Nothing` where a skolem was needed; a singleton `p.type` of a term
+parameter in a dependent signature is supported outright.
+
+**Four compiler facts were paid for**, each by a round that failed, and
+they are recorded so nobody re-buys them:
+
+1. An expected type is not enough. It fixes the indexes for a `val`
+   and for nesting, but the HEAD of a for-comprehension has none —
+   `x.flatMap(…)` types `x` first — so the stack fell back to its bound
+   and the search failed. The stack must be a GIVEN, not an inferred
+   parameter.
+2. A CURRIED dependent context function is refused outright:
+   "Implementation restriction … not yet supported".
+3. A non-curried one compiles, and nested witnesses of the same shape
+   resolve to the INNER one with no ambiguity — but carrying the stack
+   through it CRASHES dotty: `AssertionError: wildApprox failed to
+   remove uninstantiated R`.
+4. Clause ORDER decides inference: a `using` after the continuation
+   loses to the lambda's own typing. It goes before, and the stack is a
+   type MEMBER so no call site spells it.
+
+The cost at the call site, found by writing it rather than guessing:
+`reset { p => … }` becomes `reset { s => import s.given; … }`, one line
+per reset. The type arguments on `shift` are not new — TestDelim writes
+`shift[Int, Int, okay.Pure](p)` at every call today.
+
+Prose, a board entry and one standalone script; no compiled source
+changed. What stays unpriced is in BACKLOG and the spec: `shift0` and
+`control0` consume the delimiter so their index is unbalanced and the
+probe never exercised it, `abort` still drops a promised transition,
+the four files outside the core that name Delim pay the per-reset line
+and none was read, and nothing is measured.
+
 ## runfree-inlined-rotation — refuted, and not in the way the entry expected
 
 The entry asked whether `runFree` should keep its own inlined copy of

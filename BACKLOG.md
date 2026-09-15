@@ -101,6 +101,31 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       within 1% of master, allocation identical to the byte, two
       trusted lines under one invariant. Stage 2 (typestate) is now one
       more facade over `Free[F, A]` and cannot leak the way stage 1 did.
+      STAGE 2's LANGUAGE QUESTION IS ANSWERED — YES (2026-09-15,
+      stage2-probe), asked BEFORE claiming the lane because stage 1
+      died on this class of question after its implementation was
+      written. A prompt's IDENTITY does reach the type level, so
+      `NoPrompt` can become a compile error:
+      `scripts/stage2-prompt-identity-probe.scala` runs it — five
+      positives compile, three negatives are refused, including a
+      prompt that ESCAPES its reset, which is exactly today's throw.
+      Four compiler facts were paid for and are in specs/freer-base.md
+      so nobody re-buys them: a for-comprehension HEAD has no expected
+      type (so the stack must be a given, not an inferred parameter); a
+      CURRIED dependent context function is refused outright; a
+      non-curried one compiles but CRASHES dotty when it carries the
+      stack (`wildApprox failed to remove uninstantiated R`); and a
+      `using` clause after the continuation loses to the lambda's own
+      typing, so it goes before and the stack is a type MEMBER.
+      COST AT THE CALL SITE, measured by writing it: `reset { p => … }`
+      becomes `reset { s => import s.given; … }`, one line per reset.
+      STILL UNPRICED, and the lane must not assume them: `shift0` and
+      `control0` CONSUME the delimiter so their index is unbalanced and
+      the probe never exercised it; `abort` still drops a promised
+      transition (the spec's own caveat, already a required test); the
+      four files outside the core that name Delim (okay-ui `Scope`,
+      `Screen`, okay-agent `Stepper`, okay-llm `Cut`) pay the per-reset
+      line and none was read; and nothing is measured.
       The refutation below is kept because it is why the facade is the
       shape, not a step toward something else.
       STAGE 1 IS REFUTED AS SPECIFIED (2026-09-15, branch
