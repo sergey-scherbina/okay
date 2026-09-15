@@ -356,29 +356,73 @@ both named below. It is NOT merged, because it does not pass the
 PERFORMANCE gate this spec set for it: three Fib lanes and
 `relayForward` are 3.6–8.2% slower.
 
-**The final A/B**, master against stage 0, three alternating rounds in
-one session, per-lane minimum, `-prof gc` (history.tsv `freer0-*`):
+**The final A/B**, master against stage 0, FOUR alternating rounds in
+one session on a quiet box, per-lane minimum, `-prof gc`, every core
+JMH lane (history.tsv `freer0-*`):
 
-| lane | time | B/op |
+| lane | time | B/op vs master |
 |---|---|---|
-| `fib10` | **0.908** | 1 984 vs 2 080 |
-| `statePara` | **0.860** | 343 081 vs 383 270 |
-| `stepOneByOne` | 0.987 | +80 000 |
-| `effCont24` | 0.986 | identical |
-| `cont24`, `func24`, `effFunc24`, `effInline24`, `stateEffect`, `handleForward` | 1.00 | identical or lower |
-| `stepBulk` | 1.028 | −80 016 |
-| `fib100` | 1.036 | −816 |
-| `fib1000` | 1.049 | −8 015 |
-| `fib50` | 1.071 | −416 |
-| `relayForward` | 1.082 | **identical** |
+| `statePara` | **0.851** | −40 096 |
+| `fib10` | **0.903** | −96 |
+| `stepOneByOne` | 0.954 | −80 016 |
+| `effCont24` | 0.979 | identical |
+| `handleForward` | 0.985 | −158 400 |
+| `stateEffect`, `effInline24`, `func24` | 0.99 | identical |
+| `effFunc24`, `cont24` | 1.00–1.01 | identical |
+| `stepBulk` | 1.022 | −80 016 |
+| `fib100` | 1.029 | −816 |
+| `fib1000` | 1.040 | −8 015 |
+| `fib50` | 1.053 | −416 |
+| `relayForward` | **1.103** | **identical** |
 
-Allocation is at or below master on every Cont path. The residual time
-cost is therefore NOT allocation — `relayForward` is the clean case:
-the same bytes to the digit, 8.2% slower. The remaining suspect is
-dispatch shape (`Op(g)` is a node and a leaf where `Shift(f, d)` was
-one object, so a leaf touch chases one more pointer), which is the
-JIT-shape sensitivity this repository has recorded twice before
-(interpreter-optimization's Map node, +22% for strictly less work).
+Allocation is at or below master on every lane. Eight lanes are
+faster, five are slower, and the slower ones are led by
+`relayForward`, whose bytes match master to the digit.
+
+### The second round of speed work, and what it closed
+
+The operator asked for the residual to be chased. Three more
+candidates were named and each was measured; all three are REFUTED,
+and the exercise is recorded because the refutations are the durable
+part.
+
+- **"The `Op` wrapper costs a pointer chase per leaf touch."** NO — it
+  is the opposite. A per-construct benchmark (`LeafBenchmark`, one
+  lane per node kind) reads `leafOnly` **0.972**, `leafAbsorbed`
+  0.970, `leafSpilled` 0.971, each allocating 8–16 B LESS per leaf.
+  The leaf is the part that got faster.
+- **"One-step absorption is too shallow; the old budget was buying
+  something."** NO, and the sweep is worth keeping: depth 1 / 4 / 16 /
+  128 against master, three rounds. The Fib lanes do not care (1.047
+  at depth 1, 1.043 at depth 128, allocation identical at every
+  depth); `statePara` cares enormously and in ONE direction — 0.861 at
+  depth 1 against 1.188 / 1.146 / 1.170 at 4 / 16 / 128. Depth 1 is
+  settled by measurement, the constant is a literal, and the switch
+  that swept it is gone.
+- **"The runner should delegate to `Freer.resume` after all."**
+  Indistinguishable. Asked again with the `map` defect fixed, four
+  rounds: `relayForward` 1.093 against 1.094, and the Fib lanes
+  disagree in DIRECTION (fib10 0.911 vs 1.246, fib100 1.039 vs 0.891)
+  on a box at load 4–5 — a JIT inlining-shape lottery, not an effect.
+  The interleaved loop is kept because it is the shape the old runner
+  had and because it wins `statePara` (0.845 vs 0.900).
+
+**`statePara` earned a second job out of this**: a thousand left-nested
+operations, and the only lane in the suite with a sharp, monotone
+response to absorption depth. Anything that accidentally deepens
+absorption shows up there immediately. Price future leaf changes
+against it.
+
+**What is left is not explained.** The residual is invariant to
+absorption depth, to runner shape and to allocation, and
+`relayForward` makes that unmistakable: 100 of its 10 000 operations
+touch `Cont` at all (the other 9 900 forward through `Free`, which
+stage 0 does not change), its handler returns a `Pure`, its bytes
+match master to the digit — and it is 10% slower. No structural
+hypothesis available on this machine survives those four facts
+together. The next instrument is a disassembling profiler, and
+`-prof perfasm` needs Linux `perf`; on macOS that means `dtraceasm`
+under root, which is the operator's call and not a thing to take.
 
 ### What was refuted on the way, with numbers
 

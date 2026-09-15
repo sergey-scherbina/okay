@@ -105,6 +105,20 @@ object Shift:
    * nested closure calls per run, while the same binds as `Bind`
    * nodes are rotated by a tail-recursive loop.
    */
+  /**
+   * A leaf absorbs EXACTLY ONE continuation, so this is a marker with
+   * no depth field — the state is the class.
+   *
+   * The constant is a literal and there is no switch, because the
+   * question was swept and answered rather than left open. Depth 1, 4,
+   * 16 and 128 against master, three rounds, 2026-09-15
+   * (specs/freer-base.md Results): the Fib lanes do not care (1.04 at
+   * depth 1, 1.04 at depth 128 — allocation identical at every depth)
+   * and `statePara` cares a great deal and in one direction — 0.861 at
+   * depth 1 against 1.19 / 1.15 / 1.17 at 4 / 16 / 128. Deeper
+   * absorption nests one more closure call per step at run time, which
+   * is what the old 128-deep budget was doing and what it cost.
+   */
   private sealed abstract class Once[A, S, R] extends ((A => S) => R)
 
   private final class Absorbed[A, B, S, T, R](s: (A => T) => R, g: A => Cont[B, S, T])
@@ -132,9 +146,9 @@ object Shift:
   def bind[A, B, S, S2, R](c: Cont[A, S, R])(f: A => Cont[B, S2, S]): Cont[B, S2, R] =
     c match
       case Freer.Op(s) => s match
-        // one absorption per leaf, by EITHER combinator: a second one
-        // would nest closure calls, which is what the old depth budget
-        // did 128 times over and what cost `statePara` 12%
+        // absorption is bounded: each step nests one more closure call
+        // at run time, which is what the old 128-deep budget did and
+        // what cost `statePara` 12%
         case _: Once[?, ?, ?] => Freer.Bind(c, f)
         case _ => Freer.Op(Absorbed(s, f))
       // Pure receivers build a node too: fusing `pure(a).flatMap(f)` at
@@ -162,23 +176,27 @@ object Shift:
    * `run`, because a shift's body may invoke its continuation, and
    * that frame is direct style's own cost rather than the runner's.
    *
-   * WHY THIS IS NOT `Freer.resume` PLUS A THREE-CASE MATCH, measured
-   * three ways (specs/freer-base.md Results). `resume` is leaf-
-   * agnostic, so it can only compose a rotated continuation as a raw
-   * `Bind` node. For `Free` that IS the optimum — its `flatMap` is
-   * `Bind`. For `Cont` it is not: composing through `bind` lets the
-   * rotated continuation be ABSORBED by the leaf it lands on, which
-   * is what the old runner's `f(_).flatMap(g)` did. The difference is
-   * one `Bind` node per rotation, and it measured +24 B/op and
-   * 6–20% on every Fib lane — while the absorption rule itself costs
-   * literally nothing (master at a budget of 1 allocates byte for byte
-   * what a budget of 128 does).
+   * WHY THIS IS NOT `Freer.resume` PLUS A THREE-CASE MATCH. `resume`
+   * is leaf-agnostic, so it can only compose a rotated continuation as
+   * a raw `Bind` node. For `Free` that IS the optimum — its `flatMap`
+   * is `Bind`. For `Cont` it is not: composing through `bind` lets the
+   * rotated continuation be ABSORBED by the leaf it lands on, which is
+   * what the old runner's `f(_).flatMap(g)` did. So the two rotations
+   * are not a duplicate: they COMPOSE DIFFERENTLY, each optimally for
+   * its leaf, and `TestFreer`'s law is what keeps them equal where it
+   * matters — every bind-tree shape agrees with the `Func` reference
+   * carrier on the answer and on the order the effects happened in.
    *
-   * So the duplication is not a speed hack over a shared rotation: the
-   * two rotations COMPOSE DIFFERENTLY, each optimally for its leaf.
-   * `TestFreer`'s law is what keeps them equal where it matters —
-   * every bind-tree shape agrees with the `Func` reference carrier on
-   * the answer and on the order the effects happened in.
+   * MEASURED, and honestly: delegating to `resume` instead was tried
+   * twice. The first time it looked 8–19% better, but that run still
+   * had `map` going through ParaMonad's default; asked again with that
+   * fixed, over four rounds, the two shapes are indistinguishable on
+   * `relayForward` (1.093 vs 1.094) and disagree in DIRECTION on the
+   * Fib lanes (fib10 0.911 vs 1.246, fib100 1.039 vs 0.891) — a JIT
+   * inlining-shape lottery on a loaded box, not an effect. This shape
+   * is kept because it is the one the old runner had and because it
+   * wins `statePara` (0.845 vs 0.900), the lane with the sharpest
+   * response in the suite.
    */
   @annotation.tailrec
   private def step[A, S, R](c: Cont[A, S, R])(k: A => S): R = c match

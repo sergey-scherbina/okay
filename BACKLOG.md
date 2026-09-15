@@ -49,9 +49,21 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       is a judgement call, which is why this entry exists rather than
       a merge. The evidence, and four refuted causes, are in
       specs/freer-base.md Results; rows `freer0-*` in history.tsv.
-      NEXT, if the answer is "make it faster first": `relayForward` is
-      the clean signal — identical B/op to the digit, 8.2% slower — so
-      `-prof perfasm` on it, not another redesign. If the answer is
+      THE SPEED WORK HAS BEEN DONE AND IS EXHAUSTED ON THIS MACHINE.
+      Three further candidates were measured and all three refuted:
+      the `Op` wrapper (the leaf is 0.97 and 8 B LIGHTER — refuted in
+      the opposite direction), the absorption depth (swept 1/4/16/128:
+      Fib does not care, `statePara` reads 0.861 at 1 against
+      1.15-1.19 deeper, so depth 1 is settled and its switch removed)
+      and the runner shape (delegating to `Freer.resume` is
+      indistinguishable, 1.093 vs 1.094 on `relayForward`). Final
+      table: 8 lanes faster, 5 slower, allocation at or below master
+      everywhere. NEXT, and it needs a decision rather than a lane:
+      `relayForward` is 1.103 with bytes identical to the digit while
+      only 100 of its 10 000 operations touch `Cont` at all, which no
+      structural hypothesis survives — reading it needs a
+      disassembling profiler, and `-prof perfasm` wants Linux `perf`
+      (on macOS, `dtraceasm` under root). If the answer is instead
       "land it", it is a rebase and a fast-forward — the gate is done.
       SEPARABLE FROM ALL OF IT, and worth landing either way:
       `ParaMonad.map` was `inline`, hence final, hence no carrier could
