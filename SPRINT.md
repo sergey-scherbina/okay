@@ -17,10 +17,6 @@
   failure — a worker that dies takes the run with it today.
 
 ## Queue
-- core-cleanup — IN PROGRESS (claimed 2026-09-15, specs/core-cleanup.md):
-  the safe half of the Free/Cont/Effects review. Its speed half is
-  BACKLOG `delay-node`, promotable the moment this lands.
-
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
  rag-pgvector, persist-wire, cache-memory, each with a CHANGELOG

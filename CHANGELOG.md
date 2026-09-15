@@ -1,5 +1,51 @@
 # Changelog
 
+## core-cleanup — Free, Cont, Effects: what nothing called, and one hop where there were two
+
+A review of the three core files (specs/core-cleanup.md), landed as
+the SAFE half of what it found. The other half — a `Delay` node, whose
+mechanism is the one `hff-defer-cost` priced at 59 of 61 µs and which
+`tailcall`, `Eff.flatMap`, the codecs' trampolines and `handle`'s
+capturing arm all still pay — is BACKLOG `delay-node`, because it is
+a fifth case in the two loops whose bytecode shape has already cost
+1.44x and 10% in opposite directions, and that wants a lane of its
+own with `-f 3`.
+
+**Removed, and how "nothing calls it" was known:** grep over every
+module's `src`, then the compiler — the removals were made and
+`Test/compile` over all modules run, and the only callers it found
+were tests spelling `unapply(x).isDefined`, which is `test`.
+
+| gone | why |
+|---|---|
+| `TypeableK.unapply` | no `case T(x)` over a `TypeableK` anywhere; `test` is the interface, and two casts (`typeableK`, `writerK`) went with it |
+| `typeableKByClass` | an alias of `typeableK` with a paragraph on it; the paragraph moved, the two comments naming it now name `typeableK` |
+| `fromFree` | `reflect` under a second name; `reflect` keeps the tree fold |
+| `Effects.foldIn` / `runIn` | specs/staged-effects.md measured the carrier-generic fold no faster than Cont and kept it "with no performance claim"; only that spec's tests and two lanes called it. `Interpr`/`interpr` STAY — `Fused` is built on them |
+| `Free.run` (both) | no caller in any module |
+
+**Folded:** `Effect.derived` builds `Effect.ByClass` directly — one
+class, one `isInstance` under `split` — where it was a wrapper over an
+anonymous `TypeableK` (two virtual calls per test). `reify` is
+`convert[M, Free]`. `!.translate` splits with `split`: no `Either` per
+operation on the road `interpret`, `tracing`, Instances, Tag and
+Tables take. `Free.resume` and `Cont.step` force `Bind(Defer(t, f), g)`
+in ONE hop where they built a `Defer` to match on the next iteration.
+
+**Kept on purpose:** `!.Effect` beside `okay.Effect` (ten files write
+`derives okay.Effect` to get past it; freer-base settled the name
+against 154 match sites), and the sixteen walkers still on `<|>`
+outside the core — each is a `@tailrec` loop with an inlining budget,
+so each is a lane (BACKLOG `split-over-either`).
+
+Controls, this lane's only number — master vs branch in one window,
+`-f 3`, box at load 7-8 both times: fib100 1987.6 → 1981.3 ns,
+fib1000 28 388 → 28 584 ns, relayPrebuilt 153.6 → 151.9 µs,
+handlePrebuilt 168.7 → 170.9 µs, statePara 28.2 → 29.1 µs, every one
+inside its own error bar; allocation IDENTICAL TO THE BYTE on the four
+lanes through `resume`/`step`/`split` (fib100 19 936.014 both sides,
+handle/relay 1 753 945). Rows `cc-*`, specs/core-cleanup.md Results.
+
 ## handle-loop-inlining — the diagnosis was right and the fix bought nothing
 
 `handle-forward-fast` left 3% of time with allocation identical to the
