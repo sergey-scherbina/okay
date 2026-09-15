@@ -1,5 +1,24 @@
 # Changelog
 
+## cont-shift-doors — the erased leaf type is written once, behind two named doors
+
+`Cont`'s leaf is stored as `(X => Nothing) => Any`, the one supertype
+every `(X => S) => R` conforms to; the type now lives in one private
+alias with a companion: `Shift.of(f)` forgets the answer types (an
+upcast) and `s.at[S, R](k)` remembers them (THE cast, where `typed`
+was). `shift` and `step` read through the doors; bytes, dispatch and
+the cast count are unchanged. What the lane settled, by compiling
+rather than arguing, while the operator asked for `(A => S) => R` on
+the leaf: `(X => ?) => Any` is refused by the compiler (the argument
+slot needs a subtype of every `X => S`, and only `X => Nothing` is
+one); `Shift[+X, -S] = (X => S) => Any` compiles but the tree can only
+carry it at `S = Nothing`, because answer-type modification puts
+different S on the two sides of one `Bind`; and a leaf enum with its
+own S and R would keep the cast (existential under the tree's
+wildcard) and add a wrapper per raw shift that stage 0 refused. While
+`Cont` is `Free`, the answer types live on the facade and nowhere
+else — the operator chose the doors over an indexed enum.
+
 ## split-over-either — the Either per operation was mostly already gone
 
 Fifteen walkers (39 `<|>` sites: Pipe, Writer, Source, Logic, Refs,

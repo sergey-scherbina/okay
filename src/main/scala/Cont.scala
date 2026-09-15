@@ -70,19 +70,60 @@ type Cont[A, S, R] = Cont.Rep[A, S, R]
 object Cont:
 
   /**
-   * The leaf, as the tree stores it: a function of the continuation
-   * with its answer types ERASED to the widest shape every
-   * `(X => S) => R` conforms to. `(X => S) => R <: (X => Nothing) => Any`
-   * for all S and R — a function is contravariant in its argument and
-   * `Nothing <: S`, covariant in its result and `R <: Any` — so storing
-   * a typed shift is an upcast and costs no cast at all. The types come
-   * back at exactly one place, `step`, and the reason they can is given
-   * there. (Any other spelling of "unknown answer types" fails on that
-   * variance: a wildcard is a supertype, and the argument slot needs a
-   * subtype of every `X => S` — measured by compiling, see
-   * specs/freer-base.md.)
+   * The leaf, as the tree stores it: a shift with its answer types
+   * FORGOTTEN. `(X => S) => R <: (X => Nothing) => Any` for every S and
+   * R — a function is contravariant in its argument and `Nothing <: S`,
+   * covariant in its result and `R <: Any` — so this is the one
+   * supertype every typed shift conforms to, and it is written HERE
+   * and nowhere else. (Any other spelling fails on that variance: a
+   * wildcard is a supertype, and the argument slot needs a subtype of
+   * every `X => S` — measured by compiling, specs/freer-base.md.)
+   *
+   * Why the types cannot stay on the leaf while `Cont` is `Free`:
+   * `Free.Bind` joins a left tree and a continuation over ONE `F`, and
+   * answer-type modification joins a `(X => S) => R` on the left with
+   * a `(X => S2) => S` on the right — so the tree's `F` cannot name S
+   * and R, and the facade's signatures are the only place they live.
+   * Three spellings the operator asked about, settled by scalac 3.9.9
+   * on 2026-09-15 (cont-shift-doors): `(X => ?) => Any` is REFUSED
+   * ("Found: (X => S) => R, Required: Shift[X]" — a wildcard is a
+   * supertype, and the argument slot needs a subtype); a binary
+   * `Shift[+X, -S] = (X => S) => Any` compiles, but the tree can only
+   * hold it at `S = Nothing` (the two sides of a `Bind` disagree on S
+   * under answer-type modification), so the second parameter would be
+   * decoration; and a leaf enum `case Shift[A, S, R](k: (A => S) => R)`
+   * reads best and changes nothing — S and R are existential under the
+   * tree's wildcard, the cast stays, and a raw shift gains a wrapper
+   * object that stage 0 measured and refused (`once-*`).
+   *
+   * So the type has two named doors, and the ugly spelling is behind
+   * them: `Shift.of` forgets (an upcast, free), `at` remembers (THE
+   * cast, below).
    */
   private type Shift[+X] = (X => Nothing) => Any
+
+  private object Shift:
+    /** the door in: a typed shift, its answer types forgotten — an
+     * upcast, no cast at all */
+    inline def of[X, S, R](f: (X => S) => R): Shift[X] = f
+
+    extension [X](s: Shift[X])
+      /**
+       * THE ONE CAST, and what makes it right: the door out.
+       *
+       * The facade typed this leaf when it was built — `shift(f: (X =>
+       * S) => R)` — and every combinator since has threaded those types
+       * through its own signature, so a runner that has been handed a
+       * `Cont[A, S, R]` and a `k: A => S` knows the leaf it reaches is
+       * the function the facade said it was. Nothing else can put a
+       * leaf in a `Cont`: the alias is opaque and this companion is the
+       * only place that sees through it. The cast is erased on the JVM
+       * and costs nothing at run time; what it costs is that this line,
+       * and no other, is where the answer-type discipline is trusted
+       * rather than checked. Same standing as `Writer`'s phantom
+       * equation and `Delim`'s two claims.
+       */
+      inline def at[S, R](k: X => S): R = s.asInstanceOf[(X => S) => R](k)
 
   /**
    * The representation, opaque HERE rather than at top level — and
@@ -101,8 +142,8 @@ object Cont:
   def Pure[A, R](a: A): Rep[A, R, R] = Free.Pure(a)
 
   /** a computation as a function of its continuation — the shift of
-   * Danvy and Filinski. Stored by upcast, see `Shift`. */
-  inline def shift[A, S, R](f: (A => S) => R): Rep[A, S, R] = Free.Inject(f)
+   * Danvy and Filinski, through `Shift.of` */
+  inline def shift[A, S, R](f: (A => S) => R): Rep[A, S, R] = Free.Inject(Shift.of(f))
 
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
@@ -224,26 +265,7 @@ object Cont:
       case Pure(a) => ifAnswer(a)
       case _ => otherwise
 
-  /**
-   * THE ONE CAST, and what makes it right.
-   *
-   * The tree stores a leaf as `Shift[X]`, its answer types erased.
-   * The facade typed it when it was built — `shift(f: (X => S) => R)`
-   * — and every combinator since has threaded those types through
-   * its own signature, so a runner that has been handed a
-   * `Cont[A, S, R]` and a `k: A => S` knows the leaf it reaches is
-   * the function the facade said it was. Nothing else can put a leaf
-   * in a `Cont`: the alias is opaque and this companion is the only
-   * place that sees through it. The cast is erased on the JVM and
-   * costs nothing at run time; what it costs is that this line, and
-   * no other, is where the answer-type discipline is trusted rather
-   * than checked. Same standing as `Writer`'s phantom equation and
-   * `Delim`'s two claims.
-   */
-  private inline def typed[X, S, R](s: Shift[X]): (X => S) => R =
-    s.asInstanceOf[(X => S) => R]
-
-  /** the same claim at the other node the tree cannot type: a `Pure`
+  /** `Shift.at`'s claim at the other node the tree cannot type: a `Pure`
    * reached through a `Cont[A, S, R]` was built by `Cont.Pure[A, R']`,
    * whose signature is `Cont[A, R', R']` — so the facade already fixed
    * S = R' = R, and the tree, which keeps no answer type, cannot say
@@ -267,8 +289,8 @@ object Cont:
   @annotation.tailrec
   private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
     case Pure(a) => pinned[S, R](k(a))
-    case Inject(s) => typed[A, S, R](s)(k)
-    case Bind(Inject(s), f) => typed(s)(x => run(f(x))(k))
+    case Inject(s) => s.at[S, R](k)
+    case Bind(Inject(s), f) => s.at(x => run(f(x))(k))
     case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)
     case Bind(Pure(a), f) => step(f(a))(k)
     case Delay(t) => step(t())(k)
