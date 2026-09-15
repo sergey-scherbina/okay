@@ -199,10 +199,9 @@ trait Effects[M[_[+_], _]]:
    * in tail position without nesting a JVM stack frame per call. */
   def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
   /** mark a call to a mutually-recursive function as a tail call — the
-   * tagless counterpart of Cont's top-level tailcall (Cont.scala) and
-   * Free's own !.tailcall (object !, this file), for code written
-   * polymorphically over `M: Effects` rather than committed to one
-   * encoding. */
+   * tagless counterpart of `!.tailcall` (object !, this file), for code
+   * written polymorphically over `M: Effects` rather than committed to
+   * one encoding. */
   inline def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
 
   extension [F[+_], A](m: M[F, A])
@@ -691,11 +690,12 @@ object ! {
   /**
    * mark a call to a mutually-recursive function returning `A ! F` as a
    * tail call, so the interpreter (`fold`/`runFree`/`resume`) trampolines
-   * it instead of nesting a JVM stack frame per call — the Free.Defer
-   * counterpart of Cont's top-level `tailcall` (Cont.scala). Named
-   * `!.tailcall`, not a bare top-level def, because a second top-level
-   * `tailcall` in this package collides with Cont's (same failure as
-   * `pure`/`lift` in Cont.scala's own history).
+   * it instead of nesting a JVM stack frame per call. Sugar over
+   * `Free.defer` with `pure` as the continuation. `Cont.defer` is the
+   * same door on the Cont side, and has no sugar of its own since the
+   * facade landed: its callers (the codecs' trampolines) name the
+   * continuation anyway, and the top-level `tailcall` that used to
+   * shadow this name is gone.
    */
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
     Free.defer(() => thunk)(okay.pure)

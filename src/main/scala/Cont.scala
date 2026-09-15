@@ -38,33 +38,6 @@ infix type ^[A, R] = Cont[A, A, R]
 inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
 /** delimit: run the computation with the identity continuation */
 inline def reset[A, R](c: A ^ R): R = c / identity
-/** deliver a value as the answer directly, top-level alongside shift/reset (named `answer`, not `pure` or
- * `lift` — both already exist as top-level/wildcard-imported names elsewhere in the package and collide) */
-inline def answer[A, R](a: A): A /> R = Cont.Pure(a)
-
-/**
- * mark a call to a mutually-recursive function as a tail call, so `/`
- * trampolines it instead of nesting a JVM stack frame per call: the
- * thunk is not forced at construction, only when the runner's own
- * tailrec loop reaches this node (Free's `Defer` case). `answer` as the
- * continuation costs nothing extra — `Bind(Defer(t, answer), g)`
- * rotates through the same `Defer` case as any other continuation.
- */
-inline def tailcall[A, S, R](thunk: => Cont[A, S, R]): Cont[A, S, R] =
-  Cont.defer(() => thunk)(answer)
-
-/**
- * The leaf of `Cont`, as the tree stores it: a function of the
- * continuation with its answer types ERASED to the widest shape every
- * `(X => S) => R` conforms to. `(X => S) => R <: (X => Nothing) => Any`
- * for all S and R — a function is contravariant in its argument and
- * `Nothing <: S`, covariant in its result and `R <: Any` — so storing
- * a typed shift here is an upcast and costs no cast at all. The types
- * come back at exactly one place, `Cont.step`, and the reason they
- * can is given there.
- */
-private type Shift[+X] = (X => Nothing) => Any
-
 /**
  * The parameterised continuation monad, as a FACADE over the freer
  * tree: `Cont[A, S, R]` computes A and, applied by `/` to a
@@ -97,6 +70,21 @@ type Cont[A, S, R] = Cont.Rep[A, S, R]
 object Cont:
 
   /**
+   * The leaf, as the tree stores it: a function of the continuation
+   * with its answer types ERASED to the widest shape every
+   * `(X => S) => R` conforms to. `(X => S) => R <: (X => Nothing) => Any`
+   * for all S and R — a function is contravariant in its argument and
+   * `Nothing <: S`, covariant in its result and `R <: Any` — so storing
+   * a typed shift is an upcast and costs no cast at all. The types come
+   * back at exactly one place, `step`, and the reason they can is given
+   * there. (Any other spelling of "unknown answer types" fails on that
+   * variance: a wildcard is a supertype, and the argument slot needs a
+   * subtype of every `X => S` — measured by compiling, see
+   * specs/freer-base.md.)
+   */
+  private type Shift[+X] = (X => Nothing) => Any
+
+  /**
    * The representation, opaque HERE rather than at top level — and
    * that placement is load-bearing, not style. A top-level `opaque
    * type` is transparent to its whole PACKAGE, so declared there a
@@ -116,7 +104,16 @@ object Cont:
    * Danvy and Filinski. Stored by upcast, see `Shift`. */
   inline def shift[A, S, R](f: (A => S) => R): Rep[A, S, R] = Free.Inject(f)
 
-  /** a bind whose left side is deferred into the runner's own loop */
+  /**
+   * A bind whose LEFT side is deferred into the runner's own loop: the
+   * thunk is not forced at construction, only when `step` reaches the
+   * node — which is what lets two mutually recursive functions call
+   * each other in tail position without a JVM frame per call
+   * (`Cont.defer(() => other(n - 1))(Cont.Pure)` is the spelling; the
+   * codecs' trampolines past `NativeThreshold` are its heaviest users).
+   * The continuation costs nothing extra — `Bind(Defer(t, k), g)`
+   * rotates through the same `Defer` case as any other.
+   */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
     Free.defer(thunk)(f)
 

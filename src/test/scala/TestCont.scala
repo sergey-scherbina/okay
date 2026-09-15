@@ -89,11 +89,11 @@ class TestCont extends munit.FunSuite {
     assertEquals(prog[Func](identity), 20)
   }
 
-  test("tailcall: mutual tail recursion across two functions, stack-safe") {
+  test("defer: mutual tail recursion across two functions, stack-safe") {
     def isEven(n: Int): Boolean /> Boolean =
-      if n == 0 then Cont.Pure(true) else tailcall(isOdd(n - 1))
+      if n == 0 then Cont.Pure(true) else Cont.defer(() => isOdd(n - 1))(Cont.Pure)
     def isOdd(n: Int): Boolean /> Boolean =
-      if n == 0 then Cont.Pure(false) else tailcall(isEven(n - 1))
+      if n == 0 then Cont.Pure(false) else Cont.defer(() => isEven(n - 1))(Cont.Pure)
     assert(reset(isEven(1000000)))
     assert(!reset(isOdd(1000000)))
   }

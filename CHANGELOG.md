@@ -1,5 +1,37 @@
 # Changelog
 
+## cont-tidy — what the facade made redundant, removed
+
+The operator asked what the new shape leaves unnecessary. Two
+top-level functions in Cont.scala, both of which had no caller left
+outside their own file: `answer`, a second name for `Cont.Pure` (211
+sites say `Cont.Pure`, none said `answer` except `tailcall`), and
+`tailcall`, sugar over `Cont.defer` that only one test used — while
+`Cont.defer` itself has dozens of callers in the codecs' trampolines
+and okay-ui, all of which name their continuation anyway. Both gone;
+the test spells `Cont.defer(() => …)(Cont.Pure)`, which is what it
+always meant. `!.tailcall` stays: eight callers, and its reason to
+be namespaced (a top-level `tailcall` it collided with) is now
+historical, so its comment says so instead.
+
+`Shift`, the erased leaf type, moved from the top level into `object
+Cont` beside the representation it types, with the variance argument
+that rules out every wildcard spelling written once next to it.
+
+Three comments in Free.scala said things that stopped being true when
+the facade landed — that `Defer` is private, that `Cont` has a `Defer`
+of its own, that `Free.defer` mirrors rather than IS the door — and
+two in Effects.scala pointed `tailcall` at a function that no longer
+exists. Fixed. The header of Free.scala now says the one thing a
+reader of that file most needs: this enum is also the tree under
+`Cont`.
+
+Not done here, filed: the rotation still exists five times
+(`Cont.step`, Async's loop, `runFree`, `!.resume`, `Free.fold`), and
+folding the Free-side four into `!.resume` is the arc's original goal
+— but `runFree` is where `fusedSWr` lives, so that is a measured lane
+of its own, not a tidy.
+
 ## cont-on-free — `Freer` deleted, `Free` is the base, `Cont` is a facade
 
 The refutation of stage 1 said where an index may not live: on the

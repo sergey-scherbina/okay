@@ -5,7 +5,11 @@ import scala.annotation.tailrec
 /**
  * The freer monad (Kiselyov–Ishii 2015, "Freer Monads, More Extensible
  * Effects"): free over any signature F with no Functor requirement,
- * because Bind keeps the continuation as a plain function. Left-nested
+ * because Bind keeps the continuation as a plain function. It is ALSO
+ * the tree under `Cont` (Cont.scala): a `Cont` is this enum at a leaf
+ * that is a function of the continuation, with its answer types kept
+ * on the facade rather than on the nodes — specs/freer-base.md says
+ * why they cannot live here. Left-nested
  * binds are rebalanced by tail-recursive rotations in fold — which
  * also answers the "reflection without remorse" concern (van der
  * Ploeg–Kiselyov 2014): stepping a program one operation at a time
@@ -19,13 +23,13 @@ object Free {
   /** an operation as a tree */
   inline def inject[F[+_], A](a: F[A]): Free[F, A] = Inject(a)
 
-  /** a bind whose LEFT side is deferred (mirrors Cont.defer, Cont.scala):
-   * the thunk is not forced at construction, only when the interpreter's
-   * own loop (`fold`, `runFree`, `resume`) reaches this node — which is
+  /** a bind whose LEFT side is deferred: the thunk is not forced at
+   * construction, only when an interpreter's own loop (`fold`,
+   * `runFree`, `resume`, `Cont.step`) reaches this node — which is
    * what lets two mutually-recursive functions returning `A ! F` call
    * each other in tail position without nesting a JVM stack frame per
-   * call. The constructor is public and the case private, for the same
-   * reason as Cont.defer: only the interpreters see the representation. */
+   * call (`!.tailcall` is the sugar; `Cont.defer` is the same door on
+   * the Cont side). */
   def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] = Defer(thunk, f)
 
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
@@ -47,11 +51,11 @@ enum Free[F[+_], A] {
                          f: A => Free[F, B]) extends Free[F, B]
 
   /** a bind whose left side is deferred into the interpreter's own loop.
-   * Public, like Bind/Pure/Inject above (unlike Cont's Defer, which stays
-   * private since Cont's own runner is the only place that ever matches
-   * it) — Free's interpreters live across files (Effects.scala's runFree
-   * and `!.resume`, Async.scala's own loop), so the case itself, not just
-   * the `Free.defer` smart constructor, has to be visible to them. */
+   * Public like the other cases: the interpreters live across files
+   * (Effects.scala's `runFree` and `!.resume`, Async.scala's loop,
+   * Cont.scala's `step`), and hiding a case whose smart constructor is
+   * public would stop nobody from building one — only from matching
+   * it, which is the half an interpreter needs. */
   case Defer[F[+_], A, B](thunk: () => Free[F, A],
                           f: A => Free[F, B]) extends Free[F, B]
 

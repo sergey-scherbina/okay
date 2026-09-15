@@ -48,6 +48,21 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       while making the same site merely bimorphic was worth nothing).
       Four refuted theories and every number are in
       specs/freer-base.md Results; rows `freer0*` and `once-*`.
+- [ ] free-one-rotation — kind: perf. The rotation exists FIVE times:
+      `Cont.step` (Cont.scala, interleaved with elimination, composes
+      through `bind` — keep), Async.scala's own loop, `runFree`
+      (Effects.scala), `!.resume` (Effects.scala) and `Free.fold`
+      (Free.scala). The Free-side four can become ONE — `!.resume` as
+      the rotation, the other three a three-case match over it — which
+      is what the whole freer-base arc set out to do. It is a MEASURED
+      lane, not a tidy: `runFree` is `Effects[Free].runWith`'s fast
+      path and the `fusedSWr` floor (13.7 µs / 122 641 B/op) runs
+      through it, and stepping-vs-bulk was measured within 8% once
+      (HandlerBenchmark), which is over the bars on some lanes. Gate:
+      fusedSWr, stepBulk/stepOneByOne, relayForward/relayPrebuilt,
+      handleForward, all within bars; the law in TestFree already
+      asserts `resume`'s head form. If a copy must stay inlined for
+      speed, the number says which one.
 - [ ] freer-base — specs/freer-base.md. STAGE 0 IS LANDED: `Cont` is
       `Freer[Shift, …]`, one enum, one absorption rule, at parity or
       better on every core lane. NEXT IS STAGE 1: `Free` on the same
