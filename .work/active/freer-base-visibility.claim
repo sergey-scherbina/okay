@@ -1,6 +1,0 @@
-feature/freer-base-visibility 2026-09-15T06:09:18Z
-agent: claude-code
-heartbeat: 2026-09-15T06:09:18Z
-status: in-progress
-done-so-far: spec amendment, prose only
-next: freer-base.md visibility decision (Defer private, Bind private[okay]), Async loop = fifth rotation
