@@ -1,24 +1,31 @@
 # Changelog
 
-## deep-recursive-direct — the article's deepRecursive, on this tree
+## deep-recursive-direct — the article's deep recursion, inside direct, with no annotation
 
-`Direct.deepRecursive` rewrites a def with a plain result type the way
-"Deep recursion in Scala 3" (Kozak) does with `TailRec`, on `Free`:
-`def fib(n: Int): Long = deepRecursive(if n < 2 then n.toLong else
-fib(n - 1) + fib(n - 2))` generates `loop$deep(n): Long ! Pure`, every
-self-call as `Free.delay(() => loop$deep(...)).reflect` under
-`direct`'s lowering, and `!.run`s it. Her `TailRec` is our `Free` node
-for node — `tailcall` = `Delay`, `flatMap` = `Bind`, `done` = `Pure`,
-`.result` = `!.run` — so the rewrite is a self-call detector and a
-generated def, not a new interpreter. Inside a `direct` block at the
-program type a marked self-call is deferred the same way, and mutual
-recursion (which her macro refuses) is `!.tailcall(other(n)).reflect`.
+Inside a `direct` block a call to the enclosing def, at the block's
+program type, is deferred into the tree wherever it is marked or
+auto-coloured: `fib(n - 1)` becomes `Free.delay(() => fib(n - 1))`
+under the same mark, and the recursion trampolines through `resume`
+instead of the JVM stack. With `import Direct.given` and
+`scala.language.implicitConversions`:
+
+    def fib(n: Int): Long ! Pure = direct:
+      if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+
+That is what "Deep recursion in Scala 3" (Kozak) does with a
+`deepRecursive` macro over `TailRec`, and her `TailRec` is this tree
+node for node (`tailcall` = `Delay`, `flatMap` = `Bind`, `done` =
+`Pure`, `.result` = `!.run`), so here it is a self-call detector in
+front of `direct`'s lowering. What her macro refuses and this does:
+a self-call in `match`, a real row interleaving effects with the
+recursion, mutual recursion (`!.tailcall(other(n)).reflect`).
 TestDirectDeep: fib, `1 + sum(n - 1)` a million deep on the suite's
-stack, a self-call inside `match`, mutual recursion, a self-call under
-a lambda left alone. specs/direct-macro.md "Deep recursion". The
-zero-annotation form is possible only at the value type, because a
-macro runs after the typer — which is also why the article's def
-returns `Int` and not a monad.
+stack (on master the same coloured call overflowed 512 KB at
+construction), `count` through `match`, `told` over `Writer`.
+A separate `Direct.deepRecursive` for value-typed defs was built
+first and removed at the operator's ask; the `rowColor` given written
+for a colouring gap that was only two missing imports went with it.
+specs/direct-macro.md "Deep recursion".
 
 ## cont-shift-doors — the erased leaf type is written once, behind two named doors
 

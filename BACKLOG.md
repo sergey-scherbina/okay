@@ -37,10 +37,12 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [x] deep-recursive-direct — LANDED 2026-09-15: `Direct.deepRecursive` for a
-      def with a plain result type (the article's API verbatim) and, inside
-      `direct` at the program type, a marked self-call deferred into the
-      tree. TestDirectDeep; specs/direct-macro.md "Deep recursion". The
+- [x] deep-recursive-direct — LANDED 2026-09-15: inside `direct` at the
+      program type a self-call is deferred wherever it is marked or
+      auto-coloured, so `def fib(n: Int): Long ! Pure = direct: ... fib(n - 1)
+      + fib(n - 2)` needs no annotation (with `Direct.given` imported). A
+      separate `deepRecursive` was built first and removed at the operator's
+      ask. TestDirectDeep; specs/direct-macro.md "Deep recursion". The
       `.?` finding filed beside it was withdrawn: `.?` is retired as a mark
       on purpose (Direct.scala's own comment), `.reflect`/`.!?`/`!p` are the
       spellings. The entry as written: the article's `deepRecursive` (Halotu Kozak,

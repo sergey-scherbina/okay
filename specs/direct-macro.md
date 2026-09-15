@@ -113,57 +113,69 @@ stays for expression positions.
 
 The operator asked whether "Deep recursion in Scala 3" (Kozak) — a
 macro `deepRecursive` that rewrites a self-recursive body into
-`TailRec`'s `tailcall`/`flatMap`/`done` — can be had here. It can, and
-her `TailRec` is this library's `Free`: `tailcall` is `Delay`,
-`flatMap` is `Bind`, `done` is `Pure`, `.result` is `!.run`. Two doors:
+`TailRec`'s `tailcall`/`flatMap`/`done` — can be had here, and then
+that it be `direct` itself rather than a second entry. It is, and her
+`TailRec` is this library's `Free`: `tailcall` is `Delay`, `flatMap`
+is `Bind`, `done` is `Pure`, `.result` is `!.run`.
 
-- `Direct.deepRecursive[A](inline body: A): A` — for a def with a
-  PLAIN result type, the article's API verbatim:
-  ```scala
-  def fib(n: Int): Long = deepRecursive:
-    if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
-  ```
-  expands to a generated `loop$deep(n: Int): Long ! Pure` whose body
-  is the direct lowering of the block with every `fib(args)` replaced
-  by `Free.delay(() => loop$deep(args)).reflect`, and `!.run(loop$deep(n))`.
-  The DEFERRAL is the whole trick — a self-call evaluated at
-  construction is the native recursion the block was written to
-  avoid — and the lowering (`a + b` with two calls, `if`, `match`,
-  blocks) is `direct`'s, so a self-call anywhere `direct` can see one
-  is fine. v1: one parameter list, no type parameters; a self-call
-  under a lambda is a value and is left alone (the article refuses it
-  too).
-- Inside a `direct` block at the PROGRAM type (`def f(n): A ! Row =
-  direct: ...`), a self-call under a mark or an auto-colouring
-  conversion is deferred the same way: `f(n - 1).reflect` builds
-  `Free.delay(() => f(n - 1)).reflect`. Mutual recursion is one word
-  here, `!.tailcall(other(n)).reflect`, which the article's macro
-  cannot do at all.
+```scala
+import okay.Direct.{*, given}
+import scala.language.implicitConversions
+
+def fib(n: Int): Long ! Pure = direct:
+  if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+
+def sum(n: Int): Long ! Pure = direct:          // 1 + sum(n - 1): not tail
+  if n == 0 then 0L else 1L + sum(n - 1)
+```
+
+The rule: inside a `direct` block a call to the ENCLOSING def, at the
+block's own program type, is deferred wherever it is marked or
+auto-coloured — `fib(n - 1)` under `.reflect`, or under `selfColor`
+when `Direct.given` is imported, becomes `Free.delay(() => fib(n -
+1))` under the same mark. The DEFERRAL is the whole trick: a
+self-call evaluated at construction is the native recursion the
+block was written to avoid (on master before this lane, the coloured
+`sum(1_000_000)` overflowed a 512 KB stack at construction; with the
+rule it answers). The lowering of `a + b` with two calls, `if`,
+`match` and blocks is `direct`'s own. Never under a lambda (v1 does
+not look there): a self-call used as a value is left alone. Mutual
+recursion is one word, `!.tailcall(other(n)).reflect`, which the
+article's macro cannot do at all.
 
 Behavior (TestDirectDeep):
-- [x] `deepRecursive`: fib(25) = 75025 with two self-calls in one
-      expression; `1 + sum(n - 1)` at 1 000 000 on the suite's default
-      stack; a self-call inside `match` with two parameters.
-- [x] in `direct`: a marked self-call is deferred (sumP at 1 000 000);
-      mutual recursion through `!.tailcall`; a self-call under a
-      lambda is untouched (a `List` of programs, run by hand).
+- [x] fib(25) = 75025 with two bare self-calls in one expression;
+      `1 + sum(n - 1)` at 1 000 000 on the suite's default stack; a
+      self-call inside `match` with two parameters; a real row whose
+      tells interleave with the recursion, in order.
+- [x] the marked spelling defers the same way; mutual recursion
+      through `!.tailcall`; a self-call under a lambda untouched.
 
 Decisions:
-- **Why not zero annotation at the program type.** A macro runs after
-  the typer, and `fib(n - 1) + fib(n - 2)` with `fib: Long ! Pure`
-  does not type. The article gets its zero because the def's declared
-  type is the VALUE type; `deepRecursive` does the same, and that is
-  why it is a second entry rather than a rule inside `direct`.
-- **Why the deferral is a mark and not a new node.** `Direct.reflect
-  (Free.delay(...))` is the shape `direct` already lowers; nothing in
-  the pipeline learned a new case. `deepImpl` lowers the rewritten
-  body with `compileAll` at the splice owner, where the original
-  parameters are in scope, then moves the result under `loop$deep`
-  with the parameters substituted — lowering under the new symbol
-  first would have every emitted bind owned by the wrong method.
-- **`.?` is not a mark**, and the BACKLOG entry that said so was
+- **`direct`, not a second entry.** A first cut added
+  `Direct.deepRecursive` for a def with a PLAIN result type (the
+  article's signature: `def fib(n: Int): Long`), generating a
+  `loop$deep: Long ! Pure` and `!.run`ning it — 58 tests green — and
+  the operator asked for the recursion to work with `direct` at the
+  program type instead. It does, once the block's own values colour:
+  `selfColor` already applies to `A ! Row` (it looked as if it did not
+  — three probes refused `val x: Long = f(n - 1)` — until the
+  imports the auto-colouring tests carry were noticed: `Direct.given`
+  and `scala.language.implicitConversions`; a wildcard import does
+  not bring givens). A `rowColor` given written for the supposed gap
+  was removed the same hour. What `deepRecursive` offered on top was
+  a value-typed signature, and that is the article's constraint
+  (a macro runs after the typer), not a need of this library.
+- **The deferral is a mark, not a new node.** `Direct.reflect(Free
+  .delay(...))` and `selfColor.apply(Free.delay(...))` are shapes the
+  pipeline already lowers; nothing learned a new case. The self-call
+  detector runs once over the block before `compile`, keyed on the
+  enclosing def's symbol (`Symbol.spliceOwner` walked up to the first
+  `isDefDef`).
+- **`.?` is not a mark**, and a BACKLOG entry that said so was
   withdrawn: Direct.scala retired it on purpose (it collides with the
-  row peek `!.?`), `.reflect`, `.!?` and prefix `!p` are the spellings.
+  row peek `!.?`); `.reflect`, `.!?` and prefix `!p` are the
+  spellings.
 
 ## Out of scope (v2 roads, recorded not promised)
 

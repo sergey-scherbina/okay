@@ -100,83 +100,6 @@ object Direct:
     inline def apply[A](inline block: DirectCtx[F] ?=> A)(using inline M: Monad[F]): F[A] =
       ${ directImpl[F, A]('block, 'M) }
 
-  /**
-   * DEEP RECURSION for a def with a PLAIN result type — the
-   * `deepRecursive` of "Deep recursion in Scala 3" (Kozak), which
-   * rewrites `def fib(n: Int): Int = deepRecursive(if n < 2 then n else
-   * fib(n - 1) + fib(n - 2))` so the recursion runs on the heap:
-   *
-   *     def loop$deep(n: Int): Int ! Pure =
-   *       <the body, direct-lowered, every fib(...) as
-   *        Free.delay(() => loop$deep(...)).reflect>
-   *     !.run(loop$deep(n))
-   *
-   * Her `TailRec` is this library's `Free`: `tailcall` is `Delay`,
-   * `flatMap` is `Bind`, `done` is `Pure`, `.result` is `!.run`; the
-   * lowering of `a + b`, branches and blocks is `direct`'s, so a
-   * self-call anywhere `direct` can see one is fine — including two
-   * in one expression, and inside `match`. What she refuses and this
-   * does too: a self-call under a lambda (a value, left alone). What
-   * she refuses and this does NOT need: mutual recursion is written
-   * on the `direct` side with `!.tailcall(other(n)).reflect`, at the
-   * program type. One parameter list, no type parameters, in v1.
-   *
-   * Measured by TestDirectDeep: sum(1 000 000) as `1 + sum(n - 1)`,
-   * the shape @tailrec cannot take, on the suite's default stack.
-   */
-  inline def deepRecursive[A](inline body: A): A = ${ deepImpl[A]('body) }
-
-  @scala.annotation.publicInBinary
-  private[okay] def deepImpl[A: Type](body: Expr[A])(using Quotes): Expr[A] =
-    import quotes.reflect.*
-    type P = [X] =>> Free[Nothing, X]
-    val self: Symbol =
-      var o = Symbol.spliceOwner
-      while o != Symbol.noSymbol && !o.isDefDef do o = o.owner
-      if o == Symbol.noSymbol then report.errorAndAbort("deepRecursive: not inside a def")
-      o
-    val params: List[Symbol] = self.paramSymss match
-      case List(ps) if ps.forall(_.isTerm) => ps
-      case _ => report.errorAndAbort(
-        s"deepRecursive: ${self.name} needs exactly one parameter list and no type parameters (v1)")
-    val resTpe = TypeRepr.of[A]
-    val loopSym = Symbol.newMethod(Symbol.spliceOwner, "loop$deep",
-      MethodType(params.map(_.name))(_ => params.map(_.termRef.widen), _ => TypeRepr.of[Free[Nothing, A]]))
-    val M = Expr.summon[Monad[P]].getOrElse(report.errorAndAbort("deepRecursive: no Monad for A ! Pure (macro bug)"))
-    val delayApply = Symbol.requiredModule("okay.Free").methodMember("delay").head
-    val reflectSym = TypeRepr.of[Direct.type].typeSymbol.methodMember("reflect").head
-    def calleeRoot(t: Term): Symbol = t match
-      case Apply(f, _) => calleeRoot(f)
-      case TypeApply(f, _) => calleeRoot(f)
-      case Inlined(_, Nil, inner) => calleeRoot(inner)
-      case _ => t.symbol
-    /** fib(args) => Direct.reflect[P, A](Free.delay[Nothing, A](() => loop$deep(args))) */
-    val rewrite = new TreeMap:
-      override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
-        case Lambda(_, _) => tree
-        case Apply(fun, args) if calleeRoot(fun) == self =>
-          val args2 = args.map(a => transformTerm(a)(owner))
-          val call = Apply(Ref(loopSym), args2)
-          val thunk = Lambda(owner, MethodType(Nil)(_ => Nil, _ => call.tpe.widen), (o, _) => call.changeOwner(o))
-          val delayed = Apply(TypeApply(Ref(delayApply), List(Inferred(TypeRepr.of[Nothing]), Inferred(resTpe))), List(thunk))
-          Apply(TypeApply(Ref(reflectSym), List(Inferred(TypeRepr.of[P]), Inferred(resTpe))), List(delayed))
-        case _ => super.transformTerm(tree)(owner)
-    val rewritten = rewrite.transformTerm(stripped(body.asTerm))(Symbol.spliceOwner)
-    // lowered at the splice owner, where the ORIGINAL parameters are in
-    // scope; then moved under loop$deep with its parameters substituted
-    val lowered: Term = compileAll[P, A](rewritten, M).asTerm
-    val loopDef = DefDef(loopSym, { paramss =>
-      val subst = params.zip(paramss.head.map(_.asInstanceOf[Term])).toMap
-      val sub = new TreeMap:
-        override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
-          case id: Ident if subst.contains(id.symbol) => subst(id.symbol)
-          case _ => super.transformTerm(tree)(owner)
-      Some(sub.transformTerm(lowered.changeOwner(loopSym))(loopSym))
-    })
-    val entry = Apply(Ref(loopSym), params.map(p => Ref(p)))
-    val run = '{ okay.!.run[A](${ entry.asExprOf[Free[Nothing, A]] }) }.asTerm
-    Block(List(loopDef), run).asExprOf[A]
-
   /** a term with its inlining and ascription wrappers taken off */
   private def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
     import q.reflect.*
@@ -908,24 +831,33 @@ object Direct:
       wrapStat(ValDef.copy(vd)(vd.name, vd.tpt, Some(rhs)), rest, expr)
 
     /**
-     * DEEP RECURSION WITH NO ANNOTATION (deep-recursive-direct,
-     * specs/direct-macro.md): a call to the def this block is the body
-     * of, whose type is this block's own program type, is deferred and
-     * reflected — `fib(n - 1)` becomes `Free.delay(() => fib(n - 1))
-     * .reflect` — so a direct block may recurse a million deep and the
-     * recursion trampolines through the tree instead of the JVM stack.
-     * It is the rewrite the deepRecursive macro of "Deep recursion in
-     * Scala 3" (Kozak) performs, at the one place it matters: the
-     * DEFERRAL, since a self-call evaluated at construction is the
-     * native recursion the block was written to avoid. The rest —
-     * binds for `a + b`, branches, blocks — is the lowering below.
+     * DEEP RECURSION (deep-recursive-direct, specs/direct-macro.md): a
+     * call to the def this block is the body of, at this block's own
+     * program type, is deferred wherever it is marked or auto-coloured
+     * — `fib(n - 1)` under `.reflect` or under `selfColor` becomes
+     * `Free.delay(() => fib(n - 1))` under the same mark — so a direct
+     * block may recurse a million deep and the recursion trampolines
+     * through the tree instead of the JVM stack. With `import
+     * Direct.given` and `scala.language.implicitConversions` in scope
+     * the self-call needs no annotation at all:
+     *
+     *     def fib(n: Int): Long ! Pure = direct:
+     *       if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+     *
+     * which is the rewrite the deepRecursive macro of "Deep recursion
+     * in Scala 3" (Kozak) performs on `TailRec`, at the one place it
+     * matters: the DEFERRAL, since a self-call evaluated at
+     * construction is the native recursion the block was written to
+     * avoid. The rest — binds for `a + b`, branches, blocks — is the
+     * lowering below, and her `TailRec` is this tree (tailcall =
+     * `Delay`, flatMap = `Bind`, done = `Pure`, `.result` = `!.run`).
      *
      * Only a call to the ENCLOSING def, only at the block's program
-     * type, and never under a lambda (v1 does not look there): a
-     * self-call used as a VALUE — passed along, stored — is left as it
-     * is, and a self-call already under a mark gets the deferral and
-     * no second mark. Mutual recursion is one word away, as it always
-     * was: `!.tailcall(other(n)).reflect`.
+     * type, only under a mark or a colouring conversion, and never
+     * under a lambda (v1 does not look there): a self-call used as a
+     * VALUE — passed along, stored — is left as it is. Mutual
+     * recursion is one word, as it always was:
+     * `!.tailcall(other(n)).reflect`.
      */
     def deferSelfCalls(t: Term): Term =
       val self: Symbol =
