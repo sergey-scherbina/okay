@@ -110,7 +110,7 @@ class TestFused extends munit.ScalaCheckSuite {
   property("stage B: an Eff program run once with the composite handler answers what the fused Free loop answers") {
     forAll(Gen.listOf(plain), Gen.choose(-50, 50)) { (ins, s0) =>
       val p = compileSW(ins)
-      Fused.runEff(s0)(fromFree[Eff, SW, Int](p)) == Fused.stateWriter(s0)(p)
+      Fused.runEff(s0)(reflect[Eff, SW, Int](p)) == Fused.stateWriter(s0)(p)
     }
   }
 

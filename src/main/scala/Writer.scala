@@ -350,14 +350,10 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
  * and the caveat is gone.
  */
 given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
-  def unapply[A](x: Any): Option[x.type & Writer[W, A]] = x match
-    case s: Writer.Say[?, ?] =>
-      t.unapply(s.w).map(_ => x.asInstanceOf[x.type & Writer[W, A]])
-    case _ => None
   // `Typeable.unapply` still answers an Option for the told value's
   // own test (the JDK's Typeable has no boolean form); the Say wrapper
   // and the outer Option are gone
-  override def test(x: Any): Boolean = x match
+  def test(x: Any): Boolean = x match
     case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
     case _ => false
 

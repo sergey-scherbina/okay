@@ -77,10 +77,9 @@ object Tag:
     * that signature is erased and no test can reach it */
   given of[K, F[+_]](using k: ValueOf[K], t: TypeableK[F]): okay.Effect[Of[K, F]] =
     okay.Effect.of(new:
-      def unapply[A](x: Any): Option[x.type & Tag[K, F, A]] = x match
-        case w: Tag[?, ?, ?] if w.key == k.value && t.test(w.op) =>
-          Some(x.asInstanceOf[x.type & Tag[K, F, A]])
-        case _ => None)
+      def test(x: Any): Boolean = x match
+        case w: Tag[?, ?, ?] => w.key == k.value && t.test(w.op)
+        case _ => false)
 
   /** perform one operation under the key */
   inline def one[K, F[+_]](using k: ValueOf[K])[A](op: F[A]): A ! Of[K, F] =

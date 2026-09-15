@@ -41,10 +41,10 @@ class TestRMock extends munit.FunSuite:
     // what makes REval usable in an effect row at all: the runtime
     // test that says an operation is one of ours
     val T = summon[okay.TypeableK[REval]]
-    assert(T.unapply[Any](REval.Call("f", Vector.empty)).isDefined)
-    assert(T.unapply[Any](REval.Frame("f", RFrame(Vector.empty), Vector.empty)).isDefined)
+    assert(T.test(REval.Call("f", Vector.empty)))
+    assert(T.test(REval.Frame("f", RFrame(Vector.empty), Vector.empty)))
     // and says no to something that is not
-    assert(T.unapply[Any]("not an operation").isEmpty)
+    assert(!T.test("not an operation"))
   }
 
   test("the wire round-trips every RValue shape without an R present") {

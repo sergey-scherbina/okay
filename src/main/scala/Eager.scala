@@ -63,9 +63,6 @@ object Eager {
       override def foldCont[S](h: F !> S): A /> S =
         FreeE.foldCont(toFree(m))(h)
 
-      override def foldIn[C[_, _, _] : Control, S](h: Interpr[F, C, S]): C[A, S, S] =
-        FreeE.foldIn(toFree(m))(h)
-
       /** a pure value runs in O(1); a suspended tree runs like Free */
       override def runWith(using Handler[F]): A = fold(m)(identity, FreeE.runWith(_))
 }

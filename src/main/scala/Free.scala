@@ -65,12 +65,6 @@ enum Free[F[+_], A] {
   inline def map[B](f: A => B): Free[F, B] = flatMap(a => Pure(f(a)))
 
   /**
-   * the eliminator: p interprets values, h interprets operations
-   * together with their continuations. Left-nested binds are rotated
-   * tail-recursively on the way — sound by the monad associativity
-   * law, and linear-time amortized for programs built by foldLeft.
-   */
-  /**
    * THE rotation, and the only one on this side of the library:
    * normalize to a head form — `Pure(a)`, `Inject(e)` or
    * `Bind(Inject(e), k)` — in constant stack.
@@ -106,7 +100,10 @@ enum Free[F[+_], A] {
     // the deferred left side is forced HERE, in the loop, and its own
     // binds then rotate through the cases above — constant stack
     case Defer(t, f) => Bind(t(), f).resume
-    case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)).resume
+    // the same forcing in ONE hop: building a `Defer` here only to
+    // match it on the next iteration was one node and one dispatch
+    // per left-nested defer for nothing (core-cleanup)
+    case Bind(Defer(t, f), g) => Bind(t(), f(_).flatMap(g)).resume
     case a => a
 
   /**
@@ -120,13 +117,5 @@ enum Free[F[+_], A] {
       case Pure(a) => p(a)
       case Inject(a) => h(a)(Pure(_))
       case Bind(Inject(a), f) => h(a)(f)
-
-  /** interpret into F's own Monad, operation by operation */
-  final def run(using M: Monad[F]): F[A] =
-    fold(M.pure)([X] => a => k => a.flatMap(k(_).run))
-
-  /** interpret through a natural transformation into any monad M */
-  final def run[M[_] : Monad as M](f: F ==> M): M[A] =
-    fold(M.pure)([X] => a => k => f(a).flatMap(k(_).run(f)))
 
 }

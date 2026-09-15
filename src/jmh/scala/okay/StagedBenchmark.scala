@@ -25,11 +25,11 @@ class StagedBenchmark {
     inline if n == 0 then m
     else effSteps(n - 1)(Effects[M].flatMap(m)(x => Effects[M].perform[Produce, Int](x + 1)))
 
+  // `effFunc24` (the Func carrier under `runIn`) is gone with
+  // `runIn` itself — measured no faster than Cont, the rows are in
+  // history.tsv (core-cleanup)
   @Benchmark
-  def effCont24(): Int = effSteps[Free](24)(produce(0)).runIn[Cont]
-
-  @Benchmark
-  def effFunc24(): Int = effSteps[Free](24)(produce(0)).runIn[Func]
+  def effCont24(): Int = effSteps[Free](24)(produce(0)).runWith
 
   inline def effInlineSteps[C[_, _, _]](inline n: Int)(m: C[Int, Int, Int],
                                                       h: Interpr[Produce, C, Int]): C[Int, Int, Int] =

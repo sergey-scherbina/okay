@@ -45,9 +45,9 @@ class TestDeriveEffect extends munit.FunSuite {
   test("derived and hand-written agree") {
     val derived = summon[TypeableK[Db]]
     val written = typeableK[Db](classOf[Db[?]])
-    assertEquals(derived.unapply[Option[Int]](Db.Get("a")).isDefined,
-      written.unapply[Option[Int]](Db.Get("a")).isDefined)
-    assertEquals(derived.unapply[Option[Int]]("not an operation").isDefined, false)
+    assertEquals(derived.test(Db.Get("a")),
+      written.test(Db.Get("a")))
+    assertEquals(derived.test("not an operation"), false)
   }
 
   test("a row has no instance of its own, and needs none") {
@@ -59,8 +59,8 @@ class TestDeriveEffect extends munit.FunSuite {
     assert(!scala.compiletime.testing.typeChecks(
       "summon[okay.TypeableK[TestDeriveEffect.this.Db + okay.Writer % String]]"))
     // what IS available is each part, found with no import at all
-    assertEquals(summon[TypeableK[Db]].unapply[Option[Int]](Db.Get("a")).isDefined, true)
-    assertEquals(summon[TypeableK[Writer % String]].unapply[Unit](Writer("x")).isDefined, true)
+    assertEquals(summon[TypeableK[Db]].test(Db.Get("a")), true)
+    assertEquals(summon[TypeableK[Writer % String]].test(Writer("x")), true)
   }
 
   test("any handler can record: tracing is a decorator, not a second handler") {
@@ -80,8 +80,8 @@ class TestDeriveEffect extends munit.FunSuite {
     val asEffect = summon[Effect[Db]]
     val asTypeable: TypeableK[Db] = summon[TypeableK[Db]]
     assert(asTypeable eq asEffect)
-    assertEquals(asTypeable.unapply[Option[Int]](Db.Get("a")).isDefined, true)
-    assertEquals(asTypeable.unapply[Option[Int]](Writer("x")).isDefined, false)
+    assertEquals(asTypeable.test(Db.Get("a")), true)
+    assertEquals(asTypeable.test(Writer("x")), false)
   }
 
   test("derives Effect registers the signature for direct auto-coloring") {

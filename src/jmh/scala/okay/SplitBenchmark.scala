@@ -76,9 +76,10 @@ class SplitBenchmark {
   def writerExtract(): Int =
     val T = summon[TypeableK[Writer % String]]
     def old[A](e: (Writer % String)[A] | Produce[A]): Either[(Writer % String)[A], Produce[A]] = e match
-      // the extractor's Option, called as a method so the shape is the
+      // the extractor's Option, rebuilt here from `test` since
+      // `TypeableK.unapply` is gone (core-cleanup), so the shape is the
       // pre-stage-A kernel's and nothing else
-      case x => T.unapply[A](x) match
+      case x => Option.when(T.test(x))(x.asInstanceOf[(Writer % String)[A]]) match
         case Some(w) => Left(w)
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
@@ -174,9 +175,10 @@ class SplitBenchmark {
   def stateExtract(): Int =
     val T = summon[TypeableK[State % Int]]
     def old[A](e: (State % Int)[A] | Produce[A]): Either[(State % Int)[A], Produce[A]] = e match
-      // the extractor's Option, called as a method so the shape is the
+      // the extractor's Option, rebuilt here from `test` since
+      // `TypeableK.unapply` is gone (core-cleanup), so the shape is the
       // pre-stage-A kernel's and nothing else
-      case x => T.unapply[A](x) match
+      case x => Option.when(T.test(x))(x.asInstanceOf[(State % Int)[A]]) match
         case Some(w) => Left(w)
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match

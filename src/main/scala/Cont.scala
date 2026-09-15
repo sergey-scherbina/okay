@@ -267,7 +267,8 @@ object Cont:
     case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)
     case Bind(Pure(a), f) => step(f(a))(k)
     case Defer(t, f) => step(Bind(t(), f))(k)
-    case Bind(Defer(t, f), g) => step(Free.defer(t)(x => bind(f(x))(g)))(k)
+    // forced in one hop, as `Free.resume` does it (core-cleanup)
+    case Bind(Defer(t, f), g) => step(Bind(t(), x => bind(f(x))(g)))(k)
 
   extension [A, S, R](c: Cont[A, S, R])
     def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = bind(c)(f)

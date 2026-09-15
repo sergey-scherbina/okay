@@ -86,10 +86,9 @@ object Instances:
    * be a run-time value at all.
    */
   given of[F[+_]](using t: TypeableK[F]): okay.Effect[Of[F]] = okay.Effect.of(new:
-    def unapply[A](x: Any): Option[x.type & Instances[F, A]] = x match
-      case i: Instances[?, ?] if t.test(i.op) =>
-        Some(x.asInstanceOf[x.type & Instances[F, A]])
-      case _ => None)
+    def test(x: Any): Boolean = x match
+      case i: Instances[?, ?] => t.test(i.op)
+      case _ => false)
 
   /** perform one operation at one instance */
   inline def at[F[+_]](h: Handle)[A](op: F[A]): A ! Of[F] =

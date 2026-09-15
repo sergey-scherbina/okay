@@ -21,7 +21,7 @@ import scala.annotation.tailrec
  * Choosing an encoding: the tree is for tools — stepping, staged
  * relay, stack safety on any bind shape; the function is for speed —
  * fused build-and-run pipelines with no tree at all; the interface is
- * for not choosing too early. fromFree and reify move programs
+ * for not choosing too early. reflect and reify move programs
  * between the encodings.
  *
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
@@ -97,7 +97,11 @@ inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 extension [F[+_], A](op: F[A])
   inline def perform: A ! F = effect(op)
 
-/** an interpretation of F into any Control carrier C, with the answers S */
+/** an interpretation of F into any Control carrier C, with the answers
+ * S — the handler type of an inline handler-passing program (`Fused`,
+ * specs/staged-effects.md), which is what "staged effects" means here:
+ * a carrier-generic fold on the ENCODING (`foldIn`/`runIn`) was
+ * measured no faster than Cont and is gone (core-cleanup) */
 type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 
 /**
@@ -209,18 +213,8 @@ trait Effects[M[_[+_], _]]:
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
     /** interpret the operations, i.e. reflect the computation into Cont */
     def foldCont[S](h: F !> S): A /> S
-    /** the same at any Control carrier (foldCont is its Cont fast path) */
-    def foldIn[C[_, _, _] : Control, S](h: Interpr[F, C, S]): C[A, S, S]
     /** run all the effects by a comonadic Handler (the foldCont definition; encodings may override with an equivalent fast path) */
     def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
-    /**
-     * run at a chosen Control carrier. Cont is the stack-safe default;
-     * Func composes closures at run time — measured no faster than
-     * Cont here (see specs/staged-effects.md): true staged effects are
-     * inline handler-passing programs over Control, not a carrier.
-     */
-    inline def runIn[C[_, _, _]](using Handler[F], Control[C]): A =
-      m.foldIn[C, A](interpr[C, F, A]) / identity
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
@@ -236,10 +230,15 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
 /** ∀X, the runtime test for F[X], by the erasure of F */
 @implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised one says the same: `enum YourOp[S, +A] derives Effect` abstracts the LAST\nparameter, and the test is then by class only (a row may hold one of it).\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
 trait TypeableK[F[_]]:
-  def unapply[A](x: Any): Option[x.type & F[A]]
-  /** the same question with no wrapper in the answer: `split` asks
-   * it on every operation of every runner (split-without-either) */
-  def test(x: Any): Boolean = unapply(x).isDefined
+  /** is `x` an operation of F — asked by `split` on every operation
+   * of every runner (split-without-either), and the WHOLE interface:
+   * there used to be an `unapply` beside it answering
+   * `Option[x.type & F[A]]`, and nothing in the repository ever
+   * matched with it — every runner refines through `split` and then
+   * matches the constructor. The extractor cost each instance a
+   * method and a cast for a question `test` answers with neither
+   * (core-cleanup, 2026-09-15). */
+  def test(x: Any): Boolean
 
 /**
  * A `TypeableK` by the runtime CLASS of a signature's values.
@@ -257,38 +256,25 @@ trait TypeableK[F[_]]:
  * wrong instance to reach for: see `TypeableK.byClassPartial`.
  */
 
-def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
-  def unapply[A](x: Any): Option[x.type & F[A]] =
-    if cls.isInstance(x) then Some(x.asInstanceOf[x.type & F[A]]) else None
-  override def test(x: Any): Boolean = cls.isInstance(x)
+def typeableK[F[_]](cls: Class[?]): TypeableK[F] = Effect.ByClass[F](cls)
 
 /**
- * A `TypeableK` for a signature whose PARAMETER leaves no runtime
- * trace — `Reader % R`, `State % S`, `Take % V`. The test is by class
- * and therefore says only "this is a Reader", not "this is a Reader
- * of Int".
- *
- * That is exactly as sound as what was there before, and no less: the
- * generic instance below tests the same erasure. What this one adds is
- * a NAME for the limitation and one place to read about it, instead of
- * "the type test cannot be checked at runtime" repeated at every use
- * site, where it is unactionable and drowns out the warnings that can
- * be acted on.
- *
- * The limitation, stated: a row may hold ONE instance of such a
- * signature — and `Distinct[R]`, which `Handler.union` requires, now
- * refuses the row at COMPILE time rather than leaving it to be
- * discovered at the first wrong answer. A test that is finer than the
- * class says so in its declared type (`TypeableK.ByValue`) and is
- * allowed to repeat; `writerK` is the one that does.
- *
- * Two — `Reader % Int + Reader % String` — misroute, and
+ * The limitation of a class test, stated once — for a signature whose
+ * PARAMETER leaves no runtime trace (`Reader % R`, `State % S`,
+ * `Take % V`) the test says only "this is a Reader", not "this is a
+ * Reader of Int". So a row may hold ONE instance of such a signature,
+ * and `Distinct[R]`, which `Handler.union` requires, refuses the row
+ * at COMPILE time rather than leaving it to the first wrong answer. A
+ * test that is finer than the class says so in its declared type
+ * (`TypeableK.ByValue`) and is allowed to repeat; `writerK` is the one
+ * that does. Two — `Reader % Int + Reader % String` — misroute, and
  * `TestRowIdentity` demonstrates exactly how (the first handler
  * answers both asks and the second continuation gets a
- * ClassCastException, so it fails loudly at the first wrong answer
- * rather than returning a plausible wrong result).
+ * ClassCastException: loud, at the first wrong answer).
+ *
+ * (`typeableKByClass` used to be a second name for `typeableK` that
+ * carried this paragraph; nothing called it — core-cleanup.)
  */
-def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
 
 /**
  * There is NO generic instance any more, and that is the point.
@@ -348,6 +334,13 @@ object TypeableK:
   inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): TypeableK[F] =
     ${ derivedImpl[F]('ct) }
 
+  /** `Effect.derived`'s half of the same macro: the class is an
+   * `Effect` already, so `derives Effect` needs no wrapper around a
+   * `TypeableK` (it had one — `Effect.of(TypeableK.derived)` — which
+   * put two virtual calls under every `split`) */
+  inline def derivedEffect[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
+    ${ derivedImpl[F]('ct) }
+
   /**
    * The check is the reason this is a macro and not one line.
    *
@@ -366,7 +359,7 @@ object TypeableK:
    * testing the parts.
    */
   def derivedImpl[F[_] : Type](ct: Expr[scala.reflect.ClassTag[F[Any]]])
-                              (using Quotes): Expr[TypeableK[F]] =
+                              (using Quotes): Expr[Effect[F]] =
     import quotes.reflect.*
     val body = TypeRepr.of[F].dealias match
       case tl: TypeLambda => tl.resType.dealias
@@ -379,15 +372,14 @@ object TypeableK:
           "split would send all of them left and say nothing.\n" +
           "A row needs no instance of its own: let each signature derive one, and the\n" +
           "row split will find them.")
-      case _ => '{ typeableK[F]($ct.runtimeClass) }
+      case _ => '{ Effect.ByClass[F]($ct.runtimeClass) }
 
 
   /** the empty signature is trivially splittable: nothing inhabits
    * it, so the test never matches — which lets row-generic code
    * (Logic, the effectful streams) instantiate at F = Pure */
   given TypeableK[Pure] = new:
-    def unapply[A](x: Any): Option[x.type & Nothing] = None
-    override def test(x: Any): Boolean = false
+    def test(x: Any): Boolean = false
 
 /**
  * WHAT A SIGNATURE SAYS ABOUT ITSELF: `enum Users[+A] derives Effect`.
@@ -427,16 +419,27 @@ object TypeableK:
 trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]
 
 object Effect:
-  /** delegates to `TypeableK.derived`, which is where the check lives
+  /** delegates to `TypeableK`'s macro, which is where the check lives
    * that refuses a row */
   inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
-    of(TypeableK.derived[F])
+    TypeableK.derivedEffect[F]
 
-  /** not inlined, deliberately: an anonymous class in an inline body
-   * is duplicated at every derivation site */
+  /**
+   * THE class test, as one class: what `derives Effect`, `derives
+   * TypeableK` and `typeableK(cls)` all build. Named rather than
+   * anonymous so the macro can name it, and so that a derived
+   * signature's `test` is one call to `Class.isInstance` under
+   * `split` — not a wrapper's call to a delegate's call.
+   */
+  final class ByClass[F[_]](cls: Class[?]) extends Effect[F]:
+    def test(x: Any): Boolean = cls.isInstance(x)
+
+  /** an `Effect` over a test that is NOT by class — `Instances.of`
+   * and `Tag.of` read a key or an inner operation. Not inlined,
+   * deliberately: an anonymous class in an inline body is duplicated
+   * at every derivation site */
   def of[F[_]](t: TypeableK[F]): Effect[F] = new Effect[F]:
-    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
-    override def test(x: Any): Boolean = t.test(x)
+    def test(x: Any): Boolean = t.test(x)
 
 /**
  * Split the union by testing only the F side (the erasure of F, by
@@ -508,8 +511,6 @@ given Effects[Free] with
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
     override def foldCont[S](h: F !> S): A /> S =
       m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
-    override def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using C: Control[C]): C[A, S, S] =
-      m.fold(C.pure)([X] => e => k => C.flatMap(h(e))(x => k(x).foldIn[C, S](h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
     override def runWith(using Handler[F]): A = runFree(m)
 
@@ -628,20 +629,14 @@ given Effects[Eff] with
     override inline def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
       [S] => (h: F !> S) => Cont.defer(() => m[S](h))(a => f(a)[S](h))
     override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
-    /** Eff is committed to Cont; changing the carrier reifies the tree first */
-    override inline def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using Control[C]): C[A, S, S] =
-      (m[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => Free.pure(a))).foldIn[C, S](h)
 
 /**
  * Free is initial: the tree interprets uniquely into every Effects
- * instance (fromFree). Eff is final: every instance observes into it
+ * instance (reflect). Eff is final: every instance observes into it
  * by its own foldCont (toEff). So all the encodings live between the
  * tree and its behavior, and reify closes the circle: any program
  * materializes back as syntax.
  */
-def fromFree[M[_[+_], _] : Effects as E, F[+_], A](m: A ! F): M[F, A] =
-  m.fold(E.pure)([X] => e => k => E.perform(e).flatMap(x => fromFree[M, F, A](k(x))))
-
 /** every Effects instance observes into Eff, by its own foldCont */
 inline def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
   [S] => (h: F !> S) => m.foldCont(h)
@@ -668,7 +663,7 @@ inline def convert[M[_[+_], _] : Effects, N[_[+_], _] : Effects as N, F[+_], A]
  * the syntax is itself an interpretation !>, with the answers A ! F
  */
 inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
-  m.foldCont[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => pure(a))
+  convert[M, Free, F, A](m)
 
 /**
  * The other direction: a Free tree read INTO any encoding — the
@@ -688,8 +683,12 @@ inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
  * `okay` it shadows `scala.reflect`, so a `Typeable` or `ClassTag`
  * referred to as `reflect.X` there must be spelled `scala.reflect.X`.
  */
-inline def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
-  m.foldCont[M[F, A]]([X] => e => shift(k => M.perform(e).flatMap(k))) / (a => M.pure(a))
+def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
+  // `convert[Free, M]` would say the same through Cont; a tree is
+  // already syntax, so it folds straight into the target with no
+  // continuation reified on the way (this was `fromFree`, the same
+  // function under a second name — core-cleanup)
+  m.fold(M.pure)([X] => e => k => M.perform(e).flatMap(x => reflect[M, F, A](k(x))))
 
 object ! {
   export Free.*
@@ -836,16 +835,17 @@ object ! {
     // not a value), so the recursion lives in closures rather than on
     // the stack — the State.handle shape, and the reason no @tailrec
     // annotation belongs here
+    // `split`, not `<|>`: no Either per operation (core-cleanup); the
+    // recursion is not a loop, so the inlined arms cost no inlining
+    // budget the way they would inside `relay`
     (prog.resume: @unchecked) match
       case Pure(a) => Pure(a)
-      case Effect(e) => <|>[F, G](e) match
-        case Left(f) => h(f)
-        case Right(g) => Effect(g)
+      case Effect(e) => split[F, G](e)(f => h(f))(g => Effect(g))
       case Bind(Effect(e), k) =>
         // the Bind node types e and k together
-        <|>[F, G](e) match
-          case Left(f) => h(f).flatMap(x => translate[A, F, G](k(x))(h))
-          case Right(g) => Effect(g).flatMap(x => translate[A, F, G](k(x))(h))
+        split[F, G](e)
+          (f => h(f).flatMap(x => translate[A, F, G](k(x))(h)))
+          (g => Effect(g).flatMap(x => translate[A, F, G](k(x))(h)))
 
   /**
    * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x

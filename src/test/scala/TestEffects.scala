@@ -18,12 +18,12 @@ class TestEffects extends munit.FunSuite {
     assertEquals(prog[Eff].runWith, 3)
   }
 
-  test("initial and final: reify materializes, fromFree interprets back") {
+  test("initial and final: reify materializes, reflect interprets back") {
     val t: Int ! Produce = reify(prog[Eff])
     assertEquals(t.?, 1)      // the tree can be stepped; the Eff function cannot
     assertEquals(t.runWith, 3)
     assertEquals(toEff(t).runWith, 3)
-    assertEquals(fromFree[Eff, Produce, Int](t).runWith, 3)
+    assertEquals(reflect[Eff, Produce, Int](t).runWith, 3)
   }
 
   test("stack safety: runWith over a 1M bind chain (foldCont)") {
@@ -54,8 +54,6 @@ class TestEffects extends munit.FunSuite {
     // runFree (Effects.scala, the runWith fast path)
     assert(!.run(isEven(1000000)))
     assertEquals(!.run(isOdd(1000000)), false)
-    // fold, via foldIn/runIn[Cont] (Free.scala)
-    assert(isEven(1000000).runIn[Cont])
     // resume and ? (Effects.scala's object !)
     assertEquals(isEven(1000000).resume, Pure(true))
     assertEquals(isEven(1000000).?, true)
@@ -84,10 +82,8 @@ class TestEffects extends munit.FunSuite {
     inline def sprog[M[_[+_], _]]: M[Produce, Int] =
       val E = Effects[M]
       E.flatMap(E.perform[Produce, Int](1))(x => E.perform[Produce, Int](x + 1))
-    assertEquals(sprog[Free].runIn[Cont], 2)
-    assertEquals(sprog[Free].runIn[Func], 2)   // fused: no Cont tree in between
+    assertEquals(sprog[Free].runWith, 2)
     assertEquals(sprog[Eff].runWith, 2)
-    assertEquals(sprog[Eff].runIn[Func], 2)    // reifies, then fuses
   }
 
   test("staged effects, fully fused: inline handler-passing over Control") {

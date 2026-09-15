@@ -581,4 +581,4 @@ def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B 
 }
 
 /** by class only: `Await()` carries no trace of V, so a row may hold
- * ONE Take — see typeableKByClass */
+ * ONE Take — see typeableK */

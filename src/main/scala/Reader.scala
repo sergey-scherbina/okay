@@ -32,4 +32,4 @@ object Reader {
 }
 
 /** by class only: `Ask()` carries no trace of R, so a row may hold
- * ONE Reader — see TestRowIdentity and typeableKByClass */
+ * ONE Reader — see TestRowIdentity and typeableK */
