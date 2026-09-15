@@ -1,0 +1,11 @@
+handle-loop-inlining
+owner: opus-5 session 0a0e1f68
+started: 2026-09-15
+what: the 3% of TIME that handle-forward-fast left, with allocation
+  IDENTICAL TO THE DIGIT to relay. Entry rule, followed literally:
+  -XX:+PrintInlining FIRST, change nothing until it has spoken. And
+  the second face of the rule is expected to apply — handle loop is a
+  LOOP, and shrinking a loop under FreqInlineSize cost four lanes once
+  already (409c06e2). A refutation is a fine outcome here.
+files: src/main/scala/Effects.scala, src/jmh/history.tsv,
+  docs/benchmarks.md, BACKLOG.md, CHANGELOG.md
