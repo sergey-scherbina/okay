@@ -1,6 +1,0 @@
-feature/fuse-depth 2026-09-15T04:59:30Z
-agent: claude-code
-heartbeat: 2026-09-15T04:59:30Z
-status: in-progress
-done-so-far: measurement lane, no source change
-next: FibBenchmark fuse=1/2/4 vs 128, 3 rotated rounds, record in history.tsv
