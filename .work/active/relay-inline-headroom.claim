@@ -1,0 +1,6 @@
+feature/relay-inline-headroom 2026-09-15T09:59:28Z
+agent: claude-code
+heartbeat: 2026-09-15T09:59:28Z
+status: in-progress
+done-so-far: nothing yet
+next: extract relay terminal case on master for inlining headroom; measure, gate, land
