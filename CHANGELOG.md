@@ -1,5 +1,47 @@
 # Changelog
 
+## handle-decompose — the handler gap is 1.51x, and it is allocation
+
+`relay` and `Effects.handle` had been compared by two numbers that each
+included building a 10 000-node tree, so the documented "1.45x" said
+nothing about what either HANDLER costs — the only part either of them
+controls. `relayPrebuilt` got its build/run split this morning;
+`handlePrebuilt` is its missing twin. Same pre-built tree, same
+program, nothing different but the handler.
+
+Like for like, two rounds in opposite lane order, three forks of five
+iterations each, quiet box (rows `hd-*`):
+
+| lane | round 1 | round 2 | B/op |
+|---|---|---|---|
+| buildOnly | 24.570 µs | 24.548 µs | 400 072 |
+| relayPrebuilt | 149.335 µs | 148.100 µs | 1 753 945 |
+| handlePrebuilt | 223.250 µs | 224.794 µs | 2 869 306 |
+
+**1.51x, and the whole of it is allocation.** The two allocation
+figures are identical to the digit across both rounds (error ±0.02
+B/op), and their difference is 1 115 361 B over 10 000 operations of
+which 9 900 are FORWARDED: **+112.7 bytes per forwarded operation**,
+the operation the handler never touches. At the ~12 GB/s these lanes
+allocate at, that megabyte is ~93 µs against a 75 µs time gap, so
+there is nothing else left to explain.
+
+The mechanism was already in the source and is now written where the
+number is: `Effects.handle` folds the program through `Cont` and
+answers a forwarded operation with `shift(k => perform(e).flatMap(k))`,
+spending a continuation capture on an operation no handler claims,
+while `relay` answers the same case on the tree. `buildOnly` is the
+control that makes this readable: identical in both rounds and
+identical to the digit in allocation, so the tree under both handlers
+is the same tree.
+
+Benchmark, numbers and two corrected claims; no behavior changed. The
+follow-on is filed as BACKLOG `handle-forward-fast` with its prize
+priced (up to 33% off `handle` on forwarding-heavy work) and with the
+condition that can kill it: the argument that forwarding is safe to
+move off the continuation is an argument, not a proof, so the aborting
+and multi-shot cases are written and watched to FAIL first.
+
 ## stage2-probe — a prompt's identity DOES reach the type level
 
 `Delim.scala:223` throws `NoPrompt` when a shift names a prompt that is

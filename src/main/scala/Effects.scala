@@ -780,8 +780,14 @@ object ! {
           case Right(g) => Effect(g).flatMap(x => translate[A, F, G](k(x))(h))
 
   /**
-   * handle_relay (Kiselyov): tail-resumptive handling, measured 1.45x
-   * faster than Effects.handle on forwarding-heavy work. g is
+   * handle_relay (Kiselyov): tail-resumptive handling, measured
+   * **1.51x** faster than Effects.handle on forwarding-heavy work —
+   * priced like for like by handle-decompose (2026-09-15), on the same
+   * pre-built tree rather than on two numbers that each included
+   * construction, and the gap is ALLOCATION: +112.7 bytes per
+   * FORWARDED operation, because `handle` folds through `Cont` and
+   * spends a shift on an operation no handler touches, where this loop
+   * stays on the tree. docs/benchmarks.md §2, rows `hd-*`. g is
    * answer-polymorphic, so by parametricity it must resume the
    * continuation (exactly once), which keeps the loop tail-recursive,
    * i.e. stack-safe on any number of handled operations. For handlers

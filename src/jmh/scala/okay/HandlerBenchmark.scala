@@ -72,6 +72,21 @@ class HandlerBenchmark {
   def handleForward(): Int =
     Effects[Free].handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
+  /**
+   * `handleForward` builds its 10 000-node tree on every invocation,
+   * exactly as `relayForward` used to before `relayPrebuilt` split
+   * the two. Without this lane the documented "relay is 1.45x faster
+   * than handle" compares one number that includes construction with
+   * another that includes construction, and neither says what the
+   * HANDLER costs — which is the only part either of them controls.
+   * Same pre-built tree as `relayPrebuilt`, so the pair differs in
+   * nothing but the handler.
+   */
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def handlePrebuilt(): Int =
+    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+
   @Benchmark
   def stepBulk(): Any =
     fibs[Int, Producer].next(N).?

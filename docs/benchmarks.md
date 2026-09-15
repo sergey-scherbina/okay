@@ -414,9 +414,21 @@ shape of effectful code.
 
 **Why Okay's numbers.** Reader runs at RELAY speed: a
 tail-resumptive handler must resume exactly once, so handling is one
-tail-recursive loop — no continuation capture, no allocation per ask
-(relay measured 1.45x over the general handler on forwarding-heavy
-work). Writer's `tell` is ZERO allocation: the operation is an
+tail-recursive loop — no continuation capture, no allocation per ask.
+**Priced like for like (handle-decompose, 2026-09-15): 1.51x, and it
+is allocation.** The older 1.45x compared two numbers that each
+carried 24.6 µs of tree construction; `handlePrebuilt` beside
+`relayPrebuilt` relays and handles the SAME pre-built 10 000-node
+tree, and reads 223.3 µs against 148.1. The allocation is identical
+to the digit across two rounds in opposite lane order: 2 869 306 B/op
+against 1 753 945, which over 9 900 FORWARDED operations is **+112.7
+bytes per forwarded operation** — the operation the handler never
+touches. At ~12 GB/s that extra megabyte is ~93 µs, i.e. the whole
+75 µs gap. The mechanism is in the source: `Effects.handle` folds the
+program through `Cont` and spends a `shift` per forwarded operation,
+where `relay` stays on the `Free` tree. BACKLOG `handle-forward-fast`
+is the question that follows, and it is not yet answered.
+Writer's `tell` is ZERO allocation: the operation is an
 opaque IDENTITY signature — telling w IS the value w, no wrapper
 node; the handler is a bespoke tail loop into a Vector.
 

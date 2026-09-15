@@ -58,6 +58,42 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       relayForward 1.029 — those lanes end in `runWith` over a 9 900-op
       residual, so `runFree` pays a `resume` call per operation, which
       is where it was predicted. Rows `onerot-*`.
+- [x] handle-decompose — DONE (2026-09-15). `relay` and
+      `Effects.handle` were being compared by two numbers that each
+      included 24.6 µs of tree construction. `handlePrebuilt` is the
+      missing twin of `relayPrebuilt`: same pre-built 10 000-node tree,
+      nothing different but the handler. Like for like the gap is
+      **1.51x** (223.3 µs against 148.1), and it is ALLOCATION —
+      2 869 306 B/op against 1 753 945, identical to the digit across
+      two rounds in opposite lane order, which over 9 900 forwarded
+      operations is **+112.7 B per forwarded operation**. At ~12 GB/s
+      that megabyte is ~93 µs against a 75 µs time delta, so there is
+      nothing else to explain. Rows `hd-*`; the stale 1.45x is
+      corrected in docs/benchmarks.md §2 and in `relay`'s own comment.
+- [ ] handle-forward-fast — the question handle-decompose leaves, with
+      its prize already priced: up to 33% off `Effects.handle` on
+      forwarding-heavy work, which is most real rows, since a row of
+      four effects forwards three quarters of its operations through
+      every handler but one.
+      THE MECHANISM, read out of the source and confirmed by the
+      bytes: `handle` folds the whole program through `Cont` and
+      answers a FORWARDED operation with `shift(k => perform(e)
+      .flatMap(k))`, so an operation the handler never touches still
+      pays a continuation capture. `relay` answers the same case with
+      `Effect(e).flatMap(x => relay(k(x))(f)(g))`, on the tree.
+      THE IDEA: give `handle` the same forwarding arm, entering `Cont`
+      only for operations the handler actually claims. `handle` must
+      stay general where `relay` cannot — a handler that ABORTS or
+      performs G — and the argument that forwarding is safe to move is
+      that forwarding is not the handler's business at all: the
+      forwarded operation has already been committed to the G program,
+      and an abort in a LATER handled operation cannot un-perform it.
+      THAT ARGUMENT IS NOT A PROOF, and it is where this entry can
+      die: write the aborting and multi-shot cases as tests FIRST
+      (TestEffects has both shapes), watch them fail against a
+      deliberately wrong forwarding arm, and only then believe a green
+      suite. DISQUALIFYING: any change in what a multi-shot or
+      aborting handler observes, or a `fusedSWr` floor that moves.
 - [ ] runfree-inlined-rotation — the FIRST attempt is REFUTED and the
       refutation is the useful part. Diagnosing with
       -XX:+PrintInlining found the real cost of free-one-rotation:
@@ -516,6 +552,10 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       of that module alone (optics-outside-routes-query). Second
       module to show it, which is consistent with the settled cause
       being the runner rather than any one suite.
+      2026-09-15, okayLexNative, same shape, GREEN on the rerun of that
+      module alone (handle-decompose, a benchmark-and-prose lane that
+      changed no Native source at all). Third module, and the first
+      occurrence on a lane that could not have caused it.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
