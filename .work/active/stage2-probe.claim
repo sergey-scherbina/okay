@@ -1,8 +1,0 @@
-stage2-probe
-owner: opus-5 session 0a0e1f68
-started: 2026-09-15
-what: freer-base stage 2, the Delim half — settle by COMPILING whether a
-  prompt identity can reach the type level, and land the probe plus the
-  verdict. Prose + one standalone probe script; no compiled source changes.
-files: specs/freer-base.md, BACKLOG.md, CHANGELOG.md,
-  scripts/stage2-prompt-identity-probe.scala
