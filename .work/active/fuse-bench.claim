@@ -1,6 +1,0 @@
-feature/fuse-bench 2026-09-15T04:47:34Z
-agent: claude-code
-heartbeat: 2026-09-15T04:47:34Z
-status: in-progress
-done-so-far: measurement lane, no source change
-next: FibBenchmark fuse=0 vs 128, 3 alternating rounds, record in history.tsv
