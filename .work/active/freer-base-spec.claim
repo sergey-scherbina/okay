@@ -1,6 +1,0 @@
-feature/freer-base-spec 2026-09-15T05:35:01Z
-agent: claude-code
-heartbeat: 2026-09-15T05:35:01Z
-status: in-progress
-done-so-far: spec lane, prose only
-next: write specs/freer-base.md, BACKLOG entry, land
