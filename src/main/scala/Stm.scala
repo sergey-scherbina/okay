@@ -311,8 +311,8 @@ object Stm {
   private def runWithLog[A](tx: A ! Tx, log: Log): A =
     @tailrec def loop(p: A ! Tx): A = (p.resume: @unchecked) match
       case Pure(a) => a
-      case Effect(e) => perform(e, log)
-      case Bind(Effect(e), k) => loop(k(perform(e, log)))
+      case Inject(e) => perform(e, log)
+      case Bind(Inject(e), k) => loop(k(perform(e, log)))
     loop(tx)
 
   /** run the whole program against the log, synchronously */
@@ -363,8 +363,8 @@ object Stm {
    * that IS one operation needs no log */
   private def fast[A](tx: A ! Tx): Option[A ! Async] = (tx.resume: @unchecked) match
     case Pure(a) => Some(pure(a))
-    case Effect(Tx.Modify(r, f)) => Some(async(r.modify(f)))
-    case Effect(Tx.Read(r)) => Some(async(r.get))
+    case Inject(Tx.Modify(r, f)) => Some(async(r.modify(f)))
+    case Inject(Tx.Read(r)) => Some(async(r.get))
     case _ => None
 
   /** park the transaction on its read set; the first change re-runs
@@ -452,8 +452,8 @@ object Stm {
             case Left(t) => throw t
         def loop(p: A ! Tx): A ! Sim.Op = (p.resume: @unchecked) match
           case Pure(a) => finish(a)
-          case Effect(e) => Sim.yieldNow.flatMap(_ => after(step(e))(finish))
-          case Bind(Effect(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => loop(k(x))))
+          case Inject(e) => Sim.yieldNow.flatMap(_ => after(step(e))(finish))
+          case Bind(Inject(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => loop(k(x))))
         loop(tx)
       attempt
 }

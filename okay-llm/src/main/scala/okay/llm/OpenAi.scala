@@ -156,11 +156,11 @@ object OpenAi {
 
     def go(rest: Unit ! F, buf: List[String]): Unit ! F = (rest.resume: @unchecked) match
       case Pure(_) => flush(buf)
-      case Effect(e) => okay.<|>[Async, Writer % String](e) match
-        case Left(a) => Effect(a).flatMap(_ => flush(buf))
+      case Inject(e) => okay.<|>[Async, Writer % String](e) match
+        case Left(a) => Inject(a).flatMap(_ => flush(buf))
         case Right(Writer.Say(line)) => absorb(line, buf)(b => flush(b))
-      case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
-        case Left(a) => Effect(a).flatMap(x => go(k(x), buf))
+      case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+        case Left(a) => Inject(a).flatMap(x => go(k(x), buf))
         case Right(Writer.Say(line)) =>
           absorb(line, buf)(b => go(k(()), b))
 

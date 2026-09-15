@@ -79,7 +79,7 @@ Changed:
 
 ## Decisions
 
-- **`!.Effect` (the `Inject` alias) keeps its name** although it
+- **`!.Effect` (the `Inject` alias) kept its name in this lane** (removed later the same day, inject-not-effect) although it
   collides with `okay.Effect` (the `derives` marker) — a file that
   imports `!.*` must write `derives okay.Effect`, ten of them do.
   specs/freer-base.md settled the name against the 154 match sites

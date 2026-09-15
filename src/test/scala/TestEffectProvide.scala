@@ -44,7 +44,7 @@ object ProvideProbe:
  *
  * It also made this file's subject untestable on `Reader`. The
  * negative test went red on master — the ungranted block compiled —
- * and it was RIGHT to: `Reader derives okay.Effect`, so its block no
+ * and it was RIGHT to: `Reader derives Effect`, so its block no
  * longer needs a grant and never will again. The two positive tests
  * did not go red, which is worse: they had become vacuous, passing
  * whether or not `provide` did anything at all.

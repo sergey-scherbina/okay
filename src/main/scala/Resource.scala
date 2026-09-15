@@ -8,7 +8,7 @@ import okay.!.*
  * scope ends, in reverse acquisition order, whatever else the program
  * does (region style, as in the region calculus / cats Resource).
  */
-enum Resource[+A] derives okay.Effect:
+enum Resource[+A] derives Effect:
   /** acquire a resource; the scope releases it at its end */
   case Acquire[R](make: () => R, release: R => Unit) extends Resource[R]
 
@@ -46,11 +46,11 @@ object Resource {
     try
       while true do (x.resume: @unchecked) match
         case Pure(v) => return (v, () => close())
-        case Effect(Acquire(mk, rel)) =>
+        case Inject(Acquire(mk, rel)) =>
           val r = mk()
           fin = (() => rel(r)) :: fin
           return (r, () => close())
-        case Bind(Effect(Acquire(mk, rel)), k) =>
+        case Bind(Inject(Acquire(mk, rel)), k) =>
           val r = mk()
           fin = (() => rel(r)) :: fin
           x = k(r)
@@ -89,7 +89,7 @@ object Resource {
             fin = Nil
             releaseAll(f)
             return Pure(a)
-          case Effect(e) => <|>[Resource, F](e) match
+          case Inject(e) => <|>[Resource, F](e) match
             case Left(Acquire(mk, rel)) =>
               val r = mk()
               val f = (() => rel(r)) :: fin
@@ -98,8 +98,8 @@ object Resource {
               return Pure(r)
             case Right(e) =>
               val f = fin
-              return Effect(failing.guard(e, () => releaseAll(f))).map { a => releaseAll(f); a }
-          case Bind(Effect(e), k) => <|>[Resource, F](e) match
+              return Inject(failing.guard(e, () => releaseAll(f))).map { a => releaseAll(f); a }
+          case Bind(Inject(e), k) => <|>[Resource, F](e) match
             case Left(Acquire(mk, rel)) =>
               val r = mk()
               fin = (() => rel(r)) :: fin
@@ -109,7 +109,7 @@ object Resource {
               // k(y) runs USER code (the composed continuation) at
               // the outer handler's call site, outside this loop's
               // try — a throw there must not skip the finalizers
-              return Effect(failing.guard(e, () => releaseAll(f))).flatMap { y =>
+              return Inject(failing.guard(e, () => releaseAll(f))).flatMap { y =>
                 _loop(f)(
                   try k(y)
                   catch { case t: Throwable => releaseAll(f); throw t })

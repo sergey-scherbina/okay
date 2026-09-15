@@ -100,8 +100,8 @@ class TestFree extends munit.FunSuite {
     import okay.!.*
     def headForm(c: Any): Boolean = c match
       case Pure(_) => true
-      case Effect(_) => true
-      case Bind(a, _) => a match { case Effect(_) => true; case _ => false }
+      case Inject(_) => true
+      case Bind(a, _) => a match { case Inject(_) => true; case _ => false }
       case _ => false
 
     def op(i: Int): Int ! Produce = effect(i)

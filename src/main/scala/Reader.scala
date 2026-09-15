@@ -15,7 +15,7 @@ import okay.!.*
  * second continuation gets a ClassCastException, rather than a
  * plausible wrong answer.
  */
-enum Reader[R, +A] derives okay.Effect {
+enum Reader[R, +A] derives Effect {
   /** read the environment */
   case Ask() extends Reader[R, R]
 }

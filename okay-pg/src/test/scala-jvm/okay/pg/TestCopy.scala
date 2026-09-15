@@ -48,10 +48,10 @@ class TestCopy extends munit.FunSuite {
       def go(rest: Chunk[Vector[SqlValue]] ! (Produce + Async), acc: Vector[Vector[SqlValue]]): Vector[Vector[SqlValue]] =
         (rest.resume: @unchecked) match
           case Pure(_) => acc
-          case Effect(e) => okay.<|>[Async, Produce](e) match
+          case Inject(e) => okay.<|>[Async, Produce](e) match
             case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc
             case Right(c) => acc ++ c.asInstanceOf[Chunk[Vector[SqlValue]]]
-          case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+          case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
             case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
             case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[Vector[SqlValue]]])
       go(p, Vector.empty)
@@ -85,10 +85,10 @@ class TestCopy extends munit.FunSuite {
           def go(rest: Chunk[A] ! (Produce + Async), acc: Vector[A]): Vector[A] =
             (rest.resume: @unchecked) match
               case Pure(_) => acc
-              case Effect(e) => okay.<|>[Async, Produce](e) match
+              case Inject(e) => okay.<|>[Async, Produce](e) match
                 case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc
                 case Right(c) => acc ++ c.asInstanceOf[Chunk[A]]
-              case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+              case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
                 case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
                 case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[A]])
           go(p, Vector.empty)

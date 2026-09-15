@@ -26,7 +26,7 @@ import okay.RowLift.at
  * second continuation gets a ClassCastException, rather than a
  * plausible wrong answer.
  */
-case class Throws[E, +A](e: E) derives okay.Effect
+case class Throws[E, +A](e: E) derives Effect
 
 /** perform the failure */
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
@@ -264,6 +264,6 @@ object CanTry:
           // the stack's convention: resume answers one of three shapes
           case Right(head) => (head: @unchecked) match
             case Pure(a) => Free.Pure(a)
-            case Effect(op) => Free.Inject(op)
-            case Bind(Effect(op), k) => Free.Bind(Free.Inject(op), x => step(() => k(x)))
+            case Inject(op) => Free.Inject(op)
+            case Bind(Inject(op), k) => Free.Bind(Free.Inject(op), x => step(() => k(x)))
       step(() => fa)

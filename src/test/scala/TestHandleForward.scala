@@ -4,7 +4,7 @@ import !.*
 import scala.annotation.nowarn
 
 /** the HANDLED side: an operation carrying its own answer */
-case class Claim[+A](a: A) derives okay.Effect
+case class Claim[+A](a: A) derives Effect
 
 /**
  * What a handler may observe, pinned before `handle`'s forwarding arm

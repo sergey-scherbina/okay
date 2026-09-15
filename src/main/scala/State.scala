@@ -23,7 +23,7 @@ import okay.!.*
  * under a key), `Refs` makes them at run time when a type cannot list
  * them, and a fresh `Delim` prompt separates them dynamically.
  */
-enum State[S, +A] derives okay.Effect {
+enum State[S, +A] derives Effect {
   /** read the current state */
   case Get() extends State[S, S]
 
@@ -118,14 +118,14 @@ object State {
     // where the constructor has refined the answer type to S.
     @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
-      case Effect(e) => split[State[S, *], F](e) {
+      case Inject(e) => split[State[S, *], F](e) {
           case Get() => Pure((s, s)): (S, A) ! F
           case Set(s) => Pure((s, s)): (S, A) ! F
-        } { e => Effect(e).map((s, _)) }
-      case Bind(Effect(e), k) => split[State[S, *], F](e) {
+        } { e => Inject(e).map((s, _)) }
+      case Bind(Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
           case Set(s) => loop(s)(k(s))
-        } { e => Effect(e).flatMap(x => _loop(s)(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(s)(a)
   }
@@ -157,11 +157,11 @@ object State {
       // need `A ! row <: X ! row` from the GADT refinement — Free is
       // invariant in its answer, so that is a cast, and this costs one
       // node instead of one.
-      case Effect(e) => loop(Effect(e).flatMap(x => Pure(x)))
-      case Bind(Effect(e), k) => split[State[A, *], F](e) {
+      case Inject(e) => loop(Inject(e).flatMap(x => Pure(x)))
+      case Bind(Inject(e), k) => split[State[A, *], F](e) {
           case Get() => readPart.flatMap(a => _loop(k(a)))
           case Set(a) => writePart(a).flatMap(x => _loop(k(x)))
-        } { e => Effect(e).flatMap(x => _loop(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(k(x))) }
 
     loop(p)
   }

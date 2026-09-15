@@ -56,10 +56,10 @@ class TestRowDecode extends munit.FunSuite {
            acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
       (rest.resume: @unchecked) match
         case Pure(_) => acc
-        case Effect(e) => okay.<|>[Async, Produce](e) match
+        case Inject(e) => okay.<|>[Async, Produce](e) match
           case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc
           case Right(c) => acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]]
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
           case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
           case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]])
     go(Typed.rows[A](db, "select ..."), Vector.empty)

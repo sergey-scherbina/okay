@@ -32,10 +32,10 @@ class TestPgComposite extends munit.FunSuite:
     def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
       (rest.resume: @unchecked) match
         case Pure(_) => acc.reverse
-        case Effect(e) => okay.<|>[Async, Produce](e) match
+        case Inject(e) => okay.<|>[Async, Produce](e) match
           case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc.reverse
           case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
           case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
           case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
     go(s, Nil)

@@ -1,5 +1,16 @@
 # Changelog
 
+## inject-not-effect — one word, one meaning
+
+`!.Effect`, the type-and-value alias of `Free.Inject` that freer-base
+kept so the match sites would not move, is gone: the node is `Inject`
+everywhere (`case Inject(e)` at ~150 sites in 52 files, tests and
+benchmarks included), and `Effect` means the `derives` marker alone.
+The ten files that had to write `derives okay.Effect` past the alias
+write `derives Effect`. Asked by the operator after the core review
+listed the collision; mechanical, the compiler was the check, no
+behaviour and no bytes changed.
+
 ## deep-recursive-direct — the article's deep recursion, inside direct, with no annotation
 
 Inside a `direct` block a call to the enclosing def, at the block's

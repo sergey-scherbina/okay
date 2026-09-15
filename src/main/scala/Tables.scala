@@ -26,7 +26,7 @@ import Chunks.elements
  * carries `Tables`. On a bare handle the same names give a `! Tables`
  * program, for direct style: `val hours = !deps.aggregate(hourly)`.
  */
-enum Tables[+A] derives okay.Effect:
+enum Tables[+A] derives Effect:
   case Of[A](xs: Iterable[A]) extends Tables[Tables.Table[A]]
   case Read(path: String) extends Tables[Tables.Table[okay.Csv.Row]]
   case Columns(t: Tables.Table[okay.Csv.Row], names: Set[String]) extends Tables[Tables.Table[okay.Csv.Row]]
@@ -227,7 +227,7 @@ object Tables:
  * native sort answers it natively instead (okay-spark's
  * `SparkBulk.sort`), and the program does not change either way.
  */
-enum Sort[+A] derives okay.Effect:
+enum Sort[+A] derives Effect:
   case By[A, K](t: Tables.Table[A], key: A => K, ord: Ordering[K]) extends Sort[Tables.Table[A]]
 
 object Sort:

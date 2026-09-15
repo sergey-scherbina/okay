@@ -70,8 +70,8 @@ object CatsInterop {
   def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =
     (p.resume: @unchecked) match
       case Pure(a) => _root_.cats.free.Free.pure(a)
-      case Effect(e) => _root_.cats.free.Free.liftF(e)
-      case Bind(Effect(e), k) =>
+      case Inject(e) => _root_.cats.free.Free.liftF(e)
+      case Bind(Inject(e), k) =>
         _root_.cats.free.Free.liftF(e).flatMap(x => toCats(k(x)))
 
   /** a cats free monad as an okay program, by initiality (foldMap into

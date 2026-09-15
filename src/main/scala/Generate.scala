@@ -127,8 +127,8 @@ given Stream[Producer, okay.Pure] with
 
   def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure((p.resume: @unchecked) match
     case Free.Pure(_) => None
-    case Effect(e) => Some((e, Free.Pure(e)))
-    case Bind(Effect(e), k) => Some((produced[A](e), k(e))))
+    case Inject(e) => Some((e, Free.Pure(e)))
+    case Bind(Inject(e), k) => Some((produced[A](e), k(e))))
 
   /** the specialized linear view: a direct walk of the freer tree —
    * no Option, no tuple per element (measured; the generic default
@@ -142,11 +142,11 @@ given Stream[Producer, okay.Pure] with
 
       @tailrec private def advance(): Unit = cur match
         case Free.Pure(_) => ended = true
-        case Effect(e) =>
+        case Inject(e) =>
           elem = e
           ready = true
           cur = Free.Pure(e)
-        case Bind(Effect(e), k) =>
+        case Bind(Inject(e), k) =>
           elem = produced[A](e)
           ready = true
           cur = k(e)
@@ -183,11 +183,11 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
   def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = (p.resume: @unchecked) match
     case Free.Pure(_) => pure(None)
     // `split`, not `<|>`: no Either per element (split-over-either)
-    case Effect(e) => split[G, Produce](e)
-      (g => Effect(g).map(_ => None): Option[(A, A ! Produce + G)] ! G)
+    case Inject(e) => split[G, Produce](e)
+      (g => Inject(g).map(_ => None): Option[(A, A ! Produce + G)] ! G)
       (w => pure(Some((produced[A](w), Free.Pure(produced[A](w))))))
-    case Bind(Effect(e), k) => split[G, Produce](e)
-      (g => Effect(g).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
+    case Bind(Inject(e), k) => split[G, Produce](e)
+      (g => Inject(g).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
       (w => pure(Some((produced[A](w), k(w)))))
 
 import scala.math.Numeric.Implicits.given

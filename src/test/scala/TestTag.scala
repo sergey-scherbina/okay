@@ -54,7 +54,7 @@ class TestTag extends munit.FunSuite {
   }
 
   test("a tagged effect can also be handled by its own comonadic handler") {
-    enum Beep[+A] derives okay.Effect:
+    enum Beep[+A] derives Effect:
       case Boop() extends Beep[Int]
     val h: Handler[Beep] = new:
       def handle[A](e: Beep[A]): A = e match { case Beep.Boop() => 42 }
@@ -107,9 +107,9 @@ class TestTag extends munit.FunSuite {
    * ClassCastException, because there is nothing left to compare.
    */
   test("one key, two SIGNATURES: the signature test tells them apart") {
-    enum Beep[+A] derives okay.Effect:
+    enum Beep[+A] derives Effect:
       case Boop() extends Beep[Int]
-    enum Buzz[+A] derives okay.Effect:
+    enum Buzz[+A] derives Effect:
       case Bzz() extends Buzz[String]
 
     type A = Tag.Of["same", Beep]

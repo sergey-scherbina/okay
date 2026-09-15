@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
-import okay.!.{Effect, Bind}
+import okay.!.{Inject, Bind}
 import okay.RowLift.at
 
 /**
@@ -61,10 +61,10 @@ class SplitBenchmark {
   def writerEither(): Int =
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => <|>[Writer % String, Produce](e) match
+      case Inject(e) => <|>[Writer % String, Produce](e) match
         case Left(Writer.Say(v)) => (s :+ v, ())
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => <|>[Writer % String, Produce](e) match
+      case Bind(Inject(e), k) => <|>[Writer % String, Produce](e) match
         case Left(Writer.Say(v)) => loop(s :+ v)(k(()))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
     loop(Vector.empty)(wp)._2
@@ -84,10 +84,10 @@ class SplitBenchmark {
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => old(e) match
+      case Inject(e) => old(e) match
         case Left(Writer.Say(v)) => (s :+ v, ())
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => old(e) match
+      case Bind(Inject(e), k) => old(e) match
         case Left(Writer.Say(v)) => loop(s :+ v)(k(()))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
     loop(Vector.empty)(wp)._2
@@ -137,13 +137,13 @@ class SplitBenchmark {
     def _loop(x: A ! Writer % String + F): (Seq[String], A) ! F = loop(x)
     @tailrec def loop(x: A ! Writer % String + F): (Seq[String], A) ! F = (x.resume: @unchecked) match
       case Free.Pure(a) => Free.Pure((buf.toList, a))
-      case Effect(e) => split[Writer % String, F](e) {
+      case Inject(e) => split[Writer % String, F](e) {
           case Writer.Say(v) => buf += v; Free.Pure((buf.toList, ())): (Seq[String], A) ! F
-        } { e => Effect(e).map(x => (buf.toList, x)) }
-      case Bind(Effect(e), k) => split[Writer % String, F](e) { w0 =>
+        } { e => Inject(e).map(x => (buf.toList, x)) }
+      case Bind(Inject(e), k) => split[Writer % String, F](e) { w0 =>
           (w0: @unchecked) match
             case Writer.Say(v) => buf += v; loop(k(()))
-        } { e => Effect(e).flatMap(x => _loop(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(k(x))) }
     loop(a)
 
   @Benchmark
@@ -161,11 +161,11 @@ class SplitBenchmark {
   def stateEither(): Int =
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => <|>[State % Int, Produce](e) match
+      case Inject(e) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => (s, s)
         case Left(State.Set(s2)) => (s2, s2)
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => <|>[State % Int, Produce](e) match
+      case Bind(Inject(e), k) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => loop(s)(k(s))
         case Left(State.Set(s2)) => loop(s2)(k(s2))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
@@ -183,11 +183,11 @@ class SplitBenchmark {
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => old(e) match
+      case Inject(e) => old(e) match
         case Left(State.Get()) => (s, s)
         case Left(State.Set(s2)) => (s2, s2)
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => old(e) match
+      case Bind(Inject(e), k) => old(e) match
         case Left(State.Get()) => loop(s)(k(s))
         case Left(State.Set(s2)) => loop(s2)(k(s2))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")

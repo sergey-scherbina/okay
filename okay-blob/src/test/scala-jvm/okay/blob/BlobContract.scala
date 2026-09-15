@@ -41,12 +41,12 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
     import okay.!.*
     (p.resume: @unchecked) match
       case Pure(a) => okay.pure(a)
-      case Effect(e) => okay.<|>[Async, Produce](e) match
+      case Inject(e) => okay.<|>[Async, Produce](e) match
         case Left(a) => effect[Async, A](a.asInstanceOf[Async[A]])
         case Right(c) =>
           each(c.asInstanceOf[Chunk[Byte]])
           okay.pure(c.asInstanceOf[A])   // a terminal produce answers its value
-      case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+      case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
         case Left(a) =>
           effect[Async, Any](a.asInstanceOf[Async[Any]]).flatMap(x => walk(k(x.asInstanceOf), each))
         case Right(c) =>

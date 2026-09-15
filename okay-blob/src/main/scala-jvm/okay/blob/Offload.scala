@@ -137,10 +137,10 @@ object Offload {
         case Pure(a) => a match
           case Left(why) => throw IllegalStateException(s"offload read '$key': $why")
           case Right(()) => okay.pure(acc)
-        case Effect(e) => okay.<|>[Async, Produce](e) match
+        case Inject(e) => okay.<|>[Async, Produce](e) match
           case Left(a) => okay.effect(a).map(_ => acc)
           case Right(c) => okay.pure(acc :+ okay.produced[Chunk[Byte]](c).toArray)
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
           case Left(a) => okay.effect(a).flatMap(x => walk(k(x), acc))
           case Right(c) => walk(k(c), acc :+ okay.produced[Chunk[Byte]](c).toArray)
     walk(blob.get(key), Vector.empty).map { parts =>

@@ -107,20 +107,20 @@ object Writer {
     // `split`, not `<|>` (split-without-either): no Either per tell.
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S2, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((finish(s), a))
-      case Effect(e) => split[Writer % W, F](e) {
+      case Inject(e) => split[Writer % W, F](e) {
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
           // the ascription is where the refined value meets the loop
           case Say(v) => Pure((finish(step(s, v)), ())): (S2, A) ! F
-        } { e => Effect(e).map((finish(s), _)) }
-      case Bind(Effect(e), k) => split[Writer % W, F](e) { w0 =>
+        } { e => Inject(e).map((finish(s), _)) }
+      case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
           // ordinary call and not an assertion; the checker cannot see
           // that `Say` is the only constructor under an existential
           // answer type — the same claim `resume`'s @unchecked makes
           (w0: @unchecked) match
             case Say(v) => loop(step(s, v))(k(()))
-        } { e => Effect(e).flatMap(x => _loop(s)(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(z)(a)
   }
@@ -156,15 +156,15 @@ object Writer {
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
     case Free.Pure(x) => Free.Pure(x)
-    case Effect(e) => split[G, Writer % W](e)
-      (g => Effect(g): A ! (Writer % V + G))
+    case Inject(e) => split[G, Writer % W](e)
+      (g => Inject(g): A ! (Writer % V + G))
       // the constructor refines the answer type to Unit on both
       // sides, so the re-told operation types with nothing asserted
-      { case Say(w) => Effect(Writer(f(w))) }
-    case Bind(Effect(e), k) => split[G, Writer % W](e)
-      (g => Effect(g).flatMap(x => map[W, V, A, G](k(x))(f)))
+      { case Say(w) => Inject(Writer(f(w))) }
+    case Bind(Inject(e), k) => split[G, Writer % W](e)
+      (g => Inject(g).flatMap(x => map[W, V, A, G](k(x))(f)))
       { w0 => (w0: @unchecked) match
-          case Say(w) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f)) }
+          case Say(w) => Inject(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f)) }
 
   /**
    * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
@@ -194,15 +194,15 @@ object Writer {
   : A ! (Writer % V + G) =
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer % V + G) =
       if i >= vs.length then Free.Pure(())
-      else Effect(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
+      else Inject(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
 
     (a.resume: @unchecked) match
       case Free.Pure(x) => Free.Pure(x)
-      case Effect(e) => split[G, Writer % W](e)
-        (g => Effect(g): A ! (Writer % V + G))
+      case Inject(e) => split[G, Writer % W](e)
+        (g => Inject(g): A ! (Writer % V + G))
         { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)] }
-      case Bind(Effect(e), k) => split[G, Writer % W](e)
-        (g => Effect(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
+      case Bind(Inject(e), k) => split[G, Writer % W](e)
+        (g => Inject(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
         { w0 => (w0: @unchecked) match
             case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f)) }
 
@@ -219,17 +219,17 @@ object Writer {
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
     case Free.Pure(x) => Free.Pure(x)
-    case Effect(e) => split[G, Writer % W](e)
-      (g => Effect(g): A ! (Writer % V + G))
+    case Inject(e) => split[G, Writer % W](e)
+      (g => Inject(g): A ! (Writer % V + G))
       // Say is Writer's ONLY constructor, so a value that reaches
       // here IS one — sound by the enum's shape, same as map's
       // Say(w) destructure; @unchecked because BINDING the whole
       // instance (not just its field) needs W's erased type
       // argument to verify, which map's plain destructure does not
-      { case sw @ (_: Say[W, Unit] @unchecked) => Effect(sw: Writer[V, Unit]) }
-    case Bind(Effect(e), k) => split[G, Writer % W](e)
-      (g => Effect(g).flatMap(x => widen[W, V, A, G](k(x))))
-      { case sw @ (_: Say[W, Unit] @unchecked) => Effect(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
+      { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]) }
+    case Bind(Inject(e), k) => split[G, Writer % W](e)
+      (g => Inject(g).flatMap(x => widen[W, V, A, G](k(x))))
+      { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
 
   /**
    * ANY stream as a writer program: its elements told one by one, its
@@ -275,8 +275,8 @@ object Writer {
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Pure(a) => Left(a)
-    case Effect(Say(w)) => Right((w, Free.Pure(())))
-    case Bind(Effect(Say(w)), k) => Right((w, k(())))
+    case Inject(Say(w)) => Right((w, Free.Pure(())))
+    case Bind(Inject(Say(w)), k) => Right((w, k(())))
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -291,11 +291,11 @@ object Writer {
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
     case Free.Pure(a) => okay.pure(Left(a))
-    case Effect(e) => split[G, Writer % W](e)
-      (g => Effect(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
+    case Inject(e) => split[G, Writer % W](e)
+      (g => Inject(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
       { case Say(w) => okay.pure(Right((w, Free.Pure(())))) }
-    case Bind(Effect(e), k) => split[G, Writer % W](e)
-      (g => Effect(g).flatMap(x => uncons[W, A, G](k(x))))
+    case Bind(Inject(e), k) => split[G, Writer % W](e)
+      (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
       { w0 => (w0: @unchecked) match
           case Say(w) => okay.pure(Right((w, k(())))) }
 }

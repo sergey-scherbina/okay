@@ -40,7 +40,7 @@ import scala.annotation.tailrec
 /** a delimiter's identity AND its answer type; identity is the tag */
 final class Prompt[R]
 
-enum Delim[+A] derives okay.Effect:
+enum Delim[+A] derives Effect:
   /** install a delimiter and run the body under it (reset) */
   case Push[R](prompt: Prompt[R], body: Any) extends Delim[R]
 
@@ -186,11 +186,11 @@ object Delim {
           // the delimited block finished normally: drop its marker
           case Segs.Mark(_, rest) => loop(Next(okay.pure(x), rest))
 
-        case Effect(e) => step(e, n.kont) match
+        case Inject(e) => step(e, n.kont) match
           case Left(answer) => answer
           case Right(next) => loop(next)
 
-        case Bind(Effect(e), k) =>
+        case Bind(Inject(e), k) =>
           step(e, Segs.K(k, n.kont)) match
             case Left(answer) => answer
             case Right(next) => loop(next)
@@ -224,7 +224,7 @@ object Delim {
         }
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
-        (g => Left(Effect(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
+        (g => Left(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
 
     loop(Next(prog, Segs.Done()))
   }

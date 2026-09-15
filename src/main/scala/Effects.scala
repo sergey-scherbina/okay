@@ -660,9 +660,11 @@ object ! {
 
   import Free.*
 
-  /** the domain name of Inject: an operation node */
-  type Effect[F[+_], A] = Inject[F, A]
-  val Effect = Inject
+  // `Effect` used to be a second name for `Inject` here (type + val),
+  // kept by freer-base so the match sites would not move. It collided
+  // with `okay.Effect`, the `derives` marker — every file importing
+  // `!.*` had to write `derives Effect` — and went in
+  // inject-not-effect (2026-09-15): the node's name is `Inject`.
 
   extension [F[+_], A](self: A ! F) {
 
@@ -673,13 +675,13 @@ object ! {
 
     /** step through the next n operations by the Handler */
     @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = (self.resume: @unchecked) match
-      case Bind(Effect(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
+      case Bind(Inject(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
     /** peek the nearest answer: the value, or the first operation handled */
     @tailrec def ? : Handler[F] ?=> ? = self match
       case Bind(a, _) => a.?
-      case Effect(e) => summon[Handler[F]].handle(e)
+      case Inject(e) => summon[Handler[F]].handle(e)
       case Pure(a) => a
       // a peek forces the thunk too, same as `Bind(a, _) => a.?` discards
       // its own continuation without applying it
@@ -717,8 +719,8 @@ object ! {
    * at the type level is not free operationally. */
   def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = (p.resume: @unchecked) match
     case Pure(a) => Pure(a)
-    case Effect(e) => Effect(e)
-    case Bind(Effect(e), k) => Effect(e).flatMap(x => widen[A, F, G](k(x)))
+    case Inject(e) => Inject(e)
+    case Bind(Inject(e), k) => Inject(e).flatMap(x => widen[A, F, G](k(x)))
 
   /**
    * Interpret F into ANOTHER ROW rather than into a value.
@@ -804,12 +806,12 @@ object ! {
     // budget the way they would inside `relay`
     (prog.resume: @unchecked) match
       case Pure(a) => Pure(a)
-      case Effect(e) => split[F, G](e)(f => h(f))(g => Effect(g))
-      case Bind(Effect(e), k) =>
+      case Inject(e) => split[F, G](e)(f => h(f))(g => Inject(g))
+      case Bind(Inject(e), k) =>
         // the Bind node types e and k together
         split[F, G](e)
           (f => h(f).flatMap(x => translate[A, F, G](k(x))(h)))
-          (g => Effect(g).flatMap(x => translate[A, F, G](k(x))(h)))
+          (g => Inject(g).flatMap(x => translate[A, F, G](k(x))(h)))
 
   /**
    * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x
@@ -845,13 +847,13 @@ object ! {
      * Extracting the cold arm leaves the loop at 244 bytes.
      */
     def last(e: F[A] | G[A]): B ! G =
-      split[F, G](e)(e => g(e) / f)(e => Effect(e).flatMap(f))
+      split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
 
     @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
       // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
       // `/` since Cont became a facade over Free (specs/freer-base.md)
-      case Bind(Effect(e), k) => split[F, G](e)(e => loop(g(e) / k))(e => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
-      case Effect(e) => last(e)
+      case Bind(Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(e => Inject(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
+      case Inject(e) => last(e)
       case Pure(a) => f(a)
 
     loop(a)

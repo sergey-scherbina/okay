@@ -144,11 +144,11 @@ extension [A](s: Source[A])
     @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
       (x.resume: @unchecked) match
         case Free.Pure(_) => okay.pure(acc)
-        case Effect(e) => split[Async, Writer % A](e)
-          (g => Effect(g).map(_ => acc): Vector[A] ! Async)
+        case Inject(e) => split[Async, Writer % A](e)
+          (g => Inject(g).map(_ => acc): Vector[A] ! Async)
           { case Writer.Say(a) => okay.pure(acc :+ a) }
-        case Bind(Effect(e), k) => split[Async, Writer % A](e)
-          (g => Effect(g).flatMap(v => again(acc)(k(v))))
+        case Bind(Inject(e), k) => split[Async, Writer % A](e)
+          (g => Inject(g).flatMap(v => again(acc)(k(v))))
           { w0 => (w0: @unchecked) match
               case Writer.Say(a) => loop(acc :+ a)(k(())) }
     loop(Vector.empty)(s)
@@ -173,11 +173,11 @@ extension [A](s: Source[A])
     import !.*
     def loop(x: Source[A]): Unit ! Async = (x.resume: @unchecked) match
       case Free.Pure(_) => okay.pure(())
-      case Effect(e) => split[Async, Writer % A](e)
-        (g => Effect(g).map(_ => ()): Unit ! Async)
+      case Inject(e) => split[Async, Writer % A](e)
+        (g => Inject(g).map(_ => ()): Unit ! Async)
         { case Writer.Say(a) => f(a) }
-      case Bind(Effect(e), k) => split[Async, Writer % A](e)
-        (g => Effect(g).flatMap(v => loop(k(v))))
+      case Bind(Inject(e), k) => split[Async, Writer % A](e)
+        (g => Inject(g).flatMap(v => loop(k(v))))
         { w0 => (w0: @unchecked) match
             case Writer.Say(a) => f(a).flatMap(_ => loop(k(()))) }
     loop(s)

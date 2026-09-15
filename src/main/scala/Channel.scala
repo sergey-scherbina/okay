@@ -818,14 +818,14 @@ object Channel {
         // the producer's own boundary: emit what is held, however short
         { case Flush.Now => sendIf(takeChunk(buf, size, full = true))(go(k(()))) }
         (rest => split[Async, Writer % A](rest)
-          (a => Effect(a).flatMap(x => go(k(x))))
+          (a => Inject(a).flatMap(x => go(k(x))))
           { case Writer.Say(w) =>
             buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
             sendIf(takeChunk(buf, size, full = false))(go(k(()))) })
     def go(p: Flushing[A]): Unit ! Async = (p.resume: @unchecked) match
       case Pure(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
-      case Effect(e) => step(e, _ => okay.pure(()))
-      case Bind(Effect(e), k) => step(e, k)
+      case Inject(e) => step(e, _ => okay.pure(()))
+      case Bind(Inject(e), k) => step(e, k)
     go(p)
 
   /** what both chunking feeds do to the buffer: take a chunk if one

@@ -11,7 +11,7 @@ import scala.annotation.nowarn
 // its own runtime test — the erasure fallback is gone — and this lane's
 // relay/handle split needs one. Found by handler-fusion-gate: the
 // landing that removed the fallback did not reach the Jmh configuration.
-case class Ask[+A](a: A) derives okay.Effect
+case class Ask[+A](a: A) derives Effect
 
 /**
  * The previously unbenchmarked paths: tail-resumptive relay vs the

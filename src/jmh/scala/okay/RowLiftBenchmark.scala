@@ -83,8 +83,8 @@ class RowLiftBenchmark {
       import okay.!.*
       (p.resume: @unchecked) match
         case Pure(a) => Free.Pure(a)
-        case Effect(e) => Free.inject(i.inj(e))
-        case Bind(Effect(e), k) => Free.inject(i.inj(e)).flatMap(x => k(x).atWalk[G])
+        case Inject(e) => Free.inject(i.inj(e))
+        case Bind(Inject(e), k) => Free.inject(i.inj(e)).flatMap(x => k(x).atWalk[G])
 
   /** the floor: construct at R directly */
   @Benchmark

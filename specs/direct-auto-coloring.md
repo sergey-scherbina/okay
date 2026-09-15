@@ -60,7 +60,7 @@ object Direct:
 
 Use sites need `import Direct.{*, given}` (a bare `*` does not bring
 givens in Scala 3) and `import scala.language.implicitConversions`.
-Naming note: `Direct.Effect` shadows `!.Effect` if both are imported
+Naming note: `Direct.Effect` shadowed `!.Effect` when both were imported (that alias of `Inject` is gone since inject-not-effect, 2026-09-15)
 unqualified — rare, and the qualified names disambiguate.
 
 ## Behavior

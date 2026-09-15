@@ -34,7 +34,7 @@ class TestDirectAuto extends munit.FunSuite {
    * was "operations color via the Effect marker", and it carried
    * `given Effect[[X] =>> Reader[Int, X]] with {}` to supply that
    * marker. Since 2026-09-08 `okay.Effect extends Direct.Effect`, and
-   * `Reader derives okay.Effect` — so the marker arrived on its own
+   * `Reader derives Effect` — so the marker arrived on its own
    * and the line was redundant. MEASURED: the test passes with it
    * deleted, which means it had stopped testing the marker and was
    * testing that Reader colors, a claim that now holds for free.

@@ -106,12 +106,12 @@ object Backup {
     // that the produced values are chunks is `produced`'s one claim
     (p.resume: @unchecked) match
       case Pure(a) => okay.pure(a)
-      case Effect(e) => okay.<|>[Async, Produce](e) match
+      case Inject(e) => okay.<|>[Async, Produce](e) match
         case Left(a) => effect(a)
         case Right(c) =>
           each(okay.produced[Chunk[Byte]](c))
           okay.pure(c)
-      case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+      case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
         case Left(a) => effect(a).flatMap(x => walkGet(k(x), each))
         case Right(c) =>
           each(okay.produced[Chunk[Byte]](c))
