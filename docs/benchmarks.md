@@ -439,9 +439,15 @@ Giving `handle` relay's forwarding arm closes it:
 The second row is the result. **`handle` allocates exactly what
 `relay` allocates, to the digit** — 1 753 945 against 1 753 945 — and
 the build-on-every-call pair agrees at 2 154 017 on both sides. What
-remains is 3% of TIME with identical bytes, which is the signature of
-code shape rather than structure and is filed as
-`handle-loop-inlining`.
+remains is 3% of TIME with identical bytes, and that was chased and
+CLOSED the same day (`handle-loop-inlining`). `handle`'s loop is 388
+bytes against `FreqInlineSize` 325 and inlines nowhere, where
+`relay`'s 262-byte loop inlines hot — an exact diagnosis that bought
+nothing: bringing the loop to 318 flipped the verdicts to "inline
+(hot)" and moved no lane, the in-run ratio reading 1.039 / 1.030 /
+1.011 against 1.029 / 1.039 before. The 3% is the one extra test
+`handle` does per handled operation, and that test is what buys it
+abort and perform-G. A price, not an overhead.
 
 Two findings are worth more than the number. The `shift` was only a
 third of the gap. The other two thirds were introduced by the fix's

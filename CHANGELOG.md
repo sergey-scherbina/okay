@@ -1,5 +1,44 @@
 # Changelog
 
+## handle-loop-inlining — the diagnosis was right and the fix bought nothing
+
+`handle-forward-fast` left 3% of time with allocation identical to the
+digit, which is the signature of code shape. The entry's rule was to
+run `-XX:+PrintInlining` before touching anything, and it named its
+own suspect precisely:
+
+| | bytes | verdict |
+|---|---|---|
+| `relay`'s loop | 262 | inline (hot) ×4 |
+| `handle`'s loop | 388 | hot method too big ×6 |
+
+Against `FreqInlineSize` 325. Extracting the terminal case and the
+capturing fallback — the move `relay.last` exists for — brought it to
+318 and flipped the verdicts to "inline (hot)" ×3.
+
+**The lane did not move.** Three rounds after the shrink (157.3,
+153.0, 153.2 µs) against two before (154.2, 156.2), with `relay`
+drifting the same way in the same rounds, and the ratio measured
+in-run — so the box cancels — at 1.039 / 1.030 / 1.011 against
+1.029 / 1.039. The ranges overlap completely. Allocation moved by 16
+bytes on the whole run, one closure the extraction stopped building.
+Reverted.
+
+**This is the third face of one rule, and the three together are the
+point.** Over the line COSTS when the body is straight-line: `relay`
+lost 10% to exactly that. Under the line COSTS when the method is a
+loop inlined into callers that are loops: shrinking `Free.resume` cost
+four lanes up to 1.44x. And here, under the line is NEUTRAL — a loop
+whose caller is a 10-byte wrapper gains nothing by being pasted into
+it. The question is not "is it over the line" but "who is the caller,
+and is the body a loop".
+
+So what the 3% is, by elimination and by reading the two loops:
+`handle` does strictly one more test per handled operation than
+`relay` — `Cont.onAnswer`, on top of the `split` they share — and that
+test is what buys `handle` the two things `relay` cannot do, abort and
+perform G. A price, not an overhead. The entry closes.
+
 ## handle-forward-fast — the general handler now costs what the fast one costs
 
 `Effects.handle` re-emits a FORWARDED operation on the tree, the way
