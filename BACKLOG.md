@@ -37,8 +37,33 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] freer-base-stage0-verdict — kind: perf. STAGE 0 IS WRITTEN AND
+      GREEN, ON THE BRANCH `feature/freer-base-stage0`, AND NOT
+      LANDED. 886 JVM core tests pass, the whole repo Test/compiles on
+      three platforms with zero warnings, and the rotation law
+      (TestFreer, 13 shapes against the `Func` reference) holds. It
+      allocates at or below master on every Cont path and runs
+      `statePara` 14% and `fib10` 9% FASTER — but `fib50` 1.07,
+      `fib1000` 1.05, `fib100` 1.04 and `relayForward` 1.08. Landing
+      is a judgement call, which is why this entry exists rather than
+      a merge. The evidence, and four refuted causes, are in
+      specs/freer-base.md Results; rows `freer0-*` in history.tsv.
+      NEXT, if the answer is "make it faster first": `relayForward` is
+      the clean signal — identical B/op to the digit, 8.2% slower — so
+      `-prof perfasm` on it, not another redesign. If the answer is
+      "land it", the branch needs a full three-platform gate first
+      (only the JVM core suite has run).
+      SEPARABLE FROM ALL OF IT, and worth landing either way:
+      `ParaMonad.map` was `inline`, hence final, hence no carrier could
+      replace its `flatMap(x => pure(f(x)))` default, which builds a
+      `Pure` per element. The branch drops that `inline` and overrides
+      `map` in `Control[Cont]` and `Control[Func]`. On this branch it
+      was worth 96 B → 40 B per `shift.map(f)`; on master the direct
+      path already fuses through the enum member, so the win there is
+      the TAGLESS path only and has not been measured. A small lane of
+      its own if stage 0 is parked.
 - [ ] freer-base — specs/freer-base.md (committed 2026-09-15 before
-      any code, per spec-dev). ONE enum `Freer[G, A, S, R]` — Pure,
+      any code, per spec-dev). Stage 0 written, see the entry above. ONE enum `Freer[G, A, S, R]` — Pure,
       Op, Bind, Defer, one `resume` rotation — under `Cont`
       (`Freer[Shift]`, index = answer type) and `Free` (`Freer[Lift[F]]`
       at a pinned `Unit` index, later typestate). Three stages, each

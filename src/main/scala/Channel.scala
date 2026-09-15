@@ -633,8 +633,10 @@ object Channel {
    */
   /** which buffer `apply` builds, so a default can be A/B'd on the
    * paths it actually feeds (buffer, bufferChunked, merge) without
-   * editing this file between arms — the same mechanism
-   * `okay.cont.fuse` uses. `growing` is the shipped behaviour and the
+   * editing this file between arms. (`okay.cont.fuse` was the other
+   * switch of this kind; it is gone — the three lanes that A/B'd it
+   * ended the fusion budget itself, specs/freer-base.md.)
+   * `growing` is the shipped behaviour and the
    * only value a released build should see; `ring` and `adaptive` are
    * the two arms it was chosen BETWEEN, kept so the choice can be
    * re-measured rather than re-argued.

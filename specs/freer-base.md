@@ -344,8 +344,105 @@ Stage 2 — the index as typestate, Delim first:
 
 ## Results
 
-(to be filled per stage; every number with its history.tsv row)
+### Stage 0 — implemented, green, NOT landed
 
-- Stage 0:
-- Stage 1:
-- Stage 2:
+The code exists on `feature/freer-base-stage0`: `Freer.scala` (the enum
+and `resume`), `Cont.scala` rewritten as the alias plus the `Shift`
+leaf, `TestFreer.scala` (the law), `TestCont` rewritten for absorption.
+886 JVM core tests green, and `Test/compile` over the whole repository
+on JVM + JS + Native is clean — 398 compile invocations, zero errors,
+**zero warnings**. Two call sites outside the base changed, both named
+below. It is NOT merged, because it does not pass the gate this spec
+set for it: three Fib lanes and `relayForward` are 3.6–8.2% slower.
+
+**The final A/B**, master against stage 0, three alternating rounds in
+one session, per-lane minimum, `-prof gc` (history.tsv `freer0-*`):
+
+| lane | time | B/op |
+|---|---|---|
+| `fib10` | **0.908** | 1 984 vs 2 080 |
+| `statePara` | **0.860** | 343 081 vs 383 270 |
+| `stepOneByOne` | 0.987 | +80 000 |
+| `effCont24` | 0.986 | identical |
+| `cont24`, `func24`, `effFunc24`, `effInline24`, `stateEffect`, `handleForward` | 1.00 | identical or lower |
+| `stepBulk` | 1.028 | −80 016 |
+| `fib100` | 1.036 | −816 |
+| `fib1000` | 1.049 | −8 015 |
+| `fib50` | 1.071 | −416 |
+| `relayForward` | 1.082 | **identical** |
+
+Allocation is at or below master on every Cont path. The residual time
+cost is therefore NOT allocation — `relayForward` is the clean case:
+the same bytes to the digit, 8.2% slower. The remaining suspect is
+dispatch shape (`Op(g)` is a node and a leaf where `Shift(f, d)` was
+one object, so a leaf touch chases one more pointer), which is the
+JIT-shape sensitivity this repository has recorded twice before
+(interpreter-optimization's Map node, +22% for strictly less work).
+
+### What was refuted on the way, with numbers
+
+Four experiments, each its own A/B in its own session; none is worth
+retrying blind.
+
+1. **"The absorption rule costs something."** No. A three-arm run —
+   master at a budget of 128, master at a budget of 1, stage 0 —
+   measured master@1 allocating **byte for byte** what master@128
+   allocates on all four Fib lanes (2 080 / 11 616 / 20 752 / 298 970,
+   delta zero) and within 0.4% on time. The whole regression was
+   structural, and this is what made that certain.
+2. **"The cost is splitting rotation from elimination."** Refuted:
+   copying `resume`'s four lines into the runner made it WORSE —
+   fib10 1.08→1.18, fib50 1.15→1.38, fib100 1.09→1.18 against the same
+   baseline in the same session.
+3. **"The rotation must compose through the leaf's own `flatMap`, so
+   the rotated continuation can be absorbed."** True in principle
+   (`Free`'s `flatMap` IS `Bind`, so `resume`'s raw composition is
+   already optimal for it, while `Cont`'s can absorb) — and worth
+   nothing measurable here: B/op did not move by a single byte on any
+   Fib lane. The generator's programs are right-nested, so that
+   rotation case almost never fires. The interleaved loop was kept
+   anyway, since it is the shape the old runner had.
+4. **The actual defect, found by decomposing allocation per construct**
+   (`getCurrentThreadAllocatedBytes`, the technique
+   exact-bytes-beat-jmh-alloc-norm records; the JMH bars were wider
+   than the effect): `s.map(f)` cost **96 B** against master's 48,
+   while calling the absorbing path directly cost **40**. So `map` was
+   not reaching it. Cause: `Cont` has no members any more, and a
+   top-level `given` is in the package's LEXICAL scope, which beats
+   `object Shift` in the receiver's implicit scope — so `c.map(f)`
+   resolved to `ParaMonad.map`, whose default is `flatMap(x =>
+   pure(f(x)))`, a `Pure` per element. `flatMap` never had the problem
+   because both roads lead to `Shift.bind`. `ParaMonad.map` was
+   `inline`, hence final, hence unoverridable: the fix is one word
+   removed there plus an override in each `Control` instance, and it
+   moved fib10 from 1.07 to 0.908 and `shift+map+map` from 192 B to
+   136.
+
+### Findings that outlived their experiment
+
+- **No `apply` extension on `Cont` is possible inside package `okay`.**
+  `c(k)` was a member of the old enum, where members win; as an
+  extension it loses to Generate.scala's seed-side `apply` (`a(f)` for
+  a `Loop` body) in lexical scope. Two call sites in `relay`
+  (Effects.scala) became `g(e) / k`, which was always the meaning.
+- **The eager-shift shape got BETTER.** A chain whose shift bodies
+  re-enter their continuation immediately overflows the stack in both
+  trees — it is direct style's own cost — but master dies at 1 000
+  elements where stage 0 survives them, because the old budget nested
+  128 fused closure calls where one-step absorption nests one.
+- **`Cont`'s cases are matched nowhere outside Cont.scala.** Every
+  `case Pure(a)` in the repository (80-odd sites, 15 packages) is
+  `Free`'s. The rewrite touched two call sites in total.
+
+### The decision this leaves
+
+Landing is the operator's call, and the trade is: one enum and one
+rotation concept instead of five copies, `statePara` 14% faster,
+allocation down everywhere — against 3.6–8.2% on four lanes whose
+cause is dispatch shape rather than anything this spec can name. The
+next experiment, if it is wanted, is `-prof perfasm` on `relayForward`
+(identical bytes, 8.2%, the cleanest signal) before any further
+redesign.
+
+- Stage 1: not started.
+- Stage 2: not started.

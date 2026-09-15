@@ -19,7 +19,19 @@ trait ParaMonad[M[_, _, _]] {
     m.flatMap(identity)
 
   extension [A, S, R](m: M[A, S, R])
-    inline def map[B](f: A => B): M[B, S, R] = m.flatMap(x => pure(f(x)))
+    /**
+     * NOT `inline`, and that is load-bearing: an inline method is
+     * final, so no carrier could replace this default — and the
+     * default is `flatMap` into a `pure`, which costs a node per
+     * element that a carrier able to absorb the function does not
+     * need. Measured 2026-09-15 (specs/freer-base.md Results): 96 B
+     * per `shift.map(f)` through this default against 40 B through
+     * `Shift.mapped`, and +24 B/op with 7-19% on every Fib lane,
+     * because the generator maps once per element. The `inline` was
+     * there for staging (specs/staged-tagless.md), which prices
+     * `pure`/`flatMap`/`shift` chains and not `map`.
+     */
+    def map[B](f: A => B): M[B, S, R] = m.flatMap(x => pure(f(x)))
     // composition: (S -> R) o (S2 -> S) = S2 -> R
     def flatMap[B, S2](f: A => M[B, S2, S]): M[B, S2, R]
 }

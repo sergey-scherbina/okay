@@ -40,11 +40,48 @@ class TestCont extends munit.FunSuite {
     assertEquals(check[Func], 20)
   }
 
-  test("fusion budget: a leading shift, then 1M binds spill into data") {
+  test("absorption: the FIRST bind enters the leaf, the second is a node") {
+    // the structural half of the one-step rule (specs/freer-base.md).
+    // `Op` and `Bind` are public cases of Freer, so this asserts the
+    // shape directly rather than reading a depth field, which no
+    // longer exists: absorption is the leaf function's class.
+    val s = shift[Int, Int, Int](k => k(0))
+    def succ(x: Int): Int /> Int = Cont.Pure(x + 1)
+    def isOp(c: Int /> Int) = c match { case Freer.Op(_) => true; case _ => false }
+    def isBind(c: Int /> Int) = c match { case Freer.Bind(_, _) => true; case _ => false }
+
+    assert(isOp(s), "a bare shift is a leaf")
+    assert(isOp(s.flatMap(succ)), "the first bind is absorbed into the leaf")
+    assert(isBind(s.flatMap(succ).flatMap(succ)), "the second bind is a node")
+    assert(isBind(Cont.Pure(0).flatMap(succ)), "a Pure receiver never absorbs")
+    assertEquals(reset(s.flatMap(succ).flatMap(succ)), 2)
+  }
+
+  test("absorption is bounded: a leading shift, then 1M binds, stack-safe") {
+    // the behavioural half: if absorption were unbounded the run would
+    // nest 1M closure calls. It stops after one, and the rest are Bind
+    // nodes the tail-recursive `resume` rotates.
     val n = 1000000
     val m = (1 to n).foldLeft(shift[Int, Int, Int](k => k(0))): (m, _) =>
       m.flatMap(x => Cont.Pure(x + 1))
     assertEquals(reset(m), n)
+  }
+
+  test("absorption is per leaf, not per program") {
+    // each leaf absorbs its OWN first bind; joining two absorbed
+    // leaves makes a node and leaves both absorptions intact
+    def leaf(i: Int) = shift[Int, Int, Int](k => k(i)).flatMap(x => Cont.Pure(x * 2))
+    // a structural probe, so it takes Any: a Bind's left side comes
+    // back at existential indexes AND with the leaf seen through the
+    // opaque type from outside Cont.scala, and neither is what this
+    // test is about
+    def isOp(c: Any) = c match { case Freer.Op(_) => true; case _ => false }
+
+    assert(isOp(leaf(1)) && isOp(leaf(2)), "each leaf absorbed its own bind")
+    val joined = leaf(1).flatMap(x => leaf(2).map(_ + x))
+    assert(joined match { case Freer.Bind(a, _) => isOp(a); case _ => false },
+           "joining is a node over the still-absorbed left leaf")
+    assertEquals(reset(joined), 6)
   }
 
   test("staged: one inline program, both carriers, no dispatch") {
