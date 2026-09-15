@@ -1,0 +1,6 @@
+feature/runfree-rotation 2026-09-15T15:10:30Z
+agent: claude-code
+heartbeat: 2026-09-15T15:10:30Z
+status: in-progress
+done-so-far: nothing yet
+next: diagnose WHY runFree-over-resume costs 3-4 pct (PrintInlining), then inline the rotation only if that is the reason
