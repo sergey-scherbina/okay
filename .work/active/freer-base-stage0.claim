@@ -1,6 +1,6 @@
 feature/freer-base-stage0 2026-09-15T06:17:18Z
 agent: claude-code
-heartbeat: 2026-09-15T06:17:18Z
+heartbeat: 2026-09-15T06:28:29Z
 status: in-progress
-done-so-far: nothing yet
-next: Freer.scala enum, Cont as alias over Shift leaf, TestCont absorption stress, gate, measure
+done-so-far: Freer.scala + Cont.scala rewritten, TestCont 9/9 green on JVM
+next: whole-repo Test/compile + Jmh, then full gate, then measure
