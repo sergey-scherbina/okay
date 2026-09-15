@@ -87,6 +87,34 @@ class HandlerBenchmark {
   def handlePrebuilt(): Int =
     Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
+  /**
+   * THE SHAPE `delay-node` IS ABOUT (specs/core-cleanup.md Decisions):
+   * a handler that CAPTURES its continuation, so `handle` cannot go on
+   * from an answer and reifies the rest of the program under a
+   * `Defer` whose continuation is `Pure`. That node rotates into a
+   * left-nested `Bind`, and the `.flatMap(pure)` tail then travels
+   * down every one of the ~100 forwarded operations that follow each
+   * capture. `hff-defer-cost` priced the shape at 210 vs 151 µs when
+   * EVERY handled operation took it; this lane keeps it only where a
+   * capture forces it, which is what ships. Same pre-built tree as
+   * `handlePrebuilt`, so the pair differs in nothing but the capture.
+   */
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def handleCapture(): Int =
+    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => shift(k => k(a.a))).runWith
+
+  /** the other road to the same node: `!.tailcall` between two
+   * mutually recursive functions, N deep — every hop is a
+   * `Defer(thunk, pure)` today */
+  def isEven(n: Int): Boolean ! okay.Pure =
+    if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
+  def isOdd(n: Int): Boolean ! okay.Pure =
+    if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
+
+  @Benchmark
+  def tailcallChain(): Boolean = !.run(isEven(N))
+
   @Benchmark
   def stepBulk(): Any =
     fibs[Int, Producer].next(N).?

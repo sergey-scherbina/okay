@@ -206,7 +206,7 @@ trait Effects[M[_[+_], _]]:
    * tagless counterpart of `!.tailcall` (object !, this file), for code
    * written polymorphically over `M: Effects` rather than committed to
    * one encoding. */
-  inline def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
+  def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
 
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
@@ -506,6 +506,8 @@ given Effects[Free] with
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
   override inline def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
     Free.defer(thunk)(f)
+  /** the tree has a node for exactly this (delay-node) */
+  override def tailcall[F[+_], A](thunk: => Free[F, A]): Free[F, A] = Free.delay(() => thunk)
 
   extension [F[+_], A](m: Free[F, A])
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
@@ -584,7 +586,7 @@ given Effects[Free] with
           // read the same program, and a handler is not assumed pure
           (e => { val c = h(e)
                   Cont.onAnswer(c)(a => loop(k(a)))
-                                  (c / (x => Free.defer(() => loop(k(x)))(Free.Pure(_)))) })
+                                  (c / (x => Free.delay(() => loop(k(x))))) })
           (e => Free.Inject(e).flatMap(x => loop(k(x))))
     loop(m)
 
@@ -719,6 +721,7 @@ object ! {
       // a peek forces the thunk too, same as `Bind(a, _) => a.?` discards
       // its own continuation without applying it
       case Defer(t, _) => t().?
+      case Delay(t) => t().?
   }
 
   /** run a closed computation */
@@ -727,15 +730,14 @@ object ! {
   /**
    * mark a call to a mutually-recursive function returning `A ! F` as a
    * tail call, so the interpreter (`fold`/`runFree`/`resume`) trampolines
-   * it instead of nesting a JVM stack frame per call. Sugar over
-   * `Free.defer` with `pure` as the continuation. `Cont.defer` is the
-   * same door on the Cont side, and has no sugar of its own since the
-   * facade landed: its callers (the codecs' trampolines) name the
-   * continuation anyway, and the top-level `tailcall` that used to
-   * shadow this name is gone.
+   * it instead of nesting a JVM stack frame per call. `Free.delay`, a
+   * node with no continuation — NOT `Free.defer` with `pure` as the
+   * continuation, which was the spelling until delay-node and cost a
+   * rotated `.flatMap(pure)` tail down every hop (see `Free.delay`).
+   * `Cont.delay` is the same door on the Cont side.
    */
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
-    Free.defer(() => thunk)(okay.pure)
+    Free.delay(() => thunk)
 
   /** re-inject into a wider row: effect subsumption. Free is invariant
    * in its signature, so widening walks the tree — one re-injected

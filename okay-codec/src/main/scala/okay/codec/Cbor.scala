@@ -288,7 +288,7 @@ object Cbor {
           case 2 | 3 => Cont.Pure(take(n.toInt).map(_ => ()))
           case 4 => manyC[R](n)
           case 5 => manyC[R](n * 2)
-          case 6 => Cont.defer(() => skipItemInsideC[R])(r => Cont.Pure(r))
+          case 6 => Cont.delay(() => skipItemInsideC[R])
           case m => Cont.Pure(Left(s"unsupported major type $m"))
       }
 

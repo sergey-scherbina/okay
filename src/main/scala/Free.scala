@@ -32,6 +32,16 @@ object Free {
    * the Cont side). */
   def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] = Defer(thunk, f)
 
+  /** a deferred call with NOTHING to do afterwards — `!.tailcall`'s
+   * node. Not `Defer(thunk, pure)`, and the difference is the whole
+   * point (delay-node): that spelling resumes to `Bind(t(), pure)`,
+   * and when the thunk answers a `Bind` the rotation pushes a
+   * `.flatMap(pure)` tail down EVERY bind of the deferred subprogram —
+   * a closure and a `Bind` per bind, then a chain of `Bind(Pure(a),
+   * g)` of the same length at the end. `Delay` has no continuation to
+   * push. */
+  def delay[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Delay(thunk)
+
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
   given [F[+_]]: Monad[Free[F, *]] with
     override inline def pure[A](a: A): Free[F, A] = Pure(a)
@@ -58,6 +68,10 @@ enum Free[F[+_], A] {
    * it, which is the half an interpreter needs. */
   case Defer[F[+_], A, B](thunk: () => Free[F, A],
                           f: A => Free[F, B]) extends Free[F, B]
+
+  /** a deferred subprogram with no continuation of its own: forced by
+   * the interpreter's loop and continued AS IS — see `Free.delay` */
+  case Delay(thunk: () => Free[F, A])
 
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
   inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
@@ -104,6 +118,10 @@ enum Free[F[+_], A] {
     // match it on the next iteration was one node and one dispatch
     // per left-nested defer for nothing (core-cleanup)
     case Bind(Defer(t, f), g) => Bind(t(), f(_).flatMap(g)).resume
+    // no continuation to compose: the thunk's own tree continues under
+    // whatever was waiting for it, and nothing is rotated (delay-node)
+    case Delay(t) => t().resume
+    case Bind(Delay(t), g) => Bind(t(), g).resume
     case a => a
 
   /**

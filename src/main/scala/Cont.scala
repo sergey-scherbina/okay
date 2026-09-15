@@ -1,6 +1,6 @@
 package okay
 
-import okay.Free.{Pure, Inject, Bind, Defer}
+import okay.Free.{Pure, Inject, Bind, Defer, Delay}
 
 /**
  * Final tagless interface of delimited control: the parameterised
@@ -116,6 +116,11 @@ object Cont:
    */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
     Free.defer(thunk)(f)
+
+  /** `defer` with nothing to do afterwards — `Free.delay` on this
+   * side, and the same reason: `defer(t)(Pure)` would push a rotated
+   * `Pure` continuation down the deferred subprogram (delay-node) */
+  def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Free.delay(thunk)
 
   /**
    * A leaf that has ALREADY absorbed one continuation.
@@ -269,6 +274,8 @@ object Cont:
     case Defer(t, f) => step(Bind(t(), f))(k)
     // forced in one hop, as `Free.resume` does it (core-cleanup)
     case Bind(Defer(t, f), g) => step(Bind(t(), x => bind(f(x))(g)))(k)
+    case Delay(t) => step(t())(k)
+    case Bind(Delay(t), g) => step(Bind(t(), g))(k)
 
   extension [A, S, R](c: Cont[A, S, R])
     def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = bind(c)(f)
