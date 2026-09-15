@@ -1,5 +1,57 @@
 # Changelog
 
+## freer-base stage 0 — Cont on one shared indexed enum
+
+`Cont` and `Free` were the same data type with one case renamed:
+`Pure | leaf | Bind | Defer`, the same tail-recursive rotation, the
+same `Defer` forcing. The rotation existed FIVE times (`Cont./`,
+`Free.fold`, `runFree`, `!.resume`, Async's own loop) and every edit
+to `Defer` went to all five. `Freer[G, A, S, R]` is now that shared
+part, indexed by Atkey's parameterised-monad indexes, and `Cont` is
+`Freer[Shift, …]` — the leaf being a FUNCTION of the continuation is
+the whole of what makes it `Cont` rather than `Free`. specs/freer-base.md
+carries the design, the three staged lanes, and every refutation.
+
+Two call sites outside the base changed. `relay` says `g(e) / k`, not
+`g(e)(k)`: an `apply` extension cannot win inside package `okay`,
+where Generate.scala's seed-side `apply` is in lexical scope. And
+`ParaMonad.map` lost its `inline` — it was therefore final, so no
+carrier could replace its `flatMap(x => pure(f(x)))` default, which
+builds a node per element that a carrier able to absorb the function
+does not need. That one was worth 96 B per `shift.map(f)` against 40.
+
+**Performance, against master, four rounds on a quiet box, every core
+lane** (rows `once-*`): eight lanes faster — `statePara` 0.860,
+`fib10` 0.884, `handleForward` and `stepBulk` 0.974 — nothing more
+than 2.4% slower (`fib50` 1.024, on the edge of the bars), and
+allocation at or below master EVERYWHERE. The fusion budget is gone:
+absorption is one step, carried by the leaf function's own class, and
+the depth was settled by a sweep (1/4/16/128) rather than an argument.
+
+Getting there took five measurement sessions and cost four plausible
+theories, all recorded in the spec so nobody pays for them twice: the
+`Op` wrapper (refuted in the opposite direction — the leaf is 0.97 and
+lighter), the absorption depth (Fib is flat across it; `statePara`
+reads 0.861 at 1 against 1.15–1.19 deeper), the runner's shape
+(indistinguishable), and the rotation's composition (moves zero
+bytes). What was actually costing the Fib lanes turned out to be two
+things neither profile showed: `map` not reaching the absorbing path,
+and `Once`'s two `apply` bodies giving the runner's call two targets.
+Writing `apply` once, as an enum over `Absorbed | Mapped`, closed the
+rest — 0.955 to 0.968 on the Fib lanes — while splitting the same call
+site to make it bimorphic did nothing at all. The number of call
+TARGETS was the cost, not the number of receiver types.
+
+Every case of `Freer` is public, including `Defer`: hiding a case
+whose smart constructor is public never stopped anyone building the
+node, only matching it, and matching is the half a stepper or an
+outside interpreter needs. The only privacy left is
+`Shift.Absorbed`/`Mapped`, which guard the one real invariant — a leaf
+absorbs at most once.
+
+Stage 1 (`Free` on the same base) and stage 2 (the indexes as
+typestate) are open in BACKLOG under `freer-base`.
+
 ## relay-inline-headroom — 20 bytes from a cliff nobody could see
 
 `relay`'s inner loop compiled to 305 bytes. HotSpot stops inlining a

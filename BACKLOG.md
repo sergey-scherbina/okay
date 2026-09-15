@@ -37,45 +37,34 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] freer-base-stage0-verdict — kind: perf. STAGE 0 IS WRITTEN AND
-      GREEN, ON THE BRANCH `feature/freer-base-stage0`, AND NOT
-      LANDED. THE FULL MATRIX IS GREEN on it — 4 419 test results over
-      JVM/JS/Native, 182 module compiles, no failures, no warnings —
-      and the rotation law (TestFreer, 13 shapes against the `Func`
-      reference) holds, so correctness is not the open question. It
-      allocates at or below master on every Cont path and runs
-      `statePara` 14% and `fib10` 9% FASTER — but `fib50` 1.07,
-      `fib1000` 1.05, `fib100` 1.04 and `relayForward` 1.08. Landing
-      is a judgement call, which is why this entry exists rather than
-      a merge. The evidence, and four refuted causes, are in
-      specs/freer-base.md Results; rows `freer0-*` in history.tsv.
-      THE SPEED WORK HAS BEEN DONE AND IS EXHAUSTED ON THIS MACHINE.
-      Three further candidates were measured and all three refuted:
-      the `Op` wrapper (the leaf is 0.97 and 8 B LIGHTER — refuted in
-      the opposite direction), the absorption depth (swept 1/4/16/128:
-      Fib does not care, `statePara` reads 0.861 at 1 against
-      1.15-1.19 deeper, so depth 1 is settled and its switch removed)
-      and the runner shape (delegating to `Freer.resume` is
-      indistinguishable, 1.093 vs 1.094 on `relayForward`). Final
-      table: 8 lanes faster, 5 slower, allocation at or below master
-      everywhere. NEXT, and it needs a decision rather than a lane:
-      `relayForward` is 1.103 with bytes identical to the digit while
-      only 100 of its 10 000 operations touch `Cont` at all, which no
-      structural hypothesis survives — reading it needs a
-      disassembling profiler, and `-prof perfasm` wants Linux `perf`
-      (on macOS, `dtraceasm` under root). If the answer is instead
-      "land it", it is a rebase and a fast-forward — the gate is done.
-      SEPARABLE FROM ALL OF IT, and worth landing either way:
-      `ParaMonad.map` was `inline`, hence final, hence no carrier could
-      replace its `flatMap(x => pure(f(x)))` default, which builds a
-      `Pure` per element. The branch drops that `inline` and overrides
-      `map` in `Control[Cont]` and `Control[Func]`. On this branch it
-      was worth 96 B → 40 B per `shift.map(f)`; on master the direct
-      path already fuses through the enum member, so the win there is
-      the TAGLESS path only and has not been measured. A small lane of
-      its own if stage 0 is parked.
-- [ ] freer-base — specs/freer-base.md (committed 2026-09-15 before
-      any code, per spec-dev). Stage 0 written, see the entry above. ONE enum `Freer[G, A, S, R]` — Pure,
+- [x] freer-base-stage0-verdict — DONE. The verdict the entry asked
+      for is "land", and stage 0 landed: nothing more than 2.4% slower
+      on any core lane, eight lanes faster, allocation at or below
+      master everywhere. What closed it after the entry was written:
+      `map` reaching the absorbing path, `relay`'s loop getting back
+      under the JIT inlining threshold (landed separately, 25102517),
+      and `Once` becoming an enum so the runner's call has one target
+      (the operator's proposal — worth 0.955-0.968 on the Fib lanes,
+      while making the same site merely bimorphic was worth nothing).
+      Four refuted theories and every number are in
+      specs/freer-base.md Results; rows `freer0*` and `once-*`.
+- [ ] freer-base — specs/freer-base.md. STAGE 0 IS LANDED: `Cont` is
+      `Freer[Shift, …]`, one enum, one absorption rule, at parity or
+      better on every core lane. NEXT IS STAGE 1: `Free` on the same
+      base, `A ! F` an alias at a pinned `Unit` index, `object !`
+      exporting the cases so the 89 `(x.resume: @unchecked)` sites and
+      the 20 files outside the core compile unchanged, and the
+      rotation law (already written, `TestFreer`) extended to the Free
+      side. It is the bigger half and the one the design is for: the
+      rotation still exists FOUR times (`Free.fold`, `runFree`,
+      `!.resume`, Async's loop) and stage 1 is what makes it one.
+      Three findings from stage 0 apply to it directly and should be
+      used rather than rediscovered: a hot loop's BYTECODE SIZE can
+      matter more than its data (relay's 305-vs-325 cliff), a `map`
+      that misses its carrier's own path costs a node per element, and
+      one `apply` body beats two because the JIT counts call targets,
+      not receiver types. Stage 2 (the indexes as typestate, Delim
+      first) is independent and does not block it. ONE enum `Freer[G, A, S, R]` — Pure,
       Op, Bind, Defer, one `resume` rotation — under `Cont`
       (`Freer[Shift]`, index = answer type) and `Free` (`Freer[Lift[F]]`
       at a pinned `Unit` index, later typestate). Three stages, each
@@ -86,28 +75,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       @unchecked` sites and 20 outside files compile unchanged, a
       rotation law lets eliminators inline; 2 = the index as typestate,
       Delim first (`NoPrompt` → compile error). Start with stage 0.
-- [ ] cont-fuse-one-step — kind: perf. ABSORBED by freer-base stage 0
-      (above): with `Shift.Absorbed` there is no budget to lower. Kept
-      here until that stage lands, so the evidence stays findable.
-      Original entry: lower `Cont.Fuse` from 128 to
-      1 and turn `Shift`'s `depth: Int` into the one bit it then is.
-      EVIDENCE (2026-09-15, three measurement lanes fuse-bench /
-      fuse-depth / fuse-consumers, rows `fuse0-*` and `fuse1-*` in
-      src/jmh/history.tsv, paragraphs in
-      specs/interpreter-optimization.md Results): fusion itself pays
-      12–25% (fuse=0 loses on every Fib lane); ONE step is the whole
-      win (fuse=1 equals 128 on fib10/50/100/1000 and on both
-      `Monadic.reflect` lanes, inside ±1–3% bars); and on `statePara`,
-      the only lane whose segment reaches 128, fuse=1 is 12% FASTER
-      (27.8 vs 31.7 µs, 3/3) — a 128-deep fused closure chain loses to
-      Bind nodes the tailrec loop rotates. Predicted the opposite,
-      refuted. WHAT THE LANE MUST DO: change the default, re-read
-      TestCont's fusion-budget spill stress (it assumes a budget), gate
-      the full matrix, re-run the Fib + statePara lanes on the landed
-      tree and record them. WHY IT IS NOT DONE HERE: the three lanes
-      were measurement-only by design and touched no source. Also the
-      shape the shared `Freer` base wants (memory: a `Fused` function
-      class carrying the bit, `Op(f)` at 40 B/shift vs today's 48).
+- [x] cont-fuse-one-step — DONE, absorbed by freer-base stage 0:
+      `Cont.Fuse` no longer exists. Absorption is one step, carried by
+      the leaf function's own class (`Shift.Once`), and the depth was
+      settled by a sweep of 1/4/16/128 rather than by lowering a
+      constant — the Fib lanes are flat across it with identical
+      allocation, `statePara` reads 0.861 at depth 1 against
+      1.19/1.15/1.17 deeper. Rows `fuse0-*`, `fuse1-*`,
+      `freer0b-absorb-sweep`.
 - [x] tag-distinct-keys — DONE (2026-09-11) as `Distinct[R]`, and
       the entry's own plan did not survive the first measurement.
       "Collect the singleton keys and refuse duplicates" would refuse
