@@ -1,0 +1,10 @@
+handle-decompose
+owner: opus-5 session 0a0e1f68
+started: 2026-09-15
+what: price Effects.handle against relay LIKE FOR LIKE. relay got a
+  build/run split today (buildOnly + relayPrebuilt); handle never did,
+  so its 1.45x is quoted against a number that includes construction.
+  Add handlePrebuilt, measure both with -prof gc, and price the shift
+  that handle pays per FORWARDED operation.
+files: src/jmh/scala/okay/HandlerBenchmark.scala, src/jmh/history.tsv,
+  docs/benchmarks.md, BACKLOG.md, CHANGELOG.md
