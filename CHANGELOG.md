@@ -1,5 +1,20 @@
 # Changelog
 
+## fuse-bench — Cont's closure fusion re-measured, still pays 12–25%
+
+Measurement only, no source change. The question came out of a design
+discussion about one `Freer` enum under both `Cont` and `Free`: the
+only thing that resists a shared `flatMap` is Cont's closure fusion
+(`Cont.scala:103-105`, depth budget 128). If fusion no longer paid —
+plausible after handler-fusion stage B measured a Free node cheaper
+than a closure pair — the base would be four cases and one line of
+`flatMap`. It still pays. `FibBenchmark` with `-Dokay.cont.fuse=0`
+against 128, three alternating rounds, per-lane minimum: fib10 1.17x,
+fib50 1.23x, fib100 1.13x, fib1000 1.12x slower without fusion, every
+round in the same direction. Rows `fuse0-*` in `src/jmh/history.tsv`,
+paragraph in specs/interpreter-optimization.md Results. Consequence:
+a shared base keeps fusion as the Shift leaf's own hook.
+
 ## wroclaw-benchmark-page — a standalone page for the streams benchmark
 
 `docs/benchmarks.md`'s section 20 — okay against Flink, Spark,

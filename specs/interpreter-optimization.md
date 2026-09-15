@@ -169,3 +169,14 @@ Experiment A (closure fusion, Fuse = 128): KEPT.
   essentially complete; Experiment B stays unneeded.
 
 Tests: 23/23 green, including the new fusion-budget spill stress.
+
+2026-09-15 re-measurement (fuse-bench): does fusion STILL pay, now that
+handler-fusion stage B found a Free node cheaper than a closure pair?
+Same code, `-Dokay.cont.fuse=0` (every bind a `Bind` node) against the
+shipped 128, per-lane minimum of 3 alternating rounds, load 1.6–3.0
+(history.tsv `fuse0-*`). fuse=0 is slower on every lane and in every
+round: fib10 1.17x (by medians 1.26x), fib50 1.23x, fib100 1.13x,
+fib1000 1.12x. The 2026-08-29 gains stand. Consequence for the shared
+`Freer` base sketched in the Cont/Free discussion: fusion cannot be
+dropped to make `flatMap` generic — it stays the Shift leaf's own
+business (a `Sig[G]`-style fuse hook), and `Cont` keeps its depth.
