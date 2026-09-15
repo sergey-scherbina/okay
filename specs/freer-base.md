@@ -279,7 +279,9 @@ Stage 2 — the index as typestate, Delim first:
   two phantom type parameters on every handler — ~539 mentions of the
   program type in the 16k-line core, 17 files in the handler layer.
   Stage 1 therefore pins `Unit` at every Free factory and changes no
-  signature; stage 2 adds `Prog` and the diagonal `effect[F, A, R]`
+  signature — REFUTED 2026-09-15, see Results: pinning the factories
+  does not pin a pattern match, because `Bind` carries the left side's
+  index and a match makes it existential; stage 2 adds `Prog` and the diagonal `effect[F, A, R]`
   beside it, one effect at a time. Type-inference risk is confined to
   stage 2 and has a precedent: `PState.get[S, R]`/`set[S, S2, R]` are
   exactly this shape and infer through for-comprehensions with no
@@ -546,5 +548,56 @@ next experiment, if it is wanted, is `-prof perfasm` on `relayForward`
 (identical bytes, 8.2%, the cleanest signal) before any further
 redesign.
 
-- Stage 1: not started.
+### Stage 1 — REFUTED AS SPECIFIED (2026-09-15, branch `feature/freer-base-stage1`)
+
+`Free` cannot be `Freer[Lift[F], A, Unit, Unit]` while the library's
+match sites stay as they are. The obstacle is exact, and the compiler
+said it rather than an argument:
+
+`Bind[G, A, B, S, T, R](a: Freer[G, A, T, R], f: A => Freer[G, B, S, T])`
+carries the LEFT side's answer index `T`. Matching a `Free[F, A]`
+gives back a continuation at `Freer[Lift[F], A, Unit, T]` for an
+EXISTENTIAL `T`, while all 89 `(x.resume: @unchecked) match` sites
+want `A ! F`, which is `T = Unit`. They are the same value at run time
+— `Lift` ignores both indexes and every factory pins them — but no
+type says so.
+
+Three ways out were tried or costed:
+
+1. **An existential outer index**, `type Free[F, A] = Freer[Lift[F],
+   A, Unit, ?]`. Fixes elimination, breaks CONSTRUCTION symmetrically:
+   `Bind(a, f)` can no longer unify the inner index with `f`'s result.
+2. **A pinning extractor** in `object !` — `def unapply[F, X, A](p:
+   Free[F, A]): Option[(Free[F, X], X => Free[F, A])]` with the claim
+   made once. REFUTED BY THE COMPILER: `X` is unconstrained by the
+   scrutinee, and Scala 3 infers it as `Nothing` rather than
+   skolemizing, so `case Bind(Effect(e), k)` yields `k: Nothing =>
+   Free[F, A]` and the link between the operation's answer type and
+   the continuation's argument is gone. This is the load-bearing
+   negative result: the trick that makes GADT extractors work
+   elsewhere does not apply to a type parameter that appears only in
+   the RESULT of the `unapply`.
+3. **A uniform-index bind case in the base** — `case Seq[G, A, B,
+   R](a: Freer[G, A, R, R], f: A => Freer[G, B, R, R]) extends
+   Freer[G, B, R, R]`. This WOULD work: matching a `Free[F, A]` gives
+   `f: x => Free[F, A]` with the link intact, because there is no
+   inner index to leak. NOT TAKEN without a decision, because of what
+   it costs: `Cont` needs the non-uniform `Bind` (`PState` changes the
+   answer type — that is the point of the paramonad), so the base
+   would carry BOTH, and `resume` would rotate both. A tree is built
+   entirely by one instantiation, so the two never mix and the cases
+   cannot combine — but "one rotation instead of five" becomes "one
+   method holding two rotations", which is most of what stage 1 was
+   for.
+
+**What stage 0 still delivers, and it is not nothing:** `Cont` on the
+shared base, at parity or better, with the fusion budget gone. What
+stage 1 was to add — `Free` on it, so the rotation exists once rather
+than four times — needs either option 3 above or a different base
+shape, and that is a decision, not a task.
+
+The branch holds the attempt, WIP and not mergeable, so the next
+person does not re-derive the leak.
+
+- Stage 1: REFUTED as specified, see above.
 - Stage 2: not started.

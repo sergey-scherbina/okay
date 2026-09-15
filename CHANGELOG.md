@@ -1,5 +1,38 @@
 # Changelog
 
+## freer-base stage 1 — refuted, and the reason is worth more than the attempt
+
+`Free` cannot be an alias of the shared `Freer` while the library's
+match sites stay as they are, and the obstacle is exact rather than a
+matter of effort. `Bind` carries the LEFT side's answer index, so
+matching a `Free` hands back its continuation at an EXISTENTIAL index,
+where all 89 `(x.resume: @unchecked) match` sites want `A ! F`. They
+are the same value at run time — `Lift` ignores both indexes and every
+factory pins them at `Unit` — but no type says so, and the spec's own
+Decision ("stage 1 pins `Unit` at every factory and changes no
+signature") was wrong because pinning a FACTORY does not pin a MATCH.
+
+Three roads, one of them a result in its own right:
+
+- an existential outer index fixes elimination and breaks construction
+  symmetrically;
+- a pinning `unapply` in `object !` is refuted BY THE COMPILER, which
+  infers its free type parameter as `Nothing` rather than skolemizing
+  it — so `case Bind(Effect(e), k)` yields `k: Nothing => …` and the
+  link between an operation's answer type and its continuation is
+  gone. That is the load-bearing finding, because it is exactly the
+  trick that makes GADT extractors work elsewhere;
+- a uniform-index bind case in the base WOULD work, and costs most of
+  what stage 1 was for: `Cont` still needs the non-uniform `Bind` for
+  `PState`, so the base would carry both and `resume` would rotate
+  both.
+
+That last one is a decision, not a task, so it is written down rather
+than taken. The attempt lives on `feature/freer-base-stage1` as a WIP
+commit that does not compile and must never be merged, so the next
+person does not re-derive the leak. Stage 0 is unaffected: `Cont` is
+on the shared base and at parity or better.
+
 ## freer-base stage 0 — Cont on one shared indexed enum
 
 `Cont` and `Free` were the same data type with one case renamed:

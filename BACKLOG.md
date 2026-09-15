@@ -64,7 +64,21 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that misses its carrier's own path costs a node per element, and
       one `apply` body beats two because the JIT counts call targets,
       not receiver types. Stage 2 (the indexes as typestate, Delim
-      first) is independent and does not block it. ONE enum `Freer[G, A, S, R]` — Pure,
+      first) is independent and does not block it.
+      STAGE 1 IS REFUTED AS SPECIFIED (2026-09-15, branch
+      `feature/freer-base-stage1`, WIP commit kept and never to be
+      merged). `Bind` carries the LEFT side's answer index, so a match
+      on a `Free` hands back its continuation at an existential index
+      while all 89 sites want `A ! F`. An existential outer index
+      fixes elimination and breaks construction; a pinning `unapply`
+      is refuted by the compiler, which infers its free parameter as
+      `Nothing` instead of skolemizing, so the link between an
+      operation's answer type and its continuation is lost. The one
+      road that would work is a UNIFORM-INDEX bind case in the base
+      (`Seq[G, A, B, R]`), and it costs what stage 1 was for: `Cont`
+      still needs the non-uniform `Bind` for `PState`, so the base
+      carries both and `resume` rotates both. THAT IS A DECISION, not
+      a task — specs/freer-base.md Results has the full reasoning. ONE enum `Freer[G, A, S, R]` — Pure,
       Op, Bind, Defer, one `resume` rotation — under `Cont`
       (`Freer[Shift]`, index = answer type) and `Free` (`Freer[Lift[F]]`
       at a pinned `Unit` index, later typestate). Three stages, each
