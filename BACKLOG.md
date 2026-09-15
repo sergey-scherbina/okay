@@ -78,7 +78,11 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       (core-cleanup). Each of these is a `@tailrec` loop, so every
       conversion is an inlining-budget question (`relay`'s 325-byte
       cliff): one walker per lane, `-XX:+PrintInlining` before and
-      after, the lane's own benchmark or none.
+      after, the lane's own benchmark or none. NOTE (defer-eff-removal,
+      2026-09-15): `Free.resume` is 323 bytes now and inlines into every
+      loop under 325 — a walker converted to `split` may also cross
+      that line; `relay` gained 6% from the paste, `handle` lost 15%
+      until its cold arms were extracted. Read that entry first.
 - [x] freer-base-stage0-verdict — DONE. The verdict the entry asked
       for is "land", and stage 0 landed: nothing more than 2.4% slower
       on any core lane, eight lanes faster, allocation at or below

@@ -37,12 +37,14 @@ literally a natural transformation into `Cont`. Three ways to run:
 - `Effects.handle` — the general form: abortive handlers (Throws),
   multi-shot handlers (Choice explores every branch), forwarding.
 
-Three ENCODINGS, one interface (`Effects[M]`): `Free` (the tree — for
-stepping, relaying, stack safety on any bind shape), `Eff` (the Church
-function — for fused build-and-run speed), and the opt-in `Eager`
-(`import Eager.given` — the kyo trick: pure binds apply at
+Two ENCODINGS, one interface (`Effects[M]`): `Free` (the tree — for
+stepping, relaying, stack safety on any bind shape) and the opt-in
+`Eager` (`import Eager.given` — the kyo trick: pure binds apply at
 construction, 10x under kyo on pure chains, with kyo's hazards stated:
-construction evaluates, so self-referential programs diverge).
+construction evaluates, so self-referential programs diverge). Fused
+build-and-run speed is an inline handler-passing program over
+`Control` (`Fused`), not a third encoding: the Church one was measured
+slower than the fused tree loop and removed.
 
 The standard effects: `Reader` (environment), `Writer` (telling IS
 streaming — see below), `State` (+ the type-changing `PState`),

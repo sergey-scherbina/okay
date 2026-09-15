@@ -30,10 +30,16 @@ object Free {
    * each other in tail position without nesting a JVM stack frame per
    * call (`!.tailcall` is the sugar; `Cont.defer` is the same door on
    * the Cont side). */
-  def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] = Defer(thunk, f)
+  def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
+    // `Bind(Delay(t), f)`, not a node of its own: a `Defer(t, f)` case
+    // used to hold the pair, and the runner handled it exactly as it
+    // handles this shape — one node more here at construction, two
+    // cases fewer in every loop that walks the tree (defer-eff-removal,
+    // with the codec trampoline lane as the price it was measured on)
+    Bind(Delay(thunk), f)
 
   /** a deferred call with NOTHING to do afterwards — `!.tailcall`'s
-   * node. Not `Defer(thunk, pure)`, and the difference is the whole
+   * node. Not `defer(thunk)(pure)`, and the difference is the whole
    * point (delay-node): that spelling resumes to `Bind(t(), pure)`,
    * and when the thunk answers a `Bind` the rotation pushes a
    * `.flatMap(pure)` tail down EVERY bind of the deferred subprogram —
@@ -60,17 +66,13 @@ enum Free[F[+_], A] {
   case Bind[F[+_], A, B](a: Free[F, A],
                          f: A => Free[F, B]) extends Free[F, B]
 
-  /** a bind whose left side is deferred into the interpreter's own loop.
-   * Public like the other cases: the interpreters live across files
-   * (Effects.scala's `runFree` and `!.resume`, Async.scala's loop,
-   * Cont.scala's `step`), and hiding a case whose smart constructor is
-   * public would stop nobody from building one — only from matching
-   * it, which is the half an interpreter needs. */
-  case Defer[F[+_], A, B](thunk: () => Free[F, A],
-                          f: A => Free[F, B]) extends Free[F, B]
-
-  /** a deferred subprogram with no continuation of its own: forced by
-   * the interpreter's loop and continued AS IS — see `Free.delay` */
+  /** a deferred subprogram: forced by the interpreter's loop and
+   * continued AS IS — see `Free.delay`; `Free.defer` is this under a
+   * `Bind`. Public like the other cases: the interpreters live across
+   * files (Effects.scala's `runFree`, Async.scala's loop, Cont.scala's
+   * `step`), and hiding a case whose smart constructor is public would
+   * stop nobody from building one — only from matching it, which is
+   * the half an interpreter needs. */
   case Delay(thunk: () => Free[F, A])
 
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
@@ -111,15 +113,10 @@ enum Free[F[+_], A] {
   @tailrec final def resume: Free[F, A] = this match
     case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
     case Bind(Pure(a), f) => f(a).resume
-    // the deferred left side is forced HERE, in the loop, and its own
-    // binds then rotate through the cases above — constant stack
-    case Defer(t, f) => Bind(t(), f).resume
-    // the same forcing in ONE hop: building a `Defer` here only to
-    // match it on the next iteration was one node and one dispatch
-    // per left-nested defer for nothing (core-cleanup)
-    case Bind(Defer(t, f), g) => Bind(t(), f(_).flatMap(g)).resume
-    // no continuation to compose: the thunk's own tree continues under
-    // whatever was waiting for it, and nothing is rotated (delay-node)
+    // the deferred subprogram is forced HERE, in the loop, and its own
+    // binds then rotate through the cases above — constant stack; and
+    // nothing is composed onto it: the thunk's tree continues under
+    // whatever was waiting for it (delay-node)
     case Delay(t) => t().resume
     case Bind(Delay(t), g) => Bind(t(), g).resume
     case a => a

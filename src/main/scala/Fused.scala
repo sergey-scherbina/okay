@@ -124,8 +124,9 @@ object Fused {
    * Control carrier, assembled `inline`: one `split` (stage A), each
    * branch a `shift` whose captured continuation is called with the
    * new accumulator. The row's meaning is the row's order, as in the
-   * Free loops. No tree exists between an `Eff` program and this: the
-   * program IS the function of its handler.
+   * Free loops. No tree exists between an inline handler-passing
+   * program (`runCtrl`) and this: the program IS the function of its
+   * handler.
    */
   inline def stateWriterInterp[C[_, _, _], S, W, A](using TypeableK[State % S])
   : Interpr[State % S + Writer % W, C, Answer[S, W, A]] =
@@ -137,12 +138,6 @@ object Fused {
         case State.Get() => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(acc._1)(acc))
         case State.Set(s2) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(s2)((s2, acc._2)))
       } { case Writer.Say(v) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(())((acc._1, acc._2 :+ v))) }
-
-  /** an `Eff` program over the row, run ONCE with the composite: the
-   * answer of `stateWriter` (`((S, Vector[W]), A)`), no Free tree */
-  inline def runEff[S, W, A](s: S)(m: Eff[State % S + Writer % W, A])
-                            (using TypeableK[State % S]): ((S, Vector[W]), A) =
-    (m[Answer[S, W, A]](stateWriterInterp[Cont, S, W, A]) / (a => acc => (acc, a)))((s, Vector.empty))
 
   /** the same for a program written directly against a Control
    * carrier (`def prog[C](h: Interpr[Row, C, R]): C[A, R, R]`), at Func

@@ -33,7 +33,7 @@ class TestErrorMessages extends munit.FunSuite {
   // Their @implicitNotFound texts serve downstream scopes.
 
   test("missing CanTry names the lazy-monad trap and the one-line strict recipe") {
-    val e = compileErrors("summon[okay.CanTry[[X] =>> okay.Eff[okay.Pure, X]]] ")
+    val e = compileErrors("summon[okay.CanTry[[X] =>> okay.Cont[X, Int, Int]]] ")
     assert(e.contains("CanTry.strict"), e)
     assert(e.contains("LAZY"), e)
   }

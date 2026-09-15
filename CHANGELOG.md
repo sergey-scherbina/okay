@@ -1,5 +1,37 @@
 # Changelog
 
+## defer-eff-removal — one deferred node, one encoding fewer, and the JIT re-decides
+
+The operator's answer to two questions the Free/Cont/Effects review
+left open (specs/core-cleanup.md, "defer-eff-removal").
+
+**`Defer` is gone.** `Free.defer(t)(f)` builds `Bind(Delay(t), f)`;
+`resume` and `Cont.step` lose two cases each and the tree is `Pure |
+Inject | Bind | Delay`. The price lands only on the codecs' trampoline
+past `NativeThreshold`, and a lane was written to see it before the
+node went: `parseDeep` (2 000 levels) 62.0 → 65.1 µs, +40 B per level.
+
+**`Eff` is gone** with its `Monad`, `Effects[Eff]`, `toEff`,
+`Fused.runEff`, two benchmark lanes, seven tests (now "Free and Eager
+agree") and four doc passages. Nothing outside them ever built one; its
+numbers stay in handler-fusion and eff-stack-safety.
+
+**The JIT, measured rather than feared.** `Free.resume` fell from 495
+bytes to 323, under `FreqInlineSize`, and started inlining into every
+loop that calls it: `relayPrebuilt` 151 → **142 µs** (−6%), but
+`handlePrebuilt` 154 → 177 and `handleCapture` 152 → 172 (+15%), same
+bytes — a 323-byte loop pasted into a 388-byte loop that was already
+"too big". `-XX:+PrintInlining` named it. The fix was already in the
+ledger as a refutation: `handle-loop-inlining` (this morning) moved the
+terminal case and the capturing fallback into their own methods and
+measured nothing, because `resume` was never inlined then. The same
+move now: `handlePrebuilt` **145.5**, `handleCapture` **146.7**, both
+under master. Rows `de-*`, `de-inl-*`.
+
+The fourth face of the inlining rule, for the memory: a callee crossing
+the line re-decides every caller, and a caller-side shape that was
+neutral becomes the fix.
+
 ## delay-node — a tail call carries no continuation, so nothing rotates
 
 The speed half of the Free/Cont/Effects review (specs/core-cleanup.md,

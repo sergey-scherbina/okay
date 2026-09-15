@@ -6,7 +6,7 @@ package okay
  * A | (A ! F) — so flatMap on a pure value applies at CONSTRUCTION:
  * runs of pure binds cost plain function calls, no tree and no
  * interpretation. Choose it for bind-heavy computation; choose
- * Free/Eff where the laziness contract matters. The hazards are
+ * Free where the laziness contract matters. The hazards are
  * kyo's, taken knowingly: construction evaluates (a self-referential
  * program diverges before it runs), and values must not themselves be
  * effect trees (the union is discriminated by the runtime class of
@@ -52,7 +52,7 @@ object Eager {
     // a deferred call must not be forced to find out whether it would
     // have taken the O(1) pure-value path — that IS the eagerness this
     // exists to avoid — so it always commits to the tree side, same as
-    // every other Free.Defer-backed instance
+    // every other Free.defer-backed instance
     override inline def defer[F[+_], A, B](thunk: () => Eager[F, A])(f: A => Eager[F, B]): Eager[F, B] =
       Free.defer(() => toFree(thunk()))(a => toFree(f(a)))
 

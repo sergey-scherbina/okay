@@ -111,8 +111,8 @@ same material with the measurements attached.
   and `convert` crosses between any two without passing through a
   tree. A round trip in both directions, asserted for every encoding.
   Gotcha: `reflect` shadows `scala.reflect` inside package `okay`.
-- **`Effects[M]`** — the interface; instances **`Free`** (initial),
-  **`Eff`** (final/Church) and **`Eager`** (opt-in, companion-scoped
+- **`Effects[M]`** — the interface; instances **`Free`** (initial)
+  and **`Eager`** (opt-in, companion-scoped
   given: pure binds run at construction; the type is opaque so the
   encoding cannot leak into inference).
 - **`!.relay`** — tail-resumptive handling; **`Effects.handle`** —

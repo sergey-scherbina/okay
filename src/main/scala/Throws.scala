@@ -229,7 +229,7 @@ extension [A, E <: Unsafe](a: A throws E)
  * so, and a strict monad of your own declares itself in one line:
  * `given CanTry[M] = CanTry.strict`.
  */
-@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try), Free rows, and context functions (E ?=> X)\nhave instances; for a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a\nCont-shaped LAZY monad (Eff) has no honest instance: its body runs after the try, catch in the run instead.")
+@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try), Free rows, and context functions (E ?=> X)\nhave instances; for a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a\nCont-shaped LAZY monad has no honest instance: its body runs after the try, catch in the run instead.")
 trait CanTry[F[_]]:
   def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A]
 

@@ -13,16 +13,21 @@ import scala.annotation.tailrec
  * A computation A ! F is a freer-monad tree over the signature F; its
  * meaning is its image in Cont, given by foldCont, where a handler is
  * an interpretation F !> S = F ==> ([X] =>> X /> S) — that is,
- * handlers are continuations. The Effects interface is final tagless
- * with two encodings (Free — initial, Eff — final, Church), and the
- * object ! is the concrete toolkit over the Free encoding: stepping
- * (resume, next, ?), running, and the tail-resumptive relay.
+ * handlers are continuations. The Effects interface is final tagless;
+ * Free (the initial encoding) and Eager (Eager.scala, pure binds at
+ * construction) are its instances, and the object ! is the concrete
+ * toolkit over Free: stepping (resume, next, ?), running, and the
+ * tail-resumptive relay. reflect and reify move programs between the
+ * encodings.
  *
- * Choosing an encoding: the tree is for tools — stepping, staged
- * relay, stack safety on any bind shape; the function is for speed —
- * fused build-and-run pipelines with no tree at all; the interface is
- * for not choosing too early. reflect and reify move programs
- * between the encodings.
+ * There WAS a third instance, Eff — the Church encoding, a program as
+ * the function of its handler (Kiselyov–Sabry–Swords 2013). It proved
+ * the interface honest ("Free and Eff agree") and it was measured: the
+ * no-tree road ran at 0.58–0.86x of the fused Free loop (handler-fusion
+ * stage B), stack safety cost it a Cont.defer per bind (eff-stack-
+ * safety, +11%), and nothing outside its own tests ever built one.
+ * Removed 2026-09-15 (defer-eff-removal); the history is in those two
+ * specs and in history.tsv rows `effSW*`.
  *
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
  * https://blog.higher-order.com/assets/trampolines.pdf
@@ -197,10 +202,9 @@ trait Effects[M[_[+_], _]]:
   /** a bind whose left side is deferred: the thunk is not forced at
    * construction, only when the encoding's own interpreter reaches this
    * node — Free's runners (fold/runFree/resume) force it one hop at a
-   * time in their own tailrec loop, Eff's defers into Cont's the same
-   * way its flatMap already does (eff-stack-safety). This is what lets
-   * two mutually-recursive functions returning M[F, A] call each other
-   * in tail position without nesting a JVM stack frame per call. */
+   * time in their own tailrec loop. This is what lets two
+   * mutually-recursive functions returning M[F, A] call each other in
+   * tail position without nesting a JVM stack frame per call. */
   def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
   /** mark a call to a mutually-recursive function as a tail call — the
    * tagless counterpart of `!.tailcall` (object !, this file), for code
@@ -554,7 +558,7 @@ given Effects[Free] with
    * answers with `Cont.Pure`, and the loop simply CONTINUES on that
    * answer — one tail call, nothing allocated. Only a handler that
    * really captures needs the rest of the program reified, and it
-   * gets a `Defer` so that deep programs trampoline through the
+   * gets a `Delay` so that deep programs trampoline through the
    * interpreter rather than the JVM stack (which is what `foldCont`'s
    * `Cont` runner used to do for them).
    *
@@ -576,72 +580,32 @@ given Effects[Free] with
     // is a real tail call and is compiled as one; what guarantees the
     // depth is TestHandleForward's three stack-safety tests, which is
     // where a guarantee of this kind belongs anyway.
+    //
+    // The TERMINAL case and the CAPTURING fallback live in their own
+    // methods, as `relay.last` does, and the reason is `Free.resume`'s
+    // size: since defer-eff-removal it is 323 bytes, under HotSpot's
+    // FreqInlineSize of 325, so the JIT pastes it into every loop that
+    // calls it. Pasted into `relay`'s 244-byte loop that is worth -6%;
+    // pasted into this loop at 388 bytes it cost +15% on handlePrebuilt
+    // and handleCapture (rows `de-*`) — a loop inlined into a loop that
+    // is itself "hot method too big". handle-loop-inlining made this
+    // same extraction when `resume` was 495 bytes and never inlined,
+    // and measured nothing; the shape only matters once `resume` fits.
+    def last(e: F[A] | G[A]): Free[G, B] =
+      split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
+    def capture[X](c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
+      c / (x => Free.delay(() => loop(k(x))))
     def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
       case Free.Pure(a) => ret(a)
-      case Free.Inject(e) =>
-        split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
+      case Free.Inject(e) => last(e)
       case Free.Bind(Free.Inject(e), k) =>
         split[F, G](e)
           // `h` is asked ONCE: the answered test and the fallback both
           // read the same program, and a handler is not assumed pure
           (e => { val c = h(e)
-                  Cont.onAnswer(c)(a => loop(k(a)))
-                                  (c / (x => Free.delay(() => loop(k(x))))) })
+                  Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k)) })
           (e => Free.Inject(e).flatMap(x => loop(k(x))))
     loop(m)
-
-/**
- * Effects are continuation programs, literally: Eff is the final
- * (Church) encoding of the interface — a computation as the function
- * of its handler, where foldCont is the program itself. This is how
- * extensible effects were first defined (Kiselyov–Sabry–Swords 2013,
- * by continuations), before the freer tree of 2015 — so Eff and Free
- * reenact the history, and "Free and Eff agree" is the claim that the
- * two papers describe one thing. Choose Eff when the program is a
- * pipeline: built once and run, the handler fusing into the closures
- * with no tree materialized at all. (Unlike Free, Eff cannot be
- * stepped. It IS stack-safe on any bind shape since eff-stack-safety:
- * a bind defers the inner application into Cont's runner.)
- */
-type Eff[F[+_], A] = [S] => F !> S => A /> S
-
-/** every Eff[F, *] is a Monad, by its Effects instance (Free[F, *]
- * has the same, in Free.scala) — for-comprehensions on either encoding */
-given [F[+_]]: Monad[[A] =>> Eff[F, A]] with
-  override def pure[A](a: A): Eff[F, A] = summon[Effects[Eff]].pure(a)
-  extension [A](m: Eff[F, A])
-    override def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
-      summon[Effects[Eff]].flatMap(m)(f)
-
-given Effects[Eff] with
-  override inline def pure[F[+_], A](a: A): Eff[F, A] =
-    [S] => (_: F !> S) => Cont.Pure(a)
-  override inline def perform[F[+_], A](e: F[A]): Eff[F, A] =
-    [S] => (h: F !> S) => h(e)
-  // same shape as flatMap below — the thunk stands where m sits there,
-  // forced by Cont's own runner instead of by this call
-  override inline def defer[F[+_], A, B](thunk: () => Eff[F, A])(f: A => Eff[F, B]): Eff[F, B] =
-    [S] => (h: F !> S) => Cont.defer(() => thunk()[S](h))(a => f(a)[S](h))
-
-  extension [F[+_], A](m: Eff[F, A])
-    // the inner application is DEFERRED into the Cont runner's loop
-    // (specs/eff-stack-safety.md): applying a left-nested chain to its
-    // handler no longer calls inward once per bind before any Cont
-    // exists, which is where a million binds used to overflow
-    override inline def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
-      [S] => (h: F !> S) => Cont.defer(() => m[S](h))(a => f(a)[S](h))
-    override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
-
-/**
- * Free is initial: the tree interprets uniquely into every Effects
- * instance (reflect). Eff is final: every instance observes into it
- * by its own foldCont (toEff). So all the encodings live between the
- * tree and its behavior, and reify closes the circle: any program
- * materializes back as syntax.
- */
-/** every Effects instance observes into Eff, by its own foldCont */
-inline def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
-  [S] => (h: F !> S) => m.foldCont(h)
 
 /**
  * Any Effects program in ANY other Effects encoding.
@@ -669,14 +633,13 @@ inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
 
 /**
  * The other direction: a Free tree read INTO any encoding — the
- * Church one (`Eff`), the eager one, or another of your own.
+ * eager one, or another of your own.
  *
  * `reify` observes an abstract encoding as syntax, which is what a
  * debugger, a rewriter or `Pipeline`'s optimizer wants. `reflect`
  * spends syntax at an encoding, which is what running it fast wants:
  * a program built once as a tree can be reflected into `Eager` where
- * pure binds apply at construction, or into `Eff` where there is no
- * tree to walk.
+ * pure binds apply at construction.
  *
  * Together they are a round trip, and `TestReflect` asserts it is one
  * — the same answers, both ways, for every encoding this library has.
@@ -720,7 +683,6 @@ object ! {
       case Pure(a) => a
       // a peek forces the thunk too, same as `Bind(a, _) => a.?` discards
       // its own continuation without applying it
-      case Defer(t, _) => t().?
       case Delay(t) => t().?
   }
 

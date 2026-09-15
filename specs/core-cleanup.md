@@ -164,3 +164,63 @@ Behavior of the node, by tests already in place: TestEffects'
 `isEven(1000000)` chain (stack safety of `tailcall`), TestHandleForward's
 three stack-safety tests (the capturing arm), TestCont's mutual
 recursion, the Cbor suite for the skip. Gate: see CHANGELOG.
+
+### defer-eff-removal — LANDED 2026-09-15 (operator: "да ок")
+
+Two removals the review raised as questions and the operator answered.
+
+**`Defer` is gone; `Free.defer(t)(f)` is `Bind(Delay(t), f)`.** With
+`Delay` in the tree the pair node was derivable, and `resume` and
+`Cont.step` each lose two cases. The prior number (eff-stack-safety,
+2026-09-09: `Bind(Suspend)` vs one `Defer`, +16 B/bind and ~3% on
+`Eff`'s right-nested lane) was on the encoding that is the other
+removal, so the hot payer went with it. What still builds the pair is
+the codecs' trampolines past `NativeThreshold` (24), and no lane
+reached that road until this one wrote `parseDeep` (a document 2 000
+deep, compare/CodecBenchmark) and measured it FIRST:
+
+| lane | before | after |
+|---|---|---|
+| parseDeep | 62.0 ± 1.0 µs, 827 973 B | 65.1 ± 0.2 µs, 906 948 B |
+
++5% and +40 B per deferred level, on a road only pathological input
+takes. That is the price, and it is recorded rather than netted away.
+
+**`Eff` is gone** — the Church encoding, its `Monad`, `Effects[Eff]`,
+`toEff`, `Fused.runEff`, the `effSWr`/`effSW` lanes, the seven tests
+that said "Free and Eff agree" (they say "Free and Eager agree" now,
+which is the same claim at a second instance) and four doc passages.
+Nothing outside those ever built one; the two facts it existed to
+prove — the interface is honestly tagless, and a Church program can
+be stack-safe — are in specs/handler-fusion.md and
+specs/eff-stack-safety.md with their numbers.
+
+**What the removal did to the JIT, and the fix that came with it.**
+`Free.resume` went from 495 bytes to 323, under HotSpot's
+`FreqInlineSize` of 325, and became "inline (hot)" in every loop that
+calls it — the memory `inlining-threshold-two-faces` in one line.
+Same-window A/B on a quiet box (load 1.6-2.9), two rounds each:
+
+| lane | master | Defer removed | + handle's arms extracted |
+|---|---|---|---|
+| relayPrebuilt | 151.5 / 150.7 | **142.5 / 142.3** | **142.0 / 144.4** |
+| handlePrebuilt | 153.8 / 154.5 | 175.6 / 179.1 | **145.5 / 146.0** |
+| handleCapture | 152.5 / 152.4 | 171.6 / 173.0 | **146.8 / 146.7** |
+
+`relay`'s loop is 244 bytes and gained 6% from the paste. `handle`'s
+was 388 — already "hot method too big" — and a 323-byte loop pasted
+into it cost 15%. `-XX:+PrintInlining` said exactly that (rows
+`de-inl-*`). The move `handle-loop-inlining` tried on 2026-09-15
+morning — the terminal case and the capturing fallback into their own
+methods, `relay.last`'s shape — measured NOTHING then, because
+`resume` at 495 bytes was never inlined into anything; the same move
+now takes `handle` to 145.5, under where master was. Three faces of
+the rule were known; this is the fourth: **a change to the callee's
+size re-decides every caller, and a caller's shape that was neutral
+can become the fix.** Allocation identical to the byte throughout
+(relay/handle 1 753 945, handleCapture 1 764 377, fib100 19 936.013).
+
+Behavior: gate green (see CHANGELOG); TestCont's mutual recursion and
+the codec trampoline suites (TestJsonTrampoline, TestCborTrampoline,
+TestCborSkipTrampoline, TestJsonStrictTrampoline, TestJsonRawTrampoline)
+cover `Bind(Delay, f)` where `Defer` was.

@@ -105,8 +105,8 @@ class HandlerBenchmark {
     Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => shift(k => k(a.a))).runWith
 
   /** the other road to the same node: `!.tailcall` between two
-   * mutually recursive functions, N deep — every hop is a
-   * `Defer(thunk, pure)` today */
+   * mutually recursive functions, N deep — every hop WAS a
+   * `Defer(thunk, pure)` before delay-node, and is one `Delay` now */
   def isEven(n: Int): Boolean ! okay.Pure =
     if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
   def isOdd(n: Int): Boolean ! okay.Pure =

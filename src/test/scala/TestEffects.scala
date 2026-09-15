@@ -13,17 +13,18 @@ class TestEffects extends munit.FunSuite {
   def prog[M[_[+_], _]](using E: Effects[M]): M[Produce, Int] =
     E.perform[Produce, Int](1).flatMap(x => E.perform[Produce, Int](x + 1).map(y => x + y))
 
-  test("tagless Effects: Free and Eff agree") {
+  test("tagless Effects: Free and Eager agree") {
+    import Eager.given
     assertEquals(prog[Free].runWith, 3)
-    assertEquals(prog[Eff].runWith, 3)
+    assertEquals(prog[Eager].runWith, 3)
   }
 
   test("initial and final: reify materializes, reflect interprets back") {
-    val t: Int ! Produce = reify(prog[Eff])
-    assertEquals(t.?, 1)      // the tree can be stepped; the Eff function cannot
+    import Eager.given
+    val t: Int ! Produce = reify(prog[Eager])
+    assertEquals(t.?, 1)      // the tree can be stepped
     assertEquals(t.runWith, 3)
-    assertEquals(toEff(t).runWith, 3)
-    assertEquals(reflect[Eff, Produce, Int](t).runWith, 3)
+    assertEquals(reflect[Eager, Produce, Int](t).runWith, 3)
   }
 
   test("stack safety: runWith over a 1M bind chain (foldCont)") {
@@ -33,7 +34,8 @@ class TestEffects extends munit.FunSuite {
     assertEquals(e.runWith, n)
   }
 
-  test("Effects.tailcall: mutual tail recursion, tagless — Free and Eff agree") {
+  test("Effects.tailcall: mutual tail recursion, tagless — Free and Eager agree") {
+    import Eager.given
     def isEven[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
       val E = summon[Effects[M]]
       if n == 0 then E.pure(true) else E.tailcall(isOdd[M](n - 1))
@@ -41,9 +43,9 @@ class TestEffects extends munit.FunSuite {
       val E = summon[Effects[M]]
       if n == 0 then E.pure(false) else E.tailcall(isEven[M](n - 1))
     assertEquals(isEven[Free](1000000).runWith, true)
-    assertEquals(isEven[Eff](1000000).runWith, true)
+    assertEquals(isEven[Eager](1000000).runWith, true)
     assertEquals(isOdd[Free](1000000).runWith, false)
-    assertEquals(isOdd[Eff](1000000).runWith, false)
+    assertEquals(isOdd[Eager](1000000).runWith, false)
   }
 
   test("!.tailcall: mutual tail recursion across two functions, stack-safe") {
@@ -83,7 +85,6 @@ class TestEffects extends munit.FunSuite {
       val E = Effects[M]
       E.flatMap(E.perform[Produce, Int](1))(x => E.perform[Produce, Int](x + 1))
     assertEquals(sprog[Free].runWith, 2)
-    assertEquals(sprog[Eff].runWith, 2)
   }
 
   test("staged effects, fully fused: inline handler-passing over Control") {

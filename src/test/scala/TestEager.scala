@@ -8,10 +8,9 @@ class TestEager extends munit.FunSuite {
   def prog[M[_[+_], _]](using E: Effects[M]): M[Produce, Int] =
     E.perform[Produce, Int](1).flatMap(x => E.perform[Produce, Int](x + 1).map(y => x + y))
 
-  test("the tagless encodings agree: Eager, Free, Eff") {
+  test("the tagless encodings agree: Eager, Free") {
     assertEquals(prog[Eager].runWith, 3)
     assertEquals(prog[Free].runWith, 3)
-    assertEquals(prog[Eff].runWith, 3)
   }
 
   test("eagerness is real: a pure bind chain evaluates at CONSTRUCTION") {

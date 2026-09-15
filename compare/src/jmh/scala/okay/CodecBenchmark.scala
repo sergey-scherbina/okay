@@ -161,6 +161,18 @@ class CodecBenchmark {
   @Benchmark def cborDecodeInterp(): Either[String, Order] = Cbor.read(cborBytes)(using summon[Schema[Order]])
   @Benchmark def cborDecodeStaged(): Either[String, Order] = stagedCbor.decode(cborBytes)
 
+  /**
+   * A document nested 2 000 deep — past `Codecs.NativeThreshold` (24),
+   * so the parser leaves native recursion and trampolines through
+   * `Cont.defer` for the remaining ~1 976 levels. The only lane that
+   * exercises the deferred-with-continuation node at all: every other
+   * codec lane here is a flat `Order` and never reaches it. Written
+   * for defer-eff-removal, to price `Bind(Delay(t), f)` against the
+   * `Defer(t, f)` it replaces on the one road that still builds it.
+   */
+  val deep: String = "[" * 2000 + "]" * 2000
+  @Benchmark def parseDeep(): Json = Json.parse(deep)
+
   @Benchmark def parseOnly(): Json = Json.parse(text)
   @Benchmark def parseValueOnly(): Json = Json.parse(text)
   @Benchmark def textToOrderStaged(): Either[String, Order] = staged.decode(Json.parse(text))

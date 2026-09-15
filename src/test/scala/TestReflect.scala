@@ -44,14 +44,12 @@ class TestReflect extends munit.FunSuite {
     val expected = run[Free](tree)
     assertEquals(expected, (14, List("got 7")))
 
-    assertEquals(run[Eff](reflect[Eff, Op, Int](tree)), expected)
     assertEquals(run[Eager](reflect[Eager, Op, Int](tree)), expected)
     assertEquals(run[Free](reflect[Free, Op, Int](tree)), expected)
   }
 
   test("reify: every encoding observed back as syntax") {
     val expected = (14, List("got 7"))
-    assertEquals(run[Free](reify[Eff, Op, Int](program[Eff])), expected)
     assertEquals(run[Free](reify[Eager, Op, Int](program[Eager])), expected)
     assertEquals(run[Free](reify[Free, Op, Int](program[Free])), expected)
   }
@@ -60,7 +58,6 @@ class TestReflect extends munit.FunSuite {
     val tree: Int ! Op = program[Free]
     val expected = run[Free](tree)
 
-    assertEquals(run[Free](reify[Eff, Op, Int](reflect[Eff, Op, Int](tree))), expected)
     assertEquals(run[Free](reify[Eager, Op, Int](reflect[Eager, Op, Int](tree))), expected)
   }
 
@@ -68,10 +65,7 @@ class TestReflect extends munit.FunSuite {
     val tree: Int ! Op = program[Free]
     val expected = run[Free](tree)
     // reflect IS convert into M; reify IS convert into Free
-    assertEquals(run[Eff](convert[Free, Eff, Op, Int](tree)), expected)
-    assertEquals(run[Free](convert[Eff, Free, Op, Int](program[Eff])), expected)
-    // and it crosses between two non-Free encodings without passing
-    // through a tree at all
-    assertEquals(run[Eager](convert[Eff, Eager, Op, Int](program[Eff])), expected)
+    assertEquals(run[Eager](convert[Free, Eager, Op, Int](tree)), expected)
+    assertEquals(run[Free](convert[Eager, Free, Op, Int](program[Eager])), expected)
   }
 }

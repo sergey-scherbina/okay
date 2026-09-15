@@ -77,13 +77,6 @@ class TestStream extends munit.FunSuite {
     assertEquals(p12.foldTo[Seq[Int]], Seq(1, 2))
   }
 
-  test("instances: Monad for the Eff encoding") {
-    val E = summon[Effects[Eff]]
-    val M = summon[Monad[[A] =>> Eff[Produce, A]]]
-    val m = M.flatMap(E.perform[Produce, Int](20))(x => M.pure(x + 22))
-    assertEquals(m.runWith, 42)
-  }
-
   test("arbitrary effects on a writer stream: async at the pull") {
     type F = Writer % String + Async
     val talk: Int ! F =

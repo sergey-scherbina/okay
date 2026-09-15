@@ -97,11 +97,11 @@ index above lists them all with one-line summaries.
   is `F !> S = F ==> ([X] =>> X /> S)`, an interpretation of the
   operations in Cont, and the meaning of a computation is its `foldCont`;
   `runWith` and `handle` derive from it. Instances: `Free` (initial,
-  defunctionalized) and `Eff` (final, Church). Choosing: the tree is
-  for tools (stepping, staged relay, stack safety on any bind shape),
-  the function is for speed (fused build-and-run pipelines), and the
-  interface is for not choosing too early — `fromFree` and `reify`
-  move programs between the encodings.
+  defunctionalized) and the opt-in `Eager` (pure binds apply at
+  construction); `reflect` and `reify` move programs between them.
+  For fused build-and-run speed the answer is not another encoding
+  but an inline handler-passing program over `Control` (`Fused`,
+  specs/staged-effects.md).
 - `!.relay` (Effects.scala) — tail-resumptive handling: the answer-polymorphic
   handler must resume exactly once, which keeps the loop tail-recursive.
   `Effects.handle` — general handlers (abort, forwarding), via foldCont.

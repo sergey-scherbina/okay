@@ -1,6 +1,6 @@
 package okay
 
-import okay.Free.{Pure, Inject, Bind, Defer, Delay}
+import okay.Free.{Pure, Inject, Bind, Delay}
 
 /**
  * Final tagless interface of delimited control: the parameterised
@@ -44,7 +44,7 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * continuation A => S, makes an answer R — it means (A => S) => R.
  *
  * `S` and `R` are PHANTOM to the tree. The tree is `Free[Shift, A]`,
- * the same `Pure | Inject | Bind | Defer` every effect program is
+ * the same `Pure | Inject | Bind | Delay` every effect program is
  * made of, and it carries no answer type at all. Danvy and Filinski's
  * answer-type modification — `PState` changing its state type,
  * `Loop`'s open recursion — lives entirely in the signatures of this
@@ -109,10 +109,10 @@ object Cont:
    * thunk is not forced at construction, only when `step` reaches the
    * node — which is what lets two mutually recursive functions call
    * each other in tail position without a JVM frame per call
-   * (`Cont.defer(() => other(n - 1))(Cont.Pure)` is the spelling; the
-   * codecs' trampolines past `NativeThreshold` are its heaviest users).
-   * The continuation costs nothing extra — `Bind(Defer(t, k), g)`
-   * rotates through the same `Defer` case as any other.
+   * (the codecs' trampolines past `NativeThreshold` are its heaviest
+   * users; a call with nothing to do afterwards is `delay`). It is
+   * `Bind(Delay(t), f)` on the tree, so the continuation is an ordinary
+   * bind and rotates like one.
    */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
     Free.defer(thunk)(f)
@@ -271,9 +271,6 @@ object Cont:
     case Bind(Inject(s), f) => typed(s)(x => run(f(x))(k))
     case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)
     case Bind(Pure(a), f) => step(f(a))(k)
-    case Defer(t, f) => step(Bind(t(), f))(k)
-    // forced in one hop, as `Free.resume` does it (core-cleanup)
-    case Bind(Defer(t, f), g) => step(Bind(t(), x => bind(f(x))(g)))(k)
     case Delay(t) => step(t())(k)
     case Bind(Delay(t), g) => step(Bind(t(), g))(k)
 
@@ -308,7 +305,7 @@ given Control[Cont] with
 /**
  * The function encoding is the reference implementation of Control.
  * It is not stack-safe: flatMap nests closures (Cont is the safe one).
- * The choice mirrors Free vs Eff one level up: data for tools and
+ * The choice mirrors Free vs `Fused` one level up: data for tools and
  * safety, functions for speed.
  */
 type Func[A, S, R] = (A => S) => R
