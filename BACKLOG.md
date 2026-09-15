@@ -37,6 +37,27 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] deep-recursive-direct — the article's `deepRecursive` (Halotu Kozak,
+      "Deep recursion in Scala 3", a macro that rewrites a self-recursive
+      body into TailRec's tailcall/flatMap/done) as a `direct` rule. It
+      already works BY HAND on master, probed 2026-09-15 with scala-cli
+      against the built classes, native stack 512 KB: `def fib(n) = direct:
+      if n < 2 then n else !.tailcall(fib(n - 1)).reflect + !.tailcall(fib(n
+      - 2)).reflect` (75025 at 25), `sum(1_000_000)` non-tail in 65 ms,
+      `isEven(1_000_001)` through `isOdd` — mutual recursion, which the
+      article's macro refuses. Her TailRec IS our Free: tailcall = `Delay`,
+      flatMap = `Bind(Delay, k)`, done = `Pure`, `.result` = `!.run`. What is
+      missing is the zero-annotation form: a rule in Direct.scala that
+      colours a call to the ENCLOSING def as `!.tailcall(call).reflect` —
+      `asMark`/`opColor` colour by type today, this one colours by the
+      enclosing method's symbol. ~30 lines plus a test on fib/sum/isEven;
+      the lowering of if/match/blocks/`a + b` is Direct's already.
+- [ ] direct-mark-shadowed — inside a `direct` block with `import okay.*`
+      the documented mark `.?` resolves to the PEEK `!.?` (Effects.scala,
+      `extension ... def ? : Handler[F] ?=> ?`) rather than `Direct.?`: the
+      probe above typed `!.tailcall(fib(n - 1)).?` as `Long ! Nothing` and
+      failed on `+`; `.reflect` works. Either rename one of the two or make
+      the direct mark win; TestDirect should hold the failing shape first.
 - [x] delay-node — LANDED 2026-09-15 (tailcallChain 5.3x, handleCapture
       1.35x, controls identical to the byte; specs/core-cleanup.md
       "delay-node"). The entry as written, for the record: a `Delay(thunk)` case beside `Defer`, so that a
