@@ -1,5 +1,10 @@
 # Eff stack safety: a left-nested bind must not recurse before a Cont exists
 
+> HISTORICAL (2026-09-15, defer-eff-removal): `Eff` no longer exists.
+> This spec stays because its measurement — `Bind(Suspend)` vs one
+> `Defer` node, +16 B/bind and ~3% — is the number the removal of
+> `Defer` itself was weighed against (specs/core-cleanup.md).
+
 ## Overview
 
 `Eff[F, A] = [S] => F !> S => A /> S` is the Church encoding: a program
