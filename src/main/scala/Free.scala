@@ -48,6 +48,20 @@ object Free {
    * push. */
   def delay[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Delay(thunk)
 
+  /**
+   * A program value as its answer, INSIDE a `direct` block: the
+   * auto-colouring `Direct.selfColor` provides for any monad, given
+   * here for this one so that it needs no import — implicit search for
+   * `Conversion[Free[R, A], A]` looks in this companion, the source
+   * type's own scope, where `Direct.given` had to be imported by name
+   * (direct-no-ceremony, 2026-09-15). Gated exactly as `selfColor` is:
+   * `DirectCtx` exists only inside a block, so outside one a program is
+   * a program. The body never runs — the macro rewrites every call.
+   */
+  given directColor[R[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R, A], A] =
+    _ => throw new IllegalStateException(
+      "Direct auto-coloring escaped macro rewriting — this call belongs inside direct { ... }")
+
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
   given [F[+_]]: Monad[Free[F, *]] with
     override inline def pure[A](a: A): Free[F, A] = Pure(a)

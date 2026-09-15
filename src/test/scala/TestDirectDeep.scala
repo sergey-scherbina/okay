@@ -1,7 +1,6 @@
 package okay
 
-import okay.Direct.{*, given}
-import scala.language.implicitConversions
+import okay.Direct.*   // no `given`, no language import: the colouring is Free's own
 
 /**
  * Deep recursion inside `direct` (deep-recursive-direct,

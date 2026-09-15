@@ -2,7 +2,6 @@ package okay
 
 import okay.RowLift.{at, plus}
 import okay.Direct.{direct, given}
-import scala.language.implicitConversions
 
 /**
  * Declaring an effect: what still has to be written by hand, and what

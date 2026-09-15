@@ -1,5 +1,24 @@
 # Changelog
 
+## direct-no-ceremony — a direct block colours with nothing imported but direct
+
+`-language:implicitConversions` is in `ThisBuild / scalacOptions`
+(one line, the reason beside it): the auto-colouring `Conversion`s are
+gated by `DirectCtx` and apply only inside a block, and the feature
+warning their use raised without a per-file import was the only
+reason nine files carried `import scala.language.implicitConversions`.
+Measured with scalac before deciding: the missing import is exactly
+that warning, the flag removes it, and `into` — the operator's
+question — would not do, since it lifts the warning in parameter
+positions only and a block colours at ascriptions and receivers.
+Programs need no `Direct.given` either: `Free.directColor` in `Free`'s
+companion is found through the conversion's source type. TestDirectDeep
+now imports `okay.Direct.*` alone and `fib(n - 1) + fib(n - 2)` at
+`Long ! Pure` colours, defers and trampolines. What the flag weakens is
+said in TestThrows: its "deleting the import is the test" for
+`throws`'s `into` no longer tests anything. specs/direct-auto-coloring.md
+"No ceremony".
+
 ## inject-not-effect — one word, one meaning
 
 `!.Effect`, the type-and-value alias of `Free.Inject` that freer-base
