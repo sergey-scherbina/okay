@@ -1,0 +1,6 @@
+feature/free-one-rotation 2026-09-15T13:44:10Z
+agent: claude-code
+heartbeat: 2026-09-15T13:44:10Z
+status: in-progress
+done-so-far: nothing yet
+next: fold runFree/Free.fold/Async loop onto !.resume; measure fusedSWr + step/relay/handle lanes; gate
