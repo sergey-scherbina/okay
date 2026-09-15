@@ -1,0 +1,16 @@
+defer-eff-removal
+owner: fable-5.1 session 53f400ad
+started: 2026-09-15
+what: operator's "да ок" (2026-09-15) on two removals the review raised:
+  (1) Defer — derivable as Bind(Delay(t), f) now that Delay exists;
+  resume/step drop two cases. Prior number (eff-stack-safety 2026-09-09):
+  Bind(Suspend) vs Defer was +16 B/bind, ~3% on Eff's right-nested lane
+  — and Eff is the other removal, so the hot payer goes. Codecs pay it
+  only past NativeThreshold; a deep-nesting lane is added and measured
+  before/after. (2) Eff — no production caller; Eager stays as the
+  second Effects encoding for the agreement tests.
+files: src/main/scala/Free.scala, Cont.scala, Effects.scala, Eager.scala,
+  Fused.scala, src/jmh/scala/okay/FusionBenchmark.scala,
+  compare/src/jmh/scala/okay/CodecBenchmark.scala, tests naming Eff,
+  README.md, docs/guide.md, docs/tutorial.md, docs/typepedia.md,
+  specs/core-cleanup.md, specs/eff-stack-safety.md, BACKLOG.md, CHANGELOG.md
