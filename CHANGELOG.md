@@ -1,5 +1,22 @@
 # Changelog
 
+## fuse-consumers — fuse=1 is faster on the one lane that reached the 128 budget
+
+Measurement only, the third and last fusion run of the day. The
+remaining Cont-fusion consumers with `-Dokay.cont.fuse=1` against 128,
+three rotated rounds, per-lane minimum: `Monadic.reflect` lanes
+(okayDirect, okayDirectRec) 1.00, controls (stateEffect, cont24)
+unchanged — and `statePara`, PState with 1 000 left-nested operations,
+the only shape whose fused segment actually grows to 128, is 12%
+FASTER at fuse=1 (27.8 vs 31.7 µs, 3/3 rounds). Predicted slower,
+refuted: 128 nested closure calls per run lose to Bind nodes the
+tailrec loop rotates. Together with fuse-depth: every measured
+consumer is at parity or better at one fusion step. The default is
+still 128 — lowering it is a source change with a gate and a re-read
+of TestCont's spill stress, filed here as the next lane. Rows
+`fuse1-statePara`, `fuse1-okayDirect*`, controls in
+`src/jmh/history.tsv`; paragraph in specs/interpreter-optimization.md.
+
 ## fuse-depth — one fusion step is the whole win; depth is a bit, not an Int
 
 Measurement only, the follow-up to fuse-bench below. `FibBenchmark`

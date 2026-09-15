@@ -37,6 +37,25 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] cont-fuse-one-step — kind: perf. Lower `Cont.Fuse` from 128 to
+      1 and turn `Shift`'s `depth: Int` into the one bit it then is.
+      EVIDENCE (2026-09-15, three measurement lanes fuse-bench /
+      fuse-depth / fuse-consumers, rows `fuse0-*` and `fuse1-*` in
+      src/jmh/history.tsv, paragraphs in
+      specs/interpreter-optimization.md Results): fusion itself pays
+      12–25% (fuse=0 loses on every Fib lane); ONE step is the whole
+      win (fuse=1 equals 128 on fib10/50/100/1000 and on both
+      `Monadic.reflect` lanes, inside ±1–3% bars); and on `statePara`,
+      the only lane whose segment reaches 128, fuse=1 is 12% FASTER
+      (27.8 vs 31.7 µs, 3/3) — a 128-deep fused closure chain loses to
+      Bind nodes the tailrec loop rotates. Predicted the opposite,
+      refuted. WHAT THE LANE MUST DO: change the default, re-read
+      TestCont's fusion-budget spill stress (it assumes a budget), gate
+      the full matrix, re-run the Fib + statePara lanes on the landed
+      tree and record them. WHY IT IS NOT DONE HERE: the three lanes
+      were measurement-only by design and touched no source. Also the
+      shape the shared `Freer` base wants (memory: a `Fused` function
+      class carrying the bit, `Op(f)` at 40 B/shift vs today's 48).
 - [x] tag-distinct-keys — DONE (2026-09-11) as `Distinct[R]`, and
       the entry's own plan did not survive the first measurement.
       "Collect the singleton keys and refuse duplicates" would refuse

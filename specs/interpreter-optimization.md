@@ -195,3 +195,21 @@ named `Fused` function class the size of the lambda it replaces, and
 Measured on the Fib lanes only; `PState` (HandlerBenchmark) and
 `Monadic.reflect` are Cont-fusion consumers not covered here, so
 lower the default only after those lanes agree.
+
+2026-09-15, third run (fuse-consumers): those lanes, `fuse=1` against
+`128`, three rotated rounds, per-lane minimum (history.tsv
+`fuse1-statePara` etc.). `Monadic.reflect` (okayDirect 1.00,
+okayDirectRec 1.00) and both controls (stateEffect 1.00, cont24 0.99)
+are unchanged. `statePara` — PState, 1 000 operations LEFT-nested, the
+one shape where a segment actually reaches the 128 budget — is
+**12% faster at fuse=1** (27.8 vs 31.7 µs, 3/3 rounds). The prediction
+was the opposite (10–30% slower) and is refuted: a fused segment 128
+deep is a chain of 128 nested closure calls per run, while the same
+binds as `Bind` nodes are rotated by the tail-recursive loop — the
+handler-fusion finding "a node beats a closure pair" again, now on
+Cont's own path. So the depth budget is not merely unneeded, it costs
+on the shape it was designed for. Every Cont-fusion consumer measured
+is at parity or better at `fuse=1`. Decision left to a lane with a
+gate: `Cont.Fuse` default 128 → 1 is a one-line change (the `depth`
+field then carries one bit and can go), TestCont's spill stress
+assumes a budget and must be re-read against it.
