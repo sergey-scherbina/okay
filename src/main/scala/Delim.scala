@@ -198,8 +198,8 @@ object Delim {
     /** one operation: either the machine is done (Left) or it
      * continues with a new program and stack (Right) */
     def step[X](e: Row[X], kont: Segs[F, X, R]): Either[R ! F, Next[F, ?, R]] =
-      <|>[Delim, F](e) match
-        case Left(c) => c match
+      // `okay.split`, not this object's own `split` (the segment stack)
+      okay.split[Delim, F](e) { c => c match
           case pu: Push[r] =>
             // claim 1: the pushed body answers the prompt's r in this
             // row; r is an X (the op's answer), which K carries up
@@ -221,10 +221,10 @@ object Delim {
                 if cap.underPrompt then Right(Next(effect[Row, p](Push(cap.prompt, body)), cut.outer))
                 else Right(Next(body, cut.outer))
               case None => throw NoPrompt()
-
+        }
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
-        case Right(g) => Left(Effect(g).flatMap(x => loop(Next(okay.pure(x), kont))))
+        (g => Left(Effect(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
 
     loop(Next(prog, Segs.Done()))
   }

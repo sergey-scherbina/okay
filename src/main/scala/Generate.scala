@@ -182,12 +182,13 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
 
   def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = (p.resume: @unchecked) match
     case Free.Pure(_) => pure(None)
-    case Effect(e) => <|>[G, Produce](e) match
-      case Left(g) => Effect(g).map(_ => None)
-      case Right(w) => pure(Some((produced[A](w), Free.Pure(produced[A](w)))))
-    case Bind(Effect(e), k) => <|>[G, Produce](e) match
-      case Left(g) => Effect(g).flatMap(x => uncons(k(x)))
-      case Right(w) => pure(Some((produced[A](w), k(w))))
+    // `split`, not `<|>`: no Either per element (split-over-either)
+    case Effect(e) => split[G, Produce](e)
+      (g => Effect(g).map(_ => None): Option[(A, A ! Produce + G)] ! G)
+      (w => pure(Some((produced[A](w), Free.Pure(produced[A](w))))))
+    case Bind(Effect(e), k) => split[G, Produce](e)
+      (g => Effect(g).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
+      (w => pure(Some((produced[A](w), k(w)))))
 
 import scala.math.Numeric.Implicits.given
 

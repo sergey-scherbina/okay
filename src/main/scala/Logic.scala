@@ -45,12 +45,12 @@ object Logic {
         case LazyList() => pure(None)
         case p #:: rest => (p.resume: @unchecked) match
           case Pure(a) => pure(Some((a, alts(rest))))
-          case Effect(e) => <|>[Choose, F](e) match
-            case Left(c) => go(c.as.to(LazyList).map(a => Pure(a): A ! (Choose + F)) #::: rest)
-            case Right(g) => Effect(g).flatMap(a => go(Pure(a) #:: rest))
-          case Bind(Effect(e), k) => <|>[Choose, F](e) match
-            case Left(c) => go(c.as.to(LazyList).map(x => k(x)) #::: rest)
-            case Right(g) => Effect(g).flatMap(x => go(k(x) #:: rest))
+          case Effect(e) => split[Choose, F](e)
+            (c => go(c.as.to(LazyList).map(a => Pure(a): A ! (Choose + F)) #::: rest))
+            (g => Effect(g).flatMap(a => go(Pure(a) #:: rest)))
+          case Bind(Effect(e), k) => split[Choose, F](e)
+            (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
+            (g => Effect(g).flatMap(x => go(k(x) #:: rest)))
 
     go(LazyList(m))
 

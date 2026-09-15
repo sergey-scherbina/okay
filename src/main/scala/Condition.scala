@@ -190,12 +190,12 @@ object Condition {
       while true do
         val next: Either[X ! (Op + F), Out[X] ! F] = (p.resume: @unchecked) match
           case Pure(x) => Right(pure(Out.Done(x)))
-          case Effect(e) => <|>[Op, F](e) match
-            case Left(op) => step(op, (a: X) => Free.Pure(a))
-            case Right(f) => Right(Effect(f).map(Out.Done(_)))
-          case Bind(Effect(e), k) => <|>[Op, F](e) match
-            case Left(op) => step(op, k)
-            case Right(f) => Right(Effect(f).flatMap(x => loop(k(x), menu)))
+          case Effect(e) => split[Op, F](e)
+            (op => step(op, (a: X) => Free.Pure(a)))
+            (f => Right(Effect(f).map(Out.Done(_))))
+          case Bind(Effect(e), k) => split[Op, F](e)
+            (op => step(op, k))
+            (f => Right(Effect(f).flatMap(x => loop(k(x), menu))))
         next match
           case Left(p2) => p = p2
           case Right(out) => return out

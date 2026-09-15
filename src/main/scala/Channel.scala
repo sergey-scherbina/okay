@@ -814,14 +814,14 @@ object Channel {
       case Some(ch) => c.send(ch).flatMap(ok => if ok then rest else okay.pure(()))
       case None => rest
     def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A]): Unit ! Async =
-      <|>[Flush, Writer % A + Async](e) match
+      split[Flush, Writer % A + Async](e)
         // the producer's own boundary: emit what is held, however short
-        case Left(Flush.Now) => sendIf(takeChunk(buf, size, full = true))(go(k(())))
-        case Right(rest) => <|>[Async, Writer % A](rest) match
-          case Left(a) => Effect(a).flatMap(x => go(k(x)))
-          case Right(Writer.Say(w)) =>
+        { case Flush.Now => sendIf(takeChunk(buf, size, full = true))(go(k(()))) }
+        (rest => split[Async, Writer % A](rest)
+          (a => Effect(a).flatMap(x => go(k(x))))
+          { case Writer.Say(w) =>
             buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
-            sendIf(takeChunk(buf, size, full = false))(go(k(())))
+            sendIf(takeChunk(buf, size, full = false))(go(k(()))) })
     def go(p: Flushing[A]): Unit ! Async = (p.resume: @unchecked) match
       case Pure(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
       case Effect(e) => step(e, _ => okay.pure(()))

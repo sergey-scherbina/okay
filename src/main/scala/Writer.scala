@@ -156,14 +156,15 @@ object Writer {
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
     case Free.Pure(x) => Free.Pure(x)
-    case Effect(e) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g)
+    case Effect(e) => split[G, Writer % W](e)
+      (g => Effect(g): A ! (Writer % V + G))
       // the constructor refines the answer type to Unit on both
       // sides, so the re-told operation types with nothing asserted
-      case Right(Say(w)) => Effect(Writer(f(w)))
-    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).flatMap(x => map[W, V, A, G](k(x))(f))
-      case Right(Say(w)) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f))
+      { case Say(w) => Effect(Writer(f(w))) }
+    case Bind(Effect(e), k) => split[G, Writer % W](e)
+      (g => Effect(g).flatMap(x => map[W, V, A, G](k(x))(f)))
+      { w0 => (w0: @unchecked) match
+          case Say(w) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f)) }
 
   /**
    * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
@@ -197,13 +198,13 @@ object Writer {
 
     (a.resume: @unchecked) match
       case Free.Pure(x) => Free.Pure(x)
-      case Effect(e) => <|>[G, Writer % W](e) match
-        case Left(g) => Effect(g)
-        case Right(Say(w)) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)]
-      case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-        case Left(g) => Effect(g).flatMap(x => expand[W, V, A, G](k(x))(f))
-        case Right(Say(w)) =>
-          tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f))
+      case Effect(e) => split[G, Writer % W](e)
+        (g => Effect(g): A ! (Writer % V + G))
+        { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)] }
+      case Bind(Effect(e), k) => split[G, Writer % W](e)
+        (g => Effect(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
+        { w0 => (w0: @unchecked) match
+            case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f)) }
 
   /**
    * Re-tell at a WIDER element type with NO transform — `map`'s
@@ -218,17 +219,17 @@ object Writer {
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
     case Free.Pure(x) => Free.Pure(x)
-    case Effect(e) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g)
+    case Effect(e) => split[G, Writer % W](e)
+      (g => Effect(g): A ! (Writer % V + G))
       // Say is Writer's ONLY constructor, so a value that reaches
       // here IS one — sound by the enum's shape, same as map's
       // Say(w) destructure; @unchecked because BINDING the whole
       // instance (not just its field) needs W's erased type
       // argument to verify, which map's plain destructure does not
-      case Right(sw @ (_: Say[W, Unit] @unchecked)) => Effect(sw: Writer[V, Unit])
-    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).flatMap(x => widen[W, V, A, G](k(x)))
-      case Right(sw @ (_: Say[W, Unit] @unchecked)) => Effect(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(())))
+      { case sw @ (_: Say[W, Unit] @unchecked) => Effect(sw: Writer[V, Unit]) }
+    case Bind(Effect(e), k) => split[G, Writer % W](e)
+      (g => Effect(g).flatMap(x => widen[W, V, A, G](k(x))))
+      { case sw @ (_: Say[W, Unit] @unchecked) => Effect(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
 
   /**
    * ANY stream as a writer program: its elements told one by one, its
@@ -290,12 +291,13 @@ object Writer {
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
     case Free.Pure(a) => okay.pure(Left(a))
-    case Effect(e) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).map(Left(_))
-      case Right(Say(w)) => okay.pure(Right((w, Free.Pure(()))))
-    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).flatMap(x => uncons[W, A, G](k(x)))
-      case Right(Say(w)) => okay.pure(Right((w, k(()))))
+    case Effect(e) => split[G, Writer % W](e)
+      (g => Effect(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
+      { case Say(w) => okay.pure(Right((w, Free.Pure(())))) }
+    case Bind(Effect(e), k) => split[G, Writer % W](e)
+      (g => Effect(g).flatMap(x => uncons[W, A, G](k(x))))
+      { w0 => (w0: @unchecked) match
+          case Say(w) => okay.pure(Right((w, k(())))) }
 }
 
 /** the diagonal writer: it tells its own answers, like Producer but
