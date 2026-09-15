@@ -37,7 +37,13 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] deep-recursive-direct — the article's `deepRecursive` (Halotu Kozak,
+- [x] deep-recursive-direct — LANDED 2026-09-15: `Direct.deepRecursive` for a
+      def with a plain result type (the article's API verbatim) and, inside
+      `direct` at the program type, a marked self-call deferred into the
+      tree. TestDirectDeep; specs/direct-macro.md "Deep recursion". The
+      `.?` finding filed beside it was withdrawn: `.?` is retired as a mark
+      on purpose (Direct.scala's own comment), `.reflect`/`.!?`/`!p` are the
+      spellings. The entry as written: the article's `deepRecursive` (Halotu Kozak,
       "Deep recursion in Scala 3", a macro that rewrites a self-recursive
       body into TailRec's tailcall/flatMap/done) as a `direct` rule. It
       already works BY HAND on master, probed 2026-09-15 with scala-cli
@@ -52,12 +58,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `asMark`/`opColor` colour by type today, this one colours by the
       enclosing method's symbol. ~30 lines plus a test on fib/sum/isEven;
       the lowering of if/match/blocks/`a + b` is Direct's already.
-- [ ] direct-mark-shadowed — inside a `direct` block with `import okay.*`
-      the documented mark `.?` resolves to the PEEK `!.?` (Effects.scala,
-      `extension ... def ? : Handler[F] ?=> ?`) rather than `Direct.?`: the
-      probe above typed `!.tailcall(fib(n - 1)).?` as `Long ! Nothing` and
-      failed on `+`; `.reflect` works. Either rename one of the two or make
-      the direct mark win; TestDirect should hold the failing shape first.
 - [x] delay-node — LANDED 2026-09-15 (tailcallChain 5.3x, handleCapture
       1.35x, controls identical to the byte; specs/core-cleanup.md
       "delay-node"). The entry as written, for the record: a `Delay(thunk)` case beside `Defer`, so that a

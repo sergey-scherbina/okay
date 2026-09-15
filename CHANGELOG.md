@@ -1,5 +1,25 @@
 # Changelog
 
+## deep-recursive-direct — the article's deepRecursive, on this tree
+
+`Direct.deepRecursive` rewrites a def with a plain result type the way
+"Deep recursion in Scala 3" (Kozak) does with `TailRec`, on `Free`:
+`def fib(n: Int): Long = deepRecursive(if n < 2 then n.toLong else
+fib(n - 1) + fib(n - 2))` generates `loop$deep(n): Long ! Pure`, every
+self-call as `Free.delay(() => loop$deep(...)).reflect` under
+`direct`'s lowering, and `!.run`s it. Her `TailRec` is our `Free` node
+for node — `tailcall` = `Delay`, `flatMap` = `Bind`, `done` = `Pure`,
+`.result` = `!.run` — so the rewrite is a self-call detector and a
+generated def, not a new interpreter. Inside a `direct` block at the
+program type a marked self-call is deferred the same way, and mutual
+recursion (which her macro refuses) is `!.tailcall(other(n)).reflect`.
+TestDirectDeep: fib, `1 + sum(n - 1)` a million deep on the suite's
+stack, a self-call inside `match`, mutual recursion, a self-call under
+a lambda left alone. specs/direct-macro.md "Deep recursion". The
+zero-annotation form is possible only at the value type, because a
+macro runs after the typer — which is also why the article's def
+returns `Int` and not a monad.
+
 ## cont-shift-doors — the erased leaf type is written once, behind two named doors
 
 `Cont`'s leaf is stored as `(X => Nothing) => Any`, the one supertype

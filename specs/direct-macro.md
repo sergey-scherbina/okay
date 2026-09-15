@@ -109,6 +109,62 @@ stays for expression positions.
   The separate `.?` was REFUTED as redundant: the type already
   says which case it is, so the user should not have to
 
+## Deep recursion (deep-recursive-direct, 2026-09-15)
+
+The operator asked whether "Deep recursion in Scala 3" (Kozak) — a
+macro `deepRecursive` that rewrites a self-recursive body into
+`TailRec`'s `tailcall`/`flatMap`/`done` — can be had here. It can, and
+her `TailRec` is this library's `Free`: `tailcall` is `Delay`,
+`flatMap` is `Bind`, `done` is `Pure`, `.result` is `!.run`. Two doors:
+
+- `Direct.deepRecursive[A](inline body: A): A` — for a def with a
+  PLAIN result type, the article's API verbatim:
+  ```scala
+  def fib(n: Int): Long = deepRecursive:
+    if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+  ```
+  expands to a generated `loop$deep(n: Int): Long ! Pure` whose body
+  is the direct lowering of the block with every `fib(args)` replaced
+  by `Free.delay(() => loop$deep(args)).reflect`, and `!.run(loop$deep(n))`.
+  The DEFERRAL is the whole trick — a self-call evaluated at
+  construction is the native recursion the block was written to
+  avoid — and the lowering (`a + b` with two calls, `if`, `match`,
+  blocks) is `direct`'s, so a self-call anywhere `direct` can see one
+  is fine. v1: one parameter list, no type parameters; a self-call
+  under a lambda is a value and is left alone (the article refuses it
+  too).
+- Inside a `direct` block at the PROGRAM type (`def f(n): A ! Row =
+  direct: ...`), a self-call under a mark or an auto-colouring
+  conversion is deferred the same way: `f(n - 1).reflect` builds
+  `Free.delay(() => f(n - 1)).reflect`. Mutual recursion is one word
+  here, `!.tailcall(other(n)).reflect`, which the article's macro
+  cannot do at all.
+
+Behavior (TestDirectDeep):
+- [x] `deepRecursive`: fib(25) = 75025 with two self-calls in one
+      expression; `1 + sum(n - 1)` at 1 000 000 on the suite's default
+      stack; a self-call inside `match` with two parameters.
+- [x] in `direct`: a marked self-call is deferred (sumP at 1 000 000);
+      mutual recursion through `!.tailcall`; a self-call under a
+      lambda is untouched (a `List` of programs, run by hand).
+
+Decisions:
+- **Why not zero annotation at the program type.** A macro runs after
+  the typer, and `fib(n - 1) + fib(n - 2)` with `fib: Long ! Pure`
+  does not type. The article gets its zero because the def's declared
+  type is the VALUE type; `deepRecursive` does the same, and that is
+  why it is a second entry rather than a rule inside `direct`.
+- **Why the deferral is a mark and not a new node.** `Direct.reflect
+  (Free.delay(...))` is the shape `direct` already lowers; nothing in
+  the pipeline learned a new case. `deepImpl` lowers the rewritten
+  body with `compileAll` at the splice owner, where the original
+  parameters are in scope, then moves the result under `loop$deep`
+  with the parameters substituted — lowering under the new symbol
+  first would have every emitted bind owned by the wrong method.
+- **`.?` is not a mark**, and the BACKLOG entry that said so was
+  withdrawn: Direct.scala retired it on purpose (it collides with the
+  row peek `!.?`), `.reflect`, `.!?` and prefix `!p` are the spellings.
+
 ## Out of scope (v2 roads, recorded not promised)
 
 - **Auto-coloring** (no marks at all): the Conversion trick —
