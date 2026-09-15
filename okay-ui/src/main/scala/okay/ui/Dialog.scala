@@ -26,7 +26,7 @@ object Dialog {
   /** show the tree; the answer is what the user did next */
   inline def show(ui: Ui): Event ! Dialog = effect(Show(ui))
 
-  import okay.!.{Bind, Effect, Pure, resume}
+  import okay.!.{Bind, Effect, Pure}
 
   /**
    * A scenario, stepped to its next question: either it is done, or

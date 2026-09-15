@@ -48,21 +48,26 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       while making the same site merely bimorphic was worth nothing).
       Four refuted theories and every number are in
       specs/freer-base.md Results; rows `freer0*` and `once-*`.
-- [ ] free-one-rotation — kind: perf. The rotation exists FIVE times:
-      `Cont.step` (Cont.scala, interleaved with elimination, composes
-      through `bind` — keep), Async.scala's own loop, `runFree`
-      (Effects.scala), `!.resume` (Effects.scala) and `Free.fold`
-      (Free.scala). The Free-side four can become ONE — `!.resume` as
-      the rotation, the other three a three-case match over it — which
-      is what the whole freer-base arc set out to do. It is a MEASURED
-      lane, not a tidy: `runFree` is `Effects[Free].runWith`'s fast
-      path and the `fusedSWr` floor (13.7 µs / 122 641 B/op) runs
-      through it, and stepping-vs-bulk was measured within 8% once
-      (HandlerBenchmark), which is over the bars on some lanes. Gate:
-      fusedSWr, stepBulk/stepOneByOne, relayForward/relayPrebuilt,
-      handleForward, all within bars; the law in TestFree already
-      asserts `resume`'s head form. If a copy must stay inlined for
-      speed, the number says which one.
+- [x] free-one-rotation — DONE. `Free.resume` is a member and the one
+      rotation; `Free.fold`, `runFree` and Async's loop are three-case
+      matches over it; `!.resume` is gone. Only `Cont.step` keeps a
+      copy, because it composes through `bind` for absorption. Seven
+      lanes faster (effCont24 0.862 at −1016 B/op, effFunc24 0.975 at
+      −1064), the `fusedSWr` floor held at 0.985 with B/op identical.
+      COST, recorded rather than netted away: relayPrebuilt 1.039,
+      relayForward 1.029 — those lanes end in `runWith` over a 9 900-op
+      residual, so `runFree` pays a `resume` call per operation, which
+      is where it was predicted. Rows `onerot-*`.
+- [ ] runfree-inlined-rotation — kind: perf. The lever for the 3–4%
+      that free-one-rotation cost `relay`: `runFree` may keep its own
+      inlined rotation instead of going through `Free.resume`, which
+      the spec already licenses (an eliminator may duplicate the four
+      lines when the law in TestFree checks the equation). Worth doing
+      only if relay's lanes matter more than one fewer copy — and the
+      measurement is cheap, one A/B on relayForward/relayPrebuilt plus
+      fusedSWr. NOTE the trap this lane already walked into once: the
+      first measurement ran at load 7–11 and swung 41% inside a single
+      arm; wait for quiet or the number is fiction.
 - [ ] freer-base — specs/freer-base.md. STAGE 0 IS LANDED: `Cont` is
       `Freer[Shift, …]`, one enum, one absorption rule, at parity or
       better on every core lane. NEXT IS STAGE 1: `Free` on the same

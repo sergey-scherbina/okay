@@ -70,18 +70,56 @@ enum Free[F[+_], A] {
    * tail-recursively on the way — sound by the monad associativity
    * law, and linear-time amortized for programs built by foldLeft.
    */
-  @tailrec final def fold[B](p: A => B)
-                            (h: [X] => F[X] => (X => Free[F, A]) => B): B =
-    this match
-      case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).fold(p)(h)
-      case Bind(Pure(a), f) => f(a).fold(p)(h)
-      case Bind(Inject(a), f) => h(a)(f)
-      case Inject(a) => h(a)(Pure(_))
+  /**
+   * THE rotation, and the only one on this side of the library:
+   * normalize to a head form — `Pure(a)`, `Inject(e)` or
+   * `Bind(Inject(e), k)` — in constant stack.
+   *
+   * Sound by the monad associativity law, and linear-time amortized
+   * for programs built by `foldLeft`. It also answers the "reflection
+   * without remorse" concern (van der Ploeg–Kiselyov 2014): stepping a
+   * program one operation at a time measures within ~8% of running it
+   * in bulk here (HandlerBenchmark), so the type-aligned queue of that
+   * paper is not needed.
+   *
+   * It is a MEMBER, not an extension, because it is a property of the
+   * tree rather than of any encoding built on it — and because a
+   * member wins resolution, so the interpreters that call `.resume`
+   * across the library all reach this one loop with nothing imported.
+   *
+   * THE INVARIANT IT ESTABLISHES, and why every match over it is
+   * written `(x.resume: @unchecked) match`: by construction the result
+   * is one of exactly those three shapes, because the cases below
+   * normalize the other two away. The TYPE cannot say so — it is still
+   * `Free[F, A]`, whose cases include the ones that cannot occur — so
+   * a correct three-case match reads as inexhaustive and did so at
+   * forty-two sites, enough to bury every warning worth reading. A
+   * three-case view ADT would let the compiler check it, at one
+   * allocation per step on the hottest path in the library; explicit
+   * impossible branches would cost one more type test per step.
+   * `@unchecked` costs nothing and marks exactly the claim being made,
+   * at the place it is made.
+   */
+  @tailrec final def resume: Free[F, A] = this match
+    case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
+    case Bind(Pure(a), f) => f(a).resume
+    // the deferred left side is forced HERE, in the loop, and its own
+    // binds then rotate through the cases above — constant stack
+    case Defer(t, f) => Bind(t(), f).resume
+    case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)).resume
+    case a => a
+
+  /**
+   * the eliminator: p interprets values, h interprets operations
+   * together with their continuations — three cases over the head
+   * form `resume` leaves, rather than a seventh copy of the rotation.
+   */
+  final def fold[B](p: A => B)
+                   (h: [X] => F[X] => (X => Free[F, A]) => B): B =
+    (this.resume: @unchecked) match
       case Pure(a) => p(a)
-      // the deferred left side is forced HERE, in the loop, and its own
-      // binds then rotate through the cases above — constant stack
-      case Defer(t, f) => Bind(t(), f).fold(p)(h)
-      case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)).fold(p)(h)
+      case Inject(a) => h(a)(Pure(_))
+      case Bind(Inject(a), f) => h(a)(f)
 
   /** interpret into F's own Monad, operation by operation */
   final def run(using M: Monad[F]): F[A] =

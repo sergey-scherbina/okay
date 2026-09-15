@@ -204,14 +204,15 @@ object Async {
       try
         while looping do
           looping = false
-          cur match
+          // the rotation is `Free.resume`'s, so this loop is three
+          // cases and turns once per OPERATION rather than once per
+          // node. The `stopped` check therefore no longer falls
+          // between two rotation steps — which changes nothing a
+          // canceller can observe: rotating reassociates nodes and
+          // runs no user code, and the check that matters, the one
+          // before the next operation, is exactly where it was.
+          (cur.resume: @unchecked) match
             case Free.Pure(a) => succeed(a)
-            case Free.Bind(Free.Bind(a, f), g) =>
-              cur = Free.Bind(a, f(_).flatMap(g))
-              looping = !stopped
-            case Free.Bind(Free.Pure(a), f) =>
-              cur = f(a)
-              looping = !stopped
             case Free.Bind(Free.Inject(e), f) =>
               val next = op(e, f)
               if next != null then
@@ -222,14 +223,6 @@ object Async {
               if next != null then
                 cur = next
                 looping = !stopped
-            // the deferred left side is forced HERE, in the loop
-            // (Free.scala's Defer case, mirrors runFree in Effects.scala)
-            case Free.Defer(t, f) =>
-              cur = Free.Bind(t(), f)
-              looping = !stopped
-            case Free.Bind(Free.Defer(t, f), g) =>
-              cur = Free.Defer(t, f(_).flatMap(g))
-              looping = !stopped
       catch case e: Throwable => fail(e)
 
     /** one operation: the continuation to drive next when the answer

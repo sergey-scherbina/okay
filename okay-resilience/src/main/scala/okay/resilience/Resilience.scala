@@ -1,7 +1,7 @@
 package okay.resilience
 
 import okay.{Async, !, +, TypeableK}
-import okay.!.{Effect, resume}
+import okay.!.Effect
 import okay.Free.{Bind, Pure}
 
 /**

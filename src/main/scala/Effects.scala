@@ -513,15 +513,11 @@ given Effects[Free] with
     /** the same answer as the foldCont definition, in one pass instead of two */
     override def runWith(using Handler[F]): A = runFree(m)
 
-  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A = m match
-    case Free.Pure(a) => a
-    case Free.Inject(e) => H.handle(e)
-    case Free.Bind(Free.Bind(a, f), g) => runFree(Free.Bind(a, f(_).flatMap(g)))
-    case Free.Bind(Free.Pure(a), f) => runFree(f(a))
-    case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
-    // the deferred left side is forced HERE, in the loop (Free.scala's Defer case)
-    case Free.Defer(t, f) => runFree(Free.Bind(t(), f))
-    case Free.Bind(Free.Defer(t, f), g) => runFree(Free.Defer(t, f(_).flatMap(g)))
+  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A =
+    (m.resume: @unchecked) match
+      case Free.Pure(a) => a
+      case Free.Inject(e) => H.handle(e)
+      case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
 /**
  * Effects are continuation programs, literally: Eff is the final
@@ -638,36 +634,10 @@ object ! {
 
   extension [F[+_], A](self: A ! F) {
 
-    /** normalize to a head form: Pure, Effect, or Bind(Effect, k) */
-    @tailrec def resume: A ! F = self match
-      case Bind(Bind(a, h), k) => a.flatMap(h(_).flatMap(k)).resume
-      case Bind(Pure(a), k) => k(a).resume
-      // the deferred left side is forced HERE, in the loop (Free.scala's Defer case)
-      case Defer(t, f) => Bind(t(), f).resume
-      case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)).resume
-      case a => a
-
-    /**
-     * THE INVARIANT `resume` ESTABLISHES, and why every match over it
-     * is written `(x.resume: @unchecked) match`.
-     *
-     * By construction the result is one of exactly three shapes —
-     * `Pure(a)`, `Effect(e)`, `Bind(Effect(e), k)` — because the
-     * rotation above normalizes `Bind(Bind(…), k)` and
-     * `Bind(Pure(…), k)` away. The TYPE cannot say so: it is still
-     * `A ! F`, whose cases include the two that cannot occur, so a
-     * correct three-case match reads as inexhaustive to the compiler
-     * and did so at forty-two sites — enough to bury every warning it
-     * had that was worth reading.
-     *
-     * The alternatives all cost something real. A three-case view ADT
-     * would let the compiler check it, at one allocation per step on
-     * the hottest path in the library. Explicit impossible branches
-     * would too, at one more type test per step. `@unchecked` costs
-     * nothing at runtime and marks exactly the claim being made, at
-     * the place it is made — so that is what is used, and this is the
-     * one place that says what the claim is.
-     */
+    /** `resume` is a MEMBER of `Free` now (Free.scala), where the
+     * rotation and the invariant every `@unchecked` match relies on
+     * are documented together. A member wins resolution, so every
+     * `.resume` in the library reaches that one loop. */
 
     /** step through the next n operations by the Handler */
     @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = (self.resume: @unchecked) match

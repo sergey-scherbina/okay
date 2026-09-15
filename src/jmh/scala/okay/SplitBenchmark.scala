@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
-import okay.!.{Effect, Bind, resume}
+import okay.!.{Effect, Bind}
 import okay.RowLift.at
 
 /**

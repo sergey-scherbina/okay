@@ -1,5 +1,54 @@
 # Changelog
 
+## free-one-rotation — five copies of the rotation become two
+
+The rotation that rebalances left-nested binds existed FIVE times:
+`Free.fold`, `runFree`, `!.resume`, Async's own drive loop, and
+`Cont.step`. Every edit to `Defer` had to go to all five, and the
+invariant the library's forty-two `@unchecked` matches rely on was
+described in one of them and assumed by the rest.
+
+It is now a MEMBER of `Free` — `resume` — because it is a property of
+the tree rather than of any interpreter, and because a member wins
+resolution, so every `.resume` in the library reaches that one loop
+with nothing imported. `Free.fold`, `runFree` and Async's loop became
+three-case matches over the head form it leaves. The `!.resume`
+extension is deleted; three explicit `import okay.!.resume` in
+okay-ui, okay-resilience and a JMH source were not merely unnecessary
+but wrong afterwards, and only `Jmh/compile` caught the last one.
+
+`Cont.step` keeps its own copy, and that is not an oversight: it
+composes a rotated continuation through `bind`, so the continuation
+can be ABSORBED by the leaf it lands on, which the leaf-agnostic
+`resume` cannot do. The law in TestFree is what keeps the two equal
+where it matters.
+
+Async's `stopped` check no longer falls between two rotation steps.
+Nothing a canceller can observe changes: rotating reassociates nodes
+and runs no user code, and the check that matters — before the next
+operation — is where it was.
+
+**Measured, four rounds on a quiet box** (a first run at load 7–11
+swung 41% within one arm and was discarded; rows `onerot-*`). Seven
+lanes faster, including two real allocation wins: `effCont24` **0.862**
+at −1016 B/op and `effFunc24` 0.975 at −1064 B/op, `fold` over the
+shared rotation building fewer intermediate nodes. `nestedSWr` 0.937,
+`stepOneByOne` 0.955, `stateEffect` 0.972, `fusedSW` 0.973. **The
+`fusedSWr` floor held**: 0.985 with B/op identical to the digit, which
+is the gate this lane existed for.
+
+**The cost, stated rather than netted away:** `relayPrebuilt` 1.039
+and `relayForward` 1.029, plus `nestedSW`/`nestedTSW` ~1.02. It is
+exactly where it was predicted — those lanes end in `runWith` over a
+9 900-operation residual, so `runFree` now pays one `resume` call per
+operation. The entry's own gate said relay must stay within bars and
+it does not; the lane lands anyway because the trade is four rotation
+copies for ≤4% on four lanes with seven faster and two lighter, and
+because that consolidation was the whole point of the arc. The lever,
+if those three percent are ever wanted back, is the clause the spec
+already allows: `runFree` may keep an inlined rotation, checked by the
+law rather than trusted.
+
 ## cont-tidy — what the facade made redundant, removed
 
 The operator asked what the new shape leaves unnecessary. Two
