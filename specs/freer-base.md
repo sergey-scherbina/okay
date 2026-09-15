@@ -9,8 +9,9 @@ force `Defer` in that loop. The leaf differs: `Cont` has
 `Shift(f: (A => S) => R)`, a function of the continuation that
 carries the answer types; `Free` has `Inject(e: F[A])`, an operation
 whose answer is chosen later by the handler. Everything else is
-copied — the rotation exists four times today (`Cont./`, `Free.fold`,
-`runFree`, `!.resume`), and every edit to `Defer` went to all four.
+copied — the rotation exists FIVE times today (`Cont./`, `Free.fold`,
+`runFree`, `!.resume`, and Async.scala's own loop at lines 210–231),
+and every edit to `Defer` went to all five.
 
 This spec extracts the shared part as one enum, `Freer`, indexed by
 Atkey's parameterised-monad indexes, and makes `Cont` and `Free`
@@ -52,8 +53,11 @@ unneeded (HandlerBenchmark: stepping within 8% of bulk).
 enum Freer[G[_, _, _], A, S, R]:
   case Pure[G[_,_,_], A, R](a: A)                                                            extends Freer[G, A, R, R]
   case Op[G[_,_,_], A, S, R](g: G[A, S, R])                                                   extends Freer[G, A, S, R]
-  case Bind[G[_,_,_], A, B, S, T, R](a: Freer[G, A, T, R], f: A => Freer[G, B, S, T])          extends Freer[G, B, S, R]
-  case Defer[G[_,_,_], A, B, S, T, R](thunk: () => Freer[G, A, T, R], f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
+  /** the library's, not the user's: every interpreter in the repository
+   *  matches `Bind(Op(e), k)`, and all of them live under package okay */
+  private[okay] case Bind[G[_,_,_], A, B, S, T, R](a: Freer[G, A, T, R], f: A => Freer[G, B, S, T])          extends Freer[G, B, S, R]
+  /** the runner's alone: `resume` forces it before anyone sees the tree */
+  private case Defer[G[_,_,_], A, B, S, T, R](thunk: () => Freer[G, A, T, R], f: A => Freer[G, B, S, T]) extends Freer[G, B, S, R]
 
   /** ONE rotation, leaf-agnostic: normalizes to Pure | Op | Bind(Op, k).
    *  Composes continuations as Bind directly — the runner must never
@@ -109,8 +113,10 @@ object Lift:
 /** stage 1: a closed diagonal program, the phantom index pinned */
 infix type ![A, F[+_]] = Freer[Lift[F], A, Unit, Unit]
 object !:
-  export Freer.{Pure, Bind, Defer}
+  export Freer.Pure
+  private[okay] val Bind = Freer.Bind                     // an export would make the alias public; a val keeps the modifier
   val Effect = Freer.Op                                   // the extractor, `case Bind(Effect(e), k)` unchanged
+  def defer[F[+_], A, B](t: () => A ! F)(f: A => B ! F): B ! F = Freer.Defer(t, f)   // Defer itself is never seen
   inline def effect[F[+_], A](e: F[A]): A ! F = Freer.Op(e)   // the factory, index pinned at Unit
   // resume, next, ?, tailcall, widen, translate, relay, interpret, tracing: as today, over Freer.resume
 
@@ -162,11 +168,15 @@ Stage 1 — `Free` on it:
       `Bind`/`Defer`/`Effect` compile UNCHANGED — the count of touched
       call sites is a result to record, and more than the imports is a
       finding against the design.
-- [ ] `runFree`, `!.resume`, `!.next`, `relay`, `translate`, the Delim
-      machine, Async's loop, `Pipe`, `Stm`, `Sim`, `Chunks`,
-      `State.handle`, `Writer.fold` run over `Freer.resume` or match
-      the exported cases; `Free.fold` and `runFree` may keep their own
-      inlined rotation ONLY if the law below says they must.
+- [ ] `runFree`, `!.resume`, `!.next`, `!.?`, `relay`, `translate`, the
+      Delim machine, `Pipe`, `Stm`, `Sim`, `Chunks`, `State.handle`,
+      `Writer.fold` run over `Freer.resume` or match the cases; Async's
+      own loop (the fifth rotation, the only place outside the runners
+      that CONSTRUCTS `Bind` and matches `Defer`) is deleted in favour
+      of `resume`. Nothing outside Freer.scala names `Defer` afterwards
+      — grep is the check. `Free.fold` and `runFree` may keep their own
+      inlined rotation ONLY if the law below says they must, and then
+      they are the two places that see `Defer`.
 - [ ] LAW (new test, all three platforms): for every encoding and every
       bind-tree shape TestLowering already enumerates, eliminating
       after `resume` equals eliminating with the eliminator's own
@@ -294,11 +304,30 @@ Stage 2 — the index as typestate, Delim first:
   handlers that capture the continuation; this library does. So the
   index complements the finalizer discipline of `Resource.run`, never
   replaces it — and stage 2 asserts it in a test.
-- **`Bind` and `Defer` become public for `Cont`.** They are private
-  today "so the representation stays the runner's"; `Free`'s are
-  public because its interpreters live across files. One enum means
-  one visibility, and `resume` becomes the public normal form in
-  exchange.
+- **`Defer` private, `Bind` `private[okay]`, `Pure` and `Op` public.**
+  The operator asked whether the two had to be public (2026-09-15);
+  the code answers. `Defer` is matched outside Cont/Free only by
+  `runFree`, `!.resume`, `!.?` and Async's loop — all runners, all
+  replaced by `resume` — so it stays as private as it is in `Cont`
+  today, at no cost; `Freer.defer`/`Cont.defer`/`!.defer` are the
+  public factories. `Bind` is CONSTRUCTED outside the runners only by
+  Async's loop, but MATCHED at 89 sites in 15 packages (`okay`,
+  `okay.agent`, `okay.blob`, `okay.jdbc`, `okay.pg`, `okay.llm`, …),
+  every one under `okay`: `private[okay]` hides the node from a user of
+  the published library and costs the repository nothing. For that
+  user the tree is `resume` + `next`/`?`/`fold`/`translate`/`relay`/
+  `interpret`. It IS an API change for `Free`, whose `Bind` is public
+  in v0.1.1 — acceptable at 0.x, said here so the release note says
+  it. The ALLOCATION-FREE road to a fully private `Bind` exists and is
+  recorded, not taken: the private node implements a public trait
+  `Next[G, X, A, S, T, R]` (`op`, `k`), and interpreters match it by a
+  type-test pattern with bound type variables, `case n: Next[G, x, A,
+  S, t, R]` — Delim's own `case n: Next[F, a, R]` idiom, no object
+  created, compiler-checked. It rewrites the 89 sites from `case
+  Bind(Effect(e), k)` to `n.op`/`n.k` and reads worse; take it the day
+  an external interpreter needs it. A case-class view returned by
+  `resume` was refused earlier for one allocation per step on the
+  hottest path (Effects.scala's `resume` comment).
 - **Names.** `Freer` after Kiselyov–Ishii; `Op` for the leaf (not
   `Inject`, which named the effect side only); `Lift` for the unary
   signature's leaf; `Shift.Absorbed` for the fused function, nested
