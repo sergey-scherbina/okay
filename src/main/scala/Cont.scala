@@ -100,9 +100,16 @@ object Cont:
    * them: `Shift.of` forgets (an upcast, free), `at` remembers (THE
    * cast, below).
    */
-  private type Shift[+X] = (X => Nothing) => Any
+  private[okay] type Shift[+X] = (X => Nothing) => Any
 
-  private object Shift:
+  // Not `private`: `shift` is inline and reaches this object, and a
+  // private member behind an inline body makes the compiler
+  // synthesize an accessor with an unstable name (E192 — the
+  // `DiagonalMonad` finding, Effects.scala); `private[okay]` still
+  // does, measured 2026-09-15. The alias above is package-private so
+  // `of`'s signature may name it; `Rep` stays opaque, so nothing
+  // outside this companion can put a leaf in a `Cont` anyway.
+  object Shift:
     /** the door in: a typed shift, its answer types forgotten — an
      * upcast, no cast at all */
     inline def of[X, S, R](f: (X => S) => R): Shift[X] = f
@@ -137,6 +144,8 @@ object Cont:
    * object the scope is the object, which is what a facade needs.
    */
   opaque type Rep[A, S, R] = Free[Shift, A]
+
+  import Shift.at
 
   /** a finished value (named where the 200-odd call sites already look for it) */
   def Pure[A, R](a: A): Rep[A, R, R] = Free.Pure(a)
@@ -290,7 +299,13 @@ object Cont:
   private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
     case Pure(a) => pinned[S, R](k(a))
     case Inject(s) => s.at[S, R](k)
-    case Bind(Inject(s), f) => s.at(x => run(f(x))(k))
+    // the leaf's inner answer is the Bind's existential — `Any` names
+    // "whatever it is". Left to inference it came out `Nothing`, and a
+    // lambda whose body is typed `Nothing` carries a checkcast to
+    // Nothing$ that throws (ClassCastException: null, four TestFree
+    // rotation laws, 2026-09-15). `typed(s)(...)` never hit this only
+    // because its two argument lists resolved the variable differently.
+    case Bind(Inject(s), f) => s.at[Any, R](x => run(f(x))(k))
     case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)
     case Bind(Pure(a), f) => step(f(a))(k)
     case Delay(t) => step(t())(k)

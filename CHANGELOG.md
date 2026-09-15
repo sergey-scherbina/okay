@@ -19,6 +19,18 @@ wildcard) and add a wrapper per raw shift that stage 0 refused. While
 `Cont` is `Free`, the answer types live on the facade and nowhere
 else — the operator chose the doors over an indexed enum.
 
+Not byte-identical after all, and the gate said so: four TestFree
+rotation laws threw `ClassCastException: null`. `s.at(x => run(f(x))
+(k))` in one argument list let the leaf's inner answer — the Bind's
+existential — infer as `Nothing`, and a lambda body typed `Nothing`
+carries a checkcast to `Nothing$` that always throws; the curried
+`typed(s)(...)` had resolved the same variable differently. The site
+now names it, `s.at[Any, R]`. Two smaller findings on the way:
+`private object Shift` and `private[okay] object Shift` both make an
+inline `shift` synthesize an unstable accessor (E192), so the object is
+plain; and the extension needs `import Shift.at` inside the companion,
+because a type alias has no companion of its own.
+
 ## split-over-either — the Either per operation was mostly already gone
 
 Fifteen walkers (39 `<|>` sites: Pipe, Writer, Source, Logic, Refs,
