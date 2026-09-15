@@ -1,0 +1,6 @@
+feature/cont-on-free 2026-09-15T12:25:44Z
+agent: claude-code
+heartbeat: 2026-09-15T12:25:44Z
+status: in-progress
+done-so-far: nothing yet
+next: Cont as an opaque facade over Free[Shift, A]; Freer deleted; one cast in the runner; gate + measure
