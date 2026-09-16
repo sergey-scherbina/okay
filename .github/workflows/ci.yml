@@ -3,24 +3,103 @@ on:
   push:
     branches: [master]
   pull_request:
+  schedule:
+    # the whole family, once a night, split by platform below. A push
+    # pays for what it changed; this pays for everything, off the
+    # push path where it cannot queue behind anyone
+    - cron: "17 2 * * *"
+  workflow_dispatch:
 
 # ONE RUN PER REF. Without this every push to master queued another full
 # suite and they piled up — 100 of them waiting when the account's Actions
 # budget ran out. A superseded run tells nothing the newer one will not.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# THE NUMBERS THAT SHAPED THIS FILE (2026-09-16, ci-affected). Every run
+# in the visible history was cancelled by the next push — six minutes,
+# twenty-two, ninety-nine, two at the six-hour limit — while the same
+# `sbt test` takes two minutes warm on a developer's box. Two causes,
+# two answers:
+#   - every push compiled ninety-one modules from nothing: the target/
+#     directories are cached below, restored from the NEAREST previous
+#     key so zinc's incremental compile carries across pushes;
+#   - every push tested the family regardless of what changed: a push
+#     now runs `affected`, the projects its diff touches closed over
+#     their dependents (project/Affected.scala), and the family runs
+#     nightly, one job per platform.
+
 jobs:
-  build:
+  affected:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+        with:
+          # the diff needs history: the merge base with the branch for a
+          # pull request, the previous pushed commit for a push
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - name: Test the whole family (all platforms, all satellites) and compile the benchmarks
-        run: sbt test okayJVM/Jmh/compile compare/Jmh/compile
+      - name: Restore compiled classes from the nearest previous push
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/target
+            !**/target/streams
+            project/target
+            project/project/target
+          key: targets-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**') }}-${{ github.sha }}
+          restore-keys: |
+            targets-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**') }}-
+            targets-${{ runner.os }}-
+      - name: What changed, and what depends on it
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          # a push that created the branch has no `before`; the family then
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base to diff against: the whole family"
+            sbt "family all"
+          else
+            echo "diff base: $BASE"
+            sbt "affected $BASE"
+          fi
+
+  family:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [jvm, js, native]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            **/target
+            !**/target/streams
+            project/target
+            project/project/target
+          key: targets-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**') }}-${{ github.sha }}
+          restore-keys: |
+            targets-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**') }}-
+            targets-${{ runner.os }}-
+      - name: The whole family on one platform, and the benchmarks compiled
+        run: |
+          sbt "family ${{ matrix.platform }}"
+          if [ "${{ matrix.platform }}" = "jvm" ]; then sbt okayJVM/Jmh/compile compare/Jmh/compile; fi
