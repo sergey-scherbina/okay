@@ -1,5 +1,25 @@
 # Changelog
 
+## direct-tell — `w.tell`: a statement inside a direct block, a program outside
+
+`"start".tell` on its own line in a block is the mark on `Writer("start")`,
+typed `Unit`, so it reads as a statement and `-Wall` has nothing to
+flag; a bare `Writer("start")` runs too, by do-notation, but the typer
+reports an unused non-Unit value (E176) before the macro sees it.
+Outside a block the same name is `Writer.tell(w)`, the program: one
+`transparent inline` on `Direct`, decided per call site by the block's
+`DirectCtx` capability. The macro now reads an `Inlined` with proxy
+bindings as a block, so `(s + "!").tell` works as well as `s.tell`.
+
+Two more shapes the request-handler example needed, both refused
+before: a mark inside a string interpolation (`s"hello ${user.id}"`
+is `StringContext.s(args*)`, and the varargs `Repeated` now
+contributes its elements as ANF slots), and a lazy val whose
+right-hand side uses another lazy val (`lazy val plan =
+!loadPlan(user.planId)`: the defer-every-call rule wrapped the call
+in a thunk before `user` became a mark, and a call whose arguments
+mention a lazy val of the block is now built where it stands).
+
 ## direct-once-bare — a lazy val whose rhs runs an operation by do-notation is by-need too
 
 `lazy val x = { Writer("x"): Unit; 3 }` bound EAGERLY for an hour:

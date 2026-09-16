@@ -122,6 +122,18 @@ class TestDirectOnce extends munit.FunSuite {
     assertEquals(built, 1)
   }
 
+  test("a lazy val whose rhs uses another lazy val: loaded in order, once each, only if demanded") {
+    case class User(id: Int, planId: Int)
+    def loadUser(id: Int): User ! R = direct { s"user $id".tell; User(id, id % 2) }
+    def loadPlan(id: Int): Int ! R = direct { s"plan $id".tell; id * 10 }
+    def handle(userId: Int): String ! R = direct:
+      lazy val user = !loadUser(userId)
+      lazy val plan = !loadPlan(user.planId)
+      if userId == 0 then "guest" else s"hello ${user.id} on plan ${plan}, quota ${plan}"
+    assertEquals(logged(handle(0)), (Seq(), "guest"))
+    assertEquals(logged(handle(7)), (Seq("user 7", "plan 1"), "hello 7 on plan 10, quota 10"))
+  }
+
   test("lazy val with a mark inside a loop body: a fresh cell per iteration") {
     val prog: Int ! R = direct:
       var acc = 0

@@ -540,6 +540,17 @@ ceremony. The answer needs no conversion at all — the macro can see
 a bare statement's type directly, and there is exactly one thing a
 monadic statement in a direct block can mean:
 
+**`w.tell`** (direct-tell, 2026-09-16) is the statement form with the
+warning designed out: inside a block it is the mark on the Writer
+operation `Writer(w)`, typed `Unit`, so `"start".tell` on its own line
+runs and `-Wall` has nothing to flag (a bare `Writer("start")` runs
+too, by the do-notation rule below, but the typer sees an unused
+non-`Unit` value first — E176 — which the `: Unit` ascriptions in the
+tests answer). Outside a block the same name is the program
+`Writer.tell(w)`, `Unit ! Writer % W`: one `transparent inline`,
+decided per call site by whether the block's `DirectCtx` capability
+is in scope, the gate the colouring conversions stand behind.
+
 ```scala
 val prog: Int ! F = direct {
   val env: Int = ask

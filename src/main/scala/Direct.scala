@@ -56,6 +56,30 @@ object Direct:
      */
     def unary_! : A = m.reflect
 
+  /**
+   * `w.tell`: inside a direct block, the mark on the Writer operation
+   * `Writer(w)`, typed Unit so it reads as a STATEMENT; outside one,
+   * the program `Writer.tell(w)`, `Unit ! Writer % W` (direct-tell,
+   * 2026-09-16). One name, decided at the call site by whether the
+   * block's capability `DirectCtx` is in scope — the same gate the
+   * auto-colouring conversions stand behind — and `transparent`, so
+   * each site gets its own type.
+   *
+   * Why a mark inside rather than the operation: a bare `Writer(w)`
+   * on its own line runs too, by do-notation, but under `-Wall` the
+   * typer flags it before the macro sees it (E176, an unused non-Unit
+   * value), which is what the `: Unit` ascriptions in the tests were
+   * for. This is that mark with the ascription built in. Inline, so
+   * the macro sees the mark through the call; for an argument the
+   * inliner cannot substitute it arrives under `Inlined` with a proxy
+   * binding, which `compile` reads as a block.
+   */
+  extension [W](w: W)
+    transparent inline def tell: Any =
+      scala.compiletime.summonFrom:
+        case _: DirectCtx[?] => Writer(w).reflect
+        case _ => Writer.tell(w)
+
   // ONE mark, three spellings, all one dispatch-by-TYPE: .reflect
   // (the name, every scope), .!? (postfix symbol — resurrected once
   // .? retired; the one postfix that collides with nothing), and
@@ -615,6 +639,12 @@ object Direct:
     /** compile an expression */
     def compile(t0: Term): Out =
       val t = stripped(t0)
+      t match
+        // the inliner's proxy bindings (`(s + "!").tell`): a block, and
+        // `stripped` only takes off an Inlined with none
+        case Inlined(_, bindings, inner) if bindings.nonEmpty =>
+          return compile(Block(bindings, inner))
+        case _ => ()
       asMark(t) match
         case Some(m) =>
           compile(m) match
@@ -822,9 +852,30 @@ object Direct:
             refuse(t, "under a by-name argument")
           case _ => ()
         spineSlots(fun).map { (fs, fr) =>
-          (fs ++ args, vs => {
-            val (fvs, avs) = vs.splitAt(fs.length)
-            Apply.copy(t)(fr(fvs), avs)
+          // a VARARGS argument — `s"..${x}.."` is StringContext.s(args*) —
+          // arrives as Typed(Repeated(elems)); its ELEMENTS are the slots,
+          // and the Repeated is rebuilt around their replacements
+          // (direct-tell, 2026-09-16: a mark inside an interpolation was
+          // "unsupported position (SeqLiteral)" before)
+          val argSlots: List[(List[Term], List[Term] => Term)] = args.map {
+            case ty @ Typed(rep @ Repeated(elems, et), tpt) =>
+              (elems, es => Typed.copy(ty)(Repeated.copy(rep)(es, et), tpt))
+            case rep @ Repeated(elems, et) =>
+              (elems, es => Repeated.copy(rep)(es, et))
+            case a => (List(a), {
+              case x :: Nil => x
+              case other => report.errorAndAbort(s"direct: one slot expected, got ${other.length} (macro bug)")
+            })
+          }
+          (fs ++ argSlots.flatMap(_._1), vs => {
+            val (fvs, rest0) = vs.splitAt(fs.length)
+            var rest = rest0
+            val newArgs = argSlots.map { (ss, rb) =>
+              val (mine, r) = rest.splitAt(ss.length)
+              rest = r
+              rb(mine)
+            }
+            Apply.copy(t)(fr(fvs), newArgs)
           })
         }
       case TypeApply(fun, targs) =>
@@ -1039,11 +1090,38 @@ object Direct:
         var o = Symbol.spliceOwner
         while o != Symbol.noSymbol && !o.isDefDef do o = o.owner
         o
+      /** the block's lazy vals: a use of one whose rhs is effectful
+       * becomes a MARK at compile time (direct-once), and a mark cannot
+       * live under the thunk a deferral would build — so a call whose
+       * arguments mention one is built where it stands (direct-tell,
+       * 2026-09-16: `lazy val plan = !loadPlan(user.planId)` with `user`
+       * lazy was "a mark under a lambda", the thunk's) */
+      val lazySyms: Set[Symbol] =
+        var acc = Set.empty[Symbol]
+        val probe = new TreeTraverser:
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            tree match
+              case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) => acc += vd.symbol
+              case _ => ()
+            super.traverseTree(tree)(owner)
+        probe.traverseTree(t)(Symbol.spliceOwner)
+        acc
+      def mentionsLazy(app: Term): Boolean =
+        lazySyms.nonEmpty && {
+          var found = false
+          val probe = new TreeTraverser:
+            override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+              if !found then tree match
+                case id: Ident if lazySyms(id.symbol) => found = true
+                case _ => super.traverseTree(tree)(owner)
+          probe.traverseTree(app)(Symbol.spliceOwner)
+          found
+        }
       rowOf match
         case Some(row) if self != Symbol.noSymbol =>
           /** the element type of a self-call at this block's program type */
           def selfProgram(app: Term): Option[TypeRepr] =
-            if calleeRoot(app) != self then None
+            if calleeRoot(app) != self || mentionsLazy(app) then None
             else app.tpe.widen.dealias match
               case AppliedType(f, List(r, elem)) if f.typeSymbol == freeClass && r =:= row => Some(elem)
               case _ => None
@@ -1120,7 +1198,7 @@ object Direct:
             found
 
           def anyProgram(app: Term): Option[TypeRepr] =
-            if !isCall(app) || carriesDefinitions(app) then None
+            if !isCall(app) || carriesDefinitions(app) || mentionsLazy(app) then None
             else app.tpe.widen.dealias match
               case AppliedType(f, List(r, elem))
                 if f.typeSymbol == freeClass && r =:= row && !alreadyDefers(app) => Some(elem)
