@@ -1,0 +1,14 @@
+ci-affected
+owner: fable-5.1 session 4afd3fc2
+started: 2026-09-16
+what: the operator's ask (2026-09-16), after the CI numbers: every
+  Actions run in the visible history is cancelled, two at the 6-hour
+  limit, while the same sbt test takes 2 minutes warm on the box. Two
+  cheap steps before any new tool: an `affected <ref>` sbt command in
+  project/ (Scala, no plugin) that maps a git diff to projects through
+  their source directories, closes over dependents, and tests only
+  those — used by scripts/gate.sh locally and by ci.yml on every push;
+  and in ci.yml a target/ cache with a prefix restore key and the full
+  family moved to a nightly split by platform. Measured before landing.
+files: project/Affected.scala, .github/workflows/ci.yml, scripts/,
+  BACKLOG.md, CHANGELOG.md, docs (AGENTS.md gate line if it changes)
