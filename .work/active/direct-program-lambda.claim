@@ -1,0 +1,13 @@
+direct-program-lambda
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's ask — why write `direct` again inside a `shift`
+  handler. A lambda whose RESULT IS A PROGRAM may have its body
+  compiled as its own sub-block (the `try` body's treatment, and the
+  nested def's), because binding marks inside it changes neither its
+  type nor where it is evaluated. The general "a mark under a lambda"
+  refusal stays for every other lambda — that is still the expensive
+  half of the problem. With it, `Delim.shift(p)(k => { "x".tell; !k(n) })`
+  needs no inner block.
+files: src/main/scala/Direct.scala, src/test/scala/TestDelim.scala,
+  docs/direct-style.md, specs/direct-macro.md, CHANGELOG.md
