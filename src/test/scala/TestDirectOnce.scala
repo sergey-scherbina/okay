@@ -14,6 +14,43 @@ import scala.language.implicitConversions
  * backtracks the cells with the search, `Once.run(runChoice(p))`
  * shares one store across the branches.
  */
+/** three remote lookups: the PROGRAM says what it needs, the HANDLER
+ * calls out — so the handler is what records the calls made */
+enum Fetch[+A] derives okay.Effect:
+  case GetUser(token: String) extends Fetch[Fetch.User]
+  case GetPlan(id: Int) extends Fetch[Fetch.Plan]
+  case GetFeed(id: Int) extends Fetch[List[String]]
+
+object Fetch:
+  case class User(id: Int, name: String, planId: Int, banned: Boolean)
+  case class Plan(id: Int, expired: Boolean)
+
+  type Row = Once + Fetch
+
+  private def answer(e: Fetch[Any]): Any = e match
+    case GetUser(t) => t match
+      case "banned" => User(1, "Ada", 7, banned = true)
+      case "expired" => User(2, "Bob", 8, banned = false)
+      case _ => User(3, "Cleo", 9, banned = false)
+    case GetPlan(id) => Plan(id, expired = id == 8)
+    case GetFeed(_) => List("scala", "okay", "effects")
+
+  private def name(e: Fetch[Any]): String = e match
+    case GetUser(_) => "GET /user"
+    case GetPlan(_) => "GET /plan"
+    case GetFeed(_) => "GET /feed"
+
+  /** every call this program makes, in order */
+  def calls[A](p: A ! Row): (Seq[String], A) =
+    import okay.!.*
+    @scala.annotation.tailrec
+    def loop(acc: Vector[String], x: A ! Fetch): (Seq[String], A) = (x.resume: @unchecked) match
+      case Free.Pure(a) => (acc, a)
+      case Inject(e) => (acc :+ name(e), answer(e).asInstanceOf[A])
+      case Bind(Inject(e), f) =>
+        loop(acc :+ name(e), f.asInstanceOf[Any => A ! Fetch](answer(e)))
+    loop(Vector.empty, Once.run(p))
+
 class TestDirectOnce extends munit.FunSuite {
 
   type W = Writer % String
@@ -134,6 +171,48 @@ class TestDirectOnce extends munit.FunSuite {
     assertEquals(logged(handle(7)), (Seq("user 7", "plan 1"), "hello 7 on plan 10, quota 10"))
   }
 
+  test("no marks, no ascriptions: val is by value, lazy val by need, def by name") {
+    def fetch(key: String): Int ! R = direct { key.tell; key.length }
+    def demo(use: Boolean): Int ! R = direct:
+      val      x = fetch("val")
+      lazy val y = fetch("lazy val")
+      def      z = fetch("def")
+      if use then x + x + y + y + z + z else 0
+    assertEquals(logged(demo(false))._1, Seq("val"))
+    assertEquals(logged(demo(true))._1, Seq("val", "lazy val", "def", "def"))
+  }
+
+  test("a colourless val of the block's program type still runs when nothing uses it") {
+    def told(s: String): Int ! R = direct { s.tell; s.length }
+    val prog: Int ! R = direct:
+      @scala.annotation.unused val x = told("x")
+      1
+    assertEquals(logged(prog), (Seq("x"), 1))
+  }
+
+  test("a val held as a PROGRAM is untouched: it is a value, run where it is marked") {
+    def told(s: String): Int ! R = direct { s.tell; s.length }
+    val prog: Int ! R = direct:
+      val p = told("p")
+      !p + !p
+    assertEquals(logged(prog), (Seq("p", "p"), 2))
+  }
+
+  test("a val used BOTH as a program and as a value is refused with both readings") {
+    val e = compileErrors("""
+      import okay.*, okay.Direct.*
+      import scala.language.implicitConversions
+      type R = Once + Writer % String
+      def told(s: String): Int ! R = direct { s.tell; s.length }
+      val prog: Int ! R = direct {
+        val p = told("p")
+        val n = p + 1
+        !p + n
+      }
+    """)
+    assert(e.contains("BOTH ways"), e)
+  }
+
   test("lazy val with a mark inside a loop body: a fresh cell per iteration") {
     val prog: Int ! R = direct:
       var acc = 0
@@ -185,6 +264,49 @@ class TestDirectOnce extends munit.FunSuite {
     val e = compileErrors(
       "okay.Direct.direct[Option] { lazy val x: Int = Option(1).reflect; x + x }")
     assert(e.contains("lazy val"), e)
+  }
+
+  // ---- the realistic shape: optional logic over dependent lookups
+
+  import Fetch.*
+
+  /** written top to bottom as if everything were already loaded */
+  def pageLazy(path: String, token: String): String ! Fetch.Row = direct:
+    lazy val user = effect[Fetch.Row, User](GetUser(token))
+    lazy val plan = effect[Fetch.Row, Plan](GetPlan(user.planId))
+    lazy val feed = effect[Fetch.Row, List[String]](GetFeed(user.id))
+    if path == "/health" then "200 healthy"
+    else if user.banned then "403 banned"
+    else if plan.expired then "302 /renew"
+    else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
+
+  /** the same handler, one word changed */
+  def pageVal(path: String, token: String): String ! Fetch.Row = direct:
+    val user = effect[Fetch.Row, User](GetUser(token))
+    val plan = effect[Fetch.Row, Plan](GetPlan(user.planId))
+    val feed = effect[Fetch.Row, List[String]](GetFeed(user.id))
+    if path == "/health" then "200 healthy"
+    else if user.banned then "403 banned"
+    else if plan.expired then "302 /renew"
+    else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
+
+  test("by need: each branch pays for the lookups it reaches, once") {
+    assertEquals(Fetch.calls(pageLazy("/health", "x")), (Seq(), "200 healthy"))
+    assertEquals(Fetch.calls(pageLazy("/feed", "banned")),
+      (Seq("GET /user"), "403 banned"))
+    assertEquals(Fetch.calls(pageLazy("/feed", "expired")),
+      (Seq("GET /user", "GET /plan"), "302 /renew"))
+    // feed is read twice (size, head) and user three times: one call each
+    assertEquals(Fetch.calls(pageLazy("/feed", "ok")),
+      (Seq("GET /user", "GET /plan", "GET /feed"), "200 3 picks for Cleo, top scala"))
+  }
+
+  test("by value: the same handler pays for all three on every request") {
+    for (path, token) <- List(("/health", "x"), ("/feed", "banned"),
+                              ("/feed", "expired"), ("/feed", "ok")) do
+      assertEquals(Fetch.calls(pageVal(path, token))._1,
+        Seq("GET /user", "GET /plan", "GET /feed"), s"$path $token")
+    assertEquals(Fetch.calls(pageVal("/health", "x"))._2, "200 healthy")
   }
 
   // ---- multi-shot is handler order

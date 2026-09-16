@@ -71,7 +71,7 @@ object Once:
    * twice. Share the VALUE to share the cell.
    */
   def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) =
-    at[A, Once + F](new Handle[A])(h => effect(Force(h)))((h, a) => effect(Store(h, a)))(p)
+    at[A, Once + F](new Handle[A])(h => effect(Force(h)))((h, a) => effect(Store(h, a)))(() => p)
 
   /**
    * The same over the WHOLE row R, with the two operations already
@@ -83,10 +83,18 @@ object Once:
   def at[A, R[+_]](h: Handle[A])
                   (force: Handle[A] => Option[A] ! R)
                   (store: (Handle[A], A) => A ! R)
-                  (p: => A ! R): A ! R =
+                  (p: () => A ! R): A ! R =
+    // an EXPLICIT thunk, not a by-name parameter: the `direct` macro
+    // builds this call, and a by-name argument's thunk is synthesized
+    // by the compiler AFTER the macro, leaving any definition inside
+    // the program (an inline call's proxy val, say) owned by the
+    // enclosing method rather than by the thunk — `Could not find proxy
+    // for val a$proxy1` out of LambdaLift (direct-colourless-val,
+    // 2026-09-16). The macro builds the lambda under the right owner,
+    // exactly as it does for `Free.delay`.
     force(h).flatMap:
       case Some(a) => pure(a)
-      case None => Free.delay(() => p).flatMap(a => store(h, a))
+      case None => Free.delay(p).flatMap(a => store(h, a))
 
   /** a cell whose program is in flight */
   private object Running

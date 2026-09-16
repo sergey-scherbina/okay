@@ -508,6 +508,61 @@ x = { Writer("x"): Unit; 3 }`, whose statement runs by do-notation,
 is by-need too, and a pure right-hand side stays a plain Scala `lazy
 val`.
 
+**What it is for.** A handler whose branches need different data,
+written top to bottom as if everything were already loaded:
+
+```scala
+def page(path: String, token: String): String ! (Once + Fetch) = direct:
+  lazy val user = effect(GetUser(token))
+  lazy val plan = effect(GetPlan(user.planId))
+  lazy val feed = effect(GetFeed(user.id))
+  if path == "/health" then "200 healthy"
+  else if user.banned then "403 banned"
+  else if plan.expired then "302 /renew"
+  else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
+```
+
+The calls each request actually makes, recorded by the handler
+(`TestDirectOnce`, which runs exactly this):
+
+| request | `val` | `lazy val` |
+|---|---|---|
+| `/health` | 3 | 0 |
+| a banned user | 3 | 1 |
+| an expired plan | 3 | 2 |
+| the full page | 3 | 3 |
+
+`user` is read in three branches and `feed` twice in one line; each is
+fetched once. Change the one word to `val` and every request pays for
+all three, `/health` included. The lookups are dependent — `plan`
+needs `user.planId` — and the cell makes that chain lazy without a
+single `flatMap` or `Option` in the source.
+
+**No marks, no ascriptions.** The three words hold with nothing
+written on them (direct-colourless-val, 2026-09-16):
+
+```scala
+def demo(use: Boolean): Int ! (Once + Fetch) = direct:
+  val      x = fetch("val")        // by value
+  lazy val y = fetch("lazy val")   // by need
+  def      z = fetch("def")        // by name
+  if use then x + x + y + y + z + z else 0
+
+// nothing used:      val
+// each used twice:   val, lazy val, def, def
+```
+
+This needed a rule, and the reason is worth knowing. Inference gives
+`val x = fetch("val")` the PROGRAM type, so the colouring conversion
+does not fire at the declaration — it fires at every USE, where an
+`Int` is finally demanded. Before the rule, `val` and `lazy val` both
+silently meant `def`: measured as `val, val, lazy val, lazy val, def,
+def`. Now the declaration decides, as the words do everywhere else in
+Scala. A val whose uses are coloured is a binding; a lazy val is the
+`Once` cell; a val held as a PROGRAM — marked at its uses, passed to
+`!.once`, stored — is a value and is untouched. A val read both ways
+in one block is a compile error naming both readings.
+
 **What "once" counts.** Once per handle, and a handle is made per
 `!.once(p)` evaluated — as a `lazy val` is per declaration, not per
 right-hand side. `!.once(p) + !.once(p)` runs `p` twice; a bare `!p`

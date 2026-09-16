@@ -443,19 +443,36 @@ object Direct:
       stats match
         case Nil => tail()
         case (vd @ ValDef(_, _, Some(rhs))) :: rest =>
-          compile(rhs) match
-            case Out.Pure(p) =>
-              Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
-                stmtsTail(rest, tail, tailElem))
-            case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
-              val (defs, use) = lazyOnce(vd, rhs, out)
+          val out0 = compile(rhs)
+          val colourless = colourlessVal(vd, out0, rest, Literal(UnitConstant())) { (elem, out) =>
+            if vd.symbol.flags.is(Flags.Lazy) then
+              val (defs, use) = lazyOnce(vd, rhs, out, elem)
               val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
-              Block(defs, stmtsTail(rest2, tail, tailElem))
-            case Out.Eff(c, e) =>
-              bind(c, e, tailElem) { v =>
-                Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))),
+              Out.Pure(Block(defs, stmtsTail(rest2, tail, tailElem)))
+            else
+              val sym = Symbol.newVal(Symbol.spliceOwner, vd.name, elem.widen,
+                Flags.EmptyFlags, Symbol.noSymbol)
+              val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, () => Ref(sym))
+              Out.Pure(bind(asF(out), elem, tailElem) { v =>
+                Block(List(ValDef(sym, Some(v))), stmtsTail(rest2, tail, tailElem))
+              })
+          }
+          colourless match
+            case Some(Out.Pure(t)) => t
+            case Some(Out.Eff(t, _)) => t
+            case None => out0 match
+              case Out.Pure(p) =>
+                Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
                   stmtsTail(rest, tail, tailElem))
-              }
+              case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
+                val (defs, use) = lazyOnce(vd, rhs, out)
+                val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
+                Block(defs, stmtsTail(rest2, tail, tailElem))
+              case Out.Eff(c, e) =>
+                bind(c, e, tailElem) { v =>
+                  Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))),
+                    stmtsTail(rest, tail, tailElem))
+                }
         case (a @ Assign(lhs, rhs)) :: rest if hasMark(rhs) =>
           compile(rhs) match
             case Out.Pure(p) =>
@@ -586,7 +603,7 @@ object Direct:
      * (direct-once-bare, 2026-09-16 — it bound eagerly for an hour). A
      * pure rhs stays a plain Scala lazy val.
      */
-    def lazyOnce(vd: ValDef, rhs: Term, compiled: Out): (List[Statement], () => Term) =
+    def lazyOnce(vd: ValDef, rhs: Term, compiled: Out, elem0: TypeRepr = TypeRepr.of[Nothing]): (List[Statement], () => Term) =
       val row = rowOf.getOrElse(
         refuse(vd, "in a lazy val (the block's monad is not a program, so no row can hold the Once cell)"))
       if !onceInRow then report.errorAndAbort(
@@ -601,7 +618,7 @@ object Direct:
           case _ => super.traverseTree(tree)(owner)
       probe.traverseTree(rhs)(Symbol.spliceOwner)
       if selfRef then refuse(vd, "in a lazy val that refers to itself")
-      val elem = vd.tpt.tpe.widen
+      val elem = if elem0 =:= TypeRepr.of[Nothing] then vd.tpt.tpe.widen else elem0.widen
       val prog: Term = asFAt(compiled, elem)
       val handleT = TypeRepr.of[Once.Handle].appliedTo(elem)
       val hSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$handle", handleT,
@@ -619,22 +636,101 @@ object Direct:
         ('{ (h: Once.Handle[T]) => ${ forceOp('h.asTerm).asExprOf[F[Option[T]]] } }.asTerm,
          '{ (h: Once.Handle[T], a: T) => ${ storeOp('h.asTerm, 'a.asTerm).asExprOf[F[T]] } }.asTerm)
       }
+      // the thunk, built under the owner it is placed under (see Once.at)
+      val progThunk = Lambda(Symbol.spliceOwner,
+        MethodType(Nil)(_ => Nil, _ => TypeRepr.of[F].appliedTo(elem.widen)),
+        (owner, _) => prog.changeOwner(owner))
       val onceT = Apply(Apply(Apply(Apply(
         TypeApply(Ref(atSym), List(Inferred(elem), Inferred(row))),
-        List(Ref(hSym))), List(forceFn)), List(storeFn)), List(prog))
+        List(Ref(hSym))), List(forceFn)), List(storeFn)), List(progThunk))
       val oSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$once",
         TypeRepr.of[F].appliedTo(elem), Flags.EmptyFlags, Symbol.noSymbol)
       val oVal = ValDef(oSym, Some(onceT))
       (List(hVal, oVal),
         () => Apply(TypeApply(Ref(reflectMark), List(Inferred(TypeRepr.of[F]), Inferred(elem))), List(Ref(oSym))))
 
-    /** replace every use of `sym` in the statements and the result with a fresh `ref()` */
+    /** replace every use of `sym` in the statements and the result with a
+     * fresh `ref()` — INCLUDING a use wrapped in a colouring conversion,
+     * which is how a colourless val of the block's program type is read
+     * (direct-colourless-val): the conversion goes with the reference,
+     * since `ref()` already stands at the element type */
     def substUses(stats: List[Statement], expr: Term, sym: Symbol, ref: () => Term): (List[Statement], Term) =
       val m = new TreeMap:
         override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
+          case Apply(Select(conv, "apply"), List(id: Ident))
+            if colorSyms(calleeRoot(conv)) && id.symbol == sym => ref()
           case id: Ident if id.symbol == sym => ref()
           case _ => super.transformTerm(tree)(owner)
       (stats.map(st => m.transformStatement(st)(Symbol.spliceOwner)), m.transformTerm(expr)(Symbol.spliceOwner))
+
+    /**
+     * How a local of the block's PROGRAM type is read in what follows:
+     * COLOURED (the conversion applied to the bare reference — read as a
+     * value, `x + 1`) or BARE (read as a program — marked, passed on,
+     * `!.once(p)`).
+     */
+    def useKinds(stats: List[Statement], expr: Term, sym: Symbol): (Int, Int) =
+      var coloured = 0
+      var bare = 0
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case Apply(Select(conv, "apply"), List(id: Ident))
+            if colorSyms(calleeRoot(conv)) && id.symbol == sym => coloured += 1
+          case id: Ident if id.symbol == sym => bare += 1
+          case _ => super.traverseTree(tree)(owner)
+      (stats :+ expr).foreach(t => probe.traverseTree(t)(Symbol.spliceOwner))
+      (coloured, bare)
+
+    /**
+     * A COLOURLESS val of the block's program type (direct-colourless-val,
+     * 2026-09-16): `val x = fetch(k)`, no mark and no ascription.
+     *
+     * Inference gives such a val the PROGRAM type, so the colouring
+     * conversion does not fire at the declaration — it fires at every USE,
+     * where an `Int` is finally demanded. The val then means what `def`
+     * means, and so does `lazy val`: measured as `val, val, lazy val,
+     * lazy val, def, def` where the ascribed spelling gives `val, lazy
+     * val, def, def`. Three words, one meaning, silently — the opposite of
+     * what the block promises.
+     *
+     * So the DECLARATION decides, as the words do everywhere else in
+     * Scala: a val read as a value is a BINDING (by value, run here — the
+     * do-notation reading of a bare statement, extended to a val), and a
+     * lazy val is the `Once` cell (by need). A val held as a PROGRAM —
+     * marked at its uses, passed to `!.once`, stored — is a value and
+     * stays untouched; nothing colours it. A val read BOTH ways in one
+     * block is refused with both readings named, since binding it would
+     * leave its program uses holding an answer.
+     *
+     * None when the rule does not apply: the ordinary pure-val path takes
+     * over.
+     */
+    def colourlessVal(vd: ValDef, out0: Out, rest: List[Statement], expr: Term)
+                     (emit: (TypeRepr, Out) => Out): Option[Out] =
+      // the VAL'S OWN TYPE is what decides, not the rhs's: a rhs that uses
+      // an earlier colourless val compiles to an Out.Eff, and its element
+      // type is then the PROGRAM, not the answer (found on a handler with
+      // three dependent lookups, direct-colourless-val)
+      runnableElemT(vd.tpt.tpe).flatMap { elem =>
+        val (coloured, bare) = useKinds(rest, expr, vd.symbol)
+        if bare > 0 && coloured > 0 then
+          report.errorAndAbort(
+            s"`${vd.name}` holds a program of this block, and the block reads it BOTH ways: " +
+              s"as a value ($coloured use(s) — its effects would run once, here) and as a " +
+              s"program ($bare use(s) — its effects run at each mark). Pick one: ascribe the " +
+              s"answer type (`val ${vd.name}: ${elem.widen.show} = ...`) to run it here, or " +
+              "keep it a program and mark every use.", vd.pos)
+        else if bare > 0 then None
+        else
+          // the rhs as a PROGRAM of this block: a pure one is the program
+          // itself (marked), an effectful one is bound first and its answer
+          // marked — the shape `compile` gives a mark whose value carries marks
+          val prog: Out = out0 match
+            case Out.Pure(p) => Out.Eff(markTerm(p, elem, vd.pos), elem)
+            case Out.Eff(c, e) =>
+              Out.Eff(bind(c, e, elem)(v => markTerm(v, elem, vd.pos)), elem)
+          Some(emit(elem, prog))
+      }
 
     /** compile an expression */
     def compile(t0: Term): Out =
@@ -925,14 +1021,30 @@ object Direct:
       stats match
         case Nil => compile(expr)
         case (vd @ ValDef(name, tpt, Some(rhs))) :: rest =>
-          compile(rhs) match
+          val out0 = compile(rhs)
+          val colourless = colourlessVal(vd, out0, rest, expr) { (elem, out) =>
+            if vd.symbol.flags.is(Flags.Lazy) then
+              val (defs, use) = lazyOnce(vd, rhs, out, elem)
+              val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
+              compileBlock(rest2, expr2) match
+                case Out.Pure(q) => Out.Pure(Block(defs, q))
+                case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
+            else
+              val sym = Symbol.newVal(Symbol.spliceOwner, vd.name, elem.widen,
+                Flags.EmptyFlags, Symbol.noSymbol)
+              val (rest2, expr2) = substUses(rest, expr, vd.symbol, () => Ref(sym))
+              Out.Eff(bind(asF(out), elem, expr.tpe) { v =>
+                Block(List(ValDef(sym, Some(v))), asF(compileBlock(rest2, expr2)))
+              }, expr.tpe.widen)
+          }
+          colourless.getOrElse(out0 match
             case Out.Pure(p) =>
               wrapPure(vd, p, rest, expr)
             case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
               val (defs, use) = lazyOnce(vd, rhs, out)
               val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
               compileBlock(rest2, expr2) match
-                case Out.Pure(p) => Out.Pure(Block(defs, p))
+                case Out.Pure(q) => Out.Pure(Block(defs, q))
                 case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
             case Out.Eff(c, e) =>
               // the val KEEPS its symbol, re-bound to the continuation's
@@ -940,8 +1052,14 @@ object Direct:
               // still refers to it — substitution would strand them
               Out.Eff(bind(c, e, expr.tpe) { v =>
                 val vd2 = ValDef.copy(vd)(vd.name, vd.tpt, Some(v))
-                asF(wrapStat(vd2, rest, expr))
-              }, expr.tpe.widen)
+                // AT the result type, not at the continuation's own: an
+                // inline call's proxy block ends in a program value whose
+                // type is the PRECISE constructor (`Free.Inject[R, A]`),
+                // and a `pure` emitted there does not match the bind's
+                // `F[B]` (direct-colourless-val, caught by a handler whose
+                // second lookup takes the first's answer)
+                asFAt(wrapStat(vd2, rest, expr), expr.tpe)
+              }, expr.tpe.widen))
         // an assignment in STATEMENT position binds straight into the
         // assignment (direct-flatmap-emission fusion #2) — the
         // expression-position Assign in compileMarked would bind into

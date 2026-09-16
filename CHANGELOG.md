@@ -1,5 +1,25 @@
 # Changelog
 
+## direct-colourless-val — val, lazy val and def mean what they say with nothing written on them
+
+Inside a `direct` block, `val x = fetch(k)` with no mark and no
+ascription infers the PROGRAM type, so the colouring conversion fires
+at every USE rather than at the declaration — and `val` and `lazy val`
+both silently meant `def`. Measured, one function, three declarations
+used identically:
+
+| spelling | before | after |
+|---|---|---|
+| `val`/`lazy val`/`def`, colourless | `val, val, lazy val, lazy val, def, def` | `val, lazy val, def, def` |
+| the same, ascribed or marked | `val, lazy val, def, def` | unchanged |
+
+The declaration decides now: a val whose uses are coloured is a
+binding (by value), a lazy val is the `Once` cell (by need), a def
+stays by name. A val held as a PROGRAM — marked at its uses, passed to
+`!.once`, stored — is a value and is untouched, since nothing colours
+it. A val read BOTH ways in one block is refused, with the use counts
+and both fixes named. `TestDirectOnce` holds all four shapes.
+
 ## direct-tell — `w.tell`: a statement inside a direct block, a program outside
 
 `"start".tell` on its own line in a block is the mark on `Writer("start")`,
