@@ -1,0 +1,20 @@
+delim-prompted
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: NoPrompt becomes a compile error for the static case. `Prompted[P]`
+  is an UNINHABITED row member — "this program still needs the delimiter
+  P installed" — so it costs nothing at run time and nothing handles it.
+  `shift(p)` adds `Prompted[p.type]`, `push(p)` removes exactly that one
+  (dependent on p, so another prompt cannot discharge it), `reset` creates
+  the prompt, provides it as a given and discharges. `!.run` wants an
+  empty row, so an undelimited program compiles, travels and cannot run.
+  Portability without lying: `atSlot(placeholder)(prog)` turns a concrete
+  prompt into a SLOT keyed by the answer type and `fill(q)` binds it by
+  RE-TARGETING the captures (a walk with `over`, not a cast) — the
+  operator's correction to an earlier design that weakened the type and
+  kept the tree, which threw NoPrompt. The runtime NoPrompt stays for
+  prompts that are not stable paths (a registry).
+files: src/main/scala/Delim.scala, src/test/scala/TestDelim.scala,
+  okay-llm/src/main/scala/okay/llm/Cut.scala, okay-ui/src/main/scala/okay/ui/Scope.scala,
+  okay-agent/src/main/scala/okay/agent/Stepper.scala, src/jmh/scala/okay/DelimBenchmark.scala,
+  specs/freer-base.md, docs/typepedia.md, CHANGELOG.md
