@@ -1,5 +1,40 @@
 # Changelog
 
+## ci-affected — a push pays for what it changed
+
+The numbers: every Actions run in the visible history was cancelled
+by the next push — six minutes, twenty-two, ninety-nine, two at the
+six-hour limit — while the same `sbt test` takes two minutes warm on
+the box. Two causes: every push compiled ninety-one modules from
+nothing, and every push tested the family regardless of what changed.
+
+`affected <ref|a..b> [task]` and `family <jvm|js|native|all>` are
+sbt commands in project/Affected.scala, Scala, no plugin. A file
+belongs to a project by that project's source and resource
+directories — the core is a `CrossType.Pure` cross project whose
+sources are in `src/` while `okayJVM`'s base is `.jvm/`, so base
+directories would have missed it — dependents are closed over the
+classpath graph, a change to build files is a change to everything,
+and the root aggregate bounds the result. ci.yml runs `affected` on
+every push with `target/` restored from the nearest previous cache
+key, and the family nightly, one job per platform. Locally the gate
+is `scripts/gate.sh "affected master"`; `scripts/gate.sh` alone is
+still the family.
+
+Measured on the box, warm, against the family's 112 s / 4424 tests:
+
+| lane | files | projects | tests | time |
+| --- | --- | --- | --- | --- |
+| blob-source-docs (prose only) | 4 | 0 | 0 | nothing runs |
+| either-via-split's TestResilienceTimed (one module's test) | 2 | 2: okayResilienceJVM and okayDemo, its dependent | 111 | 31 s |
+| producer-drains (core touched) | 17 | 98 | the family | as before |
+| this lane (project/ touched) | — | 102: the build changed | the family | as before |
+
+The two ends are the point: prose costs nothing and the core costs
+everything, exactly as it should, and the middle — most lanes — costs
+its module and whoever depends on it. In CI the same shape applies
+to a cold runner, where the family was the six hours.
+
 ## producer-drains — ten hand-rolled drains onto one walk, and the offload read onto getBytes
 
 `Producer.fold` (elements folded, G forwarded, answer KEPT,

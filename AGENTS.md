@@ -155,8 +155,16 @@ force, all already practiced, none previously written down:
   branch**, and the boards cite landed work BY sha, so hexes written
   during a lane are wrong the moment the branch moves again. The
   window is exactly the gap between gating and merging.
-- Before merging: rebase the branch on `master`, run `sbt test`, then
-  `git merge --ff-only` — and READ the merge output; git refuses a
+- Before merging: rebase the branch on `master`, run the gate, then
+  `git merge --ff-only`. The gate is `scripts/gate.sh "affected master"`
+  since ci-affected (2026-09-16): the projects the lane's diff touches,
+  closed over their dependents (project/Affected.scala) — which is the
+  whole family when the build files or the core changed, and a
+  module and its dependents when a module did. `scripts/gate.sh`
+  alone is still the whole family, and the nightly runs it split by
+  platform, so a lane that could not have broken a module no longer
+  pays for it and a module nobody's lane touched is still tested
+  every night — and READ the merge output; git refuses a
   fast-forward over a sibling's uncommitted files, and the refusal
   scrolls past a `tail -1`. HARDENED after three incidents: the merge
   runs ALONE (its own command, from the main checkout, exit code

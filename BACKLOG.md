@@ -618,6 +618,24 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       workload.
 
 ## Build
+- [x] ci-affected — DONE 2026-09-16. The numbers: every Actions run in
+      the visible history cancelled by the next push, two at the
+      six-hour limit, while the same `sbt test` is two minutes warm on
+      the box. `affected <ref|a..b> [task]` and `family <platform>` as
+      sbt commands in project/ (Scala, no plugin): a file belongs to a
+      project by its source and resource directories, dependents are
+      closed over the classpath graph, the root aggregate is the
+      bound. ci.yml runs `affected` per push with a `target/` cache
+      restored from the nearest previous key, and the family nightly,
+      one job per platform. Measured: see CHANGELOG.
+- [ ] ci-affected-tests-only — a lane that changed only a module's
+      TESTS re-tests its dependents too, which is conservative and
+      wrong; the closure should skip dependents when nothing under
+      `src/main` moved. Cheap once the numbers say it matters.
+- [ ] ci-native-flake — the nightly Native job is where the
+      native-runner-error recurrences will now show up; wire
+      `scripts/gate.sh`'s rerun-alone logic into it rather than
+      re-teaching a workflow the same lesson.
 - [ ] jdk-internal-bad-symbolic-reference — a COLD `okayJVM/compile`
       can fail with no source position and one error:
 
