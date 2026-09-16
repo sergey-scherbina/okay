@@ -1,0 +1,14 @@
+logic-cut
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's ask after direct-once: `Logic.once` (the Prolog
+  cut) becomes `Logic.cut`, so `once` in this library means one thing
+  (`!.once`, the Once effect) and a file importing both `!.*` and
+  `Logic.*` is not ambiguous. Code, the one caller (okay-agent
+  Search.bestOf), and every prose mention of the cut; the scoped-
+  effects literature's `once` in theory ch. 5 is the paper's word and
+  stays.
+files: src/main/scala/Logic.scala, src/test/scala/TestLogic.scala,
+  okay-agent/src/main/scala/okay/agent/Search.scala, docs/{guide,tutorial,typepedia,direct-style}.md,
+  docs/theory/07-logic-streams.md, docs/modules/okay-agent.md,
+  specs/{backtracking,llm-agentic,direct-macro}.md, CHANGELOG.md
