@@ -1,5 +1,35 @@
 # Changelog
 
+## operator-followups — the flag out, the import back; TestFailure tagged; Resource on split
+
+Three asks in one message (2026-09-16).
+
+**`-language:implicitConversions` is out of build.sbt** and the
+per-file `import scala.language.implicitConversions` is back in the
+six files that colour inside `direct`. The reason is TestThrows: it
+proves `throws`'s `into` by the ABSENCE of that import, and a
+build-wide flag made the absence prove nothing. `Free.directColor`
+stays, so a program still colours without `Direct.given`; the
+language import is the one line a colouring file carries, and
+build.sbt says beside `scalacOptions` why the flag is not there.
+
+**`okay.cluster.TestFailure` is `Live`-tagged**: it binds a real
+`ServerSocket(0)` and spawns worker JVMs, which nio-port-scope's rule
+puts in `integrationTest`; it had slipped the survey, and on
+2026-09-15 a gate reported its 30 s timeout at 315 s under a
+sibling's load with 4314 results where 4424 were due.
+
+**`Resource.run` splits with `split`**, the last walker on `<|>`. Its
+while-and-`return` shape existed so one catch could see the current
+finalizer list; now every call that runs code the walker did not
+write — `resume` (Delay thunks, continuations), an `Acquire`'s `mk`,
+a continuation `k` — goes through `guarded(fin)`, which releases
+what is held and rethrows, and the loop is a `@tailrec` over the
+list. The releases that end a walk stay outside any guard, so a
+throwing finalizer is not released twice — the invariant the old
+`fin = Nil` before `releaseAll(f)` kept. TestResource and TestBracket
+unchanged and green.
+
 ## direct-no-ceremony — a direct block colours with nothing imported but direct
 
 `-language:implicitConversions` is in `ThisBuild / scalacOptions`

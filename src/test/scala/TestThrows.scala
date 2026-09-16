@@ -1,13 +1,12 @@
 package okay
 
-// NO `import scala.language.implicitConversions` here, and that WAS the
+// NO `import scala.language.implicitConversions` here, and that is the
 // point of this file since throws-into: `throws` is declared `into`,
 // so the four absorbing conversions apply without the caller asking
-// the language for permission, and deleting the import was the test.
-// Since direct-no-ceremony (2026-09-15) the build enables the feature
-// for every file (`-language:implicitConversions` in scalacOptions,
-// for `direct`'s colouring), so the absence proves nothing here any
-// more; the `into` declaration itself stands, see Throws.scala.
+// the language for permission. Deleting this import is the test — and
+// it stays a test only while the build does NOT enable the feature
+// globally (a flag went in and came out on 2026-09-15/16 for exactly
+// this reason; build.sbt says so beside scalacOptions).
 
 case class Fault(msg: String) extends Exception(msg)
 

@@ -26,16 +26,12 @@ ThisBuild / version := "0.1.1"
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / scalacOptions ++= Seq(
   "-Xkind-projector",
-  // `direct`'s auto-colouring is a `given Conversion` gated by
-  // `DirectCtx`, and applying ANY conversion is a feature warning
-  // without this flag or a per-file `import scala.language
-  // .implicitConversions`. Warnings are red here, so the import was
-  // mandatory in every file with a coloured block — nine of them, and
-  // a probe that read as a type-system limit until the missing import
-  // was noticed (direct-no-ceremony, 2026-09-15). Enabled once, here.
-  // `into` would not do: it lifts the warning in parameter positions
-  // only, and a block colours at ascriptions and receivers too.
-  "-language:implicitConversions",
+  // NOT `-language:implicitConversions` build-wide: it was here for a
+  // day (direct-no-ceremony, 2026-09-15) and the operator took it out
+  // (2026-09-16) because TestThrows proves `throws`'s `into` by the
+  // ABSENCE of that import, and a build-wide flag makes the absence
+  // prove nothing. A file that colours inside `direct` imports
+  // `scala.language.implicitConversions` itself.
   "-Wall",
   // `-Wall` includes a lint that fires whenever a non-String is
   // interpolated. Everywhere it fires here, the interpolation is a

@@ -1,6 +1,7 @@
 package okay
 
 import okay.Direct.{*, given}
+import scala.language.implicitConversions
 
 /** Auto-coloring: specs/direct-auto-coloring.md */
 class TestDirectAuto extends munit.FunSuite {

@@ -1,6 +1,7 @@
 package okay
 
 import okay.!.*
+import scala.annotation.tailrec
 
 /**
  * The resource effect, tied to no other effect: acquire inside a
@@ -77,50 +78,46 @@ object Resource {
   def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 
-    // a while-loop, not @tailrec: the catch must see the CURRENT
-    // finalizer list, which a tailrec parameter would hide from it
-    def _loop(fin0: List[() => Unit])(x0: A ! Resource + F): A ! F =
-      var fin = fin0
-      var x = x0
-      try
-        while true do (x.resume: @unchecked) match
-          case Pure(a) =>
-            val f = fin
-            fin = Nil
-            releaseAll(f)
-            return Pure(a)
-          case Inject(e) => <|>[Resource, F](e) match
-            case Left(Acquire(mk, rel)) =>
-              val r = mk()
-              val f = (() => rel(r)) :: fin
-              fin = Nil
-              releaseAll(f)
-              return Pure(r)
-            case Right(e) =>
-              val f = fin
-              return Inject(failing.guard(e, () => releaseAll(f))).map { a => releaseAll(f); a }
-          case Bind(Inject(e), k) => <|>[Resource, F](e) match
-            case Left(Acquire(mk, rel)) =>
-              val r = mk()
-              fin = (() => rel(r)) :: fin
-              x = k(r)
-            case Right(e) =>
-              val f = fin
-              // k(y) runs USER code (the composed continuation) at
-              // the outer handler's call site, outside this loop's
-              // try — a throw there must not skip the finalizers
-              return Inject(failing.guard(e, () => releaseAll(f))).flatMap { y =>
-                _loop(f)(
-                  try k(y)
-                  catch { case t: Throwable => releaseAll(f); throw t })
-              }
-        throw MatchError(x)
-      catch
-        case e: Throwable =>
-          releaseAll(fin)
-          throw e
+    /** user code under the CURRENT finalizer list: a throw releases
+     * everything acquired so far and propagates. Every place the walk
+     * runs code it did not write — the tree's own `resume` (Delay
+     * thunks, continuations), an `Acquire`'s `mk`, a continuation
+     * `k` — goes through here; the releases that END a walk do not,
+     * so a throwing finalizer is not released twice. */
+    def guarded[T](fin: List[() => Unit])(body: => T): T =
+      try body
+      catch { case t: Throwable => releaseAll(fin); throw t }
 
-    _loop(Nil)(a)
+    def _loop(fin: List[() => Unit])(x: A ! Resource + F): A ! F = loop(fin)(x)
+
+    // `split`, not `<|>` (operator-followups, 2026-09-16): no Either per
+    // operation. The while-and-return shape it replaced existed so one
+    // catch could see the current finalizer list; `guarded` gives each
+    // throwing call that list instead, and the loop is a tail call.
+    @tailrec def loop(fin: List[() => Unit])(x: A ! Resource + F): A ! F =
+      (guarded(fin)(x.resume): @unchecked) match
+        case Pure(a) =>
+          releaseAll(fin)
+          Pure(a)
+        case Inject(e) => split[Resource, F](e) {
+            case Acquire(mk, rel) =>
+              val r = guarded(fin)(mk())
+              releaseAll((() => rel(r)) :: fin)
+              Pure(r): A ! F
+          } { e => Inject(failing.guard(e, () => releaseAll(fin))).map { a => releaseAll(fin); a } }
+        case Bind(Inject(e), k) => split[Resource, F](e) {
+            case Acquire(mk, rel) =>
+              val r = guarded(fin)(mk())
+              val f2 = (() => rel(r)) :: fin
+              loop(f2)(guarded(f2)(k(r)))
+          } { e =>
+            // k(y) runs USER code (the composed continuation) at the
+            // outer handler's call site — a throw there must not skip
+            // the finalizers, so it is guarded like every other call
+            Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(fin)(guarded(fin)(k(y))) }
+          }
+
+    loop(Nil)(a)
   }
 }
 /**

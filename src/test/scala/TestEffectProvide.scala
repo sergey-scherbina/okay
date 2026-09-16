@@ -1,6 +1,7 @@
 package okay
 
 import okay.Direct.{*, given}
+import scala.language.implicitConversions
 
 /**
  * A signature that declares the row-split test and NOT auto-coloring:

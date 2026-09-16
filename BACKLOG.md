@@ -1495,7 +1495,9 @@ its owner can price it:
       generates the same code the implicit discard did.
 
 ## okay-cluster / dataflow
-- [ ] cluster-testfailure-untagged — `okay.cluster.TestFailure` binds a
+- [x] cluster-testfailure-untagged — DONE 2026-09-16 (operator-followups): the
+      suite is `Live`-tagged, out of `sbt test`, in `integrationTest`. As
+      found: `okay.cluster.TestFailure` binds a
       real `ServerSocket(0)` ("A CONNECTION THAT BREAKS EVERY TIME") and
       spawns worker JVMs, and it is NOT `Live`-tagged, against the
       nio-port-scope rule that every binding suite tags itself. Seen

@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import scala.language.implicitConversions
 import scala.annotation.implicitNotFound
 
 /**

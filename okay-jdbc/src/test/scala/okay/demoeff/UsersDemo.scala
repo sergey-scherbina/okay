@@ -27,6 +27,7 @@ import okay.given
 import java.sql.{Connection, DriverManager}
 import okay.RowLift.plus
 import okay.Direct.{direct, given}
+import scala.language.implicitConversions
 
 /**
  * The whole declaration of an effect: the operations, their answer
