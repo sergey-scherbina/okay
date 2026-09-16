@@ -140,7 +140,7 @@ block was written to avoid (on master before this lane, the coloured
 rule it answers). The lowering of `a + b` with two calls, `if`,
 `match` and blocks is `direct`'s own. Never under a lambda (v1 does
 not look there): a self-call used as a value is left alone. Mutual
-recursion is one word, `!.tailcall(other(n)).reflect`, which the
+recursion is one word and no mark, `!.tailcall(other(n))`, which the
 article's macro cannot do at all.
 
 Behavior (TestDirectDeep):

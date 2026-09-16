@@ -58,18 +58,35 @@ class TestDirectDeep extends munit.FunSuite {
   def fibM(n: Int): Long ! okay.Pure = direct:
     if n < 2 then n.toLong else fibM(n - 1).reflect + fibM(n - 2).reflect
 
+  // mutual recursion needs the tailcall — the deferral rule inside a
+  // block covers a call to the ENCLOSING def, and these call each
+  // other — but it needs NO mark: `!.tailcall(p)` is a program value
+  // like any other, and `Free.directColor` colours it (mutual-mark-free,
+  // 2026-09-16; a report that it did not was a probe compiled against
+  // classes older than `directColor`).
   def isEven(n: Int): Boolean ! okay.Pure = direct:
-    if n == 0 then true else !.tailcall(isOdd(n - 1)).reflect
+    if n == 0 then true else !.tailcall(isOdd(n - 1))
   def isOdd(n: Int): Boolean ! okay.Pure = direct:
-    if n == 0 then false else !.tailcall(isEven(n - 1)).reflect
+    if n == 0 then false else !.tailcall(isEven(n - 1))
+
+  /** the same pair with the mark written out: both spellings must work */
+  def isEvenM(n: Int): Boolean ! okay.Pure = direct:
+    if n == 0 then true else !.tailcall(isOddM(n - 1)).reflect
+  def isOddM(n: Int): Boolean ! okay.Pure = direct:
+    if n == 0 then false else !.tailcall(isEvenM(n - 1)).reflect
 
   test("a marked self-call is deferred the same way") {
     assertEquals(!.run(fibM(25)), 75025L)
   }
 
-  test("mutual recursion, one explicit tailcall per hop") {
+  test("mutual recursion, one tailcall per hop and no mark") {
     assertEquals(!.run(isEven(1_000_001)), false)
     assertEquals(!.run(isOdd(1_000_001)), true)
+  }
+
+  test("the same pair written with the mark") {
+    assertEquals(!.run(isEvenM(1_000_001)), false)
+    assertEquals(!.run(isOddM(1_000_001)), true)
   }
 
   test("a self-call under a lambda is a value, untouched") {

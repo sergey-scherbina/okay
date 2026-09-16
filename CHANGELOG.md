@@ -1,5 +1,27 @@
 # Changelog
 
+## mutual-mark-free — the mark was never needed, and the report that it was came from stale classes
+
+`!.tailcall(other(n))` inside a `direct` block colours through
+`Free.directColor` like any other program value, so mutual recursion
+needs the tailcall (the deferral rule covers a call to the ENCLOSING
+def, which two functions calling each other are not) and nothing else.
+TestDirectDeep now asserts both spellings — with and without
+`.reflect`, 1 000 001 hops each — and the four places that documented
+the marked form are corrected.
+
+**Why it was reported the other way.** A probe run on 2026-09-16
+failed to compile `!.tailcall(isOdd(n - 1))` and I read that as an
+asymmetry in the colouring. The probe compiled against
+`.jvm/target/scala-3.9.0/classes`, last built at 22:06 the previous
+evening; `directColor` landed at 23:14. There was nothing in those
+classes to colour with, so every spelling failed — including
+`fib(n - 1) + fib(n - 2)`, which the green gate was running at the
+same moment. Rebuilding the classes and re-running the whole position
+matrix (self-call and other-def call, in `+`, in an ascribed val, as a
+branch result, under `!.tailcall`) compiles all of it, and the
+mark-free pair answers `isEven(1 000 001)` on a 512 KB stack.
+
 ## continuations-roadmap — what continuations are here, and the four roads
 
 The operator asked what the library has with continuations, whether a

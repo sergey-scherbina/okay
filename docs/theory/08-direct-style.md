@@ -192,7 +192,7 @@ the JVM stack. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
 of the article refuses — a self-call inside `match`, a real row
 interleaving effects with the recursion, mutual recursion — this
 lowering already handles, mutual recursion by one explicit
-`!.tailcall(other(n)).reflect`. `TestDirectDeep` runs `1 + sum(n - 1)`
+`!.tailcall(other(n))` — one word, no mark. `TestDirectDeep` runs `1 + sum(n - 1)`
 a million deep on the suite's default stack. The zero-annotation form
 is possible only at the program type with colouring on, because a
 macro runs after the typer; with the prefix mark it is

@@ -385,8 +385,11 @@ is this library's `Free` node for node — and with the lowering the
 rest of the block already gets: two self-calls in one expression,
 branches, `match`, a real row whose tells interleave with the
 recursion in order. Without the language import the same thing is
-`!fib(n - 1) + !fib(n - 2)`. Mutual recursion is one word, as it
-always was: `!.tailcall(other(n)).reflect`. A self-call under a
+`!fib(n - 1) + !fib(n - 2)`. Mutual recursion needs one word — the
+deferral rule covers a call to the ENCLOSING def, and two functions
+calling each other are not that — but no mark:
+`!.tailcall(other(n))` is a program value, and it colours like any
+other. A self-call under a
 lambda is a value and is left alone (v1 does not look under lambdas).
 `TestDirectDeep` holds every one of these shapes.
 
