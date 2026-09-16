@@ -164,7 +164,7 @@ whole block — while answer-type modification gives every step its own
 `F`. That shape stays in `for`, with the expected type on the `reset`
 (the fourth worked example below).
 
-## Four worked examples
+## Six worked examples
 
 `TestDelimExamples` runs these, so they are checked rather than
 claimed. Each is a shape the literature uses to argue that first-class
@@ -197,6 +197,40 @@ once.
 The block produces an `Int` and the delimiter answers a `String`.
 `Cont[A, S, R]` carries that in its type; a plain monad cannot say it.
 
+**Functional unparsing** \[[Danvy 1998](#ref-danvy-1998)\]. A format is
+a value, built from directives, and the TYPE of `sprintf` is computed
+from it: `str(lit(" is ")(int(done)))` has type `String => Int =>
+String`, which nobody wrote down. No macro, no format-string parsing,
+no varargs, and the arity and the argument types are checked — too few
+arguments, or an `int` directive fed a `String`, do not compile. This
+one is written in plain CPS, as the baseline the next example has to
+earn its keep against.
+
+**printf through shift/reset** \[[Asai 2007](#ref-asai-2007)\]. The same
+thing, with the plumbing removed: each directive is a `shift` that
+MOVES the answer type — `str` turns "the delimiter answers `T`" into
+"it answers `String => T`" — and the format is their composition, so
+it can be a `for`-comprehension with nothing annotated inside it:
+
+```scala
+def lit[T](s: String): Cont[String, T, T] = shift(k => k(s))
+def str[T]: Cont[String, T, String => T] = shift(k => (x: String) => k(x))
+def int[T]: Cont[String, T, Int => T] = shift(k => (n: Int) => k(n.toString))
+
+val greeting: String => Int => String = reset[String, Out]:
+  for
+    x <- lit("Hello, ")
+    y <- str
+    z <- lit(" is ")
+    w <- int
+  yield x + y + z + w + " years old"
+```
+
+The expected type on `reset` carries the whole chain. And this is the
+sharpest statement of the boundary above: those directives are exactly
+what `Cont.direct` cannot express, because `S ≠ R` at every step —
+a test asserts that `AnswerOf` has no instance for them.
+
 ## References
 
 - <a id="ref-wang-2018"></a>Fei Wang and Tiark Rompf.
@@ -210,6 +244,9 @@ The block produces an `Int` and the delimiter answers a `String`.
   prompts.](https://doi.org/10.1145/73560.73576)* POPL 1988.
 - <a id="ref-danvy-1989"></a>Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
   contexts.* DIKU report 89/12, 1989.
+- <a id="ref-danvy-1998"></a>Olivier Danvy. *[Functional
+  unparsing.](https://doi.org/10.1017/S0956796898003104)* JFP
+  8(6):621-625, 1998.
 - <a id="ref-danvy-1990"></a>Olivier Danvy, Andrzej Filinski. *[Abstracting control.](https://doi.org/10.1145/91556.91622)* LISP and
   Functional Programming 1990.
 - <a id="ref-filinski-1994"></a>Andrzej Filinski. *[Representing monads.](https://doi.org/10.1145/174675.178047)* POPL 1994.

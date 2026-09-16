@@ -1,5 +1,23 @@
 # Changelog
 
+## printf-examples - sprintf as examples 5 and 6
+
+`TestDelimExamples` gains the two printf constructions, and with them
+the sharpest statement of what a direct block can and cannot do.
+
+- **Functional unparsing** (Danvy 1998), in plain CPS: a format is a
+  value and the RESULT TYPE is computed from it - `str(lit(" is
+  ")(int(done)))` is a `String => Int => String` nobody wrote down.
+  Arity and argument types are checked; two `compileErrors` assert it.
+- **printf through shift/reset** (Asai 2007): each directive is a
+  `shift` that MOVES the answer type, so the format is a
+  `for`-comprehension with nothing annotated inside - the expected
+  type on `reset` carries the chain.
+- **The boundary, checked**: those directives are exactly what
+  `Cont.direct` cannot express, since `S != R` at every step. A test
+  asserts `AnswerOf` has no instance for a moving answer type, and
+  that the diagonal keeps its witness.
+
 ## cont-in-direct — `shift` inside a direct block, and `import` as a statement
 
 `Cont.direct` is a scope you import into a direct block over Cont's

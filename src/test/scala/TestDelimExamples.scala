@@ -127,4 +127,95 @@ class TestDelimExamples extends munit.FunSuite {
       shift[Int, Int, String](k => s"answer: ${k(20) + 2}").map(_ + 20))
     assertEquals(r, "answer: 42")
   }
+
+  // ---- 5 · functional unparsing, in plain CPS
+  //      Danvy, "Functional Unparsing" (JFP 1998): a format is a
+  //      VALUE, built from directives, and the TYPE of sprintf is
+  //      COMPUTED FROM IT. No macro, no string parsing, no varargs —
+  //      and no continuations library either: this one is here as the
+  //      baseline example 6 has to earn its keep against.
+
+  object Unparse:
+    /** a directive takes "what to do with the string so far" */
+    type K[A] = String => A
+
+    def done: K[String] = pre => pre
+    def lit[A](s: String)(next: K[A]): K[A] = pre => next(pre + s)
+    def str[A](next: K[A]): K[String => A] = pre => (x: String) => next(pre + x)
+    def int[A](next: K[A]): K[Int => A] = pre => (n: Int) => next(pre + n)
+
+    def sprintf[A](d: K[A]): A = d("")
+
+  test("unparsing: the result type is computed from the format") {
+    import Unparse.*
+    // "%s is %d years old" — and its type is String => Int => String,
+    // which nobody wrote down: the format decided it
+    val greeting: String => Int => String =
+      sprintf(str(lit(" is ")(int(lit(" years old")(done)))))
+    assertEquals(greeting("Ada")(36), "Ada is 36 years old")
+
+    val plain: String = sprintf(lit("no arguments")(done))
+    assertEquals(plain, "no arguments")
+
+    // the arity is in the type, so too few arguments does not compile
+    assert(compileErrors("""val g: String = Unparse.sprintf(Unparse.str(Unparse.done))""")
+      .nonEmpty, "a format expecting an argument typed as a finished String")
+    // and so is the argument's TYPE
+    assert(compileErrors("""Unparse.sprintf(Unparse.int(Unparse.done))("not a number")""")
+      .nonEmpty, "a %d directive accepted a String")
+  }
+
+  // ---- 6 · the same thing through shift/reset
+  //      Asai, "On typing delimited continuations: three new
+  //      solutions to the printf problem" (2007). Each directive is a
+  //      `shift` that MOVES THE ANSWER TYPE: `str` turns "the
+  //      delimiter answers T" into "it answers String => T". The
+  //      format is then just their composition, and the plumbing
+  //      example 5 threads by hand is what the continuation is.
+
+  object Fmt:
+    def lit[T](s: String): Cont[String, T, T] = shift(k => k(s))
+    def str[T]: Cont[String, T, String => T] = shift(k => (x: String) => k(x))
+    def int[T]: Cont[String, T, Int => T] = shift(k => (n: Int) => k(n.toString))
+
+  test("printf via shift/reset: the format is a for-comprehension") {
+    import Fmt.*
+    type Out = String => Int => String
+
+    // NOTHING is annotated inside: the expected type on `reset` carries
+    // the whole chain of answer types through the generators
+    val greeting: Out = reset[String, Out]:
+      for
+        x <- lit("Hello, ")
+        y <- str
+        z <- lit(" is ")
+        w <- int
+      yield x + y + z + w + " years old"
+
+    assertEquals(greeting("Ada")(36), "Hello, Ada is 36 years old")
+
+    // the order of the directives is the order of the arguments, and
+    // the types say so: swap them and it does not compile
+    assert(compileErrors("""
+      val g: String => Int => String = okay.reset[String, String => Int => String](
+        for { x <- Fmt.int; y <- Fmt.str } yield x + y)
+    """).nonEmpty, "the directives were accepted in the wrong order")
+  }
+
+  test("printf is exactly what a direct block cannot express") {
+    // `Cont.direct.shift` takes the answer type from the block, which
+    // presumes the block HAS one: a direct block is diagonal, one
+    // `F[A]` for all of it. Every directive above moves the answer
+    // type, so there is no `AnswerOf` for it — and that is the
+    // boundary, stated by the compiler rather than by this comment.
+    val moving = compileErrors(
+      "summon[okay.Cont.direct.AnswerOf[[X] =>> okay.Cont[X, String, String => String]]]")
+    assert(moving.nonEmpty, "a moving answer type was accepted as a direct block's monad")
+
+    // the diagonal, the shape a direct block does have, resolves —
+    // and TestContDirect runs a block written that way
+    val fixed = compileErrors(
+      "summon[okay.Cont.direct.AnswerOf[[X] =>> okay.Cont[X, String, String]]]")
+    assertEquals(fixed, "", "the diagonal lost its witness")
+  }
 }
