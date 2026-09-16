@@ -524,8 +524,8 @@ The macro could not check a flag for this — it does not know the
 handlers — and does not try. A handle demanded while its own program
 is still running (a knot, or an interleaved search with `Once.run`
 OUTSIDE it) is a loud `IllegalStateException`, not a second run and
-not a hang. `Logic.once` is a different word, the Prolog cut, and
-keeps its namespace. `TestDirectOnce` holds every shape above,
+not a hang. The Prolog cut, once `Logic.once`, is `Logic.cut`
+(logic-cut), so `once` means one thing here. `TestDirectOnce` holds every shape above,
 including both handler orders.
 
 ## Layer 4 — do-notation statements: the statement is the mark

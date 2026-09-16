@@ -6,7 +6,7 @@ import okay.!.*
  * Backtracking search over the nondeterminism effect — LogicT
  * (Kiselyov, Shan, Friedman, Sabry 2005) rebuilt on Choose. The one
  * primitive is msplit: the FIRST answer and a program producing the
- * rest. Everything else derives: once (the cut that keeps one
+ * rest. Everything else derives: cut (the one that keeps one
  * answer), ifte (the soft cut — else runs only when there is NO
  * answer, negation-as-failure in one line), interleave (the FAIR or
  * — two infinite branches take turns), >>- (the fair bind — a
@@ -55,8 +55,10 @@ object Logic {
     go(LazyList(m))
 
   /** at most one answer: the cut — commits to the first success and
-   * throws the rest of the search away */
-  def once[A, F[+_]](m: A ! (Choose + F)): A ! (Choose + F) =
+   * throws the rest of the search away. `once` until logic-cut
+   * (2026-09-16): that word is `!.once` now, the by-need effect, and
+   * a file importing both `!.*` and `Logic.*` had the two collide. */
+  def cut[A, F[+_]](m: A ! (Choose + F)): A ! (Choose + F) =
     !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(m)).flatMap:
       case Some((a, _)) => pure(a)
       case None => effect(Choose(Seq.empty))

@@ -67,7 +67,7 @@ prompt plus a shift, with no signature and no handler added.
 
 Over `Choice` sits BACKTRACKING as a library (`Logic`, LogicT-style):
 `msplit` splits a search into its first answer and a program for the
-rest, and everything derives — `once` (cut), `ifte` (soft cut /
+rest, and everything derives — `cut`, `ifte` (soft cut /
 negation-as-failure), `interleave` and `fairBind` (fair search: two
 infinite branches take turns, so a witness is found where the plain
 bind diverges), `observe(n)`. A `LazyList` of alternatives is an

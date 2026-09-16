@@ -184,7 +184,7 @@ the raw turns, one pass, if a task genuinely wants both.
 
 ## Search over plans (why backtracking belongs here)
 
-- best-of-N sampling = `Choose` over N completions, `once` to commit;
+- best-of-N sampling = `Choose` over N completions, `cut` to commit;
 - validate-and-retry = `ifte(parseOk)(use)(reprompt)`;
 - Tree-of-Thoughts = `msplit` search: a node expands by a completion,
   `guard` prunes, `observe(n)` takes n leaves, `interleave` splits

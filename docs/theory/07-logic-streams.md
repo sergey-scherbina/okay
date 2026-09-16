@@ -18,7 +18,7 @@ nothing, or its first answer *plus a program producing the rest*.
 
 `Logic.scala` announces itself as exactly this, "LogicT … rebuilt on
 Choose", and its header is the paper's table of contents restated:
-`once` (the cut), `ifte` (the soft cut — negation-as-failure in one
+`cut`, `ifte` (the soft cut — negation-as-failure in one
 line), `interleave` (the fair or), `>>-` (the fair bind — a productive
 branch cannot starve its siblings), `observe` (first *n* answers of a
 possibly infinite search), every one derived from `msplit`

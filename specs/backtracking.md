@@ -16,7 +16,7 @@ of LogicT derives from ONE primitive over it.
   LazyList and `Choose.as` is a `Seq` — a `LazyList` of alternatives
   makes an INFINITE choice point that costs nothing to construct.
 - Derived, exactly as in the paper:
-  - `once` — the cut: commit to the first answer, drop the rest;
+  - `cut` — commit to the first answer, drop the rest (`once` until logic-cut, 2026-09-16);
   - `ifte(c)(th)(el)` — the SOFT cut: `th` over ALL answers of `c`,
     `el` only when `c` has none (a plain flatMap cannot say "no
     answer"; a hard cut would lose the other answers);
@@ -61,7 +61,7 @@ of LogicT derives from ONE primitive over it.
 
 ## logic-named-cut (filed, GATED on a search consumer)
 
-`once`/`ifte` are the local cuts and cover the practical cases;
+`cut`/`ifte` are the local cuts and cover the practical cases;
 Prolog's NON-LOCAL cut — committing through several choice points
 to a NAMED barrier — is abort-to-prompt, i.e. Delim over the Logic
 row (the doctrine's cross-boundary case). Deliberately gated: no

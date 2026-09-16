@@ -178,10 +178,9 @@ same material with the measurements attached.
   cells as threaded state. `lazy val x = !p` in a `direct` block is
   this word. Multi-shot is handler order: `runChoice(Once.run(p))`
   backtracks the cells, `Once.run(runChoice(p))` shares one store
-  (docs/direct-style.md, "Call-by-need"). Not `Logic.once`, the cut.
+  (docs/direct-style.md, "Call-by-need").
 - **`Logic`** — backtracking search over Choose (LogicT): `msplit`
-  (first answer + the rest as a program — the one primitive), `once`
-  (cut), `ifte` (soft cut), `gnot` (negation as failure),
+  (first answer + the rest as a program — the one primitive), `cut`, `ifte` (soft cut), `gnot` (negation as failure),
   `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
   (first n of an infinite search). A library over the effect, not a
   new effect. See specs/backtracking.md.

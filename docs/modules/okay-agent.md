@@ -49,7 +49,7 @@ conversation; outside, one shared transcript. No flag, just where you
 run it.
 
 **Search over completions.** Sampling is nondeterminism, so
-`Search.bestOf` (choose among N, `once` to commit), `Search.validated`
+`Search.bestOf` (choose among N, `cut` to commit), `Search.validated`
 (the soft cut: use every answer that validates, re-prompt only when
 none did), `Search.all` + `majority` (self-consistency) are
 one-liners over `Choose` and `Logic`.

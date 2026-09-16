@@ -337,9 +337,9 @@ The rewrite is statement-level monadic normalization (ANF for marks):
   val with a mark and no `Once` in the row is refused with the effect
   named; a self-referring one is refused (a knot at run time, a
   dangling symbol after the rewrite); a demand while the program is
-  running throws. `Logic.once` (the cut) keeps its name; a file
-  importing both `!.*` and `Logic.*` qualifies the cut, which
-  `TestLogic` now does.
+  running throws. `Logic.once` (the cut) first kept its name, and a
+  file importing both `!.*` and `Logic.*` found the two ambiguous
+  within the hour; it is `Logic.cut` (logic-cut, the same day).
 - **Tail fusion for loop bodies** (direct-tail-fusion, 2026-09-02;
   the road direct-flatmap-emission recorded): a loop BODY compiles
   against an explicit tail term — `compileTail(t, tail)` returns an

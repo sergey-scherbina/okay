@@ -207,10 +207,10 @@ def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong))
 Logic.observe(6)(Logic.interleave(evens, odds))   // 0,1,2,3,4,5 — fair turns
 Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
                                          // finds 4 where flatMap diverges
-Logic.once(m)                            // the cut: first answer only
+Logic.cut(m)                             // the cut: first answer only
 ```
 
-`!.once(p)` is a different word — call-by-need: `p` runs at its
+`!.once(p)` is call-by-need: `p` runs at its
 first demand and answers from a cell after, under `Once.run`. In a
 `direct` block it is `lazy val`:
 

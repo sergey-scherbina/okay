@@ -1,5 +1,14 @@
 # Changelog
 
+## logic-cut — the Prolog cut is `Logic.cut`; `once` means one thing
+
+`Logic.once` (commit to the first answer) is `Logic.cut`. The hour
+direct-once landed, a file importing both `!.*` and `Logic.*` had two
+`once`s and an ambiguity error; now `once` is the by-need effect only.
+The one caller, `okay-agent`'s `Search.bestOf`, and every prose
+mention of the cut follow; the scoped-effects literature's `once` in
+theory ch. 5 is the paper's word and stays.
+
 ## direct-once — call-by-need for programs: the `Once` effect, `!.once`, and `lazy val` in a direct block
 
 `Delay` is by-name. `!.once(p)` is by-need: the first demand runs `p`
@@ -22,7 +31,7 @@ second branch sees what the first stored, and the types show it. A
 lazy val with a mark in a row without `Once` is refused with the
 effect named; a demand while the program runs (a knot, an
 interleaved search with `Once.run` outside it) throws rather than
-running twice. `Logic.once`, the cut, keeps its name. Design
+running twice. `Logic.once`, the cut, is `Logic.cut` (logic-cut, below this entry in time, above it in the file). Design
 rationale in specs/direct-macro.md (Decisions, direct-once);
 docs/direct-style.md has the section; `TestDirectOnce`, 18 tests,
 holds every shape including both handler orders.
