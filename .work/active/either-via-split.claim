@@ -1,9 +1,0 @@
-either-via-split
-owner: fable-5.1 session 53f400ad
-started: 2026-09-16
-what: operator's proposal (2026-09-16): `<|>` defined as
-  `split(e)(Left(_))(Right(_))`, so the union's two casts live in ONE
-  inline function (split) instead of two; both were inline already,
-  the inline lambdas beta-reduce, bytes unchanged. `over` keeps its own
-  cast (the reverse direction). Effects.scala only.
-files: src/main/scala/Effects.scala, CHANGELOG.md
