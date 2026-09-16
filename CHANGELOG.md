@@ -1,5 +1,14 @@
 # Changelog
 
+## prog-lambda-warn — the gate was RED and I read the exit code instead
+
+direct-program-lambda (188ea4c6) landed with two E198 unused-symbol
+warnings: `programLambda`'s `l` parameter stopped being used when the
+refusal moved to the caller. `scripts/gate.sh` said `RED — 2 compile
+warning(s) … 'no warnings, ever'` and exited 0, and the exit code is
+what I checked. The verdict LINE is the verdict; the runner's status
+is not. Parameter dropped, gate re-run.
+
 ## direct-program-lambda — a continuation handler reads as ordinary code
 
 A lambda whose body ends at the block's program type is compiled as

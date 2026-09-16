@@ -872,7 +872,7 @@ object Direct:
      * into the pipeline, and the shape that wants this — a `Delim`
      * continuation handler — answers at the row it was written in.
      */
-    def programLambda(l: Term, params: List[ValDef], body: Term): Option[Out] =
+    def programLambda(params: List[ValDef], body: Term): Option[Out] =
       body.tpe.widen.dealias.baseType(freeClass) match
         case AppliedType(_, List(_, e))
           if body.tpe.widen <:< TypeRepr.of[F].appliedTo(e.widen) =>
@@ -917,7 +917,7 @@ object Direct:
         // higher-order argument generically is the expensive half of
         // the problem, and the refusal is the whole difference between
         // these few hundred lines and a CPS transformer.
-        programLambda(l, params, body).getOrElse(refuse(l, "under a lambda"))
+        programLambda(params, body).getOrElse(refuse(l, "under a lambda"))
       case Block(stats, expr) => compileBlock(stats, expr)
 
       case If(c, th, el) =>
