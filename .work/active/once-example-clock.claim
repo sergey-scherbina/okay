@@ -1,0 +1,16 @@
+once-example-clock
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's point — "calling feed twice is just inefficient;
+  find a case where calling twice is RIGHT because the thing can have
+  changed". It is the clock. The by-need example becomes a page
+  handler that stamps its own duration: `val started = Fetch.now`
+  (pinned, once), `def now = Fetch.now` (fresh at every mention, since
+  time moves), `lazy val feed` (costly, and its two reads must see ONE
+  list). Each word is now required for CORRECTNESS: `def` on started
+  or `lazy val` on now would answer 0ms, `def` on feed could report
+  one list's size with another's head. Plus the test harness the
+  operator asked for: Reader carries your own data in, Writer carries
+  the calls out, State carries a clock that moves because each call
+  costs time.
+files: src/test/scala/TestDirectOnce.scala, docs/direct-style.md, CHANGELOG.md
