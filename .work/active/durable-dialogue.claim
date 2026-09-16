@@ -1,0 +1,19 @@
+durable-dialogue
+owner: fable-5.1 session 53f400ad
+started: 2026-09-17
+what: okay-persist gains `Dialogue`, the paused dialogue whose journal
+  lives in a topic - the glue between Delim.replay (paused-persist,
+  a7c22f9a) and the durable log. One dialogue = one key = one
+  partition, the TopicJournal convention Saga already follows; the
+  answer is appended DURABLY BEFORE the step, so a crash in the window
+  replays to the same place. Damage is data: the fold stops at a
+  Decoded.Bad and names it, as Saga's does.
+  API: Dialogue(topic, id)(body), .journal, .at, .answer(a), .run(oracle).
+  And the EVENT SOURCING statement in the docs, which is what this
+  actually is: the events are the answers (the only non-determinism
+  the discipline allows), the aggregate's state is where the program
+  stands - and the fold that rebuilds it is THE PROGRAM ITSELF, not a
+  hand-written apply(state, event).
+files: okay-persist/src/main/scala/okay/persist/Dialogue.scala,
+  okay-persist/src/test/scala/okay/persist/TestDialogue.scala,
+  docs/continuations-in-practice.md, CHANGELOG.md
