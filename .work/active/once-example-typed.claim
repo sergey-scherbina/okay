@@ -1,0 +1,12 @@
+once-example-typed
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's shape for the by-need example — typed Response,
+  the ops named after the resources (Fetch.User/Plan/Feed) with smart
+  constructors on the companion so the handler needs no type arguments
+  and no ascriptions, and the row spelled `Response ! Fetch + Once`.
+  Replaces the GetUser/String version in TestDirectOnce and in
+  docs/direct-style.md. Also records what the literal first draft
+  taught: `effect(Fetch.User(token))` with no expected type infers
+  `Nothing ! Fetch`, losing both the answer and the row.
+files: src/test/scala/TestDirectOnce.scala, docs/direct-style.md, CHANGELOG.md
