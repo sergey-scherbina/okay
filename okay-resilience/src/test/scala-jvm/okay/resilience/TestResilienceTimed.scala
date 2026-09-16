@@ -11,6 +11,13 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
  * answered, how many started), never about elapsed time.
  */
 class TestResilienceTimed extends munit.FunSuite {
+  // Live, out of `sbt test`: these tests race a real timer (a 5 ms
+  // answer against a 20 ms hedge). On 2026-09-16 the hedge test lost
+  // that race in a gate on a box at load 22 and passed 8/8 alone a
+  // minute later; the policy for flakiness found in an untagged suite
+  // is the tag, not a wider window (integration-test-gate).
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
 
   def run[A](prog: A ! Async): A = Async.run(prog).runWith
 

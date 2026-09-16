@@ -10,6 +10,11 @@ the two `asInstanceOf` on a row live in `split` alone, with `over`'s
 reverse-direction cast beside it as the only other, and `<|>`'s inline
 lambdas beta-reduce to the bytes it had. No caller changed.
 
+Found by the lane's gate and tagged on the spot: `TestResilienceTimed`
+races a real timer (5 ms against a 20 ms hedge) and lost once on a box
+at load 22, 8/8 alone a minute later — `Live` now, per the
+integration-test-gate rule for flakiness found in an untagged suite.
+
 ## operator-followups — the flag out, the import back; TestFailure tagged; Resource on split
 
 Three asks in one message (2026-09-16).
