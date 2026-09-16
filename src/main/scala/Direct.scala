@@ -520,6 +520,12 @@ object Direct:
           }.get match
             case Out.Pure(t) => t
             case Out.Eff(t, _) => t
+        // an `import` binds nothing and runs nothing: it rides along
+        // (direct-import, 2026-09-17 — it used to be "an unsupported
+        // statement", which made a scoped spelling like
+        // `import Cont.direct.*` unusable inside a block)
+        case (im: Import) :: rest =>
+          Block(List(im), stmtsTail(rest, tail, tailElem))
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           Block(List(dd), stmtsTail(rest, tail, tailElem))
@@ -1216,6 +1222,8 @@ object Direct:
           nestedProgramDef(dd, rest, expr) { (defn, rest2, expr2) =>
             wrapStat(defn, rest2, expr2)
           }.get
+        // an `import` rides along, see stmtsTail
+        case (im: Import) :: rest => wrapStat(im, rest, expr)
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           wrapStat(dd, rest, expr)

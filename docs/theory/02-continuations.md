@@ -123,6 +123,47 @@ general case, and it is general *because* of Filinski. Chapter 5 walks
 the three shapes; the point here is that they are not three features
 but one theorem, specialized twice.
 
+## `shift` in a direct block: `Cont.direct`
+
+`Delim.shift` captures under a handler, in a row. The bare paramonad
+has the same word, and since cont-in-direct (2026-09-17) it can be
+written in a direct block too:
+
+```scala
+import okay.Cont.direct.*
+
+type Str = [X] =>> Cont[X, String, String]        // the diagonal at String
+
+val c: String /> String = direct[Str]:
+  val x: String = !shift[String](k => k("one") + " " + k("two"))
+  "<" + x + ">"
+
+reset(c)    // "<one> <two>" — the rest of the block ran once per k
+```
+
+Two things are worth naming.
+
+**One type argument.** `shift[A]` names the captured value's type and
+nothing else; the answer type comes from the block, through an
+`AnswerOf[F]` witness that also re-associates `Cont[A, R, R]` to `F[A]`
+by *typing* it, so the convenience costs no cast. This is the same
+trick as `Delim.shift[A]`, whose answer type comes from its `Prompted`
+evidence.
+
+**Its own scope, not an overload.** Making the package-level `shift`
+take one argument was tried and refused by measurement: a call with no
+type arguments — `shift: k => ...`, the shape every handler in this
+library writes, `runChoice` included — then resolves to the
+one-argument alternative and fails for want of a `DirectCtx`. The
+import is the opt-in, and it is why `import` had to become a statement
+the macro passes through.
+
+What is *not* spellable here is a block that MOVES the answer type, and
+not for want of a name: a direct block is diagonal — one `F[A]` for the
+whole block — while answer-type modification gives every step its own
+`F`. That shape stays in `for`, with the expected type on the `reset`
+(the fourth worked example below).
+
 ## Four worked examples
 
 `TestDelimExamples` runs these, so they are checked rather than

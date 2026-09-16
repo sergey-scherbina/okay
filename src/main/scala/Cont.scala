@@ -321,6 +321,59 @@ object Cont:
     // through the implicit scope of the receiver. `c / k` is the
     // spelling, and it always was the meaning.
 
+  /**
+   * THE SAME WORD, INSIDE A DIRECT BLOCK (cont-in-direct, 2026-09-17).
+   *
+   * `import Cont.direct.*` in a block whose monad is Cont's
+   * DIAGONAL — `[X] =>> Cont[X, R, R]`, the case where the answer type
+   * does not move — and a capture takes ONE type argument, the value's:
+   * the answer type comes from the block, exactly as `Delim.shift`'s
+   * comes from its `Prompted` evidence.
+   *
+   * ITS OWN SCOPE, not an overload of the package-level `shift`, and
+   * that is measured, not taste: a call with NO type arguments —
+   * `shift: k => ...`, the shape every handler in this library writes,
+   * `runChoice` included — resolves to the one-argument alternative and
+   * then fails for want of a `DirectCtx`. An import is the opt-in.
+   *
+   * A block that MOVES the answer type is not spellable here, and not
+   * for want of a name: `Direct.direct` is diagonal — one `F[A]` for
+   * the whole block — while answer-type modification gives every step
+   * its own F. That shape stays in `for`, with the expected type on
+   * the `reset`.
+   */
+  object direct:
+
+    /**
+     * The answer type of a block whose monad is the diagonal. Evidence,
+     * not a row member: `Cont` is a type alias, not an effect, so there
+     * is nothing to put in a row — and it carries `apply` so the
+     * diagonal is re-associated by TYPING it, with no cast.
+     */
+    trait AnswerOf[F[_]]:
+      type R
+      def apply[A](c: Cont[A, R, R]): F[A]
+
+    object AnswerOf:
+      given [R0]: AnswerOf[[X] =>> Cont[X, R0, R0]] with
+        type R = R0
+        def apply[A](c: Cont[A, R0, R0]): Cont[A, R0, R0] = c
+
+    /**
+     * Capture the rest of the block up to its `reset`. `A` is the only
+     * type argument; the answer type is the block's own, and the
+     * `DirectCtx` is what makes this an error outside a direct block.
+     * The `DummyImplicit` is the generalized-method-syntax tax: a
+     * `using` clause between two type clauses is what makes the first
+     * one mandatory, so that `shift[Int]` names A and not F.
+     */
+    inline def shift[A](using d: DummyImplicit)[F[_]]
+                       (using inline ctx: Direct.DirectCtx[F])
+                       (using a: AnswerOf[F])
+                       (f: (A => a.R) => a.R): F[A] =
+      a(okay.shift[A, a.R, a.R](f))
+
+
 /** the stack-safe data instance: the default carrier */
 given Control[Cont] with
   override inline def pure[A, R](a: A): A /> R = Cont.Pure(a)

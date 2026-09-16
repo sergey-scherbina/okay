@@ -94,6 +94,11 @@ stays for expression positions.
   and a `var` bound from a mark can be reassigned — both were
   compile errors ("used outside the scope where it was defined",
   "Reassignment to val v") found by the audit
+- [x] an `import` is a statement a block may contain (cont-in-direct,
+  2026-09-17): it binds nothing and runs nothing, so it rides along
+  into the built tree. It used to be "an unsupported statement",
+  which made a scoped spelling — `import Cont.direct.*`, `import
+  State.modify` — unusable inside a block
 - [x] a mark outside any direct block: the phantom throws with a
   message naming the macro
 - [x] a block with NO marks still compiles: `direct[F] { 42 }` ==

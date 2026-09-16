@@ -1,5 +1,38 @@
 # Changelog
 
+## cont-in-direct — `shift` inside a direct block, and `import` as a statement
+
+`Cont.direct` is a scope you import into a direct block over Cont's
+DIAGONAL (`[X] =>> Cont[X, R, R]`, the blocks whose answer type does
+not move):
+
+```scala
+import okay.Cont.direct.*
+
+val c: String /> String = direct[[X] =>> Cont[X, String, String]]:
+  val x: String = !shift[String](k => k("one") + " " + k("two"))
+  "<" + x + ">"
+
+reset(c)   // "<one> <two>"
+```
+
+`shift[A]` takes ONE type argument — the answer type comes from the
+block, through an `AnswerOf[F]` witness that re-associates
+`Cont[A, R, R]` to `F[A]` by typing it, with no cast — exactly as
+`Delim.shift[A]`'s comes from its `Prompted` evidence.
+
+Its own scope rather than an overload of the package-level `shift`, and
+that is measured: a call with no type arguments (`shift: k => ...`, the
+shape every handler here writes, `runChoice` included) resolves to the
+one-argument alternative and then fails for want of a `DirectCtx`.
+
+Which is why the direct macro now lets an `import` through as an
+ordinary statement — it binds nothing and runs nothing, so it rides
+along into the built tree. It used to be refused as "an unsupported
+statement", making `import Cont.direct.*` (or `import State.modify`)
+unusable inside a block. `TestContDirect` covers both, and the import
+test was watched failing first.
+
 ## delim-examples — four worked examples of delimited control, as tests
 
 `TestDelimExamples`, each from the literature and each in `direct`
