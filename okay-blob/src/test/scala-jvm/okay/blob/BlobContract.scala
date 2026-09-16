@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, Stream, effect, pure}
+import okay.{!, +, Async, Chunk, Produce, Source, Stream, Writer, effect, pure}
 import okay.given
 import scala.collection.immutable.ArraySeq
 
@@ -121,5 +121,47 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
     val s = b.stats
     assertEquals((s.engine, s.puts, s.gets, s.misses, s.heads, s.deletes, s.failures), (engine, 1L, 2L, 1L, 1L, 1L, 0L))
     assert(okay.codec.Json.write(s).contains("\"misses\":1"))
+  }
+
+  test(s"$engine: the Source road — putSource then get, get then getSource, the outcome kept") {
+    val b = make()
+    val _ = run(b.putSource("src/one", Source.ofProducer(bytes(50_000))))
+    val (got, outcome, _) = drainGet(b.get("src/one"))
+    assertEquals(got.length, 50_000)
+    assertEquals(outcome, Right(()))
+    assertEquals(got.toVector, Vector.tabulate(50_000)(i => (i % 251).toByte))
+    // out again on the Writer road: the chunks told, the answer kept
+    // `Writer.collect`, not `Writer.run`: the split is on the concrete
+    // Async, not on `Writer % Chunk[Byte]`, whose derived test is an
+    // unchecked one (E092, the TypeableK caveat)
+    val (told, out) = run(Writer.collect(b.getSource("src/one")))
+    assertEquals(out, Right(()))
+    assertEquals(told.map(_.length).sum, 50_000)
+    assertEquals(told.flatMap(_.toVector).toVector, got.toVector)
+    // an absent key is the Left, and nothing is told on the way
+    val (none, absent) = run(Writer.collect(b.getSource("src/absent")))
+    assert(none.isEmpty)
+    assert(absent.left.exists(_.contains("src/absent")), absent.toString)
+    // a range on the Source road is the same slice
+    val (slice, _) = run(Writer.collect(b.getSource("src/one", Some((100L, 110L)))))
+    assertEquals(slice.flatMap(_.toVector).toVector, Vector.tabulate(10)(i => ((100 + i) % 251).toByte))
+  }
+
+  test(s"$engine: the plain road — putBytes, putChunk, getBytes, and a range") {
+    val b = make()
+    val data = Array.tabulate[Byte](10_000)(i => (i % 251).toByte)
+    val etag = run(b.putBytes("plain/one", data))
+    assertEquals(run(b.getBytes("plain/one")).map(_.toVector), Right(data.toVector))
+    assertEquals(run(b.getBytes("plain/one", Some((10L, 20L)))).map(_.toVector),
+      Right(data.slice(10, 20).toVector))
+    assertEquals(run(b.head("plain/one")).map(m => (m.size, m.etag)), Some((10_000L, etag)))
+    assert(run(b.getBytes("plain/none")).left.exists(_.contains("plain/none")))
+    val _ = run(b.putChunk("plain/two", ArraySeq.unsafeWrapArray(data)))
+    assertEquals(run(b.getBytes("plain/two")).map(_.length), Right(10_000))
+    // the program is a VALUE: running getBytes twice answers the same
+    // bytes twice, not the bytes twice over
+    val twice = b.getBytes("plain/one")
+    assertEquals(run(twice).map(_.length), Right(10_000))
+    assertEquals(run(twice).map(_.length), Right(10_000))
   }
 }

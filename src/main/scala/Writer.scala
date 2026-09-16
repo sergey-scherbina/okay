@@ -136,6 +136,38 @@ object Writer {
     loopWith[W, List[W], Seq[W], A, F](a)(Nil)((s, w) => w :: s)(_.reverse)
 
   /**
+   * `run`, split the OTHER way: on G, which is concrete, rather than
+   * on `Writer % W`, whose derived test at a parameterised W — a
+   * `Writer % Chunk[Byte]`, say — is an unchecked one (E092, the
+   * TypeableK caveat). `Source.runCollect` makes the same choice for
+   * the same reason; this is that loop with the answer KEPT, which a
+   * `Blob.getSource` needs because its answer is the outcome.
+   *
+   * For a row holding ONE Writer, which is every row a Source is. A
+   * row with two Writers of different W needs `run`'s finer test and
+   * pays for it there.
+   */
+  def collect[W, A, G[+_] : TypeableK](a: A ! Writer % W + G): (Vector[W], A) ! G =
+    import !.*
+    import scala.annotation.tailrec
+    def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
+    @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
+      (x.resume: @unchecked) match
+        case Free.Pure(v) => okay.pure((acc, v))
+        case Inject(e) => split[G, Writer % W](e)
+          (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
+          // a terminal Say answers Unit, which is then the program's
+          // own answer — the GADT the enum's shape gives (`fold`'s
+          // terminal case reads the same way)
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(w) => okay.pure((acc :+ w, ())) }
+        case Bind(Inject(e), k) => split[G, Writer % W](e)
+          (g => Inject(g).flatMap(v => again(acc)(k(v))))
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(w) => loop(acc :+ w)(k(())) }
+    loop(Vector.empty)(a)
+
+  /**
    * Map the told values, keeping the PROGRAM.
    *
    * `Stream.map` exists already and lands in LazyList — which is the

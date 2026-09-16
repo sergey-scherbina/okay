@@ -1,5 +1,27 @@
 # Changelog
 
+## blob-source-road — the Source road into okay-blob, additively
+
+A consumer (okay-watch) hit the seam's one trap: `Blob.put` is typed
+on `Produce`, where the element type sits in the answer position, so
+`pure(chunk)` type-checks and emits nothing — a zero-byte object under
+the right key. The fix is additive and nothing that implements or
+calls `Blob` changed. Core: `Source.fromProducer` / `ofProducer` /
+`toProducer` (one walk each, element type named apart from the answer,
+`produced` the one cast), `Producer.each` (the walk that keeps the
+answer `uncons` loses), and `produce`'s doc naming the zero-cost
+`.plus[Async]` road and the trap beside it. okay-blob: `putSource`,
+`getSource` (outcome kept), `putBytes`, `putChunk`, `getBytes`; on the
+jvm `Bytes.file`/`stream`/`fileSource` and `putFile` — the 64 KB read
+loop `Backup` had privately, which the consumer had copied verbatim.
+`Writer.collect` (core): `run` split on the concrete G rather than on
+`Writer % W`, answer kept — the E092-free drain for a parameterised W.
+`TestSourceProducer` 6 asserts the asymmetry that justifies the road,
+as measured: `pure(x)` an unflaggable nothing at Produce, a
+flaggable discard at Source (the first draft said "type error" and
+was wrong). BlobContract +2
+(run by fs and, at blob-s3, MinIO), TestFs +1. specs/blob.md "The
+Source road". Full gate.
 ## mutual-mark-free — the mark was never needed, and the report that it was came from stale classes
 
 `!.tailcall(other(n))` inside a `direct` block colours through

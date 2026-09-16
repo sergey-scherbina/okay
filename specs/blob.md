@@ -24,6 +24,22 @@ trait Blob:
   def head(key: String): Option[Meta] ! Async         // size, etag, modified
   def list(prefix: String): Chunk[Meta] ! (Produce + Async)  // paged underneath
   def delete(key: String): Unit ! Async
+
+  // the Source road and the plain one — CONCRETE, so no engine changes
+  def putSource(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async
+  def getSource(key: String, range: Option[(Long, Long)] = None)
+  : Either[String, Unit] ! (Writer % Chunk[Byte] + Async)   // told, outcome kept
+  def putChunk(key: String, chunk: Chunk[Byte]): Etag ! Async
+  def putBytes(key: String, bytes: Array[Byte]): Etag ! Async
+  def getBytes(key: String, range: Option[(Long, Long)] = None)
+  : Either[String, Array[Byte]] ! Async               // for an object that fits
+
+// jvm
+object Bytes:
+  def file(path: Path, chunk: Int = 64 * 1024): Chunk[Byte] ! (Produce + Async)
+  def stream(open: => InputStream, chunk: Int): Chunk[Byte] ! (Produce + Async)
+  def fileSource(path: Path, chunk: Int): Source[Chunk[Byte]]
+extension (b: Blob) def putFile(key: String, path: Path, chunk: Int): Etag ! Async
 ```
 
 Streams both directions, chunked, constant memory — a 10GB segment
@@ -113,6 +129,68 @@ across machines; persist-backup copies (specs/persist.md, Backup).
   nothing here builds mutable-blob coordination on top (that is
   what the LOG is for). Rejected: blob-level optimistic-locking
   machinery beyond the declared conditional put.
+
+## The Source road (2026-09-16, blob-source-road)
+
+A consumer found the shape of this seam's one trap, and the fix is
+additive: nothing that implements or calls `Blob` changed.
+
+**The trap.** `put` takes `Chunk[Byte] ! (Produce + Async)`. `Produce`
+is the identity signature, so the element type sits in the ANSWER
+position, and `pure(chunk)` type-checks — and emits nothing, since a
+producer's `Pure` is its END and the stream instance reads it as
+`None`. okay-watch stored a zero-byte object under the right key that
+way; its size test then never matched, so every backup pass re-copied,
+and the restore answered `refused: no header`. Two symptoms, one
+cause, and neither compiler nor runtime said a word.
+
+**The road.** A `Source[W]` is `Unit ! (Writer % W + Async)`: the
+answer is `Unit` and the element type is in the SIGNATURE, so
+`pure(x)` is a type error there rather than a silent nothing — a test
+asserts both halves, the error on the Source side and the silence on
+the Produce side. `Source.toProducer` and `Source.fromProducer` (core)
+convert in one walk each, no Option or tuple per element; `putSource`
+and `getSource` are those conversions on the trait. `getSource` still
+ANSWERS the outcome, because that is where an absent key lives.
+
+`fromProducer` names the element type separately from the answer type
+because the identity signature cannot: `get` reads as a producer of
+Eithers and produces chunks. That claim goes through `produced`, the
+one cast the producer algebra rests on, and nowhere else.
+
+**Reading a Source with a parameterised element type.** `Writer.run`
+splits on `TypeableK[Writer % W]`, whose derived test at
+`W = Chunk[Byte]` is an unchecked one (E092, the TypeableK caveat the
+core documents at `Source.runCollect`). `Writer.collect` (core) is
+`run` split the other way, on the concrete G, with the answer kept —
+what a `getSource` is drained with, and the reason the contract
+tests compile without a warning.
+
+**The asymmetry, measured rather than hoped.** The first draft of the
+core test asserted that `pure(1)` is a type error at `Source[Int]`.
+It is not: value discarding turns the `1` into `()`, and it compiles.
+What differs is what compiled — a DISCARDED value, which the
+compiler flags under `-Wvalue-discard` (on in this build), where the
+Produce form is an ordinary well-typed answer nothing can flag. The
+element type in the signature buys a warning, not an error, and the
+test says exactly that.
+
+**The plain road.** Most callers hold an array or a file, not a
+stream. `putBytes`, `putChunk`, `getBytes` and, on the jvm, `putFile`
+and `Bytes.file` mean storing a file no longer requires learning the
+algebra first — and `Bytes.file` is the 64 KB read loop `Backup` had
+privately, which a consumer had copied verbatim. `Producer.each`
+(core) is the walk that keeps the producer's answer, which `uncons`
+loses at its `None`; three hand-rolled copies of it collapsed into
+the one.
+
+**What did not change, and why.** The `Produce`-typed `put`/`get`
+stay the engine primitives. Re-typing them on `Source` would move six
+types and every engine; the additive road buys the safety at the
+call sites that had the trap, which is all of them outside the
+engines, for no breakage. If the primitives are ever re-typed — for
+`Flush.now` as a multipart boundary, say — the conversions here are
+the two functions that would become the identity.
 
 ## Results (stage 0)
 

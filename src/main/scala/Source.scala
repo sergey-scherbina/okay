@@ -100,6 +100,76 @@ object Source {
       else okay.effect[Writer % Long + Async, Unit](Writer(i)).flatMap(_ => go(i + 1))
     okay.pure[Writer % Long + Async, Unit](()).flatMap(_ => go(from))
 
+  /**
+   * A producer in a row, as a source — the Writer road for a seam
+   * typed on `Produce`.
+   *
+   * `W` is the element type and `B` the producer's ANSWER, named
+   * separately because the identity signature cannot: `Blob.get` is
+   * `Either[String, Unit] ! (Produce + Async)`, which reads as a
+   * producer of Eithers and produces chunks. The answer is kept —
+   * for `get` it is the outcome, and an absent key lives there —
+   * and each element is told through `produced`, the one cast the
+   * producer algebra rests on (Generate.scala).
+   *
+   * One walk, no Option and no tuple per element: the shape of the
+   * `Stream[[A] =>> A ! Produce + G, G]` instance, told instead of
+   * unconsed. `Writer.of(p)` arrives at the same type through uncons
+   * and pays both.
+   */
+  def fromProducer[W, B, G[+_] : TypeableK](p: B ! (Produce + G)): B ! (Writer % W + G) =
+    import !.*
+    type R = Writer % W + G
+    (p.resume: @unchecked) match
+      case Free.Pure(b) => okay.pure(b)
+      case Inject(e) => split[G, Produce](e)
+        (g => Inject(g): B ! R)
+        (w => okay.effect[R, Unit](Writer(produced[W](w))).map(_ => produced[B](w)))
+      case Bind(Inject(e), k) => split[G, Produce](e)
+        (g => Inject(g).flatMap(x => fromProducer[W, B, G](k(x))): B ! R)
+        (w => okay.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => fromProducer[W, B, G](k(w))))
+
+  /** a producer whose elements ARE its answer type — `Producer[A]` in
+   * a row — as a `Source`: the answer, phantom by construction, is
+   * dropped for the Unit a source answers */
+  def ofProducer[A, G[+_] : TypeableK](p: A ! (Produce + G)): Unit ! (Writer % A + G) =
+    fromProducer[A, A, G](p).map(_ => ())
+
+  /**
+   * A source as a producer, for a seam typed on `Produce`. Each told
+   * value becomes a produce operation and G is performed as before.
+   *
+   * `end` is what the producer's final `Pure` carries. A producer's
+   * answer is phantom — its stream instance reads the Pure as None
+   * and never looks inside — so `end` is seen only by a walk that
+   * reads the final value directly, and a byte stream passes
+   * `Chunks.emptyChunk`. It is a parameter rather than a `null`
+   * because a null in a Pure is a cast in disguise, and the caller
+   * knows its own element type.
+   */
+  def toProducer[A, G[+_] : TypeableK](s: Unit ! (Writer % A + G))(end: A): A ! (Produce + G) =
+    import !.*
+    type R = Produce + G
+    (s.resume: @unchecked) match
+      case Free.Pure(_) => okay.pure(end)
+      // Say is Writer's ONLY constructor, so a value that reaches the
+      // second arm IS one — `Writer.widen`'s own argument, and its
+      // @unchecked: the erased W cannot be verified, only its shape
+      case Inject(e) => split[G, Writer % A](e)
+        // a terminal operation's answer is the program's own, Unit here
+        (g => (Inject(g): Unit ! R).map(_ => end))
+        // and the producer still ENDS in `end`: a bare terminal Inject
+        // would answer its own element instead
+        (w => (w: @unchecked) match
+          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => okay.pure(end)))
+      case Bind(Inject(e), k) => split[G, Writer % A](e)
+        // the operation's answer type is the tree's own existential and
+        // cannot be named: no ascription, the expected type of the
+        // branch types the re-injection — `Writer.widen`'s own shape
+        (g => Inject(g).flatMap(x => toProducer[A, G](k(x))(end)))
+        (w => (w: @unchecked) match
+          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => toProducer[A, G](k(()))(end)))
+
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
    * across a 4x span) and exposing it would quietly break

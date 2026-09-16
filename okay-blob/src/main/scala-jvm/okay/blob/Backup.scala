@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, async, effect, pure}
+import okay.{!, +, Async, Chunk, Produce, async, pure}
 import okay.given
 import java.nio.file.{Files, Path}
 import scala.collection.immutable.ArraySeq
@@ -62,25 +62,14 @@ object Backup {
         part.sortBy(_.getFileName.toString).dropRight(1)   // the newest stays active
       }.toList.map(p => (p, root.relativize(p).toString.replace('\\', '/')))
 
-  private def stream(path: Path): Chunk[Byte] ! (Produce + Async) =
-    type F = Produce + Async
-    effect[F, java.io.InputStream](Async.Run(() => Files.newInputStream(path))).flatMap { in =>
-      def go: Chunk[Byte] ! F =
-        effect[F, Chunk[Byte] | Null](Async.Run { () =>
-          val buf = new Array[Byte](64 * 1024)
-          val n = in.read(buf)
-          if n < 0 then { in.close(); null }
-          else ArraySeq.unsafeWrapArray(if n == buf.length then buf else buf.take(n))
-        }).flatMap {
-          case null => pure(okay.Chunks.emptyChunk)
-          case c => effect[F, Chunk[Byte]](c).flatMap(_ => go)
-        }
-      go
-    }
+  /** the file as the producer `put` takes — `Bytes.file`, which was
+   * this, private, until a consumer copied it verbatim */
+  private def stream(path: Path): Chunk[Byte] ! (Produce + Async) = Bytes.file(path)
 
   private def fetch(blob: Blob, key: String, target: Path): Unit ! Async =
     async(Files.newOutputStream(target)).flatMap { out =>
-      walkGet(blob.get(key), c => out.write(c.toArray)).map { outcome =>
+      okay.Producer.each[Chunk[Byte], Either[String, Unit], Async](blob.get(key))(
+        c => out.write(c.toArray)).map { outcome =>
         out.close()
         outcome match
           case Left(why) => throw IllegalStateException(s"restore '$key': $why")
@@ -97,23 +86,4 @@ object Backup {
         case Some((c, more)) => go(more).map(c.toVector ++ _)
       }
     go(p)
-
-  private def walkGet(p: Either[String, Unit] ! (Produce + Async),
-                      each: Chunk[Byte] => Unit): Either[String, Unit] ! Async =
-    import okay.!.*
-    // typed by the tree: the split gives an Async[X] or a produced
-    // X (Produce is the identity signature — the op IS its answer);
-    // that the produced values are chunks is `produced`'s one claim
-    (p.resume: @unchecked) match
-      case Pure(a) => okay.pure(a)
-      case Inject(e) => okay.<|>[Async, Produce](e) match
-        case Left(a) => effect(a)
-        case Right(c) =>
-          each(okay.produced[Chunk[Byte]](c))
-          okay.pure(c)
-      case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-        case Left(a) => effect(a).flatMap(x => walkGet(k(x), each))
-        case Right(c) =>
-          each(okay.produced[Chunk[Byte]](c))
-          walkGet(k(c), each)
 }

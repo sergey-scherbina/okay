@@ -78,7 +78,21 @@ type Produce[A] = Id[A]
 /** the freer monad over Produce: a computation that emits as it goes */
 type Producer[A] = A ! Produce
 
-/** emit a value as an effect operation */
+/**
+ * Emit a value as an effect operation.
+ *
+ * Typed at `Produce` alone. In a wider row — `Blob.put` asks for
+ * `Produce + Async` — say `produce(a).plus[Async]` or
+ * `produce(a).at[Produce + Async]`: RowLift's zero-cost coerce, not
+ * the tree walk `!.widen` makes.
+ *
+ * What NOT to write there is `pure(a)`. It type-checks at every row
+ * and produces nothing: a producer's `Pure` is its END, and the
+ * stream instance below reads it as `None`. The element type sits in
+ * the answer position either way, so only the name tells the two
+ * apart — measured the hard way in okay-watch (a zero-byte object
+ * under the right key, blob-source-seam).
+ */
 inline def produce[A](a: A): Producer[A] = effect(a)
 
 /**
@@ -104,6 +118,28 @@ given Put[Producer] with
 object Producer {
 
   import scala.util.chaining.*
+
+  /**
+   * Run every produced element through `f`, perform G as before, and
+   * KEEP the producer's answer — which `uncons` would lose at its
+   * None, and which for `Blob.get` is the outcome.
+   *
+   * `W` is the element type, named separately from the answer `A`
+   * for the reason `Source.fromProducer` gives: the identity
+   * signature cannot tell them apart. Three places hand-rolled this
+   * walk before it was one function (okay-blob's Backup and its
+   * contract suite, okay-watch's restore); a fourth would have too.
+   */
+  def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
+    import !.*
+    (p.resume: @unchecked) match
+      case Free.Pure(a) => pure(a)
+      case Inject(e) => split[G, Produce](e)
+        (g => Inject(g): A ! G)
+        (w => { f(produced[W](w)); pure(produced[A](w)) })
+      case Bind(Inject(e), k) => split[G, Produce](e)
+        (g => Inject(g).flatMap(x => each[W, A, G](k(x))(f)): A ! G)
+        (w => { f(produced[W](w)); each[W, A, G](k(w))(f) })
 
   /** a Handler printing each produced value on the way through */
   def log(prefix: String = "", suffix: String = "\n"): Handler[Produce] = new:

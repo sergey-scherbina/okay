@@ -1372,7 +1372,9 @@ round-trip test found both. Nothing here is a bug report — the
 algebra does exactly what it documents — but the wrong thing was the
 one that type-checked, which is a shape worth removing.
 
-- [ ] blob-byte-source — a byte stream from a `Path` or an
+- [x] blob-byte-source — DONE 2026-09-16 (blob-source-road):
+      `Bytes.file`, `Bytes.stream`, `Bytes.fileSource` and `putFile`
+      on the jvm; `Backup.stream` is now one line. Was: a byte stream from a `Path` or an
       `InputStream`, in the library. The 64 KB read loop that
       `Backup.stream` has (private, `okay-blob/.../Backup.scala:65`)
       now exists a SECOND time, copied verbatim into okay-watch,
@@ -1380,13 +1382,18 @@ one that type-checked, which is a shape worth removing.
       file into a Blob writes it a third. Cheapest of the four, no
       breakage, and it removes the hand-written `effect` from every
       caller — which is where the defect above lives.
-- [ ] blob-put-bytes — `put` over what callers actually hold: an
+- [x] blob-put-bytes — DONE 2026-09-16 (blob-source-road):
+      `putBytes`, `putChunk`, `getBytes`, concrete on the trait, and
+      `Producer.each` in core for the walk that keeps the answer. Was: `put` over what callers actually hold: an
       `Array[Byte]`, a `Chunk[Byte]`, a `Path`. Today storing a file
       requires learning the Produce algebra first, and the streaming
       form is the only form. Independent of the above and smaller;
       together they would have made the defect unwritable without
       touching the trait.
-- [ ] produce-at-a-wider-row — `produce(a)` is the named injector and
+- [x] produce-at-a-wider-row — DONE 2026-09-16 (blob-source-road): the
+      answer was already in RowLift — `produce(a).plus[Async]` is a
+      zero-cost coerce, not the walk `!.widen` makes — so `produce`'s
+      doc says so and names the trap beside it. Was: `produce(a)` is the named injector and
       is typed `A ! Produce` precisely, so a program in
       `Produce + Async` cannot call it. `!.widen` does lift it (that
       is what `Source.of` uses), at the price of a tree-rewriting
@@ -1399,7 +1406,13 @@ one that type-checked, which is a shape worth removing.
       `produce[F[+_], A](a): A ! (Produce + F)` would close it; one
       sentence at `produce`'s doc pointing at `!.widen` and at this
       trap would close most of it for nothing.
-- [ ] blob-source-seam — the real fix, and the expensive one: re-type
+- [x] blob-source-seam — DONE 2026-09-16 (blob-source-road), ADDITIVELY:
+      `Source.fromProducer`/`ofProducer`/`toProducer` in core,
+      `putSource`/`getSource` concrete on the trait, the primitives
+      untouched, no engine changed. A test asserts the asymmetry that
+      justified it: `pure(x)` a silent nothing at Produce, a type error
+      at Source. Re-typing the primitives themselves stays declined
+      until something needs `Flush.now` at the engine. Was: the real fix, and the expensive one: re-type
       the seam on `Source[Chunk[Byte]]` (`Unit ! (Writer % W +
       Async)`) instead of `Chunk[Byte] ! (Produce + Async)`. The
       answer becomes `Unit` and the element type moves into the
