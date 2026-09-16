@@ -1,5 +1,35 @@
 # Changelog
 
+## direct-marked-args — a mark inside a marked call's argument, and delimited control inside a direct block
+
+`!f(!f(5))` was refused as "a mark under a lambda". No lambda was
+written: the defer-every-call rule wraps a call in
+`Free.delay(() => …)` before compilation, so the argument's mark landed
+under that thunk. A call whose arguments carry marks is not deferred
+now — the arguments bind first and the call is built in the
+continuation, where there is nothing left to defer.
+
+What it unlocks is `shift` and `reset` written inside a `direct`
+block, handler and all:
+
+    def both(n: Int): Int ! W = direct:
+      val x = !Delim.reset[Int, W]: p =>
+        direct:
+          !Delim.shift[Int, Int, W](p): k =>
+            direct:
+              "before".tell
+              val a = !k(n)
+              "between".tell
+              val b = !k(n + 1)
+              "after".tell
+              a + b
+      s"used $x".tell
+      x
+
+which answers 21 and logs before, between, after, used 21 — the
+continuation invoked twice with effects around each invocation, in
+ordinary-looking code. `TestDelim` holds it.
+
 ## reader-env — `!Reader.ask` with no type argument inside a direct block
 
 A `direct` block names its environment once, in its own row, and never

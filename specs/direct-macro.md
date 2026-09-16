@@ -317,6 +317,20 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **A call whose ARGUMENTS carry marks is not deferred**
+  (direct-marked-args, 2026-09-16). `!f(!f(5))` was refused as "a mark
+  under a lambda", and the lambda was the macro's own: the
+  defer-every-call rule wraps a call in `Free.delay(() => …)` before
+  anything is compiled, so a mark in an argument landed under that
+  thunk and the general lambda refusal fired, naming a lambda the user
+  never wrote. The arguments bind first and the call is built inside
+  the continuation, where there is nothing left to defer; deep
+  recursion through such a call is `!.tailcall`'s job, as it is under
+  `eagerCalls`. Found writing `Delim.shift(p)(k => direct { !k(!k(5)) })`,
+  the natural spelling of a continuation invoked twice — with it,
+  `shift` and `reset` are written inside a `direct` block, handler and
+  all (`TestDelim`).
+
 - **A nested parameterless `def` at the block's program type is
   compiled, not refused** (direct-nested-def, 2026-09-16). The general
   refusal stands — a mark inside a nested definition would need the

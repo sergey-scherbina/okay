@@ -1336,7 +1336,7 @@ object Direct:
         case Some(row) if self != Symbol.noSymbol =>
           /** the element type of a self-call at this block's program type */
           def selfProgram(app: Term): Option[TypeRepr] =
-            if calleeRoot(app) != self || mentionsLazy(app) then None
+            if calleeRoot(app) != self || mentionsLazy(app) || hasMark(app) then None
             else app.tpe.widen.dealias match
               case AppliedType(f, List(r, elem)) if f.typeSymbol == freeClass && r =:= row => Some(elem)
               case _ => None
@@ -1412,8 +1412,21 @@ object Direct:
             probe.traverseTree(t)(Symbol.spliceOwner)
             found
 
+          /**
+           * A call whose ARGUMENTS carry marks is not deferred
+           * (direct-marked-args, 2026-09-16). The deferral wraps the
+           * call in `Free.delay(() => …)`, a thunk this pass builds
+           * before anything is compiled — so a mark in an argument
+           * would land under a LAMBDA, and the general refusal fired
+           * with a message naming a lambda the user never wrote
+           * (`!k(!k(5))`, the natural spelling of a continuation
+           * invoked twice). The arguments bind first and the call is
+           * built inside the continuation, where there is nothing left
+           * to defer; deep recursion through such a call is
+           * `!.tailcall`'s job, as it is under `eagerCalls`.
+           */
           def anyProgram(app: Term): Option[TypeRepr] =
-            if !isCall(app) || carriesDefinitions(app) || mentionsLazy(app) then None
+            if !isCall(app) || carriesDefinitions(app) || mentionsLazy(app) || hasMark(app) then None
             else app.tpe.widen.dealias match
               case AppliedType(f, List(r, elem))
                 if f.typeSymbol == freeClass && r =:= row && !alreadyDefers(app) => Some(elem)

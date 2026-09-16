@@ -205,4 +205,44 @@ class TestDelim extends munit.FunSuite {
         shift[Int, Int, okay.Pure](stray)(k => k(1))))
     }
   }
+
+  // ---- delimited control inside a `direct` block (direct-marked-args)
+
+  test("shift and reset inside a direct block, the handler too") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+
+    // the classic, with the continuation invoked twice inside the handler
+    def twice: Int ! okay.Pure = Delim.reset[Int, okay.Pure]: p =>
+      direct:
+        1 + !Delim.shift[Int, Int, okay.Pure](p)(k => direct { !k(!k(5)) })
+    assertEquals(!.run(twice), 7)
+
+    // reset itself written inside a block, and effects around the
+    // continuation on both of its invocations
+    def both(n: Int): Int ! W = direct:
+      val x = !Delim.reset[Int, W]: p =>
+        direct:
+          !Delim.shift[Int, Int, W](p): k =>
+            direct:
+              "before".tell
+              val a = !k(n)
+              "between".tell
+              val b = !k(n + 1)
+              "after".tell
+              a + b
+      s"used $x".tell
+      x
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](both(10))),
+      (Seq("before", "between", "after", "used 21"), 21))
+  }
+
+  test("a mark inside a marked call's ARGUMENT compiles — the deferral steps aside") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    def h(n: Int): Int ! okay.Pure = okay.pure(n + 1)
+    val prog: Int ! okay.Pure = direct { !h(!h(5)) }
+    assertEquals(!.run(prog), 7)
+  }
 }
