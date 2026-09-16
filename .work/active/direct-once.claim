@@ -1,0 +1,20 @@
+direct-once
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's ask (2026-09-16) after the call-by-need question:
+  `Free.once(p)` (also `!.once`), a program that runs p at most once
+  and answers from its cell after — the by-need cousin of `Delay`,
+  which is by-name (forced every time the loop reaches it). In a
+  direct block `lazy val x = !p` is that word: the rhs becomes a once
+  handle, every use of x a bind at the use site, so the effect runs
+  at the FIRST demand and never again — currently a refusal ("in a
+  lazy val"). A row that names Choose (the library's multi-shot
+  effect) refuses the sugar unless `import okay.Direct.onceAcrossShots.given`
+  is in scope, the eagerCalls pattern: with it the cell keeps its
+  once semantics across branches, by the user's decision. Re-entrance
+  (a knot, a concurrent force, an abandoned first run) is a loud
+  error, not a second run.
+files: src/main/scala/Free.scala, src/main/scala/Direct.scala,
+  src/test/scala/TestDirectOnce.scala, docs/direct-style.md,
+  specs/direct-macro.md, docs/theory/08-direct-style.md, BACKLOG.md,
+  CHANGELOG.md
