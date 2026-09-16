@@ -687,6 +687,10 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       module alone (handle-decompose, a benchmark-and-prose lane that
       changed no Native source at all). Third module, and the first
       occurrence on a lane that could not have caused it.
+      2026-09-16, okayActorNative, same shape, GREEN on the rerun of
+      that module alone (producer-drains, which touched no Actor
+      source and no Native platform). Fourth module. The rate is now
+      four in seven days of full gates.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
