@@ -1,5 +1,36 @@
 # Changelog
 
+## paused-persist - a paused dialogue that outlives the process
+
+A continuation is a closure and cannot be written to disk. So the
+thing that is persisted is the JOURNAL - the answers given so far, in
+order - and where the dialogue stands is RE-DERIVED by running the
+program again and feeding the recorded answers back without asking:
+
+```scala
+val (p1, j1) = !.run(Delim.answer(p0, Nil)("Kyiv"))
+val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
+// the process dies; only j2 was written down
+val back = !.run(Delim.replay(booking)(j2))
+back.asking    // Some("Pay 270 for Kyiv?") - the same place
+```
+
+- `Delim.Journal[A]` - the answers, in order.
+- `Delim.answer(p, j)(a)` - advance one step and extend the journal:
+  the pair is what you persist after each step.
+- `Delim.replay(body)(j)` - program plus journal gives where it stands.
+- `Paused.finished` / `Paused.asking` - the two readers a caller wants.
+
+This is the durable-workflow trick (Temporal, Cadence, Durable
+Functions) in nine lines rather than a runtime, and it is exact under
+one discipline: EVERYTHING THE OUTSIDE WORLD TELLS THE PROGRAM ENTERS
+THROUGH `pause`. Then the program is a pure function of its journal.
+
+The limit is measured, not claimed. `TestDelimPersist` has both sides:
+a program with a `Writer.tell` outside `pause`, whose log says the
+same thing twice across two runs, and the same program written to the
+discipline, where the driver performs each outside call exactly once.
+
 ## delim-patterns - the four shapes of delimited control, as names
 
 A raw `shift` reads like a puzzle. These are the four shapes that

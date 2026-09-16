@@ -300,6 +300,17 @@ object Delim {
   /** a paused program whose caller's row is `F` */
   type Dialogue[Q, A, R, F[+_]] = Paused[Q, A, R, Delim + F]
 
+  object Paused:
+    extension [Q, A, R, G[+_]](p: Paused[Q, A, R, G])
+      /** the answer, if it has one */
+      def finished: Option[R] = p match
+        case Done(r) => Some(r)
+        case _ => None
+      /** the question it is waiting on, if it is waiting */
+      def asking: Option[Q] = p match
+        case Ask(q, _) => Some(q)
+        case _ => None
+
   /** the evidence for a block that may pause, carrying the question
    * and answer types as members so `pause` needs no type argument */
   final class Asking[Q, A, R, G[+_]] private[Delim] (prompted: Prompted[Paused[Q, A, R, G]]):
@@ -318,10 +329,9 @@ object Delim {
    * the process is written as straight-line code and the record is
    * the continuation.
    *
-   * The honest limit: a `Paused` lives in memory. It outlives a
-   * request, a retry, a fork of the dialogue — but not a restart of
-   * the process. Making it outlive that is persistence, and a
-   * different piece of work.
+   * A `Paused` lives in memory: it outlives a request, a retry, a
+   * fork of the dialogue. To outlive a RESTART, keep the journal and
+   * re-derive it — `replay`, below.
    */
   def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
                                : Dialogue[Q, A, R, F] ! F =
@@ -351,6 +361,54 @@ object Delim {
       case Paused.Ask(q, resume) =>
         answer(q).flatMap(a =>
           run(resume(a)).flatMap(drive[Q, A, R, F](_)(answer)))
+
+  /**
+   * ...AND OUTLIVE THE PROCESS (paused-persist, 2026-09-17).
+   *
+   * A continuation is a closure, and a closure cannot be written to
+   * disk. So the thing that is kept is not the `Paused` — it is the
+   * JOURNAL, the answers the dialogue has been given, in order. Where
+   * it stands is then RE-DERIVED: run the program again from the top
+   * and feed the recorded answers back without asking anyone.
+   *
+   * This is what durable workflow engines do (Temporal, Cadence,
+   * Durable Functions), and it is exact under one discipline:
+   *
+   *     EVERYTHING THE OUTSIDE WORLD TELLS THE PROGRAM
+   *     ENTERS THROUGH `pause`.
+   *
+   * Then the program is a pure function of its journal, and replay
+   * cannot diverge from the original run. Break the discipline — read
+   * a clock, call a service, roll a die anywhere but a `pause` — and
+   * replay re-runs it. That is not a caveat this comment is asking you
+   * to take on trust: `TestDelimPersist` has both, the program whose
+   * Writer log DOUBLES on replay and the same program written to the
+   * discipline, replaying exactly.
+   *
+   * What must be storable is `A` (and `Q`, if you show the questions
+   * again) — ordinary data, not code.
+   */
+  type Journal[A] = List[A]
+
+  /** answer the question a dialogue is asking, and keep the answer:
+   * the pair is what you persist after every step */
+  def answer[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)
+                            : (Dialogue[Q, A, R, F], Journal[A]) ! F =
+    p match
+      case Paused.Ask(_, resume) => run(resume(a)).map(next => (next, j :+ a))
+      case done => okay.pure((done, j))     // nobody asked; nothing to record
+
+  /**
+   * Where the dialogue stands, from its program and its journal —
+   * what replaces persisting a continuation. A fresh process, a
+   * different machine, a redeploy: same answers in, same place out.
+   */
+  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                            (j: Journal[A]): Dialogue[Q, A, R, F] ! F =
+    j.foldLeft(resumable[Q, A, R, F](body)): (acc, a) =>
+      acc.flatMap:
+        case Paused.Ask(_, resume) => run(resume(a))
+        case done => okay.pure(done)        // more answers than questions
 
   /**
    * 4 · DO SOMETHING ON THE WAY BACK.

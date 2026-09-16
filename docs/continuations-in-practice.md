@@ -135,12 +135,48 @@ has to be written, migrated, and kept in sync with the code by hand.
 Here the process is straight-line code and the record is the
 continuation.
 
-Two properties worth knowing. A `Paused` is a *value*, so resuming it
-does not consume it — the test answers the same start page twice,
-differently. And the honest limit: it lives in memory. It outlives a
-request, a retry, a fork of the dialogue — **not** a restart of the
-process. Making it outlive that is persistence, and a different piece
-of work.
+A `Paused` is a *value*, so resuming it does not consume it — the test
+answers the same start page twice, differently.
+
+### Outliving the process
+
+A continuation is a closure, and a closure cannot be written to disk.
+So the thing you persist is not the `Paused` — it is the **journal**,
+the answers given so far, in order. Where the dialogue stands is then
+re-derived:
+
+```scala
+val (p1, j1) = !.run(Delim.answer(p0, Nil)("Kyiv"))
+val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
+
+// ---- the process dies here. p0, p1, p2 go with it; j2 was written down.
+
+val back = !.run(Delim.replay(booking)(j2))
+back.asking    // Some("Pay 270 for Kyiv?") — the same place
+```
+
+This is what durable workflow engines do (Temporal, Cadence, Durable
+Functions), and here it is nine lines in `Delim` rather than a
+runtime. What has to be storable is the answers — ordinary data, not
+code.
+
+It is exact under one discipline:
+
+> **Everything the outside world tells the program enters through
+> `pause`.**
+
+Then the program is a pure function of its journal and replay cannot
+diverge from the original run. Break it — read a clock, call a
+service, roll a die anywhere but a `pause` — and replay re-runs that.
+Both halves are in `TestDelimPersist`, measured rather than promised:
+one test watches a `Writer` log say the same thing twice across two
+runs, and the next one writes the same program to the discipline and
+watches the driver perform each outside call exactly once.
+
+That discipline has a second payoff: a program whose every outside
+call is a question is also a program you can test by answering the
+questions — no mocks, no doubles, and the journal of a failed
+production run replays on a laptop.
 
 ## 4 · Do something on the way back
 
@@ -191,6 +227,7 @@ measuring what the rest of a request cost — all the same two lines.
 | leave from the middle with an answer | `Delim.exit` (`Delim.abort` in `for`) |
 | a producer that pushes, a consumer that pulls | `Delim.collect` / `Delim.emit` |
 | stop now, resume when the answer arrives | `Delim.resumable` / `pause` / `drive` |
+| ...and survive a restart | `Delim.answer` + `Delim.replay` over the journal |
 | act on what the rest of the block answers | `Delim.onReturn` |
 | none of the above | `Delim.shift`, and then give it a name |
 
