@@ -1,5 +1,19 @@
 # Changelog
 
+## producer-drains — ten hand-rolled drains onto one walk, and the offload read onto getBytes
+
+`Producer.fold` (elements folded, G forwarded, answer KEPT,
+tail-recursive across chunks) and `Producer.concat` (a producer of
+chunks as one Vector) join `Producer.each` in core. The ten `uncons`
+drains the blob-source-docs survey counted — Backup and Offload
+`drainList`, S3 `drainBytes`, Fs `sink`, jdbc `Poll` / `SqlStore` /
+`Migrate` / `Writes`, outbox `Rows`, rag `PgVector` — are one call
+each; six of them had recursed through `map` per chunk, a closure per
+chunk held to the end. `Offload.fetchBytes` is `Blob.getBytes` with
+its throw, twenty lines that are one call. `Chunks.emptyChunk` is
+public, with its doc saying what it is for. Behaviour-preserving,
+each module's own suite; full gate.
+
 ## blob-source-docs — the documentation for the Source road, and what its survey found
 
 docs/modules/okay-blob.md gains the two roads and `Bytes`, and says

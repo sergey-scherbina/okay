@@ -120,7 +120,12 @@ object Chunks {
   private[okay] inline def defer[X](inline x: => Producer[X]): Producer[X] =
     pure[Produce, Unit](()).flatMap(_ => x)
 
-  private[okay] def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
+  /** the empty chunk — what a producer of chunks ENDS in (its final
+   * `Pure`, which the stream instance never reads), and the `end` a
+   * `Source.toProducer` over chunks is given. Public since
+   * producer-drains: a consumer spelling `ArraySeq.empty` and hoping
+   * it was the same thing was right, and should not have to hope */
+  def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
 
   /**
    * The chunk a `Bind(Inject(c), k)` node carries.

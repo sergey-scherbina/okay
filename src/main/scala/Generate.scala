@@ -130,6 +130,40 @@ object Producer {
    * walk before it was one function (okay-blob's Backup and its
    * contract suite, okay-watch's restore); a fourth would have too.
    */
+  /**
+   * Fold the produced elements, perform G as before, KEEP the answer.
+   * The general form `each` is a special case of, and tail-recursive
+   * across produced elements the way `Writer.collect` is: a walk that
+   * re-enters through `flatMap` only when a G operation has to be
+   * forwarded. The drains it replaced recursed through `map` per
+   * chunk — `drain(rest).map(c.toVector ++ _)` — which is a closure
+   * per chunk held until the end.
+   */
+  def fold[W, S, A, G[+_] : TypeableK](p: A ! Produce + G)(z: S)(f: (S, W) => S): (S, A) ! G =
+    import !.*
+    import scala.annotation.tailrec
+    def again(acc: S)(x: A ! Produce + G): (S, A) ! G = loop(acc)(x)
+    @tailrec def loop(acc: S)(x: A ! Produce + G): (S, A) ! G =
+      (x.resume: @unchecked) match
+        case Free.Pure(a) => pure((acc, a))
+        case Inject(e) => split[G, Produce](e)
+          (g => Inject(g).map(a => (acc, a)): (S, A) ! G)
+          (w => pure((f(acc, produced[W](w)), produced[A](w))))
+        case Bind(Inject(e), k) => split[G, Produce](e)
+          (g => Inject(g).flatMap(x => again(acc)(k(x))))
+          (w => loop(f(acc, produced[W](w)))(k(w)))
+    loop(z)(p)
+
+  /**
+   * A producer of CHUNKS as one Vector of their elements — the drain
+   * that six modules had each written by hand (producer-drains),
+   * every one summoning the same `Stream` instance and spelling the
+   * same `go`. The answer is dropped, since for a `Chunk[X] !
+   * (Produce + G)` it is phantom; `fold` keeps it where it is not.
+   */
+  def concat[X, G[+_] : TypeableK](p: Chunk[X] ! Produce + G): Vector[X] ! G =
+    fold[Chunk[X], Vector[X], Chunk[X], G](p)(Vector.empty)((acc, c) => acc ++ c).map(_._1)
+
   def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
     import !.*
     (p.resume: @unchecked) match

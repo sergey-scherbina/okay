@@ -1372,7 +1372,10 @@ round-trip test found both. Nothing here is a bug report — the
 algebra does exactly what it documents — but the wrong thing was the
 one that type-checked, which is a shape worth removing.
 
-- [ ] producer-drains — the survey behind blob-source-road counted
+- [x] producer-drains — DONE 2026-09-16: `Producer.fold` and
+      `Producer.concat` in core; the ten drains are one call each, and
+      tail-recursive across chunks where they recursed through `map`.
+      Was: the survey behind blob-source-road counted
       TEN hand-rolled `uncons` loops draining a
       `Chunk[X] ! (Produce + Async)` into a `Vector[X]` — Backup and
       Offload `drainList`, S3 `drainBytes`, Fs `sink`, jdbc `Poll`,
@@ -1382,11 +1385,13 @@ one that type-checked, which is a shape worth removing.
       accumulator) beside `Producer.each` retires all of them, and
       each is covered by its module's own suite. Six modules, so a
       full gate.
-- [ ] offload-getbytes — `Offload.fetchBytes` is `Blob.getBytes` with
+- [x] offload-getbytes — DONE 2026-09-16 (producer-drains). Was:
+      `Offload.fetchBytes` is `Blob.getBytes` with
       a throw on the Left: a fourth copy of the walk `Producer.each`
       replaced in Backup, twenty lines that are now one call. Lands
       with producer-drains.
-- [ ] emptychunk-public — `Chunks.emptyChunk` is `private[okay]`, so
+- [x] emptychunk-public — DONE 2026-09-16 (producer-drains): public,
+      with its doc saying what it is for. Was: `Chunks.emptyChunk` is `private[okay]`, so
       a consumer writing a byte producer's terminator by hand, or
       passing `Source.toProducer`'s `end` for chunks, spells
       `ArraySeq.empty[Byte]` and hopes it is the same thing (it is —

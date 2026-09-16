@@ -1,7 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, Stream, async}
-import okay.given
+import okay.{!, +, Async, Chunk, Produce, async}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import okay.sql.{Sql, SqlValue}
@@ -101,11 +100,8 @@ final class Writes(db: Sql, topic: Topic, run: String):
     intents
 
   private def countRows(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Long ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(0L)
-      case Some((c, rest)) => countRows(rest).map(_ + c.length)
-    }
+    okay.Producer.fold[Chunk[Vector[SqlValue]], Long, Chunk[Vector[SqlValue]], Async](p)(0L)(
+      (n, c) => n + c.length).map(_._1)
 
 object Writes:
 

@@ -1,7 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, Stream, Writer, effect, pure}
-import okay.given
+import okay.{!, +, Async, Chunk, Produce, Writer, effect, pure}
 import okay.http.{Body, Http, Method, Request, Response}
 import scala.collection.immutable.ArraySeq
 
@@ -167,16 +166,12 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
     catch case _: Exception => None
 
   private def drainBytes(p: Chunk[Byte] ! F): Array[Byte] ! Async =
-    val out = java.io.ByteArrayOutputStream()
-    val S = summon[Stream[[X] =>> X ! F, Async]]
-    def go(rest: Chunk[Byte] ! F): Array[Byte] ! Async =
-      S.uncons(rest).flatMap {
-        case None => pure(out.toByteArray)
-        case Some((c, more)) =>
-          out.write(c.toArray)
-          go(more)
-      }
-    go(p)
+    // the buffer is allocated when the program RUNS, so the program
+    // is a value that can run twice
+    okay.async(java.io.ByteArrayOutputStream()).flatMap { out =>
+      okay.Producer.each[Chunk[Byte], Chunk[Byte], Async](p)(c => out.write(c.toArray))
+        .map(_ => out.toByteArray)
+    }
 }
 
 object S3:

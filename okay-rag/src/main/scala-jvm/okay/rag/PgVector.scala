@@ -1,7 +1,6 @@
 package okay.rag
 
-import okay.{!, +, Async, Chunk, Produce, Stream}
-import okay.given
+import okay.{!, +, Async, Chunk, Produce}
 import okay.lex.Span
 import okay.sql.{Sql, SqlValue}
 
@@ -95,12 +94,7 @@ final class PgVector(db: Sql, table: String, dim: Int,
   def truncate(): Unit ! Async = db.update(s"truncate $table").map(_ => ())
 
   private def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async))
-  : Vector[Vector[SqlValue]] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(Vector.empty)
-      case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-    }
+  : Vector[Vector[SqlValue]] ! Async = okay.Producer.concat[Vector[SqlValue], Async](p)
 
 object PgVector:
 

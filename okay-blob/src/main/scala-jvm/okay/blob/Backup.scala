@@ -1,7 +1,6 @@
 package okay.blob
 
 import okay.{!, +, Async, Chunk, Produce, async, pure}
-import okay.given
 import java.nio.file.{Files, Path}
 import scala.collection.immutable.ArraySeq
 import scala.jdk.CollectionConverters.*
@@ -39,7 +38,7 @@ object Backup {
   /** place the copied files back under `root` — recovery does the
    * rest, exactly as on every startup */
   def restore(blob: Blob, root: Path, prefix: String = "persist"): Vector[String] ! Async =
-    drainList(blob.list(s"$prefix/")).flatMap { metas =>
+    okay.Producer.concat[Meta, Async](blob.list(s"$prefix/")).flatMap { metas =>
       def go(rest: List[Meta], acc: Vector[String]): Vector[String] ! Async = rest match
         case Nil => pure(acc)
         case m :: more =>
@@ -76,14 +75,4 @@ object Backup {
           case Right(()) => ()
       }
     }
-
-  // the produce-walking helpers (the Poll.drain shape)
-  private def drainList(p: Chunk[Meta] ! (Produce + Async)): Vector[Meta] ! Async =
-    val S = summon[okay.Stream[[X] =>> X ! (Produce + Async), Async]]
-    def go(rest: Chunk[Meta] ! (Produce + Async)): Vector[Meta] ! Async =
-      S.uncons(rest).flatMap {
-        case None => pure(Vector.empty)
-        case Some((c, more)) => go(more).map(c.toVector ++ _)
-      }
-    go(p)
 }

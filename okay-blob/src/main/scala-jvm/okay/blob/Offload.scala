@@ -1,7 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, async, pure}
-import okay.given
+import okay.{!, Async, async, pure}
 import okay.persist.{Record, Segments, Topic}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -67,7 +66,7 @@ object Offload {
    * documented format, filtered and bounded like a local read */
   def read(blob: Blob, prefix: String, topic: String, partition: Int,
            from: Long, max: Int): Vector[Record] ! Async =
-    drainList(blob.list(s"$prefix/$topic/$partition/")).flatMap { metas =>
+    okay.Producer.concat[Meta, Async](blob.list(s"$prefix/$topic/$partition/")).flatMap { metas =>
       val sorted = metas.sortBy(_.key)
       def go(rest: List[Meta], acc: Vector[Record]): Vector[Record] ! Async = rest match
         case Nil => pure(acc)
@@ -128,34 +127,10 @@ object Offload {
    * names the key and throws here, since an offloaded read has no
    * damage-is-data story to tell about a MISSING copy) */
   private[blob] def fetchBytes(blob: Blob, key: String): Array[Byte] ! Async =
-    import okay.!.*
-    def walk(p: Either[String, Unit] ! (Produce + Async),
-             acc: Vector[Array[Byte]]): Vector[Array[Byte]] ! Async =
-      // typed by the tree (the Backup walker's shape): a produced X
-      // is a chunk by `produced`'s one claim
-      (p.resume: @unchecked) match
-        case Pure(a) => a match
-          case Left(why) => throw IllegalStateException(s"offload read '$key': $why")
-          case Right(()) => okay.pure(acc)
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => okay.effect(a).map(_ => acc)
-          case Right(c) => okay.pure(acc :+ okay.produced[Chunk[Byte]](c).toArray)
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => okay.effect(a).flatMap(x => walk(k(x), acc))
-          case Right(c) => walk(k(c), acc :+ okay.produced[Chunk[Byte]](c).toArray)
-    walk(blob.get(key), Vector.empty).map { parts =>
-      val out = new Array[Byte](parts.map(_.length).sum)
-      var at = 0
-      for a <- parts do { System.arraycopy(a, 0, out, at, a.length); at += a.length }
-      out
+    // `Blob.getBytes` since producer-drains: this was a fourth copy of
+    // the walk `Producer.each` is, twenty lines that are one call
+    blob.getBytes(key).map {
+      case Left(why) => throw IllegalStateException(s"offload read '$key': $why")
+      case Right(bytes) => bytes
     }
-
-  private def drainList(p: Chunk[Meta] ! (Produce + Async)): Vector[Meta] ! Async =
-    val S = summon[okay.Stream[[X] =>> X ! (Produce + Async), Async]]
-    def go(rest: Chunk[Meta] ! (Produce + Async)): Vector[Meta] ! Async =
-      S.uncons(rest).flatMap {
-        case None => pure(Vector.empty)
-        case Some((c, more)) => go(more).map(c.toVector ++ _)
-      }
-    go(p)
 }

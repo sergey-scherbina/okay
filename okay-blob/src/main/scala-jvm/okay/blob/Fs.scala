@@ -1,7 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, Stream, async, effect, pure}
-import okay.given
+import okay.{!, +, Async, Chunk, Produce, async, effect, pure}
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.collection.immutable.ArraySeq
 
@@ -42,14 +41,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           Files.createDirectories(path.getParent)
           Files.newOutputStream(tmp)
         }.flatMap { out =>
-          val S = summon[Stream[[X] =>> X ! F, Async]]
-          def sink(rest: Chunk[Byte] ! F): Unit ! Async =
-            S.uncons(rest).flatMap {
-              case None => pure(())
-              case Some((c, more)) =>
-                async(out.write(c.toArray)).flatMap(_ => sink(more))
-            }
-          sink(bytes).flatMap { _ =>
+          okay.Producer.each[Chunk[Byte], Chunk[Byte], Async](bytes)(c => out.write(c.toArray)).flatMap { _ =>
             async {
               out.close()
               Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING,
