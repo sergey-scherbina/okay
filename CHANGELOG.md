@@ -1,5 +1,24 @@
 # Changelog
 
+## delim-one-type — one type argument for a capture in a direct block
+
+`!Delim.shift[Int, Int, W](k => k(5))` asked for three type arguments
+and only one was news. A third overload of the same name — told apart
+by how many type arguments the call site writes — takes the answer type
+from the evidence (`Prompted[R]` carries it as `type Res`) and the ROW from the
+block, read off the `DirectCtx` exactly as `Reader.ask` reads its
+environment:
+
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shift[Int](k => k(5))
+
+`A` stays, and that is not an oversight: a mark gives its argument no
+expected type, so without it `A` falls to `Any` and the next operator
+refuses it — the same dotty fact the for-comprehension head taught.
+`inline` for the same reason `Reader.ask` is: the `DirectCtx` that pins
+the row is a parameter of a lambda the macro strips.
+
 ## delim-one-name — the typed door reuses `shift`, and the `In` suffixes go
 
 `shiftIn` was a second name for an operation that already has one.

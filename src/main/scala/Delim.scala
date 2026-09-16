@@ -143,7 +143,11 @@ object Delim {
    * and being used afterwards. That stays the runtime `NoPrompt`, and
    * closing it needs the region trick `runST` uses.
    */
-  final class Prompted[R] private[Delim] (private[Delim] val prompt: Prompt[R])
+  final class Prompted[R] private[Delim] (val prompt: Prompt[R]):
+    /** the delimiter's answer type, as a MEMBER: a call site that
+     * summons `Prompted[?]` can then name it without a parameter
+     * (delim-one-type) */
+    type Res = R
 
   /** install a fresh delimiter, run the body under it with the
    * evidence in scope, and handle the machine */
@@ -158,6 +162,29 @@ object Delim {
   def shift[R, A, F[+_]](using in: Prompted[R])
                           (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
     shift[R, A, F](in.prompt)(f)
+
+  /**
+   * The same capture, inside a `direct` block, with ONE type argument
+   * (delim-one-type): `!Delim.shift[Int](k => k(5))` — the third
+   * overload of the one name, told apart by how many type arguments
+   * the call site writes.
+   *
+   * `A` is the only thing the call site knows that inference cannot —
+   * a mark gives its argument no expected type, so without it `A`
+   * falls to `Any` and the next operator refuses it. The other two are
+   * already written down somewhere: the answer type is the evidence's
+   * `Res`, and the ROW is the block's own, read off the `DirectCtx`
+   * exactly as `Reader.ask` reads its environment (reader-env).
+   *
+   * `inline` for the same reason `Reader.ask` is: the `DirectCtx` that
+   * pins the row is a value parameter of a lambda the macro strips, so
+   * a reference to it must not survive into the output.
+   */
+  inline def shift[A](using in: Prompted[?])[F[_]]
+                         (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                         (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
+    okay.effect[rw.R, A](Capture(in.prompt, f, underPrompt = true, delimitK = true)
+      .asInstanceOf[rw.R[A]])
 
   /** the 0-variant: the body consumes the delimiter */
   def shift0[R, A, F[+_]](using in: Prompted[R])

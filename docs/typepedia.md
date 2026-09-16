@@ -210,7 +210,11 @@ same material with the measurements attached.
 - **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
   (delim-prompted): evidence that a delimiter is installed, made only
   by `Delim.delimited`, so a capture through the evidence-taking
-  `shift` cannot name a prompt that is not on the stack — `NoPrompt` moved to compile time
+  `shift` cannot name a prompt that is not on the stack. Inside a
+  `direct` block it is `shift[A]` with ONE type argument
+  (delim-one-type): the answer type comes from the evidence and the row
+  from the block, and `A` stays because a mark gives its argument no
+  expected type — `NoPrompt` moved to compile time
   for that path. A portable function reads `Prompted[Int] ?=> Int !
   (Delim + W)`: written apart, stored, passed, and callable only where
   a `delimited` put the evidence in scope. The obligation is NOT a row

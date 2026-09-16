@@ -286,6 +286,17 @@ class TestDelim extends munit.FunSuite {
     assert(e2.nonEmpty, "a capture compiled with no delimiter in scope")
   }
 
+  test("shift: one type argument inside a direct block") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shift[Int](k => k(5))     // A alone: R and the row are known
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),
+      (Seq("hello"), 6))
+  }
+
   test("Prompted: nested delimiters, the inner one in force") {
     import okay.Direct.*
     import scala.language.implicitConversions
