@@ -1,0 +1,13 @@
+continuations-roadmap
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's ask (2026-09-16): a spec and a plan for the further
+  development of continuations — what exists, what a built Free tree can
+  and cannot be compiled into (it is a coroutine, not a syntax tree), and
+  four roads ranked by expected gain: fused multi-effect handling (one
+  walk for N handlers), staged direct blocks (known handlers → Func at
+  compile time), typestate on the facade (freer-base stage 2), and
+  defunctionalized continuations for migration (a horizon, measured
+  before started). Prose: specs/continuations-roadmap.md, BACKLOG,
+  ROADMAP.
+files: specs/continuations-roadmap.md, BACKLOG.md, ROADMAP.md, CHANGELOG.md
