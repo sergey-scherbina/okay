@@ -1,9 +1,0 @@
-prog-lambda-warn
-owner: fable-5.1 session 53f400ad
-started: 2026-09-16
-what: FIX. direct-program-lambda (188ea4c6) landed with the gate RED:
-  two E198 unused-symbol warnings on `programLambda`'s `l` parameter,
-  which the body stopped using once the refusal moved to the caller.
-  I read the runner's exit code and not the verdict line. Drop the
-  parameter, re-gate, and record the reading mistake.
-files: src/main/scala/Direct.scala, CHANGELOG.md
