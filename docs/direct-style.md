@@ -263,7 +263,8 @@ both open. This is the part of the design where the danger lives
 gates are the whole story:
 
 ```scala
-import Direct.{*, given}                    // givens need naming in Scala 3
+import Direct.{*, given}                    // givens need naming in Scala 3 — for ops;
+                                            // the block's own PROGRAMS colour without it
 import scala.language.implicitConversions   // the language demands consent
 
 given Effect[[X] =>> Reader[Int, X]] with {}    // gate 2: the marker
@@ -281,8 +282,27 @@ saying why, because `throws` lost its own import that way
 (throws-into): `into` marks the conversion's TARGET type, and
 auto-coloring's conversions are `Conversion[F[A], A]` — the target is
 the bare type variable `A`, and there is no declaration to write
-`into` on. The consent stays per call site here, which for the feature
-where "the danger lives" is the right answer anyway.
+`into` on. Nor by a build-wide `-language:implicitConversions`: that
+flag was in `build.sbt` for one day (2026-09-15) and came out again,
+because `TestThrows` proves `throws`'s `into` by the ABSENCE of this
+import, and a global flag makes the absence prove nothing. The consent
+stays per file here, which for the feature where "the danger lives" is
+the right answer anyway.
+
+What a file does NOT need any more is `Direct.given` for the block's
+own programs: `Free.directColor` lives in `Free`'s companion — the
+implicit scope of a `Conversion[Free[R, A], A]`'s source type — so an
+`A ! Row` value colours inside any `direct` block with
+`import okay.Direct.*` alone (the ops' `opColor` still comes from
+`Direct.given`, opt-in per signature as before).
+
+**Without implicit conversions at all: the prefix mark.** If a file
+would rather not enable the feature, the marks are the road and
+the shortest of them is one glyph: `!prog`. It is an ordinary method
+(`unary_!`), no `Conversion` is involved, no language import is
+needed, and it composes with everything below — including the
+recursion rule in the next section, where `!fib(n - 1) + !fib(n - 2)`
+is the annotation-light spelling of the annotation-free one.
 
 **Gate 1 — the capability.** The block is a context function
 `DirectCtx[F] ?=> A`, and both conversions require
@@ -328,6 +348,47 @@ recommended default; auto-coloring is the opt-in ergonomic layer,
 and its cost is honest: the language import, and error messages
 inside a block that can point one conversion away from the real
 mistake.
+
+## Recursion in a block: deep, and with no annotation
+
+A block that calls its own def at the program type has a hazard the
+marks do not remove on their own: the self-call is a *program*, and
+building it eagerly is the native recursion the block exists to
+avoid. So inside a `direct` block a call to the ENCLOSING def, at the
+block's own program type, is deferred wherever it is marked or
+coloured — `fib(n - 1)` becomes `Free.delay(() => fib(n - 1))` under
+the same mark — and the recursion trampolines through the tree's
+`Delay` node ([theory ch. 11](theory/11-one-tree.md)) instead of the
+JVM stack:
+
+```scala
+import okay.Direct.*
+import scala.language.implicitConversions
+
+def fib(n: Int): Long ! Pure = direct:
+  if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)     // coloured, deferred
+
+def sum(n: Int): Long ! Pure = direct:                      // 1 + sum(n - 1): not tail
+  if n == 0 then 0L else 1L + sum(n - 1)
+
+def count(xs: List[Int], acc: Long): Long ! Pure = direct:
+  xs match
+    case Nil => acc
+    case h :: t => count(t, acc + h)
+
+!.run(sum(1_000_000))   // 1000000, on the default stack
+```
+
+This is what Kozak's `deepRecursive` macro does for Scala 3 over
+`TailRec`, at the one place it matters (the deferral) — her `TailRec`
+is this library's `Free` node for node — and with the lowering the
+rest of the block already gets: two self-calls in one expression,
+branches, `match`, a real row whose tells interleave with the
+recursion in order. Without the language import the same thing is
+`!fib(n - 1) + !fib(n - 2)`. Mutual recursion is one word, as it
+always was: `!.tailcall(other(n)).reflect`. A self-call under a
+lambda is a value and is left alone (v1 does not look under lambdas).
+`TestDirectDeep` holds every one of these shapes.
 
 ## Layer 4 — do-notation statements: the statement is the mark
 

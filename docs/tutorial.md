@@ -452,7 +452,17 @@ No `for`, no `yield`, no `<-`: the `direct` block rewrites plain
 statements into the binds you would have written, and marks (`m.reflect`, `m.!?`, prefix `!m`)
 or opt-in auto-coloring let monadic values stand in plain positions.
 Multi-shot survives — a bare `List(1, 2, 3)` statement re-runs the
-rest of the block per element. The block composes with chapter 19:
+rest of the block per element. And a block may call its own def:
+
+```scala
+def fib(n: Int): Long ! Pure = direct:
+  if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)
+```
+
+runs a million deep on the default stack, because a self-call inside
+a block is deferred into the tree and trampolined by the interpreter
+rather than the JVM (the coloured spelling wants
+`import scala.language.implicitConversions`; the `!` one wants nothing). The block composes with chapter 19:
 the door outside answers *what is available*, the block inside
 answers *how it reads* (`TestDirectDoors`). The layers, the gates
 and the graveyard of rejected designs are in

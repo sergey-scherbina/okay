@@ -7,9 +7,16 @@ same material with the measurements attached.
 ## Control (Cont.scala)
 
 - **`Cont[A, S, R]`** — the parameterised continuation monad,
-  `(A => S) => R` defunctionalized (Pure/Shift/Bind); running is
-  tail-recursive with left-nested binds rebalanced; flatMap fuses
-  closures up to a depth budget. The foundation everything stands on.
+  `(A => S) => R` defunctionalized — as the freer tree itself: an
+  opaque `Free[Shift, A]` inside `object Cont`, a shift being a leaf
+  whose payload is a function of the continuation, `S` and `R`
+  phantom to the tree and carried by the facade's signatures
+  (theory ch. 11). Running is `Cont.step`, tail-recursive with
+  left-nested binds rebalanced and `Delay` forced; a fresh leaf
+  absorbs its first `flatMap` (`Once.Absorbed`/`Mapped`), exactly
+  once. The erased leaf type is written once, behind `Shift.of`
+  (forget, an upcast) and `Shift.at` (remember, THE cast).
+  `Cont.delay` is the tail call. The foundation everything stands on.
 - **`Control[M[_,_,_]]`** — final-tagless delimited control (`shift`,
   `reset`, `/`); instances `Cont` and `Func`. `transparent inline def
   Control[M]` is the staging entry: resolved statically, the ops
@@ -30,7 +37,12 @@ same material with the measurements attached.
 ## Effects (Effects.scala, Free.scala)
 
 - **`A ! F`** — a computation of `A` over the signature `F` (a freer
-  tree). **`%`** fixes a binary signature's parameter (`State % Int`);
+  tree: `Pure | Inject | Bind | Delay`, the node an operation sits in
+  being `Inject` — there is no `Effect` alias any more, that word is
+  the `derives` marker). `Free.resume` is the one rotation, a member;
+  `Delay` is the trampoline (`!.tailcall`, a capturing handler, the
+  codecs past `NativeThreshold`); `Free.defer(t)(f)` is
+  `Bind(Delay(t), f)`. **`%`** fixes a binary signature's parameter (`State % Int`);
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
   signature — in scopes importing `!.*` write `okay.Pure` (the
   Free.Pure case shadows it).
@@ -86,8 +98,9 @@ same material with the measurements attached.
   `runWith` runs with it. **`Handler.union`** composes one handler
   per effect into a row handler (an explicit combinator, not a given:
   a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
-  splits unions (`<|>`, `split`): `unapply` for pattern positions,
-  `test` — a plain boolean, no Option — for the split itself;
+  splits unions (`split`, and `<|>` as its `Either` form): `test`, a
+  plain boolean, is its whole interface (the extractor form went with
+  core-cleanup — nobody matched with it);
   identity-style signatures are split by the runtime class of their
   values, so keep them class-distinct.
 - **the direct marks: `.reflect` / `.!?` / `!prog`** — one mark,
@@ -477,17 +490,19 @@ and nothing else in the library casts for that reason:
 - **`okay.produced`** (Produce) — the same equation for the identity
   signature the streams are built on.
 - **`Chunks.bound`** — the element under a `Bind`, which is the BIND's
-  intermediate and genuinely existential. `case Effect(c)` needs
+  intermediate and genuinely existential. `case Inject(c)` needs
   nothing: GADT refinement gives the type back.
 - **`ChunkBuf.update` / `.chunk`** — the array assertion, once, with
   four measured alternatives recorded against it.
-- **`<|>`** and **`split`** — the union split, sound by the excluded
-  middle of `F[A] | G[A]`, documented as the trusted kernel. `<|>`
-  answers an `Either` (a value, for walks that pass it on); `split`
+- **`split`** and **`<|>`** — the union split, sound by the excluded
+  middle of `F[A] | G[A]`, documented as the trusted kernel. `split`
   takes the two branches as `inline` continuations and answers
   nothing but their result — no Either, no Option per operation —
-  and is what the hot loops use (`State.handle`, `Writer.foldWith`,
-  `relay`, `Effects.handle`, `Handler.union`; split-without-either,
+  and holds the union's two casts; `<|>` is `split` at
+  `Left`/`Right` (either-via-split), the `Either` form for drains and
+  tests. `split` is what every walker in the core uses (`State.handle`,
+  `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`,
+  `Resource.run`, the stream walkers; split-without-either,
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the

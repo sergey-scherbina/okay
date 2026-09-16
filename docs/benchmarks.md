@@ -274,11 +274,12 @@ program:
   remorse" problem solved with two lines of pattern match instead of
   a type-aligned queue (measured: stepping one-by-one costs only ~8%
   over bulk, so the queue is unneeded, with evidence).
-- `Cont` is the same discipline one level down: a defunctionalized
-  continuation monad whose runner is one tail-recursive loop, plus
-  closure FUSION up to a depth budget (flatMap/map merge into the
-  Shift closure while shallow, spill to Bind after — kept after
-  measuring −10..28% across generator lanes).
+- `Cont` is the same discipline one level down — and since 2026-09-15
+  the same TREE: an opaque `Free[Shift, A]` whose runner is one
+  tail-recursive loop, plus one step of closure absorption (a fresh
+  leaf takes its first flatMap/map into itself; a depth budget of 128
+  was re-measured and one step was the whole −12..25% win, rows
+  `fuse*`; theory ch. 11).
 - `Eager` is the kyo trick as an OPT-IN encoding (`import
   Eager.given`): pure binds apply at construction, so "running" the
   chain is running nothing. 12x under kyo on this lane — with kyo's

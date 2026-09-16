@@ -35,6 +35,13 @@ rules scoped operations out, and how a program becomes its meaning by
 lowering into Cont.
 *Plotkin & Power 2003 · Plotkin & Pretnar 2009 · Kiselyov, Sabry & Swords 2013 · Filinski 1994 · Kammar, Lindley & Oury 2013 · Forster et al. 2017 · Wu, Schrijvers & Hinze 2014*
 
+**[11 · One tree: `Cont` as a facade over `Free`](11-one-tree.md)**
+A shift is a leaf; the answer types live on the facade and cannot live
+on the nodes (the compiler said so, twice); one rotation, one normal
+form, one trampoline — and what each step of the 2026-09-14/16 arc
+measured, JIT included.
+*Kiselyov & Ishii 2015 · Danvy & Filinski 1990 · Filinski 1994 · Atkey 2009 · Bjarnason 2012*
+
 ### Part III · Making it fast, making it search
 
 **[6 · Final tagless and staging](06-tagless-staging.md)**

@@ -215,9 +215,10 @@ Start with [the roadmap](../ROADMAP.md) for the shape of the whole.
 
 - Oleg Kiselyov, Hiromi Ishii —
   [Freer Monads, More Extensible Effects](https://okmij.org/ftp/Haskell/extensible/more.pdf).
-  The freer monad and extensible-effects design the effect layer
-  reenacts (with `Free` and `Eff` literally replaying the 2015-tree
-  vs 2013-continuation history).
+  The freer monad and extensible-effects design the effect layer is
+  built on — and, since 2026-09-15, the ONE tree under both effect
+  programs and `Cont` itself: a shift is a freer leaf whose payload
+  is a function of the continuation ([theory ch. 11](theory/11-one-tree.md)).
 - Robert Atkey —
   [Parameterised notions of computation](https://bentnib.org/paramnotions-jfp.html).
   The parameterised (answer-type-changing) monad `Cont[A, S, R]` is
@@ -225,8 +226,9 @@ Start with [the roadmap](../ROADMAP.md) for the shape of the whole.
 - Rúnar Óli Bjarnason —
   [Stackless Scala With Free Monads](https://blog.higher-order.com/assets/trampolines.pdf).
   Why stack safety on the JVM means trampolining through data — the
-  reason `Cont` and `Free` are defunctionalized enums with
-  tail-recursive runners rather than raw closures.
+  reason `Free` is a defunctionalized enum with a tail-recursive
+  runner rather than raw closures, `Cont` a facade over it, and a
+  tail call one `Delay` node.
 - Oleg Kiselyov et al. — the delimited-control lineage (`shift`/
   `reset`) that makes handlers literally continuations (`F !> S`).
 

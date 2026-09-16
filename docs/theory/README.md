@@ -28,6 +28,7 @@ turned out wrong are worked examples of the method, not embarrassments.
 | [3. Parameterised monads](03-parameterised.md) | answer-type modification, typestate, `M[A, S, R]` | Atkey 2009 · Asai & Kameyama 2007 |
 | [4. Free and freer](04-free-freer.md) | programs as data, the left-nested-bind problem, and whether it is real here | Swierstra 2008 · Kiselyov & Ishii 2015 · Voigtländer 2008 |
 | [5. Algebraic effects and handlers](05-effects-handlers.md) | operations, rows as unions, three shapes of handler | Plotkin & Power 2003 · Plotkin & Pretnar 2009 · Kiselyov, Sabry & Swords 2013 |
+| [11. One tree: `Cont` as a facade over `Free`](11-one-tree.md) | a shift is a leaf; why the answer types are phantom; one rotation, one trampoline, and what the arc measured | Kiselyov & Ishii 2015 · Danvy & Filinski 1990 · Filinski 1994 · Bjarnason 2012 |
 | [6. Final tagless and staging](06-tagless-staging.md) | two ways to make abstraction free | Carette, Kiselyov & Shan 2009 · Taha & Sheard 1997/2000 |
 | [7. Logic, streams and sketches](07-logic-streams.md) | msplit, codata, the fold algebra, approximation with stated error | Kiselyov, Shan, Friedman & Sabry 2005 · Wadler 1985 · Flajolet et al. 2007 |
 | [8. Direct style](08-direct-style.md) | reflection, elaboration, capabilities — and why multi-shot survives here | Filinski 1994/1999 · Kameyama & Hasegawa 2003 · Brachthäuser et al. 2020 |

@@ -87,8 +87,10 @@ index above lists them all with one-line summaries.
 ## Architecture
 
 - `Cont[A, S, R]` (Cont.scala) — the parameterised continuation monad
-  (answer-type modification, shift/reset), defunctionalized like Free,
-  so running a flatMap chain is stack-safe.
+  (answer-type modification, shift/reset), defunctionalized AS `Free`:
+  an opaque `Free[Shift, A]` whose leaf is a function of the
+  continuation, so a program and its meaning are one tree, and running
+  a flatMap chain is stack-safe ([theory ch. 11](docs/theory/11-one-tree.md)).
 - `Control[M[_, _, _]]` (Cont.scala) — final tagless interface of
   delimited control; instances: `Cont` (stack-safe data) and `Func`
   (the function encoding, the reference).

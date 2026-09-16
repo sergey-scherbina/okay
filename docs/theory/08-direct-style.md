@@ -133,12 +133,29 @@ conversion problem, and the theory that keeps it sound is
 what may happen *here* is decided by what capabilities exist here.
 
 ```scala
-// Direct.scala:46–61
+// Direct.scala:73–88
 final class DirectCtx[F[_]] private[Direct] ()
 trait Effect[G[_]]
 given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A]
 given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A]
+// Free.scala:61 — the block's own programs, found through the source type's companion
+given directColor[R[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R, A], A]
 ```
+
+One consequence of Scala's rules deserves a sentence, because it
+decides what a file has to import. Applying any `Conversion` is a
+*feature* the language wants consent for — `import
+scala.language.implicitConversions`, per file — and that consent is
+not removable by `into` (which lifts it in parameter positions only,
+while a block colours at ascriptions and receivers) and was, for one
+day, replaced by a build-wide flag that the repository took out again:
+`TestThrows` proves `throws`'s `into` by the *absence* of that import,
+and a global flag makes the absence prove nothing. So the language
+import stays per colouring file; what a file no longer needs is
+`Direct.given`, because `directColor` lives in `Free`'s companion, the
+implicit scope of the conversion's source type. And for the reader
+who wants no implicit conversion at all, the marks are the answer:
+prefix `!` on a program is one glyph and involves no `Conversion`.
 
 The block is a context function `DirectCtx[F] ?=> A`, so the
 capability exists only inside it — outside, the conversions cannot
@@ -156,6 +173,30 @@ against an expected type, so un-ascribed `val`s keep the monadic
 value (a feature — that is how a program is *held*), and Unit
 ascription is value discard, which preempts conversion search
 entirely. The last fact is why the fourth layer exists.
+
+## Recursion in a block: the tree is the trampoline
+
+A direct block that calls its own def — `fib(n - 1) + fib(n - 2)` at
+the program type `Long ! Pure` — has a problem the marks alone do not
+solve: the self-call is a *program*, and evaluating it at construction
+is the native recursion the block was written to avoid. Kozak's
+`deepRecursive` macro for Scala 3 rewrites such a body into `TailRec`'s
+`tailcall`/`flatMap`/`done`; here the rewrite is one rule in front of
+the lowering, and the target is chapter 11's tree. Inside a block, a
+call to the enclosing def at the block's program type is deferred
+wherever it is marked or coloured — `fib(n - 1)` becomes `Free.delay(()
+=> fib(n - 1))` under the same mark (`Direct.scala:864`) — and the
+recursion then trampolines through `resume`'s `Delay` case instead of
+the JVM stack. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
+`Bind`, its `done` is `Pure`, its `.result` is `!.run`; what the macro
+of the article refuses — a self-call inside `match`, a real row
+interleaving effects with the recursion, mutual recursion — this
+lowering already handles, mutual recursion by one explicit
+`!.tailcall(other(n)).reflect`. `TestDirectDeep` runs `1 + sum(n - 1)`
+a million deep on the suite's default stack. The zero-annotation form
+is possible only at the program type with colouring on, because a
+macro runs after the typer; with the prefix mark it is
+`!fib(n - 1) + !fib(n - 2)` and no conversion is involved.
 
 ## Statements run: the do-notation reading
 

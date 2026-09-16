@@ -27,7 +27,10 @@ A computation of `A` performing operations of the signature `F` is
 (`A ! Pure` is a pure computation; `F + Pure = F`).
 
 A handler interprets operations into continuations — `F !> S` is
-literally a natural transformation into `Cont`. Three ways to run:
+literally a natural transformation into `Cont`, and `Cont` is this
+same freer tree at the signature "a function of the continuation"
+([theory ch. 11](theory/11-one-tree.md)): a program and its meaning
+are made of the same nodes. Three ways to run:
 
 - `runWith` — a per-operation `Handler[F]` (comonadic: each operation
   answers with a value);
@@ -627,8 +630,10 @@ reflect/reify chain of `Monadic` (Filinski's construction over the
 `Cont` of chapter one), so short-circuit, multi-shot and handlers
 all behave exactly as in the monadic spelling. Effects are
 first-class (`Writer("a")` on its own line tells; loops and `while`
-work; `!prog` performs a program in one glyph), auto-coloring can
-remove marks entirely behind explicit gates, and every refusal is a
+work; `!prog` performs a program in one glyph and involves no implicit
+conversion), auto-coloring can remove marks entirely behind explicit
+gates, a block may recurse on its own def a million deep because a
+self-call is deferred into the tree, and every refusal is a
 positioned compile error naming the workaround. The whole story,
 with the reasoning and the graveyard of refuted alternatives:
 [direct-style.md](direct-style.md); the theory with the literature:

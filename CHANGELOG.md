@@ -1,5 +1,29 @@
 # Changelog
 
+## docs-arc-refresh — the documentation catches up with the tree
+
+Every document brought to the state of the arc from `tailcall`
+(2026-09-14) to `either-via-split` (2026-09-16), and one chapter
+added. NEW: `docs/theory/11-one-tree.md` — `Cont` as a facade over
+`Free`: why a shift is a freer leaf (Filinski in the data), where the
+answer types went and why the compiler refused to put them on the
+nodes (stages 0 and 1, the three spellings), absorption exactly once,
+one rotation and the `Delay` trampoline, the measurements of every
+step including the JIT's fourth face, what it is better than and what
+it costs, and what was removed with it. UPDATED: theory ch. 2 (`Cont`
+is the tree; absorption, not a budget), ch. 4 (`resume` as the member,
+`Delay`, one tree), ch. 5 (`split` as the kernel and `<|>` its
+`Either` form, `Cont.step` as it is, `handle` forwarding on the tree,
+`Eff` as the encoding that went), ch. 8 (`directColor`, the language
+import and why not a flag, recursion in a block with the prefix mark
+as the no-conversion road), the theory index and map; docs/README's
+papers; direct-style.md (Layer 3: no `Direct.given` for programs, the
+`!` mark as the road without implicit conversions, a new "Recursion
+in a block" section); guide and tutorial (recursion in a block, `Cont`
+is the tree); typepedia (`Cont`, `A ! F` with `Delay` and `Inject`,
+`TypeableK` as `test`, `split`/`<|>`); existentials (a note on the
+spellings); benchmarks §1's `Cont` bullet.
+
 ## either-via-split — one function holds the union's casts
 
 `<|>` is `split[F, G](e)(Left(_))(Right(_))`: the operator's proposal,

@@ -40,27 +40,42 @@ inline def reset[A, R](c: A ^ R): R = c / identity
 ```
 
 `Cont[A, S, R]` *means* `(A => S) => R` — chapter 3 explains the three
-parameters — and `A /> R` (`Cont.scala:35`) is its diagonal
+parameters — and `A /> R` (`Cont.scala:34`) is its diagonal
 `Cont[A, R, R]`, the ordinary continuation monad. The interesting
 engineering is that `Cont` is **defunctionalized**: rather than being
-the function type it means, it is a data type (`Pure`, `Shift`,
-`Bind` — `Cont.scala:54–61`) with one interpreter, `/`. Two
-consequences, both load-bearing:
+the function type it means, it is a data type with one interpreter,
+`/`. And since 2026-09-15 that data type is not its own: `Cont` is
+the freer tree of chapter 4 at the signature "a function of the
+continuation" — `opaque type Rep[A, S, R] = Free[Shift, A]`
+(`Cont.scala:146`), a `shift` being a leaf `Inject(f)` and a bind a
+`Bind`, with `S` and `R` phantom to the tree and carried by the
+facade's signatures alone. Chapter 11 tells that story in full, with
+the two attempts to put the answer types on the nodes and why the
+compiler refused both. Three consequences, all load-bearing:
 
 **Stack safety.** A directly-encoded continuation monad overflows the
 stack on long `flatMap` chains — the classic problem Rúnar Bjarnason
 treated for Scala with trampolines \[[Bjarnason 2012](#ref-bjarnason-2012)\]. Okay's answer is
-the same normalization move chapter 1 showed for `Free`: `Bind` is a
-node, and `/` rebalances left-nested binds in a tail-recursive loop.
+the same normalization move chapter 1 showed for `Free`, because it
+*is* `Free`'s: `Bind` is a node, and the runner (`Cont.step`,
+`Cont.scala:299`) rebalances left-nested binds in a tail-recursive
+loop, the same rotation `Free.resume` performs. A tail call between
+two mutually recursive functions is a `Delay` node, forced by that
+loop and continued as is (`Cont.delay`, `Cont.scala:173`).
 
-**Fusion under a budget.** Pure defunctionalization pays a node per
-bind. `Cont.flatMap` (`Cont.scala:68–70`) therefore *fuses* into the
-`Shift` closure — `Shift(k => s(f(_)(k)))` — while a depth budget
-(`Cont.Fuse`, default 128) lasts, and only then spills into `Bind`
-data. Short chains run as plain nested closures at closure speed; long
-chains switch to the stack-safe interpreter. The budget is the
-compromise between the two encodings, chosen by measurement rather
-than doctrine.
+**Absorption, exactly once.** Pure defunctionalization pays a node per
+bind. A fresh leaf therefore *absorbs* its first `flatMap` into
+itself — `Inject(Once.Absorbed(s, f))`, the function `k => s(a =>
+run(f(a))(k))` (`Cont.scala:201–236`) — and a leaf that has absorbed
+once takes the next bind as a node. This used to be a depth budget of
+128; the sweep that replaced it (`fuse-depth`, 2026-09-15) found the
+first step to be the whole of the 12–25% win and every deeper step a
+cost, so the budget is a bit, and the bit is the leaf's class.
+
+**Nothing to convert.** A handler's answer is a `Cont`; a program is
+a `Free`; lowering one into the other (chapter 5) replaces leaves and
+keeps the spine, because the spine is the same class of node on both
+sides.
 
 ## Prompts as an effect: `Delim`
 
