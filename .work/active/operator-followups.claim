@@ -1,0 +1,15 @@
+operator-followups
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: three asks in one operator message (2026-09-16): (1) take
+  `-language:implicitConversions` back out of build.sbt and restore the
+  per-file imports, so TestThrows's "deleting the import is the test"
+  tests `into` again (Free.directColor stays: no Direct.given needed);
+  (2) tag okay.cluster.TestFailure `Live` — it binds a real ServerSocket
+  and spawns worker JVMs (BACKLOG cluster-testfailure-untagged); (3)
+  Resource.run's walker on `split` instead of `<|>` — its arms `return`
+  out of a while, so the loop is restructured, not just re-spelled.
+files: build.sbt, src/main/scala/Direct.scala, Resource.scala,
+  src/test/scala/{TestDirectAuto,TestDeriveEffect,TestDirectDeep,
+  TestEffectProvide,TestThrows}.scala, okay-jdbc UsersDemo.scala,
+  okay-cluster/src/test/.../TestFailure.scala, specs, BACKLOG, CHANGELOG
