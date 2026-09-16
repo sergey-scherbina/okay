@@ -57,6 +57,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   gates, do-notation statements — with the rationale for every
   boundary and the graveyard of refuted alternatives. The theory
   chapter with the literature is [theory/08](theory/08-direct-style.md).
+- **[Continuations in practice](continuations-in-practice.md)** — the
+  four shapes that earn a capture in ordinary code (`exit`, `collect`
+  / `emit`, `resumable` / `pause`, `onReturn`), each beside the way it
+  is usually written, the rule for when to reach for an effect
+  instead, and the cases where a capture makes code worse. The theory
+  is [theory/2](theory/02-continuations.md).
 - **[okay-actor](modules/okay-actor.md)** — actors as composition: the
   mailbox is a `Channel`, one-at-a-time is one consumer, and the only
   new thing is supervision. With the four decisions it makes, and the

@@ -1,5 +1,39 @@
 # Changelog
 
+## delim-patterns - the four shapes of delimited control, as names
+
+A raw `shift` reads like a puzzle. These are the four shapes that
+actually earn a capture in ordinary code, each under a name that says
+what it does, and each taking NO type arguments at the call site (the
+types come off the evidence and the block's `DirectCtx`, as
+`Delim.shift[A]` and `Reader.ask` do):
+
+- `!Delim.exit(value)` - leave the block early with an answer: a
+  capture that DROPS its continuation, which is what an early return
+  is. Out of nested loops, out of a lambda, with the answer in the
+  type. `Delim.abort` is the `for`-style spelling.
+- `Delim.collect { ... }` + `!Delim.emit(a)` - a push producer read as
+  a pull. The producer stays an ordinary recursive walk; `emit` builds
+  the list out of the rest of it, so nothing is inverted.
+- `Delim.resumable { ... }` + `!Delim.pause(q)` + `Delim.drive` - stop
+  in the middle and carry on later. Answers a `Paused[Q, A, R, G]`:
+  `Ask(question, resume)`, where `resume` IS the rest of the program,
+  or `Done(value)`. A `Paused` is a value, so resuming does not consume
+  it; the honest limit is that it lives in memory, so it outlives a
+  request but not a restart.
+- `!Delim.onReturn(f)` - run the rest of the block, then act on its
+  answer. Compensation, undo, audit, measurement - from the middle,
+  without restructuring what follows.
+
+And `docs/continuations-in-practice.md`: each pattern beside the way
+it is usually written, the rule ("reach for an effect first; write
+`shift` only when none fits; then wrap it in a name") with its
+reasons, the cases where a capture makes code WORSE (multi-shot with
+vars, resources under a captured `k`, stack traces, `shift` where
+`flatMap` would do), and a table for deciding.
+
+`TestDelimPatterns`: 7 tests.
+
 ## printf-examples - sprintf as examples 5 and 6
 
 `TestDelimExamples` gains the two printf constructions, and with them

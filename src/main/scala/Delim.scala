@@ -205,6 +205,170 @@ object Delim {
   def abort[R, A, F[+_]](using in: Prompted[R])(value: R): A ! (Delim + F) =
     abort[R, A, F](in.prompt)(value)
 
+  // ==================================================================
+  // THE PATTERNS (delim-patterns, 2026-09-17)
+  //
+  // A raw `shift` is a sharp tool and reads like one. These are the
+  // four shapes that actually earn a capture in ordinary code, each
+  // under a name that says what it DOES, so the reader needs no
+  // theory to follow the call site. Every one is two or three lines
+  // over `shift` — the value is the name and the evidence, not the
+  // code.
+  //
+  // Each takes NO type arguments at the call site: the types are read
+  // off the evidence (`in.Res`, `e.Elem`, `s.Qst`) and off the
+  // block's `DirectCtx`, the trick delim-one-type introduced for
+  // `shift[A]` and reader-env for `Reader.ask`.
+  // ==================================================================
+
+  /**
+   * 1 · LEAVE EARLY WITH AN ANSWER.
+   *
+   * `!Delim.exit(value)` in a direct block stops there and makes
+   * `value` the answer of the `delimited` around it. The rest of the
+   * block does not run — a capture that DROPS its continuation is
+   * what an early return is.
+   *
+   * What it replaces: an exception thrown for control flow (untyped,
+   * and it walks past everything that was counting on an orderly
+   * exit), a sentinel value threaded through every caller, or
+   * rewriting two nested loops as a fold with a flag. This one leaves
+   * from anywhere, including from inside a lambda, and the type says
+   * what the answer is.
+   *
+   * The `for`-style spelling of the same thing is `Delim.abort`.
+   */
+  inline def exit(using in: Prompted[?])[F[_]]
+                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                 (value: in.Res): Unit ! rw.R =
+    shift[Unit](using in)(_ => okay.pure(value))
+
+  /**
+   * 2 · A PUSH API, READ AS A PULL.
+   *
+   * The evidence for a block that is collecting values. It carries
+   * the element type as a MEMBER so `emit` can take no type argument
+   * and still be precise about what it accepts.
+   */
+  final class Emitting[A] private[Delim] (prompted: Prompted[List[A]]):
+    type Elem = A
+    // NOT private: `emit` is inline and reaches this, and a private
+    // member behind an inline body makes the compiler synthesize an
+    // accessor with an unstable name (E192 — the same finding as
+    // Cont.Shift's, measured here 2026-09-17)
+    val in: Prompted[List[Elem]] = prompted
+
+  /**
+   * Run `body`, which emits, and answer with everything it emitted,
+   * in order.
+   *
+   * What it replaces: a `var buf = ListBuffer()` threaded through the
+   * producer, or a callback parameter that turns the producer inside
+   * out. The producer stays an ordinary recursive walk or loop; the
+   * consumer gets a list. `emit` builds the list out of the rest of
+   * the producer, which is why the producer never has to know.
+   */
+  def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F)): List[A] ! F =
+    delimited[List[A], F](
+      body(using new Emitting[A](summon[Prompted[List[A]]]))
+        .map(_ => List.empty[A]))
+
+  /** emit one value into the `collect` in force */
+  inline def emit(using e: Emitting[?])[F[_]]
+                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                 (a: e.Elem): Unit ! rw.R =
+    shift[Unit](using e.in)(k => k(()).map(a :: _))
+
+  /**
+   * 3 · STOP IN THE MIDDLE, CARRY ON LATER.
+   *
+   * What a paused program is: either it is asking, and the REST OF
+   * IT is right there as `resume`, or it is finished. Queinnec's web
+   * dialogue, as a type — and the same shape as an approval gate, a
+   * wizard, a REPL, or any protocol that has to survive the gap
+   * between one request and the next.
+   *
+   * `G` is the row the paused program still runs in, `Delim` and
+   * all; `Dialogue` is the alias that spells it for a caller who only
+   * knows their own row.
+   */
+  enum Paused[Q, A, R, G[+_]]:
+    case Ask[Q, A, R, G[+_]](question: Q, resume: A => Paused[Q, A, R, G] ! G)
+      extends Paused[Q, A, R, G]
+    case Done[Q, A, R, G[+_]](value: R) extends Paused[Q, A, R, G]
+
+  /** a paused program whose caller's row is `F` */
+  type Dialogue[Q, A, R, F[+_]] = Paused[Q, A, R, Delim + F]
+
+  /** the evidence for a block that may pause, carrying the question
+   * and answer types as members so `pause` needs no type argument */
+  final class Asking[Q, A, R, G[+_]] private[Delim] (prompted: Prompted[Paused[Q, A, R, G]]):
+    type Qst = Q
+    type Ans = A
+    type Fin = R
+    type Row[+X] = G[X]
+    /** public for the same reason as Emitting.in: `pause` is inline */
+    val in: Prompted[Paused[Qst, Ans, Fin, Row]] = prompted
+
+  /**
+   * Run `body` until it pauses or finishes, and answer with WHICH.
+   *
+   * What it replaces: a state machine with a `step` column and a
+   * hand-rolled record of everything the process knew so far. Here
+   * the process is written as straight-line code and the record is
+   * the continuation.
+   *
+   * The honest limit: a `Paused` lives in memory. It outlives a
+   * request, a retry, a fork of the dialogue — but not a restart of
+   * the process. Making it outlive that is persistence, and a
+   * different piece of work.
+   */
+  def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                               : Dialogue[Q, A, R, F] ! F =
+    delimited[Dialogue[Q, A, R, F], F](
+      body(using new Asking[Q, A, R, Delim + F](summon[Prompted[Dialogue[Q, A, R, F]]]))
+        .map(Paused.Done[Q, A, R, Delim + F](_)))
+
+  /** ask, and hand the rest of the program back to the caller */
+  inline def pause(using s: Asking[?, ?, ?, ?])[F[_]]
+                  (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                  (q: s.Qst): s.Ans ! rw.R =
+    shift[s.Ans](using s.in)(k => okay.pure(Paused.Ask(q,
+      // THE ONE CAST here, and what makes it right: `s` can only be
+      // held inside the `resumable` that installed this prompt, so
+      // the block's row — read off its DirectCtx as `rw.R` — IS the
+      // row `resumable` ran the body in. The type system cannot join
+      // those two spellings of one row (the same reason the inline
+      // `shift` above casts its own result), and nothing else can
+      // produce an `Asking`.
+      k.asInstanceOf[s.Ans => Paused[s.Qst, s.Ans, s.Fin, s.Row] ! s.Row])))
+
+  /** answer every question until the dialogue is done — the driver
+   * for the common case where the answers are available now */
+  def drive[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F])(answer: Q => A ! F): R ! F =
+    p match
+      case Paused.Done(r) => okay.pure(r)
+      case Paused.Ask(q, resume) =>
+        answer(q).flatMap(a =>
+          run(resume(a)).flatMap(drive[Q, A, R, F](_)(answer)))
+
+  /**
+   * 4 · DO SOMETHING ON THE WAY BACK.
+   *
+   * `!Delim.onReturn(f)` runs the rest of the block and then puts its
+   * answer through `f`. The rest of the block is a value here, which
+   * is the whole point: you can measure it, log what it produced,
+   * undo it, or fold a compensation into its answer — from a place in
+   * the middle, without the code around it being restructured.
+   *
+   * What it replaces: wrapping the remainder in a function and
+   * passing it down, or a `finally` that cannot see the answer.
+   */
+  inline def onReturn(using in: Prompted[?])[F[_]]
+                     (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                     (f: in.Res => in.Res): Unit ! rw.R =
+    shift[Unit](using in)(k => k(()).map(f))
+
   /** a prompt is its own typed token: the same prompt has the same
    * answer type — the witness the machine uses to split its stack */
   given Same[Prompt] = Same.byIdentity

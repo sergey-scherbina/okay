@@ -166,6 +166,12 @@ whole block — while answer-type modification gives every step its own
 
 ## Six worked examples
 
+These six are from the literature, and they argue that delimited
+control *works*. For the argument that it is *useful* — the same
+machinery under names, beside the way each shape is usually written,
+and the rule for when to reach for an ordinary effect instead — see
+[Continuations in practice](../continuations-in-practice.md).
+
 `TestDelimExamples` runs these, so they are checked rather than
 claimed. Each is a shape the literature uses to argue that first-class
 continuations earn their keep.
