@@ -1,0 +1,13 @@
+docs-arc-refresh
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's ask (2026-09-16): every document brought up to date
+  with the arc from tailcall (8210150e, 2026-09-14) to either-via-split
+  (09c4dd75) — README, docs/README, guide, tutorial, typepedia,
+  existentials, direct-style, the theory book — plus a NEW theory
+  chapter on the base model's simplification (Cont as a facade over
+  Free: one tree, one rotation, phantom answer types, Delay), theory
+  and practice with the measurements; and the prefix `!` mark recorded
+  as the way to colour a direct block without implicit conversions.
+  Prose only, no code; the gate still runs (docs edits need a worktree).
+files: README.md, docs/*.md, docs/theory/*.md, CHANGELOG.md
