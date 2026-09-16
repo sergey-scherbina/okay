@@ -1,0 +1,12 @@
+blob-source-road
+owner: fable-5.1 session 4afd3fc2
+started: 2026-09-16
+what: the operator's ask (2026-09-16): take the four okay-blob entries
+  landed as 47c08ba9 — blob-byte-source, blob-put-bytes,
+  produce-at-a-wider-row, blob-source-seam — and do them, ADDITIVELY:
+  nothing that implements or calls Blob today changes. Source <->
+  producer conversions in core (Source.ofProducer / Source.toProducer),
+  Blob gains putSource/getSource/putChunk/putBytes/getBytes and a
+  cross-platform drain, a public byte source from a Path/InputStream on
+  the jvm with putFile, and `produce` documents the zero-cost `.at`
+  road into a wider row. Spec: specs/blob.md. Full gate: core is touched.
