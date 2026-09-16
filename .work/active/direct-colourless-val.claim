@@ -1,0 +1,16 @@
+direct-colourless-val
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: the operator's ask, after measuring: inside a direct block
+  `val x = fetch(k)` with no mark and no ascription INFERS the program
+  type, so the colouring conversion fires at each USE, not at the
+  declaration — `val` and `lazy val` both silently degrade to `def`
+  (measured: `val, val, lazy val, lazy val, def, def` where the
+  ascribed spelling gives `val, lazy val, def, def`). Make the words
+  mean what they say with no `!` and no ascription: a val whose rhs is
+  a program of the block and whose uses are COLOURED becomes a binding
+  (by value), a lazy val becomes the Once cell (by need), a def stays
+  by name. A val used as a PROGRAM (passed on, marked) is untouched;
+  one used both ways is refused with both readings named.
+files: src/main/scala/Direct.scala, src/test/scala/TestDirectOnce.scala,
+  docs/direct-style.md, CHANGELOG.md
