@@ -1,5 +1,26 @@
 # Changelog
 
+## once-example-typed — the by-need example, in the operator's shape
+
+The example that carries direct-once through the docs and
+`TestDirectOnce` is now one handler with one word on each lookup,
+typed all the way (`Response ! Fetch + Once`, ops named after the
+resources, smart constructors on the companion so the block names no
+types):
+
+| request | calls |
+|---|---|
+| `/status` | `GET /user` |
+| a banned user | `GET /user` |
+| an expired plan | `GET /user`, `GET /plan` |
+| the full page | `GET /user`, `GET /plan`, `GET /feed`, `GET /feed` |
+
+`val` fetches even for `/status`, `lazy val` only when a branch reaches
+it and then once, `def` once per mention — and the last line mentions
+`feed` twice. Recorded on the way: `effect(Fetch.User(token))` with no
+expected type infers `Nothing ! Fetch`, losing the answer type and the
+row, which is why the constructors carry it.
+
 ## direct-nested-def — a nested def at the block's program type compiles
 
 `def plan = effect(GetPlan(user.planId))` beside a `lazy val user` was

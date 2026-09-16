@@ -508,45 +508,49 @@ x = { Writer("x"): Unit; 3 }`, whose statement runs by do-notation,
 is by-need too, and a pure right-hand side stays a plain Scala `lazy
 val`.
 
-**What it is for.** A handler whose branches need different data,
-written top to bottom as if everything were already loaded:
+**What it is for.** One request handler, written top to bottom as if
+everything were already loaded, with a different word on each lookup:
 
 ```scala
-def page(path: String, token: String): String ! (Once + Fetch) = direct:
-  lazy val user = effect(GetUser(token))
-  lazy val plan = effect(GetPlan(user.planId))
-  lazy val feed = effect(GetFeed(user.id))
-  if path == "/health" then "200 healthy"
-  else if user.banned then "403 banned"
-  else if plan.expired then "302 /renew"
-  else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
+enum Fetch[+A] derives Effect:            // the program says what it needs;
+  case User(token: String) ...            // the HANDLER calls out, so it is
+  case Plan(id: Int) ...                  // what records the calls made
+  case Feed(id: Int) ...
+
+def page(path: String, token: String): Response ! Fetch + Once = direct:
+  val      user = Fetch.user(token)         // by value: always, once
+  lazy val plan = Fetch.plan(user.planId)   // by need:  if reached, once
+  def      feed = Fetch.feed(user.id)       // by name:  at every mention
+
+  if path == "/status" then Response.Status
+  else if user.banned then Response.Banned
+  else if plan.expired then Response.Expired
+  else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}")
 ```
 
-The calls each request actually makes, recorded by the handler
-(`TestDirectOnce`, which runs exactly this):
+The calls each request makes, recorded by the handler
+(`TestDirectOnce` runs exactly this):
 
-| request | `val` | `def` | `lazy val` |
-|---|---|---|---|
-| `/health` | 3 | 0 | 0 |
-| a banned user | 3 | 1 | 1 |
-| an expired plan | 3 | 3 | 2 |
-| the full page | 3 | 8 | 3 |
+| request | calls |
+|---|---|
+| `/status` | `GET /user` |
+| a banned user | `GET /user` |
+| an expired plan | `GET /user`, `GET /plan` |
+| the full page | `GET /user`, `GET /plan`, `GET /feed`, `GET /feed` |
 
-One word changed, nothing else. `val` is by value: all three lookups
-on every request, `/health` included. `def` is by name: nothing until
-a branch asks, then a call per mention — and since `plan` and `feed`
-both read `user`, the full page costs eight. `lazy val` is by need:
-what the branch reaches, once. `user` is read in three branches and
-`feed` twice in one line; each is fetched once, and the chain stays
-lazy through `plan`'s dependence on `user.planId` without a single
-`flatMap` or `Option` in the source.
+Every row says something. `user` is fetched even for `/status`, which
+needs nobody — that is `val`. `plan` is absent until a branch reaches
+it, and then appears once — that is `lazy val`. `feed` appears twice
+on the last line because the line mentions it twice — that is `def`.
+No `flatMap`, no `Option`, nothing passed down, and the lookups are
+dependent: `plan` needs `user.planId`, `feed` needs `user.id`.
 
-A nested `def` at the block's program type whose body has marks —
-`def plan = effect(GetPlan(user.planId))` — used to be refused ("a
-mark inside a nested definition"); it compiles now
-(direct-nested-def). Its body is its own program, so binding the marks
-inside changes nothing about what the def means. A def with
-PARAMETERS still keeps the refusal: v1 does not rewrite a signature.
+The row is spelled `Response ! Fetch + Once`: `+` binds tighter than
+`!`, so the answer type comes first and the row after. The smart
+constructors on the companion (`Fetch.user(token) = effect(User(token))`)
+carry the row, which is what lets the block name no types at all —
+`effect(Fetch.User(token))` on its own infers `Nothing ! Fetch`, losing
+both the answer type and the `Once` beside it.
 
 **No marks, no ascriptions.** The three words hold with nothing
 written on them (direct-colourless-val, 2026-09-16):

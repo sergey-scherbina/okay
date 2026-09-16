@@ -14,31 +14,45 @@ import scala.language.implicitConversions
  * backtracks the cells with the search, `Once.run(runChoice(p))`
  * shares one store across the branches.
  */
-/** three remote lookups: the PROGRAM says what it needs, the HANDLER
- * calls out — so the handler is what records the calls made */
-enum Fetch[+A] derives okay.Effect:
-  case GetUser(token: String) extends Fetch[Fetch.User]
-  case GetPlan(id: Int) extends Fetch[Fetch.Plan]
-  case GetFeed(id: Int) extends Fetch[List[String]]
-
-object Fetch:
+/** what the services answer */
+object Api:
   case class User(id: Int, name: String, planId: Int, banned: Boolean)
   case class Plan(id: Int, expired: Boolean)
 
-  type Row = Once + Fetch
+enum Response:
+  case Status, Banned, Expired
+  case Page(text: String)
+
+/** the three remote lookups a page can need: the PROGRAM says what it
+ * needs, the HANDLER calls out — so the handler is what records the
+ * calls made */
+enum Fetch[+A] derives okay.Effect:
+  case User(token: String) extends Fetch[Api.User]
+  case Plan(id: Int) extends Fetch[Api.Plan]
+  case Feed(id: Int) extends Fetch[List[String]]
+
+object Fetch:
+  type Row = Fetch + Once
+
+  /** the constructors carry the row, so a block needs no type argument
+   * and no ascription: `effect(User(token))` on its own would infer
+   * `Nothing ! Fetch` — no answer type, and no Once beside it */
+  def user(token: String): Api.User ! Row = effect(User(token))
+  def plan(id: Int): Api.Plan ! Row = effect(Plan(id))
+  def feed(id: Int): List[String] ! Row = effect(Feed(id))
 
   private def answer(e: Fetch[Any]): Any = e match
-    case GetUser(t) => t match
-      case "banned" => User(1, "Ada", 7, banned = true)
-      case "expired" => User(2, "Bob", 8, banned = false)
-      case _ => User(3, "Cleo", 9, banned = false)
-    case GetPlan(id) => Plan(id, expired = id == 8)
-    case GetFeed(_) => List("scala", "okay", "effects")
+    case User(t) => t match
+      case "banned" => Api.User(1, "Ada", 7, banned = true)
+      case "expired" => Api.User(2, "Bob", 8, banned = false)
+      case _ => Api.User(3, "Cleo", 9, banned = false)
+    case Plan(id) => Api.Plan(id, expired = id == 8)
+    case Feed(_) => List("scala", "okay", "effects")
 
   private def name(e: Fetch[Any]): String = e match
-    case GetUser(_) => "GET /user"
-    case GetPlan(_) => "GET /plan"
-    case GetFeed(_) => "GET /feed"
+    case User(_) => "GET /user"
+    case Plan(_) => "GET /plan"
+    case Feed(_) => "GET /feed"
 
   /** every call this program makes, in order */
   def calls[A](p: A ! Row): (Seq[String], A) =
@@ -266,66 +280,39 @@ class TestDirectOnce extends munit.FunSuite {
     assert(e.contains("lazy val"), e)
   }
 
-  // ---- the realistic shape: optional logic over dependent lookups
+  // ---- the realistic shape: one handler, one word each
 
-  import Fetch.*
+  /**
+   * Written top to bottom as if everything were already loaded. The
+   * three words are Scala's own, and they mean here what they mean for
+   * values: `user` is fetched on every request, `plan` only if a branch
+   * reaches it and then once, `feed` once per mention — and the last
+   * line mentions it twice.
+   */
+  def page(path: String, token: String): Response ! Fetch + Once = direct:
+    val      user = Fetch.user(token)         // by value: always, once
+    lazy val plan = Fetch.plan(user.planId)   // by need:  if reached, once
+    def      feed = Fetch.feed(user.id)       // by name:  at every mention
 
-  /** written top to bottom as if everything were already loaded */
-  def pageLazy(path: String, token: String): String ! Fetch.Row = direct:
-    lazy val user = effect[Fetch.Row, User](GetUser(token))
-    lazy val plan = effect[Fetch.Row, Plan](GetPlan(user.planId))
-    lazy val feed = effect[Fetch.Row, List[String]](GetFeed(user.id))
-    if path == "/health" then "200 healthy"
-    else if user.banned then "403 banned"
-    else if plan.expired then "302 /renew"
-    else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
+    if path == "/status" then Response.Status
+    else if user.banned then Response.Banned
+    else if plan.expired then Response.Expired
+    else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}")
 
-  /** the same handler, one word changed */
-  def pageVal(path: String, token: String): String ! Fetch.Row = direct:
-    val user = effect[Fetch.Row, User](GetUser(token))
-    val plan = effect[Fetch.Row, Plan](GetPlan(user.planId))
-    val feed = effect[Fetch.Row, List[String]](GetFeed(user.id))
-    if path == "/health" then "200 healthy"
-    else if user.banned then "403 banned"
-    else if plan.expired then "302 /renew"
-    else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
-
-  test("by need: each branch pays for the lookups it reaches, once") {
-    assertEquals(Fetch.calls(pageLazy("/health", "x")), (Seq(), "200 healthy"))
-    assertEquals(Fetch.calls(pageLazy("/feed", "banned")),
-      (Seq("GET /user"), "403 banned"))
-    assertEquals(Fetch.calls(pageLazy("/feed", "expired")),
-      (Seq("GET /user", "GET /plan"), "302 /renew"))
-    // feed is read twice (size, head) and user three times: one call each
-    assertEquals(Fetch.calls(pageLazy("/feed", "ok")),
-      (Seq("GET /user", "GET /plan", "GET /feed"), "200 3 picks for Cleo, top scala"))
-  }
-
-  /** the same handler again, by name: a call per mention */
-  def pageDef(path: String, token: String): String ! Fetch.Row = direct:
-    def user = effect[Fetch.Row, User](GetUser(token))
-    def plan = effect[Fetch.Row, Plan](GetPlan(user.planId))
-    def feed = effect[Fetch.Row, List[String]](GetFeed(user.id))
-    if path == "/health" then "200 healthy"
-    else if user.banned then "403 banned"
-    else if plan.expired then "302 /renew"
-    else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
-
-  test("by name: a nested def at the block's program type, and a call per mention") {
-    assertEquals(Fetch.calls(pageDef("/health", "x")), (Seq(), "200 healthy"))
-    assertEquals(Fetch.calls(pageDef("/feed", "banned")),
-      (Seq("GET /user"), "403 banned"))
-    // plan needs user, so reaching plan fetches user again
-    assertEquals(Fetch.calls(pageDef("/feed", "expired")),
-      (Seq("GET /user", "GET /user", "GET /plan"), "302 /renew"))
-  }
-
-  test("by value: the same handler pays for all three on every request") {
-    for (path, token) <- List(("/health", "x"), ("/feed", "banned"),
-                              ("/feed", "expired"), ("/feed", "ok")) do
-      assertEquals(Fetch.calls(pageVal(path, token))._1,
-        Seq("GET /user", "GET /plan", "GET /feed"), s"$path $token")
-    assertEquals(Fetch.calls(pageVal("/health", "x"))._2, "200 healthy")
+  test("one handler, three words: the calls each request makes") {
+    // a page nobody needs the user for — and `val` fetches them anyway
+    assertEquals(Fetch.calls(page("/status", "x")),
+      (Seq("GET /user"), Response.Status))
+    // the branch stops before plan: by need, so no /plan call
+    assertEquals(Fetch.calls(page("/feed", "banned")),
+      (Seq("GET /user"), Response.Banned))
+    // reached, and fetched once
+    assertEquals(Fetch.calls(page("/feed", "expired")),
+      (Seq("GET /user", "GET /plan"), Response.Expired))
+    // feed is mentioned twice in the last line, and by name is twice
+    assertEquals(Fetch.calls(page("/feed", "ok")),
+      (Seq("GET /user", "GET /plan", "GET /feed", "GET /feed"),
+        Response.Page("3 picks for Cleo, top scala")))
   }
 
   // ---- multi-shot is handler order
