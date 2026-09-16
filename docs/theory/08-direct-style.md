@@ -234,6 +234,34 @@ un-run — binding is consent to have the value — which keeps
 program-as-value construction (chapter 4's whole point) available
 inside a direct block.
 
+## Call-by-need is an effect
+
+`Delay` is call-by-name — Plotkin's distinction \[[Plotkin 1975](#ref-plotkin-1975)\]:
+the thunk is re-run at every use, and two uses of one shared node are
+two runs. Call-by-need adds sharing: one cell remembers the first
+answer. In a pure language the two are observationally equivalent and
+the cell is the optimisation lazy evaluation is named after; for a
+computation with effects they differ in the log, which is why Haskell
+sequences `IO` with `>>=` and keeps laziness for values, and why
+`unsafeInterleaveIO` is a separate, marked word. Okay draws the same
+line and puts the cell where a semantics goes: in the row. `Once` is
+an effect with two operations (`Force` reads a handle's cell or marks
+it running, `Store` fills it and answers the first value stored), the
+handle is an identity with no program inside — so the effect's type
+does not mention the row it lives in — and `Once.run` is a handler
+whose state is the cells, threaded through its loop as `State.handle`
+threads `S` (direct-once, 2026-09-16). The consequence is that the
+tree stays data: no mutable field, so a program run twice replays the
+same trace, and multi-shot needs no flag because it is decided where
+every other stateful effect decides it, by handler order —
+`runChoice(Once.run(p))` backtracks the cells with the search,
+`Once.run(runChoice(p))` shares one store across the branches. In a
+block the word is `lazy val`: the macro compiles the right-hand side
+to a program under a fresh handle and turns every use into a mark on
+it, so the effects run in the position of the first demand, once;
+`val` runs now, a bare mark runs at every use. `TestDirectOnce` holds
+both handler orders.
+
 ## Multi-shot, and the road not taken
 
 There is a second, seemingly cheaper way to get direct style:
@@ -284,6 +312,9 @@ users today.
   continuations.* PLDI 1993.
 - <a id="ref-bjarnason-2012"></a>Rúnar Óli Bjarnason.
   *Stackless Scala with free monads.* Scala Days 2012.
+- <a id="ref-plotkin-1975"></a>Gordon Plotkin.
+  *Call-by-name, call-by-value and the λ-calculus.* Theoretical
+  Computer Science 1(2), 1975.
 - <a id="ref-kobori-2016"></a>Ikuo Kobori, Yukiyoshi Kameyama, Oleg
   Kiselyov. *Answer-type modification without tears: prompt-passing
   style translation for typed delimited-control operators.* WoC 2015

@@ -34,8 +34,8 @@ class TestLogic extends munit.FunSuite {
   }
 
   test("once commits: one answer, the rest of the search discarded") {
-    assertEquals(!.run(runChoice[Int, okay.Pure](once[Int, okay.Pure](amb(1, 2, 3)))), Seq(1))
-    assertEquals(!.run(runChoice[Int, okay.Pure](once[Int, okay.Pure](fail[Int]))), Seq.empty)
+    assertEquals(!.run(runChoice[Int, okay.Pure](Logic.once[Int, okay.Pure](amb(1, 2, 3)))), Seq(1))
+    assertEquals(!.run(runChoice[Int, okay.Pure](Logic.once[Int, okay.Pure](fail[Int]))), Seq.empty)
   }
 
   test("ifte is the soft cut: else runs ONLY when the condition has no answer") {

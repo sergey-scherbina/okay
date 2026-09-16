@@ -704,6 +704,10 @@ object ! {
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
     Free.delay(() => thunk)
 
+  /** run p at most once under `Once.run`: the by-need word, an effect —
+   * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
+  inline def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) = Once.once(p)
+
   /** re-inject into a wider row: effect subsumption. Free is invariant
    * in its signature, so widening walks the tree — one re-injected
    * node per operation, deferred as it goes.

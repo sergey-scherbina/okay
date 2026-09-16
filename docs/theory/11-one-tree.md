@@ -142,7 +142,7 @@ more closure call per run (`statePara` 0.861 at depth 1 against
 1.15–1.19 deeper).
 
 So the budget became a bit, and the bit became a class. A fresh leaf
-absorbs the first `flatMap` into itself — `Inject(Once.Absorbed(s,
+absorbs the first `flatMap` into itself — `Inject(Leaf.Absorbed(s,
 f))`, the function `k => s(a => run(f(a))(k))` — and a leaf that has
 absorbed once takes the next bind as a `Bind` node like any other
 (`Cont.scala:201–236`). `map` has its own case, `Mapped`, because

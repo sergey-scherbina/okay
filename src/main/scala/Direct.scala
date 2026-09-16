@@ -418,8 +418,11 @@ object Direct:
     def stmtsTail(stats: List[Statement], tail: () => Term, tailElem: TypeRepr): Term =
       stats match
         case Nil => tail()
+        case (vd @ ValDef(_, _, Some(rhs))) :: rest if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) =>
+          val (defs, use) = lazyOnce(vd, rhs)
+          val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
+          Block(defs, stmtsTail(rest2, tail, tailElem))
         case (vd @ ValDef(_, _, Some(rhs))) :: rest =>
-          if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) then refuse(vd, "in a lazy val")
           compile(rhs) match
             case Out.Pure(p) =>
               Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
@@ -525,6 +528,83 @@ object Direct:
           case id: Ident if id.symbol == sym => ref
           case _ => super.transformTerm(tree)(owner)
       m.transformTerm(t)(Symbol.spliceOwner)
+
+    /** the block's row names Once — the by-need cells have a handler */
+    lazy val onceInRow: Boolean =
+      rowOf.exists(r => TypeRepr.of[Once[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
+
+    lazy val reflectMark: Symbol = directSym.methodMember("reflect").head
+
+    /**
+     * `lazy val x: T = rhs` with a mark in rhs (direct-once,
+     * specs/direct-macro.md): the by-need word. The rhs compiles to a
+     * program, built at the first demand and never again — a cell
+     * under a fresh `Once.Handle` — and every use of `x` becomes a mark
+     * on that program, so its effects run in the POSITION of the first
+     * demand, once. Three words, three semantics, all visible: `val`
+     * runs here, `lazy val` runs at first use, a bare mark runs at
+     * every use.
+     *
+     * The cell is the `Once` effect's, so the row has to name it: the
+     * macro cannot decide what "once" means under a multi-shot handler
+     * (that is handler order, `Once.run` inside or outside the search)
+     * and does not try. What it emits, for the block's row R:
+     *
+     *     val x$handle = new Once.Handle[T]
+     *     val x$once: F[T] = Once.at[T, R](x$handle)(h => Inject(Force(h)))((h, a) => Inject(Store(h, a)))(rhs')
+     *     ... x$once.reflect ...             // at each use
+     *
+     * Returns the two definitions and a fresh mark per use.
+     */
+    def lazyOnce(vd: ValDef, rhs: Term): (List[Statement], () => Term) =
+      val row = rowOf.getOrElse(
+        refuse(vd, "in a lazy val (the block's monad is not a program, so no row can hold the Once cell)"))
+      if !onceInRow then report.errorAndAbort(
+        "a lazy val with a Direct mark is call-by-need, which is the Once effect here: add it to the " +
+          s"block's row — `A ! (Once + ${row.show})` — and run the program with Once.run; " +
+          "or write `val` (run now) or a bare mark at each use (run every time)", vd.pos)
+      // a lazy val naming itself is a knot at run time and a dangling symbol after the rewrite
+      var selfRef = false
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case id: Ident if id.symbol == vd.symbol => selfRef = true
+          case _ => super.traverseTree(tree)(owner)
+      probe.traverseTree(rhs)(Symbol.spliceOwner)
+      if selfRef then refuse(vd, "in a lazy val that refers to itself")
+      val elem = vd.tpt.tpe.widen
+      val prog: Term = asFAt(compile(rhs), elem)
+      val handleT = TypeRepr.of[Once.Handle].appliedTo(elem)
+      val hSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$handle", handleT,
+        Flags.EmptyFlags, Symbol.noSymbol)
+      val hVal = ValDef(hSym, Some(tpe2(elem) { [T] => (tT: Type[T]) ?=> '{ new Once.Handle[T]() }.asTerm }))
+      val forceApply = Symbol.requiredModule("okay.Once.Force").methodMember("apply").head
+      val storeApply = Symbol.requiredModule("okay.Once.Store").methodMember("apply").head
+      val atSym = Symbol.requiredModule("okay.Once").methodMember("at").head
+      def forceOp(h: Term): Term =
+        injectTerm(Apply(TypeApply(Ref(forceApply), List(Inferred(elem))), List(h)),
+          TypeRepr.of[Option].appliedTo(elem), row)
+      def storeOp(h: Term, a: Term): Term =
+        injectTerm(Apply(TypeApply(Ref(storeApply), List(Inferred(elem))), List(h, a)), elem, row)
+      val (forceFn, storeFn) = tpe2(elem) { [T] => (tT: Type[T]) ?=>
+        ('{ (h: Once.Handle[T]) => ${ forceOp('h.asTerm).asExprOf[F[Option[T]]] } }.asTerm,
+         '{ (h: Once.Handle[T], a: T) => ${ storeOp('h.asTerm, 'a.asTerm).asExprOf[F[T]] } }.asTerm)
+      }
+      val onceT = Apply(Apply(Apply(Apply(
+        TypeApply(Ref(atSym), List(Inferred(elem), Inferred(row))),
+        List(Ref(hSym))), List(forceFn)), List(storeFn)), List(prog))
+      val oSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$once",
+        TypeRepr.of[F].appliedTo(elem), Flags.EmptyFlags, Symbol.noSymbol)
+      val oVal = ValDef(oSym, Some(onceT))
+      (List(hVal, oVal),
+        () => Apply(TypeApply(Ref(reflectMark), List(Inferred(TypeRepr.of[F]), Inferred(elem))), List(Ref(oSym))))
+
+    /** replace every use of `sym` in the statements and the result with a fresh `ref()` */
+    def substUses(stats: List[Statement], expr: Term, sym: Symbol, ref: () => Term): (List[Statement], Term) =
+      val m = new TreeMap:
+        override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
+          case id: Ident if id.symbol == sym => ref()
+          case _ => super.transformTerm(tree)(owner)
+      (stats.map(st => m.transformStatement(st)(Symbol.spliceOwner)), m.transformTerm(expr)(Symbol.spliceOwner))
 
     /** compile an expression */
     def compile(t0: Term): Out =
@@ -787,8 +867,13 @@ object Direct:
     def compileBlock(stats: List[Statement], expr: Term): Out =
       stats match
         case Nil => compile(expr)
+        case (vd @ ValDef(_, _, Some(rhs))) :: rest if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) =>
+          val (defs, use) = lazyOnce(vd, rhs)
+          val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
+          compileBlock(rest2, expr2) match
+            case Out.Pure(p) => Out.Pure(Block(defs, p))
+            case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
         case (vd @ ValDef(name, tpt, Some(rhs))) :: rest =>
-          if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) then refuse(vd, "in a lazy val")
           compile(rhs) match
             case Out.Pure(p) =>
               wrapPure(vd, p, rest, expr)

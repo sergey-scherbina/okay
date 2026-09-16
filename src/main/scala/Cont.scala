@@ -198,9 +198,9 @@ object Cont:
    * finds — the tree will not remember them and the facade already
    * checked them.
    */
-  private enum Once[A, S, R] extends ((A => S) => R):
+  private enum Leaf[A, S, R] extends ((A => S) => R):
     /** flatMap's absorption: the continuation enters the leaf */
-    case Absorbed[A, B, S, T, R](s: (A => T) => R, g: A => Rep[B, S, T]) extends Once[B, S, R]
+    case Absorbed[A, B, S, T, R](s: (A => T) => R, g: A => Rep[B, S, T]) extends Leaf[B, S, R]
 
     /**
      * the same for `map`, its own case rather than `Absorbed` over
@@ -208,7 +208,7 @@ object Cont:
      * at RUN time, which measured +24 B/op and 8-19% on every Fib lane
      * — the generator maps once per element, so this is its hot path.
      */
-    case Mapped[A, B, S, R](s: (A => S) => R, g: A => B) extends Once[B, S, R]
+    case Mapped[A, B, S, R](s: (A => S) => R, g: A => B) extends Leaf[B, S, R]
 
     def apply(k: A => S): R = this match
       case Absorbed(s, g) => s(a => run(g(a))(k))
@@ -224,9 +224,9 @@ object Cont:
   def bind[A, B, S, S2, R](c: Rep[A, S, R])(f: A => Rep[B, S2, S]): Rep[B, S2, R] =
     c match
       case Inject(s) => s match
-        // already absorbed one — see `Once` for why never twice
-        case _: Once[?, ?, ?] => Bind(c, f)
-        case _ => Inject(Once.Absorbed(s, f))
+        // already absorbed one — see `Leaf` for why never twice
+        case _: Leaf[?, ?, ?] => Bind(c, f)
+        case _ => Inject(Leaf.Absorbed(s, f))
       // Pure receivers build a node too: fusing `pure(a).flatMap(f)` at
       // CONSTRUCTION would run `def forever = pure(()).flatMap(_ =>
       // forever)` at construction and diverge (interpreter-optimization)
@@ -236,8 +236,8 @@ object Cont:
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] =
     c match
       case Inject(s) => s match
-        case _: Once[?, ?, ?] => Bind(c, a => Free.Pure(f(a)))
-        case _ => Inject(Once.Mapped(s, f))
+        case _: Leaf[?, ?, ?] => Bind(c, a => Free.Pure(f(a)))
+        case _ => Inject(Leaf.Mapped(s, f))
       case _ => Bind(c, a => Free.Pure(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */

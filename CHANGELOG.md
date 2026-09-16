@@ -1,5 +1,32 @@
 # Changelog
 
+## direct-once — call-by-need for programs: the `Once` effect, `!.once`, and `lazy val` in a direct block
+
+`Delay` is by-name. `!.once(p)` is by-need: the first demand runs `p`
+and stores the answer, every later demand of that value answers from
+the store — and in a `direct` block Scala's own word says it:
+
+    val prog: Int ! (Once + Writer % String) = direct:
+      lazy val x = !told("abc")      // runs at the FIRST use, once
+      val y = !told("de")            // runs here
+      x + x + y + !told("f")         // log: de, abc, f
+
+The cell is an EFFECT, `Once` (two operations, `Force` and `Store`,
+a handle that is an identity and carries no program), and the cells
+are `Once.run`'s state, threaded through its loop as `State.handle`
+threads `S`. The tree holds no cell: a program run twice replays the
+same trace. Multi-shot is handler order, not a flag —
+`runChoice(Once.run(p))` backtracks the cells with the search, each
+branch its own once; `Once.run(runChoice(p))` shares one store, the
+second branch sees what the first stored, and the types show it. A
+lazy val with a mark in a row without `Once` is refused with the
+effect named; a demand while the program runs (a knot, an
+interleaved search with `Once.run` outside it) throws rather than
+running twice. `Logic.once`, the cut, keeps its name. Design
+rationale in specs/direct-macro.md (Decisions, direct-once);
+docs/direct-style.md has the section; `TestDirectOnce`, 18 tests,
+holds every shape including both handler orders.
+
 ## direct-defer-default — a direct block defers every call, and one import opts out
 
 Mutual recursion in a `direct` block now needs no word in any position:

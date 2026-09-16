@@ -208,6 +208,19 @@ Logic.observe(6)(Logic.interleave(evens, odds))   // 0,1,2,3,4,5 — fair turns
 Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
                                          // finds 4 where flatMap diverges
 Logic.once(m)                            // the cut: first answer only
+```
+
+`!.once(p)` is a different word — call-by-need: `p` runs at its
+first demand and answers from a cell after, under `Once.run`. In a
+`direct` block it is `lazy val`:
+
+```scala
+val prog: Int ! (Once + Writer % String) = direct:
+  lazy val x = !told("abc")              // runs at the first use, once
+  val y = !told("de")                    // runs here
+  x + x + y + !told("f")                 // log: de, abc, f
+Once.run(prog)
+// runChoice(Once.run(p)): a cell per branch; Once.run(runChoice(p)): one cell for all
 Logic.ifte(cond)(th)(el)                 // soft cut: el ONLY on no answer
 ```
 

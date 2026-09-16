@@ -317,6 +317,29 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **`lazy val` with a mark is the `Once` effect, not a cell in the
+  tree** (direct-once, 2026-09-16; the operator's design). The first
+  cut was `Free.once(p)`: a `Delay` whose thunk checks a mutable
+  cell. Refused before it compiled, for three reasons the effect
+  answers at once: a mutable field makes the same program answer
+  differently on its second run (a replaying handler, a persisted
+  journal, replays a stale value); "once" under a multi-shot handler
+  needs a policy the macro cannot check, so an import flag would
+  have been a promise nobody verifies; and a concurrent or abandoned
+  first run is undetectable from inside the thunk. As an effect the
+  cells are `Once.run`'s threaded state, the tree stays data, and
+  the multi-shot policy is handler order — `runChoice(Once.run(p))`
+  backtracks the cells, `Once.run(runChoice(p))` shares one store —
+  which the compiler checks. The handle carries no program so that
+  `Once`'s type does not name its row; the program stays with
+  `!.once`, which is `Once.at` (the row-generic form the macro emits,
+  the two operations injected by the caller) at `Once + F`. A lazy
+  val with a mark and no `Once` in the row is refused with the effect
+  named; a self-referring one is refused (a knot at run time, a
+  dangling symbol after the rewrite); a demand while the program is
+  running throws. `Logic.once` (the cut) keeps its name; a file
+  importing both `!.*` and `Logic.*` qualifies the cut, which
+  `TestLogic` now does.
 - **Tail fusion for loop bodies** (direct-tail-fusion, 2026-09-02;
   the road direct-flatmap-emission recorded): a loop BODY compiles
   against an explicit tail term — `compileTail(t, tail)` returns an

@@ -13,7 +13,7 @@ same material with the measurements attached.
   phantom to the tree and carried by the facade's signatures
   (theory ch. 11). Running is `Cont.step`, tail-recursive with
   left-nested binds rebalanced and `Delay` forced; a fresh leaf
-  absorbs its first `flatMap` (`Once.Absorbed`/`Mapped`), exactly
+  absorbs its first `flatMap` (`Leaf.Absorbed`/`Mapped`), exactly
   once. The erased leaf type is written once, behind `Shift.of`
   (forget, an upcast) and `Shift.at` (remember, THE cast).
   `Cont.delay` is the tail call. The foundation everything stands on.
@@ -173,6 +173,12 @@ same material with the measurements attached.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
   the canonical `MonadPlus`. A `LazyList` of alternatives is an
   INFINITE choice point (Seq is the parameter, laziness crosses).
+- **`Once`** — call-by-need for programs: `!.once(p)` runs `p` at
+  the first demand and answers from a cell after, `Once.run` holds the
+  cells as threaded state. `lazy val x = !p` in a `direct` block is
+  this word. Multi-shot is handler order: `runChoice(Once.run(p))`
+  backtracks the cells, `Once.run(runChoice(p))` shares one store
+  (docs/direct-style.md, "Call-by-need"). Not `Logic.once`, the cut.
 - **`Logic`** — backtracking search over Choose (LogicT): `msplit`
   (first answer + the rest as a program — the one primitive), `once`
   (cut), `ifte` (soft cut), `gnot` (negation as failure),

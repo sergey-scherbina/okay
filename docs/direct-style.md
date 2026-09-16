@@ -201,6 +201,11 @@ its position and its workaround in the message:
   Bind the value to a `val` before the lambda.
 - a mark **under a by-name argument** — hoisting it would change
   when (whether) it evaluates.
+- a mark **in a `lazy val`** of a block whose row does not name
+  `Once` — the same "when" question, answered: a lazy val with a
+  mark is call-by-need, which is an effect here (the section
+  "Call-by-need: `lazy val` is the `Once` effect" below). With `Once`
+  in the row it is not a refusal but the by-need word.
 - **`try` around marks** — a v2 road (reification into the Throws
   error channel), named, not promised. (`while` and the
   foreach/map loops below graduated out of this list.)
@@ -443,13 +448,85 @@ is this library's `Free` node for node — and with the lowering the
 rest of the block already gets: two self-calls in one expression,
 branches, `match`, a real row whose tells interleave with the
 recursion in order. Without the language import the same thing is
-`!fib(n - 1) + !fib(n - 2)`. Mutual recursion needs one word — the
-deferral rule covers a call to the ENCLOSING def, and two functions
-calling each other are not that — but no mark:
-`!.tailcall(other(n))` is a program value, and it colours like any
-other. A self-call under a
+`!fib(n - 1) + !fib(n - 2)`. Mutual recursion needs no word either
+(direct-defer-default: every call at the block's program type is
+deferred, and `import Direct.eagerCalls.given` is the opt-out that
+hands `!.tailcall(other(n))` back to you). A self-call under a
 lambda is a value and is left alone (v1 does not look under lambdas).
 `TestDirectDeep` holds every one of these shapes.
+
+## Call-by-need: `lazy val` is the `Once` effect
+
+`Delay` is by-name: the loop forces its thunk every time it reaches
+the node, and a node shared between two places runs twice — Scala's
+by-name parameter, not its `lazy val`. Haskell's laziness is by-NEED:
+by-name plus a cell that remembers the answer. For a pure thunk the
+cell is an optimisation, unobservable. For a program it is a
+semantics — "run these effects at most once" can be seen in the log —
+and the library's rule for a semantics is that it is an effect in
+the row, not a mutable field in the tree. So it is one (direct-once,
+2026-09-16):
+
+```scala
+enum Once[+A] derives Effect:
+  case Force[A](h: Once.Handle[A]) extends Once[Option[A]]   // what the cell holds
+  case Store[A](h: Once.Handle[A], a: A) extends Once[A]     // fill it; answers what it holds after
+
+def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F)     // !.once
+def run[A, F[+_]](a: A ! (Once + F)): A ! F                  // Once.run
+```
+
+`!.once(p)` is a program value: its first demand runs `p` and stores
+the answer under a fresh handle; every later demand of *that value*
+answers from the store. The handle carries no program, which is what
+keeps `Once`'s type free of the row it lives in and lets it be
+written like any other effect. The cells are the handler's STATE,
+threaded through `Once.run`'s loop as `State.handle` threads `S`, so
+the tree holds no cell: the same program run twice replays the same
+trace.
+
+In a block the word is Scala's own:
+
+```scala
+val prog: Int ! (Once + Writer % String) = direct:
+  lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
+  val y = !told("de")            // runs here
+  x + x + y + !told("f")         // log: de, abc, f
+```
+
+Three words, three semantics, all visible in the source: `val` runs
+now, `lazy val` runs at first demand, a bare mark runs at every use.
+The macro emits `val x$once = Once.at[T, Row](handle)(force)(store)(rhs')`
+and turns every use of `x` into a mark on it, so a use is a bind in
+the position of the use. A `lazy val` never demanded never runs; one
+demanded in one `if` branch runs only there; one declared in a loop
+body is a fresh cell per iteration, exactly as a `lazy val` would be.
+A use under a lambda is the usual refusal; a use inside a for-loop
+the macro owns works, and runs the cell at the first element.
+
+**What "once" counts.** Once per handle, and a handle is made per
+`!.once(p)` evaluated — as a `lazy val` is per declaration, not per
+right-hand side. `!.once(p) + !.once(p)` runs `p` twice; a bare `!p`
+beside a `!.once(p)` runs every time and knows nothing of the cell;
+`!.once` inside a `def` makes a new handle per call. Share the VALUE
+to share the cell. The type does not say which values are once'd,
+any more than `State` in a row says what the state is.
+
+**Multi-shot is handler order, not a flag.** The cells are state, so
+under a search they behave exactly as `State` does:
+
+| order | cells | reading |
+|---|---|---|
+| `runChoice(Once.run(p))` | backtrack with the search | each branch its own once; nothing leaks — the default |
+| `Once.run(runChoice(p))` | one store for the whole search | the second branch sees what the first stored — deliberate, and the types show it |
+
+The macro could not check a flag for this — it does not know the
+handlers — and does not try. A handle demanded while its own program
+is still running (a knot, or an interleaved search with `Once.run`
+OUTSIDE it) is a loud `IllegalStateException`, not a second run and
+not a hang. `Logic.once` is a different word, the Prolog cut, and
+keeps its namespace. `TestDirectOnce` holds every shape above,
+including both handler orders.
 
 ## Layer 4 — do-notation statements: the statement is the mark
 

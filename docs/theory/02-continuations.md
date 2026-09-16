@@ -65,7 +65,7 @@ loop and continued as is (`Cont.delay`, `Cont.scala:173`).
 
 **Absorption, exactly once.** Pure defunctionalization pays a node per
 bind. A fresh leaf therefore *absorbs* its first `flatMap` into
-itself — `Inject(Once.Absorbed(s, f))`, the function `k => s(a =>
+itself — `Inject(Leaf.Absorbed(s, f))`, the function `k => s(a =>
 run(f(a))(k))` (`Cont.scala:201–236`) — and a leaf that has absorbed
 once takes the next bind as a node. This used to be a depth budget of
 128; the sweep that replaced it (`fuse-depth`, 2026-09-15) found the
