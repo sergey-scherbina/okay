@@ -1,5 +1,27 @@
 # Changelog
 
+## delim-examples — four worked examples of delimited control, as tests
+
+`TestDelimExamples`, each from the literature and each in `direct`
+style:
+
+- **Reverse-mode AD** (Wang & Rompf 2018): the backward pass IS the
+  continuation — `times` captures, runs the rest through `k`, then
+  accumulates the adjoints. No tape, no graph. Checked against the
+  analytic derivative of `x*x + 3x`.
+- **A generator**: a recursive tree walk that yields, read by the
+  caller as a sequence, with nothing inverted.
+- **A web dialogue** (Queinnec 2000): the rest of the dialogue kept as
+  a value between requests. The test answers the same start page twice,
+  differently — the dialogue is a value, so it resumes more than once.
+- **Answer-type modification** (Danvy & Filinski 1990): the block
+  produces an Int and the delimiter answers a String, which `Cont[A, S,
+  R]` carries and a plain monad cannot.
+
+Danvy's typed `printf` was attempted and left out: it needs directives
+polymorphic in what follows them, and the bind order here composes the
+other way round — a bigger exercise than an example should be.
+
 ## delim-one-type — one type argument for a capture in a direct block
 
 `!Delim.shift[Int, Int, W](k => k(5))` asked for three type arguments

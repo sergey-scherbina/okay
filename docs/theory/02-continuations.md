@@ -123,7 +123,47 @@ general case, and it is general *because* of Filinski. Chapter 5 walks
 the three shapes; the point here is that they are not three features
 but one theorem, specialized twice.
 
+## Four worked examples
+
+`TestDelimExamples` runs these, so they are checked rather than
+claimed. Each is a shape the literature uses to argue that first-class
+continuations earn their keep.
+
+**Reverse-mode automatic differentiation** \[[Wang & Rompf 2018](#ref-wang-2018)\].
+The forward pass is what you write; the backward pass is what the
+continuation does on the way out. `times(a, b)` captures, builds the
+result, runs the rest of the computation through `k`, and only then
+accumulates the adjoints — no tape and no graph, because the tape IS
+the continuation. Checked against the analytic derivative of
+`x*x + 3x` at three points.
+
+**A generator.** A recursive tree walk that `yield`s, read by the
+caller as a sequence. The walk is ordinary recursion and nothing is
+inverted: `yieldOne` captures the rest of the walk and conses onto it.
+The strict version is what compiles cleanly here — a lazy one wants
+the tail to be a suspended RUN of the continuation, and a mark under a
+by-name argument is refused by the direct macro on purpose, since
+hoisting it would change when it evaluates.
+
+**A web dialogue** \[[Queinnec 2000](#ref-queinnec-2000)\]. The program
+asks a question and the rest of the dialogue is kept as a value until
+the answer arrives — no state machine, no session object. The test
+answers the SAME start page twice, with different answers, which is
+the point: the dialogue is a value, so it can be resumed more than
+once.
+
+**Answer-type modification** \[[Danvy & Filinski 1990](#ref-danvy-1990)\].
+The block produces an `Int` and the delimiter answers a `String`.
+`Cont[A, S, R]` carries that in its type; a plain monad cannot say it.
+
 ## References
+
+- <a id="ref-wang-2018"></a>Fei Wang and Tiark Rompf.
+  *A Language and Compiler View on Differentiable Programming.* ICLR
+  Workshop, 2018 ("Demystifying Differentiable Programming").
+- <a id="ref-queinnec-2000"></a>Christian Queinnec.
+  *The influence of browsers on evaluators, or continuations to program
+  web servers.* ICFP 2000.
 
 - <a id="ref-felleisen-1988"></a>Matthias Felleisen. *[The theory and practice of first-class
   prompts.](https://doi.org/10.1145/73560.73576)* POPL 1988.
