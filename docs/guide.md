@@ -230,6 +230,20 @@ observed by `Writer.uncons: Either[A, (W, rest)]`. `Producer` is the
 diagonal cousin. Effect handlers forward the telling, so State,
 Reader and Throws handlers ARE stream transformers.
 
+The diagonal has one trap, and it is worth one paragraph because a
+seam typed on it (`Blob.put`) caught a consumer with it. `Produce` is
+the identity signature — an operation IS its element — so a
+producer's element type sits in the ANSWER position, and `pure(a)`
+type-checks wherever `produce(a)` does. It emits nothing: a
+producer's `Pure` is its END, read as `None`. `produce(a)` is the
+emit; in a wider row, `produce(a).plus[Async]` (RowLift's zero-cost
+coerce). And a producer's answer is phantom, so `uncons` drops it at
+its `None` — `Producer.each(p)(f)` runs every element through `f` and
+KEEPS the answer, which is what `Blob.get`'s outcome needs. The two
+carriers convert in one walk each: `Source.ofProducer` /
+`fromProducer` (element type named apart from the answer, since the
+identity signature cannot) and `Source.toProducer(s)(end)`.
+
 The bridge goes both ways: a writer program IS a `Stream` (in `Pure`,
 or in whatever effects it also performs), and `Writer.of(s)` turns any
 stream — a List, a LazyList, a Producer, a Channel — back into the

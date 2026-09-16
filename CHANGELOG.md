@@ -1,5 +1,17 @@
 # Changelog
 
+## blob-source-docs — the documentation for the Source road, and what its survey found
+
+docs/modules/okay-blob.md gains the two roads and `Bytes`, and says
+why there are two; docs/guide.md's producer paragraph gains the trap
+(`pure(a)` type-checks where `produce(a)` does and emits nothing),
+the `.plus[Async]` road, `Producer.each`, and the two conversions.
+BACKLOG gains three entries the survey found: ten hand-rolled `uncons`
+drains over `Produce` rows in six modules (producer-drains),
+`Offload.fetchBytes` being `Blob.getBytes` (offload-getbytes), and
+`Chunks.emptyChunk` private to the caller who needs an `end`
+(emptychunk-public). Prose only.
+
 ## blob-source-road — the Source road into okay-blob, additively
 
 A consumer (okay-watch) hit the seam's one trap: `Blob.put` is typed

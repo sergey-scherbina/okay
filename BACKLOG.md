@@ -1372,6 +1372,27 @@ round-trip test found both. Nothing here is a bug report — the
 algebra does exactly what it documents — but the wrong thing was the
 one that type-checked, which is a shape worth removing.
 
+- [ ] producer-drains — the survey behind blob-source-road counted
+      TEN hand-rolled `uncons` loops draining a
+      `Chunk[X] ! (Produce + Async)` into a `Vector[X]` — Backup and
+      Offload `drainList`, S3 `drainBytes`, Fs `sink`, jdbc `Poll`,
+      `SqlStore`, `Migrate`, `Writes`, outbox `Rows`, rag `PgVector`
+      — each summoning the same `Stream` instance and writing the
+      same `go`. One `Producer.toVector` (or `each` folded into an
+      accumulator) beside `Producer.each` retires all of them, and
+      each is covered by its module's own suite. Six modules, so a
+      full gate.
+- [ ] offload-getbytes — `Offload.fetchBytes` is `Blob.getBytes` with
+      a throw on the Left: a fourth copy of the walk `Producer.each`
+      replaced in Backup, twenty lines that are now one call. Lands
+      with producer-drains.
+- [ ] emptychunk-public — `Chunks.emptyChunk` is `private[okay]`, so
+      a consumer writing a byte producer's terminator by hand, or
+      passing `Source.toProducer`'s `end` for chunks, spells
+      `ArraySeq.empty[Byte]` and hopes it is the same thing (it is —
+      an empty `ArraySeq` is what `emptyChunk` casts to). Either make
+      it public or give `Bytes` an `empty`; `putSource` already hides
+      it for the common case.
 - [x] blob-byte-source — DONE 2026-09-16 (blob-source-road):
       `Bytes.file`, `Bytes.stream`, `Bytes.fileSource` and `putFile`
       on the jvm; `Backup.stream` is now one line. Was: a byte stream from a `Path` or an
