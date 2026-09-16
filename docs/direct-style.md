@@ -379,6 +379,37 @@ def count(xs: List[Int], acc: Long): Long ! Pure = direct:
 !.run(sum(1_000_000))   // 1000000, on the default stack
 ```
 
+**Mutual recursion needs nothing either, in tail position.** A call to
+ANOTHER def at the block's program type is deferred when it is the last
+thing the block does:
+
+```scala
+def isEven(n: Int): Boolean ! Pure = direct:
+  if n == 0 then true else isOdd(n - 1)      // deferred: tail position
+def isOdd(n: Int): Boolean ! Pure = direct:
+  if n == 0 then false else isEven(n - 1)
+
+!.run(isEven(1_000_001))   // false, on the default stack
+```
+
+The macro expanding `isEven` cannot know that `isOdd` calls back — a
+cycle spans files, and the other def may not be typed yet — so the
+enclosing-def rule cannot see it. The tail position can, and is exactly
+where the node costs one allocation and saves a frame. Before this rule
+(direct-tail-defer, 2026-09-16) the same code COMPILED, answered at
+small `n` and overflowed the stack at depth, which is the worst failure
+mode a library can have.
+
+The boundary, stated: a call to the enclosing def is deferred
+**anywhere** in the block; a call to another def is deferred **in tail
+position**; anywhere else — `1L + other(n - 1)`, a mutual call under an
+operator or inside an argument — the word is still
+`!.tailcall(other(n - 1))`, and `!` or `.reflect` are NOT substitutes
+for it: they are marks ("bind this program"), not deferrals ("do not
+build it yet"), so the call still runs at construction. A call already
+wrapped in `!.tailcall` is left alone, so the explicit spelling never
+pays for two nodes.
+
 This is what Kozak's `deepRecursive` macro does for Scala 3 over
 `TailRec`, at the one place it matters (the deferral) — her `TailRec`
 is this library's `Free` node for node — and with the lowering the

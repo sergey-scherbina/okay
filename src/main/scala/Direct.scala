@@ -857,9 +857,24 @@ object Direct:
      * Only a call to the ENCLOSING def, only at the block's program
      * type, only under a mark or a colouring conversion, and never
      * under a lambda (v1 does not look there): a self-call used as a
-     * VALUE — passed along, stored — is left as it is. Mutual
-     * recursion is one word, as it always was:
-     * `!.tailcall(other(n)).reflect`.
+     * VALUE — passed along, stored — is left as it is.
+     *
+     * MUTUAL recursion needs no word either, by a second rule: a call
+     * in the block's TAIL POSITION at the block's program type is
+     * deferred whoever it calls (direct-tail-defer, 2026-09-16). The
+     * macro expanding `isEven` cannot know that `isOdd` calls back —
+     * a cycle spans files and the other def may not be typed yet — so
+     * the enclosing-symbol test cannot see it; the tail position can,
+     * and is exactly where a node costs one allocation and saves a
+     * frame. Without it `else isOdd(n - 1)` COMPILED, answered at
+     * small n and overflowed the stack at depth, which is the worst
+     * failure mode there is.
+     *
+     * Two restrictions keep it honest. A call already wrapped in
+     * `!.tailcall`/`Free.delay`/`Free.defer` is left alone, so the
+     * explicit spelling does not pay for two nodes. And the rule is
+     * only for a call (an `Apply`): a tail-position program VALUE is
+     * not deferred, since nothing is built by naming it.
      */
     def deferSelfCalls(t: Term): Term =
       val self: Symbol =
@@ -884,9 +899,58 @@ object Direct:
           /** Direct.reflect[F, elem](m) — a mark the pipeline recognises */
           def marked(m: Term, elem: TypeRepr): Term =
             Apply(TypeApply(Ref(reflectSym), List(Inferred(TypeRepr.of[F]), Inferred(elem.widen))), List(m))
+          /**
+           * Does this term ALREADY build a deferring node? `!.tailcall(p)`
+           * is inline and reaches the macro as `Free.delay(…)` wrapped in
+           * an `Inlined` WITH BINDINGS (the thunk proxy), which `stripped`
+           * and `calleeRoot` both leave alone — so the first cut of this
+           * check read no name and wrapped the node twice, measured in the
+           * expansion. This peels whatever stands between, bindings and
+           * all, and asks the name at the bottom.
+           */
+          def alreadyDefers(t: Term): Boolean =
+            def root(x: Term): String = x match
+              case Inlined(_, _, inner) => root(inner)
+              case Typed(inner, _) => root(inner)
+              case Block(_, expr) => root(expr)
+              case Apply(f, _) => root(f)
+              case TypeApply(f, _) => root(f)
+              case other => if other.symbol == Symbol.noSymbol then "" else other.symbol.name
+            val n = root(t)
+            n == "delay" || n == "defer" || n == "tailcall"
+
+          /** a program-typed call, whoever it calls — the tail rule's test */
+          def anyProgram(app: Term): Option[TypeRepr] =
+            app.tpe.widen.dealias match
+              case AppliedType(f, List(r, elem))
+                if f.typeSymbol == freeClass && r =:= row && !alreadyDefers(app) => Some(elem)
+              case _ => None
+
+          /** the block's tail positions: what it finally hands back. A
+           * call there is the last thing the block does, so deferring
+           * it costs one node and spares the frame. */
+          def tails(t: Term): Term = t match
+            case Inlined(c, b, inner) => Inlined(c, b, tails(inner))
+            case Typed(inner, tpt) => Typed(tails(inner), tpt)
+            case Block(stats, expr) => Block(stats, tails(expr))
+            case If(c, th, el) => If(c, tails(th), tails(el))
+            case Match(sel, cases) =>
+              Match(sel, cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, tails(cd.rhs))))
+            case Apply(TypeApply(fun, targs), List(m)) if markSyms(fun.symbol) =>
+              anyProgram(stripped(m)) match
+                case Some(elem) => Apply(TypeApply(fun, targs), List(delayed(stripped(m), elem)))
+                case None => t
+            case Apply(sel @ Select(conv, "apply"), List(m)) if colorSyms(calleeRoot(conv)) =>
+              anyProgram(stripped(m)) match
+                case Some(elem) => Apply(sel, List(delayed(stripped(m), elem)))
+                case None => t
+            case _ => t
+
           val walk = new TreeMap:
             override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
-              // v1 does not look under lambdas: a self-call there is a value
+              // v1 does not look under lambdas: a self-call there is a value —
+              // and a thunk the tail rule already built is one, so this is
+              // also what stops the two rules deferring the same call twice
               case Lambda(_, _) => tree
               // already marked: defer the call, keep the one mark
               case Apply(TypeApply(fun, targs), List(m)) if markSyms(fun.symbol) =>
@@ -909,7 +973,7 @@ object Direct:
                     marked(delayed(inner, elem), elem)
                   case None => super.transformTerm(tree)(owner)
               case _ => super.transformTerm(tree)(owner)
-          walk.transformTerm(t)(Symbol.spliceOwner)
+          walk.transformTerm(tails(t))(Symbol.spliceOwner)
         case _ => t
 
     asFAt(compile(deferSelfCalls(topLevelBody)), TypeRepr.of[A]).asExprOf[F[A]]

@@ -12,7 +12,8 @@ import scala.language.implicitConversions
  * drives its `deepRecursive` macro with — fib, a non-tail countdown —
  * and what that macro refuses: a self-call in `match`, a real row
  * interleaving effects with the recursion, mutual recursion (one
- * explicit tailcall), and a self-call under a lambda left alone.
+ * tail-position call to another def), and a self-call under a lambda
+ * left alone.
  */
 class TestDirectDeep extends munit.FunSuite {
 
@@ -82,6 +83,17 @@ class TestDirectDeep extends munit.FunSuite {
   test("mutual recursion, one tailcall per hop and no mark") {
     assertEquals(!.run(isEven(1_000_001)), false)
     assertEquals(!.run(isOdd(1_000_001)), true)
+  }
+
+  // ---- mutual recursion with NO word at all (direct-tail-defer)
+  def evenNW(n: Int): Boolean ! okay.Pure = direct:
+    if n == 0 then true else oddNW(n - 1)
+  def oddNW(n: Int): Boolean ! okay.Pure = direct:
+    if n == 0 then false else evenNW(n - 1)
+
+  test("a tail-position call to ANOTHER def is deferred too") {
+    assertEquals(!.run(evenNW(1_000_001)), false)
+    assertEquals(!.run(oddNW(1_000_001)), true)
   }
 
   test("the same pair written with the mark") {
