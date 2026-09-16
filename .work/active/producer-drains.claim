@@ -1,0 +1,9 @@
+producer-drains
+owner: fable-5.1 session 4afd3fc2
+started: 2026-09-16
+what: the three BACKLOG entries blob-source-docs (9083c412) found:
+  Producer.fold and Producer.concat in core beside each; the ten
+  hand-rolled uncons drains over Chunk[X] ! (Produce + Async) in blob,
+  jdbc, outbox and rag retired onto them; Offload.fetchBytes onto
+  Blob.getBytes; Chunks.emptyChunk public. Behaviour-preserving; each
+  module's own suite covers it. Full gate.
