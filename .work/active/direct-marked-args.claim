@@ -1,0 +1,13 @@
+direct-marked-args
+owner: fable-5.1 session 53f400ad
+started: 2026-09-16
+what: `!f(!f(5))` — a mark inside the ARGUMENT of a marked call — was
+  refused as "a mark under a lambda", and the lambda was the macro's
+  own: the defer-every-call rule wraps the call in `Free.delay(() =>
+  …)` before compilation, so the argument's mark lands under that
+  thunk. A call whose arguments carry marks must not be deferred: the
+  arguments bind first, and the call is built in the continuation.
+  Found while writing `Delim.shift(p)(k => direct { !k(!k(5)) })`,
+  which is the natural spelling of a continuation invoked twice.
+files: src/main/scala/Direct.scala, src/test/scala/TestDirectDeep.scala,
+  specs/direct-macro.md, CHANGELOG.md
