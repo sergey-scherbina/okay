@@ -1,5 +1,31 @@
 # Changelog
 
+## durable-dialogue - the paused program whose journal is a topic
+
+`okay.persist.Dialogue[Q, A, R, F](topic, id)(body)` is the glue
+between `Delim.replay` and the durable log: the answers go in a
+partition, and where the program stands is re-derived from them.
+
+- `at` - where it stands, the program folded over its journal
+- `answer(a)` - append DURABLY, then advance (that order: a crash in
+  the window replays to the same place; the other loses an answer the
+  outside world already acted on)
+- `run(oracle)` - drive to the end, the oracle called once per
+  question and never for one the journal already answered
+- `journal` / `recovered` - the answers, and the damage that ended
+  them if a record did not decode
+
+This is event sourcing with one difference: the events are the ANSWERS
+(under the discipline that everything the outside world tells the
+program enters through `pause`, they are the only non-determinism
+there is), the aggregate's state is where the program stands, and the
+fold that rebuilds it is THE PROGRAM ITSELF - no `apply(state, event)`
+to write, keep in step with the code, and get wrong.
+
+One dialogue = one key = one partition, the `Saga` convention; damage
+is data. `TestDialogue`: 4 tests, including the oracle-count property
+and a key filter proven load-bearing by removing it.
+
 ## paused-persist - a paused dialogue that outlives the process
 
 A continuation is a closure and cannot be written to disk. So the

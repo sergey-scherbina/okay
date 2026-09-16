@@ -599,6 +599,44 @@ through the Typed envelope.
       far end's idempotency, exactly as stated; okay-ops renders
       `Saga.Status` as `okay_saga_*` rows (Live)
 
+## The durable dialogue (durable-dialogue)
+
+Event sourcing, where the fold is the program. `Delim.resumable` stops
+a program in the middle and hands the rest of it back as a value; the
+value is a closure and does not survive a restart, so what is kept is
+the JOURNAL — the answers it has been given — and where it stands is
+re-derived by running it again and feeding those answers back without
+asking. `okay.persist.Dialogue[Q, A, R, F](topic, id)(body)` puts that
+journal in a partition.
+
+The difference from event sourcing as usually written: the events are
+the ANSWERS — under the discipline that everything the outside world
+tells the program enters through `pause`, they are the only
+non-determinism there is — and the aggregate's state is where the
+program stands, so the fold that rebuilds it is the program itself.
+There is no `apply(state, event)` to write, keep in step with the
+code, and get wrong.
+
+Order, as everywhere here: the answer is appended DURABLY BEFORE the
+program advances, so a crash in the window replays to the same place.
+One dialogue = one key = one partition, the `Saga` convention; damage
+is data, and the fold stops at a record that does not decode and
+names its offset rather than putting the program somewhere nobody
+chose. Cost: a step replays the journal, so it is O(answers so far) —
+dialogues are short by nature, and `Snapshots` is the road if one is
+not.
+
+- [x] a second `Dialogue` over the same topic stands where the first
+      one stood, and finishes the dialogue the first one started
+- [x] `run(oracle)` calls the oracle once per question and NEVER for
+      a question the journal already answered — the property, measured
+      by counting: a second process over a complete log asks nothing
+- [x] two dialogues in ONE partition do not see each other's answers
+      (the key filter, proven load-bearing by removing it: the test
+      fails)
+- [x] a record that does not decode ends the journal, names its
+      offset, and leaves the program on the intact prefix
+
 ## Out of scope
 
 - an INDEX beside the log — stated here because a Behavior box once

@@ -173,6 +173,28 @@ one test watches a `Writer` log say the same thing twice across two
 runs, and the next one writes the same program to the discipline and
 watches the driver perform each outside call exactly once.
 
+### It is event sourcing, with the fold already written
+
+`okay-persist` puts that journal in a topic:
+`Dialogue[Q, A, R, F](topic, id)(booking)` — `at` is where the program
+stands, `answer(a)` appends durably and then advances, `run(oracle)`
+drives it to the end, calling the oracle once per question and never
+for one the journal already answered. A second process over the same
+topic stands exactly where the first one stood.
+
+Which is event sourcing, with one difference worth naming:
+
+| Event sourcing | Here |
+|---|---|
+| events | the answers — the only non-determinism the discipline allows |
+| the aggregate's state | where the program stands |
+| `apply(state, event)`, written by hand | **the program itself** |
+| rebuild = fold the events | rebuild = run the program on its journal |
+
+The fold you would otherwise write, keep in step with the code, and
+get subtly wrong is the straight-line program you already wrote. What
+is stored is the answers; what interprets them is the code.
+
 That discipline has a second payoff: a program whose every outside
 call is a question is also a program you can test by answering the
 questions — no mocks, no doubles, and the journal of a failed
