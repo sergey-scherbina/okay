@@ -187,12 +187,24 @@ call to the enclosing def at the block's program type is deferred
 wherever it is marked or coloured — `fib(n - 1)` becomes `Free.delay(()
 => fib(n - 1))` under the same mark (`Direct.scala:864`) — and the
 recursion then trampolines through `resume`'s `Delay` case instead of
-the JVM stack. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
+the JVM stack. A second rule covers the cycle the first cannot see: a
+call to ANOTHER def at the block's program type is deferred when it
+stands in the block's TAIL position, which is what makes mutual
+recursion need no word (direct-tail-defer). The asymmetry is not
+aesthetic — a macro expanding one def cannot know that the def it
+calls calls back, since the cycle spans compilation units, so the
+syntactic position is the only evidence available at expansion time.
+Covering the remaining case would mean deferring every program-typed
+call, and that was implemented and measured: +64 bytes and +57% on a
+block that marks ten thousand non-recursive calls, so it was refuted
+and `!.tailcall` remains the word for a mutual call outside tail
+position. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
 `Bind`, its `done` is `Pure`, its `.result` is `!.run`; what the macro
 of the article refuses — a self-call inside `match`, a real row
 interleaving effects with the recursion, mutual recursion — this
 lowering already handles, mutual recursion by one explicit
-`!.tailcall(other(n))` — one word, no mark. `TestDirectDeep` runs `1 + sum(n - 1)`
+`!.tailcall(other(n))` — needed only where a mutual call is NOT in
+tail position, since a mark is not a deferral. `TestDirectDeep` runs `1 + sum(n - 1)`
 a million deep on the suite's default stack. The zero-annotation form
 is possible only at the program type with colouring on, because a
 macro runs after the typer; with the prefix mark it is

@@ -129,9 +129,11 @@ def sum(n: Int): Long ! Pure = direct:          // 1 + sum(n - 1): not tail
   if n == 0 then 0L else 1L + sum(n - 1)
 ```
 
-The rule: inside a `direct` block a call to the ENCLOSING def, at the
+The rules: inside a `direct` block a call to the ENCLOSING def, at the
 block's own program type, is deferred wherever it is marked or
-auto-coloured — `fib(n - 1)` under `.reflect`, or under `selfColor`
+auto-coloured; and a call to ANOTHER def at that type is deferred in
+the block's TAIL position (direct-tail-defer, 2026-09-16), which is
+what makes mutual recursion need no word — `fib(n - 1)` under `.reflect`, or under `selfColor`
 when `Direct.given` is imported, becomes `Free.delay(() => fib(n -
 1))` under the same mark. The DEFERRAL is the whole trick: a
 self-call evaluated at construction is the native recursion the
@@ -140,8 +142,9 @@ block was written to avoid (on master before this lane, the coloured
 rule it answers). The lowering of `a + b` with two calls, `if`,
 `match` and blocks is `direct`'s own. Never under a lambda (v1 does
 not look there): a self-call used as a value is left alone. Mutual
-recursion is one word and no mark, `!.tailcall(other(n))`, which the
-article's macro cannot do at all.
+recursion needs no word at all in tail position, and
+`!.tailcall(other(n))` where a mutual call stands anywhere else —
+which the article's macro cannot do either way.
 
 Behavior (TestDirectDeep):
 - [x] fib(25) = 75025 with two bare self-calls in one expression;
@@ -150,6 +153,50 @@ Behavior (TestDirectDeep):
       tells interleave with the recursion, in order.
 - [x] the marked spelling defers the same way; mutual recursion
       through `!.tailcall`; a self-call under a lambda untouched.
+
+Decisions on the tail rule (direct-tail-defer, 2026-09-16):
+- **Why the position, and not the callee.** The enclosing def's symbol
+  is knowable at expansion; a mutual cycle is not — it spans files and
+  the other def may not be typed yet. The tail position is the one
+  piece of evidence the macro has, and it is the position where a node
+  costs one allocation and saves a frame. Before the rule, `else
+  isOdd(n - 1)` compiled, answered at small `n` and overflowed the
+  stack at depth; the failing test was written first and watched.
+- **Only a call, never a value.** A tail-position program VALUE (`else
+  p`) is left alone: naming a program builds nothing.
+- **Never twice.** A term that already defers — `!.tailcall`,
+  `Free.delay`, `Free.defer` — is skipped. Getting this wrong was not
+  theoretical: the first cut read no callee name through the
+  `Inlined`-with-bindings node `!.tailcall` expands into and wrapped
+  the node twice, which the `-Xprint:inlining` dump caught.
+- **The cost, measured.** `compare/DirectBenchmark`, two alternating
+  rounds: allocation IDENTICAL TO THE BYTE on `okayDirect`,
+  `okayDirectRec` and the `okayFlatMap` control, so the rule added no
+  node to any of them; time inside the lane's own noise (master's two
+  rounds swung 127.0 → 106.5 µs while the control moved 4% the other
+  way).
+- **"Defer every program-typed call" — REFUTED WITH NUMBERS**
+  (direct-defer-any, 2026-09-16, at the operator's ask; rows `da-*`).
+  It is the only rule that also covers a mutual call OUTSIDE tail
+  position — a cycle the macro cannot see may be closed from any
+  position — so it was implemented and measured rather than argued.
+  Same box, control lane unmoved (`okayFlatMap` 96.3 → 96.4 µs):
+
+  | lane | today | defer-any |
+  |---|---|---|
+  | `okayDirect` | 106.8 µs, 1 598 113 B | 167.2 µs, 2 238 113 B |
+  | `okayDirectRec` | 75.3 µs, 1 358 011 B | 167.1 µs, 1 998 001 B |
+
+  +640 000 B on both — exactly 64 bytes, a `Delay` plus its thunk, for
+  each of the 10 000 marked calls those lanes make — and +57% / +122%
+  of time, paid by every direct block whether it recurses or not;
+  `step(x)` in that lane is not recursive and never was. The same
+  trade the codecs refused with `NativeThreshold`: a tax on every call
+  for a hazard only recursion creates. If the case ever has to be
+  covered, the cheaper shape to price FIRST is a single-node deferring
+  bind (the `Defer` node `defer-eff-removal` derived away), which
+  would cost a thunk instead of a thunk AND a node — but that reopens
+  a settled design and wants its own lane and its own number.
 
 Decisions:
 - **`direct`, not a second entry.** A first cut added

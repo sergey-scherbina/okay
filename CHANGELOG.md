@@ -1,5 +1,60 @@
 # Changelog
 
+## direct-defer-any — REFUTED: the complete rule costs 57-122% of every direct block
+
+The operator asked whether a NON-tail mutual call could also lose its
+`!.tailcall`. The only rule that covers it is "defer every
+program-typed call in a block" — a cycle the macro cannot see may be
+closed from any position — so it was implemented and measured.
+
+| lane | today | defer-any |
+|---|---|---|
+| `okayDirect` | 106.8 µs, 1 598 113 B | 167.2 µs, 2 238 113 B |
+| `okayDirectRec` | 75.3 µs, 1 358 011 B | 167.1 µs, 1 998 001 B |
+| `okayFlatMap` (control, no block) | 96.3 µs | 96.4 µs |
+
++640 000 B on both lanes is exactly 64 bytes — a `Delay` and its
+thunk — for each of the 10 000 marked calls they make, and those calls
+(`step(x)`) are not recursive. The control did not move, so the box
+was steady and the number is the rule's. Reverted; the measurement
+lives in specs/direct-macro.md Decisions and rows `da-*`.
+
+What stands: a call to the enclosing def is deferred anywhere, a call
+to another def is deferred in tail position, and a mutual call outside
+tail position keeps the one word, `!.tailcall(other(n))`. The cheaper
+shape to price first, if that case ever has to be covered, is a
+single-node deferring bind — which reopens `defer-eff-removal` and so
+wants its own lane.
+
+## direct-tail-defer — mutual recursion in a direct block needs no word
+
+(Prose landed late, with direct-defer-any: the lane's own commit
+carried the code, the test and docs/direct-style.md, and this entry
+with the spec's decisions and theory ch. 8 was lost to two heredocs in
+one tool call — the trap this repository already had a note about.)
+
+A call to ANOTHER def at the block's program type is deferred when it
+stands in the block's TAIL position, so
+
+    def isEven(n: Int): Boolean ! Pure = direct:
+      if n == 0 then true else isOdd(n - 1)
+    def isOdd(n: Int): Boolean ! Pure = direct:
+      if n == 0 then false else isEven(n - 1)
+
+answers `isEven(1_000_001)` on the default stack. Until then that code
+compiled, answered at small `n` and threw `StackOverflowError` at
+depth — the failure mode a type system cannot catch and a small test
+does not reach. The failing test was written first and watched to
+throw. Why a position and not a callee: the macro expanding `isEven`
+cannot know that `isOdd` calls back, since the cycle spans compilation
+units, so the enclosing-symbol rule that covers self-recursion is
+blind to it. Two restrictions: only a call is deferred, never a
+tail-position program value; and a term that already defers is
+skipped, so `!.tailcall(p)` does not pay for two nodes — the first cut
+of that check read through the `Inlined`-with-bindings node and
+wrapped it twice, which `-Xprint:inlining` caught. Cost: allocation
+identical to the byte on the DirectBenchmark lanes, time inside their
+noise.
 ## ci-affected — a push pays for what it changed
 
 The numbers: every Actions run in the visible history was cancelled
