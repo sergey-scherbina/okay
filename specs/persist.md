@@ -622,9 +622,19 @@ program advances, so a crash in the window replays to the same place.
 One dialogue = one key = one partition, the `Saga` convention; damage
 is data, and the fold stops at a record that does not decode and
 names its offset rather than putting the program somewhere nobody
-chose. Cost: a step replays the journal, so it is O(answers so far) —
-dialogues are short by nature, and `Snapshots` is the road if one is
-not.
+chose.
+
+Cost, in two paths (durable-dialogue, then dialogue-snapshots). WARM,
+holding the program: `step(p, a)` journals the answer and advances it
+by one, so a drive of n answers is O(n) — measured, `run` over 40
+answers reads zero records where a loop of the replaying `answer`
+reads 820 = 40·41/2. COLD, holding only the log: `answer(a)` replays,
+and a `Snapshots` plus an interval makes the dialogue write CHAPTERS
+(a journal prefix and the offset it ends at), so a start reads one
+chapter and a tail — the snapshot topic's own scan counted on the
+same bill. What no snapshot removes: the program is run once over the
+answers to find where it stands, which is what "the fold is the
+program" costs.
 
 - [x] a second `Dialogue` over the same topic stands where the first
       one stood, and finishes the dialogue the first one started
@@ -636,6 +646,14 @@ not.
       fails)
 - [x] a record that does not decode ends the journal, names its
       offset, and leaves the program on the intact prefix
+- [x] (dialogue-snapshots) the warm path reads NOTHING: `run` over 40
+      answers reads 0 records, the replaying loop 820 — both exact,
+      MemoryStore being deterministic
+- [x] (dialogue-snapshots) a snapshotted cold start reads a tail, not
+      a history: 40 records plain against the chapters plus tail, with
+      the snapshot topic's scan counted too
+- [x] (dialogue-snapshots) the log stays the truth: a reader with no
+      snapshot store at all sees the same journal and the same answer
 
 ## Out of scope
 

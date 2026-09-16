@@ -1,5 +1,32 @@
 # Changelog
 
+## dialogue-snapshots - a step that does not replay
+
+`Dialogue`'s step was O(answers so far) because every one of them
+re-derived from the log. Two paths now, because the warm and the cold
+one are different problems.
+
+- **Warm** - `step(p, a)`: you are holding the program, so the answer
+  is journalled and the program in your hand takes ONE step. A drive
+  of n answers is O(n), and `run(oracle)` uses it. Measured: `run`
+  over 40 answers reads ZERO records where a loop of the replaying
+  `answer` reads 820 = 40*41/2 - both exact, MemoryStore being
+  deterministic.
+- **Cold** - `Dialogue(topic, id, Some(snapshots), snapshotEvery = n)`
+  writes CHAPTERS: a journal prefix and the offset it ends at, into
+  the compacted keyed topic `Snapshots` already conventions. A start
+  then reads one chapter and the tail instead of the whole history -
+  and the test counts the snapshot topic's own scan on the same bill,
+  because a chapter is not free.
+
+What no snapshot removes, and the docs say so: the program is run once
+over the answers to find where it stands. That is what "the fold is
+the program" costs.
+
+The log stays the truth. A chapter that does not decode is ignored and
+the log is read from the start; a reader with no snapshot store at all
+sees the same journal and the same answer - a test for each.
+
 ## durable-dialogue - the paused program whose journal is a topic
 
 `okay.persist.Dialogue[Q, A, R, F](topic, id)(body)` is the glue

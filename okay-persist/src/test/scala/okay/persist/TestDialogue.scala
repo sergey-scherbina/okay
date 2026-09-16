@@ -90,4 +90,101 @@ class TestDialogue extends FunSuite {
     // and the program is where the intact prefix puts it, not further
     assertEquals((!.run(d.at)).asking, Some("How many nights in Kyiv?"))
   }
+
+  // ---- the cost of a step (dialogue-snapshots, 2026-09-17)
+
+  /** a Topic that counts what is read through it */
+  final class Counting(under: Topic) extends Topic:
+    var reads = 0
+    var records = 0
+    def name: String = under.name
+    def partitions: Int = under.partitions
+    def append(p: Int, k: Array[Byte], v: Array[Byte], a: Ack): Long = under.append(p, k, v, a)
+    def read(p: Int, from: Long, max: Int): Topic.Read =
+      reads += 1
+      val r = under.read(p, from, max)
+      r match
+        case Topic.Read.Records(rs) => records += rs.size
+        case _ => ()
+      r
+    def begin(p: Int): Long = under.begin(p)
+    def end(p: Int): Long = under.end(p)
+    def compact(p: Int): Unit = under.compact(p)
+
+  /** a program with as many pauses as you like */
+  def sumUp(n: Int)(using Delim.Asking[Int, Int, Int, Row]): Int ! Row = direct:
+    if n == 0 then 0 else (!Delim.pause(n)) + (!sumUp(n - 1))
+
+  val N = 40
+
+  test("the warm path does not replay: run is O(n), a loop of answer is O(n squared)") {
+    def oracle(q: Int): Int ! Pure = okay.pure(q * 2)
+
+    val warm = Counting(MemoryStore().topic("warm"))
+    val dw = Dialogue[Int, Int, Int, Pure](warm, "w")(sumUp(N))
+    assertEquals(!.run(dw.run(oracle)), (1 to N).sum * 2)
+
+    // the same answers, each taken from a standing start
+    val cold = Counting(MemoryStore().topic("cold"))
+    val dc = Dialogue[Int, Int, Int, Pure](cold, "c")(sumUp(N))
+    def loop(p: Delim.Dialogue[Int, Int, Int, Pure]): Int = p match
+      case Delim.Paused.Done(r) => r
+      case Delim.Paused.Ask(q, _) => loop(!.run(dc.answer(q * 2)))
+    assertEquals(loop(!.run(dc.at)), (1 to N).sum * 2)
+
+    // Both answered the same questions; only one of them re-read the
+    // journal to do it. Exact numbers, because MemoryStore is
+    // deterministic and a chunk of 256 swallows the whole journal:
+    // the cold loop replays i answers at step i, so it reads
+    // 1+2+...+N; the warm one starts from an empty journal and then
+    // never reads at all.
+    assertEquals(warm.records, 0, s"the warm path re-read the journal")
+    assertEquals(cold.records, N * (N + 1) / 2, s"the cold loop's shape is not O(n squared)")
+  }
+
+  test("a chapter makes a cold start read a tail, not a history") {
+    def oracle(q: Int): Int ! Pure = okay.pure(q * 2)
+    val store = MemoryStore()
+
+    val plainT = Counting(store.topic("plain"))
+    val plain = Dialogue[Int, Int, Int, Pure](plainT, "p")(sumUp(N))
+    assertEquals(!.run(plain.run(oracle)), (1 to N).sum * 2)
+
+    val snapT = Counting(store.topic("snap"))
+    // the snapshot topic is counted TOO: a chapter is not free, it is
+    // one scan of a compacted topic, and the comparison is only
+    // honest if that scan is on the bill
+    val snapsT = Counting(store.topic("__snaps", 1, Policy(compact = true)))
+    val snaps = new Snapshots(snapsT)
+    val snapped = Dialogue[Int, Int, Int, Pure](snapT, "s", Some(snaps), snapshotEvery = 10)(sumUp(N))
+    assertEquals(!.run(snapped.run(oracle)), (1 to N).sum * 2)
+
+    // ---- a new process over each log reads it from scratch
+    plainT.records = 0
+    snapT.records = 0
+    snapsT.records = 0
+    val p2 = Dialogue[Int, Int, Int, Pure](plainT, "p")(sumUp(N))
+    val s2 = Dialogue[Int, Int, Int, Pure](snapT, "s", Some(snaps))(sumUp(N))
+    assertEquals(p2.journal.size, N)
+    assertEquals(s2.journal.size, N)          // the same journal...
+    val withChapter = snapT.records + snapsT.records
+    assert(withChapter * 3 < plainT.records,
+      s"snapshotted start read $withChapter records (${snapT.records} journal + " +
+        s"${snapsT.records} chapters), plain ${plainT.records}")
+    assertEquals(plainT.records, N, "the plain start did not read the whole journal")
+  }
+
+  test("the log is the truth: a chapter that is missing costs time, not correctness") {
+    def oracle(q: Int): Int ! Pure = okay.pure(q * 2)
+    val store = MemoryStore()
+    val t = store.topic("bothways")
+    val snaps = Snapshots(store, "__snaps2")
+    val d = Dialogue[Int, Int, Int, Pure](t, "d", Some(snaps), snapshotEvery = 7)(sumUp(12))
+    assertEquals(!.run(d.run(oracle)), (1 to 12).sum * 2)
+
+    // a reader with NO snapshot store sees exactly the same journal
+    val bare = Dialogue[Int, Int, Int, Pure](t, "d")(sumUp(12))
+    assertEquals(bare.journal, d.journal)
+    assertEquals((!.run(bare.at)).finished, (!.run(d.at)).finished)
+  }
 }
