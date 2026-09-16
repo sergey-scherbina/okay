@@ -364,16 +364,15 @@ object Direct:
         case _ => None
       narrow match
         case None => refuse
-        case Some(r) =>
-          Implicits.search(TypeRepr.of[RowLift.In].appliedTo(List(r, row))) match
-            // `RowLift.at[elem, r](m)[row](using w)` — the library's one
-            // cast, with the library's own side condition attached
-            case ok: ImplicitSearchSuccess =>
-              val atSym = TypeRepr.of[RowLift.type].typeSymbol.methodMember("at").head
-              Apply(TypeApply(Apply(TypeApply(Ref(atSym),
-                List(Inferred(elem.widen), Inferred(r))), List(m)), List(Inferred(row))),
-                List(ok.tree))
-            case _ => refuse
+        // membership by SUBTYPING, which is what it means for a union:
+        // `Reader % E <:< (Writer % W + Reader % E + State % S)` holds
+        // pointwise, while an `In` search on the reduced row does not
+        // (see RowLift.into)
+        case Some(r) if r <:< row =>
+          val intoSym = TypeRepr.of[RowLift.type].typeSymbol.methodMember("into").head
+          Apply(TypeApply(Ref(intoSym),
+            List(Inferred(elem.widen), Inferred(r), Inferred(row))), List(m))
+        case _ => refuse
 
     /** fa.flatMap(v => body(v)) — body built from a reference to v,
      * returning an F[resTpe] term */

@@ -548,10 +548,20 @@ object Test:
       case Fetch.Feed(i) => db.feeds(i)
 ```
 
-`State.modify` and `Reader.ask` answer at their OWN rows, narrower
-than this block's; a mark coerces them into it through `RowLift`'s
-`In` witness (direct-narrow-row), which is what keeps the body free of
-a hand-written `.plus[...]` per operation.
+`State.modify` and `Reader.read` answer at their OWN rows, narrower
+than this block's. A mark coerces them into it, and so does plain
+colouring (direct-narrow-row, direct-narrow-colour), which is what
+keeps the body free of a hand-written `.plus[...]` per operation. The
+macro decides membership by SUBTYPING — `R2 <:< R`, which is what
+membership means for a union — because by the time it holds a row the
+row has been beta-reduced and no longer matches the `F + G` shape the
+`In` givens are written against; `RowLift.into` is that door, with the
+side condition named there.
+
+The one mark left in the harness is on a GADT branch whose value IS
+the match's answer: there the branch types at the abstract `X`, and a
+conversion cannot target it. Everywhere the target is a concrete type,
+colouring reaches.
 
 What that test prints (`TestDirectOnce` asserts exactly this):
 

@@ -29,7 +29,7 @@ enum Response:
 enum Fetch[+A] derives okay.Effect:
   case User(token: String) extends Fetch[Api.User]
   case Feed(id: Int) extends Fetch[List[String]]
-  case Now() extends Fetch[Long]
+  case Time() extends Fetch[Long]
 
 object Fetch:
   type Row = Fetch + Once
@@ -39,15 +39,23 @@ object Fetch:
    * `Nothing ! Fetch` — no answer type, and no Once beside it */
   def user(token: String): Api.User ! Row = effect(User(token))
   def feed(id: Int): List[String] ! Row = effect(Feed(id))
-  def now: Long ! Row = effect(Now())
+  def time: Long ! Row = effect(Time())
 
-  def show(e: Fetch[?]): String = e match
+  extension (e: Fetch[?]) def show: String = e match
     case User(t) => s"GET /user?token=$t"
     case Feed(i) => s"GET /feed/$i"
-    case Now() => "CLOCK"
+    case Time() => "CLOCK"
 
-/** your data, as an ordinary record */
-case class Db(users: Map[String, Api.User], feeds: Map[Int, List[String]])
+/** your data — each part read BY ITS TYPE, so a part may be added
+ * without touching the reads of the others */
+case class Users(byToken: Map[String, Api.User]):
+  def get(token: String): Api.User = byToken(token)
+case class Feeds(byUser: Map[Int, List[String]]):
+  def get(id: Int): List[String] = byUser(id)
+
+/** the application names its environment once */
+def read[T](using Reader.Has[(Users, Feeds), T]): T ! Reader % (Users, Feeds) =
+  Reader.read[(Users, Feeds), T]
 
 /**
  * The test: your data goes IN through Reader, the calls come OUT
@@ -55,24 +63,25 @@ case class Db(users: Map[String, Api.User], feeds: Map[Int, List[String]])
  * (State). No mocks and no doubles — another handler for the same
  * effect, and itself an ordinary `direct` block.
  */
-object Test:
-  type Row = Writer % String + Reader % Db + State % Long
+type Test = Writer % String + Reader % (Users, Feeds) + State % Long
 
-  def one[X](e: Fetch[X]): X ! Row = direct:
-    Fetch.show(e).tell                        // the call, into the log
-    val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
-    val db = !Reader.ask[Db]                  // your data, straight in
-    e match
-      case Fetch.Now() => clock
-      case Fetch.User(t) => db.users(t)
-      case Fetch.Feed(i) => db.feeds(i)
+def test[X](e: Fetch[X]): X ! Test = direct:
+  e.show.tell
+  e match
+    // the one mark: a GADT branch whose value IS the match's answer
+    // types at the abstract X, where colouring cannot reach
+    case Fetch.Time() => !State.modify[Long](_ + 10)
+    case Fetch.User(t) => read[Users].get(t)
+    case Fetch.Feed(i) => read[Feeds].get(i)
 
+object Runner:
   /** the calls a program made, and its answer */
-  def calls[A](db: Db)(p: A ! Fetch.Row): (Seq[String], A) =
-    val handled = !.translate[A, Fetch, Row + Once](p.at[Fetch + (Row + Once)]):
-      [X] => (e: Fetch[X]) => one(e).plus[Once]
+  def calls[A](env: (Users, Feeds))(p: A ! Fetch.Row): (Seq[String], A) =
+    val handled = !.translate[A, Fetch, Test + Once](p.at[Fetch + (Test + Once)]):
+      [X] => (e: Fetch[X]) => test(e).plus[Once]
     State.run[Long, (Seq[String], A)](0L)(
-      Reader.run(db)(Writer.run[String, A, Reader % Db + State % Long](Once.run(handled))))._2
+      Reader.run(env)(Writer.run[String, A, Reader % (Users, Feeds) + State % Long](
+        Once.run(handled))))._2
 
 class TestDirectOnce extends munit.FunSuite {
 
@@ -305,31 +314,31 @@ class TestDirectOnce extends munit.FunSuite {
    *      As a `lazy val` the duration would always be 0.
    */
   def page(token: String): Response ! Fetch + Once = direct:
-    val      started = Fetch.now           // by value: pin the start, once
+    val      started = Fetch.time          // by value: pin the start, once
     val      user    = Fetch.user(token)   // by value: every branch needs it
     lazy val feed    = Fetch.feed(user.id) // by need:  costly, and ONE list for both reads
-    def      now     = Fetch.now           // by name:  time moves, read it again
+    def      now     = Fetch.time          // by name:  time moves, read it again
 
     if user.banned then Response.Banned(user)
     else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}", now - started)
 
-  private val db = Db(
-    users = Map("b" -> Api.User(1, "Ada", banned = true),
-      "o" -> Api.User(3, "Cleo", banned = false)),
-    feeds = Map(1 -> Nil, 3 -> List("scala", "okay", "effects")))
+  private val env = (
+    Users(Map("b" -> Api.User(1, "Ada", banned = true),
+      "o" -> Api.User(3, "Cleo", banned = false))),
+    Feeds(Map(1 -> Nil, 3 -> List("scala", "okay", "effects"))))
 
   test("one handler, three words: the calls each request makes") {
     // banned: the clock is pinned and read once, the user is fetched,
     // and feed is never reached — so it is never fetched
-    assertEquals(Test.calls(db)(page("b")),
+    assertEquals(Runner.calls(env)(page("b")),
       (Seq("CLOCK", "GET /user?token=b"), Response.Banned(Api.User(1, "Ada", banned = true))))
 
     // the full page: feed is READ TWICE (size, head) and fetched once —
     // by need. The clock is read twice and answers twice, 120ms apart —
     // by name. Four calls, at 40ms each.
-    assertEquals(Test.calls(db)(page("o")),
+    assertEquals(Runner.calls(env)(page("o")),
       (Seq("CLOCK", "GET /user?token=o", "GET /feed/3", "CLOCK"),
-        Response.Page("3 picks for Cleo, top scala", 120L)))
+        Response.Page("3 picks for Cleo, top scala", 10L)))
   }
 
   // ---- multi-shot is handler order

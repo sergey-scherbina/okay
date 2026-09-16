@@ -58,7 +58,17 @@ object Free {
    * `DirectCtx` exists only inside a block, so outside one a program is
    * a program. The body never runs — the macro rewrites every call.
    */
-  given directColor[R[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R, A], A] =
+  /**
+   * A program colours inside a block whose row is R — INCLUDING a
+   * program of another row R2 (direct-narrow-colour, 2026-09-16). The
+   * membership `In[R2, R]` is NOT asked here: an implicit search for
+   * it during conversion resolution leaves the row's halves as free
+   * variables and fails even where `summon[In[R2, R]]` succeeds
+   * (measured). The macro asks for it instead, with both rows already
+   * known, and coerces or refuses by name — which is where every other
+   * decision about a mark is made.
+   */
+  given directColor[R[+_], R2[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R2, A], A] =
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct { ... }")
 

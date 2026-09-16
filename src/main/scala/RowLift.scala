@@ -38,6 +38,7 @@ object RowLift:
   trait InLow:
     given self[F[+_]]: In[F, F] = ()
 
+
   object In extends InLow:
     given left[F[+_], G[+_]]: In[F, F + G] = ()
     given deeper[F[+_], G[+_], H[+_]](using In[F, G]): In[F, G + H] = ()
@@ -56,6 +57,20 @@ object RowLift:
    */
   private inline def coerce[A, F[+_], R[+_]](p: A ! F): A ! R =
     p.asInstanceOf[A ! R]
+
+  /**
+   * The same cast for the `direct` macro, whose side condition is
+   * checked a different way (direct-narrow-colour, 2026-09-16): the
+   * macro compares the two rows by SUBTYPING — `F <:< R`, which dotty
+   * decides pointwise and which is exactly membership when R is a
+   * union — because by the time it holds a row it has been beta-reduced
+   * to `[A] =>> X[A] | Y[A]` and no longer matches the `F + G` shape
+   * the `In` givens are written against. `summon[In[F, R]]` succeeds on
+   * the ALIAS and fails on the reduced form; measured, and the reason
+   * this door exists rather than the macro fabricating a witness for an
+   * opaque type it cannot see.
+   */
+  private[okay] inline def into[A, F[+_], R[+_]](p: A ! F): A ! R = coerce(p)
 
   /**
    * NEITHER SPELLING CAN LOSE AN EFFECT, which is worth saying because

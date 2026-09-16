@@ -1,5 +1,46 @@
 # Changelog
 
+## reader-read — read the environment by the TYPE read, and colour a narrower row
+
+`Reader.read[E, T]` reads the part of the environment that has type
+`T`: `ask` with a projection through `Reader.Has[E, T]`, the accessor
+as a typeclass (the induction `HMap.Select` already does over a tuple,
+keyed by the value's type instead of a key val), derived for a tuple,
+for a product's fields through its `Mirror`, and for the environment
+itself. No new effect and no new handler — the row holds one
+`Reader % E`, `Reader.run` handles it, nothing casts, and a type the
+environment does not hold does not compile. A component declares
+exactly what it reads:
+
+    def banner[E](using Reader.Has[E, Users]): String ! Reader % E
+
+and runs in any environment holding `Users`.
+
+**direct-narrow-colour**, which is what lets a test harness read as
+ordinary code: a program of a NARROWER row now COLOURS inside a
+`direct` block, not only when marked. The conversion no longer asks
+for `In[R2, R]` — an implicit search for it during conversion
+resolution leaves the row's halves free and fails where
+`summon[In[R2, R]]` succeeds (measured) — and the macro decides
+instead, by SUBTYPING, which is what membership means for a union and
+which the compiler settles on the reduced row the macro actually
+holds. `RowLift.into` is the door, with that side condition stated
+beside the library's one cast.
+
+The by-need example now reads its test data by type:
+
+    type Test = Writer % String + Reader % (Users, Feeds) + State % Long
+
+    def test[X](e: Fetch[X]): X ! Test = direct:
+      e.show.tell
+      e match
+        case Fetch.Time() => !State.modify[Long](_ + 10)
+        case Fetch.User(t) => read[Users].get(t)
+        case Fetch.Feed(i) => read[Feeds].get(i)
+
+The one mark is a GADT branch whose value is the match's answer, which
+types at the abstract `X` where a conversion cannot reach.
+
 ## once-example-clock — the by-need example, where every word is required for correctness
 
 The operator's point: reading something twice has to be RIGHT, not

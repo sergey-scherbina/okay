@@ -134,7 +134,21 @@ same material with the measurements attached.
 
 ## The standard effects
 
-- **`Reader % R`** — `Ask`, handled at relay speed.
+- **`Reader % R`** — `Ask`, handled at relay speed. **Reading by the
+  TYPE read** is `Reader.read[E, T]` (reader-read): `ask` with a
+  projection through `Reader.Has[E, T]`, the accessor as a typeclass,
+  derived for a tuple, for a product's fields and for the environment
+  itself. The row still holds ONE Reader, `Reader.run` still handles
+  it, nothing casts, and a type the environment does not hold does not
+  compile. A component then declares exactly what it reads —
+  `def banner[E](using Reader.Has[E, Users]): String ! Reader % E` runs
+  in any environment holding `Users`. Four routes to the same need,
+  and they answer different questions: one record (simplest), `read[E,
+  T]` (by type), `HMap` (by key, so two values of one type), and
+  `wire`/`providing` (context functions, not an effect). What does NOT
+  work is two Readers in one row — `Reader % A + Reader % B` misroutes,
+  `Distinct` says so, and `Tag.Of` is the answer when they must be
+  separate members.
 - **`Writer % W`** — opaque identity signature: telling w IS emitting
   w, zero allocation; `A ! Writer % W` keeps the element type apart
   from the answer; `Writer.uncons: Either[A, (W, rest)]`;
