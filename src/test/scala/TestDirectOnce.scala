@@ -1,5 +1,6 @@
 package okay
 
+import okay.RowLift.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -16,20 +17,19 @@ import scala.language.implicitConversions
  */
 /** what the services answer */
 object Api:
-  case class User(id: Int, name: String, planId: Int, banned: Boolean)
-  case class Plan(id: Int, expired: Boolean)
+  case class User(id: Int, name: String, banned: Boolean)
 
 enum Response:
-  case Status, Banned, Expired
-  case Page(text: String)
+  case Banned(user: Api.User)
+  case Page(text: String, tookMs: Long)
 
-/** the three remote lookups a page can need: the PROGRAM says what it
- * needs, the HANDLER calls out — so the handler is what records the
- * calls made */
+/** what a page can need: two lookups and the clock. The PROGRAM says
+ * what it needs; a HANDLER answers, and the test's handler below is
+ * the one that records the calls. */
 enum Fetch[+A] derives okay.Effect:
   case User(token: String) extends Fetch[Api.User]
-  case Plan(id: Int) extends Fetch[Api.Plan]
   case Feed(id: Int) extends Fetch[List[String]]
+  case Now() extends Fetch[Long]
 
 object Fetch:
   type Row = Fetch + Once
@@ -38,32 +38,41 @@ object Fetch:
    * and no ascription: `effect(User(token))` on its own would infer
    * `Nothing ! Fetch` — no answer type, and no Once beside it */
   def user(token: String): Api.User ! Row = effect(User(token))
-  def plan(id: Int): Api.Plan ! Row = effect(Plan(id))
   def feed(id: Int): List[String] ! Row = effect(Feed(id))
+  def now: Long ! Row = effect(Now())
 
-  private def answer(e: Fetch[Any]): Any = e match
-    case User(t) => t match
-      case "banned" => Api.User(1, "Ada", 7, banned = true)
-      case "expired" => Api.User(2, "Bob", 8, banned = false)
-      case _ => Api.User(3, "Cleo", 9, banned = false)
-    case Plan(id) => Api.Plan(id, expired = id == 8)
-    case Feed(_) => List("scala", "okay", "effects")
+  def show(e: Fetch[?]): String = e match
+    case User(t) => s"GET /user?token=$t"
+    case Feed(i) => s"GET /feed/$i"
+    case Now() => "CLOCK"
 
-  private def name(e: Fetch[Any]): String = e match
-    case User(_) => "GET /user"
-    case Plan(_) => "GET /plan"
-    case Feed(_) => "GET /feed"
+/** your data, as an ordinary record */
+case class Db(users: Map[String, Api.User], feeds: Map[Int, List[String]])
 
-  /** every call this program makes, in order */
-  def calls[A](p: A ! Row): (Seq[String], A) =
-    import okay.!.*
-    @scala.annotation.tailrec
-    def loop(acc: Vector[String], x: A ! Fetch): (Seq[String], A) = (x.resume: @unchecked) match
-      case Free.Pure(a) => (acc, a)
-      case Inject(e) => (acc :+ name(e), answer(e).asInstanceOf[A])
-      case Bind(Inject(e), f) =>
-        loop(acc :+ name(e), f.asInstanceOf[Any => A ! Fetch](answer(e)))
-    loop(Vector.empty, Once.run(p))
+/**
+ * The test: your data goes IN through Reader, the calls come OUT
+ * through Writer, and the clock moves because each call costs time
+ * (State). No mocks and no doubles — another handler for the same
+ * effect, and itself an ordinary `direct` block.
+ */
+object Test:
+  type Row = Writer % String + Reader % Db + State % Long
+
+  def one[X](e: Fetch[X]): X ! Row = direct:
+    Fetch.show(e).tell                        // the call, into the log
+    val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
+    val db = !Reader.ask[Db]                  // your data, straight in
+    e match
+      case Fetch.Now() => clock
+      case Fetch.User(t) => db.users(t)
+      case Fetch.Feed(i) => db.feeds(i)
+
+  /** the calls a program made, and its answer */
+  def calls[A](db: Db)(p: A ! Fetch.Row): (Seq[String], A) =
+    val handled = !.translate[A, Fetch, Row + Once](p.at[Fetch + (Row + Once)]):
+      [X] => (e: Fetch[X]) => one(e).plus[Once]
+    State.run[Long, (Seq[String], A)](0L)(
+      Reader.run(db)(Writer.run[String, A, Reader % Db + State % Long](Once.run(handled))))._2
 
 class TestDirectOnce extends munit.FunSuite {
 
@@ -280,39 +289,47 @@ class TestDirectOnce extends munit.FunSuite {
     assert(e.contains("lazy val"), e)
   }
 
-  // ---- the realistic shape: one handler, one word each
+  // ---- the realistic shape: one handler, one word each, each for a reason
 
   /**
-   * Written top to bottom as if everything were already loaded. The
-   * three words are Scala's own, and they mean here what they mean for
-   * values: `user` is fetched on every request, `plan` only if a branch
-   * reaches it and then once, `feed` once per mention — and the last
-   * line mentions it twice.
+   * A page that stamps its own duration. Every word here is chosen for
+   * CORRECTNESS, not for speed:
+   *
+   *   `started` is by value — pin the start. As a `def` it would move
+   *      with the end and the duration would always be 0.
+   *   `user` is by value — every branch needs it.
+   *   `feed` is by need — costly, only one branch reaches it, and its
+   *      two reads (size, head) must see ONE list. As a `def` it would
+   *      fetch twice and could report one list's size with another's head.
+   *   `now` is by name — time MOVES, so each mention reads it again.
+   *      As a `lazy val` the duration would always be 0.
    */
-  def page(path: String, token: String): Response ! Fetch + Once = direct:
-    val      user = Fetch.user(token)         // by value: always, once
-    lazy val plan = Fetch.plan(user.planId)   // by need:  if reached, once
-    def      feed = Fetch.feed(user.id)       // by name:  at every mention
+  def page(token: String): Response ! Fetch + Once = direct:
+    val      started = Fetch.now           // by value: pin the start, once
+    val      user    = Fetch.user(token)   // by value: every branch needs it
+    lazy val feed    = Fetch.feed(user.id) // by need:  costly, and ONE list for both reads
+    def      now     = Fetch.now           // by name:  time moves, read it again
 
-    if path == "/status" then Response.Status
-    else if user.banned then Response.Banned
-    else if plan.expired then Response.Expired
-    else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}")
+    if user.banned then Response.Banned(user)
+    else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}", now - started)
+
+  private val db = Db(
+    users = Map("b" -> Api.User(1, "Ada", banned = true),
+      "o" -> Api.User(3, "Cleo", banned = false)),
+    feeds = Map(1 -> Nil, 3 -> List("scala", "okay", "effects")))
 
   test("one handler, three words: the calls each request makes") {
-    // a page nobody needs the user for — and `val` fetches them anyway
-    assertEquals(Fetch.calls(page("/status", "x")),
-      (Seq("GET /user"), Response.Status))
-    // the branch stops before plan: by need, so no /plan call
-    assertEquals(Fetch.calls(page("/feed", "banned")),
-      (Seq("GET /user"), Response.Banned))
-    // reached, and fetched once
-    assertEquals(Fetch.calls(page("/feed", "expired")),
-      (Seq("GET /user", "GET /plan"), Response.Expired))
-    // feed is mentioned twice in the last line, and by name is twice
-    assertEquals(Fetch.calls(page("/feed", "ok")),
-      (Seq("GET /user", "GET /plan", "GET /feed", "GET /feed"),
-        Response.Page("3 picks for Cleo, top scala")))
+    // banned: the clock is pinned and read once, the user is fetched,
+    // and feed is never reached — so it is never fetched
+    assertEquals(Test.calls(db)(page("b")),
+      (Seq("CLOCK", "GET /user?token=b"), Response.Banned(Api.User(1, "Ada", banned = true))))
+
+    // the full page: feed is READ TWICE (size, head) and fetched once —
+    // by need. The clock is read twice and answers twice, 120ms apart —
+    // by name. Four calls, at 40ms each.
+    assertEquals(Test.calls(db)(page("o")),
+      (Seq("CLOCK", "GET /user?token=o", "GET /feed/3", "CLOCK"),
+        Response.Page("3 picks for Cleo, top scala", 120L)))
   }
 
   // ---- multi-shot is handler order

@@ -508,49 +508,61 @@ x = { Writer("x"): Unit; 3 }`, whose statement runs by do-notation,
 is by-need too, and a pure right-hand side stays a plain Scala `lazy
 val`.
 
-**What it is for.** One request handler, written top to bottom as if
-everything were already loaded, with a different word on each lookup:
+**What it is for.** One page handler that stamps its own duration,
+with a different word on each thing it needs — and every word chosen
+for CORRECTNESS, not for speed:
 
 ```scala
-enum Fetch[+A] derives Effect:            // the program says what it needs;
-  case User(token: String) ...            // the HANDLER calls out, so it is
-  case Plan(id: Int) ...                  // what records the calls made
-  case Feed(id: Int) ...
+def page(token: String): Response ! Fetch + Once = direct:
+  val      started = Fetch.now           // by value: pin the start, once
+  val      user    = Fetch.user(token)   // by value: every branch needs it
+  lazy val feed    = Fetch.feed(user.id) // by need:  costly, and ONE list for both reads
+  def      now     = Fetch.now           // by name:  time moves, read it again
 
-def page(path: String, token: String): Response ! Fetch + Once = direct:
-  val      user = Fetch.user(token)         // by value: always, once
-  lazy val plan = Fetch.plan(user.planId)   // by need:  if reached, once
-  def      feed = Fetch.feed(user.id)       // by name:  at every mention
-
-  if path == "/status" then Response.Status
-  else if user.banned then Response.Banned
-  else if plan.expired then Response.Expired
-  else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}")
+  if user.banned then Response.Banned(user)
+  else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}", now - started)
 ```
 
-The calls each request makes, recorded by the handler
-(`TestDirectOnce` runs exactly this):
+`started` and `now` are the SAME operation under two words, and both
+are right: one pinned, one fresh. Swap any of the four and you have a
+bug, not a slowdown — `def started` would move with the end and the
+duration would always be 0, `lazy val now` the same; `def feed` would
+fetch twice and could report one list's size beside another's head.
 
-| request | calls |
-|---|---|
-| `/status` | `GET /user` |
-| a banned user | `GET /user` |
-| an expired plan | `GET /user`, `GET /plan` |
-| the full page | `GET /user`, `GET /plan`, `GET /feed`, `GET /feed` |
+The test is another handler for the same effect: your data goes in
+through `Reader`, the calls come out through `Writer`, and the clock
+moves because each call costs time (`State`). No mocks, no doubles,
+and the harness is itself a `direct` block:
 
-Every row says something. `user` is fetched even for `/status`, which
-needs nobody — that is `val`. `plan` is absent until a branch reaches
-it, and then appears once — that is `lazy val`. `feed` appears twice
-on the last line because the line mentions it twice — that is `def`.
-No `flatMap`, no `Option`, nothing passed down, and the lookups are
-dependent: `plan` needs `user.planId`, `feed` needs `user.id`.
+```scala
+object Test:
+  type Row = Writer % String + Reader % Db + State % Long
 
-The row is spelled `Response ! Fetch + Once`: `+` binds tighter than
-`!`, so the answer type comes first and the row after. The smart
-constructors on the companion (`Fetch.user(token) = effect(User(token))`)
-carry the row, which is what lets the block name no types at all —
-`effect(Fetch.User(token))` on its own infers `Nothing ! Fetch`, losing
-both the answer type and the `Once` beside it.
+  def one[X](e: Fetch[X]): X ! Row = direct:
+    Fetch.show(e).tell                        // the call, into the log
+    val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
+    val db = !Reader.ask[Db]                  // your data, straight in
+    e match
+      case Fetch.Now() => clock
+      case Fetch.User(t) => db.users(t)
+      case Fetch.Feed(i) => db.feeds(i)
+```
+
+`State.modify` and `Reader.ask` answer at their OWN rows, narrower
+than this block's; a mark coerces them into it through `RowLift`'s
+`In` witness (direct-narrow-row), which is what keeps the body free of
+a hand-written `.plus[...]` per operation.
+
+What that test prints (`TestDirectOnce` asserts exactly this):
+
+| request | answer | calls |
+|---|---|---|
+| a banned user | `Banned(Ada)` | `CLOCK`, `GET /user?token=b` |
+| the full page | `Page("3 picks for Cleo, top scala", 120)` | `CLOCK`, `GET /user?token=o`, `GET /feed/3`, `CLOCK` |
+
+`feed` is read twice in that one line and fetched once. The clock is
+read twice and answers twice, 120ms apart. The user is fetched on both
+requests, and never twice.
 
 **No marks, no ascriptions.** The three words hold with nothing
 written on them (direct-colourless-val, 2026-09-16):

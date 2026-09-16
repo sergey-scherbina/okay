@@ -338,10 +338,42 @@ object Direct:
       else rowOf match
         case Some(row) if m.tpe <:< row.appliedTo(elem.widen) =>
           injectTerm(m, elem, row)
+        // a program of a NARROWER row: `!Reader.ask[Db]` inside a block at
+        // `Writer % String + Reader % Db + State % Long` (direct-narrow-row,
+        // 2026-09-16). The row's own combinators — `State.modify`,
+        // `Reader.ask`, `Writer.tell` — all answer at their OWN row, so
+        // without this every one of them needs a hand-written `.plus[...]`
+        // naming the other members, which is what made the test harness
+        // in docs/direct-style.md unreadable. The coercion is RowLift's,
+        // and its side condition is RowLift's too: an `In[F2, row]`
+        // summoned HERE, so the compiler proves the membership and the
+        // macro emits no cast of its own.
+        case Some(row) => narrowRow(m, elem, row, at)
         case _ =>
           report.errorAndAbort(
             s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
               rowOf.fold("")(r => s" nor an operation of its row ${r.show}"), at)
+
+    /** `m.at[row]`, when m is a program of a row this block's row CONTAINS */
+    def narrowRow(m: Term, elem: TypeRepr, row: TypeRepr, at: Position): Term =
+      def refuse: Nothing = report.errorAndAbort(
+        s"the marked value has type ${m.tpe.show} — neither this block's " +
+          s"${TypeRepr.of[F].appliedTo(elem.widen).show} nor an operation of its row ${row.show}", at)
+      val narrow: Option[TypeRepr] = m.tpe.widen.dealias.baseType(freeClass) match
+        case AppliedType(_, List(r, e)) if e.widen =:= elem.widen => Some(r)
+        case _ => None
+      narrow match
+        case None => refuse
+        case Some(r) =>
+          Implicits.search(TypeRepr.of[RowLift.In].appliedTo(List(r, row))) match
+            // `RowLift.at[elem, r](m)[row](using w)` — the library's one
+            // cast, with the library's own side condition attached
+            case ok: ImplicitSearchSuccess =>
+              val atSym = TypeRepr.of[RowLift.type].typeSymbol.methodMember("at").head
+              Apply(TypeApply(Apply(TypeApply(Ref(atSym),
+                List(Inferred(elem.widen), Inferred(r))), List(m)), List(Inferred(row))),
+                List(ok.tree))
+            case _ => refuse
 
     /** fa.flatMap(v => body(v)) — body built from a reference to v,
      * returning an F[resTpe] term */

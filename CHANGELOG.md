@@ -1,5 +1,38 @@
 # Changelog
 
+## once-example-clock — the by-need example, where every word is required for correctness
+
+The operator's point: reading something twice has to be RIGHT, not
+just wasteful. It is the clock. The example is a page handler that
+stamps its own duration:
+
+    val      started = Fetch.now           // by value: pin the start, once
+    val      user    = Fetch.user(token)   // by value: every branch needs it
+    lazy val feed    = Fetch.feed(user.id) // by need:  costly, ONE list for both reads
+    def      now     = Fetch.now           // by name:  time moves, read it again
+
+`started` and `now` are the same operation under two words, and both
+are right. Swap any of the four and it is a bug: `def started` or
+`lazy val now` answer 0ms, `def feed` can report one list's size
+beside another's head.
+
+The test that shows it is another handler for the same effect — your
+data in through Reader, the calls out through Writer, a clock that
+moves through State — and it is itself a `direct` block:
+
+| request | answer | calls |
+|---|---|---|
+| a banned user | `Banned(Ada)` | `CLOCK`, `GET /user?token=b` |
+| the full page | `Page("3 picks…", 120)` | `CLOCK`, `GET /user`, `GET /feed/3`, `CLOCK` |
+
+**direct-narrow-row**, which is what made that harness readable: a
+mark on a program of a NARROWER row — `!Reader.ask[Db]` in a block at
+`Writer % String + Reader % Db + State % Long` — is now coerced into
+the block's row through `RowLift`'s `In` witness, summoned at
+expansion. Without it every combinator needed a hand-written
+`.plus[...]` naming the other members. A program of an unrelated row
+is refused as before.
+
 ## once-example-typed — the by-need example, in the operator's shape
 
 The example that carries direct-once through the docs and

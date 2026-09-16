@@ -239,6 +239,28 @@ class TestDirect extends munit.FunSuite {
     assertEquals(!.run(Writer.run[String, Int, okay.Pure](p)), (Seq("outside"), 4))
   }
 
+  test("a mark on a program of a NARROWER row is coerced into the block's row") {
+    type R = Writer % String + Reader % Int + State % Long
+    val prog: Long ! R = direct {
+      val env = !Reader.ask[Int]           // a program at Reader % Int
+      "seen".tell                          // an operation of the row
+      !State.modify[Long](_ + env)         // a program at State % Long
+    }
+    val (log, out) = !.run(Reader.run(7)(Writer.run[String, (Long, Long), Reader % Int](
+      State.handle[Long](1L)(prog))))
+    assertEquals(log, Seq("seen"))
+    assertEquals(out, (8L, 8L))
+  }
+
+  test("a mark on a program of an UNRELATED row is still refused, with both readings named") {
+    val e = compileErrors("""
+      val p: Int ! (Writer % String) = okay.Direct.direct[[A] =>> A ! (Writer % String)] {
+        !Reader.ask[Int]
+      }
+    """)
+    assert(e.contains("neither this block's"), e)
+  }
+
   test("a mark under a lambda is a compile error") {
     val errors = compileErrors(
       "okay.Direct.direct[List] { List(1).filter(i => List(i > 0).reflect) }(using summon[Monad[List]]) ")
