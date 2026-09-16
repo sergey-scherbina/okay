@@ -317,6 +317,21 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **A lambda whose body ends at the block's program type is compiled,
+  not refused** (direct-program-lambda, 2026-09-16). The general
+  lambda refusal stands; this is the same narrow exception `try` and a
+  nested `def` already have, and it is sound for the same reason — the
+  body ALREADY answers at the program type, so binding the marks
+  inside it changes neither the lambda's type nor where it is
+  evaluated. The body compiles through the ordinary `compile` (it
+  reads the block's own locals) and is flattened by one `flatMap`,
+  since an expression answering a program compiles to `F[F[T]]`. Only
+  the block's OWN row: another row would need its `Monad` summoned and
+  its type carried into the pipeline, and the shape that wants this —
+  a `Delim` continuation handler — answers at the row it was written
+  in. What it buys: `Delim.shift(p) { k => "x".tell; k(n) }` with no
+  inner `direct` block (`TestDelim`).
+
 - **A call whose ARGUMENTS carry marks is not deferred**
   (direct-marked-args, 2026-09-16). `!f(!f(5))` was refused as "a mark
   under a lambda", and the lambda was the macro's own: the

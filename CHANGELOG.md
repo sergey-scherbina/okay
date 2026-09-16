@@ -1,5 +1,23 @@
 # Changelog
 
+## direct-program-lambda — a continuation handler reads as ordinary code
+
+A lambda whose body ends at the block's program type is compiled as
+its own sub-block instead of being refused — the same narrow exception
+`try` and a nested `def` already have, and sound for the same reason:
+the body already answers at the program type, so binding the marks
+inside it changes neither the lambda's type nor where it is evaluated.
+
+    val x = !Delim.shift[Int, Int, W](p): k =>
+      "deciding".tell                       // a mark directly under the lambda
+      if n % 2 == 0 then k(n) else pure(-1)
+
+The general "a mark under a lambda" refusal stands for every other
+lambda, and `TestDirect` still pins it. What the rule does NOT reach
+is a handler body ending in a VALUE — `a + b` — because the lambda's
+result must already be a program when the typer sees it; that is what
+an inner `direct` block is for.
+
 ## direct-marked-args — a mark inside a marked call's argument, and delimited control inside a direct block
 
 `!f(!f(5))` was refused as "a mark under a lambda". No lambda was

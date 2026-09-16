@@ -238,6 +238,23 @@ class TestDelim extends munit.FunSuite {
       (Seq("before", "between", "after", "used 21"), 21))
   }
 
+  test("a shift handler needs no inner block when its body ends in a program") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+    def guard(n: Int): Int ! W = Delim.reset[Int, W]: p =>
+      direct:
+        val x = !Delim.shift[Int, Int, W](p): k =>
+          "deciding".tell                       // a mark directly under the lambda
+          if n % 2 == 0 then k(n) else okay.pure(-1)
+        s"got $x".tell
+        x
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](guard(4))),
+      (Seq("deciding", "got 4"), 4))
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](guard(7))),
+      (Seq("deciding"), -1))
+  }
+
   test("a mark inside a marked call's ARGUMENT compiles — the deferral steps aside") {
     import okay.Direct.*
     import scala.language.implicitConversions

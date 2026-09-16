@@ -198,7 +198,14 @@ its position and its workaround in the message:
   function boundary the macro does not rewrite, and rewriting
   higher-order arguments generically is the expensive half of the
   general problem (the half dotty-cps-async solves and pays for).
-  Bind the value to a `val` before the lambda.
+  Bind the value to a `val` before the lambda. ONE lambda is
+  rewritten: one whose body already ENDS at the block's program type
+  (direct-program-lambda), which is the `try` body's treatment and the
+  nested def's, and sound for the same reason — binding the marks
+  inside changes neither the lambda's type nor where it is evaluated.
+  That is what lets a continuation handler read as ordinary code:
+  `Delim.shift(p) { k => "deciding".tell; if ok then k(n) else pure(-1) }`
+  with no inner block.
 - a mark **under a by-name argument** — hoisting it would change
   when (whether) it evaluates.
 - a mark **in a `lazy val`** of a block whose row does not name

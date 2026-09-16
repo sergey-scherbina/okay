@@ -859,6 +859,40 @@ object Direct:
               compileMarked(t)
             case _ => Out.Pure(t)
 
+    /**
+     * A lambda whose body is a PROGRAM OF THIS BLOCK'S ROW: compile
+     * that body through the pipeline and keep the lambda. The `try`
+     * body's treatment, and the nested def's, and sound for the same
+     * reason: the body already ENDS at the block's program type, so
+     * binding the marks inside it changes neither the lambda's type
+     * nor where it is evaluated.
+     *
+     * The block's OWN row, not any row: a lambda answering at another
+     * row would need that row's `Monad` summoned and its type carried
+     * into the pipeline, and the shape that wants this — a `Delim`
+     * continuation handler — answers at the row it was written in.
+     */
+    def programLambda(l: Term, params: List[ValDef], body: Term): Option[Out] =
+      body.tpe.widen.dealias.baseType(freeClass) match
+        case AppliedType(_, List(_, e))
+          if body.tpe.widen <:< TypeRepr.of[F].appliedTo(e.widen) =>
+          // the body is an expression ANSWERING a program, so compiling
+          // it gives `F[F[T]]` — one flatMap brings it back to the
+          // lambda's own result type
+          val compiled: Term = compile(body) match
+            case Out.Pure(q) => q
+            case Out.Eff(c, ce) => bind(c, ce, e.widen)(v => v)
+          Some(Out.Pure(Lambda(Symbol.spliceOwner,
+            MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => body.tpe.widen),
+            (owner, args) =>
+              val m = new TreeMap:
+                override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+                  case id: Ident if params.exists(_.symbol == id.symbol) =>
+                    args(params.indexWhere(_.symbol == id.symbol)).asInstanceOf[Term]
+                  case _ => super.transformTerm(tree)(o)
+              m.transformTerm(compiled)(owner).changeOwner(owner))))
+        case _ => None
+
     /** t contains marks below the root — dispatch on shape */
     def compileMarked(t: Term): Out = t match
       // whitelisted combinators FIRST — for-do and for-yield desugar
@@ -869,7 +903,21 @@ object Direct:
 
       // BEFORE Block: a Lambda IS Block(DefDef :: Nil, Closure), and
       // the block case would claim it with a vaguer message
-      case l @ Lambda(_, _) => refuse(l, "under a lambda")
+      case l @ Lambda(params, body) =>
+        // A lambda whose RESULT IS A PROGRAM is compiled as its own
+        // sub-block (direct-program-lambda, 2026-09-16) — the `try`
+        // body's treatment, and the nested def's. It is sound for the
+        // same reason both of those are: the body already ENDS at a
+        // program type, so binding the marks inside it changes neither
+        // the lambda's type nor where it is evaluated; the macro only
+        // rewrites what is already there. This is what lets a
+        // continuation handler read as ordinary code —
+        // `Delim.shift(p)(k => { "x".tell; !k(n) })` with no inner
+        // block. Every other lambda keeps the refusal: rewriting a
+        // higher-order argument generically is the expensive half of
+        // the problem, and the refusal is the whole difference between
+        // these few hundred lines and a CPS transformer.
+        programLambda(l, params, body).getOrElse(refuse(l, "under a lambda"))
       case Block(stats, expr) => compileBlock(stats, expr)
 
       case If(c, th, el) =>
