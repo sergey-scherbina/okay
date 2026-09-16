@@ -418,15 +418,15 @@ object Direct:
     def stmtsTail(stats: List[Statement], tail: () => Term, tailElem: TypeRepr): Term =
       stats match
         case Nil => tail()
-        case (vd @ ValDef(_, _, Some(rhs))) :: rest if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) =>
-          val (defs, use) = lazyOnce(vd, rhs)
-          val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
-          Block(defs, stmtsTail(rest2, tail, tailElem))
         case (vd @ ValDef(_, _, Some(rhs))) :: rest =>
           compile(rhs) match
             case Out.Pure(p) =>
               Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
                 stmtsTail(rest, tail, tailElem))
+            case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
+              val (defs, use) = lazyOnce(vd, rhs, out)
+              val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
+              Block(defs, stmtsTail(rest2, tail, tailElem))
             case Out.Eff(c, e) =>
               bind(c, e, tailElem) { v =>
                 Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))),
@@ -555,8 +555,14 @@ object Direct:
      *     ... x$once.reflect ...             // at each use
      *
      * Returns the two definitions and a fresh mark per use.
+     *
+     * The rule keys on the COMPILED rhs, not on `hasMark`: a rhs that
+     * runs an operation by do-notation (`lazy val x = { Writer("x"); 3 }`)
+     * carries no mark syntactically and is by-need all the same
+     * (direct-once-bare, 2026-09-16 — it bound eagerly for an hour). A
+     * pure rhs stays a plain Scala lazy val.
      */
-    def lazyOnce(vd: ValDef, rhs: Term): (List[Statement], () => Term) =
+    def lazyOnce(vd: ValDef, rhs: Term, compiled: Out): (List[Statement], () => Term) =
       val row = rowOf.getOrElse(
         refuse(vd, "in a lazy val (the block's monad is not a program, so no row can hold the Once cell)"))
       if !onceInRow then report.errorAndAbort(
@@ -572,7 +578,7 @@ object Direct:
       probe.traverseTree(rhs)(Symbol.spliceOwner)
       if selfRef then refuse(vd, "in a lazy val that refers to itself")
       val elem = vd.tpt.tpe.widen
-      val prog: Term = asFAt(compile(rhs), elem)
+      val prog: Term = asFAt(compiled, elem)
       val handleT = TypeRepr.of[Once.Handle].appliedTo(elem)
       val hSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$handle", handleT,
         Flags.EmptyFlags, Symbol.noSymbol)
@@ -867,16 +873,16 @@ object Direct:
     def compileBlock(stats: List[Statement], expr: Term): Out =
       stats match
         case Nil => compile(expr)
-        case (vd @ ValDef(_, _, Some(rhs))) :: rest if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) =>
-          val (defs, use) = lazyOnce(vd, rhs)
-          val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
-          compileBlock(rest2, expr2) match
-            case Out.Pure(p) => Out.Pure(Block(defs, p))
-            case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
         case (vd @ ValDef(name, tpt, Some(rhs))) :: rest =>
           compile(rhs) match
             case Out.Pure(p) =>
               wrapPure(vd, p, rest, expr)
+            case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
+              val (defs, use) = lazyOnce(vd, rhs, out)
+              val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
+              compileBlock(rest2, expr2) match
+                case Out.Pure(p) => Out.Pure(Block(defs, p))
+                case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
             case Out.Eff(c, e) =>
               // the val KEEPS its symbol, re-bound to the continuation's
               // parameter: a later def or an assignment (for a var)

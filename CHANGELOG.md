@@ -1,5 +1,14 @@
 # Changelog
 
+## direct-once-bare — a lazy val whose rhs runs an operation by do-notation is by-need too
+
+`lazy val x = { Writer("x"): Unit; 3 }` bound EAGERLY for an hour:
+the direct-once rule keyed on `hasMark`, and a bare runnable
+statement is not a mark syntactically. The rule keys on the compiled
+right-hand side now — `Out.Eff` is the by-need case, `Out.Pure` stays
+a plain lazy val — and `TestDirectOnce` has both, the first written
+to fail before the fix.
+
 ## logic-cut — the Prolog cut is `Logic.cut`; `once` means one thing
 
 `Logic.once` (commit to the first answer) is `Logic.cut`. The hour

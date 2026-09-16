@@ -104,6 +104,24 @@ class TestDirectOnce extends munit.FunSuite {
     assertEquals(logged(prog), (Seq("de", "abc", "f"), 9))
   }
 
+  test("lazy val whose rhs runs an operation by do-notation, no mark: still by-need") {
+    val prog: Int ! R = direct:
+      lazy val x = { Writer("x"): Unit; 3 }   // `: Unit` as TestDirect does: quiets E176, the macro strips it
+      Writer("first").reflect
+      x + x
+    assertEquals(logged(prog), (Seq("first", "x"), 6))
+  }
+
+  test("lazy val with a pure rhs stays a plain lazy val") {
+    var built = 0
+    val prog: Int ! R = direct:
+      lazy val x = { built += 1; 3 }
+      Writer("only").reflect
+      x + x
+    assertEquals(logged(prog), (Seq("only"), 6))
+    assertEquals(built, 1)
+  }
+
   test("lazy val with a mark inside a loop body: a fresh cell per iteration") {
     val prog: Int ! R = direct:
       var acc = 0

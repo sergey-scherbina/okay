@@ -502,7 +502,11 @@ the position of the use. A `lazy val` never demanded never runs; one
 demanded in one `if` branch runs only there; one declared in a loop
 body is a fresh cell per iteration, exactly as a `lazy val` would be.
 A use under a lambda is the usual refusal; a use inside a for-loop
-the macro owns works, and runs the cell at the first element.
+the macro owns works, and runs the cell at the first element. The
+rule keys on the compiled right-hand side, not on the mark: `lazy val
+x = { Writer("x"): Unit; 3 }`, whose statement runs by do-notation,
+is by-need too, and a pure right-hand side stays a plain Scala `lazy
+val`.
 
 **What "once" counts.** Once per handle, and a handle is made per
 `!.once(p)` evaluated — as a `lazy val` is per declaration, not per
