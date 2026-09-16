@@ -262,4 +262,38 @@ class TestDelim extends munit.FunSuite {
     val prog: Int ! okay.Pure = direct { !h(!h(5)) }
     assertEquals(!.run(prog), 7)
   }
+
+  // ---- the typed door: the evidence, not the prompt (delim-prompted)
+
+  test("Prompted: a function that captures is written apart, and runs only inside `delimited`") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+
+    // written on its own, with no prompt in sight
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shiftIn[Int, Int, W](k => k(5))
+
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),
+      (Seq("hello"), 6))
+  }
+
+  test("Prompted: the evidence cannot be forged, so a capture cannot miss its delimiter") {
+    val e = compileErrors("new okay.Delim.Prompted[Int](okay.Delim.prompt[Int])")
+    assert(e.nonEmpty, "the evidence was constructible outside the package")
+    val e2 = compileErrors("okay.Delim.shiftIn[Int, Int, okay.Pure](k => k(1))")
+    assert(e2.nonEmpty, "a capture compiled with no delimiter in scope")
+  }
+
+  test("Prompted: nested delimiters, the inner one in force") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    val prog: Int ! okay.Pure = Delim.delimited[Int, okay.Pure]:
+      direct:
+        10 + !Delim.delimited[Int, Delim + okay.Pure]:
+          direct:
+            1 + !Delim.shiftIn[Int, Int, Delim + okay.Pure](k => k(5))
+    assertEquals(!.run(prog), 16)
+  }
 }

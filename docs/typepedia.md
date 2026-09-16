@@ -207,7 +207,18 @@ same material with the measurements attached.
   `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
   (first n of an infinite search). A library over the effect, not a
   new effect. See specs/backtracking.md.
-- **`Delim`** — delimited control AS AN EFFECT, multi-prompt
+- **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
+  (delim-prompted): evidence that a delimiter is installed, made only
+  by `Delim.delimited`, so a capture through `shiftIn` cannot name a
+  prompt that is not on the stack — `NoPrompt` moved to compile time
+  for that path. A portable function reads `Prompted[Int] ?=> Int !
+  (Delim + W)`: written apart, stored, passed, and callable only where
+  a `delimited` put the evidence in scope. The obligation is NOT a row
+  member: rows are unions and `Free` is invariant in them, so a body
+  that does not capture to the prompt being installed could not be
+  widened into the handler's row (measured; `push(inner) {
+  shift(outer)(…) }` is ordinary and is in `TestDelim`). What stays
+  runtime: evidence that escapes its own `delimited`.
   (Dybvig/Peyton Jones/Sabry): **`Prompt[R]`** is a first-class tag
   carrying the delimiter's answer type, `push` installs one (an
   OPERATION, not a handler — one machine must own the whole prompt

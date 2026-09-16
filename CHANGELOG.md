@@ -1,5 +1,36 @@
 # Changelog
 
+## delim-prompted — NoPrompt as a compile error, through evidence rather than a row
+
+`Delim.Prompted[R]` is evidence that a delimiter is INSTALLED. Only
+`Delim.delimited` makes one (the constructor is private to `Delim`),
+so a capture taken through `shiftIn` cannot name a prompt that is not
+on the stack. A portable function reads:
+
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shiftIn[Int, Int, W](k => k(5))
+
+written apart, stored, passed — and callable only where a `delimited`
+put the evidence in scope. `shiftIn`, `shift0In`, `controlIn`,
+`control0In` and `abortIn` are the family; the prompt-taking
+primitives stay for code that juggles prompts itself (okay-llm's
+`Cut`, the machine).
+
+**The obligation is not a row member, and that was measured.** The
+first design put it in the row — `A ! (Delim + Prompted[p.type] + F)`,
+discharged by `push` — and it does not compose: rows are unions and
+`Free` is invariant in them, so a body that does NOT capture to the
+prompt being installed (`push(inner) { shift(outer)(…) }`, or any body
+with no capture at all) cannot be widened into the row the handler
+wants. Both shapes are ordinary and both are in `TestDelim`. The
+evidence design changes no existing type: a program is still
+`A ! (Delim + F)`.
+
+What it does not catch: evidence escaping its own `delimited`. That
+stays the runtime `NoPrompt`, and closing it needs the region trick
+`runST` uses.
+
 ## prog-lambda-warn — the gate was RED and I read the exit code instead
 
 direct-program-lambda (188ea4c6) landed with two E198 unused-symbol

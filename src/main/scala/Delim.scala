@@ -113,6 +113,68 @@ object Delim {
     val p = prompt[R]
     run(push(p)(body(p)))
 
+  /**
+   * THE DELIMITER IS INSTALLED — the evidence, and the typed door
+   * (delim-prompted, 2026-09-16). `NoPrompt` is thrown when a capture
+   * names a prompt that is not on the stack; a capture made through
+   * THIS cannot, because the only way to hold a `Prompted[R]` is to be
+   * inside the `delimited` that installed one. The constructor is
+   * private to the package, so the evidence cannot be forged.
+   *
+   * It is the given, not the prompt, that has to be asked for: a
+   * `Prompt[R]` is one line to make and proves nothing.
+   *
+   *     def banner: Prompted[Int] ?=> Int ! (Delim + W) = direct:
+   *       "hello".tell
+   *       1 + !Delim.shiftIn[Int, Int, W](k => k(5))
+   *
+   * That function compiles, is a value, travels — and can only be
+   * CALLED where a `delimited` put the evidence in scope.
+   *
+   * WHY NOT A ROW MEMBER. An obligation in the row (`A ! (Delim +
+   * Prompted[p.type] + F)`, discharged by `push`) was written first
+   * and does not compose: rows here are unions and `Free` is invariant
+   * in them, so a body that does NOT capture to the prompt being
+   * installed — `push(inner) { shift(outer)(…) }`, or any body with no
+   * capture at all — cannot be widened into the row the handler wants.
+   * Both shapes are ordinary and both are in `TestDelim`.
+   *
+   * WHAT IT DOES NOT CATCH: the evidence escaping its own `delimited`
+   * and being used afterwards. That stays the runtime `NoPrompt`, and
+   * closing it needs the region trick `runST` uses.
+   */
+  final class Prompted[R] private[Delim] (private[Delim] val prompt: Prompt[R])
+
+  /** install a fresh delimiter, run the body under it with the
+   * evidence in scope, and handle the machine */
+  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F)): R ! F =
+    val p = prompt[R]
+    run(push(p)(body(using new Prompted[R](p))))
+
+  /** capture up to the delimiter in force */
+  def shiftIn[R, A, F[+_]](using in: Prompted[R])
+                          (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    shift[R, A, F](in.prompt)(f)
+
+  /** the 0-variant: the body consumes the delimiter */
+  def shift0In[R, A, F[+_]](using in: Prompted[R])
+                           (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    shift0[R, A, F](in.prompt)(f)
+
+  /** the continuation does not re-install the delimiter */
+  def controlIn[R, A, F[+_]](using in: Prompted[R])
+                            (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    control[R, A, F](in.prompt)(f)
+
+  /** neither */
+  def control0In[R, A, F[+_]](using in: Prompted[R])
+                             (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    control0[R, A, F](in.prompt)(f)
+
+  /** abort to the delimiter in force with a value */
+  def abortIn[R, A, F[+_]](using in: Prompted[R])(value: R): A ! (Delim + F) =
+    abort[R, A, F](in.prompt)(value)
+
   /** a prompt is its own typed token: the same prompt has the same
    * answer type — the witness the machine uses to split its stack */
   given Same[Prompt] = Same.byIdentity
