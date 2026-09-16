@@ -1353,6 +1353,69 @@ its owner can price it:
       the config FILE; `OKAY_STAGING` is okay-staging's switch), so
       "every OKAY_ in the guide is a setting" is false.
 
+## okay-blob — from a consumer (2026-09-16, okay-watch)
+
+These four come from OUTSIDE: okay-watch backs its case log off the
+volume through `Blob`, and hit one real defect doing it. Each entry
+carries what produced it rather than a wish.
+
+The defect, because all four point at it. `Blob.put` takes
+`Chunk[Byte] ! (Produce + Async)`. `Produce` is the identity
+signature, so the element type sits in the ANSWER position, and
+`pure(chunk)` therefore type-checks — and emits nothing, because
+`Stream[Producer, Pure]` reads `Free.Pure(_)` as the END of the stream
+and discards its value. The result was a zero-byte object under the
+right key. Two symptoms from one cause: the caller's size test never
+matched so every backup pass re-copied, and the restore answered
+`refused: no header`. Neither compiler nor runtime said a word; a
+round-trip test found both. Nothing here is a bug report — the
+algebra does exactly what it documents — but the wrong thing was the
+one that type-checked, which is a shape worth removing.
+
+- [ ] blob-byte-source — a byte stream from a `Path` or an
+      `InputStream`, in the library. The 64 KB read loop that
+      `Backup.stream` has (private, `okay-blob/.../Backup.scala:65`)
+      now exists a SECOND time, copied verbatim into okay-watch,
+      because there was nothing public to call. Anyone else putting a
+      file into a Blob writes it a third. Cheapest of the four, no
+      breakage, and it removes the hand-written `effect` from every
+      caller — which is where the defect above lives.
+- [ ] blob-put-bytes — `put` over what callers actually hold: an
+      `Array[Byte]`, a `Chunk[Byte]`, a `Path`. Today storing a file
+      requires learning the Produce algebra first, and the streaming
+      form is the only form. Independent of the above and smaller;
+      together they would have made the defect unwritable without
+      touching the trait.
+- [ ] produce-at-a-wider-row — `produce(a)` is the named injector and
+      is typed `A ! Produce` precisely, so a program in
+      `Produce + Async` cannot call it. `!.widen` does lift it (that
+      is what `Source.of` uses), at the price of a tree-rewriting
+      pass a multi-chunk stream should not pay per element, so the
+      idiom in practice is the wide `effect[Produce + Async, A](a)` —
+      okay's own benchmark spells it that way too
+      (`effect[Ask + Produce, Int]`). The point is that at the wide
+      row the named safe call is unavailable and `pure` is not:
+      reaching for `pure` is exactly the mistake above. A
+      `produce[F[+_], A](a): A ! (Produce + F)` would close it; one
+      sentence at `produce`'s doc pointing at `!.widen` and at this
+      trap would close most of it for nothing.
+- [ ] blob-source-seam — the real fix, and the expensive one: re-type
+      the seam on `Source[Chunk[Byte]]` (`Unit ! (Writer % W +
+      Async)`) instead of `Chunk[Byte] ! (Produce + Async)`. The
+      answer becomes `Unit` and the element type moves into the
+      SIGNATURE, so `pure(x)` can no longer be mistaken for an emit —
+      the defect stops being expressible rather than being documented.
+      It also buys `Source.of`, `Source.unfold` and `Source.apply` as
+      ready constructors, every Writer/Stream combinator, `merge`, and
+      `Flush.now` — an explicit chunk boundary, which is precisely
+      what `S3.put`'s own comment wants when streaming bodies and
+      multipart arrive. COST, stated: `Blob.put`, `Blob.get`,
+      `Blob.list`, `Blob.Counted`, `Fs`, `S3` and `Backup` all move,
+      and `get`'s `Either[String, Unit] ! (Produce + Async)` needs a
+      shape that carries an outcome beside a Source. Worth pricing
+      before taking, and worth taking only if the seam is going to be
+      touched for streaming puts anyway.
+
 ## okay-http
 - [x] route-headers-a — DONE 2026-09-11. A request header is a
       `Named[T]` in a third place: `:@`, the same spellings
