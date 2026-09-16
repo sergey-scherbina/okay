@@ -1,5 +1,34 @@
 # Changelog
 
+## reader-env — `!Reader.ask` with no type argument inside a direct block
+
+A `direct` block names its environment once, in its own row, and never
+again:
+
+    type Test = Writer % String + Reader % (Users, Feeds) + State % Long
+
+    def test[X](e: Fetch[X]): X ! Test = direct:
+      val (users, feeds) = !Reader.ask
+      e.show.tell
+      e match
+        case Fetch.Time() => !State.modify[Long](_ + 10)
+        case Fetch.User(t) => users.get(t)
+        case Fetch.Feed(i) => feeds.get(i)
+
+An OVERLOAD of `ask`, not a second name — it expands to `ask[E]`, and
+`ask[R]` keeps working in and out of a block. Two witnesses find E,
+both resolved at TYPER time, while the row is still the alias the user
+wrote: `RowOf[F]` recovers the row from the block's program type and
+`EnvOf[R]` finds the Reader's environment inside it. (The same
+structural search fails inside the macro, where the row has been
+beta-reduced to a union — measured in direct-narrow-colour.)
+
+`ask` is `inline` for a reason that is not performance: the `DirectCtx`
+that pins the row is a value parameter of the context lambda the macro
+strips, so a non-inline version leaves a dangling reference to it
+("used outside the scope where it was defined"). Inlining removes the
+parameter at expansion and leaves `ask[E]`, which is what the body was.
+
 ## reader-read — read the environment by the TYPE read, and colour a narrower row
 
 `Reader.read[E, T]` reads the part of the environment that has type

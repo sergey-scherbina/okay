@@ -142,7 +142,16 @@ same material with the measurements attached.
   it, nothing casts, and a type the environment does not hold does not
   compile. A component then declares exactly what it reads —
   `def banner[E](using Reader.Has[E, Users]): String ! Reader % E` runs
-  in any environment holding `Users`. Four routes to the same need,
+  in any environment holding `Users`. **Inside a `direct` block
+  `!Reader.ask` needs no type argument at all** (reader-env): the
+  environment comes from the block's ROW, so a block names it once and
+  never again — `val (users, feeds) = !Reader.ask`. It is an overload,
+  not a second name; `ask[R]` keeps working everywhere. Two witnesses
+  make it work, both resolved at typer time while the row is still the
+  alias the user wrote (`RowOf[F]` recovers the row from the block's
+  program type, `EnvOf[R]` finds the Reader inside it), and `ask` is
+  `inline` because the `DirectCtx` that pins the row is a value
+  parameter of a lambda the macro strips. Four routes to the same need,
   and they answer different questions: one record (simplest), `read[E,
   T]` (by type), `HMap` (by key, so two values of one type), and
   `wire`/`providing` (context functions, not an effect). What does NOT

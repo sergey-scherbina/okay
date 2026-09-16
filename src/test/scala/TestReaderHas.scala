@@ -46,6 +46,24 @@ class TestReaderHas extends munit.FunSuite {
     assertEquals(!.run(Reader.run(db)(Reader.read[Db, Clock])), Clock(3L))
   }
 
+  test("ask with no type argument takes the environment from the block's row") {
+    type Row = Writer % String + Reader % Env + State % Long
+    val prog: String ! Row = direct:
+      val (users, feeds, clock) = !Reader.ask     // the row names Env; nothing else does
+      "seen".tell
+      s"${users.byToken("a")} ${feeds.byUser(1).size} ${clock.nowMs}"
+    val (log, out) = !.run(Reader.run(env)(Writer.run[String, (Long, String), Reader % Env](
+      State.handle[Long](0L)(prog))))
+    assertEquals(log, Seq("seen"))
+    assertEquals(out._2, "Ada 2 7")
+  }
+
+  test("ask with a type argument still works, in a block and outside one") {
+    assertEquals(!.run(Reader.run(env)(Reader.ask[Env])), env)
+    val inBlock: Users ! Reader % Env = direct { (!Reader.ask[Env])._1 }
+    assertEquals(!.run(Reader.run(env)(inBlock)), env._1)
+  }
+
   test("a type the environment does not hold does not compile") {
     val e = compileErrors("okay.Reader.read[(Int, Long), String]")
     assert(e.nonEmpty, "reading a String out of (Int, Long) compiled")

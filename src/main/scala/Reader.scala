@@ -87,6 +87,60 @@ object Reader {
    */
   def read[E, T](using h: Has[E, T]): T ! Reader % E = ask[E].map(h.get)
 
+  /**
+   * THE ROW OF A BLOCK'S PROGRAM TYPE, recovered by the compiler:
+   * `[X] =>> Free[R, X]` gives back R (reader-env, 2026-09-16).
+   */
+  trait RowOf[F[_]]:
+    type R[+_]
+  object RowOf:
+    given [R0[+_]]: RowOf[[X] =>> Free[R0, X]] with
+      type R[+A] = R0[A]
+
+  /**
+   * THE ENVIRONMENT OF THE READER INSIDE A ROW. Structural, like
+   * `RowLift.In` — and it works here because the search runs at TYPER
+   * time, while the row is still the alias the user wrote; by the time
+   * the macro holds a row it has been beta-reduced into a union and
+   * matches no `F + G` shape (measured, direct-narrow-colour).
+   */
+  trait EnvOf[R[+_]]:
+    type E
+  object EnvOf extends EnvOfDeeper:
+    given here[E0, G[+_]]: EnvOf[Reader % E0 + G] with
+      type E = E0
+  trait EnvOfDeeper extends EnvOfOnly:
+    given later[F[+_], G[+_]](using r: EnvOf[G]): EnvOf[F + G] with
+      type E = r.E
+  trait EnvOfOnly:
+    given only[E0]: EnvOf[Reader % E0] with
+      type E = E0
+
+  /**
+   * `!Reader.ask` with NO type argument, inside a `direct` block: the
+   * environment comes from the BLOCK'S ROW, so a block names its
+   * environment once — in its own row — and never again:
+   *
+   *     type Row = Writer % String + Reader % (Users, Feeds) + State % Long
+   *     def f: String ! Row = direct:
+   *       val (users, feeds) = !Reader.ask
+   *
+   * An OVERLOAD of `ask`, not a second name, because it is the same
+   * operation: it expands to `ask[E]`. `ask[R]` keeps working
+   * everywhere, in or out of a block; this one is chosen exactly when
+   * no type argument is written and a `DirectCtx` is in scope.
+   *
+   * INLINE, and that is not a performance choice: the `DirectCtx` that
+   * pins F is a value parameter, the macro strips the context lambda it
+   * belongs to, and a reference to it surviving into the output is a
+   * dangling parameter ("used outside the scope where it was defined").
+   * Inlining removes the parameter at expansion and leaves `ask[E]`,
+   * which is what the body was all along.
+   */
+  inline def ask[F[_]](using inline ctx: Direct.DirectCtx[F])
+                      (using f: RowOf[F])(using e: EnvOf[f.R]): e.E ! Reader % e.E =
+    ask[e.E]
+
   /** answer every Ask with r, forwarding the effects F */
   def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F): A ! F =
     relay[A, A, Reader % R, F](a)(pure(_)):
