@@ -129,10 +129,11 @@ A ! (State % Int + Throws % String + Async)
 ```
 
 `+` is genuine union, not a coproduct functor — which is why `Pure`,
-the empty row, can be `Nothing` (`Effects.scala:34`): the union with
+the empty row, can be `Nothing` (`Effects.scala:43`): the union with
 nothing added is the row itself, and a pure program `A ! Pure`
-coerces into any row for free by covariance (`F[Nothing] <: F[X]`,
-noted at `Effects.scala:213`).
+widens into any row by `!.widen` or `RowLift.at` — `Free` is invariant in
+its signature by a measured choice (`Effects.scala:711`, the walk is
+also a normalization).
 
 A handler for `F` inside a row `F + G` must *split* the union: given an
 operation, is it mine or the residue's? That is `split`
@@ -155,7 +156,7 @@ anything.
 
 ## Three shapes of handler, one line
 
-`Effects.scala:424–439` states the design in a comment worth quoting
+`Effects.scala:737–742` states the design in a comment worth quoting
 almost whole. With `F ==> H` meaning a natural transformation from the
 signature to a carrier:
 

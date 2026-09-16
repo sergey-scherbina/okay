@@ -113,9 +113,9 @@ the enumeration" at each element.
 
 Filinski's theorem says delimited control *suffices*; Okay's
 `Effects.scala` makes it the actual foundation: a Cont-valued handler
-`F !> S = F ==> ([X] =>> X /> S)` (`Effects.scala:59`) interprets each
+`F !> S = F ==> ([X] =>> X /> S)` (`Effects.scala:120`) interprets each
 operation as a continuation-manipulating program, and the comment at
-`Effects.scala:424–432` places the three handler shapes — comonadic
+`Effects.scala:737–742` places the three handler shapes — comonadic
 `F ==> Id`, translating `F ==> ([X] =>> X ! G)`, and Cont-valued —
 "on one line". The first two are the degenerate points (never touch
 the continuation; touch it only to re-inject), the third is the
