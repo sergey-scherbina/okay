@@ -14,3 +14,7 @@ what: the operator's point — "calling feed twice is just inefficient;
   the calls out, State carries a clock that moves because each call
   costs time.
 files: src/test/scala/TestDirectOnce.scala, docs/direct-style.md, CHANGELOG.md
+  also: a mark on a program of a NARROWER row — `!Reader.ask[Db]` in a
+  block at `Writer % String + Reader % Db + State % Long` — is accepted
+  and coerced through RowLift's In witness, which is what makes the
+  harness read as ordinary code instead of `.plus[...]` per operation.
