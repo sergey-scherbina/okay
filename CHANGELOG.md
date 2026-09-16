@@ -1,5 +1,15 @@
 # Changelog
 
+## either-via-split — one function holds the union's casts
+
+`<|>` is `split[F, G](e)(Left(_))(Right(_))`: the operator's proposal,
+after the review reported `<|>` as unused and the report turned out
+to be a truncated grep (29 files in 12 modules use it, as the Either
+form for drains and tests). Both functions were `inline` already; now
+the two `asInstanceOf` on a row live in `split` alone, with `over`'s
+reverse-direction cast beside it as the only other, and `<|>`'s inline
+lambdas beta-reduce to the bytes it had. No caller changed.
+
 ## operator-followups — the flag out, the import back; TestFailure tagged; Resource on split
 
 Three asks in one message (2026-09-16).

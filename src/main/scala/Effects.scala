@@ -448,35 +448,36 @@ object Effect:
 /**
  * Split the union by testing only the F side (the erasure of F, by
  * TypeableK), taking G by exclusion: a type test on an abstract G
- * would erase to an always-true test.
+ * would erase to an always-true test. The `Either` form, for drains
+ * and tests, where `case Left(a) => ... case Right(Say(w)) => ...`
+ * reads better than two lambdas and the wrapper is scalar-replaced
+ * anyway (split-over-either measured it byte-identical on every such
+ * walker). It IS `split` at `Left` and `Right` — the operator's
+ * proposal (either-via-split, 2026-09-16) — so the union's two casts
+ * live in one function below, and these inline lambdas beta-reduce to
+ * the same bytes the hand-written test had.
  */
 inline def <|>[F[+_], G[+_]](using T: TypeableK[F])[A](e: F[A] | G[A]): Either[F[A], G[A]] =
-  // the trusted kernel, sound by the excluded middle of the union: a
-  // value of F[A] | G[A] that passes F's test is an F[A], and one that
-  // does not is a G[A]. `test` rather than the extractor
-  // (split-without-either, 2026-09-09): the extractor answered an
-  // Option per operation on top of this Either, and B/op showed both
-  // survive escape analysis. The left cast is what the extractor's
-  // `x.type & F[A]` said, made explicit; nothing outside this
-  // function, `split` and `over` casts on a row.
-  if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
+  split[F, G](e)(Left(_))(Right(_))
 
 /**
- * The same split with NO wrapper on the way out (split-without-either,
- * specs/handler-fusion.md stage A): `<|>` answers an `Either` per
- * operation and the extractor an `Option` per test, on the hottest
- * path of every runner. Here the two continuations are `inline`, so
- * they beta-reduce into the caller's match — no closure, no Either,
- * no Option — and the test is `TypeableK.test`, a plain class test for
- * a derived signature.
+ * THE trusted kernel: the union split with NO wrapper on the way out
+ * (split-without-either, specs/handler-fusion.md stage A), on the
+ * hottest path of every runner. The two continuations are `inline`,
+ * so they beta-reduce into the caller's match — no closure, no
+ * Either, no Option — and the test is `TypeableK.test`, a plain class
+ * test for a derived signature.
  *
- * Both casts live HERE — with `over`'s below, the reverse direction —
- * and nowhere else, licensed by the one test:
- * the left one is what the extractor's `x.type & F[A]` said, made
- * explicit; the right one is `<|>`'s excluded middle. A runner that
- * uses `split` still refines the answer type by matching the
- * constructor inside `onF` (`case Get() =>`), exactly as after
- * `case Left(...)` — so no cast reaches a runner.
+ * Sound by the excluded middle of the union: a value of `F[A] | G[A]`
+ * that passes F's test is an `F[A]`, and one that does not is a
+ * `G[A]`. Both casts live HERE — with `over`'s below, the reverse
+ * direction, which no split can express — and nowhere else, licensed
+ * by the one test: the left one is what the old extractor's `x.type &
+ * F[A]` said, made explicit; the right one is the excluded middle.
+ * `<|>` above is this at `Left`/`Right`. A runner that uses `split`
+ * still refines the answer type by matching the constructor inside
+ * `onF` (`case Get() =>`), exactly as after `case Left(...)` — so no
+ * cast reaches a runner.
  */
 inline def split[F[+_], G[+_]](using T: TypeableK[F])[A, R]
                               (e: F[A] | G[A])
