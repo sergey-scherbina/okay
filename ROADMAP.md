@@ -126,6 +126,19 @@ law tests (ScalaCheck), scaladoc, releases. Optimization strictly by
 the measured protocol; history and refuted experiments stay in
 src/jmh/history.tsv.
 
+## Continuations — the four roads (specs/continuations-roadmap.md)
+With `Cont` a facade over `Free` (theory ch. 11), the plan for the
+continuation machinery is one spec with four ranked roads, each owing
+a number: a fused walk over a whole row (`handlers-fused-walk`, capped
+by handler-fusion's measured 1.1–1.3x), staged `direct` blocks with no
+tree when the handlers are static (`direct-staged`, ceiling 1.9x
+measured for the hand-written shape), typestate on a facade
+(`freer-base-stage2`, a compile error as the deliverable), and
+continuations as data as a spike before anything is planned. The
+bounding fact is written there too: a freer tree is a coroutine, not a
+syntax tree, so compilation lives at construction, in the interpreter,
+and in the first-order DSLs — never on a built tree.
+
 ## P9 — okay-agent: the agentic layer
 
 Agents as programs (specs/llm-agentic.md): a tool call is an effect

@@ -1,5 +1,24 @@
 # Changelog
 
+## continuations-roadmap — what continuations are here, and the four roads
+
+The operator asked what the library has with continuations, whether a
+built program can be compiled into something faster, and whether the
+continuation's role can grow. specs/continuations-roadmap.md answers
+with an inventory (one mechanism, three layers, every user-facing
+feature a use of the same continuation), the bounding fact (a freer
+tree is a coroutine, not a syntax tree: its continuations are opaque
+JVM functions, so compilation lives at construction — `Fused`,
+`Eager` — in the interpreter — handler fusion, `relay`, `onAnswer` —
+and in the first-order DSLs — `Pipeline`, `Tables`, `Schema` — never
+on a built tree; and the no-tree road measured at 0.58–0.86x), and
+four roads ranked with the lane and the number each owes:
+`handlers-fused-walk` (capped by handler-fusion's measured 1.1–1.3x),
+`direct-staged` (ceiling 1.9x, the hand-written inline shape),
+`freer-base-stage2` (typestate on a facade; the deliverable is a
+compile error), and a continuations-as-data spike. BACKLOG has the
+four entries, ROADMAP the section.
+
 ## docs-arc-refresh — the documentation catches up with the tree
 
 Every document brought to the state of the arc from `tailcall`

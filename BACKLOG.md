@@ -37,6 +37,28 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] handlers-fused-walk — road 1 of specs/continuations-roadmap.md:
+      one walker over a whole row with a `Handlers[R]` vector, `O(ops)`
+      nodes where N nested handle/relay layers re-emit `O(N · ops)`.
+      LANE FIRST: a four-effect lane in HandlerBenchmark run as nested
+      handle, nested relay, and the fused walk. Ceiling known before
+      starting: handler-fusion measured nesting at 1.1–1.3x, so this is
+      allocation plus that, not a third; under 1.1x it is a refutation.
+- [ ] direct-staged — road 2: a `direct` block emitted as a `Func`
+      program over `Control` when the handlers are static at the call
+      site (`Fused.runCtrl[Func, …](s)(direct { … })`), no tree; parity to
+      the byte with the hand-written `rightCtrl[Func]` is the goal, the
+      tree version (13.7 µs / 122 641 B) the baseline. The macro's
+      pipeline gains a second emission target; the lowering is unchanged.
+- [ ] freer-base-stage2 — road 3: a `Prog[F, A, S, R]` facade over the
+      same tree, transitions sealed by smart constructors, `NoPrompt` a
+      compile error first (the 4af08745 probe), then one real module
+      protocol. Zero bytes, zero time on every core lane is the number
+      owed; the deliverable is the compile error.
+- [ ] continuations-as-data-spike — road 4, a SPIKE with a written
+      verdict: one effect, one program, defunctionalized `k` measured
+      against the closure version on the same lane. Not planned until
+      the verdict exists.
 - [x] deep-recursive-direct — LANDED 2026-09-15: inside `direct` at the
       program type a self-call is deferred wherever it is marked or
       auto-coloured, so `def fib(n: Int): Long ! Pure = direct: ... fib(n - 1)
