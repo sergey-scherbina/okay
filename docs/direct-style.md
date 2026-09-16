@@ -379,9 +379,9 @@ def count(xs: List[Int], acc: Long): Long ! Pure = direct:
 !.run(sum(1_000_000))   // 1000000, on the default stack
 ```
 
-**Mutual recursion needs nothing either, in tail position.** A call to
-ANOTHER def at the block's program type is deferred when it is the last
-thing the block does:
+**Mutual recursion needs nothing either.** By default a call at the
+block's program type is deferred wherever it stands, so two functions
+calling each other are safe in any position:
 
 ```scala
 def isEven(n: Int): Boolean ! Pure = direct:
@@ -400,15 +400,42 @@ where the node costs one allocation and saves a frame. Before this rule
 small `n` and overflowed the stack at depth, which is the worst failure
 mode a library can have.
 
-The boundary, stated: a call to the enclosing def is deferred
-**anywhere** in the block; a call to another def is deferred **in tail
-position**; anywhere else — `1L + other(n - 1)`, a mutual call under an
-operator or inside an argument — the word is still
-`!.tailcall(other(n - 1))`, and `!` or `.reflect` are NOT substitutes
-for it: they are marks ("bind this program"), not deferrals ("do not
-build it yet"), so the call still runs at construction. A call already
-wrapped in `!.tailcall` is left alone, so the explicit spelling never
-pays for two nodes.
+```scala
+def sumEven(n: Int): Long ! Pure = direct:
+  if n == 0 then 0L else 1L + sumOdd(n - 1)     // NOT tail — deferred anyway
+def sumOdd(n: Int): Long ! Pure = direct:
+  if n == 0 then 0L else 1L + sumEven(n - 1)
+```
+
+**The default is safety, and it is not free — so it has a switch.**
+Deferring every call means one `Delay` and its thunk, 64 bytes, per
+call a block marks. Where a block is hot and provably not recursive,
+one import buys that back:
+
+```scala
+import okay.Direct.eagerCalls.given    // this scope builds calls where they stand
+```
+
+measured on `compare/DirectBenchmark`, one run, 10 000 marked calls per
+invocation, `okayFlatMap` as the control:
+
+| lane | time | allocation |
+|---|---|---|
+| `okayDirect` (default) | 179.3 µs | 2 238 113 B |
+| `okayDirectEager` (opted out) | 113.6 µs | 1 598 113 B |
+
+With the import in scope two rules stay on, both measured free: a call
+to the ENCLOSING def is still deferred anywhere in the block, and a
+call to another def is still deferred in TAIL position. What you take
+on is the rest: a mutual call outside tail position is then built where
+it stands, and needs the word `!.tailcall(other(n))`. `!`, `.reflect`
+and `.!?` are NOT substitutes — they are marks ("bind this program"),
+not deferrals ("do not build it yet"), so a marked call is still built
+when the block is. A call already wrapped in `!.tailcall` is left
+alone, so the explicit spelling never pays for two nodes, and a call
+that carries definitions of its own — a lambda, a nested `direct`
+block — is left where it stands whatever the mode, because moving it
+under a thunk would move its symbols with it.
 
 This is what Kozak's `deepRecursive` macro does for Scala 3 over
 `TailRec`, at the one place it matters (the deferral) — her `TailRec`

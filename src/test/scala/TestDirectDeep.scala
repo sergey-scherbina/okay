@@ -101,6 +101,33 @@ class TestDirectDeep extends munit.FunSuite {
     assertEquals(!.run(isOddM(1_000_001)), true)
   }
 
+  // ---- a NON-tail mutual call: deferred by default (direct-defer-default)
+  def nonTailEven(n: Int): Long ! okay.Pure = direct:
+    if n == 0 then 0L else 1L + nonTailOdd(n - 1)
+  def nonTailOdd(n: Int): Long ! okay.Pure = direct:
+    if n == 0 then 0L else 1L + nonTailEven(n - 1)
+
+  test("a NON-tail mutual call is deferred too, by default") {
+    assertEquals(!.run(nonTailEven(1_000_000)), 1_000_000L)
+  }
+
+  /** the opt-out: `import Direct.eagerCalls.given` gives up deferring a
+   * call where it stands, and keeps the two shapes measured free */
+  object Opted:
+    import okay.Direct.eagerCalls.given
+    def fib(n: Int): Long ! okay.Pure = direct:
+      if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)      // self, non-tail: still deferred
+    def even(n: Int): Boolean ! okay.Pure = direct:
+      if n == 0 then true else odd(n - 1)                      // other def, tail: still deferred
+    def odd(n: Int): Boolean ! okay.Pure = direct:
+      if n == 0 then false else even(n - 1)
+
+  test("the opt-out keeps the free rules: the enclosing def anywhere, another def in tail position") {
+    assertEquals(!.run(Opted.fib(25)), 75025L)
+    assertEquals(!.run(Opted.even(1_000_001)), false)
+    assertEquals(!.run(Opted.odd(1_000_001)), true)
+  }
+
   test("a self-call under a lambda is a value, untouched") {
     def twice(n: Int): List[Long] ! okay.Pure = direct:
       if n == 0 then Nil

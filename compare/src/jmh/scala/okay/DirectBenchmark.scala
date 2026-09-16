@@ -48,6 +48,23 @@ class DirectBenchmark {
       x
     })
 
+  /** the same block with call deferral opted OUT
+   * (`import Direct.eagerCalls.given`, direct-defer-default): the
+   * delta over `okayDirect` is what the safe default costs, published
+   * rather than hidden. `step` here does not recurse, which is exactly
+   * the case the import is for. */
+  @Benchmark
+  def okayDirectEager(): Int =
+    import okay.Direct.eagerCalls.given
+    okay.!.run(direct[[A] =>> A ! Nothing] {
+      var x = 0
+      var i = 0
+      while i < N do
+        x = step(x).reflect
+        i += 1
+      x
+    })
+
   /** the recursion spelling, apples-to-apples with kyo and zio
    * below (both forbid `var` in their blocks; okay allows either) */
   @Benchmark

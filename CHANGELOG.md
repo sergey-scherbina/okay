@@ -1,30 +1,44 @@
 # Changelog
 
-## direct-defer-any — REFUTED: the complete rule costs 57-122% of every direct block
+## direct-defer-default — a direct block defers every call, and one import opts out
 
-The operator asked whether a NON-tail mutual call could also lose its
-`!.tailcall`. The only rule that covers it is "defer every
-program-typed call in a block" — a cycle the macro cannot see may be
-closed from any position — so it was implemented and measured.
+Mutual recursion in a `direct` block now needs no word in any position:
 
-| lane | today | defer-any |
+    def sumEven(n: Int): Long ! Pure = direct:
+      if n == 0 then 0L else 1L + sumOdd(n - 1)     // not tail — deferred anyway
+    def sumOdd(n: Int): Long ! Pure = direct:
+      if n == 0 then 0L else 1L + sumEven(n - 1)
+
+The rule is "defer every call at the block's program type", which is
+the only one that covers a cycle the macro cannot see — it may be
+closed from any position. It is not free: one `Delay` and its thunk,
+64 bytes, per call a block marks. The operator's call was safety by
+default with the price visible and recoverable, so both lanes are
+published (one run, control `okayFlatMap` 101.2 µs):
+
+| lane | time | allocation |
 |---|---|---|
-| `okayDirect` | 106.8 µs, 1 598 113 B | 167.2 µs, 2 238 113 B |
-| `okayDirectRec` | 75.3 µs, 1 358 011 B | 167.1 µs, 1 998 001 B |
-| `okayFlatMap` (control, no block) | 96.3 µs | 96.4 µs |
+| `okayDirect` (default) | 179.3 µs | 2 238 113 B |
+| `okayDirectEager` (`import okay.Direct.eagerCalls.given`) | 113.6 µs | 1 598 113 B |
 
-+640 000 B on both lanes is exactly 64 bytes — a `Delay` and its
-thunk — for each of the 10 000 marked calls they make, and those calls
-(`step(x)`) are not recursive. The control did not move, so the box
-was steady and the number is the rule's. Reverted; the measurement
-lives in specs/direct-macro.md Decisions and rows `da-*`.
+The opt-out gives the allocation back to the digit. With it in scope
+the two rules measured free stay on — the enclosing def anywhere, and
+another def in tail position — and what you take on is
+`!.tailcall(other(n))` for a mutual call outside tail position.
 
-What stands: a call to the enclosing def is deferred anywhere, a call
-to another def is deferred in tail position, and a mutual call outside
-tail position keeps the one word, `!.tailcall(other(n))`. The cheaper
-shape to price first, if that case ever has to be covered, is a
-single-node deferring bind — which reopens `defer-eff-removal` and so
-wants its own lane.
+**Three ways to build this were wrong, each caught by compiling.** A
+default ARGUMENT for the knob (`using d: Deferral = All`) makes
+`apply$default$N` take the inline block again: the whole body is
+duplicated into that call, and a nested `direct` block inside it
+crashes `TreePickler` with `assertion failed: method $anonfun`.
+Declaring the givens at `Deferral` instead of their singleton types
+hands the macro a type that says nothing, so the import resolved and
+changed nothing — the expansion dump showed both modes still
+deferring. And the thunk must be built under the owner at the rewrite
+site, not the splice owner, which is invisible while the rule fires
+only at the top of a block and fatal once it fires inside one. A call
+that carries definitions of its own is left where it stands in either
+mode, for the same reason.
 
 ## direct-tail-defer — mutual recursion in a direct block needs no word
 

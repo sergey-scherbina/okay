@@ -194,11 +194,14 @@ recursion need no word (direct-tail-defer). The asymmetry is not
 aesthetic — a macro expanding one def cannot know that the def it
 calls calls back, since the cycle spans compilation units, so the
 syntactic position is the only evidence available at expansion time.
-Covering the remaining case would mean deferring every program-typed
-call, and that was implemented and measured: +64 bytes and +57% on a
-block that marks ten thousand non-recursive calls, so it was refuted
-and `!.tailcall` remains the word for a mutual call outside tail
-position. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
+Covering the remaining case means deferring every program-typed call
+wherever it stands, and that is what the default now does — at a
+measured 64 bytes per marked call, which a block that is hot and
+provably not recursive buys back with one import
+(`Direct.eagerCalls.given`, direct-defer-default). The knob is a
+`using` parameter of the block rather than a summoned marker, because
+an import whose only reader is a macro is an unused import to the
+compiler and the warning would land in every user's build. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
 `Bind`, its `done` is `Pure`, its `.result` is `!.run`; what the macro
 of the article refuses — a self-call inside `match`, a real row
 interleaving effects with the recursion, mutual recursion — this

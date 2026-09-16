@@ -175,28 +175,46 @@ Decisions on the tail rule (direct-tail-defer, 2026-09-16):
   node to any of them; time inside the lane's own noise (master's two
   rounds swung 127.0 → 106.5 µs while the control moved 4% the other
   way).
-- **"Defer every program-typed call" — REFUTED WITH NUMBERS**
-  (direct-defer-any, 2026-09-16, at the operator's ask; rows `da-*`).
-  It is the only rule that also covers a mutual call OUTSIDE tail
-  position — a cycle the macro cannot see may be closed from any
-  position — so it was implemented and measured rather than argued.
-  Same box, control lane unmoved (`okayFlatMap` 96.3 → 96.4 µs):
+- **"Defer every program-typed call" is the DEFAULT, with an import to
+  opt out** (direct-defer-default, 2026-09-16, the operator's call
+  after seeing the price; rows `da-*` measured it, `dd-*` are the
+  shipped pair). It is the only rule that also covers a mutual call
+  OUTSIDE tail position — a cycle the macro cannot see may be closed
+  from any position — and the operator chose safety by default:
+  a recursive block that compiles, answers small and overflows deep is
+  the failure a library must not hand its users, and the price is
+  visible and recoverable where it matters. One run, `okayFlatMap` as
+  the control (101.2 µs):
 
-  | lane | today | defer-any |
+  | lane | time | allocation |
   |---|---|---|
-  | `okayDirect` | 106.8 µs, 1 598 113 B | 167.2 µs, 2 238 113 B |
-  | `okayDirectRec` | 75.3 µs, 1 358 011 B | 167.1 µs, 1 998 001 B |
+  | `okayDirect` (default) | 179.3 µs | 2 238 113 B |
+  | `okayDirectEager` (`import Direct.eagerCalls.given`) | 113.6 µs | 1 598 113 B |
 
-  +640 000 B on both — exactly 64 bytes, a `Delay` plus its thunk, for
-  each of the 10 000 marked calls those lanes make — and +57% / +122%
-  of time, paid by every direct block whether it recurses or not;
-  `step(x)` in that lane is not recursive and never was. The same
-  trade the codecs refused with `NativeThreshold`: a tax on every call
-  for a hazard only recursion creates. If the case ever has to be
-  covered, the cheaper shape to price FIRST is a single-node deferring
-  bind (the `Defer` node `defer-eff-removal` derived away), which
-  would cost a thunk instead of a thunk AND a node — but that reopens
-  a settled design and wants its own lane and its own number.
+  +640 000 B is exactly 64 bytes — a `Delay` plus its thunk — for each
+  of the 10 000 marked calls that lane makes, and the opt-out gives
+  back the allocation to the digit. Both lanes are published so the
+  trade is in the numbers rather than in a sentence.
+- **The knob is a `using` parameter, not a summoned marker.** An
+  import whose only reader is a macro is an "unused import" to the
+  compiler, and that warning would land in every user's build; passed
+  as `using d: Deferral` the typer uses it, so the import counts. Two
+  ways to spell the default were wrong and both were caught by
+  compiling: a default ARGUMENT (`d: Deferral = All`) makes
+  `apply$default$N` take the inline block again, duplicating the whole
+  body — with a nested `direct` block inside it, `TreePickler` crashes
+  with `assertion failed: method $anonfun`; and declaring the givens at
+  type `Deferral` rather than at their singleton types hands the macro
+  a type that says nothing, so the import resolved and changed nothing
+  (the expansion dump showed both modes deferring).
+- **Two shapes are never deferred, in either mode.** A call already
+  wrapped in `!.tailcall`/`Free.delay`/`Free.defer` (else it pays for
+  two nodes), and a call that CARRIES DEFINITIONS — a lambda, a local
+  val or def, a nested block's context function — because moving such
+  a tree under a thunk moves symbols that are owned where they stand.
+  The thunk is also built under the owner at the rewrite site rather
+  than the splice owner, which is invisible while the rule only fires
+  at the top of a block and fatal once it fires inside one.
 
 Decisions:
 - **`direct`, not a second entry.** A first cut added
