@@ -525,18 +525,28 @@ def page(path: String, token: String): String ! (Once + Fetch) = direct:
 The calls each request actually makes, recorded by the handler
 (`TestDirectOnce`, which runs exactly this):
 
-| request | `val` | `lazy val` |
-|---|---|---|
-| `/health` | 3 | 0 |
-| a banned user | 3 | 1 |
-| an expired plan | 3 | 2 |
-| the full page | 3 | 3 |
+| request | `val` | `def` | `lazy val` |
+|---|---|---|---|
+| `/health` | 3 | 0 | 0 |
+| a banned user | 3 | 1 | 1 |
+| an expired plan | 3 | 3 | 2 |
+| the full page | 3 | 8 | 3 |
 
-`user` is read in three branches and `feed` twice in one line; each is
-fetched once. Change the one word to `val` and every request pays for
-all three, `/health` included. The lookups are dependent — `plan`
-needs `user.planId` — and the cell makes that chain lazy without a
-single `flatMap` or `Option` in the source.
+One word changed, nothing else. `val` is by value: all three lookups
+on every request, `/health` included. `def` is by name: nothing until
+a branch asks, then a call per mention — and since `plan` and `feed`
+both read `user`, the full page costs eight. `lazy val` is by need:
+what the branch reaches, once. `user` is read in three branches and
+`feed` twice in one line; each is fetched once, and the chain stays
+lazy through `plan`'s dependence on `user.planId` without a single
+`flatMap` or `Option` in the source.
+
+A nested `def` at the block's program type whose body has marks —
+`def plan = effect(GetPlan(user.planId))` — used to be refused ("a
+mark inside a nested definition"); it compiles now
+(direct-nested-def). Its body is its own program, so binding the marks
+inside changes nothing about what the def means. A def with
+PARAMETERS still keeps the refusal: v1 does not rewrite a signature.
 
 **No marks, no ascriptions.** The three words hold with nothing
 written on them (direct-colourless-val, 2026-09-16):

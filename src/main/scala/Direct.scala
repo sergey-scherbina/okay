@@ -481,6 +481,14 @@ object Direct:
               bind(c, e, tailElem) { v =>
                 Block(List(Assign.copy(a)(lhs, v)), stmtsTail(rest, tail, tailElem))
               }
+        case (dd: DefDef) :: rest if hasMark(dd) &&
+          nestedProgramDef(dd, rest, Literal(UnitConstant()))((_, _, _) =>
+            Out.Pure(Literal(UnitConstant()))).isDefined =>
+          nestedProgramDef(dd, rest, Literal(UnitConstant())) { (defn, rest2, _) =>
+            Out.Pure(Block(List(defn), stmtsTail(rest2, tail, tailElem)))
+          }.get match
+            case Out.Pure(t) => t
+            case Out.Eff(t, _) => t
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           Block(List(dd), stmtsTail(rest, tail, tailElem))
@@ -655,11 +663,18 @@ object Direct:
      * (direct-colourless-val): the conversion goes with the reference,
      * since `ref()` already stands at the element type */
     def substUses(stats: List[Statement], expr: Term, sym: Symbol, ref: () => Term): (List[Statement], Term) =
+      substUsesBy(stats, expr, sym, ref, ref)
+
+    /** the same, with the COLOURED use and the BARE use replaced by
+     * different terms — a nested program def needs that: read as a value
+     * it becomes a mark, read as a program it becomes the program */
+    def substUsesBy(stats: List[Statement], expr: Term, sym: Symbol,
+                    refColoured: () => Term, refBare: () => Term): (List[Statement], Term) =
       val m = new TreeMap:
         override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
           case Apply(Select(conv, "apply"), List(id: Ident))
-            if colorSyms(calleeRoot(conv)) && id.symbol == sym => ref()
-          case id: Ident if id.symbol == sym => ref()
+            if colorSyms(calleeRoot(conv)) && id.symbol == sym => refColoured()
+          case id: Ident if id.symbol == sym => refBare()
           case _ => super.transformTerm(tree)(owner)
       (stats.map(st => m.transformStatement(st)(Symbol.spliceOwner)), m.transformTerm(expr)(Symbol.spliceOwner))
 
@@ -730,6 +745,52 @@ object Direct:
             case Out.Eff(c, e) =>
               Out.Eff(bind(c, e, elem)(v => markTerm(v, elem, vd.pos)), elem)
           Some(emit(elem, prog))
+      }
+
+    /**
+     * A nested PARAMETERLESS `def` at the block's program type whose body
+     * carries marks (direct-nested-def, 2026-09-16): `def plan =
+     * effect(GetPlan(user.planId))` beside a `lazy val user`.
+     *
+     * Such a body is its own program — it ends at the block's program
+     * type, so binding the marks inside it changes nothing about what the
+     * def means — and it compiles through the same `pipeline` a `try`
+     * body does. The def then behaves as `def` always has: by name, a
+     * bind (and a run) per use.
+     *
+     * A fresh symbol, because inference gives `def plan = effect(...)`
+     * the PRECISE constructor type `Free.Inject[R, A]` and the compiled
+     * body is a `Free[R, A]`; the uses are rewritten with it, so the
+     * spelling `z` the reader wrote is what the reader keeps. A def with
+     * PARAMETERS, or one whose type is not this block's program, keeps
+     * the refusal: v1 does not rewrite a signature.
+     */
+    def nestedProgramDef(dd: DefDef, rest: List[Statement], expr: Term)
+                        (emit: (Statement, List[Statement], Term) => Out): Option[Out] =
+      if dd.paramss.nonEmpty then None
+      else dd.rhs.flatMap { body =>
+        if !hasMark(body) then None
+        else runnableElemT(dd.returnTpt.tpe).map { elem =>
+          val fT = TypeRepr.of[F].appliedTo(elem.widen)
+          val sym = Symbol.newMethod(Symbol.spliceOwner, dd.name + "$prog",
+            MethodType(Nil)(_ => Nil, _ => fT))
+          // the body is the PROGRAM, not an expression yielding its answer:
+          // compile it in this same pass (it reads the block's own locals)
+          // and flatten — a body that ends in a program is bound and its
+          // answer marked, the shape `colourlessVal` gives a val
+          val compiled: Term = compile(body.changeOwner(Symbol.spliceOwner)) match
+            case Out.Pure(q) => markTerm(q, elem, dd.pos)
+            case Out.Eff(c, e) =>
+              if e.widen =:= elem.widen then c
+              else bind(c, e, elem)(v => markTerm(v, elem, dd.pos))
+          val defn = DefDef(sym, _ => Some(compiled.changeOwner(sym)))
+          def prog(): Term = Apply(Ref(sym), Nil)
+          def marked(): Term =
+            Apply(TypeApply(Ref(reflectMark), List(Inferred(TypeRepr.of[F]), Inferred(elem.widen))),
+              List(prog()))
+          val (rest2, expr2) = substUsesBy(rest, expr, dd.symbol, marked, prog)
+          emit(defn, rest2, expr2)
+        }
       }
 
     /** compile an expression */
@@ -1071,6 +1132,11 @@ object Direct:
               Out.Eff(bind(c, e, expr.tpe) { v =>
                 asF(wrapStat(Assign.copy(a)(lhs, v), rest, expr))
               }, expr.tpe.widen)
+        case (dd: DefDef) :: rest if hasMark(dd) &&
+          nestedProgramDef(dd, rest, expr)((_, _, _) => Out.Pure(Literal(UnitConstant()))).isDefined =>
+          nestedProgramDef(dd, rest, expr) { (defn, rest2, expr2) =>
+            wrapStat(defn, rest2, expr2)
+          }.get
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           wrapStat(dd, rest, expr)

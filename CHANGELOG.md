@@ -1,5 +1,28 @@
 # Changelog
 
+## direct-nested-def — a nested def at the block's program type compiles
+
+`def plan = effect(GetPlan(user.planId))` beside a `lazy val user` was
+refused ("a Direct mark inside a nested definition"). It compiles now,
+for the one shape that needs no signature rewritten: a PARAMETERLESS
+local def whose type is already this block's program. Its body is its
+own program, so binding the marks inside it changes nothing about what
+the def means, and `def` goes on meaning by name — a bind, and a run,
+per use. Defs with parameters keep the refusal.
+
+With it the three words are comparable on one realistic function. A
+request handler over three dependent lookups, one word changed and
+nothing else, calls per request:
+
+| request | `val` | `def` | `lazy val` |
+|---|---|---|---|
+| `/health` | 3 | 0 | 0 |
+| a banned user | 3 | 1 | 1 |
+| an expired plan | 3 | 3 | 2 |
+| the full page | 3 | 8 | 3 |
+
+`TestDirectOnce` runs all three.
+
 ## direct-colourless-val — val, lazy val and def mean what they say with nothing written on them
 
 Inside a `direct` block, `val x = fetch(k)` with no mark and no

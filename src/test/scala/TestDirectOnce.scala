@@ -301,6 +301,25 @@ class TestDirectOnce extends munit.FunSuite {
       (Seq("GET /user", "GET /plan", "GET /feed"), "200 3 picks for Cleo, top scala"))
   }
 
+  /** the same handler again, by name: a call per mention */
+  def pageDef(path: String, token: String): String ! Fetch.Row = direct:
+    def user = effect[Fetch.Row, User](GetUser(token))
+    def plan = effect[Fetch.Row, Plan](GetPlan(user.planId))
+    def feed = effect[Fetch.Row, List[String]](GetFeed(user.id))
+    if path == "/health" then "200 healthy"
+    else if user.banned then "403 banned"
+    else if plan.expired then "302 /renew"
+    else s"200 ${feed.size} picks for ${user.name}, top ${feed.head}"
+
+  test("by name: a nested def at the block's program type, and a call per mention") {
+    assertEquals(Fetch.calls(pageDef("/health", "x")), (Seq(), "200 healthy"))
+    assertEquals(Fetch.calls(pageDef("/feed", "banned")),
+      (Seq("GET /user"), "403 banned"))
+    // plan needs user, so reaching plan fetches user again
+    assertEquals(Fetch.calls(pageDef("/feed", "expired")),
+      (Seq("GET /user", "GET /user", "GET /plan"), "302 /renew"))
+  }
+
   test("by value: the same handler pays for all three on every request") {
     for (path, token) <- List(("/health", "x"), ("/feed", "banned"),
                               ("/feed", "expired"), ("/feed", "ok")) do

@@ -317,6 +317,23 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **A nested parameterless `def` at the block's program type is
+  compiled, not refused** (direct-nested-def, 2026-09-16). The general
+  refusal stands — a mark inside a nested definition would need the
+  definition's signature rewritten — but this shape needs no rewrite:
+  the def already ENDS at the program type, so binding the marks
+  inside its body leaves its meaning alone, and `def` keeps being by
+  name (a bind per use). The body compiles in the same pass, since it
+  reads the block's own locals, and is flattened the way
+  `colourlessVal` flattens a val's: a body ending in a program is bound
+  and its answer marked. A fresh symbol carries it, because inference
+  gives `def plan = effect(...)` the precise `Free.Inject[R, A]` while
+  the compiled body is a `Free[R, A]`; the uses are rewritten onto it,
+  a coloured use as a mark and a bare use as the program. Defs with
+  parameters keep the refusal. This is what makes the three words
+  comparable on one function: `val` 3 calls per request, `def` 0/1/3/8,
+  `lazy val` 0/1/2/3 (docs/direct-style.md).
+
 - **`lazy val` with a mark is the `Once` effect, not a cell in the
   tree** (direct-once, 2026-09-16; the operator's design). The first
   cut was `Free.once(p)`: a `Delay` whose thunk checks a mutable
