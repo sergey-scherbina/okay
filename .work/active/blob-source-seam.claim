@@ -1,0 +1,12 @@
+blob-source-seam
+owner: fable-5.1 session 4afd3fc2
+started: 2026-09-16
+what: proposals from a CONSUMER of okay-blob (okay-watch, which backs its
+  case log off the volume). Four ranked entries into BACKLOG, each with
+  the evidence that produced it rather than a wish: a byte Source for a
+  file or InputStream (the same 12-line chunk loop now exists twice, in
+  Backup.stream and in okay-watch); Blob.put convenience over bytes and
+  a Path; `produce` usable at a wider row; and the seam itself re-typed
+  on Source, where the answer is Unit and the element type lives in the
+  signature, so the defect that prompted all of this — `pure(chunk)`
+  type-checks and emits nothing — cannot be written. Prose: BACKLOG.
