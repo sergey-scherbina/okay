@@ -209,8 +209,8 @@ same material with the measurements attached.
   new effect. See specs/backtracking.md.
 - **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
   (delim-prompted): evidence that a delimiter is installed, made only
-  by `Delim.delimited`, so a capture through `shiftIn` cannot name a
-  prompt that is not on the stack — `NoPrompt` moved to compile time
+  by `Delim.delimited`, so a capture through the evidence-taking
+  `shift` cannot name a prompt that is not on the stack — `NoPrompt` moved to compile time
   for that path. A portable function reads `Prompted[Int] ?=> Int !
   (Delim + W)`: written apart, stored, passed, and callable only where
   a `delimited` put the evidence in scope. The obligation is NOT a row

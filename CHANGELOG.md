@@ -1,5 +1,16 @@
 # Changelog
 
+## delim-one-name — the typed door reuses `shift`, and the `In` suffixes go
+
+`shiftIn` was a second name for an operation that already has one.
+Both shapes live under `shift` now, and the compiler picks by what is
+written: a prompt in the first clause is the primitive, a handler
+there is the evidence-taking one. Same for `shift0`, `control`,
+`control0` and `abort`.
+
+    Delim.shift[Int, Int, W](p)(k => k(5))   // the primitive, by prompt
+    Delim.shift[Int, Int, W](k => k(5))      // inside `delimited`, by evidence
+
 ## delim-prompted — NoPrompt as a compile error, through evidence rather than a row
 
 `Delim.Prompted[R]` is evidence that a delimiter is INSTALLED. Only

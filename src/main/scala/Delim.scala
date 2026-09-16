@@ -126,7 +126,7 @@ object Delim {
    *
    *     def banner: Prompted[Int] ?=> Int ! (Delim + W) = direct:
    *       "hello".tell
-   *       1 + !Delim.shiftIn[Int, Int, W](k => k(5))
+   *       1 + !Delim.shift[Int, Int, W](k => k(5))
    *
    * That function compiles, is a value, travels — and can only be
    * CALLED where a `delimited` put the evidence in scope.
@@ -151,28 +151,31 @@ object Delim {
     val p = prompt[R]
     run(push(p)(body(using new Prompted[R](p))))
 
-  /** capture up to the delimiter in force */
-  def shiftIn[R, A, F[+_]](using in: Prompted[R])
+  /** capture up to the delimiter in force — the same word as the
+   * prompt-taking primitive, and the compiler picks by what you
+   * write: a prompt in the first clause is the primitive, a handler
+   * there is this one (delim-one-name) */
+  def shift[R, A, F[+_]](using in: Prompted[R])
                           (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
     shift[R, A, F](in.prompt)(f)
 
   /** the 0-variant: the body consumes the delimiter */
-  def shift0In[R, A, F[+_]](using in: Prompted[R])
+  def shift0[R, A, F[+_]](using in: Prompted[R])
                            (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
     shift0[R, A, F](in.prompt)(f)
 
   /** the continuation does not re-install the delimiter */
-  def controlIn[R, A, F[+_]](using in: Prompted[R])
+  def control[R, A, F[+_]](using in: Prompted[R])
                             (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
     control[R, A, F](in.prompt)(f)
 
   /** neither */
-  def control0In[R, A, F[+_]](using in: Prompted[R])
+  def control0[R, A, F[+_]](using in: Prompted[R])
                              (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
     control0[R, A, F](in.prompt)(f)
 
   /** abort to the delimiter in force with a value */
-  def abortIn[R, A, F[+_]](using in: Prompted[R])(value: R): A ! (Delim + F) =
+  def abort[R, A, F[+_]](using in: Prompted[R])(value: R): A ! (Delim + F) =
     abort[R, A, F](in.prompt)(value)
 
   /** a prompt is its own typed token: the same prompt has the same
