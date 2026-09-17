@@ -74,15 +74,12 @@
 
 ## Queue
 - ui-html-host — the plain road's pure half as an okay-ui host
-  (specs/ui-html.md, stage 0 the spec LANDED 2026-09-17). `Live.html`/
-  `plain`/`step` are three pure functions of strings that live in
-  okay-script, which drags the compiler; okay-watch (a submodule
-  consumer with its own router and door) needs them without it. Stage
-  1: `okay.ui.Html` in the shared directory, okay-script's names as
-  delegates, TestLive's render test and TestLivePlain's step tests
-  moved, `okayUiJVM`'s classpath asserted free of okay-script. Stage
-  2 (`ui-live-js`, the browser's half of the live road) only when
-  okay-watch's specs/ui.md reaches its stage 3.
+  (specs/ui-html.md). Stages 0 and 1 LANDED 2026-09-17: `okay.ui.Html`
+  is in okay-ui beside `Wire`, okay-script's five names are delegates
+  and its suites pass unchanged, and `okayUiJVM`'s classpath is free
+  of okay-script — which is what okay-watch's specs/ui.md waits for.
+  Stage 2 (`ui-live-js`, moving the 226-line browser client beside it)
+  only when okay-watch reaches its own stage 3.
 - applicative-static — the static half of a program
   (specs/applicative-static.md). STAGES 0, 1, 2 AND 4 HAVE LANDED
   (2026-09-17, 2ec1caa6): `Par` (the parallel applicative, wrapper

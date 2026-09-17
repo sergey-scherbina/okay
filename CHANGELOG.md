@@ -1,5 +1,27 @@
 # Changelog
 
+## ui-html-host — stage 1, okay.ui.Html
+
+specs/ui-html.md, landed as a3fbf2c1. The plain road's three pure
+functions left okay-script, whose module drags the staging compiler,
+deploy and ACME, and became `okay.ui.Html`: `render`/`form` on the way
+out, `events`/`step` on the way in, a host without a loop because a
+scriptless page holds no connection. It sits in `scala-form` beside
+`Wire` — the capability rule must not be defined twice, and that
+directory is on the JVM, JS and Native source sets alike, so the
+cross-platform property the spec asked for holds. okay-script keeps
+`Live.html`/`plain`/`step`/`escape`/`PlainField` as five delegates and
+its four suites pass UNCHANGED (18 tests), which is the proof no page
+notices. TestHtml, 7. `okayUiJVM`'s classpath carries okay, codec,
+lex, parse and persist, and nothing of okay-script — measured, which
+is what okay-watch's specs/ui.md waits for.
+
+Found on the way: an EMPTY post is not the identity. A `Check` shown
+ON reads back as `Toggled(false)` from an empty map, because that is
+HTML's own rule for an unposted checkbox. What makes a GET safe is
+the mount-field guard in `Live.post`, never the emptiness — recorded
+in both specs, since okay-watch renders the tree itself.
+
 ## applicative-static stages 1, 2 and 4 - the rung below the monad, put to work
 
 `Monad.scala` has declared Functor < Applicative < Selective < Monad
