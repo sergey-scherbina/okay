@@ -297,31 +297,31 @@ of truth exist and drift.
 *Real systems in this repository. Each chapter: the problem, the
 shape used, what it replaced, what it cost, what went wrong.*
 
-### 23. Durable workflows
+### [23. Durable workflows](23-durable-workflows.md) ✓
 
 **Thesis.** A paused program is a closure and cannot be written down —
 so nothing tries to. The answers are journalled and the place is
 re-derived by replay, which is event sourcing whose fold IS the
 program. The engine, its eleven lanes, and its honest limits.
 
-### 24. A debugger for agents
+### [24. A debugger for agents](24-a-debugger-for-agents.md) ✓
 
 **Thesis.** Multi-shot pays for itself: fork an agent run at a tool
 call, feed two answers, compare. Also the refuted expectation — this
 does NOT come with durability, and the type says why.
 
-### 25. Cutting a model mid-sentence
+### [25. Cutting a model mid-sentence](25-cutting-a-model.md) ✓
 
 **Thesis.** A validator standing in a token stream, aborting across
 the streaming boundary. And the measured cost that corrected the
 comment which claimed the guard was free.
 
-### 26. Cancellable flows in a UI
+### [26. Cancellable flows in a UI](26-cancellable-flows-in-a-ui.md) ✓
 
 **Thesis.** The smallest production use, and the clearest: no `Option`
 threading on the steps between.
 
-### 27. Everything that typically goes wrong
+### [27. Everything that typically goes wrong](27-what-goes-wrong.md) ✓
 
 **Thesis.** A catalogue, not a memoir. The mistakes available to
 somebody using continuations — and to somebody implementing them — are
@@ -380,7 +380,7 @@ stopped keeping.
 
 # Part VII · Where it came from
 
-### 28. A short history, and why each step was a narrowing
+### [28. A short history, and why each step was a narrowing](28-a-short-history.md) ✓
 
 **Thesis.** The idea is sixty years old and almost everything
 interesting about it is a story of **giving power back**. The
