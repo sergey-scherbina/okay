@@ -78,8 +78,9 @@
   is in okay-ui beside `Wire`, okay-script's five names are delegates
   and its suites pass unchanged, and `okayUiJVM`'s classpath is free
   of okay-script — which is what okay-watch's specs/ui.md waits for.
-  Stage 2 (`ui-live-js`, moving the 226-line browser client beside it)
-  only when okay-watch reaches its own stage 3.
+  Stage 2 (`ui-live-js`) LANDED the same day, when okay-watch reached
+  its stage 3: the browser client is `okay.ui.LiveJs` now. The lane is
+  CLOSED.
 - applicative-static — the static half of a program
   (specs/applicative-static.md). STAGES 0, 1, 2 AND 4 HAVE LANDED
   (2026-09-17, 2ec1caa6): `Par` (the parallel applicative, wrapper

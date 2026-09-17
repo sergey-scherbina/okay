@@ -1,13 +1,19 @@
-package okay.script
+package okay.ui
 
-/** The browser side of a Live page: a dependency-free patch consumer
- * speaking okay-ui's `Protocol` -- the derived tree/patch/event shapes,
+/** The browser side of a live page: a dependency-free patch consumer
+ * speaking `Protocol` -- the derived tree/patch/event shapes,
  * the same `React.elem` DOM structure (so a patch path walks the
  * same `childNodes`), the same delegated-listener event mapping the
  * Scala.js `Dom` backend uses, in ~100 lines of plain JavaScript
  * served at `Live.JsPath`. Hand-written rather than linked from
- * Scala.js so that a Site needs no build step and no artifact: the
- * page IS the deployment. See specs/okay-script.md "Live pages".
+ * Scala.js so that a server needs no build step and no artifact: the
+ * page IS the deployment.
+ *
+ * It lives here rather than in okay-script (specs/ui-html.md stage 2)
+ * for the reason `Html` does: it is the browser's CLIENT of this
+ * module's protocol, and a product with its own WebSocket route needs
+ * it without the container. okay-script still serves it at
+ * `Live.JsPath`.
  */
 object LiveJs:
   val source: String =

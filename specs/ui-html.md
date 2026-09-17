@@ -103,9 +103,9 @@ Stage 1 — the move (claim: ui-html-host, after this spec):
       landing notes
 
 Stage 2 — the browser's half of the live road, for the same consumer
-(claim: ui-live-js, only when okay-watch's specs/ui.md reaches its
-stage 3):
-- [ ] `LiveJs.source` (226 lines of plain JavaScript, okay-script)
+(claim: ui-live-js, LANDED 2026-09-17 when okay-watch's specs/ui.md
+reached its stage 3):
+- [x] `LiveJs.source` (226 lines of plain JavaScript, okay-script)
       moves beside `Html` as `okay.ui.LiveJs` — it is the browser's
       client of `Protocol`, and a product with its own WebSocket route
       (okay-jetty's) needs the client without the container; okay-script
@@ -147,7 +147,12 @@ that no page notices. `TestHtml` in okay-ui, 7 tests. `okayUiJVM`'s
 dependency classpath carries okay, okay-codec, okay-lex, okay-parse
 and okay-persist, and nothing of okay-script: measured, not assumed.
 
-Two things the move taught:
+Stage 2 LANDED 2026-09-17: the file moved whole and `Site` serves it
+as `okay.ui.LiveJs.source` at the same `Live.JsPath`. Nothing else
+changed — the client was already written against `Protocol` alone,
+which is why it could move at all.
+
+Two things the stage-1 move taught:
 
 - **`scala-form` IS the cross-platform directory.** The spec said
   "the shared directory, not `scala-jvm`", meaning `src/main/scala`.
