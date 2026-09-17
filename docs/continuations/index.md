@@ -144,7 +144,7 @@ abort ACROSS its own boundary to an outer one — the thing nested
 handlers cannot express — and it is why this library has `Delim` at
 all.
 
-### 11. Four captures: `shift`, `shift0`, `control`, `control0`
+### [11. Four captures: `shift`, `shift0`, `control`, `control0`](11-four-captures.md) ✓
 
 **Thesis.** They differ in what they do to the delimiter, and the
 difference is visible in three-line programs. A table nobody has to
