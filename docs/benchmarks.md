@@ -13,7 +13,8 @@ atnos-eff 7.0.4, fs2 3.10.2, circe 0.14.10 — on **Scala 3.9.0 LTS**
 since 2026-09-08 (every table below §0 was re-measured on it; earlier
 tables on this page were 3.7.4).
 
-Run them yourself: `sbt 'Jmh/run .*Fib.*'` (core lanes),
+Run them yourself: `sbt "okayJVM/Jmh/run .*Fib.*"` (core lanes — the
+project prefix is required, a bare `Jmh/run` does not parse),
 `sbt 'compare/Jmh/run .*Compare.*'` (ecosystem lanes; the heavy
 dependencies live only in the compare module),
 `sbt 'compare/Jmh/run RagBenchmark'` (retrieval),

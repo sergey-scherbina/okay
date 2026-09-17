@@ -12,9 +12,37 @@ import okay.*
  * The Scope precedent (okay-ui), applied to the model's own mouth.
  *
  * ADDITIVE per the adoption doctrine: `guarded` wraps a streaming
- * generation; the unguarded path is untouched. A passing stream
- * never captures — the guard costs the prompt push, not the capture
- * price.
+ * generation; the unguarded path is untouched — and `TestCut` pins
+ * that a passing stream gives the same answer as the unguarded run.
+ *
+ * ── WHAT THE GUARD COSTS, MEASURED (delim-guard-per-op, 2026-09-17),
+ * because the sentence that stood here was wrong. It said the guard
+ * "costs the prompt push, not the capture price". Half of that is
+ * right and the half that matters is not.
+ *
+ * A passing stream really never captures, and the push really is
+ * nothing — a thousand of them cost 28.4 µs, so one is about 0.03 µs.
+ * But entering `Delim + Async` puts EVERY operation of the body
+ * through the delimited-control machine, and that is per token:
+ *
+ *     writerTell            15.098 / 18.012 µs   N tells, no machine
+ *     writerTellUnderDelim  30.376 / 40.847 µs   one push, same N,
+ *                                                under the machine
+ *                                    ratio 2.01x then 2.27x
+ *
+ * Two rounds at load 9–10; the absolutes moved 20–35% between them
+ * and the ratio held. `DelimBenchmark.writerTellUnderDelim` is the
+ * benchmark, added by that lane because neither of the two that
+ * already existed measures this shape — `delimPushOnly` counts N
+ * pushes and `delimGenerator` counts N captures, so the claim read
+ * as measured while the numbers beside it answered other questions.
+ *
+ * SO THE DECISION IT INFORMS: a guard roughly DOUBLES the cost of
+ * whatever runs inside it. For token streams that is usually far
+ * below the model's own latency and worth paying; for a hot inner
+ * loop it is not, and the boundary belongs around the smallest span
+ * that needs it rather than the whole generation. The same applies
+ * to any guard of this shape, `okay.ui.Scope` included.
  */
 object Cut {
 

@@ -404,6 +404,9 @@ zinc, the compiler and every module at once, and has run out mid-
 compile. If you also build in IntelliJ, its Scala compile server has
 its own separate 4g cap worth raising for the same reason.
 
-Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
+Benchmarks: `sbt "okayJVM/Jmh/run .*FibBenchmark.*"` — the JMH plugin
+is on `okay.jvm`, so the project prefix is required (a bare `Jmh/run`
+fails to parse, while `Jmh/compile` does not, which is how this line
+stayed wrong); comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.
