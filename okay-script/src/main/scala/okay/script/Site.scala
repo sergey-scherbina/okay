@@ -193,7 +193,7 @@ final class Site(
     val query = split.query
     if httpsOnly && !secureFor(webOf(r, path, query, Map.empty)) then toHttps(r)
     else if path == api.Live.JsPath then
-      HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
+      HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(okay.ui.LiveJs.source.getBytes(UTF_8)))
     // the mobile web leg (Mobile.scala): the stylesheet, the service
     // worker, the manifest and the icon, all from the container
     else if path == Mobile.CssPath then
