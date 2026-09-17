@@ -1,5 +1,35 @@
 # Changelog
 
+## wf-durable-journal - a durable program with a clock and a branch
+
+`Wf` made the runtime's questions journalled; this carries them into
+the LOG, so a durable program may read a clock, mint an id and take a
+`patch` branch without breaking replay. `Dialogue.workflow(topic, id,
+program)(body)` is the door, and `Dialogue.asking(oracle)` is the
+driver's other half: the author answers their own questions, the
+runtime answers its own, and both are appended tagged.
+
+ONE THING HAD TO CHANGE IN `Dialogue`, and finding it was the work:
+HOW A JOURNAL BECOMES A PLACE. That is the only part of the class the
+program's shape decides - an ordinary dialogue folds with
+`Delim.replay`, a workflow with `Wf.replay`, which knows not to feed
+an answer to a `patch` that was not there when the journal was
+written. So the fold became a parameter and everything else - the
+envelope, the `expect` races, the advance-then-append order, the warm
+path's free win-check - is written once for both. All fourteen of
+`Dialogue`'s tests passed unchanged, which is what says the seam was
+in the right place.
+
+Measured in TestWorkflow, four tests, each one a thing that used to be
+impossible: the clock is read ONCE and the reading outlives the
+process (a second process asks neither the oracle nor the runtime); a
+run finished under v1 keeps its answer when v2 adds a `patch` between
+its two questions; a run STARTED under v2 records the decision in the
+log, so a third process agrees without asking anything; and a
+half-finished old journal goes LIVE at the patch and finishes on the
+new branch with its history intact - the migration case, through the
+durable path, without a migration.
+
 ## dialogue-asks - the clock is a question too, and that makes programs changeable
 
 `Replayable` said a durable program may not reach outside except

@@ -45,12 +45,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Deferred`/`memoize` of the async libraries. Trigger: a consumer
       that shares a `!.once` across fibres; none yet (direct-once,
       2026-09-16).
-- [ ] wf-durable-journal — `okay.persist.Dialogue` journals `A`; for a
-      durable program to use `Wf.now`/`patch` its payload has to become
-      `Wf.Ans[A]`. Mechanical: the envelope (`Entry.Answered`) already
-      exists, only the type it carries changes, plus a `Schema` for the
-      sum. Then stage 2 is true of the durable side too, not just the
-      core (dialogue-asks, 2026-09-17).
 - [ ] wf-direct-door — `Wf.pause[String, String, String, P]("city?")`
       takes four type arguments where `Delim.pause` in a `direct` block
       takes none. The trick that removes them reads the types off the
@@ -58,10 +52,11 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       evidence class carrying `Q` and `A` as MEMBERS, the way
       `Delim.Asking` carries `Qst`/`Ans`. The feature works today; it
       reads worse than it should.
-- [ ] dialogue-patch — CORE DONE 2026-09-17 (dialogue-asks: `Wf.patch`,
-      three tests including an old journal that must not lose its next
-      answer). What is left is the durable side, which waits on
-      `wf-durable-journal`, and retirement tooling.
+- [ ] dialogue-patch — DONE 2026-09-17 in core (dialogue-asks) and
+      through the log (wf-durable-journal, `Dialogue.workflow`). What
+      is left is only retirement tooling: something that says which
+      programs are still present in a topic, so a branch can be
+      deleted with evidence rather than hope.
       Was: stage 2: `patch(id)` (Temporal's `getVersion`),
       so a program that changed can carry its old runs to the end
       instead of stopping them. Stage 0 made the change a loud stop;

@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.{!, +, Delim, Replayable, pure}
+import okay.{!, +, At, Delim, Replayable, Wf, pure}
 import okay.codec.Schema
 
 /**
@@ -94,14 +94,27 @@ import okay.codec.Schema
  * straight-line code between pauses. specs/durable-workflow.md stage
  * 3 (`continueAs`) is how it is bounded when it stops being cheap.
  */
-final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
+final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
                                      val program: String,
-                                     snapshots: Option[Snapshots] = None,
-                                     snapshotEvery: Int = 0,
-                                     version: Int = 1,
-                                     upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                                    (body: Delim.Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                                    (using Schema[A], okay.Replayable[Delim + F]):
+                                     snapshots: Option[Snapshots],
+                                     snapshotEvery: Int,
+                                     version: Int,
+                                     upcasts: Map[Int, Typed.Upcast],
+                                     /**
+                                      * HOW A JOURNAL BECOMES A PLACE, and the only
+                                      * thing about this class that the program's
+                                      * shape decides (wf-durable-journal,
+                                      * 2026-09-17). An ordinary dialogue folds with
+                                      * `Delim.replay`; a WORKFLOW folds with
+                                      * `Wf.replay`, which knows not to feed an
+                                      * answer to a `patch` that was not there when
+                                      * the journal was written. Everything else —
+                                      * the envelope, the races, the order of
+                                      * advance and append — is the same for both,
+                                      * so it is written once.
+                                      */
+                                     place: Delim.Journal[A] => Delim.Dialogue[Q, A, R, F] ! F)
+                                    (using Schema[A]):
 
   private val typed = Typed[Dialogue.Entry[A]](topic, version, upcasts)
   private val key = id.getBytes("UTF-8")
@@ -173,7 +186,7 @@ final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
     val r = recovered
     r.stopped match
       case Some(s) => pure(Left(s))
-      case None => Delim.replay[Q, A, R, F](body)(r.answers).map(Right(_))
+      case None => place(r.answers).map(Right(_))
 
   /**
    * THE COLD PATH. Answer the question it is asking, knowing only the
@@ -193,8 +206,7 @@ final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
     r.stopped match
       case Some(s) => pure(Dialogue.Answered.Broken(s))
       case None =>
-        Delim.replay[Q, A, R, F](body)(r.answers)
-          .flatMap(advance(_, a, r.answers.size))
+        place(r.answers).flatMap(advance(_, a, r.answers.size))
 
   /**
    * THE WARM PATH. Advance a dialogue you are already holding: the
@@ -302,9 +314,54 @@ final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
     r.stopped match
       case Some(s) => throw Dialogue.Halted(s)
       case None =>
-        Delim.replay[Q, A, R, F](body)(r.answers).flatMap(go(_, r.answers.size))
+        place(r.answers).flatMap(go(_, r.answers.size))
 
 object Dialogue:
+
+  /**
+   * AN ORDINARY DURABLE DIALOGUE: the author's questions, answered by
+   * the author's oracle, folded with `Delim.replay`.
+   */
+  def apply[Q, A, R, F[+_]](topic: Topic, id: String, program: String,
+                            snapshots: Option[Snapshots] = None,
+                            snapshotEvery: Int = 0,
+                            version: Int = 1,
+                            upcasts: Map[Int, Typed.Upcast] = Map.empty)
+                           (body: Delim.Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                           (using Schema[A], Replayable[Delim + F],
+                            Delim.OneMachine[F], At): Dialogue[Q, A, R, F] =
+    new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
+      j => Delim.replay[Q, A, R, F](body)(j))
+
+  /**
+   * A DURABLE WORKFLOW: the same journal, but it also carries the
+   * LIBRARY's questions (`Wf.now`, `uuid`, `random`, `patch`), so a
+   * durable program may have a clock and a changeable branch without
+   * breaking replay. The fold is `Wf.replay`, which is what makes
+   * `patch` right on a journal written before the branch existed.
+   *
+   * `run` takes the author's oracle; the runtime's questions are
+   * answered here and journalled beside the author's, tagged.
+   */
+  def workflow[Q, A, R, F[+_]](topic: Topic, id: String, program: String,
+                               snapshots: Option[Snapshots] = None,
+                               snapshotEvery: Int = 0,
+                               version: Int = 1,
+                               upcasts: Map[Int, Typed.Upcast] = Map.empty)
+                              (body: Wf.Asking[Q, A, R, F] ?=> R ! (Delim + F))
+                              (using Schema[Wf.Ans[A]], Replayable[Delim + F],
+                               Delim.OneMachine[F], At)
+                              : Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =
+    new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
+      j => Wf.replay[Q, A, R, F](body)(j))
+
+  /** the oracle a workflow's `run` wants: the author answers their own
+   * questions, and the runtime answers its own */
+  def asking[Q, A, F[+_]](oracle: Q => A ! F)(using rt: Wf.Runtime)
+                         : (Wf.Ask[Q], Attempt) => Wf.Ans[A] ! F =
+    (q, _) => q match
+      case Left(sys) => pure(Left(rt.answer(sys)))
+      case Right(own) => oracle(own).map(Right(_))
 
   /**
    * WHAT A JOURNAL RECORD IS. Not a bare answer: the two fields

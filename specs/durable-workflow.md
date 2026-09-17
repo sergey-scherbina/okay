@@ -288,10 +288,15 @@ carried stage 2's `patch` with it, because they are one mechanism.
   migration.
 - `perform` was listed as work and turned out to be a name.
 
-**What is NOT wired yet:** `okay.persist.Dialogue` still journals `A`,
-not `Wf.Ans[A]`, so the durable side cannot carry the library's
-questions. That is the next step and it is mechanical — the envelope
-already exists, only its payload type changes.
+**Wired through to the log** by `wf-durable-journal` the same day:
+`Dialogue.workflow` is the door, and the only thing that had to change
+in `Dialogue` was HOW A JOURNAL BECOMES A PLACE. That is now a
+parameter (`place`), because it is the one part of the class the
+program's shape decides: an ordinary dialogue folds with
+`Delim.replay`, a workflow with `Wf.replay`, and the envelope, the
+races and the advance-then-append order are written once for both.
+All fourteen of `Dialogue`'s own tests passed unchanged through the
+refactor, which is what says the seam was in the right place.
 
 **Known rough edge, recorded rather than hidden:** `Wf`'s doors take
 four type arguments at every call site
@@ -328,8 +333,11 @@ outage.
       finishes correctly — `TestWf`, at the `Delim` level
 - [x] a dialogue started under `booking/3` takes the new branch
 - [x] the decision is in the journal, so a third process agrees
-- [ ] the same, through `okay.persist.Dialogue` (its journal payload
-      has to become `Wf.Ans[A]` first)
+- [x] the same, through `okay.persist.Dialogue.workflow` — the clock
+      read once across a restart, an old journal keeping the old
+      branch, and a half-finished one going LIVE at the patch and
+      finishing on the new branch with its history intact
+      (wf-durable-journal, TestWorkflow)
 - [ ] retirement: a tool that says which programs are still present
       in a topic, so a branch can be deleted with evidence
 

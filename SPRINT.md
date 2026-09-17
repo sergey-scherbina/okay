@@ -30,7 +30,9 @@
   stage 0 landed), specs/delim-safety.md (stage 0 landed) and
   specs/delim-diagnostics.md (not started). The order below is by
   value per day, and the reason for it is in each entry.
-  NEXT: `wf-durable-journal`, then `wf-direct-door`.
+  NEXT: `wf-direct-door` (the four type arguments), then
+  `dialogue-continue-as`. `wf-durable-journal` LANDED 2026-09-17:
+  a durable program now has a clock and a changeable branch.
   `dialogue-asks` LANDED 2026-09-17 and carried stage 2's `patch` with
   it — one mechanism, as predicted. (It WAS first because `dialogue-patch`
   turns out to DEPEND on it: `patch(id)` is a question the library
@@ -57,9 +59,6 @@
   `dialogue-replay-discipline` landed the constraint: a clock, ids and
   randomness as journalled questions, and `perform`. Decide the shape
   of the question type before writing any of it.
-- wf-durable-journal — carry `Wf`'s tagged answers in the durable
-  journal, so a durable program may use the clock and `patch` too.
-  Mechanical; the envelope exists.
 - wf-direct-door — the four type arguments at every `Wf` call site.
 - dialogue-continue-as, workflow-operations — stages 3 and 4, on a
   consumer's trigger, not on momentum.
