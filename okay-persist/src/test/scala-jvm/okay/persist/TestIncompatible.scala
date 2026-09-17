@@ -126,4 +126,26 @@ class TestIncompatible extends FunSuite {
         assert(why.contains("cannot read my own seed"), why)
       case other => fail(s"a chapter that cannot replay its seed was reported as $other")
   }
+
+  test("the WAKE path rebuilds a place too: a due run gets the same verdict") {
+    val store = MemoryStore()
+    val t = store.topic("runs")
+    val timers = Timers.over(store)
+    val old = Worker[String, String, String, Pure, Async](
+      t, "job/1", timers, _ => okay.async("old"))(v1)
+    assertEquals(drive(old.start("r-1")), Worker.Progress.Sleeping(61_000L))
+
+    // the deploy lands while the run is asleep, so the next thing to
+    // touch it is `tick` -> `wake`, which rebuilds the place before it
+    // decides whether the timer is real
+    val fresh = Worker[String, String, String, Pure, Async](
+      t, "job/1", timers, _ => okay.async("new"),
+      isolate = Some(Worker.isolating))(v1prime)
+
+    drive(fresh.tick(61_000L)).map(_._2) match
+      case List(Worker.Progress.Incompatible(why)) =>
+        assert(why.contains("cannot read v1 data"), why)
+      case other =>
+        fail(s"the wake path reported a bad deploy as $other")
+  }
 }

@@ -403,11 +403,25 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
    * then carry the run forward */
   def wake(id: String, nowMillis: Long): Worker.Progress[R] ! G =
     val d = dialogue(id)
-    at(id).flatMap:
-      case Left(stopped) =>
-        timers.disarm(id)
-        broken(d, stopped)
-      case Right(p) => p.asking match
+    // THE FOURTH DOOR (incompatible-at-wake, 2026-09-17). This one is
+    // how `tick` reaches a run at all, and it rebuilt the place
+    // directly — so a bad deploy on a SLEEPING run came back as
+    // `Failed`, which is the exact lie `worker-incompatible` was
+    // written to remove, surviving at a door that lane did not count.
+    // It was found by counting the doors instead of remembering them.
+    placed(d).flatMap:
+      case Left(verdict) =>
+        // A JOURNAL that cannot be folded will not mend itself, so it
+        // comes off the clock, as it always did. A DEPLOY that cannot
+        // read a good journal might — the next release fixes it — so
+        // that one stays armed and resumes by itself. The price is one
+        // fold per tick while it is broken, and `needsAttention` is
+        // where that shows.
+        verdict match
+          case Worker.Progress.Incompatible(_) => ()
+          case _ => timers.disarm(id)
+        pure(verdict)
+      case Right((p, _)) => p.asking match
         case Some(Left(Wf.Sys.Timer(t))) if t <= nowMillis =>
           d.answer(Left(Wf.SysA.Elapsed)).up[G].flatMap(_ => advance(id))
         case _ =>
