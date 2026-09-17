@@ -64,6 +64,26 @@ final class Statuses(val snapshots: Snapshots):
 
   /** every run waiting on this signal name — "who is blocked on
    * approval" as one read */
+  /**
+   * WHAT NEEDS A PERSON, which is the one question an operator
+   * actually asks (statuses-verdicts, 2026-09-17).
+   *
+   * `Broken` — the journal cannot be folded: damage, or a record from
+   * another program. `Incompatible` — the journal is fine and THIS
+   * CODE refuses it. Both wait for a human and neither improves on
+   * its own.
+   *
+   * `Failed` is deliberately absent. The worker retries it, so
+   * listing it here would fill the page with rows that fix
+   * themselves, and a page like that is one nobody reads.
+   */
+  def needsAttention: List[Statuses.Status] =
+    all.filter: s =>
+      s.state match
+        case Statuses.State.Broken(_) => true
+        case Statuses.State.Incompatible(_) => true
+        case _ => false
+
   def waitingOn(name: String): List[Statuses.Status] =
     all.filter(_.state == Statuses.State.Waiting(s"signal:$name"))
 
@@ -76,6 +96,19 @@ object Statuses:
     case Waiting(what: String)
     case Finished(answer: String)
     case Broken(why: String)
+    // APPENDED, NOT INSERTED (statuses-verdicts, 2026-09-17): a
+    // derived Schema numbers an enum's cases in order, so a new case
+    // at the END leaves every status written before this readable.
+    // Putting `Failed` beside `Broken` where it belongs alphabetically
+    // would have renumbered both.
+    /** the drive threw and the worker caught it. It retries by
+     * itself, so this is NOT `needsAttention` — waking somebody for
+     * it is how a dashboard teaches people to ignore dashboards. */
+    case Failed(why: String)
+    /** the program cannot replay history it accepted: a bad deploy.
+     * Deterministic, so no amount of retrying helps — a person
+     * chooses between fixing the code and retiring the run. */
+    case Incompatible(why: String)
 
   given Schema[State] = Schema.derived
 

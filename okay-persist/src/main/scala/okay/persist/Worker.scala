@@ -203,14 +203,31 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
    * something to look at, never something to decide from, so a worker
    * that dies between the two leaves a stale line and no wrong run. */
   private def note(id: String, p: Worker.Progress[R]): Unit ! G =
+    def write(asking: Option[String], where: Option[String]): Unit =
+      statuses.foreach(_.put(Statuses.Status(id, program, Worker.state(p),
+        asking, where, System.currentTimeMillis())))
     statuses match
       case None => pure(())
-      case Some(ix) => at(id).map: place =>
-        val (asking, where) = place.toOption match
-          case Some(d) => (d.asking.map(_.toString), d.where)
-          case None => (None, None)
-        ix.put(Statuses.Status(id, program, Worker.state(p), asking, where,
-          System.currentTimeMillis()))
+      case Some(_) => p match
+        // A THIRD DOOR REBUILDS A PLACE, and it is this one
+        // (statuses-verdicts, 2026-09-17). `at(id)` re-runs the
+        // program to ask what it is standing at — so a bad deploy
+        // threw out of the STATUS WRITE after the drive had already
+        // named it `Incompatible`, and the verdict never reached the
+        // index it was written for.
+        //
+        // These four have no live place to describe anyway: there is
+        // nothing to ask about a run that finished, and nothing to
+        // rebuild for one whose rebuild is the problem. Skipping the
+        // look is both the fix and one fold less per advance.
+        case Worker.Progress.Finished(_) | Worker.Progress.Broken(_)
+           | Worker.Progress.Incompatible(_) | Worker.Progress.Failed(_) =>
+          pure(write(None, None))
+        case _ => at(id).map: place =>
+          val (asking, where) = place.toOption match
+            case Some(d) => (d.asking.map(_.toString), d.where)
+            case None => (None, None)
+          write(asking, where)
 
   /** where a run stands, in the DRIVER's row */
   private def at(id: String)
@@ -455,10 +472,15 @@ object Worker:
     case Progress.Waiting(okay.Wf.Wait.Signal(n)) => Statuses.State.Waiting(s"signal:$n")
     case Progress.Waiting(okay.Wf.Wait.Child(c)) => Statuses.State.Waiting(s"child:$c")
     case Progress.Waiting(okay.Wf.Wait.Until(t)) => Statuses.State.Sleeping(t)
-    case Progress.Continued(n) => Statuses.State.Waiting(s"continuing:$n")
+    // a run that opened a new chapter is not WAITING for anything —
+    // nobody has to do a thing for it to go on
+    case Progress.Continued(_) => Statuses.State.Running
     case Progress.Busy(who) => Statuses.State.Waiting(s"busy:$who")
-    case Progress.Failed(why) => Statuses.State.Broken(s"threw: $why")
-    case Progress.Incompatible(why) => Statuses.State.Broken(s"cannot replay: $why")
+    // the index keeps these APART rather than prefixing one string:
+    // the difference between them is who has to act, which is the
+    // only difference a dashboard exists to show
+    case Progress.Failed(why) => Statuses.State.Failed(why)
+    case Progress.Incompatible(why) => Statuses.State.Incompatible(why)
     // the status line now names a LINE, not just an offset
     case Progress.Broken(d) => Statuses.State.Broken(d.toString)
 

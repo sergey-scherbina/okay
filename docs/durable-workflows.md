@@ -390,6 +390,17 @@ now".
 | `Incompatible` | the code threw while replaying history it ACCEPTED | a person: fix the code, or retire the run |
 | `Broken` | the journal itself cannot be folded | a person: damage, or a foreign program |
 
+The index keeps them apart, so the question an operator actually asks
+is a query rather than a text match:
+
+```scala
+index.needsAttention        // Broken and Incompatible — never Failed
+```
+
+`Failed` is left out on purpose. The worker retries it by itself, so
+listing it would fill the page with rows that fix themselves, and a
+page like that is one nobody reads.
+
 `Incompatible` is separated from `Failed` on purpose, and the reason
 is the discipline the whole design rests on: replay is deterministic,
 so a program that throws on its own accepted history throws again on
