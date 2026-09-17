@@ -1,5 +1,136 @@
 # Changelog
 
+## ui-html-host — stage 1, okay.ui.Html
+
+specs/ui-html.md, landed as a3fbf2c1. The plain road's three pure
+functions left okay-script, whose module drags the staging compiler,
+deploy and ACME, and became `okay.ui.Html`: `render`/`form` on the way
+out, `events`/`step` on the way in, a host without a loop because a
+scriptless page holds no connection. It sits in `scala-form` beside
+`Wire` — the capability rule must not be defined twice, and that
+directory is on the JVM, JS and Native source sets alike, so the
+cross-platform property the spec asked for holds. okay-script keeps
+`Live.html`/`plain`/`step`/`escape`/`PlainField` as five delegates and
+its four suites pass UNCHANGED (18 tests), which is the proof no page
+notices. TestHtml, 7. `okayUiJVM`'s classpath carries okay, codec,
+lex, parse and persist, and nothing of okay-script — measured, which
+is what okay-watch's specs/ui.md waits for.
+
+Found on the way: an EMPTY post is not the identity. A `Check` shown
+ON reads back as `Toggled(false)` from an empty map, because that is
+HTML's own rule for an unposted checkbox. What makes a GET safe is
+the mount-field guard in `Live.post`, never the emptiness — recorded
+in both specs, since okay-watch renders the tree itself.
+
+## applicative-static stages 1, 2 and 4 - the rung below the monad, put to work
+
+`Monad.scala` has declared Functor < Applicative < Selective < Monad
+since the beginning and used one rung of it: `Selective` had no
+consumer outside its own file, `traverse` over `A ! F` could only
+sequence because its only instance was the Monad-derived one, and
+nothing could list a program's effects without running it. Landed as
+2ec1caa6 (specs/applicative-static.md, stages 1, 2 and 4; stage 3 is
+still gated on these Results).
+
+The ladder is a ladder of VISIBILITY. An applicative program is a pure
+lambda term over effectful ARGUMENTS, so what it cannot do - bind one
+leaf's answer into another leaf's body - is exactly what makes every
+effect it performs knowable before it runs.
+
+**`Par`** is that reading of `A ! Async`: `app` joins two leaves with
+`Async.par`, so generic applicative code becomes concurrent by
+choosing an instance. Opaque INSIDE its object, because a top-level
+opaque type is package-transparent and `Free`'s own Monad would have
+answered for it. `fmap` deliberately does not fork; there is
+deliberately no Monad, Haxl's refusal for Haxl's reason.
+
+**`Static`** is the free selective - `Pure | Op | Ap | Select`, a
+program with no `Bind` in it. `leaves` lists what it MAY do (both
+sides of every Select, an upper bound, exact without branches),
+`toFree` runs it the ordinary way and performs at most one side,
+`foldMap` interprets the spine into any other Selective: 50 leaves,
+1 call to the store against 50, counted rather than asserted.
+
+THREE THINGS THE IMPLEMENTATION FOUND, none of them in the spec:
+
+**The doors already existed.** `parTraverse` and `parAll`
+(scala-jvm-native) have been shipping a fiber per program, joined in
+order, and the build refused the duplicate name. The new doors moved
+inside `object Par`; the spec carries the correction. What stage 1
+adds is the INSTANCE, not the door - and `parAll` stays the cheaper
+road for a flat sequence, by about 5x.
+
+**`Async.par` notices a right-side failure only after the left
+finishes.** Its doc says it fails the pair and cancels the sibling; it
+does so on the LEFT. Measured: 3.017 s against 0.0007 s for the same
+failure in the two orders, because the two completions are registered
+in a nest rather than side by side. Filed as `par-right-failure-waits`
+(BUGS.md) with the reduced repro rather than fixed in a lane that only
+inherits `par`; TestPar pins BOTH orders, so the fix announces itself.
+
+**A plain `.map` on a `Par` is the identity comonad's.**
+`Monad.scala`'s known footgun - `given Comonad[Id]` puts `map` on
+every type in lexical scope - beats an extension written in `Par`'s
+own object, because lexical beats implicit scope. A probe wrote the
+idiom bracket the way a reader would and it type-checked as an `Id`
+whose next `.app` was "not a member". The answer is `Par.map2`, a
+plain method that resolves no extension, plus a compile-error test on
+the bad spelling.
+
+MEASURED: one prediction confirmed, one refuted. The `Par` wrapper is
+free - the matched pair (idiom bracket vs seven hand-written `par`
+calls, same shape) is 1.003 and 0.983, inside the noise, against a
+predicted 10%. `Static.toFree` is 1.72x the monadic program against a
+predicted 1.3x, REFUTED, with the bytes agreeing at 1.77x: the
+prediction treated the conversion as free when `toFree` materialises a
+second tree. Reading those bytes found one unearned `Delay` - the
+right side of an `Ap` is a leaf in every spine a fold builds - worth
+exactly 56 B per leaf, one node and its thunk. Both benchmark files
+were written twice, because the first cut of each paired unlike things
+(benchmark-pairing-rule).
+
+Docs, everywhere they were due: theory ch. 12 (the ladder as the
+staging boundary, `Reader` as S/K/I, Turner's bracket abstraction as
+the history of `Func` and `Fuse`, Miranda as where it ran), tutorial
+5 and a new 22, typepedia, guide - whose claim about `par`'s
+cancellation was wrong and is corrected - benchmarks 9i, and the stale
+chapter and section counts in docs/README.
+## ui-html-host — stage 0, the spec
+
+specs/ui-html.md, landed as a5f88602 (spec only; no code moved). The
+plain road's three pure functions — `Live.html`, `Live.plain`,
+`Live.step` — sit in okay-script, whose module drags the staging
+compiler, deploy and ACME; okay-watch, a submodule consumer with its
+own Jetty router and its own door, wants the analyst page as a tree a
+plain browser draws and cannot take okay-script for three functions
+of strings. The spec moves them to `okay.ui.Html` (a host without a
+loop: `render`/`form` out, `events`/`step` in), keeps okay-script's
+names as delegates and `mountPlain` where the session is, and REVISES
+script-live-plain's same-day decision that the step belonged to
+okay-script — a host knows its medium as the terminal knows ANSI.
+Stage 2 (`ui-live-js`, the browser's half) waits for okay-watch's
+specs/ui.md stage 3. Queued in SPRINT.
+
+## script-live-plain — a Live app on classic HTML, no script
+
+`okay-script/src/main/scala/okay/script/api/Live.scala`, landed as
+28a961d8 (spec c977c68d). The operator asked whether Scala.js is
+mandatory for okay-ui and whether a plain HTML backend could stand
+in. It was already optional — Scala.js is one host of five in
+okay-ui, nobody outside the module depends on it, and the browser's
+Live client is hand-written JavaScript — and the missing piece was
+the plain road for an ARBITRARY Live app, which `Forms` had only for
+one node. Now `mountPlain(id, app)` renders the tree as one
+`<form method="post">` and no script; `Live.step` diffs a POST
+against the tree it was rendered from into the events the socket
+would have sent (a `Form`'s own button becomes ONE `Submitted`, the
+hybrid rule backwards), each checked by `Wire.permitted`; `Live.post`
+keeps the state where `session` keeps it (shared `load`/`store`), so
+a durable app is one state on both roads. Found on the way: a
+textarea carried no `name=` under `Live.html(named = true)`.
+TestLivePlain, 6 tests; okay-ui untouched. specs/okay-script.md
+"The plain road of a Live app".
+
 ## applicative-static - stage 0, the spec
 
 specs/applicative-static.md, landed as 0e28811f (spec only; no code

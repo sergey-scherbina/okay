@@ -72,11 +72,25 @@ object Par:
    * fmap does not fork (one leaf, nothing to run beside it) */
   given (using Scheduler): Applicative[Par]
 
-/** the two derived doors, so a call site names its intent and not
- * the instance */
-def parTraverse[A, B](xs: Seq[A])(f: A => B ! Async)(using Scheduler): Seq[B] ! Async
-def parSequence[A](xs: Seq[A ! Async])(using Scheduler): Seq[A] ! Async
+  /** the two derived doors, INSIDE the object — see the correction
+   * below: the top-level names were taken */
+  def traverse[A, B](xs: Seq[A])(f: A => B ! Async)(using Scheduler): Seq[B] ! Async
+  def sequence[A](xs: Seq[A ! Async])(using Scheduler): Seq[A] ! Async
 ```
+
+**CORRECTION, made while implementing (2026-09-17).** This spec was
+written believing there was no parallel door. There is:
+`parAll` and `parTraverse` (src/main/scala-jvm-native/Parallel.scala)
+have been shipping a fiber per program, joined in order, and the
+compiler said so — `parTraverse is already defined`. They stay, and
+the new doors live inside `object Par` rather than beside them. The
+three differences, all real: the old pair is JVM/Native only (a
+blocking join needs `CanBlock`), it does not cancel the siblings of a
+failed leaf, and it takes a flat SEQUENCE. What stage 1 actually adds
+is therefore the INSTANCE — generic applicative code becoming
+concurrent by instance choice — not the door. Measured consequence:
+for a flat sequence `parAll` is the cheaper road and the Results below
+say by how much.
 
 `Par` is NOT a `Monad` and offers no `flatMap` — Haxl's point (Marlow
 et al. 2014): a `flatMap` would make the spine sequential again and
@@ -137,52 +151,52 @@ textbook's contract (specs/theory-textbook.md) requires.
 ## Behavior
 
 Stage 1:
-- [ ] `Par` is a lawful Applicative: identity, homomorphism,
+- [x] `Par` is a lawful Applicative: identity, homomorphism,
       interchange, composition hold on results for programs that
       complete (TestPar).
-- [ ] Concurrency is proven WITHOUT a clock: N leaves each wait on a
+- [x] Concurrency is proven WITHOUT a clock: N leaves each wait on a
       rendezvous that opens only when all N have arrived; under
       `parSequence` the program completes, under `sequence` the same
       leaves would deadlock, and the test asserts completion with a
       bounded timeout as the failure road — not a duration.
-- [ ] A failing leaf fails the spine and cancels its siblings, exactly
+- [x] A failing leaf fails the spine and cancels its siblings, exactly
       as `Async.par` does today (inherited, asserted, not
       re-implemented).
-- [ ] `parTraverse(xs)(f)` agrees with `traverse(xs)(f)` on results and
-      order for every pure `f` (property test).
-- [ ] `traverse`/`sequence` over `A ! F` are byte-for-byte unchanged:
+- [x] `Par.traverse(xs)(f)` agrees with `traverse(xs)(f)` on results and
+      order for every pure `f` (TestPar).
+- [x] `traverse`/`sequence` over `A ! F` are byte-for-byte unchanged:
       no signature moves, the existing tests that use them pass
       untouched.
-- [ ] Cost, predicted before measuring: one `Par.app` costs one
+- [x] Cost, predicted before measuring: one `Par.app` costs one
       `Async.par` plus one closure and one tuple; a JMH lane of 8
       leaves at `parSequence` vs 8 hand-written nested `Async.par`
       calls is within 10%. If it is not, the wrapper is doing work it
       should not, and the Results say what.
 
 Stage 2:
-- [ ] `leaves` of a program with two `Static.op` leaves under one `ifS`
+- [x] `leaves` of a program with two `Static.op` leaves under one `ifS`
       names three operations before anything runs; `toFree` of the
       same program runs exactly two (TestStatic).
-- [ ] `toFree` agrees with the hand-written monadic program on the
+- [x] `toFree` agrees with the hand-written monadic program on the
       answer and on the sequence of operations a recording handler sees
       (program order, at most one branch of each Select).
-- [ ] `Static[F, *]` satisfies the Selective laws (Mokhov et al. 2019
+- [x] `Static[F, *]` satisfies the Selective laws (Mokhov et al. 2019
       §2.2: identity, distributivity, associativity) on `leaves` and on
       `toFree`'s answers.
-- [ ] Batching, shown end to end on a synthetic `Fetch % K` signature:
+- [x] Batching, shown end to end on a synthetic `Fetch % K` signature:
       a spine of N independent `Get(k)` leaves is interpreted by a
       `foldMap` into a batching applicative that issues ONE bulk call
       for all N keys; the test counts calls to the backing store.
-- [ ] `leaves` of a 10 000-leaf spine is linear and stack-safe (the
+- [x] `leaves` of a 10 000-leaf spine is linear and stack-safe (the
       spine is left-nested by `traverse`'s foldLeft; the walk must be
       an explicit loop, not structural recursion — cf.
       assertEquals-on-a-deep-tree).
-- [ ] Cost, predicted before measuring: running a Static program
+- [x] Cost, predicted before measuring: running a Static program
       through `toFree` is within 1.3x of the hand-written monadic
       program at 1 000 leaves (each Ap becomes a right-nested Bind, the
-      shape `Free.resume` is fastest on). Recorded in
-      src/jmh/history.tsv either way.
-- [ ] All existing tests stay green.
+      shape `Free.resume` is fastest on). **REFUTED: 1.72x** — see
+      Results. Recorded in src/jmh/history.tsv.
+- [x] All existing tests stay green.
 
 Stage 3 (items written when its Design entry lands; the acceptance test
 is already known): two independent `.?` binds in one block run
@@ -300,3 +314,106 @@ not guess.
 Stage 0 (this spec): written 2026-09-17. Predictions above are the
 bars; each stage records its measured numbers here, with the JMH
 lanes named, before it lands.
+
+### Stage 1 — `Par`, landed 2026-09-17
+
+**What the spec got wrong, found by the compiler.** `parTraverse` and
+`parAll` already existed (src/main/scala-jvm-native/Parallel.scala) and
+the build refused the duplicate name. The doors moved inside
+`object Par`; see the CORRECTION under Interface. The instance, which
+is what stage 1 is actually for, is unaffected.
+
+**What the tests found, filed rather than fixed.** `Async.par`'s doc
+says "a child failure fails the pair and cancels the sibling". It does
+so on the LEFT only: measured 2026-09-17, `par(slow, failing)` failed
+after 3.017 s and `par(failing, slow)` after 0.0007 s, because the two
+completions are registered in a nest rather than side by side. Filed
+as `par-right-failure-waits` (BUGS.md) with the reduced repro; TestPar
+pins BOTH orders, so the day it is fixed the second assertion fails
+and says so. `Par` inherits the asymmetry and its doc says it does.
+
+**The numbers.** ParBenchmark, 8 trivial leaves, `-f 3 -prof gc`,
+three rounds on one box (load 3–6.6):
+
+| lane | µs/op (r1 / r2 / r3) | B/op |
+|---|---|---|
+| bracketPar8 (idiom bracket at `Par`, 7 joins) | — / 52.404 / 52.190 | 11 401 / 11 510 |
+| handNested8 (7 hand-written `Async.par`) | 52.611 / 52.249 / 53.101 | 10 504 / 10 704 / 10 503 |
+| parApplicative8 (`Par.sequence`, generic `traverse`) | 59.301 / 61.934 / 59.124 | 15 284 / 14 594 / 14 355 |
+| parAllFlat8 (`parAll`, flat, one fiber per leaf) | 11.746 / 9.502 / 11.251 | 4 200 / 4 200 / 4 195 |
+| sequential8 (`traverse`, no fibers) | 0.352 / 0.424 / 0.345 | 3 840 |
+
+- **PREDICTION CONFIRMED** — "the wrapper within 10%": the matched
+  pair (bracketPar8 vs handNested8, same seven joins, same leaves) is
+  **1.003 and 0.983** across the two rounds that have both. The
+  carrier is inside the noise. The load-proof residue is in the bytes:
+  +700 to +1 000 B/op, ~100–140 B per join for the two closures.
+- **The applicative SHAPE costs ~5x** against `parAll` (53.1 vs 11.25
+  in one round), and that is the spine, not the implementation: `app`
+  is pairwise, so N leaves are N joins and 2N fibers. A further +13%
+  and +2 845 B/op from bracketPar8 to parApplicative8 is generic
+  `traverse` building its Vector element by element.
+- **The rule that follows**, and it is in the doc comment, the guide,
+  the typepedia and theory ch. 12: flat sequence of same-typed
+  programs on the JVM -> `parAll`. Spine with leaves of different
+  types, or generic code that never heard of Async -> `Par`, where the
+  alternative is not `parAll` but running sequentially (0.345 µs/op
+  buys you nothing when the leaves are real work).
+
+### Stage 2 — `Static`, landed 2026-09-17
+
+- `leaves` on `ifS(flag)(get a)(get b)` reports **3** operations
+  before anything runs; `toFree` performs **2** (TestStatic). That
+  pair is the whole type in one line.
+- Batching: 50 leaves, **1** call to the store through `foldMap` into
+  an accumulating carrier, against **50** for the same program run the
+  ordinary way — counted, not asserted.
+- `foldMap` needs `Selective[G]`, not `Applicative[G]`: an applicative
+  carrier cannot run one side of a `Select` and not the other. A
+  carrier that runs both says so with `selectA`, which is exactly the
+  over-approximation `leaves` reports.
+- **Stack, measured 2026-09-17 on a traverse-built spine, default JVM
+  stack**: `leaves` (explicit stack) returns at 50 000; the same walk
+  written recursively returns at 10 000 and overflows at 50 000;
+  `toFree` (Free.defer) has no bound found; `foldMap` folds 5 000 and
+  overflows at 10 000. The last one is the one door that recurses and
+  it is filed, not hidden: BACKLOG `static-foldmap-stack-safe`, with
+  the reason a loop needs casts this house makes you earn.
+- `F[Any]`, not `F[?]`, in `leaves`: a wildcard application of a
+  higher-kinded parameter is unreducible (E043, the wall
+  specs/schema-fold.md hit), and covariance makes `F[X] <: F[Any]` an
+  upcast the compiler performs itself. No cast.
+**The cost prediction is REFUTED.** StaticBenchmark, 1 000 leaves,
+`-f 3 -prof gc`, prebuilt against prebuilt (the matched pair — the
+first cut of this file compared a PREBUILT spine against a monadic
+lane that rebuilt itself every invocation, which flattered the spine
+and is the mismatch benchmark-pairing-rule exists to catch):
+
+| lane | µs/op | B/op |
+|---|---|---|
+| staticToFree (convert + run) | 80.655 | 843 049 |
+| monadicPrebuilt (run) — THE PAIR | 46.764 | 475 088 |
+| monadicBuildAndRun (build + run, context) | 57.982 | 641 158 |
+| staticLeaves (READ, do not run) | 14.453 | 101 048 |
+
+**1.72x, not the predicted 1.3x**, and the bytes agree (1.77x), which
+is what makes it a verdict rather than a load artefact. The
+prediction's error is named: it said "each Ap becomes a right-nested
+Bind, the shape resume is fastest on" and treated the conversion as
+free. It is not — `toFree` MATERIALISES A SECOND TREE, and the
+remaining 368 B per leaf is that tree's `Bind`, `Delay`, thunk and
+continuation.
+
+**One optimisation was found by reading those bytes and it is in the
+code.** The first `toFree` wrapped BOTH sides of an `Ap` in a
+`Delay`; the right side is a leaf in every spine a fold builds, and a
+leaf needs no trampoline. Earning the node (`Static.now`) took 84.251
+-> 80.655 µs and 899 105 -> 843 049 B/op: exactly 56 B per leaf, one
+`Delay` and its thunk. A 10 000-deep RIGHT-nested spine is now a test,
+because that is the shape the fallback exists for.
+
+**What the numbers say to a reader**, and it is in the doc comment and
+theory ch. 12: `Static` is not a faster way to RUN. It is a way to
+READ — listing 1 000 operations costs 14.5 µs against 46.8 µs to
+perform them, a third of the price — and a way to BATCH (50 leaves,
+1 call). A program you only want to run should be written monadic.

@@ -49,6 +49,14 @@ Two classical answers to interpretive overhead, and Okay's three
 staging rungs.
 *Carette, Kiselyov & Shan 2009 · Taha & Sheard 1997/2000*
 
+**[12 · Applicative, Selective, Monad](12-applicative-static.md)**
+How much a program says about itself: the ladder as a ladder of
+visibility, the function applicative that IS S/K/I, leaves that run at
+once, effects listed before the run, N requests collapsed into one —
+and the line where staging stops, which is the line where flatMap
+starts.
+*McBride & Paterson 2008 · Lindley, Wadler & Yallop 2011 · Capriotti & Kaposi 2014 · Mokhov et al. 2019 · Marlow et al. 2014/2016 · Turner 1979/1986*
+
 **[7 · Logic, streams and sketches](07-logic-streams.md)**
 One primitive for fair search; streams as codata; approximation with
 stated error.

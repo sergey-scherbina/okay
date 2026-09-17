@@ -9,7 +9,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[User guide](guide.md)** — the concepts, layer by layer: control
   → effects → streams → chunks → coroutines → concurrency → the text
   stack → the laziness contract that holds it together.
-- **[Tutorial](tutorial.md)** — the same layers by use, twenty-two
+- **[Tutorial](tutorial.md)** — the same layers by use, twenty-three
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
 - **[Your own effect](your-own-effect.md)** — one worked effect from
@@ -48,9 +48,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
-  Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard), and why each
+  Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard, McBride &
+  Paterson, Mokhov et al., Turner), and why each
   design decision — argued from the papers and the repository's own
-  measurements. Nine chapters, Okay as the running example.
+  measurements. Twelve chapters, Okay as the running example.
 - **[Direct style](direct-style.md)** — monads as plain code:
   the reflection foundation (two one-liners, no macros), the
   `direct` block (one mark, `.?`), auto-coloring behind two explicit

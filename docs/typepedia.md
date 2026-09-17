@@ -287,6 +287,35 @@ same material with the measurements attached.
   **`>>>`** (Kleisli composition).
 - `Selective`'s `ifS`/`branch`/`select` sit between Applicative and
   Monad: both branches visible, at most one runs.
+- **`Par[A]`** (Par.scala) — `A ! Async` read as ONE LEAF of an
+  applicative spine: an opaque carrier inside `object Par`, whose
+  `app` joins two leaves with `Async.par`. Choosing this instance is
+  what makes generic applicative code concurrent — `Par.traverse` /
+  `Par.sequence` are the named doors, `Par.map2` joins two leaves of
+  different types, `Par(prog)` and `.seq` are the two ends. Do NOT
+  write `.map` on one: `given Comonad[Id]` is lexically visible and
+  beats an extension in `Par`'s own object, so it means the identity
+  comonad's map and the next `.app` stops compiling (pinned as a
+  compile error in TestPar). `fmap` deliberately does NOT fork (one leaf, nothing to run
+  beside it), and there is deliberately no `Monad`: a `flatMap` would
+  sequence the spine while the type still claimed independence.
+  Cancellation is inherited from `Async.par`, asymmetry and all
+  (BUGS.md, `par-right-failure-waits`). Not to be confused with
+  `parAll`/`parTraverse` (Parallel.scala): those are JVM/Native, flat,
+  one fiber per leaf, joined in order — cheaper for a flat sequence,
+  and measured so (theory ch. 12).
+- **`Static[F, A]`** (Static.scala) — the FREE SELECTIVE: `Pure | Op |
+  Ap | Select`, a program with no `Bind` in it, so its structure can
+  be read before it runs. **`leaves`** lists every operation it MAY
+  perform (both sides of every `Select` — an upper bound, exact
+  without branches; an explicit stack, so a traverse-built spine of
+  50 000 walks), **`toFree`** converts to `A ! F` for the ordinary
+  runners (`Free.defer`, so no host stack at any depth) and makes the
+  approximation good at run time (a `Select` performs at most one
+  side), **`foldMap`** interprets the spine into any other
+  `Selective` — the batching door: N leaves, one round trip. `foldMap`
+  is the one recursive walk here: measured 5 000 leaves fold, 10 000
+  overflow (BACKLOG, `static-foldmap-stack-safe`).
 
 ## Streams and consumption
 

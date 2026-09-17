@@ -9,6 +9,53 @@ bin: an entry whose fix belongs to a module belongs in that module.
 Newest first. Status lives in the machine-readable header, never in
 the prose.
 
+## par-right-failure-waits — `Async.par` notices a right-side failure only after the left finishes
+<!-- status: open
+     lane: cross-platform (Async.scala, core)
+     area: async
+     found-by: TestPar "a failing leaf fails the spine and cancels its siblings"
+       (applicative-par, 2026-09-17), then reduced to Async.par alone by
+       src/test/scala-jvm/ProbeParFailFast.scala
+     repro: measured 2026-09-17
+       Async.par(async { Thread.sleep(3000); 1 }, async[Int](throw boom)).runWith
+         -> boom after 3.017 s
+       Async.par(async[Int](throw boom), async { Thread.sleep(3000); 1 }).runWith
+         -> boom after 0.0007 s -->
+
+`Async.par`'s own doc comment says "a child failure fails the pair and
+cancels the sibling". It does, on the LEFT. A right-side failure is
+not observed until the left side completes, because the two
+completions are registered in a nest rather than side by side
+(Async.scala, `par`):
+
+    fa.onComplete:
+      case Right(x) => fb.onComplete:          // only reached if fa succeeded
+        case Right(y) => ...
+        case Left(e) => fail(fa)(e)
+      case Left(e) => fail(fb)(e)
+
+Nobody is listening to `fb` while `fa` runs. So the pair waits out the
+healthy sibling of a leaf that has already failed, and that sibling is
+never cancelled — the numbers above are the same failure in the two
+orders, 3 seconds against 0.7 milliseconds.
+
+The ANSWER is not wrong, only late: the pair still fails with the
+right error, which is why this rode through every existing test. It is
+`race` that would be wrong, and `race` does not share this code.
+
+**The shape of the fix** (not made here — this was found by a lane
+that only inherits `par`): register both completions independently and
+join them in a cell, so whichever side finishes first is seen when it
+finishes. The `done` flag already there is the guard against a double
+answer; what is missing is a place to keep the first RESULT while the
+other side is still running.
+
+**What it costs today.** `Par` (the parallel applicative,
+specs/applicative-static.md) documents fail-fast as inherited and its
+test asserts only the left-side case, with a comment pointing here.
+Every `parAll`/`parTraverse` caller is unaffected: those join in order
+and never claimed to cancel anything.
+
 ## growing-stale-route — a route taken before the swap names the adopted part, and overtakes its own producer
 <!-- status: reopened
      reopened: 2026-09-17, TestGrowing round 36, producer 1: 29, +37, 31, 35, -37, 39

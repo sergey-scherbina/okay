@@ -111,6 +111,30 @@ f.cancel()          // stops the drive AND unregisters the parked timer
 f.joinAsync         // the effect-world join: an Await, good anywhere
 ```
 
+When the programs are INDEPENDENT, say so in the instance instead of
+in the plumbing. `Par` reads `A ! Async` as one leaf of an applicative
+spine, so its `app` joins two leaves with `par` — and every generic
+combinator written against `Applicative` runs them at once:
+
+```scala
+traverse(keys)(fetch)        // sequential, as ever
+Par.traverse(keys)(fetch)    // the same program, leaves at once
+
+// leaves of DIFFERENT types, joined by a plain function:
+Par.map2(Par(user(id)), Par(orders(id)))(Profile.apply).seq
+```
+
+`Par` has no `flatMap`, on purpose: a bind would sequence the spine
+while the type still claimed independence. Use `map2` (or the
+instance's own `fmap`/`app`) rather than `.map` — `Monad.scala`'s
+`given Comonad[Id]` puts a `map` on every type in scope and wins the
+lexical race, so `Par(p).map(f)` quietly means the identity comonad's
+map. TestPar pins that as a compile error so the day it changes, it
+says so. For a flat sequence of same-typed programs on the JVM,
+`parAll` is cheaper still (one fiber per leaf, no nesting) — chapter
+12 of the [theory book](theory/12-applicative-static.md) has the
+numbers and the reason.
+
 Callbacks carry an error channel — `Async.await(k => ...)` can answer
 `k(Left(e))` and the program fails at that operation, which is what
 lets `par` propagate a child failure (cancelling the sibling) without
@@ -510,7 +534,33 @@ the tutorial has been practicing. `Throws` and damage-as-data stay
 what they are; a program that never signals never pays
 (specs/condition.md, `TestCondition`).
 
-## 22. Where to go next
+## 22. What the program will do, before it does it
+
+A `flatMap` hides the rest of the program behind a function, so the
+only way to learn what it does is to run it. When the program does not
+need that power — a fetch of twenty keys, a module's declared needs, a
+rule pack explained before it is applied — write it as a `Static` and
+the structure stays readable:
+
+```scala
+val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
+
+plan.leaves                 // every operation it MAY perform, before running
+plan.toFree.runWith         // the ordinary program, run the ordinary way
+plan.foldMap(toBatch)       // N leaves, ONE round trip
+```
+
+`Static` is the free selective: `Ap` for application, `Select` for a
+conditional whose both sides are written down, so `leaves` is an upper
+bound that is exact when there is no branch. `toFree` makes the
+difference good at run time — a program that DECLARES three operations
+performs two, because a `Select` runs at most one side.
+
+The batching carrier is the payoff: an `app` that accumulates its
+leaves' requests turns fifty fetches into one call, with the program
+unchanged. [Chapter 12](theory/12-applicative-static.md) builds it.
+
+## 23. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference;
