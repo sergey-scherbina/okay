@@ -174,7 +174,7 @@ to state and resources, is chapter 18.
 a validating cut, a cancellable scope — each is a prompt plus a
 capture, written in user code, and shown here end to end.
 
-### 15. Resumable exceptions: signalling instead of unwinding
+### [15. Resumable exceptions: signalling instead of unwinding](15-resumable-exceptions.md) ✓
 
 **Thesis.** The oldest and most convincing application, and the one
 that shows most clearly what "the rest of the program as a value"
