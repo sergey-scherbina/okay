@@ -1,5 +1,53 @@
 # Changelog
 
+## validated - every error, not the first (P13 item 1)
+
+`Throws` is monadic, so it stops at the first error. An applicative
+cannot bind one leaf's answer into another's body, so it has no way to
+stop early and therefore COLLECTS. `Validated[E, A]` is that, with a
+`Semigroup[E]` the caller supplies, and every combinator already
+written against `Applicative` works at it the day the instance exists.
+
+There is deliberately NO `Monad[Validated]`, and the absence is pinned
+as a compile error: the consistency law would force `app` to agree
+with the flatMap derivation, which stops at the first error, so the
+instance would quietly turn every `traverse` back into the behaviour
+this type exists to refuse. `andThen` is that step under a name that
+says the branch is deliberate.
+
+INTERFACE CORRECTION, made while implementing. The spec proposed a new
+`Semigroup` trait; `Monoid` already had the same `combine`, so
+`Semigroup` was split out ABOVE it and `Monoid extends Semigroup` -
+additive, every existing instance still answers both. The part that
+was not obvious: the instances live in `object Monoid`, which is in
+the implicit scope of `Monoid` and NOT of `Semigroup`, so
+`Semigroup.fromMonoid` bridges given search or `Validated` refuses the
+vector monoid three lines below it.
+
+THE CONSUMER IS THE RESULT. `okay-conf`'s `fromEnv` did
+`parts.collectFirst { case Left(m) => ... }` - one bad environment
+variable per run. It is a `traverse` at `Validated` now, and three
+mistyped variables come back in one message. Stated honestly in the
+spec rather than oversold: for a FLAT list of parts like this one, a
+hand-rolled `collect` would have done the same in a line; the type
+pays where the walk is nested or generic, which is why the schema
+validator is the consumer that will decide its long-term keep.
+
+THE COST PREDICTION IS REFUTED, in the favourable direction.
+Predicted "within 10% of Either" for an all-valid traverse of 1 000
+leaves; measured 46% LESS - 147 528 against 275 488 B/op. The
+prediction assumed the happy path builds the same number of nodes. It
+does not: `Either`'s traverse goes through the MONAD-DERIVED `app`
+(`flatMap` plus `fmap` per element) while `Validated`'s is one match
+with nothing between. An applicative written directly beats one
+derived from a monad, and that is the number that says by how much.
+Collecting every error costs 277 512 B/op, 0.7% over Either's happy
+path, so programs that never fail do not pay for the behaviour.
+
+Times were unreadable at load 35 (±16.7 on 18.8 for the valid lane,
+while the bytes are exact to the third decimal), so the bytes are the
+verdict.
+
 ## par-fail-fast - Async.par sees EITHER side fail
 
 Landed as 97d7026d; BUGS.md `par-right-failure-waits` is closed.
