@@ -200,6 +200,72 @@ allowed to. Nothing else in the tree had to change: no production
 code was quietly breaking the discipline, which is itself worth
 recording.
 
+## Stage 1b — the library's own questions (`dialogue-asks`)
+
+Stage 1 made the discipline a type: a durable program may not reach
+outside except through `pause`. That leaves the obvious hole — every
+real workflow needs a CLOCK, an id and sometimes a die, and refusing
+them is not an answer. The same hole blocks stage 2: `patch(id)` is a
+question the LIBRARY answers from the journal, not one the author's
+oracle answers, so it has nowhere to live either. One design decides
+all of them, which is why they are one lane.
+
+### The problem, stated exactly
+
+A dialogue's question type `Q` belongs to its author. `Wf.now()` has
+nothing to send through a `Q` the author defined as, say, `String`,
+and the ANSWER has nowhere to live in the author's `A` either.
+
+### The decision: the channel is a sum the library owns
+
+The dialogue's question becomes `Either[Sys, Q]` and its answer
+`Either[SysA, A]`, with `Sys`/`SysA` closed enums belonging to the
+library. The author never writes the `Either`: `Wf.pause(q)` wraps in
+`Right` and unwraps the `Right` answer, `Wf.now()` sends `Left(Now)`
+and unwraps `Left(Millis)`.
+
+Two candidates were weighed and this one wins for a reason that is
+not taste:
+
+- **a second channel beside the questions** (a separate prompt, a
+  separate journal) would need its two journals interleaved to
+  replay, and the interleaving is exactly the information the single
+  tagged journal carries for free;
+- **an open sum the author extends** puts the library's questions in
+  the author's type, so every consumer pattern-matches cases it does
+  not own.
+
+### What the tag buys, and it is the whole of stage 2
+
+A journal entry now SAYS whether it answers a library question
+(`Left`) or an author question (`Right`). That single bit is what
+makes `patch(id)` correct:
+
+- replaying, the pending question is `Sys.Patch(id)` and the next
+  journal entry is a `Left(Flag(b))` for it — use `b`;
+- replaying, the pending question is `Sys.Patch(id)` and the next
+  entry is a `Right` — the run that wrote this journal did NOT have
+  this patch, so the answer is `false` and the entry is NOT consumed;
+- live (the journal is exhausted) — the answer is `true`, recorded.
+
+That is Temporal's `getVersion` semantics, and here it falls out of
+the tagging rather than being a rule the driver has to remember. The
+mis-alignment the tag prevents is the same class of failure as B in
+this spec's table, which is why the bit is worth the `Either`.
+
+### Behavior — stage 1b
+
+- [ ] `now`/`uuid`/`random` answer from the journal on replay: the
+      same run replayed twice gives the same values
+- [ ] the author's `pause` is unchanged in spelling and type
+- [ ] `perform(cmd)` — a command whose answer is journalled, executed
+      once per position across a restart
+- [ ] `patch(id)`: a journal written before the patch existed takes
+      the OLD branch and does not lose its next answer; a fresh run
+      takes the new branch; a third process agrees with both
+- [ ] the driver answers `Left` itself and `Right` through the
+      author's oracle, and a test counts both
+
 ## Stage 2 — the program is allowed to change
 
 Stage 0 makes a changed program a loud stop. That is right and not
