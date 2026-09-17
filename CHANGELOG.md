@@ -1,5 +1,21 @@
 # Changelog
 
+## ui-html-host — stage 0, the spec
+
+specs/ui-html.md, landed as a5f88602 (spec only; no code moved). The
+plain road's three pure functions — `Live.html`, `Live.plain`,
+`Live.step` — sit in okay-script, whose module drags the staging
+compiler, deploy and ACME; okay-watch, a submodule consumer with its
+own Jetty router and its own door, wants the analyst page as a tree a
+plain browser draws and cannot take okay-script for three functions
+of strings. The spec moves them to `okay.ui.Html` (a host without a
+loop: `render`/`form` out, `events`/`step` in), keeps okay-script's
+names as delegates and `mountPlain` where the session is, and REVISES
+script-live-plain's same-day decision that the step belonged to
+okay-script — a host knows its medium as the terminal knows ANSI.
+Stage 2 (`ui-live-js`, the browser's half) waits for okay-watch's
+specs/ui.md stage 3. Queued in SPRINT.
+
 ## script-live-plain — a Live app on classic HTML, no script
 
 `okay-script/src/main/scala/okay/script/api/Live.scala`, landed as
