@@ -22,7 +22,7 @@ class TestEffects extends munit.FunSuite {
   test("initial and final: reify materializes, reflect interprets back") {
     import Eager.given
     val t: Int ! Produce = reify(prog[Eager])
-    assertEquals(t.?, 1)      // the tree can be stepped
+    assertEquals(t.peek, 1)      // the tree can be stepped
     assertEquals(t.runWith, 3)
     assertEquals(reflect[Eager, Produce, Int](t).runWith, 3)
   }
@@ -58,7 +58,7 @@ class TestEffects extends munit.FunSuite {
     assertEquals(!.run(isOdd(1000000)), false)
     // resume and ? (Effects.scala's object !)
     assertEquals(isEven(1000000).resume, Pure(true))
-    assertEquals(isEven(1000000).?, true)
+    assertEquals(isEven(1000000).peek, true)
   }
 
   test("Effects.handle: abort and forwarding (Throws)") {

@@ -24,11 +24,22 @@ object Direct:
    * expansion; never executes — the macro rewrites every call.
    * Outside a direct block it throws at runtime by design. */
   extension [F[_], A](m: F[A])
-    def ? : A
-    def reflect: A   // the named spelling of the same mark
-  // ONE mark: .? serves monadic values AND raw operations — the
-  // macro dispatches by type (an F[T] reflects; an operation of the
-  // block's row is injected, then reflected)
+    def reflect: A   // the word
+    def !? : A       // the symbol
+    def ? : A        // the glyph (unwrap-glyph, 2026-09-17)
+    def unary_! : A  // the prefix, for rows: `!prog`
+  // ONE mark, four spellings: each serves monadic values AND raw
+  // operations — the macro dispatches by type (an F[T] reflects; an
+  // operation of the block's row is injected, then reflected)
+  //
+  // THIS BLOCK USED TO SHOW `.?` ALONE, AND WAS WRONG FOR A YEAR:
+  // Direct.scala retired that spelling (it collided with Throws' and
+  // with the row peek) while this section kept advertising it. The
+  // contradiction with the Decisions entry below cost an hour in the
+  // applicative-do lane — a block written with `.?` compiled, ran and
+  // answered correctly through auto-coloring while the glyph did
+  // nothing at all. specs/unwrap-glyph.md removed both collisions and
+  // gave the glyph back; the Decisions entry records the history.
 
   /** rewrite block: marks become Monadic binds, the result is F[A].
    * direct[F] names only the monad (partial type application via
@@ -242,10 +253,17 @@ Decisions:
   detector runs once over the block before `compile`, keyed on the
   enclosing def's symbol (`Symbol.spliceOwner` walked up to the first
   `isDefDef`).
-- **`.?` is not a mark**, and a BACKLOG entry that said so was
-  withdrawn: Direct.scala retired it on purpose (it collides with the
-  row peek `!.?`); `.reflect`, `.!?` and prefix `!p` are the
-  spellings.
+- **`.?` was not a mark, and is one again** (unwrap-glyph,
+  2026-09-17). It was retired because two other things answered `?` on
+  a program: `Throws.?`, which through the `into` conversion answered
+  it on ANY value and did nothing at all, and the row peek `!.?`. Both
+  are gone — the Throws glyphs moved into their type's companion,
+  where a converted receiver cannot reach them, and the peek took the
+  word `peek`, which is what a method that RUNS operations through a
+  Handler should have been called. The Interface block above showed
+  `.?` throughout the retirement, and that contradiction is what made
+  the incident in specs/unwrap-glyph.md possible. All four spellings
+  now work: `.reflect`, `.!?`, `.?`, prefix `!p`.
 
 ## Out of scope (v2 roads, recorded not promised)
 

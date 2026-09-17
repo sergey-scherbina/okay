@@ -48,6 +48,12 @@ enum Ui:
   /** a titled subtree shown when `open`; the title is its toggle,
    * keyed by the node's key */
   case Disclosure(title: String, open: Boolean, body: Ui, key: String)
+  /** NAVIGATION, which is not a capability: going somewhere is the
+   * client's own act, so a Link carries no key and `update` never
+   * hears of it. Its lowering says what it MEANS to a client that
+   * cannot navigate — the label and where it points — which is also
+   * the only useful thing a terminal can show (ui-link) */
+  case Link(label: String, href: String)
 
 enum Dir:
   case Horizontal, Vertical
@@ -285,6 +291,8 @@ object Ui {
       labels.indices.map(i => tabKey(k, i)).toSet ++ pages.lift(selected).map(keys).getOrElse(Set.empty)
     case Modal(_, body, _) => keys(body)
     case Disclosure(_, open, body, k) => (if open then keys(body) else Set.empty) + k
+    // navigation is not a capability: nothing may be posted about it
+    case _: Link => Set.empty
 
   def tabKey(key: String, i: Int): String = s"$key$$tab$i"
 
@@ -485,7 +493,8 @@ object Ui {
   object Vocab:
     val items = "items"; val table = "table"
     val tabs = "tabs"; val modal = "modal"; val disclosure = "disclosure"
-    val all: Set[String] = Set(items, table, tabs, modal, disclosure)
+    val link = "link"
+    val all: Set[String] = Set(items, table, tabs, modal, disclosure, link)
 
   /**
    * The LOWERING: every semantic node the vocabulary does not claim,
@@ -526,6 +535,11 @@ object Ui {
         if vocab(Vocab.disclosure) then Disclosure(title, open, go(body), k)
         else Box(Button(title, k, if open then Role.Active else Role.Plain) +: (if open then Vector(go(body)) else Vector.empty),
           Dir.Vertical, key = k)
+      case Link(label, href) =>
+        // what a link MEANS where nothing can be clicked: the label
+        // and where it points. A terminal analyst can then copy it,
+        // which a bare label would have taken away from them
+        if vocab(Vocab.link) then u else Text(if href.isEmpty then label else s"$label — $href")
     go(ui)
 
   /**

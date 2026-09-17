@@ -36,12 +36,40 @@ object Direct:
      */
     def reflect: A = throw new IllegalStateException(
       "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
-    /** the symbolic spelling of the same mark — the survivor of the
-     * three-strikes history: .! shadowed object !, .? was ambiguous
-     * with the Throws row-?, and .!? — once retired as redundant
-     * beside .? — is the one symbol that collides with nothing */
+    /**
+     * THE SYMBOLIC SPELLING of the same mark, and since unwrap-glyph
+     * it is the one the glyph itself points at.
+     *
+     * The history is three strikes and a return. `.!` shadowed the
+     * object `!` for every file importing Direct.*, and went. `.?`
+     * was retired because two other things answered it on a program
+     * — `Throws.?`, which through the `into` conversion answered it
+     * on ANY value and did nothing, and the row peek. `.!?` survived
+     * as the symbol that collided with nothing.
+     *
+     * Both collisions are now gone: the Throws glyphs moved into
+     * their type's companion, where a converted receiver cannot
+     * reach them, and the peek took the word `peek`, which is what a
+     * method that RUNS operations through a Handler should have been
+     * called. So `.?` is below, and this stays — it is written in
+     * the repository and in its docs, and a mark with two spellings
+     * costs nothing (specs/unwrap-glyph.md).
+     */
     def !? : A = throw new IllegalStateException(
       "Direct.!? outside a direct block — wrap the code in direct[F] { ... }")
+
+    /**
+     * The glyph, back where it was meant to be: `val x = m.?` inside
+     * a `direct` block binds the program, exactly as `.reflect` and
+     * `.!?` do — one mark, three spellings, one meaning, and the
+     * meaning is the one `.?` already had on `A throws E`: give me
+     * the value, the context deals with what was around it.
+     *
+     * Outside a block it throws like every other mark, and the
+     * message says where it belongs.
+     */
+    def ? : A = throw new IllegalStateException(
+      "Direct.? outside a direct block — wrap the code in direct[F] { ... }")
 
     /**
      * The one-glyph mark for the rows, PREFIX: `!prog` — a program
@@ -308,7 +336,7 @@ object Direct:
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
     val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
-      ++ directSym.methodMember("unary_!")).toSet
+      ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor") ++
       Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet

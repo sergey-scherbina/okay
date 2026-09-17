@@ -1,5 +1,85 @@
 # Changelog
 
+## unwrap-glyph - one glyph, one meaning (all four stages)
+
+Landed as 82753d21, 18a558be, 74ecac89 (specs/unwrap-glyph.md).
+`.?` meant three things and reliably did the wrong one.
+
+THE SPEC'S OWN STAGE-1 DESIGN IS REFUTED, and the compiler said so in
+one message. `NotGiven[E =:= Nothing]` rests on a converted receiver
+having `E = Nothing`. It does not: `throws` is COVARIANT in E, so the
+typer solves E to its upper bound. Tried as `NotGiven[E =:= Unsafe]`
+to find out, the refusal for a GENUINE receiver read
+
+    value ? is not a member of String throws okay.Safe.
+      okay.?[A, okay.Unsafe](y)(...)
+
+declared at `Safe`, instantiated at `Unsafe` - and a converted `42`
+lands at `Unsafe` too. No condition on E can tell them apart. The
+first cut of this lane shipped the guard and its own test still
+failed.
+
+WHAT WORKS is the move this file had already made once, for `map` and
+`flatMap`, and for the same stated reason: at package level they
+capture foreign receivers through the Conversion givens. Both `?`
+forms now live in `object throws`, the COMPANION of the opaque type,
+so they are in the implicit scope of `A throws E` - a genuine receiver
+finds them with nothing imported, while a receiver whose actual type
+is `Int` does not, because implicit scope follows the RECEIVER and not
+the conversion target. Zero call sites moved. `42.?`, `"s".?`,
+`List(1).?` and `pure(1).?` are compile errors now.
+
+BOTH forms had to move, and that was measured too: with only the
+no-arg one gone, `x.?` did not become an error, it ETA-EXPANDED to the
+mending `?(f)` and came back as `(Throwable => Int) => Int`. One
+silent shape traded for another.
+
+The Effects row peek is `peek`. It RUNS operations through a Handler,
+which is a great deal to hide behind one character, and the character
+was wanted by the thing users write far more often. Fourteen lines
+moved, none in a module. ONE OF THE FOURTEEN WAS NOT THE PEEK:
+TestCont's `(example1, example2).?.?.?` is a LOCAL extension the test
+declares on a tuple of thunks three lines above its use. The regex
+rewrote it; the file was read and reverted.
+
+`Direct.?` is a mark again, beside `.reflect`, `.!?` and prefix `!`,
+and all three postfix spellings emit the same program - asserted on
+the answers AND on a recording handler's log. `.!?` STAYS, a
+correction to the spec, which had it retiring: it is written across
+the repository and a mark with two symbols costs nothing.
+
+AND THE RECORD IS FIXED, which was the root cause and the one thing
+worth doing regardless. specs/direct-macro.md showed `.?` as THE mark
+in its Interface while its own Decisions said it was retired; that
+contradiction is what made the incident possible. Both now carry the
+history, and typepedia and direct-style follow.
+
+The tests are SPLIT, and the split is the feature: `.?` on a program
+is the mark once `Direct.*` is imported, so a file that imports it
+cannot also assert that a program refuses the glyph. Which `?` a
+program gets now depends on whether the block's marks are in scope,
+and on nothing else.
+
+## ui-link — navigation in the vocabulary
+
+specs/frontend.md, landed as 70b849b1 (the node), ae560200 (the regenerated document). okay-watch's analyst page
+(its specs/ui.md) needed the exports and the goAML filing on the
+tree, and the vocabulary had no way to say "a place to go". `Ui.Link`
+is level S, claimed by the BROWSER alone: `React.elem` draws an
+anchor, `Html` therefore does, and `live.js` now says
+`vocab: ["link"]` in its hello. Every other host gets the lowering,
+`Text("<label> — <href>")` — what a link means where nothing can be
+clicked, and it leaves a terminal analyst able to copy the URL.
+
+It carries NO KEY, which is the point worth keeping: going somewhere
+is the client's own act, so `Wire.permitted` can never admit anything
+about a Link and `update` never hears of it. TestLink, 6.
+
+The gate caught the one thing this kind of change always breaks: the
+protocol DOCUMENT is rendered from the schemas, so a new `Ui` case
+made `docs/protocol/frontend.md` stale and TestProtocol said so. It
+was regenerated with `OKAY_RENDER=1`, not edited.
+
 ## applicative-static stage 3 - a direct block runs its independent binds at once
 
 Landed as 883f83dd; the arc's last stage, and the design entry that

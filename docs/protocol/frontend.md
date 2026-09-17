@@ -84,6 +84,7 @@ Ui = Text {s: string, style: Style}
   | Tabs {labels: [string], selected: int, pages: [Ui], key: string}
   | Modal {title: string, body: Ui, key: string}
   | Disclosure {title: string, open: bool, body: Ui, key: string}
+  | Link {label: string, href: string}
 
 Style = {bold: bool, dim: bool, tone: "plain" | "emphasis" | "muted" | "danger", size: "small" | "normal" | "large"}
 
