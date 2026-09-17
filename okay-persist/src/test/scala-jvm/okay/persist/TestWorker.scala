@@ -8,6 +8,14 @@ import okay.codec.Schema
 import scala.language.implicitConversions
 
 /**
+ * JVM ONLY, and the reason is the feature itself: these drive a
+ * worker whose ACTIVITY ROW is `Async`, and running an Async row to a
+ * value needs `CanBlock`, which Scala.js does not have and by design
+ * never will (a browser cannot park). The model underneath is
+ * platform-neutral and its tests — `TestTimers`, `TestWorkflow`,
+ * `TestDialogue*` — stay cross-platform; on JS a worker is driven by
+ * `Async.runAsync` into a Future instead.
+ *
  * THE LOOP THAT CARRIES WORKFLOWS FORWARD (workflow-worker,
  * 2026-09-17). The interesting tests are the last three: a stale
  * timer must cost a read and nothing else, two workers must produce
