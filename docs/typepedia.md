@@ -103,15 +103,18 @@ same material with the measurements attached.
   core-cleanup — nobody matched with it);
   identity-style signatures are split by the runtime class of their
   values, so keep them class-distinct.
-- **the direct marks: `.reflect` / `.!?` / `!prog`** — one mark,
-  three spellings, one dispatch-by-type inside `direct { }` blocks
-  (docs/direct-style.md): an `F[T]` of the block reflects, a row
-  operation injects then reflects. `.reflect` never collides; `.!?`
-  is the postfix symbol for chains; prefix `!` is the one-glyph
-  gesture (`unary_!` under the hood — shadows nothing). Gotcha: the
-  RETIRED `.?` belongs to the Throws machinery, not to direct — if
-  you see `Ambiguous extension methods` on a `?`, you are on an old
-  branch. Distinct from Monadic's `reflect`/`reify` pair below and
+- **the direct marks: `.reflect` / `.!?` / `.?` / `!prog`** — one
+  mark, four spellings, one dispatch-by-type inside `direct { }`
+  blocks (docs/direct-style.md): an `F[T]` of the block reflects, a
+  row operation injects then reflects. `.reflect` is the word, `.!?`
+  the postfix symbol, prefix `!` the one-glyph gesture (`unary_!`
+  under the hood), and `.?` came BACK in unwrap-glyph (2026-09-17):
+  it had been retired because `Throws.?` answered it on any value at
+  all through the `into` conversion, silently doing nothing, and
+  because the row peek held it too. The Throws glyphs now live in
+  their type's companion where a converted receiver cannot reach
+  them, and the peek is spelled `peek` — a word, for a method that
+  RUNS operations through a Handler. Distinct from Monadic's `reflect`/`reify` pair below and
   from the Effects encoding pair below THAT — three uses of one
   word, each namespaced.
 - **`reify` / `reflect` / `convert`** — one function at two ends. An

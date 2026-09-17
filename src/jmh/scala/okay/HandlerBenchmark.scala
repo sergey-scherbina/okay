@@ -117,7 +117,7 @@ class HandlerBenchmark {
 
   @Benchmark
   def stepBulk(): Any =
-    fibs[Int, Producer].next(N).?
+    fibs[Int, Producer].next(N).peek
 
   @Benchmark
   def stepOneByOne(): Any =
@@ -126,7 +126,7 @@ class HandlerBenchmark {
     while i < N do
       p = p.next(1)
       i += 1
-    p.?
+    p.peek
 
   final val M = 1000
 

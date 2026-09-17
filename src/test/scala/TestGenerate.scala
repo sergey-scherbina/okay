@@ -20,13 +20,13 @@ class TestGenerate extends munit.FunSuite {
   test("fibs by effects: Producer, pure and logged") {
     val p = fibs[BigInt, Producer]
     val n = 100
-    val x = p.next(n).?.tap(println)
-    val y = p.next(n)(using Producer.log()).?.tap(println)
+    val x = p.next(n).peek.tap(println)
+    val y = p.next(n)(using Producer.log()).peek.tap(println)
     assertEquals(x, y)
   }
 
   test("stack safety: 1M produced values") {
-    fibs[BigInt, Producer].next(1000000).?.tap(println)
+    fibs[BigInt, Producer].next(1000000).peek.tap(println)
   }
 
 }

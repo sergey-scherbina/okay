@@ -679,14 +679,25 @@ object ! {
       case Bind(Inject(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
-    /** peek the nearest answer: the value, or the first operation handled */
-    @tailrec def ? : Handler[F] ?=> ? = self match
-      case Bind(a, _) => a.?
+    /**
+     * Peek the nearest answer: the value, or the first operation
+     * handled.
+     *
+     * A WORD, not a glyph, since unwrap-glyph: this method RUNS
+     * operations through the `Handler`, which is a great deal to hide
+     * behind one character — and the character was wanted by the
+     * thing users write far more often, the `direct` block's mark.
+     * It was `?` until 2026-09-17, and every call site it had was in
+     * the core's own tests and benchmarks, which is most of the
+     * argument for which spelling gave way (specs/unwrap-glyph.md).
+     */
+    @tailrec def peek: Handler[F] ?=> ? = self match
+      case Bind(a, _) => a.peek
       case Inject(e) => summon[Handler[F]].handle(e)
       case Pure(a) => a
-      // a peek forces the thunk too, same as `Bind(a, _) => a.?` discards
-      // its own continuation without applying it
-      case Delay(t) => t().?
+      // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
+      // discards its own continuation without applying it
+      case Delay(t) => t().peek
   }
 
   /** run a closed computation */

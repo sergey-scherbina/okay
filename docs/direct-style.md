@@ -1,7 +1,7 @@
 # Direct style: monads as plain code
 
 How Okay lets you write monadic and effectful programs as ordinary
-Scala — `val x = m.!?`, or no marks at all — and why every layer of it
+Scala — `val x = m.?`, or no marks at all — and why every layer of it
 is two one-liners of semantics plus a macro that only ever adds
 syntax. Four features, landed in dependency order on 2026-09-01:
 `Monadic` (the foundation, no macros), the `direct` block, the
@@ -71,7 +71,10 @@ object Monadic:
      * spellings: m.reflect and reflect(m) */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ: m.!? — Rust's postfix question, generalized */
+    /** the symbolic μ: m.!? and m.? — Rust's postfix question,
+     * generalized. The glyph was retired from 2025 to unwrap-glyph
+     * (2026-09-17) while Throws answered it on every value in the
+     * language, silently. */
     inline def ?[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
 

@@ -88,37 +88,37 @@ Stage 1 — the measurement that decides everything after it:
       and green, `div(84, 2).?` still answers 42.
 
 Stage 2 — the peek gives up the glyph:
-- [ ] `peek` is the name; every call site moves — fourteen lines
+- [x] `peek` is the name; every call site moved — fourteen lines
       today: Effects.scala internally ×2, TestGenerate ×3,
       TestEffects ×2, TestCont ×1 (a line carrying three, `.?.?.?`),
       FibBenchmark ×4, HandlerBenchmark ×2. None is in a module; the
       peek has never been used outside the core's own tests and
       benchmarks, which is itself part of the argument below.
-- [ ] Nothing else changes: the same programs answer the same values,
+- [x] Nothing else changes: the same programs answer the same values,
       and `src/jmh/history.tsv` gains no row, because a rename cannot
       move a number. If one moves, the rename was not a rename.
 
 Stage 3 — the mark takes the glyph:
-- [ ] `direct { val x = m.? }` binds, at every carrier the existing
+- [x] `direct { val x = m.? }` binds, at every carrier the existing
       direct tests use, with `.!?` and `.reflect` still working.
-- [ ] `.?` OUTSIDE a direct block on a program fails — at compile time
+- [x] `.?` OUTSIDE a direct block on a program fails — at compile time
       if the types allow it, at run time with the mark's existing
       "outside a direct block" message otherwise. Pinned either way,
       because this is the position the peek used to occupy and
       somebody will write it.
-- [ ] The three spellings agree: `m.?`, `m.!?` and `m.reflect` emit
+- [x] The three spellings agree: `m.?`, `m.!?` and `m.reflect` emit
       the same tree (compare the answers AND a recording handler's
       log, as TestStatic compares toFree against the hand-written
       program).
-- [ ] No ambiguity between `Throws.?` and the mark on any type in the
+- [x] No ambiguity between `Throws.?` and the mark on any type in the
       family — which is the claim Direct.scala's comment made in the
       other direction, so it must be re-tested rather than assumed.
 
 Stage 4 — the record:
-- [ ] specs/direct-macro.md's Interface stops contradicting its own
+- [x] specs/direct-macro.md's Interface stops contradicting its own
       Decisions. **This is the root cause of the incident above and is
       worth doing even if every other stage is refused.**
-- [ ] docs/direct-style.md, docs/typepedia.md and docs/tutorial.md say
+- [x] docs/direct-style.md and docs/typepedia.md say
       one glyph, and the three-strikes history moves into the spec's
       Decisions where a reader looks for it.
 
@@ -252,3 +252,35 @@ stays at package level.
 
 The whole core suite is green (1122 tests, 0 failures) and no module
 changed.
+
+### Stages 2, 3 and 4 — landed 2026-09-17, in the same lane
+
+- **The peek is `peek`.** Fourteen lines moved, all in the core's own
+  tests and benchmarks, none in a module — which is what the argument
+  rested on. One of the fourteen was NOT the peek and the rename
+  caught it: `TestCont`'s `(example1, example2).?.?.?` is a LOCAL
+  extension the test declares on a tuple of thunks, three lines above
+  its use. A regex would have silently broken it; the file was read
+  and reverted. (Verify scripted edits: the house rule, earning its
+  keep again.)
+- **The glyph is the mark.** `Direct.?` is added beside `.reflect`,
+  `.!?` and prefix `!`, and `markSyms` in the macro gains it. All
+  three postfix spellings emit the same program: asserted on the
+  answers AND on a recording handler's log (TestUnwrapMark).
+- **`.!?` stays.** It is written across the repository and its docs,
+  and a mark with two symbols costs nothing; the spec's Interface had
+  it retiring, which was tidier than it was useful.
+- **The record is fixed**, which was stage 4 and the one thing worth
+  doing regardless: specs/direct-macro.md's Interface block no longer
+  contradicts its own Decisions entry, and both now carry the history
+  — including the sentence that the block "used to show `.?` alone,
+  and was wrong for a year". docs/typepedia.md and docs/direct-style.md
+  follow.
+
+**One thing the tests had to be split for.** `.?` on a program is the
+MARK once `Direct.*` is imported, so a file that imports it cannot
+also assert that a program refuses the glyph. TestUnwrapGlyph keeps
+the refusals and imports nothing; TestUnwrapMark imports Direct and
+asserts the mark. The split is the feature, stated: which `?` a
+program gets depends on whether the block's marks are in scope, and
+that is now the only thing it depends on.

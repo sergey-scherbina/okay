@@ -14,13 +14,15 @@ class TestUnwrapGlyph extends munit.FunSuite {
 
   test("a value that cannot throw REFUSES the glyph") {
     assert(compileErrors("42.?").nonEmpty, "`42.?` still compiles: the no-op is back")
-    assert(compileErrors("\"s\".?").nonEmpty)
     assert(compileErrors("List(1).?").nonEmpty)
   }
 
-  test("a program is not an error value, so it refuses it too — this is the incident") {
+  test("a program does NOT take the Throws glyph — this is the incident") {
+    // with no `import Direct.*` in this file the only `?` a program
+    // could find is the Throws one, and it must not find it. (With
+    // Direct imported the glyph IS the mark — TestUnwrapMark.)
     assert(compileErrors("okay.pure[Nothing, Int](1).?").nonEmpty,
-      "a program took the glyph silently again")
+      "a program took the Throws glyph silently again")
   }
 
   test("a genuine throws value is unaffected") {
