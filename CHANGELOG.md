@@ -1,5 +1,34 @@
 # Changelog
 
+## wf-direct-door - the evidence carries the doors
+
+`Wf`'s doors took four type arguments at every call site -
+`Wf.pause[String, String, String, Pure]("city?")` - because Q, A, R
+and the row appear only in the evidence and a method cannot read them
+off a `using` parameter it has not been given yet. That works and
+reads badly, which by this project's standing rule ("useful, not just
+works") means it was not finished.
+
+The evidence is no longer a type alias: `Wf.Asks[Q, A, R, F]` is a
+class that knows its four types and offers the doors as methods on
+itself. A body names them once, in its own signature, and every call
+site inside writes none:
+
+    def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+      val city = !w.pause("city?")
+      val when = !w.now
+      if !w.patch("promo") then ... else ...
+
+NO MACRO WAS NEEDED, and that is the other half of the point. The
+inline `Delim.pause` exists because a mark gives its argument no
+expected type, and it pays one documented cast for that. Here the
+types are on the object, so there is nothing to infer and nothing to
+cast.
+
+Every test of `Wf` and of the durable workflow was rewritten in the
+new style and passes unchanged in meaning - which is the only proof
+worth having that an ergonomic change is only ergonomic.
+
 ## wf-durable-journal - a durable program with a clock and a branch
 
 `Wf` made the runtime's questions journalled; this carries them into

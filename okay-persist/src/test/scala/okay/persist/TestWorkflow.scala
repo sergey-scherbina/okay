@@ -2,7 +2,9 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{!, +, Delim, Pure, Wf}
+import okay.Direct.*
 import okay.codec.Schema
+import scala.language.implicitConversions
 
 /**
  * A DURABLE PROGRAM WITH A CLOCK AND A CHANGEABLE BRANCH
@@ -18,25 +20,30 @@ class TestWorkflow extends FunSuite {
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,
                                          id = "id-1", dice = 0.25)
 
-  /** v1: a city, then the nights */
-  def v1(using Wf.Asking[String, String, String, Pure]): String ! (Delim + Pure) =
-    Wf.pause[String, String, String, Pure]("city?").flatMap: city =>
-      Wf.pause[String, String, String, Pure]("nights?").map(n => s"$city/$n")
+  /**
+   * v1: a city, then the nights. Since wf-direct-door a durable
+   * workflow reads as ordinary straight-line code: the types are
+   * named once in the signature and no call site repeats them.
+   */
+  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+    val city = !w.pause("city?")
+    val n = !w.pause("nights?")
+    s"$city/$n"
 
   /** v2: the same, with a branch added BETWEEN the two questions */
-  def v2(using Wf.Asking[String, String, String, Pure]): String ! (Delim + Pure) =
-    Wf.pause[String, String, String, Pure]("city?").flatMap: city =>
-      Wf.patch[String, String, String, Pure]("promo").flatMap: on =>
-        Wf.pause[String, String, String, Pure]("nights?").map: n =>
-          if on then s"$city/$n/promo" else s"$city/$n"
+  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+    val city = !w.pause("city?")
+    val on = !w.patch("promo")
+    val n = !w.pause("nights?")
+    if on then s"$city/$n/promo" else s"$city/$n"
 
   /** a program that stamps itself with the time */
-  def stamped(using Wf.Asking[String, String, String, Pure]): String ! (Delim + Pure) =
-    Wf.pause[String, String, String, Pure]("who?").flatMap: who =>
-      Wf.now[String, String, String, Pure].map(t => s"$who@$t")
+  def stamped(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+    val who = !w.pause("who?")
+    s"$who@${!w.now}"
 
   def wf(t: Topic, id: String, program: String)
-        (body: Wf.Asking[String, String, String, Pure] ?=> String ! (Delim + Pure)) =
+        (body: Wf.Asks[String, String, String, Pure] ?=> String ! (Delim + Pure)) =
     Dialogue.workflow[String, String, String, Pure](t, id, program)(body)
 
   test("the clock is read ONCE and the reading outlives the process") {

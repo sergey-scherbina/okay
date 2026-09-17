@@ -45,13 +45,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Deferred`/`memoize` of the async libraries. Trigger: a consumer
       that shares a `!.once` across fibres; none yet (direct-once,
       2026-09-16).
-- [ ] wf-direct-door — `Wf.pause[String, String, String, P]("city?")`
-      takes four type arguments where `Delim.pause` in a `direct` block
-      takes none. The trick that removes them reads the types off the
-      evidence and the block's `DirectCtx`, which needs `Wf` to own an
-      evidence class carrying `Q` and `A` as MEMBERS, the way
-      `Delim.Asking` carries `Qst`/`Ans`. The feature works today; it
-      reads worse than it should.
 - [ ] dialogue-patch — DONE 2026-09-17 in core (dialogue-asks) and
       through the log (wf-durable-journal, `Dialogue.workflow`). What
       is left is only retirement tooling: something that says which

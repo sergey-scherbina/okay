@@ -294,6 +294,27 @@ call is a question is also a program you can test by answering the
 questions — no mocks, no doubles, and the journal of a failed
 production run replays on a laptop.
 
+### A durable program, as it actually reads
+
+```scala
+def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+  val city = !w.pause("city?")          // the world answers
+  val when = !w.now                     // the RUNTIME answers, once, and it is journalled
+  val n    = !w.pause("nights?")
+  if !w.patch("promo") then s"$city/$n/promo at $when" else s"$city/$n at $when"
+
+Dialogue.workflow[String, String, String, Pure](topic, id, "booking/1")(booking)
+  .run(Dialogue.asking(oracle))
+```
+
+Three things in that block are not ordinary code and all three are
+invisible: `now` is read once in the life of the dialogue and replayed
+from the log ever after, so a restart does not move the clock;
+`patch("promo")` answers `false` for every run that began before the
+branch existed and `true` for every run that began after, so a deploy
+does not have to wait for the old runs to drain; and the whole thing
+is a straight line, not a state machine.
+
 ### What this is not
 
 Say both halves when proposing it. The MODEL here is smaller and

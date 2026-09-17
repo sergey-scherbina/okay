@@ -1,5 +1,8 @@
 package okay
 
+import okay.Direct.*
+import scala.language.implicitConversions
+
 /**
  * THE LIBRARY'S OWN QUESTIONS (dialogue-asks, 2026-09-17). A durable
  * program needs a clock, an id and sometimes a die; `Replayable`
@@ -20,12 +23,17 @@ class TestWf extends munit.FunSuite {
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,
                                          id = "id-1", dice = 0.25)
 
-  /** a booking that asks the world for a city and the runtime for the time */
-  def booking(using Wf.Asking[String, String, String, P]): String ! Row =
-    Wf.pause[String, String, String, P]("city?").flatMap: city =>
-      Wf.now[String, String, String, P].flatMap: t =>
-        Wf.uuid[String, String, String, P].map: id =>
-          s"$city/$t/$id"
+  /**
+   * A booking that asks the world for a city and the RUNTIME for the
+   * time and an id. Since wf-direct-door the four types are named
+   * once, in the signature, and no call site repeats them — which is
+   * what lets the body read as ordinary straight-line code.
+   */
+  def booking(using w: Wf.Asks[String, String, String, P]): String ! Row = direct:
+    val city = !w.pause("city?")
+    val t = !w.now
+    val id = !w.uuid
+    s"$city/$t/$id"
 
   test("the runtime answers its own questions; the oracle answers the author's") {
     var asked = List.empty[String]
@@ -60,8 +68,7 @@ class TestWf extends munit.FunSuite {
           case Wf.Sys.Uuid => Wf.SysA.Text("x")
           case Wf.Sys.Patch(_) => Wf.SysA.Flag(true)
 
-    def dicey(using Wf.Asking[String, Double, Double, P]): Double ! Row =
-      Wf.random[String, Double, Double, P]
+    def dicey(using w: Wf.Asks[String, Double, Double, P]): Double ! Row = w.random
 
     val (v, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, Double, Double, P](dicey)))(_ => okay.pure(0.0)))
@@ -74,16 +81,17 @@ class TestWf extends munit.FunSuite {
   // ---- the tag, and what it is for
 
   /** v1: ask the city, then the nights */
-  def v1(using Wf.Asking[String, String, String, P]): String ! Row =
-    Wf.pause[String, String, String, P]("city?").flatMap: city =>
-      Wf.pause[String, String, String, P]("nights?").map(n => s"$city/$n")
+  def v1(using w: Wf.Asks[String, String, String, P]): String ! Row = direct:
+    val city = !w.pause("city?")
+    val n = !w.pause("nights?")
+    s"$city/$n"
 
   /** v2: the same, with a branch added BETWEEN the two questions */
-  def v2(using Wf.Asking[String, String, String, P]): String ! Row =
-    Wf.pause[String, String, String, P]("city?").flatMap: city =>
-      Wf.patch[String, String, String, P]("promo").flatMap: on =>
-        Wf.pause[String, String, String, P]("nights?").map: n =>
-          if on then s"$city/$n/promo" else s"$city/$n"
+  def v2(using w: Wf.Asks[String, String, String, P]): String ! Row = direct:
+    val city = !w.pause("city?")
+    val on = !w.patch("promo")
+    val n = !w.pause("nights?")
+    if on then s"$city/$n/promo" else s"$city/$n"
 
   test("patch: a journal written BEFORE the branch existed takes the old path") {
     // the old run, under v1

@@ -80,6 +80,58 @@ object Wf:
   final class Mismatched(q: Any, a: Any)
     extends RuntimeException(s"a $q was answered with $a")
 
+  /**
+   * THE EVIDENCE CARRIES THE DOORS (wf-direct-door, 2026-09-17).
+   *
+   * The first cut of this module made every door a method with four
+   * type arguments — `Wf.pause[String, String, String, Pure]("city?")`
+   * — because `Q`, `A`, `R` and the row appear only in the evidence,
+   * and a method cannot read them off a `using` parameter it has not
+   * been given yet. That works and reads badly, which by this
+   * project's standing rule ("useful, not just works") means it is
+   * not finished.
+   *
+   * So the evidence is not a type alias any more: it is a class that
+   * KNOWS its four types and offers the doors as methods on itself.
+   * A body names them once, in its own signature, and every call site
+   * inside writes none:
+   *
+   *     def booking(using w: Wf.Asks[String, String, String, Pure]) =
+   *       direct:
+   *         val city = !w.pause("city?")
+   *         val id   = !w.uuid
+   *         if !w.patch("promo") then ... else ...
+   *
+   * No macro was needed for this, which is the other half of the
+   * point: the inline `Delim.pause` exists because a mark gives its
+   * argument no expected type, and it pays one cast for that. Here
+   * the types are on the object, so there is nothing to infer and
+   * nothing to cast.
+   */
+  final class Asks[Q, A, R, F[+_]] private[okay] (
+      private[okay] val in: Delim.Asking[Ask[Q], Ans[A], R, Delim + F]):
+
+    /** ask the outside world, through the author's own question type */
+    def pause(q: Q)(using At): A ! (Delim + F) =
+      Wf.pause[Q, A, R, F](q)(using in, summon[At])
+
+    /** the same under the name the literature uses: an "activity" is
+     * a command performed outside and a result remembered */
+    def perform(cmd: Q)(using At): A ! (Delim + F) = pause(cmd)
+
+    /** the wall clock, once, remembered */
+    def now(using At): Long ! (Delim + F) = Wf.now[Q, A, R, F](using in, summon[At])
+
+    /** a fresh id, once, remembered */
+    def uuid(using At): String ! (Delim + F) = Wf.uuid[Q, A, R, F](using in, summon[At])
+
+    /** a die, once, remembered */
+    def random(using At): Double ! (Delim + F) = Wf.random[Q, A, R, F](using in, summon[At])
+
+    /** is this branch on for THIS run? */
+    def patch(id: String)(using At): Boolean ! (Delim + F) =
+      Wf.patch[Q, A, R, F](id)(using in, summon[At])
+
   // ── the author's doors ───────────────────────────────────────────
 
   /**
@@ -163,9 +215,9 @@ object Wf:
         case Sys.Patch(_) => SysA.Flag(true)
 
   /** start a program that may ask the runtime as well as the world */
-  def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, F] ?=> R ! (Delim + F))
+  def resumable[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                (using Delim.OneMachine[F], At): Paused[Q, A, R, F] ! F =
-    Delim.resumable[Ask[Q], Ans[A], R, F](body)
+    Delim.resumable[Ask[Q], Ans[A], R, F](body(using Asks(summon)))
 
   /**
    * Run to the end: the LIBRARY's questions are answered by the
@@ -195,7 +247,7 @@ object Wf:
    * NOT eat the entry, which still answers the question it was
    * written for.
    */
-  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, F] ?=> R ! (Delim + F))
+  def replay[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
                             (j: Journal[A])
                             (using Delim.OneMachine[F], Replayable[Delim + F], At)
                             : Paused[Q, A, R, F] ! F =

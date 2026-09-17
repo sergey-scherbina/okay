@@ -348,7 +348,7 @@ object Dialogue:
                                snapshotEvery: Int = 0,
                                version: Int = 1,
                                upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                              (body: Wf.Asking[Q, A, R, F] ?=> R ! (Delim + F))
+                              (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                               (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                Delim.OneMachine[F], At)
                               : Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =

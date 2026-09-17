@@ -298,14 +298,22 @@ races and the advance-then-append order are written once for both.
 All fourteen of `Dialogue`'s own tests passed unchanged through the
 refactor, which is what says the seam was in the right place.
 
-**Known rough edge, recorded rather than hidden:** `Wf`'s doors take
-four type arguments at every call site
-(`Wf.pause[String, String, String, P]("city?")`), where `Delim.pause`
-inside a `direct` block takes none. The trick that removes them
-(reading the types off the evidence and the block's `DirectCtx`) needs
-`Wf` to own an evidence class carrying `Q` and `A` as members, the way
-`Delim.Asking` does. Filed as `wf-direct-door`; the feature works
-today, it just reads worse than it should.
+**The rough edge is gone** (`wf-direct-door`, the same day). `Wf`'s
+doors took four type arguments at every call site; they are now
+methods ON THE EVIDENCE, so a body names its four types once in its
+own signature and no call site repeats them:
+
+```scala
+def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+  val city = !w.pause("city?")
+  val id   = !w.uuid
+  if !w.patch("promo") then … else …
+```
+
+No macro was needed, and that is the other half of the point: the
+inline `Delim.pause` exists because a mark gives its argument no
+expected type, and it pays one cast for that. Here the types are on
+the object, so there is nothing to infer and nothing to cast.
 
 ## Stage 2 — the program is allowed to change
 
