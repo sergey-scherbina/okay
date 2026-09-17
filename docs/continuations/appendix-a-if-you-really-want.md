@@ -800,6 +800,54 @@ the reason it works is the reason it is not Scala any more. That is a
 legitimate choice; it is just not a free one, and it is better made on
 purpose than arrived at after six months.
 
+## The verdict, which the title promised
+
+This appendix reads, in places, like a list of refutations. That is the
+wrong register to end on, because the honest conclusion is the one its
+title claims:
+
+> **Done sensibly and carefully, with the limitations known and the
+> expectations moderate, all of it works.**
+
+Every route here is implemented somewhere by people who are not
+confused. Spark ships closures. Unison content-addresses code. WASM
+platforms snapshot linear memory. BPMN engines carry a cursor through a
+static graph. None of these is a mistake; each is a trade taken with
+open eyes, and the reason this engine took a different one is its own
+set of constraints, not a defect in the others.
+
+What separates the versions that work from the ones that do not is
+never cleverness. It is four habits:
+
+**Know which half your program is in.** A fixed shape is static, and a
+cursor, `leaves`, batching and a dry run come free. A shape that
+depends on its answers is monadic, and replay is its price. Most
+systems contain both, and gain most from saying out loud which is
+which.
+
+**Put only what the program was told into the commit record** — or
+state, where the history has stopped describing anything. That line is
+the difference between the journal and `continueAs`, and it is what
+keeps chapter 22's trap shut: derived state stored beside the answers
+drifts silently, and both copies look right while it does.
+
+**Make the discipline a type and the breach a named method.**
+`Replayable` does not work because it is correct. It works because it
+cannot be forgotten, and because `unchecked` appears in a diff.
+
+**Ask, per route, what it must survive.** A deploy six months from now,
+or a network hop this second. The same mechanism answers those two
+questions oppositely, and in this appendix that was the only question
+that ever decided anything.
+
+Moderate expectations are the last of it, and the least discussed. None
+of these designs gives exactly-once; all of them give at-least-once
+with a window, and idempotence or a transactional outbox is what gets
+you below that. None of them makes a program survive arbitrary change
+to itself. None removes the need to know what your runtime can hand
+you. A design that promises otherwise is not more advanced — it has
+just not met its second year in production.
+
 ## The one-paragraph answer, for when somebody asks again
 
 A continuation is a closure, and a closure is code plus captured
