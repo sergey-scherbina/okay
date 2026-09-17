@@ -1,5 +1,39 @@
 # Changelog
 
+## workflow-activity-row - the driver's row is not the program's
+
+Found while wiring retries, and fixed before them because everything
+downstream depends on it: THE ORACLE SHARED THE PROGRAM'S ROW. A
+durable program's row must be `Replayable` - no `Async`, nothing a
+replay would perform again - so the oracle was as constrained as the
+program, and an activity could only do I/O by side-effecting in Scala,
+past the effect system entirely. That is the difference between a
+model and an engine, and it is what this library exists not to do.
+
+The driver now runs in `F + E`: the program's replayable row plus
+whatever the activities need (`Dialogue.runUntilIn`, `runWorkflowIn`,
+`Worker[Q, A, R, F, E]`). The programs it moves are still built in `F`
+and widened at the seam; the journal, the replay and the race check
+never see `E`. The headline test says both halves in one place: an
+activity performs a typed `Async` effect, and a workflow whose own row
+is `Async` does not compile.
+
+ADDITION, NOT MEMBERSHIP, and that was measured rather than chosen.
+The natural spelling is one driver row `G` that CONTAINS `F` -
+`RowLift.at` is exactly that door, one licensed cast - but `In[F, G]`
+over two ABSTRACT rows crashes dotty 3.9 in `orDominator` with
+"Failure to join alternatives F and G". That is the second time in one
+day the same crash has decided a design (delim-safety was the first),
+and it is now recorded in the spec as a fourth architectural rule
+rather than as a surprise.
+
+The cost of the complement form, stated: `F + E` with both `Pure` is
+`[X] =>> Nothing | Nothing`, which is not `Nothing`, so a driver with
+no effects at all cannot be `!.run`. In practice `E` is what the
+activities need and is never `Pure`. The persist tests now run their
+workers through `Async.run`, which is also the first time they show
+the feature rather than only the model.
+
 ## workflow-visibility - the dashboard the model cannot afford to compute
 
 "What is every run waiting for" is a question this model answers

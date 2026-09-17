@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure, Wf}
+import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -19,6 +20,17 @@ class TestSignals extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
+  /**
+   * The driver's row is NOT the program's (workflow-activity-row):
+   * the workflow stays in the replayable `Pure`, while the ACTIVITIES
+   * the oracle performs live in `Async` — which is the whole point,
+   * and is why these tests run through `Async.run` rather than
+   * `!.run`.
+   */
+  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+    !.run(Async.run[A, Pure](p))
+
+
   def approval(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
     direct:
       val what = !w.pause("what?")
@@ -27,9 +39,9 @@ class TestSignals extends FunSuite {
 
   def setup(store: MemoryStore) =
     val sigs = Signals.over(store)
-    val w = Worker[String, String, String, Pure](
+    val w = Worker[String, String, String, Pure, Async](
       store.topic("approvals"), "approve/1", Timers.over(store),
-      _ => okay.pure("the budget"), signals = Some(sigs))(approval)
+      _ => okay.async("the budget"), signals = Some(sigs))(approval)
     (sigs, w)
 
   // ---- the mailbox, on its own
@@ -63,16 +75,16 @@ class TestSignals extends FunSuite {
     // the approver is quick, the run has not even started
     val _ = sigs.send("a-1", "approved", "ada")
 
-    assertEquals(!.run(w.start("a-1")), Worker.Progress.Finished("the budget by ada"))
+    assertEquals(drive(w.start("a-1")), Worker.Progress.Finished("the budget by ada"))
   }
 
   test("a run that waits first is woken when the signal arrives") {
     val store = MemoryStore()
     val (sigs, w) = setup(store)
 
-    assertEquals(!.run(w.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approved")))
+    assertEquals(drive(w.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approved")))
     val _ = sigs.send("a-1", "approved", "bob")
-    assertEquals(!.run(w.advance("a-1")), Worker.Progress.Finished("the budget by bob"))
+    assertEquals(drive(w.advance("a-1")), Worker.Progress.Finished("the budget by bob"))
   }
 
   test("the cursor moves only after the journal took it, so the signal is not re-eaten") {
@@ -80,7 +92,7 @@ class TestSignals extends FunSuite {
     val (sigs, w) = setup(store)
     val _ = sigs.send("a-1", "approved", "ada")
     val _ = sigs.send("a-1", "approved", "bob")   // a second, for a later run
-    val _ = !.run(w.start("a-1"))
+    val _ = drive(w.start("a-1"))
 
     // exactly one was consumed, and it is the first
     assertEquals(sigs.next("a-1", "approved").map(_._2), Some("bob"))
@@ -93,7 +105,7 @@ class TestSignals extends FunSuite {
     val (sigs, w) = setup(store)
     val _ = sigs.send("a-1", "cancelled", "ops")
 
-    assertEquals(!.run(w.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approved")))
+    assertEquals(drive(w.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approved")))
     // the letter is untouched: it was never for this wait
     assertEquals(sigs.next("a-1", "cancelled").map(_._2), Some("ops"))
     assertEquals(sigs.cursor("a-1", "cancelled"), None)
@@ -101,9 +113,9 @@ class TestSignals extends FunSuite {
 
   test("a worker with NO mailbox simply reports the wait") {
     val store = MemoryStore()
-    val bare = Worker[String, String, String, Pure](
+    val bare = Worker[String, String, String, Pure, Async](
       store.topic("approvals"), "approve/1", Timers.over(store),
-      _ => okay.pure("the budget"))(approval)
-    assertEquals(!.run(bare.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approved")))
+      _ => okay.async("the budget"))(approval)
+    assertEquals(drive(bare.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approved")))
   }
 }

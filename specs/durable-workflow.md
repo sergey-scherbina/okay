@@ -471,6 +471,35 @@ worth keeping:
   order are the same moves either way, which is why there is one
   driver and not two.
 
+### A fourth rule, learned the hard way: TWO ROWS
+
+`workflow-activity-row`, 2026-09-17, found while wiring retries and
+fixed before them because everything downstream depends on it.
+
+A durable program's row must be `Replayable` — no `Async`, nothing a
+replay would perform again. The ORACLE is the half that DOES reach
+outside: it calls the service, charges the card, writes the file.
+Sharing one row made the oracle as constrained as the program, so an
+activity could only do I/O by side-effecting in Scala, PAST the effect
+system — which is what this library exists not to do.
+
+So the driver runs in `F + E`: the program's replayable row, plus
+whatever the activities need. The programs the driver moves are built
+in `F` and widened at the seam; the journal, the replay and the race
+check never see `E`.
+
+**Addition, not membership, and that was measured.** The natural
+spelling is a single driver row `G` containing `F` — `RowLift.at`
+exists for exactly that, one licensed cast — but `In[F, G]` over TWO
+ABSTRACT rows crashes dotty 3.9 in `orDominator` ("Failure to join
+alternatives F and G"), the same crash delim-safety recorded. Second
+time in one day; the complement form is the one the compiler handles.
+The cost, stated: `F + E` with both `Pure` is `[X] =>> Nothing |
+Nothing`, which is not `Nothing`, so a driver with no effects at all
+cannot be `!.run`. In practice `E` is what the activities need and is
+never `Pure` — a driver that can do nothing has no activities to
+drive.
+
 ### The three rules this architecture keeps
 
 1. **The journal is the only state.** Nothing above adds a second

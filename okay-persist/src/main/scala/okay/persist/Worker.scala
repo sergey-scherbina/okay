@@ -39,8 +39,8 @@ import okay.codec.Schema
  * topic could put an answer into a journal that nobody asked for,
  * which is the one thing the journal must never contain.
  */
-final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers,
-                                   oracle: Q => A ! F,
+final class Worker[Q, A, R, F[+_], E[+_]](topic: Topic, program: String, timers: Timers,
+                                   oracle: Q => A ! (F + E),
                                    snapshots: Option[Snapshots] = None,
                                    snapshotEvery: Int = 0,
                                    signals: Option[Signals] = None,
@@ -55,32 +55,38 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
 
   /** a new run, or an existing one: the journal decides which, so
    * these are the same call and `start` is only a name */
-  def start(id: String): Worker.Progress[R] ! F = advance(id)
+  def start(id: String): Worker.Progress[R] ! (F + E) = advance(id)
 
   /**
    * Drive one run as far as it goes, then tell the timers what
    * happened. Everything it answered on the way is already durable
    * before this returns.
    */
-  def advance(id: String): Worker.Progress[R] ! F =
+  def advance(id: String): Worker.Progress[R] ! (F + E) =
     step(id).flatMap(p => note(id, p).map(_ => p))
 
   /** tell the index what was learned, if anybody is keeping one. It
    * is written AFTER the journal, never instead of it: a status is
    * something to look at, never something to decide from, so a worker
    * that dies between the two leaves a stale line and no wrong run. */
-  private def note(id: String, p: Worker.Progress[R]): Unit ! F =
+  private def note(id: String, p: Worker.Progress[R]): Unit ! (F + E) =
     statuses match
       case None => pure(())
-      case Some(ix) => dialogue(id).at.map: place =>
+      case Some(ix) => at(id).map: place =>
         val (asking, where) = place.toOption match
           case Some(d) => (d.asking.map(_.toString), d.where)
           case None => (None, None)
         ix.put(Statuses.Status(id, program, Worker.state(p), asking, where,
           System.currentTimeMillis()))
 
-  private def step(id: String): Worker.Progress[R] ! F =
-    dialogue(id).runWorkflow(oracle).flatMap:
+  /** where a run stands, in the DRIVER's row */
+  private def at(id: String)
+      : Either[Dialogue.Stopped, Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F]] ! (F + E) =
+    !.widen[Either[Dialogue.Stopped, Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F]], F, E](
+      dialogue(id).at)
+
+  private def step(id: String): Worker.Progress[R] ! (F + E) =
+    dialogue(id).runWorkflowIn[E](oracle).flatMap:
       case Right(r) =>
         timers.disarm(id)
         pure(Worker.Progress.Finished(r))
@@ -93,7 +99,8 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
         // this is the moment it becomes an answer
         signals.flatMap(_.next(id, name)) match
           case Some((off, payload)) =>
-            dialogue(id).answer(Left(Wf.SysA.Got(payload))).flatMap: _ =>
+            !.widen[Dialogue.Answered[Wf.Ask[Q], Wf.Ans[A], R, F], F, E](
+              dialogue(id).answer(Left(Wf.SysA.Got(payload)))).flatMap: _ =>
               // the cursor moves ONLY after the journal took it, so a
               // crash in between re-delivers and `expect` refuses the
               // duplicate — a repeated attempt, never a doubled answer
@@ -112,9 +119,9 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
    * only if it is REALLY waiting on a timer that has expired — see
    * the class header on why that check is not optional.
    */
-  def tick(nowMillis: Long): List[(String, Worker.Progress[R])] ! F =
+  def tick(nowMillis: Long): List[(String, Worker.Progress[R])] ! (F + E) =
     def go(ids: List[String], acc: List[(String, Worker.Progress[R])])
-         : List[(String, Worker.Progress[R])] ! F = ids match
+         : List[(String, Worker.Progress[R])] ! (F + E) = ids match
       case Nil => pure(acc.reverse)
       case id :: rest =>
         wake(id, nowMillis).flatMap(p => go(rest, (id, p) :: acc))
@@ -122,15 +129,16 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
 
   /** append the timer's answer if the run is genuinely waiting on it,
    * then carry the run forward */
-  def wake(id: String, nowMillis: Long): Worker.Progress[R] ! F =
+  def wake(id: String, nowMillis: Long): Worker.Progress[R] ! (F + E) =
     val d = dialogue(id)
-    d.at.flatMap:
+    at(id).flatMap:
       case Left(stopped) =>
         timers.disarm(id)
         pure(Worker.Progress.Broken(stopped))
       case Right(p) => p.asking match
         case Some(Left(Wf.Sys.Timer(t))) if t <= nowMillis =>
-          d.answer(Left(Wf.SysA.Elapsed)).flatMap(_ => advance(id))
+          !.widen[Dialogue.Answered[Wf.Ask[Q], Wf.Ans[A], R, F], F, E](
+            d.answer(Left(Wf.SysA.Elapsed))).flatMap(_ => advance(id))
         case _ =>
           // the record was stale: this run is not waiting on a timer,
           // or not on one that has passed. Cost: one read.

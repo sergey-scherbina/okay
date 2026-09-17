@@ -318,14 +318,51 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * either way.
    */
   def runUntil[S](oracle: (Q, Dialogue.Attempt) => Either[S, A] ! F): Either[S, R] ! F =
-    def go(p: Delim.Dialogue[Q, A, R, F], index: Int): Either[S, R] ! F = p match
+    runUntilIn[S, okay.Pure](oracle)
+
+  /**
+   * THE DRIVE'S ROW IS NOT THE PROGRAM'S (workflow-activity-row,
+   * 2026-09-17), and the distinction is the whole difference between
+   * a model and an engine.
+   *
+   * A durable program's row must be `Replayable` — no `Async`, no
+   * `Writer`, nothing a replay would perform again. But the ORACLE is
+   * the half that DOES reach outside: it calls the service, charges
+   * the card, writes the file. Sharing one row made the oracle as
+   * constrained as the program, so an activity could only do I/O by
+   * side-effecting in Scala, past the effect system entirely — which
+   * this library exists not to do.
+   *
+   * So the driver runs in `F + E`: the program's replayable row, plus
+   * whatever the activities need. The programs the driver moves are
+   * still built in `F` and widened at the seam; the journal, the
+   * replay and the race check never see `E`.
+   *
+   * ADDITION, NOT MEMBERSHIP, and that was measured rather than
+   * chosen. The natural spelling is a single driver row `G` that
+   * CONTAINS `F` (`RowLift.at` exists for exactly that, and it is one
+   * licensed cast) — but `In[F, G]` over TWO ABSTRACT rows crashes
+   * dotty 3.9 in `orDominator` with "Failure to join alternatives F
+   * and G", the same crash delim-safety hit and recorded. So the
+   * driver's row is written as the complement, which the compiler
+   * handles.
+   *
+   * The cost of that choice, stated: `F + E` with BOTH `Pure` is
+   * `[X] =>> Nothing | Nothing`, which is not `Nothing`, so a driver
+   * with no effects whatsoever cannot be `!.run`. In practice `E` is
+   * the row the activities need and is never `Pure` — a driver that
+   * can do nothing at all has no activities to drive.
+   */
+  def runUntilIn[S, E[+_]](oracle: (Q, Dialogue.Attempt) => Either[S, A] ! (F + E))
+                          : Either[S, R] ! (F + E) =
+    def go(p: Delim.Dialogue[Q, A, R, F], index: Int): Either[S, R] ! (F + E) = p match
       case Delim.Paused.Done(r) => pure(Right(r))
       // the WARM path: the program is in hand, so no step replays
       case Delim.Paused.Ask(q, _, _) =>
         oracle(q, Dialogue.Attempt(id, index)).flatMap:
           case Left(s) => pure(Left(s))
           case Right(a) =>
-            step(p, a, index).flatMap:
+            !.widen[Dialogue.Answered[Q, A, R, F], F, E](step(p, a, index)).flatMap:
               case Dialogue.Answered.Advanced(next) => go(next, index + 1)
               case Dialogue.Answered.Lost(actual) => go(actual, index)
               case Dialogue.Answered.NotAsking(next) => go(next, index)
@@ -334,7 +371,8 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
     r.stopped match
       case Some(s) => throw Dialogue.Halted(s)
       case None =>
-        place(r.answers).flatMap(go(_, r.answers.size))
+        !.widen[Delim.Dialogue[Q, A, R, F], F, E](place(r.answers))
+          .flatMap(go(_, r.answers.size))
 
 object Dialogue:
 
@@ -389,6 +427,15 @@ object Dialogue:
         case Right(sa) => pure(Right(Left(sa)))
       case Right(own) => oracle(own).map(v => Right(Right(v)))
 
+  /** the same, for an oracle whose activities live in a wider row */
+  def askingIn[Q, A, F[+_], E[+_]](oracle: Q => A ! (F + E))(using rt: Wf.Runtime)
+                                  : (Wf.Ask[Q], Attempt) => Either[Wf.Wait, Wf.Ans[A]] ! (F + E) =
+    (q, _) => q match
+      case Left(sys) => rt.answer(sys) match
+        case Left(w) => pure(Left(w))
+        case Right(sa) => pure(Right(Left(sa)))
+      case Right(own) => oracle(own).map(v => Right(Right(v)))
+
   /**
    * DRIVE A DURABLE WORKFLOW as far as it goes: `Right` is its
    * answer, `Left` is what has to happen before anybody can carry it
@@ -398,6 +445,12 @@ object Dialogue:
   extension [Q, A, R, F[+_]](d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F])
     def runWorkflow(oracle: Q => A ! F)(using Wf.Runtime): Either[Wf.Wait, R] ! F =
       d.runUntil[Wf.Wait](asking(oracle))
+
+    /** the same, with the activities in their own row: the program
+     * stays replayable, the oracle may reach outside */
+    def runWorkflowIn[E[+_]](oracle: Q => A ! (F + E))
+                            (using Wf.Runtime): Either[Wf.Wait, R] ! (F + E) =
+      d.runUntilIn[Wf.Wait, E](askingIn(oracle))
 
   /**
    * WHAT A JOURNAL RECORD IS. Not a bare answer: the two fields
