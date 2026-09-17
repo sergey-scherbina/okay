@@ -122,7 +122,7 @@ With the noun in hand, chapter 1's programs stop being four problems:
 - **Wait for a person.** Capture the rest of the program at the point
   of waiting. It is a value. The process may now die — as long as
   something can reconstruct that value later, the program continues
-  where it stopped. (*How* it is reconstructed is chapter 21's subject
+  where it stopped. (*How* it is reconstructed is chapter 22's subject
   and is not obvious: the captured function itself cannot be written
   to disk.)
 - **On the way back.** Wrap the captured rest instead of replacing
@@ -145,7 +145,7 @@ another function.
 **It is not free, and it is not a serialisable snapshot.** It is a
 closure over the work that remains. It cannot be written to a file and
 read back tomorrow; anything that claims to survive a restart is doing
-something cleverer, which chapter 21 explains in detail.
+something cleverer, which chapter 22 explains in detail.
 
 ## The one-sentence version
 
@@ -165,7 +165,7 @@ Three things, and each gets its own treatment:
    next for that reason.
 3. **What it does to everything else.** Holding "the rest" as a value
    interacts with state, resources, `finally` and exceptions in ways
-   you have to know before you ship one — chapter 18.
+   you have to know before you ship one — chapter 19.
 
 ---
 

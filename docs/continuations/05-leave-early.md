@@ -120,12 +120,12 @@ Code after an exit does not run. Obvious when written like this;
 less obvious when the line after the exit is a `logger.info` or a
 counter increment twenty lines down. **If something must happen on the
 way out, it cannot be a statement after the exit** — that is chapter
-8's shape, and chapter 18 lists what else changes.
+8's shape, and chapter 19 lists what else changes.
 
 **The boundary is where you put it.** An exit goes to the *nearest
 enclosing* `delimited`. If you nest them — chapter 9 — you get to
 choose which one, and choosing wrongly is a real mistake with a real
-name (chapter 26, group B).
+name (chapter 27, group B).
 
 **The type of the boundary is the contract.** `delimited[Option[Rejected], Pure]`
 says everything a caller needs: this produces an `Option[Rejected]`,

@@ -100,7 +100,7 @@ weak evidence. Three of them in the same file is not.
    has never heard of any of this.
 
 3. **The hot path.** A boundary roughly doubles the cost of the work
-   inside it (chapter 19 has the measurements). Around a program
+   inside it (chapter 20 has the measurements). Around a program
    waiting on a human that is invisible. Around a per-element loop in
    a stream processing millions of records it is disqualifying — and
    the answer there is to put the boundary around the *smallest* span

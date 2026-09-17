@@ -172,19 +172,58 @@ to state and resources, is chapter 18.
 a validating cut, a cancellable scope — each is a prompt plus a
 capture, written in user code, and shown here end to end.
 
-### 15. Continuations and monads
+### 15. Resumable exceptions: signalling instead of unwinding
+
+**Thesis.** The oldest and most convincing application, and the one
+that shows most clearly what "the rest of the program as a value"
+buys: an error mechanism in which the handler runs **while the failing
+computation is still alive** and may put it back to work.
+
+An ordinary exception UNWINDS. By the time a `catch` runs, the frame
+that failed is gone, along with every local it had — so the only
+question the handler can answer is "what shall we do instead of the
+whole thing". A condition SIGNALS: the handler runs on top of a
+computation that is still standing, and can choose to **resume** it,
+supplying a value, skipping an item, or substituting a default.
+
+That difference is exactly the continuation. Resuming means returning
+control into the middle of a computation, which is only possible if
+the middle is a value somebody is holding.
+
+**What the chapter shows.** A parser meeting a malformed record that
+does not decide policy: it signals, offering named restarts (`skip`,
+`useDefault`, `abort`), and the CALLER — who knows whether this is a
+nightly import or an interactive session — picks. Neither side learns
+the other's vocabulary: the parser has no `strict: Boolean` parameter
+and no error enum threaded through it, and the caller writes no
+parsing.
+
+**Why it matters beyond error handling.** It is the general shape of
+"a decision that belongs to the caller, taken at a point deep inside
+the callee" — logging policy, retry policy, missing-value policy. The
+condition system is the case where that shape is most obviously
+needed, not the only one where it fits.
+
+**And the traps, which are real.** A restart is a protocol between two
+pieces of code that never see each other, so a badly chosen set of
+restarts is an untyped API in disguise; resuming into a frame that
+holds a resource has all of chapter 19's consequences; and an
+interactive restart chosen by a human is a pause (chapter 7) wearing a
+different hat, not a third mechanism.
+
+### 16. Continuations and monads
 
 **Thesis.** Filinski's result — given delimited control, ANY monad
 runs in direct style — is the reason `!` exists, and it is the most
 practically important theorem in this book. Shown, not cited.
 
-### 16. In the effect system
+### 17. In the effect system
 
 **Thesis.** Where a capture sits relative to a handler decides what it
 can see. Rows, handler order, and the one question to ask when a
 capture and an effect disagree.
 
-### 17. What belongs in a library, what in an application
+### 18. What belongs in a library, what in an application
 
 **Thesis.** The test is whether more than one interpreter exists.
 Recipes that pass it become effects; the rest stay call sites.
@@ -195,14 +234,14 @@ Recipes that pass it become effects; the rest stay call sites.
 
 *The half that makes the rest trustworthy.*
 
-### 18. What a capture does to everything else
+### 19. What a capture does to everything else
 
 **Thesis.** State, resources, `try`/`finally`, exceptions and depth
 each behave differently under a capture, and all of it is pinned by
 tests that fail if the behaviour changes. Including the two that are
 compile errors on purpose.
 
-### 19. The costs, measured
+### 20. The costs, measured
 
 **Thesis.** Numbers, from this repository's benchmarks: what a push
 costs, what a capture costs, what a guard costs per operation (2.0–2.3x
@@ -210,13 +249,13 @@ on the work inside it), and what a label costs (8 bytes, no time). And
 the trap: a claim with real numbers NEXT to it that measure a
 different shape.
 
-### 20. The disciplines that make it safe
+### 21. The disciplines that make it safe
 
 **Thesis.** Three constraints carry their weight in types rather than
 in prose — `Replayable`, `At`, `OneMachine` — and each exists because
 something went wrong without it.
 
-### 21. Saving and restoring: checkpoints, and what cannot be one
+### 22. Saving and restoring: checkpoints, and what cannot be one
 
 **Thesis.** "Can I snapshot a paused program and restore it later?" is
 the first question everybody asks, and the answer has a shape worth
@@ -256,31 +295,31 @@ of truth exist and drift.
 *Real systems in this repository. Each chapter: the problem, the
 shape used, what it replaced, what it cost, what went wrong.*
 
-### 22. Durable workflows
+### 23. Durable workflows
 
 **Thesis.** A paused program is a closure and cannot be written down —
 so nothing tries to. The answers are journalled and the place is
 re-derived by replay, which is event sourcing whose fold IS the
 program. The engine, its eleven lanes, and its honest limits.
 
-### 23. A debugger for agents
+### 24. A debugger for agents
 
 **Thesis.** Multi-shot pays for itself: fork an agent run at a tool
 call, feed two answers, compare. Also the refuted expectation — this
 does NOT come with durability, and the type says why.
 
-### 24. Cutting a model mid-sentence
+### 25. Cutting a model mid-sentence
 
 **Thesis.** A validator standing in a token stream, aborting across
 the streaming boundary. And the measured cost that corrected the
 comment which claimed the guard was free.
 
-### 25. Cancellable flows in a UI
+### 26. Cancellable flows in a UI
 
 **Thesis.** The smallest production use, and the clearest: no `Option`
 threading on the steps between.
 
-### 26. Everything that typically goes wrong
+### 27. Everything that typically goes wrong
 
 **Thesis.** A catalogue, not a memoir. The mistakes available to
 somebody using continuations — and to somebody implementing them — are
@@ -289,7 +328,7 @@ particular incident. Each entry: what it looks like, why it is easy to
 make, what it costs, and the cheapest way to rule it out.
 
 Written as a checklist so it can be read at any point in the book, and
-referenced from chapter 4 (deciding) and chapter 18 (the limits).
+referenced from chapter 4 (deciding) and chapter 19 (the limits).
 
 **A · Choosing wrongly.** Reaching for a capture where an ordinary
 effect is simpler; using one to avoid learning a combinator that
@@ -339,11 +378,26 @@ stopped keeping.
 
 | you are | read |
 |---|---|
-| deciding whether this is worth the team's time | 1, 2, 4, then 22 |
-| about to write your first one | 3, then Part II, then 18 |
-| building a library on top | Part III, Part IV, 20 |
-| reviewing somebody's use of it | 4, 9, 18, 19 |
-| curious how it went | 26 |
+| deciding whether this is worth the team's time | 1, 2, 4, then 23 |
+| about to write your first one | 3, then Part II, then 19 |
+| building a library on top | Part III, Part IV, 21 |
+| reviewing somebody's use of it | 4, 9, 19, 20 |
+| curious about the failure modes | 27 |
+
+## A note for whoever edits this
+
+Chapters are referred to BY NUMBER in the prose, which makes inserting
+one a rename across files. Two insertions have already happened and
+both broke references in chapters that were already written. The sweep
+is mechanical, so do it rather than trusting memory:
+
+```
+grep -rn "chapter [0-9]\+" docs/continuations/*.md
+```
+
+Read every hit and decide what it MEANT — twice now a reference has
+become more accurate after a renumbering, because the chapter it
+should have pointed at did not exist when it was written.
 
 ## It repeats itself on purpose
 

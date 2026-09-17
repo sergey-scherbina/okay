@@ -111,9 +111,9 @@ value; driving it produces a result and leaves it intact. **One past,
 two futures.**
 
 That is what makes a debugger possible — fork a run at a decision,
-feed two different answers, compare the outcomes — and chapter 23 is a
+feed two different answers, compare the outcomes — and chapter 24 is a
 production one. It also has costs and hazards that chapter 13 and
-chapter 18 go through: anything effectful in the captured part happens
+chapter 19 go through: anything effectful in the captured part happens
 once per resumption.
 
 ## What this shape is really for
@@ -145,10 +145,10 @@ it needs care, so here is the honest version:
 > position is re-derived by starting the program again and feeding
 > them back without asking.
 
-That is the entire idea behind the durable engine in chapter 22: the
+That is the entire idea behind the durable engine in chapter 23: the
 journal holds answers, the program is re-run over them, and where it
 stops is where it stood. The consequence is a discipline — everything
-non-deterministic must enter through a question — which chapter 22
+non-deterministic must enter through a question — which chapter 23
 enforces with a type rather than a rule in a document.
 
 Do not skip that discipline on the strength of this chapter. Resuming
@@ -167,7 +167,7 @@ feature.
   when the sequence is long, branching, or must survive something.
 - **You are tempted to serialise the `Paused`.** Stop; see above. This
   is the single most expensive misunderstanding available here, and
-  chapter 26 lists it as such.
+  chapter 27 lists it as such.
 
 ## The recipe, condensed
 
