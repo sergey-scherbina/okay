@@ -1,6 +1,0 @@
-feature/delim-forward-not-throw 2026-09-17T09:23:56Z
-agent: claude-code
-heartbeat: 2026-09-17T09:23:56Z
-status: in-progress
-done-so-far: mechanism analysed (forwarding IS the foreign-op path); plan written
-next: runNested + three semantic tests, verdict either way
