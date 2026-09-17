@@ -243,14 +243,58 @@ comment which claimed the guard was free.
 **Thesis.** The smallest production use, and the clearest: no `Option`
 threading on the steps between.
 
-### 25. What we got wrong
+### 25. Everything that typically goes wrong
 
-**Thesis.** The mistakes are the most useful chapter. Patterns that
-did not compose; a cost claim that borrowed credibility from adjacent
-benchmarks; a rule guarded at one door out of four; a spec that kept
-reporting work undone because a blocker paragraph outlived the
-blocker. Each with how it was found, because the finding technique
-generalises further than the bug.
+**Thesis.** A catalogue, not a memoir. The mistakes available to
+somebody using continuations — and to somebody implementing them — are
+a small, recurring set, and naming them is worth more than any
+particular incident. Each entry: what it looks like, why it is easy to
+make, what it costs, and the cheapest way to rule it out.
+
+Written as a checklist so it can be read at any point in the book, and
+referenced from chapter 4 (deciding) and chapter 18 (the limits).
+
+**A · Choosing wrongly.** Reaching for a capture where an ordinary
+effect is simpler; using one to avoid learning a combinator that
+already fits; adopting the mechanism for one call site.
+
+**B · Boundaries and evidence.** Letting a prompt escape the
+delimiter that created it and using it afterwards; two machines in one
+program, so a prompt pushed in one is aborted from the other;
+identifying prompts by name or string, so two boundaries collide;
+letting an implicit search pick WHICH boundary you meant, silently;
+catching at the nearest delimiter when you meant an outer one.
+
+**C · Effects under a capture.** Expecting hand-written cleanup after
+a capture point to run when the continuation is abandoned; expecting
+`try`/`finally` to mean what it usually means; mixing a
+bracket-shaped resource with a capture; assuming state is shared, or
+assuming it is not — both are true, depending on which side of the
+delimiter the handler sits; assuming exception handlers and captures
+compose in an obvious order.
+
+**D · Resumption.** Assuming one-shot when the continuation can be
+resumed twice, so a side effect happens twice; assuming multi-shot
+when the runtime gives you one; expecting a paused program to be
+SERIALISABLE — it is a closure, and this misunderstanding is the
+single most expensive one in the list; performing I/O, reading a
+clock or a random number inside a program that will be replayed;
+resuming a continuation that no longer matches the state it was
+captured against.
+
+**E · Implementing.** Reading an identity or index before an
+operation and using it after the structure changed underneath;
+enforcing a rule at the one call site where the symptom appeared while
+several others implement the same rule; quadratic re-walking of a
+captured segment; renumbering a persisted enum by inserting a case in
+the middle; conflating "cannot proceed NOW" with "cannot proceed
+EVER" in what you report to an operator.
+
+**F · Claims.** Asserting a cost without measuring the shape the
+claim is about — including the subtle form where real benchmarks sit
+beside the claim and answer different questions; documenting a limit
+that a later fix removed; leaving a promise in a doc that the code
+stopped keeping.
 
 ---
 
