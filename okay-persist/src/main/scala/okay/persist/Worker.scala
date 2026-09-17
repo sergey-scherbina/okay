@@ -209,30 +209,28 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     statuses match
       case None => pure(())
       case Some(_) => p match
-        // A THIRD DOOR REBUILDS A PLACE, and it is this one
-        // (statuses-verdicts, 2026-09-17). `at(id)` re-runs the
-        // program to ask what it is standing at — so a bad deploy
-        // threw out of the STATUS WRITE after the drive had already
-        // named it `Incompatible`, and the verdict never reached the
-        // index it was written for.
+        // THE STATUS WRITE IS A DOOR TOO (statuses-verdicts,
+        // 2026-09-17): asking what a run is standing at RE-RUNS the
+        // program, so a bad deploy threw out of the write that was
+        // supposed to record the verdict.
         //
-        // These four have no live place to describe anyway: there is
-        // nothing to ask about a run that finished, and nothing to
-        // rebuild for one whose rebuild is the problem. Skipping the
-        // look is both the fix and one fold less per advance.
+        // These four have no live place to describe anyway — there is
+        // nothing to ask of a finished run, and nothing to rebuild for
+        // one whose rebuild is the problem — so the look is skipped,
+        // which is also one fold less per advance.
         case Worker.Progress.Finished(_) | Worker.Progress.Broken(_)
            | Worker.Progress.Incompatible(_) | Worker.Progress.Failed(_) =>
           pure(write(None, None))
-        case _ => at(id).map: place =>
-          val (asking, where) = place.toOption match
-            case Some(d) => (d.asking.map(_.toString), d.where)
-            case None => (None, None)
-          write(asking, where)
-
-  /** where a run stands, in the DRIVER's row */
-  private def at(id: String)
-      : Either[Dialogue.Stopped, Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F]] ! G =
-    dialogue(id).at.up[G]
+        // ...and the rest goes through `placed` like every other
+        // rebuild (note-through-placed, 2026-09-17). Reaching here
+        // means the drive JUST built this place, so the rebuild cannot
+        // refuse — but that is an argument, and three of the four
+        // doors were closed after an argument like it turned out to be
+        // about the wrong door. One rule, one implementation, nothing
+        // left to re-derive.
+        case _ => placed(dialogue(id)).map:
+          case Right((at, _)) => write(at.asking.map(_.toString), at.where)
+          case Left(_) => write(None, None)
 
   /**
    * A STOP, WITH A LINE IN IT (delim-diagnostics-position,
