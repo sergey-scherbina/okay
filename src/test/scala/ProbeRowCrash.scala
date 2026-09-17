@@ -25,6 +25,26 @@ import scala.util.NotGiven
  *   workflow-activity `In[F, G]` for the driver's row crashed, so the
  *                     row is written as the complement `F + E`
  *
+ * ── REPORTED AND DIAGNOSED UPSTREAM (2026-09-17).
+ * **scala/scala3#27096** is the bug; **#27097** is a fix with tests,
+ * waiting for review. It is not a 3.9 regression: 3.3.6 LTS, 3.7.3,
+ * 3.9.0 and main all die the same way.
+ *
+ * THE CAUSE, because knowing it changes what you try next: two
+ * definitions of "same" disagree. `orDominator` guards its merge with
+ * `tycon1 =:= tycon2`, and for two UNINSTANTIATED type variables that
+ * comparison returns true BY CONSTRAINING THEM to each other — the
+ * question creates its own answer. `mergeRefinedOrApplied` then
+ * compares the very same tycons by object identity (`tp1 == tp2`),
+ * sees two different `TypeVar`s, and asserts. The fix makes the merge
+ * accept a partner the current constraint has already equated, using
+ * `frozen_=:=` so that asking cannot create the answer.
+ *
+ * WHAT THAT MEANS HERE: when the fix lands, the workaround below stops
+ * being necessary and `In[F, G]` can be searched at an abstract row —
+ * so this file is the thing to re-run on the next Scala upgrade, and
+ * the three designs it lists are the ones worth revisiting then.
+ *
  * THE RULE THAT FALLS OUT, and it is the practical one: an obligation
  * over a row is CARRIED AS A PARAMETER, never searched for at an
  * abstract row. `Delim.answer`, `replay` and `drive` all take their
