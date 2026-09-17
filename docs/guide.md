@@ -74,7 +74,12 @@ bind diverges), `observe(n)`. A `LazyList` of alternatives is an
 infinite choice point. And the typeclass hierarchy earns its keep in
 the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
-`whenS`/`unlessS` — written once, running over any instance.
+`whenS`/`unlessS` — written once, running over any instance. The
+rung below the monad is worth reaching for on purpose: a program
+written as a `Static` (the free selective — `Pure | Op | Ap | Select`,
+no `Bind`) can be READ before it runs — `leaves` lists the operations
+it may perform, `toFree` runs it the ordinary way, and `foldMap` into
+an accumulating carrier turns N leaves into one round trip.
 
 ### Your own effect
 
@@ -400,6 +405,19 @@ timer or I/O completion it was parked on. The simple top-level
 `await(k => ...)` keeps the success-only shape; `Async.await` is the
 full form.
 
+When the programs are independent, the instance can say so instead of
+the plumbing: `Par` reads `A ! Async` as one leaf of an applicative
+spine, so `Par.traverse`/`Par.sequence` — and any generic code over
+`Applicative` — run their leaves at once, while `traverse` at the
+program's own instance still sequences. `Par.map2` joins two leaves of
+different types. It has no `flatMap` by design, and `.map` on it is
+the identity comonad's (the package footgun `Monad.scala` names) —
+use `map2` or the instance. For a FLAT sequence of same-typed programs on the JVM,
+`parAll`/`parTraverse` (one fiber per leaf, joined in order) are
+measurably cheaper; `Par` is for spines with leaves of different
+types and for code that never heard of `Async`
+(theory ch. 12, specs/applicative-static.md).
+
 Blocking is evidence-gated (`CanBlock`, given on JVM/Native only): on
 JS the SAME programs run through the event loop by
 `Async.runAsync(prog): Future[A]`, and a blocking join is a compile
@@ -413,8 +431,10 @@ per fiber on Native; the cats-effect and ZIO runtimes plug in as
 Scheduler instances from the interop modules).
 
 The combinators are cross-platform: `spawn`, `par` (pairs by
-completion callbacks; a child failure fails the pair and cancels the
-sibling), `race` (first SUCCESS wins and cancels both; two failures
+completion callbacks; a child failure fails the pair — and cancels the
+sibling when the failure is on the LEFT: a right-side failure is not
+observed until the left finishes, measured and filed as
+`par-right-failure-waits` in BUGS.md), `race` (first SUCCESS wins and cancels both; two failures
 fail the race instead of hanging), `timeout`, `sleep` (an Await on
 the platform `Timer` — a sleeping virtual thread, setTimeout, a
 thread), `bracket`. One shared-source Await suite runs on the JVM,

@@ -2165,6 +2165,72 @@ first seen survives. The old code displaced it, because `sorted` is
 stable and the newcomer was consed at the head. Same scores either
 way; the new answer does not move when the corpus is re-ordered.
 
+## 9i. The rung below the monad — what an applicative spine costs
+
+Two new carriers (specs/applicative-static.md) trade power for
+visibility: `Par` reads `A ! Async` as one leaf of an applicative
+spine so the leaves may run at once, and `Static` is the free
+selective, a program whose operations can be listed before it runs.
+Both were measured against what they replace, and both tables below
+are matched pairs — this section was written twice because the first
+cut of each paired unlike things.
+
+**`Par` — eight trivial leaves, `-f 3 -prof gc`, three rounds:**
+
+| lane | µs/op | B/op |
+|---|---|---|
+| bracketPar8 — the idiom bracket at `Par`, 7 joins | 52.19–52.40 | 11 401–11 510 |
+| handNested8 — 7 `Async.par` calls written out | 52.25–53.10 | 10 503–10 704 |
+| parApplicative8 — `Par.sequence` (generic `traverse`) | 59.12–61.93 | 14 355–14 594 |
+| parAllFlat8 — `parAll`, one fiber per leaf, flat | 9.50–11.75 | 4 195–4 200 |
+| sequential8 — `traverse`, no fibers | 0.35–0.42 | 3 840 |
+
+The first two lanes are THE pair: same seven joins, same leaves, same
+answer, differing only by the carrier. **1.003 and 0.983** across the
+rounds that have both — the carrier is inside the noise, and the
+prediction written before measuring (within 10%) holds with room. The
+honest residue is in the bytes, about 100–140 B per join for the two
+closures the instance adds.
+
+The other two lanes answer a different question and must not be read
+as a verdict on the first: both nested lanes cost about **5×**
+`parAll`, because `app` is pairwise — N leaves are N joins and 2N
+fibers, where `parAll` spawns N and joins them in order. The extra 13%
+from bracketPar8 to parApplicative8 is generic `traverse` building its
+Vector element by element. So: flat sequence of same-typed programs on
+the JVM → `parAll`; a spine with leaves of different types, or generic
+code that never heard of Async → `Par`, where the alternative is not
+`parAll` but running sequentially.
+
+**`Static` — a thousand leaves, prebuilt against prebuilt:**
+
+| lane | µs/op | B/op |
+|---|---|---|
+| staticLeaves — READ the spine, do not run it | 14.45 | 101 048 |
+| monadicPrebuilt — run the ordinary monadic program | 46.76 | 475 088 |
+| staticToFree — convert the spine and run it | 80.66 | 843 049 |
+| monadicBuildAndRun — build and run (context) | 57.98 | 641 158 |
+
+Asking what a program will do costs a third of doing it. Running one
+through `Static` costs **1.72×**, against a prediction of 1.3× — 
+**refuted**, and the bytes agree at 1.77×. The prediction's error is
+the instructive part: it said "each `Ap` becomes a right-nested
+`Bind`, the shape `resume` is fastest on" and treated the conversion
+as free. `toFree` materialises a SECOND TREE, and the residue is that
+tree's nodes and closures, ~368 B per leaf.
+
+Reading the bytes did find one unearned node: the first `toFree`
+wrapped both sides of an `Ap` in a `Delay`, and the right side is a
+leaf in every spine a fold builds. Earning it took 899 105 → 843 049
+B/op, exactly 56 B per leaf — one `Delay` and its thunk — and 84.25 →
+80.66 µs. The 10 000-deep right-nested spine the fallback exists for
+is now a test.
+
+**The conclusion both tables point at**: neither carrier is a faster
+way to do the same thing. `Par` buys concurrency where the code is
+generic, `Static` buys a list of effects and a batch where the program
+must be read. Priced honestly, each costs something for what it buys.
+
 ## 10. The text stack — lex, parse, reparse, codecs
 
 Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.
