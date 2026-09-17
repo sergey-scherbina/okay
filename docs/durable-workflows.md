@@ -158,6 +158,8 @@ Worker[String, String, Wf.Next[String, String], Pure, Async](
 | `Waiting(on)` | a signal or a child; somebody else's move |
 | `Continued(n)` | it opened a new chapter, `n` in this drive — call again |
 | `Busy(owner)` | another worker holds the lease; nothing was driven |
+| `Failed(why)` | the drive threw and `isolate` caught it; nothing journalled, the run stands |
+| `Incompatible(why)` | this code cannot replay history it accepted — a bad deploy |
 | `Broken(why)` | the journal cannot be folded — and `why` names a LINE |
 
 ## When a program changes under a running journal
@@ -174,6 +176,11 @@ Two things happen, and both are deliberate.
   Mismatch(0,booking/2,booking/1) after 1 answer(s);
   this program is at Booking.scala:31 asking nights?
   ```
+
+  A deploy that keeps the NAME and changes the code has the other
+  failure: the fold accepts every record and the BODY refuses one.
+  That is `Progress.Incompatible`, and it is what `patch` exists to
+  avoid — see below.
 
   Nothing travels in the journal to make that possible — the reader
   replays the part it DID accept and reports where its own program is
@@ -373,7 +380,23 @@ Worker(..., isolate = Some(Worker.isolating))
 and a failing run comes back as `Progress.Failed(why)` beside the
 others instead of taking them with it. Nothing was journalled, so the
 run is where it was and the next pass asks again — `Failed` is "not
-now", where `Broken` is "this journal cannot be folded".
+now".
+
+**Three verdicts, and the difference between them is what to do:**
+
+| | what happened | what helps |
+|---|---|---|
+| `Failed` | an activity threw | come back later; the run is untouched |
+| `Incompatible` | the code threw while replaying history it ACCEPTED | a person: fix the code, or retire the run |
+| `Broken` | the journal itself cannot be folded | a person: damage, or a foreign program |
+
+`Incompatible` is separated from `Failed` on purpose, and the reason
+is the discipline the whole design rests on: replay is deterministic,
+so a program that throws on its own accepted history throws again on
+every pass, for ever. Reporting that as "we will retry" is worse than
+saying nothing. The two are told apart without guessing — this one
+throws while the place is being REBUILT, before any question is
+asked.
 
 It is a parameter and not a default because catching belongs to a
 concrete row and a worker's `G` is abstract. That is the same rule the

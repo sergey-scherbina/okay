@@ -252,9 +252,24 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
         // position — so looking now costs nothing extra: the drive
         // needed them anyway.
         val d = dialogue(id)
-        d.standing.up[G].flatMap:
-          case Left(stopped) => broken(d, stopped)
-          case Right((p, at)) => driving(id, 0, Resume.Held(d, p, at))
+        // REBUILDING THE PLACE IS WHERE A BAD DEPLOY SHOWS
+        // (worker-incompatible, 2026-09-17), and it is separable from
+        // an activity failing WITHOUT GUESSING: this throw happens
+        // while the program is being run over history it ACCEPTED,
+        // before any question is asked. Replay is deterministic by
+        // the `Replayable` discipline, so it will throw on every pass
+        // for ever -- calling that `Failed` would promise a retry
+        // that cannot help. It needs `isolate` for the same reason
+        // `tick` does: catching belongs to a concrete row.
+        val look: Either[Throwable, Either[Dialogue.Stopped,
+                    (Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
+          isolate match
+            case None => d.standing.up[G].map(Right(_))
+            case Some(iso) => iso(d.standing.up[G])
+        look.flatMap:
+          case Left(e) => pure(Worker.Progress.Incompatible(e.toString))
+          case Right(Left(stopped)) => broken(d, stopped)
+          case Right(Right((p, at))) => driving(id, 0, Resume.Held(d, p, at))
 
   private def driving(id: String, chapters: Int,
                       from: Resume.Held[Wf.Ask[Q], Wf.Ans[A], R, F])
@@ -424,6 +439,7 @@ object Worker:
     case Progress.Continued(n) => Statuses.State.Waiting(s"continuing:$n")
     case Progress.Busy(who) => Statuses.State.Waiting(s"busy:$who")
     case Progress.Failed(why) => Statuses.State.Broken(s"threw: $why")
+    case Progress.Incompatible(why) => Statuses.State.Broken(s"cannot replay: $why")
     // the status line now names a LINE, not just an offset
     case Progress.Broken(d) => Statuses.State.Broken(d.toString)
 
@@ -446,6 +462,17 @@ object Worker:
      * "not now", not "broken". A journal that cannot be folded is
      * `Broken`; this is an activity that failed. */
     case Failed(why: String) extends Progress[Nothing]
+    /**
+     * THE PROGRAM THREW WHILE REBUILDING ITS OWN PLACE: it cannot
+     * replay history it accepted. Distinct from `Failed` on purpose —
+     * replay is deterministic, so this happens again on every pass,
+     * and "we will retry" would be a lie. Distinct from `Broken` too:
+     * the JOURNAL is readable, the CODE is what refuses it, which is
+     * what a bad deploy looks like from here. A person has to choose
+     * between fixing the code and retiring the run; nothing a worker
+     * does will help.
+     */
+    case Incompatible(why: String) extends Progress[Nothing]
     /** the journal could not be folded, and `why` says where in the
      * CODE this program stands as well as where in the log the
      * trouble is */
