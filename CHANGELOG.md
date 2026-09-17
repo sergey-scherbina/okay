@@ -1,5 +1,44 @@
 # Changelog
 
+## static-foldmap-stack-safe - the cast the backlog expected was not needed
+
+`Static.foldMap` was the one door of the free selective that recursed
+on the host stack: it folded 5 000 leaves and overflowed at 10 000.
+The BACKLOG entry predicted it "needs the existential reassembly cats
+does with internal casts, which the no-casts rule says must be
+earned". It does not.
+
+`Args[F, T, C]` is a type-aligned list of what is LEFT to apply, and
+its constructors carry the alignment: `Done` exists only at
+`Args[F, C, C]`, and consing an argument of type `X` onto an
+`Args[F, R, C]` yields an `Args[F, X => R, C]`. Matching refines the
+types, so the walk back up is ordinary typed code in two
+tail-recursive loops.
+
+THE FIRST VERSION STILL OVERFLOWED AT THE OLD DEPTH, and that is the
+part worth keeping. Walking down an `Ap`'s FIRST component is the
+obvious axis and the wrong one: `traverse`'s `foldLeft` builds
+`Ap(Ap(Pure(g), acc), leaf)`, so two steps down reach `Pure(g)` and
+the whole accumulator - the deep thing - is pushed as an ARGUMENT and
+folded by an ordinary recursive call. The stack came back by another
+road, and a 50 000-leaf test said so rather than a guess. The answer
+is a third `Args` case: `Ap(Pure(g), a)` is not an application to walk
+past, it is "fold `a`, then map by `g`", which lets the walk continue
+INTO the accumulator. Sound because a `Pure` performs nothing, so
+running `a` first reorders no effects.
+
+Two `@unchecked` type tests remain and are the same claim
+`Free.resume`'s callers make: three cases, the CLASS test is total,
+and the type arguments are the ones the constructors guaranteed. The
+ascription is needed rather than a constructor pattern because `x` and
+`r` must be NAMED - the match refines `T` to `x => r` but `g` is still
+written `G[T]`, and `app` cannot find its `F[A => B]` shape through
+the alias. A helper taking the pieces would work and would cost the
+`@tailrec`, which is the whole point.
+
+50 000 leaves fold now, the depth at which the RECURSIVE walk of
+`leaves` used to die.
+
 ## continuations-book - the working book, 28 chapters, complete
 
 Landed as a5020009, 2e4ef2af, 5780a36a (ch14-16), d1a3550a, 0fb88067
