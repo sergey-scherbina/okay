@@ -1,5 +1,45 @@
 # Changelog
 
+## unwrap-glyph - stage 0, the spec: one glyph, one meaning
+
+specs/unwrap-glyph.md (spec only; no code moved). Three different `?`
+reach a value in this library, and on `A ! F` all three are
+candidates: Throws' (the value, or the error thrown), the Effects peek
+(the nearest answer, through a Handler), and the direct mark - which
+was RETIRED from the glyph for exactly that reason and spelled `.!?`
+ever since.
+
+THE INCIDENT THAT OPENED THE FILE. Writing stage 3's tests for
+specs/applicative-static.md I used `.?` as the direct mark, because
+specs/direct-macro.md's Interface section still documents it as one
+while that same file's Decisions section says it was retired. The
+block compiled, ran, and gave the right answers - binding through
+auto-coloring, with the `.?` doing nothing at all. It was found by a
+fork COUNT of zero and a dump of the macro's input.
+
+THE MECHANISM, and it is not cosmetic: `throws` is an `into opaque`
+type with a `Conversion[A, A throws E]`, so EVERY value is an `A
+throws Nothing` and `x.?` type-checks on anything, as a silent no-op.
+Direct.scala's comment calls the collision an ambiguity; it is worse
+than one, because an ambiguity is a compile error and this is silence.
+
+The spec argues the three are ONE IDEA - unwrap here, propagate
+outward, which is Rust's `?` - and stages the way to one glyph:
+refuse `E = Nothing` on the no-arg Throws `?` (closing the no-op),
+rename the Effects peek to `peek` (a name that admits it runs
+effects), give the glyph to the mark, retire `.!?`. Stage 1 is the
+gate because it is the only stage that can surprise: it changes a
+public extension's applicability across ninety modules. Stages 2 and
+4 stand on their own if it refuses.
+
+COUNTED BEFORE PREDICTING, and each one read rather than grepped:
+seventeen lines carry a no-arg `.?`. Three are Throws' and every one
+has a real `E` (`String throws Safe`, `Int throws Unsafe` twice), so
+the prediction is that NO call site moves. The other fourteen are the
+peek, and not one of them is outside the core's own tests and
+benchmarks - which is most of the argument for which spelling gives
+way.
+
 ## ui-live-js — the browser's client beside the protocol
 
 specs/ui-html.md stage 2, landed as aa0411b8. `LiveJs` — 226 lines of
