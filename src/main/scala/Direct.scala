@@ -217,9 +217,12 @@ object Direct:
    * name bound earlier in the same run is emitted as spawn-all-then-
    * join-all: N fibers started, then N joins in the order written.
    * A leaf qualifies when its OWN type is `X ! Async` — exactly
-   * Async, before the mark narrows it into this block's row — so a
-   * block over `Async + Throws` still parallelises its Async leaves,
-   * and anything else simply ends the run.
+   * Async, read BEFORE the mark narrows it into this block's row — so
+   * a block over `Async + Throws` parallelises its Async leaves too,
+   * and anything else simply ends the run. (v1 could not: it decided
+   * on the COMPILED leaf, by which time `RowLift.into` had lifted it,
+   * and the import quietly did nothing in a wider row.
+   * direct-parallel-wider-rows fixed that.)
    *
    * WHY THE FLAT SHAPE AND NOT THE APPLICATIVE ONE. `Par`
    * (specs/applicative-static.md, stage 1) joins leaves PAIRWISE, and
@@ -1273,13 +1276,14 @@ object Direct:
      * asking the type is both simpler and more honest than asking the
      * syntax.
      *
-     * THE LIMIT THIS PUTS ON v1, and it is a real one: for a block
-     * over a WIDER row the compiled leaf has already been narrowed
-     * (`RowLift.into`), so its type is `X ! (Async + …)` and it is
-     * not spawnable. The import therefore does nothing in a block
-     * over `Async + Throws`, quietly. Stated here, in the opt-in's
-     * doc comment, and pinned by a test (BACKLOG:
-     * direct-parallel-wider-rows).
+     * THE LIMIT THAT PUT ON v1 IS GONE (direct-parallel-wider-rows):
+     * for a block over a WIDER row the compiled leaf has already been
+     * lifted by `RowLift.into`, so its type is `X ! (Async + …)` and
+     * it is not spawnable — the import used to do nothing there,
+     * quietly. `markedProgram` below reads the mark's own argument
+     * first, which is the program the author wrote, and only falls
+     * back to the compiled leaf. The compiled leaf remains the road
+     * for a mark shape the walk cannot take apart.
      */
     def spawnableLeaf(rhs: Term): Option[(Term, TypeRepr)] =
       if !hasMark(rhs) then None

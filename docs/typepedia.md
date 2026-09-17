@@ -335,11 +335,13 @@ same material with the measurements attached.
   as N spawns then N joins — `parAll`'s FLAT shape, not `Par`'s
   pairwise one, because a macro holds the whole group and so never has
   to be pairwise. Needs a `Scheduler` at the call site (a clear macro
-  error otherwise). Limits, both pinned by tests: a leaf must be
-  exactly `X ! Async` after compilation, so a block over a wider row
-  gets nothing quietly (BACKLOG `direct-parallel-wider-rows`); and the
-  leaves interleave and a failure is seen at its own join, which is
-  `parAll`'s bargain, not a new one.
+  error otherwise). A leaf must be exactly `X ! Async`, read BEFORE
+  the mark narrows it into the row, so a block over a wider row
+  parallelises its Async leaves too and anything else ends the run
+  (it got nothing, quietly, until direct-parallel-wider-rows). What
+  you take on: the leaves interleave, and a failure is seen at its own
+  join rather than cancelling the siblings, which is `parAll`'s
+  bargain and not a new one.
 - **`Static[F, A]`** (Static.scala) — the FREE SELECTIVE: `Pure | Op |
   Ap | Select`, a program with no `Bind` in it, so its structure can
   be read before it runs. **`leaves`** lists every operation it MAY

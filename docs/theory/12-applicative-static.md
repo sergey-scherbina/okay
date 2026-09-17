@@ -380,10 +380,14 @@ tool that writes the code is where the cheap form belongs.
 Two things it does not do, both pinned by tests rather than left to
 be discovered. Without the import nothing changes at all: the
 sequential emission allocates 1 344.002 B/op against master's
-1 344.001, identical to the digit. And a block over a row WIDER than
-`Async` gets nothing, quietly, because by the time the macro can ask,
-the leaf has been lifted into the row and is no longer spawnable
-(BACKLOG, `direct-parallel-wider-rows`).
+1 344.001, identical to the digit. And a bind whose leaf is not an
+`Async` program ends the run and stays sequential, which is how a
+block over a wider row parallelises its `Async` leaves and nothing
+else. That last part took a second lane: the first version decided on
+the COMPILED leaf, by which time the row lift had already widened its
+type, so the import did nothing at all in a wider row. Reading the
+mark's own argument — the program the author actually wrote — is what
+fixed it.
 
 ## What this does not claim
 
