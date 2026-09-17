@@ -30,37 +30,20 @@
   stage 0 landed), specs/delim-safety.md (stage 0 landed) and
   specs/delim-diagnostics.md (not started). The order below is by
   value per day, and the reason for it is in each entry.
-  NEXT: `dialogue-continue-as` (bounded history), then the retirement
-  tool stage 2 still owes. `wf-direct-door` LANDED 2026-09-17. `wf-durable-journal` LANDED 2026-09-17:
-  a durable program now has a clock and a changeable branch.
-  `dialogue-asks` LANDED 2026-09-17 and carried stage 2's `patch` with
-  it — one mechanism, as predicted. (It WAS first because `dialogue-patch`
-  turns out to DEPEND on it: `patch(id)` is a question the library
-  answers from the journal, not one the user's oracle answers, which
-  is the same design decision `dialogue-nondeterminism` owes (the
-  shape of the question type). Doing patch first would decide it by
-  accident.)
-  `delim-forward-not-throw` LANDED 2026-09-17 with a POSITIVE verdict,
-  and it did cancel later work: region types are no longer needed for
-  the nesting case.
-  LANDED 2026-09-17: `delim-diagnostics` (the machine names the capture,
-  the prompt, the installed delimiters and the rule) and
-  `dialogue-replay-discipline` (the sentence replay rests on is a type;
-  the inductive encoding was refuted by a spike, subtyping works).
-  STOPPING CRITERION, stated so the arc does not become a workflow
-  engine by momentum: the work is done when an ordinary engineer can
-  write a waiting process, make a NORMAL mistake in it, and get a
-  legible message instead of a puzzle. The first three items below are
-  that; everything after is operations around the model, and waits for
-  a consumer who needs them.
+  THE OPERATOR ASKED FOR THE FULL ENGINE (2026-09-17), which lifts the
+  stopping criterion this entry used to carry: stage 4 is now the work,
+  its architecture is in specs/durable-workflow.md, and the lane order
+  is in the queue below. LANDED so far, all gated: continuations-audit,
+  dialogue-hardening, delim-diagnostics, dialogue-replay-discipline,
+  delim-forward-not-throw, delim-patterns-in-modules, dialogue-asks,
+  wf-durable-journal, wf-direct-door, workflow-suspended-driver,
+  workflow-timers.
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
   and the lane order are in specs/durable-workflow.md, stage 4; the
   keystone (`workflow-suspended-driver`) has LANDED, and the rest hang
   off it:
-  - workflow-timers — a due-time topic and a poller that appends the
-    answer when a deadline passes
   - workflow-visibility — a projection of the journal topic into a
     status index (id, program, standing question, waiting-until)
   - workflow-worker — a loop over a partition with a lease per id

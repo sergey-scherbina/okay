@@ -1,5 +1,37 @@
 # Changelog
 
+## workflow-timers - durable deadlines, outside the journal
+
+When a drive returns `Waiting(Until(t))` the run is OVER: nothing is
+held in memory, no thread is parked, and the journal says exactly
+where the program stands. What was missing is somebody to come back at
+`t`. `Timers` is that — a compacted keyed topic whose key is the
+dialogue id and whose value is the instant it waits for: `arm`,
+`disarm`, `armed`, `due(now)`.
+
+TWO DESIGN CHOICES, both of which are the architecture's own rules
+made concrete.
+
+- **A deadline is NOT in the journal**, because it is operational data
+  ABOUT a run rather than part of it. There is a test for what that
+  buys: lose the entire timer topic and every workflow is still
+  exactly where its journal says it is — they simply sleep until
+  somebody arms them again, and re-arming is all it takes.
+- **It hands back IDS and appends nothing.** It could append the
+  `Elapsed` answer itself, and then it would need every sleeping
+  dialogue's Schema, program name and body. That is the worker's
+  business, not a clock's.
+
+Cost stated rather than discovered: `due` scans the topic, bounded by
+what compaction left, exactly as `Snapshots.latest` is. Honest for
+thousands of sleepers, wrong for millions; the shape that fixes it is
+a time-bucketed key, and it is a change to this file alone.
+
+One thing worth checking rather than assuming, and it cost five red
+tests: `Snapshots.putValue` writes PLAIN CBOR, with no `Typed`
+envelope. The first cut tried to unwrap one, and every timer read as
+absent.
+
 ## workflow-suspended-driver - the engine's keystone
 
 The operator asked for the full engine. Its architecture turns on one

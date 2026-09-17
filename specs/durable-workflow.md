@@ -437,7 +437,7 @@ rather than a rewrite.
 | lane | what it adds | depends on |
 |---|---|---|
 | `workflow-suspended-driver` | **LANDED 2026-09-17**: `Step`, `Wait`, `Wf.sleep`, `awaitSignal`, `awaitChild`, `Wf.advance`, and `Dialogue.runUntil`/`runWorkflow` | — |
-| `workflow-timers` | a due-time topic and a poller that appends the answer when a deadline passes | the driver |
+| `workflow-timers` | **LANDED 2026-09-17**: `Timers`, a compacted keyed topic of deadlines — `arm`, `disarm`, `armed`, `due(now)`. It hands back IDS and appends nothing: turning an id into an `Elapsed` needs the dialogue's schema, program and body, which is the worker's business and not a clock's | the driver |
 | `workflow-worker` | a loop over a partition with a lease per id: pick up what is runnable, advance it, release | the driver, visibility |
 | `workflow-visibility` | a projection of the journal topic into a status index (id, program, standing question, waiting-until, last movement) | the driver |
 | `workflow-signals` | the API that appends a signal to a named channel, and the program's `awaitSignal` | the driver |
