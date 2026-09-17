@@ -1,6 +1,0 @@
-feature/continuations-audit 2026-09-17T05:15:34Z
-agent: claude-code
-heartbeat: 2026-09-17T05:15:34Z
-status: in-progress
-done-so-far: inventory read (Delim, Cont, patterns, persist, specs)
-next: probe the unpinned interactions (bracket/Throws/nested-run/effect-order under capture)
