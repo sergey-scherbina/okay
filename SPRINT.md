@@ -55,12 +55,15 @@
   a consumer who needs them.
 
 ## Queue
-- dialogue-nondeterminism — what is LEFT of stage 1 after
-  `dialogue-replay-discipline` landed the constraint: a clock, ids and
-  randomness as journalled questions, and `perform`. Decide the shape
-  of the question type before writing any of it.
-- dialogue-continue-as, workflow-operations — stages 3 and 4, on a
-  consumer's trigger, not on momentum.
+- dialogue-continue-as, workflow-operations — stages 3 and 4, ON A
+  CONSUMER'S TRIGGER, NOT ON MOMENTUM, and that is a decision rather
+  than a shrug: the arc's stated stopping criterion is met (an
+  ordinary engineer can write a waiting process, make a normal
+  mistake, and get a legible message), so bounded history and the
+  engine's operations wait for somebody who needs them. The one item
+  stage 2 still owes with no trigger needed is a RETIREMENT tool:
+  which program versions are still present in a topic, so a `patch`
+  branch can be deleted with evidence rather than hope.
 
 ### Earlier queue notes
 
