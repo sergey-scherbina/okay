@@ -1,6 +1,0 @@
-okay-wt-applicative-static 2026-09-17T20:23:27Z
-agent: claude-applicative-static
-heartbeat: 2026-09-17T20:23:27Z
-status: in-progress
-done-so-far: worktree created
-next: write specs/applicative-static.md, SPRINT queue entry, gate, ff-merge
