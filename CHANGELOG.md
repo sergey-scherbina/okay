@@ -7,7 +7,7 @@ since the beginning and used one rung of it: `Selective` had no
 consumer outside its own file, `traverse` over `A ! F` could only
 sequence because its only instance was the Monad-derived one, and
 nothing could list a program's effects without running it. Landed as
-1397d376 (specs/applicative-static.md, stages 1, 2 and 4; stage 3 is
+2ec1caa6 (specs/applicative-static.md, stages 1, 2 and 4; stage 3 is
 still gated on these Results).
 
 The ladder is a ladder of VISIBILITY. An applicative program is a pure

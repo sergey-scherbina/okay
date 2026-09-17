@@ -84,17 +84,22 @@
   2 (`ui-live-js`, the browser's half of the live road) only when
   okay-watch's specs/ui.md reaches its stage 3.
 - applicative-static — the static half of a program
-  (specs/applicative-static.md, stage 0 the spec LANDED 2026-09-17).
-  `Selective` has had no consumer since it was written; `traverse` over
-  `A ! F` can only sequence; nothing lists a program's effects without
-  running it. Four stages, each with its deciding test in the spec:
-  1 `Par` (parallel applicative over Async, `parTraverse`), 2 `Static`
-  (free selective: `leaves` before running, `toFree` to run, `foldMap`
-  for batching), 3 the `direct` macro emitting applicative structure
-  for independent binds — GATED on 1 and 2 having Results — and 4 the
-  theory chapter (S/K/I as Reader, Turner's combinators as the history
-  of `Func` and `Fuse`). Stage 1 first: under 200 lines, one
-  rendezvous test that cannot pass sequentially.
+  (specs/applicative-static.md). STAGES 0, 1, 2 AND 4 HAVE LANDED
+  (2026-09-17, 2ec1caa6): `Par` (the parallel applicative, wrapper
+  free within noise), `Static` (the free selective — leaves, toFree,
+  foldMap; toFree 1.72x against a predicted 1.3x, refuted and
+  recorded), and theory ch. 12 with the tutorial/typepedia/guide/
+  benchmarks entries. ONLY STAGE 3 IS LEFT — the `direct` macro
+  emitting applicative structure for independent binds — and its gate
+  is now open: the Results it was waiting for exist. Read them first;
+  they say the instance to emit against is a semantic choice
+  (`Par` interleaves, the row's own instance only exposes shape), and
+  that the applicative spine costs ~5x a flat `parAll`, which bears
+  on whether the macro should emit it at all.
+  What ALSO came out of it, for whoever picks next: BUGS.md
+  `par-right-failure-waits` (a right-side failure waits out the
+  healthy sibling — 3.017 s vs 0.0007 s) and BACKLOG
+  `static-foldmap-stack-safe`.
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
   and the lane order are in specs/durable-workflow.md, stage 4; the
   keystone (`workflow-suspended-driver`) has LANDED, and the rest hang
