@@ -1,0 +1,6 @@
+okay-wt-validated 2026-09-17T22:24:09Z
+agent: claude-applicative
+heartbeat: 2026-09-17T22:24:09Z
+status: in-progress
+done-so-far: worktree created
+next: implement specs/validated.md — Validated + Semigroup, then okay-conf as the first consumer
