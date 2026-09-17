@@ -125,18 +125,78 @@ object Static:
     def foldMap[G[_]: Applicative](nt: F ==> G): G[A]
 ```
 
-### Stage 3 — `direct` emits applicative structure (GATED on 1 and 2)
+### Stage 3 — `direct` runs independent binds at once (DESIGN SETTLED)
 
-No new public name. Inside `direct[F] { ... }`, a run of `val x = m.?`
-binds in which no later expression mentions an earlier bound name is
-emitted through `Applicative[F].app` instead of a `flatMap` chain, when
-an `Applicative[F]` is in lexical scope; otherwise the emission is
-unchanged. The open design question is which instance: the row's own
-(sequential, so nothing gained but the static shape) or `Par` for
-`F = [A] =>> A ! Async` (a local given outranks the companion's Monad,
-so the user chooses at the block). The spec does not decide this;
-stage 3 opens only after stages 1 and 2 have Results, and its first
-step is a Design entry here that reads those Results.
+```scala
+object Direct:
+  /** whether a direct block may run independent binds together */
+  sealed trait Binds
+  object Binds:
+    case object Sequential extends Binds   // the default, in the companion
+    case object Parallel extends Binds
+    given Sequential.type = Sequential
+
+  /** OPT IN: `import okay.Direct.parallelBinds.given` */
+  object parallelBinds:
+    given Binds.Parallel.type = Binds.Parallel
+```
+
+No new entry point and no new combinator. `direct[F] { ... }` takes
+the mode the way it already takes `Deferral` — a `using` parameter
+with a default given in the companion and an opt-in given in an object
+you import, which is the shape this macro already uses and which was
+already debugged (a default ARGUMENT duplicates the block; a given at
+the base type says nothing).
+
+Under `Binds.Parallel`, a MAXIMAL RUN of two or more consecutive
+`val x = m.?` statements whose right-hand sides do not mention a name
+bound earlier in the same run is emitted as spawn-all-then-join-all:
+
+```scala
+// written
+val u = fetchUser(id).?
+val o = fetchOrders(id).?
+Profile(u, o)
+
+// emitted
+async(Async.spawn(fetchUser(id))).flatMap(fu =>
+async(Async.spawn(fetchOrders(id))).flatMap(fo =>
+fu.joinAsync.flatMap(u => fo.joinAsync.flatMap(o => pure(Profile(u, o))))))
+```
+
+A leaf qualifies when its OWN type is `X ! Async` — exactly Async,
+before the mark narrows it into the row — so a block over
+`Async + Throws` still parallelises its Async leaves. Anything else in
+the run ends it, and the emission for the rest is unchanged.
+
+**THE DESIGN QUESTION THE SPEC DEFERRED, ANSWERED BY THE RESULTS.**
+The original text offered two instances to emit `app` against and did
+not choose. Both are now refused, and the Results say why.
+
+- **The row's own instance is a pure loss.** `Monad.app` is
+  `f.flatMap(g => fmap(a, g))` (Monad.scala), so emitting `app` for
+  `A ! F` builds the same binds plus one `map` node per join. Nothing
+  is gained but a shape nobody reads at run time.
+- **`Par` is the right semantics and the wrong SHAPE.** Stage 1
+  measured the applicative spine at about 5x a flat `parAll` at eight
+  leaves, because `app` is pairwise: N leaves are N joins and 2N
+  fibers. A macro emits a whole GROUP at once, so it is in the one
+  position that does not have to be pairwise — and the flat shape is
+  the cheap one. Emitting `Par.app` chains would have taught the
+  compiler to write the expensive form.
+
+So stage 3 emits neither `app` nor `Par`: it emits the flat join
+directly, out of `Async.spawn` and `joinAsync`, which are public,
+typed per leaf (each fiber keeps its own element type, so nothing
+casts) and already cross-platform. `Par` remains the door for code
+that is generic over `Applicative`; the macro is the door for a block
+whose independence a reader can see.
+
+**What it inherits, stated rather than discovered later**: spawn-all-
+then-join-in-order is `parAll`'s semantics, so a failure surfaces when
+the join reaches it and the healthy siblings are not cancelled. Same
+as the door that has been shipping; `par`'s own asymmetry
+(`par-right-failure-waits`) is not in this road at all.
 
 ### Stage 4 — the chapter
 
@@ -198,10 +258,27 @@ Stage 2:
       Results. Recorded in src/jmh/history.tsv.
 - [x] All existing tests stay green.
 
-Stage 3 (items written when its Design entry lands; the acceptance test
-is already known): two independent `.?` binds in one block run
-concurrently under `Par` and sequentially under the row's own instance;
-a dependent pair stays a `flatMap` under both.
+Stage 3:
+- [ ] Without the import, NOTHING changes: every existing direct test
+      passes untouched and the emitted tree is the same.
+- [ ] With it, two independent `.?` binds run CONCURRENTLY — proven by
+      a rendezvous each leaf must reach, not by a clock, exactly as
+      stage 1's proof is.
+- [ ] A DEPENDENT pair stays sequential under the same import: the
+      second rhs mentions the first bound name, so the run ends. The
+      test asserts it by having the second leaf need the first's
+      answer, which cannot even be spawned early.
+- [ ] Answers and binding order are unchanged either way (the same
+      block, both modes, same result).
+- [ ] A leaf that is not exactly `X ! Async` ends the run and the rest
+      compiles as before (a State leaf between two Async ones).
+- [ ] A run of three or more emits ONE flat group, N spawns then N
+      joins — asserted on the emitted shape, not inferred from timing:
+      a counter in a Scheduler says how many fibers were forked.
+- [ ] Cost, predicted before measuring: at 8 independent leaves the
+      parallel block is within 20% of `parAll` on the same leaves (it
+      is the same shape), and the sequential block is unchanged to the
+      byte against master.
 
 Stage 4:
 - [ ] The chapter exists, is in the index, and every `file:line` it
