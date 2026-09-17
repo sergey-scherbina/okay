@@ -37,7 +37,11 @@
   dialogue-hardening, delim-diagnostics, dialogue-replay-discipline,
   delim-forward-not-throw, delim-patterns-in-modules, dialogue-asks,
   wf-durable-journal, wf-direct-door, workflow-suspended-driver,
-  workflow-timers.
+  workflow-timers, workflow-worker, workflow-visibility,
+  workflow-signals, workflow-activity-row, workflow-retries,
+  workflow-docs, workflow-cancel.
+  WHAT IS LEFT of stage 4: workflow-children, dialogue-continue-as,
+  and the two advisory ones (workflow-lease, workflow-retire).
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
@@ -46,7 +50,6 @@
   off it:
   - workflow-lease — ADVISORY, after visibility: `expect` already makes
     two workers safe, so this only makes collisions rare
-  - workflow-cancel — a cancel record the program observes
   - workflow-children — a child keyed under its parent
   - dialogue-continue-as — bounded history
   - workflow-retire — which program versions are still in a topic, so

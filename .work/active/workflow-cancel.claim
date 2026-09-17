@@ -1,6 +1,0 @@
-feature/workflow-cancel 2026-09-17T12:58:11Z
-agent: claude-code
-heartbeat: 2026-09-17T12:58:11Z
-status: in-progress
-done-so-far: -
-next: cooperative cancellation — a Sys question the worker answers from a cancel topic, journalled

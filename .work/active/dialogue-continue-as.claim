@@ -1,0 +1,6 @@
+feature/dialogue-continue-as 2026-09-17T13:28:30Z
+agent: claude-code
+heartbeat: 2026-09-17T13:28:30Z
+status: in-progress
+done-so-far: -
+next: bounded history — a Continued(seed) record that supersedes everything before it
