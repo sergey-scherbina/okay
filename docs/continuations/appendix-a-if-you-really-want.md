@@ -195,6 +195,12 @@ at **a deploy**. Which is precisely the axis a durable workflow exists
 to survive. Spark's problem is space; a workflow's problem is time, and
 the same mechanism answers one and not the other.
 
+**But read that as a fact about Java serialisation, not about the
+idea.** `$anonfun$foo$1` is a name the compiler invents; a designed
+format would not have that defect. See *TASTy for the code, CBOR for
+the data* below, which is this route repaired — and which fails for
+entirely different reasons.
+
 ### (b) Defunctionalise
 
 Reynolds, 1972, and it is the complete answer. Replace every function
@@ -253,6 +259,107 @@ system in a category, that is usually evidence rather than an
 opportunity.
 
 ---
+
+## TASTy for the code, CBOR for the data
+
+The strongest form of the whole question, and it repairs the exact
+defect that the lambda route was dismissed for above. That dismissal
+needs narrowing, and this section is where it happens.
+
+A closure is **code plus environment**. Give each half a stable format:
+
+| half | format | why it is the right one |
+|---|---|---|
+| the code | **TASTy** | Scala 3's typed AST, versioned, emitted beside every classfile |
+| the environment | **CBOR** | ordinary data, with a `Schema` to say its shape |
+
+Both exist in this repository — `okay-codec/Cbor.scala`, and
+`okay-staging/RuntimeStaged.scala`, which already runs
+`scala.quoted.staging.run` in production with the compiler dependency
+isolated in its own module and a documented way to switch it off.
+
+### The correction this forces
+
+The lambda-serialisation route was dismissed above because "the
+deserialising side needs the same class with the same synthetic name
+(`$anonfun$foo$1`)". That is true of **Java serialisation of a JVM
+lambda**. It is not true of the idea.
+
+`$anonfun$foo$1` is a name the compiler invents and nobody controls.
+TASTy is a designed, versioned interchange format. So the objection
+shrinks from
+
+> it dies at a deploy
+
+to
+
+> it is **forward-** but not **backward-**compatible
+
+which is a real constraint with a real window, not a wall. A claim
+about a route should not rest on the weakest implementation of it.
+
+### What it does not repair
+
+**Getting the term is the hard part, not storing it.** TASTy is emitted
+for *definitions*, at compile time. There is no TASTy for a closure
+*instance* at run time, so you cannot take an existing captured
+continuation and ask for its tree. The capture site would have to be a
+macro that reifies `'{ ... }`, which means the program must be authored
+so that the term exists at all. That is a research-grade project, not
+an afternoon.
+
+**Restore costs a compiler.** `okay-staging` is the evidence that this
+is workable and also the price list: a module that carries the
+compiler, off by default, falling back to an interpreter when
+generation fails. Seconds per restore, and a compiler on the
+production classpath.
+
+**Symbols still resolve against a classpath.** The term refers to
+`okay.Delim.pause` and to your own definitions by name. It is not a
+self-contained blob — though note that **replay is in exactly the same
+position**, so this is not a cost *relative to replay*. It is a cost
+relative to the fantasy of a program in a bottle.
+
+**The journal becomes executable.** Unchanged, and still the objection
+that ends the conversation in most organisations.
+
+**The code is pinned.** Same inversion as everywhere else in this
+appendix: an old run keeps its old term, and patching becomes a term
+migration.
+
+### The argument that actually decides it
+
+What does this buy over replay? Precisely one thing: **you do not
+re-run the prefix.**
+
+Chapter 22 measured that prefix. Forty answers, forty program steps,
+microseconds. So the trade is:
+
+> pay a **compiler at restore** (seconds) to avoid **replaying a
+> straight-line prefix** (microseconds).
+
+The benefit is inverted for the ordinary case, and that inversion —
+not any of the objections above — is why the engine does not do this.
+It becomes attractive only when replay is genuinely expensive: a
+history long enough to matter, or steps that are costly to re-derive.
+And for that case the tree already has `continueAs`, which collapses
+the history into a seed at no cost at all.
+
+### When it is nevertheless the right answer
+
+One case, and it is not about performance:
+
+> **When the code must be pinned as an audit requirement.** "Prove that
+> this run executed exactly this logic" is a question a journal of
+> answers cannot answer, because the answers do not contain the
+> program.
+
+In a regulated setting that is not an optimisation, it is the
+requirement, and then TASTy-plus-CBOR is the right shape and the
+seconds-per-restore do not matter. Note what changed: the reason to
+store the term is no longer *to restore faster*. It is *to be able to
+say what ran*. Those are different features, and only the second one
+justifies the machinery.
 
 ## And what about SKI combinators?
 
@@ -488,13 +595,18 @@ purpose than arrived at after six months.
 ## The one-paragraph answer, for when somebody asks again
 
 A continuation is a closure, and a closure is code plus captured
-values. The values serialise; the code does not, because "this code"
-means "this compiled artefact", and the whole point of a durable system
-is that the artefact changes. So the three ways to keep a position are
-to freeze the artefact (Spark), to replace the code with data you
-enumerate (BPMN, and any free applicative), or to keep only the inputs
-and run the artefact again (replay, and Temporal, and this engine).
-Everything else is one of those three wearing a different name.
+values. The values serialise easily. The code can be serialised too —
+TASTy is exactly that — but a term is only meaningful against a
+classpath and a compiler, so storing it does not give you a program in
+a bottle; it gives you a program pinned to the world it was written
+for. That is why the three ways to keep a position are to freeze the
+artefact (Spark, and TASTy-plus-CBOR, and serialised source), to
+replace the code with data you enumerate (BPMN, any free applicative,
+SKI at its limit), or to keep only the inputs and run the artefact
+again (replay, and Temporal, and this engine). Everything else is one
+of those three wearing a different name — and the deciding question is
+rarely "can it be done" but "what does it buy over re-running a
+straight-line prefix that takes microseconds".
 
 ---
 

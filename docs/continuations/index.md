@@ -432,6 +432,11 @@ actually exists, with its bill:
   DSL;
 - **replay** — which *is* defunctionalisation with one coarse tag, the
   tag being the program's name;
+- **TASTy for the code plus CBOR for the data** — the lambda route
+  repaired: a designed format instead of `$anonfun$foo$1`, with both
+  halves already in this tree. It fails for different reasons, and the
+  deciding one is that it spends a compiler at restore to avoid
+  replaying microseconds;
 - **SKI combinators** — the most general possible defunctionalisation,
   three tags instead of *n*;
 - **serialising the source** — real, and it means the source *plus its
