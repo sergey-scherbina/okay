@@ -219,13 +219,13 @@ different hat, not a third mechanism.
 runs in direct style — is the reason `!` exists, and it is the most
 practically important theorem in this book. Shown, not cited.
 
-### 17. In the effect system
+### [17. In the effect system](17-in-the-effect-system.md) ✓
 
 **Thesis.** Where a capture sits relative to a handler decides what it
 can see. Rows, handler order, and the one question to ask when a
 capture and an effect disagree.
 
-### 18. What belongs in a library, what in an application
+### [18. What belongs in a library, what in an application](18-what-belongs-in-a-library.md) ✓
 
 **Thesis.** The test is whether more than one interpreter exists.
 Recipes that pass it become effects; the rest stay call sites.
@@ -236,7 +236,7 @@ Recipes that pass it become effects; the rest stay call sites.
 
 *The half that makes the rest trustworthy.*
 
-### 19. What a capture does to everything else
+### [19. What a capture does to everything else](19-what-a-capture-does.md) ✓
 
 **Thesis.** State, resources, `try`/`finally`, exceptions and depth
 each behave differently under a capture, and all of it is pinned by
