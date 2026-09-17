@@ -1,0 +1,6 @@
+feature/delim-diagnostics 2026-09-17T07:44:32Z
+agent: claude-code
+heartbeat: 2026-09-17T07:44:32Z
+status: in-progress
+done-so-far: spec written (specs/delim-diagnostics.md), promoted to SPRINT
+next: At.here macro, prompt labels, the NoPrompt message, Paused.where

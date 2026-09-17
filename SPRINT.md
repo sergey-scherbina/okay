@@ -15,8 +15,56 @@
   none of its sinks). STAGE 4 IS DONE: the engine runs across four
   real processes, jobs by name, partials by Schema. Next is stage 5,
   failure — a worker that dies takes the run with it today.
+- continuations — making delimited control usable rather than merely
+  correct (the operator's question, 2026-09-17). THREE LANES LANDED
+  today: `continuations-audit` (the four patterns did not COMPOSE —
+  `scope`/`collecting`/`pausing` are the halves that nest, plus
+  TestDelimLimits pinning what a capture does to Resource, bracket,
+  Throws, try/finally, State and depth), `durable-dialogue` +
+  `dialogue-snapshots` (the journal in a topic, warm and cold paths),
+  and `dialogue-hardening` (four failure modes found by probing: a
+  poisoned journal, a silent mis-mapping after a deploy, a side effect
+  performed twice, two writers both accepted — plus the second machine
+  as a COMPILE error).
+  THE PLAN IS THREE SPECS: specs/durable-workflow.md (stages 0-4,
+  stage 0 landed), specs/delim-safety.md (stage 0 landed) and
+  specs/delim-diagnostics.md (not started). The order below is by
+  value per day, and the reason for it is in each entry.
+  NEXT: `delim-diagnostics` — claimed.
+  STOPPING CRITERION, stated so the arc does not become a workflow
+  engine by momentum: the work is done when an ordinary engineer can
+  write a waiting process, make a NORMAL mistake in it, and get a
+  legible message instead of a puzzle. The first three items below are
+  that; everything after is operations around the model, and waits for
+  a consumer who needs them.
 
 ## Queue
+- delim-diagnostics — FIRST because it is the error a newcomer meets
+  soonest and it currently says nothing. `At.here`, labelled prompts,
+  a `NoPrompt` that prints the capture's position, the installed
+  delimiter stack and the one-machine hint, and `Paused.where`. Owes
+  one number: DelimBenchmark's delimiter and capture lanes must not
+  move more than noise.
+- dialogue-replay-discipline — stage 1 of durable-workflow, and the
+  biggest correctness win left: `Replayable[F]` turns the sentence
+  everything rests on into a type, and `now`/`uuid`/`random`/`perform`
+  are what a real workflow cannot be written without. START WITH A
+  SPIKE: a typeclass over a row is exactly the shape that crashed
+  dotty in delim-safety (`Failure to join alternatives F and G`), so
+  prove it is expressible before designing an API around it.
+- delim-forward-not-throw — a SPIKE with a written verdict, third
+  rather than later because a positive verdict CANCELS work: if a
+  machine can reify its stack and re-emit a foreign capture outward,
+  nested machines compose and region types may never be needed.
+- dialogue-patch — stage 2: needed the moment anyone deploys twice.
+- delim-patterns-in-modules — okay-agent's Stepper and okay-llm's Cut
+  hand-roll patterns that now exist; cheap, and it is the honest test
+  of "this simplifies ordinary code".
+- dialogue-continue-as, workflow-operations — stages 3 and 4, on a
+  consumer's trigger, not on momentum.
+
+### Earlier queue notes
+
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
  rag-pgvector, persist-wire, cache-memory, each with a CHANGELOG
