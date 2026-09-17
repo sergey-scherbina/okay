@@ -1,5 +1,48 @@
 # Changelog
 
+## applicative-static - stage 0, the spec
+
+specs/applicative-static.md, landed as 0e28811f (spec only; no code
+moved). The observation it starts from: okay has the whole ladder
+Functor < Applicative < Selective < Monad in Monad.scala and uses one
+rung — `Selective` has had no consumer since it was written, `traverse`
+over `A ! F` can only sequence because its only instance is the one
+derived from the Monad, `Async.par` is not an Applicative so `traverse`
+cannot see it, and nothing lists a program's effects without running
+it.
+
+The fact behind the lane, at its true size: the function applicative
+IS SK (`pure` is K, `app` is S, `Reader.ask` is I, and `A ?=> B` with
+`provide` is the same algebra in the language's syntax); an ARBITRARY
+applicative is an idiom bracket — a pure lambda spine over effectful
+leaves — and what it cannot do (bind one effect's answer into another
+effect's body) is exactly what makes every effect known before the
+run. Turner's bracket abstraction, which Miranda ran on, splits K from
+S by "does the variable occur free in what follows", which is the
+question stage 3 asks of a `direct` block.
+
+Four stages, each with the test that decides it: `Par` (parallel
+applicative over Async, `parTraverse`, proven by a rendezvous that
+cannot complete sequentially, not by a clock), `Static` (free
+selective: `leaves` before running, `toFree` to run, `foldMap` for
+batching, shown on a synthetic Fetch), the `direct` macro emitting
+applicative structure for independent binds — GATED on the first two
+having Results, because the instance it should emit against is a
+semantic choice the spec refuses to guess — and the theory chapter.
+Predictions are written before measuring: `Par.app` within 10% of a
+hand-written `Async.par` nest, `toFree` within 1.3x of the monadic
+program at 1 000 leaves.
+
+Decided and recorded: `Par` is not a Monad (Haxl's refusal, a
+`flatMap` would silently sequence); `Free`'s own Applicative stays
+sequential (the monad–applicative consistency law is what every
+existing `traverse` relies on for ordering); `Static` is its own type,
+not new nodes in the priced four-node tree. Out of scope with reasons:
+applicative parsers (okay-parse is an instruction language), the
+general ApplicativeDo transform, distributed batching (dataflow's),
+and the choice of stage 2's first real consumer (okay-di needs,
+okay-sql batching, okay-watch explain — each its own lane).
+
 ## delim-diagnostics-position - a stopped fold points at code
 
 `Stopped` named an OFFSET, which says where in the log the trouble is
