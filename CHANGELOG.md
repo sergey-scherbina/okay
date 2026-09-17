@@ -1,5 +1,65 @@
 # Changelog
 
+## dialogue-hardening - four ways a durable dialogue broke, and the row guard
+
+Probing the day-old durable dialogue found FOUR failure modes, three
+of them silent, and every one of them fatal to a production workflow.
+They are pinned in `TestDialogueHardening` - each test was a probe
+that failed against the first cut.
+
+- **A poisoned journal.** An answer the program cannot digest was
+  appended BEFORE it was tried, so every later process replayed it and
+  threw: the dialogue was dead and the answer could never be
+  corrected. The append now sits in the CONTINUATION of the advance -
+  a `Paused` is a value, so advancing a copy costs nothing - and a
+  refused answer leaves the journal untouched.
+- **A silent mis-mapping after a deploy.** A v2 program read a v1
+  journal's "Kyiv" as its new first question's answer and carried on.
+  Every record now carries the `program` that wrote it; a foreign one
+  STOPS the fold and names both ids. An outage instead of a
+  corruption; `patch` is stage 2 of specs/durable-workflow.md.
+- **Two writers both accepted.** Each record now carries the position
+  its writer expected, and the fold takes only the one that fits. The
+  loser is reported in `recovered.rejected` and told `Answered.Lost`
+  with where the dialogue actually stands. Optimistic concurrency in
+  the PROJECTION, because `Topic.append` has no conditional form and
+  giving it one would change every store and the wire protocol for one
+  consumer.
+- **A side effect performed twice.** `run`'s oracle now gets an
+  `Attempt(id, index)` - the journal's own position, stable across a
+  restart, which is what an idempotent external call needs. The
+  at-least-once contract is stated rather than discovered.
+
+Two numbers moved, both for a stated reason: the cold loop reads
+N(N-1)/2 instead of N(N+1)/2 (the fold happens before the append now),
+and the warm path stayed at ZERO reads only because an append landing
+exactly where this instance had read to cannot have been overtaken -
+the naive won-the-race check re-folded per answer and put `run` back
+at O(n squared). One landed decision was reversed deliberately: `at`
+refuses to place a dialogue whose log has a record it cannot read,
+because carrying on past it re-asks a question the world has already
+answered.
+
+**And the second machine is now a compile error** (specs/delim-safety.md
+stage 0). The trap continuations-audit found - `collect` inside
+`resumable`, two `Delim` in one row - is refused by
+`Delim.OneMachine[F]`, with a message that names `collecting`. The
+obvious formulation is REFUTED and the refutation is a compiler crash:
+`NotGiven[RowLift.In[Delim, F]]` makes dotty 3.9 die with "Failure to
+join alternatives F and G" in `orDominator`, at Delim's own internal
+call sites. Membership by APPLICATION works instead
+(`NotGiven[Delim[Any] <:< F[Any]]`): a union on the RIGHT of a `<:<`
+needs no join. The limit is pinned too - an abstract row is not
+caught, and a helper that wants the guard for its callers takes the
+witness itself.
+
+Three specs written with the rest of the plan: specs/durable-workflow.md
+(stages 1-4, including what a workflow ENGINE still owes - timers,
+retries, signals, cancellation, visibility, workers, child workflows),
+specs/delim-safety.md (forward-instead-of-throw as a spike, region
+types as the horizon) and specs/delim-diagnostics.md (labelled
+prompts, a `NoPrompt` that prints the delimiter stack, `Paused.where`).
+
 ## continuations-audit - one machine, many delimiters
 
 The operator asked whether the continuation story is ready to hand to

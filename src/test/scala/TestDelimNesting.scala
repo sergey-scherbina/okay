@@ -42,18 +42,17 @@ class TestDelimNesting extends munit.FunSuite {
     assertEquals(back.finished, Some(List(1, 5, 3)))
   }
 
-  test("THE OLD SHAPE, pinned: a nested RUN cannot be crossed") {
+  test("THE OLD SHAPE is now a COMPILE error, and the message names the fix") {
     // `collect` (not `collecting`) runs its own machine, and its row
-    // is `Delim + (Delim + P)` — two Delim in one row. The inner
-    // machine claims the outer machine's pause by class and finds no
-    // prompt. This is what `collecting` exists to prevent.
-    def bad(using Delim.Asking[String, Int, List[Int], Delim + P]): List[Int] ! (Delim + P) =
-      Delim.collect[Int, Delim + P]:
-        direct:
-          !Delim.emit(1)
-          val more = !Delim.pause("more?")
-          !Delim.emit(more)
-    intercept[NoPrompt](!.run(Delim.resumable[String, Int, List[Int], P](bad)))
+    // would be `Delim + (Delim + P)` — two Delim in one row, the
+    // inner machine claiming the outer machine's pause. It used to
+    // typecheck and throw NoPrompt; delim-safety stage 0 refuses it.
+    val e = compileErrors("""
+      okay.Delim.collect[Int, okay.Delim + okay.Pure](okay.Direct.direct {
+        !okay.Delim.emit(1)
+      })""")
+    assert(e.nonEmpty, "the second machine compiled")
+    assert(e.contains("collecting"), s"the message does not name the fix: $e")
   }
 
   // ---- a capture crossing a NESTED SCOPE, through the named door

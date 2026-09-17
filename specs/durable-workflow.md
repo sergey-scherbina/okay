@@ -1,0 +1,274 @@
+# The durable dialogue, hardened — and what a workflow engine still owes
+
+## Overview
+
+`Delim.resumable` stops a program in the middle and hands the rest of
+it back; `Delim.replay` re-derives that place from the answers;
+`okay.persist.Dialogue` puts the answers in a topic (durable-dialogue,
+dialogue-snapshots, both 2026-09-17). The operator's question the same
+day: is that ready for an ordinary engineer, and what is still missing
+against a real workflow engine?
+
+Four failure modes were found by probing, all confirmed by running
+(the probes are kept, as the pinned suite `TestDialogueHardening`). None of them is exotic; every one of them
+destroys or corrupts a production dialogue, and three of them do it
+SILENTLY:
+
+| # | what happens | measured |
+|---|---|---|
+| A | an answer the program cannot digest is journalled BEFORE it is tried, so every later process replays it and throws — the dialogue is dead and the answer can never be corrected | `answer("abc")` on a program that does `.toInt`: the second process, and every one after it, fails with the same `NumberFormatException` |
+| B | the program changed since the journal was written, and replay maps old answers onto new questions with no complaint | a v2 program with a new FIRST question reads the v1 journal's `"Kyiv"` as the promo code and carries on |
+| C | `run(oracle)` performs the outside call and journals the answer AFTER — a crash in that window re-asks on restart, so the side effect happens twice | crashed on `nights?`, restarted, asked `nights?` again |
+| D | two processes answering one dialogue both append; the fold takes both | `a` answered "Kyiv", `b` answered "Lviv", the journal holds both and `b` reads a finished dialogue with data nobody chose |
+
+A, B and D are correctness; C is a contract (at-least-once) that every
+workflow engine has and that ours does not state or help with.
+
+The three of them converge on one change — the journal record stops
+being a bare answer and becomes an ENVELOPE — so they are one stage,
+not three.
+
+## Stage 0 — the journal record grows two fields
+
+```scala
+enum Entry[A] derives Schema:
+  /** an answer, and the two facts that make it safe to accept */
+  case Answered[A](program: String, expect: Int, a: A) extends Entry[A]
+  /** a patch decision, taken once per run and remembered (stage 2) */
+  case Patched[A](program: String, expect: Int, id: String, on: Boolean) extends Entry[A]
+```
+
+- **`program`** — the identity of the code that wrote this record.
+  A record whose program is not the reader's is NOT folded: the
+  journal stops there and `recovered` names it, exactly as a record
+  that does not decode already does. Silent mis-mapping (B) becomes a
+  loud stop. It is stamped per record rather than in a header so that
+  it survives compaction and needs no write on a read-only start.
+- **`expect`** — how many answers the writer had accepted when it
+  wrote this one. The fold accepts a record only when `expect`
+  equals the number of answers accepted so far; a record that does
+  not match is a LOSER of a race, is reported in `recovered.rejected`
+  and changes nothing. This is optimistic concurrency implemented in
+  the PROJECTION, not in the log — `Topic.append` has no conditional
+  form and giving it one would change every store, the wire protocol
+  and Kafka interop. Damage is data; so is a lost race (D).
+
+### The order of operations changes (A)
+
+Today: append durably, then advance. The comment defending that order
+is right about one half — the other order loses an answer the outside
+world already acted on — and wrong about the whole, because an answer
+the program REFUSES is committed forever.
+
+The new order uses the property the design already has: **a `Paused`
+is a value, so advancing it does not consume it.**
+
+1. advance a copy of the program in hand with the answer;
+2. if it throws, nothing is journalled: the throw reaches the caller
+   where they ran the program, and the dialogue is still answerable;
+3. if it succeeds, append durably;
+4. keep the already-advanced program — the advance is not repeated.
+
+The crash window that remains is between 2 and 3, and it replays to
+the same place and re-asks, which is the safe direction.
+
+### `at` stops throwing
+
+A dialogue whose journal makes the program throw (a bad deploy, a
+half-migrated answer type) must be VISIBLE, not an exception storm in
+whatever asked. `at` answers `Either[Dialogue.Stopped, Paused]`, and
+`Stopped` is either `Damage` (a record that did not decode) or
+`Mismatch` (a record from another program), each naming its offset.
+An attempt to answer such a dialogue is `Answered.Broken`, so the
+four outcomes of answering — `Advanced`, `Lost`, `NotAsking`,
+`Broken` — are one type with no nesting.
+
+### The oracle gets an idempotency key (C)
+
+`run(oracle)` calls `oracle(q, Attempt(id, index))`, where `index` is
+the position this answer will occupy. The pair is stable across
+restarts and is exactly what an idempotent external call needs
+(`Idempotency-Key`, a natural key on the payment, a conditional
+insert). The at-least-once contract is then stated where it belongs —
+in the type and in the docs — rather than discovered.
+
+### Behavior — stage 0
+
+- [x] an answer the program refuses is NOT journalled, and the
+      dialogue is still answerable afterwards
+- [x] a second, valid answer lands after a refused one
+- [x] a record written by a different `program` stops the fold and is
+      named in `recovered`; the dialogue does not advance on it
+- [x] two writers from the same standing start: the first append is
+      accepted, the second is told `Lost` and shown where the dialogue
+      actually stands, and the journal holds one answer
+- [x] `at` answers `Left(Stopped)` rather than throwing when the
+      journal cannot be folded into a place
+- [x] `run(oracle)` hands the oracle a stable `(id, index)` per
+      question, equal across a restart
+- [x] `Schema` evolution of the ANSWER type works: `Dialogue` takes
+      the `version` and `upcasts` `Typed` already supports, instead of
+      hard-coding version 1 and no upcasts
+- [x] the warm path stays O(n): the won-the-race check costs NOTHING
+      when the append landed where this instance had read to
+
+## Stage 1 — the discipline becomes a type
+
+The exactness of replay rests on one sentence: *everything the outside
+world tells the program enters through `pause`*. Today that is a
+sentence in a doc. A program that reads a clock, calls a service or
+rolls a die between pauses replays that call — measured in
+`TestDelimPersist`, and nothing stops it being written.
+
+- **`Replayable[F]`** — evidence that a row contains only effects
+  whose re-execution is unobservable (`State`, `Reader`, pure
+  computation). `Async`, `Writer`, `Uid`, anything I/O, is not
+  replayable, and `resumable`/`replay`/`Dialogue` require the
+  evidence. Breaking the discipline becomes a compile error at the
+  place that breaks it.
+- **The standard non-determinism, as questions.** A workflow needs a
+  clock, ids and randomness; refusing them is not an answer. They
+  become questions the runtime answers and the journal remembers:
+  `Wf.now()`, `Wf.uuid()`, `Wf.random()`. Temporal's `SideEffect` and
+  `workflow.now()` are the same move.
+- **`perform(cmd)`** — the general form: a command whose result is
+  journalled, so it is executed once per journal position and read
+  from the log on every replay. This is what an "activity" is, and it
+  is `pause` with a command for a question.
+
+### Behavior — stage 1
+
+- [ ] a body that performs an `Async` effect outside a `pause` does
+      not compile as a dialogue
+- [ ] `now`/`uuid`/`random` answer from the journal on replay, and the
+      same run twice gives the same values
+- [ ] `perform` executes once per position across a restart
+
+## Stage 2 — the program is allowed to change
+
+Stage 0 makes a changed program a loud stop. That is right and not
+enough: long-running dialogues outlive deploys, and a stop is an
+outage.
+
+- **`patch(id)`** (Temporal's `patched`/`getVersion`): the first time
+  a run reaches it, the decision is journalled; a run whose journal
+  has no decision for `id` and whose answers were written before the
+  patch existed gets `false`, a fresh run gets `true`. Old dialogues
+  keep the old path, new ones take the new one, and the branch is
+  deletable once no old run is left.
+- **A program identity that is a VERSION, not a hash.** The author
+  states it (`Dialogue(..., program = "booking/3")`); a hash of the
+  code would change on a comment and is therefore a worse lie than an
+  honest hand-maintained number.
+- **Retirement**: a tool that says which programs are still present in
+  a topic, so a branch can be deleted with evidence.
+
+### Behavior — stage 2
+
+- [ ] a dialogue started under `booking/2` and resumed under
+      `booking/3` takes the OLD branch at `patch("promo")` and
+      finishes correctly
+- [ ] a dialogue started under `booking/3` takes the new branch
+- [ ] the decision is in the journal, so a third process agrees
+
+## Stage 3 — bounded history
+
+Replay re-runs the program over its answers. Chapters
+(dialogue-snapshots) cut the READING; nothing cuts the RUNNING, and a
+dialogue with ten thousand answers runs the program over ten thousand
+answers on every cold start.
+
+- **`continueAs(seed)`** — Temporal's `continueAsNew`: the program
+  ends this run with a serializable seed, a new run begins with that
+  seed as its first answer, and the old journal is closed. History is
+  bounded by the author's choice of where a stage ends.
+- **A resume cache** — a process that holds many dialogues should
+  replay each one once. An LRU of `id -> Paused` turns every step
+  after the first into the warm path that already exists.
+
+### Behavior — stage 3
+
+- [ ] a dialogue that `continueAs`es twice is read from the last seed,
+      and its cold start does not depend on the length of the whole
+      history
+- [ ] with a cache, n answers to one dialogue replay once, not n times
+
+## Stage 4 — what a workflow ENGINE owes beyond the model
+
+Stages 0–3 make the model sound. An engine is more than the model, and
+the honest list of what is NOT there, with what each one actually
+needs here:
+
+| Temporal has | we have | what it would take |
+|---|---|---|
+| durable timers (`sleep`) | nothing | a question whose answer is delivered by a scheduler that persists deadlines — one topic of `(due, dialogueId, question)`, one poller |
+| activity retries, timeouts, heartbeats | `okay-resilience` (Retry, Hedge, CircuitBreaker, deadlines) — not wired | `perform` takes a policy; the retry is the driver's, not the program's, so the journal sees one answer |
+| signals (an external event into a running run) | `answer` IS a signal | a named channel per dialogue, so a signal is not confused with an answer to the current question |
+| queries (read-only inspection) | `at`, `asking` | a read path that does not append and does not need the writer's lease |
+| cancellation and compensation | `okay-persist`'s `Saga` | a cancellation question the program can observe, and compensations as journalled commands |
+| visibility (list, filter, find the stuck ones) | nothing | a projection of the dialogues topic into a status index: id, program, standing question, last movement |
+| workers and task queues | `run(oracle)` in one process | a worker over a partition with a lease per id; stage 0's `expect` is what makes two workers safe, a lease is what makes them rare |
+| child workflows | nesting works in memory (`pausing`) | a child whose journal is its own topic key, and a parent question answered by its result |
+
+**None of this is speculative work to be done now.** It is the list
+that makes the claim "this is event sourcing with the fold already
+written" honest about its scope: the MODEL is smaller and better than
+a workflow engine's, and the OPERATIONS around it are absent. Anybody
+proposing this to a team should say both halves.
+
+## Decisions
+
+- **The envelope, not a conditional append.** `Topic.append` has no
+  expected-offset form; adding one would change MemoryStore,
+  Replicated, the wire protocol and the Kafka interop for one
+  consumer. Putting `expect` in the record makes the concurrency
+  check a property of the FOLD, which every store already has, and
+  keeps "damage is data" — a lost race is reported, not thrown.
+- **Trial before commit, not commit before trial.** The landed order
+  (append, then advance) was chosen against losing an answer the
+  world acted on; it loses more — a refused answer is permanent. The
+  `Paused` being a value is what makes the trial free.
+- **The program's identity is stated by its author.** A fingerprint
+  taken from the code changes when a comment does, which trains
+  people to ignore it.
+- **Refusing non-determinism outright is not an option.** Every real
+  workflow needs a clock and an id; stage 1 gives them as questions
+  rather than pretending a program can do without them.
+
+## Out of scope
+
+- distributed transactions across dialogues (that is `Saga`);
+- a scheduler, a worker pool or an operator UI — stage 4 names them
+  and does not promise them;
+- making a continuation itself serializable. It is a JVM closure. The
+  journal is the answer, and stage 3 is how its cost is bounded.
+
+## Results
+
+**Stage 0 landed 2026-09-17** (`TestDialogueHardening`, 6 tests; the
+7 tests of `TestDialogue` unchanged in intent).
+
+- The four probes that failed against the first cut now pin the fix.
+  A refused answer leaves the journal alone; a journal from another
+  program stops the fold and names both program ids; the oracle's
+  `Attempt` is equal across a restart; the second writer is told
+  `Lost` and shown where the dialogue actually stands.
+- **Two numbers moved, both for a stated reason.** The cold loop's
+  reads went from `N(N+1)/2` to `N(N-1)/2`, because the fold now
+  happens BEFORE the append — that is what lets a refused answer
+  leave the journal alone. The warm path stayed at ZERO reads only
+  because of the `seen` optimisation: the naive won-the-race check
+  re-folded the journal per answer and put `run` back at O(n²), which
+  is the regression dialogue-snapshots had already paid to remove. An
+  append that lands exactly where this instance had read to cannot
+  have been overtaken, so the common case reads nothing.
+- **One landed decision was reversed, deliberately.** `at` used to
+  answer from the intact prefix when a record did not decode; it now
+  refuses. A record we cannot read might be an answer, and carrying
+  on past it re-asks a question the outside world has already
+  answered — a duplicate side effect is worse than an outage. The
+  prefix is still readable through `recovered` for an operator tool
+  that wants it.
+- **The race is only visible on the warm path**, and the test says
+  so: `answer` re-reads the log first, so its window is narrow;
+  `step` has a wide one, and `expect` covers both identically.

@@ -1,0 +1,191 @@
+# Closing the runtime hole: a capture that cannot find its delimiter
+
+## Overview
+
+`NoPrompt` is the one way a well-typed program using delimited control
+still fails at run time. `Prompted[R]` (delim-prompted, 2026-09-16)
+closed the easy half — a capture with NO delimiter in scope is a
+compile error, because the evidence cannot be forged. Two halves are
+open, and delim-nesting (2026-09-17) showed that the one everybody
+said was theoretical is the one people hit first:
+
+1. **The wrong machine.** The evidence proves a delimiter was
+   installed; it does not prove that the machine executing this
+   capture is the one holding it. `delimited`/`collect`/`resumable`
+   each run their own machine, so an outer evidence used inside an
+   inner one throws — and the row type is happy, because
+   `collect[A, Delim + F]` merely puts a second `Delim` in the row
+   and rows misroute a duplicate rather than rejecting it.
+2. **The escaping evidence.** A `Prompted[R]` stored and used after
+   its `delimited` has returned. Named in Delim.scala's header from
+   the start; still open.
+
+Nesting now has a right spelling (`scope`, `collecting`, `pausing`),
+so the question this spec answers is narrower and better: **what stops
+someone writing the wrong one?**
+
+## Stage 0 — the duplicate row is a compile error
+
+The combinators that RUN a machine take a witness that the row does
+not already have one. The witness is `Delim.OneMachine[F]`, and the
+membership test inside it is `NotGiven[Delim[Any] <:< F[Any]]` —
+membership by APPLICATION rather than `RowLift.In`, for a reason that
+was measured and is recorded in the Results: the `In` formulation
+crashes the compiler.
+
+```scala
+def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F))
+                       (using OneMachine[F]): R ! F
+```
+
+with the message the error should have had all along:
+
+```
+this row already contains Delim, so `delimited` would start a SECOND
+machine — and a capture cannot cross from one machine's prompt stack
+to another's. Use `Delim.scope`, which installs a delimiter on the
+machine already running.
+```
+
+`scope`, `collecting` and `pausing` take no such guard: installing a
+delimiter in a row that has `Delim` is precisely what they are for.
+
+**What it catches and what it does not, stated plainly.** The guard
+fires on a CONCRETE row, which is the trap as people write it
+(`Delim.collect[Int, Delim + Pure]` inside a `resumable`). It does
+NOT fire on an abstract `F`: `NotGiven` reads "unknown" as "absent",
+the same caveat `Failing` already documents for its `In[Async, F]`
+probe. A generic helper that takes `F[+_]` and calls `delimited` will
+still compile and still throw if instantiated at a Delim row. That is
+a real limit, it is why stages 1 and 2 exist, and it must not be
+written up as "NoPrompt is now impossible".
+
+A library author who wants the guard to reach THEIR callers takes the
+witness themselves — `def mine[F[+_]](…)(using Delim.OneMachine[F])`
+— and the obligation propagates to the call site, where the row is
+usually concrete. `Delim`'s own `answer`/`replay`/`drive` do exactly
+that, and they have a second reason to: an obligation carried as a
+parameter is never searched for at an abstract row, which is what
+kept the crash out of the core.
+
+### Behavior — stage 0
+
+- [x] `Delim.collect[Int, Delim + Pure]` does not compile, and the
+      message names `collecting`
+- [x] the same for `delimited`/`resumable`/`run`/`reset`
+- [x] `scope`/`collecting`/`pausing` still compile in a Delim row —
+      the tests of delim-nesting are untouched
+- [x] a generic `F[+_]` helper still compiles AND still throws (the
+      limit, pinned, so that nobody mistakes the guard for a proof)
+- [x] a helper that DOES take `using Delim.OneMachine[F]` propagates
+      the obligation, and its call site at a Delim row is refused —
+      which is the fix available to a library author today
+
+## Stage 1 — forward instead of throw (a SPIKE, verdict first)
+
+When a machine meets a capture naming a prompt it does not hold, it
+throws. It has another option: if its own residual row still contains
+`Delim`, it can **reify its remaining stack back into a program and
+re-emit the capture outward**, the way it already forwards any foreign
+operation. The outer machine — which does hold the prompt — then
+captures across the inner machine's frames, which is what the user
+meant.
+
+The machinery is already there: `reify` turns `Segs` back into a
+program, and the foreign-operation path already suspends and resumes
+with the same stack. What is not obvious, and is exactly what the
+spike must answer:
+
+- **Is the forwarded continuation the RIGHT one?** The inner
+  machine's frames must end up inside the outer capture, in order,
+  with the inner delimiter re-installed on resume. That is what
+  multi-prompt means; whether this construction delivers it is a
+  question for a test, not for a paragraph.
+- **What does it cost when nothing is forwarded?** The check is "is
+  this prompt on my stack", which `split` already computes — the
+  cost should be zero and must be measured (`DelimBenchmark`).
+- **Can the row evidence be had?** Forwarding requires knowing that
+  `F` contains `Delim`, i.e. an `In[Delim, F]` at the call to `run` —
+  available only where the caller can supply it.
+
+A spike with a written verdict, then a decision. A refutation with
+numbers is a fine outcome; what is not acceptable is shipping a
+silent change of meaning for nested machines.
+
+## Stage 2 — region types (the horizon)
+
+`runST`'s trick: give the evidence a scope tag that cannot escape.
+
+```scala
+def delimited[R, F[+_]](body: [S] => Prompted[R, S] ?=> R ! (Delim + F)): R ! F
+```
+
+A `Prompted[R, S]` can then only be used where `S` is in scope, which
+closes BOTH open cases: the evidence cannot escape its `delimited`,
+and it cannot be carried into a different machine, because a different
+machine has a different `S`.
+
+The cost is a type parameter on the evidence and therefore on every
+signature that carries one — including the `direct`-block inline
+doors (`shift[A]`, `exit`, `emit`, `pause`), whose whole design is
+that the call site writes as few type arguments as possible. The
+freer-base stage-2 probe (4af08745) already proved a prompt's identity
+can reach the type level and that `NoPrompt` can be a compile error;
+what it did not answer is whether the inline doors survive it.
+
+Order: stage 0 now (cheap, catches the real trap), stage 1 as a spike
+(it may make the trap harmless rather than merely detectable), stage 2
+only if the first two leave something that bites.
+
+### Behavior — stage 2
+
+- [ ] a `Prompted` stored in a `var` and used after its `delimited`
+      returned is a compile error
+- [ ] the four inline doors still take the same type arguments at a
+      call site as they do today, or the stage is refused with the
+      reason recorded
+
+## Decisions
+
+- **The guard goes on the RUNNING combinators, not on `push`.**
+  Installing a delimiter is always fine; starting a second machine is
+  what is not.
+- **The message names the fix.** An error that says "duplicate row"
+  teaches nothing; one that says "use `collecting`" ends the
+  incident.
+- **No stage removes `NoPrompt`.** A multi-prompt implementation
+  without a region system has a runtime error for an uninstalled
+  prompt; that is true of every one in the literature. The goal is
+  that no ORDINARY program can reach it.
+
+## Out of scope
+
+- Static prompt scoping in general (that is stage 2, and it is a
+  research-grade change to the surface API).
+- Making `Delim` rows nest as a row member. Rows are unions; two
+  `Delim`s are one `Delim` by class, which is the root cause here and
+  is a property of the row design, not of `Delim`.
+
+## Results
+
+**Stage 0 landed 2026-09-17** (`TestDelimSafety`, 3 tests, plus the
+two pinned tests that had to change from runtime-intercept to
+compile-error because the shape they demonstrated is now refused).
+
+**The obvious formulation is refuted, and the refutation is a
+compiler crash.** `NotGiven[RowLift.In[Delim, F]]` — membership as the
+library already spells it — asks implicit search to prove membership
+in an ABSTRACT row; `In.deeper` unfolds it into `G + H`, and dotty
+3.9 dies with `java.lang.AssertionError: Failure to join alternatives
+F and G` in `TypeOps.orDominator`. Not at a user's call site: at
+`Delim`'s own internal ones, so the core did not compile at all.
+
+What works is membership by APPLICATION:
+`NotGiven[Delim[Any] <:< F[Any]]`. A union on the RIGHT of a `<:<`
+needs no join — subtyping INTO a union is the easy direction — and
+`<:<` is covariant in its second parameter, so `refl` conforms for a
+concrete row and search fails quietly for an abstract one. That is
+exactly the behaviour the guard wants, and it is why the witness is
+also THREADED through `answer`/`replay`/`drive` rather than summoned
+inside them: an obligation carried as a parameter is never searched
+for at an abstract row.

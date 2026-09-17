@@ -221,11 +221,31 @@ watches the driver perform each outside call exactly once.
 ### It is event sourcing, with the fold already written
 
 `okay-persist` puts that journal in a topic:
-`Dialogue[Q, A, R, F](topic, id)(booking)` — `at` is where the program
-stands, `answer(a)` appends durably and then advances, `run(oracle)`
-drives it to the end, calling the oracle once per question and never
-for one the journal already answered. A second process over the same
-topic stands exactly where the first one stood.
+`Dialogue[Q, A, R, F](topic, id, program)(booking)` — `at` is where the
+program stands, `answer(a)` advances and then appends durably,
+`run(oracle)` drives it to the end, calling the oracle once per
+question and never for one the journal already answered. A second
+process over the same topic stands exactly where the first one stood.
+
+Four things it does that are invisible until they matter, each because
+probing found the failure first (specs/durable-workflow.md, stage 0):
+
+- **an answer the program refuses is not journalled.** The advance
+  happens first; only a value reaches the append. Before that, one bad
+  answer killed a dialogue permanently — every later process replayed
+  it and threw.
+- **a journal written by a different `program` stops the fold** and
+  names both ids, instead of mapping old answers onto new questions.
+  That is the deploy problem, and a loud stop is the honest half of
+  it; `patch` (Temporal's `getVersion`) is stage 2.
+- **a second writer is told it lost.** Each record carries the
+  position its writer expected, and the fold takes only the one that
+  fits; the loser gets `Answered.Lost` and is shown where the dialogue
+  actually stands.
+- **the oracle gets an idempotency key** — `(id, index)`, stable
+  across restarts. It needs one: a crash between performing the call
+  and journalling its answer re-asks that question, which is the
+  at-least-once contract every workflow engine has.
 
 Which is event sourcing, with one difference worth naming:
 
@@ -244,6 +264,19 @@ That discipline has a second payoff: a program whose every outside
 call is a question is also a program you can test by answering the
 questions — no mocks, no doubles, and the journal of a failed
 production run replays on a laptop.
+
+### What this is not
+
+Say both halves when proposing it. The MODEL here is smaller and
+better than a workflow engine's — the fold that rebuilds the state is
+the program you already wrote. The OPERATIONS around it are absent:
+there are no durable timers, no retry policies on the outside call, no
+signals distinct from answers, no cancellation, no visibility index to
+find the stuck ones, no worker pool with leases, no child workflows.
+specs/durable-workflow.md stage 4 lists each one with what it would
+take. A team adopting this gets the core of Temporal's idea and none
+of its operations, and should plan for the difference rather than
+discover it.
 
 ## 4 · Do something on the way back
 

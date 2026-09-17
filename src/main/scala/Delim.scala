@@ -1,7 +1,8 @@
 package okay
 
 import okay.!.*
-import scala.annotation.tailrec
+import scala.annotation.{implicitNotFound, tailrec}
+import scala.util.NotGiven
 
 /**
  * Delimited control as an EFFECT — multi-prompt, in the shape of
@@ -70,6 +71,47 @@ final class NoPrompt extends RuntimeException(
 
 object Delim {
 
+  /**
+   * THE ROW HAS NO MACHINE YET (delim-safety stage 0, 2026-09-17).
+   *
+   * A machine owns one prompt stack, so starting a SECOND one inside
+   * a row that already has `Delim` is the mistake that reads like
+   * ordinary code and fails at run time: `resumable` around `collect`
+   * is "a producer that pauses for an answer", and it used to compile
+   * and throw `NoPrompt`. A row is a union, so the second `Delim` is
+   * the SAME `Delim` by class, and the inner machine claims the outer
+   * machine's operation.
+   *
+   * Every combinator that RUNS a machine asks for this; the ones that
+   * only install a delimiter (`push`, `scope`, `collecting`,
+   * `pausing`) do not, because installing into a Delim row is exactly
+   * what they are for.
+   *
+   * WHAT IT DOES NOT CATCH, said here rather than discovered: an
+   * ABSTRACT `F`. `NotGiven` reads "unknown" as "absent" (the caveat
+   * `Failing` already records for its `In[Async, F]` probe), so a
+   * generic helper taking `F[+_]` compiles and still throws when
+   * instantiated at a Delim row. A guard against the shape people
+   * write, not a proof: specs/delim-safety.md has the two stages that
+   * would make it one.
+   */
+  @implicitNotFound("this row already contains Delim, so this would start a SECOND machine, and a capture cannot cross from one machine's prompt stack to another's.\nUse the nested form, which installs a delimiter on the machine already running:\n  delimited -> scope,   collect -> collecting,   resumable -> pausing\n(docs/continuations-in-practice.md, \"The second rule: one machine\")")
+  final class OneMachine[F[+_]] private[Delim] ()
+  object OneMachine:
+    /**
+     * Membership by APPLICATION, not by `RowLift.In` — measured, and
+     * the reason is a compiler crash rather than taste. `NotGiven[
+     * In[Delim, F]]` asks implicit search to prove membership in an
+     * abstract row, `In.deeper` unfolds it into `G + H`, and dotty
+     * 3.9 dies in `orDominator` with "Failure to join alternatives F
+     * and G" — at Delim's OWN internal call sites, so the core did
+     * not compile. A union on the RIGHT of a `<:<` needs no join
+     * (subtyping INTO a union is the easy direction), and `<:<` is
+     * covariant in its second parameter, so `refl` conforms.
+     */
+    given fresh[F[+_]](using NotGiven[Delim[Any] <:< F[Any]]): OneMachine[F] =
+      new OneMachine[F]()
+
   /** a fresh delimiter tag */
   def prompt[R]: Prompt[R] = new Prompt[R]
 
@@ -109,7 +151,7 @@ object Delim {
     effect(Capture(p, f, underPrompt = false, delimitK = false))
 
   /** the common shape: a fresh prompt, a block under it, run */
-  def reset[R, F[+_]](body: Prompt[R] => R ! (Delim + F)): R ! F =
+  def reset[R, F[+_]](body: Prompt[R] => R ! (Delim + F))(using OneMachine[F]): R ! F =
     val p = prompt[R]
     run(push(p)(body(p)))
 
@@ -179,7 +221,8 @@ object Delim {
   /** install a fresh delimiter, run the body under it with the
    * evidence in scope, and handle the machine — the OUTERMOST form;
    * `scope` is the one that nests */
-  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F)): R ! F =
+  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F))
+                         (using OneMachine[F]): R ! F =
     run(scope(body))
 
   /** capture up to the delimiter in force — the same word as the
@@ -295,7 +338,8 @@ object Delim {
    * consumer gets a list. `emit` builds the list out of the rest of
    * the producer, which is why the producer never has to know.
    */
-  def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F)): List[A] ! F =
+  def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F))
+                       (using OneMachine[F]): List[A] ! F =
     run(collecting(body))
 
   /** the same collection, NESTED: it installs its delimiter and
@@ -368,7 +412,7 @@ object Delim {
    * re-derive it — `replay`, below.
    */
   def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                               : Dialogue[Q, A, R, F] ! F =
+                               (using OneMachine[F]): Dialogue[Q, A, R, F] ! F =
     run(pausing(body))
 
   /** the same, NESTED: the dialogue's delimiter goes on the machine
@@ -396,7 +440,8 @@ object Delim {
 
   /** answer every question until the dialogue is done — the driver
    * for the common case where the answers are available now */
-  def drive[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F])(answer: Q => A ! F): R ! F =
+  def drive[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F])(answer: Q => A ! F)
+                           (using OneMachine[F]): R ! F =
     p match
       case Paused.Done(r) => okay.pure(r)
       case Paused.Ask(q, resume) =>
@@ -433,7 +478,7 @@ object Delim {
 
   /** answer the question a dialogue is asking, and keep the answer:
    * the pair is what you persist after every step */
-  def answer[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)
+  def answer[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(using OneMachine[F])
                             : (Dialogue[Q, A, R, F], Journal[A]) ! F =
     p match
       case Paused.Ask(_, resume) => run(resume(a)).map(next => (next, j :+ a))
@@ -444,7 +489,7 @@ object Delim {
    * what replaces persisting a continuation. A fresh process, a
    * different machine, a redeploy: same answers in, same place out.
    */
-  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))(using OneMachine[F])
                             (j: Journal[A]): Dialogue[Q, A, R, F] ! F =
     j.foldLeft(resumable[Q, A, R, F](body)): (acc, a) =>
       acc.flatMap:
@@ -505,7 +550,7 @@ object Delim {
    * operation's to name — re-typed here, at their two lines, where F
    * is known. Everything else the chain's types carry.
    */
-  def run[R, F[+_]](prog: R ! (Delim + F)): R ! F = {
+  def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F = {
     type Row = Delim + F
     type Prog[A] = A ! Row
 

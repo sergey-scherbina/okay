@@ -45,6 +45,37 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Deferred`/`memoize` of the async libraries. Trigger: a consumer
       that shares a `!.once` across fibres; none yet (direct-once,
       2026-09-16).
+- [ ] dialogue-replay-discipline — specs/durable-workflow.md stage 1:
+      `Replayable[F]` evidence so a dialogue body that performs an
+      effect outside a `pause` does not COMPILE, plus the standard
+      non-determinism as questions (`now`, `uuid`, `random`) and
+      `perform(cmd)` for a journalled side effect. Today the
+      discipline that makes replay exact is a sentence in a doc and a
+      test that shows it being broken.
+- [ ] dialogue-patch — stage 2: `patch(id)` (Temporal's `getVersion`),
+      so a program that changed can carry its old runs to the end
+      instead of stopping them. Stage 0 made the change a loud stop;
+      this is how the stop goes away. Needs the `Patched` entry the
+      envelope already has room for.
+- [ ] dialogue-continue-as — stage 3: `continueAs(seed)` to bound
+      history (Temporal's continueAsNew) and a resume cache so a
+      process holding many dialogues replays each once. Chapters cut
+      the READING; nothing yet cuts the RUNNING.
+- [ ] workflow-operations — stage 4, one spec each when picked:
+      durable timers, retry policies on `perform`, signals distinct
+      from answers, cancellation, a visibility index, a worker pool
+      with leases, child workflows. Named so that nobody mistakes the
+      model for an engine.
+- [ ] delim-diagnostics — specs/delim-diagnostics.md: `At.here`,
+      labelled prompts, a `NoPrompt` that prints the capture's
+      position and the installed delimiter stack with the one-machine
+      hint, and `Paused.where`. The error a newcomer meets first
+      currently says nothing.
+- [ ] delim-forward-not-throw — specs/delim-safety.md stage 1, a SPIKE
+      with a written verdict: a machine that meets a capture for a
+      prompt it does not hold could reify its stack and re-emit the
+      capture outward instead of throwing, which would make nested
+      machines compose instead of merely being refused.
 - [ ] delim-patterns-in-modules — okay-agent's `Stepper` and okay-llm's
       `Cut` were written BEFORE the named patterns existed and each
       hand-rolls one: Stepper has its own `Stepping` enum with

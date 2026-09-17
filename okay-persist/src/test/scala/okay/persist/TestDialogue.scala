@@ -24,33 +24,45 @@ class TestDialogue extends FunSuite {
     if pay == "yes" then s"Booked $city for $nights nights" else "Cancelled"
 
   def dialogue(t: Topic, id: String = "b-1") =
-    Dialogue[String, String, String, Pure](t, id)(booking)
+    Dialogue[String, String, String, Pure](t, id, "booking/1")(booking)
+
+  /** where a dialogue stands, for a test that knows the log is intact */
+  extension [Q, A, R](d: Dialogue[Q, A, R, Pure])
+    def place: Delim.Dialogue[Q, A, R, Pure] = (!.run(d.at)).toOption.get
+
+  /** where an answer left it, for a test that expects it to be taken */
+  extension [Q, A, R, G[+_]](x: Dialogue.Answered[Q, A, R, G])
+    def now: Delim.Dialogue[Q, A, R, G] = x match
+      case Dialogue.Answered.Advanced(to) => to
+      case Dialogue.Answered.NotAsking(to) => to
+      case Dialogue.Answered.Lost(to) => to
+      case Dialogue.Answered.Broken(w) => sys.error(s"broken: $w")
 
   test("a new process stands where the old one stood") {
     val t = MemoryStore().topic("bookings")
 
     // ---- process 1
     val d1 = dialogue(t)
-    assertEquals((!.run(d1.at)).asking, Some("Which city?"))
-    assertEquals((!.run(d1.answer("Kyiv"))).asking, Some("How many nights in Kyiv?"))
-    assertEquals((!.run(d1.answer("3"))).asking, Some("Pay 270 for Kyiv?"))
+    assertEquals(d1.place.asking, Some("Which city?"))
+    assertEquals((!.run(d1.answer("Kyiv"))).now.asking, Some("How many nights in Kyiv?"))
+    assertEquals((!.run(d1.answer("3"))).now.asking, Some("Pay 270 for Kyiv?"))
     assertEquals(d1.journal, List("Kyiv", "3"))
 
     // ---- process 1 dies. d1 and every continuation it held go with
     //      it; the topic is all that is left.
     val d2 = dialogue(t)
     assertEquals(d2.journal, List("Kyiv", "3"))
-    assertEquals((!.run(d2.at)).asking, Some("Pay 270 for Kyiv?"))
-    assertEquals((!.run(d2.answer("yes"))).finished, Some("Booked Kyiv for 3 nights"))
+    assertEquals(d2.place.asking, Some("Pay 270 for Kyiv?"))
+    assertEquals((!.run(d2.answer("yes"))).now.finished, Some("Booked Kyiv for 3 nights"))
 
     // ---- and a third process reads the finished dialogue as finished
-    assertEquals((!.run(dialogue(t).at)).finished, Some("Booked Kyiv for 3 nights"))
+    assertEquals(dialogue(t).place.finished, Some("Booked Kyiv for 3 nights"))
   }
 
   test("the oracle is never asked what the journal already knows") {
     val t = MemoryStore().topic("bookings")
     var asked = List.empty[String]
-    def oracle(q: String): String ! Pure =
+    def oracle(q: String, a: Dialogue.Attempt): String ! Pure =
       asked = asked :+ q
       okay.pure(if q.startsWith("Which") then "Lviv"
                 else if q.startsWith("How") then "2" else "yes")
@@ -74,7 +86,7 @@ class TestDialogue extends FunSuite {
     val _ = !.run(a.answer("Kyiv"))
     assertEquals(a.journal, List("Kyiv"))
     assertEquals(b.journal, Nil)
-    assertEquals((!.run(b.at)).asking, Some("Which city?"))
+    assertEquals(b.place.asking, Some("Which city?"))
   }
 
   test("a record that does not decode stops the journal and names itself") {
@@ -86,9 +98,16 @@ class TestDialogue extends FunSuite {
     val r = d.recovered
     assertEquals(r.answers, List("Kyiv"))
     assert(!r.intact, "damage went unnoticed")
-    assertEquals(r.damage.map(_.offset), Some(1L))
-    // and the program is where the intact prefix puts it, not further
-    assertEquals((!.run(d.at)).asking, Some("How many nights in Kyiv?"))
+    assertEquals(r.stopped.collect { case Dialogue.Stopped.Damage(o, _) => o }, Some(1L))
+    // the intact prefix is still READABLE...
+    assertEquals(r.answers, List("Kyiv"))
+    // ...but `at` REFUSES to say where the program stands, which
+    // changed with durable-workflow stage 0 and is the safer half of
+    // the trade: a record we cannot read might be an answer, and
+    // carrying on past it re-asks a question the outside world has
+    // already answered — a duplicate side effect. An operator tool
+    // that deliberately wants the prefix has `recovered` + replay.
+    assert((!.run(d.at)).isLeft, "a damaged log still claimed a place")
   }
 
   // ---- the cost of a step (dialogue-snapshots, 2026-09-17)
@@ -118,19 +137,19 @@ class TestDialogue extends FunSuite {
   val N = 40
 
   test("the warm path does not replay: run is O(n), a loop of answer is O(n squared)") {
-    def oracle(q: Int): Int ! Pure = okay.pure(q * 2)
+    def oracle(q: Int, a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
 
     val warm = Counting(MemoryStore().topic("warm"))
-    val dw = Dialogue[Int, Int, Int, Pure](warm, "w")(sumUp(N))
+    val dw = Dialogue[Int, Int, Int, Pure](warm, "w", "sum/1")(sumUp(N))
     assertEquals(!.run(dw.run(oracle)), (1 to N).sum * 2)
 
     // the same answers, each taken from a standing start
     val cold = Counting(MemoryStore().topic("cold"))
-    val dc = Dialogue[Int, Int, Int, Pure](cold, "c")(sumUp(N))
+    val dc = Dialogue[Int, Int, Int, Pure](cold, "c", "sum/1")(sumUp(N))
     def loop(p: Delim.Dialogue[Int, Int, Int, Pure]): Int = p match
       case Delim.Paused.Done(r) => r
-      case Delim.Paused.Ask(q, _) => loop(!.run(dc.answer(q * 2)))
-    assertEquals(loop(!.run(dc.at)), (1 to N).sum * 2)
+      case Delim.Paused.Ask(q, _) => loop((!.run(dc.answer(q * 2))).now)
+    assertEquals(loop(dc.place), (1 to N).sum * 2)
 
     // Both answered the same questions; only one of them re-read the
     // journal to do it. Exact numbers, because MemoryStore is
@@ -139,15 +158,19 @@ class TestDialogue extends FunSuite {
     // 1+2+...+N; the warm one starts from an empty journal and then
     // never reads at all.
     assertEquals(warm.records, 0, s"the warm path re-read the journal")
-    assertEquals(cold.records, N * (N + 1) / 2, s"the cold loop's shape is not O(n squared)")
+    // N*(N-1)/2, not N*(N+1)/2: since durable-workflow stage 0 the
+    // fold happens BEFORE the append (that is what lets a refused
+    // answer leave the journal alone), so step i reads i records
+    // rather than i+1. The shape is the point, and it is unchanged.
+    assertEquals(cold.records, N * (N - 1) / 2, s"the cold loop's shape is not O(n squared)")
   }
 
   test("a chapter makes a cold start read a tail, not a history") {
-    def oracle(q: Int): Int ! Pure = okay.pure(q * 2)
+    def oracle(q: Int, a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
     val store = MemoryStore()
 
     val plainT = Counting(store.topic("plain"))
-    val plain = Dialogue[Int, Int, Int, Pure](plainT, "p")(sumUp(N))
+    val plain = Dialogue[Int, Int, Int, Pure](plainT, "p", "sum/1")(sumUp(N))
     assertEquals(!.run(plain.run(oracle)), (1 to N).sum * 2)
 
     val snapT = Counting(store.topic("snap"))
@@ -156,15 +179,15 @@ class TestDialogue extends FunSuite {
     // honest if that scan is on the bill
     val snapsT = Counting(store.topic("__snaps", 1, Policy(compact = true)))
     val snaps = new Snapshots(snapsT)
-    val snapped = Dialogue[Int, Int, Int, Pure](snapT, "s", Some(snaps), snapshotEvery = 10)(sumUp(N))
+    val snapped = Dialogue[Int, Int, Int, Pure](snapT, "s", "sum/1", Some(snaps), snapshotEvery = 10)(sumUp(N))
     assertEquals(!.run(snapped.run(oracle)), (1 to N).sum * 2)
 
     // ---- a new process over each log reads it from scratch
     plainT.records = 0
     snapT.records = 0
     snapsT.records = 0
-    val p2 = Dialogue[Int, Int, Int, Pure](plainT, "p")(sumUp(N))
-    val s2 = Dialogue[Int, Int, Int, Pure](snapT, "s", Some(snaps))(sumUp(N))
+    val p2 = Dialogue[Int, Int, Int, Pure](plainT, "p", "sum/1")(sumUp(N))
+    val s2 = Dialogue[Int, Int, Int, Pure](snapT, "s", "sum/1", Some(snaps))(sumUp(N))
     assertEquals(p2.journal.size, N)
     assertEquals(s2.journal.size, N)          // the same journal...
     val withChapter = snapT.records + snapsT.records
@@ -175,16 +198,16 @@ class TestDialogue extends FunSuite {
   }
 
   test("the log is the truth: a chapter that is missing costs time, not correctness") {
-    def oracle(q: Int): Int ! Pure = okay.pure(q * 2)
+    def oracle(q: Int, a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
     val store = MemoryStore()
     val t = store.topic("bothways")
     val snaps = Snapshots(store, "__snaps2")
-    val d = Dialogue[Int, Int, Int, Pure](t, "d", Some(snaps), snapshotEvery = 7)(sumUp(12))
+    val d = Dialogue[Int, Int, Int, Pure](t, "d", "sum/1", Some(snaps), snapshotEvery = 7)(sumUp(12))
     assertEquals(!.run(d.run(oracle)), (1 to 12).sum * 2)
 
     // a reader with NO snapshot store sees exactly the same journal
-    val bare = Dialogue[Int, Int, Int, Pure](t, "d")(sumUp(12))
+    val bare = Dialogue[Int, Int, Int, Pure](t, "d", "sum/1")(sumUp(12))
     assertEquals(bare.journal, d.journal)
-    assertEquals((!.run(bare.at)).finished, (!.run(d.at)).finished)
+    assertEquals(bare.place.finished, d.place.finished)
   }
 }

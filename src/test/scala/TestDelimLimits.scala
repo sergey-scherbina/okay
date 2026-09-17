@@ -142,18 +142,30 @@ class TestDelimLimits extends munit.FunSuite {
 
   // ==== A SECOND MACHINE ===========================================
 
-  test("evidence used inside an INNER `delimited` is a runtime NoPrompt") {
-    // the hole `Prompted` does not close: it proves a delimiter was
-    // installed, not that the machine running this capture is the one
-    // holding it. `scope` is the fix — TestDelimNesting.
-    // (the throw lands while the program is still being BUILT — the
-    // inner `delimited` runs its own machine there and then)
-    def prog: Int ! P = Delim.delimited[Int, P]: (outer: Delim.Prompted[Int]) ?=>
+  test("a second machine in one row is a COMPILE error (delim-safety stage 0)") {
+    // `Prompted` proves a delimiter was installed, not that THIS
+    // machine holds it — which used to be a runtime NoPrompt for an
+    // ordinary nesting. The row guard refuses the shape instead.
+    val e = compileErrors("""
+      okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))""")
+    assert(e.nonEmpty, "a second machine compiled")
+    assert(e.contains("SECOND machine"), s"the message does not say what is wrong: $e")
+  }
+
+  test("THE LIMIT: an ABSTRACT row is not caught, and still throws") {
+    // `NotGiven` reads an unknown F as "absent", so a row-polymorphic
+    // helper compiles — and NoPrompt is still what happens when it is
+    // instantiated at a Delim row. Stages 1 and 2 of
+    // specs/delim-safety.md exist for this line.
+    // no witness in ITS signature: the guard is summoned for an
+    // abstract F, where it succeeds — that is the hole. A helper that
+    // DOES take `using Delim.OneMachine[F]` propagates the obligation
+    // and its call site is refused, which is the fix available today.
+    def generic[F[+_]](p: Int ! (Delim + F)): Int ! F = Delim.run(p)
+    val outer = Delim.prompt[Int]
+    def prog: Int ! P = Delim.delimited[Int, P]:
       direct:
-        val inner = !Delim.delimited[Int, Delim + P]:
-          direct:
-            1 + !Delim.shift[Int, Int, Delim + P](using outer)(k => k(5))
-        inner + 100
+        100 + !generic[Delim + P](Delim.shift[Int, Int, Delim + P](outer)(k => k(5)))
     intercept[NoPrompt](!.run(prog))
   }
 
