@@ -782,8 +782,15 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       which touched okay-persist and okay core only). First time TWO
       modules lost a process in the same run, which fits the settled
       cause — the runner, under a box that was also carrying a
-      1-minute load of 12-14 when the gate started. The rate is five
-      occurrences in eight days of full gates.
+      1-minute load of 12-14 when the gate started.
+      2026-09-17, okayCodecNative AND okayObsNative, again two in one
+      run, GREEN on the rerun of both (workflow-docs, a documentation
+      lane plus one Worker method). SIXTH occurrence, and the second
+      PAIR in a single day of heavy gating — which is the first
+      evidence that the rate rises with how many gates run per hour
+      rather than with what any lane changed. Worth measuring before
+      anyone tries to fix it: a gate every ten minutes is the new
+      condition, and it arrived with gate-quiet-realistic.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
