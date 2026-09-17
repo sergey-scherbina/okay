@@ -366,9 +366,10 @@ answers on every cold start.
 
 ### Behavior — stage 3
 
-- [ ] a dialogue that `continueAs`es twice is read from the last seed,
+- [x] a dialogue that `continueAs`es twice is read from the last seed,
       and its cold start does not depend on the length of the whole
-      history
+      history (dialogue-continue-as: four chapters, a journal of ONE
+      answer, in TestContinueAsWorker)
 - [ ] with a cache, n answers to one dialogue replay once, not n times
 
 ## Stage 4 — what a workflow ENGINE owes beyond the model
@@ -444,7 +445,49 @@ rather than a rewrite.
 | `workflow-retries` | **LANDED 2026-09-17**: `Worker.retrying(policy)(oracle)` — three lines, because the two halves already existed (`Retry`'s policies are streams of delays, and the activity row is where an attempt is allowed to fail). An exhausted policy gives up FOR NOW: nothing is journalled, the run still stands at its question, and a later worker asks again | the activity row |
 | `workflow-cancel` | **LANDED 2026-09-17**: `Cancels`, a compacted keyed topic of stop requests, `Wf.cancelled` as an ordinary `Sys` question, and `Runtime.cancellable` wrapping the ambient runtime per dialogue. COOPERATIVE, and not by taste — see the Result below. Compensation is ordinary code on the cancelled branch | the driver, the worker |
 | `workflow-children` | a child dialogue keyed under its parent, and a parent question answered by its result | the driver, the worker |
-| `dialogue-continue-as` | bounded history: a `Continued(seed)` record that supersedes everything before it | — |
+| `dialogue-continue-as` | **LANDED 2026-09-17**: `Wf.Next`, `Entry.Continued`, `Dialogue.continueAs` and `Worker`'s `seedOf`. A continuation resets the JOURNAL and not the RECORD COUNT — see the Result below, which is the whole of why it is safe | the worker |
+
+### Result — bounded history, and the count that must not reset (2026-09-17)
+
+`TestContinueAs` (6) and `TestContinueAsWorker` (3), plus one in
+`TestWorkflowGuide`.
+
+**The alternative that was refuted.** Temporal's `continueAsNew` is a
+CALL that never returns, and that was tried first. It cannot be one
+here: a call has to carry the seed to the driver, the seed is the
+AUTHOR's type, and the only channel a question travels on is `Sys` — a
+non-generic library enum whose runtime answers `Either[Wait, SysA]`
+with no `A` to put a seed in. The ways out were an untyped payload, or
+a type parameter on `Sys`/`Wait` that every workflow would pay for so
+that the few which bound their history could. The RESULT channel
+already carries the author's types, so `Wf.Next[S, R]` costs only the
+programs that use it. What that buys back, and it is not nothing: a
+program's continuation points are visible in its RETURN TYPE.
+
+**THE INVARIANT, and it is the only subtle thing here: a continuation
+resets the journal and NOT the record count.** `expect` counts records
+accepted, not answers held, and the two are equal until a `Continued`
+makes them differ. That is what keeps a chapter boundary safe against
+a second writer: a worker still standing in the old chapter carries a
+number this fold has already passed, so its answer is REJECTED rather
+than read onto a question it never saw.
+
+**The test for that invariant was wrong first, and the way it was
+wrong is worth keeping.** It stood the stale writer at position TWO
+and passed against a deliberately broken fold — because a fold that
+reset its count to 1 rejected `expect == 2` by arithmetic, not by the
+invariant. Moved to position ONE — where the new chapter's first
+answer goes — it fails against the broken fold with exactly the
+corruption it exists to catch (`a stale answer was accepted into the
+new chapter: Advanced(Ask(3?))`). A green test proves nothing until it
+has been seen red for the right reason.
+
+**What it does NOT do.** A program that continues without ever pausing
+would spin inside one drive, so a worker runs at most `continuations`
+chapters per call and hands back `Progress.Continued(n)` — not an
+error, just "call me again". And `Chapter` gained an `accepted` field:
+a snapshot written by an older build no longer decodes and is ignored,
+which is the fallback that file already documents.
 
 ### Result — cancellation is a QUESTION, not a throw (2026-09-17)
 

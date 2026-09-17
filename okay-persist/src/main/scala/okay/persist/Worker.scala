@@ -46,7 +46,25 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                    snapshotEvery: Int = 0,
                                    signals: Option[Signals] = None,
                                    statuses: Option[Statuses] = None,
-                                   cancels: Option[Cancels] = None)
+                                   cancels: Option[Cancels] = None,
+                                   /**
+                                    * HOW A RESULT SAYS "THIS IS NOT THE END"
+                                    * (dialogue-continue-as, 2026-09-17). A program
+                                    * that bounds its own history returns a seed
+                                    * instead of a value; this is how the worker
+                                    * reads one out of the author's own result type.
+                                    * `Wf.Next.seed` is the conventional shape and
+                                    * needs no lambda. The default says no program
+                                    * ever continues, which is what every workflow
+                                    * written before this lane meant.
+                                    */
+                                   seedOf: R => Option[A] = (_: R) => None,
+                                   /** how many chapters one drive will run through
+                                    * before handing back. A program that continues
+                                    * without ever pausing would otherwise spin in
+                                    * here for ever; this turns that into a value the
+                                    * caller can see. */
+                                   continuations: Int = 64)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
@@ -126,11 +144,28 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
       case Left(stopped) => pure(Worker.Progress.Broken(stopped))
       case Right(_) => drive(id)
 
-  private def drive(id: String): Worker.Progress[R] ! G =
-    dialogue(id).runWorkflowIn[G](oracle)(using runtime(id), summon[RowLift.Sub[F, G]]).flatMap:
-      case Right(r) =>
-        timers.disarm(id)
-        pure(Worker.Progress.Finished(r))
+  private def drive(id: String): Worker.Progress[R] ! G = driving(id, 0)
+
+  private def driving(id: String, chapters: Int): Worker.Progress[R] ! G =
+    // ONE dialogue for the whole chapter, because its `seen` is what
+    // makes the won-the-race check free; a fresh one per call would
+    // re-fold the journal on every answer
+    val d = dialogue(id)
+    d.runWorkflowIn[G](oracle)(using runtime(id), summon[RowLift.Sub[F, G]]).flatMap:
+      case Right(r) => seedOf(r) match
+        case None =>
+          timers.disarm(id)
+          pure(Worker.Progress.Finished(r))
+        case Some(seed) =>
+          // the program bounded its own history: close the chapter and
+          // carry the run on from the seed. The `expect` is the RECORD
+          // count, which a continuation does not reset — so a second
+          // worker still standing in the old chapter loses this race
+          // exactly as it would lose a race to answer.
+          val _ = d.continueAs(Right(seed), d.recovered.accepted)
+          if chapters + 1 >= continuations then
+            pure(Worker.Progress.Continued(chapters + 1))
+          else driving(id, chapters + 1)
       case Left(Wf.Wait.Until(t)) =>
         timers.arm(id, t)
         pure(Worker.Progress.Sleeping(t))
@@ -140,7 +175,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
         // this is the moment it becomes an answer
         signals.flatMap(_.next(id, name)) match
           case Some((off, payload)) =>
-            dialogue(id).answer(Left(Wf.SysA.Got(payload))).up[G].flatMap: _ =>
+            d.answer(Left(Wf.SysA.Got(payload))).up[G].flatMap: _ =>
               // the cursor moves ONLY after the journal took it, so a
               // crash in between re-delivers and `expect` refuses the
               // duplicate — a repeated attempt, never a doubled answer
@@ -217,6 +252,7 @@ object Worker:
     case Progress.Waiting(okay.Wf.Wait.Signal(n)) => Statuses.State.Waiting(s"signal:$n")
     case Progress.Waiting(okay.Wf.Wait.Child(c)) => Statuses.State.Waiting(s"child:$c")
     case Progress.Waiting(okay.Wf.Wait.Until(t)) => Statuses.State.Sleeping(t)
+    case Progress.Continued(n) => Statuses.State.Waiting(s"continuing:$n")
     case Progress.Broken(why) => Statuses.State.Broken(why.toString)
 
   /** what a worker learned about one run */
@@ -224,4 +260,8 @@ object Worker:
     case Finished[R](value: R) extends Progress[R]
     case Sleeping(untilMillis: Long) extends Progress[Nothing]
     case Waiting(on: Wf.Wait) extends Progress[Nothing]
+    /** the run ended a chapter and started another, and this drive
+     * has run through as many as it will in one call. Nothing is
+     * wrong: call `advance` again to carry it on. */
+    case Continued(chapters: Int) extends Progress[Nothing]
     case Broken(why: Dialogue.Stopped) extends Progress[Nothing]

@@ -145,4 +145,23 @@ class TestWorkflowGuide extends FunSuite {
     assertEquals(drive(worker.advance("b-1")),
       Worker.Progress.Finished("released Kyiv: customer withdrew"))
   }
+
+  // ---- the page's bounded-history block, verbatim
+
+  def stage(using w: Wf.Asks[String, String, Wf.Next[String, String], Pure])
+      : Wf.Next[String, String] ! (Delim + Pure) = direct:
+    val input = !w.pause("input")               // the SEED, on a continued run
+    if input.length >= 4 then Wf.Next.Done(s"done:$input")
+    else Wf.Next.Continue(input + "x")          // close this chapter, open the next
+
+  test("the guide's bounded history: four chapters, a journal of one answer") {
+    val store = MemoryStore()
+    val worker = Worker[String, String, Wf.Next[String, String], Pure, Async](
+      store.topic("stages"), "stage/1", Timers.over(store),
+      _ => okay.async("a"), seedOf = Wf.Next.seed)(stage)
+
+    assertEquals(drive(worker.start("s-1")),
+      Worker.Progress.Finished(Wf.Next.Done("done:axxx")))
+    assertEquals(worker.dialogue("s-1").journal.size, 1)
+  }
 }

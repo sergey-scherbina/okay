@@ -300,6 +300,48 @@ object Wf:
 
   // ── the runtime's side ───────────────────────────────────────────
 
+  /**
+   * WHAT A WORKFLOW THAT BOUNDS ITS OWN HISTORY RETURNS
+   * (dialogue-continue-as, 2026-09-17): Temporal's `continueAsNew`,
+   * as a RESULT rather than a call.
+   *
+   * Replay re-runs the program over its answers, so a dialogue with
+   * ten thousand answers runs the program over ten thousand answers
+   * on every cold start. Chapters cut the READING; only this cuts the
+   * RUNNING. A program ends a stage with `Continue(seed)`, the
+   * journal is closed and restarted with the seed as its first
+   * answer, and history is bounded by the author's choice of where a
+   * stage ends.
+   *
+   * ── WHY A RESULT AND NOT A QUESTION, which is what Temporal looks
+   * like and what was tried first. A question would have to CARRY the
+   * seed to the driver, and the seed is the AUTHOR's type: `Sys` is a
+   * non-generic library enum and `Runtime.answer(q: Sys)` has no `A`
+   * to put it in. The ways out were to smuggle the seed through an
+   * untyped payload, or to give `Sys`/`Wait` a type parameter — a
+   * cost every workflow pays so that the few which bound their
+   * history can. The RESULT channel already carries the author's
+   * types, so it costs only the programs that use it.
+   *
+   * ── WHY THE SEED IS AN ANSWER, not a separate thing: it is written
+   * into the journal, and the journal holds answers. So the seed's
+   * type is the program's own answer type, and a continued run reads
+   * it exactly where a fresh run reads the oracle's reply — at its
+   * FIRST question. "The first pause is the input" is the contract,
+   * and it is the same contract Temporal has.
+   */
+  enum Next[+S, +R]:
+    case Continue[S](seed: S) extends Next[S, Nothing]
+    case Done[R](value: R) extends Next[Nothing, R]
+
+  object Next:
+    /** what `Worker`'s `seedOf` wants: the seed, if this result is a
+     * continuation. Written out so the conventional shape needs no
+     * lambda at the call site. */
+    def seed[S, R](n: Next[S, R]): Option[S] = n match
+      case Next.Continue(s) => Some(s)
+      case Next.Done(_) => None
+
   /** what answers the LIBRARY's questions. The default reaches for
    * the real clock; a test hands over a scripted one and gets a
    * deterministic run without touching the program. */

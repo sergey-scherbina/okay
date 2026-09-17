@@ -124,7 +124,13 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
   /** what the log remembers, oldest first — with the races that lost
    * and the record that stopped the fold, if either happened */
   def recovered: Dialogue.Recovered[A] =
-    val out = Vector.newBuilder[A]
+    var out = Vector.empty[A]
+    // RECORDS accepted, which is no longer the same as answers held:
+    // a `Continued` resets the journal and does NOT reset this. That
+    // is what keeps `expect` sound across a continuation — a writer
+    // still standing in the old chapter carries a number this one has
+    // already passed, so its record is rejected instead of being read
+    // onto a question that is not the one it answered.
     var accepted = 0
     var rejected = List.empty[Dialogue.Lost]
     var stopped: Option[Dialogue.Stopped] = None
@@ -139,8 +145,8 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
         .flatMap(_._2.toOption)
         .filter(_.program == program)
     chapter.foreach: c =>
-      out ++= c.answers
-      accepted = c.answers.size
+      out = c.answers.toVector
+      accepted = c.accepted
     var from = chapter.map(_.upTo + 1).getOrElse(topic.begin(partition))
     var going = true
     while going do
@@ -153,13 +159,25 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
               d match
                 case Typed.Decoded.Ok(off, _, k, e) =>
                   if k.sameElements(key) then
-                    e match
-                      case Dialogue.Entry.Answered(p, _, _) if p != program =>
-                        stopped = Some(Dialogue.Stopped.Mismatch(off, p, program))
-                        going = false
+                    val wrote = e match
+                      case Dialogue.Entry.Answered(p, _, _) => p
+                      case Dialogue.Entry.Continued(p, _, _) => p
+                    if wrote != program then
+                      stopped = Some(Dialogue.Stopped.Mismatch(off, wrote, program))
+                      going = false
+                    else e match
                       case Dialogue.Entry.Answered(_, expect, a) =>
                         if expect == accepted then
-                          out += a
+                          out = out :+ a
+                          accepted += 1
+                        else rejected = rejected :+ Dialogue.Lost(off, expect, accepted)
+                      case Dialogue.Entry.Continued(_, expect, seed) =>
+                        // EVERYTHING BEFORE THIS IS SUPERSEDED. The
+                        // journal becomes the seed alone, so replay
+                        // costs one answer however long the history
+                        // was; the record count carries on.
+                        if expect == accepted then
+                          out = Vector(seed)
                           accepted += 1
                         else rejected = rejected :+ Dialogue.Lost(off, expect, accepted)
                   if going then from = off + 1
@@ -167,7 +185,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
                   stopped = Some(Dialogue.Stopped.Damage(off, err))
                   going = false
     seen = from
-    Dialogue.Recovered(out.result().toList, rejected, stopped)
+    Dialogue.Recovered(out.toList, accepted, rejected, stopped)
 
   /** the answers accepted so far; a stopped fold ends the journal
    * where it stopped, and `recovered` is how you see that it did */
@@ -207,7 +225,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
     r.stopped match
       case Some(s) => pure(Dialogue.Answered.Broken(s))
       case None =>
-        place(r.answers).flatMap(advance(_, a, r.answers.size))
+        place(r.answers).flatMap(advance(_, a, r.accepted))
 
   /**
    * THE WARM PATH. Advance a dialogue you are already holding: the
@@ -252,7 +270,32 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
     val r = recovered
     if r.intact then
       val _ = snaps.putValue(key,
-        Dialogue.Chapter(program, topic.end(partition) - 1, r.answers))
+        Dialogue.Chapter(program, topic.end(partition) - 1, r.accepted, r.answers))
+
+  /**
+   * CLOSE THIS CHAPTER AND START THE NEXT (dialogue-continue-as,
+   * 2026-09-17). `seed` becomes the journal's only answer, so the
+   * next replay runs the program over one answer instead of the whole
+   * history.
+   *
+   * `true` means this writer's continuation is the one the fold took.
+   * Two workers that both decide to continue from the same position
+   * write two records and exactly one wins, by the same `expect` the
+   * answers use — the loser's number is already behind and its record
+   * changes nothing.
+   *
+   * It does NOT drive the program: what to do with a fresh chapter is
+   * the worker's business, and `Worker`'s `seedOf` is what turns a
+   * program's `Next.Continue` into this call.
+   */
+  def continueAs(seed: A, expect: Int): Boolean =
+    val before = seen
+    val off = typed.append(partition, key,
+      Dialogue.Entry.Continued(program, expect, seed), Ack.Durable)
+    written += 1
+    val ok = won(before, off)
+    if ok then seen = off + 1
+    ok
 
   private def journalled(a: A, expect: Int): Long =
     val off = typed.append(partition, key,
@@ -369,7 +412,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
     r.stopped match
       case Some(s) => throw Dialogue.Halted(s)
       case None =>
-        place(r.answers).up[G].flatMap(go(_, r.answers.size))
+        place(r.answers).up[G].flatMap(go(_, r.accepted))
 
 object Dialogue:
 
@@ -456,6 +499,17 @@ object Dialogue:
    */
   enum Entry[A]:
     case Answered[A](program: String, expect: Int, a: A) extends Entry[A]
+    /**
+     * THE END OF A CHAPTER (dialogue-continue-as, 2026-09-17).
+     * Everything before it is superseded and the journal restarts
+     * with `seed` as its only answer, so a cold start replays one
+     * answer however long the history was. It carries the same
+     * envelope as an answer and for the same reasons: a continuation
+     * written by another program stops the fold, and two writers that
+     * both decide to continue produce ONE new chapter, because the
+     * loser's `expect` no longer matches.
+     */
+    case Continued[A](program: String, expect: Int, seed: A) extends Entry[A]
 
   object Entry:
     given [A](using Schema[A]): Schema[Entry[A]] = Schema.derived
@@ -505,13 +559,19 @@ object Dialogue:
    * record does: a chapter from another program is a shortcut to the
    * wrong place, and is ignored.
    */
-  final case class Chapter[A](program: String, upTo: Long, answers: List[A])
+  final case class Chapter[A](program: String, upTo: Long,
+                              accepted: Int, answers: List[A])
 
   object Chapter:
     given [A](using Schema[A]): Schema[Chapter[A]] = Schema.derived
 
   /** the journal, the races that lost, and what stopped the fold */
   final case class Recovered[A](answers: List[A],
+                                /** records the fold accepted, which
+                                 * is what `expect` counts. Equal to
+                                 * `answers.size` until a `Continued`
+                                 * makes it larger — see the fold. */
+                                accepted: Int,
                                 rejected: List[Lost],
                                 stopped: Option[Stopped]):
     def intact: Boolean = stopped.isEmpty

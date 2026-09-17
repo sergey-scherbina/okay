@@ -791,6 +791,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       rather than with what any lane changed. Worth measuring before
       anyone tries to fix it: a gate every ten minutes is the new
       condition, and it arrived with gate-quiet-realistic.
+      2026-09-17, okayPersistNative, ONE module, GREEN on the rerun of
+      that module alone (dialogue-continue-as). SEVENTH occurrence,
+      and two things in it cut against yesterday's hypothesis rather
+      than for it: a single module on the heaviest gating day so far
+      (the pair, not the rate, may be the coincidence), and the FIRST
+      time the module that lost its process is one the lane actually
+      changed — okay-persist. With seven occurrences across six
+      modules one such coincidence is unremarkable, and it is recorded
+      because the ledger is worth nothing if only the fitting
+      observations go in it.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to

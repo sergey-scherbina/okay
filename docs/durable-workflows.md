@@ -181,6 +181,46 @@ finished the way it finished. There is a test named for exactly that.
 Lose the whole cancel topic and no journal is wrong; the runs that
 would have stopped simply carry on.
 
+## When a run goes on too long to replay
+
+Replay re-runs the program over its answers. A dialogue with ten
+thousand answers runs the program over ten thousand answers on every
+cold start — and a `Snapshots` chapter does not help, because a
+chapter cuts the READING and this is the RUNNING.
+
+What cuts it is the program ending a stage itself:
+
+```scala
+def stage(using w: Wf.Asks[String, String, Wf.Next[String, String], Pure]) =
+  direct:
+    val input = !w.pause("input")               // the SEED, on a continued run
+    if input.length >= 4 then Wf.Next.Done(s"done:$input")
+    else Wf.Next.Continue(input + "x")          // close this chapter, open the next
+```
+
+```scala
+Worker(..., seedOf = Wf.Next.seed)(stage)
+```
+
+The worker writes a `Continued(seed)` record, which **supersedes
+everything before it**: the journal becomes the seed alone and the
+next replay costs one answer however long the history was. A run that
+has been through four chapters has a journal of one answer, and there
+is a test that asserts exactly that.
+
+Three things to know before using it:
+
+- **The first pause is the input.** A fresh run has it answered by the
+  oracle, a continued run by the seed, and the program cannot tell.
+  That is the same contract Temporal's `continueAsNew` has.
+- **The seed is one of your own answers.** It goes in the journal, and
+  the journal holds answers — so its type is the program's answer
+  type, not a new one.
+- **It is a RESULT, not a call.** Temporal's version is a call that
+  never returns. Here the seed has to reach the driver, and the only
+  typed channel that carries the author's own types is the result. The
+  spec has the refutation in full.
+
 ## What this is NOT
 
 Say this half too. The MODEL is smaller and better than a workflow
@@ -192,8 +232,7 @@ wrote. The OPERATIONS are younger:
 - there is no lease, so two workers collide harmlessly rather than
   rarely (`expect` is what makes that safe);
 - cancellation is **cooperative** (see below), not pre-emptive;
-- child workflows and bounded history (`continueAs`) are named in the
-  spec and not built yet;
+- child workflows are named in the spec and not built yet;
 - `Timers.due` and `Signals.next` scan a topic, which is honest for
   thousands of runs and wrong for millions.
 

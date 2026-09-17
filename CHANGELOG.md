@@ -1,5 +1,46 @@
 # Changelog
 
+## dialogue-continue-as - bounded history, and the count that must not reset
+
+Replay re-runs the program over its answers, so a dialogue with ten
+thousand answers runs the program over ten thousand answers on every
+cold start. Chapters (dialogue-snapshots) cut the READING; this is
+what cuts the RUNNING. A program ends a stage by returning
+Wf.Next.Continue(seed); the worker writes an Entry.Continued record
+that SUPERSEDES everything before it, so the journal becomes the seed
+alone. Four chapters, a journal of one answer - asserted.
+
+A RESULT, NOT A CALL, and the refutation is the reason. Temporal's
+continueAsNew is a call that never returns; here a call would have to
+carry the seed to the driver, and the seed is the AUTHOR's type while
+the question channel is Sys - a non-generic library enum whose runtime
+answers with no A to put a seed in. The ways out were an untyped
+payload, or a type parameter on Sys/Wait that every workflow pays for
+so the few that bound their history can. The result channel already
+carries the author's types.
+
+THE INVARIANT: a continuation resets the JOURNAL and not the RECORD
+COUNT. `expect` counts records accepted, not answers held, and the two
+are equal until a Continued makes them differ. That is what keeps a
+chapter boundary safe against a second writer - one still standing in
+the old chapter carries a number the fold has already passed, so its
+answer is rejected instead of read onto a question it never saw.
+
+THE TEST FOR THAT WAS WRONG FIRST, which is why it is worth saying: it
+stood the stale writer at position TWO and PASSED against a
+deliberately broken fold, because a fold that reset its count to 1
+rejects expect == 2 by arithmetic rather than by the invariant. At
+position ONE - where the new chapter's first answer goes - it fails
+against the broken fold with the corruption it exists to catch.
+
+Also: Worker runs at most `continuations` chapters per call and hands
+back Progress.Continued(n) rather than spinning, and Chapter gained an
+`accepted` field, so a snapshot from an older build no longer decodes
+and is ignored - the fallback that file already documented.
+
+TestContinueAs (6), TestContinueAsWorker (3), one more in
+TestWorkflowGuide.
+
 ## workflow-cancel - asking a run to stop, as a question it answers
 
 `Cancels` is a compacted keyed topic of stop requests, `Wf.cancelled`
