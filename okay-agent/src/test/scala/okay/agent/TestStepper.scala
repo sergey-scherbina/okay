@@ -71,16 +71,18 @@ class TestStepper extends munit.FunSuite {
       Agent.complete().flatMap(r => Agent.call(r.calls.head)).map(_.toUpperCase)
 
     val forked = stepped(prog).flatMap {
-      case Stepping.Paused(_, resume) =>
-        // the SAME continuation, resumed twice with different pasts
-        resume("first world").flatMap { a =>
-          resume("second world").map { b => (a, b) }
+      case Delim.Paused.Ask(_, resume, _) =>
+        // the SAME continuation, resumed twice with different pasts.
+        // `Delim.run` is what the bespoke enum used to hide: the
+        // resumption is a program in the machine's own row.
+        Delim.run(resume("first world")).flatMap { a =>
+          Delim.run(resume("second world")).map { b => (a.finished, b.finished) }
         }
-      case done => pure((done, done))
+      case done => pure((done.finished, done.finished))
     }
     val (a, b) = runRest(forked)(model, freshCtx)
-    assertEquals(a, Stepping.Done("FIRST WORLD"))
-    assertEquals(b, Stepping.Done("SECOND WORLD"))
+    assertEquals(a, Some("FIRST WORLD"))
+    assertEquals(b, Some("SECOND WORLD"))
   }
 
   test("the transparent driver: stepping with nobody watching equals not stepping") {
@@ -95,5 +97,16 @@ class TestStepper extends munit.FunSuite {
       given r3: Handler[Agent] = Handler.union[Tool, Context + (Model + Async)]
       agent.runWith
     assertEquals(runRest(transparent(stepped(agent))(table))(model, freshCtx), direct)
+  }
+
+  test("a stepping run is NOT replayable, and the row says why") {
+    // the backlog asked for this rewrite partly to gain `Delim.replay`
+    // for free. It does not: replaying a stepping session would ask
+    // the MODEL again, and `Replayable` refuses the row that says so.
+    val e = compileErrors("""
+      okay.Delim.replay[ToolCall, String, String, Stepper.Rest](
+        summon[okay.Delim.Asking[ToolCall, String, String, okay.Delim + Stepper.Rest]] ?=>
+          okay.pure(""))(Nil)""")
+    assert(e.nonEmpty, "a stepping run typechecked as replayable")
   }
 }

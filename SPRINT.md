@@ -30,7 +30,12 @@
   stage 0 landed), specs/delim-safety.md (stage 0 landed) and
   specs/delim-diagnostics.md (not started). The order below is by
   value per day, and the reason for it is in each entry.
-  NEXT: `dialogue-patch`, then `delim-patterns-in-modules`.
+  NEXT: `dialogue-asks` — and it is FIRST because `dialogue-patch`
+  turns out to DEPEND on it: `patch(id)` is a question the library
+  answers from the journal, not one the user's oracle answers, which
+  is the same design decision `dialogue-nondeterminism` owes (the
+  shape of the question type). Doing patch first would decide it by
+  accident.
   `delim-forward-not-throw` LANDED 2026-09-17 with a POSITIVE verdict,
   and it did cancel later work: region types are no longer needed for
   the nesting case.
@@ -50,10 +55,12 @@
   `dialogue-replay-discipline` landed the constraint: a clock, ids and
   randomness as journalled questions, and `perform`. Decide the shape
   of the question type before writing any of it.
-- dialogue-patch — stage 2: needed the moment anyone deploys twice.
-- delim-patterns-in-modules — okay-agent's Stepper and okay-llm's Cut
-  hand-roll patterns that now exist; cheap, and it is the honest test
-  of "this simplifies ordinary code".
+- dialogue-asks — the library-owned question channel: `now`, `uuid`,
+  `random`, `perform` AND `patch(id)`, which all need the same thing —
+  a question the DIALOGUE answers rather than the oracle. Decide the
+  encoding once (a `Left`/`Right` split of the question type is the
+  candidate), then the four are small.
+- dialogue-patch — stage 2, after `dialogue-asks` gives it a channel.
 - dialogue-continue-as, workflow-operations — stages 3 and 4, on a
   consumer's trigger, not on momentum.
 

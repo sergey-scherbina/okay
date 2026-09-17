@@ -518,6 +518,24 @@ object Delim {
       k.asInstanceOf[s.Ans => Paused[s.Qst, s.Ans, s.Fin, s.Row] ! s.Row],
       at.where)))
 
+  /**
+   * `pause`, OUTSIDE a direct block (delim-patterns-in-modules,
+   * 2026-09-17): the `for`-comprehension spelling, and the only one a
+   * natural transformation can use — which is where the need came
+   * from, `okay-agent`'s stepper turning every `Tool.Call` into a
+   * pause inside a `translate`.
+   *
+   * It takes the three types the inline door reads off its
+   * `DirectCtx`, and it needs NO cast in exchange: with the row
+   * written down, `k` already has the type `Ask.resume` wants. The
+   * inline `pause` casts only because a mark gives its argument no
+   * expected type.
+   */
+  def ask[Q, A, R, F[+_]](q: Q)(using s: Asking[Q, A, R, Delim + F], at: At)
+                         : A ! (Delim + F) =
+    shift[Paused[Q, A, R, Delim + F], A, F](using s.in)(k =>
+      okay.pure(Paused.Ask(q, k, at.where)))
+
   /** answer every question until the dialogue is done — the driver
    * for the common case where the answers are available now */
   def drive[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F])(answer: Q => A ! F)

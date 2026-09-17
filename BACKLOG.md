@@ -68,16 +68,15 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       from answers, cancellation, a visibility index, a worker pool
       with leases, child workflows. Named so that nobody mistakes the
       model for an engine.
-- [ ] delim-patterns-in-modules — okay-agent's `Stepper` and okay-llm's
-      `Cut` were written BEFORE the named patterns existed and each
-      hand-rolls one: Stepper has its own `Stepping` enum with
-      `Paused`/`Done` and its own `drive` (that is `Delim.Paused` and
-      `Delim.drive`), Cut its own prompt-passing exit (that is
-      `Prompted` + `exit`). Both work; both would be shorter, and the
-      Stepper would gain `replay` — a stepping run that survives the
-      process — for free. Additive per the adoption doctrine: the
-      existing entry points stay. Found by continuations-audit
-      (2026-09-17).
+- [ ] delim-doors-are-prompted — okay-llm's `Cut` and okay-ui's
+      `Scope` take their ambient delimiter as a `Prompt[A] ?=>`, which
+      ANY caller can construct (`Delim.prompt[A]` is one line and
+      proves nothing), where `Delim.Prompted` cannot be forged. Moving
+      them would make `cut`/`cancel` outside a guard a compile error
+      rather than a runtime `NoPrompt`. It changes a public signature
+      in two modules, so it is a decision, not a tidy-up. Found while
+      landing delim-patterns-in-modules (2026-09-17), which left them
+      alone on purpose: they duplicate nothing.
 - [ ] delim-region-prompts — NARROWED 2026-09-17 by
       delim-forward-not-throw: the NESTING case is solved (the nested
       forms, the OneMachine guard, and `runNested` for a machine you
