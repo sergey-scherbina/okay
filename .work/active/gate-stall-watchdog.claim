@@ -1,6 +1,0 @@
-feature/gate-stall-watchdog 2026-09-17T10:12:26Z
-agent: claude-code
-heartbeat: 2026-09-17T10:12:26Z
-status: in-progress
-done-so-far: gate-quiet-realistic landed (ea72d68e)
-next: stall watchdog in gate-retry.sh + make the warm-warning blindness visible
