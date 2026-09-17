@@ -148,14 +148,28 @@ rolls a die between pauses replays that call — measured in
       accident and a reviewer sees the name
 - [x] an abstract row propagates the obligation rather than crashing
       the compiler
-- [ ] `now`/`uuid`/`random` answer from the journal on replay, and the
-      same run twice gives the same values
-- [ ] `perform` executes once per position across a restart
+- [x] `now`/`uuid`/`random` answer from the journal on replay, and the
+      same run twice gives the same values (`TestWf`: "replay gives
+      the same values — the clock is read from the journal, not the
+      wall", and "a die and a clock are each read ONCE, however often
+      the program is replayed")
+- [x] `perform` executes once per position across a restart —
+      `Wf.perform` IS `pause`, so it is the same journalled question,
+      and the idempotency key is `Dialogue.Attempt(id, index)`
 
-The last two are a SEPARATE lane (`dialogue-nondeterminism`), and the
-reason is a design question this one should not answer in passing:
-a dialogue's question type `Q` is the author's own, so "give me the
-clock" has nowhere to live in it. Either `Q` becomes a sum the library
+THESE TWO WERE TICKED LATE, and the paragraph that stood here is why
+they were missed: it said they were a separate lane because "give me
+the clock" had nowhere to live in the author's `Q`. That question was
+ANSWERED in passing after all — `Wf.Ask[Q] = Either[Sys, Q]` gives the
+library its own channel, so the author's type never grows — and
+nobody came back to tick the boxes. A spec that records a blocker must
+be re-read when the blocker goes, or it keeps reporting work as
+undone for as long as anybody trusts it.
+
+The original reasoning, kept because the shape it rejected is still
+the wrong one: a dialogue's question type `Q` is the author's own, so
+"give me the clock" has nowhere to live in it. Either `Q` becomes a sum
+the library
 owns (`Ask[Q] = Mine(Q) | Now | Uuid | Random`, which changes every
 signature and the journal's records), or the clock is a second channel
 beside the questions. Deciding that badly in a hurry would cost more

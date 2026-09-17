@@ -278,7 +278,20 @@ busy part.
 producer stays on *its* part, so one producer's own elements keep
 their order among themselves. Nothing is lost or duplicated. The
 channel laws state exactly this — "one producer's elements arrive in
-the order it sent them" — and it survives.
+the order it sent them".
+
+> **This promise currently has a KNOWN DEFECT, and the page says so
+> rather than letting you find out.** `TestGrowing`'s per-producer law
+> has broken four times under a full test matrix — 2026-09-10,
+> 09-11, and again on 09-17 after the fix that closed the first two
+> (`growing-stale-route`). Each time it is one element of one
+> producer arriving ahead of its own predecessors across a part swap.
+> It is rare — thousands of rounds pass between sightings, and 2 000
+> rounds on a quiet box reproduced nothing — but rare is not never.
+> The open entry, with the measurements and the leads already ruled
+> out, is `growing-stale-route` in BUGS.md. If your use depends on
+> per-producer order under many producers, read it before you depend
+> on it.
 
 A relaxed buffer says so: `buffer.parts > 1`. It is stated in the
 interface rather than left implicit, because a relaxed buffer that

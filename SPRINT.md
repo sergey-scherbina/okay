@@ -49,8 +49,19 @@
   is the page to hand somebody.
   STAGE 3 IS CLOSED TOO (dialogue-resume-cache, MEASURED: five touches
   of a waiting run replay once with the cache and five without).
-  THE ARC IS CLOSED (delim-diagnostics-position, 2026-09-17). Every
-  behaviour box in all three specs is ticked. The last one turned out
+  THE ARC IS CLOSED FOR EVERY STAGE THAT WAS IN SCOPE
+  (delim-diagnostics-position, 2026-09-17) — and the first form of this
+  sentence said "every behaviour box in all three specs is ticked",
+  which was WRONG and is corrected here. An audit found four unticked
+  boxes: two in durable-workflow that were done and never ticked (the
+  paragraph beneath them still named a blocker that `Wf.Ask` had
+  removed), and two in delim-safety stage 2, which is open ON PURPOSE.
+  DELIM-SAFETY STAGE 2 REMAINS OPEN, gated: region types (`runST`'s
+  scope tag) for evidence that ESCAPES its `delimited`. The cost is a
+  type parameter on every signature carrying evidence, including the
+  inline doors whose whole design is that a call site writes as few
+  type arguments as possible. Nothing has asked for it; stage 0
+  catches the real trap and stage 1 made nested machines usable. The last one turned out
   to rest on a wrong assumption — it said the position would have to
   travel in the journal, and it does not: the READER holds the body,
   so it replays the prefix it accepted and names its own line. No
