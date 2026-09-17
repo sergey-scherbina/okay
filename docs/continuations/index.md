@@ -47,7 +47,7 @@ does not compile ON PURPOSE — it is marked as such in the text.
 *Why anybody should care. Readable by somebody who will never write
 Scala.*
 
-### 1. Four programs that are hard to write
+### [1. Four programs that are hard to write](01-four-programs.md) ✓
 
 **Thesis.** There is a family of ordinary requirements — not exotic
 ones — whose straight-line form the language refuses, and every team
