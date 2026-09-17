@@ -1573,6 +1573,11 @@ Decisions:
 - **The step lives in okay-script, not okay-ui.** It reads HTML
   field names (`__press`, `value="on"`), which `Live.html` invented;
   okay-ui has no notion of a name attribute and should not gain one.
+  REVISED the same evening by specs/ui-html.md: a host knows its
+  medium as the terminal knows ANSI, and okay-watch needs these three
+  functions without okay-script's compiler on its classpath. The pure
+  half moves to `okay.ui.Html`; `Live.html`/`plain`/`step` become
+  delegates; `mountPlain` and the session stay here.
 
 ### Application scope, and the admin example (okay-script-application, 2026-09-07)
 

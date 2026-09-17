@@ -73,6 +73,16 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- ui-html-host — the plain road's pure half as an okay-ui host
+  (specs/ui-html.md, stage 0 the spec LANDED 2026-09-17). `Live.html`/
+  `plain`/`step` are three pure functions of strings that live in
+  okay-script, which drags the compiler; okay-watch (a submodule
+  consumer with its own router and door) needs them without it. Stage
+  1: `okay.ui.Html` in the shared directory, okay-script's names as
+  delegates, TestLive's render test and TestLivePlain's step tests
+  moved, `okayUiJVM`'s classpath asserted free of okay-script. Stage
+  2 (`ui-live-js`, the browser's half of the live road) only when
+  okay-watch's specs/ui.md reaches its stage 3.
 - applicative-static — the static half of a program
   (specs/applicative-static.md, stage 0 the spec LANDED 2026-09-17).
   `Selective` has had no consumer since it was written; `traverse` over
