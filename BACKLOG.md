@@ -2004,6 +2004,14 @@ one that type-checked, which is a shape worth removing.
       needs to be a condition rather than a deadline, or the test
       belongs in `integrationTest`. Seen 2026-09-10 by the
       dataflow-numbers gate, which does not touch okay-resilience.
+      SECOND SIGHTING 2026-09-17, continuations-audit's gate: same
+      test, same message, in a run of 4498 results whose only other
+      failure was none — and the lane touches `Delim` and docs, while
+      okay-resilience never names `Delim`. 3 of 3 green in isolation
+      on the lane's own tree minutes later. Two sightings from two
+      lanes that cannot have caused it is no longer one ledger entry:
+      the owner's choice between `Live` and bound-based assertions is
+      now overdue.
 - [ ] microservices-next — the audit's remaining gaps, each its own
       spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
       shutdown and RED metrics, both in okay-ops. DONE 2026-09-09
