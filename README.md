@@ -62,6 +62,7 @@ Start here:
 | | |
 |---|---|
 | [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
+| [Continuations: a working book](docs/continuations/index.md) | the long form on the one idea the rest is built from: why a team should care, the four shapes as recipes, the machine, building new effects on it, the costs with numbers, and what it must not be asked to do |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Building a chat application](docs/building-a-chat-app.md) | an empty directory to a running streaming chat, outside this repo: depending on an unpublished library, backend, frontend, tests, run |
 | [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |

@@ -59,7 +59,7 @@ tomorrow, in another process; run something on the way back out. Each
 shown as the code a reasonable person writes first, and why it does
 not work.
 
-### 2. What teams build instead, and what it costs
+### [2. What teams build instead, and what it costs](02-what-teams-build-instead.md) ✓
 
 **Thesis.** Every one of the four already has a standard workaround,
 and each workaround has a characteristic bug that the workaround
