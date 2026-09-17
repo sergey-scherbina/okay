@@ -68,19 +68,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       from answers, cancellation, a visibility index, a worker pool
       with leases, child workflows. Named so that nobody mistakes the
       model for an engine.
-- [ ] gate-warm-warning-blindness — the warning check is only as good
-      as the worktree is cold, and nothing says so where it is used.
-      MEASURED 2026-09-17: delim-forward-not-throw gated GREEN with
-      "no compile warnings (196 module compile(s) looked at)" over a
-      tree that had two unused imports in it, because the session had
-      run `testOnly` in that worktree first and the gate's `sbt test`
-      recompiled nothing. The next lane's gate, on a colder tree,
-      found it. Candidates: `gate.sh` reports how many of the module
-      compiles ACTUALLY compiled something (it already distinguishes a
-      fully warm run - this is the same idea per module), or the gate
-      removes test-classes first, or `gate-retry.sh` refuses a
-      worktree whose targets it did not build. The check that needs
-      remembering to be cold is not a check.
+- [ ] gate-warm-warning-blindness — PARTLY ANSWERED 2026-09-17 by
+      gate-stall-watchdog: a GREEN whose warning check was blind now
+      SAYS SO in the log ("the WARNING CHECK WAS BLIND — this worktree
+      was already built"), so silence no longer reads as cleanliness.
+      What is still open is making it impossible rather than visible:
+      `gate.sh` reporting how many of its module compiles actually
+      compiled something, or the gate removing test-classes first.
+      The measured incident is in that lane's CHANGELOG entry.
 - [ ] delim-doors-are-prompted — okay-llm's `Cut` and okay-ui's
       `Scope` take their ambient delimiter as a `Prompt[A] ?=>`, which
       ANY caller can construct (`Delim.prompt[A]` is one line and

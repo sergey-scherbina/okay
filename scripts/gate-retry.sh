@@ -63,17 +63,40 @@ set -e
 #
 # FREE was 16 GB, which this box does not reach while anybody is
 # logged in: measured 14.6 GB free with nothing but an idle sbt and
-# the operator's VM. The number that matters is not "plenty" but
-# "enough not to trip the RAM guard mid-run": the scalascript launchd
-# agent kills the heaviest JVM when available memory falls under 3 GB
-# with pageouts (AGENTS.md, THE 143), and sbt here takes 6 GB. 8 GB is
-# the heap plus headroom above the guard's line, and it is a number
-# this machine actually reaches.
+# the operator's VM. The replacement is DERIVED from the guard that
+# would kill the run, not guessed -- `io.scalascript.build-ram-guard`
+# is loaded and ticks every 20 s, and its own constants are:
+#
+#   REAP_FLOOR_MB=8192   below this (or any thrashing) it starts
+#                        reclaiming -- orphaned and idle servers
+#   SHED_FLOOR_MB=3072   below this AND thrashing it may kill LIVE
+#                        work: the heaviest build JVM, which during a
+#                        gate is the gate (AGENTS.md, THE 143)
+#
+# sbt here takes 6 GB (.jvmopts). Starting at 8 GB free would put the
+# host at ~2 GB once the heap is up -- UNDER the shed floor, with the
+# gate as the heaviest JVM, which is the 143 this project already
+# spent three days blaming on its own test suite. 10 GB is the first
+# number that keeps the host above the shed floor with the gate's own
+# footprint accounted for, and the machine reaches it: measured 12-16
+# GB available through this session's runs.
+#
+# (An earlier version of this comment said 8, and it was wrong for
+# exactly the reason written above; it was caught by reading the
+# guard's script rather than by a kill.)
+# KILL A PROCESS TREE BY PID, never by name (AGENTS.md is explicit,
+# and the incident it comes from cost a full matrix). Depth first, so
+# a child cannot be reparented away while its parent is still alive.
+kill_tree() {
+  for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done
+  kill "$1" 2>/dev/null
+}
+
 quiet() {
   L=$(sysctl -n vm.loadavg | awk '{print int($2)}')
   H=$(ps -eo pcpu,rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 20 && $2 > 1000000' | wc -l | tr -d ' ')
   F=$(vm_stat | awk '/Pages free|Pages inactive|Pages speculative/ {gsub("\\.","",$NF); s+=$NF} END {print int(s*16384/1073741824)}')
-  [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 8 ]
+  [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 10 ]
 }
 
 # What one attempt's log says. This is the whole safety property, so it
@@ -101,13 +124,17 @@ fi
 
 if [ "${1:-}" = "--probe" ]; then
   if quiet; then v=quiet; else v=busy; fi
-  echo "box: $v  (busy-sbt=$H load=$L freeGB=$F; wants busy-sbt=0 load<15 free>=8)"
+  echo "box: $v  (busy-sbt=$H load=$L freeGB=$F; wants busy-sbt=0 load<15 free>=10)"
   exit 0
 fi
 
 WT="${1:?usage: gate-retry.sh <worktree> <log> [attempts]}"
 LOG="${2:?usage: gate-retry.sh <worktree> <log> [attempts]}"
 N="${3:-6}"
+# Minutes of SILENCE that mean a hang rather than a long compile.
+# Ten, because the longest legitimate quiet stretch here is one big
+# module's compile and the measured hang was 28 minutes and counting.
+STALL="${GATE_STALL_MIN:-10}"
 
 : > "$LOG"
 i=1
@@ -136,10 +163,79 @@ while [ "$i" -le "$N" ]; do
   # failed projects against the known-lost ones, which is why it went
   # unseen — that branch runs exactly when a gate has already gone
   # wrong.
-  ( cd "$WT" && bash scripts/gate.sh ) >> "$LOG" 2>&1 && rc=0 || rc=$?
+  # THE STALL WATCHDOG (gate-stall-watchdog, 2026-09-17). A gate that
+  # HANGS is invisible to this loop as it was written: it reads the
+  # log only after gate.sh returns, and a hung gate never returns.
+  # Measured the same day: a run reached 80 of 81 modules and then sat
+  # for 28 minutes with sbt's main thread parked in
+  # ExecutorCompletionService.take and ~200 forked native/node runners
+  # at 0.0% CPU -- a runner handshake that never completed. Killing it
+  # by hand and rerunning took half an hour, twice.
+  #
+  # So: run it in the background, and watch the log GROW. A healthy
+  # gate writes something every few seconds; a compile of one big
+  # module is the longest legitimate silence, which is why the
+  # threshold is minutes and not seconds. A stall is killed by PID,
+  # tree first, and counted as "no verdict" -- which this loop already
+  # knows how to retry.
+  # A SENTINEL FILE, not `kill -0`: a finished background child is a
+  # ZOMBIE until the shell reaps it, and `kill -0` on a zombie
+  # SUCCEEDS. The first cut of this watchdog used it and never noticed
+  # a gate finishing -- caught by the test that a HEALTHY gate must
+  # not be killed, which is the test worth writing first.
+  rcfile="$LOG.rc"
+  rm -f "$rcfile"
+  ( cd "$WT" && bash scripts/gate.sh; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
+  gpid=$!
+  stalled=0
+  quietmin=0
+  size=$(wc -c < "$LOG")
+  ticks=0
+  while [ ! -f "$rcfile" ]; do
+    sleep 10
+    ticks=$((ticks + 1))
+    [ $((ticks % 6)) -ne 0 ] && continue          # the growth check is per MINUTE
+    now=$(wc -c < "$LOG")
+    if [ "$now" -gt "$size" ]; then
+      size=$now
+      quietmin=0
+    else
+      quietmin=$((quietmin + 1))
+      if [ "$quietmin" -ge "$STALL" ]; then
+        echo "== attempt $i STALLED: nothing written for $STALL min; killing by pid" >> "$LOG"
+        kill_tree "$gpid"
+        stalled=1
+        break
+      fi
+    fi
+  done
+  # `|| true`, and the script is `set -e`: a killed child makes `wait`
+  # answer 143, which under `set -e` ENDS THIS SCRIPT — the retry loop
+  # would never run, the log would stop mid-sentence, and the exit
+  # code would be a signal. That is exactly what the first cut did,
+  # and the stall test is what showed it (the log ended at "killing by
+  # pid" and the script exited 143).
+  wait "$gpid" 2>/dev/null || true
+  if [ "$stalled" -eq 1 ]; then rc=99
+  elif [ -f "$rcfile" ]; then rc=$(cat "$rcfile")
+  else rc=99
+  fi
+  rm -f "$rcfile"
 
   case "$(verdict "$LOG")" in
-    green) echo "GATE EXIT=0"   >> "$LOG"; exit 0 ;;
+    green)
+      # A GREEN whose warning check was BLIND says so. gate.sh checks
+      # warnings only in a run that compiled something, and a worktree
+      # somebody already built by hand recompiles nothing -- measured
+      # 2026-09-17: delim-forward-not-throw landed two unused imports
+      # through a gate that said "no compile warnings", because the
+      # session had run testOnly in that worktree first. The tests
+      # still passed, so this stays exit 0; what it must not do is let
+      # silence read as cleanliness.
+      if grep -q "warnings NOT checked" "$LOG"; then
+        echo "gate: GREEN, but the WARNING CHECK WAS BLIND — this worktree was already built, so nothing recompiled. Compile it cold before trusting 'no warnings'." >> "$LOG"
+      fi
+      echo "GATE EXIT=0"   >> "$LOG"; exit 0 ;;
     red)   echo "GATE EXIT=$rc" >> "$LOG"; exit "$rc" ;;
   esac
 

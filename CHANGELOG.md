@@ -1,5 +1,57 @@
 # Changelog
 
+## gate-stall-watchdog - a hung gate is now killed and retried
+
+A gate that HANGS was invisible to `gate-retry.sh`: it reads the log
+only after `gate.sh` returns, and a hung gate never returns. Measured
+2026-09-17: a run reached 80 of 81 modules and then sat 28 minutes
+with sbt's main thread parked in `ExecutorCompletionService.take` and
+~200 forked native/node runners at 0.0% CPU - a runner handshake that
+never completed. Killing it by hand and rerunning cost half an hour,
+twice in one session.
+
+It now runs gate.sh in the background and watches the log GROW. Ten
+minutes of silence (GATE_STALL_MIN) is a hang rather than a long
+compile; the tree is killed BY PID, depth first, and counted as "no
+verdict" - which the loop already knows how to retry.
+
+THREE BUGS IN THE WATCHDOG ITSELF, each caught by a test rather than
+by a later gate, and the negative test is what earned its keep:
+
+- `kill -0` says a FINISHED background child is alive, because a
+  zombie keeps its pid until the shell reaps it. The first cut never
+  noticed a gate finishing. A sentinel file written by the child is
+  the reliable signal.
+- `set -e` plus `wait` on a killed child ENDS THE SCRIPT: the log
+  stopped mid-sentence at "killing by pid" and the exit code was 143,
+  a signal, which is exactly the shape this whole loop exists to tell
+  apart from a verdict. `|| true`.
+- a stall test that is too short proves nothing: the first growth
+  check resets on the gate's own opening line, so the fire happens at
+  the SECOND check. Both tests now run long enough to reach it.
+
+Verified both ways: a gate that never speaks is killed, retried and
+reported (exit 99, no orphans left); a gate that is slow but talking
+is NOT killed and reaches its verdict.
+
+AND THE MEMORY FLOOR IS NOW DERIVED, not guessed. gate-quiet-realistic
+put it at 8 GB this morning. Reading the watchdog that would kill the
+run says that was wrong: `io.scalascript.build-ram-guard` is loaded,
+ticks every 20 s, and its own constants are REAP_FLOOR=8192 MB (start
+reclaiming) and SHED_FLOOR=3072 MB (may kill LIVE work - the heaviest
+build JVM, which during a gate is the gate). sbt here takes 6 GB, so
+starting at 8 GB free lands the host at ~2 GB with the gate as the
+target: the 143 this project already spent three days blaming on its
+own test suite. 10 GB is the first number that keeps the host above
+the shed floor with the gate's own footprint counted, and the machine
+reaches it.
+
+For the record, from the same survey: neither watchdog killed anything
+today. The RAM guard acted 119 times (23 T0, 96 T1) with kills=0, and
+`io.scalascript.kill-stale-builders` (hourly, --idle 30 --kill) logged
+nothing at all. Today's lost time was the unsatisfiable quiet
+condition and one genuine hang inside sbt - not an external killer.
+
 ## delim-patterns-in-modules - the stepper was a dialogue all along
 
 okay-agent's `Stepper` was written before `Delim` had the named
