@@ -179,7 +179,7 @@ class TestWorker extends FunSuite {
 
     val w = Worker[String, String, String, Pure, Async](
       t, "nap/1", Timers.over(store),
-      Worker.retrying(okay.Retry.immediate(5))(flaky))(nap)
+      Worker.retrying(okay.Retry.immediate(5))(q => flaky(q)))(nap)
 
     assertEquals(drive(w.start("n-1")), Worker.Progress.Sleeping(61_000L))
     assertEquals(attempts, 3, "the driver did not retry")
@@ -198,7 +198,7 @@ class TestWorker extends FunSuite {
 
     val w = Worker[String, String, String, Pure, Async](
       t, "nap/1", Timers.over(store),
-      Worker.retrying(okay.Retry.immediate(2))(broken))(nap)
+      Worker.retrying(okay.Retry.immediate(2))(q => broken(q)))(nap)
 
     val _ = intercept[RuntimeException](drive(w.start("n-1")))
     assertEquals(attempts, 3, "one attempt plus two retries")

@@ -545,22 +545,27 @@ object Dialogue:
    * DECLINES (a timer, a signal, a child), the drive stops and says
    * what it is waiting on.
    */
-  def asking[Q, A, F[+_]](oracle: Q => A ! F)(using rt: Wf.Runtime)
+  def asking[Q, A, F[+_]](oracle: Q => Attempt ?=> A ! F)(using rt: Wf.Runtime)
                          : (Wf.Ask[Q], Attempt) => Either[Wf.Wait, Wf.Ans[A]] ! F =
-    (q, _) => q match
+    (q, at) => q match
       case Left(sys) => rt.answer(sys) match
         case Left(w) => pure(Left(w))
         case Right(sa) => pure(Right(Left(sa)))
-      case Right(own) => oracle(own).map(v => Right(Right(v)))
+      // THE KEY REACHES THE ORACLE (worker-oracle-attempt,
+      // 2026-09-17). It used to be dropped here — `(q, _)` — so the
+      // idempotency key this class documents could not be used by
+      // anybody driving through a `Worker`. It arrives as CONTEXT, so
+      // an oracle that does not want it is written exactly as before.
+      case Right(own) => oracle(own)(using at).map(v => Right(Right(v)))
 
   /** the same, for an oracle whose activities live in a wider row */
-  def askingIn[Q, A, G[+_]](oracle: Q => A ! G)(using rt: Wf.Runtime)
+  def askingIn[Q, A, G[+_]](oracle: Q => Attempt ?=> A ! G)(using rt: Wf.Runtime)
                            : (Wf.Ask[Q], Attempt) => Either[Wf.Wait, Wf.Ans[A]] ! G =
-    (q, _) => q match
+    (q, at) => q match
       case Left(sys) => rt.answer(sys) match
         case Left(w) => pure(Left(w))
         case Right(sa) => pure(Right(Left(sa)))
-      case Right(own) => oracle(own).map(v => Right(Right(v)))
+      case Right(own) => oracle(own)(using at).map(v => Right(Right(v)))
 
   /**
    * DRIVE A DURABLE WORKFLOW as far as it goes: `Right` is its
@@ -569,12 +574,13 @@ object Dialogue:
    * next process starts where this one stopped.
    */
   extension [Q, A, R, F[+_]](d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F])
-    def runWorkflow(oracle: Q => A ! F)(using Wf.Runtime): Either[Wf.Wait, R] ! F =
+    def runWorkflow(oracle: Q => Dialogue.Attempt ?=> A ! F)
+                   (using Wf.Runtime): Either[Wf.Wait, R] ! F =
       d.runUntil[Wf.Wait](asking(oracle))
 
     /** the same, with the activities in their own row: the program
      * stays replayable, the oracle may reach outside */
-    def runWorkflowIn[G[+_]](oracle: Q => A ! G)
+    def runWorkflowIn[G[+_]](oracle: Q => Dialogue.Attempt ?=> A ! G)
                             (using Wf.Runtime, RowLift.Sub[F, G]): Either[Wf.Wait, R] ! G =
       d.runUntilIn[Wf.Wait, G](askingIn(oracle))
 
@@ -588,7 +594,7 @@ object Dialogue:
      * The caller owes the validity of `from` — see `Dialogue.runFromIn`.
      */
     def runWorkflowFromIn[G[+_]](from: Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], at: Int)
-                                (oracle: Q => A ! G)
+                                (oracle: Q => Dialogue.Attempt ?=> A ! G)
                                 (using Wf.Runtime, RowLift.Sub[F, G])
         : (Either[Wf.Wait, R], Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int) ! G =
       d.runFromIn[Wf.Wait, G](from, at)(askingIn(oracle))

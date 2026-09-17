@@ -623,24 +623,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       (was filed under "handler-fusion" — the reasoning
       that section carries is in BACKLOG-ARCHIVE.md)
 
-- [ ] worker-oracle-attempt — the idempotency key is documented and
-      then not handed over. `Dialogue.run` calls its oracle with
-      `Attempt(id, index)` — stable across restarts because it is the
-      journal's own position, and exactly what a non-idempotent
-      external call needs. `Dialogue.askingIn` DROPS it (`(q, _) =>
-      ... oracle(own)`), so a `Worker`'s oracle is `Q => A ! G` and
-      cannot see it. The guide promised a child spawn "idempotent in
-      (id, index) like every other activity"; that sentence has been
-      corrected, and this is the fix it points at.
-      THE COST, which is why it is a lane and not a patch: the honest
-      shape is `oracle: (Q, Dialogue.Attempt) => A ! G`, and that
-      breaks every `Worker` call site — about fifteen, counting the
-      guide's own examples. Worth doing, worth doing deliberately.
-      REJECTED ALREADY: an implicit conversion from the one-argument
-      shape. It would make the key appear and disappear depending on
-      which overload inference picked, which is the opposite of what
-      a key is for.
-
 - [ ] growing-order-instrumented-repro — REPRODUCE IT WITH EVIDENCE,
       which is not the same as reproducing it. Four sightings of the
       same shape now exist and a fifth adds nothing: what is missing
@@ -890,6 +872,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       modules one such coincidence is unremarkable, and it is recorded
       because the ledger is worth nothing if only the fitting
       observations go in it.
+      2026-09-17, okayCodecNative, ONE module, GREEN on the rerun of
+      that module alone (worker-oracle-attempt). EIGHTH occurrence,
+      load `{ 5.95 10.43 11.04 }`. Second single-module sighting in a
+      row on a quiet-ish box, which continues to weaken the
+      "gates-per-hour" hypothesis filed on the sixth: two of the last
+      three were singles, not pairs, and neither box was busy. The
+      only thing that has held across all eight is the settled cause
+      itself — the runner, not any suite.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to

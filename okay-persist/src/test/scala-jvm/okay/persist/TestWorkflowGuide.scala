@@ -53,7 +53,7 @@ class TestWorkflowGuide extends FunSuite {
 
     val worker = Worker[String, String, String, Pure, Async](
       store.topic("bookings"), program = "booking/1", timers,
-      oracle = Worker.retrying(Retry.immediate(3))(askTheUser),
+      oracle = Worker.retrying(Retry.immediate(3))(q => askTheUser(q)),
       signals = Some(sigs), statuses = Some(index))(booking)
 
     // 1 · it runs until it waits, and NOTHING blocks
@@ -268,10 +268,10 @@ class TestWorkflowGuide extends FunSuite {
     val cancels = Cancels.over(store)
     val kids = Children.over(store)
     val leases = Leases.over(store)
-    val oracle: String => (String ! Async) = _ => okay.async("a")
+    def oracle(q: String): String ! Async = okay.async("a" + q.take(0))
 
     val worker = Worker[String, String, Wf.Next[String, String], Pure, Async](
-      topic, program = "stage/1", timers, oracle,
+      topic, program = "stage/1", timers, q => oracle(q),
       snapshots     = Some(snaps),
       snapshotEvery = 64,
       signals       = Some(sigs),

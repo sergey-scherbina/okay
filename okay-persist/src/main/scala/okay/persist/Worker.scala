@@ -41,7 +41,17 @@ import okay.codec.Schema
  * which is the one thing the journal must never contain.
  */
 final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers: Timers,
-                                   oracle: Q => A ! G,
+                                   /**
+                                    * THE ORACLE, AND THE KEY IT MAY ASK FOR
+                                    * (worker-oracle-attempt, 2026-09-17).
+                                    * `Dialogue.Attempt(id, index)` is stable across
+                                    * restarts because it is the journal's own
+                                    * position -- exactly what a non-idempotent
+                                    * external call needs. It arrives as CONTEXT, so
+                                    * an oracle that does not need it is written
+                                    * exactly as before.
+                                    */
+                                   oracle: Q => Dialogue.Attempt ?=> A ! G,
                                    snapshots: Option[Snapshots] = None,
                                    snapshotEvery: Int = 0,
                                    signals: Option[Signals] = None,
@@ -394,9 +404,15 @@ object Worker:
    * from the log. So "give up" here means "give up for now", not
    * "lose the run", and there is a test that walks that path.
    */
-  def retrying[Q, A](policy: LazyList[Long])(oracle: Q => A ! okay.Async)
-                    (using okay.Scheduler, okay.Timer): Q => A ! okay.Async =
-    q => okay.Retry.async(policy)(oracle(q))
+  def retrying[Q, A](policy: LazyList[Long])
+                    (oracle: Q => Dialogue.Attempt ?=> A ! okay.Async)
+                    (using okay.Scheduler, okay.Timer)
+                    : Q => Dialogue.Attempt ?=> A ! okay.Async =
+    // the key is threaded through the retries rather than lost at
+    // them: every attempt at one question carries the SAME
+    // `(id, index)`, which is what makes it usable as an idempotency
+    // key by a service that is called more than once for one answer
+    q => (at: Dialogue.Attempt) ?=> okay.Retry.async(policy)(oracle(q)(using at))
 
   /** the index's word for what a worker learned */
   def state[R](p: Progress[R]): Statuses.State = p match

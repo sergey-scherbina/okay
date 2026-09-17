@@ -252,14 +252,26 @@ parent asks its own question, the oracle calls the child's worker, and
 the child's id comes back as an ordinary journalled answer. That costs
 no new machinery.
 
-> **One caveat, and it is an API gap rather than a design one.** An
-> activity that is not idempotent wants the key `(id, index)` that
-> `Dialogue.run` hands its oracle — stable across restarts because it
-> is the journal's own position. A `Worker`'s oracle is `Q => A` and
-> does NOT receive it, so a spawn that must not happen twice needs a
-> key of its own until that is fixed (BACKLOG:
-> `worker-oracle-attempt`). Driving through `Dialogue.runWorkflow`
-> directly gives you the key today.
+An activity that must not happen twice — a spawn, a charge, a send —
+can ask where it is:
+
+```scala
+oracle = q => okay.async:
+  val at = summon[Dialogue.Attempt]     // (id, index)
+  charge(idempotencyKey = s"${at.id}/${at.index}")
+```
+
+`Attempt(id, index)` is **the journal's own position**, so it is the
+same on every restart and the same across every retry of one
+question — which is exactly what makes it usable as an idempotency
+key. There are tests for both.
+
+It arrives as context, so an oracle that does not want it is written
+exactly as before. **One sharp edge:** an oracle written inline adapts
+automatically, but one held in a `val` or `def` does not — pass it as
+`q => myOracle(q)`. The compiler says so clearly ("Required:
+`String => (Attempt) ?=> ...`"), and it was four call sites in this
+repository out of forty.
 
 ```scala
 oracle = q => okay.async:
