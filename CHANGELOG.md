@@ -1,5 +1,38 @@
 # Changelog
 
+## workflow-children - a child is a result to wait for, not a thing to spawn
+
+`Children` is a registry of finished runs' results; a worker given one
+records every run it finishes, and answers a parent standing at
+`awaitChild(id)` with the child's result. The waiting half has existed
+since the suspended driver landed - the program asks Sys.Child(id),
+the runtime declines, the drive ends - and this is the half that
+answers it.
+
+Same shape as Signals, because it is the same problem: a fact from
+outside the parent's journal becoming an answer inside it, exactly
+once. Simpler in one way - a child finishes once and its result does
+not change, so there is no cursor and no mailbox, and `expect` is the
+whole of the guard. A child that finishes BEFORE the parent reaches
+its wait is found waiting, exactly as an early signal is.
+
+WHAT WAS REFUSED: a parent that spawns its child. A Worker is built
+for ONE program - one topic, one body, one set of types - so a
+parent's worker cannot run another program's code, and giving it one
+means a registry of ERASED bodies and a cast at every spawn. The spawn
+is therefore an ORDINARY ACTIVITY: the parent asks its own question,
+the oracle starts the child's worker, and the id comes back as a
+journalled answer. No new machinery, and the spawn is idempotent in
+(id, index) like every activity. The guide compiles that shape.
+
+What it costs, said rather than discovered: parent and child are two
+runs with no enforced relationship. `link` is bookkeeping for the tree
+view (`of(parent)`), not a constraint - nothing stops a child being
+awaited by two parents, or none. That is the price of not owning the
+child's lifetime, and the alternative was the cast.
+
+TestChildren (6) and one in TestWorkflowGuide.
+
 ## dialogue-continue-as - bounded history, and the count that must not reset
 
 Replay re-runs the program over its answers, so a dialogue with ten

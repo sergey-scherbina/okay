@@ -63,6 +63,7 @@ exists to provide:
     Signals  ── the mailbox        } operational: lose any of them and
     Statuses ── the dashboard      } no run is WRONG — only slower,
     Cancels  ── stop requests      } or blind, or not stopping
+    Children ── results to wait on }
 ```
 
 **Only the journal is state.** Everything else is operational data
@@ -181,6 +182,44 @@ finished the way it finished. There is a test named for exactly that.
 Lose the whole cancel topic and no journal is wrong; the runs that
 would have stopped simply carry on.
 
+## A run that waits for another run
+
+```scala
+def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+  val id  = !w.pause("start the payment run")   // the ACTIVITY spawns it
+  val got = !w.awaitChild(id)                   // the run ENDS here
+  s"paid: $got"
+```
+
+`awaitChild` stops the run exactly as `sleep` and `awaitSignal` do:
+nothing in memory, nothing on the clock. When the child finishes, its
+worker writes the result into `Children`, and the next time anybody
+advances the parent that result becomes an answer in the parent's
+journal — once, guarded by `expect`, however many workers notice it.
+A child that finishes BEFORE the parent gets there is found waiting,
+the same way an early signal is.
+
+**The parent does not spawn the child, and that is deliberate.** A
+worker is built for ONE program — one topic, one body, one set of
+types — so a parent's worker has no way to run a different program's
+code, and giving it one would mean a registry of erased bodies and a
+cast at every spawn. So **starting a child is an activity**: the
+parent asks its own question, the oracle calls the child's worker, and
+the child's id comes back as an ordinary journalled answer. That costs
+no new machinery and the spawn is idempotent in `(id, index)` like
+every other activity.
+
+```scala
+oracle = q => okay.async:
+  val id = idFor(q)
+  drive(childWorker.start(id))      // an ordinary worker, for the child's program
+  kids.link(id, parentId, "child/1")
+  id
+```
+
+`kids.of(parentId)` is the tree view — who started whom, and which of
+them are done — which is the question an operator actually asks.
+
 ## When a run goes on too long to replay
 
 Replay re-runs the program over its answers. A dialogue with ten
@@ -232,7 +271,8 @@ wrote. The OPERATIONS are younger:
 - there is no lease, so two workers collide harmlessly rather than
   rarely (`expect` is what makes that safe);
 - cancellation is **cooperative** (see below), not pre-emptive;
-- child workflows are named in the spec and not built yet;
+- a parent does not SPAWN its child; starting one is an activity
+  (see below), which is a shape to know rather than a gap;
 - `Timers.due` and `Signals.next` scan a topic, which is honest for
   thousands of runs and wrong for millions.
 

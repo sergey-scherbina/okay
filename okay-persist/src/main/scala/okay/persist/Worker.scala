@@ -64,7 +64,21 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * without ever pausing would otherwise spin in
                                     * here for ever; this turns that into a value the
                                     * caller can see. */
-                                   continuations: Int = 64)
+                                   continuations: Int = 64,
+                                   /**
+                                    * WHERE A FINISHED RUN LEAVES ITS RESULT, and
+                                    * where a waiting parent reads one
+                                    * (workflow-children, 2026-09-17). A worker given
+                                    * one records EVERY run it finishes, which is
+                                    * what makes any of them adoptable as a child --
+                                    * a run does not need to know it has a parent.
+                                    */
+                                   children: Option[Children] = None,
+                                   /** how a result becomes the string `SysA.Got`
+                                    * carries. `toString` is the default because most
+                                    * results are already text; a structured one
+                                    * encodes, exactly as an activity's answer does. */
+                                   resultText: R => String = (r: R) => r.toString)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
@@ -155,6 +169,10 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
       case Right(r) => seedOf(r) match
         case None =>
           timers.disarm(id)
+          // AFTER the journal, never instead of it: a worker that dies
+          // between the two leaves a parent waiting, and a waiting
+          // parent is recoverable where a wrong answer is not
+          children.foreach(_.completed(id, resultText(r)))
           pure(Worker.Progress.Finished(r))
         case Some(seed) =>
           // the program bounded its own history: close the chapter and
@@ -184,10 +202,25 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
           case None =>
             timers.disarm(id)
             pure(Worker.Progress.Waiting(Wf.Wait.Signal(name)))
-      case Left(w) =>
-        // a child wakes this one, not the clock
-        timers.disarm(id)
-        pure(Worker.Progress.Waiting(w))
+      case Left(Wf.Wait.Child(kid)) =>
+        // the child may already be done: it can finish long before the
+        // parent reaches the `awaitChild` that wants it, and this is
+        // the moment its result becomes an answer. Unlike a signal
+        // there is no cursor -- a child finishes once and its result
+        // does not change, so `expect` is the whole of the guard.
+        children.flatMap(_.resultOf(kid)) match
+          case Some(result) =>
+            d.answer(Left(Wf.SysA.Got(result))).up[G].flatMap(_ => step(id))
+          case None =>
+            timers.disarm(id)
+            pure(Worker.Progress.Waiting(Wf.Wait.Child(kid)))
+      // NO CATCH-ALL, and the compiler is what removed it
+      // (workflow-children, 2026-09-17): with the child arm written,
+      // all three `Wait`s are handled and the generic one became
+      // unreachable. Keeping the match TOTAL is worth more than the
+      // line it saves — a fourth kind of waiting is now a compile
+      // error here rather than a run that silently reports
+      // `Waiting(..)` and is never woken by anything.
 
   /**
    * One pass over the deadlines that have passed. A due id is woken

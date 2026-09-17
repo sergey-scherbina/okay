@@ -164,4 +164,39 @@ class TestWorkflowGuide extends FunSuite {
       Worker.Progress.Finished(Wf.Next.Done("done:axxx")))
     assertEquals(worker.dialogue("s-1").journal.size, 1)
   }
+
+  // ---- the page's child block, verbatim
+
+  def paid(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+    direct:
+      val id = !w.pause("start the payment run")   // the ACTIVITY spawns it
+      val got = !w.awaitChild(id)                  // the run ENDS here
+      s"paid: $got"
+
+  def payment(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+    direct:
+      val ref = !w.pause("charge")
+      s"ok/$ref"
+
+  test("the guide's child workflow: the spawn is an activity, the wait is durable") {
+    val store = MemoryStore()
+    val kids = Children.over(store)
+    val childWorker = Worker[String, String, String, Pure, Async](
+      store.topic("payments"), "payment/1", Timers.over(store),
+      _ => okay.async("ref-9"), children = Some(kids))(payment)
+
+    val parentWorker = Worker[String, String, String, Pure, Async](
+      store.topic("bookings"), "paid/1", Timers.over(store),
+      oracle = _ => okay.async:
+        val id = "pay-1"
+        val _ = drive(childWorker.start(id))
+        kids.link(id, "b-1", "payment/1")
+        id,
+      children = Some(kids))(paid)
+
+    assertEquals(drive(parentWorker.start("b-1")),
+      Worker.Progress.Finished("paid: ok/ref-9"))
+    assertEquals(kids.of("b-1").map((id, _, done) => (id, done)),
+      List("pay-1" -> Some("ok/ref-9")))
+  }
 }

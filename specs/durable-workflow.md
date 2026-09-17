@@ -444,8 +444,40 @@ rather than a rewrite.
 | `workflow-signals` | **LANDED 2026-09-17**: `Signals` — a mailbox topic keyed by dialogue id and a compacted cursor PER NAME, because a signal may arrive long before the run waits for it and a journal has nowhere to hold an answer to a question nobody asked. The worker drains what it can before it reports a wait | the driver, the worker |
 | `workflow-retries` | **LANDED 2026-09-17**: `Worker.retrying(policy)(oracle)` — three lines, because the two halves already existed (`Retry`'s policies are streams of delays, and the activity row is where an attempt is allowed to fail). An exhausted policy gives up FOR NOW: nothing is journalled, the run still stands at its question, and a later worker asks again | the activity row |
 | `workflow-cancel` | **LANDED 2026-09-17**: `Cancels`, a compacted keyed topic of stop requests, `Wf.cancelled` as an ordinary `Sys` question, and `Runtime.cancellable` wrapping the ambient runtime per dialogue. COOPERATIVE, and not by taste — see the Result below. Compensation is ordinary code on the cancelled branch | the driver, the worker |
-| `workflow-children` | a child dialogue keyed under its parent, and a parent question answered by its result | the driver, the worker |
+| `workflow-children` | **LANDED 2026-09-17**: `Children`, a registry of finished runs' results, and the worker half that turns one into the parent's answer. The parent does NOT spawn — starting a child is an ACTIVITY, and the Result below says why that is a shape rather than a gap | the driver, the worker |
 | `dialogue-continue-as` | **LANDED 2026-09-17**: `Wf.Next`, `Entry.Continued`, `Dialogue.continueAs` and `Worker`'s `seedOf`. A continuation resets the JOURNAL and not the RECORD COUNT — see the Result below, which is the whole of why it is safe | the worker |
+
+### Result — a child is a result to wait for, not a thing to spawn (2026-09-17)
+
+`TestChildren` (6) and one in `TestWorkflowGuide`.
+
+The waiting half had existed since the suspended driver: `awaitChild`
+asks `Sys.Child(id)`, the runtime declines, the drive ends. What was
+missing was somewhere for a finished run to leave its result. That is
+`Children`, and it came out the same shape as `Signals` because it is
+the same problem — a fact from outside the parent's journal becoming
+an answer inside it, exactly once. Simpler in one way: a child
+finishes once and its result does not change, so there is no cursor
+and no mailbox, and `expect` is the whole of the guard.
+
+**WHAT WAS REFUSED: a parent that spawns its child.** A `Worker` is
+built for ONE program — one topic, one body, one set of types — so a
+parent's worker has no way to run another program's code. Giving it
+one means a registry of ERASED bodies and a cast at every spawn, which
+is the thing this library exists not to do. So the spawn is an
+ORDINARY ACTIVITY: the parent asks its own question, the oracle starts
+the child's worker, and the id comes back as a journalled answer. It
+costs no new machinery, the spawn is idempotent in `(id, index)` like
+every activity, and the guide compiles the shape so it stays honest.
+
+**What it costs, stated:** a parent and its child are two runs with no
+enforced relationship — `link` is bookkeeping for the tree view, not a
+constraint. Nothing stops a child being awaited by two parents, or
+none. That is the price of not owning the child's lifetime, and the
+alternative was the cast.
+
+**Losing the registry** leaves every parent waiting and no journal
+wrong, which is the failure mode the rest of the engine also prefers.
 
 ### Result — bounded history, and the count that must not reset (2026-09-17)
 
