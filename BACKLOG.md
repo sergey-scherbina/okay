@@ -2049,6 +2049,21 @@ one that type-checked, which is a shape worth removing.
       lanes that cannot have caused it is no longer one ledger entry:
       the owner's choice between `Live` and bound-based assertions is
       now overdue.
+      THIRD SIGHTING 2026-09-17, workflow-suspended-driver's gate —
+      same test, same message, another lane that cannot have caused
+      it (okay core and okay-persist).
+      ONE THEORY TESTED AND NOT CONFIRMED, recorded so nobody spends
+      the same hour twice: the suite's `until` helper waits by
+      spinning on `Thread.yield()` for up to five seconds, and a
+      yield-spin BURNS a core rather than waiting — plausibly the core
+      the fibre it waits for needs. Changing it to `Thread.sleep(1)`
+      is obviously no worse, but the repro DID NOT REPRODUCE: with 12
+      CPU burners and a 1-minute load of 22, the ORIGINAL `yield`
+      version passed. So the starvation theory is unproven and the
+      change was reverted rather than landed on a guess. Whoever picks
+      this up: synthetic CPU load is not the shape that breaks it —
+      the failures all happened under a full matrix, which is many
+      JVMs with many threads and a lot of I/O, not a busy loop.
 - [ ] microservices-next — the audit's remaining gaps, each its own
       spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
       shutdown and RED metrics, both in okay-ops. DONE 2026-09-09
