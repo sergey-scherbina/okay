@@ -160,6 +160,57 @@ object Direct:
   object eagerCalls:
     given Deferral.Eager.type = Deferral.Eager
 
+  /**
+   * Whether a `direct` block may run INDEPENDENT binds together
+   * (specs/applicative-static.md, stage 3).
+   *
+   * The same shape as `Deferral` above, for the same reasons: a
+   * `using` parameter with the default given in this companion and
+   * the opt-in in an object you import, both declared at their
+   * SINGLETON type so the macro can read the mode off the argument's
+   * type. A default argument would duplicate the block.
+   */
+  sealed trait Binds
+  object Binds:
+    /** the default: one bind after another, in the order written */
+    case object Sequential extends Binds
+    /** `import Direct.parallelBinds.given`: a run of independent
+     * Async binds is spawned together and joined in order */
+    case object Parallel extends Binds
+    given Sequential.type = Sequential
+
+  /**
+   * OPT IN to running a block's INDEPENDENT binds at once:
+   *
+   *     import okay.Direct.parallelBinds.given
+   *
+   * Under it, a maximal run of two or more consecutive
+   * `val x = m.?` statements whose right-hand sides do not mention a
+   * name bound earlier in the same run is emitted as spawn-all-then-
+   * join-all: N fibers started, then N joins in the order written.
+   * A leaf qualifies when its OWN type is `X ! Async` — exactly
+   * Async, before the mark narrows it into this block's row — so a
+   * block over `Async + Throws` still parallelises its Async leaves,
+   * and anything else simply ends the run.
+   *
+   * WHY THE FLAT SHAPE AND NOT THE APPLICATIVE ONE. `Par`
+   * (specs/applicative-static.md, stage 1) joins leaves PAIRWISE, and
+   * that was measured at about 5x a flat `parAll` at eight leaves: N
+   * leaves become N joins and 2N fibers. A macro holds the whole
+   * group at once, so it is the one position that never has to be
+   * pairwise. Emitting `Par.app` chains would have taught the
+   * compiler to write the expensive form.
+   *
+   * WHAT YOU TAKE ON, which is `parAll`'s bargain and not a new one:
+   * the leaves interleave, so an effect one of them performs may now
+   * be observed beside another's; and a failure surfaces where its
+   * JOIN is reached, with the healthy siblings left to finish rather
+   * than cancelled. A block whose binds must not interleave simply
+   * does not import this.
+   */
+  object parallelBinds:
+    given Binds.Parallel.type = Binds.Parallel
+
   /** marker: G's operations may auto-color inside direct blocks */
   @implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .!? / !prog), which need no marker.")
   trait Effect[G[_]]
@@ -186,8 +237,9 @@ object Direct:
 
   final class DirectApply[F[_]](private val unit: Unit = ()) extends AnyVal:
     inline def apply[A](inline block: DirectCtx[F] ?=> A)
-                       (using inline M: Monad[F], inline d: Deferral): F[A] =
-      ${ directImpl[F, A]('block, 'M, 'd) }
+                       (using inline M: Monad[F], inline d: Deferral,
+                        inline b: Binds): F[A] =
+      ${ directImpl[F, A]('block, 'M, 'd, 'b) }
 
   /** a term with its inlining and ascription wrappers taken off */
   private def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
@@ -200,7 +252,8 @@ object Direct:
   @scala.annotation.publicInBinary
   private[okay] def directImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A],
                                                M: Expr[Monad[F]],
-                                               d: Expr[Deferral])
+                                               d: Expr[Deferral],
+                                               b: Expr[Binds])
                                               (using Quotes): Expr[F[A]] =
     import quotes.reflect.*
     // the block arrives as a context lambda; take its body — the
@@ -212,7 +265,8 @@ object Direct:
       case other => report.errorAndAbort(
         "a Direct mark as a non-literal block (a stored context-function value) " +
           "cannot be rewritten by direct's v1", other.pos)
-    pipeline[F, A](topBody, M, d.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Deferral.Eager.type])
+    pipeline[F, A](topBody, M, d.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Deferral.Eager.type],
+      b.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Binds.Parallel.type])
 
   /** the compilation pipeline at ONE monad — recursive for try
    * bodies (direct-try): a try's body is its own sub-block, compiled
@@ -231,7 +285,8 @@ object Direct:
 
   private def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
                                              M0: Expr[Monad[F]],
-                                             eager: Boolean): Expr[F[A]] =
+                                             eager: Boolean,
+                                             parallel: Boolean): Expr[F[A]] =
     import q.reflect.*
     // ONE instance for the whole block: the summoned Monad
     // expression is hoisted to a val, so every emitted bind shares
@@ -241,12 +296,13 @@ object Direct:
     val mmSym = Symbol.newVal(Symbol.spliceOwner, "mm$direct",
       TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
     val mmVal = ValDef(mmSym, Some(M0.asTerm.changeOwner(mmSym)))
-    val body = compileAll[F, A](topLevelBody, Ref(mmSym).asExprOf[Monad[F]], eager)
+    val body = compileAll[F, A](topLevelBody, Ref(mmSym).asExprOf[Monad[F]], eager, parallel)
     Block(List(mmVal), body.asTerm).asExprOf[F[A]]
 
   private def compileAll[F[_] : Type, A: Type](using q: Quotes)(topLevelBody0: q.reflect.Term,
                                                M: Expr[Monad[F]],
-                                               eager: Boolean): Expr[F[A]] =
+                                               eager: Boolean,
+                                               parallel: Boolean): Expr[F[A]] =
     import q.reflect.*
     val topLevelBody = topLevelBody0.changeOwner(Symbol.spliceOwner)
 
@@ -1014,7 +1070,7 @@ object Direct:
         tpe2(bT) { [T] => (tT: Type[T]) ?=>
           val bodyT = joinUnions(b.tpe.widen)
           val subF: Term = tpe2(bodyT) { [B] => (tB: Type[B]) ?=>
-            val raw = pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M, eager)
+            val raw = pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M, eager, parallel)
             // a body ending in throw types Nothing <: T: upcast
             // through the monad (F need not be covariant)
             if bodyT =:= TypeRepr.of[T] then raw.asTerm
@@ -1032,7 +1088,7 @@ object Direct:
             c.guard.foreach(g => if hasMark(g) then refuse(g, "in a catch guard"))
             if hasMark(c.rhs) then
               tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (tH: Type[H]) ?=>
-                val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M, eager)
+                val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M, eager, parallel)
                 if TypeRepr.of[H] =:= TypeRepr.of[T] then hp.asTerm
                 else
                   val ev = upcast[H, T]
@@ -1162,8 +1218,141 @@ object Direct:
                 }
       Out.Eff(loop(children, 0, Nil), resTpe.widen)
 
+    // ------------------------------------------------------------
+    // INDEPENDENT BINDS, RUN TOGETHER (specs/applicative-static.md,
+    // stage 3; off unless `import Direct.parallelBinds.given`).
+    //
+    // The analysis is bracket abstraction's own question, and Turner
+    // answered it in 1979 for the same syntax: `[x](a b)` needs `S`
+    // when x occurs free on both sides and `K` when it does not. Here
+    // a val's right-hand side either mentions a name bound earlier in
+    // the run or it does not; if it does, the run ends there.
+
+    lazy val asyncSym = TypeRepr.of[Async[Any]].typeSymbol
+
+    /**
+     * A leaf this block may SPAWN — decided on the COMPILED leaf, not
+     * on the syntax.
+     *
+     * The first cut matched the mark itself and found nothing: by the
+     * time the macro sees `async(1).?` the inline expansion has
+     * wrapped it in `Inlined` nodes carrying `$proxy` bindings, which
+     * `stripped` does not go through, so `asMark` answered None on
+     * every leaf and the whole feature was silently off (caught by a
+     * fork COUNT of 0, which is why that assertion exists).
+     *
+     * `compile` already knows how to get through all of it, and what
+     * it hands back is the program this block will bind. If that
+     * program's type is `X ! Async` then it can be spawned, and
+     * asking the type is both simpler and more honest than asking the
+     * syntax.
+     *
+     * THE LIMIT THIS PUTS ON v1, and it is a real one: for a block
+     * over a WIDER row the compiled leaf has already been narrowed
+     * (`RowLift.into`), so its type is `X ! (Async + …)` and it is
+     * not spawnable. The import therefore does nothing in a block
+     * over `Async + Throws`, quietly. Stated here, in the opt-in's
+     * doc comment, and pinned by a test (BACKLOG:
+     * direct-parallel-wider-rows).
+     */
+    def spawnableLeaf(rhs: Term): Option[(Term, TypeRepr)] =
+      if !hasMark(rhs) then None
+      else compile(rhs) match
+        case Out.Eff(c, e) =>
+          val ok = tpe2(e.widen) { [X] => (tX: Type[X]) ?=>
+            c.tpe.widen <:< TypeRepr.of[X ! Async]
+          }
+          if ok then Some((c, e.widen)) else None
+        case Out.Pure(_) => None
+
+    /** does this tree mention any of these symbols? */
+    def mentionsAny(t: Tree, syms: Set[Symbol]): Boolean =
+      if syms.isEmpty then false
+      else
+        var found = false
+        val tr = new TreeTraverser:
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            if !found then tree match
+              case id: Ident if syms.contains(id.symbol) => found = true
+              case _ => super.traverseTree(tree)(owner)
+        tr.traverseTree(t)(Symbol.spliceOwner)
+        found
+
+    /** the maximal leading run of vals that may be spawned together */
+    def independentRun(stats: List[Statement]): List[(ValDef, Term, TypeRepr)] =
+      def go(rest: List[Statement], bound: Set[Symbol],
+             acc: List[(ValDef, Term, TypeRepr)]): List[(ValDef, Term, TypeRepr)] =
+        rest match
+          case (vd @ ValDef(_, _, Some(rhs))) :: tail
+            if !vd.symbol.flags.is(Flags.Lazy) && !vd.symbol.flags.is(Flags.Mutable) =>
+            spawnableLeaf(rhs) match
+              case Some((m, e)) if !mentionsAny(rhs, bound) =>
+                go(tail, bound + vd.symbol, (vd, m, e) :: acc)
+              case _ => acc.reverse
+          case _ => acc.reverse
+      go(stats, Set.empty, Nil)
+
+    /** `async(Async.spawn(m))`, with its Fiber element type */
+    def spawnOf(m: Term, e: TypeRepr, sched: Expr[Scheduler]): (Term, TypeRepr) =
+      tpe2(e) { [X] => (tX: Type[X]) ?=>
+        ('{ okay.async(okay.Async.spawn[X](${ m.asExprOf[X ! Async] })(using $sched)) }.asTerm,
+          TypeRepr.of[Fiber[X]])
+      }
+
+    /** `fiber.joinAsync` */
+    def joinOf(f: Term, e: TypeRepr): Term =
+      tpe2(e) { [X] => (tX: Type[X]) ?=>
+        '{ ${ f.asExprOf[Fiber[X]] }.joinAsync }.asTerm
+      }
+
+    /**
+     * N spawns, then N joins in the order written — the FLAT shape,
+     * which is `parAll`'s and not `Par`'s. The applicative spine was
+     * measured at ~5x this at eight leaves because `app` is pairwise;
+     * a macro holds the whole group, so it never has to be.
+     *
+     * Each fiber keeps its own element type, so nothing here casts.
+     * The val keeps its symbol, re-bound to the join's value, exactly
+     * as the sequential road does — a later def or assignment still
+     * refers to it.
+     */
+    def parallelGroup(run: List[(ValDef, Term, TypeRepr)],
+                      rest: List[Statement], expr: Term): Out =
+      val sched = Expr.summon[Scheduler].getOrElse(report.errorAndAbort(
+        "direct: `import Direct.parallelBinds.given` needs a Scheduler in scope — " +
+          "it starts a fiber per independent bind (an `Async.spawn`), and there is no " +
+          "given Scheduler here", run.head._1.pos))
+      val resTpe = expr.tpe
+
+      def joins(pairs: List[((ValDef, Term, TypeRepr), Term)]): Term =
+        pairs match
+          case Nil => asFAt(compileBlock(rest, expr), resTpe)
+          case ((vd, _, e), fib) :: tail =>
+            bind(markTerm(joinOf(fib, e), e, vd.pos), e, resTpe) { v =>
+              Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))), joins(tail))
+            }
+
+      def spawns(todo: List[(ValDef, Term, TypeRepr)],
+                 done: List[((ValDef, Term, TypeRepr), Term)]): Term =
+        todo match
+          case Nil => joins(done.reverse)
+          case (leaf @ (vd, m, e)) :: tail =>
+            val (sp, fibTpe) = spawnOf(m, e, sched)
+            bind(markTerm(sp, fibTpe, vd.pos), fibTpe, resTpe) { f =>
+              spawns(tail, (leaf, f) :: done)
+            }
+
+      Out.Eff(spawns(run, Nil), resTpe.widen)
+
     /** a Block with statements: fold vals/exprs into binds */
     def compileBlock(stats: List[Statement], expr: Term): Out =
+      val run = if parallel then independentRun(stats) else Nil
+      if run.length >= 2 then parallelGroup(run, stats.drop(run.length), expr)
+      else compileBlockSeq(stats, expr)
+
+    /** the one-after-another road, which is all there was before
+     * stage 3 and is still what runs without the import */
+    def compileBlockSeq(stats: List[Statement], expr: Term): Out =
       stats match
         case Nil => compile(expr)
         case (vd @ ValDef(name, tpt, Some(rhs))) :: rest =>

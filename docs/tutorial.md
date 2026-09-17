@@ -505,6 +505,26 @@ answers *how it reads* (`TestDirectDoors`). The layers, the gates
 and the graveyard of rejected designs are in
 [direct style](direct-style.md).
 
+### Independent binds, run together
+
+A `direct` block reads one line after another, and one line after
+another is what it emits — unless you say the binds are independent:
+
+```scala
+import okay.Direct.parallelBinds.given
+val profile: Profile ! Async = direct:
+  val u = fetchUser(id).reflect     // neither mentions the other,
+  val o = fetchOrders(id).reflect   // so both run at once
+  Profile(u, o)
+```
+
+The macro takes a maximal run of consecutive binds whose right-hand
+sides do not mention a name bound earlier in the run, and emits N
+spawns then N joins — the flat shape, which is `parAll`'s and measures
+the same. Without the import nothing changes, to the byte. A bind that
+needs an earlier answer ends the run and stays sequential, and so does
+anything that is not a plain `X ! Async` leaf.
+
 ## 21. Errors you can repair: conditions
 
 ```scala

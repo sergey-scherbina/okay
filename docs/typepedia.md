@@ -304,6 +304,20 @@ same material with the measurements attached.
   `parAll`/`parTraverse` (Parallel.scala): those are JVM/Native, flat,
   one fiber per leaf, joined in order — cheaper for a flat sequence,
   and measured so (theory ch. 12).
+- **`Direct.Binds`** / **`Direct.parallelBinds`** (Direct.scala) — a
+  `direct` block's bind mode, taken the way `Deferral` is (a `using`
+  parameter, default given in the companion, opt-in by importing an
+  object's given). Under `import Direct.parallelBinds.given` a maximal
+  run of two or more consecutive `val x = m.reflect` binds whose
+  right-hand sides mention no name bound earlier in the run is emitted
+  as N spawns then N joins — `parAll`'s FLAT shape, not `Par`'s
+  pairwise one, because a macro holds the whole group and so never has
+  to be pairwise. Needs a `Scheduler` at the call site (a clear macro
+  error otherwise). Limits, both pinned by tests: a leaf must be
+  exactly `X ! Async` after compilation, so a block over a wider row
+  gets nothing quietly (BACKLOG `direct-parallel-wider-rows`); and the
+  leaves interleave and a failure is seen at its own join, which is
+  `parAll`'s bargain, not a new one.
 - **`Static[F, A]`** (Static.scala) — the FREE SELECTIVE: `Pure | Op |
   Ap | Select`, a program with no `Bind` in it, so its structure can
   be read before it runs. **`leaves`** lists every operation it MAY

@@ -2226,6 +2226,35 @@ B/op, exactly 56 B per leaf — one `Delay` and its thunk — and 84.25 →
 80.66 µs. The 10 000-deep right-nested spine the fallback exists for
 is now a test.
 
+**The macro is the third road, and it is the cheap one.** Stage 3
+(`import Direct.parallelBinds.given`) groups a run of independent
+binds in a `direct` block. Eight trivial leaves:
+
+| lane | µs/op | B/op |
+|---|---|---|
+| parallel8 — the block, with the import | 11.161 ± 2.459 | 6 712 |
+| parAllFlat8 — the same leaves through `parAll` | 11.669 ± 3.763 | 4 848 |
+| sequential8 — the same block, no import | (see below) | 1 344.002 |
+| handChain8 — the flatMap chain by hand | 0.083 ± 0.004 | 856 |
+
+0.956 against the hand door, inside both error bars, against a
+predicted 20%: the macro emits the FLAT shape, N spawns then N joins,
+and not the pairwise spine `Par.app` would have built. That is the
+whole design argument for stage 3 — a macro holds the group, so it is
+the one position that never has to be pairwise.
+
+"Nothing changes without the import" needed a real A/B and the first
+attempt was the wrong pair (sequential8 against handChain8 prices the
+direct macro against hand-written code, which was never equal and has
+nothing to do with the lane). The right pair is sequential8 here
+against sequential8 on MASTER, run in a master worktree with the same
+file: **1 344.002 B/op against 1 344.001**, identical to the digit.
+The times were not readable — those rounds fell at load 13-56 and the
+lane's sequential8 came back 0.194 ± 0.071 and 0.266 ± 0.187 while the
+control handChain8 held at 0.083 ± 0.004 on both sides — so the bytes
+are the verdict, which is this page's standing rule for exactly that
+situation.
+
 **The conclusion both tables point at**: neither carrier is a faster
 way to do the same thing. `Par` buys concurrency where the code is
 generic, `Static` buys a list of effects and a batch where the program

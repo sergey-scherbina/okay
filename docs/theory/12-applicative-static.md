@@ -350,10 +350,40 @@ the bracket abstraction rule. The choice between `K y` and
 in this subterm?* That is precisely the analysis behind Haskell's
 `ApplicativeDo` \[[Marlow et al. 2016](#ref-marlow-2016)\], which
 rewrites independent `do` binds into `<*>` so a carrier like `Par` can
-run them together — and precisely the analysis that the third stage of
-specs/applicative-static.md would add to Okay's own `direct` blocks
-(chapter 8). A 1979 compilation technique and a 2016 desugaring pass
-ask the same question of the same syntax.
+run them together. A 1979 compilation technique and a 2016 desugaring
+pass ask the same question of the same syntax — and Okay's `direct`
+blocks now ask it too.
+
+`import okay.Direct.parallelBinds.given` turns it on. A maximal run of
+two or more consecutive `val x = m.reflect` binds whose right-hand
+sides do not mention a name bound earlier in the run is emitted as
+spawn-all-then-join-all:
+
+```scala
+import okay.Direct.parallelBinds.given
+val profile: Profile ! Async = direct:
+  val u = fetchUser(id).reflect     // these two do not
+  val o = fetchOrders(id).reflect   // mention each other
+  Profile(u, o)                     // so they run together
+```
+
+**And here the macro does something `Par` cannot.** `app` is pairwise,
+so an applicative spine of N leaves is N joins and 2N fibers — the ~5×
+measured above. A macro holds the whole GROUP at once, which is the
+one position that never has to be pairwise, so it emits the flat
+shape instead: N spawns, then N joins in the order written. Measured
+at eight leaves, the parallel block is 11.16 µs against `parAll`'s
+11.67 — the same shape, within both error bars — while the applicative
+spine on the same leaves would have been about five times that. The
+tool that writes the code is where the cheap form belongs.
+
+Two things it does not do, both pinned by tests rather than left to
+be discovered. Without the import nothing changes at all: the
+sequential emission allocates 1 344.002 B/op against master's
+1 344.001, identical to the digit. And a block over a row WIDER than
+`Async` gets nothing, quietly, because by the time the macro can ask,
+the leaf has been lifted into the row and is no longer spawnable
+(BACKLOG, `direct-parallel-wider-rows`).
 
 ## What this does not claim
 

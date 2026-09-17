@@ -259,29 +259,29 @@ Stage 2:
 - [x] All existing tests stay green.
 
 Stage 3:
-- [ ] Without the import, NOTHING changes: every existing direct test
+- [x] Without the import, NOTHING changes: every existing direct test
       passes untouched and the emitted tree is the same.
-- [ ] With it, two independent `.?` binds run CONCURRENTLY — proven by
+- [x] With it, two independent marked binds run CONCURRENTLY — proven by
       a rendezvous each leaf must reach, not by a clock, exactly as
       stage 1's proof is.
-- [ ] A DEPENDENT pair stays sequential under the same import: the
+- [x] A DEPENDENT pair stays sequential under the same import: the
       second rhs mentions the first bound name, so the run ends. The
       test asserts it by having the second leaf need the first's
       answer, which cannot even be spawned early.
-- [ ] Answers and binding order are unchanged either way (the same
+- [x] Answers and binding order are unchanged either way (the same
       block, both modes, same result).
-- [ ] A leaf that is not exactly `X ! Async` ends the run and the rest
+- [x] A leaf that is not exactly `X ! Async` ends the run and the rest
       compiles as before (a State leaf between two Async ones).
-- [ ] A run of three or more emits ONE flat group, N spawns then N
+- [x] A run of three or more emits ONE flat group, N spawns then N
       joins — asserted on the emitted shape, not inferred from timing:
       a counter in a Scheduler says how many fibers were forked.
-- [ ] Cost, predicted before measuring: at 8 independent leaves the
+- [x] Cost, predicted before measuring: at 8 independent leaves the
       parallel block is within 20% of `parAll` on the same leaves (it
       is the same shape), and the sequential block is unchanged to the
       byte against master.
 
 Stage 4:
-- [ ] The chapter exists, is in the index, and every `file:line` it
+- [x] The chapter exists, is in the index, and every `file:line` it
       cites resolves on the commit that lands it — checked by a grep
       over the cited files, as the textbook's own chapters were.
 
@@ -436,6 +436,52 @@ three rounds on one box (load 3–6.6):
   types, or generic code that never heard of Async -> `Par`, where the
   alternative is not `parAll` but running sequentially (0.345 µs/op
   buys you nothing when the leaves are real work).
+
+### Stage 3 — `direct` runs independent binds at once, landed 2026-09-17
+
+**BOTH PREDICTIONS ANSWERED, one confirmed and one measured the wrong
+pair first.** DirectParallelBenchmark, eight trivial independent
+leaves, `-f 3 -prof gc`:
+
+| lane | µs/op | B/op |
+|---|---|---|
+| parallel8 (the block, with the import) | 11.161 ± 2.459 | 6 712 |
+| parAllFlat8 (the same leaves through `parAll`) | 11.669 ± 3.763 | 4 848 |
+| sequential8 (the same block, no import) | see the A/B below | 1 344.002 |
+| handChain8 (the flatMap chain by hand) | 0.083 ± 0.004 | 856 |
+
+- **THE MACRO EMITS THE FLAT SHAPE.** parallel8 / parAllFlat8 = 0.956,
+  inside both error bars, against a predicted 20%. That is the claim
+  stage 3's design rests on: a macro holds the whole group, so it
+  never has to be pairwise, and `Par`'s ~5x pairwise spine is not what
+  gets built. The residue is in the bytes — +1 864 B/op over the bare
+  door, which is the block's own eight binds around the spawn/join.
+- **"WITHOUT THE IMPORT NOTHING CHANGES" NEEDED A REAL A/B**, and the
+  first attempt was the wrong pair: sequential8 against handChain8
+  prices the direct macro against hand-written code, which was never
+  equal and has nothing to do with this lane. The right pair is
+  sequential8 HERE against sequential8 on master, and it was run in a
+  master worktree with the same file: **1 344.002 B/op against
+  1 344.001 B/op**, identical to the digit. Times were not readable —
+  the lane's rounds fell at load 13-56 and sequential8 came back
+  0.194 ± 0.071 and 0.266 ± 0.187 while the control handChain8 held at
+  0.083 ± 0.004 on both sides — so the bytes are the verdict, which is
+  this repository's standing rule for exactly this situation.
+
+**What the implementation found.** `asMark` does not see through the
+inline expansion: by the time the macro has a leaf like `async(1)`,
+`Inlined` nodes carry `$proxy` bindings that `stripped` does not
+remove, so matching the syntax found nothing and the feature was
+silently off. The fork COUNT caught it — a test asserting three fibers
+got zero — and the fix is to ask `compile`, which already knows how to
+get through all of it, and then ask the TYPE whether the program it
+hands back is `X ! Async`.
+
+**The limit v1 keeps, stated rather than discovered later**: for a
+block over a WIDER row the compiled leaf has already been narrowed
+into the row, so it is not spawnable and the import does nothing,
+quietly. Pinned by a test over `Reader % Int + Async` asserting zero
+forks, and filed as BACKLOG `direct-parallel-wider-rows`.
 
 ### Stage 2 — `Static`, landed 2026-09-17
 

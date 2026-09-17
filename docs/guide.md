@@ -588,6 +588,14 @@ retry a lineage recompute, and the whole lex/parse stack incremental
 — and it is exactly where eager runtimes crash (see
 compare/TestLaziness).
 
+A `direct` block emits one bind after another. `import
+Direct.parallelBinds.given` changes that for INDEPENDENT ones: a
+maximal run of consecutive `val x = m.reflect` binds whose right-hand
+sides mention no earlier name in the run becomes N spawns then N
+joins, the flat shape `parAll` uses and measurably the same. Without
+the import the emission is unchanged to the byte
+(specs/applicative-static.md, stage 3).
+
 ## 9. Capabilities: context functions
 
 The stack's implicit evidence (`CanBlock`, `Scheduler`) generalizes:
