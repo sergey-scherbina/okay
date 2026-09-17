@@ -157,7 +157,7 @@ machine in one row is always a mistake — and here it is a COMPILE
 error. The chapter explains the rule by showing what went wrong before
 the guard existed.
 
-### 13. Multi-shot: a continuation is a value
+### [13. Multi-shot: a continuation is a value](13-multi-shot.md) ✓
 
 **Thesis.** Resuming twice is not a curiosity: it is what makes a
 debugger able to ask "what if the tool had answered differently", and
