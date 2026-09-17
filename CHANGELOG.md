@@ -1,5 +1,60 @@
 # Changelog
 
+## applicative-static stage 3 - a direct block runs its independent binds at once
+
+Landed as 883f83dd; the arc's last stage, and the design entry that
+gated it is 0851d3cc. `import okay.Direct.parallelBinds.given`:
+
+    val profile: Profile ! Async = direct:
+      val u = fetchUser(id).reflect     // neither mentions the other,
+      val o = fetchOrders(id).reflect   // so both run at once
+      Profile(u, o)
+
+THE SPEC OFFERED TWO INSTANCES TO EMIT `app` AGAINST and deferred the
+choice to the Results. Both are refused, each for a measured reason.
+The row's own instance derives `app` from `flatMap`, so emitting it
+adds a node per join and buys nothing. `Par` has the right semantics
+and the wrong SHAPE: stage 1 measured the pairwise spine at ~5x a flat
+`parAll`, and a macro holds the whole GROUP at once - the one position
+that never has to be pairwise. So the macro emits neither: N spawns,
+then N joins, out of `Async.spawn` and `joinAsync`, typed per leaf so
+nothing casts.
+
+The analysis is bracket abstraction's own question, and Turner
+answered it in 1979 for the same syntax: `[x](a b)` needs S when x
+occurs free on both sides and K when it does not. Here a right-hand
+side either mentions a name bound earlier in the run, or it does not.
+
+WHAT THE IMPLEMENTATION FOUND. Matching the mark SYNTACTICALLY found
+nothing: by the time the macro sees a leaf, inline expansion has
+wrapped it in `Inlined` nodes carrying `$proxy` bindings that
+`stripped` does not remove, so every leaf answered "no mark" and the
+whole feature was silently off. A fork COUNT of zero caught it - which
+is why that assertion exists. The fix is to ask `compile`, which
+already knows how to get through all of it, and then ask the TYPE
+whether what it hands back is `X ! Async`.
+
+MEASURED, both predictions answered. The macro emits the flat shape:
+parallel8 / parAllFlat8 = 0.956 at eight leaves, inside both error
+bars, against a predicted 20%. "Without the import nothing changes"
+needed a real A/B, and the first attempt was the WRONG PAIR -
+sequential8 against handChain8 prices the direct macro against
+hand-written code, which was never equal and has nothing to do with
+this lane. The right pair is this lane's sequential8 against master's,
+run in a master worktree with the same file: 1344.002 B/op against
+1344.001, identical to the digit. Times were unreadable at load 13-56,
+so the bytes are the verdict.
+
+The limit v1 keeps, stated rather than discovered later: a block over
+a row WIDER than Async gets nothing, quietly, because the compiled
+leaf has already been lifted into the row. Pinned by a test asserting
+zero forks over `Reader % Int + Async`, and filed as BACKLOG
+`direct-parallel-wider-rows`.
+
+Docs: theory ch. 12 gains the macro (and the reason the cheap shape
+belongs in the tool that writes the code), tutorial 20, typepedia,
+guide 8, benchmarks 9i.
+
 ## unwrap-glyph - stage 0, the spec: one glyph, one meaning
 
 specs/unwrap-glyph.md (spec only; no code moved). Three different `?`
