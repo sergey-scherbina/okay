@@ -250,8 +250,16 @@ code, and giving it one would mean a registry of erased bodies and a
 cast at every spawn. So **starting a child is an activity**: the
 parent asks its own question, the oracle calls the child's worker, and
 the child's id comes back as an ordinary journalled answer. That costs
-no new machinery and the spawn is idempotent in `(id, index)` like
-every other activity.
+no new machinery.
+
+> **One caveat, and it is an API gap rather than a design one.** An
+> activity that is not idempotent wants the key `(id, index)` that
+> `Dialogue.run` hands its oracle — stable across restarts because it
+> is the journal's own position. A `Worker`'s oracle is `Q => A` and
+> does NOT receive it, so a spawn that must not happen twice needs a
+> key of its own until that is fixed (BACKLOG:
+> `worker-oracle-attempt`). Driving through `Dialogue.runWorkflow`
+> directly gives you the key today.
 
 ```scala
 oracle = q => okay.async:
@@ -334,6 +342,31 @@ answer. Only one of those is affordable.
 It is a per-process optimisation over a journal that stays the only
 state. Drop it, restart, run two — nothing changes but how often a
 replay happens.
+
+## One run's failure, and the batch
+
+`advance` drives one run, so when its oracle gives up — an exhausted
+retry policy throws, on purpose, with nothing journalled and the run
+still standing — that throw belongs to the caller who asked.
+
+`tick` drives ALL the due ones, and there the same throw ends the
+pass, skips every run after the failing one, and discards what the
+earlier ones already did. So a worker loop hands `tick` the ability to
+catch:
+
+```scala
+Worker(..., isolate = Some(Worker.isolating))
+```
+
+and a failing run comes back as `Progress.Failed(why)` beside the
+others instead of taking them with it. Nothing was journalled, so the
+run is where it was and the next pass asks again — `Failed` is "not
+now", where `Broken` is "this journal cannot be folded".
+
+It is a parameter and not a default because catching belongs to a
+concrete row and a worker's `G` is abstract. That is the same rule the
+rest of the library follows: an obligation over a row is carried, not
+searched for.
 
 ## Two workers on one run
 

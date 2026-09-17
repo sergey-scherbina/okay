@@ -110,7 +110,28 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * run two, and nothing changes but how often a
                                     * replay happens. See `Resume`.
                                     */
-                                   resume: Option[Resume[Wf.Ask[Q], Wf.Ans[A], R, F]] = None)
+                                   resume: Option[Resume[Wf.Ask[Q], Wf.Ans[A], R, F]] = None,
+                                   /**
+                                    * HOW TO KEEP ONE RUN'S FAILURE FROM TAKING THE
+                                    * BATCH (worker-tick-isolation, 2026-09-17).
+                                    *
+                                    * An oracle whose retries are exhausted THROWS,
+                                    * by design: nothing is journalled and the run
+                                    * still stands, so a later worker asks again.
+                                    * For `advance` that throw belongs to the caller,
+                                    * who asked about one run. For `tick` it ends the
+                                    * pass, skips every run after the failing one and
+                                    * DISCARDS what the earlier ones did.
+                                    *
+                                    * Catching it needs the ROW, and `G` is abstract
+                                    * here -- so the ability is carried as a
+                                    * parameter rather than searched for, which is
+                                    * the same rule `Delim.answer` follows and the
+                                    * one ProbeRowCrash states. `Worker.isolating`
+                                    * is the instance for `Async`. Left out, `tick`
+                                    * behaves exactly as before.
+                                    */
+                                   isolate: Option[Worker.Isolate[G]] = None)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
@@ -307,8 +328,14 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     def go(ids: List[String], acc: List[(String, Worker.Progress[R])])
          : List[(String, Worker.Progress[R])] ! G = ids match
       case Nil => pure(acc.reverse)
-      case id :: rest =>
-        wake(id, nowMillis).flatMap(p => go(rest, (id, p) :: acc))
+      case id :: rest => isolate match
+        case None => wake(id, nowMillis).flatMap(p => go(rest, (id, p) :: acc))
+        case Some(iso) => iso(wake(id, nowMillis)).flatMap:
+          case Right(p) => go(rest, (id, p) :: acc)
+          // the run is exactly where it was -- nothing was journalled,
+          // so the next pass asks again. This says so rather than
+          // ending the pass.
+          case Left(e) => go(rest, (id, Worker.Progress.Failed(e.toString)) :: acc)
     go(timers.due(nowMillis), Nil)
 
   /** append the timer's answer if the run is genuinely waiting on it,
@@ -328,6 +355,23 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
           advance(id)
 
 object Worker:
+
+  /**
+   * THE ABILITY TO CATCH, CARRIED AS A VALUE (worker-tick-isolation,
+   * 2026-09-17). A worker's driver row `G` is abstract, and catching
+   * belongs to a concrete row -- so a caller who wants `tick` to
+   * survive one run's failure hands in the way to do it. The rule is
+   * the repository's: an obligation over a row is a parameter, never
+   * a search at an abstract row.
+   */
+  trait Isolate[G[+_]]:
+    def apply[X](p: X ! G): Either[Throwable, X] ! G
+
+  /** the instance for the row workers are actually built in */
+  def isolating(using okay.Scheduler): Isolate[okay.Async] = new Isolate[okay.Async]:
+    def apply[X](p: X ! okay.Async): Either[Throwable, X] ! okay.Async =
+      okay.Async.attempt(p)
+
 
   /**
    * AN ORACLE THAT RETRIES, AND A JOURNAL THAT DOES NOT NOTICE
@@ -363,6 +407,7 @@ object Worker:
     case Progress.Waiting(okay.Wf.Wait.Until(t)) => Statuses.State.Sleeping(t)
     case Progress.Continued(n) => Statuses.State.Waiting(s"continuing:$n")
     case Progress.Busy(who) => Statuses.State.Waiting(s"busy:$who")
+    case Progress.Failed(why) => Statuses.State.Broken(s"threw: $why")
     // the status line now names a LINE, not just an offset
     case Progress.Broken(d) => Statuses.State.Broken(d.toString)
 
@@ -379,6 +424,12 @@ object Worker:
      * nothing. ADVISORY: it is a reason to come back later, never a
      * guarantee that the other worker is actually running. */
     case Busy(owner: String) extends Progress[Nothing]
+    /** the drive threw and `tick` caught it, because a pass over many
+     * runs must not end on one of them. NOTHING was journalled and the
+     * run stands where it did, so the next pass asks again -- this is
+     * "not now", not "broken". A journal that cannot be folded is
+     * `Broken`; this is an activity that failed. */
+    case Failed(why: String) extends Progress[Nothing]
     /** the journal could not be folded, and `why` says where in the
      * CODE this program stands as well as where in the log the
      * trouble is */
