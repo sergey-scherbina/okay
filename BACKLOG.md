@@ -666,6 +666,39 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       lane that met it re-ran its matrix after filing this, which is a
       person deciding on an unrelated module — not the script hiding a
       defect. The gate log is okay-gate.dHgXx2UyXr.
+      **SEEN A THIRD TIME, 2026-09-17** (delim-diagnostics-position, a
+      lane touching only okay-persist and prose), round 36:
+
+          round 36: producer 1 came back out of its own order
+             29, +37, 31, 35, -37, 39
+
+      PRODUCER 1 again, one element hoisted forward again — and the
+      third occurrence is what makes the three MEASURABLE rather than
+      merely similar. Each producer emits an arithmetic sequence, so
+      the hoist can be counted:
+
+          2026-09-10   49 -> 57   +8   = 4 of its own elements
+          2026-09-11    5 -> 13   +8   = 4 of its own elements
+          2026-09-17   29 -> 37   +8   = 4 of its own elements
+
+      THE HOISTED ELEMENT IS EXACTLY FOUR OF ITS OWN AHEAD, three
+      times out of three — and the test deliberately uses the shipped
+      `Channel(4)`. Four is the CAPACITY. That turns "a race in the
+      adoption/swap path" into something falsifiable: a producer's
+      element one full part ahead becomes readable before the part
+      holding its three predecessors is drained. It also gives the
+      experiment that was missing — run the same suite at capacity 8
+      and see whether the hoist becomes +16. If it does, the bug is
+      indexed by capacity and the swap is reading the new part early;
+      if it stays +8, the number is a coincidence of three and the
+      lead is dead.
+      Load at the failure: `{ 8.6 6.6 6.3 }` — NOT a busy box this
+      time, which weakens "needs contention to show" as a necessary
+      condition, though all three runs were full matrices.
+      Still NOT tagged and NOT retried into green by the gate. The
+      lane that met it re-gated afterwards, having filed this first —
+      a person deciding about an unrelated module, not the script
+      hiding a defect. The gate log is okay-gate.UR07J2fMsW.
 
 - [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
       Conversion each way; GATED: no consumer named
