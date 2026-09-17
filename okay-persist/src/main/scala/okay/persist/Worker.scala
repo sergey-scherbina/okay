@@ -45,7 +45,8 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                    snapshots: Option[Snapshots] = None,
                                    snapshotEvery: Int = 0,
                                    signals: Option[Signals] = None,
-                                   statuses: Option[Statuses] = None)
+                                   statuses: Option[Statuses] = None,
+                                   cancels: Option[Cancels] = None)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
@@ -54,6 +55,29 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
   /** the dialogue this worker drives, for an id */
   def dialogue(id: String): Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =
     Dialogue.workflow[Q, A, R, F](topic, id, program, snapshots, snapshotEvery)(body)
+
+  /**
+   * THE RUNTIME THIS WORKER ANSWERS WITH, FOR ONE ID. The ambient
+   * one, wrapped so that `w.cancelled` consults the cancel topic. It
+   * is built per call and not per worker because `requested` is read
+   * at the moment the program asks: a request that arrives mid-drive
+   * is seen by the next check and not by the ones already behind it.
+   */
+  private def runtime(id: String): Wf.Runtime =
+    cancels match
+      case None => summon[Wf.Runtime]
+      case Some(c) => Wf.Runtime.cancellable(summon[Wf.Runtime])(c.requested(id))
+
+  /**
+   * ASK A RUN TO STOP. Cooperative, and the header of `Cancels` says
+   * why it has to be: the run sees this at its next `w.cancelled`,
+   * and a program with no check is not cancellable. `false` means
+   * this worker was built without a cancel topic, so there was
+   * nowhere to put the request — a refusal rather than a silent one.
+   */
+  def cancel(id: String, why: String): Boolean = cancels match
+    case Some(c) => c.cancel(id, why); true
+    case None => false
 
   /** a new run, or an existing one: the journal decides which, so
    * these are the same call and `start` is only a name */
@@ -103,7 +127,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
       case Right(_) => drive(id)
 
   private def drive(id: String): Worker.Progress[R] ! G =
-    dialogue(id).runWorkflowIn[G](oracle).flatMap:
+    dialogue(id).runWorkflowIn[G](oracle)(using runtime(id), summon[RowLift.Sub[F, G]]).flatMap:
       case Right(r) =>
         timers.disarm(id)
         pure(Worker.Progress.Finished(r))

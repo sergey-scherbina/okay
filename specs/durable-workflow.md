@@ -442,9 +442,45 @@ rather than a rewrite.
 | `workflow-visibility` | **LANDED 2026-09-17**: `Statuses`, written BY THE WORKER on every advance. The model can answer "what is every run doing" only by running every program over every journal — right, and the wrong thing to pay on a dashboard refresh | the driver, the worker |
 | `workflow-signals` | **LANDED 2026-09-17**: `Signals` — a mailbox topic keyed by dialogue id and a compacted cursor PER NAME, because a signal may arrive long before the run waits for it and a journal has nowhere to hold an answer to a question nobody asked. The worker drains what it can before it reports a wait | the driver, the worker |
 | `workflow-retries` | **LANDED 2026-09-17**: `Worker.retrying(policy)(oracle)` — three lines, because the two halves already existed (`Retry`'s policies are streams of delays, and the activity row is where an attempt is allowed to fail). An exhausted policy gives up FOR NOW: nothing is journalled, the run still stands at its question, and a later worker asks again | the activity row |
-| `workflow-cancel` | a cancel record the program observes at its next pause, and compensation as ordinary code on that path | the driver |
+| `workflow-cancel` | **LANDED 2026-09-17**: `Cancels`, a compacted keyed topic of stop requests, `Wf.cancelled` as an ordinary `Sys` question, and `Runtime.cancellable` wrapping the ambient runtime per dialogue. COOPERATIVE, and not by taste — see the Result below. Compensation is ordinary code on the cancelled branch | the driver, the worker |
 | `workflow-children` | a child dialogue keyed under its parent, and a parent question answered by its result | the driver, the worker |
 | `dialogue-continue-as` | bounded history: a `Continued(seed)` record that supersedes everything before it | — |
+
+### Result — cancellation is a QUESTION, not a throw (2026-09-17)
+
+`TestCancel` (6 tests) and one more in `TestWorkflowGuide`.
+
+**The alternative that was refuted, and the reason it had to be.** The
+obvious shape is pre-emptive: the driver notices a cancel request and
+throws into the program, which catches it and compensates. That cannot
+work here, and the fact that kills it is already pinned by
+`TestDelimLimits`: a `direct` block's `try/catch` guards the BUILDING
+of a program, not its running. A `!`-bound step inside a `try` does
+not run inside that `try` — it is a node in a tree that runs later —
+so a thrown cancellation could not be caught by the program being
+cancelled. An `if` can. Cancellation is therefore a question the
+author asks where they decide it is safe to stop.
+
+**What that costs, said out loud** because a team has to plan for it:
+a program with no check is not cancellable; a run asleep for a year
+learns it was cancelled when it wakes; a run waiting on a signal that
+never comes never learns at all.
+
+**What it buys, and it is the reason to prefer it even without the
+constraint above: the decision is replayable.** The request lives in
+an operational topic, but the ANSWER — cancelled or not, and why — is
+journalled like every other answer. A run told "no" at 10:00 is told
+"no" by every replay of that position even after the request arrives
+at 10:01, so a rebuild never takes a branch the original run did not
+take. The fifth test withdraws the request from a finished run and
+asserts the run still finishes the way it finished; a design that read
+the topic at replay time would fail it.
+
+**Where the request is read.** `Runtime.cancellable` takes `why` BY
+NAME and the worker builds it per drive, not per worker: a request
+arriving mid-drive is seen by the next check and not by the checks
+already behind it. A worker built without a `Cancels` returns `false`
+from `cancel` — a refusal rather than a silently dropped request.
 
 ### Results — the keystone (2026-09-17)
 

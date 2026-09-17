@@ -116,4 +116,33 @@ class TestWorkflowGuide extends FunSuite {
         assertEquals(expected, "booking/2")
       case other => fail(s"a foreign journal was folded anyway: $other")
   }
+
+  // ---- the page's cancellation block, verbatim
+
+  def cancellable(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+    direct:
+      val city = !w.pause("which city?")
+      !w.sleep(24 * 3600 * 1000L)
+      !w.cancelled match                      // the author decides WHERE
+        case Some(why) => s"released $city: $why"
+        case None      => s"confirmed $city"
+
+  test("the guide's cancellation: cooperative, and the decision is replayed") {
+    val store = MemoryStore()
+    val cancels = Cancels.over(store)
+    val worker = Worker[String, String, String, Pure, Async](
+      store.topic("bookings"), "booking/1", Timers.over(store),
+      _ => okay.async("Kyiv"), cancels = Some(cancels))(cancellable)
+
+    val _ = drive(worker.start("b-1"))
+    assert(worker.cancel("b-1", "customer withdrew"))
+    assertEquals(drive(worker.tick(1_700_000_000_000L + 86_400_001L)),
+      List("b-1" -> Worker.Progress.Finished("released Kyiv: customer withdrew")))
+
+    // and the page's claim: withdrawing afterwards changes nothing,
+    // because the run decided from its journal
+    cancels.withdraw("b-1")
+    assertEquals(drive(worker.advance("b-1")),
+      Worker.Progress.Finished("released Kyiv: customer withdrew"))
+  }
 }

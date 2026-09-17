@@ -1,5 +1,39 @@
 # Changelog
 
+## workflow-cancel - asking a run to stop, as a question it answers
+
+`Cancels` is a compacted keyed topic of stop requests, `Wf.cancelled`
+is an ordinary `Sys` question the program asks where its author
+decides it is safe to stop, and `Runtime.cancellable` wraps the
+ambient runtime per dialogue so the worker's `cancel(id, why)` reaches
+the run that is being driven. `Worker` gained a `cancels` option and
+refuses - returns `false` - rather than dropping a request it has
+nowhere to put.
+
+COOPERATIVE, AND NOT BY TASTE. The obvious shape is pre-emptive: the
+driver throws into the program, which catches and compensates. That
+cannot work here, and the fact that kills it was already pinned by
+`TestDelimLimits` - a `direct` block's try/catch guards the BUILDING
+of a program, not its running, so a thrown cancellation could not be
+caught by the program being cancelled. An `if` can.
+
+WHAT IT BUYS is the property the rest of the engine is built on: the
+DECISION IS REPLAYABLE. The request lives in an operational topic, but
+the answer - cancelled or not, and why - is journalled like every
+other answer, so a run told "no" at 10:00 is told "no" by every replay
+of that position even after the request arrives at 10:01. The fifth
+test withdraws the request from a finished run and asserts the run
+still finishes the way it finished; a design that consulted the topic
+at replay time would fail it.
+
+WHAT IT COSTS, said in the guide rather than discovered: a program
+with no check is not cancellable, a run asleep for a year learns it
+was cancelled when it wakes, and a run waiting on a signal that never
+comes never learns at all.
+
+`TestCancel` (6) and one more in `TestWorkflowGuide`, whose example is
+the page's snippet verbatim.
+
 ## workflow-docs - the guide, and a test that keeps it honest
 
 `docs/durable-workflows.md`: what a durable workflow is, the one idea

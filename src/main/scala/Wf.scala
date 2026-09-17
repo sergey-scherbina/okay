@@ -62,6 +62,16 @@ object Wf:
     case Signal(name: String)
     /** wake me when this child dialogue finishes */
     case Child(id: String)
+    /**
+     * HAS SOMEBODY ASKED THIS RUN TO STOP? A cooperative check, and
+     * cooperative on purpose (workflow-cancel, 2026-09-17): a
+     * `try/catch` in a `direct` block guards the BUILDING of a
+     * program, not its running (TestDelimLimits pins that), so a
+     * cancellation delivered as a throw could not be caught by the
+     * program it is cancelling. An `if` can. The answer is journalled
+     * like every other, so a replay makes the same decision.
+     */
+    case Cancelled
 
   /** their answers, tagged so a journal entry says what it answers */
   enum SysA:
@@ -171,6 +181,22 @@ object Wf:
       Wf.patch[Q, A, R, F](id)(using in, summon[At])
 
     /**
+     * HAS SOMEBODY ASKED THIS RUN TO STOP, and why?
+     *
+     *     if !w.cancelled.isDefined then …compensate…; "cancelled"
+     *     else …carry on…
+     *
+     * The check is where the AUTHOR puts it, which is the honest
+     * shape for this library: a cancellation cannot be delivered as
+     * an exception, because a `direct` block's `try/catch` guards the
+     * building of the program rather than its running. What it costs
+     * is stated in the guide: a run asleep for a year learns it was
+     * cancelled when it wakes, not before.
+     */
+    def cancelled(using At): Option[String] ! (Delim + F) =
+      Wf.cancelled[Q, A, R, F](using in, summon[At])
+
+    /**
      * SLEEP, DURABLY. The run stops here and the driver returns
      * `Waiting(Until(t))`; a scheduler appends the answer when the
      * instant passes, and a worker carries the run on. Nothing is
@@ -260,6 +286,12 @@ object Wf:
     sys[Q, A, R, F, String](Sys.Child(id)):
       case SysA.Got(v) => v
 
+  def cancelled[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At)
+                               : Option[String] ! (Delim + F) =
+    sys[Q, A, R, F, Option[String]](Sys.Cancelled):
+      case SysA.Text(why) => Some(why)
+      case SysA.Flag(false) => None
+
   private def sys[Q, A, R, F[+_], X](q: Sys)(f: PartialFunction[SysA, X])
                                     (using s: Asking[Q, A, R, F], at: At): X ! (Delim + F) =
     Delim.ask[Ask[Q], Ans[A], R, F](Left(q)).map:
@@ -290,6 +322,9 @@ object Wf:
         case Sys.Timer(t) => Left(Wait.Until(t))
         case Sys.Signal(n) => Left(Wait.Signal(n))
         case Sys.Child(id) => Left(Wait.Child(id))
+        // nobody has asked this run to stop: a bare runtime has no
+        // cancel topic to consult, and the WORKER is what wraps one
+        case Sys.Cancelled => Right(SysA.Flag(false))
 
     /** a fixed one, for a test that wants to read its own output */
     def scripted(millis: Long, id: String, dice: Double): Runtime = new Runtime:
@@ -301,6 +336,23 @@ object Wf:
         case Sys.Timer(t) => Left(Wait.Until(t))
         case Sys.Signal(n) => Left(Wait.Signal(n))
         case Sys.Child(id) => Left(Wait.Child(id))
+        case Sys.Cancelled => Right(SysA.Flag(false))
+
+    /**
+     * THE SAME RUNTIME, BUT THIS RUN CAN BE TOLD TO STOP. `why` is
+     * read at the moment the program ASKS, not when the runtime is
+     * built, so a request that arrives mid-run is seen by the next
+     * check and not by the checks already behind it.
+     *
+     * It is a wrapper rather than a field on `Runtime` because a
+     * cancellation is per-DIALOGUE and a runtime is per-worker: the
+     * worker is what knows which id it is driving, and it is the
+     * worker that hands the topic in (`okay.persist.Cancels`).
+     */
+    def cancellable(rt: Runtime)(why: => Option[String]): Runtime = new Runtime:
+      def answer(q: Sys): Either[Wait, SysA] = q match
+        case Sys.Cancelled => Right(why.fold(SysA.Flag(false))(SysA.Text(_)))
+        case other => rt.answer(other)
 
   /** start a program that may ask the runtime as well as the world */
   def resumable[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))

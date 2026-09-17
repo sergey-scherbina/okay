@@ -59,9 +59,10 @@ exists to provide:
 ```
     Dialogue ── the journal. THE TRUTH.
     Worker   ── moves runs forward: start, advance, wake, tick
-    Timers   ── deadlines          } operational: lose them and
-    Signals  ── the mailbox        } no run is wrong, only slower
-    Statuses ── the dashboard      } or blind
+    Timers   ── deadlines          }
+    Signals  ── the mailbox        } operational: lose any of them and
+    Statuses ── the dashboard      } no run is WRONG — only slower,
+    Cancels  ── stop requests      } or blind, or not stopping
 ```
 
 **Only the journal is state.** Everything else is operational data
@@ -141,6 +142,45 @@ Two things happen, and both are deliberate.
   goes live at the patch and finishes on the new branch with its
   history intact.
 
+## Asking a run to stop
+
+```scala
+worker.cancel("booking-42", "customer withdrew")     // an operator, a service, a test
+```
+
+and in the program, wherever the author decides it is safe to stop:
+
+```scala
+def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+  val city = !w.pause("which city?")
+  !w.sleep(24 * 3600 * 1000L)
+  !w.cancelled match                      // the author decides WHERE
+    case Some(why) => s"released $city: $why"
+    case None      => s"confirmed $city"
+```
+
+**Cooperative, on purpose.** A cancellation cannot be delivered here
+as a thrown exception: a `direct` block's `try/catch` guards the
+*building* of the program, not its running, so a throw could not be
+caught by the program being cancelled. An `if` can. What follows from
+that is worth saying plainly to anyone adopting this:
+
+- a program with no check is not cancellable;
+- a run asleep for a year learns it was cancelled when it wakes;
+- a run waiting on a signal that never arrives never learns at all.
+
+What it buys is the property the rest of the engine is built on: **the
+decision is replayable**. The request lives in an operational topic
+(`Cancels`), but the *answer* — cancelled or not, and why — is
+journalled like every other answer. A run told "no" at 10:00 is told
+"no" by every replay of that position, even after the request arrives
+at 10:01, so a rebuild never takes a branch the original run did not
+take. Withdraw a request after the fact and the finished run still
+finished the way it finished. There is a test named for exactly that.
+
+Lose the whole cancel topic and no journal is wrong; the runs that
+would have stopped simply carry on.
+
 ## What this is NOT
 
 Say this half too. The MODEL is smaller and better than a workflow
@@ -151,8 +191,9 @@ wrote. The OPERATIONS are younger:
   your own loop;
 - there is no lease, so two workers collide harmlessly rather than
   rarely (`expect` is what makes that safe);
-- cancellation, child workflows and bounded history (`continueAs`) are
-  named in the spec and not built yet;
+- cancellation is **cooperative** (see below), not pre-emptive;
+- child workflows and bounded history (`continueAs`) are named in the
+  spec and not built yet;
 - `Timers.due` and `Signals.next` scan a topic, which is honest for
   thousands of runs and wrong for millions.
 
