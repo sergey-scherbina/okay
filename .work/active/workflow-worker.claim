@@ -1,0 +1,6 @@
+feature/workflow-worker 2026-09-17T12:03:55Z
+agent: claude-code
+heartbeat: 2026-09-17T12:03:55Z
+status: in-progress
+done-so-far: Worker and its tests written while the timers gate ran
+next: compile, fix, gate
