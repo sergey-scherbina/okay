@@ -42,7 +42,8 @@ import okay.codec.Schema
 final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers,
                                    oracle: Q => A ! F,
                                    snapshots: Option[Snapshots] = None,
-                                   snapshotEvery: Int = 0)
+                                   snapshotEvery: Int = 0,
+                                   signals: Option[Signals] = None)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime):
@@ -61,17 +62,32 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
    * before this returns.
    */
   def advance(id: String): Worker.Progress[R] ! F =
-    dialogue(id).runWorkflow(oracle).map:
+    dialogue(id).runWorkflow(oracle).flatMap:
       case Right(r) =>
         timers.disarm(id)
-        Worker.Progress.Finished(r)
+        pure(Worker.Progress.Finished(r))
       case Left(Wf.Wait.Until(t)) =>
         timers.arm(id, t)
-        Worker.Progress.Sleeping(t)
+        pure(Worker.Progress.Sleeping(t))
+      case Left(Wf.Wait.Signal(name)) =>
+        // the mail may already be here: a signal can arrive long
+        // before the run reaches the `awaitSignal` that wants it, and
+        // this is the moment it becomes an answer
+        signals.flatMap(_.next(id, name)) match
+          case Some((off, payload)) =>
+            dialogue(id).answer(Left(Wf.SysA.Got(payload))).flatMap: _ =>
+              // the cursor moves ONLY after the journal took it, so a
+              // crash in between re-delivers and `expect` refuses the
+              // duplicate — a repeated attempt, never a doubled answer
+              signals.foreach(_.delivered(id, name, off))
+              advance(id)
+          case None =>
+            timers.disarm(id)
+            pure(Worker.Progress.Waiting(Wf.Wait.Signal(name)))
       case Left(w) =>
-        // a signal or a child wakes this one, not the clock
+        // a child wakes this one, not the clock
         timers.disarm(id)
-        Worker.Progress.Waiting(w)
+        pure(Worker.Progress.Waiting(w))
 
   /**
    * One pass over the deadlines that have passed. A due id is woken

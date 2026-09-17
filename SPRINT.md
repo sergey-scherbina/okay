@@ -48,7 +48,6 @@
     status index (id, program, standing question, waiting-until)
   - workflow-lease — ADVISORY, after visibility: `expect` already makes
     two workers safe, so this only makes collisions rare
-  - workflow-signals — the API that appends to a named channel
   - workflow-retries — `perform` with a policy from okay-resilience;
     the retry is the DRIVER's, so the journal sees one answer
   - workflow-cancel — a cancel record the program observes

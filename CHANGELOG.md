@@ -1,5 +1,40 @@
 # Changelog
 
+## workflow-signals - the mailbox between a sender and a waiting run
+
+An answer replies to a question the program ASKED. A signal does not:
+it is sent when the sender has something to say, which may be long
+before the run reaches the `awaitSignal` that wants it - and a journal
+has nowhere to put an answer to a question nobody asked, which is the
+one thing a journal must never hold.
+
+So a signal lands in a MAILBOX (an append-only topic keyed by dialogue
+id) and the worker moves it into the journal at the moment the run
+actually waits for it. A compacted topic of cursors, keyed by id AND
+NAME, remembers how far each name has been delivered.
+
+WHY A CURSOR PER NAME rather than a count per dialogue: signals of
+different names arrive interleaved and a run waits for one name at a
+time, so a per-dialogue count would have to skip the names it is not
+waiting for and could not then say what it had skipped. Per name, "the
+first one after the cursor" IS the next one, and order within a name
+is kept - the only ordering anybody can reasonably promise.
+
+DELIVERY IS EXACTLY ONCE INTO THE JOURNAL. The cursor moves only after
+the journal took the answer, so a crash in between re-delivers the
+same signal and the journal's own `expect` refuses the duplicate at a
+position already filled: a repeated attempt, never a doubled answer.
+
+Seven tests, and the two that state the contract are "a signal that
+arrives BEFORE the wait is delivered when the run gets there" and "a
+signal for a name nobody waits on stays in the box".
+
+One lesson from the tooling rather than the design: a scripted edit
+wrote a literal NUL byte into the source (Python read `\u0000` in my
+string, Scala never saw an escape), and the compiler's error for it
+came back TRUNCATED - E006 with no message body. `od -c` on the line
+is what found it, and the separator is a printable `|` now.
+
 ## workflow-worker - the loop that carries runs forward
 
 `Wf` says where a run stands and `Timers` says when to come back;
