@@ -98,17 +98,19 @@
   free within noise), `Static` (the free selective — leaves, toFree,
   foldMap; toFree 1.72x against a predicted 1.3x, refuted and
   recorded), and theory ch. 12 with the tutorial/typepedia/guide/
-  benchmarks entries. ONLY STAGE 3 IS LEFT — the `direct` macro
-  emitting applicative structure for independent binds — and its gate
-  is now open: the Results it was waiting for exist. Read them first;
-  they say the instance to emit against is a semantic choice
-  (`Par` interleaves, the row's own instance only exposes shape), and
-  that the applicative spine costs ~5x a flat `parAll`, which bears
-  on whether the macro should emit it at all.
+  benchmarks entries. STAGE 3 HAS LANDED TOO (883f83dd): a `direct`
+  block runs its independent binds at once under
+  `import Direct.parallelBinds.given`, and it emits neither `app` nor
+  `Par` — both are refused in the spec's Design with their measured
+  reasons — but the FLAT shape, N spawns then N joins, at 0.956 of
+  `parAll` on the same leaves. THE ARC IS CLOSED; delete this entry at
+  the next queue rewrite.
   What ALSO came out of it, for whoever picks next: BUGS.md
   `par-right-failure-waits` (a right-side failure waits out the
   healthy sibling — 3.017 s vs 0.0007 s) and BACKLOG
-  `static-foldmap-stack-safe`.
+  `static-foldmap-stack-safe`, BACKLOG `direct-parallel-wider-rows`,
+  and specs/unwrap-glyph.md — the `.?` incident this arc's last lane
+  ran into, now a spec of its own.
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
   and the lane order are in specs/durable-workflow.md, stage 4; the
   keystone (`workflow-suspended-driver`) has LANDED, and the rest hang
