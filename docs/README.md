@@ -57,6 +57,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   gates, do-notation statements — with the rationale for every
   boundary and the graveyard of refuted alternatives. The theory
   chapter with the literature is [theory/08](theory/08-direct-style.md).
+- **[Continuations: a working book](continuations/index.md)** — the
+  long form, written to be read straight through: why a team should
+  care (answerable to a manager), the four shapes as recipes, how the
+  machine works, how to build new effects on it, what it costs with
+  numbers, what it must not be asked to do, and the production systems
+  in this repository that are built from nothing else. Self-contained;
+  it repeats what it needs.
 - **[Continuations in practice](continuations-in-practice.md)** — the
   four shapes that earn a capture in ordinary code (`exit`, `collect`
   / `emit`, `resumable` / `pause`, `onReturn`), each beside the way it
