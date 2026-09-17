@@ -29,7 +29,7 @@ class TestUnwrapGlyph extends munit.FunSuite {
     val ok: Int throws Fault = 63
     assertEquals(ok.?, 63)
     val bad: Int throws Fault = Fault("no")
-    intercept[Fault](bad.?)
+    assertEquals(intercept[Fault](bad.?).getMessage, "no")
     // the mending form takes an argument and never competed
     assertEquals(bad.?(_ => -1), -1)
   }

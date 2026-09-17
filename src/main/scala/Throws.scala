@@ -1,7 +1,6 @@
 package okay
 
 import scala.reflect.*
-import scala.util.NotGiven
 import scala.util.*
 import scala.annotation.implicitNotFound
 import okay.RowLift.at
