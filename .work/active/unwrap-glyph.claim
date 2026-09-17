@@ -1,6 +1,0 @@
-okay-wt-unwrap-glyph 2026-09-17T21:39:50Z
-agent: claude-applicative
-heartbeat: 2026-09-17T21:39:50Z
-status: in-progress
-done-so-far: worktree created
-next: write specs/unwrap-glyph.md (the one-glyph question, stage 0 the spec only)
