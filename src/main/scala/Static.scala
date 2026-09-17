@@ -74,6 +74,100 @@ object Static:
     extension [A, B](e: Static[F, Either[A, B]])
       def select(f: Static[F, A => B]): Static[F, B] = Select(e, f)
 
+  /**
+   * THE ARGUMENTS OF A SPINE, TYPE-ALIGNED — what makes `foldMap`
+   * stack-safe WITHOUT a cast.
+   *
+   * `traverse`'s `foldLeft` builds `Ap(Ap(Ap(base, l1), l2), l3)`, so
+   * the recursion that grows is the one on an `Ap`'s FIRST component.
+   * Walking it with a plain stack is easy; coming back up is not,
+   * because each level's intermediate type is gone and
+   * `g.app(argument)` no longer type-checks. Other libraries reach
+   * for an internal cast here.
+   *
+   * It is not needed. `Args[F, T, C]` says "apply these to something
+   * of type T and get a C", and its two cases CARRY the alignment:
+   * `Done` only exists at `Args[F, C, C]`, and consing an argument of
+   * type `X` in front of an `Args[F, R, C]` gives an
+   * `Args[F, X => R, C]`. Matching on them refines the types, so the
+   * fold back up is ordinary typed code.
+   */
+  enum Args[F[+_], T, C]:
+    case Done[F[+_], C]() extends Args[F, C, C]
+    case More[F[+_], X, R, C](arg: Static[F, X], rest: Args[F, R, C])
+      extends Args[F, X => R, C]
+    /**
+     * A PURE function to apply, and it is what makes the walk
+     * iterative on the shape that actually occurs.
+     *
+     * The first `Args` had two cases and still overflowed, because
+     * the depth is not where it looks. `traverse`'s `foldLeft` builds
+     * `Ap(Ap(Pure(g), acc), leaf)`: walking down FIRST components
+     * reaches `Pure(g)` in two steps and pushes the whole accumulator
+     * — the deep thing — as an ARGUMENT, to be folded by an ordinary
+     * recursive call. The stack came back at the same depth by
+     * another road, and a 50 000-leaf test said so.
+     *
+     * So `Ap(Pure(g), a)` is not an application to walk past: it is
+     * "fold `a`, then map it by `g`". Carrying `g` here lets the walk
+     * CONTINUE INTO `a` instead of parking it. Sound because the
+     * first component is `Pure`: it performs nothing, so running `a`
+     * before it changes no order of effects.
+     */
+    case Mapped[F[+_], X, R, C](f: X => R, rest: Args[F, R, C])
+      extends Args[F, X, C]
+
+  /**
+   * Down the left spine, collecting arguments; then back up,
+   * applying them. Both halves are tail-recursive loops, so a spine
+   * of any depth costs no host stack.
+   *
+   * WHAT STILL RECURSES, and it is bounded by a different number:
+   * each ARGUMENT is folded by an ordinary call, and a `Select`'s two
+   * sides are too. A fold over a spine whose arguments are leaves —
+   * which is every spine `traverse` builds — therefore recurses one
+   * level, not N. A program nested the other way pays its own depth,
+   * exactly as `toFree` does.
+   */
+  private def foldSpine[F[+_], G[_], T, C](s: Static[F, T], nt: F ==> G,
+                                           args: Args[F, T, C])(using G: Selective[G]): G[C] =
+    s match
+      // the shape every fold builds: a pure function applied to a
+      // deep accumulator — walk INTO the accumulator (see Args.Mapped)
+      case Ap(Pure(g), a) => foldSpine(a, nt, Args.Mapped(g, args))
+      case Ap(f, a) => foldSpine(f, nt, Args.More(a, args))
+      case Pure(a) => applyArgs(G.pure(a), nt, args)
+      case Op(fa) => applyArgs(nt(fa), nt, args)
+      case Select(e, f) =>
+        applyArgs(e.foldMap(nt).select(f.foldMap(nt)), nt, args)
+
+  @scala.annotation.tailrec
+  private def applyArgs[F[+_], G[_], T, C](g: G[T], nt: F ==> G,
+                                           args: Args[F, T, C])(using G: Selective[G]): G[C] =
+    args match
+      // `@unchecked` on the TYPE ARGUMENTS, and it is the same claim
+      // `Free.resume`'s callers make: this enum has exactly two
+      // cases, so the CLASS test is total, and the type arguments are
+      // the ones `Args` was built with — `Done` can only exist at
+      // `Args[F, C, C]` and `More` only at `Args[F, X => R, C]`. What
+      // the compiler cannot check at run time, the constructors have
+      // already guaranteed at compile time.
+      //
+      // The ascription is needed rather than a constructor pattern
+      // because `x` and `r` have to be NAMED: the match refines `T`
+      // to `x => r`, but `g` is still written `G[T]` and the
+      // Applicative's `app` cannot find its `F[A => B]` shape through
+      // the alias. Naming the refinement is what makes it resolve.
+      // A helper method taking the pieces would also work and would
+      // cost the `@tailrec` below, which is the whole point.
+      case _: (Args.Done[F, C] @unchecked) => g
+      case m: (Args.More[F, x, r, C] @unchecked) =>
+        val gf: G[x => r] = g
+        applyArgs(gf.app(m.arg.foldMap(nt)), nt, m.rest)
+      case m: (Args.Mapped[F, x, ?, C] @unchecked) =>
+        val gx: G[x] = g
+        applyArgs(G.fmap(gx, m.f), nt, m.rest)
+
   extension [F[+_], A](s: Static[F, A])
 
     /**
@@ -169,18 +263,16 @@ object Static:
      * says so by implementing `select` as `selectA` — lawful, and
      * exactly the over-approximation `leaves` reports.
      *
-     * IT IS THE ONE DOOR HERE THAT IS NOT STACK-SAFE, and the number
-     * is measured rather than feared: on a traverse-built spine at
-     * the default JVM stack it folded 5 000 leaves and overflowed at
-     * 10 000 (2026-09-17). Unlike `leaves` and `toFree` it cannot be
-     * a loop without reassembling existentials — the `G` values must
-     * be combined on the way back up, and the type of each level's
-     * intermediate is gone — so the honest answer today is the bound
-     * and a batcher that chunks. `leaves` and `toFree`, the two that
-     * must scale, do (BACKLOG: static-foldmap-stack-safe).
+     * IT IS STACK-SAFE SINCE static-foldmap-stack-safe (2026-09-18),
+     * and the record of what it cost is worth keeping. It folded
+     * 5 000 leaves and overflowed at 10 000, and this comment used to
+     * say it "cannot be a loop without reassembling existentials".
+     * That was half right: the reassembly is the difficulty, and it
+     * does NOT need the cast other libraries use for it — a
+     * type-aligned `Args` (below) carries the alignment in its own
+     * constructors, so coming back up is ordinary typed code. 50 000
+     * leaves now fold, which is where the RECURSIVE walk of `leaves`
+     * used to die.
      */
-    def foldMap[G[_]](nt: F ==> G)(using G: Selective[G]): G[A] = s match
-      case Pure(a) => G.pure(a)
-      case Op(fa) => nt(fa)
-      case Ap(f, a) => f.foldMap(nt).app(a.foldMap(nt))
-      case Select(e, f) => e.foldMap(nt).select(f.foldMap(nt))
+    def foldMap[G[_]](nt: F ==> G)(using G: Selective[G]): G[A] =
+      Static.foldSpine(s, nt, Static.Args.Done())

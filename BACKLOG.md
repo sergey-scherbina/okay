@@ -59,28 +59,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       into a documented road: take a Flink job of this shape, run it
       here, keep the arithmetic. P13 item 3; the engine work is done,
       what is missing is the page and the worked example.
-- [ ] direct-parallel-wider-rows — `import Direct.parallelBinds.given`
-      does nothing in a block over a WIDER row than `Async`, quietly.
-      The macro decides spawnability on the COMPILED leaf, and by then
-      a leaf of a narrower row has been lifted (`RowLift.into`), so its
-      type is `X ! (Async + …)` and `Async.spawn` does not take it.
-      Pinned by TestDirectParallel over `Reader % Int + Async`
-      (zero forks) so the day it lifts, that test says so. The road:
-      intercept the leaf BEFORE `markTerm` narrows it, which means
-      teaching the run detector to look at the mark's own argument —
-      the thing the first cut tried syntactically and failed at
-      (applicative-do, specs/applicative-static.md stage 3).
-- [ ] static-foldmap-stack-safe — `Static.foldMap` is the one door of
-      the free selective that recurses on the host stack, because the
-      `G` values must be combined on the way back up and each level's
-      intermediate type is gone. MEASURED 2026-09-17, traverse-built
-      spine, default JVM stack: it folds 5 000 leaves and overflows at
-      10 000, while `leaves` (explicit stack) returns at 50 000 and
-      `toFree` (Free.defer) has no bound. A loop needs the existential
-      reassembly cats does with internal casts, which the no-casts
-      rule says must be earned. Trigger: a batching consumer whose
-      spine really is that wide — chunking the batch is the answer
-      until then (applicative-par, specs/applicative-static.md).
 - [ ] once-across-fibres — `Once.run`'s cells are threaded state, so a
       fibre forked inside the program takes a snapshot and two fibres
       demanding one handle run it twice, each in its own store. A

@@ -88,19 +88,17 @@ class TestDirectParallel extends munit.FunSuite {
     assertEquals(forks.get(), 0)
   }
 
-  test("a WIDER row is v1's limit, and it is quiet — pinned so the day it lifts, this says so") {
-    // the leaf is narrowed into the row before the macro can ask
-    // whether it is Async, so nothing is spawnable. Documented in
-    // parallelBinds' own comment; BACKLOG direct-parallel-wider-rows.
+  test("a WIDER row parallelises its Async leaves too") {
+    // direct-parallel-wider-rows: the compiled leaf has been lifted
+    // into the row by then, so the type test failed and the import
+    // did nothing here, quietly. The leaf is read BEFORE the
+    // narrowing now — the program the author wrote is still X ! Async.
     val forks = AtomicInteger(0)
     val under: Scheduler = Schedulers.loom
     given counting: Scheduler = new:
       def fork[A](prog: () => A ! Async): Fiber[A] =
         forks.incrementAndGet()
         under.fork(prog)
-    // the counter is the ONLY Scheduler here, so a fork count of zero
-    // below means the macro emitted no spawn — not that it spawned
-    // through some other one
     assert(summon[Scheduler] eq counting)
 
     import Direct.parallelBinds.given
@@ -110,7 +108,9 @@ class TestDirectParallel extends munit.FunSuite {
       val e = Reader.ask[Int].reflect
       a + b + e
     assertEquals(Reader.run[Int, Int, Async](39)(prog).runWith, 42)
-    assertEquals(forks.get(), 0)
+    // the two Async leaves are independent and spawn; the Reader leaf
+    // is not an Async program, so it ends the run and stays sequential
+    assertEquals(forks.get(), 2)
   }
 
   test("a run of three forks exactly three fibers, and a dependent block forks none") {

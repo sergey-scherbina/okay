@@ -217,9 +217,12 @@ object Direct:
    * name bound earlier in the same run is emitted as spawn-all-then-
    * join-all: N fibers started, then N joins in the order written.
    * A leaf qualifies when its OWN type is `X ! Async` — exactly
-   * Async, before the mark narrows it into this block's row — so a
-   * block over `Async + Throws` still parallelises its Async leaves,
-   * and anything else simply ends the run.
+   * Async, read BEFORE the mark narrows it into this block's row — so
+   * a block over `Async + Throws` parallelises its Async leaves too,
+   * and anything else simply ends the run. (v1 could not: it decided
+   * on the COMPILED leaf, by which time `RowLift.into` had lifted it,
+   * and the import quietly did nothing in a wider row.
+   * direct-parallel-wider-rows fixed that.)
    *
    * WHY THE FLAT SHAPE AND NOT THE APPLICATIVE ONE. `Par`
    * (specs/applicative-static.md, stage 1) joins leaves PAIRWISE, and
@@ -1273,23 +1276,61 @@ object Direct:
      * asking the type is both simpler and more honest than asking the
      * syntax.
      *
-     * THE LIMIT THIS PUTS ON v1, and it is a real one: for a block
-     * over a WIDER row the compiled leaf has already been narrowed
-     * (`RowLift.into`), so its type is `X ! (Async + …)` and it is
-     * not spawnable. The import therefore does nothing in a block
-     * over `Async + Throws`, quietly. Stated here, in the opt-in's
-     * doc comment, and pinned by a test (BACKLOG:
-     * direct-parallel-wider-rows).
+     * THE LIMIT THAT PUT ON v1 IS GONE (direct-parallel-wider-rows):
+     * for a block over a WIDER row the compiled leaf has already been
+     * lifted by `RowLift.into`, so its type is `X ! (Async + …)` and
+     * it is not spawnable — the import used to do nothing there,
+     * quietly. `markedProgram` below reads the mark's own argument
+     * first, which is the program the author wrote, and only falls
+     * back to the compiled leaf. The compiled leaf remains the road
+     * for a mark shape the walk cannot take apart.
      */
     def spawnableLeaf(rhs: Term): Option[(Term, TypeRepr)] =
       if !hasMark(rhs) then None
-      else compile(rhs) match
-        case Out.Eff(c, e) =>
-          val ok = tpe2(e.widen) { [X] => (tX: Type[X]) ?=>
-            c.tpe.widen <:< TypeRepr.of[X ! Async]
-          }
-          if ok then Some((c, e.widen)) else None
-        case Out.Pure(_) => None
+      else
+        // the mark's OWN argument first (a wider row still has Async
+        // leaves), and the compiled leaf as the fallback
+        markedProgram(rhs).orElse(
+          compile(rhs) match
+            case Out.Eff(c, e) => Some((c, e.widen))
+            case Out.Pure(_) => None
+        ).filter((c, e) => isAsyncProgram(c, e))
+
+    /** is this term a program of EXACTLY the Async row? */
+    def isAsyncProgram(c: Term, e: TypeRepr): Boolean =
+      tpe2(e.widen) { [X] => (tX: Type[X]) ?=> c.tpe.widen <:< TypeRepr.of[X ! Async] }
+
+    /**
+     * THE MARK'S OWN ARGUMENT, before `markTerm` narrows it into this
+     * block's row (direct-parallel-wider-rows).
+     *
+     * `compile` hands back a leaf already lifted by `RowLift.into`,
+     * so in a block over `Async + Throws` its type is
+     * `X ! (Async + Throws)` and `Async.spawn` will not take it — the
+     * import did nothing there, quietly, and v1 said so. The program
+     * the author WROTE is still `X ! Async`, and it is reachable: the
+     * obstacle was never the narrowing, it was that inline expansion
+     * wraps a leaf in `Inlined` nodes carrying `$proxy` bindings,
+     * which `stripped` does not remove.
+     *
+     * `compile` already goes through them, by turning such an
+     * `Inlined` into a `Block`. The same walk here KEEPS the bindings
+     * around the mark's argument — `Block(bindings, program)` is a
+     * term of the program's own type — so the extracted leaf is
+     * self-contained and can be spawned where it stands.
+     */
+    def markedProgram(rhs: Term): Option[(Term, TypeRepr)] =
+      def go(t: Term): Option[Term] = stripped(t) match
+        case Inlined(_, bindings, inner) if bindings.nonEmpty =>
+          go(Block(bindings, inner))
+        case Block(stats, expr) =>
+          go(expr).map(m => if stats.isEmpty then m else Block(stats, m))
+        case other => asMark(other).map(stripped)
+      go(rhs).flatMap { m =>
+        m.tpe.widen.dealias.baseType(freeClass) match
+          case AppliedType(_, List(_, e)) => Some((m, e.widen))
+          case _ => None
+      }
 
     /** does this tree mention any of these symbols? */
     def mentionsAny(t: Tree, syms: Set[Symbol]): Boolean =

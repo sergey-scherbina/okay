@@ -1,5 +1,73 @@
 # Changelog
 
+## direct-parallel-wider-rows - an Async leaf in a wider row spawns too
+
+`import Direct.parallelBinds.given` did nothing in a block over a row
+wider than `Async`, quietly. v1 said so in its own doc comment and
+pinned the zero forks with a test, which is how the limit came to be
+closed rather than forgotten.
+
+The reason was WHERE the leaf is read. `compile` hands one back
+already lifted by `RowLift.into`, so in a `Reader % Int + Async` block
+its type is `X ! (Reader % Int + Async)` and `Async.spawn` will not
+take it. But the program the AUTHOR wrote is still `X ! Async`, and
+the obstacle was never the narrowing: it was that inline expansion
+wraps a leaf in `Inlined` nodes carrying `$proxy` bindings, which
+`stripped` does not remove - the same thing that made the first cut of
+the whole feature silently inert a day earlier.
+
+`compile` already walks through them, by turning such an `Inlined`
+into a `Block`. Doing the same here while KEEPING the bindings around
+the extracted program makes the leaf self-contained
+(`Block(bindings, program)` is a term of the program's own type) and
+spawnable where it stands. The compiled leaf remains the fallback for
+a mark shape the walk cannot take apart.
+
+The test that pinned the limit now asserts the behaviour: TWO forks in
+a `Reader % Int + Async` block, with the Reader leaf ending the run
+because it is not an Async program. Every doc that stated the limit is
+corrected - the opt-in's comment, the typepedia, theory ch. 12 and the
+spec's Results.
+
+## static-foldmap-stack-safe - the cast the backlog expected was not needed
+
+`Static.foldMap` was the one door of the free selective that recursed
+on the host stack: it folded 5 000 leaves and overflowed at 10 000.
+The BACKLOG entry predicted it "needs the existential reassembly cats
+does with internal casts, which the no-casts rule says must be
+earned". It does not.
+
+`Args[F, T, C]` is a type-aligned list of what is LEFT to apply, and
+its constructors carry the alignment: `Done` exists only at
+`Args[F, C, C]`, and consing an argument of type `X` onto an
+`Args[F, R, C]` yields an `Args[F, X => R, C]`. Matching refines the
+types, so the walk back up is ordinary typed code in two
+tail-recursive loops.
+
+THE FIRST VERSION STILL OVERFLOWED AT THE OLD DEPTH, and that is the
+part worth keeping. Walking down an `Ap`'s FIRST component is the
+obvious axis and the wrong one: `traverse`'s `foldLeft` builds
+`Ap(Ap(Pure(g), acc), leaf)`, so two steps down reach `Pure(g)` and
+the whole accumulator - the deep thing - is pushed as an ARGUMENT and
+folded by an ordinary recursive call. The stack came back by another
+road, and a 50 000-leaf test said so rather than a guess. The answer
+is a third `Args` case: `Ap(Pure(g), a)` is not an application to walk
+past, it is "fold `a`, then map by `g`", which lets the walk continue
+INTO the accumulator. Sound because a `Pure` performs nothing, so
+running `a` first reorders no effects.
+
+Two `@unchecked` type tests remain and are the same claim
+`Free.resume`'s callers make: three cases, the CLASS test is total,
+and the type arguments are the ones the constructors guaranteed. The
+ascription is needed rather than a constructor pattern because `x` and
+`r` must be NAMED - the match refines `T` to `x => r` but `g` is still
+written `G[T]`, and `app` cannot find its `F[A => B]` shape through
+the alias. A helper taking the pieces would work and would cost the
+`@tailrec`, which is the whole point.
+
+50 000 leaves fold now, the depth at which the RECURSIVE walk of
+`leaves` used to die.
+
 ## continuations-book - the working book, 28 chapters, complete
 
 Landed as a5020009, 2e4ef2af, 5780a36a (ch14-16), d1a3550a, 0fb88067
