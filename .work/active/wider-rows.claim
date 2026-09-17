@@ -1,0 +1,6 @@
+okay-wt-wider-rows 2026-09-17T22:43:35Z
+agent: claude-applicative
+heartbeat: 2026-09-17T22:43:35Z
+status: in-progress
+done-so-far: worktree created
+next: BACKLOG direct-parallel-wider-rows — read the leaf BEFORE markTerm narrows it
