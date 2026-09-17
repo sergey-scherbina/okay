@@ -1,6 +1,0 @@
-feature/growing-route-at-push 2026-09-17T15:38:56Z
-agent: claude-code
-heartbeat: 2026-09-17T15:38:56Z
-status: in-progress
-done-so-far: -
-next: a fresh send pushes without a route and parks on lastRoute; the resumed one keeps its route. Benched before landing
