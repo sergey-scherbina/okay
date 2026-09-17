@@ -378,8 +378,20 @@ module with its own page under docs/modules:
 - **wires** — REST and WebSocket as programs (`okay-http`), served by
   the JDK, Jetty or Netty behind one seam (`okay-jetty`,
   `okay-netty`); the distributed runtime (`okay-cluster`).
+- **data** — the durable log as one primitive (`okay-persist`): a
+  topic of records, compacted snapshots, and on top of them
+  **[durable workflows](docs/durable-workflows.md)** — a program that
+  waits for a person, a service or a date, written as straight-line
+  code and able to outlive the process running it. A paused program is
+  a continuation, and a continuation is a closure, so nothing tries to
+  write one down: what is journalled is THE ANSWERS, and where the
+  program stands is re-derived by running it again over them. That is
+  event sourcing with the fold you would otherwise hand-write
+  replaced by the program itself. The relational seam (`okay-sql`),
+  the lake (`okay-delta`) and the distributed engine (`okay-dataflow`)
+  sit beside it.
 
-Building: `sbt test` runs everything — 4398 tests across 93 module
+Building: `sbt test` runs everything — 4736 tests across 93 module
 runs, on the JVM, under Node and as a linked native binary (the
 live suites — a local model, an npx-spawned MCP server — skip where
 their endpoint is absent). Scala 3.9.0 — the LTS line — with 3.6 as
