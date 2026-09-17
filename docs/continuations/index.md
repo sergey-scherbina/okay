@@ -1,7 +1,9 @@
 # Continuations: a working book
 
-**The plan, the theses, and the reading order.** Chapters land one at
-a time; this page is the contract each of them is written against.
+**The plan, the theses, and the reading order.** All 28 chapters are
+written; this page is the contract each of them was written against,
+and the place to start. Every runnable snippet in the book compiles —
+the suites are named `TestBook*`.
 
 ---
 

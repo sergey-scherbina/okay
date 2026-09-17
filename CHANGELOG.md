@@ -1,5 +1,53 @@
 # Changelog
 
+## continuations-book - the working book, 28 chapters, complete
+
+Landed as a5020009, 2e4ef2af, 5780a36a (ch14-16), d1a3550a, 0fb88067
+(ch17-21), 58d8220d (ch22) and 66f6ded5 (ch23-28), over the plan in
+docs/continuations/index.md. The operator asked for a textbook devoted
+to continuations alone, beginning by showing programmers AND managers
+why they are needed for real problems, then deepening; every runnable
+snippet in it compiles, in suites named TestBook*.
+
+WHAT IT IS. Seven parts: the problem (1-4), the four shapes as recipes
+(5-9), the machine (10-13), building on it (14-18), the limits
+(19-21), production (22-26), and the history (27-28). 81 book tests.
+Chapters are referenced BY NUMBER, so inserting one is a rename across
+files: `grep -rn "chapter [0-9]\+" docs/continuations/*.md`.
+
+THREE THINGS IT FOUND, none of which was the point of writing it.
+
+ONE. A cost claim was about to be quoted from a source comment: PState
+"measures ~1.7x slower" than the State effect. Re-measured on the
+lanes that were still there: 1.29x (21.23 vs 27.42 us/op,
+HandlerBenchmark, -f 3). State.scala now carries the new number and
+says what it used to claim. Chapter 27 catalogues this exact mistake
+under F1, so the book committing it would have been its own
+counterexample.
+
+TWO. Chapter 22's central claim -- a snapshot cuts READING, not
+RUNNING -- was pinned nowhere, so the book wrote the measurement:
+counting PROGRAM STEPS, not records, over two cold starts of one
+40-answer journal. Plain read 80 records and ran 40 steps;
+snapshotted read 8 and ran 40. Ten times fewer reads, the same amount
+of program. The first cut of that test proved NOTHING -- it measured
+the Dialogue constructor, which does not fold the journal, so both
+counts were 0 and `0 == 0` passed green. The `plainSteps > 0` guard
+caught it on the first run.
+
+THREE. A COLD gate found an unused import that five warm gates could
+not see: a warm worktree recompiles nothing, and the gate said so
+itself ("the WARNING CHECK WAS BLIND"). 186 module compiles later it
+was RED on one E198. Wiping the worktree's target directories before a
+gate that is meant to certify "no warnings" is now the practice, and
+it is the same blind spot that let an E176 ride through five GREEN
+verdicts earlier in this arc.
+
+WHAT CHANGED IN THE TREE BESIDE THE PROSE. State.scala's stale ratio;
+one unused import in TestBookFourCaptures that had landed green in
+ch11; one in TestBookCaptureAndTheRest. Everything else is additive:
+docs/continuations/*.md and the TestBook* suites.
+
 ## unwrap-glyph - one glyph, one meaning (all four stages)
 
 Landed as 82753d21, 18a558be, 74ecac89 (specs/unwrap-glyph.md).
