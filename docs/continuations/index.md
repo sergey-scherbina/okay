@@ -81,7 +81,7 @@ chapter.
 whole idea, and it can be taught with one picture and no theory.
 Delimited vs undelimited belongs here only as "how much of the rest".
 
-### 4. Deciding: reach for it, or don't
+### [4. Deciding: reach for it, or don't](04-deciding.md) ✓
 
 **Thesis.** The honest default is DON'T, and a book that cannot say
 when its subject is the wrong tool is advertising. A checklist, the
