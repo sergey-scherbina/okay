@@ -30,8 +30,10 @@
   stage 0 landed), specs/delim-safety.md (stage 0 landed) and
   specs/delim-diagnostics.md (not started). The order below is by
   value per day, and the reason for it is in each entry.
-  NEXT: `delim-forward-not-throw` (the spike whose verdict can cancel
-  later work), then `dialogue-nondeterminism`.
+  NEXT: `dialogue-patch`, then `delim-patterns-in-modules`.
+  `delim-forward-not-throw` LANDED 2026-09-17 with a POSITIVE verdict,
+  and it did cancel later work: region types are no longer needed for
+  the nesting case.
   LANDED 2026-09-17: `delim-diagnostics` (the machine names the capture,
   the prompt, the installed delimiters and the rule) and
   `dialogue-replay-discipline` (the sentence replay rests on is a type;
@@ -48,10 +50,6 @@
   `dialogue-replay-discipline` landed the constraint: a clock, ids and
   randomness as journalled questions, and `perform`. Decide the shape
   of the question type before writing any of it.
-- delim-forward-not-throw — a SPIKE with a written verdict, third
-  rather than later because a positive verdict CANCELS work: if a
-  machine can reify its stack and re-emit a foreign capture outward,
-  nested machines compose and region types may never be needed.
 - dialogue-patch — stage 2: needed the moment anyone deploys twice.
 - delim-patterns-in-modules — okay-agent's Stepper and okay-llm's Cut
   hand-roll patterns that now exist; cheap, and it is the honest test

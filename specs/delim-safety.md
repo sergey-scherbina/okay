@@ -81,36 +81,68 @@ kept the crash out of the core.
       the obligation, and its call site at a Delim row is refused —
       which is the fix available to a library author today
 
-## Stage 1 — forward instead of throw (a SPIKE, verdict first)
+## Stage 1 — forward instead of throw — SPIKE DONE, VERDICT POSITIVE
 
 When a machine meets a capture naming a prompt it does not hold, it
-throws. It has another option: if its own residual row still contains
-`Delim`, it can **reify its remaining stack back into a program and
-re-emit the capture outward**, the way it already forwards any foreign
-operation. The outer machine — which does hold the prompt — then
-captures across the inner machine's frames, which is what the user
-meant.
+throws. It has another option, and the spike's first finding is that
+the machinery for it was already there rather than being new: the
+foreign-operation path is
 
-The machinery is already there: `reify` turns `Segs` back into a
-program, and the foreign-operation path already suspends and resumes
-with the same stack. What is not obvious, and is exactly what the
-spike must answer:
+```scala
+(g => Left(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
+```
 
-- **Is the forwarded continuation the RIGHT one?** The inner
-  machine's frames must end up inside the outer capture, in order,
-  with the inner delimiter re-installed on resume. That is what
-  multi-prompt means; whether this construction delivers it is a
-  question for a test, not for a paragraph.
-- **What does it cost when nothing is forwarded?** The check is "is
-  this prompt on my stack", which `split` already computes — the
-  cost should be zero and must be measured (`DelimBenchmark`).
-- **Can the row evidence be had?** Forwarding requires knowing that
-  `F` contains `Delim`, i.e. an `In[Delim, F]` at the call to `run` —
-  available only where the caller can supply it.
+— re-emit the operation into the residual program, and when the answer
+arrives, resume THIS machine with the same stack. A capture belonging
+to an outer machine wants exactly that, so the change is letting the
+`None` branch of `split(kont, cap.prompt)` fall into that path instead
+of throwing. `Delim.runNested` is the door, and it asks for
+`RowLift.In[Delim, F]`: forwarding puts a `Delim` operation into `F`,
+so `F` must have one — which is the case it exists for, and asking
+keeps `run`'s meaning untouched.
 
-A spike with a written verdict, then a decision. A refutation with
-numbers is a fine outcome; what is not acceptable is shipping a
-silent change of meaning for nested machines.
+**All three predicted properties hold** (`TestDelimForward`, 6 tests):
+
+1. **the inner machine's frames are INSIDE the outer capture** — the
+   residual program's head is the `flatMap` closure, so an outer
+   `k(5)` runs the inner tail and then the outer one (measured: 106,
+   from `+1` inside and `+100` outside); dropping the continuation
+   skips both;
+2. **multi-shot survives** — `Segs` is immutable and `loop` closes
+   over nothing mutable, so an outer capture invoked twice re-enters
+   the inner machine twice, independently (measured: 30 = 10 + 20);
+3. **the inner delimiter is re-installed on resume** — its `Mark` is
+   still in the forwarded stack, so a second capture naming the inner
+   prompt finds it after the round trip.
+
+A capture no machine can place still throws, from the OUTERMOST one,
+whose installed stack is the one the user recognises.
+
+**Cost: none.** Paired `-f 3 -prof gc` runs, master against the lane,
+same box minutes apart: `delimGenerator` 89.547 ± 0.175 → 88.716 ±
+0.455 µs, `delimPushOnly` 23.914 ± 0.099 → 23.833 ± 0.511 µs, and the
+BYTES are identical to the digit (942 328.043 → 942 328.397;
+358 040.165 → 358 040.164). Worth the run rather than the assumption:
+the lane moves `run`'s whole body into a private `machine`, and a
+callee crossing the inlining line re-decides every caller in this
+codebase's recorded experience. It did not.
+
+### What the verdict CHANGES, and what it does not
+
+- **The default stays refusal.** `run` still throws and `OneMachine`
+  still refuses a second machine in a concrete row, because the
+  nested forms (`scope`/`collecting`/`pausing`) are strictly cheaper:
+  they install a delimiter on the machine already running, where
+  forwarding pays a round trip through the residual program per
+  capture. A guard that teaches the cheaper spelling is worth more
+  than one that silently makes the dearer one work.
+- **`runNested` is for a machine you genuinely have**: a library
+  function that runs its own `Delim.run` and is called inside
+  somebody else's. Before this, such a function could not be called
+  from a program that captures across it at all.
+- **Region types are no longer needed for the nesting case.** Stage 2
+  stays open only for the case it was named for: evidence that
+  ESCAPES its `delimited` and is used afterwards.
 
 ## Stage 2 — region types (the horizon)
 
@@ -133,9 +165,10 @@ freer-base stage-2 probe (4af08745) already proved a prompt's identity
 can reach the type level and that `NoPrompt` can be a compile error;
 what it did not answer is whether the inline doors survive it.
 
-Order: stage 0 now (cheap, catches the real trap), stage 1 as a spike
-(it may make the trap harmless rather than merely detectable), stage 2
-only if the first two leave something that bites.
+Order as it turned out: stage 0 landed and catches the real trap;
+stage 1's spike came back POSITIVE and made nested machines usable
+rather than merely refused; stage 2 is now needed only for escaping
+evidence, and nothing has asked for it.
 
 ### Behavior — stage 2
 

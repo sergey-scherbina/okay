@@ -68,11 +68,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       from answers, cancellation, a visibility index, a worker pool
       with leases, child workflows. Named so that nobody mistakes the
       model for an engine.
-- [ ] delim-forward-not-throw — specs/delim-safety.md stage 1, a SPIKE
-      with a written verdict: a machine that meets a capture for a
-      prompt it does not hold could reify its stack and re-emit the
-      capture outward instead of throwing, which would make nested
-      machines compose instead of merely being refused.
 - [ ] delim-patterns-in-modules — okay-agent's `Stepper` and okay-llm's
       `Cut` were written BEFORE the named patterns existed and each
       hand-rolls one: Stepper has its own `Stepping` enum with
@@ -83,7 +78,12 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       process — for free. Additive per the adoption doctrine: the
       existing entry points stay. Found by continuations-audit
       (2026-09-17).
-- [ ] delim-region-prompts — `Prompted[R]` proves a delimiter was
+- [ ] delim-region-prompts — NARROWED 2026-09-17 by
+      delim-forward-not-throw: the NESTING case is solved (the nested
+      forms, the OneMachine guard, and `runNested` for a machine you
+      genuinely have), so this is now only about evidence that
+      ESCAPES its own `delimited`. Nothing has asked for it.
+      `Prompted[R]` proves a delimiter was
       installed, not that the machine running the capture is the one
       holding it, so an outer evidence used inside an inner
       `delimited` is still a runtime `NoPrompt` (pinned in

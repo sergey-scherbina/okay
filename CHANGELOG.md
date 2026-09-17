@@ -1,5 +1,46 @@
 # Changelog
 
+## delim-forward-not-throw - a nested machine that composes
+
+A machine that meets a capture for a prompt it does not hold threw
+`NoPrompt`. The spike asked whether it could re-emit the capture
+outward instead - and the first finding is that the machinery was
+already there. The foreign-operation path is
+
+    (g => Left(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
+
+- re-emit, and resume THIS machine with the same stack when the answer
+arrives. A capture belonging to an outer machine wants exactly that.
+
+`Delim.runNested(prog)(using In[Delim, F])` is the door. It asks for
+the witness because forwarding puts a Delim operation into `F`, so `F`
+must have one - which is the case it exists for, and asking leaves
+`run`'s meaning untouched.
+
+ALL THREE PREDICTED PROPERTIES HOLD (TestDelimForward): the inner
+machine's frames end up inside the outer capture (106, from a `+1`
+inside and a `+100` outside; dropping the continuation skips both);
+multi-shot survives, because Segs is immutable and the loop closes
+over nothing mutable (30 = 10 + 20, two independent re-entries); and
+the inner delimiter is re-installed on resume, so a second capture
+naming it finds it after the round trip. A capture no machine can
+place still throws, from the outermost one.
+
+COST: NONE, and the run was not optional - the lane moves `run`'s body
+into a private `machine`, and a callee crossing the inlining line
+re-decides every caller here. Paired -f 3 -prof gc: time within the
+error on both lanes and the BYTES identical to the digit.
+
+What the verdict changes: nothing about the defaults. `run` still
+throws and `OneMachine` still refuses a second machine in a concrete
+row, because the nested forms (scope/collecting/pausing) install a
+delimiter on the machine already running where forwarding pays a round
+trip per capture - a guard that teaches the cheaper spelling is worth
+more than one that silently makes the dearer one work. What it
+removes is the need for region types in the NESTING case:
+specs/delim-safety.md stage 2 is now open only for evidence that
+escapes its own `delimited`.
+
 ## dialogue-replay-discipline - the sentence becomes a type
 
 Replay is exact only while everything the outside world tells the

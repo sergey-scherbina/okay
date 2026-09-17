@@ -631,7 +631,31 @@ object Delim {
    * operation's to name — re-typed here, at their two lines, where F
    * is known. Everything else the chain's types carry.
    */
-  def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F = {
+  def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F =
+    machine(prog, forward = false)
+
+  /**
+   * THE MACHINE THAT FORWARDS INSTEAD OF THROWING (delim-forward,
+   * 2026-09-17) — for a row that still has a `Delim` in it, i.e. one
+   * running inside another machine.
+   *
+   * When a capture names a prompt this machine does not hold, `run`
+   * throws `NoPrompt`. It has another option, and the machinery for
+   * it is already here: re-emit the operation into the residual
+   * program and resume THIS machine with the same stack when the
+   * answer arrives — which is exactly what the foreign-operation path
+   * does for any effect it does not own. The outer machine, which
+   * does hold the prompt, then captures across this machine's frames.
+   *
+   * The evidence is what makes it well-typed: forwarding puts a
+   * `Delim` operation into `F`, so `F` must have one. That is the
+   * case this exists for, and asking for it keeps `run`'s meaning
+   * unchanged — a caller who wants forwarding says so.
+   */
+  def runNested[R, F[+_]](prog: R ! (Delim + F))(using RowLift.In[Delim, F]): R ! F =
+    machine(prog, forward = true)
+
+  private def machine[R, F[+_]](prog: R ! (Delim + F), forward: Boolean): R ! F = {
     type Row = Delim + F
     type Prog[A] = A ! Row
 
@@ -712,7 +736,19 @@ object Delim {
                 // the 0-variants have consumed it
                 if cap.underPrompt then Right(Next(effect[Row, p](Push(cap.prompt, body)), cut.outer))
                 else Right(Next(body, cut.outer))
-              case None => throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
+              case None =>
+                if forward then
+                  // THE ONE CAST forwarding needs, and what makes it
+                  // right: `runNested` asked for `In[Delim, F]`, so an
+                  // operation of this machine's own signature IS an
+                  // operation of the residual row. The shape below is
+                  // the foreign-operation path, verbatim: re-emit, and
+                  // resume this machine with the same stack. `kont` is
+                  // immutable, so a multi-shot outer capture may
+                  // re-enter it as often as it likes.
+                  Left(Inject(c.asInstanceOf[F[X]])
+                    .flatMap(x => loop(Next(okay.pure[Row, X](x), kont))))
+                else throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
         }
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
