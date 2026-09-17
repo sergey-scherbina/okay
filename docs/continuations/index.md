@@ -115,7 +115,7 @@ failure at all.
 is what makes a program survive its process, and Part VI's engine is
 built on nothing else.
 
-### 8. Do something on the way back
+### [8. Do something on the way back](08-on-the-way-back.md) ✓
 
 **Thesis.** The smallest shape, and the one most often written by hand
 as a `finally` that is subtly in the wrong place.
