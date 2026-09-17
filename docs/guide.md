@@ -74,7 +74,12 @@ bind diverges), `observe(n)`. A `LazyList` of alternatives is an
 infinite choice point. And the typeclass hierarchy earns its keep in
 the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
-`whenS`/`unlessS` — written once, running over any instance. The
+`whenS`/`unlessS` — written once, running over any instance. The rung
+below the monad is where two of them earn their keep. `Validated[E, A]`
+collects EVERY error instead of stopping at the first, because an
+applicative has no way to stop (it needs a `Semigroup[E]`, has no
+`flatMap` by design, and `okay-conf` uses it to report every bad
+environment variable in one run). The
 rung below the monad is worth reaching for on purpose: a program
 written as a `Static` (the free selective — `Pure | Op | Ap | Select`,
 no `Bind`) can be READ before it runs — `leaves` lists the operations

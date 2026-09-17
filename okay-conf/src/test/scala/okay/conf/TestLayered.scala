@@ -90,6 +90,21 @@ class TestLayered extends munit.FunSuite:
     assertEquals(okay.conf.Conf.envName("", "port"), "PORT")
   }
 
+  test("THREE bad variables are reported in one run, not one per run") {
+    // specs/validated.md, the first real consumer. `fromEnv` used to
+    // keep the first Left and drop the rest, so a deployment with
+    // three mistyped variables was fixed in three runs. The walk is a
+    // `traverse` at `Validated` now, whose `app` COMBINES failures.
+    val got = okay.conf.Conf.fromEnv[Conf]("okay",
+      env("OKAY_PORT" -> "eighty", "OKAY_RATIO" -> "half", "OKAY_OPS" -> "maybe"))
+    val message = got.left.getOrElse(fail(s"expected a refusal, got $got"))
+    assert(message.contains("OKAY_PORT"), message)
+    assert(message.contains("OKAY_RATIO"), message)
+    assert(message.contains("OKAY_OPS"), message)
+    // and the good ones do not appear
+    assert(!message.contains("OKAY_PAGES"), message)
+  }
+
   test("fromEnv is a PATCH: only the fields a variable is set for") {
     assertEquals(
       okay.conf.Conf.fromEnv[Conf]("okay", env("OKAY_OPS" -> "1")),

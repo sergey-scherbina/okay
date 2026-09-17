@@ -56,27 +56,27 @@ argument for having built them generically.
 
 ## Behavior
 
-- [ ] Two invalid leaves under `traverse` report BOTH errors, in
+- [x] Two invalid leaves under `traverse` report BOTH errors, in
       program order; the monadic road over the same leaves reports the
       first. The pair is the test.
-- [ ] `Valid` composes as `Either`'s `Right` does: same answers for
+- [x] `Valid` composes as `Either`'s `Right` does: same answers for
       every all-valid program.
-- [ ] The Applicative laws hold (identity, homomorphism, interchange,
+- [x] The Applicative laws hold (identity, homomorphism, interchange,
       composition) for a `Semigroup` that is not commutative, so a
       test that passes by accident on `List` concatenation cannot.
-- [ ] `andThen` short-circuits, and the type says so by NOT being
+- [x] `andThen` short-circuits, and the type says so by NOT being
       `flatMap`: there is deliberately no `Monad[Validated]`, because
       the monad-applicative consistency law would force `app` to stop
       at the first error, which is the behaviour this type exists to
       refuse. The law is the reason, and the test asserts the two
       differ.
-- [ ] A `Semigroup` instance is required, not a `List` assumed: the
+- [x] A `Semigroup` instance is required, not a `List` assumed: the
       accumulation works for `Chunk`, for a count, for a
       `Map[Field, Seq[Problem]]`, and the test uses a non-list one.
-- [ ] `okay-conf` reports every missing key of a configuration in one
+- [x] `okay-conf` reports every BAD variable of a configuration in one
       run — the first real consumer, and the one that decides whether
       the type earns its place.
-- [ ] Cost, predicted before measuring: an all-valid `traverse` over
+- [x] Cost, predicted before measuring: an all-valid `traverse` over
       1 000 leaves allocates within 10% of the same traverse at
       `Either`, because the happy path builds the same number of
       nodes. If it does not, the encoding is wrong.
@@ -122,3 +122,53 @@ newtype over `Either` does not.
 
 Stage 0 (this spec): written 2026-09-18, out of the strategy review in
 ROADMAP P13. The predictions above are the bars.
+
+### Landed 2026-09-18
+
+**A CORRECTION TO THE INTERFACE, made while implementing.** The spec
+proposed a new `Semigroup` trait. `Monoid` already existed
+(Fold.scala) with the same `combine`, so `Semigroup` was split out
+ABOVE it instead and `Monoid extends Semigroup` — additive, every
+existing instance still answers both. One thing that was not obvious
+and is now written down: the instances live in `object Monoid`, which
+is in the implicit scope of `Monoid` and NOT of `Semigroup`, so
+`Semigroup.fromMonoid` bridges given search or `Validated` refuses the
+vector monoid sitting three lines below it.
+
+**THE CONSUMER IS THE RESULT.** `okay-conf`'s `fromEnv` collected its
+parts and then did `parts.collectFirst { case Left(m) => Left(m) }` —
+one bad environment variable per run. It is a `traverse` at
+`Validated` now, and three mistyped variables come back in one
+message (TestLayered, "THREE bad variables are reported in one run,
+not one per run"). Honest note for the next reader: for a FLAT list of
+parts like this one, a hand-rolled `collect` would have done the same
+thing in one line. The type pays where the walk is nested or generic —
+which is why the schema validator, not this call site, is the
+consumer that will decide its long-term keep.
+
+**THE COST PREDICTION IS REFUTED, in the favourable direction.**
+ValidatedBenchmark, 1 000 leaves, `-f 3 -prof gc`:
+
+| lane | µs/op | B/op |
+|---|---|---|
+| eitherAllRight | 23.902 ± 1.018 | 275 488 |
+| validatedAllValid | 18.826 ± 16.745 | **147 528** |
+| validatedAllInvalid (every leaf bad) | 23.067 ± 0.702 | 277 512 |
+
+Predicted "within 10% of Either"; measured **46% LESS**, 147 528
+against 275 488 B/op. The prediction assumed the happy path builds the
+same number of nodes. It does not: `Either`'s `traverse` goes through
+the MONAD-DERIVED `app` (`f.flatMap(g => fmap(a, g))`, Monad.scala),
+which builds an intermediate per element, while `Validated`'s `app` is
+one match with nothing between. An applicative written directly beats
+one derived from a monad, and this is the number that says by how
+much.
+
+Accumulating every error costs 277 512 B/op, 0.7% over Either's happy
+path — so the collecting behaviour is not paid for by the programs
+that never fail.
+
+The times are not readable: the run fell at load 35 and
+`validatedAllValid` came back ±16.745 on 18.826, an 89% bar. The bytes
+are exact to the third decimal and are the verdict, which is this
+repository's standing rule for that situation.
