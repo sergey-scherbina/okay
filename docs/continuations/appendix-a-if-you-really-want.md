@@ -345,6 +345,48 @@ history long enough to matter, or steps that are costly to re-derive.
 And for that case the tree already has `continueAs`, which collapses
 the history into a seed at no cost at all.
 
+### Where this mechanism does pay: a cluster
+
+The inversion above is about *durable workflows*. Move the same
+mechanism to **distributed execution** and every term of it flips.
+
+Shipping a computation to a hundred workers is the case where a
+serialisable closure is not a curiosity but the entire product. Spark
+exists to do it. And each objection this section raised turns into its
+opposite:
+
+| | in a workflow | in a cluster |
+|---|---|---|
+| a compiler at restore | seconds, to save microseconds | **amortised** — compile once per stage, run over millions of rows |
+| symbols need a classpath | a real coupling | **free** — every worker runs the same artifact by construction |
+| an executable payload | a persisted journal, so RCE | an authenticated internal control plane — a different threat model |
+| the code is pinned | you cannot patch a running instance | **a feature** — version skew inside one job is a bug |
+
+And what it buys is no longer "skip a microsecond prefix"; it is
+**arbitrary code running in parallel**, which is the whole point.
+
+This repository's own dataflow engine states the trade in the open.
+Its Claim 3 is *nothing ships a closure* — a task is a registered
+**name** plus `Schema`-carried parameters, which is why `Task not
+serializable` cannot happen here — and it names the price: *you cannot
+type a lambda into a REPL and have it run on the cluster.*
+
+TASTy-plus-CBOR is how that price could be lifted **without** losing
+what Claim 3 bought, because a typed AST plus CBOR data is not a
+serialised JVM lambda: there is still no Kryo, no registration list,
+and no synthetic name to go stale. The Spark capability without the
+Spark mechanism. It is filed as `shipped-terms` in BACKLOG.md, with
+the one genuinely hard part — a macro reifying `'{ ... }` at the
+submission site — and the deciding test stated before anything is
+built.
+
+The general lesson is worth more than the proposal: **the same
+mechanism is a bad trade and a good one depending on what it is asked
+to survive.** For a workflow, the enemy is a deploy six months from
+now. For a cluster, the enemy is a network hop this second. Code as
+data loses the first fight and wins the second, and a book that
+recommended it in both places would be wrong in one.
+
 ### When it is nevertheless the right answer
 
 One case, and it is not about performance:
