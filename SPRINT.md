@@ -73,6 +73,18 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- applicative-static — the static half of a program
+  (specs/applicative-static.md, stage 0 the spec LANDED 2026-09-17).
+  `Selective` has had no consumer since it was written; `traverse` over
+  `A ! F` can only sequence; nothing lists a program's effects without
+  running it. Four stages, each with its deciding test in the spec:
+  1 `Par` (parallel applicative over Async, `parTraverse`), 2 `Static`
+  (free selective: `leaves` before running, `toFree` to run, `foldMap`
+  for batching), 3 the `direct` macro emitting applicative structure
+  for independent binds — GATED on 1 and 2 having Results — and 4 the
+  theory chapter (S/K/I as Reader, Turner's combinators as the history
+  of `Func` and `Fuse`). Stage 1 first: under 200 lines, one
+  rendezvous test that cannot pass sequentially.
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
   and the lane order are in specs/durable-workflow.md, stage 4; the
   keystone (`workflow-suspended-driver`) has LANDED, and the rest hang
