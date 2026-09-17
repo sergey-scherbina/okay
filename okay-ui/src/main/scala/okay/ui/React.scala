@@ -78,8 +78,11 @@ object React {
     case Form(fields, submit, key) =>
       Elem("div", Vector("data-form" -> key, "className" -> "okay-form"),
         fields.map(elem) :+ elem(Button(submit, key, Role.Primary)))
-    // the React host claims no semantic node: it draws the lowering,
-    // which is the node's meaning
+    // a Link is the one semantic node this host DOES claim: an anchor
+    // is what a browser has and nothing else does (ui-link)
+    case Link(label, href) => Elem("a", Vector("href" -> href), text = Some(label))
+    // the React host claims no other semantic node: it draws the
+    // lowering, which is the node's meaning
     case semantic => elem(Ui.lower(semantic, Set.empty))
 
   /** a style declaration appended to an element's own */

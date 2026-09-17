@@ -358,6 +358,17 @@ Live pages' `live.js`: the same) and lowers level S at its entry
 the 69 existing okay-ui tests, okay-script's 166 and okay-demo's 54
 pass unchanged.
 
+`Link(label, href)` joined level S on 2026-09-17 (ui-link), asked for
+by okay-watch's analyst page: exports and a filing are places to GO,
+and the vocabulary had no way to say so. It is the one semantic node
+a BROWSER claims (`React.elem` draws an anchor, so `Html` does, and
+`live.js` says `vocab: ["link"]` in its hello) — every other client
+gets the lowering, `Text("<label> — <href>")`, which is what a link
+means where nothing can be clicked and leaves a terminal analyst able
+to copy the URL. It carries NO KEY on purpose: going somewhere is the
+client's own act, so `Wire.permitted` can never admit anything about
+it and `update` never hears of it. TestLink, 6.
+
 ## Mobile
 
 The operator's next direction (2026-09-09): mobile frontends and

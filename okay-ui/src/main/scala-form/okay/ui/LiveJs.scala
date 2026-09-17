@@ -24,6 +24,11 @@ object LiveJs:
       |  function build(u) {
       |    var el, i, t = k(u), f = u[t];
       |    switch (t) {
+      |      case "Link":
+      |        el = document.createElement("a");
+      |        el.href = f.href;
+      |        el.textContent = f.label;
+      |        return el;
       |      case "Text":
       |        el = document.createElement("span");
       |        var cls = [], st = f.style || {};
@@ -177,9 +182,10 @@ object LiveJs:
       |    var queue = [];
       |    function send(o) { if (ws.readyState === 1) ws.send(JSON.stringify(o)); else queue.push(o); }
       |    function event(e) { send({ Event: { event: e } }); }
-      |    // the hello: this client draws the layout level only
+      |    // the hello: the layout level, plus the anchor (ui-link)
       |    ws.onopen = function () {
-      |      ws.send(JSON.stringify({ Hello: { vocab: [], version: 1 } }));
+      |      // the one semantic node a browser really has of its own (ui-link)
+      |      ws.send(JSON.stringify({ Hello: { vocab: ["link"], version: 1 } }));
       |      var q = queue; queue = [];
       |      for (var i = 0; i < q.length; i++) ws.send(JSON.stringify(q[i]));
       |    };
