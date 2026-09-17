@@ -373,7 +373,10 @@ answers on every cold start.
       and its cold start does not depend on the length of the whole
       history (dialogue-continue-as: four chapters, a journal of ONE
       answer, in TestContinueAsWorker)
-- [ ] with a cache, n answers to one dialogue replay once, not n times
+- [x] with a cache, n answers to one dialogue replay once, not n times
+      (dialogue-resume-cache: MEASURED — five touches of a waiting run
+      replay once with `Resume` and five times without, counted by the
+      program's own builds rather than asserted)
 
 ## Stage 4 — what a workflow ENGINE owes beyond the model
 
@@ -450,6 +453,46 @@ rather than a rewrite.
 | `workflow-children` | **LANDED 2026-09-17**: `Children`, a registry of finished runs' results, and the worker half that turns one into the parent's answer. The parent does NOT spawn — starting a child is an ACTIVITY, and the Result below says why that is a shape rather than a gap | the driver, the worker |
 | `workflow-lease` | **LANDED 2026-09-17**: `Leases`, and `Worker.Progress.Busy`. ADVISORY twice over: acquisition is read-then-write, and expiry cannot fence a thread. `expect` is the guard | the worker |
 | `dialogue-continue-as` | **LANDED 2026-09-17**: `Wf.Next`, `Entry.Continued`, `Dialogue.continueAs` and `Worker`'s `seedOf`. A continuation resets the JOURNAL and not the RECORD COUNT — see the Result below, which is the whole of why it is safe | the worker |
+
+### Result — the last cost, paid down (2026-09-17)
+
+`TestResume` (5), and stage 3 is now closed with it.
+
+`Resume` is an LRU of `id -> (dialogue, paused program, position)`.
+With it a process answering one dialogue n times replays it once and
+steps n times; without it, n replays. The warm path already existed
+(`step`); what was missing was somewhere to keep the program between
+CALLS rather than within one drive.
+
+**The test MEASURES rather than asserts.** A counter in the program
+body counts how many times the body is BUILT, which is how many times
+the journal was replayed: five touches of a waiting run give 1 with
+the cache and 5 without. A test that only compared answers would pass
+against a cache that never hit once — which is the failure mode a
+cache actually has.
+
+**The staleness check is the whole difficulty**, and its requirement
+is sharp: finding out must not cost a fold, or the cache has paid
+exactly what it exists to save. `Dialogue.undisturbed` is one offset
+read against the partition's end, and it is CONSERVATIVE by
+construction — another dialogue sharing the partition makes it say
+"disturbed" when this one was not. A false "disturbed" costs one
+replay, which is the behaviour without a cache; a false "undisturbed"
+would be a program that has missed an answer. Only one of those two
+errors is affordable, so the check leans that way.
+
+**It holds the `Dialogue` too, not just the program**, because an
+instance carries `seen` — the offset that makes the won-the-race check
+free on the warm path. A fresh instance per call would re-fold on
+every append and hand back the O(n²) that `dialogue-snapshots` paid to
+remove.
+
+**Two things fell out.** A cache hit can skip the look-before-driving
+check: the journal folded when the program was cached and nothing has
+been written since, so it cannot have become unreadable in between.
+And `Dialogue.standing` now returns the program and the position from
+ONE fold, where `at` plus `recovered.accepted` were two that could
+disagree if somebody appended between them.
 
 ### Result — the lease saves work, `expect` saves correctness (2026-09-17)
 

@@ -1,5 +1,41 @@
 # Changelog
 
+## dialogue-resume-cache - the last cost, paid down
+
+Where a run stands is re-derived by running it over its answers, so a
+process that touches one dialogue ten times replayed it ten times --
+nothing held the program in between. A paused program is a closure: it
+cannot be written down, but it can be KEPT. `Resume` is an LRU of
+id -> (dialogue, paused program, position), and `Worker` takes one.
+
+MEASURED, NOT ASSERTED: a counter in the program body counts how many
+times the body is BUILT, which is how many times the journal was
+replayed. Five touches of a waiting run -- which is what a worker loop
+actually spends its time on -- give 1 replay with the cache and 5
+without. A test that only compared answers would pass against a cache
+that never hit once, which is the failure mode a cache really has.
+
+THE STALENESS CHECK IS THE WHOLE DIFFICULTY, and its requirement is
+sharp: finding out must not cost a fold, or the cache has paid exactly
+what it exists to save. Dialogue.undisturbed is one offset read
+against the partition's end, and it is CONSERVATIVE by construction --
+another dialogue sharing the partition makes it say "disturbed" when
+this one was not. A false "disturbed" costs one replay, which is life
+without a cache; a false "undisturbed" would be a program that has
+missed an answer. Only one of those is affordable.
+
+It holds the Dialogue too, not just the program, because an instance
+carries `seen` -- the offset that makes the won-the-race check free.
+
+Two things fell out. A cache hit skips the look-before-driving check:
+the journal folded when the program was cached and nothing has been
+written since, so it cannot have become unreadable in between. And
+Dialogue.standing returns the program and the position from ONE fold,
+where `at` plus `recovered.accepted` were two that could disagree if
+somebody appended between them.
+
+TestResume (5). Stage 3 of specs/durable-workflow.md closes with it.
+
 ## workflow-lease - the lease saves work, expect saves correctness
 
 `Leases` is a compacted topic of Held(owner, until); a Worker given

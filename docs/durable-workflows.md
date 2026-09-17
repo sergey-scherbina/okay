@@ -261,6 +261,37 @@ Three things to know before using it:
   typed channel that carries the author's own types is the result. The
   spec has the refutation in full.
 
+## The cost of replaying, and how to stop paying it twice
+
+Where a run stands is re-derived by running it over its answers. That
+is the design, and it has a bill: a process that touches one dialogue
+ten times replays it ten times, because nothing held the program in
+between. A worker loop spends most of its time exactly there —
+touching runs that are still waiting.
+
+A paused program is a closure. It cannot be written down, but it can
+be **kept**:
+
+```scala
+Worker(..., resume = Some(Resume()))     // default bound: 256 ids
+```
+
+Measured, in `TestResume`: five touches of a waiting run replay the
+journal **once** with the cache and **five times** without.
+
+The only hard part is knowing when the held program is stale, and the
+requirement is sharp — finding out must not cost a fold, or the cache
+has paid what it exists to save. The check is one offset read against
+the partition's end, and it is deliberately conservative: another
+dialogue sharing the partition makes it say "disturbed" when this one
+was not. A false "disturbed" costs one replay, which is life without a
+cache; a false "undisturbed" would be a program that has missed an
+answer. Only one of those is affordable.
+
+It is a per-process optimisation over a journal that stays the only
+state. Drop it, restart, run two — nothing changes but how often a
+replay happens.
+
 ## Two workers on one run
 
 Nothing bad happens, and that is a designed property rather than

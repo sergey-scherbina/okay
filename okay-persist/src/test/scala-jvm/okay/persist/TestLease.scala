@@ -42,7 +42,7 @@ class TestLease extends FunSuite {
   test("a worker takes the lease, works, and gives it back") {
     val store = MemoryStore()
     val ls = Leases.over(store)
-    var now = 100L
+    val now = 100L
     val w = worker(store, store.topic("naps"), Some(ls), "w1", () => now)
 
     assertEquals(drive(w.start("n-1")), Worker.Progress.Sleeping(61_000L))
@@ -53,7 +53,7 @@ class TestLease extends FunSuite {
   test("a second worker finds it held and drives NOTHING") {
     val store = MemoryStore()
     val ls = Leases.over(store)
-    var now = 100L
+    val now = 100L
     val t = store.topic("naps")
     val a = worker(store, t, Some(ls), "w1", () => now)
     val b = worker(store, t, Some(ls), "w2", () => now, answers = "bob")

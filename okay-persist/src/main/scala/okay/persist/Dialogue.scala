@@ -208,6 +208,21 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
       case None => place(r.answers).map(Right(_))
 
   /**
+   * WHERE IT STANDS AND HOW MANY RECORDS PUT IT THERE, in ONE fold
+   * (dialogue-resume-cache, 2026-09-17). `at` answers the first half
+   * and `recovered.accepted` the second, and a caller that wants both
+   * — every driver does — would otherwise fold twice and could see
+   * the two halves disagree if somebody appended in between. The
+   * index is what `step` needs, so handing them out together is the
+   * shape that cannot be got wrong.
+   */
+  def standing: Either[Dialogue.Stopped, (Delim.Dialogue[Q, A, R, F], Int)] ! F =
+    val r = recovered
+    r.stopped match
+      case Some(s) => pure(Left(s))
+      case None => place(r.answers).map(p => Right((p, r.accepted)))
+
+  /**
    * THE COLD PATH. Answer the question it is asking, knowing only the
    * log: advance, and journal the answer IN THE CONTINUATION of the
    * advance, so a program that refuses the answer leaves the journal
@@ -318,6 +333,22 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
     if before >= 0 && off == before then true
     else !recovered.rejected.exists(_.offset == off)
 
+  /**
+   * HAS ANYBODY WRITTEN HERE SINCE THIS INSTANCE LAST READ
+   * (dialogue-resume-cache, 2026-09-17)? One offset read, not a fold
+   * — which is the whole point, because a cache that had to fold to
+   * find out whether it was stale would have paid the cost it exists
+   * to avoid.
+   *
+   * CONSERVATIVE BY CONSTRUCTION: it asks about the PARTITION, so
+   * another dialogue sharing it makes this say "disturbed" when this
+   * dialogue was not. The cost of a false "yes" is one replay — the
+   * behaviour without a cache at all — and the cost of a false "no"
+   * would be a program that has missed an answer. Only one of those
+   * two errors is affordable, so the check leans that way.
+   */
+  def undisturbed: Boolean = seen >= 0 && topic.end(partition) == seen
+
   private var written = 0
 
   /**
@@ -396,23 +427,46 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    */
   def runUntilIn[S, G[+_]](oracle: (Q, Dialogue.Attempt) => Either[S, A] ! G)
                           (using RowLift.Sub[F, G]): Either[S, R] ! G =
-    def go(p: Delim.Dialogue[Q, A, R, F], index: Int): Either[S, R] ! G = p match
-      case Delim.Paused.Done(r) => pure(Right(r))
+    val r = recovered
+    r.stopped match
+      case Some(s) => throw Dialogue.Halted(s)
+      case None =>
+        place(r.answers).up[G].flatMap(runFromIn[S, G](_, r.accepted)(oracle))
+          .map(_._1)
+
+  /**
+   * THE WARM PATH, ACROSS CALLS (dialogue-resume-cache, 2026-09-17).
+   *
+   * `runUntilIn` folds the journal to find the program and then walks
+   * warm; this is the walk alone, over a program somebody already
+   * holds. It hands back where it ENDED as well as what it produced,
+   * because a caller that means to come back needs both — the program
+   * and the position, which is what `step` wants next time.
+   *
+   * THE CALLER OWES THE VALIDITY. This will happily drive a program
+   * that no longer matches the log, which is why `Resume` checks
+   * `undisturbed` first and why that check is conservative. Written
+   * as a separate door rather than a flag so the obligation is
+   * visible at the call site.
+   */
+  def runFromIn[S, G[+_]](from: Delim.Dialogue[Q, A, R, F], at: Int)
+                         (oracle: (Q, Dialogue.Attempt) => Either[S, A] ! G)
+                         (using RowLift.Sub[F, G])
+                         : (Either[S, R], Delim.Dialogue[Q, A, R, F], Int) ! G =
+    def go(p: Delim.Dialogue[Q, A, R, F], index: Int)
+          : (Either[S, R], Delim.Dialogue[Q, A, R, F], Int) ! G = p match
+      case Delim.Paused.Done(r) => pure((Right(r), p, index))
       // the WARM path: the program is in hand, so no step replays
       case Delim.Paused.Ask(q, _, _) =>
         oracle(q, Dialogue.Attempt(id, index)).flatMap:
-          case Left(s) => pure(Left(s))
+          case Left(s) => pure((Left(s), p, index))
           case Right(a) =>
             step(p, a, index).up[G].flatMap:
               case Dialogue.Answered.Advanced(next) => go(next, index + 1)
               case Dialogue.Answered.Lost(actual) => go(actual, index)
               case Dialogue.Answered.NotAsking(next) => go(next, index)
               case Dialogue.Answered.Broken(s) => throw Dialogue.Halted(s)
-    val r = recovered
-    r.stopped match
-      case Some(s) => throw Dialogue.Halted(s)
-      case None =>
-        place(r.answers).up[G].flatMap(go(_, r.accepted))
+    go(from, at)
 
 object Dialogue:
 
@@ -491,6 +545,21 @@ object Dialogue:
     def runWorkflowIn[G[+_]](oracle: Q => A ! G)
                             (using Wf.Runtime, RowLift.Sub[F, G]): Either[Wf.Wait, R] ! G =
       d.runUntilIn[Wf.Wait, G](askingIn(oracle))
+
+    /**
+     * THE SAME DRIVE, FROM A PROGRAM IN HAND, saying where it ended
+     * (dialogue-resume-cache, 2026-09-17). Both halves are what a
+     * `Resume` needs: it hands the program in and takes the next one
+     * back, so a process answering one dialogue n times replays it
+     * once rather than n times.
+     *
+     * The caller owes the validity of `from` — see `Dialogue.runFromIn`.
+     */
+    def runWorkflowFromIn[G[+_]](from: Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], at: Int)
+                                (oracle: Q => A ! G)
+                                (using Wf.Runtime, RowLift.Sub[F, G])
+        : (Either[Wf.Wait, R], Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int) ! G =
+      d.runFromIn[Wf.Wait, G](from, at)(askingIn(oracle))
 
   /**
    * WHAT A JOURNAL RECORD IS. Not a bare answer: the two fields

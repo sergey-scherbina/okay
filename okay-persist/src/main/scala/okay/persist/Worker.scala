@@ -98,7 +98,19 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * clock is `Wf.Runtime`, and it is journalled.
                                     * These two must not be confused -- one is
                                     * operational, the other is state. */
-                                   clock: () => Long = () => System.currentTimeMillis())
+                                   clock: () => Long = () => System.currentTimeMillis(),
+                                   /**
+                                    * KEEPING THE PROGRAM BETWEEN CALLS
+                                    * (dialogue-resume-cache, 2026-09-17). Without
+                                    * one, every advance replays the journal; with
+                                    * one, n answers to a dialogue this process is
+                                    * holding cost one replay and n steps. It is a
+                                    * per-process optimisation over a journal that
+                                    * stays the only state -- drop it, restart, or
+                                    * run two, and nothing changes but how often a
+                                    * replay happens. See `Resume`.
+                                    */
+                                   resume: Option[Resume[Wf.Ask[Q], Wf.Ans[A], R, F]] = None)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
@@ -175,36 +187,48 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     dialogue(id).at.up[G]
 
   private def step(id: String): Worker.Progress[R] ! G =
-    // LOOK BEFORE DRIVING (workflow-docs, 2026-09-17). A journal the
-    // fold cannot read — damage, or a record from another program —
-    // makes the DRIVER throw, because a driver has nowhere to put
-    // that answer. A worker does: `Progress.Broken`. Without this the
-    // throw takes the whole `tick` with it, and one unreadable run
-    // stops every other run on the box, which is the opposite of what
-    // a worker loop is for.
-    //
-    // It costs one extra fold per advance. That is the price of
-    // turning a thrown exception into a value here rather than
-    // leaking it into somebody's scheduler thread.
-    at(id).flatMap:
-      case Left(stopped) => pure(Worker.Progress.Broken(stopped))
-      case Right(_) => drive(id)
+    resume.flatMap(_.get(id)) match
+      // A CACHE HIT SKIPS THE LOOK (dialogue-resume-cache): the
+      // journal folded when this program was cached and `undisturbed`
+      // says nothing has been written since, so it cannot have become
+      // unreadable in between. The check below is for the cold path,
+      // which is the only path that folds.
+      case Some(h) => driving(id, 0, h)
+      case None =>
+        // LOOK BEFORE DRIVING (workflow-docs, 2026-09-17). A journal
+        // the fold cannot read — damage, or a record from another
+        // program — makes the DRIVER throw, because a driver has
+        // nowhere to put that answer. A worker does: `Progress.Broken`.
+        // Without this the throw takes the whole `tick` with it, and
+        // one unreadable run stops every other run on the box, which
+        // is the opposite of what a worker loop is for.
+        //
+        // `standing` is one fold for both halves — the program and the
+        // position — so looking now costs nothing extra: the drive
+        // needed them anyway.
+        val d = dialogue(id)
+        d.standing.up[G].flatMap:
+          case Left(stopped) => pure(Worker.Progress.Broken(stopped))
+          case Right((p, at)) => driving(id, 0, Resume.Held(d, p, at))
 
-  private def drive(id: String): Worker.Progress[R] ! G = driving(id, 0)
-
-  private def driving(id: String, chapters: Int): Worker.Progress[R] ! G =
+  private def driving(id: String, chapters: Int,
+                      from: Resume.Held[Wf.Ask[Q], Wf.Ans[A], R, F])
+                     : Worker.Progress[R] ! G =
     // ONE dialogue for the whole chapter, because its `seen` is what
-    // makes the won-the-race check free; a fresh one per call would
-    // re-fold the journal on every answer
-    val d = dialogue(id)
-    d.runWorkflowIn[G](oracle)(using runtime(id), summon[RowLift.Sub[F, G]]).flatMap:
-      case Right(r) => seedOf(r) match
+    // makes the won-the-race check free; a fresh one per answer would
+    // re-fold the journal every time
+    val d = from.dialogue
+    d.runWorkflowFromIn[G](from.paused, from.at)(oracle)(
+        using runtime(id), summon[RowLift.Sub[F, G]]).flatMap:
+      case (Right(r), _, _) => seedOf(r) match
         case None =>
           timers.disarm(id)
           // AFTER the journal, never instead of it: a worker that dies
           // between the two leaves a parent waiting, and a waiting
           // parent is recoverable where a wrong answer is not
           children.foreach(_.completed(id, resultText(r)))
+          // a finished program is not worth keeping alive
+          resume.foreach(_.drop(id))
           pure(Worker.Progress.Finished(r))
         case Some(seed) =>
           // the program bounded its own history: close the chapter and
@@ -213,46 +237,52 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
           // worker still standing in the old chapter loses this race
           // exactly as it would lose a race to answer.
           val _ = d.continueAs(Right(seed), d.recovered.accepted)
+          resume.foreach(_.drop(id))     // the chapter it held is gone
           if chapters + 1 >= continuations then
             pure(Worker.Progress.Continued(chapters + 1))
-          else driving(id, chapters + 1)
-      case Left(Wf.Wait.Until(t)) =>
-        timers.arm(id, t)
-        pure(Worker.Progress.Sleeping(t))
-      case Left(Wf.Wait.Signal(name)) =>
-        // the mail may already be here: a signal can arrive long
-        // before the run reaches the `awaitSignal` that wants it, and
-        // this is the moment it becomes an answer
-        signals.flatMap(_.next(id, name)) match
-          case Some((off, payload)) =>
-            d.answer(Left(Wf.SysA.Got(payload))).up[G].flatMap: _ =>
-              // the cursor moves ONLY after the journal took it, so a
-              // crash in between re-delivers and `expect` refuses the
-              // duplicate — a repeated attempt, never a doubled answer
-              signals.foreach(_.delivered(id, name, off))
-              step(id)
-          case None =>
-            timers.disarm(id)
-            pure(Worker.Progress.Waiting(Wf.Wait.Signal(name)))
-      case Left(Wf.Wait.Child(kid)) =>
-        // the child may already be done: it can finish long before the
-        // parent reaches the `awaitChild` that wants it, and this is
-        // the moment its result becomes an answer. Unlike a signal
-        // there is no cursor -- a child finishes once and its result
-        // does not change, so `expect` is the whole of the guard.
-        children.flatMap(_.resultOf(kid)) match
-          case Some(result) =>
-            d.answer(Left(Wf.SysA.Got(result))).up[G].flatMap(_ => step(id))
-          case None =>
-            timers.disarm(id)
-            pure(Worker.Progress.Waiting(Wf.Wait.Child(kid)))
-      // NO CATCH-ALL, and the compiler is what removed it
-      // (workflow-children, 2026-09-17): with the child arm written,
-      // all three `Wait`s are handled and the generic one became
-      // unreachable. Keeping the match TOTAL is worth more than the
-      // line it saves — a fourth kind of waiting is now a compile
-      // error here rather than a run that silently reports
-      // `Waiting(..)` and is never woken by anything.
+          else d.standing.up[G].flatMap:
+            case Left(stopped) => pure(Worker.Progress.Broken(stopped))
+            case Right((p, at)) => driving(id, chapters + 1, Resume.Held(d, p, at))
+      case (Left(wait), p, at) =>
+        // KEEP IT: this is where the cache earns its name. The program
+        // is a closure and cannot be written down, but it can be held,
+        // and the next call over the same id then starts warm.
+        resume.foreach(_.put(id, d, p, at))
+        wait match
+          case Wf.Wait.Until(t) =>
+            timers.arm(id, t)
+            pure(Worker.Progress.Sleeping(t))
+          case Wf.Wait.Signal(name) =>
+            // the mail may already be here: a signal can arrive long
+            // before the run reaches the `awaitSignal` that wants it,
+            // and this is the moment it becomes an answer
+            signals.flatMap(_.next(id, name)) match
+              case Some((off, payload)) =>
+                d.answer(Left(Wf.SysA.Got(payload))).up[G].flatMap: _ =>
+                  // the cursor moves ONLY after the journal took it, so
+                  // a crash in between re-delivers and `expect` refuses
+                  // the duplicate — a repeated attempt, never a doubled
+                  // answer
+                  signals.foreach(_.delivered(id, name, off))
+                  resume.foreach(_.drop(id))   // the journal moved
+                  step(id)
+              case None =>
+                timers.disarm(id)
+                pure(Worker.Progress.Waiting(Wf.Wait.Signal(name)))
+          case Wf.Wait.Child(kid) =>
+            // the child may already be done: it can finish long before
+            // the parent reaches the `awaitChild` that wants it, and
+            // this is the moment its result becomes an answer. Unlike a
+            // signal there is no cursor — a child finishes once and its
+            // result does not change, so `expect` is the whole guard.
+            children.flatMap(_.resultOf(kid)) match
+              case Some(result) =>
+                d.answer(Left(Wf.SysA.Got(result))).up[G].flatMap: _ =>
+                  resume.foreach(_.drop(id))   // the journal moved
+                  step(id)
+              case None =>
+                timers.disarm(id)
+                pure(Worker.Progress.Waiting(Wf.Wait.Child(kid)))
 
   /**
    * One pass over the deadlines that have passed. A due id is woken
