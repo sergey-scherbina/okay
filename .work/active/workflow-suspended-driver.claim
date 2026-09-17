@@ -1,6 +1,0 @@
-feature/workflow-suspended-driver 2026-09-17T11:42:36Z
-agent: claude-code
-heartbeat: 2026-09-17T11:42:36Z
-status: in-progress
-done-so-far: -
-next: design stage 4 in the spec (the keystone is a driver that can suspend), then build it

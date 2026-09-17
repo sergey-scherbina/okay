@@ -1,0 +1,6 @@
+feature/workflow-timers 2026-09-17T11:57:46Z
+agent: claude-code
+heartbeat: 2026-09-17T11:57:46Z
+status: in-progress
+done-so-far: -
+next: a durable set of deadlines over a compacted topic; the worker appends the answer
