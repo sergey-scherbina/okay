@@ -1,5 +1,16 @@
 # Changelog
 
+## ui-live-js — the browser's client beside the protocol
+
+specs/ui-html.md stage 2, landed as aa0411b8. `LiveJs` — 226 lines of
+dependency-free JavaScript that applies `Protocol`'s patches and sends
+its events — moved from okay-script to okay-ui beside `Html`. Same
+reason as stage 1: it is the browser's CLIENT of this module's
+protocol, and okay-watch (specs/ui.md stage 3) has its own WebSocket
+route and needs the client without the container. The file moved
+whole and `Site` serves it at the same path; nothing else changed,
+because it was already written against `Protocol` alone.
+
 ## ui-html-host — stage 1, okay.ui.Html
 
 specs/ui-html.md, landed as a3fbf2c1. The plain road's three pure
