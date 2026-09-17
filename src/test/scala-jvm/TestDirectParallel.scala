@@ -69,10 +69,14 @@ class TestDirectParallel extends munit.FunSuite {
   test("a statement that is not a spawnable leaf ends the run") {
     val forks = AtomicInteger(0)
     val under: Scheduler = Schedulers.loom
-    given Scheduler = new:
+    given counting: Scheduler = new:
       def fork[A](prog: () => A ! Async): Fiber[A] =
         forks.incrementAndGet()
         under.fork(prog)
+    // the counter is the ONLY Scheduler here, so a fork count of zero
+    // below means the macro emitted no spawn — not that it spawned
+    // through some other one
+    assert(summon[Scheduler] eq counting)
 
     import Direct.parallelBinds.given
     val prog: Int ! Async = direct:
@@ -90,10 +94,14 @@ class TestDirectParallel extends munit.FunSuite {
     // parallelBinds' own comment; BACKLOG direct-parallel-wider-rows.
     val forks = AtomicInteger(0)
     val under: Scheduler = Schedulers.loom
-    given Scheduler = new:
+    given counting: Scheduler = new:
       def fork[A](prog: () => A ! Async): Fiber[A] =
         forks.incrementAndGet()
         under.fork(prog)
+    // the counter is the ONLY Scheduler here, so a fork count of zero
+    // below means the macro emitted no spawn — not that it spawned
+    // through some other one
+    assert(summon[Scheduler] eq counting)
 
     import Direct.parallelBinds.given
     val prog: Int ! (Reader % Int + Async) = direct:

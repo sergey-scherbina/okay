@@ -1228,8 +1228,6 @@ object Direct:
     // a val's right-hand side either mentions a name bound earlier in
     // the run or it does not; if it does, the run ends there.
 
-    lazy val asyncSym = TypeRepr.of[Async[Any]].typeSymbol
-
     /**
      * A leaf this block may SPAWN — decided on the COMPILED leaf, not
      * on the syntax.
