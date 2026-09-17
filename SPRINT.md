@@ -40,12 +40,17 @@
   workflow-timers, workflow-worker, workflow-visibility,
   workflow-signals, workflow-activity-row, workflow-retries,
   workflow-docs, workflow-cancel, dialogue-continue-as,
-  workflow-children.
-  workflow-retire.
-  ONE LANE LEFT in stage 4, and it was advisory from the start:
-  workflow-lease. `expect` already makes two workers SAFE; a lease
-  only makes collisions RARE, so it is an optimisation with a
-  correctness story already written.
+  workflow-children, workflow-retire, workflow-lease.
+  STAGE 4 IS CLOSED (2026-09-17). Eleven lanes, every one gated: the
+  suspended driver, timers, the worker, visibility, signals, the
+  activity row, retries, the guide, cancellation, bounded history,
+  children, retirement and the advisory lease. The engine runs
+  workflows that outlive their process, and docs/durable-workflows.md
+  is the page to hand somebody.
+  WHAT IS LEFT of the whole arc is ONE behaviour box in stage 3 — a
+  resume cache, so a process holding many dialogues replays each once
+  instead of once per answer — and specs/delim-diagnostics.md, which
+  is written but not started.
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
