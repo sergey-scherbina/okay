@@ -1,4 +1,4 @@
-# 1 · Four programs that are hard to write
+# 1 · Five programs that are hard to write
 
 > **Part I is the case.** It argues that a family of ordinary
 > requirements has no straight-line form in most languages, that every
@@ -22,7 +22,7 @@ reader's question is not "what is a continuation" but "is there
 anything in my system that this would fix". If the answer is no, the
 definition is a waste of their evening.
 
-So: four programs. Each one is something a working team has been asked
+So: five programs. Each one is something a working team has been asked
 for. Each has an obvious first attempt. Each first attempt is wrong,
 and wrong in a way that is not the author's fault — the language
 declined to express what they meant.
@@ -195,6 +195,21 @@ to the four lines:
   drift, and the drift is silent until a run lands in a state the
   current code no longer understands.
 
+**"Can't we just save the program and restore it?"** Everybody asks
+this, and it is the right instinct: if the trouble is that the process
+dies, save what the process was doing. The answer is no, and the
+reason is worth carrying through the whole book — what would have to
+be saved is a *closure*, a piece of running code holding live
+references, and no language writes one of those to a file in a form
+another process can read back.
+
+That is not the end of the idea, though. Something can be saved: not
+the program, but **everything the program was told**. Chapter 22 is
+about exactly that, with four mechanisms that cut different costs, and
+about the one trap — storing derived state alongside, so that two
+sources of truth exist and drift apart. Keep the question in mind;
+just do not expect a snapshot.
+
 And the alternative — adopting a workflow engine — trades those costs
 for different ones: a service to operate, a new deployment unit, a
 vendor's opinions about how your code is structured, and, in most such
@@ -243,7 +258,71 @@ shape, and it is four lines in Part II.
 
 ---
 
-## What the four have in common
+---
+
+## Five · A decision that is not yours to make
+
+An importer is reading a fifty-thousand-row file. At row forty
+thousand it meets one that will not parse.
+
+What should it do?
+
+- A nightly batch job wants to **skip it**, count it, and carry on —
+  ten thousand good rows are still worth having.
+- An interactive tool wants to **ask the operator**.
+- A compliance run wants to **stop immediately**, because a partial
+  import is worse than none.
+- A migration wants to **substitute a default** and mark the row.
+
+**The importer cannot know which.** It is a library; the policy
+belongs to whoever called it. And the decision has to be taken *at row
+forty thousand, with the file still open and the parser still
+standing*, because the remaining ten thousand rows are the reason
+anybody is running it.
+
+Here is what anybody writes first:
+
+```scala
+def load(file: Path, strict: Boolean): Result
+```
+
+Then a second policy arrives and it becomes `strict` plus
+`onMalformed: Row => Action`; then somebody needs the line number in
+the decision, then a way to say "skip the rest of this file but keep
+what you have". Within a year the importer has four policy parameters,
+and every new caller teaches it a new word.
+
+**The three things people do.**
+
+*Flags and policy objects.* As above. The importer accumulates the
+vocabulary of every caller that ever used it, and each new policy is a
+change to the importer — a library changed by its users, one flag at a
+time.
+
+*Throw, and let the caller catch.* This throws away the work. By the
+time the caller's `catch` runs, the parser's frame is gone: the open
+file, the line number, the forty thousand parsed rows, the ability to
+carry on from here. The caller can decide *what to do instead of the
+import*, which is not the question it was asked.
+
+*A callback that returns an instruction.* `onMalformed: Row => Action`
+with `Action` an enum of `Skip | Default(x) | Abort`. This one works,
+and it is the closest anybody gets without the mechanism. What it
+costs: the set of actions is now an API between two pieces of code
+that never see each other, the importer must implement each one, and
+adding an action changes both sides. It is the right shape, hand-built
+and untyped at the seam.
+
+**What you wanted** is for the importer to say *here is what happened,
+and here are the ways I can continue* — and for somebody else to pick,
+**without the importer being unwound**. That is a resumable exception,
+and it is chapter 15. It is the oldest use of this machinery, and the
+one that reads least like a trick: the handler runs while the failing
+computation is still alive, and hands it back its instructions.
+
+---
+
+## What the five have in common
 
 Read them again as a group and the same noun is missing from all four.
 
@@ -253,6 +332,7 @@ Read them again as a group and the same noun is missing from all four.
 | a pushing producer | *the rest of the producer*, so it can be paused |
 | wait for a person | *the rest of the program*, so it can be kept |
 | act on the way back | *the rest of the caller*, so it can be wrapped |
+| somebody else's decision | *the rest of the import*, so it can be **handed to a stranger and given back** |
 
 **"The rest of the program" is a thing these programs need to talk
 about, and no ordinary language lets them.** You can talk about the
@@ -268,17 +348,17 @@ page on it.
 
 Three claims, and the rest of Part I defends them:
 
-1. **These four are common.** Not exotic; not research examples. Most
+1. **These five are common.** Not exotic; not research examples. Most
    systems of any size contain at least one, usually badly.
 2. **The standard replacements are reasonable and each leaves a
    specific bug open** — not "are bad". Chapter 2 names the bug for
    each one, because "inelegant" is not an argument anybody should act
    on.
-3. **Naming the missing noun collapses all four into one mechanism**,
+3. **Naming the missing noun collapses all five into one mechanism**,
    which is why it is worth learning once rather than working around
-   four times.
+   five times.
 
-If you recognised none of the four, the honest recommendation is to
+If you recognised none of the five, the honest recommendation is to
 stop here; chapter 4 says so again in more detail, and means it.
 
 ---

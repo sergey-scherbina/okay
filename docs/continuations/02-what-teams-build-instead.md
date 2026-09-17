@@ -1,6 +1,6 @@
 # 2 · What teams build instead, and what it costs
 
-> Chapter 1 named four programs the language will not let you write
+> Chapter 1 named five programs the language will not let you write
 > straight. None of them goes unwritten, of course — they are
 > requirements, and requirements get met. This chapter is about what
 > gets built instead, what it costs to keep, and the one bug each
@@ -130,6 +130,16 @@ expensive one.
    The failure is a run that quietly never finishes, discovered by a
    customer.
 
+There is a tempting fifth item that is not on the list, and it is
+worth saying why. Teams reach for *checkpointing* here — "serialise
+the whole thing and restore it" — and it does not work: what would
+have to be serialised is a live computation, not data. What CAN be
+saved is the record of everything the program was told, which is a
+different design with its own costs and its own trap (a derived state
+stored beside the answers, giving you two sources of truth). That is
+chapter 22, and it is the honest version of the instinct behind this
+replacement.
+
 **The bug it cannot rule out: the transition nobody wrote.** A state
 and an event that can co-occur, and no case for the pair. In a small
 machine you can enumerate them; at nine states and seven events there
@@ -168,7 +178,37 @@ is to say: today.
 
 ---
 
-## Replacement five · Buy a workflow engine
+## Replacement five · Add a policy parameter
+
+**For:** a decision that belongs to the caller, taken deep inside the
+callee — the malformed row at forty thousand.
+
+It starts as `strict: Boolean`. It becomes `strict` and
+`onMalformed: Row => Action`. Then `Action` grows a case, then the
+callback needs the line number, then somebody wants "skip the rest of
+this file but keep what you have".
+
+**What it costs to keep.** The library accumulates the vocabulary of
+every caller it has ever had. Each new policy is **a change to the
+library**, shipped and versioned, for a decision the library does not
+care about. And the policies interact: `strict` and `onMalformed` both
+present, disagreeing, is a case somebody has to define.
+
+**The bug it cannot rule out: the policy that is not expressible.**
+A caller needs a combination the parameter set cannot say — "use a
+default for this column, skip the row for that one, and abort if there
+are more than fifty" — and gets one of two bad outcomes. Either the
+library grows a fifth parameter, or the caller pre-processes the file
+to work around the library, which is the thing the library existed to
+avoid. Nothing detects this; it shows up as a feature request, once a
+quarter, for years.
+
+**When to prefer it anyway.** When there are one or two policies and
+they are genuinely part of the library's domain — a `timeout`, a
+`maxRetries`. A policy that any reasonable caller would want to state
+in those terms is a parameter, not a decision handed outward.
+
+## Replacement six · Buy a workflow engine
 
 **For:** the same problem as replacement three, solved by adopting a
 system that specialises in it.
@@ -213,10 +253,10 @@ in this repository has the model and not the operations.
 
 Three questions, and they are not about elegance.
 
-**1. How many of the four shapes does this system already contain?**
+**1. How many of these shapes does this system already contain?**
 Count them honestly — a hand-rolled state machine, a `toList` that
 exists to escape a callback, a sentinel threaded through five layers,
-a metric recorded twice. Each is a place where a general mechanism
+a metric recorded twice, a library with three policy parameters. Each is a place where a general mechanism
 would replace a special one. If the count is zero or one, the answer
 is probably "don't", and chapter 4 will say so.
 

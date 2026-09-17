@@ -85,6 +85,20 @@ weak evidence. Three of them in the same file is not.
    paths.** And it will be written on a third one next quarter,
    somewhere else.
 
+6. **A library has grown policy parameters.** `strict: Boolean`, then
+   `onError: Policy`, then a callback returning an enum of
+   instructions. The library is accumulating the vocabulary of its
+   callers, one release at a time, for decisions it does not care
+   about. That is a resumable exception written by hand and untyped at
+   the seam (chapter 15).
+
+7. **Something is saved that is not data.** A "checkpoint" that
+   serialises more than the facts the program was told — a state
+   object, a position, a partially built result kept beside them.
+   There are now two sources of truth about one run. Chapter 22 is
+   what to do instead, and why the instinct is right even though the
+   implementation is not.
+
 ---
 
 ## Five signs to walk away
@@ -175,12 +189,12 @@ honourable, and you can revisit when a second call site turns up.
 
 Looking back before going on:
 
-1. **Four ordinary requirements have no straight-line form** in most
+1. **Five ordinary requirements have no straight-line form** in most
    languages (chapter 1).
 2. **Each standard replacement leaves a specific bug open** — not
    "is inelegant" (chapter 2).
-3. **All four are missing the same noun**, so one mechanism replaces
-   four workarounds (chapter 3).
+3. **All five are missing the same noun**, so one mechanism replaces
+   five workarounds (chapter 3).
 4. **And most code should still not use it** (this chapter).
 
 If you are still reading, Part II is the recipes: four shapes, each

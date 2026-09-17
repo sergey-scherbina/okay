@@ -51,17 +51,19 @@ does not compile ON PURPOSE — it is marked as such in the text.
 *Why anybody should care. Readable by somebody who will never write
 Scala.*
 
-### [1. Four programs that are hard to write](01-four-programs.md) ✓
+### [1. Five programs that are hard to write](01-four-programs.md) ✓
 
 **Thesis.** There is a family of ordinary requirements — not exotic
 ones — whose straight-line form the language refuses, and every team
 meets at least one of them. Name them before naming any solution.
 
-The four: leave a deep computation early with an answer; consume a
+The five: leave a deep computation early with an answer; consume a
 producer that insists on pushing; stop in the middle and continue
-tomorrow, in another process; run something on the way back out. Each
-shown as the code a reasonable person writes first, and why it does
-not work.
+tomorrow, in another process; run something on the way back out; and
+let somebody else decide, deep inside a computation that must not be
+unwound while they think. Each shown as the code a reasonable person
+writes first, and why it does not work — and, inside the third, the
+question everybody asks next: *can't we just save it?*
 
 ### [2. What teams build instead, and what it costs](02-what-teams-build-instead.md) ✓
 
@@ -374,6 +376,40 @@ stopped keeping.
 
 ---
 
+---
+
+# Part VII · Where it came from
+
+### 28. A short history, and why each step was a narrowing
+
+**Thesis.** The idea is sixty years old and almost everything
+interesting about it is a story of **giving power back**. The
+unrestricted version was discovered first, found unusable at scale,
+and every step since has been a restriction that made it safer without
+making it weaker for the jobs people actually have.
+
+The line, told through what each step fixed rather than as a list of
+names: the continuation as a semantic device for describing what a
+program means; `call/cc` and the discovery that a capture with no
+boundary takes hold of code it has never met; prompts and delimiters,
+which made the captured piece finite and therefore typeable;
+`shift`/`reset` and the family of four captures; multi-prompt control,
+which made boundaries first-class so an inner one can be crossed to
+reach an outer; algebraic effects and handlers, which is the same
+power arriving from the other direction and meeting in the middle;
+the Common Lisp condition system, which had the resumable-handler
+shape decades before the theory tidied it; and one-shot continuations
+in modern runtimes — Loom's virtual threads, OCaml 5's effects —
+which is the restricted version again, chosen deliberately for the
+same reason.
+
+**Why the chapter is last and not first.** The history explains the
+design decisions of Part III, and it is much more convincing after the
+reader has met the problems. Read first, it is trivia; read here, it
+is the reason the API looks the way it does.
+
+With the papers, for whoever wants them.
+
 ## Reading orders
 
 | you are | read |
@@ -383,6 +419,7 @@ stopped keeping.
 | building a library on top | Part III, Part IV, 21 |
 | reviewing somebody's use of it | 4, 9, 19, 20 |
 | curious about the failure modes | 27 |
+| wondering why the API looks like this | 28, then Part III |
 
 ## A note for whoever edits this
 

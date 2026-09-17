@@ -68,10 +68,20 @@ cannot do to a program:
 | **keep it for later** | a program that stops and continues tomorrow, in another process |
 | **call it twice** | two futures from one past: run the rest with answer A, then again with answer B |
 | **wrap it** | doing something on the way back, once, at a boundary — seeing what passes through |
+| **hand it to somebody else, and let them call it** | a decision taken by the caller, deep inside the callee, without the callee being unwound |
 
-Look at that table beside chapter 1's four programs. It is the same
-list. Four problems, one mechanism, because all four wanted the same
+Look at that table beside chapter 1's five programs. It is the same
+list. Five problems, one mechanism, because all five wanted the same
 missing noun.
+
+The last row is worth a second look, because it is the least obvious
+and the oldest. If the rest of a computation is a value, it can be
+passed *outward* — to a handler that is not part of it — and that
+handler can call it back with an instruction. The failing importer
+does not end; it waits, holding everything it had, while a stranger
+decides. Chapter 15 is that, and the whole difference between an
+exception and a condition is whether the rest still exists when the
+handler runs.
 
 ## How much of "the rest"?
 
@@ -108,9 +118,9 @@ Everything in this book is delimited. When the word "continuation"
 appears with no qualifier from here on, it means "up to the nearest
 boundary somebody installed on purpose".
 
-## The four problems, one line each
+## The five problems, one line each
 
-With the noun in hand, chapter 1's programs stop being four problems:
+With the noun in hand, chapter 1's programs stop being five problems:
 
 - **Leave early with an answer.** Capture the rest of the walk, and
   don't call it. The layers in between are never told, because they
@@ -124,7 +134,11 @@ With the noun in hand, chapter 1's programs stop being four problems:
   something can reconstruct that value later, the program continues
   where it stopped. (*How* it is reconstructed is chapter 22's subject
   and is not obvious: the captured function itself cannot be written
-  to disk.)
+  to disk. What gets written down is the answers.)
+- **Somebody else's decision.** Capture the rest of the import and
+  hand it *out*, with a list of ways it could continue. The handler
+  picks one and calls it. Nothing was unwound, so the file is still
+  open and the forty thousand parsed rows are still there.
 - **On the way back.** Wrap the captured rest instead of replacing
   it — run it, and do your work as its answer comes back through.
 
@@ -146,6 +160,13 @@ another function.
 closure over the work that remains. It cannot be written to a file and
 read back tomorrow; anything that claims to survive a restart is doing
 something cleverer, which chapter 22 explains in detail.
+
+That chapter is worth flagging here rather than later, because
+"can I just checkpoint it" is the first question the previous
+paragraph provokes. The short answer: **you cannot save the program,
+and you do not need to — you save what it was told.** There are four
+mechanisms with different costs, and one trap, and they are all in
+chapter 22.
 
 ## The one-sentence version
 
