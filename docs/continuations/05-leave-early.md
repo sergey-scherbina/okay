@@ -125,7 +125,7 @@ way out, it cannot be a statement after the exit** — that is chapter
 **The boundary is where you put it.** An exit goes to the *nearest
 enclosing* `delimited`. If you nest them — chapter 9 — you get to
 choose which one, and choosing wrongly is a real mistake with a real
-name (chapter 25, group B).
+name (chapter 26, group B).
 
 **The type of the boundary is the contract.** `delimited[Option[Rejected], Pure]`
 says everything a caller needs: this produces an `Option[Rejected]`,

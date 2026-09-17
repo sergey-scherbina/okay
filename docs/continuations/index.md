@@ -216,6 +216,39 @@ different shape.
 in prose — `Replayable`, `At`, `OneMachine` — and each exists because
 something went wrong without it.
 
+### 21. Saving and restoring: checkpoints, and what cannot be one
+
+**Thesis.** "Can I snapshot a paused program and restore it later?" is
+the first question everybody asks, and the answer has a shape worth
+learning: **no, and you do not need to.** The continuation is a
+closure — it cannot be serialised, and any library claiming otherwise
+is either restricting what you may write or lying about restarts.
+
+What CAN be saved is everything the program was TOLD, and from that
+its position is re-derived. The chapter lays out the four mechanisms
+in this repository side by side, because they are routinely confused
+and they cut different costs:
+
+| | what is stored | what it cuts | durable |
+|---|---|---|---|
+| the journal | every answer | nothing — replay from the start | yes |
+| chapters (`Snapshots`) | a journal PREFIX and its offset | **reading** | yes |
+| `continueAs` | one seed that supersedes the history | **running** | yes |
+| a resume cache | the live paused program | replay between calls | **no** |
+
+The distinction that matters and is most often missed: **a snapshot
+cuts reading, not running.** The program is still executed over every
+answer in the prefix, because that is the only way to arrive at the
+place it stands. Only `continueAs` shortens the execution, and it does
+so by declaring the old history superseded.
+
+Also: what makes a checkpoint SAFE — the answers must be the program's
+only source of non-determinism, or a restore lands somewhere the
+original run never was; why a checkpoint carries the program's NAME,
+and what a reader does when it does not match; and the checkpoint that
+is a trap — storing derived state beside the answers, so two sources
+of truth exist and drift.
+
 ---
 
 # Part VI · In production
@@ -223,31 +256,31 @@ something went wrong without it.
 *Real systems in this repository. Each chapter: the problem, the
 shape used, what it replaced, what it cost, what went wrong.*
 
-### 21. Durable workflows
+### 22. Durable workflows
 
 **Thesis.** A paused program is a closure and cannot be written down —
 so nothing tries to. The answers are journalled and the place is
 re-derived by replay, which is event sourcing whose fold IS the
 program. The engine, its eleven lanes, and its honest limits.
 
-### 22. A debugger for agents
+### 23. A debugger for agents
 
 **Thesis.** Multi-shot pays for itself: fork an agent run at a tool
 call, feed two answers, compare. Also the refuted expectation — this
 does NOT come with durability, and the type says why.
 
-### 23. Cutting a model mid-sentence
+### 24. Cutting a model mid-sentence
 
 **Thesis.** A validator standing in a token stream, aborting across
 the streaming boundary. And the measured cost that corrected the
 comment which claimed the guard was free.
 
-### 24. Cancellable flows in a UI
+### 25. Cancellable flows in a UI
 
 **Thesis.** The smallest production use, and the clearest: no `Option`
 threading on the steps between.
 
-### 25. Everything that typically goes wrong
+### 26. Everything that typically goes wrong
 
 **Thesis.** A catalogue, not a memoir. The mistakes available to
 somebody using continuations — and to somebody implementing them — are
@@ -306,11 +339,11 @@ stopped keeping.
 
 | you are | read |
 |---|---|
-| deciding whether this is worth the team's time | 1, 2, 4, then 21 |
+| deciding whether this is worth the team's time | 1, 2, 4, then 22 |
 | about to write your first one | 3, then Part II, then 18 |
 | building a library on top | Part III, Part IV, 20 |
 | reviewing somebody's use of it | 4, 9, 18, 19 |
-| curious how it went | 25 |
+| curious how it went | 26 |
 
 ## It repeats itself on purpose
 
