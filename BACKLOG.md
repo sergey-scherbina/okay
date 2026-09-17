@@ -45,16 +45,24 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Deferred`/`memoize` of the async libraries. Trigger: a consumer
       that shares a `!.once` across fibres; none yet (direct-once,
       2026-09-16).
-- [ ] dialogue-nondeterminism — the other half of stage 1: a clock,
-      ids and randomness AS QUESTIONS, so a durable program may have
-      them without breaking replay, plus `perform(cmd)` for a
-      journalled side effect. THE DESIGN QUESTION FIRST, because it
-      touches every signature: a dialogue's `Q` is the author's own,
-      so either the library owns a sum (`Ask[Q] = Mine(Q) | Now |
-      Uuid | Random`, changing the journal's records too) or the
-      clock is a second channel beside the questions. The constraint
-      half LANDED 2026-09-17 (dialogue-replay-discipline).
-- [ ] dialogue-patch — stage 2: `patch(id)` (Temporal's `getVersion`),
+- [ ] wf-durable-journal — `okay.persist.Dialogue` journals `A`; for a
+      durable program to use `Wf.now`/`patch` its payload has to become
+      `Wf.Ans[A]`. Mechanical: the envelope (`Entry.Answered`) already
+      exists, only the type it carries changes, plus a `Schema` for the
+      sum. Then stage 2 is true of the durable side too, not just the
+      core (dialogue-asks, 2026-09-17).
+- [ ] wf-direct-door — `Wf.pause[String, String, String, P]("city?")`
+      takes four type arguments where `Delim.pause` in a `direct` block
+      takes none. The trick that removes them reads the types off the
+      evidence and the block's `DirectCtx`, which needs `Wf` to own an
+      evidence class carrying `Q` and `A` as MEMBERS, the way
+      `Delim.Asking` carries `Qst`/`Ans`. The feature works today; it
+      reads worse than it should.
+- [ ] dialogue-patch — CORE DONE 2026-09-17 (dialogue-asks: `Wf.patch`,
+      three tests including an old journal that must not lose its next
+      answer). What is left is the durable side, which waits on
+      `wf-durable-journal`, and retirement tooling.
+      Was: stage 2: `patch(id)` (Temporal's `getVersion`),
       so a program that changed can carry its old runs to the end
       instead of stopping them. Stage 0 made the change a loud stop;
       this is how the stop goes away. Needs the `Patched` entry the

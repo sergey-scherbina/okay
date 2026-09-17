@@ -1,5 +1,50 @@
 # Changelog
 
+## dialogue-asks - the clock is a question too, and that makes programs changeable
+
+`Replayable` said a durable program may not reach outside except
+through `pause`. Correct, and on its own unusable: every real workflow
+needs a clock, an id and sometimes a die. `okay.Wf` makes those
+QUESTIONS as well - asked of the runtime rather than the author's
+oracle, and remembered in the same journal, so a replay reads the
+writing instead of the wall.
+
+The channel is a sum the LIBRARY owns: `Either[Sys, Q]` for questions,
+`Either[SysA, A]` for answers, and the author never writes the Either
+(`Wf.pause` wraps and unwraps `Right`, `Wf.now` `Left`). The two
+alternatives lost for a stated reason: a second channel would need its
+two journals interleaved to replay, and the interleaving is exactly
+what one tagged journal carries for free; an open sum the author
+extends puts the library's cases into every consumer's match.
+
+AND THE TAG IS WHAT MAKES A PROGRAM CHANGEABLE - it carried stage 2
+(`patch`, Temporal's getVersion) with it, because they are one
+mechanism. The decisive test: a v1 journal `Right("Kyiv"), Right("3")`
+read by a v2 program that gained a `patch` BETWEEN its two questions.
+The patch answers `false` and does NOT consume, so `"3"` still answers
+`nights?` and the old run finishes the way it began. Without the tag
+the patch would have eaten `"3"` - the same silent mis-mapping the
+`program` field exists to stop. A half-finished old journal replays
+into the new program and then goes LIVE at the patch: the driver
+decides `true`, appends the decision, and the run finishes on the new
+branch with its history intact. That is the migration case, working
+without a migration.
+
+`Wf.replay` takes NO runtime. Its signature is the proof that a replay
+cannot read a clock.
+
+`perform` was listed as work and turned out to be a name: an activity
+is a command performed outside and a result remembered, which is a
+question and its answer. There is no second mechanism, and saying so
+is the whole feature.
+
+Not wired yet: `okay.persist.Dialogue` still journals `A` rather than
+`Wf.Ans[A]`, so the durable side cannot carry the library's questions
+yet - mechanical, the envelope already exists. And the doors take four
+type arguments at a call site where `Delim.pause` in a `direct` block
+takes none; the fix needs `Wf` to own an evidence class carrying Q and
+A as members, filed as `wf-direct-door`.
+
 ## gate-stall-watchdog - a hung gate is now killed and retried
 
 A gate that HANGS was invisible to `gate-retry.sh`: it reads the log

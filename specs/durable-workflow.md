@@ -255,16 +255,52 @@ this spec's table, which is why the bit is worth the `Either`.
 
 ### Behavior — stage 1b
 
-- [ ] `now`/`uuid`/`random` answer from the journal on replay: the
+- [x] `now`/`uuid`/`random` answer from the journal on replay: the
       same run replayed twice gives the same values
-- [ ] the author's `pause` is unchanged in spelling and type
-- [ ] `perform(cmd)` — a command whose answer is journalled, executed
-      once per position across a restart
-- [ ] `patch(id)`: a journal written before the patch existed takes
+- [x] the author's `pause` is unchanged in spelling and type
+- [x] `perform(cmd)` — and it needed no machinery: an "activity" is a
+      command performed outside and a result remembered, which is a
+      question and its answer. `Wf.perform` is `Wf.pause` under the
+      name the literature uses, and saying so is the feature
+- [x] `patch(id)`: a journal written before the patch existed takes
       the OLD branch and does not lose its next answer; a fresh run
       takes the new branch; a third process agrees with both
-- [ ] the driver answers `Left` itself and `Right` through the
+- [x] the driver answers `Left` itself and `Right` through the
       author's oracle, and a test counts both
+- [x] `Wf.replay` TAKES NO RUNTIME — its signature is the proof that
+      a replay cannot read a clock
+
+### Results — stage 1b (2026-09-17)
+
+**Landed in the core as `okay.Wf`** (`TestWf`, 6 tests), and it
+carried stage 2's `patch` with it, because they are one mechanism.
+
+- The tag pays for itself exactly where the design said it would. The
+  decisive test is a v1 journal (`Right("Kyiv"), Right("3")`) read by
+  a v2 program that gained a `patch` BETWEEN the two questions: the
+  patch answers `false` and does not consume, so `"3"` still answers
+  `nights?` and the old run finishes the way it began. Without the
+  tag the patch would have eaten `"3"`.
+- A half-finished old journal replays into the new program and then
+  goes LIVE at the patch: the driver decides `true` and appends the
+  decision, so the run finishes on the new branch with its history
+  intact. That is the migration case, and it works without a
+  migration.
+- `perform` was listed as work and turned out to be a name.
+
+**What is NOT wired yet:** `okay.persist.Dialogue` still journals `A`,
+not `Wf.Ans[A]`, so the durable side cannot carry the library's
+questions. That is the next step and it is mechanical — the envelope
+already exists, only its payload type changes.
+
+**Known rough edge, recorded rather than hidden:** `Wf`'s doors take
+four type arguments at every call site
+(`Wf.pause[String, String, String, P]("city?")`), where `Delim.pause`
+inside a `direct` block takes none. The trick that removes them
+(reading the types off the evidence and the block's `DirectCtx`) needs
+`Wf` to own an evidence class carrying `Q` and `A` as members, the way
+`Delim.Asking` does. Filed as `wf-direct-door`; the feature works
+today, it just reads worse than it should.
 
 ## Stage 2 — the program is allowed to change
 
@@ -287,11 +323,15 @@ outage.
 
 ### Behavior — stage 2
 
-- [ ] a dialogue started under `booking/2` and resumed under
+- [x] a dialogue started under `booking/2` and resumed under
       `booking/3` takes the OLD branch at `patch("promo")` and
-      finishes correctly
-- [ ] a dialogue started under `booking/3` takes the new branch
-- [ ] the decision is in the journal, so a third process agrees
+      finishes correctly — `TestWf`, at the `Delim` level
+- [x] a dialogue started under `booking/3` takes the new branch
+- [x] the decision is in the journal, so a third process agrees
+- [ ] the same, through `okay.persist.Dialogue` (its journal payload
+      has to become `Wf.Ans[A]` first)
+- [ ] retirement: a tool that says which programs are still present
+      in a topic, so a branch can be deleted with evidence
 
 ## Stage 3 — bounded history
 
