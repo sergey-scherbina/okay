@@ -63,6 +63,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   is usually written, the rule for when to reach for an effect
   instead, and the cases where a capture makes code worse. The theory
   is [theory/2](theory/02-continuations.md).
+- **[Durable workflows](durable-workflows.md)** — a program that WAITS
+  (for a person, a service, a date), written as straight-line code and
+  able to outlive the process running it: the journal that is the only
+  state, the four rules, `sleep`/`awaitSignal`/`patch`, the worker and
+  its operational topics, and an honest list of what a workflow ENGINE
+  has that this does not. Its code is compiled by
+  `TestWorkflowGuide`, so the page cannot drift from the library.
 - **[okay-actor](modules/okay-actor.md)** — actors as composition: the
   mailbox is a `Channel`, one-at-a-time is one consumer, and the only
   new thing is supervision. With the four decisions it makes, and the

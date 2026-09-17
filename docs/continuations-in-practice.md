@@ -315,18 +315,24 @@ branch existed and `true` for every run that began after, so a deploy
 does not have to wait for the old runs to drain; and the whole thing
 is a straight line, not a state machine.
 
+A whole page follows this one where the engine is concerned:
+[durable workflows](durable-workflows.md) — the worker, durable
+timers, signals, the status index, and the rules that keep them from
+becoming a second source of truth.
+
 ### What this is not
 
 Say both halves when proposing it. The MODEL here is smaller and
 better than a workflow engine's — the fold that rebuilds the state is
-the program you already wrote. The OPERATIONS around it are absent:
-there are no durable timers, no retry policies on the outside call, no
-signals distinct from answers, no cancellation, no visibility index to
-find the stuck ones, no worker pool with leases, no child workflows.
-specs/durable-workflow.md stage 4 lists each one with what it would
-take. A team adopting this gets the core of Temporal's idea and none
-of its operations, and should plan for the difference rather than
-discover it.
+the program you already wrote. The OPERATIONS are YOUNGER, and the
+list changed on 2026-09-17 when the operator asked for the engine:
+durable timers, signals with a mailbox, retry policies on the
+activity, a visibility index and a worker now exist
+([durable workflows](durable-workflows.md)); cancellation, child
+workflows, bounded history and a lease do not, and there is no
+scheduler process — `tick(now)` is a call you make from your own loop.
+specs/durable-workflow.md stage 4 tracks each one. A team adopting
+this should plan for that difference rather than discover it.
 
 ## 4 · Do something on the way back
 

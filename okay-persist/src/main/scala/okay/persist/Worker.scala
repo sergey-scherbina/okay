@@ -87,6 +87,22 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     dialogue(id).at.up[G]
 
   private def step(id: String): Worker.Progress[R] ! G =
+    // LOOK BEFORE DRIVING (workflow-docs, 2026-09-17). A journal the
+    // fold cannot read — damage, or a record from another program —
+    // makes the DRIVER throw, because a driver has nowhere to put
+    // that answer. A worker does: `Progress.Broken`. Without this the
+    // throw takes the whole `tick` with it, and one unreadable run
+    // stops every other run on the box, which is the opposite of what
+    // a worker loop is for.
+    //
+    // It costs one extra fold per advance. That is the price of
+    // turning a thrown exception into a value here rather than
+    // leaking it into somebody's scheduler thread.
+    at(id).flatMap:
+      case Left(stopped) => pure(Worker.Progress.Broken(stopped))
+      case Right(_) => drive(id)
+
+  private def drive(id: String): Worker.Progress[R] ! G =
     dialogue(id).runWorkflowIn[G](oracle).flatMap:
       case Right(r) =>
         timers.disarm(id)

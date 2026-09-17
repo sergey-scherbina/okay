@@ -1,5 +1,40 @@
 # Changelog
 
+## workflow-docs - the guide, and a test that keeps it honest
+
+`docs/durable-workflows.md`: what a durable workflow is, the one idea
+(the answers are written down, the place is re-derived, and the fold
+IS the program), a five-line workflow in which every line is something
+an engine exists to provide, the pieces and WHICH OF THEM IS THE
+TRUTH, the four rules, how a program changes under a running journal,
+and an honest list of what a workflow ENGINE has that this does not.
+
+Its code is compiled. `TestWorkflowGuide` is the page's own example,
+step by step - it runs until it waits, the deadline is in a topic, a
+day passes, a tick wakes it, it stops on a signal, the dashboard
+answers "who is blocked on payment" with one read, the signal arrives,
+and the oracle turns out to have been asked exactly once in the life
+of the run. If that suite goes red the documentation is wrong, which
+is the only way to keep a guide honest.
+
+WRITING IT FOUND TWO THINGS, which is the usual argument for writing
+documentation as code:
+
+- the page's opening snippet DID NOT COMPILE without a return type on
+  the workflow, so the page was wrong before anybody read it;
+- and the worker promised `Progress.Broken` for a journal it cannot
+  fold while the DRIVER threw instead. A throw takes the whole `tick`
+  with it, so one unreadable run would stop every other run on the
+  box. The worker now looks before it drives, at the cost of one
+  extra fold per advance, and the comment says that is the price of
+  turning an exception into a value rather than leaking it into
+  somebody's scheduler thread.
+
+The practice page's "what this is not" was stale the moment the engine
+started growing; it now names what exists (timers, signals, retries,
+visibility, the worker) and what still does not (cancellation,
+children, bounded history, a lease, a scheduler process).
+
 ## workflow-retries - the driver retries, the journal does not notice
 
 An activity fails for reasons that have nothing to do with the
