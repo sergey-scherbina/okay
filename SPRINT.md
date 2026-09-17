@@ -44,8 +44,6 @@
   and the lane order are in specs/durable-workflow.md, stage 4; the
   keystone (`workflow-suspended-driver`) has LANDED, and the rest hang
   off it:
-  - workflow-visibility — a projection of the journal topic into a
-    status index (id, program, standing question, waiting-until)
   - workflow-lease — ADVISORY, after visibility: `expect` already makes
     two workers safe, so this only makes collisions rare
   - workflow-retries — `perform` with a policy from okay-resilience;

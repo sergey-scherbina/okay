@@ -43,7 +43,8 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
                                    oracle: Q => A ! F,
                                    snapshots: Option[Snapshots] = None,
                                    snapshotEvery: Int = 0,
-                                   signals: Option[Signals] = None)
+                                   signals: Option[Signals] = None,
+                                   statuses: Option[Statuses] = None)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime):
@@ -62,6 +63,23 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
    * before this returns.
    */
   def advance(id: String): Worker.Progress[R] ! F =
+    step(id).flatMap(p => note(id, p).map(_ => p))
+
+  /** tell the index what was learned, if anybody is keeping one. It
+   * is written AFTER the journal, never instead of it: a status is
+   * something to look at, never something to decide from, so a worker
+   * that dies between the two leaves a stale line and no wrong run. */
+  private def note(id: String, p: Worker.Progress[R]): Unit ! F =
+    statuses match
+      case None => pure(())
+      case Some(ix) => dialogue(id).at.map: place =>
+        val (asking, where) = place.toOption match
+          case Some(d) => (d.asking.map(_.toString), d.where)
+          case None => (None, None)
+        ix.put(Statuses.Status(id, program, Worker.state(p), asking, where,
+          System.currentTimeMillis()))
+
+  private def step(id: String): Worker.Progress[R] ! F =
     dialogue(id).runWorkflow(oracle).flatMap:
       case Right(r) =>
         timers.disarm(id)
@@ -80,7 +98,7 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
               // crash in between re-delivers and `expect` refuses the
               // duplicate — a repeated attempt, never a doubled answer
               signals.foreach(_.delivered(id, name, off))
-              advance(id)
+              step(id)
           case None =>
             timers.disarm(id)
             pure(Worker.Progress.Waiting(Wf.Wait.Signal(name)))
@@ -119,6 +137,15 @@ final class Worker[Q, A, R, F[+_]](topic: Topic, program: String, timers: Timers
           advance(id)
 
 object Worker:
+
+  /** the index's word for what a worker learned */
+  def state[R](p: Progress[R]): Statuses.State = p match
+    case Progress.Finished(r) => Statuses.State.Finished(r.toString)
+    case Progress.Sleeping(t) => Statuses.State.Sleeping(t)
+    case Progress.Waiting(okay.Wf.Wait.Signal(n)) => Statuses.State.Waiting(s"signal:$n")
+    case Progress.Waiting(okay.Wf.Wait.Child(c)) => Statuses.State.Waiting(s"child:$c")
+    case Progress.Waiting(okay.Wf.Wait.Until(t)) => Statuses.State.Sleeping(t)
+    case Progress.Broken(why) => Statuses.State.Broken(why.toString)
 
   /** what a worker learned about one run */
   enum Progress[+R]:

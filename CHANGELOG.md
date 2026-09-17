@@ -1,5 +1,32 @@
 # Changelog
 
+## workflow-visibility - the dashboard the model cannot afford to compute
+
+"What is every run waiting for" is a question this model answers
+EXPENSIVELY: a dialogue's place is its journal folded by its own
+program, so answering it for a thousand runs means running a thousand
+programs. That is what "the fold is the program" costs, and a
+dashboard refresh is the wrong place to pay it.
+
+So the WORKER writes it down. Every `advance` already knows what it
+learned - finished, sleeping until, waiting on, or broken - and puts
+that under the dialogue's key in a compacted topic, together with the
+standing question and the LINE the run is sitting on (`Paused.where`,
+from delim-diagnostics). `Statuses` is then a cheap read: `get(id)`,
+`all`, `waitingOn("approved")`, `idleSince(t)`.
+
+WHAT IT IS NOT is the same rule as the timers': it is not state. Lose
+the whole index and every run is still exactly where its journal says
+it is — there is a test where a worker with NO index at all finishes a
+run the indexed worker started. The dashboard goes blank and fills
+again as workers touch runs.
+
+And it is written AFTER the journal, never instead of it, so a worker
+that dies in between leaves a STALE LINE and no wrong run. Nothing
+reads the index to decide anything; `at` says when it was written, and
+an operator comparing that to the clock is the honest check. Nothing
+here pretends the index is the truth.
+
 ## workflow-signals - the mailbox between a sender and a waiting run
 
 An answer replies to a question the program ASKED. A signal does not:
