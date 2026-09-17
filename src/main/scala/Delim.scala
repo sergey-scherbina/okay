@@ -38,8 +38,26 @@ import scala.util.NotGiven
  * same spirit rather than hidden.
  */
 
-/** a delimiter's identity AND its answer type; identity is the tag */
-final class Prompt[R]
+/**
+ * A delimiter's identity AND its answer type; identity is the tag.
+ *
+ * `label` is what it is CALLED — "collect @ Walk.scala:12" — and it
+ * exists so that the machine can say something a JVM stack trace
+ * cannot (delim-diagnostics, 2026-09-17): which delimiters are
+ * installed, and where each of them was written. One interned string
+ * per prompt, nothing computed at run time.
+ */
+final class Prompt[R](val what: String, val where: String):
+  /**
+   * BUILT ON DEMAND, and the reason is a measured 21%: `Prompt` is
+   * constructed in hot loops (DelimBenchmark's delimPushOnly makes a
+   * thousand per operation), and interpolating the label at the
+   * constructor cost 23.2 -> 28.2 us/op on that lane. The two pieces
+   * are stored as they arrive and joined only when something asks —
+   * which, apart from a test, means only the failure path.
+   */
+  def label: String = s"$what @ $where"
+  override def toString: String = label
 
 enum Delim[+A] derives Effect:
   /** install a delimiter and run the body under it (reset) */
@@ -63,11 +81,39 @@ enum Delim[+A] derives Effect:
    *   reset(E[control0 f]) =        f (x =>       E[x])
    */
   case Capture[R, A](prompt: Prompt[R], f: Any,
-                     underPrompt: Boolean, delimitK: Boolean) extends Delim[A]
+                     underPrompt: Boolean, delimitK: Boolean,
+                     at: String) extends Delim[A]
 
-/** a shift naming a prompt that is not installed */
-final class NoPrompt extends RuntimeException(
-  "shift to a prompt that is not on the stack")
+/**
+ * A capture naming a prompt that is not on THIS machine's stack.
+ *
+ * The message is the documentation for the one hazard the type system
+ * does not close, because this is the error people meet first and at
+ * the worst time. It names the prompt that was wanted, the prompts
+ * that are actually installed (innermost first, each with the line it
+ * was installed at), and the rule that explains the difference.
+ */
+final class NoPrompt(val from: String, val wanted: String, val installed: List[String])
+  extends RuntimeException(NoPrompt.say(from, wanted, installed))
+
+object NoPrompt:
+  def say(from: String, wanted: String, installed: List[String]): String =
+    val stack =
+      if installed.isEmpty then "  (none: this machine has no delimiter installed)"
+      else installed.map("  " + _).mkString("\n")
+    s"""|the capture at $from named the prompt '$wanted',
+        |which is not on the stack of the machine running it.
+        |Installed here, innermost first:
+        |$stack
+        |
+        |ONE `Delim.run` PER PROGRAM. A machine owns one prompt stack,
+        |so a delimiter installed by an INNER run cannot be reached
+        |from the outer one, or the other way about. The combinators
+        |that run a machine are `delimited`, `collect`, `resumable`;
+        |the ones that install a delimiter on the machine already
+        |running are `scope`, `collecting`, `pausing`. See
+        |docs/continuations-in-practice.md, "The second rule: one
+        |machine".""".stripMargin
 
 object Delim {
 
@@ -112,8 +158,13 @@ object Delim {
     given fresh[F[+_]](using NotGiven[Delim[Any] <:< F[Any]]): OneMachine[F] =
       new OneMachine[F]()
 
-  /** a fresh delimiter tag */
-  def prompt[R]: Prompt[R] = new Prompt[R]
+  /** a fresh delimiter tag, labelled with the line that asked for it */
+  def prompt[R](using at: At): Prompt[R] = named[R]("prompt")
+
+  /** the label every door builds: what made it, and where — as two
+   * references, joined only if anybody asks (see `Prompt.label`) */
+  private def named[R](what: String)(using at: At): Prompt[R] =
+    new Prompt[R](what, at.where)
 
   /** run the body under the delimiter — reset, as an operation */
   def push[R, F[+_]](p: Prompt[R])(body: R ! (Delim + F)): R ! (Delim + F) =
@@ -130,29 +181,30 @@ object Delim {
    * lets a captured continuation shift again.
    */
   def shift[R, A, F[+_]](p: Prompt[R])
-                        (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
-    effect(Capture(p, f, underPrompt = true, delimitK = true))
+                        (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = true, delimitK = true, at = at.where))
 
   /** the body CONSUMES the delimiter (a further shift to `p` escapes
    * outward), the continuation still re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
-                         (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
-    effect(Capture(p, f, underPrompt = false, delimitK = true))
+                         (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = false, delimitK = true, at = at.where))
 
   /** the body runs under the delimiter, the continuation does NOT
    * re-install it — a bare segment, spliced where it is invoked */
   def control[R, A, F[+_]](p: Prompt[R])
-                          (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
-    effect(Capture(p, f, underPrompt = true, delimitK = false))
+                          (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = true, delimitK = false, at = at.where))
 
   /** neither: the delimiter is consumed and the continuation is bare */
   def control0[R, A, F[+_]](p: Prompt[R])
-                           (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
-    effect(Capture(p, f, underPrompt = false, delimitK = false))
+                           (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = false, delimitK = false, at = at.where))
 
   /** the common shape: a fresh prompt, a block under it, run */
-  def reset[R, F[+_]](body: Prompt[R] => R ! (Delim + F))(using OneMachine[F]): R ! F =
-    val p = prompt[R]
+  def reset[R, F[+_]](body: Prompt[R] => R ! (Delim + F))
+                     (using om: OneMachine[F], at: At): R ! F =
+    val p = named[R]("reset")(using at)
     run(push(p)(body(p)))
 
   /**
@@ -214,23 +266,31 @@ object Delim {
    * (`delimited`, `collect`, `resumable`), everything under it
    * installs only (`scope`, `collecting`, `pausing`).
    */
-  def scope[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F)): R ! (Delim + F) =
-    val p = prompt[R]
+  def scope[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F))(using At): R ! (Delim + F) =
+    scopeAs("scope")(body)
+
+  /** the one place a delimiter is installed: `what` is the door's own
+   * name and `at` the caller's line, and the two are joined ONCE.
+   * (An earlier cut passed the name inside the `At` and produced
+   * "scope @ delimited @ File:41" — caught by the label test.) */
+  private def scopeAs[R, F[+_]](what: String)(body: Prompted[R] ?=> R ! (Delim + F))
+                               (using At): R ! (Delim + F) =
+    val p = named[R](what)
     push(p)(body(using new Prompted[R](p)))
 
   /** install a fresh delimiter, run the body under it with the
    * evidence in scope, and handle the machine — the OUTERMOST form;
    * `scope` is the one that nests */
   def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F))
-                         (using OneMachine[F]): R ! F =
-    run(scope(body))
+                         (using om: OneMachine[F], at: At): R ! F =
+    run(scopeAs("delimited")(body))(using om)
 
   /** capture up to the delimiter in force — the same word as the
    * prompt-taking primitive, and the compiler picks by what you
    * write: a prompt in the first clause is the primitive, a handler
    * there is this one (delim-one-name) */
   def shift[R, A, F[+_]](using in: Prompted[R])
-                          (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+                          (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
     shift[R, A, F](in.prompt)(f)
 
   /**
@@ -251,28 +311,28 @@ object Delim {
    * a reference to it must not survive into the output.
    */
   inline def shift[A](using in: Prompted[?])[F[_]]
-                         (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                         (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    okay.effect[rw.R, A](Capture(in.prompt, f, underPrompt = true, delimitK = true)
-      .asInstanceOf[rw.R[A]])
+    okay.effect[rw.R, A](Capture(in.prompt, f, underPrompt = true, delimitK = true,
+      at = at.where).asInstanceOf[rw.R[A]])
 
   /** the 0-variant: the body consumes the delimiter */
   def shift0[R, A, F[+_]](using in: Prompted[R])
-                           (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+                           (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
     shift0[R, A, F](in.prompt)(f)
 
   /** the continuation does not re-install the delimiter */
   def control[R, A, F[+_]](using in: Prompted[R])
-                            (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+                            (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
     control[R, A, F](in.prompt)(f)
 
   /** neither */
   def control0[R, A, F[+_]](using in: Prompted[R])
-                             (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+                             (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
     control0[R, A, F](in.prompt)(f)
 
   /** abort to the delimiter in force with a value */
-  def abort[R, A, F[+_]](using in: Prompted[R])(value: R): A ! (Delim + F) =
+  def abort[R, A, F[+_]](using in: Prompted[R])(value: R)(using At): A ! (Delim + F) =
     abort[R, A, F](in.prompt)(value)
 
   // ==================================================================
@@ -309,7 +369,7 @@ object Delim {
    * The `for`-style spelling of the same thing is `Delim.abort`.
    */
   inline def exit(using in: Prompted[?])[F[_]]
-                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (value: in.Res): Unit ! rw.R =
     shift[Unit](using in)(_ => okay.pure(value))
 
@@ -339,21 +399,26 @@ object Delim {
    * the producer, which is why the producer never has to know.
    */
   def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F))
-                       (using OneMachine[F]): List[A] ! F =
-    run(collecting(body))
+                       (using om: OneMachine[F], at: At): List[A] ! F =
+    run(collectAs("collect")(body))(using om)
 
   /** the same collection, NESTED: it installs its delimiter and
    * leaves the machine to the `delimited`/`resumable` around it, so a
    * capture from inside — a `pause`, an `exit` to an outer scope —
    * crosses it instead of dying on a prompt another machine holds */
-  def collecting[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F)): List[A] ! (Delim + F) =
-    scope[List[A], F](
+  def collecting[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F))
+                          (using At): List[A] ! (Delim + F) =
+    collectAs("collecting")(body)
+
+  private def collectAs[A, F[+_]](what: String)(body: Emitting[A] ?=> Unit ! (Delim + F))
+                                 (using At): List[A] ! (Delim + F) =
+    scopeAs[List[A], F](what)(
       body(using new Emitting[A](summon[Prompted[List[A]]]))
         .map(_ => List.empty[A]))
 
   /** emit one value into the `collect` in force */
   inline def emit(using e: Emitting[?])[F[_]]
-                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (a: e.Elem): Unit ! rw.R =
     shift[Unit](using e.in)(k => k(()).map(a :: _))
 
@@ -371,7 +436,12 @@ object Delim {
    * knows their own row.
    */
   enum Paused[Q, A, R, G[+_]]:
-    case Ask[Q, A, R, G[+_]](question: Q, resume: A => Paused[Q, A, R, G] ! G)
+    /** `at` is where the `pause` that made this was written
+     * (delim-diagnostics): a dialogue that has not moved for a day is
+     * a line of somebody's program, and saying which line is the
+     * difference between an incident and a puzzle */
+    case Ask[Q, A, R, G[+_]](question: Q, resume: A => Paused[Q, A, R, G] ! G,
+                             at: String)
       extends Paused[Q, A, R, G]
     case Done[Q, A, R, G[+_]](value: R) extends Paused[Q, A, R, G]
 
@@ -386,7 +456,11 @@ object Delim {
         case _ => None
       /** the question it is waiting on, if it is waiting */
       def asking: Option[Q] = p match
-        case Ask(q, _) => Some(q)
+        case Ask(q, _, _) => Some(q)
+        case _ => None
+      /** WHERE it is waiting — the `pause`'s own source position */
+      def where: Option[String] = p match
+        case Ask(_, _, at) => Some(at)
         case _ => None
 
   /** the evidence for a block that may pause, carrying the question
@@ -412,21 +486,26 @@ object Delim {
    * re-derive it — `replay`, below.
    */
   def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                               (using OneMachine[F]): Dialogue[Q, A, R, F] ! F =
-    run(pausing(body))
+                               (using om: OneMachine[F], at: At): Dialogue[Q, A, R, F] ! F =
+    run(pausingAs("resumable")(body))(using om)
 
   /** the same, NESTED: the dialogue's delimiter goes on the machine
    * already running, so a `resumable` may sit inside a `delimited`
    * and a capture may cross it */
   def pausing[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                             : Dialogue[Q, A, R, F] ! (Delim + F) =
-    scope[Dialogue[Q, A, R, F], F](
+                             (using At): Dialogue[Q, A, R, F] ! (Delim + F) =
+    pausingAs("pausing")(body)
+
+  private def pausingAs[Q, A, R, F[+_]](what: String)
+                                       (body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                                       (using At): Dialogue[Q, A, R, F] ! (Delim + F) =
+    scopeAs[Dialogue[Q, A, R, F], F](what)(
       body(using new Asking[Q, A, R, Delim + F](summon[Prompted[Dialogue[Q, A, R, F]]]))
         .map(Paused.Done[Q, A, R, Delim + F](_)))
 
   /** ask, and hand the rest of the program back to the caller */
   inline def pause(using s: Asking[?, ?, ?, ?])[F[_]]
-                  (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                  (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                   (q: s.Qst): s.Ans ! rw.R =
     shift[s.Ans](using s.in)(k => okay.pure(Paused.Ask(q,
       // THE ONE CAST here, and what makes it right: `s` can only be
@@ -436,7 +515,8 @@ object Delim {
       // those two spellings of one row (the same reason the inline
       // `shift` above casts its own result), and nothing else can
       // produce an `Asking`.
-      k.asInstanceOf[s.Ans => Paused[s.Qst, s.Ans, s.Fin, s.Row] ! s.Row])))
+      k.asInstanceOf[s.Ans => Paused[s.Qst, s.Ans, s.Fin, s.Row] ! s.Row],
+      at.where)))
 
   /** answer every question until the dialogue is done — the driver
    * for the common case where the answers are available now */
@@ -444,7 +524,7 @@ object Delim {
                            (using OneMachine[F]): R ! F =
     p match
       case Paused.Done(r) => okay.pure(r)
-      case Paused.Ask(q, resume) =>
+      case Paused.Ask(q, resume, _) =>
         answer(q).flatMap(a =>
           run(resume(a)).flatMap(drive[Q, A, R, F](_)(answer)))
 
@@ -481,7 +561,7 @@ object Delim {
   def answer[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(using OneMachine[F])
                             : (Dialogue[Q, A, R, F], Journal[A]) ! F =
     p match
-      case Paused.Ask(_, resume) => run(resume(a)).map(next => (next, j :+ a))
+      case Paused.Ask(_, resume, _) => run(resume(a)).map(next => (next, j :+ a))
       case done => okay.pure((done, j))     // nobody asked; nothing to record
 
   /**
@@ -493,7 +573,7 @@ object Delim {
                             (j: Journal[A]): Dialogue[Q, A, R, F] ! F =
     j.foldLeft(resumable[Q, A, R, F](body)): (acc, a) =>
       acc.flatMap:
-        case Paused.Ask(_, resume) => run(resume(a))
+        case Paused.Ask(_, resume, _) => run(resume(a))
         case done => okay.pure(done)        // more answers than questions
 
   /**
@@ -509,7 +589,7 @@ object Delim {
    * passing it down, or a `finally` that cannot see the answer.
    */
   inline def onReturn(using in: Prompted[?])[F[_]]
-                     (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F])
+                     (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                      (f: in.Res => in.Res): Unit ! rw.R =
     shift[Unit](using in)(k => k(()).map(f))
 
@@ -560,6 +640,17 @@ object Delim {
       case Segs.Done() => start
       case Segs.K(f, rest) => reify(rest, start.flatMap(f))
       case Segs.Mark(p, rest) => reify(rest, effect[Row, A](Push(p, start)))
+
+    /** the delimiters this machine has installed, innermost first —
+     * what `NoPrompt` prints instead of saying nothing
+     * (delim-diagnostics). It walks the same chain `split` does, and
+     * only ever runs on the failing path. */
+    def installed[A, Z](kont: Segs[F, A, Z]): List[String] =
+      @tailrec def go(k: Segs[F, ?, Z], acc: List[String]): List[String] = k match
+        case Segs.Done() => acc.reverse
+        case Segs.Mark(q, rest) => go(rest, q.label :: acc)
+        case Segs.K(_, rest) => go(rest, acc)
+      go(kont, Nil)
 
     /** cut the chain at the mark of p: the mark's prompt IS p by
      * identity, and Same's witness makes the mark's type P's */
@@ -620,7 +711,7 @@ object Delim {
                 // the 0-variants have consumed it
                 if cap.underPrompt then Right(Next(effect[Row, p](Push(cap.prompt, body)), cut.outer))
                 else Right(Next(body, cut.outer))
-              case None => throw NoPrompt()
+              case None => throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
         }
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
@@ -631,7 +722,7 @@ object Delim {
 
   /** abort to a prompt with a value: a shift that drops the
    * continuation (the 0-variant, so the delimiter goes with it) */
-  def abort[R, A, F[+_]](p: Prompt[R])(value: R): A ! (Delim + F) =
+  def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! (Delim + F) =
     shift0[R, A, F](p)(_ => okay.pure(value))
 }
 

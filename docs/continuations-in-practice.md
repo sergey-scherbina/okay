@@ -92,11 +92,27 @@ the collect's delimiter *with it*, and resuming re-installs it, so the
 emits after the answer land in the same list. Both halves are in
 `TestDelimNesting`, the wrong spelling pinned beside the right one.
 
-The type system does not catch the wrong spelling, and it is worth
-knowing why: `collect[A, Delim + F]` puts **two** `Delim` in one row,
-which rows here accept and then misroute — the inner machine claims
-the outer machine's operation by class. A second `Delim` in a row you
-are writing by hand is the signal that you want the nested form.
+The type system catches the wrong spelling where the row is concrete:
+`collect[A, Delim + F]` puts **two** `Delim` in one row, and the
+combinators that run a machine refuse that with a message naming the
+nested form. It cannot catch an ABSTRACT row — a row-polymorphic
+helper still compiles — so the failure is still reachable, and when
+it happens the error says everything it knows:
+
+```
+the capture at Booking.scala:31 named the prompt 'prompt @ Service.scala:12',
+which is not on the stack of the machine running it.
+Installed here, innermost first:
+  collecting @ Walk.scala:12
+  delimited @ Job.scala:40
+
+ONE `Delim.run` PER PROGRAM. …
+```
+
+A prompt knows what made it and where; the machine knows which
+delimiters it holds. That is the program's own structure, which is
+what a JVM stack trace cannot show you once a continuation has been
+resumed somewhere else.
 
 ## 1 · Leave early with an answer
 
@@ -172,7 +188,11 @@ val start = !.run(Delim.resumable[String, String, String, Pure](booking))
 ```
 
 `resumable` answers with a `Paused[Q, A, R, G]`: either `Ask(question,
-resume)` — and `resume` **is** the rest of the program — or `Done(value)`.
+resume, at)` — and `resume` **is** the rest of the program — or
+`Done(value)`. `asking` is the question, `where` is the line the
+`pause` was written on: a dialogue that has not moved since Tuesday
+reads as *waiting at `Booking.scala:31` on "Pay 270 for Kyiv?"*,
+which is the difference between an incident and a puzzle.
 
 **How it is usually written:** a state machine with a `step` column
 and a hand-rolled record of everything the process knew so far, which

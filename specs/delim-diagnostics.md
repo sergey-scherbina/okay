@@ -81,16 +81,20 @@ trace would in ordinary code. This is the piece that makes
 
 ## Behavior
 
-- [ ] `At.here` is a compile-time constant naming file and line
-- [ ] every `Prompt` a user makes through the named doors carries a
+- [x] `At.here` is a compile-time constant naming file and line
+- [x] every `Prompt` a user makes through the named doors carries a
       label with its position
-- [ ] `NoPrompt` names the capture's position, the prompt it wanted,
+- [x] `NoPrompt` names the capture's position, the prompt it wanted,
       the prompts that ARE installed, and the one-machine hint
-- [ ] `Paused.where` answers the position of the `pause` that made it
-- [ ] the label costs nothing measurable: `DelimBenchmark`'s
+- [x] `Paused.where` answers the position of the `pause` that made it
+- [x] the label costs nothing measurable: `DelimBenchmark`'s
       delimiter and capture lanes move less than noise
 - [ ] a dialogue's `Broken` (specs/durable-workflow.md, stage 0)
       carries the same position, so a bad deploy points at a line
+      — NOT DONE, and it belongs to that spec's stage rather than
+      this one: `Stopped` names an OFFSET, and the line that would
+      help is the program's, which needs the position to travel in
+      the journal
 
 ## Decisions
 
@@ -114,4 +118,75 @@ trace would in ordinary code. This is the piece that makes
 
 ## Results
 
-(none yet — written 2026-09-17)
+**Landed 2026-09-17** (`TestDelimDiagnostics`, 7 tests).
+
+The message, as it actually prints:
+
+```
+the capture at ShowNoPrompt.scala:8 named the prompt 'prompt @ ShowNoPrompt.scala:4',
+which is not on the stack of the machine running it.
+Installed here, innermost first:
+  scope @ ShowNoPrompt.scala:8
+  delimited @ ShowNoPrompt.scala:8
+
+ONE `Delim.run` PER PROGRAM. A machine owns one prompt stack,
+so a delimiter installed by an INNER run cannot be reached
+from the outer one, or the other way about. The combinators
+that run a machine are `delimited`, `collect`, `resumable`;
+the ones that install a delimiter on the machine already
+running are `scope`, `collecting`, `pausing`. See
+docs/continuations-in-practice.md, "The second rule: one machine".
+```
+
+**Three findings worth keeping.**
+
+- **`At` is a GIVEN, not an inline call, and that is what makes it
+  work at all.** The position wanted is the CALLER's; implicit search
+  runs at the call site, so a plain `def door(using At)` is labelled
+  by whoever called it, with no inline wrapper per door. The cost is
+  one reference to an interned literal.
+- **The library may never SUMMON one.** A macro cannot be expanded in
+  the run that defines it, so `okay`'s own main sources thread the
+  `At` their caller supplied and never search for one. `Delim` does
+  that everywhere; the constraint is written into `At`'s header,
+  because the failure it prevents is a compile error in the CORE, not
+  at a use site.
+- **The label is built ONCE, and the test caught the version that was
+  not.** The first cut smuggled the door's name through the position
+  (`scope(body)(using At(s"delimited @ ${at.where}"))`) and produced
+  `scope @ delimited @ File:41`. A private `scopeAs(what)` takes the
+  door's name beside the position, and `collectAs`/`pausingAs` sit on
+  it for the same reason.
+
+**The cost, measured as a pair** (master and the lane, same box, back
+to back, `-f 3 -prof gc`; history.tsv 2026-09-17):
+
+| | master | the lane | delta |
+|---|---|---|---|
+| `delimPushOnly` | 24.205 ± 1.286 µs | 24.470 ± 0.717 µs | inside the error |
+| `delimGenerator` | 93.190 ± 2.066 µs | 92.995 ± 3.506 µs | inside the error |
+| `plainList` (control) | 4.156 µs | 4.112 µs | 1% apart — which is what makes the pair readable |
+| bytes, `delimPushOnly` | 350 040.167 | 358 040.168 | **+8 000.001** |
+| bytes, `delimGenerator` | 934 318.507 | 942 326.983 | **+8 008.476** |
+
+The bytes are the verdict, because they are load-proof and they
+DECOMPOSE: 1000 prompts × 8 bytes on the push lane (one reference
+field), 1000 captures × 8 plus one prompt on the generator lane. No
+allocation was added — the `At` value class is scalar-replaced and no
+string is built.
+
+**And the first cut was 21% slower, which is why the label is lazy.**
+Building it in the constructor (`s"$what @ $where"`) read 23.220 →
+28.155 µs/op on `delimPushOnly`, because that lane makes a THOUSAND
+prompts per operation and a label nobody asks for is a string
+nobody needs. `def label` joins two stored references on demand.
+
+A third round was taken and DISCARDED: a `Virtualization.framework`
+VM held 125% CPU and the UNCHANGED control lanes moved 30–40%
+(`plainList` 4.13 → 5.46). An instrument that swings further than the
+effect cannot price it.
+
+**Deferred, deliberately:** `Delim.stack` as an operation (the
+delimiter stack as a value, for a log line or a trace span). Nothing
+asks for it yet, and the error path — which is what hurt — does not
+need it.

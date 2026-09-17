@@ -66,11 +66,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       from answers, cancellation, a visibility index, a worker pool
       with leases, child workflows. Named so that nobody mistakes the
       model for an engine.
-- [ ] delim-diagnostics — specs/delim-diagnostics.md: `At.here`,
-      labelled prompts, a `NoPrompt` that prints the capture's
-      position and the installed delimiter stack with the one-machine
-      hint, and `Paused.where`. The error a newcomer meets first
-      currently says nothing.
 - [ ] delim-forward-not-throw — specs/delim-safety.md stage 1, a SPIKE
       with a written verdict: a machine that meets a capture for a
       prompt it does not hold could reify its stack and re-emit the

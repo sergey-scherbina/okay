@@ -149,7 +149,7 @@ class TestDialogue extends FunSuite {
     val dc = Dialogue[Int, Int, Int, Pure](cold, "c", "sum/1")(sumUp(N))
     def loop(p: Delim.Dialogue[Int, Int, Int, Pure]): Int = p match
       case Delim.Paused.Done(r) => r
-      case Delim.Paused.Ask(q, _) => loop((!.run(dc.answer(q * 2))).now)
+      case Delim.Paused.Ask(q, _, _) => loop((!.run(dc.answer(q * 2))).now)
     assertEquals(loop(dc.place), (1 to N).sum * 2)
 
     // Both answered the same questions; only one of them re-read the

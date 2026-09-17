@@ -30,7 +30,9 @@
   stage 0 landed), specs/delim-safety.md (stage 0 landed) and
   specs/delim-diagnostics.md (not started). The order below is by
   value per day, and the reason for it is in each entry.
-  NEXT: `delim-diagnostics` — claimed.
+  NEXT: `dialogue-replay-discipline` (start with the spike).
+  `delim-diagnostics` LANDED 2026-09-17 — the machine now names the
+  capture, the prompt, the installed delimiters and the rule.
   STOPPING CRITERION, stated so the arc does not become a workflow
   engine by momentum: the work is done when an ordinary engineer can
   write a waiting process, make a NORMAL mistake in it, and get a
@@ -39,12 +41,6 @@
   a consumer who needs them.
 
 ## Queue
-- delim-diagnostics — FIRST because it is the error a newcomer meets
-  soonest and it currently says nothing. `At.here`, labelled prompts,
-  a `NoPrompt` that prints the capture's position, the installed
-  delimiter stack and the one-machine hint, and `Paused.where`. Owes
-  one number: DelimBenchmark's delimiter and capture lanes must not
-  move more than noise.
 - dialogue-replay-discipline — stage 1 of durable-workflow, and the
   biggest correctness win left: `Replayable[F]` turns the sentence
   everything rests on into a type, and `now`/`uuid`/`random`/`perform`

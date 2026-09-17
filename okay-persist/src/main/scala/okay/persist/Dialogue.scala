@@ -209,7 +209,7 @@ final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
                      : Dialogue.Answered[Q, A, R, F] ! F =
     p match
       case Delim.Paused.Done(_) => pure(Dialogue.Answered.NotAsking(p))
-      case Delim.Paused.Ask(_, _) =>
+      case Delim.Paused.Ask(_, _, _) =>
         // the durable journal is the journal, so the in-memory one
         // this hands to `Delim.answer` is empty and its copy dropped
         Delim.answer(p, List.empty[A])(a).flatMap: (next, _) =>
@@ -284,7 +284,7 @@ final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
     def go(p: Delim.Dialogue[Q, A, R, F], index: Int): R ! F = p match
       case Delim.Paused.Done(r) => pure(r)
       // the WARM path: the program is in hand, so no step replays
-      case Delim.Paused.Ask(q, _) =>
+      case Delim.Paused.Ask(q, _, _) =>
         oracle(q, Dialogue.Attempt(id, index)).flatMap: a =>
           step(p, a, index).flatMap:
             case Dialogue.Answered.Advanced(next) => go(next, index + 1)

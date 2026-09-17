@@ -1,5 +1,45 @@
 # Changelog
 
+## delim-diagnostics - the machine says where it is
+
+`NoPrompt` used to say "shift to a prompt that is not on the stack",
+which is the error a newcomer meets first and it named nothing: not
+the capture, not the prompt, not what WAS installed. A captured
+continuation has no useful JVM stack trace either - it is resumed on
+another thread, in another process, a week later - so the answer is
+not to fake one. It is to say what the machine actually knows.
+
+- **`okay.At`** - the caller's `file:line` as a compile-time constant.
+  A GIVEN rather than an inline call, because the position wanted is
+  the CALLER's and implicit search runs there: a plain
+  `def door(using At)` is labelled by whoever called it, with no
+  inline wrapper per door. One reference to an interned literal.
+- **Prompts carry a label** - "collect @ Walk.scala:12" - built once,
+  by the door that made it, out of its own name and the caller's line.
+- **`NoPrompt` prints all of it**: where the capture was written,
+  which prompt it wanted (with the line that made THAT), the
+  delimiters actually installed innermost first, and the one-machine
+  rule that explains the difference. The message is the documentation
+  for the one hazard the types do not close.
+- **`Paused.where`** - the line the `pause` was written on, so a
+  dialogue that has not moved reads as "waiting at Booking.scala:31 on
+  'Pay 270 for Kyiv?'".
+
+MEASURED, as a pair on one box (history.tsv): time inside the error on
+both Delim lanes, and the bytes decompose exactly - +8000.001 B/op on
+delimPushOnly is 1000 prompts x 8 bytes, +8008.476 on delimGenerator is
+1000 captures x 8 plus the one prompt. No allocation added. The FIRST
+cut was 21% slower (23.220 -> 28.155 us/op) because it built the label
+in the constructor and that lane makes a thousand prompts per
+operation; `def label` now joins two stored references on demand.
+
+Two constraints worth the note. A macro cannot be expanded in the run
+that defines it, so okay's own main sources never SUMMON an `At` -
+`Delim` threads the one its caller supplied, and `At`'s header says
+why. And the label is built ONCE: the first cut smuggled the door's
+name through the position and produced "scope @ delimited @ File:41",
+caught by the label test the same minute.
+
 ## dialogue-hardening - four ways a durable dialogue broke, and the row guard
 
 Probing the day-old durable dialogue found FOUR failure modes, three
