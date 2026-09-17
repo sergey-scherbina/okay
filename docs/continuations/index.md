@@ -168,7 +168,7 @@ to state and resources, is chapter 18.
 
 # Part IV · Building with them
 
-### 14. A new effect from a prompt
+### [14. A new effect from a prompt](14-a-new-effect.md) ✓
 
 **Thesis.** The library's own effects are not privileged. A generator,
 a validating cut, a cancellable scope — each is a prompt plus a
