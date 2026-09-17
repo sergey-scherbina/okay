@@ -1,5 +1,47 @@
 # Changelog
 
+## continuations-audit - one machine, many delimiters
+
+The operator asked whether the continuation story is ready to hand to
+an ordinary engineer. Reading it said yes; running it found one defect
+and a table of unanswered questions.
+
+THE DEFECT. `delimited`, `collect` and `resumable` each ran their own
+machine, and a machine owns one prompt stack - so the patterns did not
+COMPOSE. "A producer that pauses for an answer" is `resumable` around
+`collect`, which reads like ordinary code, typechecks (it merely puts
+a second `Delim` in the row, which rows misroute rather than reject)
+and throws `NoPrompt` at run time. Each pattern now has a half that
+installs a delimiter and leaves the machine alone - `scope`,
+`collecting`, `pausing` - and the outermost combinator is the only one
+that runs. `delimited = run(scope)`, so nothing that worked changed.
+Under one machine the delimiters compose the way multi-prompt
+promises: a `pause` takes the collect's delimiter with it and the
+emits after the answer land in the same list; the dialogue replays
+from its journal, producer and all. TestDelimNesting has both
+directions, the wrong spelling pinned beside the right one.
+
+THE TABLE. `TestDelimLimits` answers, by running, what a capture does
+to everything else - and three of the answers were not the expected
+ones. `Resource` survives a capture (an `exit` that drops the
+continuation still releases; a multi-shot capture holds n handles and
+releases them LIFO at the END of the program), while a cleanup line
+written by hand after the capture point does not run. `bracket` in a
+`Delim` row is a COMPILE error, so the one genuinely unsafe mix cannot
+be written. `try/finally` around a mark is refused by `direct`;
+`try/catch` compiles and catches nothing, because the catch guards the
+BUILDING of the program. `State` around a multi-shot capture is one
+timeline, not a fork. 10 000 emits, 3 000 pauses and a 3 000-answer
+replay all run.
+
+docs/continuations-in-practice.md gains the one-machine rule, that
+table, and an adoption ladder that stops where most modules should
+(step 1 of 5). Three findings went to the backlog rather than into
+this lane: the modules that hand-roll patterns that now exist
+(okay-agent's Stepper, okay-llm's Cut), the region types that would
+make the wrong nesting a compile error, and the missing early stop for
+`collect`.
+
 ## dialogue-snapshots - a step that does not replay
 
 `Dialogue`'s step was O(answers so far) because every one of them

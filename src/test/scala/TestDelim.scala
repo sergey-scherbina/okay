@@ -300,11 +300,15 @@ class TestDelim extends munit.FunSuite {
   test("Prompted: nested delimiters, the inner one in force") {
     import okay.Direct.*
     import scala.language.implicitConversions
+    // `scope`, not a second `delimited`: the nested form installs a
+    // delimiter on the machine already running, which is what lets a
+    // capture cross it (delim-nesting; TestDelimNesting has both
+    // directions, TestDelimLimits pins what the second machine does)
     val prog: Int ! okay.Pure = Delim.delimited[Int, okay.Pure]:
       direct:
-        10 + !Delim.delimited[Int, Delim + okay.Pure]:
+        10 + !Delim.scope[Int, okay.Pure]:
           direct:
-            1 + !Delim.shift[Int, Int, Delim + okay.Pure](k => k(5))
+            1 + !Delim.shift[Int, Int, okay.Pure](k => k(5))
     assertEquals(!.run(prog), 16)
   }
 }

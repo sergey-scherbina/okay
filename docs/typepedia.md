@@ -209,8 +209,12 @@ same material with the measurements attached.
   new effect. See specs/backtracking.md.
 - **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
   (delim-prompted): evidence that a delimiter is installed, made only
-  by `Delim.delimited`, so a capture through the evidence-taking
-  `shift` cannot name a prompt that is not on the stack. Inside a
+  by `Delim.delimited` (or `Delim.scope`, its nested half), so a
+  capture through the evidence-taking `shift` cannot name a prompt
+  that is not on the stack — of the machine that installed it: ONE
+  `Delim.run` per program, and the nested forms (`scope`,
+  `collecting`, `pausing`) put a delimiter on the machine already
+  running instead of starting a second one (delim-nesting). Inside a
   `direct` block it is `shift[A]` with ONE type argument
   (delim-one-type): the answer type comes from the evidence and the row
   from the block, and `A` stays because a mark gives its argument no

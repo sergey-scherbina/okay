@@ -53,6 +53,51 @@ only part of the work that is reusable.
 The four names below are what came out of applying that rule to the
 patterns people actually hit.
 
+## The second rule: one machine
+
+> **One `Delim.run` per program. The outermost pattern runs the
+> machine; everything nested inside it only installs a delimiter.**
+
+`delimited`, `collect` and `resumable` each end by running the
+machine. A machine owns one prompt stack, and a capture can only
+reach a prompt on the stack of the machine that is running it — so
+two machines is two stacks, and a capture that crosses from one into
+the other dies with `NoPrompt` at run time. It is not a rare shape:
+"a producer that pauses for an answer" is `resumable` around
+`collect`, and written with those two names it throws.
+
+Each of the three therefore has a half that does not run:
+
+| runs the machine (outermost) | installs a delimiter (nested) |
+|---|---|
+| `Delim.delimited` | `Delim.scope` |
+| `Delim.collect` | `Delim.collecting` |
+| `Delim.resumable` | `Delim.pausing` |
+
+```scala
+def half(using Delim.Asking[String, Int, List[Int], Delim + Pure]) =
+  Delim.collecting[Int, Pure]:        // nested: installs only
+    direct:
+      !Delim.emit(1)
+      val more = !Delim.pause("more?")  // crosses the collect's delimiter
+      !Delim.emit(more)
+      !Delim.emit(3)
+
+!.run(Delim.drive(!.run(Delim.resumable(half)))(_ => pure(2)))  // List(1, 2, 3)
+```
+
+Under one machine the delimiters compose the way multi-prompt
+promises: the `pause` names the dialogue's prompt, the capture takes
+the collect's delimiter *with it*, and resuming re-installs it, so the
+emits after the answer land in the same list. Both halves are in
+`TestDelimNesting`, the wrong spelling pinned beside the right one.
+
+The type system does not catch the wrong spelling, and it is worth
+knowing why: `collect[A, Delim + F]` puts **two** `Delim` in one row,
+which rows here accept and then misroute — the inner machine claims
+the outer machine's operation by class. A second `Delim` in a row you
+are writing by hand is the signal that you want the nested form.
+
 ## 1 · Leave early with an answer
 
 **The shape:** you are deep in nested loops, or inside a lambda, and
@@ -222,20 +267,38 @@ rest, then do something with what came back. Compensation in a saga,
 undo, an audit line that records what the remainder produced,
 measuring what the rest of a request cost — all the same two lines.
 
-## When a capture makes code worse
+## What a capture does to everything else
 
-- **Multi-shot and `var` do not mix.** If the continuation is invoked
-  more than once, the rest of the block runs more than once, and
-  anything mutable it touches is shared across those runs. This is a
-  documented footgun with a test, not a bug — but it is the first
-  thing to check when a captured continuation gives a surprising
-  answer.
-- **Resources under a captured `k`.** Who closes the file if `k` is
-  never invoked, or invoked twice? `bracket` and `Resource` answer
-  for their own scope; a capture that crosses that scope is on you.
+The questions everyone asks in the first week, answered by running
+rather than by reasoning — every line below is a test in
+`TestDelimLimits`, and the ones that surprised us are marked.
+
+| you write | what happens |
+|---|---|
+| `Resource.acquire`, then `exit` (k dropped) | **the release still runs.** Resource's handler is outside the machine, so it closes what was opened |
+| `Resource.acquire` under a k invoked twice | two acquires, then two releases **at the end of the program**, LIFO — n branches hold n handles at once |
+| a cleanup line written by hand after the capture point | **it does not run.** It was part of the continuation that was dropped. Cleanup goes in `Resource`, not in the block |
+| `bracket` in a row containing `Delim` | **a compile error** ("no Handler"). Bracket runs its body to completion in one suspension, which is what a capture breaks — so the unsafe mix cannot be written |
+| `try { !x } finally { … }` in a `direct` block | **a compile error**, naming the finalizer |
+| `try { !x } catch { … }` in a `direct` block | **compiles, and catches nothing.** The catch guards the BUILDING of the program; the throw happens when it is run, one stack away. Failure belongs in the row: `Throws` |
+| `raise` inside or instead of a captured `k` | reaches the handler normally; the abandoned part does not run |
+| `State` around a multi-shot capture | **the branches share one timeline** — the second `k` sees what the first one wrote. If you want a fork, the effect for it is `Choice`/`Logic`, not `State` |
+| a `var` touched by the rest of the block | same reason: the block runs once per invocation of `k`, and the `var` is shared across those runs |
+| 10 000 `emit`s, 3 000 `pause`s, replay of 3 000 answers | all fine — the machine is a loop, not the JVM stack |
+| `exit` from inside a lambda the block does not own (`xs.map { … }`) | works, with a typed answer |
+| a `pause` on either side of an async operation | works; the row is `Delim + Async`, the machine suspends for the foreign operation and resumes with the same stack |
+
+Two more costs that are not tests:
+
 - **Stack traces stop describing your code.** The machine reifies the
   continuation, so a debugger shows the interpreter's loop, not the
   call chain you wrote.
+- **A capture is not free.** Installing a delimiter costs about what
+  an ordinary operation costs; CAPTURING and re-invoking the
+  continuation measured 3.8x a purpose-built effect on the generator
+  lane (specs/delimited-control.md). That is the argument for reaching
+  for an effect first — and it is also why the price only shows up in
+  a hot loop, never in a dialogue that pauses for a human.
 - **`shift` where `flatMap` would do.** If the control flow is a
   sequence, `direct` is the whole answer. A capture for elegance is a
   cost with no matching benefit.
@@ -248,10 +311,50 @@ measuring what the rest of a request cost — all the same two lines.
 | it can fail / branch / remember | the effect: `Fail`, `Choice`, `State`, `Once` |
 | leave from the middle with an answer | `Delim.exit` (`Delim.abort` in `for`) |
 | a producer that pushes, a consumer that pulls | `Delim.collect` / `Delim.emit` |
+| ...pulled lazily, or stopped early | `Generate` / `Producer` — a `collect` has no early stop |
 | stop now, resume when the answer arrives | `Delim.resumable` / `pause` / `drive` |
 | ...and survive a restart | `Delim.answer` + `Delim.replay` over the journal |
+| ...and keep the journal in a durable log | `okay.persist.Dialogue` |
 | act on what the rest of the block answers | `Delim.onReturn` |
+| any of the above INSIDE another one | the nested half: `scope` / `collecting` / `pausing` |
 | none of the above | `Delim.shift`, and then give it a name |
+
+## Introducing it to a codebase that has none
+
+The order below is the one that keeps every step defensible to a
+reviewer who has never read a continuations paper. Nothing in it
+requires a rewrite: the doctrine for both control facilities
+(specs/delimited-control.md, "Adoption doctrine") is *additive by
+default* — a consumer who ignores the new door loses nothing.
+
+1. **Nothing.** Write `direct` over your effect row. Most code needs
+   no capture at all, and a team that has not yet felt the pain will
+   not keep a tool it did not need.
+2. **A named exit.** The first capture anyone should write is
+   `Delim.exit`, because the thing it replaces — an exception thrown
+   for control flow, or a sentinel threaded through five signatures —
+   is already in the codebase and already disliked. One `delimited`
+   at the top of a function, one `exit` in the middle.
+3. **A producer read as a list.** `collect`/`emit`, where a callback
+   API or a `ListBuffer` parameter is being threaded today.
+4. **The one that pays for the rest: a resumable process.**
+   `resumable`/`pause`, for anything that waits on a human, another
+   service, or the next request — approvals, wizards, onboarding,
+   any two-phase protocol. This is where the alternative is a
+   hand-written state machine with a `step` column, and where the
+   straight-line version is not a cleverness but a smaller thing to
+   own.
+5. **Durable, when step 4 must survive a restart**: the journal, and
+   `okay.persist.Dialogue` if it belongs in a log. Adopt the
+   discipline with it — *everything the outside world tells the
+   program enters through `pause`* — because that single rule is what
+   makes replay exact, testing mock-free, and a production journal
+   replayable on a laptop.
+
+The honest stopping point is step 1 for most modules and step 4 for
+the one or two places that have a waiting process in them. A library
+that is only ever used for step 4 has still paid for itself, because
+step 4 is where teams otherwise build a workflow engine.
 
 ---
 

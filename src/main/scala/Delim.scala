@@ -149,11 +149,38 @@ object Delim {
      * (delim-one-type) */
     type Res = R
 
-  /** install a fresh delimiter, run the body under it with the
-   * evidence in scope, and handle the machine */
-  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F)): R ! F =
+  /**
+   * INSTALL A DELIMITER, AND NOTHING ELSE (delim-nesting, 2026-09-17):
+   * a fresh prompt, the body under it with the evidence in scope, and
+   * the machine left to whoever is running it.
+   *
+   * This is the half of `delimited` that NESTS. `delimited` finishes
+   * by calling `run`, and one `run` is one machine that owns one
+   * prompt stack — so a delimiter installed by an inner `run` cannot
+   * be crossed by a capture from the outer one, and a capture from
+   * inside an inner machine to an outer prompt is a runtime
+   * `NoPrompt`. Every delimiter under ONE `run` is on one stack,
+   * which is what makes crossing a delimiter — the whole point of
+   * multi-prompt — work at all.
+   *
+   *     Delim.delimited[R, F]:          // the outermost one: runs
+   *       direct:
+   *         !Delim.scope[R2, F]:        // nested: installs only
+   *           ...
+   *
+   * The rule, in one line: the OUTERMOST combinator runs the machine
+   * (`delimited`, `collect`, `resumable`), everything under it
+   * installs only (`scope`, `collecting`, `pausing`).
+   */
+  def scope[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F)): R ! (Delim + F) =
     val p = prompt[R]
-    run(push(p)(body(using new Prompted[R](p))))
+    push(p)(body(using new Prompted[R](p)))
+
+  /** install a fresh delimiter, run the body under it with the
+   * evidence in scope, and handle the machine — the OUTERMOST form;
+   * `scope` is the one that nests */
+  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F)): R ! F =
+    run(scope(body))
 
   /** capture up to the delimiter in force — the same word as the
    * prompt-taking primitive, and the compiler picks by what you
@@ -269,7 +296,14 @@ object Delim {
    * the producer, which is why the producer never has to know.
    */
   def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F)): List[A] ! F =
-    delimited[List[A], F](
+    run(collecting(body))
+
+  /** the same collection, NESTED: it installs its delimiter and
+   * leaves the machine to the `delimited`/`resumable` around it, so a
+   * capture from inside — a `pause`, an `exit` to an outer scope —
+   * crosses it instead of dying on a prompt another machine holds */
+  def collecting[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F)): List[A] ! (Delim + F) =
+    scope[List[A], F](
       body(using new Emitting[A](summon[Prompted[List[A]]]))
         .map(_ => List.empty[A]))
 
@@ -335,7 +369,14 @@ object Delim {
    */
   def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
                                : Dialogue[Q, A, R, F] ! F =
-    delimited[Dialogue[Q, A, R, F], F](
+    run(pausing(body))
+
+  /** the same, NESTED: the dialogue's delimiter goes on the machine
+   * already running, so a `resumable` may sit inside a `delimited`
+   * and a capture may cross it */
+  def pausing[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                             : Dialogue[Q, A, R, F] ! (Delim + F) =
+    scope[Dialogue[Q, A, R, F], F](
       body(using new Asking[Q, A, R, Delim + F](summon[Prompted[Dialogue[Q, A, R, F]]]))
         .map(Paused.Done[Q, A, R, Delim + F](_)))
 

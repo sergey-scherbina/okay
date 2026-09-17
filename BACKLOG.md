@@ -45,6 +45,36 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Deferred`/`memoize` of the async libraries. Trigger: a consumer
       that shares a `!.once` across fibres; none yet (direct-once,
       2026-09-16).
+- [ ] delim-patterns-in-modules — okay-agent's `Stepper` and okay-llm's
+      `Cut` were written BEFORE the named patterns existed and each
+      hand-rolls one: Stepper has its own `Stepping` enum with
+      `Paused`/`Done` and its own `drive` (that is `Delim.Paused` and
+      `Delim.drive`), Cut its own prompt-passing exit (that is
+      `Prompted` + `exit`). Both work; both would be shorter, and the
+      Stepper would gain `replay` — a stepping run that survives the
+      process — for free. Additive per the adoption doctrine: the
+      existing entry points stay. Found by continuations-audit
+      (2026-09-17).
+- [ ] delim-region-prompts — `Prompted[R]` proves a delimiter was
+      installed, not that the machine running the capture is the one
+      holding it, so an outer evidence used inside an inner
+      `delimited` is still a runtime `NoPrompt` (pinned in
+      TestDelimLimits). `scope`/`collecting`/`pausing` make the
+      RIGHT spelling available (delim-nesting), but the wrong one is
+      still only caught at run time. Closing it is the region trick
+      `runST` uses — a rank-2 scope parameter on the evidence — and it
+      would also close the "evidence escapes its delimited" case the
+      header already names. Trigger: someone actually hitting it
+      twice; the nested form is now the documented road.
+- [ ] collect-early-stop — `Delim.collect` has no way to stop: `exit`
+      inside the body does not resolve (collect hands out `Emitting`,
+      not `Prompted`), and aborting the collect's own prompt would
+      drop the cons frames of everything already emitted, so the
+      prefix cannot be answered with. The shape that wants it is
+      `take n` over a push producer; `Generate`/`Producer` already
+      covers it by making the producer lazy, and the practice doc now
+      points there. Revisit only if a consumer wants the eager form
+      with a stop (continuations-audit, 2026-09-17).
 - [ ] handlers-fused-walk — road 1 of specs/continuations-roadmap.md:
       one walker over a whole row with a `Handlers[R]` vector, `O(ops)`
       nodes where N nested handle/relay layers re-emit `O(N · ops)`.
