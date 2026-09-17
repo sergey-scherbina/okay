@@ -111,8 +111,55 @@ in thirteen thousand sends, which is the right order for a law that
 now breaks roughly once in a few thousand rounds. (The instrumentation
 was removed before landing; these numbers are what it was for.)
 
-**THE MECHANISM, then.** The fix made `SentinelChannel.attemptSend`
-take the route per attempt instead of once per send:
+### RETRACTED, the same day: the buffer already repairs this
+
+The paragraph below proposed that the window explains the recurrence,
+and the next lane was claimed to close it. **Reading `Growing` before
+writing that fix showed the proposal was wrong, and the measurement
+above does not mean what it was taken to mean.**
+
+`Growing.pushDecidingAt` does not trust the route it is handed:
+
+    private def ours(b: Buffer[A], route: Int): Int =
+      if grown.get then b.route() else route
+
+On a grown buffer the passed route is DISCARDED and the question asked
+again on the producer's own thread — which is precisely the repair
+`growing-stale-route` added, and its comment says so: "a push that
+SUCCEEDS into part 0 never reaches the refusal path" was the hole, and
+this closed it. So the twelve crossings measured above are the
+PRECONDITION of the old bug, which the buffer then repairs; they are
+not the bug.
+
+The one way this could still leak is the reverse ordering — `inner`
+swapped while `grown` is still false, so `ours` keeps the stale 0. It
+cannot happen: `grow()` sets `grown` by CAS BEFORE it assigns `inner`,
+so a reader seeing `grown == false` is seeing a buffer that has not
+been replaced yet, and pushing into the ring is correct.
+
+**WHAT THE MEASUREMENT IS STILL WORTH**, which is why it stays: it
+rules the obvious candidate OUT. The window is entered about once in
+thirteen thousand sends, every crossing is in the direction that
+WOULD have been harmful before 2026-09-14, and none of them can reach
+the part selection now. Whatever causes the 2026-09-17 recurrence, it
+is not a stale route surviving into `pushDecidingAt`.
+
+**So the cause is unknown again**, and the entry stays reopened with
+the search narrowed rather than the bug explained. Candidates not yet
+examined: the PARKING path (`sendersAt(route)` and the resumed
+`pushDecidingAtOnBehalf`, which by design does NOT repair the route);
+and the visibility of `inner`, which is a plain `var` written after an
+atomic, so a reader may see `grown == true` with the old buffer — safe
+for routing, but not obviously safe for everything else.
+
+---
+
+*What follows is the retracted proposal, kept because a lead that was
+ruled out is worth more written down than deleted.*
+
+**THE PROPOSED MECHANISM (RETRACTED).** The fix made
+`SentinelChannel.attemptSend` take the route per attempt instead of
+once per send:
 
     val route = if granted0 then route0 else buffer.route()     // line 312
     ...
@@ -126,8 +173,8 @@ the push, 0 is the adopted part — for ONE element. Which is what the
 evidence looks like: the same shape, and roughly one sighting in three
 days where there were two in two.
 
-**THE FIX, and the parts it needs already exist.** Stop reading the
-route and then pushing: let the buffer decide the route AND push in
+**THE PROPOSED FIX (RETRACTED — the buffer already does this).** Stop
+reading the route and then pushing: let the buffer decide the route AND push in
 one call, so there is nothing in between.
 
 - `AdaptiveFifo.pushDeciding(a, unless, orElse)` already routes
