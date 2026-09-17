@@ -1,6 +1,6 @@
 package okay.conf
 
-import okay.{Validated, given}
+import okay.Validated
 import okay.codec.{Json, Schema}
 
 /**
