@@ -137,7 +137,7 @@ first and the fix second.
 *What is actually happening. For the reader who wants to build, not
 only to use.*
 
-### 10. Prompts, and why they are first class
+### [10. Prompts, and why they are first class](10-prompts.md) ✓
 
 **Thesis.** A typed, first-class prompt is what lets an inner scope
 abort ACROSS its own boundary to an outer one — the thing nested
