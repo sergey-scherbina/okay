@@ -109,7 +109,7 @@ failure at all.
 **Thesis.** A generator is a prompt and a capture. This is where
 "inversion of control" stops being a phrase and becomes four lines.
 
-### 7. Stop in the middle, carry on later
+### [7. Stop in the middle, carry on later](07-stop-in-the-middle.md) ✓
 
 **Thesis.** The pause is the shape with the largest consequences: it
 is what makes a program survive its process, and Part VI's engine is
