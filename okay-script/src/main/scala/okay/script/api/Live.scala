@@ -1,7 +1,7 @@
 package okay.script.api
 
 import okay.*
-import okay.ui.{Elem, Event, React, Ui, Wire}
+import okay.ui.{Event, Html, Ui, Wire}
 import okay.TDict
 
 /** A server-driven okay-ui app a page declares -- `Wire.serve`'s
@@ -140,53 +140,19 @@ object Live:
       case other => st.copy(value = Form.edit[A](st.value, other), message = None)
     Live(FormState(empty, Vector.empty, None))(view)(update)
 
-  /** the hidden field a plain mount's form carries, naming the mount */
-  val PlainField = "__okay_plain"
+  /** the hidden field a plain mount's form carries, naming the mount
+   * -- `okay.ui.Html.MountField`, kept under its old name so no page
+   * changes (specs/ui-html.md) */
+  val PlainField: String = Html.MountField
 
-  /** the plain road's step, PURE (script-live-plain): the fields a
-   * browser posted back from the form `plain` rendered of `view(s)`,
-   * folded into `s`. A post is a DIFF against the shown tree -- an
-   * Input, Check or Select whose posted value differs from the one
-   * shown is an `Edited`/`Toggled`/`Chosen`, an unchanged one is
-   * nothing (an unposted checkbox is `false`, as HTML has it) --
-   * then the press: `__press=<key>` is a `Pressed`, or, when `key` is
-   * a `Form`'s own, that form's edits travel inside ONE `Submitted`,
-   * the hybrid rule read backwards. Every event passes
-   * `Wire.permitted` against the shown tree first: the same
-   * capability rule as the socket's. */
+  /** the plain road's step (script-live-plain): `Html.step` over this
+   * app's own view and update -- the rule itself moved to okay-ui
+   * with the rest of the HTML host (specs/ui-html.md) */
   def step[S](app: Live[S], s: S, fields: Map[String, String]): S =
-    val shown = app.view(s)
-    val edits: Vector[Event] = Ui.focusable(shown).flatMap {
-      case Ui.Input(v, k, _, _, _) => fields.get(k).filter(_ != v).map(Event.Edited(k, _))
-      case Ui.Check(on, k, _) => Option.when(fields.contains(k) != on)(Event.Toggled(k, !on))
-      case Ui.Select(os, i, k) => fields.get(k).map(os.indexOf).filter(j => j >= 0 && j != i).map(Event.Chosen(k, _))
-      case _ => None
-    }
-    def keyed(e: Event): Option[String] = e match
-      case Event.Edited(k, _) => Some(k)
-      case Event.Toggled(k, _) => Some(k)
-      case Event.Chosen(k, _) => Some(k)
-      case _ => None
-    val forms = Ui.forms(shown)
-    val press = fields.get("__press")
-    val submitted = press.flatMap(forms.get)
-    // the edits of the form being submitted go inside its Submitted;
-    // every other edit goes on its own, before the press
-    val own: Vector[Event] = submitted.fold(edits)(fs => edits.filterNot(e => keyed(e).exists(fs)))
-    val last: Option[Event] = press.map { k =>
-      submitted.fold(Event.Pressed(k))(fs => Event.Submitted(k, edits.filter(e => keyed(e).exists(fs))))
-    }
-    (own ++ last).filter(Wire.permitted(shown, _)).foldLeft(s)(app.update)
+    Html.step(app.view, app.update)(s, fields)
 
-  /** the tree as one `<form method="post">` -- `html(named = true)`,
-   * so every field posts under its key and every keyed button as
-   * `__press`, plus the hidden field naming this mount. Complete
-   * without any script: this IS the client. */
-  def plain(id: String, ui: Ui, action: String): String =
-    val safe = escape(id)
-    s"""<form method="post" action="${escape(action)}" id="okay-live-$safe" class="okay-plain">""" +
-      s"""<input type="hidden" name="$PlainField" value="$safe">""" +
-      html(ui, named = true) + "</form>"
+  /** the tree as one `<form method="post">` -- `Html.form` */
+  def plain(id: String, ui: Ui, action: String): String = Html.form(id, ui, action)
 
   private[api] def encode[S](sc: okay.codec.Schema[S], s: S): String =
     java.util.Base64.getEncoder.encodeToString(okay.codec.Codecs.cbor(sc).encode(s))
@@ -199,59 +165,16 @@ object Live:
   /** where the container serves the patch consumer */
   val JsPath = "/__okay/live.js"
 
-  /** the tree as HTML, server-side -- the SAME structure `React.elem`
-   * builds and the browser's patch consumer navigates, so a path into
-   * one is a path into the other. A page is complete without any
-   * script: what the browser shows first is this. */
-  def html(ui: Ui): String = html(ui, named = false)
+  /** the tree as HTML, server-side -- `okay.ui.Html.render`. A page
+   * is complete without any script: what the browser shows first is
+   * this. */
+  def html(ui: Ui): String = Html.render(ui)
 
-  /** `named`: every input, check and select also carries `name=` (its
-   * key) and a keyed button posts as `__press=<key>` -- the plain
-   * `<form method="post">` road of `Forms.html` (okay-script-forms) */
-  def html(ui: Ui, named: Boolean): String =
-    val sb = new StringBuilder
-    render(React.elem(ui), sb, named)
-    sb.toString
+  /** `named`: every field carries `name=` and a keyed button posts as
+   * `__press=<key>` -- the plain `<form method="post">` road */
+  def html(ui: Ui, named: Boolean): String = Html.render(ui, named)
 
-  private def render(e: Elem, sb: StringBuilder, named: Boolean): Unit =
-    sb ++= "<" ++= e.tag: Unit
-    val key = e.props.collectFirst { case ("data-key", k) => k }
-    for (k, v) <- e.props do
-      k match
-        case "className" => attr(sb, "class", v)
-        case "checked" => if v == "true" then sb ++= " checked": Unit
-        case _ => attr(sb, k, v)
-    if named then
-      key.foreach { k =>
-        e.tag match
-          case "input" | "select" | "textarea" => attr(sb, "name", k)
-          case "button" =>
-            attr(sb, "name", "__press")
-            attr(sb, "value", k)
-          case _ => ()
-      }
-      if e.tag == "input" && e.props.exists(_ == ("type", "checkbox")) then attr(sb, "value", "on")
-    sb ++= ">": Unit
-    if e.tag != "input" && e.tag != "img" then
-      // a textarea's value is its content, not an attribute
-      if e.tag == "textarea" then e.props.collectFirst { case ("value", v) => v }.foreach(v => sb ++= escape(v): Unit)
-      e.text.foreach(t => sb ++= escape(t): Unit)
-      e.children.foreach(render(_, sb, named))
-      sb ++= "</" ++= e.tag ++= ">": Unit
-
-  private def attr(sb: StringBuilder, k: String, v: String): Unit =
-    sb ++= " " ++= k ++= "=\"" ++= escape(v) ++= "\"": Unit
-
-  def escape(s: String): String =
-    val sb = new StringBuilder
-    s.foreach {
-      case '&' => sb ++= "&amp;": Unit
-      case '<' => sb ++= "&lt;": Unit
-      case '>' => sb ++= "&gt;": Unit
-      case '"' => sb ++= "&quot;": Unit
-      case c => sb += c: Unit
-    }
-    sb.toString
+  def escape(s: String): String = Html.escape(s)
 
 /** Mounts a Live app here: its first tree as HTML (so the page is
  * whole without JavaScript), and the script that opens this page's

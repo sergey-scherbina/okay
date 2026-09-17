@@ -77,11 +77,11 @@ okay-script keeps its names as one-line delegates so no page changes:
 ## Behavior
 
 Stage 1 — the move (claim: ui-html-host, after this spec):
-- [ ] `Html.render` renders every shape to the HTML `React.elem`
+- [x] `Html.render` renders every shape to the HTML `React.elem`
       implies, escaped — TestLive's render test, moved to okay-ui's
       `TestHtml` verbatim (the JVM test tree; the object is in the
       shared source directory)
-- [ ] `Html.events` on a shown tree: unchanged fields are nothing, a
+- [x] `Html.events` on a shown tree: unchanged fields are nothing, a
       changed Input/Check/Select is one event, an unposted checkbox
       is `Toggled(false)` only when shown on, a Select posts by option
       text, a value that is no option is nothing; `__press` of a shown
@@ -90,12 +90,12 @@ Stage 1 — the move (claim: ui-html-host, after this spec):
       others plain; a `+` inside the form is a `Pressed` after plain
       edits — TestLivePlain's step tests, moved, with the recorder app
       replaced by asserting on `events` directly (no `Live` here)
-- [ ] `Html.form` is one form with the hidden mount field, every field
+- [x] `Html.form` is one form with the hidden mount field, every field
       named, the textarea too, and no `<script`
-- [ ] okay-script's `Live.html`/`plain`/`step` delegate: TestLive,
+- [x] okay-script's `Live.html`/`plain`/`step` delegate: TestLive,
       TestForms, TestLivePlain and TestLiveResume pass UNCHANGED —
       the delegates are the proof that no page notices
-- [ ] `Html` compiles on all three platforms (it is in the shared
+- [x] `Html` compiles on all three platforms (it is in the shared
       directory, `sbt okayUiJS/compile okayUiNative/compile`), and
       `okayUiJVM`'s dependency classpath carries no okay-script — the
       property okay-watch depends on, asserted by `show
@@ -139,4 +139,30 @@ stage 3):
 
 ## Results
 
-(stage 0 is this document; stages fill this in)
+Stage 1 LANDED 2026-09-17. `okay.ui.Html` is 130 lines;
+okay-script's `Live.html`/`plain`/`step`/`escape`/`PlainField` are
+five delegates, and TestLive, TestLivePlain, TestForms and
+TestLiveResume pass UNCHANGED (18 tests) — which is the whole proof
+that no page notices. `TestHtml` in okay-ui, 7 tests. `okayUiJVM`'s
+dependency classpath carries okay, okay-codec, okay-lex, okay-parse
+and okay-persist, and nothing of okay-script: measured, not assumed.
+
+Two things the move taught:
+
+- **`scala-form` IS the cross-platform directory.** The spec said
+  "the shared directory, not `scala-jvm`", meaning `src/main/scala`.
+  But `Html.events` needs `Wire.permitted` — the capability rule must
+  not be defined twice — and `Wire` lives in `src/main/scala-form`,
+  which build.sbt adds to the JVM, JS AND Native source sets alike.
+  So `Html` sits beside `Wire` there, and the property the spec
+  wanted (it compiles on all three) holds as written:
+  `okayUiJS/compile` and `okayUiNative/compile` are green.
+- **An EMPTY post is not the identity, and the mount field is what
+  makes a GET safe.** `Html.events(shown, Map.empty)` on a tree with a
+  `Check` shown ON answers `Toggled(false)`: HTML's own rule is that
+  an unposted checkbox is unchecked, and an empty map is
+  indistinguishable from a form posted with everything cleared. What
+  protects a GET is therefore `Live.post`'s guard — it steps only when
+  the post carries THIS mount's id — never the emptiness of the map.
+  A consumer rendering the tree itself (okay-watch's `/ui`, its
+  specs/ui.md) must keep that guard or a refresh will untick boxes.
