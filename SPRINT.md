@@ -30,9 +30,12 @@
   stage 0 landed), specs/delim-safety.md (stage 0 landed) and
   specs/delim-diagnostics.md (not started). The order below is by
   value per day, and the reason for it is in each entry.
-  NEXT: `dialogue-replay-discipline` (start with the spike).
-  `delim-diagnostics` LANDED 2026-09-17 — the machine now names the
-  capture, the prompt, the installed delimiters and the rule.
+  NEXT: `delim-forward-not-throw` (the spike whose verdict can cancel
+  later work), then `dialogue-nondeterminism`.
+  LANDED 2026-09-17: `delim-diagnostics` (the machine names the capture,
+  the prompt, the installed delimiters and the rule) and
+  `dialogue-replay-discipline` (the sentence replay rests on is a type;
+  the inductive encoding was refuted by a spike, subtyping works).
   STOPPING CRITERION, stated so the arc does not become a workflow
   engine by momentum: the work is done when an ordinary engineer can
   write a waiting process, make a NORMAL mistake in it, and get a
@@ -41,13 +44,10 @@
   a consumer who needs them.
 
 ## Queue
-- dialogue-replay-discipline — stage 1 of durable-workflow, and the
-  biggest correctness win left: `Replayable[F]` turns the sentence
-  everything rests on into a type, and `now`/`uuid`/`random`/`perform`
-  are what a real workflow cannot be written without. START WITH A
-  SPIKE: a typeclass over a row is exactly the shape that crashed
-  dotty in delim-safety (`Failure to join alternatives F and G`), so
-  prove it is expressible before designing an API around it.
+- dialogue-nondeterminism — what is LEFT of stage 1 after
+  `dialogue-replay-discipline` landed the constraint: a clock, ids and
+  randomness as journalled questions, and `perform`. Decide the shape
+  of the question type before writing any of it.
 - delim-forward-not-throw — a SPIKE with a written verdict, third
   rather than later because a positive verdict CANCELS work: if a
   machine can reify its stack and re-emit a foreign capture outward,

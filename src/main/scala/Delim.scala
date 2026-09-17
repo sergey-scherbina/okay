@@ -569,7 +569,8 @@ object Delim {
    * what replaces persisting a continuation. A fresh process, a
    * different machine, a redeploy: same answers in, same place out.
    */
-  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))(using OneMachine[F])
+  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                            (using OneMachine[F], Replayable[Delim + F], At)
                             (j: Journal[A]): Dialogue[Q, A, R, F] ! F =
     j.foldLeft(resumable[Q, A, R, F](body)): (acc, a) =>
       acc.flatMap:

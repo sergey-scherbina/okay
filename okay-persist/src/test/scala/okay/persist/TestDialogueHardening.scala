@@ -179,4 +179,19 @@ class TestDialogueHardening extends FunSuite {
       upcasts = Map(1 -> ((b: Array[Byte]) => Right(b))))(v1)
     assertEquals(three.journal, List("Kyiv"))
   }
+
+  // ==== the discipline, where it is relied upon =====================
+
+  test("a durable dialogue whose body reaches outside does not COMPILE") {
+    // the sentence the whole design rests on, checked at the one place
+    // that depends on it (dialogue-replay-discipline). Before this, a
+    // body that called a service between two pauses compiled, and
+    // every replay called the service again.
+    val e = compileErrors("""
+      okay.persist.Dialogue[String, String, String, okay.Async](
+        okay.persist.MemoryStore().topic("t"), "d", "p/1")(
+          okay.Direct.direct(""))""")
+    assert(e.nonEmpty, "an Async-rowed dialogue compiled")
+    assert(e.contains("PERFORM AGAIN"), s"refused for the wrong reason: $e")
+  }
 }

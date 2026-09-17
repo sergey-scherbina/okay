@@ -1,5 +1,49 @@
 # Changelog
 
+## dialogue-replay-discipline - the sentence becomes a type
+
+Replay is exact only while everything the outside world tells the
+program enters through `pause`. That sentence carried the whole
+durable-dialogue design and lived in a document; `Delim.replay` and
+`okay.persist.Dialogue` now ask for `Replayable[F]`, so a body that
+reaches outside between two pauses does not COMPILE as a durable
+dialogue.
+
+THE ENCODING TOOK A SPIKE, and the obvious form is refuted. An
+inductive instance over the row - `given union[F, G](using
+Replayable[F], Replayable[G]): Replayable[F + G]` - does not resolve:
+`F + G` is `[A] =>> F[A] | G[A]`, matching a concrete row against it
+asks the compiler to invert a union into halves, and it leaves both
+unsolved and calls every instance ambiguous for both. What works is
+subtyping with the concrete row on the LEFT - the same trick as
+`Delim.OneMachine`:
+
+    type Safe = Delim[Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+    given replayable[F[+_]](using F[Any] <:< Safe): Replayable[F]
+
+`A | B <: C | D` decomposes the left side, which the compiler does
+happily; an abstract row PROPAGATES the obligation to its caller
+rather than being searched for, which is also what keeps it out of
+the `orDominator` crash that killed the `RowLift.In` formulation.
+
+In: State, Reader, Throws, Delim. Out, each for a measured reason:
+Async and anything reaching outside (replay performs it again),
+Writer (replay tells the log again - TestDelimPersist watches it),
+Resource (replay acquires again), Uid (a fresh id per run is the
+definition of not replayable).
+
+The constraint's ONLY casualty in the whole tree was the test that
+breaks the discipline on purpose, which now says
+`Replayable.unchecked` - a method, not a given, so a deliberate breach
+appears in the diff. Nothing in production code was quietly breaking
+the rule, which is worth recording.
+
+The other half of stage 1 - `now`/`uuid`/`random` as journalled
+questions, and `perform` - is a separate lane: a dialogue's question
+type is the author's own, so "give me the clock" has nowhere to live
+in it, and choosing between a library-owned sum and a second channel
+is a decision this lane should not make in passing.
+
 ## delim-diagnostics - the machine says where it is
 
 `NoPrompt` used to say "shift to a prompt that is not on the stack",

@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.{!, +, Delim, pure}
+import okay.{!, +, Delim, Replayable, pure}
 import okay.codec.Schema
 
 /**
@@ -66,6 +66,13 @@ import okay.codec.Schema
  * and journalling its answer re-asks on restart; that is the contract
  * every workflow engine has, and the key is how a caller survives it.
  *
+ * THE DISCIPLINE IS A CONSTRAINT, not a hope
+ * (dialogue-replay-discipline): `Replayable[Delim + F]` is required
+ * here, so a body that performs an `Async` effect between two pauses
+ * does not compile as a durable dialogue. The sentence the whole
+ * design rests on — everything the outside world tells the program
+ * enters through `pause` — is now checked where it is relied upon.
+ *
  * One dialogue = one key = one partition, the convention `Saga`
  * follows.
  *
@@ -94,7 +101,7 @@ final class Dialogue[Q, A, R, F[+_]](topic: Topic, val id: String,
                                      version: Int = 1,
                                      upcasts: Map[Int, Typed.Upcast] = Map.empty)
                                     (body: Delim.Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                                    (using Schema[A]):
+                                    (using Schema[A], okay.Replayable[Delim + F]):
 
   private val typed = Typed[Dialogue.Entry[A]](topic, version, upcasts)
   private val key = id.getBytes("UTF-8")

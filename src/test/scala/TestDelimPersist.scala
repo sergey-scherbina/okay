@@ -71,6 +71,14 @@ class TestDelimPersist extends munit.FunSuite {
     s"$city/$nights"
 
   test("the limit: replay re-runs what did not come through pause") {
+    // THE ESCAPE HATCH, and this test is the reason it exists: since
+    // dialogue-replay-discipline a row with a `Writer` in it does not
+    // typecheck as replayable, because replay tells the log again —
+    // which is precisely what this test measures. Saying
+    // `Replayable.unchecked` is how a deliberate breach is written
+    // down where a reviewer sees it.
+    given Replayable[Logged] = Replayable.unchecked
+
     def go(j: List[String]) = Writer.run[String, Where, okay.Pure](
       Delim.replay[String, String, String, Log](chatty)(j))
 

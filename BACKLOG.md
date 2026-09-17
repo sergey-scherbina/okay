@@ -45,13 +45,15 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `Deferred`/`memoize` of the async libraries. Trigger: a consumer
       that shares a `!.once` across fibres; none yet (direct-once,
       2026-09-16).
-- [ ] dialogue-replay-discipline — specs/durable-workflow.md stage 1:
-      `Replayable[F]` evidence so a dialogue body that performs an
-      effect outside a `pause` does not COMPILE, plus the standard
-      non-determinism as questions (`now`, `uuid`, `random`) and
-      `perform(cmd)` for a journalled side effect. Today the
-      discipline that makes replay exact is a sentence in a doc and a
-      test that shows it being broken.
+- [ ] dialogue-nondeterminism — the other half of stage 1: a clock,
+      ids and randomness AS QUESTIONS, so a durable program may have
+      them without breaking replay, plus `perform(cmd)` for a
+      journalled side effect. THE DESIGN QUESTION FIRST, because it
+      touches every signature: a dialogue's `Q` is the author's own,
+      so either the library owns a sum (`Ask[Q] = Mine(Q) | Now |
+      Uuid | Random`, changing the journal's records too) or the
+      clock is a second channel beside the questions. The constraint
+      half LANDED 2026-09-17 (dialogue-replay-discipline).
 - [ ] dialogue-patch — stage 2: `patch(id)` (Temporal's `getVersion`),
       so a program that changed can carry its old runs to the end
       instead of stopping them. Stage 0 made the change a loud stop;

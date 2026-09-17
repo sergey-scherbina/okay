@@ -230,6 +230,15 @@ It is exact under one discipline:
 > **Everything the outside world tells the program enters through
 > `pause`.**
 
+Since `dialogue-replay-discipline` that sentence is a TYPE, not a
+hope: `Delim.replay` and `okay.persist.Dialogue` ask for
+`Replayable[F]`, and a row holding `Async`, `Writer` or `Resource`
+does not have it — so a body that calls a service between two pauses
+does not compile as a durable dialogue. Breaking it on purpose is
+still possible and has to be written down: `Replayable.unchecked`,
+which is a method rather than a given precisely so that it appears in
+the diff.
+
 Then the program is a pure function of its journal and replay cannot
 diverge from the original run. Break it — read a clock, call a
 service, roll a die anywhere but a `pause` — and replay re-runs that.

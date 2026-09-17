@@ -138,11 +138,67 @@ rolls a die between pauses replays that call — measured in
 
 ### Behavior — stage 1
 
-- [ ] a body that performs an `Async` effect outside a `pause` does
+- [x] a body that performs an `Async` effect outside a `pause` does
       not compile as a dialogue
+- [x] the row's other unsafe members are refused too: `Writer`
+      (replay tells the log again — the measured case), `Resource`
+      (replay acquires again)
+- [x] a deliberate breach is WRITTEN DOWN: `Replayable.unchecked`, a
+      method rather than a given, so it cannot be summoned by
+      accident and a reviewer sees the name
+- [x] an abstract row propagates the obligation rather than crashing
+      the compiler
 - [ ] `now`/`uuid`/`random` answer from the journal on replay, and the
       same run twice gives the same values
 - [ ] `perform` executes once per position across a restart
+
+The last two are a SEPARATE lane (`dialogue-nondeterminism`), and the
+reason is a design question this one should not answer in passing:
+a dialogue's question type `Q` is the author's own, so "give me the
+clock" has nowhere to live in it. Either `Q` becomes a sum the library
+owns (`Ask[Q] = Mine(Q) | Now | Uuid | Random`, which changes every
+signature and the journal's records), or the clock is a second channel
+beside the questions. Deciding that badly in a hurry would cost more
+than the feature is worth.
+
+### Results — stage 1 (2026-09-17)
+
+**The encoding took a spike, and the obvious form is refuted.** The
+natural spelling of "every effect in this row is safe to re-run" is an
+inductive instance over the row:
+
+```scala
+given union[F[+_], G[+_]](using Replayable[F], Replayable[G]): Replayable[F + G]
+```
+
+It does not resolve. `F + G` is `[A] =>> F[A] | G[A]`, and matching a
+CONCRETE row against it asks the compiler to invert a union into
+halves; it leaves both unsolved and then reports every instance as
+ambiguous for both ("both given instance reader and given instance
+delim match type `Replayable[F]`"). Worth knowing that it FAILS
+rather than crashes — the same territory killed dotty outright in
+delim-safety, which is why the spike came first.
+
+**What works is subtyping with the concrete row on the left** — the
+same trick as `Delim.OneMachine`:
+
+```scala
+type Safe = Delim[Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+given replayable[F[+_]](using F[Any] <:< Safe): Replayable[F]
+```
+
+`A | B <: C | D` decomposes the LEFT side, which the compiler does
+happily, and an abstract row is neither proved nor refuted but
+PROPAGATES to the caller, where the row is usually concrete.
+
+**The constraint's only casualty was the test that breaks the
+discipline on purpose.** `TestDelimPersist`'s "the limit: replay
+re-runs what did not come through pause" watches a `Writer` log say
+the same thing twice across two runs — it is the reason anybody
+believes the rule — and it now says `Replayable.unchecked` to be
+allowed to. Nothing else in the tree had to change: no production
+code was quietly breaking the discipline, which is itself worth
+recording.
 
 ## Stage 2 — the program is allowed to change
 
