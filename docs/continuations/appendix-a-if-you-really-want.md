@@ -254,6 +254,205 @@ opportunity.
 
 ---
 
+## And what about SKI combinators?
+
+The best version of the question, because bracket abstraction is the
+classical answer to exactly this: **every λ-term can be translated into
+a tree over `S`, `K` and `I` with no variables left in it**, and a tree
+of three atoms is obviously data.
+
+This library already contains the identity, in the theory chapter. The
+applicative of functions from an environment *is* the combinator basis:
+
+```scala
+pure(a)      =  _ => a                    //  K
+f.app(x)     =  e => f(e)(x(e))           //  S
+identity     =  e => e                    //  I
+```
+
+`Reader.ask` is `I`, `pure` is `K`, `app` is `S`. So the algebra is
+here. What it does not give is a way to serialise the closures already
+in the tree — for four reasons, and the last one is the one that
+decides it.
+
+### One: bracket abstraction needs a term, and a closure is not one
+
+The translation is a **source-to-source** transform. At run time a
+Scala lambda is a JVM object with an `apply` method: bytecode, with its
+free variables already captured in fields. There is no term to abstract
+over, so there is nothing to feed the algorithm.
+
+You cannot *convert* an existing closure. You would have to write the
+program in a term representation from the beginning — which means:
+
+> **SKI is not a fourth route. It is defunctionalisation, in its most
+> general form.** Instead of enumerating your program's continuation
+> shapes as tags, you enumerate *three* combinators that can express
+> every shape.
+
+Maximally general, and correspondingly the furthest from the host
+language.
+
+### Two: the primitives stay opaque, and they are most of the program
+
+`S`, `K` and `I` express pure λ-terms. A real program also contains
+integer addition, string concatenation, an effect operation
+(`Inject(fa)`), a clock read. Each becomes an extra **atom** in the
+graph, and each atom needs a name that is stable across deploys.
+
+Notice what happened to the problem rather than what solved it. The
+synthetic-name problem from the lambda-serialisation route did not go
+away; it **moved** — from `$anonfun$foo$1`, chosen by the compiler, to
+a symbol table chosen by **you**.
+
+That is a real improvement, and it is why the route is viable at all: a
+name you control can be content-addressed by its hash. **Unison does
+exactly this** — code addressed by the hash of its structure — and is
+the existence proof that a language can be built this way.
+
+### Three: the code is now pinned to the checkpoint
+
+If the term travels with the data, a deploy cannot invalidate a
+checkpoint. That is the win, and it is genuine.
+
+It is also the loss. **You can no longer fix a running workflow by
+deploying.** An old run goes on executing the old term, faithfully,
+forever. Temporal's versioning and this engine's `Sys.Patch` exist
+precisely so that a deploy *can* change what old runs do — "a branch
+that new runs take and old runs do not" (chapter 23). With code as
+data, patching becomes a **term migration**, which is strictly harder
+than a branch.
+
+So the trade does not disappear. It inverts:
+
+| | your code | your position |
+|---|---|---|
+| replay | always current | must be re-derived |
+| serialised term | frozen at capture | exact |
+
+Which of those two you want is a real question with no general answer.
+It is worth noticing that the systems people actually operate chose the
+first one.
+
+### Four: graph reduction is slow, and that is why nobody does it
+
+Turner's 1979 implementation compiled λ-terms into combinators and
+reduced the graph. It was elegant and it was slow, and essentially the
+whole history of functional-language implementation since is about not
+doing that — supercombinators, the STG machine, and everything after.
+
+Turner himself is the first data point: he added `B` and `C` for the
+cases where the argument occurs on only one side, because pure `S`/`K`
+expansion produced graphs too large to reduce. The theory chapter
+records this, and records the same move surviving in this codebase's
+emitted code.
+
+For a workflow whose step is a database round trip, interpretation
+speed is irrelevant. For anything in a loop it is fatal, and chapter
+20's numbers are the scale to measure it against.
+
+### What SKI actually proves
+
+Not that the appendix is wrong — **that its three columns are
+exhaustive.**
+
+`S`, `K` and `I` are the most general possible "enumerate the shapes",
+and they still land in that column. They do not freeze the artefact and
+they do not re-run it; they replace the code with data you can name.
+The bill is the one that whole column charges, paid in full and in
+advance:
+
+> You stop writing Scala and start writing terms of a language you
+> interpret.
+
+That is a legitimate thing to build. It is what Unison is, it is what
+every workflow DSL is, and it is what this library deliberately is not
+— because the argument of the entire book is that the program should
+be the straight-line code you already wrote.
+## The radical version: serialise the source code
+
+The end of the escalation, and it deserves a straight answer: **this
+one works.** It is not a thought experiment, and Scala 3 already emits
+the format.
+
+**TASTy is serialised source code** — the typed AST, written beside the
+classfiles — and `scala.quoted.staging` compiles an `Expr` at run time.
+The precedents are real too: Smalltalk and Lisp images, where the world
+including its source is the artefact; Erlang's hot code loading, with
+two versions of a module live at once; Unison, whose definitions are
+addressed by the hash of their tree.
+
+So the question is not whether code can be data. It is what you have
+actually bought.
+
+### The environment does not come with it
+
+A continuation is code **plus captured values**. Serialise the source
+and, on restore, you compile a fresh function — and you still have
+nothing to feed it. The values the closure captured are not addressable
+from outside it; they are, in effect, a stack frame.
+
+You can make the environment explicit, by CPS-transforming at the
+source level so that every continuation takes its environment as an
+argument. That works. It is also **defunctionalisation again**, written
+in syntax instead of in an enum.
+
+### Source alone does not determine behaviour
+
+This is the part that decides where the idea belongs. The source
+references libraries; the result depends on the compiler version. To
+make a stored program mean the same thing later you must store the
+source **plus the transitive dependency closure plus the compiler**.
+
+That is a container image.
+
+> **Serialising the source is not a fourth column. It is the first
+> one — "freeze the artefact" — taken seriously.**
+
+Which is worth stating plainly, because the two radical proposals in
+this appendix land in different columns and neither lands outside:
+
+| radical idea | where it lands |
+|---|---|
+| SKI combinators | **enumerate the shapes** — the most general form of it |
+| serialise the source | **freeze the artefact** — with its whole closure |
+
+Three columns, probed from three directions, and each probe comes back
+inside. That is the argument for the trichotomy being exhaustive rather
+than merely convenient.
+
+### Three bills, named
+
+- **Restore costs a compile.** Seconds, not microseconds. Fine for a
+  run that resumes once a day; fatal for anything else. Chapter 20 is
+  the scale to measure against.
+- **The journal becomes executable.** A compromised journal is remote
+  code execution. A journal of *answers* has a blast radius of "wrong
+  data"; a journal of *code* has a blast radius of your process. This
+  is the objection that ends the conversation in most organisations,
+  and it should be raised early rather than discovered in review.
+- **Versioning inverts**, exactly as it does for SKI: the code is
+  pinned, so a deploy cannot fix a running instance.
+
+### The question that closes it
+
+What did you gain over storing the **name** of the code — which is what
+replay does?
+
+One thing: immunity to deploys. And that same immunity is available
+from versioned workers — keep the old artefact running for old runs,
+which is ordinary operational practice and what mature engines already
+support.
+
+> **Serialising the source is per-run artefact versioning, done the
+> expensive way.**
+
+If what you want is "this run keeps its old code", the cheap version of
+that wish is a worker pool that still has the old code. If what you
+want is "this run keeps its old code *and* I never have to operate two
+versions", you are asking for the code to live in the database, and
+this section is the price list.
+
 ## So what would you actually build?
 
 If, having read all that, you still want checkpoint-without-replay,

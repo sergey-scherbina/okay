@@ -421,15 +421,31 @@ With the papers, for whoever wants them.
 **Thesis.** Chapter 22 says a paused program cannot be written down and
 chapter 23 builds an engine around not trying; readers do not accept
 this, and they are right that "cannot" is too strong. Every route that
-actually exists — the static one (an applicative's shape is an index,
-so a cursor replaces a replay), serialising the JVM lambda (Spark
-does; it dies at a deploy), defunctionalisation (complete, and it
-turns your program into a DSL), and replay (which IS
-defunctionalisation with one coarse tag) — and what each charges.
+actually exists, with its bill:
+
+- **the static one** — an applicative's shape is an index, so a cursor
+  replaces a replay; the price is the language;
+- **walking the tree** — you can, and the machine does, until the first
+  `Bind`, past which walking *is* running;
+- **serialising the JVM lambda** — Spark does it; it dies at a deploy;
+- **defunctionalisation** — complete, and it turns your program into a
+  DSL;
+- **replay** — which *is* defunctionalisation with one coarse tag, the
+  tag being the program's name;
+- **SKI combinators** — the most general possible defunctionalisation,
+  three tags instead of *n*;
+- **serialising the source** — real, and it means the source *plus its
+  dependency closure plus the compiler*, which is a container image.
+
+Also the correction that surprises people: **the opacity is not the
+continuations.** `Segs` is already a walkable list of frames; the
+closure is `Bind`'s `f`, which predates every capture in this library.
 
 The unifying claim: a position is only meaningful relative to code, so
-you either freeze the code, enumerate its shapes, or re-run it. There
-is no fourth option.
+you either freeze the code, enumerate its shapes, or re-run it. The two
+radical proposals land in the first two columns rather than outside
+them, which is what makes the trichotomy exhaustive rather than merely
+convenient.
 
 ## Reading orders
 
