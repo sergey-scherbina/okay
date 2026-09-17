@@ -199,4 +199,42 @@ class TestWorkflowGuide extends FunSuite {
     assertEquals(kids.of("b-1").map((id, _, done) => (id, done)),
       List("pay-1" -> Some("ok/ref-9")))
   }
+
+  // ---- the page's retirement block
+
+  /** a program with a branch in the MIDDLE, so a journal written
+   * before the branch has records after the point it would sit at */
+  def staged(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+    direct:
+      val city = !w.pause("city?")
+      val promo = !w.patch("promo")
+      val nights = !w.pause("nights?")
+      if promo then s"$city/$nights/promo" else s"$city/$nights"
+
+  test("the guide's retirement: three questions, three costs") {
+    val store = MemoryStore()
+    val t = store.topic("bookings")
+    val worker = Worker[String, String, String, Pure, Async](
+      t, "booking/1", Timers.over(store), _ => okay.async("Kyiv"))(booking)
+    val _ = drive(worker.start("b-1"))
+
+    // 1 · envelopes only: no body, no replay
+    val c = Retire.census[Wf.Ans[String]](t)
+    assertEquals(c.programs.keySet, Set("booking/1"))
+    assert(!c.gone("booking/1"))
+    assert(c.gone("booking/2"), "a program that never wrote here is not reported gone")
+
+    // 2 · one replay each: who is still asking
+    val states = !.run(Retire.states[Wf.Ask[String], Wf.Ans[String], String, Pure](
+      c.programs("booking/1").ids.toList)(worker.dialogue))
+    assert(states("b-1").isInstanceOf[Retire.State.Asking], s"got ${states("b-1")}")
+
+    // 3 · a replay AND the body: which branches are still live
+    val branches = !.run(Retire.patches[String, String, String, Pure](
+      List("old-1" -> List(Right("Kyiv"), Right("2")),
+           "new-1" -> List(Right("Lviv"), Left(Wf.SysA.Flag(true)), Right("3"))))(staged))
+    assertEquals(branches("promo").skipped, Set("old-1"))
+    assert(!branches("promo").oldHalfDead,
+      "the else-branch was called dead with a run still on it")
+  }
 }

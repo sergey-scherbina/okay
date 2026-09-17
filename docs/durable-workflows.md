@@ -260,6 +260,41 @@ Three things to know before using it:
   typed channel that carries the author's own types is the result. The
   spec has the refutation in full.
 
+## Deleting code with evidence
+
+A workflow outlives deploys, so before removing `booking/1` — or the
+`else` half of a `patch` — somebody has to answer "is anything still
+there". Guessing has one failure mode and it is the expensive one: a
+journal folds onto a program that no longer exists, the fold STOPS,
+and the run is stuck until the code goes back.
+
+`Retire` answers three questions that cost three different things:
+
+```scala
+val c = Retire.census[Wf.Ans[String]](topic)   // envelopes only: exact
+c.gone("booking/1")                     // nothing in this topic wrote it
+
+Retire.states(c.programs("booking/1").ids.toList)(worker.dialogue)
+                                        // one replay each: who is still ASKING
+
+Retire.patches(journals)(booking)       // a replay AND the body
+  .apply("promo").oldHalfDead           // ...nobody is on the else any more
+```
+
+**Why the branch census needs the body**, which is the one surprising
+part: a journal holds ANSWERS, and a patch's id lives in the
+QUESTION. Nothing that reads records can say which branch a
+`Flag(true)` belongs to — only running the program pairs them up
+again. That is the same fact the whole design rests on, seen from the
+other side: the fold is the program, so questions about questions are
+questions for the program.
+
+An unreadable record is NAMED rather than skipped: a census that hid
+one would be evidence for a deletion it never checked.
+
+This is an operator's tool — it scans partitions and replays runs. A
+dashboard should read `Statuses`.
+
 ## What this is NOT
 
 Say this half too. The MODEL is smaller and better than a workflow
@@ -268,6 +303,8 @@ wrote. The OPERATIONS are younger:
 
 - there is no scheduler process: `tick(now)` is a call you make from
   your own loop;
+- retirement is a tool you RUN, not a policy that runs: `Retire` tells
+  you what is still there and deletes nothing;
 - there is no lease, so two workers collide harmlessly rather than
   rarely (`expect` is what makes that safe);
 - cancellation is **cooperative** (see below), not pre-emptive;

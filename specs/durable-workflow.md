@@ -346,8 +346,11 @@ outage.
       branch, and a half-finished one going LIVE at the patch and
       finishing on the new branch with its history intact
       (wf-durable-journal, TestWorkflow)
-- [ ] retirement: a tool that says which programs are still present
+- [x] retirement: a tool that says which programs are still present
       in a topic, so a branch can be deleted with evidence
+      (workflow-retire: `Retire.census` on envelopes alone, `states`
+      by replay, and `patches` by replay WITH the body — because a
+      patch id lives in the question and a journal holds answers)
 
 ## Stage 3 — bounded history
 
@@ -446,6 +449,44 @@ rather than a rewrite.
 | `workflow-cancel` | **LANDED 2026-09-17**: `Cancels`, a compacted keyed topic of stop requests, `Wf.cancelled` as an ordinary `Sys` question, and `Runtime.cancellable` wrapping the ambient runtime per dialogue. COOPERATIVE, and not by taste — see the Result below. Compensation is ordinary code on the cancelled branch | the driver, the worker |
 | `workflow-children` | **LANDED 2026-09-17**: `Children`, a registry of finished runs' results, and the worker half that turns one into the parent's answer. The parent does NOT spawn — starting a child is an ACTIVITY, and the Result below says why that is a shape rather than a gap | the driver, the worker |
 | `dialogue-continue-as` | **LANDED 2026-09-17**: `Wf.Next`, `Entry.Continued`, `Dialogue.continueAs` and `Worker`'s `seedOf`. A continuation resets the JOURNAL and not the RECORD COUNT — see the Result below, which is the whole of why it is safe | the worker |
+
+### Result — questions about questions are questions for the program (2026-09-17)
+
+`TestRetire` (5).
+
+Three calls, because they cost three different things, and saying so
+is most of the design: `census` reads envelopes only and is exact;
+`states` costs one replay per run, because a journal does not record
+that a program FINISHED — where it stands is re-derived, which is the
+whole doctrine; `patches` costs a replay AND the body.
+
+**That last cost is the interesting one.** A journal holds ANSWERS,
+and the id of a `patch` lives in the QUESTION. So "which branch does
+this `Flag(true)` belong to" is not a fact about the journal at all,
+and no reader of records can recover it — only running the program
+pairs them up again. This is the doctrine seen from the other side:
+if the fold is the program, then questions ABOUT the questions are
+questions FOR the program.
+
+**`Wf.replay` was generalised rather than copied.** `replaying`
+returns the pairs it answered on the way and `replay` is one line over
+it, for the reason `runUntil` was generalised: the `Patch` decision —
+answer `false` and do NOT consume the entry — is subtle enough that a
+second copy would drift, and one of the two would be silently wrong
+about which runs predate a branch.
+
+**Verified by breaking it.** Dropping the un-consumed `false` from
+what `replaying` reports leaves `skipped` empty, and the test fails in
+exactly the dangerous direction: `oldHalfDead` becomes true while a
+run is still standing on the old half — evidence for deleting code
+that is still reachable.
+
+**Not done, and named rather than half-built:** `Retire` deletes
+nothing and compacts nothing. It answers; the operator acts. A
+`patch` census also cannot see a run whose journal has not yet reached
+the patch at all (it is standing live at that question, so there is no
+decision either way) — such a run appears in `states` as asking, which
+is where an operator should be looking anyway.
 
 ### Result — a child is a result to wait for, not a thing to spawn (2026-09-17)
 

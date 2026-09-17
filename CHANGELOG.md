@@ -1,5 +1,46 @@
 # Changelog
 
+## workflow-retire - questions about questions are questions for the program
+
+`Retire` is the evidence for deleting code: which programs are still
+present in a topic, which of their runs are still asking, and which
+`patch` branches anybody is still on. Three calls rather than one,
+because they cost three different things, and saying so is most of
+the design:
+
+  census  - envelopes only. No body, no replay, exact. Usually the
+            whole answer: a program with no records is gone.
+  states  - one replay per run, because a journal does not record that
+            a program FINISHED. Where it stands is re-derived, which
+            is the whole doctrine.
+  patches - a replay AND the body.
+
+THAT LAST COST IS THE INTERESTING ONE. A journal holds ANSWERS, and
+the id of a patch lives in the QUESTION. So "which branch does this
+Flag(true) belong to" is not a fact about the journal at all, and no
+reader of records can recover it -- only running the program pairs
+them up again. It is the doctrine seen from the other side: if the
+fold is the program, questions ABOUT the questions are questions FOR
+the program.
+
+Wf.replay was GENERALISED rather than copied: `replaying` reports the
+pairs it answered on the way and `replay` is one line over it, for the
+reason runUntil was generalised -- the Patch decision (answer false
+and do NOT consume the entry) is subtle enough that a second copy
+would drift, and one of the two would be silently wrong about which
+runs predate a branch.
+
+VERIFIED BY BREAKING IT: drop the un-consumed false from what
+`replaying` reports and `skipped` comes back empty, so `oldHalfDead`
+turns true while a run is still standing on the old half - evidence
+for deleting code that is still reachable. The test fails there.
+
+An unreadable record is NAMED rather than skipped: a census that hid
+one would be evidence for a deletion it never checked. And Retire
+deletes nothing and compacts nothing - it answers, the operator acts.
+
+TestRetire (5) and one in TestWorkflowGuide.
+
 ## workflow-children - a child is a result to wait for, not a thing to spawn
 
 `Children` is a registry of finished runs' results; a worker given one

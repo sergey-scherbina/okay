@@ -460,17 +460,41 @@ object Wf:
                             (j: Journal[A])
                             (using Delim.OneMachine[F], Replayable[Delim + F], At)
                             : Paused[Q, A, R, F] ! F =
-    def go(p: Paused[Q, A, R, F], left: Journal[A]): Paused[Q, A, R, F] ! F = p match
-      case Delim.Paused.Done(_) => pure(p)
+    replaying[Q, A, R, F](body)(j).map(_._1)
+
+  /**
+   * THE SAME WALK, SAYING WHAT IT ANSWERED ON THE WAY
+   * (workflow-retire, 2026-09-17).
+   *
+   * A journal holds ANSWERS, and the id of a `patch` lives in the
+   * QUESTION — so "which branch does this `Flag(true)` belong to" is
+   * not a fact about the journal at all, and nothing that reads
+   * records can recover it. Only running the program pairs them up
+   * again, which is why a retirement census replays.
+   *
+   * It is a generalisation rather than a second walk for the reason
+   * `runUntil` was: the decision about `Patch` is subtle enough that
+   * a copy of it would drift, and this way `replay` is one line over
+   * it and the two can never disagree.
+   */
+  def replaying[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
+                               (j: Journal[A])
+                               (using Delim.OneMachine[F], Replayable[Delim + F], At)
+                               : (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F =
+    def go(p: Paused[Q, A, R, F], left: Journal[A], seen: List[(Ask[Q], Ans[A])])
+          : (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = p match
+      case Delim.Paused.Done(_) => pure((p, seen.reverse))
       case Delim.Paused.Ask(q, _, _) =>
         (q, left) match
-          case (_, Nil) => pure(p)                      // caught up: it is live now
+          case (_, Nil) => pure((p, seen.reverse))      // caught up: it is live now
           case (Left(Sys.Patch(_)), (r @ Right(_)) :: _) =>
             // the journal has no decision here, and its next entry
             // answers something else: this run predates the branch
             val _ = r
-            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(Left(SysA.Flag(false)))
-              .flatMap((next, _) => go(next, left))
+            val no: Ans[A] = Left(SysA.Flag(false))
+            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(no)
+              .flatMap((next, _) => go(next, left, (q, no) :: seen))
           case (_, a :: rest) =>
-            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a).flatMap((next, _) => go(next, rest))
-    resumable[Q, A, R, F](body).flatMap(go(_, j))
+            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)
+              .flatMap((next, _) => go(next, rest, (q, a) :: seen))
+    resumable[Q, A, R, F](body).flatMap(go(_, j, Nil))
