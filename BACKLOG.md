@@ -783,8 +783,14 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       occurrence on a lane that could not have caused it.
       2026-09-16, okayActorNative, same shape, GREEN on the rerun of
       that module alone (producer-drains, which touched no Actor
-      source and no Native platform). Fourth module. The rate is now
-      four in seven days of full gates.
+      source and no Native platform). Fourth module.
+      2026-09-17, okayActorNative AND okayConfNative in ONE gate, same
+      shape, GREEN on the rerun of both alone (wf-durable-journal,
+      which touched okay-persist and okay core only). First time TWO
+      modules lost a process in the same run, which fits the settled
+      cause — the runner, under a box that was also carrying a
+      1-minute load of 12-14 when the gate started. The rate is five
+      occurrences in eight days of full gates.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
