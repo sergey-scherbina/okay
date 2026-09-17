@@ -1,5 +1,38 @@
 # Changelog
 
+## par-fail-fast - Async.par sees EITHER side fail
+
+Landed as 97d7026d; BUGS.md `par-right-failure-waits` is closed.
+`par`'s doc said "a child failure fails the pair and cancels the
+sibling", and it did so on the LEFT only: `fb`'s callback was
+registered INSIDE `fa`'s Right branch, so while the left side ran
+nobody was listening to the right one. The same failure in the two
+orders came back after 0.0007 s and 3.017 s, and the healthy sibling
+ran to completion instead of being cancelled. The answer was correct,
+only late, which is why it rode through every test for as long as it
+did.
+
+THE FIX NEEDED NO CELL. The BUGS entry had sketched "register both
+completions independently and join them in a cell"; it turns out only
+the FAILURE watch has to be independent. `fb.onComplete` now watches
+its Left from the start, and the pairing stays nested for the success
+road, where it already holds both values and needs nowhere to keep the
+first. Two facts were checked before relying on them, on all three
+platforms: a fiber takes several subscribers, and a callback
+registered on an already finished fiber fires at once.
+
+THE PIN ANNOUNCED THE FIX, which is the part worth copying. When the
+defect was found by a lane that only INHERITED `par`, it was filed
+rather than fixed, and TestPar pinned BOTH orders - the second with
+the message "par-right-failure-waits is FIXED - strengthen this
+assertion and close the BUGS.md entry". Landing this failed exactly
+that test with exactly that text. The entry is closed because a test
+said to close it, not because anyone remembered.
+
+Measured after: 0.003 s and 0.004 s in the two orders, and the
+sibling is cancelled. Docs corrected in the guide and the typepedia,
+both of which had been taught to describe the asymmetry.
+
 ## strategy-record - the positioning answer, written into the boards
 
 ROADMAP P13, specs/validated.md, three BACKLOG entries and a SPRINT
