@@ -1,5 +1,28 @@
 # Changelog
 
+## gate-stall-set-e - the watchdog's own bug, caught in production
+
+`gate-stall-watchdog` ran gate.sh in a subshell that writes a sentinel
+file when it finishes. The subshell inherits `set -e` from this
+script, and a RED gate exits non-zero - so the subshell died ON
+gate.sh and never reached the sentinel. Every red gate then sat the
+FULL ten-minute stall timeout before the loop noticed anything, which
+is the exact opposite of the bug the watchdog was written for.
+
+Caught the same afternoon, by the watchdog itself: gate-drv.log holds
+a complete RED verdict and, ten minutes later, "attempt 1 STALLED:
+nothing written for 10 min; killing by pid" - it killed a process that
+had been finished for ten minutes.
+
+`set +e` inside the subshell, and all three paths verified rather than
+assumed: a RED is reported in ten seconds with its own exit code, a
+GREEN in ten, and a genuinely silent gate is still killed by pid,
+retried, and leaves no orphans.
+
+The lesson is the one this session keeps paying for: the watchdog's
+happy path was tested, its own FAILURE path was not, and a supervisor
+is exactly the code whose failure path is the point.
+
 ## workflow-timers - durable deadlines, outside the journal
 
 When a drive returns `Waiting(Until(t))` the run is OVER: nothing is

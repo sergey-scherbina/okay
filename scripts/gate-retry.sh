@@ -185,7 +185,15 @@ while [ "$i" -le "$N" ]; do
   # not be killed, which is the test worth writing first.
   rcfile="$LOG.rc"
   rm -f "$rcfile"
-  ( cd "$WT" && bash scripts/gate.sh; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
+  # `set +e` INSIDE the subshell, and it is not decoration: this
+  # script runs under `set -e`, a subshell inherits it, and a RED gate
+  # exits non-zero -- so the first cut died ON gate.sh and never
+  # reached the sentinel. Every red gate then sat the full stall
+  # timeout before this loop noticed anything, which is the opposite
+  # of the bug the watchdog was written for. Caught in production the
+  # same afternoon: gate-drv.log has the verdict and, ten minutes
+  # later, "STALLED".
+  ( set +e; cd "$WT"; bash scripts/gate.sh; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
   gpid=$!
   stalled=0
   quietmin=0
