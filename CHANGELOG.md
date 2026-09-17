@@ -1,6 +1,53 @@
 # Changelog
 
-<<<<<<< HEAD
+## delim-patterns-in-modules - the stepper was a dialogue all along
+
+okay-agent's `Stepper` was written before `Delim` had the named
+patterns, so it carried its own `Stepping` enum - a `Paused(call,
+resume)` beside a `Done(a)` - and its own driver. That is
+`Delim.Paused` and `Delim.drive`, exactly: a stepping run is a
+dialogue whose questions are tool calls and whose answers are their
+results. `Stepping[A]` is now a type alias for
+`Delim.Dialogue[ToolCall, String, A, Rest]`, and the bespoke enum and
+driver are gone.
+
+It needed one door that did not exist. `Delim.pause` is an inline
+door for a `direct` block, and the stepper builds its pause inside a
+`translate` - a natural transformation is not a direct block. So
+`Delim.ask` is the for-comprehension spelling, and it takes NO cast
+in exchange: with the row written down, `k` already has the type
+`Ask.resume` wants (the inline one casts only because a mark gives
+its argument no expected type).
+
+AND IT CORRECTED A CLAIM OF OURS, which is the part worth reading.
+The backlog entry that asked for this rewrite said the stepper would
+gain `Delim.replay` - a session surviving the process - for free. It
+does not, and the type system is what said so: replay wants
+`Replayable[Delim + Rest]`, and `Rest` is `Context + (Model + Async)`,
+so replaying a stepping session would ASK THE MODEL AGAIN. A stepping
+run is a dialogue in shape and a live one in substance. There is a
+test pinning the refusal, and the claim is corrected where it was
+made.
+
+ONE WARNING CAME FROM THE PREVIOUS LANE, and how it got past a green
+gate is the more useful half. `TestDelimForward` had two imports it
+did not use; delim-forward-not-throw's gate said "no compile
+warnings (196 module compile(s) looked at)" and landed it. The reason
+is that this session ran `testOnly` in that worktree BEFORE gating, so
+the gate's own `sbt test` recompiled nothing in the core test module
+and re-emitted no warnings. AGENTS.md already says an incremental
+compile hides warnings in files it did not touch; what was missing is
+the consequence for how a lane is gated - a worktree somebody has
+already compiled by hand cannot be checked by the warning gate. Fixed
+here, and filed as `gate-warm-warning-blindness`.
+
+Not touched, deliberately: okay-llm's `Cut` and okay-ui's `Scope`.
+They were named in the same backlog entry, but they duplicate
+nothing - they use the primitives directly, which is what the
+primitives are for. The one change worth making there is a different
+one (their ambient door is a `Prompt`, which anyone can construct,
+where `Prompted` cannot be forged), and it changes a public signature,
+so it is its own decision rather than a tidy-up inside this lane.
 ## gate-quiet-realistic - the gate stopped waiting for a box that never comes
 
 Every gate this session waited the FULL 30 minutes and then started
@@ -37,44 +84,6 @@ watchdog: a gate that HANGS (once today, ~200 forked native runners at
 0% CPU with sbt parked waiting for a task) is still invisible to
 `gate-retry.sh`, because it only reads the log after `gate.sh`
 returns.
-=======
-## delim-patterns-in-modules - the stepper was a dialogue all along
-
-okay-agent's `Stepper` was written before `Delim` had the named
-patterns, so it carried its own `Stepping` enum - a `Paused(call,
-resume)` beside a `Done(a)` - and its own driver. That is
-`Delim.Paused` and `Delim.drive`, exactly: a stepping run is a
-dialogue whose questions are tool calls and whose answers are their
-results. `Stepping[A]` is now a type alias for
-`Delim.Dialogue[ToolCall, String, A, Rest]`, and the bespoke enum and
-driver are gone.
-
-It needed one door that did not exist. `Delim.pause` is an inline
-door for a `direct` block, and the stepper builds its pause inside a
-`translate` - a natural transformation is not a direct block. So
-`Delim.ask` is the for-comprehension spelling, and it takes NO cast
-in exchange: with the row written down, `k` already has the type
-`Ask.resume` wants (the inline one casts only because a mark gives
-its argument no expected type).
-
-AND IT CORRECTED A CLAIM OF OURS, which is the part worth reading.
-The backlog entry that asked for this rewrite said the stepper would
-gain `Delim.replay` - a session surviving the process - for free. It
-does not, and the type system is what said so: replay wants
-`Replayable[Delim + Rest]`, and `Rest` is `Context + (Model + Async)`,
-so replaying a stepping session would ASK THE MODEL AGAIN. A stepping
-run is a dialogue in shape and a live one in substance. There is a
-test pinning the refusal, and the claim is corrected where it was
-made.
-
-Not touched, deliberately: okay-llm's `Cut` and okay-ui's `Scope`.
-They were named in the same backlog entry, but they duplicate
-nothing - they use the primitives directly, which is what the
-primitives are for. The one change worth making there is a different
-one (their ambient door is a `Prompt`, which anyone can construct,
-where `Prompted` cannot be forged), and it changes a public signature,
-so it is its own decision rather than a tidy-up inside this lane.
->>>>>>> 04eaca4a (delim-patterns-in-modules: the stepper was a dialogue all along)
 
 ## delim-forward-not-throw - a nested machine that composes
 
