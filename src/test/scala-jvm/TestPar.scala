@@ -92,29 +92,25 @@ class TestPar extends munit.FunSuite {
     """) == false, "Par(p).map now resolves to Par's own map — update Par.map2's comment and the docs")
   }
 
-  test("a failing leaf fails the spine, and cancels the sibling it can") {
-    // FAIL-FAST IS INHERITED FROM Async.par, AND SO IS ITS ASYMMETRY.
-    // A left-side failure is seen at once and cancels the sibling; a
-    // RIGHT-side failure is not observed until the left finishes,
-    // because par registers the two completions in a nest. Measured
-    // and filed: BUGS.md, par-right-failure-waits. This test asserts
-    // what is true today, in both orders, so the day that entry is
-    // fixed the second half of it starts failing here and says so.
+  test("a failing leaf fails the spine at once, in either order") {
+    // FAIL-FAST IS INHERITED FROM Async.par, and it is symmetric since
+    // par-fail-fast. It was NOT: a right-side failure waited out the
+    // healthy sibling (3.017 s against 0.0007 s), and this test used
+    // to pin both orders so the fix would announce itself. It did.
     val boom = RuntimeException("boom")
     @volatile var finished = false
     def slow = async { Thread.sleep(3000); finished = true; 1 }
     def bad: Int ! Async = async(throw boom)
 
-    val t0 = System.nanoTime()
-    assertEquals(intercept[RuntimeException](Par.sequence(Seq(bad, slow)).runWith).getMessage, "boom")
-    assert((System.nanoTime() - t0) / 1e9 < 2, "the failing leaf came first: nothing should have been waited for")
-    assertEquals(finished, false)
-
-    // the other order, today's behaviour, pinned
-    val t1 = System.nanoTime()
-    assertEquals(intercept[RuntimeException](Par.sequence(Seq(slow, bad)).runWith).getMessage, "boom")
-    assert((System.nanoTime() - t1) / 1e9 >= 2,
-      "par-right-failure-waits is FIXED — strengthen this assertion and close the BUGS.md entry")
+    for (label, leaves) <- Seq("failure first" -> Seq(bad, slow),
+                               "failure second" -> Seq(slow, bad))
+    do
+      finished = false
+      val t0 = System.nanoTime()
+      assertEquals(intercept[RuntimeException](Par.sequence(leaves).runWith).getMessage, "boom", label)
+      val secs = (System.nanoTime() - t0) / 1e9
+      assert(secs < 2, s"$label: the spine waited $secs s for the healthy sibling")
+      assertEquals(finished, false, label)
   }
 
   test("an empty spine and a one-leaf spine are the program itself") {

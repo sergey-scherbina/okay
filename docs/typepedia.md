@@ -302,8 +302,9 @@ same material with the measurements attached.
   compile error in TestPar). `fmap` deliberately does NOT fork (one leaf, nothing to run
   beside it), and there is deliberately no `Monad`: a `flatMap` would
   sequence the spine while the type still claimed independence.
-  Cancellation is inherited from `Async.par`, asymmetry and all
-  (BUGS.md, `par-right-failure-waits`). Not to be confused with
+  Cancellation is inherited from `Async.par`, symmetric since
+  par-fail-fast (BUGS.md, `par-right-failure-waits` — found by this
+  carrier's own test). Not to be confused with
   `parAll`/`parTraverse` (Parallel.scala): those are JVM/Native, flat,
   one fiber per leaf, joined in order — cheaper for a flat sequence,
   and measured so (theory ch. 12).

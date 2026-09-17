@@ -431,10 +431,9 @@ per fiber on Native; the cats-effect and ZIO runtimes plug in as
 Scheduler instances from the interop modules).
 
 The combinators are cross-platform: `spawn`, `par` (pairs by
-completion callbacks; a child failure fails the pair — and cancels the
-sibling when the failure is on the LEFT: a right-side failure is not
-observed until the left finishes, measured and filed as
-`par-right-failure-waits` in BUGS.md), `race` (first SUCCESS wins and cancels both; two failures
+completion callbacks; EITHER side's failure fails the pair at once and
+cancels the sibling — it watched only the left until par-fail-fast,
+BUGS.md), `race` (first SUCCESS wins and cancels both; two failures
 fail the race instead of hanging), `timeout`, `sleep` (an Await on
 the platform `Timer` — a sleeping virtual thread, setTimeout, a
 thread), `bracket`. One shared-source Await suite runs on the JVM,

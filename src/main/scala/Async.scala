@@ -262,9 +262,30 @@ object Async {
   def spawn[A](prog: => A ! Async)(using S: Scheduler): Fiber[A] =
     S.fork(() => prog)
 
-  /** both, each on its own fiber — by completion callbacks, no
-   * parking, every platform; a child failure fails the pair and
-   * cancels the sibling */
+  /**
+   * Both, each on its own fiber — by completion callbacks, no
+   * parking, every platform. EITHER side's failure fails the pair at
+   * once and cancels the sibling.
+   *
+   * THE WORD "EITHER" IS THE FIX (par-right-failure-waits, BUGS.md).
+   * The two completions used to be registered in a NEST: `fb`'s
+   * callback was installed inside `fa`'s Right branch, so while the
+   * left side ran, nobody was listening to the right one. The answer
+   * was still correct, only late, which is why it rode through every
+   * test — measured 2026-09-17, the same failure in the two orders
+   * came back after 0.0007 s and 3.017 s, and the healthy sibling ran
+   * to completion instead of being cancelled.
+   *
+   * The failure watch is now registered on BOTH sides up front, and
+   * the pairing stays nested for the success road, where it costs
+   * nothing and needs no cell to hold the first answer. A fiber takes
+   * several subscribers on every platform (a waiter list on the JVM's
+   * DriveTask, `whenComplete` on a CompletableFuture, `subscribe` on
+   * Native's cell, a Future callback on JS), and a callback
+   * registered on an ALREADY finished fiber fires at once — both
+   * checked before relying on them. `done` keeps the first answer, so
+   * a side that fails after the other already did is ignored.
+   */
   def par[A, B](a: => A ! Async, b: => B ! Async)(using Scheduler): (A, B) ! Async =
     await: k =>
       val (fa, fb) = (spawn(a), spawn(b))
@@ -273,6 +294,11 @@ object Async {
         if !done.getAndSet(true) then
           other.cancel()
           k(Left(e))
+      // the right side's FAILURE, watched from the start rather than
+      // from whenever the left side happens to finish
+      fb.onComplete:
+        case Left(e) => fail(fa)(e)
+        case Right(_) => ()
       fa.onComplete:
         case Right(x) => fb.onComplete:
           case Right(y) => if !done.getAndSet(true) then k(Right((x, y)))
