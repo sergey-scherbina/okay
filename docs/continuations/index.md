@@ -150,7 +150,7 @@ all.
 difference is visible in three-line programs. A table nobody has to
 memorise, plus which one every recipe in Part II actually uses.
 
-### 12. One machine, one prompt stack
+### [12. One machine, one prompt stack](12-one-machine.md) ✓
 
 **Thesis.** A prompt lives in the machine that pushed it, so a second
 machine in one row is always a mistake — and here it is a COMPILE
