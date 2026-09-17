@@ -349,9 +349,11 @@ same material with the measurements attached.
   runners (`Free.defer`, so no host stack at any depth) and makes the
   approximation good at run time (a `Select` performs at most one
   side), **`foldMap`** interprets the spine into any other
-  `Selective` — the batching door: N leaves, one round trip. `foldMap`
-  is the one recursive walk here: measured 5 000 leaves fold, 10 000
-  overflow (BACKLOG, `static-foldmap-stack-safe`).
+  `Selective` — the batching door: N leaves, one round trip. All three
+  are stack-safe: `foldMap` walks a TYPE-ALIGNED `Args` in two
+  tail-recursive loops, which is the reassembly other libraries do
+  with an internal cast, done without one (50 000 leaves fold; it
+  overflowed at 10 000 until static-foldmap-stack-safe).
 
 ## Streams and consumption
 

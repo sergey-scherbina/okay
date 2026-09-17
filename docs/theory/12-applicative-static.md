@@ -397,15 +397,26 @@ use them: `okay-parse` is an instruction language over a total builder
 (chapter 7's neighbourhood), so the pressure that motivates them is
 absent.
 
-And `foldMap` is the one door of the free selective that recurses on
-the host stack, because the carrier's values must be combined on the
-way back up and each level's intermediate type is gone by then. The
-bound is measured — five thousand leaves fold, ten thousand overflow,
-while `leaves` walks fifty thousand and `toFree` has no bound at all —
-and it is filed rather than papered over (BACKLOG, `static-foldmap-
-stack-safe`). A stack-safe version needs the existential reassembly
-that other libraries do with internal casts, and in this house a cast
-has to be earned.
+And `foldMap` used to be the one door of the free selective that
+recursed on the host stack, because the carrier's values must be
+combined on the way back up and each level's intermediate type is gone
+by then. That is the reassembly other libraries perform with an
+internal cast. It can be done without one: a type-aligned list of
+what is left to apply carries the alignment in its own constructors,
+so `Done` exists only where the answer type is already reached and
+consing an argument of type `X` onto a list that finishes an `R`
+yields a list that finishes an `X => R`. Matching refines the types
+and the walk back up is ordinary code.
+
+The first attempt at it still overflowed at exactly the old depth, and
+the reason is worth the sentence: walking down an application's
+function side is the obvious axis and the wrong one, because
+`traverse`'s fold builds `Ap(Ap(Pure(g), acc), leaf)` and two steps
+down reach the pure function, leaving the deep accumulator to be
+folded as an ARGUMENT. `Ap(Pure(g), a)` is not an application to walk
+past; it is "fold `a`, then map by `g`" — sound exactly because a
+`Pure` performs nothing, so running `a` first reorders no effects.
+Fifty thousand leaves fold now.
 
 ## References
 

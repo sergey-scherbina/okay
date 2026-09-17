@@ -441,6 +441,45 @@ three rounds on one box (load 3–6.6):
   alternative is not `parAll` but running sequentially (0.345 µs/op
   buys you nothing when the leaves are real work).
 
+### static-foldmap-stack-safe — landed 2026-09-18, and the cast was not needed
+
+`foldMap` was the one door of the free selective that recursed on the
+host stack. The BACKLOG entry predicted it "needs the existential
+reassembly cats does with internal casts, which the no-casts rule says
+must be earned". **It does not.**
+
+`Args[F, T, C]` is a TYPE-ALIGNED list of what is left to apply, and
+its constructors carry the alignment: `Done` exists only at
+`Args[F, C, C]`, and consing an argument of type `X` onto an
+`Args[F, R, C]` yields an `Args[F, X => R, C]`. Matching refines the
+types, so coming back up is ordinary typed code — two tail-recursive
+loops, no cast.
+
+**THE FIRST VERSION STILL OVERFLOWED, at exactly the old depth, and
+the reason is the useful part.** Walking down an `Ap`'s FIRST
+component is the obvious axis and it is the wrong one: `traverse`'s
+`foldLeft` builds `Ap(Ap(Pure(g), acc), leaf)`, so two steps down
+reach `Pure(g)` and the whole accumulator — the deep thing — is pushed
+as an ARGUMENT, folded by an ordinary recursive call. The stack came
+back by another road and a 50 000-leaf test said so, rather than a
+guess.
+
+The answer is a third `Args` case: `Ap(Pure(g), a)` is not an
+application to walk past, it is "fold `a`, then map by `g`". Carrying
+the pure function lets the walk continue INTO the accumulator. It is
+sound precisely because the first component is `Pure` and performs
+nothing, so running `a` first reorders no effects.
+
+Two `@unchecked` type tests remain, and they are the same claim
+`Free.resume`'s forty-two callers make: the enum has three cases, the
+CLASS test is total, and the type arguments are the ones the
+constructors guaranteed. The ascription is needed rather than a
+constructor pattern because `x` and `r` must be NAMED — the match
+refines `T` to `x => r` but `g` is still written `G[T]`, and the
+Applicative's `app` cannot find its `F[A => B]` shape through the
+alias. A helper method taking the pieces would have worked and would
+have cost the `@tailrec`, which is the whole point.
+
 ### Stage 3 — `direct` runs independent binds at once, landed 2026-09-17
 
 **BOTH PREDICTIONS ANSWERED, one confirmed and one measured the wrong
@@ -502,10 +541,11 @@ forks, and filed as BACKLOG `direct-parallel-wider-rows`.
 - **Stack, measured 2026-09-17 on a traverse-built spine, default JVM
   stack**: `leaves` (explicit stack) returns at 50 000; the same walk
   written recursively returns at 10 000 and overflows at 50 000;
-  `toFree` (Free.defer) has no bound found; `foldMap` folds 5 000 and
-  overflows at 10 000. The last one is the one door that recurses and
-  it is filed, not hidden: BACKLOG `static-foldmap-stack-safe`, with
-  the reason a loop needs casts this house makes you earn.
+  `toFree` (Free.defer) has no bound found; `foldMap` folded 5 000 and
+  overflowed at 10 000. **`foldMap` IS STACK-SAFE SINCE
+  static-foldmap-stack-safe (2026-09-18)** — 50 000 leaves fold, and
+  the cast this entry expected to need was not needed. See that
+  lane's Results below.
 - `F[Any]`, not `F[?]`, in `leaves`: a wildcard application of a
   higher-kinded parameter is unreducible (E043, the wall
   specs/schema-fold.md hit), and covariance makes `F[X] <: F[Any]` an

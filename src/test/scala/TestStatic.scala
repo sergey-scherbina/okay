@@ -128,6 +128,28 @@ class TestStatic extends munit.FunSuite {
     assertEquals(spine.toFree.runWith(using handler(st, true, collection.mutable.Buffer.empty)).length, n)
   }
 
+  test("foldMap is stack-safe too — 50 000 leaves, the depth that used to overflow") {
+    // static-foldmap-stack-safe: foldMap recursed on the host stack
+    // and overflowed between 5 000 and 10 000 leaves. The walk is two
+    // loops over a type-aligned Args now, so the spine costs no stack
+    // at all. 50 000 is the depth at which the RECURSIVE version of
+    // `leaves` died, measured when this limit was first written down.
+    val n = 50000
+    val spine = traverse(1 to n)(i => get(s"k$i"))
+    final case class Count[X](n: Int, x: X)
+    given Selective[Count] with
+      def pure[X](x: X): Count[X] = Count(0, x)
+      extension [X, Y](f: Count[X => Y])
+        def app(a: Count[X]): Count[Y] = Count(f.n + a.n, f.x(a.x))
+      extension [X, Y](e: Count[Either[X, Y]])
+        def select(f: Count[X => Y]): Count[Y] =
+          Count(e.n + f.n, e.x.fold(f.x, identity))
+    val nt: Fetch ==> Count = [X] => (op: Fetch[X]) => op match
+      case Get(k) => Count(1, 0)
+      case Flag(_) => Count(1, true)
+    assertEquals(spine.foldMap(nt).n, n)
+  }
+
   test("leaves and toFree are stack-safe on a spine traverse built") {
     val n = 10000
     val spine = traverse(1 to n)(i => get(s"k$i"))
