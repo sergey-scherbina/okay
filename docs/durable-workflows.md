@@ -135,7 +135,18 @@ Two things happen, and both are deliberate.
 - **The program's NAME is stamped on every record.** A journal written
   by `booking/1` and read by `booking/2` STOPS the fold and names both
   — an outage rather than a silent mis-mapping, which is the failure
-  that corrupts instead of stopping.
+  that corrupts instead of stopping. And it points at code:
+  `Progress.Broken` carries a diagnosis that reads
+
+  ```
+  Mismatch(0,booking/2,booking/1) after 1 answer(s);
+  this program is at Booking.scala:31 asking nights?
+  ```
+
+  Nothing travels in the journal to make that possible — the reader
+  replays the part it DID accept and reports where its own program is
+  standing, which is the line that matters, because the deploy that
+  cannot fold is the reader's.
 - **`patch(id)` is how a program changes without a new name.** A run
   whose journal has no decision for that id, and which is still
   replaying, answers `false` and does NOT consume the next answer; a

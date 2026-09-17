@@ -111,7 +111,8 @@ class TestWorkflowGuide extends FunSuite {
     val w2 = Worker[String, String, String, Pure, Async](
       t, "booking/2", Timers.over(store), _ => okay.async("Lviv"))(booking)
     drive(w2.advance("b-1")) match
-      case Worker.Progress.Broken(Dialogue.Stopped.Mismatch(_, found, expected)) =>
+      case Worker.Progress.Broken(
+        Dialogue.Diagnosis(Dialogue.Stopped.Mismatch(_, found, expected), _, _, _)) =>
         assertEquals(found, "booking/1")
         assertEquals(expected, "booking/2")
       case other => fail(s"a foreign journal was folded anyway: $other")

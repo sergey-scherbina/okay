@@ -1,5 +1,39 @@
 # Changelog
 
+## delim-diagnostics-position - a stopped fold points at code
+
+`Stopped` named an OFFSET, which says where in the log the trouble is
+and nothing about the program. `Dialogue.diagnosis` adds the line, and
+Worker.Progress.Broken now carries it:
+
+    Mismatch(0,booking/2,booking/1) after 1 answer(s);
+    this program is at Booking.scala:31 asking nights?
+
+THE SPEC'S OWN ASSUMPTION WAS WRONG, and that is the result. The box
+said this "needs the position to travel in the journal" -- a new
+field, a version bump, and an upcast for every journal ever written.
+It does not. The READER holds the body, so replaying the prefix it DID
+accept puts its own program at the question the bad record was meant
+to answer, and At has been on every pause since delim-diagnostics. One
+fold, no format change.
+
+AND IT IS THE MORE USEFUL LINE. Carrying the WRITER's position would
+name the deploy that already went out and worked; the line that helps
+is the one in the program that cannot fold this journal -- the reader,
+who is the one reading the message.
+
+Two things the tests had to be taught. Staging a foreign record needs
+a raw append, because a Dialogue for book/2 REFUSES to append once it
+folds a book/1 record -- two Dialogue objects cannot produce a mixed
+journal between them, which is itself worth knowing. And the assertion
+does NOT hardcode a line number: it asserts that the line TRACKS THE
+POSITION, by checking a run standing at the first question names a
+different line from one standing at the second. A hardcoded number
+would have rotted on the next edit above it -- it already did once,
+between writing the test and running it.
+
+TestDiagnosis (4). The last open box in the continuations arc.
+
 ## dialogue-resume-cache - the last cost, paid down
 
 Where a run stands is re-derived by running it over its answers, so a

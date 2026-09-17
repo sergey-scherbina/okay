@@ -208,6 +208,38 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
       case None => place(r.answers).map(Right(_))
 
   /**
+   * WHY THE FOLD STOPPED, POINTING AT A LINE (delim-diagnostics-
+   * position, 2026-09-17).
+   *
+   * `Stopped` names an OFFSET, which says where in the log the
+   * trouble is and nothing about the code. What an operator woken at
+   * three in the morning needs is a LINE.
+   *
+   * ── THE POSITION DOES NOT TRAVEL IN THE JOURNAL, and the spec
+   * assumed it would have to. It does not, because the READER holds
+   * the body: replaying the accepted prefix puts this program at the
+   * question the bad record was supposed to answer, and `At` has been
+   * on every `pause` since delim-diagnostics. So this costs one fold
+   * and no format change — no new field, no version bump, no upcast
+   * for every journal ever written.
+   *
+   * ── AND IT IS THE MORE USEFUL LINE ANYWAY. Carrying the WRITER's
+   * position would name the code that wrote the record, which is the
+   * deploy that already went out and worked. The line that helps is
+   * the one in the program that CANNOT fold this journal — the reader
+   * is the broken one, and the reader is who is reading this.
+   *
+   * `None` when nothing stopped. The question is rendered with
+   * `toString`, the same way `Statuses` renders it.
+   */
+  def diagnosis: Option[Dialogue.Diagnosis] ! F =
+    val r = recovered
+    r.stopped match
+      case None => pure(None)
+      case Some(why) => place(r.answers).map: p =>
+        Some(Dialogue.Diagnosis(why, r.answers.size, p.asking.map(_.toString), p.where))
+
+  /**
    * WHERE IT STANDS AND HOW MANY RECORDS PUT IT THERE, in ONE fold
    * (dialogue-resume-cache, 2026-09-17). `at` answers the first half
    * and `recovered.accepted` the second, and a caller that wants both
@@ -592,6 +624,21 @@ object Dialogue:
      * old answers onto new questions silently, which is the one
      * failure that corrupts rather than stops. */
     case Mismatch(offset: Long, found: String, expected: String)
+
+  /**
+   * A STOPPED FOLD, WITH THE READER'S OWN POSITION IN IT
+   * (delim-diagnostics-position, 2026-09-17). `why` and `offset` come
+   * from the log; `asking` and `where` come from running this
+   * program over the part of the journal it DID accept, so the line
+   * named is the line in the code that cannot read the rest.
+   */
+  final case class Diagnosis(why: Stopped, accepted: Int,
+                             asking: Option[String], where: Option[String]):
+    /** one line for a log or a page */
+    override def toString: String =
+      val place = where.getOrElse("an unknown position")
+      val q = asking.map(a => s" asking $a").getOrElse("")
+      s"$why after $accepted answer(s); this program is at $place$q"
 
   /** a record whose writer expected to be at another position: it
    * lost a race and the fold ignores it */

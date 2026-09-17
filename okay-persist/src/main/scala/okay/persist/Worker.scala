@@ -186,6 +186,20 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
       : Either[Dialogue.Stopped, Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F]] ! G =
     dialogue(id).at.up[G]
 
+  /**
+   * A STOP, WITH A LINE IN IT (delim-diagnostics-position,
+   * 2026-09-17). `Stopped` names an offset; `diagnosis` replays the
+   * part of the journal this program DID accept and adds where this
+   * program stands, so a bad deploy points at code. It costs a second
+   * fold, on the one path where nothing else is going to happen
+   * anyway.
+   */
+  private def broken(d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F],
+                     stopped: Dialogue.Stopped): Worker.Progress[R] ! G =
+    d.diagnosis.up[G].map: found =>
+      Worker.Progress.Broken(
+        found.getOrElse(Dialogue.Diagnosis(stopped, 0, None, None)))
+
   private def step(id: String): Worker.Progress[R] ! G =
     resume.flatMap(_.get(id)) match
       // A CACHE HIT SKIPS THE LOOK (dialogue-resume-cache): the
@@ -208,7 +222,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
         // needed them anyway.
         val d = dialogue(id)
         d.standing.up[G].flatMap:
-          case Left(stopped) => pure(Worker.Progress.Broken(stopped))
+          case Left(stopped) => broken(d, stopped)
           case Right((p, at)) => driving(id, 0, Resume.Held(d, p, at))
 
   private def driving(id: String, chapters: Int,
@@ -241,7 +255,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
           if chapters + 1 >= continuations then
             pure(Worker.Progress.Continued(chapters + 1))
           else d.standing.up[G].flatMap:
-            case Left(stopped) => pure(Worker.Progress.Broken(stopped))
+            case Left(stopped) => broken(d, stopped)
             case Right((p, at)) => driving(id, chapters + 1, Resume.Held(d, p, at))
       case (Left(wait), p, at) =>
         // KEEP IT: this is where the cache earns its name. The program
@@ -304,7 +318,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     at(id).flatMap:
       case Left(stopped) =>
         timers.disarm(id)
-        pure(Worker.Progress.Broken(stopped))
+        broken(d, stopped)
       case Right(p) => p.asking match
         case Some(Left(Wf.Sys.Timer(t))) if t <= nowMillis =>
           d.answer(Left(Wf.SysA.Elapsed)).up[G].flatMap(_ => advance(id))
@@ -349,7 +363,8 @@ object Worker:
     case Progress.Waiting(okay.Wf.Wait.Until(t)) => Statuses.State.Sleeping(t)
     case Progress.Continued(n) => Statuses.State.Waiting(s"continuing:$n")
     case Progress.Busy(who) => Statuses.State.Waiting(s"busy:$who")
-    case Progress.Broken(why) => Statuses.State.Broken(why.toString)
+    // the status line now names a LINE, not just an offset
+    case Progress.Broken(d) => Statuses.State.Broken(d.toString)
 
   /** what a worker learned about one run */
   enum Progress[+R]:
@@ -364,4 +379,7 @@ object Worker:
      * nothing. ADVISORY: it is a reason to come back later, never a
      * guarantee that the other worker is actually running. */
     case Busy(owner: String) extends Progress[Nothing]
-    case Broken(why: Dialogue.Stopped) extends Progress[Nothing]
+    /** the journal could not be folded, and `why` says where in the
+     * CODE this program stands as well as where in the log the
+     * trouble is */
+    case Broken(why: Dialogue.Diagnosis) extends Progress[Nothing]

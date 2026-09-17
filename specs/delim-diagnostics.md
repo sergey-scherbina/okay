@@ -89,12 +89,19 @@ trace would in ordinary code. This is the piece that makes
 - [x] `Paused.where` answers the position of the `pause` that made it
 - [x] the label costs nothing measurable: `DelimBenchmark`'s
       delimiter and capture lanes move less than noise
-- [ ] a dialogue's `Broken` (specs/durable-workflow.md, stage 0)
-      carries the same position, so a bad deploy points at a line
-      — NOT DONE, and it belongs to that spec's stage rather than
-      this one: `Stopped` names an OFFSET, and the line that would
-      help is the program's, which needs the position to travel in
-      the journal
+- [x] a dialogue's `Broken` carries the same position, so a bad
+      deploy points at a line (delim-diagnostics-position,
+      2026-09-17). THE ASSUMPTION IN THIS BOX WAS WRONG and that is
+      the result: the position does NOT need to travel in the
+      journal. The READER holds the body, so replaying the prefix it
+      DID accept puts its own program at the question the bad record
+      was meant to answer, and `At` has been on every `pause` since
+      this spec's stage 0. `Dialogue.diagnosis` is one fold and no
+      format change — no field, no version bump, no upcast for every
+      journal ever written. It is also the more useful line: carrying
+      the WRITER's position would name the deploy that already went
+      out and worked, where the one that helps is the program that
+      cannot fold this journal — the reader, who is the one reading
 
 ## Decisions
 
