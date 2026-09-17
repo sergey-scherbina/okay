@@ -217,6 +217,24 @@ force, all already practiced, none previously written down:
   lock; a `ps`/`ls` would have shown it in a second. If you think
   "X is probably the reason", run the one command that would show
   X, and only then believe it (operator directive, 2026-09-02).
+- **AN OBLIGATION OVER A ROW IS CARRIED, NEVER SEARCHED FOR AT AN
+  ABSTRACT ROW** (row-membership-crash, 2026-09-17). `RowLift.In`'s
+  inductive given asks the compiler to solve `?G + ?H` for its target,
+  and when the target is an abstract type constructor dotty 3.9 does
+  not fail — it CRASHES: `java.lang.AssertionError: Failure to join
+  alternatives F and G`, in `TypeOps.orDominator`. It has decided
+  three designs here in one day (delim-safety's guard, `Replayable`'s
+  encoding, the workflow driver's row), so it is written down once:
+  - take the witness as a PARAMETER and pass it along, the way
+    `Delim.answer`/`replay`/`drive` take their `OneMachine`. A
+    parameter is never searched for.
+  - where a witness must be summoned, use SUBTYPING rather than
+    membership: `RowLift.Sub[F, G]` (`F[Any] <:< G[Any]`), or
+    `NotGiven[X[Any] <:< F[Any]]` for the negative. A union on the
+    right of a `<:<` needs no join, so it resolves on a concrete row
+    and fails cleanly on an abstract one.
+  - `src/test/scala/ProbeRowCrash.scala` pins the reproducer, so a
+    future Scala can be re-tested by uncommenting two lines.
 - A DISCARDED PROGRAM is a compile ERROR (build.sbt, -Wconf): an
   `A ! F` value in statement position, as a Unit def's body, or
   eta-expanded into a Unit function builds a program and drops it —

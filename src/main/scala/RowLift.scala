@@ -48,6 +48,33 @@ object RowLift:
   type Has[F[+_]] = [R[+_]] =>> In[F, R]
 
   /**
+   * MEMBERSHIP AS SUBTYPING, for the places `In` cannot go
+   * (row-membership-crash, 2026-09-17).
+   *
+   * `In`'s inductive given asks the compiler to solve `?G + ?H` for
+   * the target, and when the target is an ABSTRACT row dotty 3.9 does
+   * not fail — it CRASHES, in `orDominator`, with "Failure to join
+   * alternatives F and G". That crash has decided three designs in
+   * this repository (delim-safety's guard, `Replayable`'s encoding,
+   * and the workflow driver's row), and `ProbeRowCrash` keeps it
+   * pinned so a future Scala can be re-tested against it.
+   *
+   * `Sub` is the shape that does not crash: a union on the RIGHT of a
+   * `<:<` needs no join, so a concrete row resolves and an abstract
+   * one simply FAILS — which is what an implicit should do. It also
+   * says the useful thing about `Pure`: `Nothing <:< anything`, so a
+   * program with no operations rides into any row at all.
+   *
+   * WHAT IT IS NOT, and the difference is the whole of its honesty:
+   * true membership is `∀X. F[X] <: G[X]`, and this tests it at `Any`
+   * only. For the rows this library builds — unions of effect
+   * signatures applied pointwise — the two coincide, and the cast it
+   * licenses is exactly the one `In` licenses. It is an
+   * approximation, said out loud rather than hidden behind a name.
+   */
+  type Sub[F[+_], G[+_]] = F[Any] <:< G[Any]
+
+  /**
    * THE ONLY CAST. Sound by the erasure argument above; each caller
    * supplies the side condition — `at` by a witness, `plus` by
    * construction.
@@ -102,6 +129,11 @@ object RowLift:
   extension [A, F[+_]](p: A ! F)
     /** land in row R, which must CONTAIN this program's row */
     inline def at[R[+_]](using In[F, R]): A ! R = coerce(p)
+
+    /** the same widening, licensed by `Sub` instead of `In` — for a
+     * TARGET ROW THAT IS ABSTRACT, where `In` crashes the compiler
+     * rather than resolving (row-membership-crash) */
+    inline def up[R[+_]](using Sub[F, R]): A ! R = coerce(p)
 
     /**
      * add R to whatever row this program already has: `A ! F` becomes

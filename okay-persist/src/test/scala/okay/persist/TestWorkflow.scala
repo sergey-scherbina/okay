@@ -163,4 +163,18 @@ class TestWorkflow extends FunSuite {
           "the second process moved the deadline")
       case other => fail(s"expected the same wait, got $other")
   }
+
+  test("a worker with NO activity row at all — the wart the complement form had") {
+    // `Worker[..., Pure, Pure]`: the driver's row IS the program's.
+    // Under the earlier `F + E` spelling this could not even be run —
+    // `Pure + Pure` is `[X] =>> Nothing | Nothing`, which is not
+    // `Nothing` — and under `Sub` it is ordinary, because
+    // `Nothing <:< anything` (row-membership-crash).
+    val store = MemoryStore()
+    val w = Worker[String, String, String, Pure, Pure](
+      store.topic("bare"), "nap/1", Timers.over(store),
+      _ => okay.pure("ada"))(overnight)
+    assertEquals(!.run(w.start("n-1")),
+      Worker.Progress.Sleeping(1_700_000_000_000L + 86_400_000L))
+  }
 }

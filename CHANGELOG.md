@@ -1,5 +1,44 @@
 # Changelog
 
+## row-membership-crash - the compiler bug that decided three designs, pinned
+
+`RowLift.In`'s inductive given asks the compiler to solve `?G + ?H`
+for its target. When the target is an ABSTRACT type constructor, dotty
+3.9 does not fail - it CRASHES, `AssertionError: Failure to join
+alternatives F and G`, in `TypeOps.orDominator`.
+
+In ONE DAY it decided three designs here: delim-safety's second-machine
+guard is `NotGiven[Delim[Any] <:< F[Any]]` rather than
+`NotGiven[In[Delim, F]]`; `Replayable` is a subtyping test after the
+inductive form was refuted; and the workflow driver's row was written
+as a complement because `In[F, G]` would not compile. Three
+workarounds, no record - until now.
+
+- `ProbeRowCrash` pins the reproducer, compiling, with the crashing
+  line commented and an instruction to uncomment it on the next Scala
+  upgrade. A compiler bug that costs a design decision should be
+  re-tested, not remembered.
+- AGENTS.md states the rule once, where build facts that bite live: an
+  obligation over a row is CARRIED as a parameter, never searched for
+  at an abstract row; and where a witness must be summoned, use
+  subtyping.
+- `RowLift.Sub[F, G]` (`F[Any] <:< G[Any]`) and `p.up[R]` are the
+  shape that does not crash, beside the existing `In`/`at` for
+  concrete rows.
+
+AND IT PAID FOR ITSELF IMMEDIATELY. The workflow driver moved from
+`F + E` to one row `G` with `Sub[F, G]`, which removed the wart that
+form carried: `Pure + Pure` is `[X] =>> Nothing | Nothing`, so a
+worker with NO activity row could not be run at all. Under `Sub` it is
+ordinary, because `Nothing <:< anything` - and the test that could not
+be written before now exists.
+
+WHAT `Sub` IS NOT, said in its own doc rather than discovered later:
+true membership is forall X, `F[X] <: G[X]`, and this tests it at
+`Any`. For rows built pointwise from effect signatures the two
+coincide, and the cast is the one `In` already licenses. An
+approximation, named as one.
+
 ## workflow-activity-row - the driver's row is not the program's
 
 Found while wiring retries, and fixed before them because everything
