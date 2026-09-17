@@ -1,6 +1,0 @@
-feature/dialogue-replay-discipline 2026-09-17T08:45:08Z
-agent: claude-code
-heartbeat: 2026-09-17T08:45:08Z
-status: in-progress
-done-so-far: spike written (Replayable over a union row), not yet compiled
-next: run the spike; if the compiler holds, put Replayable in main and constrain replay/Dialogue
