@@ -1,5 +1,25 @@
 # Changelog
 
+## script-live-plain — a Live app on classic HTML, no script
+
+`okay-script/src/main/scala/okay/script/api/Live.scala`, landed as
+28a961d8 (spec c977c68d). The operator asked whether Scala.js is
+mandatory for okay-ui and whether a plain HTML backend could stand
+in. It was already optional — Scala.js is one host of five in
+okay-ui, nobody outside the module depends on it, and the browser's
+Live client is hand-written JavaScript — and the missing piece was
+the plain road for an ARBITRARY Live app, which `Forms` had only for
+one node. Now `mountPlain(id, app)` renders the tree as one
+`<form method="post">` and no script; `Live.step` diffs a POST
+against the tree it was rendered from into the events the socket
+would have sent (a `Form`'s own button becomes ONE `Submitted`, the
+hybrid rule backwards), each checked by `Wire.permitted`; `Live.post`
+keeps the state where `session` keeps it (shared `load`/`store`), so
+a durable app is one state on both roads. Found on the way: a
+textarea carried no `name=` under `Live.html(named = true)`.
+TestLivePlain, 6 tests; okay-ui untouched. specs/okay-script.md
+"The plain road of a Live app".
+
 ## applicative-static - stage 0, the spec
 
 specs/applicative-static.md, landed as 0e28811f (spec only; no code
