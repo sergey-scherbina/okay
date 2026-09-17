@@ -232,4 +232,5 @@ The links, and the places each is used in this implementation, are in
 ---
 
 ← [27 · Everything that typically goes wrong](27-what-goes-wrong.md) ·
-[Contents](index.md)
+[Contents](index.md) ·
+[Appendix A · If you really want to, you can →](appendix-a-if-you-really-want.md)

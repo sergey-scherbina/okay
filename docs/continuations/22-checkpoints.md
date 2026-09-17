@@ -192,115 +192,17 @@ which is slower, and survives a deploy.
 ## Could an applicative be checkpointed instead?
 
 The sharpest question anybody asks about this chapter, and the answer
-is a genuine design fork rather than a no.
+is a genuine design fork rather than a no: **if a program's shape were
+static, "where it stands" would be an index rather than a closure**, so
+a checkpoint could be a cursor and a restore O(1) with no replay at
+all. That is why BPMN engines and step functions look the way they do.
 
-The reason a monadic program cannot be written down is one line of
-`Free`:
+It is not free, the bridge from a monadic program back to a static one
+does not exist, and there are three real ways to serialise a function
+even so — none of which is the one people hope for.
 
-```scala
-case Bind[F[+_], A, B](a: Free[F, A],
-                       f: A => Free[F, B]) extends Free[F, B]
-```
-
-`f` is a host closure. What the program does after its first operation
-cannot be read without running it. That opacity is the price of
-`flatMap`, and most programs are worth it.
-
-An applicative has no such function. Its structure is fixed before any
-value exists, which is why `Static` — the free applicative with
-`select` on top — can offer something `Free` cannot:
-
-```scala
-def leaves: Vector[F[Any]]    // every operation the program MAY perform,
-                              // before it runs
-```
-
-Those leaves are operations **as values**. They serialise.
-
-### So: run it as a monad, save it as an applicative?
-
-No, and the reason is one sentence in `Static.scala`:
-
-> The bridge is one-way and cheap: `toFree`.
-
-You can turn a static program into a monadic one in order to run it.
-You cannot recover a static program from a monadic one, because
-recovering it would mean reading the closure. The moment a `flatMap` is
-written, the shape is gone — not hidden, **gone**, in the sense that no
-amount of inspection recovers it.
-
-The direction that works is the other one: **start static**.
-
-### What starting static would buy
-
-Everything in this chapter changes if the structure is known in
-advance:
-
-> If a program's shape is static, "where it stands" is an **index**,
-> not a closure.
-
-A checkpoint becomes a cursor plus the answers, and a restore is O(1) —
-**no replay at all**. That is not a hypothetical design; it is exactly
-why BPMN engines, step functions and workflow DSLs look the way they
-do. A static graph with a cursor is checkpointable for free, and the
-whole family of tools arrived at that shape because it is the only one
-that does not have to re-run history.
-
-### What it costs, which is the reason this engine did not
-
-No data-dependent structure. `Select` buys a conditional with **both
-sides written down**, and the source names the approximation honestly:
-
-> `leaves` reports both sides of every `Select`, because which side
-> runs is decided by a value that does not exist yet. It is an upper
-> bound.
-
-An upper bound is what a batcher, a capability list and a dry run all
-want. It is not what a workflow wants. You cannot write
-
-```scala
-val nights = !w.pause("how many nights?")
-for _ <- 1 to nights do !w.pause("which room?")
-```
-
-because the *shape* now depends on an answer. The five-line booking of
-chapter 23 ends on `if !w.patch("promo")`, and the reason its programs
-are worth writing at all is that the line between two pauses is
-ordinary Scala.
-
-So the trade is real and it is a trade:
-
-| | position | restore | language |
-|---|---|---|---|
-| monadic | a closure — cannot be named | replay, O(answers) | anything |
-| applicative / selective | an index into a known shape | a cursor, O(1) | no data-dependent structure |
-
-This engine took the left column deliberately, because the code between
-pauses is straight-line and replaying it is cheap — measured above: 40
-answers, 40 steps.
-
-### The caveat that survives either choice
-
-An applicative does not make the *program* serialisable either.
-`Pure(a)` may hold any value, functions included, and the spine of
-combining lambdas is host code whichever functor you chose. What
-serialises is the **leaves**, not the spine.
-
-The code still has to be on disk, and it is still addressed by name —
-which is what `"booking/1"` in the journal has been doing all along.
-That is the deep version of this chapter's first answer:
-
-> Nobody serialises the code. Not for monads, not for applicatives.
-> The difference is whether you can name your **position** in it
-> without running it.
-
-### And the hybrid that is already here
-
-`continueAs` is the third answer, and it sits between the two columns:
-it does not make the past inspectable, it declares it **superseded**. A
-seed replaces the history, so the next replay starts from a value
-rather than from an epoch. Not a cursor, not a full replay — a way to
-stop paying for a history that no longer describes anything.
+All of it, with what each route costs, is in
+[Appendix A · If you really want to, you can](appendix-a-if-you-really-want.md).
 
 ---
 

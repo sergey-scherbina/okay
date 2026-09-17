@@ -412,6 +412,25 @@ is the reason the API looks the way it does.
 
 With the papers, for whoever wants them.
 
+---
+
+# Appendix
+
+### [A. If you really want to, you can](appendix-a-if-you-really-want.md) ✓
+
+**Thesis.** Chapter 22 says a paused program cannot be written down and
+chapter 23 builds an engine around not trying; readers do not accept
+this, and they are right that "cannot" is too strong. Every route that
+actually exists — the static one (an applicative's shape is an index,
+so a cursor replaces a replay), serialising the JVM lambda (Spark
+does; it dies at a deploy), defunctionalisation (complete, and it
+turns your program into a DSL), and replay (which IS
+defunctionalisation with one coarse tag) — and what each charges.
+
+The unifying claim: a position is only meaningful relative to code, so
+you either freeze the code, enumerate its shapes, or re-run it. There
+is no fourth option.
+
 ## Reading orders
 
 | you are | read |
