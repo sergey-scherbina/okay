@@ -1,0 +1,6 @@
+okay-wt-applicative-par 2026-09-17T20:34:44Z
+agent: claude-applicative
+heartbeat: 2026-09-17T20:34:44Z
+status: in-progress
+done-so-far: worktree created
+next: Par.scala + TestPar (stage 1 of specs/applicative-static.md)
