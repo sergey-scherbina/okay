@@ -1,5 +1,44 @@
 # Changelog
 
+## strategy-record - the positioning answer, written into the boards
+
+ROADMAP P13, specs/validated.md, three BACKLOG entries and a SPRINT
+promotion (spec and prose only; no code moved). The operator asked
+what else the applicative-shaped classes buy, whether we can compete
+with Spark and Flink, and what is missing where. The answer is argued
+from measurements this repository keeps, and the ORDER is the
+operator's.
+
+1. `Validated` - every error, not the first. The classic applicative
+   payoff Okay does not have: `Throws` is monadic and stops at the
+   first error, while an applicative cannot bind one leaf's answer
+   into another's body, so it has no way to stop and therefore
+   collects. Three consumers are worse today for the lack. Its spec
+   is written and it is the next pickable task.
+
+2. Durable workflows as the flagship, AHEAD of dataflow. Younger
+   market, smaller moat, sharper differentiation: Temporal and its kin
+   need determinism by convention, a captured continuation makes
+   replay typed. Most of it is built already.
+
+3. Dataflow repositioned: the EMBEDDED tier with a published ceiling,
+   not a race for nodes. The numbers that say so are §20's - okay
+   22 561 859 ev/s at 8 cores against Flink's 1 679 971 and Spark's
+   338 918, with three of five stages being literally the same code.
+   That is not a licence to claim a win: Flink pays for scheduling and
+   checkpoints, stage 12 is BLOCKED for want of other machines, and
+   the moat is connectors and SQL rather than the engine. What the
+   numbers DO say is that 107 ms for 2.4 million events on one machine
+   puts a twenty-node job in one server, so the position is Flink's
+   semantics as an embeddable library with no cluster to run - what
+   DuckDB did to Spark. Three backlog entries follow: publish the
+   honest CEILING (Flink never does; we can measure ours), document
+   the migration seam okay-flink already proved, and finish stage 12
+   at the scale of a few machines.
+
+4. Capability lists from `Static.leaves`, so okay-di derives a
+   module's needs instead of asking its author to declare them.
+
 ## unwrap-glyph - one glyph, one meaning (all four stages)
 
 Landed as 82753d21, 18a558be, 74ecac89 (specs/unwrap-glyph.md).
