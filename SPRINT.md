@@ -39,9 +39,9 @@
   wf-durable-journal, wf-direct-door, workflow-suspended-driver,
   workflow-timers, workflow-worker, workflow-visibility,
   workflow-signals, workflow-activity-row, workflow-retries,
-  workflow-docs, workflow-cancel.
-  WHAT IS LEFT of stage 4: workflow-children, dialogue-continue-as,
-  and the two advisory ones (workflow-lease, workflow-retire).
+  workflow-docs, workflow-cancel, dialogue-continue-as.
+  WHAT IS LEFT of stage 4: workflow-children, and the two advisory
+  ones (workflow-lease, workflow-retire).
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
@@ -51,7 +51,6 @@
   - workflow-lease — ADVISORY, after visibility: `expect` already makes
     two workers safe, so this only makes collisions rare
   - workflow-children — a child keyed under its parent
-  - dialogue-continue-as — bounded history
   - workflow-retire — which program versions are still in a topic, so
     a `patch` branch can be deleted with evidence rather than hope
 
