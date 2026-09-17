@@ -47,10 +47,11 @@
   children, retirement and the advisory lease. The engine runs
   workflows that outlive their process, and docs/durable-workflows.md
   is the page to hand somebody.
-  WHAT IS LEFT of the whole arc is ONE behaviour box in stage 3 — a
-  resume cache, so a process holding many dialogues replays each once
-  instead of once per answer — and specs/delim-diagnostics.md, which
-  is written but not started.
+  STAGE 3 IS CLOSED TOO (dialogue-resume-cache, MEASURED: five touches
+  of a waiting run replay once with the cache and five without).
+  WHAT IS LEFT of the whole arc is ONE behaviour box, the last one in
+  specs/delim-diagnostics.md: a stopped fold names an OFFSET where a
+  LINE would help.
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture

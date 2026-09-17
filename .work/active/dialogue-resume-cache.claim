@@ -1,6 +1,0 @@
-feature/dialogue-resume-cache 2026-09-17T14:35:23Z
-agent: claude-code
-heartbeat: 2026-09-17T14:35:23Z
-status: in-progress
-done-so-far: -
-next: an LRU of id -> Paused, so a process holding many dialogues replays each once, not once per answer
