@@ -1,5 +1,25 @@
 # Changelog
 
+## ui-link — navigation in the vocabulary
+
+specs/frontend.md, landed as 70b849b1 (the node), ae560200 (the regenerated document). okay-watch's analyst page
+(its specs/ui.md) needed the exports and the goAML filing on the
+tree, and the vocabulary had no way to say "a place to go". `Ui.Link`
+is level S, claimed by the BROWSER alone: `React.elem` draws an
+anchor, `Html` therefore does, and `live.js` now says
+`vocab: ["link"]` in its hello. Every other host gets the lowering,
+`Text("<label> — <href>")` — what a link means where nothing can be
+clicked, and it leaves a terminal analyst able to copy the URL.
+
+It carries NO KEY, which is the point worth keeping: going somewhere
+is the client's own act, so `Wire.permitted` can never admit anything
+about a Link and `update` never hears of it. TestLink, 6.
+
+The gate caught the one thing this kind of change always breaks: the
+protocol DOCUMENT is rendered from the schemas, so a new `Ui` case
+made `docs/protocol/frontend.md` stale and TestProtocol said so. It
+was regenerated with `OKAY_RENDER=1`, not edited.
+
 ## applicative-static stage 3 - a direct block runs its independent binds at once
 
 Landed as 883f83dd; the arc's last stage, and the design entry that
