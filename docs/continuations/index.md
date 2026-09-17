@@ -257,7 +257,7 @@ different shape.
 in prose — `Replayable`, `At`, `OneMachine` — and each exists because
 something went wrong without it.
 
-### 22. Saving and restoring: checkpoints, and what cannot be one
+### [22. Saving and restoring: checkpoints, and what cannot be one](22-checkpoints.md) ✓
 
 **Thesis.** "Can I snapshot a paused program and restore it later?" is
 the first question everybody asks, and the answer has a shape worth
