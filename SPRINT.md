@@ -46,7 +46,8 @@
   off it:
   - workflow-visibility — a projection of the journal topic into a
     status index (id, program, standing question, waiting-until)
-  - workflow-worker — a loop over a partition with a lease per id
+  - workflow-lease — ADVISORY, after visibility: `expect` already makes
+    two workers safe, so this only makes collisions rare
   - workflow-signals — the API that appends to a named channel
   - workflow-retries — `perform` with a policy from okay-resilience;
     the retry is the DRIVER's, so the journal sees one answer

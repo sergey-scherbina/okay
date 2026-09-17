@@ -1,0 +1,119 @@
+package okay.persist
+
+import munit.FunSuite
+import okay.{!, +, Delim, Pure, Wf}
+import okay.Direct.*
+import okay.codec.Schema
+import scala.language.implicitConversions
+
+/**
+ * THE LOOP THAT CARRIES WORKFLOWS FORWARD (workflow-worker,
+ * 2026-09-17). The interesting tests are the last three: a stale
+ * timer must cost a read and nothing else, two workers must produce
+ * ONE journal, and a worker that dies must leave the next one able to
+ * carry on.
+ */
+class TestWorker extends FunSuite {
+
+  given Schema[Wf.SysA] = Schema.derived
+  given Schema[Wf.Ans[String]] = Schema.derived
+  given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
+
+  /** answer, sleep a minute, finish */
+  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+    val who = !w.pause("who?")
+    !w.sleep(60_000L)
+    s"$who woke"
+
+  def worker(store: MemoryStore, t: Topic, answers: String = "ada") =
+    Worker[String, String, String, Pure](t, "nap/1", Timers.over(store),
+      _ => okay.pure(answers))(nap)
+
+  test("start drives a run to its sleep and ARMS the deadline") {
+    val store = MemoryStore()
+    val t = store.topic("naps")
+    val w = worker(store, t)
+
+    assertEquals(!.run(w.start("n-1")), Worker.Progress.Sleeping(1_000L + 60_000L))
+    assertEquals(Timers.over(store).armed, Map("n-1" -> 61_000L))
+  }
+
+  test("tick before the deadline does nothing; after it, the run finishes") {
+    val store = MemoryStore()
+    val t = store.topic("naps")
+    val w = worker(store, t)
+    val _ = !.run(w.start("n-1"))
+
+    assertEquals(!.run(w.tick(60_000L)), Nil, "a deadline that has not passed fired")
+    assertEquals(!.run(w.tick(61_000L)), List("n-1" -> Worker.Progress.Finished("ada woke")))
+    // and a finished run is disarmed, so it is never picked up again
+    assertEquals(Timers.over(store).armed, Map.empty[String, Long])
+    assertEquals(!.run(w.tick(999_999L)), Nil)
+  }
+
+  test("a STALE timer costs a read and nothing else") {
+    val store = MemoryStore()
+    val t = store.topic("naps")
+    val w = worker(store, t)
+    val _ = !.run(w.start("n-1"))
+    val _ = !.run(w.tick(61_000L))            // finished and disarmed
+    val journal = w.dialogue("n-1").journal
+
+    // somebody re-arms a run that has moved on — a duplicate delivery,
+    // a replayed operational record, an operator's mistake
+    Timers.over(store).arm("n-1", 1L)
+    val progress = !.run(w.tick(999_999L))
+    assertEquals(progress.map(_._2), List(Worker.Progress.Finished("ada woke")))
+
+    // THE POINT: the journal did not gain an answer nobody asked for
+    assertEquals(w.dialogue("n-1").journal, journal)
+  }
+
+  test("two workers on one dialogue produce ONE journal") {
+    val store = MemoryStore()
+    val t = store.topic("naps")
+    val a = worker(store, t, "ada")
+    val b = worker(store, t, "bob")
+
+    // both start the same id from the same standing start
+    val ra = !.run(a.start("n-1"))
+    val rb = !.run(b.start("n-1"))
+    assertEquals(ra, Worker.Progress.Sleeping(61_000L))
+    // the second one found the first one's answer already in the log
+    assertEquals(rb, Worker.Progress.Sleeping(61_000L))
+
+    val j = a.dialogue("n-1").journal
+    assertEquals(j.count(_.isRight), 1, s"the question was answered twice: $j")
+    assertEquals(j.head, Right("ada"))
+  }
+
+  test("a worker that dies leaves the next one able to carry on") {
+    val store = MemoryStore()
+    val t = store.topic("naps")
+    val first = worker(store, t)
+    val _ = !.run(first.start("n-1"))
+
+    // ---- this worker dies here, holding nothing
+
+    val second = worker(store, t, answers = "never asked")
+    assertEquals(!.run(second.tick(61_000L)),
+      List("n-1" -> Worker.Progress.Finished("ada woke")),
+      "the second worker re-asked the question instead of reading the log")
+  }
+
+  test("a run waiting on a SIGNAL is disarmed: the clock is not what wakes it") {
+    val store = MemoryStore()
+    val t = store.topic("signals")
+    def approve(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+      direct:
+        val what = !w.pause("what?")
+        val by = !w.awaitSignal("approval")
+        s"$what by $by"
+    val w = Worker[String, String, String, Pure](t, "approve/1", Timers.over(store),
+      _ => okay.pure("the budget"))(approve)
+
+    assertEquals(!.run(w.start("a-1")), Worker.Progress.Waiting(Wf.Wait.Signal("approval")))
+    assertEquals(Timers.over(store).armed, Map.empty[String, Long],
+      "a signal-waiter was left on the clock's list")
+  }
+}

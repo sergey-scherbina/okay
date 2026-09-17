@@ -1,5 +1,37 @@
 # Changelog
 
+## workflow-worker - the loop that carries runs forward
+
+`Wf` says where a run stands and `Timers` says when to come back;
+`Worker` turns those into progress. Built for ONE workflow type - one
+journal topic, one program, one body - it moves ids: `start`,
+`advance`, `wake`, and `tick(now)` for every run whose deadline has
+passed. Each ends by telling the timers what it learned: a sleeping
+run is armed, a finished one or one waiting on a signal is disarmed.
+
+THE CHECK THAT IS NOT OPTIONAL, and it has a test: a due timer is a
+HINT, not an instruction. The worker looks at where the dialogue
+actually stands and appends `Elapsed` only when the run is genuinely
+waiting on a timer whose instant has passed. A stale record - for a
+run that moved on, was cancelled, or was woken by a signal - costs one
+read and nothing else. Without that check an old record in an
+OPERATIONAL topic could put an answer into a journal that nobody
+asked for, which is the one thing a journal must never hold.
+
+NO LEASE, and that is a decision rather than an omission. `expect` is
+what makes two workers safe: an answer carries the position its writer
+expected, so the second worker's answer for the same position is
+rejected by the fold. The test says it plainly - two workers start the
+same id from the same standing start, and the journal comes out with
+ONE answer, the first one's. A lease would make the collision rare; it
+would not make it correct, and a lease can always be lost. When one
+lands it will be named advisory.
+
+Six tests, the last three being the ones worth having: a stale timer
+changes no journal, two workers make one journal, and a worker that
+dies leaves the next one able to finish the run without re-asking
+anything.
+
 ## gate-stall-set-e - the watchdog's own bug, caught in production
 
 `gate-stall-watchdog` ran gate.sh in a subshell that writes a sentinel
