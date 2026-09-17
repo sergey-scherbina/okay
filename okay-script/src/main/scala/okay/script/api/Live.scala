@@ -46,13 +46,38 @@ final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S,
    * Schema and a bound session (`attrs`), the durable copy under
    * `okay.live.<name>` is read first and written last. */
   def session(key: Option[String], attrs: Option[Session] = None, name: String = ""): Stage[String, String, Unit] =
-    val attr = s"okay.live.$name"
-    val stored = for sc <- schema; a <- attrs; v <- a.get(attr); s <- Live.decode(sc, v) yield s
-    val from = stored.orElse(key.flatMap(resumed.get)).getOrElse(init)
-    Wire.serve(from)(view)(update).map { s =>
-      key.foreach(k => resumed.put(k, s))
-      for sc <- schema; a <- attrs do a.set(attr, Live.encode(sc, s))
-    }
+    Wire.serve(load(key, attrs, name))(view)(update).map(store(key, attrs, name, _))
+
+  /** the state a key holds: the durable copy first, then the
+   * in-memory one, then `init` -- the socket road and the plain road
+   * read the same two places */
+  private def load(key: Option[String], attrs: Option[Session], name: String): S =
+    val stored = for sc <- schema; a <- attrs; v <- a.get(s"okay.live.$name"); s <- Live.decode(sc, v) yield s
+    stored.orElse(key.flatMap(resumed.get)).getOrElse(init)
+
+  private def store(key: Option[String], attrs: Option[Session], name: String, s: S): Unit =
+    key.foreach(k => resumed.put(k, s))
+    for sc <- schema; a <- attrs do a.set(s"okay.live.$name", Live.encode(sc, s))
+
+  /** the plain road's session (script-live-plain): the state `key`
+   * holds, `Live.step`ped through `fields` when they name this
+   * mount (`Live.PlainField` = `id`), and kept where `session` keeps
+   * it -- a GET, or another mount's POST, steps nothing */
+  def post(key: Option[String], id: String, fields: Map[String, String],
+           attrs: Option[Session] = None, name: String = ""): S =
+    val from = load(key, attrs, name)
+    if !fields.get(Live.PlainField).contains(id) then from
+    else
+      val next = Live.step(this, from, fields)
+      store(key, attrs, name, next)
+      next
+
+  /** `post`, rendered: the plain mount's HTML for this request --
+   * held here so the state stays `S` (a `Live[?]` cannot hand its
+   * state back to its own `view` from outside) */
+  def plainHtml(key: Option[String], id: String, fields: Map[String, String],
+                attrs: Option[Session], action: String): String =
+    Live.plain(id, view(post(key, id, fields, attrs, id)), action)
 
   /** a session with no key: from `init`, remembering nothing */
   def session: Stage[String, String, Unit] = session(None)
@@ -115,6 +140,54 @@ object Live:
       case other => st.copy(value = Form.edit[A](st.value, other), message = None)
     Live(FormState(empty, Vector.empty, None))(view)(update)
 
+  /** the hidden field a plain mount's form carries, naming the mount */
+  val PlainField = "__okay_plain"
+
+  /** the plain road's step, PURE (script-live-plain): the fields a
+   * browser posted back from the form `plain` rendered of `view(s)`,
+   * folded into `s`. A post is a DIFF against the shown tree -- an
+   * Input, Check or Select whose posted value differs from the one
+   * shown is an `Edited`/`Toggled`/`Chosen`, an unchanged one is
+   * nothing (an unposted checkbox is `false`, as HTML has it) --
+   * then the press: `__press=<key>` is a `Pressed`, or, when `key` is
+   * a `Form`'s own, that form's edits travel inside ONE `Submitted`,
+   * the hybrid rule read backwards. Every event passes
+   * `Wire.permitted` against the shown tree first: the same
+   * capability rule as the socket's. */
+  def step[S](app: Live[S], s: S, fields: Map[String, String]): S =
+    val shown = app.view(s)
+    val edits: Vector[Event] = Ui.focusable(shown).flatMap {
+      case Ui.Input(v, k, _, _, _) => fields.get(k).filter(_ != v).map(Event.Edited(k, _))
+      case Ui.Check(on, k, _) => Option.when(fields.contains(k) != on)(Event.Toggled(k, !on))
+      case Ui.Select(os, i, k) => fields.get(k).map(os.indexOf).filter(j => j >= 0 && j != i).map(Event.Chosen(k, _))
+      case _ => None
+    }
+    def keyed(e: Event): Option[String] = e match
+      case Event.Edited(k, _) => Some(k)
+      case Event.Toggled(k, _) => Some(k)
+      case Event.Chosen(k, _) => Some(k)
+      case _ => None
+    val forms = Ui.forms(shown)
+    val press = fields.get("__press")
+    val submitted = press.flatMap(forms.get)
+    // the edits of the form being submitted go inside its Submitted;
+    // every other edit goes on its own, before the press
+    val own: Vector[Event] = submitted.fold(edits)(fs => edits.filterNot(e => keyed(e).exists(fs)))
+    val last: Option[Event] = press.map { k =>
+      submitted.fold(Event.Pressed(k))(fs => Event.Submitted(k, edits.filter(e => keyed(e).exists(fs))))
+    }
+    (own ++ last).filter(Wire.permitted(shown, _)).foldLeft(s)(app.update)
+
+  /** the tree as one `<form method="post">` -- `html(named = true)`,
+   * so every field posts under its key and every keyed button as
+   * `__press`, plus the hidden field naming this mount. Complete
+   * without any script: this IS the client. */
+  def plain(id: String, ui: Ui, action: String): String =
+    val safe = escape(id)
+    s"""<form method="post" action="${escape(action)}" id="okay-live-$safe" class="okay-plain">""" +
+      s"""<input type="hidden" name="$PlainField" value="$safe">""" +
+      html(ui, named = true) + "</form>"
+
   private[api] def encode[S](sc: okay.codec.Schema[S], s: S): String =
     java.util.Base64.getEncoder.encodeToString(okay.codec.Codecs.cbor(sc).encode(s))
 
@@ -151,7 +224,7 @@ object Live:
     if named then
       key.foreach { k =>
         e.tag match
-          case "input" | "select" => attr(sb, "name", k)
+          case "input" | "select" | "textarea" => attr(sb, "name", k)
           case "button" =>
             attr(sb, "name", "__press")
             attr(sb, "value", k)
@@ -203,3 +276,17 @@ def mount(id: String, app: Live[?]): String =
   val safe = Live.escape(id)
   s"""<div id="okay-live-$safe" data-okay-live="$safe">${Live.html(app.first)}</div>""" +
     s"""<script src="${Live.JsPath}"></script><script>okayLive("$safe")</script>"""
+
+/** Mounts a Live app on the plain road (script-live-plain): the
+ * tree as one `<form method="post">` and no script -- every press is
+ * a POST to `action` (this page, by default), folded by `Live.step`
+ * into the state the session holds, and the state reached is what
+ * renders. The session is opened as `mount` opens it, so the cookie
+ * is the key -- the same key, and the same state, the socket road
+ * resumes by. */
+def mountPlain(id: String, app: Live[?], action: String = Web.current.path): String =
+  Session.current.set("okay.live", "1")
+  val web = Web.current
+  val key = Option(Session.current.id).filter(_.nonEmpty)
+  val fields = if web.method == "POST" then web.form else Map.empty[String, String]
+  app.plainHtml(key, id, fields, Some(Session.current), action)

@@ -254,6 +254,13 @@ site.push)`. A `Live.form[A](submit)` is the same machinery with a
 typed form inside it, and `Live(..., push = source)` lets the SERVER
 push events (a clock, a feed) into every session.
 
+The same app runs with no JavaScript at all: `${mountPlain("clicks",
+clicks)}` renders the tree as one `<form method="post">`, every
+button posts back to the page, and the container folds the post into
+the state the session holds — the same state a `mount` of the same
+app resumes over its socket. Every press is a page load, the server
+cannot push, and that is the whole difference.
+
 ## 7. Two languages
 
 Name the languages the site speaks, and a page can have variants:

@@ -1532,26 +1532,33 @@ is a submit), and the browser reloads the page on every press. It
 is level L on the oldest client there is, and a page that wants
 more mounts the same app with `mount`.
 
-- [ ] `Live.step` on the counter: a `__press=inc` post from the
+- [x] `Live.step` on the counter: a `__press=inc` post from the
       shown tree steps once; a `__press` naming a key not shown
       steps nothing; a GET (no fields) steps nothing
-- [ ] `Live.step` diffs: an Input posted with its shown value fires
+- [x] `Live.step` diffs: an Input posted with its shown value fires
       no event, a changed one fires `Edited`; a checkbox absent from
       the post is `Toggled(false)` only when it was shown on; a
       Select fires `Chosen` by option text
-- [ ] `Live.step` on a `Form` node: the form's button posts its
+- [x] `Live.step` on a `Form` node: the form's button posts its
       fields as ONE `Submitted` (`Live.form` validates and submits,
       asserted through `submit` being called once with the typed
       value); the list's `+` inside the form is a `Pressed` after
       the fields' edits, and submits nothing
-- [ ] a multiline Input (`textarea`) carries `name=` under
+- [x] a multiline Input (`textarea`) carries `name=` under
       `named = true` — found by this lane: `Live.html` named only
       `input` and `select`, so a textarea posted nothing
-- [ ] `post` through a `Site`: GET renders the counter as a form
+- [x] `post` through a `Site`: GET renders the counter as a form
       with the hidden mount field and no `<script>`; two POSTs with
       the session cookie reach `count: 2`; a POST without the
       cookie starts at 0; a `Live.durable` app's state after a plain
       POST is readable by the socket road's `session` (one state)
+
+Results (TestLivePlain, 6 tests, 2026-09-17): `Live.scala` grew 60
+lines and `mountPlain`; okay-ui is untouched. The textarea gap was
+real: `Live.html(named = true)` named `input` and `select` only, so a
+multiline field on the plain road posted nothing until this lane.
+The socket suites (TestLive, TestForms, TestLiveResume) pass
+unchanged over the shared `load`/`store`.
 
 Decisions:
 - **Diff, not replay.** `Forms.read` folds every posted field

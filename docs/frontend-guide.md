@@ -160,6 +160,14 @@ JavaScript) and opens the page's own WebSocket; `live.js` (~160 lines,
 dependency-free, served by the container) is a level-L client of the
 protocol. `Live.form[A]` is a typed form as a Live app.
 
+`mountPlain` is the same app on the oldest client there is: the tree
+as one `<form method="post">`, no script, every press an HTTP POST
+diffed against the tree it was rendered from (`Live.step`) — a
+`Submitted` for a `Form`'s own button, `Pressed`/`Edited`/`Toggled`/
+`Chosen` otherwise, each checked against the shown tree before
+`update` sees it. Scala.js is one host among the others, not a
+requirement.
+
 `installable(name)` (§7) is the mobile web: viewport, a mobile-first
 stylesheet for level L, a web manifest, a service worker.
 
