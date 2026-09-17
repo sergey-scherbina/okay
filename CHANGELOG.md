@@ -1,5 +1,34 @@
 # Changelog
 
+## direct-parallel-wider-rows - an Async leaf in a wider row spawns too
+
+`import Direct.parallelBinds.given` did nothing in a block over a row
+wider than `Async`, quietly. v1 said so in its own doc comment and
+pinned the zero forks with a test, which is how the limit came to be
+closed rather than forgotten.
+
+The reason was WHERE the leaf is read. `compile` hands one back
+already lifted by `RowLift.into`, so in a `Reader % Int + Async` block
+its type is `X ! (Reader % Int + Async)` and `Async.spawn` will not
+take it. But the program the AUTHOR wrote is still `X ! Async`, and
+the obstacle was never the narrowing: it was that inline expansion
+wraps a leaf in `Inlined` nodes carrying `$proxy` bindings, which
+`stripped` does not remove - the same thing that made the first cut of
+the whole feature silently inert a day earlier.
+
+`compile` already walks through them, by turning such an `Inlined`
+into a `Block`. Doing the same here while KEEPING the bindings around
+the extracted program makes the leaf self-contained
+(`Block(bindings, program)` is a term of the program's own type) and
+spawnable where it stands. The compiled leaf remains the fallback for
+a mark shape the walk cannot take apart.
+
+The test that pinned the limit now asserts the behaviour: TWO forks in
+a `Reader % Int + Async` block, with the Reader leaf ending the run
+because it is not an Async program. Every doc that stated the limit is
+corrected - the opt-in's comment, the typepedia, theory ch. 12 and the
+spec's Results.
+
 ## static-foldmap-stack-safe - the cast the backlog expected was not needed
 
 `Static.foldMap` was the one door of the free selective that recursed
