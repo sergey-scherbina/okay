@@ -290,6 +290,24 @@ same material with the measurements attached.
   **`>>>`** (Kleisli composition).
 - `Selective`'s `ifS`/`branch`/`select` sit between Applicative and
   Monad: both branches visible, at most one runs.
+- **`Validated[E, A]`** (Validated.scala) — `Valid | Invalid`, whose
+  Applicative COMBINES two failures where `Either`'s keeps the first.
+  `E` is a `Semigroup`, not a fixed `Seq`, so the caller decides what
+  accumulation means (a vector for a form, a count for a sampler, a
+  map keyed by field for an API). There is deliberately NO
+  `Monad[Validated]`: the consistency law would force `app` to agree
+  with the `flatMap` derivation, which stops at the first error, so
+  the instance would quietly undo the collecting — `andThen` is that
+  step under a name that says the branch is deliberate, and a test
+  pins the absence as a compile error. First consumer: `okay-conf`'s
+  `fromEnv`, which used to report one bad environment variable per
+  run.
+- **`Semigroup[A]`** (Fold.scala) — `combine`, and nothing about an
+  empty. Split out of `Monoid` (which now extends it) for `Validated`:
+  a list of problems being built has no "no problem", and asking for
+  one turns `NonEmptyList` away for nothing. `Semigroup.fromMonoid`
+  bridges given search, because the instances live in `object Monoid`
+  and that is not in `Semigroup`'s implicit scope.
 - **`Par[A]`** (Par.scala) — `A ! Async` read as ONE LEAF of an
   applicative spine: an opaque carrier inside `object Par`, whose
   `app` joins two leaves with `Async.par`. Choosing this instance is
@@ -302,8 +320,9 @@ same material with the measurements attached.
   compile error in TestPar). `fmap` deliberately does NOT fork (one leaf, nothing to run
   beside it), and there is deliberately no `Monad`: a `flatMap` would
   sequence the spine while the type still claimed independence.
-  Cancellation is inherited from `Async.par`, asymmetry and all
-  (BUGS.md, `par-right-failure-waits`). Not to be confused with
+  Cancellation is inherited from `Async.par`, symmetric since
+  par-fail-fast (BUGS.md, `par-right-failure-waits` — found by this
+  carrier's own test). Not to be confused with
   `parAll`/`parTraverse` (Parallel.scala): those are JVM/Native, flat,
   one fiber per leaf, joined in order — cheaper for a flat sequence,
   and measured so (theory ch. 12).

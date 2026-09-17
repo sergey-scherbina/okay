@@ -37,6 +37,28 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
+- [ ] di-needs-from-static — `okay-di` asks a module's author to
+      DECLARE what it needs; `Static.leaves` answers what a program may
+      perform before it runs (specs/applicative-static.md), so the
+      needs can be derived from the program instead. P13 item 4. The
+      shape to settle first: a module's body is not a `Static` today,
+      so either the declaration stays and `leaves` CHECKS it (cheap,
+      catches drift) or the body is written as a spine (honest, and a
+      bigger change). Trigger: the next time a declared need and the
+      code disagree.
+- [ ] dataflow-ceiling — publish the honest number at which a cluster
+      becomes the right answer: throughput and state size past which
+      the embedded engine should not be used. Flink never publishes
+      one; we can measure ours, and the measurement IS the product
+      claim (ROADMAP P13 item 3). Needs: a sweep of key cardinality
+      and window count on the Wrocław job until the box is the
+      bottleneck, with the bottleneck NAMED (heap, GC, cores).
+- [ ] dataflow-flink-migration-path — `okay-flink` already proved an
+      `Aggregator` IS an `AggregateFunction` field for field, and that
+      the claim survives serialization into a job graph. Turn that
+      into a documented road: take a Flink job of this shape, run it
+      here, keep the arithmetic. P13 item 3; the engine work is done,
+      what is missing is the page and the worked example.
 - [ ] direct-parallel-wider-rows — `import Direct.parallelBinds.given`
       does nothing in a block over a WIDER row than `Async`, quietly.
       The macro decides spawnability on the COMPILED leaf, and by then

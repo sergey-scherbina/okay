@@ -74,7 +74,12 @@ bind diverges), `observe(n)`. A `LazyList` of alternatives is an
 infinite choice point. And the typeclass hierarchy earns its keep in
 the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
-`whenS`/`unlessS` — written once, running over any instance. The
+`whenS`/`unlessS` — written once, running over any instance. The rung
+below the monad is where two of them earn their keep. `Validated[E, A]`
+collects EVERY error instead of stopping at the first, because an
+applicative has no way to stop (it needs a `Semigroup[E]`, has no
+`flatMap` by design, and `okay-conf` uses it to report every bad
+environment variable in one run). The
 rung below the monad is worth reaching for on purpose: a program
 written as a `Static` (the free selective — `Pure | Op | Ap | Select`,
 no `Bind`) can be READ before it runs — `leaves` lists the operations
@@ -431,10 +436,9 @@ per fiber on Native; the cats-effect and ZIO runtimes plug in as
 Scheduler instances from the interop modules).
 
 The combinators are cross-platform: `spawn`, `par` (pairs by
-completion callbacks; a child failure fails the pair — and cancels the
-sibling when the failure is on the LEFT: a right-side failure is not
-observed until the left finishes, measured and filed as
-`par-right-failure-waits` in BUGS.md), `race` (first SUCCESS wins and cancels both; two failures
+completion callbacks; EITHER side's failure fails the pair at once and
+cancels the sibling — it watched only the left until par-fail-fast,
+BUGS.md), `race` (first SUCCESS wins and cancels both; two failures
 fail the race instead of hanging), `timeout`, `sleep` (an Await on
 the platform `Timer` — a sleeping virtual thread, setTimeout, a
 thread), `bracket`. One shared-source Await suite runs on the JVM,

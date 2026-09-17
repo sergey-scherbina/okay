@@ -400,14 +400,18 @@ the build refused the duplicate name. The doors moved inside
 `object Par`; see the CORRECTION under Interface. The instance, which
 is what stage 1 is actually for, is unaffected.
 
-**What the tests found, filed rather than fixed.** `Async.par`'s doc
-says "a child failure fails the pair and cancels the sibling". It does
-so on the LEFT only: measured 2026-09-17, `par(slow, failing)` failed
-after 3.017 s and `par(failing, slow)` after 0.0007 s, because the two
-completions are registered in a nest rather than side by side. Filed
-as `par-right-failure-waits` (BUGS.md) with the reduced repro; TestPar
-pins BOTH orders, so the day it is fixed the second assertion fails
-and says so. `Par` inherits the asymmetry and its doc says it does.
+**What the tests found, filed rather than fixed — and FIXED the next
+day, by the pin.** `Async.par`'s doc said "a child failure fails the
+pair and cancels the sibling". It did so on the LEFT only: measured
+2026-09-17, `par(slow, failing)` failed after 3.017 s and
+`par(failing, slow)` after 0.0007 s, because the two completions were
+registered in a nest rather than side by side. Filed as
+`par-right-failure-waits` (BUGS.md) with the reduced repro, and
+TestPar pinned BOTH orders with a message telling whoever fixed it to
+come back. That is what closed it: landing par-fail-fast (2026-09-18)
+failed TestPar with "par-right-failure-waits is FIXED — strengthen
+this assertion and close the BUGS.md entry", and the entry was closed
+because a test said to. `Par`'s fail-fast is symmetric now.
 
 **The numbers.** ParBenchmark, 8 trivial leaves, `-f 3 -prof gc`,
 three rounds on one box (load 3–6.6):

@@ -32,6 +32,22 @@ class TestAsync extends munit.FunSuite {
     assertEquals(prog.runWith, (1, 2))
   }
 
+  test("par sees EITHER side fail, and does not wait out the healthy one") {
+    // BUGS.md par-right-failure-waits: the two completions used to be
+    // registered in a NEST, so nobody was listening to the right side
+    // while the left ran. The same failure in the two orders was
+    // 0.0007 s and 3.017 s.
+    val boom = RuntimeException("boom")
+    for (label, prog) <- Seq(
+      "left fails" -> Async.par(async[Int](throw boom), async { Thread.sleep(3000); 1 }),
+      "right fails" -> Async.par(async { Thread.sleep(3000); 1 }, async[Int](throw boom)))
+    do
+      val t0 = System.nanoTime()
+      assertEquals(intercept[RuntimeException](prog.runWith).getMessage, "boom", label)
+      val secs = (System.nanoTime() - t0) / 1e9
+      assert(secs < 2, s"$label: the pair waited $secs s for the healthy sibling")
+  }
+
   test("race answers with the faster side") {
     val prog = Async.race(
       async { Thread.sleep(200); "slow" },

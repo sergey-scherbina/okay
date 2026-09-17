@@ -10,12 +10,17 @@ Newest first. Status lives in the machine-readable header, never in
 the prose.
 
 ## par-right-failure-waits — `Async.par` notices a right-side failure only after the left finishes
-<!-- status: open
+<!-- status: fixed
      lane: cross-platform (Async.scala, core)
      area: async
      found-by: TestPar "a failing leaf fails the spine and cancels its siblings"
        (applicative-par, 2026-09-17), then reduced to Async.par alone by
        src/test/scala-jvm/ProbeParFailFast.scala
+     fixed-in: par-fail-fast (2026-09-18)
+     gate: TestAsync "par sees EITHER side fail, and does not wait out the
+       healthy one" — both orders, fails on the old line; and TestPar
+       "a failing leaf fails the spine at once, in either order", which
+       is the pin that ANNOUNCED the fix by failing when it landed
      repro: measured 2026-09-17
        Async.par(async { Thread.sleep(3000); 1 }, async[Int](throw boom)).runWith
          -> boom after 3.017 s
@@ -43,18 +48,32 @@ The ANSWER is not wrong, only late: the pair still fails with the
 right error, which is why this rode through every existing test. It is
 `race` that would be wrong, and `race` does not share this code.
 
-**The shape of the fix** (not made here — this was found by a lane
-that only inherits `par`): register both completions independently and
-join them in a cell, so whichever side finishes first is seen when it
-finishes. The `done` flag already there is the guard against a double
-answer; what is missing is a place to keep the first RESULT while the
-other side is still running.
+**THE FIX, and it needed no cell.** The shape sketched here was
+"register both completions independently and join them in a cell". The
+cell turned out to be unnecessary: only the FAILURE watch has to be
+independent. `fb.onComplete` is now registered up front for its Left
+alone, and the pairing stays nested for the success road, where it
+already has both values in hand and costs nothing. Two facts were
+checked before relying on them, on all three platforms: a fiber takes
+several subscribers (a waiter list on the JVM's DriveTask,
+`whenComplete` on a CompletableFuture, `subscribe` on Native's cell, a
+Future callback on JS), and a callback registered on an already
+finished fiber fires at once. `done` still keeps the first answer, so
+the second side's late failure is ignored.
 
-**What it costs today.** `Par` (the parallel applicative,
-specs/applicative-static.md) documents fail-fast as inherited and its
-test asserts only the left-side case, with a comment pointing here.
-Every `parAll`/`parTraverse` caller is unaffected: those join in order
-and never claimed to cancel anything.
+Measured after: the same failure in the two orders now returns in
+0.003 s and 0.004 s, and the healthy sibling is cancelled rather than
+run to completion.
+
+**What it cost while it was open.** `Par` (the parallel applicative,
+specs/applicative-static.md) documented fail-fast as inherited and its
+test asserted only the left-side case, pinning the OTHER order with a
+message telling whoever fixed this to come back. That is exactly what
+happened: landing the fix failed `TestPar` with "par-right-failure-waits
+is FIXED — strengthen this assertion and close the BUGS.md entry", and
+this entry is closed because a test said to close it. Every
+`parAll`/`parTraverse` caller was unaffected throughout: those join in
+order and never claimed to cancel anything.
 
 ## growing-stale-route — a route taken before the swap names the adopted part, and overtakes its own producer
 <!-- status: reopened

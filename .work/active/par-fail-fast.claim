@@ -1,6 +1,0 @@
-okay-wt-par-fail-fast 2026-09-17T22:15:01Z
-agent: claude-applicative
-heartbeat: 2026-09-17T22:15:01Z
-status: in-progress
-done-so-far: worktree created
-next: fix BUGS.md par-right-failure-waits — Async.par must see either side fail

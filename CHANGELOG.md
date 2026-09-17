@@ -47,6 +47,125 @@ WHAT CHANGED IN THE TREE BESIDE THE PROSE. State.scala's stale ratio;
 one unused import in TestBookFourCaptures that had landed green in
 ch11; one in TestBookCaptureAndTheRest. Everything else is additive:
 docs/continuations/*.md and the TestBook* suites.
+## validated - every error, not the first (P13 item 1)
+
+`Throws` is monadic, so it stops at the first error. An applicative
+cannot bind one leaf's answer into another's body, so it has no way to
+stop early and therefore COLLECTS. `Validated[E, A]` is that, with a
+`Semigroup[E]` the caller supplies, and every combinator already
+written against `Applicative` works at it the day the instance exists.
+
+There is deliberately NO `Monad[Validated]`, and the absence is pinned
+as a compile error: the consistency law would force `app` to agree
+with the flatMap derivation, which stops at the first error, so the
+instance would quietly turn every `traverse` back into the behaviour
+this type exists to refuse. `andThen` is that step under a name that
+says the branch is deliberate.
+
+INTERFACE CORRECTION, made while implementing. The spec proposed a new
+`Semigroup` trait; `Monoid` already had the same `combine`, so
+`Semigroup` was split out ABOVE it and `Monoid extends Semigroup` -
+additive, every existing instance still answers both. The part that
+was not obvious: the instances live in `object Monoid`, which is in
+the implicit scope of `Monoid` and NOT of `Semigroup`, so
+`Semigroup.fromMonoid` bridges given search or `Validated` refuses the
+vector monoid three lines below it.
+
+THE CONSUMER IS THE RESULT. `okay-conf`'s `fromEnv` did
+`parts.collectFirst { case Left(m) => ... }` - one bad environment
+variable per run. It is a `traverse` at `Validated` now, and three
+mistyped variables come back in one message. Stated honestly in the
+spec rather than oversold: for a FLAT list of parts like this one, a
+hand-rolled `collect` would have done the same in a line; the type
+pays where the walk is nested or generic, which is why the schema
+validator is the consumer that will decide its long-term keep.
+
+THE COST PREDICTION IS REFUTED, in the favourable direction.
+Predicted "within 10% of Either" for an all-valid traverse of 1 000
+leaves; measured 46% LESS - 147 528 against 275 488 B/op. The
+prediction assumed the happy path builds the same number of nodes. It
+does not: `Either`'s traverse goes through the MONAD-DERIVED `app`
+(`flatMap` plus `fmap` per element) while `Validated`'s is one match
+with nothing between. An applicative written directly beats one
+derived from a monad, and that is the number that says by how much.
+Collecting every error costs 277 512 B/op, 0.7% over Either's happy
+path, so programs that never fail do not pay for the behaviour.
+
+Times were unreadable at load 35 (±16.7 on 18.8 for the valid lane,
+while the bytes are exact to the third decimal), so the bytes are the
+verdict.
+
+## par-fail-fast - Async.par sees EITHER side fail
+
+Landed as 97d7026d; BUGS.md `par-right-failure-waits` is closed.
+`par`'s doc said "a child failure fails the pair and cancels the
+sibling", and it did so on the LEFT only: `fb`'s callback was
+registered INSIDE `fa`'s Right branch, so while the left side ran
+nobody was listening to the right one. The same failure in the two
+orders came back after 0.0007 s and 3.017 s, and the healthy sibling
+ran to completion instead of being cancelled. The answer was correct,
+only late, which is why it rode through every test for as long as it
+did.
+
+THE FIX NEEDED NO CELL. The BUGS entry had sketched "register both
+completions independently and join them in a cell"; it turns out only
+the FAILURE watch has to be independent. `fb.onComplete` now watches
+its Left from the start, and the pairing stays nested for the success
+road, where it already holds both values and needs nowhere to keep the
+first. Two facts were checked before relying on them, on all three
+platforms: a fiber takes several subscribers, and a callback
+registered on an already finished fiber fires at once.
+
+THE PIN ANNOUNCED THE FIX, which is the part worth copying. When the
+defect was found by a lane that only INHERITED `par`, it was filed
+rather than fixed, and TestPar pinned BOTH orders - the second with
+the message "par-right-failure-waits is FIXED - strengthen this
+assertion and close the BUGS.md entry". Landing this failed exactly
+that test with exactly that text. The entry is closed because a test
+said to close it, not because anyone remembered.
+
+Measured after: 0.003 s and 0.004 s in the two orders, and the
+sibling is cancelled. Docs corrected in the guide and the typepedia,
+both of which had been taught to describe the asymmetry.
+
+## strategy-record - the positioning answer, written into the boards
+
+ROADMAP P13, specs/validated.md, three BACKLOG entries and a SPRINT
+promotion (spec and prose only; no code moved). The operator asked
+what else the applicative-shaped classes buy, whether we can compete
+with Spark and Flink, and what is missing where. The answer is argued
+from measurements this repository keeps, and the ORDER is the
+operator's.
+
+1. `Validated` - every error, not the first. The classic applicative
+   payoff Okay does not have: `Throws` is monadic and stops at the
+   first error, while an applicative cannot bind one leaf's answer
+   into another's body, so it has no way to stop and therefore
+   collects. Three consumers are worse today for the lack. Its spec
+   is written and it is the next pickable task.
+
+2. Durable workflows as the flagship, AHEAD of dataflow. Younger
+   market, smaller moat, sharper differentiation: Temporal and its kin
+   need determinism by convention, a captured continuation makes
+   replay typed. Most of it is built already.
+
+3. Dataflow repositioned: the EMBEDDED tier with a published ceiling,
+   not a race for nodes. The numbers that say so are §20's - okay
+   22 561 859 ev/s at 8 cores against Flink's 1 679 971 and Spark's
+   338 918, with three of five stages being literally the same code.
+   That is not a licence to claim a win: Flink pays for scheduling and
+   checkpoints, stage 12 is BLOCKED for want of other machines, and
+   the moat is connectors and SQL rather than the engine. What the
+   numbers DO say is that 107 ms for 2.4 million events on one machine
+   puts a twenty-node job in one server, so the position is Flink's
+   semantics as an embeddable library with no cluster to run - what
+   DuckDB did to Spark. Three backlog entries follow: publish the
+   honest CEILING (Flink never does; we can measure ours), document
+   the migration seam okay-flink already proved, and finish stage 12
+   at the scale of a few machines.
+
+4. Capability lists from `Static.leaves`, so okay-di derives a
+   module's needs instead of asking its author to declare them.
 
 ## unwrap-glyph - one glyph, one meaning (all four stages)
 

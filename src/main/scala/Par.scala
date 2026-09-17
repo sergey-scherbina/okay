@@ -8,12 +8,11 @@ package okay
  * ARGUMENTS: `pure(f) <*> fa <*> fb`. What it cannot do is bind one
  * leaf's answer into another leaf's body — and that is why the leaves
  * may run at once. `Par` is that reading of `A ! Async`: `app` joins
- * two leaves with `Async.par`, which already forks both and fails the
- * pair on either failure. Cancellation of the healthy sibling is
- * inherited too, ASYMMETRY AND ALL: a left-side failure cancels at
- * once, a right-side one is not seen until the left finishes
- * (BUGS.md, par-right-failure-waits — found by this carrier's own
- * test, filed rather than fixed here because `par` belongs to Async).
+ * two leaves with `Async.par`, which forks both, fails the pair on
+ * either failure and cancels the healthy sibling. That symmetry is
+ * inherited and was not free: this carrier's own test found `par`
+ * watching only its left side, and the fix is par-fail-fast
+ * (BUGS.md, par-right-failure-waits).
  *
  * So generic applicative code becomes parallel by CHOOSING AN
  * INSTANCE, with nothing in the program changed: `traverse`,

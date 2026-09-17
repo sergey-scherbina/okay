@@ -554,7 +554,29 @@ the tutorial has been practicing. `Throws` and damage-as-data stay
 what they are; a program that never signals never pays
 (specs/condition.md, `TestCondition`).
 
-## 22. What the program will do, before it does it
+## 22. Every error, not the first
+
+A check that stops at the first problem makes a person fix their
+configuration one line per run. The rung below the monad cannot stop,
+so it collects:
+
+```scala
+// the same traverse, two carriers
+traverse(fields)(checkEither)      // Left(first problem)
+traverse(fields)(checkValidated)   // Invalid(all of them)
+```
+
+`Validated[E, A]` needs a `Semigroup[E]`, which is the one thing the
+caller supplies: a vector for a form, a count for a sampler, a map
+keyed by field for an API. It has no `flatMap` on purpose — a Monad
+instance would be forced by law to stop at the first error, which is
+the behaviour the type exists to refuse. When a later step really does
+need an earlier answer, `andThen` says so where it happens.
+
+`okay-conf` is the first consumer: three mistyped environment
+variables come back in one message instead of three runs.
+
+## 23. What the program will do, before it does it
 
 A `flatMap` hides the rest of the program behind a function, so the
 only way to learn what it does is to run it. When the program does not
@@ -580,7 +602,7 @@ The batching carrier is the payoff: an `app` that accumulates its
 leaves' requests turns fifty fetches into one call, with the program
 unchanged. [Chapter 12](theory/12-applicative-static.md) builds it.
 
-## 23. Where to go next
+## 24. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference;
