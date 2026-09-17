@@ -49,9 +49,17 @@
   is the page to hand somebody.
   STAGE 3 IS CLOSED TOO (dialogue-resume-cache, MEASURED: five touches
   of a waiting run replay once with the cache and five without).
-  WHAT IS LEFT of the whole arc is ONE behaviour box, the last one in
-  specs/delim-diagnostics.md: a stopped fold names an OFFSET where a
-  LINE would help.
+  THE ARC IS CLOSED (delim-diagnostics-position, 2026-09-17). Every
+  behaviour box in all three specs is ticked. The last one turned out
+  to rest on a wrong assumption — it said the position would have to
+  travel in the journal, and it does not: the READER holds the body,
+  so it replays the prefix it accepted and names its own line. No
+  field, no version bump, no upcast.
+  WHAT THE ARC LEFT BEHIND, for whoever picks it up: the operations
+  are younger than the model (no scheduler process, `tick(now)` is a
+  call you make), and `Timers.due`/`Signals.next`/`Retire.census`
+  scan a topic — honest for thousands of runs, wrong for millions.
+  Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture

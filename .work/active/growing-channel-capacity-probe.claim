@@ -1,0 +1,6 @@
+feature/growing-channel-capacity-probe 2026-09-17T15:12:00Z
+agent: claude-code
+heartbeat: 2026-09-17T15:12:00Z
+status: in-progress
+done-so-far: -
+next: run TestGrowing at capacity 8 and see whether the hoist becomes +16; if it does the bug is indexed by capacity
