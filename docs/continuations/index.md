@@ -243,7 +243,7 @@ each behave differently under a capture, and all of it is pinned by
 tests that fail if the behaviour changes. Including the two that are
 compile errors on purpose.
 
-### 20. The costs, measured
+### [20. The costs, measured](20-the-costs-measured.md) ✓
 
 **Thesis.** Numbers, from this repository's benchmarks: what a push
 costs, what a capture costs, what a guard costs per operation (2.0–2.3x
@@ -251,7 +251,7 @@ on the work inside it), and what a label costs (8 bytes, no time). And
 the trap: a claim with real numbers NEXT to it that measure a
 different shape.
 
-### 21. The disciplines that make it safe
+### [21. The disciplines that make it safe](21-the-disciplines.md) ✓
 
 **Thesis.** Three constraints carry their weight in types rather than
 in prose — `Replayable`, `At`, `OneMachine` — and each exists because
