@@ -41,11 +41,11 @@
   workflow-signals, workflow-activity-row, workflow-retries,
   workflow-docs, workflow-cancel, dialogue-continue-as,
   workflow-children.
-  STAGE 4'S NON-ADVISORY WORK IS DONE. What is left is the two lanes
-  that were always marked advisory: workflow-retire (which programs
-  are still present in a topic, so a `patch` branch can be deleted
-  with evidence rather than hope) and workflow-lease (`expect` already
-  makes two workers SAFE; a lease only makes collisions RARE).
+  workflow-retire.
+  ONE LANE LEFT in stage 4, and it was advisory from the start:
+  workflow-lease. `expect` already makes two workers SAFE; a lease
+  only makes collisions RARE, so it is an optimisation with a
+  correctness story already written.
 
 ## Queue
 - THE ENGINE, asked for by the operator 2026-09-17. The architecture
@@ -54,8 +54,6 @@
   off it:
   - workflow-lease — ADVISORY, after visibility: `expect` already makes
     two workers safe, so this only makes collisions rare
-  - workflow-retire — which program versions are still in a topic, so
-    a `patch` branch can be deleted with evidence rather than hope
 
 ### Earlier queue notes
 

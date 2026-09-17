@@ -1,0 +1,6 @@
+feature/workflow-lease 2026-09-17T14:25:11Z
+agent: claude-code
+heartbeat: 2026-09-17T14:25:11Z
+status: in-progress
+done-so-far: -
+next: an advisory lease that makes worker collisions rare; expect is what keeps them safe

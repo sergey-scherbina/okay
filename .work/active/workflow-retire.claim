@@ -1,6 +1,0 @@
-feature/workflow-retire 2026-09-17T14:00:59Z
-agent: claude-code
-heartbeat: 2026-09-17T14:00:59Z
-status: in-progress
-done-so-far: -
-next: which programs are still present in a topic, so a patch branch can be deleted with evidence
