@@ -75,7 +75,7 @@ Accounting per workaround: what it adds to a diff, what it adds to
 onboarding, and which bug class it leaves open. This is the manager's
 chapter.
 
-### 3. A continuation, in one page
+### [3. A continuation, in one page](03-a-continuation-in-one-page.md) ✓
 
 **Thesis.** "The rest of the program, as a value you can hold" is the
 whole idea, and it can be taught with one picture and no theory.
