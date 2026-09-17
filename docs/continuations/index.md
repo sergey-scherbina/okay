@@ -34,9 +34,13 @@ answered with the same evidence.
 
 **Code that appears in a chapter compiles.** The same rule the rest of
 these docs live by (`TestWorkflowGuide` compiles the workflow guide's
-snippets) applies here: each chapter's runnable examples are backed by
-a suite under `okay-docs`, so a page cannot drift from the library
-without a gate going red. Where a snippet is deliberately illustrative
+snippets) applies here: each chapter's runnable examples live in a
+suite named for it — `TestBookLeaveEarly` for chapter 5, and so on —
+in the tests of whichever module the chapter is about, so a page
+cannot drift from the library without a gate going red. (An earlier
+draft of this page said the suites live under `okay-docs`. They do
+not: that module is a document STORE, and the name misled its own
+author.) Where a snippet is deliberately illustrative
 rather than runnable — pseudocode for a competitor's API, a shape that
 does not compile ON PURPOSE — it is marked as such in the text.
 
@@ -94,7 +98,7 @@ questions that settle it.
 
 *Recipes. A reader should be able to copy one and adapt it.*
 
-### 5. Leave early with an answer
+### [5. Leave early with an answer](05-leave-early.md) ✓
 
 **Thesis.** `exit` replaces a sentinel return threaded through every
 layer; the win is measured in the layers that stop mentioning the
