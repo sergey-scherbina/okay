@@ -213,7 +213,7 @@ holds a resource has all of chapter 19's consequences; and an
 interactive restart chosen by a human is a pause (chapter 7) wearing a
 different hat, not a third mechanism.
 
-### 16. Continuations and monads
+### [16. Continuations and monads](16-continuations-and-monads.md) ✓
 
 **Thesis.** Filinski's result — given delimited control, ANY monad
 runs in direct style — is the reason `!` exists, and it is the most

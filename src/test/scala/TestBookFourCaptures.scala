@@ -1,6 +1,5 @@
 package okay
 
-import okay.Direct.*
 import scala.language.implicitConversions
 
 /**

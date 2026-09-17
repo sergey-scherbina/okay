@@ -180,8 +180,10 @@ object State {
  * flatMap already composes the transitions S -> S2 -> S3 (typestate:
  * the compiler enforces the protocol order). Unlike the State effect
  * above, whose handler loop is tail-recursive, running costs a stack
- * frame per operation, and it measures ~1.7x slower on the same
- * workload (HandlerBenchmark) — the typed protocol is what you buy.
+ * frame per operation, and it measures 1.29x slower on the same
+ * workload (HandlerBenchmark: 21.23 vs 27.42 us/op, 3 forks,
+ * re-measured 2026-09-17; this comment said ~1.7x, which no longer
+ * held) — the typed protocol is what you buy.
  */
 object PState {
   /** read the state, leaving its type unchanged */
