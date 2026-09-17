@@ -252,24 +252,43 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
         // position — so looking now costs nothing extra: the drive
         // needed them anyway.
         val d = dialogue(id)
-        // REBUILDING THE PLACE IS WHERE A BAD DEPLOY SHOWS
-        // (worker-incompatible, 2026-09-17), and it is separable from
-        // an activity failing WITHOUT GUESSING: this throw happens
-        // while the program is being run over history it ACCEPTED,
-        // before any question is asked. Replay is deterministic by
-        // the `Replayable` discipline, so it will throw on every pass
-        // for ever -- calling that `Failed` would promise a retry
-        // that cannot help. It needs `isolate` for the same reason
-        // `tick` does: catching belongs to a concrete row.
-        val look: Either[Throwable, Either[Dialogue.Stopped,
-                    (Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
-          isolate match
-            case None => d.standing.up[G].map(Right(_))
-            case Some(iso) => iso(d.standing.up[G])
-        look.flatMap:
-          case Left(e) => pure(Worker.Progress.Incompatible(e.toString))
-          case Right(Left(stopped)) => broken(d, stopped)
-          case Right(Right((p, at))) => driving(id, 0, Resume.Held(d, p, at))
+        placed(d).flatMap:
+          case Left(verdict) => pure(verdict)
+          case Right((p, at)) => driving(id, 0, Resume.Held(d, p, at))
+
+  /**
+   * REBUILD THE PLACE, AND NAME THE TWO WAYS IT CAN REFUSE
+   * (worker-incompatible, 2026-09-17).
+   *
+   * `Left` is a verdict the caller should return as it stands;
+   * `Right` is where the program is and how many records put it
+   * there.
+   *
+   * A throw HERE is a bad deploy: the program is being run over
+   * history it ACCEPTED, before any question is asked, and replay is
+   * deterministic by the `Replayable` discipline — so it throws again
+   * on every pass, for ever, and `Failed` would promise a retry that
+   * cannot help. It needs `isolate` for the same reason `tick` does:
+   * catching belongs to a concrete row.
+   *
+   * ONE FUNCTION because there are TWO doors that rebuild a place —
+   * a cold start and a chapter boundary — and the first version of
+   * this guarded only the cold one, so a program that could not read
+   * the seed it had just written escaped the worker instead of being
+   * named. Two copies of a rule is one copy too many.
+   */
+  private def placed(d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F])
+      : Either[Worker.Progress[R],
+               (Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)] ! G =
+    val look: Either[Throwable, Either[Dialogue.Stopped,
+                (Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
+      isolate match
+        case None => d.standing.up[G].map(Right(_))
+        case Some(iso) => iso(d.standing.up[G])
+    look.flatMap:
+      case Left(e) => pure(Left(Worker.Progress.Incompatible(e.toString)))
+      case Right(Left(stopped)) => broken(d, stopped).map(Left(_))
+      case Right(Right(where)) => pure(Right(where))
 
   private def driving(id: String, chapters: Int,
                       from: Resume.Held[Wf.Ask[Q], Wf.Ans[A], R, F])
@@ -300,8 +319,8 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
           resume.foreach(_.drop(id))     // the chapter it held is gone
           if chapters + 1 >= continuations then
             pure(Worker.Progress.Continued(chapters + 1))
-          else d.standing.up[G].flatMap:
-            case Left(stopped) => broken(d, stopped)
+          else placed(d).flatMap:
+            case Left(verdict) => pure(verdict)
             case Right((p, at)) => driving(id, chapters + 1, Resume.Held(d, p, at))
       case (Left(wait), p, at) =>
         // KEEP IT: this is where the cache earns its name. The program

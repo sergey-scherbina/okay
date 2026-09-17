@@ -101,4 +101,29 @@ class TestIncompatible extends FunSuite {
       t, "job/1", Timers.over(store), _ => okay.async("new"))(v1prime)
     val _ = intercept[IllegalStateException](drive(fresh.advance("r-1")))
   }
+
+  /** it bounds its own history — and cannot read the seed it wrote */
+  def cycle(using w: Wf.Asks[String, String, Wf.Next[String, String], Pure])
+      : Wf.Next[String, String] ! (Delim + Pure) =
+    direct:
+      val input = !w.pause("input")
+      if input == "seed!" then
+        throw new IllegalStateException("cannot read my own seed")
+      Wf.Next.Continue("seed!")
+
+  test("a chapter boundary rebuilds a place too, and gets the same verdict") {
+    val store = MemoryStore()
+    val w = Worker[String, String, Wf.Next[String, String], Pure, Async](
+      store.topic("runs"), "cycle/1", Timers.over(store),
+      _ => okay.async("first"),
+      seedOf = Wf.Next.seed, isolate = Some(Worker.isolating))(cycle)
+
+    // the first chapter ends with a seed; the SECOND cannot read it.
+    // That is the cold path's failure at a different door, and before
+    // this lane it escaped the worker instead of being named.
+    drive(w.start("c-1")) match
+      case Worker.Progress.Incompatible(why) =>
+        assert(why.contains("cannot read my own seed"), why)
+      case other => fail(s"a chapter that cannot replay its seed was reported as $other")
+  }
 }
