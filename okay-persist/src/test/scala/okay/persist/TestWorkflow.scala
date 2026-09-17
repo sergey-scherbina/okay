@@ -42,6 +42,13 @@ class TestWorkflow extends FunSuite {
     val who = !w.pause("who?")
     s"$who@${!w.now}"
 
+  /** a drive that was expected to finish: since
+   * workflow-suspended-driver a durable drive may legitimately stop
+   * at a timer or a signal, so the answer is an Either */
+  def done[R](e: Either[Wf.Wait, R]): R = e match
+    case Right(r) => r
+    case Left(w) => fail(s"expected the workflow to finish, it is waiting on $w")
+
   def wf(t: Topic, id: String, program: String)
         (body: Wf.Asks[String, String, String, Pure] ?=> String ! (Delim + Pure)) =
     Dialogue.workflow[String, String, String, Pure](t, id, program)(body)
@@ -50,18 +57,18 @@ class TestWorkflow extends FunSuite {
     val t = MemoryStore().topic("stamped")
     var reads = 0
     given counting: Wf.Runtime = new Wf.Runtime:
-      def answer(q: Wf.Sys): Wf.SysA =
+      def answer(q: Wf.Sys): Either[Wf.Wait, Wf.SysA] =
         reads += 1
-        Wf.SysA.Millis(4242L)
+        Right(Wf.SysA.Millis(4242L))
 
-    val first = !.run(wf(t, "s-1", "stamp/1")(stamped)
-      .run(Dialogue.asking[String, String, Pure](_ => okay.pure("ada"))))
+    val first = done(!.run(wf(t, "s-1", "stamp/1")(stamped)
+      .runWorkflow(_ => okay.pure("ada"))))
     assertEquals(first, "ada@4242")
     assertEquals(reads, 1)
 
     // the process dies; a NEW one reads the same topic
-    val second = !.run(wf(t, "s-1", "stamp/1")(stamped)
-      .run(Dialogue.asking[String, String, Pure](_ => fail("the oracle was asked again"))))
+    val second = done(!.run(wf(t, "s-1", "stamp/1")(stamped)
+      .runWorkflow(_ => fail("the oracle was asked again"))))
     assertEquals(second, "ada@4242", "the clock was read again after a restart")
     assertEquals(reads, 1, "the runtime was asked again after a restart")
   }
@@ -69,9 +76,8 @@ class TestWorkflow extends FunSuite {
   test("patch through the durable journal: a run started under v1 keeps the old path") {
     val t = MemoryStore().topic("patched")
     // the old run, finished under v1
-    val old = !.run(wf(t, "p-1", "booking/1")(v1)
-      .run(Dialogue.asking[String, String, Pure](q =>
-        okay.pure(if q == "city?" then "Kyiv" else "3"))))
+    val old = done(!.run(wf(t, "p-1", "booking/1")(v1)
+      .runWorkflow(q => okay.pure(if q == "city?" then "Kyiv" else "3"))))
     assertEquals(old, "Kyiv/3")
 
     // the deploy: the SAME journal, the new program. The `program`
@@ -85,9 +91,8 @@ class TestWorkflow extends FunSuite {
 
   test("patch: a dialogue that starts under v2 takes the new branch, durably") {
     val t = MemoryStore().topic("patched2")
-    val fresh = !.run(wf(t, "p-2", "booking/1")(v2)
-      .run(Dialogue.asking[String, String, Pure](q =>
-        okay.pure(if q == "city?" then "Lviv" else "2"))))
+    val fresh = done(!.run(wf(t, "p-2", "booking/1")(v2)
+      .runWorkflow(q => okay.pure(if q == "city?" then "Lviv" else "2"))))
     assertEquals(fresh, "Lviv/2/promo")
 
     // the decision is IN the log, so a third process agrees without
@@ -106,11 +111,56 @@ class TestWorkflow extends FunSuite {
     assertEquals(started.journal, List(Right("Kyiv")))
 
     // the deploy, then the dialogue is driven to the end under v2
-    val done = !.run(wf(t, "p-3", "booking/1")(v2)
-      .run(Dialogue.asking[String, String, Pure](_ => okay.pure("4"))))
-    assertEquals(done, "Kyiv/4/promo")
+    val end = done(!.run(wf(t, "p-3", "booking/1")(v2)
+      .runWorkflow(_ => okay.pure("4"))))
+    assertEquals(end, "Kyiv/4/promo")
     // and the decision was appended, between the two answers
     assertEquals(wf(t, "p-3", "booking/1")(v2).journal,
       List(Right("Kyiv"), Left(Wf.SysA.Flag(true)), Right("4")))
+  }
+
+  // ==== the engine's keystone, through the log =====================
+
+  /** answer, then sleep a day, then finish */
+  def overnight(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+    val who = !w.pause("who?")
+    !w.sleep(86_400_000L)
+    s"$who slept"
+
+  test("a durable workflow STOPS at a timer, and another process carries it on") {
+    val t = MemoryStore().topic("timed")
+    val first = wf(t, "t-1", "night/1")(overnight)
+
+    // the drive answers what it can and stops at the deadline
+    !.run(first.runWorkflow(_ => okay.pure("ada"))) match
+      case Left(Wf.Wait.Until(when)) => assertEquals(when, 1_700_000_000_000L + 86_400_000L)
+      case other => fail(s"expected a wait until the deadline, got $other")
+
+    // what it DID answer is durable: the name and the clock reading
+    assertEquals(first.journal,
+      List(Right("ada"), Left(Wf.SysA.Millis(1_700_000_000_000L))))
+
+    // ---- this process dies. Later, the scheduler sees the instant
+    //      pass and appends the answer, as any other answer.
+    val _ = !.run(first.answer(Left(Wf.SysA.Elapsed)))
+
+    // a NEW process finishes it, asking the oracle nothing
+    val end = done(!.run(wf(t, "t-1", "night/1")(overnight)
+      .runWorkflow(_ => fail("the oracle was asked again"))))
+    assertEquals(end, "ada slept")
+  }
+
+  test("the deadline is in the LOG, so every process computes the same one") {
+    val t = MemoryStore().topic("timed2")
+    val _ = !.run(wf(t, "t-2", "night/1")(overnight).runWorkflow(_ => okay.pure("ada")))
+
+    // a second process, whose clock reads something else entirely
+    val later: Wf.Runtime = Wf.Runtime.scripted(millis = 9_999_999L, id = "x", dice = 0.1)
+    !.run(wf(t, "t-2", "night/1")(overnight).runWorkflow(_ =>
+      fail("the oracle was asked again"))(using later)) match
+      case Left(Wf.Wait.Until(when)) =>
+        assertEquals(when, 1_700_000_000_000L + 86_400_000L,
+          "the second process moved the deadline")
+      case other => fail(s"expected the same wait, got $other")
   }
 }

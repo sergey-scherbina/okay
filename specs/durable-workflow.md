@@ -436,7 +436,7 @@ rather than a rewrite.
 
 | lane | what it adds | depends on |
 |---|---|---|
-| `workflow-suspended-driver` | `Step`, `Wait`, `Wf.sleep`, `Wf.awaitSignal`, and a driver that returns instead of blocking | — |
+| `workflow-suspended-driver` | **LANDED 2026-09-17**: `Step`, `Wait`, `Wf.sleep`, `awaitSignal`, `awaitChild`, `Wf.advance`, and `Dialogue.runUntil`/`runWorkflow` | — |
 | `workflow-timers` | a due-time topic and a poller that appends the answer when a deadline passes | the driver |
 | `workflow-worker` | a loop over a partition with a lease per id: pick up what is runnable, advance it, release | the driver, visibility |
 | `workflow-visibility` | a projection of the journal topic into a status index (id, program, standing question, waiting-until, last movement) | the driver |
@@ -445,6 +445,31 @@ rather than a rewrite.
 | `workflow-cancel` | a cancel record the program observes at its next pause, and compensation as ordinary code on that path | the driver |
 | `workflow-children` | a child dialogue keyed under its parent, and a parent question answered by its result | the driver, the worker |
 | `dialogue-continue-as` | bounded history: a `Continued(seed)` record that supersedes everything before it | — |
+
+### Results — the keystone (2026-09-17)
+
+`TestWfSuspend` (8 tests) and two more in `TestWorkflow`. Three things
+worth keeping:
+
+- **The three features really are one.** `sleep`, `awaitSignal` and
+  `awaitChild` differ only in which `Sys` case they ask and which
+  `Wait` the runtime answers with; the driver's loop does not know
+  them apart, and neither does the journal.
+- **The deadline is journalled, not computed on the fly.**
+  `sleep(d)` is `now` then `Timer(now + d)`, so the `now` reading is
+  an ordinary journal entry and every later process computes the SAME
+  instant. Measured: a second process whose clock reads 9 999 999
+  still waits until the deadline the first one chose. Had the sleep
+  been relative to the reading process's clock, a restart would have
+  slid the deadline forward for ever — the durable-timer bug every
+  engine has had once.
+- **The durable driver needed a generalisation, not a sibling.**
+  `run(oracle)` became `runUntil[S](oracle)` where an oracle may
+  answer `Left(s)` — "nobody here can answer this" — and the drive
+  ends with `s`, everything it DID answer already in the log. The
+  warm path, the `expect` race check and the append-after-advance
+  order are the same moves either way, which is why there is one
+  driver and not two.
 
 ### The three rules this architecture keeps
 

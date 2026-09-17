@@ -55,15 +55,23 @@
   a consumer who needs them.
 
 ## Queue
-- dialogue-continue-as, workflow-operations — stages 3 and 4, ON A
-  CONSUMER'S TRIGGER, NOT ON MOMENTUM, and that is a decision rather
-  than a shrug: the arc's stated stopping criterion is met (an
-  ordinary engineer can write a waiting process, make a normal
-  mistake, and get a legible message), so bounded history and the
-  engine's operations wait for somebody who needs them. The one item
-  stage 2 still owes with no trigger needed is a RETIREMENT tool:
-  which program versions are still present in a topic, so a `patch`
-  branch can be deleted with evidence rather than hope.
+- THE ENGINE, asked for by the operator 2026-09-17. The architecture
+  and the lane order are in specs/durable-workflow.md, stage 4; the
+  keystone (`workflow-suspended-driver`) has LANDED, and the rest hang
+  off it:
+  - workflow-timers — a due-time topic and a poller that appends the
+    answer when a deadline passes
+  - workflow-visibility — a projection of the journal topic into a
+    status index (id, program, standing question, waiting-until)
+  - workflow-worker — a loop over a partition with a lease per id
+  - workflow-signals — the API that appends to a named channel
+  - workflow-retries — `perform` with a policy from okay-resilience;
+    the retry is the DRIVER's, so the journal sees one answer
+  - workflow-cancel — a cancel record the program observes
+  - workflow-children — a child keyed under its parent
+  - dialogue-continue-as — bounded history
+  - workflow-retire — which program versions are still in a topic, so
+    a `patch` branch can be deleted with evidence rather than hope
 
 ### Earlier queue notes
 

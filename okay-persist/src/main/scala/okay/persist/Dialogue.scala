@@ -300,16 +300,36 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * journal's own position.
    */
   def run(oracle: (Q, Dialogue.Attempt) => A ! F): R ! F =
-    def go(p: Delim.Dialogue[Q, A, R, F], index: Int): R ! F = p match
-      case Delim.Paused.Done(r) => pure(r)
+    runUntil[Nothing]((q, at) => oracle(q, at).map(Right(_))).map:
+      case Right(r) => r
+      case Left(never) => never
+
+  /**
+   * THE SAME DRIVE, BUT IT MAY STOP (workflow-suspended-driver,
+   * 2026-09-17). An oracle that answers `Left(s)` is saying "nobody
+   * here can answer this" — a durable timer that has not fired, a
+   * signal nobody has sent, a child still running — and the drive
+   * ENDS there and hands `s` back, having journalled everything it
+   * did answer.
+   *
+   * It is one generalisation rather than a second driver because the
+   * stopping is the ONLY difference: the warm path, the `expect`
+   * race check and the append-after-advance order are the same moves
+   * either way.
+   */
+  def runUntil[S](oracle: (Q, Dialogue.Attempt) => Either[S, A] ! F): Either[S, R] ! F =
+    def go(p: Delim.Dialogue[Q, A, R, F], index: Int): Either[S, R] ! F = p match
+      case Delim.Paused.Done(r) => pure(Right(r))
       // the WARM path: the program is in hand, so no step replays
       case Delim.Paused.Ask(q, _, _) =>
-        oracle(q, Dialogue.Attempt(id, index)).flatMap: a =>
-          step(p, a, index).flatMap:
-            case Dialogue.Answered.Advanced(next) => go(next, index + 1)
-            case Dialogue.Answered.Lost(actual) => go(actual, index)
-            case Dialogue.Answered.NotAsking(next) => go(next, index)
-            case Dialogue.Answered.Broken(s) => throw Dialogue.Halted(s)
+        oracle(q, Dialogue.Attempt(id, index)).flatMap:
+          case Left(s) => pure(Left(s))
+          case Right(a) =>
+            step(p, a, index).flatMap:
+              case Dialogue.Answered.Advanced(next) => go(next, index + 1)
+              case Dialogue.Answered.Lost(actual) => go(actual, index)
+              case Dialogue.Answered.NotAsking(next) => go(next, index)
+              case Dialogue.Answered.Broken(s) => throw Dialogue.Halted(s)
     val r = recovered
     r.stopped match
       case Some(s) => throw Dialogue.Halted(s)
@@ -355,13 +375,29 @@ object Dialogue:
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
       j => Wf.replay[Q, A, R, F](body)(j))
 
-  /** the oracle a workflow's `run` wants: the author answers their own
-   * questions, and the runtime answers its own */
+  /**
+   * The oracle a workflow's drive wants: the author answers their own
+   * questions, the runtime answers its own — and when the runtime
+   * DECLINES (a timer, a signal, a child), the drive stops and says
+   * what it is waiting on.
+   */
   def asking[Q, A, F[+_]](oracle: Q => A ! F)(using rt: Wf.Runtime)
-                         : (Wf.Ask[Q], Attempt) => Wf.Ans[A] ! F =
+                         : (Wf.Ask[Q], Attempt) => Either[Wf.Wait, Wf.Ans[A]] ! F =
     (q, _) => q match
-      case Left(sys) => pure(Left(rt.answer(sys)))
-      case Right(own) => oracle(own).map(Right(_))
+      case Left(sys) => rt.answer(sys) match
+        case Left(w) => pure(Left(w))
+        case Right(sa) => pure(Right(Left(sa)))
+      case Right(own) => oracle(own).map(v => Right(Right(v)))
+
+  /**
+   * DRIVE A DURABLE WORKFLOW as far as it goes: `Right` is its
+   * answer, `Left` is what has to happen before anybody can carry it
+   * further. Everything it DID answer is already in the log, so the
+   * next process starts where this one stopped.
+   */
+  extension [Q, A, R, F[+_]](d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F])
+    def runWorkflow(oracle: Q => A ! F)(using Wf.Runtime): Either[Wf.Wait, R] ! F =
+      d.runUntil[Wf.Wait](asking(oracle))
 
   /**
    * WHAT A JOURNAL RECORD IS. Not a bare answer: the two fields

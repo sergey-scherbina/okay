@@ -52,6 +52,16 @@ object Wf:
     case Random
     /** is this branch on, for THIS run? (Temporal's getVersion) */
     case Patch(id: String)
+    // ── the three the runtime CANNOT answer when they are asked
+    // (workflow-suspended-driver). Each is answered by something the
+    // driver does not control: the passage of time, somebody else's
+    // action, another run finishing.
+    /** wake me at this wall-clock instant */
+    case Timer(untilMillis: Long)
+    /** wake me when this named signal arrives */
+    case Signal(name: String)
+    /** wake me when this child dialogue finishes */
+    case Child(id: String)
 
   /** their answers, tagged so a journal entry says what it answers */
   enum SysA:
@@ -59,6 +69,34 @@ object Wf:
     case Text(v: String)
     case Dice(v: Double)
     case Flag(v: Boolean)
+    /** the deadline passed */
+    case Elapsed
+    /** the signal arrived, or the child finished, with this payload */
+    case Got(v: String)
+
+  /**
+   * WHAT A RUN IS WAITING FOR when nobody present can answer it.
+   * This is operational data ABOUT a run, never part of it: the run's
+   * state is still only its journal, and a `Wait` is what somebody
+   * else needs to know to append the next entry.
+   */
+  enum Wait:
+    case Until(millis: Long)
+    case Signal(name: String)
+    case Child(id: String)
+
+  /**
+   * WHERE A DRIVE STOPPED. `Done` and `Asking` are the two the model
+   * always had; `Waiting` is the whole of workflow-suspended-driver,
+   * and it is what makes timers, signals and child workflows one
+   * feature rather than three.
+   */
+  enum Step[Q, R]:
+    case Done[Q, R](value: R) extends Step[Q, R]
+    /** the AUTHOR's question — an oracle, a person or an API answers */
+    case Asking[Q, R](q: Q) extends Step[Q, R]
+    /** nobody here can answer it yet; this says who can */
+    case Waiting[Q, R](on: Wait) extends Step[Q, R]
 
   /** the question a durable program asks: the library's, or its own */
   type Ask[Q] = Either[Sys, Q]
@@ -132,6 +170,28 @@ object Wf:
     def patch(id: String)(using At): Boolean ! (Delim + F) =
       Wf.patch[Q, A, R, F](id)(using in, summon[At])
 
+    /**
+     * SLEEP, DURABLY. The run stops here and the driver returns
+     * `Waiting(Until(t))`; a scheduler appends the answer when the
+     * instant passes, and a worker carries the run on. Nothing is
+     * blocked and nothing is held in memory in between — which is
+     * the difference between this and `Thread.sleep`.
+     *
+     * The deadline is computed from `now`, so it is JOURNALLED: a
+     * replay wakes at the same instant the first run chose, not at
+     * one relative to the replay.
+     */
+    def sleep(millis: Long)(using At): Unit ! (Delim + F) =
+      now.flatMap(t => Wf.timer[Q, A, R, F](t + millis)(using in, summon[At]))
+
+    /** wait for a named signal from outside; the payload is its value */
+    def awaitSignal(name: String)(using At): String ! (Delim + F) =
+      Wf.signal[Q, A, R, F](name)(using in, summon[At])
+
+    /** wait for a child dialogue to finish, and take its answer */
+    def awaitChild(id: String)(using At): String ! (Delim + F) =
+      Wf.child[Q, A, R, F](id)(using in, summon[At])
+
   // ── the author's doors ───────────────────────────────────────────
 
   /**
@@ -183,6 +243,23 @@ object Wf:
   /** one library question, and the shape of answer it accepts — the
    * partial function IS the expected shape, so a driver that answers
    * a clock with a die is a loud `Mismatched` rather than a cast */
+  /** the three that suspend; each is an ordinary `Sys` question that
+   * the runtime declines to answer in place */
+  def timer[Q, A, R, F[+_]](untilMillis: Long)
+                           (using s: Asking[Q, A, R, F], at: At): Unit ! (Delim + F) =
+    sys[Q, A, R, F, Unit](Sys.Timer(untilMillis)):
+      case SysA.Elapsed => ()
+
+  def signal[Q, A, R, F[+_]](name: String)
+                            (using s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+    sys[Q, A, R, F, String](Sys.Signal(name)):
+      case SysA.Got(v) => v
+
+  def child[Q, A, R, F[+_]](id: String)
+                           (using s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+    sys[Q, A, R, F, String](Sys.Child(id)):
+      case SysA.Got(v) => v
+
   private def sys[Q, A, R, F[+_], X](q: Sys)(f: PartialFunction[SysA, X])
                                     (using s: Asking[Q, A, R, F], at: At): X ! (Delim + F) =
     Delim.ask[Ask[Q], Ans[A], R, F](Left(q)).map:
@@ -195,24 +272,35 @@ object Wf:
    * the real clock; a test hands over a scripted one and gets a
    * deterministic run without touching the program. */
   trait Runtime:
-    def answer(q: Sys): SysA
+    /**
+     * `Left` is the whole of workflow-suspended-driver: "I cannot
+     * answer this now, and here is who can". A runtime that declines
+     * has not failed — it has told the driver where to stop.
+     */
+    def answer(q: Sys): Either[Wait, SysA]
 
   object Runtime:
     /** the real world */
     given live: Runtime with
-      def answer(q: Sys): SysA = q match
-        case Sys.Now => SysA.Millis(System.currentTimeMillis())
-        case Sys.Uuid => SysA.Text(java.util.UUID.randomUUID().toString)
-        case Sys.Random => SysA.Dice(scala.util.Random.nextDouble())
-        case Sys.Patch(_) => SysA.Flag(true)   // live: the branch is on
+      def answer(q: Sys): Either[Wait, SysA] = q match
+        case Sys.Now => Right(SysA.Millis(System.currentTimeMillis()))
+        case Sys.Uuid => Right(SysA.Text(java.util.UUID.randomUUID().toString))
+        case Sys.Random => Right(SysA.Dice(scala.util.Random.nextDouble()))
+        case Sys.Patch(_) => Right(SysA.Flag(true))   // live: the branch is on
+        case Sys.Timer(t) => Left(Wait.Until(t))
+        case Sys.Signal(n) => Left(Wait.Signal(n))
+        case Sys.Child(id) => Left(Wait.Child(id))
 
     /** a fixed one, for a test that wants to read its own output */
     def scripted(millis: Long, id: String, dice: Double): Runtime = new Runtime:
-      def answer(q: Sys): SysA = q match
-        case Sys.Now => SysA.Millis(millis)
-        case Sys.Uuid => SysA.Text(id)
-        case Sys.Random => SysA.Dice(dice)
-        case Sys.Patch(_) => SysA.Flag(true)
+      def answer(q: Sys): Either[Wait, SysA] = q match
+        case Sys.Now => Right(SysA.Millis(millis))
+        case Sys.Uuid => Right(SysA.Text(id))
+        case Sys.Random => Right(SysA.Dice(dice))
+        case Sys.Patch(_) => Right(SysA.Flag(true))
+        case Sys.Timer(t) => Left(Wait.Until(t))
+        case Sys.Signal(n) => Left(Wait.Signal(n))
+        case Sys.Child(id) => Left(Wait.Child(id))
 
   /** start a program that may ask the runtime as well as the world */
   def resumable[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
@@ -227,17 +315,44 @@ object Wf:
    */
   def drive[Q, A, R, F[+_]](p: Paused[Q, A, R, F])(oracle: Q => A ! F)
                            (using rt: Runtime, om: Delim.OneMachine[F])
-                           : (R, Journal[A]) ! F =
-    def go(p: Paused[Q, A, R, F], acc: Journal[A]): (R, Journal[A]) ! F = p match
-      case Delim.Paused.Done(r) => pure((r, acc))
+                           : (Step[Q, R], Journal[A]) ! F =
+    loop(p, Nil)(q => Some(oracle(q)))
+
+  /**
+   * THE WORKER'S PRIMITIVE: advance as far as the runtime alone can
+   * take it, and say where it stopped. No oracle, so the author's own
+   * questions come back as `Asking` for whoever is standing by — a
+   * person, an HTTP call, a task queue.
+   */
+  def advance[Q, A, R, F[+_]](p: Paused[Q, A, R, F])
+                             (using rt: Runtime, om: Delim.OneMachine[F])
+                             : (Step[Q, R], Journal[A]) ! F =
+    loop(p, Nil)(_ => None)
+
+  /** one loop for both drivers: the difference is only whether the
+   * author's questions have somebody to answer them */
+  private def loop[Q, A, R, F[+_]](p: Paused[Q, A, R, F], acc: Journal[A])
+                                  (own: Q => Option[A ! F])
+                                  (using rt: Runtime, om: Delim.OneMachine[F])
+                                  : (Step[Q, R], Journal[A]) ! F =
+    p match
+      case Delim.Paused.Done(r) => pure((Step.Done(r), acc))
       case Delim.Paused.Ask(Left(q), _, _) =>
-        val a = Left(rt.answer(q))
-        Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a).flatMap((next, _) => go(next, acc :+ a))
+        rt.answer(q) match
+          // the runtime declined: the drive is over, and the caller
+          // now knows what has to happen before it can go on
+          case Left(w) => pure((Step.Waiting(w), acc))
+          case Right(sa) =>
+            val a: Ans[A] = Left(sa)
+            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)
+              .flatMap((next, _) => loop(next, acc :+ a)(own))
       case Delim.Paused.Ask(Right(q), _, _) =>
-        oracle(q).flatMap: v =>
-          val a = Right(v)
-          Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a).flatMap((next, _) => go(next, acc :+ a))
-    go(p, Nil)
+        own(q) match
+          case None => pure((Step.Asking(q), acc))
+          case Some(prog) => prog.flatMap: v =>
+            val a: Ans[A] = Right(v)
+            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)
+              .flatMap((next, _) => loop(next, acc :+ a)(own))
 
   /**
    * Where a program stands, from its journal — and the ONE place the

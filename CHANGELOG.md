@@ -1,5 +1,45 @@
 # Changelog
 
+## workflow-suspended-driver - the engine's keystone
+
+The operator asked for the full engine. Its architecture turns on one
+observation: durable timers, signals and child workflows LOOK like
+three features and are one. Each is a question the driver cannot
+answer when it is asked - a sleep is answered by the passage of time,
+a signal by somebody else's action, a child by another run finishing -
+and `run(oracle)` had no way to say that. It answered every question
+or it threw.
+
+So the runtime may now DECLINE (`answer(q): Either[Wait, SysA]`) and a
+drive returns where it stopped:
+
+    enum Step[Q, R]: case Done(value) | Asking(q) | Waiting(on: Wait)
+    enum Wait:       case Until(millis) | Signal(name) | Child(id)
+
+`Wf.sleep`, `Wf.awaitSignal` and `Wf.awaitChild` are the doors;
+`Wf.advance` is the worker's primitive (no oracle, so the author's own
+questions come back as `Asking`); `Dialogue.runUntil`/`runWorkflow`
+carry it through the log.
+
+THE DEADLINE IS JOURNALLED. `sleep(d)` is `now` followed by
+`Timer(now + d)`, so the clock reading is an ordinary journal entry
+and every later process computes the SAME instant - measured, with a
+second process whose clock reads 9 999 999 still waiting until the
+first one's deadline. A sleep relative to the reading process's clock
+would slide the deadline forward on every restart, which is the
+durable-timer bug every engine has had once.
+
+And the durable side needed a GENERALISATION, not a sibling driver:
+`run(oracle)` is now `runUntil[S](oracle)`, where an oracle answering
+`Left(s)` ends the drive with everything it did answer already
+durable. The warm path, the `expect` race check and the
+append-after-advance order are the same moves either way.
+
+TestWfSuspend (8) and TestWorkflow (2 more): a durable workflow stops
+at a timer, its process dies, the scheduler appends the answer as any
+other answer, and a NEW process finishes it without asking the oracle
+anything.
+
 ## wf-direct-door - the evidence carries the doors
 
 `Wf`'s doors took four type arguments at every call site -
