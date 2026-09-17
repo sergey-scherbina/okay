@@ -104,7 +104,7 @@ questions that settle it.
 layer; the win is measured in the layers that stop mentioning the
 failure at all.
 
-### 6. A push producer, read as a pull
+### [6. A push producer, read as a pull](06-push-as-pull.md) ✓
 
 **Thesis.** A generator is a prompt and a capture. This is where
 "inversion of control" stops being a phrase and becomes four lines.
