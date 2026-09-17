@@ -1,0 +1,6 @@
+okay-wt-ui-html-host 2026-09-17T21:12:49Z
+agent: claude-live-plain
+heartbeat: 2026-09-17T21:12:49Z
+status: in-progress
+done-so-far: worktree created
+next: okay.ui.Html + delegates + moved tests (stage 1 of specs/ui-html.md)
