@@ -145,6 +145,31 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
 
 object Worker:
 
+  /**
+   * AN ORACLE THAT RETRIES, AND A JOURNAL THAT DOES NOT NOTICE
+   * (workflow-retries, 2026-09-17).
+   *
+   * An activity fails for reasons that have nothing to do with the
+   * program: a connection reset, a 503, a lock held elsewhere. The
+   * workflow should not see those — it asked one question and is
+   * owed one answer — so the RETRY IS THE DRIVER'S, and the journal
+   * gains exactly one entry however many attempts it took. That is
+   * the whole of it, and it is three lines because the two halves it
+   * needs already exist: `Retry`'s policies (which are streams of
+   * delays, so `take`, `map` and `++` are the policy algebra) and
+   * the activity row, which is where an attempt is allowed to fail.
+   *
+   * WHAT HAPPENS WHEN THE POLICY IS EXHAUSTED, and it is the useful
+   * half: the last error is thrown, the drive ends with NOTHING
+   * appended for that question, and the run is still standing at it.
+   * A later worker — the next tick, the next process — asks again
+   * from the log. So "give up" here means "give up for now", not
+   * "lose the run", and there is a test that walks that path.
+   */
+  def retrying[Q, A](policy: LazyList[Long])(oracle: Q => A ! okay.Async)
+                    (using okay.Scheduler, okay.Timer): Q => A ! okay.Async =
+    q => okay.Retry.async(policy)(oracle(q))
+
   /** the index's word for what a worker learned */
   def state[R](p: Progress[R]): Statuses.State = p match
     case Progress.Finished(r) => Statuses.State.Finished(r.toString)

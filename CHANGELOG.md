@@ -1,5 +1,27 @@
 # Changelog
 
+## workflow-retries - the driver retries, the journal does not notice
+
+An activity fails for reasons that have nothing to do with the
+program: a connection reset, a 503, a lock held elsewhere. The
+workflow should not see those — it asked ONE question and is owed ONE
+answer — so the retry belongs to the driver, and
+`Worker.retrying(policy)(oracle)` is three lines because both halves
+already existed: `Retry`'s policies are streams of delays (so `take`,
+`map` and `++` are the policy algebra) and `workflow-activity-row`
+gave an attempt somewhere it is allowed to fail.
+
+Measured: an oracle that throws twice and then answers is attempted
+three times, and the journal gains exactly ONE entry — the answer.
+
+AND THE USEFUL HALF IS WHAT HAPPENS WHEN THE POLICY RUNS OUT. The last
+error is thrown, NOTHING is appended for that question, and the run is
+still standing exactly where it was. A later worker — the next tick,
+the next process, after the service comes back — asks again from the
+log and finishes it. "Give up" here means "give up for now", never
+"lose the run", and the test walks that whole path: three failed
+attempts, an empty journal, then a second worker completing the run.
+
 ## row-membership-crash - the compiler bug that decided three designs, pinned
 
 `RowLift.In`'s inductive given asks the compiler to solve `?G + ?H`

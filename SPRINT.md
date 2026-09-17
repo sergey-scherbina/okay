@@ -46,8 +46,6 @@
   off it:
   - workflow-lease — ADVISORY, after visibility: `expect` already makes
     two workers safe, so this only makes collisions rare
-  - workflow-retries — `perform` with a policy from okay-resilience;
-    the retry is the DRIVER's, so the journal sees one answer
   - workflow-cancel — a cancel record the program observes
   - workflow-children — a child keyed under its parent
   - dialogue-continue-as — bounded history

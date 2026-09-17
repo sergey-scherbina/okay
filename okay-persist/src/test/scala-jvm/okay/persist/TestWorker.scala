@@ -3,6 +3,8 @@ package okay.persist
 import munit.FunSuite
 import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
 import okay.given_CanBlock
+import okay.given_Scheduler
+import okay.given_Timer
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -162,5 +164,51 @@ class TestWorker extends FunSuite {
           okay.Direct.direct(""))""")
     assert(e.nonEmpty, "an Async-rowed workflow compiled")
     assert(e.contains("PERFORM AGAIN"), s"refused for the wrong reason: $e")
+  }
+
+  // ==== retries: the driver's business, not the program's ==========
+
+  test("an activity that fails twice is retried, and the journal gains ONE answer") {
+    val store = MemoryStore()
+    val t = store.topic("retried")
+    var attempts = 0
+    val flaky: String => String ! Async = _ => okay.async:
+      attempts += 1
+      if attempts < 3 then throw new RuntimeException(s"attempt $attempts failed")
+      "ada"
+
+    val w = Worker[String, String, String, Pure, Async](
+      t, "nap/1", Timers.over(store),
+      Worker.retrying(okay.Retry.immediate(5))(flaky))(nap)
+
+    assertEquals(drive(w.start("n-1")), Worker.Progress.Sleeping(61_000L))
+    assertEquals(attempts, 3, "the driver did not retry")
+    // THE POINT: the program asked once and was answered once
+    assertEquals(w.dialogue("n-1").journal.count(_.isRight), 1)
+    assertEquals(w.dialogue("n-1").journal.head, Right("ada"))
+  }
+
+  test("an exhausted policy gives up FOR NOW: nothing is journalled and the run stands") {
+    val store = MemoryStore()
+    val t = store.topic("exhausted")
+    var attempts = 0
+    val broken: String => String ! Async = _ => okay.async:
+      attempts += 1
+      throw new RuntimeException("the service is down")
+
+    val w = Worker[String, String, String, Pure, Async](
+      t, "nap/1", Timers.over(store),
+      Worker.retrying(okay.Retry.immediate(2))(broken))(nap)
+
+    intercept[RuntimeException](drive(w.start("n-1")))
+    assertEquals(attempts, 3, "one attempt plus two retries")
+    // nothing was written, so the run is exactly where it began
+    assertEquals(w.dialogue("n-1").journal, Nil)
+
+    // ---- the service comes back; a later worker finishes the run
+    val ok = Worker[String, String, String, Pure, Async](
+      t, "nap/1", Timers.over(store), _ => okay.async("bob"))(nap)
+    assertEquals(drive(ok.start("n-1")), Worker.Progress.Sleeping(61_000L))
+    assertEquals(ok.dialogue("n-1").journal.head, Right("bob"))
   }
 }
