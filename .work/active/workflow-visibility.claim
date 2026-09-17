@@ -1,0 +1,6 @@
+feature/workflow-visibility 2026-09-17T12:18:32Z
+agent: claude-code
+heartbeat: 2026-09-17T12:18:32Z
+status: in-progress
+done-so-far: -
+next: the WORKER writes a status record; visibility is a cheap read, and losing it loses nothing

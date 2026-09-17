@@ -1,6 +1,0 @@
-feature/workflow-signals 2026-09-17T12:11:56Z
-agent: claude-code
-heartbeat: 2026-09-17T12:11:56Z
-status: in-progress
-done-so-far: -
-next: a mailbox topic + per-name cursors; the worker drains what it can before reporting a wait
