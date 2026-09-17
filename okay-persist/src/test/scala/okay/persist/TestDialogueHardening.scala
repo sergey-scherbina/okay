@@ -29,7 +29,7 @@ class TestDialogueHardening extends FunSuite {
     def d = Dialogue[String, String, String, Pure](t, "p-1", "strict/1")(strict)
 
     // the program throws on it — the caller sees that, where they ran it
-    intercept[NumberFormatException](!.run(d.answer("abc")))
+    val _ = intercept[NumberFormatException](!.run(d.answer("abc")))
 
     // ...and the journal is untouched, so the dialogue is where it was
     assertEquals(d.journal, Nil)
@@ -94,7 +94,7 @@ class TestDialogueHardening extends FunSuite {
       okay.pure("Kyiv")
 
     val d = Dialogue[String, String, String, Pure](t, "c-1", "booking/1")(v1)
-    intercept[RuntimeException](!.run(d.run(oracle)))
+    val _ = intercept[RuntimeException](!.run(d.run(oracle)))
     assertEquals(seen.map(_._1), List("city?", "nights?"))
     assertEquals(seen.map(_._2), List(Dialogue.Attempt("c-1", 0), Dialogue.Attempt("c-1", 1)))
     assertEquals(d.journal, List("Kyiv"))     // the crash lost the second
