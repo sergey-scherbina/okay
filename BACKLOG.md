@@ -623,6 +623,36 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       (was filed under "handler-fusion" — the reasoning
       that section carries is in BACKLOG-ARCHIVE.md)
 
+- [ ] growing-order-instrumented-repro — REPRODUCE IT WITH EVIDENCE,
+      which is not the same as reproducing it. Four sightings of the
+      same shape now exist and a fifth adds nothing: what is missing
+      is a break that SAYS WHICH ROAD IT TOOK. So the run is
+      instrumented first and long second.
+      WHAT TO INSTRUMENT, both named by the retraction in BUGS.md as
+      the candidates not yet examined:
+        1. the PARKING path — `sendersAt(route)` and the resumed
+           `pushDecidingAtOnBehalf`, which by design does NOT repair a
+           stale route the way `pushDecidingAt` does (`ours`). Count
+           resumes whose parked route is not the part the producer
+           would own now.
+        2. the visibility of `Growing.inner` — a plain `var` assigned
+           AFTER the `grown` CAS, so a reader seeing `grown == true`
+           has no happens-before edge to the new buffer. Safe for
+           routing (a stale `inner` is the ring, and pushing there is
+           correct); not obviously safe for everything else. Count
+           pushes that saw `grown && (inner eq theRing)`.
+      HOW TO RUN IT: load, not repetition — that is what distinguished
+      the green runs from the red ones, and 2 000 rounds on a quiet box
+      reproduced nothing. Burners to a load of ~20, the round-based law
+      in a loop, every break printed with both counters beside it.
+      WHAT WOULD CLOSE IT: a break whose counters are non-zero names
+      the road; a break whose counters are both zero refutes both
+      candidates and is worth as much.
+      RULED OUT ALREADY, so nobody walks it again: a stale route
+      surviving into `pushDecidingAt`. Measured 12 crossings of that
+      window in 156 578 sends, all in the harmful direction, and
+      `Growing.ours` repairs every one (BUGS.md, the retraction).
+
 - [ ] growing-channel-order-under-load — SEEN ONCE, NOT REPRODUCED,
       and recorded because the alternative is forgetting it. A full
       matrix on 2026-09-10 failed `okay.TestGrowing`'s "each

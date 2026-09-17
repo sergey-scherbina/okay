@@ -125,8 +125,40 @@ sigs.send("booking-42", "payment", "ok")  // whenever, from anywhere
 index.waitingOn("payment")                // who is blocked, as one read
 ```
 
-`start` and `advance` return where the run stopped: `Finished`,
-`Sleeping(until)`, `Waiting(on)` or `Broken(why)`. Nothing blocks.
+**Everything past `timers` is optional, and each one buys one thing.**
+A worker with none of them is correct; the journal is the only state
+and nothing below changes that. The full set, with the section that
+explains each:
+
+```scala
+// `seedOf` only means anything for a program that RETURNS a
+// `Wf.Next`, so the full set is shown on `stage` from the bounded-
+// history section rather than on `booking`
+Worker[String, String, Wf.Next[String, String], Pure, Async](
+  topic, program = "stage/1", timers, oracle,
+  snapshots     = Some(snaps),            // cold starts read a chapter + tail
+  snapshotEvery = 64,
+  signals       = Some(sigs),             // awaitSignal can be answered
+  statuses      = Some(index),            // the dashboard has something to read
+  cancels       = Some(cancels),          // `w.cancelled` can say yes
+  children      = Some(kids),             // awaitChild can be answered
+  seedOf        = Wf.Next.seed,           // the program may bound its history
+  continuations = 64,                     // chapters per drive before handing back
+  leases        = Some(leases),           // collisions become rare
+  owner         = "box-3",
+  resume        = Some(Resume()))(stage)   // replay once, not once per call
+```
+
+`start` and `advance` say where the run stopped, and nothing blocks:
+
+| | |
+|---|---|
+| `Finished(value)` | it ended |
+| `Sleeping(until)` | a deadline is armed; `tick` will come back |
+| `Waiting(on)` | a signal or a child; somebody else's move |
+| `Continued(n)` | it opened a new chapter, `n` in this drive — call again |
+| `Busy(owner)` | another worker holds the lease; nothing was driven |
+| `Broken(why)` | the journal cannot be folded — and `why` names a LINE |
 
 ## When a program changes under a running journal
 

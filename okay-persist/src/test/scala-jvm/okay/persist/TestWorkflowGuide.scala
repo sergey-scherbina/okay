@@ -255,4 +255,38 @@ class TestWorkflowGuide extends FunSuite {
     assertEquals(drive(w.advance("b-1")), Worker.Progress.Busy("box-9"))
     assertEquals(w.dialogue("b-1").journal, Nil, "the busy worker drove anyway")
   }
+
+  // ---- the page's "Running one" block, with every option on
+
+  test("the guide's full worker: every option named on the page compiles") {
+    val store = MemoryStore()
+    val topic = store.topic("stages")
+    val timers = Timers.over(store)
+    val snaps = Snapshots(store, "stages__chapters")
+    val sigs = Signals.over(store)
+    val index = Statuses.over(store)
+    val cancels = Cancels.over(store)
+    val kids = Children.over(store)
+    val leases = Leases.over(store)
+    val oracle: String => (String ! Async) = _ => okay.async("a")
+
+    val worker = Worker[String, String, Wf.Next[String, String], Pure, Async](
+      topic, program = "stage/1", timers, oracle,
+      snapshots     = Some(snaps),
+      snapshotEvery = 64,
+      signals       = Some(sigs),
+      statuses      = Some(index),
+      cancels       = Some(cancels),
+      children      = Some(kids),
+      seedOf        = Wf.Next.seed,
+      continuations = 64,
+      leases        = Some(leases),
+      owner         = "box-3",
+      resume        = Some(Resume()))(stage)
+
+    // and it still runs: four chapters, a journal of one answer
+    assertEquals(drive(worker.start("s-1")),
+      Worker.Progress.Finished(Wf.Next.Done("done:axxx")))
+    assertEquals(worker.dialogue("s-1").journal.size, 1)
+  }
 }
