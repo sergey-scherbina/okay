@@ -388,11 +388,74 @@ needs here:
 | workers and task queues | `run(oracle)` in one process | a worker over a partition with a lease per id; stage 0's `expect` is what makes two workers safe, a lease is what makes them rare |
 | child workflows | nesting works in memory (`pausing`) | a child whose journal is its own topic key, and a parent question answered by its result |
 
-**None of this is speculative work to be done now.** It is the list
-that makes the claim "this is event sourcing with the fold already
-written" honest about its scope: the MODEL is smaller and better than
-a workflow engine's, and the OPERATIONS around it are absent. Anybody
-proposing this to a team should say both halves.
+**The operator asked for the engine, 2026-09-17**, so this stopped
+being a list of what is missing and became a plan. What follows is the
+architecture, and it turns on one observation.
+
+### The keystone: a driver that can SUSPEND
+
+Three of the eight rows above — durable timers, signals, child
+workflows — look like three features and are one. Each is a question
+the driver CANNOT ANSWER WHEN IT IS ASKED: a sleep is answered by the
+passage of time, a signal by somebody else's action, a child by
+another run finishing. Today `run(oracle)` has no way to say that: it
+answers every question or it throws.
+
+So the driver's result grows a case, and that single change is what
+makes the other three possible:
+
+```scala
+enum Step[Q, R]:
+  case Done(value: R)                  // finished
+  case Asking(q: Q)                    // the AUTHOR's question; an oracle answers
+  case Waiting(on: Wait, since: Long)  // nobody here can answer it yet
+```
+
+with
+
+```scala
+enum Wait:
+  case Until(millis: Long)             // a timer
+  case Signal(name: String)            // an external event
+  case Child(id: String)               // another dialogue's result
+```
+
+A driver that returns `Waiting` has done its job and stops. Something
+else — a scheduler for `Until`, an API call for `Signal`, the child's
+own completion for `Child` — appends the answer to the journal later,
+and a worker picks the dialogue up again. The journal is still the
+only state, and the tag on each entry still says what it answers.
+
+**Why this is not a second mechanism.** A `Waiting` question is an
+ordinary `Sys` question that the runtime declines to answer in place.
+Everything downstream — the journal, replay, `patch`, the `expect`
+race check — is untouched, which is what makes the engine an addition
+rather than a rewrite.
+
+### The order, and what each lane owes
+
+| lane | what it adds | depends on |
+|---|---|---|
+| `workflow-suspended-driver` | `Step`, `Wait`, `Wf.sleep`, `Wf.awaitSignal`, and a driver that returns instead of blocking | — |
+| `workflow-timers` | a due-time topic and a poller that appends the answer when a deadline passes | the driver |
+| `workflow-worker` | a loop over a partition with a lease per id: pick up what is runnable, advance it, release | the driver, visibility |
+| `workflow-visibility` | a projection of the journal topic into a status index (id, program, standing question, waiting-until, last movement) | the driver |
+| `workflow-signals` | the API that appends a signal to a named channel, and the program's `awaitSignal` | the driver |
+| `workflow-retries` | `perform` with a policy from okay-resilience — the RETRY IS THE DRIVER'S, so the journal sees one answer | — |
+| `workflow-cancel` | a cancel record the program observes at its next pause, and compensation as ordinary code on that path | the driver |
+| `workflow-children` | a child dialogue keyed under its parent, and a parent question answered by its result | the driver, the worker |
+| `dialogue-continue-as` | bounded history: a `Continued(seed)` record that supersedes everything before it | — |
+
+### The three rules this architecture keeps
+
+1. **The journal is the only state.** Nothing above adds a second
+   place where a run's position lives; a timer's deadline and a
+   lease are OPERATIONAL data about a run, not part of it.
+2. **Every new question is a `Sys` question.** The author's `Q` never
+   grows, so no consumer's `match` gains a case it does not own.
+3. **A worker may always be killed.** Everything a worker does is
+   either idempotent or guarded by `expect`, so the engine's failure
+   mode is a repeated attempt, never a lost or doubled answer.
 
 ## Decisions
 
