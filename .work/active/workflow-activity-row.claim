@@ -1,6 +1,0 @@
-feature/workflow-activity-row 2026-09-17T12:24:18Z
-agent: claude-code
-heartbeat: 2026-09-17T12:24:18Z
-status: in-progress
-done-so-far: found while wiring retries — the oracle shares the program row, which must be Replayable
-next: the driver runs in E + F while the program stays in F; widen at the seam

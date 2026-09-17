@@ -1,0 +1,6 @@
+feature/row-membership-crash 2026-09-17T12:39:42Z
+agent: claude-code
+heartbeat: 2026-09-17T12:39:42Z
+status: in-progress
+done-so-far: reproducer written
+next: pin it, write the rule once, try Sub for the driver row
