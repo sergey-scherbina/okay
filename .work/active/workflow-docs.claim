@@ -1,0 +1,6 @@
+feature/workflow-docs 2026-09-17T12:52:03Z
+agent: claude-code
+heartbeat: 2026-09-17T12:52:03Z
+status: in-progress
+done-so-far: the guide is drafted
+next: make its example a real test so it cannot rot, then link it
