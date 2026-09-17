@@ -46,11 +46,34 @@ set -e
 # matrix will not page. The free figure counts inactive and
 # speculative pages: on Darwin those are reclaimable, and "Pages free"
 # alone reads near zero on a healthy machine.
+# WHAT "QUIET" MEANS, and both halves were measured wrong before
+# (gate-quiet-realistic, 2026-09-17, operator: "I need to work, not
+# wait"). Every gate this session waited the FULL 30 minutes and then
+# started anyway, which is the loop announcing that its condition is
+# unsatisfiable rather than that the box is busy.
+#
+# HEAVY is a JVM that is BURNING CPU, not one that is merely resident.
+# The old test counted any sbt with RSS > 1 GB, and an idle sbt server
+# is the normal state of this machine -- there is one in the main
+# checkout that has been up for two days, and on 2026-09-17 a 1.1 GB
+# sbt in another project sat at 0.0% CPU for 21 minutes and made the
+# box "busy" by itself. AGENTS.md already draws this distinction for
+# JMH forks ("a fork at 0% for minutes is asleep, not measuring"); it
+# just had not reached this line.
+#
+# FREE was 16 GB, which this box does not reach while anybody is
+# logged in: measured 14.6 GB free with nothing but an idle sbt and
+# the operator's VM. The number that matters is not "plenty" but
+# "enough not to trip the RAM guard mid-run": the scalascript launchd
+# agent kills the heaviest JVM when available memory falls under 3 GB
+# with pageouts (AGENTS.md, THE 143), and sbt here takes 6 GB. 8 GB is
+# the heap plus headroom above the guard's line, and it is a number
+# this machine actually reaches.
 quiet() {
   L=$(sysctl -n vm.loadavg | awk '{print int($2)}')
-  H=$(ps -eo rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 1000000' | wc -l | tr -d ' ')
+  H=$(ps -eo pcpu,rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 20 && $2 > 1000000' | wc -l | tr -d ' ')
   F=$(vm_stat | awk '/Pages free|Pages inactive|Pages speculative/ {gsub("\\.","",$NF); s+=$NF} END {print int(s*16384/1073741824)}')
-  [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 16 ]
+  [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 8 ]
 }
 
 # What one attempt's log says. This is the whole safety property, so it
@@ -78,7 +101,7 @@ fi
 
 if [ "${1:-}" = "--probe" ]; then
   if quiet; then v=quiet; else v=busy; fi
-  echo "box: $v  (heavy-jvm=$H load=$L freeGB=$F; wants heavy=0 load<15 free>=16)"
+  echo "box: $v  (busy-sbt=$H load=$L freeGB=$F; wants busy-sbt=0 load<15 free>=8)"
   exit 0
 fi
 
@@ -92,9 +115,16 @@ while [ "$i" -le "$N" ]; do
   # Wait up to 30 minutes for quiet, then go anyway: a box that stays
   # busy that long is the normal state of this machine, and a gate
   # that never starts is worse than one that may be killed.
+  # SAY SO WHILE WAITING. The log used to stay empty for up to half an
+  # hour, which from outside is indistinguishable from a hung gate --
+  # three watchers expired over an empty file on 2026-09-17 before
+  # anybody thought to look at the process list.
   w=0
   while [ "$w" -lt 60 ]; do
     quiet && break
+    if [ $((w % 4)) -eq 0 ]; then
+      echo "== waiting for a quiet box, $((w / 2)) min: busy-sbt=$H load=$L freeGB=$F" >> "$LOG"
+    fi
     sleep 30
     w=$((w + 1))
   done

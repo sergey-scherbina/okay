@@ -1,5 +1,42 @@
 # Changelog
 
+## gate-quiet-realistic - the gate stopped waiting for a box that never comes
+
+Every gate this session waited the FULL 30 minutes and then started
+anyway, which is a loop announcing that its condition is
+unsatisfiable rather than that the box is busy. Both halves of
+`quiet()` were measured wrong.
+
+- **HEAVY meant RESIDENT, not BUSY.** It counted any sbt with RSS
+  over 1 GB, and an idle sbt server is the normal state of this
+  machine - there is one in the main checkout up for two days, and
+  today a 1.1 GB sbt in another project sat at 0.0% CPU for 21
+  minutes and made the box "busy" by itself. It now counts a JVM only
+  while it is burning CPU (>20%), which is the distinction AGENTS.md
+  already draws for JMH forks ("a fork at 0% for minutes is asleep,
+  not measuring").
+- **FREE wanted 16 GB**, which this box does not reach while anybody
+  is logged in - measured 14.6 GB with nothing running but an idle
+  sbt and the operator's VM. The number that matters is not "plenty"
+  but "enough not to trip the RAM guard mid-run": the launchd agent
+  kills the heaviest JVM under 3 GB available, and sbt here takes 6.
+  8 GB is the heap plus headroom over the guard's line, and it is a
+  number the machine actually reaches.
+
+And it SAYS SO WHILE WAITING: the log used to stay empty for up to
+half an hour, which from outside is indistinguishable from a hung
+gate - three watchers expired over an empty file today before anybody
+looked at the process list.
+
+Measured immediately after: the same box that read `busy (heavy-jvm=1
+load=2 freeGB=14)` reads `quiet (busy-sbt=0 load=2 freeGB=12)`.
+
+Still open, filed as `gate-warm-warning-blindness` and the stall
+watchdog: a gate that HANGS (once today, ~200 forked native runners at
+0% CPU with sbt parked waiting for a task) is still invisible to
+`gate-retry.sh`, because it only reads the log after `gate.sh`
+returns.
+
 ## delim-forward-not-throw - a nested machine that composes
 
 A machine that meets a capture for a prompt it does not hold threw
