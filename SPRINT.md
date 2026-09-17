@@ -73,6 +73,17 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- unwrap-glyph — one glyph, one meaning (specs/unwrap-glyph.md, stage 0
+  the spec LANDED 2026-09-17). Three `?` reach a value and on `A ! F`
+  all three are candidates, which is why the direct mark is spelled
+  `.!?`. The live DEFECT: `throws` is `into opaque`, so every value is
+  an `A throws Nothing` and `x.?` type-checks on anything as a silent
+  no-op — it cost an hour in the applicative-do lane and was found by
+  a fork count of zero. Stage 1 is the gate (refuse `E = Nothing`,
+  predicted to move NO call site, all three read); stage 4 (fix
+  specs/direct-macro.md's Interface, which contradicts its own
+  Decisions and caused the incident) is worth doing even if every
+  other stage is refused.
 - ui-html-host — the plain road's pure half as an okay-ui host
   (specs/ui-html.md). Stages 0 and 1 LANDED 2026-09-17: `okay.ui.Html`
   is in okay-ui beside `Wire`, okay-script's five names are delegates
