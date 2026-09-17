@@ -666,8 +666,16 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       lane that met it re-ran its matrix after filing this, which is a
       person deciding on an unrelated module — not the script hiding a
       defect. The gate log is okay-gate.dHgXx2UyXr.
-      **SEEN A THIRD TIME, 2026-09-17** (delim-diagnostics-position, a
-      lane touching only okay-persist and prose), round 36:
+      **SEEN AGAIN 2026-09-17 — AND THIS ONE IS AFTER THE FIX, which
+      the first framing of this note got wrong.** The two occurrences
+      above are 2026-09-10 and 2026-09-11; `growing-stale-route`
+      landed 2026-09-14 (3ba1d825) and closed the mechanism they
+      share. Calling this one "the third of the same" reads as three
+      sightings of one open bug. It is not: it is the FIRST
+      RECURRENCE AFTER A FIX, which is a different and worse fact.
+      See BUGS.md, where the entry is reopened with the analysis.
+      (delim-diagnostics-position, a lane touching only okay-persist
+      and prose), round 36:
 
           round 36: producer 1 came back out of its own order
              29, +37, 31, 35, -37, 39

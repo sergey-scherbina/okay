@@ -10,7 +10,10 @@ Newest first. Status lives in the machine-readable header, never in
 the prose.
 
 ## growing-stale-route — a route taken before the swap names the adopted part, and overtakes its own producer
-<!-- status: fixed
+<!-- status: reopened
+     reopened: 2026-09-17, TestGrowing round 36, producer 1: 29, +37, 31, 35, -37, 39
+     see: the REOPENED section at the end of this entry -->
+<!-- previous status: fixed
      lane: jvm
      area: queues
      found-by: TestGrowing "each producer's own order survives the swap" (reported 2026-09-14, round 40)
@@ -66,6 +69,89 @@ rather than a race, and it was run both ways: it fails on the old line
 with `33, 27, 31` and passes on the new one. The round-based law
 passed 1 600 rounds after the fix — which is consistent with it and is
 not evidence, since it passed 1 200 before.
+
+### REOPENED 2026-09-17 — the fix narrowed the window, it did not close it
+
+`TestGrowing`'s per-producer law failed again on a lane that touches
+neither queues nor the JVM platform, three days after this entry was
+marked fixed:
+
+    round 36: producer 1 came back out of its own order
+       29, +37, 31, 35, -37, 39
+
+**It is the same shape, and it is now measurable.** Each producer
+emits an arithmetic sequence, so the hoist can be counted, and the
+three recorded sightings agree exactly:
+
+    2026-09-10   49 -> 57   +8   = 4 of its own elements
+    2026-09-11    5 -> 13   +8   = 4 of its own elements
+    2026-09-17   29 -> 37   +8   = 4 of its own elements
+
+Four is `Channel(4)`'s CAPACITY, which is what the mechanism above
+already predicts: the hoisted element reaches the adopted part while
+its predecessors sit in a part of their own, and how many predecessors
+that is, is how many fit in the part that had to fill first.
+
+**MEASURED 2026-09-17, and it is no longer a hypothesis: the window
+is real and every crossing of it is in the harmful direction.**
+`attemptSend` was instrumented to compare `buffer.route()` at the push
+against the route it read a few lines earlier, over TestGrowing's own
+scenario:
+
+    rounds   sends      route changed in between   of those, read as 0
+    2000     156 578    12                         12
+
+Twelve out of twelve, and read-as-0 is exactly the condition this
+entry was closed on: `Buffer.route()` answers 0 for an unpartitioned
+ring, and by the time the push lands, 0 is the ADOPTED part that
+`popAdoptedFirst` reads before every part opened after it. So the
+element goes in front of its own predecessors — for ONE element,
+where before the fix it was for the life of a send. About one crossing
+in thirteen thousand sends, which is the right order for a law that
+now breaks roughly once in a few thousand rounds. (The instrumentation
+was removed before landing; these numbers are what it was for.)
+
+**THE MECHANISM, then.** The fix made `SentinelChannel.attemptSend`
+take the route per attempt instead of once per send:
+
+    val route = if granted0 then route0 else buffer.route()     // line 312
+    ...
+    buffer.pushDecidingAt(route, a, closing, void)              // line 328
+
+That removes the route that was stale for the LIFE of a send. It does
+not make reading the route and using it one step: a swap landing
+between 312 and 328 gives back exactly the old condition — `route()`
+answered 0 from a buffer that was still the unpartitioned ring, and by
+the push, 0 is the adopted part — for ONE element. Which is what the
+evidence looks like: the same shape, and roughly one sighting in three
+days where there were two in two.
+
+**THE FIX, and the parts it needs already exist.** Stop reading the
+route and then pushing: let the buffer decide the route AND push in
+one call, so there is nothing in between.
+
+- `AdaptiveFifo.pushDeciding(a, unless, orElse)` already routes
+  internally (`mine.get.buf`), so it cannot be overtaken by a swap the
+  way a route read earlier can.
+- `lastRoute` (`myRoute.get`) already says which part a thread's push
+  went to, which is what the parking path needs afterwards —
+  `SentinelChannel` line 97 already uses it for exactly this.
+
+So a FRESH send should push without a route and park on
+`sendersAt(buffer.lastRoute)`; a RESUMED send keeps `pushDecidingAt`,
+because it must carry the route it parked with (a parked send resumes
+on the waker's thread, and asking there would answer with the
+CONSUMER's part).
+
+NOT DONE HERE, deliberately. This is the channel's hot path, and this
+repository prices hot-path changes before it lands them — `Growing`'s
+own header carries four benchmark tables. The measurement above is
+what the fix needed to be justified; the fix needs a bench run of its
+own, and that is the next lane rather than a rushed edit at the end of
+this one.
+
+**NOT tagged, NOT retried into green, and NOT closed.** The entry
+stays reopened until the fix above lands with its numbers.
 
 ## universal-apply-blocks-named-tuples — `import okay.*` makes a named tuple's field access a type error
 <!-- status: fixed

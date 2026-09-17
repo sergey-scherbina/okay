@@ -200,7 +200,7 @@ class TestWorker extends FunSuite {
       t, "nap/1", Timers.over(store),
       Worker.retrying(okay.Retry.immediate(2))(broken))(nap)
 
-    intercept[RuntimeException](drive(w.start("n-1")))
+    val _ = intercept[RuntimeException](drive(w.start("n-1")))
     assertEquals(attempts, 3, "one attempt plus two retries")
     // nothing was written, so the run is exactly where it began
     assertEquals(w.dialogue("n-1").journal, Nil)
