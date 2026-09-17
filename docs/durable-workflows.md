@@ -64,6 +64,7 @@ exists to provide:
     Statuses ── the dashboard      } no run is WRONG — only slower,
     Cancels  ── stop requests      } or blind, or not stopping
     Children ── results to wait on }
+    Leases   ── who is working      } or doing it twice
 ```
 
 **Only the journal is state.** Everything else is operational data
@@ -260,6 +261,37 @@ Three things to know before using it:
   typed channel that carries the author's own types is the result. The
   spec has the refutation in full.
 
+## Two workers on one run
+
+Nothing bad happens, and that is a designed property rather than
+luck. Both append, the fold accepts the one whose `expect` matches
+the position, and the loser's record changes nothing. The worst case
+is a repeated attempt, never a doubled answer.
+
+`Leases` makes the repeat rare:
+
+```scala
+Worker(..., leases = Some(Leases.over(store)), owner = "box-3")
+```
+
+A worker that finds the lease held reports `Progress.Busy(owner)` and
+drives nothing. **It is advisory, and there are two reasons it can
+never be more than that.**
+
+1. `acquire` reads, decides and writes — `Topic.append` has no
+   conditional form — so two workers whose reads both land before
+   either write will both hold it.
+2. Even an atomic acquire would not fence. Expiry is decided by a
+   clock, and a clock cannot stop a thread: the holder whose lease
+   just expired may be inside a slow call and about to append, while
+   the next worker takes the lease entirely legitimately.
+
+Closing (2) needs a fencing token checked **at the write** — which is
+exactly what `expect` already is. So the lease saves work and `expect`
+saves correctness, and a test forces the expired-lease collision and
+asserts the journal is still one, so nobody starts relying on the
+wrong half.
+
 ## Deleting code with evidence
 
 A workflow outlives deploys, so before removing `booking/1` — or the
@@ -305,8 +337,8 @@ wrote. The OPERATIONS are younger:
   your own loop;
 - retirement is a tool you RUN, not a policy that runs: `Retire` tells
   you what is still there and deletes nothing;
-- there is no lease, so two workers collide harmlessly rather than
-  rarely (`expect` is what makes that safe);
+- the lease is ADVISORY (see below): two workers collide harmlessly
+  either way, and `expect` is what makes that safe;
 - cancellation is **cooperative** (see below), not pre-emptive;
 - a parent does not SPAWN its child; starting one is an activity
   (see below), which is a shape to know rather than a gap;

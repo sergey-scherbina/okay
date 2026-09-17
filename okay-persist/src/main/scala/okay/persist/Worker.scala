@@ -78,7 +78,27 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * carries. `toString` is the default because most
                                     * results are already text; a structured one
                                     * encodes, exactly as an activity's answer does. */
-                                   resultText: R => String = (r: R) => r.toString)
+                                   resultText: R => String = (r: R) => r.toString,
+                                   /**
+                                    * AN ADVISORY LEASE (workflow-lease,
+                                    * 2026-09-17). `expect` is what makes two
+                                    * workers SAFE; this only makes them rare. A
+                                    * worker that finds the lease held by somebody
+                                    * else reports `Busy` and drives nothing --
+                                    * which saves the wasted attempt, and is worth
+                                    * nothing to rely on. See `Leases`.
+                                    */
+                                   leases: Option[Leases] = None,
+                                   /** who this worker says it is, when it takes a
+                                    * lease. Two workers sharing a name cannot tell
+                                    * each other apart and will not exclude. */
+                                   owner: String = "worker",
+                                   leaseMillis: Long = 30_000L,
+                                   /** wall time, for the lease only: the PROGRAM's
+                                    * clock is `Wf.Runtime`, and it is journalled.
+                                    * These two must not be confused -- one is
+                                    * operational, the other is state. */
+                                   clock: () => Long = () => System.currentTimeMillis())
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
@@ -120,8 +140,20 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
    * happened. Everything it answered on the way is already durable
    * before this returns.
    */
-  def advance(id: String): Worker.Progress[R] ! G =
-    step(id).flatMap(p => note(id, p).map(_ => p))
+  def advance(id: String): Worker.Progress[R] ! G = leases match
+    case Some(ls) if !ls.acquire(id, owner, clock() + leaseMillis, clock()) =>
+      // somebody else is on it. Nothing is enforced by this: if the
+      // check is wrong, `expect` still gives one journal -- so the
+      // only thing lost by a wrong answer here is a wasted drive.
+      pure(Worker.Progress.Busy(ls.held(id, clock()).map(_.owner).getOrElse("unknown")))
+    case _ =>
+      step(id).flatMap: p =>
+        note(id, p).map: _ =>
+          // released whatever the outcome: a run that is sleeping or
+          // waiting is not being worked on, and holding its lease
+          // would only delay whoever wakes it
+          leases.foreach(_.release(id, owner, clock()))
+          p
 
   /** tell the index what was learned, if anybody is keeping one. It
    * is written AFTER the journal, never instead of it: a status is
@@ -286,6 +318,7 @@ object Worker:
     case Progress.Waiting(okay.Wf.Wait.Child(c)) => Statuses.State.Waiting(s"child:$c")
     case Progress.Waiting(okay.Wf.Wait.Until(t)) => Statuses.State.Sleeping(t)
     case Progress.Continued(n) => Statuses.State.Waiting(s"continuing:$n")
+    case Progress.Busy(who) => Statuses.State.Waiting(s"busy:$who")
     case Progress.Broken(why) => Statuses.State.Broken(why.toString)
 
   /** what a worker learned about one run */
@@ -297,4 +330,8 @@ object Worker:
      * has run through as many as it will in one call. Nothing is
      * wrong: call `advance` again to carry it on. */
     case Continued(chapters: Int) extends Progress[Nothing]
+    /** somebody else holds this run's lease, so this worker drove
+     * nothing. ADVISORY: it is a reason to come back later, never a
+     * guarantee that the other worker is actually running. */
+    case Busy(owner: String) extends Progress[Nothing]
     case Broken(why: Dialogue.Stopped) extends Progress[Nothing]

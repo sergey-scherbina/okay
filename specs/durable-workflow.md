@@ -389,7 +389,7 @@ needs here:
 | queries (read-only inspection) | `at`, `asking` | a read path that does not append and does not need the writer's lease |
 | cancellation and compensation | `okay-persist`'s `Saga` | a cancellation question the program can observe, and compensations as journalled commands |
 | visibility (list, filter, find the stuck ones) | nothing | a projection of the dialogues topic into a status index: id, program, standing question, last movement |
-| workers and task queues | `run(oracle)` in one process | a worker over a partition with a lease per id; stage 0's `expect` is what makes two workers safe, a lease is what makes them rare |
+| workers and task queues | **DONE**: `Worker` + `Leases` | a worker over a partition with a lease per id; stage 0's `expect` is what makes two workers safe, a lease is what makes them rare — and it stayed advisory for two reasons, both in the Result below |
 | child workflows | nesting works in memory (`pausing`) | a child whose journal is its own topic key, and a parent question answered by its result |
 
 **The operator asked for the engine, 2026-09-17**, so this stopped
@@ -448,7 +448,46 @@ rather than a rewrite.
 | `workflow-retries` | **LANDED 2026-09-17**: `Worker.retrying(policy)(oracle)` — three lines, because the two halves already existed (`Retry`'s policies are streams of delays, and the activity row is where an attempt is allowed to fail). An exhausted policy gives up FOR NOW: nothing is journalled, the run still stands at its question, and a later worker asks again | the activity row |
 | `workflow-cancel` | **LANDED 2026-09-17**: `Cancels`, a compacted keyed topic of stop requests, `Wf.cancelled` as an ordinary `Sys` question, and `Runtime.cancellable` wrapping the ambient runtime per dialogue. COOPERATIVE, and not by taste — see the Result below. Compensation is ordinary code on the cancelled branch | the driver, the worker |
 | `workflow-children` | **LANDED 2026-09-17**: `Children`, a registry of finished runs' results, and the worker half that turns one into the parent's answer. The parent does NOT spawn — starting a child is an ACTIVITY, and the Result below says why that is a shape rather than a gap | the driver, the worker |
+| `workflow-lease` | **LANDED 2026-09-17**: `Leases`, and `Worker.Progress.Busy`. ADVISORY twice over: acquisition is read-then-write, and expiry cannot fence a thread. `expect` is the guard | the worker |
 | `dialogue-continue-as` | **LANDED 2026-09-17**: `Wf.Next`, `Entry.Continued`, `Dialogue.continueAs` and `Worker`'s `seedOf`. A continuation resets the JOURNAL and not the RECORD COUNT — see the Result below, which is the whole of why it is safe | the worker |
+
+### Result — the lease saves work, `expect` saves correctness (2026-09-17)
+
+`TestLease` (8).
+
+`Leases` is a compacted topic of `Held(owner, until)`, and `Worker`
+reports `Progress.Busy(owner)` rather than driving when somebody else
+holds one. It was advisory in the plan and it is advisory in the
+result, for TWO different reasons that are worth separating:
+
+1. **Acquisition is not atomic.** `Topic.append` has no conditional
+   form and giving it one would change every store, the wire protocol
+   and the Kafka interop for one consumer — the trade already made for
+   `expect`. So two workers whose reads both land before either write
+   both hold it.
+2. **A lease does not fence, and an atomic one would not either.**
+   Expiry is decided by a clock and a clock cannot stop a thread: the
+   holder whose lease just expired may be inside a slow call and about
+   to append, while the next worker acquires entirely legitimately.
+   Closing that needs a fencing token checked AT THE WRITE, which is
+   what `expect` already is.
+
+**THE FIRST TEST WAS WRONG, and its own assertion caught it.** It
+claimed to reproduce hole (1) by calling `acquire` twice and expecting
+both to succeed — and the second correctly REFUSED, because sequential
+calls cannot interleave a read with a write. The assert carried the
+message "the test no longer reproduces the race it exists to
+reproduce", which is why the failure was legible rather than puzzling.
+The suite now TESTS hole (2), which is deterministic and is the more
+important of the two, and STATES hole (1) in a test that asserts
+sequential acquisition does exclude — the honest shape, since showing
+a true race would need concurrency and make the suite flaky to prove
+something the design concedes.
+
+**A claim in a comment had to be retracted with it:** the `Leases`
+header said "there is a test that makes them" both hold the lease.
+Once the test could not, the sentence was false and was replaced. A
+design record that survives its evidence is worse than none.
 
 ### Result — questions about questions are questions for the program (2026-09-17)
 

@@ -237,4 +237,21 @@ class TestWorkflowGuide extends FunSuite {
     assert(!branches("promo").oldHalfDead,
       "the else-branch was called dead with a run still on it")
   }
+
+  // ---- the page's lease block
+
+  test("the guide's lease: advisory, and the journal is one either way") {
+    val store = MemoryStore()
+    val t = store.topic("bookings")
+    val leases = Leases.over(store)
+    val w = Worker[String, String, String, Pure, Async](
+      t, "booking/1", Timers.over(store), _ => okay.async("Kyiv"),
+      leases = Some(leases), owner = "box-3")(booking)
+
+    // somebody else is on it
+    assert(leases.acquire("b-1", "box-9", System.currentTimeMillis() + 60_000L,
+      System.currentTimeMillis()))
+    assertEquals(drive(w.advance("b-1")), Worker.Progress.Busy("box-9"))
+    assertEquals(w.dialogue("b-1").journal, Nil, "the busy worker drove anyway")
+  }
 }

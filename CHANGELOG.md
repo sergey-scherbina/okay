@@ -1,5 +1,42 @@
 # Changelog
 
+## workflow-lease - the lease saves work, expect saves correctness
+
+`Leases` is a compacted topic of Held(owner, until); a Worker given
+one reports Progress.Busy(owner) instead of driving when somebody else
+holds it. That saves the wasted attempt. It does not, and cannot, make
+anything more correct - `expect` already gives one journal out of two
+workers, with a repeated attempt as the worst case.
+
+TWO HOLES, and they are different, so both are named:
+
+  1. Acquisition is not atomic. Topic.append has no conditional form
+     and giving it one would change every store, the wire protocol and
+     the Kafka interop for one consumer - the trade already made for
+     `expect`. Two workers whose reads land before either write both
+     hold it.
+  2. A lease does not FENCE, and an atomic one would not either.
+     Expiry is decided by a clock and a clock cannot stop a thread:
+     the holder whose lease just expired may be inside a slow call and
+     about to append, while the next worker acquires legitimately.
+     Closing that needs a fencing token checked AT THE WRITE, which is
+     what `expect` already is.
+
+THE FIRST TEST WAS WRONG AND ITS OWN ASSERTION CAUGHT IT. It claimed
+to reproduce hole 1 by calling acquire twice and expecting both to
+succeed; the second correctly REFUSED, because sequential calls cannot
+interleave a read with a write. The assert carried the message "the
+test no longer reproduces the race it exists to reproduce", so the
+failure was legible instead of puzzling. The suite now TESTS hole 2 -
+deterministic, and the more important - and STATES hole 1 in a test
+asserting that sequential acquisition does exclude.
+
+A comment had to be retracted with it: the Leases header claimed
+"there is a test that makes them" both hold the lease. Once the test
+could not, the sentence was false and was replaced.
+
+TestLease (8) and one in TestWorkflowGuide.
+
 ## workflow-retire - questions about questions are questions for the program
 
 `Retire` is the evidence for deleting code: which programs are still
