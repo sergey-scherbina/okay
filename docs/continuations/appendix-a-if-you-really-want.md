@@ -338,8 +338,12 @@ microseconds. So the trade is:
 > pay a **compiler at restore** (seconds) to avoid **replaying a
 > straight-line prefix** (microseconds).
 
-The benefit is inverted for the ordinary case, and that inversion —
-not any of the objections above — is why the engine does not do this.
+The benefit is inverted for the ordinary case — **if restoring faster
+is what you wanted.** It usually is not, and *"The point is not speed"*
+below is the correction: the reason to hold a program's state is that
+the prefix then never runs again, so its side effects cannot repeat,
+which is a claim about the programming model rather than about the
+clock. Read that section before taking this paragraph as the verdict.
 It becomes attractive only when replay is genuinely expensive: a
 history long enough to matter, or steps that are costly to re-derive.
 And for that case the tree already has `continueAs`, which collapses
@@ -601,6 +605,168 @@ that wish is a worker pool that still has the old code. If what you
 want is "this run keeps its old code *and* I never have to operate two
 versions", you are asking for the code to live in the database, and
 this section is the price list.
+
+## "The point is not speed — it is not repeating side effects"
+
+The objection that corrects this appendix, and it corrects it at the
+root. Everything above weighed the mechanism against **replay's
+speed** — seconds of compiler against microseconds of straight-line
+prefix. That is the wrong scale. Nobody wants this mechanism in order
+to restore faster; they want it so that **the prefix is never
+re-executed**, and therefore nothing in it can happen twice. Do the
+work, write it down, continue. Until the next write.
+
+### That is transactions, and it is already what this is
+
+The framing is exactly right, and following it all the way is the
+quickest route to the real disagreement.
+
+| a database | here |
+|---|---|
+| the write-ahead log | **the journal** |
+| recovery: redo from the log | **replay** |
+| a checkpoint, to bound recovery | **chapters (`Snapshots`)** |
+| the log is truth, the checkpoint a shortcut | chapter 22, in those words |
+
+A database does not choose between a log and checkpoints. It keeps
+both, for different jobs: the log makes each commit durable, the
+checkpoint bounds how much of the log a restart must read. This engine
+has the same two things, with the same division of labour — and
+chapter 22's "the log is the truth; a chapter is only a shortcut" is
+that doctrine restated.
+
+So "transactions instead of replay" is not the disagreement, because
+replay **is** the recovery half of a transactional design. The
+disagreement is one question, and it is narrower and more interesting:
+
+> **What goes into the commit record — the answer, or the state?**
+
+Everything below is about that one choice.
+
+### What writing the STATE would buy, stated properly
+
+Replay is safe here only because `Replayable` **forbids** things. A
+durable program's row may hold nothing whose re-execution is
+observable: no `Async`, no `Writer`, no `Resource`, nothing that
+reaches outside. Every interaction with the world must go through
+`pause` or an activity.
+
+That is not an implementation detail. **It is a restriction on the
+programming model**, and it is the price chapter 23 charges without
+quite calling it a price.
+
+A program restored from a checkpoint does not re-run its prefix, so
+the restriction has no reason to exist. You could call a service in a
+straight line, in the middle of the program, with no ceremony, and a
+restart would resume after the call rather than before it.
+
+**That is a real benefit and the rest of this appendix undersold it.**
+
+### Why the commit record holds the answer instead
+
+Four reasons, in descending order of how much they actually matter.
+Speed is not among them.
+
+**One — state migrates badly across a deploy, and answers do not.**
+
+A journal of answers is a **domain-level** interface: *which city*,
+*how many nights*, *did the payment clear*. It changes rarely and on
+purpose, and when it changes somebody notices, because the questions
+are the program's contract with the world.
+
+A checkpoint of program state is an **implementation-level** interface:
+the local variables at the save point. Those change whenever anybody
+refactors, and nobody files a migration for renaming a local. After a
+deploy you are restoring old state into new code, which is a schema
+migration over variables that were never designed to be a schema.
+
+This is the one that decides it. A journal survives a refactor; a
+snapshot of locals does not.
+
+**Two — a save costs O(state); an answer costs O(1).**
+
+Worth being precise here, because the exactly-once intuition is
+slightly off on both sides.
+
+Checkpointing does **not** give exactly-once by itself: die between the
+side effect and the save, and the effect repeats on restore. Neither
+does journalling: die between performing an activity and journalling
+its result, and the activity is retried. **The floor is the same for
+both** — at-least-once, with idempotence or a transactional outbox as
+the only ways below it.
+
+What differs is the **window**. Journalling closes it per effect;
+checkpointing closes it per checkpoint. To make the windows equal you
+must checkpoint after **every** side effect — and then each effect
+costs one full serialisation of everything live, where the journal
+costs one appended record. For a program that has accumulated state,
+those are not the same order of magnitude.
+
+**Three — the discipline is replaced, not removed.**
+
+`Replayable` says *do not reach outside between pauses*. Its
+replacement would be *do not be holding anything unserialisable at a
+save point* — no open connection, no file handle, no pool, no lazily
+built cache, no thread.
+
+That is a constraint on **values** instead of on **effects**, and it is
+not obviously the lighter of the two. It is also harder to check: an
+effect is in the row and the compiler can see it; a live object's
+serialisability is a property of the heap at one instant.
+
+**Four — the checkpoint does not remove the term problem.**
+
+To continue you must know *where* to continue. `Segs` hands you the
+frames as data, and `Mark` even shows the installed prompts — but each
+`K` frame still carries a host function. Saving the state relocates the
+problem; it does not dissolve it. Everything earlier in this appendix
+still applies to the "where", however well the "what" is handled.
+
+### The engine already writes state — in exactly one place
+
+Which is the strongest thing that can be said for the proposal, so it
+should be said.
+
+`continueAs` writes a **seed**: a value that supersedes the history, so
+the next replay starts from it rather than from the beginning. That is
+a commit record holding *state* rather than *an answer*, sitting in a
+design whose every other record holds an answer.
+
+So the two designs are not opposites. **Writing the state at every step
+is the generalisation of `continueAs` to every step**, and the engine's
+position is not "never write state" but "write state where the history
+has stopped describing anything, and write answers everywhere else".
+
+That also says exactly when the generalisation earns its keep: when the
+history is long enough, or expensive enough to re-derive, that paying
+O(state) per commit beats paying O(1) per commit and O(history) per
+recovery. `continueAs` is the cheap way to reach that point without
+changing the model — and if a program needs it after every step, that
+is a signal worth reading, because a program whose every step
+invalidates its history is not really a dialogue.
+
+### Where this design does work, and why
+
+Not a rhetorical concession — there is a class of runtime where the
+whole argument comes out the other way:
+
+> **When the runtime's entire state is already data.**
+
+WebAssembly's linear memory is a byte array. It holds no pointers to
+host closures, no class references, no file descriptors in the sense a
+JVM heap does. You can take the whole of it, write it down, and resume
+somewhere else — and durable-execution platforms built on WASM can
+therefore do exactly what this section describes, with no replay and
+no `Replayable`.
+
+The obstacle on the JVM is **not** speed and **not** the idea. It is
+that a JVM heap is a graph of objects pointing at classes, lambdas and
+native resources, so "the state" is not a thing you can pick up.
+
+That is the honest shape of the answer: the design is sound, it is
+implemented in the wild, and whether it is available to you is decided
+by your runtime's memory model rather than by any argument in this
+book.
 
 ## So what would you actually build?
 

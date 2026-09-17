@@ -446,6 +446,17 @@ Also the correction that surprises people: **the opacity is not the
 continuations.** `Segs` is already a walkable list of frames; the
 closure is `Bind`'s `f`, which predates every capture in this library.
 
+And the objection that reframes the whole appendix: **the point was
+never speed.** Holding a program's state means the prefix never runs
+again, so its side effects cannot repeat — a claim about the
+programming model, since replay is safe here only because
+`Replayable` forbids things. Followed properly, that is a
+transactional design: the journal is a write-ahead log, replay is
+recovery, chapters are checkpoints, and a database keeps both. So the
+disagreement is one question — **what goes into the commit record, the
+answer or the state?** — and `continueAs` is the engine already
+choosing "the state", once.
+
 The unifying claim: a position is only meaningful relative to code, so
 you either freeze the code, enumerate its shapes, or re-run it. The two
 radical proposals land in the first two columns rather than outside
