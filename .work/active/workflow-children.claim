@@ -1,6 +1,0 @@
-feature/workflow-children 2026-09-17T13:49:48Z
-agent: claude-code
-heartbeat: 2026-09-17T13:49:48Z
-status: in-progress
-done-so-far: -
-next: a child dialogue keyed under its parent, and Wait.Child answered by its result
