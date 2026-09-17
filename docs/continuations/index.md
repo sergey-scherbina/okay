@@ -122,7 +122,7 @@ built on nothing else.
 **Thesis.** The smallest shape, and the one most often written by hand
 as a `finally` that is subtly in the wrong place.
 
-### 9. Composing the shapes
+### [9. Composing the shapes](09-composing.md) ✓
 
 **Thesis.** The four do NOT compose naively, and this repository
 learned it the hard way: the halves that nest are named

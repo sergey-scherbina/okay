@@ -872,6 +872,12 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       modules one such coincidence is unremarkable, and it is recorded
       because the ledger is worth nothing if only the fitting
       observations go in it.
+      2026-09-17, okayNative, ONE module, GREEN on the rerun (a book
+      lane whose diff is markdown only). NINTH occurrence, load
+      `{ 13.16 26.00 28.81 }` — a busy box this time, where the eighth
+      was quiet. Across nine there is no pattern in the load and none
+      in what the lane changed; the only constant is the full matrix,
+      which is what the settled cause already says.
       2026-09-17, okayCodecNative, ONE module, GREEN on the rerun of
       that module alone (worker-oracle-attempt). EIGHTH occurrence,
       load `{ 5.95 10.43 11.04 }`. Second single-module sighting in a
