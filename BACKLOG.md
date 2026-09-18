@@ -846,16 +846,21 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
 
 ## okay-codec
 
-- [ ] form-errors-on-validate — `Form.errors` as `Validate.errors` with
-      the form's wording. Today `Form.errors` hands an Option or an
-      SIso field WHOLE to the decoder (one message at the field) where
-      `Validate` walks into them (a message per leaf); and it says
-      "required"/"choose one" where Validate says "missing field 'x'
-      in P"/"expected S, got ...". Both are defensible; the switch
-      changes what a user sees under a field and needs its own UI
-      tests (TestToolkit/TestRender), so it is a UI lane, not part of
-      schema-fold stage 3 (2026-09-11). A `Wording` parameter on
-      Validate is the likely shape.
+- ANSWERED, and it was not the question it looked like
+  (form-errors-on-validate, 2026-09-18). The entry read the difference
+  between `Form.errors` and `Validate.errors` as WORDING, and proposed
+  a `Wording` parameter on Validate. Running the two side by side on
+  one schema (`FormErrorsProbe`) found two places where the form was
+  simply WRONG and the accumulating decoder right, and both are fixed
+  in the form: a field the SCHEMA DEFAULTS was reported "required", so
+  the form held a submit that `Form.decode` accepts; and an error
+  inside a present `Option` landed at the option's own key, which is
+  not a key the form renders under, so the one thing the user needed
+  to read rendered NOWHERE. The wording question is withdrawn — the
+  form's "required" is the right word for a person and the switch was
+  never worth its cost. `SIso` still hands its refinement whole to the
+  decoder, which is correct (the refinement is the wrapper's, not a
+  field's) and now says so in the code.
 - [ ] schema-typed-paths — `Schema.path[A].field("address").field("city")`
       → a checked `Lens[A, String]`: the field NAME verified at compile
       time against the Mirror, the focus typed. The operator's third

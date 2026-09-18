@@ -428,7 +428,24 @@ object Form {
     def string = whole(Schema.SString)
     def char = whole(Schema.SChar)
     def bytes = whole(Schema.SBytes)
-    def option[A](o: Schema.SOption[A], of: () => Validate[A]) = whole(o)
+    /**
+     * An ABSENT option is fine and says nothing; a PRESENT one is
+     * WALKED, not handed whole to the decoder.
+     *
+     * Handing it whole put the message at the option's own key
+     * (`address`), and a form renders an error under the key of a
+     * FIELD — `address.city`, `address.zip`. So the one thing the user
+     * needed to read rendered nowhere at all. Found by comparing this
+     * walk against `Validate`'s on one schema (FormErrorsProbe).
+     */
+    def option[A](o: Schema.SOption[A], of: () => Validate[A]) =
+      Step.node[String, Option[Json], Errors, Errors](
+        (_, _) => Vector.empty,
+        (k, v) => v match
+          case None | Some(Json.JNull) | Some(Json.JStr("")) => Vector.empty
+          case Some(inner) => Vector(Step.Kid(of(), k, Some(inner))),
+        _ ++ _,
+        (_, _, found) => found)
     def iso[A, B](iso: Schema.SIso[A, B], under: () => Validate[B]) = whole(iso)
 
     private def elements(sc: Schema[?], each: () => Validate[?]) =
@@ -447,8 +464,17 @@ object Form {
     def product[A](p: Schema.SProduct[A], fields: Vector[(String, Schema.Edge[Validate, Any])]) =
       Step.node[String, Option[Json], Errors, Errors](
         (_, _) => Vector.empty,
+        // AN ABSENT FIELD THE SCHEMA DEFAULTS IS NOT AN ERROR. It used
+        // to be walked like any other, so its child said "required" —
+        // and the form held a submit that `Form.decode` (and the wire's
+        // own decoder, which applies the default) would have ACCEPTED.
+        // A user cannot see that a field they never touched is the one
+        // being refused, which is what made it worth finding.
         (k, v) => v match
-          case Some(value) => fields.map((n, edge) => Step.Kid(edge(), Form.key(k, n), get(value, n)))
+          case Some(value) => fields.zipWithIndex.collect {
+            case ((n, edge), i) if !(get(value, n).isEmpty && p.defaults.lift(i).flatten.isDefined) =>
+              Step.Kid(edge(), Form.key(k, n), get(value, n))
+          }
           case None => Vector.empty,
         _ ++ _,
         (k, v, found) => v match

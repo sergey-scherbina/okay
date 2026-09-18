@@ -1,5 +1,41 @@
 # Changelog
 
+## form-errors-on-validate — the question was wording, the answer was two defects
+
+The backlog entry proposed making `Form.errors` be `Validate.errors`
+with a `Wording` parameter, on the reading that the two walks differ in
+how they SAY things. Running both over one schema first
+(`FormErrorsProbe`, kept beside the tests) showed they differ in what
+they BELIEVE, twice, and the form was wrong both times.
+
+**A field the schema DEFAULTS was reported "required".** `Close(disposition,
+note = "", tags = Vector.empty)` decodes from a value carrying only the
+disposition — the decoder applies the defaults, as the wire's own
+decoder does. `Form.errors` called `note` and `tags` required, so
+`Live.form` refused the submit and showed two messages under two fields
+the user cannot see are empty. Forever: nothing the user types makes an
+untouched defaulted field stop being "required".
+
+**An error inside a present `Option` rendered nowhere.** An
+`Option[Address]` with the city typed and the zip not put its message at
+the key `address`, and a form renders errors under the key of a FIELD —
+`address.city`, `address.zip`. The message existed, blocked the submit,
+and was invisible. The option is walked now when it is present (absent
+is still fine and silent), so the message lands on `address.zip`.
+
+Both were watched failing first, the second with the assertion that
+names the form's own rendered keys, which is what makes "renders
+nowhere" a test rather than a claim.
+
+THE WORDING QUESTION IS WITHDRAWN. "required" is the right word for a
+person; "missing field 'zip' in Address" is the right word for a wire.
+The two walks stay two — as `ui-path-two-walks` concluded the same day,
+for its own measured reason — and `Validate` keeps the wire's voice.
+`SIso` still hands its refinement whole to the decoder, which is right:
+a refinement belongs to the wrapper, not to a field under it.
+
+TestFormErrors (3). okay-ui 152, okay-script 207.
+
 ## ui-path-two-walks — the answer is "stay two", and the question found a wire defect
 
 MEASURED FIRST, as the entry demanded. `PathWalkProbe` (kept beside the
