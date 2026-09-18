@@ -382,6 +382,72 @@ class TestTerminalKeys extends munit.FunSuite {
     assertEquals(marked.length, 1, marked.map(Frame.width).toString)
     assertEquals(marked.map(Frame.width), plain.map(Frame.width))
 
+  /**
+   * ui-scroll-viewport: a `Ui.Scroll` clips its OWN child now, so a
+   * page can have a scrolling region and not only a scrolling screen.
+   * The rule for who gets the leftover vertical space is the one every
+   * browser and terminal application uses: everything that is not a
+   * Scroll takes its natural height, the Scrolls share what is left.
+   */
+  private def tall(n: Int): Ui = Column((0 until n).toVector.map(i => Text(s"line $i")))
+
+  test("a Scroll takes the leftover height; everything else takes its own"):
+    val page = Column(Vector(Text("title"), Scroll(tall(20), "body"), Button("ok", "ok")))
+    val lines = Frame.render(page, None, Frame.View(width = 20, height = 10))
+    assertEquals(lines.length, 10, lines.mkString("|"))
+    // the title and the button are there, and the body took the 8 rows
+    // between them
+    assertEquals(lines.head, "title")
+    assert(lines.last.contains("ok"), lines.mkString("|"))
+    assertEquals(lines.slice(1, 9), (0 until 8).toVector.map(i => s"line $i"))
+
+  test("the offset is per KEY, and it moves the window over the same layout"):
+    val page = Column(Vector(Text("title"), Scroll(tall(20), "body")))
+    val view = Frame.View(width = 20, height = 6, scroll = Map("body" -> 4))
+    val lines = Frame.render(page, None, view)
+    assertEquals(lines.head, "title")
+    assertEquals(lines.tail, (4 until 9).toVector.map(i => s"line $i"))
+    // past the end it stops at the end rather than showing nothing
+    val far = Frame.render(page, None, view.copy(scroll = Map("body" -> 99)))
+    assertEquals(far.tail, (15 until 20).toVector.map(i => s"line $i"))
+
+  test("two Scrolls share what is left, and each has its own offset"):
+    val page = Column(Vector(Scroll(tall(20), "a"), Scroll(tall(20), "b")))
+    val lines = Frame.render(page, None,
+      Frame.View(width = 20, height = 8, scroll = Map("a" -> 0, "b" -> 10)))
+    assertEquals(lines.length, 8)
+    assertEquals(lines.take(4), (0 until 4).toVector.map(i => s"line $i"))
+    assertEquals(lines.drop(4), (10 until 14).toVector.map(i => s"line $i"))
+
+  test("a click can only land on what a reader can SEE"):
+    val page = Column(Vector(Scroll(Column((0 until 10).toVector.map(i =>
+      Button(s"b$i", s"k$i"))), "list")))
+    val view = Frame.View(width = 12, height = 3, scroll = Map("list" -> 4))
+    val places = Frame.laid(page, None, view)._2
+    // three buttons are on screen, and they are the ones scrolled to
+    assertEquals(places.map(_.key), Vector("k4", "k5", "k6"))
+    assertEquals(places.head.row, 0, places.toString)
+    // and hit-testing answers the index among the SHOWN ones
+    assertEquals(Frame.laid(page, None, view)._2.indexWhere(_.holds(1, 2)), 1)
+
+  test("the host knows WHICH region the reader is in"):
+    val page = Column(Vector(
+      Button("top", "top"),
+      Scroll(Column(Vector(Button("a", "a"), Button("b", "b"))), "list"),
+      Button("foot", "foot")))
+    // index 0 is the top button, 1 and 2 are inside the list, 3 is the foot
+    assertEquals(Frame.scrollAt(page, 0), None)
+    assertEquals(Frame.scrollAt(page, 1), Some("list"))
+    assertEquals(Frame.scrollAt(page, 2), Some("list"))
+    assertEquals(Frame.scrollAt(page, 3), None)
+    // a page with no Scroll at all has no region to move
+    assertEquals(Frame.scrollAt(Column(Vector(Button("x", "x"))), 0), None)
+
+  test("no height is v1's layout: a Scroll draws its child whole"):
+    val page = Column(Vector(Scroll(tall(20), "body")))
+    assertEquals(Frame.render(page).length, 20)
+    assertEquals(Frame.render(page, None, 20).length, 20)
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))

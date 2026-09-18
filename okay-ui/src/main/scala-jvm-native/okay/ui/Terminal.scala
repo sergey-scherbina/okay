@@ -51,20 +51,32 @@ object Terminal {
     /** where the caret is inside the focused `Input`, or -1 when what
      * has the focus is not one (ui-terminal-caret) */
     @volatile private var caret = -1
+    /** where each keyed `Ui.Scroll` is scrolled to (ui-scroll-viewport):
+     * the page's own regions, beside the whole-frame view above */
+    @volatile private var regions = Map.empty[String, Int]
 
     private def paint(): Unit =
       val f = Ui.focusable(tree).lift(focus)
-      val lines = Frame.render(tree, f, cols, caret)
+      val lines = Frame.render(tree, f, Frame.View(cols, rows, caret, regions))
       Frame.focusLine(tree, f, cols).foreach(l => top = Frame.follow(top, l, rows))
       out.print("\u001b[2J\u001b[H")          // clear, home
       Frame.clip(lines, top, rows).foreach(l => out.print(l + "\r\n"))
       out.flush()
 
-    /** a page of the view, bounded by what there is to show */
+    /**
+     * A page of whatever the reader is IN: the `Ui.Scroll` around the
+     * focus when there is one, and the whole frame when there is not
+     * (ui-scroll-viewport). A region clamps itself on the way out, so
+     * this only has to move the number.
+     */
     private def page(d: Int): Unit =
-      val height = Frame.render(tree, Ui.focusable(tree).lift(focus), cols).length
       val step = math.max(rows - 1, 1)
-      top = math.max(0, math.min(top + d * step, math.max(height - rows, 0)))
+      Frame.scrollAt(tree, focus) match
+        case Some(key) =>
+          regions = regions.updated(key, math.max(0, regions.getOrElse(key, 0) + d * step))
+        case None =>
+          val height = Frame.render(tree, Ui.focusable(tree).lift(focus), cols).length
+          top = math.max(0, math.min(top + d * step, math.max(height - rows, 0)))
       paint()
 
     def render(ui: Ui): Unit ! Async = async {

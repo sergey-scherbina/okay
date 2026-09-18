@@ -26,6 +26,17 @@ object Frame {
     def holds(r: Int, c: Int): Boolean = r >= row && r < row + h && c >= col && c < col + w
 
   /**
+   * WHAT THE SCREEN GIVES A FRAME: the width to lay out in, the height
+   * to fit into, the caret in the focused input, and where each keyed
+   * `Scroll` is scrolled to (ui-scroll-viewport).
+   *
+   * Zero is "unbounded" for both budgets, which is v1's layout, so a
+   * caller that knows nothing about screens passes nothing.
+   */
+  final case class View(width: Int = 0, height: Int = 0, caret: Int = -1,
+                        scroll: Map[String, Int] = Map.empty)
+
+  /**
    * THE FRAME AND WHERE EVERY FOCUSABLE WIDGET SITS IN IT.
    *
    * `render` is this function's first half — one walk, not two, which
@@ -35,18 +46,23 @@ object Frame {
    * for a different reason, and the lesson is the same).
    *
    * What it buys: hit-testing reads a MAP rather than searching the
-   * frame for the text each widget drew — which found a widget by its
-   * first line only when the text wrapped, and told two identical
-   * widgets apart by order alone.
+   * frame for the text each widget drew.
    */
+  def laid(ui: Ui, focus: Option[Ui], view: View): (Vector[String], Vector[Placed]) =
+    at(ui, focus, view, 0, 0)
+
   def laid(ui: Ui, focus: Option[Ui] = None, width: Int = 0, caret: Int = -1)
           : (Vector[String], Vector[Placed]) =
-    at(ui, focus, width, caret, 0, 0)
+    at(ui, focus, View(width = width, caret = caret), 0, 0)
 
   /** render a tree as lines; the focused widget is marked. The lines
    * of `laid`, which is where the layout actually happens */
   def render(ui: Ui, focus: Option[Ui] = None, width: Int = 0, caret: Int = -1): Vector[String] =
-    at(ui, focus, width, caret, 0, 0)._1
+    at(ui, focus, View(width = width, caret = caret), 0, 0)._1
+
+  /** the same, at a full view — what a host with a screen renders */
+  def render(ui: Ui, focus: Option[Ui], view: View): Vector[String] =
+    at(ui, focus, view, 0, 0)._1
 
   /**
    * The walk, at an origin. Every case answers the lines it always
@@ -57,10 +73,10 @@ object Frame {
    * button in it is still the button's cell, so a click on the padding
    * lands on the button a reader can see there.
    */
-  private def at(ui: Ui, focus: Option[Ui], width: Int, caret: Int, row: Int, col: Int)
+  private def at(ui: Ui, focus: Option[Ui], v: View, row: Int, col: Int)
                : (Vector[String], Vector[Placed]) = ui match
     case Text(s, style) =>
-      val lines = s.split("\n", -1).toVector.flatMap(wrap(_, width))
+      val lines = s.split("\n", -1).toVector.flatMap(wrap(_, v.width))
       // tokens map to the terminal's idiom: emphasis is bold, muted is
       // dim, danger is red; size has no terminal meaning
       val out =
@@ -70,22 +86,39 @@ object Frame {
         else lines
       (out, Vector.empty)
 
-    case Column(children, _) => stacked(children, focus, width, caret, row, col, gap = 0, pad = 0)
-    case Box(children, Dir.Vertical, _, gap, pad, _) =>
-      stacked(children, focus, width, caret, row, col, gap, pad)
+    case Column(children, _) => stacked(children, focus, v, row, col, gap = 0, pad = 0)
+    case Box(children, Dir.Vertical, _, gap, pad, _) => stacked(children, focus, v, row, col, gap, pad)
 
-    case Row(children, _) =>
-      side(children, focus, width, caret, row, col, Vector.empty, " ", 0)
+    case Row(children, _) => side(children, focus, v, row, col, Vector.empty, " ", 0)
     case Box(children, Dir.Horizontal, weights, gap, pad, _) =>
-      side(children, focus, width, caret, row, col, weights, " " * gap, pad)
+      side(children, focus, v, row, col, weights, " " * gap, pad)
 
-    case Scroll(child, _) => at(child, focus, width, caret, row, col)
+    /**
+     * A SCROLL CLIPS ITS OWN CHILD, when it was given a height
+     * (ui-scroll-viewport). The child is drawn WHOLE and then cut to
+     * the viewport at this key's offset — so what is off-screen was
+     * laid out, and scrolling shows it without re-laying anything.
+     *
+     * The placements move with the view and the ones that scrolled out
+     * of it are dropped: a click can only land on what a reader can
+     * see, which is the same rule the capability list states for the
+     * wire.
+     */
+    case Scroll(child, key) =>
+      val (cl, cp) = at(child, focus, v.copy(height = 0), row, col)
+      if v.height <= 0 then (cl, cp)
+      else
+        val top = math.max(0, math.min(v.scroll.getOrElse(key, 0), math.max(cl.length - v.height, 0)))
+        val shown = cp.map(p => p.copy(row = p.row - top))
+          .filter(p => p.row + p.h > row && p.row < row + v.height)
+        (clip(cl, top, v.height), shown)
+
     case Image(_, alt) => (Vector(s"[image: $alt]"), Vector.empty)
 
     case b @ Button(label, _, role) =>
       leaf(ui, Vector(if focus.contains(b) then s"[>$label<]"
                       else if role == Role.Active then s"[=$label=]" else s"[ $label ]"),
-        width, row, col)
+        v.width, row, col)
     case i @ Input(value, _, label, kind, _) =>
       val name = if label.isEmpty then "" else s"$label: "
       val shown = if kind == InputKind.Secret then "*" * value.length else value
@@ -97,72 +130,118 @@ object Frame {
       // passes -1 and gets v1's trailing mark.
       leaf(ui, Vector(
         if !focus.contains(i) then s"$name[$shown]"
-        else if caret < 0 then s"$name[$shown*]"
-        else s"$name[${carets(shown, caret)}]"), width, row, col)
+        else if v.caret < 0 then s"$name[$shown*]"
+        else s"$name[${carets(shown, v.caret)}]"), v.width, row, col)
     case c @ Check(on, _, label) =>
       val box = if on then "[x]" else "[ ]"
       val f = if focus.contains(c) then ">" else " "
-      leaf(ui, Vector(s"$f$box $label"), width, row, col)
+      leaf(ui, Vector(s"$f$box $label"), v.width, row, col)
     case s @ Select(options, selected, _) =>
       val cur = options.lift(selected).getOrElse("")
-      leaf(ui, Vector(if focus.contains(s) then s"<$cur>" else s" $cur "), width, row, col)
+      leaf(ui, Vector(if focus.contains(s) then s"<$cur>" else s" $cur "), v.width, row, col)
 
     case Form(fields, submit, k) =>
-      at(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, width, caret, row, col)
+      at(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, v, row, col)
     // the budget reaches THROUGH a lowering, which is where a table is
     // drawn - the compiler caught both of these dropping it (E221,
     // "recursive call used a default argument"), and a table is
     // exactly the node whose columns the budget is for
-    case semantic => at(Ui.lower(semantic, Set.empty), focus, width, caret, row, col)
+    case semantic => at(Ui.lower(semantic, Set.empty), focus, v, row, col)
 
-  /**
-   * A leaf, WRAPPED TO ITS CELL, and the cell it fills.
-   *
-   * The wrap is not decoration: until ui-terminal-layout-map wrote a
-   * test that expected a wrapped input, only `Text` was wrapped, so an
-   * `Input` holding a long value drew ONE line and ran off the screen —
-   * in a renderer whose whole width lane exists to stop exactly that.
-   * A value that is cut cannot be checked against anything; a value
-   * that comes down onto a second line can.
-   */
+  /** a leaf, wrapped to its cell, and the cell it fills */
   private def leaf(ui: Ui, lines: Vector[String], budget: Int, row: Int, col: Int)
                   : (Vector[String], Vector[Placed]) =
     val out = lines.flatMap(wrap(_, budget))
     val w = math.max(out.map(width).maxOption.getOrElse(0), budget)
     (out, Vector(Placed(Ui.keyOf(ui).getOrElse(""), row, col, w, out.length)))
 
-  /** children below one another: gap blank rows between, pad columns in */
-  private def stacked(children: Vector[Ui], focus: Option[Ui], width: Int, caret: Int,
+  /**
+   * THE SCROLL REGION A WIDGET IS INSIDE, innermost first — what a
+   * host moves when the reader pages while the focus is in a list
+   * rather than on the page (ui-scroll-viewport).
+   */
+  def scrollAt(ui: Ui, focus: Int): Option[String] =
+    Ui.focusable(ui).lift(focus).flatMap { f =>
+      def go(u: Ui, inside: Option[String]): Option[String] =
+        if u == f then inside
+        else u match
+          case Scroll(child, key) => go(child, if key.isEmpty then inside else Some(key))
+          case Column(cs, _) => cs.view.flatMap(c => go(c, inside)).headOption
+          case Row(cs, _) => cs.view.flatMap(c => go(c, inside)).headOption
+          case b: Box => b.children.view.flatMap(c => go(c, inside)).headOption
+          case Form(fs, submit, k) =>
+            go(Box(fs :+ Button(submit, k, Role.Primary), Dir.Vertical), inside)
+          case _: Text | _: Image | _: Button | _: Input | _: Check | _: Select => None
+          case semantic => go(Ui.lower(semantic, Set.empty), inside)
+      go(ui, None)
+    }
+
+  /** is this child a viewport — the node that shares out the leftover
+   * vertical space rather than taking its own height */
+  private def scrolls(ui: Ui): Boolean = ui match
+    case _: Scroll => true
+    case _ => false
+
+  /**
+   * Children below one another: gap blank rows between, pad columns in.
+   *
+   * WHO GETS THE LEFTOVER VERTICAL SPACE, when this box was given a
+   * height (ui-scroll-viewport): every child that is not a `Scroll`
+   * takes its NATURAL height, and the `Scroll` children share what is
+   * left, evenly, the remainder to the last. A nested `Scroll` then
+   * divides its own share the same way.
+   *
+   * It is the rule a browser and every terminal application use, and
+   * it needs nothing new in the tree — which is why it was chosen over
+   * giving `Scroll` a weight: a height in the tree would be a pixel by
+   * another name.
+   */
+  private def stacked(children: Vector[Ui], focus: Option[Ui], v: View,
                       row: Int, col: Int, gap: Int, pad: Int)
                      : (Vector[String], Vector[Placed]) =
-    val budget = math.max(width - 2 * pad, 0)
+    val budget = math.max(v.width - 2 * pad, 0)
+    val inner = v.copy(width = budget)
+    val heights: Vector[Int] =
+      if v.height <= 0 || !children.exists(scrolls) then Vector.fill(children.length)(0)
+      else
+        val naturals = children.map(c => at(c, focus, inner.copy(height = 0), 0, 0)._1.length)
+        val viewports = children.indices.filter(i => scrolls(children(i)))
+        val fixed = children.indices.filterNot(viewports.contains).map(naturals).sum +
+          gap * math.max(children.length - 1, 0)
+        val left = math.max(v.height - fixed, 0)
+        val each = left / viewports.length
+        children.indices.toVector.map { i =>
+          if !viewports.contains(i) then 0
+          else if i == viewports.last then left - each * (viewports.length - 1)
+          else each
+        }
     val (lines, places, _) = children.zipWithIndex
       .foldLeft((Vector.empty[String], Vector.empty[Placed], row)) {
         case ((ls, ps, r), (c, i)) =>
           val top = if i > 0 then r + gap else r
-          val (cl, cp) = at(c, focus, budget, caret, top, col + pad)
+          val (cl, cp) = at(c, focus, inner.copy(height = heights(i)), top, col + pad)
           (ls ++ (if i > 0 then Vector.fill(gap)("") else Vector.empty) ++ cl, ps ++ cp, top + cl.length)
       }
     (lines.map(l => " " * pad + l), places)
 
   /** children beside one another: each in its share, separated */
-  private def side(children: Vector[Ui], focus: Option[Ui], width: Int, caret: Int,
+  private def side(children: Vector[Ui], focus: Option[Ui], v: View,
                    row: Int, col: Int, weights: Vector[Int], sep: String, pad: Int)
                   : (Vector[String], Vector[Placed]) =
-    val budget = math.max(width - 2 * pad, 0)
+    val budget = math.max(v.width - 2 * pad, 0)
     // MEASURED before divided: a column narrower than its longest
     // word breaks the word, and a word is the smallest thing wrapping
     // must not split (ui-column-minimum)
-    val natural = children.map(c => at(c, focus, 0, caret, 0, 0)._1)
+    val natural = children.map(c => at(c, focus, v.copy(width = 0), 0, 0)._1)
     val shares = split(budget, children.length, weights, sep.length * (children.length - 1),
       natural.map(longestWord), natural.map(b => b.map(Frame.width).maxOption.getOrElse(0)))
-    val blocks = children.zip(shares).map((c, w) => at(c, focus, w, caret, 0, 0)._1)
+    val blocks = children.zip(shares).map((c, w) => at(c, focus, v.copy(width = w), 0, 0)._1)
     val widths = columns(blocks, weights, shares)
     // where each child begins: its own share plus the separators
     // before it, counted in the SAME widths `beside` pads to
     val offsets = widths.scanLeft(0)((x, w) => x + w + sep.length).init
     val places = children.zip(shares).zip(offsets).flatMap { case ((c, w), dx) =>
-      at(c, focus, w, caret, row, col + pad + dx)._2
+      at(c, focus, v.copy(width = w), row, col + pad + dx)._2
     }
     (beside(blocks, weights, sep, children.map(alignOf), shares).map(l => " " * pad + l), places)
 
