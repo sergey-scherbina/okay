@@ -1,0 +1,6 @@
+okay-wt-gate-fanout 2026-09-18T10:48:32Z
+agent: claude-code
+heartbeat: 2026-09-18T10:48:32Z
+status: in-progress
+done-so-far: measured: Limit all to 14, forked-test-group 1, but Test/parallelExecution=true on all three platforms; JS/Native spawn a PROCESS per test class, so 14 tasks x ~10 classes = the 145-165 seen in two dumps
+next: parallelExecution false, measure against the 179s baseline
