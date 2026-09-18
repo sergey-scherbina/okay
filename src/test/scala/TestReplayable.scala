@@ -35,7 +35,11 @@ class TestReplayable extends munit.FunSuite {
     assert(e.nonEmpty, "a Writer row was accepted as replayable")
   }
 
-  test("Resource and Uid are refused: acquiring twice and a fresh id are not replays") {
+  // The title used to say "Resource and Uid", and the body only ever
+  // checked Resource — caught when Uid left for okay-data
+  // (core-modules stage 3). The Uid half is a real question and is now
+  // asked where Uid lives, in okay-data's TestUidReplayable.
+  test("Resource is refused: acquiring twice is not a replay") {
     assert(compileErrors("summon[okay.Replayable[okay.Delim + okay.Resource]]").nonEmpty)
   }
 

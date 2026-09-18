@@ -143,11 +143,39 @@ suites stay JVM, which is the shape they already had.
 The core is now **52 files and 13 555 lines**, down from 74 and
 21 914 — 38% gone in two stages, with no consumer's import edited.
 
-## Stage 3 — `okay-data` (not this lane)
+## Stage 3 — `okay-data` (DONE)
 
-`Sketch`, `Windows`, `Uid`, `Hlc` and the aggregators, with
-`Aggregator` itself staying in the core by the law above. `Tables`
-re-homes here from `okay-stream`.
+`Sketch` (309), `Uid` (201) and `Hlc` (173), with their four suites.
+`Windows` and `Tables` did not come here after all — they went with
+the streams in stage 1 and stay there, because what they are built on
+is `Stage` and `Bulk`.
+
+**`Aggregator` stayed, and this is the law's fourth independent
+confirmation.** Ten modules are typed on it (okay-cluster alone names
+it 118 times); `Sketch`, which implements approximate aggregators
+against it, had **ZERO consumers among the 73 modules**. The core was
+carrying 309 lines for nobody. That asymmetry — an interface with ten
+users beside an implementation with none, in the same subject — is
+the cleanest example of the rule this spec opened with.
+
+`Uid` and `Hlc` had exactly two consumers each, okay-crdt and
+okay-security, and the survey named both before the compiler did.
+They were the two `dependsOn` edges the whole family needed.
+
+TWO THEMES IN ONE MODULE, deliberately: approximate aggregation, and
+coordination-free identity. Splitting them now makes two modules of
+309 and 374 lines with one consumer group each, which is structure
+ahead of need. The trigger to split is either theme growing a second
+file.
+
+**A STALE TEST TITLE FELL OUT OF THE MOVE.** The core's
+`TestReplayable` had a test called "Resource and Uid are refused:
+acquiring twice and a fresh id are not replays" whose body only ever
+summoned the Resource row. Uid was in the title and in nothing else.
+The title is now what it tests, and the Uid half is asked for the
+first time, in okay-data's `TestUidReplayable` — with the control the
+repo's rule asks for: pointed at a replayable row the assertion
+FAILS, so it is the refusal that carries it.
 
 ## Not yet — optics and STM
 
@@ -155,11 +183,22 @@ Both are extractable in principle and neither is extractable by
 moving files, because in both the core is typed against the
 implementation rather than an interface:
 
-- `State.zoom` takes a `Lens`, and `Proc.procArrow` is an
-  `Optic.Arrow`. The classes (`Strong`, `Choice`, `Arrow`,
-  `Traversing`) are interfaces and belong in the core; the concrete
-  optics and the `Fuse` macro are machinery. Separating them is a
-  lane of its own.
+- optics: **HALF THIS SEAM CLOSED BY ITSELF IN STAGE 2.**
+  `Proc.procArrow` was one of the two edges and `Proc` left with the
+  workflow, so the core's only remaining tie to optics is `State`'s
+  zoom family — `zoom`, `zoomCase`, `strong`, `ZoomStrong`,
+  `opticZooming` — typed on `Lens`, `Prism` and `Optic.Strong`.
+  Measured after stage 2: that family has **ZERO callers outside the
+  core's own tests**, 25 mentions across TestZoom, TestContProfunctor
+  and TestContSemigroupoid and nowhere else in 73 modules. The lane is
+  therefore cheap, and its one real cost is a SPELLING: `State.zoom`
+  cannot stay `State.zoom` in another artifact, because an object
+  cannot be reopened across compilation units — the same wall
+  `Producer.concat` hit in stage 1 — so it becomes something like
+  `Zoom.state(l)(p)` and three test files follow. `PState.Zooming` is
+  a `Cont` alias with no optics in it and stays. The classes (`Strong`,
+  `Choice`, `Arrow`, `Traversing`) are interfaces; the concrete optics
+  and the `Fuse` macro are machinery.
 - `Providing.Facts` is backed by `TMap`, and `Stm.sim` is an
   instance for `Sim`. Two seams, both small, both real.
 

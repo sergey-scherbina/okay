@@ -347,6 +347,50 @@ lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * Data structures that are not the effect system (core-modules stage
+ * 3, 2026-09-18): the approximate aggregators (`Sketch`) and the
+ * coordination-free pair, a sortable 128-bit identity (`Uid`) and the
+ * hybrid logical clock (`Hlc`) underneath it.
+ *
+ * Two themes in one module, deliberately, and the trigger to split
+ * them is either one growing a second file. What made them one lane
+ * is a measurement rather than a theme: the core named none of the
+ * three, `Sketch` had ZERO consumers among the 73 modules, and `Uid`
+ * and `Hlc` had exactly two each. `Aggregator` STAYED in the core —
+ * ten modules are typed on it, which is what an interface looks like.
+ *
+ * A crossProject because these files sat in the shared source
+ * directory and compile on JS and Native today.
+ */
+lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-data"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-data",
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 /** interop with cats: instances and conversions, nothing more (P3) */
 lazy val okayCats = (project in file("okay-cats"))
   .dependsOn(okay.jvm)
@@ -872,7 +916,7 @@ lazy val okayCrdt = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay-crdt"))
   // okay for `Hlc` and `Uid`; okay-codec so a replica ships as data
   // (`Wire`). Both are JVM + JS + Native, so nothing narrows.
-  .dependsOn(okay, okayCodec)
+  .dependsOn(okay, okayData, okayCodec)
   .settings(
     name := "okay-crdt",
     libraryDependencies ++= Seq(
@@ -1369,7 +1413,7 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
 lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
-  .dependsOn(okayHttp)
+  .dependsOn(okayHttp, okayData)
   .settings(
     name := "okay-security",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -1970,7 +2014,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,
