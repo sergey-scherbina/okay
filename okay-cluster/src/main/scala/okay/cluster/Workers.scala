@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.*
-import okay.codec.{Codecs, Schema}
+import okay.codec.{Codecs, Digest, Schema}
 
 /**
  * THE WORKER PROTOCOL (specs/dataflow.md, stage 4b).
@@ -21,10 +21,15 @@ import okay.codec.{Codecs, Schema}
  * different answer.
  */
 enum Req:
-  /** the pre-pass over one partition */
-  case Extent(job: String, params: Array[Byte], part: Int, of: Int)
+  /** the pre-pass over one partition. `digest` is the coordinator's
+   * own `okay.codec.Digest` of the job's partial Schema, encoded —
+   * empty when the coordinator has not been built with the door
+   * check (specs/federation.md, stage 3), which skips it entirely,
+   * the same "hasn't asked yet" shape as `Checkpoint.none` */
+  case Extent(job: String, params: Array[Byte], part: Int, of: Int, digest: Array[Byte] = Array.emptyByteArray)
   /** run one partition under the bounds the coordinator computed */
-  case Run(job: String, params: Array[Byte], part: Int, of: Int, bounds: Vector[Bounds])
+  case Run(job: String, params: Array[Byte], part: Int, of: Int, bounds: Vector[Bounds],
+           digest: Array[Byte] = Array.emptyByteArray)
   /** what this worker's build knows how to run */
   case Known
 
@@ -36,7 +41,9 @@ enum Req:
             /** where to open: `from` elements in and already at
              * `epoch` — zero and zero is the start, and what a
              * windowed sink always asks for (stage 11 box 2) */
-            from: Long = 0L, epoch: Int = 0)
+            from: Long = 0L, epoch: Int = 0,
+            /** the door check (specs/federation.md, stage 3) — see `Extent` */
+            digest: Array[Byte] = Array.emptyByteArray)
   /**
    * Advance this partition to EPOCH `epoch` — by up to `take`
    * elements per epoch — and hand back what it closed in that one.
@@ -161,10 +168,50 @@ object Cluster {
    * so the job check has already happened for them, and the
    * coordinator check above still has not. */
   private def named(req: Req): Option[String] = req match
-    case Req.Extent(job, _, _, _) => Some(job)
-    case Req.Run(job, _, _, _, _) => Some(job)
-    case Req.Open(job, _, _, _, _, _, _) => Some(job)
+    case Req.Extent(job, _, _, _, _) => Some(job)
+    case Req.Run(job, _, _, _, _, _) => Some(job)
+    case Req.Open(job, _, _, _, _, _, _, _) => Some(job)
     case Req.Known | Req.Advance(_, _, _, _) | Req.Close(_) => None
+
+  /**
+   * THE DOOR CHECK (specs/federation.md, stage 3): a job whose
+   * partial Schema this party would produce differently from what
+   * the coordinator's own `Digest` expects is refused before a byte
+   * of it runs — the same shape `guarded` uses for identity, applied
+   * to the wire's shape instead. OPT IN, like `guarded`: a party that
+   * wraps its `Serve` with this pays for the check; one that does not
+   * pays nothing, and the coordinator's digest (always sent, computed
+   * once per run) simply goes unread.
+   *
+   * An EMPTY digest skips the check — a coordinator built before this
+   * box, or one that never populates it, changes nothing for a party
+   * that opts in; a job NOT FOUND is left to the ordinary "no job
+   * named" answer downstream rather than duplicated here.
+   */
+  def schemaChecked(base: Serve): Serve = req =>
+    digestOf(req) match
+      case None => base(req)
+      case Some((_, _, digest)) if digest.isEmpty => base(req)
+      case Some((jobName, params, digest)) =>
+        Jobs.find(jobName) match
+          case None => base(req)
+          case Some(job) =>
+            job.wireSchema(params) match
+              case Left(why) => Resp.Failed(s"parameters for '$jobName': $why")
+              case Right(mine) =>
+                Codecs.cbor(summon[Schema[Digest]]).decode(digest) match
+                  case Left(why) => Resp.Failed(s"the coordinator's schema digest for '$jobName': $why")
+                  case Right(theirs) =>
+                    val v = Digest.compare(mine, theirs).backward
+                    if v.compatible then base(req)
+                    else Resp.Failed(s"the coordinator cannot decode '$jobName''s partial:\n" +
+                      v.reasons.mkString("\n"))
+
+  private def digestOf(req: Req): Option[(String, Array[Byte], Array[Byte])] = req match
+    case Req.Extent(job, params, _, _, digest) => Some((job, params, digest))
+    case Req.Run(job, params, _, _, _, digest) => Some((job, params, digest))
+    case Req.Open(job, params, _, _, _, _, _, digest) => Some((job, params, digest))
+    case _ => None
 
   /**
    * Run a registered job across workers, partition i on worker
@@ -187,12 +234,18 @@ object Cluster {
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
     val living = Living(workers.length, tolerance)
+    // THE DOOR CHECK'S OTHER HALF (specs/federation.md, stage 3):
+    // computed ONCE per run and attached to every request that names
+    // this job. A party who never opts into `schemaChecked` never
+    // decodes it; the cost of ALWAYS sending it is one small,
+    // structural CBOR encode per run, not per partition or element.
+    val digest = Codecs.cbor(summon[Schema[Digest]]).encode(Digest.of(sink.wire))
 
     val bounds: Vector[Vector[Bounds]] ! Async =
       if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
       else
         Flows.spread(parts)(i =>
-          ask(workers, living, i, Req.Extent(job.name, encoded, i, parts)) match
+          ask(workers, living, i, Req.Extent(job.name, encoded, i, parts, digest)) match
             case Resp.Extents(cols) => cols
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
             case other => throw IllegalStateException(s"partition $i answered $other to a pre-pass"))
@@ -200,7 +253,7 @@ object Cluster {
 
     bounds.flatMap: bs =>
       Flows.spread(parts) { i =>
-        ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i))) match
+        ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i), digest)) match
           case Resp.Partial(bytes) =>
             Codecs.cbor(sink.wire).decode(bytes) match
               case Right(w) => w
@@ -348,7 +401,7 @@ object Cluster {
 
   private val serving: Serve = {
     case Req.Known => Resp.Names(Jobs.names)
-    case Req.Open(name, params, part, of, session, from, epoch) =>
+    case Req.Open(name, params, part, of, session, from, epoch, _) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
@@ -366,14 +419,14 @@ object Cluster {
           val out = st.finish()
           Sessions.drop(session)
           out
-    case Req.Extent(name, params, part, of) =>
+    case Req.Extent(name, params, part, of, _) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
           job.extentAt(params, part, of) match
             case Right(cols) => Resp.Extents(cols)
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
-    case Req.Run(name, params, part, of, bounds) =>
+    case Req.Run(name, params, part, of, bounds, _) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
@@ -419,6 +472,9 @@ object Cluster {
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
     val living = Living(workers.length, tolerance)
+    // the door check's other half (specs/federation.md, stage 3) —
+    // see `Cluster.run`'s identical line
+    val digest = Codecs.cbor(summon[Schema[Digest]]).encode(Digest.of(sink.wire))
     val folded = Codecs.cbor(Folded.given_Schema_Folded)
     val held = Codecs.cbor(sink.state)
     // the ids this run's sessions carry — inherited from the journal
@@ -456,12 +512,12 @@ object Cluster {
     def opening(i: Int, positions: Vector[Long], absorbed: Int,
                 seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek]): Req.Open =
       if (sink.seekable || rescaling) && positions.nonEmpty then
-        Req.Open(job.name, encoded, i, parts, sessions(i), positions(i), absorbed)
+        Req.Open(job.name, encoded, i, parts, sessions(i), positions(i), absorbed, digest)
       else
         val at = seeking(i, seen, marks)
-        if at < 0 then Req.Open(job.name, encoded, i, parts, sessions(i))
+        if at < 0 then Req.Open(job.name, encoded, i, parts, sessions(i), digest = digest)
         else Req.Open(job.name, encoded, i, parts, sessions(i),
-          marks(at).positions(i), marks(at).epoch)
+          marks(at).positions(i), marks(at).epoch, digest)
 
     // -- ROAD B: where a sink with a HORIZON opens -------------------
     //   (specs/dataflow.md, stage 11 box 2b)

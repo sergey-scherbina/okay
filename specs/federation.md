@@ -218,6 +218,27 @@ Stage 2:
       still runs on every request, and a stranger cannot advance a
       session somebody else opened
 
+Stage 3:
+- [x] `Cluster.schemaChecked(base)` wraps a `Serve` and refuses, before
+      `job.extentAt`/`partialAt`/`openAt` ever runs, a request whose
+      coordinator-supplied `okay.codec.Digest` disagrees (backward-
+      incompatibly) with what the party's own build would produce for
+      that job. OPT IN, like `guarded`, and composes with it — the
+      SAME three request kinds (`Extent`/`Run`/`Open`) that name a
+      job carry the digest; `Advance`/`Close` name a session and
+      carry none
+- [x] `Cluster.run`/`Cluster.stream` compute the digest ONCE per run
+      (from `sink.wire`) and attach it to every request, unconditionally
+      — a party that never opts into checking it pays nothing and the
+      digest simply goes unread; an EMPTY digest (every existing
+      caller's default) skips the check entirely, so a coordinator
+      built before this box changes nothing for anybody
+- [x] the refusal comes BEFORE any read — the same rule stages 1 and 2
+      both already established — and names the job and what changed,
+      via `Compat.Report.render`
+- [x] a job not found is left to the ordinary "no job named" answer
+      downstream, never duplicated by this check
+
 Stage 4:
 - [x] `Leak.of(wire)` walks a `Wire#wire` Schema and reports every
       field that crosses, per key where there is one (a `Wire.keyed`

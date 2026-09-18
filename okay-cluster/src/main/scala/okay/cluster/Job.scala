@@ -66,6 +66,18 @@ abstract class Job[P, R]:
   // parameter and answer types it cannot name.
   // ---------------------------------------------------------------
 
+  /**
+   * THIS JOB'S OWN PARTIAL SCHEMA, DECODED FOR THESE PARAMETERS
+   * (specs/federation.md, stage 3 — "schema at the door").
+   *
+   * A `Wire#wire` can depend on the parameters (a window's size, a
+   * key's own type), so the check needs `p` decoded first. Used at
+   * the door: a party compares this against the coordinator's own
+   * `okay.codec.Digest` of the same job before running a byte of it.
+   */
+  final def wireSchema(bytes: Array[Byte]): Either[String, Schema[?]] =
+    Codecs.cbor(params).decode(bytes).map(p => sink(p).wire)
+
   /** the pre-pass over one partition: three longs per event-time
    * column, which is everything the coordinator needs before any
    * partition may start */
