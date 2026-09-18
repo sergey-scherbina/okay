@@ -66,6 +66,14 @@ enum Stmt:
               fallback: Vector[Stmt] = Vector.empty)
   case Break
   case Block(body: Vector[Stmt])
+  /** A LINE OF PROSE IN THE OUTPUT.
+   *
+   * Not decoration: a served script is read by whoever is debugging
+   * the page in front of them, and a generated file with the
+   * reasoning stripped out is worse to read than the hand-written one
+   * it replaced. The text is emitted as a `//` comment, one line per
+   * line, and never interpreted. */
+  case Comment(text: String)
   case Raw(source: String)
 
 object Js:
@@ -125,7 +133,7 @@ object Js:
       case Stmt.Switch(on, cs, f) =>
         inJs(on) + cs.map((k, b) => inJs(k) + b.map(inStmt).sum).sum + f.map(inStmt).sum
       case Stmt.Block(b) => b.map(inStmt).sum
-      case Stmt.Break => 0
+      case Stmt.Break | Stmt.Comment(_) => 0
     stmts.map(inStmt).sum
 
   // ---- printing ----------------------------------------------------
@@ -230,7 +238,7 @@ object Js:
     case _: Ternary => 3
     case _: Fun => 20
 
-  private def expr(j: Js, outer: Int, sb: StringBuilder): Unit =
+  private def expr(j: Js, outer: Int, sb: StringBuilder, depth: Int = 0): Unit =
     val mine = prec(j)
     val wrap = mine < outer
     if wrap then sb += '('
@@ -248,7 +256,7 @@ object Js:
         sb += '['
         items.zipWithIndex.foreach { (x, i) =>
           if i > 0 then sb ++= ", "
-          expr(x, 0, sb)
+          expr(x, 0, sb, depth)
         }
         sb += ']'
       case Obj(fields) =>
@@ -257,32 +265,32 @@ object Js:
           if i > 0 then sb ++= ", "
           sb ++= key(k)
           sb ++= ": "
-          expr(v, 0, sb)
+          expr(v, 0, sb, depth)
         }
         sb += '}'
       case Field(of, n) =>
-        expr(of, mine, sb)
+        expr(of, mine, sb, depth)
         sb += '.' ++= n
       case Index(of, a) =>
-        expr(of, mine, sb)
+        expr(of, mine, sb, depth)
         sb += '['
-        expr(a, 0, sb)
+        expr(a, 0, sb, depth)
         sb += ']'
       case Call(fn, args) =>
-        expr(fn, mine, sb)
+        expr(fn, mine, sb, depth)
         sb += '('
         args.zipWithIndex.foreach { (x, i) =>
           if i > 0 then sb ++= ", "
-          expr(x, 0, sb)
+          expr(x, 0, sb, depth)
         }
         sb += ')'
       case New(fn, args) =>
         sb ++= "new "
-        expr(fn, mine, sb)
+        expr(fn, mine, sb, depth)
         sb += '('
         args.zipWithIndex.foreach { (x, i) =>
           if i > 0 then sb ++= ", "
-          expr(x, 0, sb)
+          expr(x, 0, sb, depth)
         }
         sb += ')'
       case Unary(op, of) =>
@@ -294,28 +302,44 @@ object Js:
         // a different spelling. Found by the test that expected the
         // parentheses, which is the only reason it is not still there
         of match
-          case _: Unary => sb += '('; expr(of, 0, sb); sb += ')'
-          case _ => expr(of, mine, sb)
+          case _: Unary => sb += '('; expr(of, 0, sb, depth); sb += ')'
+          case _ => expr(of, mine, sb, depth)
       case Bin(op, l, r) =>
-        expr(l, mine, sb)
+        expr(l, mine, sb, depth)
         sb += ' '
         sb ++= op
         sb += ' '
         // the right side of a left-associative operator binds tighter
-        expr(r, mine + 1, sb)
+        expr(r, mine + 1, sb, depth)
       case Ternary(c, y, n) =>
-        expr(c, mine + 1, sb)
+        expr(c, mine + 1, sb, depth)
         sb ++= " ? "
-        expr(y, 0, sb)
+        expr(y, 0, sb, depth)
         sb ++= " : "
-        expr(n, 0, sb)
+        expr(n, 0, sb, depth)
       case Fun(params, body) =>
         sb ++= "function ("
         sb ++= params.mkString(", ")
         sb ++= ") {"
-        body.foreach(stmt(_, 1, sb))
+        body.foreach(stmt(_, depth + 1, sb))
+        // the closing brace on its own line AT THE FUNCTION'S OWN
+        // indentation, so a served file reads like something a person
+        // wrote rather than like output
+        if body.nonEmpty then pad(depth, sb)
         sb ++= "}"
     if wrap then sb += ')'
+
+  /** does this expression's TEXT begin with `function` or `{`? The
+   * leftmost spine is what a parser sees first, so a call on a
+   * function literal counts and a call on a name does not */
+  private def leadsWithFunctionOrObject(j: Js): Boolean = j match
+    case _: Fun | _: Obj => true
+    case Call(fn, _) => leadsWithFunctionOrObject(fn)
+    case Field(of, _) => leadsWithFunctionOrObject(of)
+    case Index(of, _) => leadsWithFunctionOrObject(of)
+    case Bin(_, l, _) => leadsWithFunctionOrObject(l)
+    case Ternary(c, _, _) => leadsWithFunctionOrObject(c)
+    case _ => false
 
   private def pad(depth: Int, sb: StringBuilder): Unit =
     sb += '\n'
@@ -331,24 +355,36 @@ object Js:
         sb ++= "var "
         sb ++= n
         sb ++= " = "
-        expr(v, 0, sb)
+        expr(v, 0, sb, depth)
         sb += ';'
       case Stmt.Set(t, v) =>
-        expr(t, 0, sb)
+        expr(t, 0, sb, depth)
         sb ++= " = "
-        expr(v, 0, sb)
+        expr(v, 0, sb, depth)
         sb += ';'
       case Stmt.Do(o) =>
-        expr(o, 0, sb)
+        // AN EXPRESSION STATEMENT THAT BEGINS WITH `function` OR `{`
+        // MUST BE PARENTHESISED. JavaScript reads a statement
+        // starting with `function` as a DECLARATION, which needs a
+        // name, so the immediately-invoked function every generated
+        // program is wrapped in would not parse: `SyntaxError:
+        // Function statements require a function name`. Found the
+        // first time a whole program was printed rather than a
+        // fragment.
+        if leadsWithFunctionOrObject(o) then
+          sb += '('
+          expr(o, 0, sb, depth)
+          sb += ')'
+        else expr(o, 0, sb, depth)
         sb += ';'
       case Stmt.Return(None) => sb ++= "return;"
       case Stmt.Return(Some(o)) =>
         sb ++= "return "
-        expr(o, 0, sb)
+        expr(o, 0, sb, depth)
         sb += ';'
       case Stmt.If(c, yes, no) =>
         sb ++= "if ("
-        expr(c, 0, sb)
+        expr(c, 0, sb, depth)
         sb ++= ") {"
         yes.foreach(stmt(_, depth + 1, sb))
         pad(depth, sb)
@@ -360,7 +396,7 @@ object Js:
           sb += '}'
       case Stmt.While(c, body) =>
         sb ++= "while ("
-        expr(c, 0, sb)
+        expr(c, 0, sb, depth)
         sb ++= ") {"
         body.foreach(stmt(_, depth + 1, sb))
         pad(depth, sb)
@@ -370,27 +406,27 @@ object Js:
         init.foreach {
           case Stmt.Var(n, v) =>
             sb ++= "var "; sb ++= n; sb ++= " = "
-            expr(v, 0, sb)
-          case Stmt.Set(t, v) => expr(t, 0, sb); sb ++= " = "; expr(v, 0, sb)
-          case Stmt.Do(o) => expr(o, 0, sb)
+            expr(v, 0, sb, depth)
+          case Stmt.Set(t, v) => expr(t, 0, sb, depth); sb ++= " = "; expr(v, 0, sb, depth)
+          case Stmt.Do(o) => expr(o, 0, sb, depth)
           case other => sb ++= Js.print(Vector(other)).trim.stripSuffix(";")
         }
         sb ++= "; "
-        cond.foreach(expr(_, 0, sb))
+        cond.foreach(expr(_, 0, sb, depth))
         sb ++= "; "
-        step.foreach(expr(_, 0, sb))
+        step.foreach(expr(_, 0, sb, depth))
         sb ++= ") {"
         body.foreach(stmt(_, depth + 1, sb))
         pad(depth, sb)
         sb += '}'
       case Stmt.Switch(on, cases, fallback) =>
         sb ++= "switch ("
-        expr(on, 0, sb)
+        expr(on, 0, sb, depth)
         sb ++= ") {"
         cases.foreach { (k, body) =>
           pad(depth + 1, sb)
           sb ++= "case "
-          expr(k, 0, sb)
+          expr(k, 0, sb, depth)
           sb += ':'
           body.foreach(stmt(_, depth + 2, sb))
         }
@@ -406,4 +442,11 @@ object Js:
         body.foreach(stmt(_, depth + 1, sb))
         pad(depth, sb)
         sb += '}'
+      case Stmt.Comment(text) =>
+        // every line of it, so a paragraph stays a paragraph
+        text.linesIterator.zipWithIndex.foreach { (line, i) =>
+          if i > 0 then pad(depth, sb)
+          sb ++= "// "
+          sb ++= line
+        }
       case Stmt.Raw(source) => sb ++= source

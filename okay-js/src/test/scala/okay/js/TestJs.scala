@@ -139,6 +139,28 @@ class TestJs extends munit.FunSuite:
     assert(p.contains("return a + b;"), p)
   }
 
+  test("an expression statement beginning with a function is PARENTHESISED") {
+    // JavaScript reads a statement starting with `function` as a
+    // declaration, which needs a name — so the IIFE every generated
+    // program is wrapped in would not parse without this
+    val iife = Stmt.Do(Call(fun()(Stmt.Return(None)), Vector.empty))
+    val out = Js.print(Vector(iife)).trim
+    assert(out.startsWith("(function"), out)
+    // `(function(){}())` is the other legal spelling of an IIFE, and
+    // it is the one wrapping the WHOLE call rather than the function
+    assert(out.endsWith("());"), out)
+  }
+
+  test("and so is one beginning with an object literal") {
+    val out = Js.print(Vector(Stmt.Do(Field(obj("a" -> Num(1)), "a")))).trim
+    assert(out.startsWith("({"), out)
+  }
+
+  test("an ordinary call is NOT parenthesised, because it does not need to be") {
+    val out = Js.print(Vector(Stmt.Do(Call(Name("f"), Vector.empty)))).trim
+    assertEquals(out, "f();")
+  }
+
   // ---- the escape hatch is countable --------------------------------
 
   test("Raw is counted wherever it hides, so a test can hold it to a number") {

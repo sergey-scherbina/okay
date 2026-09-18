@@ -260,6 +260,7 @@ object Direct:
       '{ Stmt.Switch(${ liftJs(on) }, $cases.toVector, ${ liftAll(f) }) }
     case Stmt.Break => '{ Stmt.Break }
     case Stmt.Block(b) => '{ Stmt.Block(${ liftAll(b) }) }
+    case Stmt.Comment(s) => '{ Stmt.Comment(${ Expr(s) }) }
     case Stmt.Raw(s) => '{ Stmt.Raw(${ Expr(s) }) }
 
   private def liftAll(ss: Vector[Stmt])(using Quotes): Expr[Vector[Stmt]] =

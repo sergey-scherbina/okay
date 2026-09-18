@@ -151,6 +151,49 @@ closes the remaining gap the other way — by EXECUTING the script in a
 test and comparing its DOM with `Html.render`, which catches the
 arithmetic a shared table never would.
 
+## The whole browser client, generated (ui-livejs-from-scala)
+
+The operator, 2026-09-18: *сделай чтобы весь js в okay-ui
+генерировался из скалы таким образом.* Done — `okay.ui.Client` is the
+program and `LiveJs.source` is its text. Nothing about the deployment
+changed: the jar still carries one string, there is still no build
+step and no artifact, and `LiveJs.source` is still what a server
+serves.
+
+**What made it safe was landing the check first.** `TestLiveJsDom`
+executes the client under Node and compares the DOM it builds with
+what `React.elem` describes. Rewriting 290 lines of working
+JavaScript with nothing but a string search for `case "Table":` would
+have been reckless; with an executing comparison it is ordinary work.
+
+`Js.raws(Client.program)` is **zero** — there is no escape hatch
+anywhere in it. The one construct the tree could not express, a
+`for (var n in u) return n`, turned out not to be needed:
+`Object.keys(u)[0]` says the same thing and says it plainly.
+
+The file grew from 11 394 to 14 051 bytes, about a quarter, and the
+growth is braces the printer always writes and comments the tree now
+carries. A statement per line and a brace per block is what makes the
+output diffable, which is most of the point.
+
+**Three defects the printing of a whole program found**, each now a
+test:
+
+- an expression statement beginning with `function` or `{` must be
+  PARENTHESISED. JavaScript reads a leading `function` as a
+  declaration, which needs a name, so the IIFE every generated
+  program is wrapped in did not parse at all — `SyntaxError: Function
+  statements require a function name`, caught by the executing test on
+  the first run.
+- a function literal's body was indented from column zero wherever the
+  function sat, because the printer threaded no depth through
+  expressions. A generated file nobody can read is a generated file
+  nobody will check.
+- a `Stmt.Comment` had to exist. A served script is read by whoever is
+  debugging the page in front of them, and a generated file with the
+  reasoning stripped out is worse to read than the hand-written one it
+  replaced.
+
 ## Decisions
 
 - **A tree, not a compiler.** Scala semantics are never translated;

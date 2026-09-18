@@ -87,6 +87,7 @@ object Emit:
         Some(Stmt.Switch(on, cs, Vector.empty))
       case '{ Stmt.Break } => Some(Stmt.Break)
       case '{ Stmt.Block(${ Expr(b) }) } => Some(Stmt.Block(b))
+      case '{ Stmt.Comment(${ Expr(s) }) } => Some(Stmt.Comment(s))
       case '{ Stmt.Raw(${ Expr(s) }) } => Some(Stmt.Raw(s))
       case _ => None
 
