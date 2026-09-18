@@ -216,7 +216,7 @@ Behavior:
 - [ ] okay-watch replaces its fifteen positional selectors with
       tokens on the cells (their lane; the criterion)
 
-## Stage 3 — one blank, in Form (form-blank)
+## Stage 3 — one blank, in Form (form-blank, LANDED 2026-09-18)
 
 ```scala
 object Form:
@@ -228,27 +228,43 @@ object Form:
   def blank[A](using Schema[A]): Json
 ```
 
-Order of work, per no-failing-test-no-fix: first the test that shows
-the defect — `Live.form[A]` (or `Form.ask`) over a case class with a
-sum field, the user edits one text field and submits without touching
-the Select: today the decode answers "choose one". Then `Form.blank`,
-then `Forms.defaults` becomes `Form.blank` (one line) and the test
-passes; okay-watch's `Analyst.blank` is deleted at its next bump.
+Order of work, per no-failing-test-no-fix: the test that shows the
+defect first, then the function.
 
-Behavior:
-- [ ] the failing test first: a Live form over a schema with a sum
-      field, submitted with the Select untouched, decodes — and the
-      same test against `Forms.defaults` before the change is the
-      record of the defect
-- [ ] `Form.blank[A]` for a schema with nested products, a sum, a
+THE MECHANISM, SHARPER THAN THIS SPEC FIRST STATED IT. The stage was
+written as "a Live form over a schema with a sum field decodes
+'choose one'". Reading the code found which ROAD: on the scriptless
+road `Html.events` emits an event only for a field whose post DIFFERS
+from what was shown, so a user who fills the text fields and submits
+says nothing at all about a `Select` sitting on its first option, and
+the submission is refused for a field they can see is answered. The
+LIVE road never had it — `live.js` and `Ui.submit` both collect every
+field's current value — which is exactly why okay-watch (a plain-road
+page) hit it and okay-script did not.
+
+AND A THIRD WIDGET, FOUND BY THE TEST RATHER THAN BY DESIGN: a list.
+An absent array is a missing field to `Form.errors` and to the codec
+alike (measured — the two walks agree), while the form SHOWS an empty
+list. The tree has no event meaning "be empty", but it has two that
+compose into one: the `+` the form draws and the `-` on the item it
+just made. The blank presses both, which keeps it inside the edit
+vocabulary rather than writing JSON at a path — the property that
+makes it unable to drift from the renderer.
+
+- [x] the failing test first: the plain road's post, folded — with the
+      empty object the submit is refused, and that assertion stays in
+      the suite as the record of the defect
+- [x] `Form.blank[A]` for a schema with nested products, a sum, a
       list, an Option and a Boolean: every Check false, every Select
-      (a sum's `$case` knob included) on its first option, the Option
-      absent, the list empty — and `Form.decode` of it succeeds
-      whenever every required text field has a value
-- [ ] `Forms.defaults` is `Form.blank`; TestForms passes unchanged
-- [ ] `Form.of[A](Form.blank[A])` renders the same tree as
+      (a sum's `$case` knob included) on its first option, the list an
+      empty array, the Option absent — and the decode succeeds once
+      the text fields are filled
+- [x] `Forms.defaults` is `Form.blank[A]`, one line; okay-script's
+      tests pass unchanged
+- [x] `Form.of[A](Form.blank[A])` renders the same tree as
       `Form.of[A](JObj(empty))` — the blank is what the tree already
       shows, made into a value
+- [ ] okay-watch deletes `Analyst.blank` (their lane; the criterion)
 
 ## Stage 4 — the tokens' stylesheet, beside the tree (ui-html-css)
 

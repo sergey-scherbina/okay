@@ -115,12 +115,12 @@
     browser, right-aligned columns in the terminal); two optional wire
     fields, conformance re-rendered. DONE-WHEN: a defaulted `Style`
     encodes byte-equal to today, `Form.of` marks numbers.
-  - form-blank — `Form.blank[A]` in okay-ui; the FAILING TEST FIRST: a
-    `Live.form` over a schema with a sum field, Select untouched,
-    decodes "choose one" today (`Live.scala:118` takes
-    `Forms.defaults`, which sets Checks only; okay-watch's
-    `Analyst.blank` sets Selects too — two doors, disagreeing).
-    DONE-WHEN: `Forms.defaults` is one line, TestForms unchanged.
+  - form-blank — LANDED 2026-09-18. `Form.blank[A]`: Checks false,
+    Selects on their first option, lists an empty array, Options
+    absent. The defect was the SCRIPTLESS road (an unchanged field
+    posts nothing), which is why a plain-road page found it; the
+    failing test stays in the suite as its record. `Forms.defaults` is
+    one line now.
   - ui-html-css — `Html.css`, the tokens' stylesheet beside the tree
     (custom properties for the palette; a cell wraps, never
     ellipsizes), served by okay-script beside `live.js`; `app.css`

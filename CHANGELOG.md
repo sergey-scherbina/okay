@@ -1,5 +1,41 @@
 # Changelog
 
+## form-blank — the value a form starts from, in one place and total
+
+`okay.ui.Form.blank[A]`: every `Check` false, every `Select` on its
+first option (a sum's case knob included), every list an empty array,
+every `Option` absent. okay-script's `Forms.defaults` is now one line
+that calls it; okay-watch's `Analyst.blank`, the second copy, goes at
+their next bump.
+
+THE DEFECT, AND WHICH ROAD HAD IT. `Forms.defaults` set Checks and
+stopped, so a `Select` the form SHOWS on its first option was still
+absent from the value behind it. On the scriptless road `Html.events`
+sends an event only for a field whose post DIFFERS from what was
+shown — so a user who fills the text fields and presses Save says
+nothing at all about that Select, and the submission is refused for a
+field they can see is answered. The live road never had it: `live.js`
+and `Ui.submit` collect every field's current value. That is why a
+plain-road page (okay-watch) found it and okay-script's own live forms
+did not, and it is why the same function had been written twice
+outside okay-ui with two different answers.
+
+THE FAILING TEST CAME FIRST and stays in the suite as the record: the
+post folded through `Html.events` from the empty object IS refused,
+asserted, beside the same post from `Form.blank` decoding cleanly.
+
+A THIRD WIDGET THE PLAN DID NOT NAME, found by the test rather than
+by design: a list. An absent array is a missing field to `Form.errors`
+AND to the codec (measured — they agree; an empty array decodes fine),
+while the form shows an empty list. The tree has no event meaning "be
+empty", but it has two that compose into one — the `+` the form draws
+and the `-` on the item it just made. Pressing both keeps the blank
+inside the edit vocabulary instead of writing JSON at a path, which is
+the property that stops it drifting from the renderer: the blank is
+DERIVED from the shown tree, never from the Schema a second time.
+
+TestFormBlank (5), okay-script unchanged. specs/ui-product.md stage 3.
+
 ## ui-browser-vocab — the browser draws a real table
 
 `React.Vocabulary` gains `table`, so the one host whose medium HAS

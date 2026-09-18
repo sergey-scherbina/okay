@@ -28,6 +28,49 @@ object Form {
   /** the form of A, over its partial value */
   def of[A](using s: Schema[A]): Json => Ui = j => render(s, j, Vector.empty, "")
 
+  /**
+   * THE VALUE A FORM STARTS FROM: every `Check` false, every `Select`
+   * on its first option — a sum's case knob included, since that is a
+   * `Select` like any other.
+   *
+   * It exists because a form SHOWS those answers before anybody
+   * touches them, and until form-blank the value behind them did not
+   * hold them. On the scriptless road `Html.events` sends an event
+   * only for a field whose post DIFFERS from what was shown, so a
+   * submit that changed nothing said nothing, and the decode refused a
+   * field the user could see was filled in. Two copies of this
+   * function already existed outside okay-ui — okay-script's
+   * `Forms.defaults` (Checks only, so a sum was still refused) and
+   * okay-watch's `Analyst.blank` — which is the other half of the
+   * reason it belongs here.
+   *
+   * DERIVED FROM THE TREE, not from the Schema a second time: the
+   * blank is the fold of the shown form's own widgets through the same
+   * `edit` a user's event takes, so what a form starts from cannot
+   * disagree with what a form draws. An `Option` field stays ABSENT —
+   * absent is what "not required" means.
+   *
+   * A LIST IS THE THIRD WIDGET THAT SHOWS AN ANSWER, and it shows
+   * "none". The decoder wants the key there (an absent array is a
+   * missing field to `Form.errors` and to the codec alike — measured,
+   * they agree), and the tree has no event meaning "be empty". It has
+   * two that compose into one: the `+` this form draws, and the `-` on
+   * the item it just made. That keeps the blank inside the edit
+   * vocabulary rather than writing JSON at a path, which is the whole
+   * reason it cannot drift.
+   */
+  def blank[A](using Schema[A]): Json =
+    val start = Json.JObj(Vector.empty)
+    Ui.focusable(of[A](start)).foldLeft(start: Json) { (j, u) =>
+      u match
+        case Ui.Select(_, _, k) => edit[A](j, Event.Chosen(k, 0))
+        case Ui.Check(_, k, _) => edit[A](j, Event.Toggled(k, false))
+        case Ui.Button(_, k, _) if k.endsWith("$add") =>
+          val list = k.dropRight(4)
+          edit[A](edit[A](j, Event.Pressed(k)), Event.Pressed(s"$list[0]$$del"))
+        case _ => j
+    }
+
   /** the form with per-field errors shown under their fields */
   def ofWith[A](errors: Vector[(String, String)])(using s: Schema[A]): Json => Ui =
     j => render(s, j, errors, "")
