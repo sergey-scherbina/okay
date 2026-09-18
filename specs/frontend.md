@@ -432,8 +432,14 @@ draw evenly, not throw.
 - [x] `Table(h, rows, k)` lowers exactly as before — equal shares — so
       the change is invisible to every caller that does not use it
 - [x] `Table(h, rows, k, Vector(3, 1, 9))` lowers to a head `Box` and
-      body `Box`es all carrying those weights, and `React` writes them
-      as `flex:3`, `flex:1`, `flex:9`
+      body `Box`es all carrying those weights, and a client that
+      LOWERS gets them as `flex:3`, `flex:1`, `flex:9` on its cells.
+      (ui-browser-vocab, 2026-09-18, amends where a BROWSER gets them:
+      it claims `table` now, so the shares are a `<colgroup>` of
+      `<col style="width:N%">` — the element whose job a column width
+      is. The property this box was written for is unchanged and still
+      tested: the RENDERER says the shares and no stylesheet can
+      overrule them.)
 - [x] a weights vector of the wrong length is ignored, and the table
       draws evenly
 - [x] `map`, `withChildren` and `keys` carry the weights through

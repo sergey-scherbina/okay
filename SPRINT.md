@@ -102,13 +102,14 @@
   product's code and stylesheet. Four lanes, in the order they pay,
   each with the same criterion: the product deletes its copy and the
   page is unchanged.
-  - ui-browser-vocab — the browser claims `table`, `items`, `tabs`,
-    `disclosure` and draws `<table>`, `<ul>`, `<details>`; ONE
-    `React.Vocabulary` read by `React.elem`, `Html` and `live.js`'s
-    hello (the two-roads test enforces it); the DOM patch consumers
-    learn the wrappers from the mirror. DONE-WHEN: the two-roads test
-    over every semantic node, the DOM law battery inside rows and
-    items, a row shuffle creating no `<tr>`.
+  - ui-browser-vocab — LANDED 2026-09-18. The set is `table` ALONE,
+    and the reason is mechanical: no patch path descends into a table
+    (`Ui.diff` has no case for it), so a native `<table>` costs the
+    consumers nothing, while `<li>`/`<details>`/tablist each insert
+    work into every patch consumer or every client. Each declined node
+    carries its trigger in specs/ui-product.md. `Dom.host` lowers with
+    the host's own vocabulary; `live.js`'s hello is generated from the
+    constant and guarded by a test.
   - ui-text-intent — `Style` gains `Kind` (Prose/Ident/Number) and
     `Align`; tokens, mapped per host (mono/tabular classes in the
     browser, right-aligned columns in the terminal); two optional wire

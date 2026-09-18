@@ -20,6 +20,20 @@ import scala.scalajs.js
  */
 object Dom {
 
+  /**
+   * The backend AS a Host, lowering with THIS host's own vocabulary.
+   *
+   * `Ui.diffing`'s default is `Set.empty`, which is right for a
+   * backend that claims nothing (Swing, GTK) and WRONG here: this one
+   * builds through `React.elem`, which draws an anchor and a table
+   * itself, so lowering them away before the diff would have the
+   * consumer build one thing and the diff describe another. Same rule
+   * as react-host-vocab, one layer out: a host lowers with the set it
+   * claims, never with a constant.
+   */
+  def host(document: js.Dynamic, root: js.Dynamic): Host =
+    Ui.diffing(backend(document, root), React.Vocabulary)
+
   /** a Backend over a document and a mount node — js.Dynamic, so a
    * real browser document and a test's fake both fit */
   def backend(document: js.Dynamic, root: js.Dynamic): Backend = new Backend:

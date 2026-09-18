@@ -37,10 +37,24 @@ class TestTableWeights extends munit.FunSuite:
     assertEquals(rowsOf(low), Vector.fill(3)(Vector(3, 1, 9)))
   }
 
-  test("React writes them inline, which is the half a stylesheet cannot do") {
+  /**
+   * The RENDERER says the shares, not a stylesheet — that is what this
+   * test has always been for, and ui-browser-vocab moved WHERE it says
+   * them. A browser claims `table` now, so the shares are a
+   * `<colgroup>`, which is the element whose job a column width is; a
+   * client that does NOT claim the table still gets them inline on
+   * every cell, because a flex box has nowhere else to put them.
+   * Either way an author's `3, 1, 9` reaches the screen and a
+   * stylesheet cannot overrule it.
+   */
+  test("the renderer says the shares: a colgroup to a browser, inline flex to a client that lowers") {
     val html = Html.render(Table(header, body, "t", Vector(3, 1, 9)))
-    assert(html.contains("""style="flex:3""""), html)
-    assert(html.contains("""style="flex:9""""), html)
+    // 3 : 1 : 9 of 13, as percentages
+    assert(html.contains("""<colgroup><col style="width:23%"><col style="width:7%"><col style="width:69%"></colgroup>"""), html)
+    assert(!html.contains("flex:3"), html)
+    val lowered = Html.render(Ui.lower(Table(header, body, "t", Vector(3, 1, 9)), Set.empty))
+    assert(lowered.contains("""style="flex:3""""), lowered)
+    assert(lowered.contains("""style="flex:9""""), lowered)
   }
 
   /** a tree is data that may arrive over a wire from anywhere, so a

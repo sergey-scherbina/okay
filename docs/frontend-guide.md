@@ -56,12 +56,19 @@ client draws:
 | `Form(fields, submit, key)` | fields and a submit button keyed like the form — the hybrid rule of §5 lives on it |
 
 **Level S** — the open semantic vocabulary: `Items`, `Table`, `Tabs`,
-`Modal`, `Disclosure`. Each is DEFINED by its lowering to level L
-(`Ui.lower`). A client that claims a semantic node draws it natively
-(a real table); one that does not receives the lowering, and the
-server cannot tell the difference — `Ui.keys(node) ==
+`Modal`, `Disclosure`, `Link`. Each is DEFINED by its lowering to
+level L (`Ui.lower`). A client that claims a semantic node draws it
+natively; one that does not receives the lowering, and the server
+cannot tell the difference — `Ui.keys(node) ==
 Ui.keys(Ui.lower(node))` is a tested law. Write semantics; drop to
 `Box` where you want a non-standard look.
+
+A browser claims `link` and `table` (`React.Vocabulary`, which
+`live.js` says in its hello and the scriptless `Html` renders by):
+an anchor is an `<a>`, and a table is a real `<table>` whose column
+shares are a `<colgroup>` rather than an inline `flex` on every cell.
+The other semantic nodes reach it as their lowering — each for a
+stated reason in `specs/ui-product.md`, not by omission.
 
 Pixels never enter the tree. Style is tokens, layout is weights and
 character units: a terminal stays a terminal, a phone looks like a
@@ -77,7 +84,7 @@ is no `Cmd` type; subscriptions are `merge`). Hosts:
 |---|---|---|
 | `Terminal.host()` | JVM, Native | ANSI, raw mode by `stty`; `Frame.render` is the pure half, testable as lines |
 | `ReactJs.host(react, root)` | Scala.js | `React.elem` is pure and JVM-tested; five lines of glue |
-| `Ui.diffing(Dom.backend(document, root))` | Scala.js | raw DOM, zero dependencies, driven by the core diff |
+| `Dom.host(document, root)` | Scala.js | raw DOM, zero dependencies, driven by the core diff; it lowers with the browser's own vocabulary, so a `Table` reaches the document as a `<table>` |
 | `Swing.host(panel)`, `Swing.window(title)(app)` | JVM | zero dependencies, headless-tested |
 | `okay.ui.gtk.Gtk.host(box)`, `Gtk.window(title)(app)` | Scala Native | GTK 4; present only where `pkg-config --exists gtk4` answers (`brew install gtk4 pkg-config`) |
 | the test host | tests | renders to a value, feeds scripted events — the whole loop with no screen |

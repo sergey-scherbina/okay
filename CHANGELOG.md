@@ -1,5 +1,65 @@
 # Changelog
 
+## ui-browser-vocab — the browser draws a real table
+
+`React.Vocabulary` gains `table`, so the one host whose medium HAS
+tables stops receiving rows of `<div>`. A `Ui.Table` is now a
+`<table>`: a `<colgroup>` carrying each column's SHARE as a
+percentage, a `<thead>` of `<th scope="col">`, a `<tbody>` of
+`<tr>`/`<td>`. Both browser roads change at once because both render
+through `React.elem` — the scriptless `Html` and, over the socket,
+`live.js`, whose hello is now GENERATED from that constant rather than
+typed beside it.
+
+WHY THIS NODE AND NOT THE OTHER THREE. The spec (written before the
+code was read) said the browser should claim `Table`, `Items`, `Tabs`
+and `Disclosure`, because HTML has an element for each. It does, and
+the element is not the cost. **The cost is what a node's element
+structure inserts between a patch PATH and the child that path
+names**, and `Table` inserts NOTHING: `Ui.diff` has no `Table` case,
+so a changed table is a `Replace` at its own path and no consumer ever
+walks inside one. `Items` would insert an `<li>` that every patch
+consumer must unwrap on the way down and wrap on Insert/Reorder/
+Remove — in Scala, again in 240 lines of hand-written JavaScript, and
+again in every future claiming client — to gain `<ul>` over `<div>`.
+`Tabs` would oblige each claiming client to switch tabs itself.
+`Disclosure`'s `<details>` toggles natively and tells nobody, so the
+scriptless road's server flag and the browser's would disagree from
+the first click. `Modal`'s `<dialog>` needs a script to open.
+
+THE PRICE, STATED: a changed CELL now replaces the whole table where
+the lowering gave a narrow `SetText`. That is the same sentence as
+"no path descends into a table", read the other way. The trigger for
+revisiting it is a page that MEASURES the difference; nothing in
+okay-watch's tables changes between its five-second ticks today.
+
+`Dom.host` is new and is the react-host-vocab lesson one layer out:
+`Ui.diffing`'s `Set.empty` default is right for a backend that claims
+nothing (Swing, GTK) and wrong for this one, which builds through
+`React.elem` — lowering a table away before the diff would have the
+consumer build one thing and the diff describe another. A host lowers
+with the set it claims, never with a constant.
+
+ONE TEST SAID THE OLD MECHANISM OUT LOUD, and the gate caught it:
+ui-table-weights' "React writes them inline, which is the half a
+stylesheet cannot do". What that test is FOR — the renderer says the
+shares and no stylesheet can overrule them — is unchanged; where it
+says them moved. It asserts the colgroup for a browser and the inline
+`flex` for a client that lowers, which is both halves of the same
+claim. specs/frontend.md's own landed box is amended beside it rather
+than rewritten.
+
+TestBrowserVocab (5) is the lane's own suite, including the guard that
+matters most: for every name in the vocabulary, `live.js` must contain
+a `build` case for it, and its hello must say exactly that set. A name
+added to the constant without a case in the script is a failing test
+rather than a page that quietly stops drawing. TestDom's law battery
+gained a claimed table; TestLink's two-roads test reads the constant
+now instead of a literal `Set(link)`.
+
+specs/ui-product.md stage 1, with the narrowed set and each declined
+node's trigger recorded rather than the first sketch erased.
+
 ## optics-guide-page - the library's optics had no page a user could read
 
 `docs/guide.md` did not contain the word `Lens`. Nine sections on

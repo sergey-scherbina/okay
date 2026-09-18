@@ -73,7 +73,7 @@ class TestLink extends munit.FunSuite:
     // scriptless road. A page served both ways is one page only if
     // rendering is unchanged by the host's own lowering.
     for (name, tree) <- nested do
-      assertEquals(Html.render(tree), clue(Html.render(Ui.lower(tree, Set(Ui.Vocab.link)))),
+      assertEquals(Html.render(tree), clue(Html.render(Ui.lower(tree, React.Vocabulary))),
         s"the two roads disagree on a $name")
   }
 

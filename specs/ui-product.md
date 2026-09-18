@@ -56,78 +56,113 @@ The four, in the order they pay:
    `LiveJs` moved to okay-ui for exactly this reason (ui-html stage 2):
    the client of the tree lives beside the tree; so does its style.
 
-## Stage 1 — the browser claims what HTML can say (ui-browser-vocab)
+## Stage 1 — the browser claims what HTML can say (ui-browser-vocab, LANDED 2026-09-18)
 
-The browser is the one host whose medium HAS tables, lists, tabs and
-disclosures. Claiming them is the frontend spec's own mechanism
-("a rich client claims `Table` and draws a native table") applied to
-the client that was already rich. Three renderers share one
-vocabulary, because the two-roads law (react-host-vocab) says
-`Html.render(t)` and the tree `Wire` shows a client whose hello names
-the same set must agree — so the set is ONE constant and all three
-read it.
+**THE SET IS `table`, AND THE SPEC'S FIRST SKETCH OF FOUR WAS WRONG.**
+Written before the code was read, this stage said the browser claims
+`Table`, `Items`, `Tabs` and `Disclosure` because HTML has an element
+for each. It does — and the element is not the cost. The cost is what
+a node's element structure inserts between a patch PATH and the child
+that path names, and it is different for each of the four:
+
+- **`Table` inserts nothing**, because no path ever descends into one:
+  `Ui.diff` has no `Table` case, so a changed table is a `Replace` at
+  its own path. A consumer only ever builds a table or swaps one
+  whole, so `Dom`, `live.js` and any future claiming client need no
+  new walking at all. THE PRICE is that same sentence read the other
+  way: a changed CELL now replaces the table where the lowering gave a
+  narrow `SetText`. Stated, not hidden. Trigger for revisiting: a page
+  that measures the difference (a table whose cells change every tick
+  while its shape does not — okay-watch's five-second push is the
+  candidate, and today nothing in its tables changes between ticks).
+- **`Items` would insert an `<li>`**: every patch consumer would have
+  to unwrap it on the way down and wrap it on `Insert`/`Reorder`/
+  `Remove` — in `Dom.scala`, again in ~240 lines of hand-written
+  JavaScript, and again in every client that ever claims it — to gain
+  `<ul>` over `<div>`. Trigger: a measured assistive-technology
+  requirement for list semantics, not a preference for nicer markup.
+- **`Tabs` would oblige every claiming client to switch tabs itself**
+  (the hybrid rule's local behaviour), in each client's own language,
+  and `role="tablist"` earns its keep only with arrow-key handling.
+  The lowering's buttons round-trip correctly today. Trigger: a page
+  whose tab switch measurably wants the round trip gone.
+- **`Disclosure`'s `<details>` toggles natively and tells nobody**, so
+  on the scriptless road the server's `open` and the browser's would
+  disagree from the first click, where the lowered button is a POST
+  that keeps them in step. Trigger: the live road only.
+- **`Modal`'s `<dialog>` needs a script to open**, which is where the
+  browser's vocabulary stops, as this spec already said.
+
+What landed, therefore, is the first of the four and the mechanism the
+other three would need, written down where the next reader meets it
+(`React.Vocabulary`'s own comment).
+
+
+The browser is the one host whose medium has these elements, and the
+one that was already rich. Three renderers serve it — `React.elem`,
+`Html` (which renders through `elem`) and `LiveJs` — so the set is ONE
+constant all three read, because the two-roads law (react-host-vocab)
+says a page served both ways is one page only if the socket's hello
+and the scriptless render claim the same nodes.
 
 ```scala
 object React:
-  /** what a browser draws natively: the anchor, and the four semantic
-   * nodes HTML has an element for. `Html` renders through `elem`, and
-   * `LiveJs` says exactly this set in its hello, so the two roads
+  /** what a browser draws natively: the anchor, and the one semantic
+   * node whose element structure costs the patch consumers nothing.
+   * `LiveJs` GENERATES its hello from this value, so the two roads
    * cannot disagree about which nodes are lowered */
-  val Vocabulary: Set[String] = Set(Vocab.link, Vocab.table, Vocab.items, Vocab.tabs, Vocab.disclosure)
+  val Vocabulary: Set[String] = Set(Vocab.link, Vocab.table)
 ```
 
-- `Table` → `<table data-key=k>` with `<thead>` from the header and
-  `<tbody>` of `<tr>`; `weights` become `<col style="width:…%">` in a
-  `<colgroup>` (a share of the width, never a pixel) — an empty vector
-  writes no colgroup, as it lowered to equal shares before.
-- `Items` → `<ul data-key=k>` of `<li>`; item keys stay on the item's
-  own element, as the lowering put them.
-- `Disclosure` → `<details data-key=k open?>` with a `<summary>`
-  carrying the title. Toggling is `Toggled(k, open)` from the
-  `toggle` event — which is the local behaviour the hybrid spec
-  already gives a claiming client, now the browser's own element.
-- `Tabs` → a `<div data-key=k role="tablist">` of buttons keyed
-  `<k>$tab<i>` (the lowering's own keys — `keys(s) == keys(lower(s))`
-  is why the same event contract holds) and the selected page; a
-  claiming `live.js` switches locally as the hybrid stage says.
-- `Modal` stays lowered: HTML's `<dialog>` needs a script to open and
-  the plain road has none. Recorded, not hidden.
+- `Table` → `<table data-key=k class="okay-table">`, a `<colgroup>` of
+  `<col style="width:N%">` when the weights fit the header (a SHARE
+  turned into a percentage; no pixel crosses the wire), `<thead>` of
+  `<th scope="col">`, `<tbody>` of `<tr>`/`<td>` wrapping each cell's
+  own element. Empty or mis-sized weights write no colgroup, which is
+  the even split the lowering always gave.
+- Nothing else changes shape. `Items`, `Tabs`, `Modal` and
+  `Disclosure` keep arriving as their lowering, for the reasons above.
 
-Patch paths: the DOM patch consumer (`Dom`, `live.js`) walks
-`childNodes` index for index against the tree it holds, and a claimed
-`Table` puts `<thead>`/`<tbody>`/`<tr>`/`<td>` between the tree's
-children and the DOM's. The rule that keeps paths sound is the one
-`Input`'s label wrapper already obeys: a Ui child maps to exactly one
-element the path descends INTO, so `at(path)` learns the four shapes'
-wrappers (`table > tbody > tr > td`, `ul > li`, `details > (summary |
-body)`) from the mirror tree, never from the DOM. `Ui.path` says which
-child index a Table row/cell is; the consumer says which element.
+Patch paths need no new machinery, and that is the whole reason this
+node was the one to claim: `Ui.diff` has no `Table` case, so no path
+ever descends into a table and the `<td>` wrapper is invisible to
+every consumer. `React.event` still finds a widget in a cell, because
+it walks `Ui.focusable`, which lowers with `Set.empty` and is
+unchanged.
 
 Behavior:
-- [ ] `React.elem` renders `Table`, `Items`, `Disclosure`, `Tabs` as
-      the elements above; `Html.render` emits the same markup
-      (through `elem`, as today); `Modal` is lowered as before
-- [ ] the two roads agree: for a tree holding every semantic node,
-      `Html.render(t)` and the tree `Wire.serve` shows a client whose
-      hello says `React.Vocabulary` carry the same elements
-      (TestLink's two-roads test, extended to the whole set)
-- [ ] the DOM law at the claimed nodes: through
-      `Ui.diffing(Dom.backend(fake))` every keyed battery shape
-      (shuffles, removals, insertions, edits — inside table rows and
-      list items) leaves the fake DOM equal to `React.elem(last)` built
-      from scratch; a shuffle of table rows creates no `<tr>`
-- [ ] `live.js` says `React.Vocabulary` in its hello, applies patches
-      inside the four shapes (`TestLiveJs` or the e2e browser suite:
-      a `SetText` on a cell lands in the `<td>`), toggles a
-      `Disclosure` locally, switches `Tabs` locally
-- [ ] `Html.events` on a claimed `Disclosure`: a posted `open` field
-      is the `Toggled` a lowered one's button would have sent — the
-      plain road stays whole without a script
+- [x] `React.elem` renders `Table` as `<table>` with a `<colgroup>`
+      from the weights (a share as a percentage — integer division,
+      browsers normalise, no pixel crosses the wire), a `<thead>` of
+      `<th scope="col">` and a `<tbody>` of `<tr>`/`<td>`; empty or
+      mis-sized weights write no colgroup, which is the even split the
+      lowering always gave; `Html.render` emits the same markup
+      through the same `elem`, and `col` is a void element there
+- [x] the two roads agree: for `Table`, `Items`, `Tabs`, `Modal`,
+      `Disclosure` and a table nested in each, `Html.render(t)` equals
+      `Html.render(Ui.lower(t, React.Vocabulary))` — the tree the
+      socket sends a client whose hello says exactly that set
+      (TestBrowserVocab; TestLink's own two-roads test now reads the
+      constant rather than a literal `Set(link)`)
+- [x] the laws do not move when a node is claimed: `keys(table) ==
+      keys(lower(table))`, the tab order is the cells' widgets, and
+      `React.event` still finds a button in a cell by key
+- [x] the DOM law battery carries a claimed table: through
+      `Ui.diffing(b, React.Vocabulary)` the fake document equals
+      `React.elem(last frame)` built from scratch, across a table
+      gaining a row and changing a cell
+- [x] `Dom.host` is the door: it lowers with `React.Vocabulary`, so a
+      table reaches the document as a `<table>` and an unclaimed
+      `Items` as the lowering's boxes — `Ui.diffing`'s `Set.empty`
+      default would have lowered BOTH, which is react-host-vocab's
+      defect one layer out
+- [x] `live.js` builds a real table and says exactly `React.Vocabulary`
+      in its hello — GENERATED from the constant, not typed, and
+      guarded by a test that fails when the set names a node the
+      script cannot build
 - [ ] okay-watch deletes its `nth-child` table rules and the page
-      renders `<table>`s: the product's test that pins the cases row's
-      shares now reads `<col>` widths (their lane, after the bump —
-      the criterion of this spec, not a checkbox this repository can
-      tick)
+      renders `<table>`s (their lane, after the bump — the criterion
+      of this spec, not a checkbox this repository can tick)
 
 ## Stage 2 — text carries its intent (ui-text-intent)
 

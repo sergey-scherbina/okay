@@ -16,8 +16,17 @@ package okay.ui
  * `Live.JsPath`.
  */
 object LiveJs:
+
+  /** the hello a live page says — exactly `React.Vocabulary`,
+   * GENERATED rather than typed, because the socket road and the
+   * scriptless road are one page only if they claim the same set
+   * (react-host-vocab). A name added to that set without a `build`
+   * case below is a defect, and `TestBrowserVocab` fails on it. */
+  private val vocabJson: String =
+    React.Vocabulary.toVector.sorted.map(v => "\"" + v + "\"").mkString(", ")
+
   val source: String =
-    """(function () {
+    s"""(function () {
       |  // one definition: okay.ui.Protocol's derived shapes (docs/protocol/frontend.md).
       |  // a node is {"Case": {fields}}; k(u) is its case name, u[k(u)] its fields
       |  function k(u) { for (var n in u) return n; }
@@ -111,6 +120,47 @@ object LiveJs:
       |        lab2.appendChild(el);
       |        lab2.appendChild(sp2);
       |        return lab2;
+      |      case "Table":
+      |        // the browser draws a REAL table (ui-browser-vocab): the
+      |        // header is readable as a header, and a column's width is
+      |        // said once in <col> instead of inline on every cell
+      |        el = document.createElement("table");
+      |        el.className = "okay-table";
+      |        if (f.key) el.dataset.key = f.key;
+      |        var hdr = f.header || [], wts = f.weights || [], tot = 0;
+      |        for (i = 0; i < wts.length; i++) tot += wts[i];
+      |        if (hdr.length && wts.length === hdr.length && tot > 0) {
+      |          var cg = document.createElement("colgroup");
+      |          for (i = 0; i < wts.length; i++) {
+      |            var cl = document.createElement("col");
+      |            cl.style.width = Math.floor(wts[i] * 100 / tot) + "%";
+      |            cg.appendChild(cl);
+      |          }
+      |          el.appendChild(cg);
+      |        }
+      |        if (hdr.length) {
+      |          var thd = document.createElement("thead"), hr = document.createElement("tr");
+      |          for (i = 0; i < hdr.length; i++) {
+      |            var hc = document.createElement("th");
+      |            hc.setAttribute("scope", "col");
+      |            hc.textContent = hdr[i];
+      |            hr.appendChild(hc);
+      |          }
+      |          thd.appendChild(hr);
+      |          el.appendChild(thd);
+      |        }
+      |        var tb = document.createElement("tbody");
+      |        for (i = 0; i < f.rows.length; i++) {
+      |          var rw = document.createElement("tr");
+      |          for (var j = 0; j < f.rows[i].length; j++) {
+      |            var cel = document.createElement("td");
+      |            cel.appendChild(build(f.rows[i][j]));
+      |            rw.appendChild(cel);
+      |          }
+      |          tb.appendChild(rw);
+      |        }
+      |        el.appendChild(tb);
+      |        return el;
       |      case "Select":
       |        el = document.createElement("select");
       |        if (f.key) el.dataset.key = f.key;
@@ -184,8 +234,8 @@ object LiveJs:
       |    function event(e) { send({ Event: { event: e } }); }
       |    // the hello: the layout level, plus the anchor (ui-link)
       |    ws.onopen = function () {
-      |      // the one semantic node a browser really has of its own (ui-link)
-      |      ws.send(JSON.stringify({ Hello: { vocab: ["link"], version: 1 } }));
+      |      // what a browser really has of its own: the anchor and the table
+      |      ws.send(JSON.stringify({ Hello: { vocab: [${vocabJson}], version: 1 } }));
       |      var q = queue; queue = [];
       |      for (var i = 0; i < q.length; i++) ws.send(JSON.stringify(q[i]));
       |    };

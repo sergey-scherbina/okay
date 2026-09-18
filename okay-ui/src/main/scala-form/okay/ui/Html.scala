@@ -104,7 +104,10 @@ object Html:
       }
       if e.tag == "input" && e.props.exists(_ == ("type", "checkbox")) then attr(sb, "value", "on")
     sb ++= ">": Unit
-    if e.tag != "input" && e.tag != "img" then
+    // the void elements this renderer can emit: no text, no
+    // children, no closing tag (`<col>` joined them with the browser
+    // vocabulary — `</col>` is not HTML)
+    if e.tag != "input" && e.tag != "img" && e.tag != "col" then
       // a textarea's value is its content, not an attribute
       if e.tag == "textarea" then e.props.collectFirst { case ("value", v) => v }.foreach(v => sb ++= escape(v): Unit)
       e.text.foreach(t => sb ++= escape(t): Unit)

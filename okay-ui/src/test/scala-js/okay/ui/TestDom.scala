@@ -105,9 +105,14 @@ class TestDom extends munit.FunSuite {
         Input("x", "pw", "Pw", InputKind.Secret), Button("go", "go", Role.Primary)),
         Dir.Horizontal, weights = Vector(1, 2, 1, 1), gap = 1, key = "app"),
       Form(Vector(Input("", "n", "N"), Input("m", "note", "Note", InputKind.Multiline)), "Save", "f"),
-      Form(Vector(Input("v", "n", "N"), Input("mm", "note", "Note", InputKind.Multiline)), "Save", "f"))
+      Form(Vector(Input("v", "n", "N"), Input("mm", "note", "Note", InputKind.Multiline)), "Save", "f"),
+      // a CLAIMED Table (ui-browser-vocab): built as a real table, and
+      // changed wholesale — no path descends into one
+      Table(Vector("id", "note"), Vector(Vector(Text("c-1"), Text("x"))), "cases", Vector(1, 9)),
+      Table(Vector("id", "note"), Vector(Vector(Text("c-1"), Text("y")),
+        Vector(Text("c-2"), Button("open", "o2"))), "cases", Vector(1, 9)))
     val (_, root, b) = mount()
-    val host = Ui.diffing(b)
+    val host = Ui.diffing(b, React.Vocabulary)
     frames.indices.foreach { i =>
       render(host, frames(i))
       assertEquals(show(root.childNodes(0)), show(fresh(frames(i))), s"after frame $i")
@@ -119,7 +124,7 @@ class TestDom extends munit.FunSuite {
     val before = Column(Vector("a", "b", "c", "d").map(item), "list")
     val after = Column(Vector("d", "c", "a", "b").map(item), "list")
     val (doc, root, b) = mount()
-    val host = Ui.diffing(b)
+    val host = Ui.diffing(b, React.Vocabulary)
     render(host, before)
     val builtOnce = doc.created
     render(host, after)
@@ -131,7 +136,7 @@ class TestDom extends munit.FunSuite {
     val v1 = Column(Vector(Text("count: 0"), Input("", "name", "Name")), "app")
     val v2 = Column(Vector(Text("count: 1"), Input("Ada", "name", "Name")), "app")
     val (_, root, b) = mount()
-    val host = Ui.diffing(b)
+    val host = Ui.diffing(b, React.Vocabulary)
     render(host, v1)
     val spanBefore = root.childNodes(0).childNodes(0)
     val labelBefore = root.childNodes(0).childNodes(1)
@@ -149,7 +154,7 @@ class TestDom extends munit.FunSuite {
       Check(false, "ok", "Ok"), Select(Vector("x", "y"), 0, "pick"),
       Text("plain")), "app")
     val (_, root, b) = mount()
-    now(Ui.diffing(b).render(ui))
+    now(Ui.diffing(b, React.Vocabulary).render(ui))
     val app = root.childNodes(0)
     root.fire("click", app.childNodes(0))                   // the button itself
     val input = app.childNodes(1).childNodes(1)
@@ -172,5 +177,19 @@ class TestDom extends munit.FunSuite {
     assertEquals(got(1), Event.Edited("name", "Adam"))
     assertEquals(got(2), Event.Toggled("ok", true))
     assertEquals(got(3), Event.Chosen("pick", 1))
+  }
+
+  test("Dom.host lowers with the host's OWN vocabulary — the table survives to the document") {
+    val doc = FakeDoc()
+    val root = FakeNode("root")
+    val host = Dom.host(doc.asInstanceOf[js.Dynamic], root.asInstanceOf[js.Dynamic])
+    now(host.render(Column(Vector(
+      Table(Vector("h"), Vector(Vector(Text("c"))), "t"),
+      Items(Vector(Text("i")), "list")), "app")))
+    val app = root.childNodes(0)
+    // claimed: a real <table>. not claimed: the lowering's boxes —
+    // which is what `Ui.diffing`'s default would have done to BOTH
+    assertEquals(app.childNodes(0).tag, "table")
+    assertEquals(app.childNodes(1).tag, "div")
   }
 }

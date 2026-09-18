@@ -40,8 +40,32 @@ object React {
    * their vocabulary and is correct there; the defect was never that
    * the set was empty, it was that a constant stood where a host's own
    * vocabulary belongs.
+   *
+   * WHY `table` IS IN THIS SET AND THE OTHER THREE ARE NOT
+   * (ui-browser-vocab, specs/ui-product.md): a browser is the one host
+   * whose medium HAS these elements, but claiming a node costs the
+   * patch consumers whatever its element structure inserts between a
+   * patch PATH and the child that path names.
+   *
+   * `Table` inserts nothing, because no path ever descends into one:
+   * `Ui.diff` has no `Table` case, so a changed table is a `Replace`
+   * at its own path and a consumer only ever BUILDS a table or swaps
+   * one whole. The price is that same sentence read the other way — a
+   * changed cell now replaces the table where the lowering gave a
+   * narrow `SetText` — and it is a price, stated in the spec with the
+   * trigger for revisiting it.
+   *
+   * `Items` would insert an `<li>`: every patch consumer would have to
+   * unwrap it on the way down and wrap on Insert/Reorder/Remove, in
+   * Scala and again in hand-written JavaScript, to gain `<ul>` over
+   * `<div>`. `Tabs` would oblige every claiming client to switch tabs
+   * itself. `Disclosure`'s `<details>` toggles natively and tells
+   * nobody, so on the scriptless road the server's `open` and the
+   * browser's would disagree from the first click, where the lowered
+   * button is a POST that keeps them in step. `Modal`'s `<dialog>`
+   * needs a script to open at all.
    */
-  val Vocabulary: Set[String] = Set(Vocab.link)
+  val Vocabulary: Set[String] = Set(Vocab.link, Vocab.table)
 
   /** the tree, in createElement's terms; keys ride as data-key, which
    * is also how the glue knows which Event a DOM event means */
@@ -104,9 +128,31 @@ object React {
     case Form(fields, submit, key) =>
       Elem("div", Vector("data-form" -> key, "className" -> "okay-form"),
         fields.map(elem) :+ elem(Button(submit, key, Role.Primary)))
-    // a Link is the one semantic node this host DOES claim: an anchor
-    // is what a browser has and nothing else does (ui-link)
+    // a Link is a semantic node this host claims: an anchor is what a
+    // browser has and nothing else does (ui-link)
     case Link(label, href) => Elem("a", Vector("href" -> href), text = Some(label))
+    // and a TABLE is the other one (ui-browser-vocab): rows of boxes
+    // read as a table and are not one — nothing assistive can see the
+    // header, and a column's width had to be an inline `flex` on every
+    // cell. `<col>` says the width ONCE, in the element whose job it
+    // is, and `weights` is what it says: a SHARE, turned into a
+    // percentage here (integer division; browsers normalise a column
+    // set that does not total 100, and no pixel crosses the wire).
+    // Empty weights write no colgroup, which is the even split the
+    // lowering always gave.
+    case Table(header, rows, key, weights) =>
+      val total = weights.sum
+      val cols =
+        if weights.length != header.length || header.isEmpty || total <= 0 then Vector.empty
+        else Vector(Elem("colgroup", Vector.empty,
+          weights.map(w => Elem("col", Vector("style" -> s"width:${w * 100 / total}%")))))
+      val head =
+        if header.isEmpty then Vector.empty
+        else Vector(Elem("thead", Vector.empty, Vector(Elem("tr", Vector.empty,
+          header.map(h => Elem("th", Vector("scope" -> "col"), text = Some(h)))))))
+      val body = Elem("tbody", Vector.empty, rows.map(r =>
+        Elem("tr", Vector.empty, r.map(c => Elem("td", Vector.empty, Vector(elem(c)))))))
+      Elem("table", keyed(key, Vector("className" -> "okay-table")), (cols ++ head) :+ body)
     // the React host claims no other semantic node: it draws the
     // lowering, which is the node's meaning — asked for with THIS
     // host's vocabulary, so a node it does claim survives inside one
