@@ -122,6 +122,29 @@ class TestRescale extends munit.FunSuite {
       assertEquals(got.partitions, to, s"the resumed run reports its NEW width, $from -> $to")
   }
 
+  test("a pane HANDED but not yet RETIRED is rebuilt, not doubled — what `reopen` is for") {
+    // The case the plain feed cannot produce. A pane leaves a
+    // partition when THAT partition closes it (`start + size <= its
+    // own max - lateness`) and is retired when the SLOWEST partition
+    // has passed it, so between those two moments the coordinator
+    // holds a partial copy. With an in-order feed the partitions'
+    // clocks agree too closely for a pane boundary to fall in that
+    // band; with the jitter at its limit it falls there, and this
+    // stop leaves sixteen such panes in the journal.
+    //
+    // They are partial, and the replay rebuilds them IN FULL, so the
+    // coordinator drops its copies first (`Sink.reopen`). Without
+    // that the sixteen are counted twice and this assertion is the
+    // one that says so.
+    val f2 = Feed(20000, 299)
+    val reference = Flows.fan(StripeWindowJob.flow(f2, 6), StripeWindowJob.sink(f2)).runWith
+    val j = StopAt(2)
+    val _ = intercept[StopAt.Stopped](
+      Cluster.stream(StripeWindowJob, f2, 4, Vector(Cluster.local), 100, j).runWith)
+    val got = Cluster.stream(StripeWindowJob, f2, 6, Vector(Cluster.local), 100, j.kept).runWith
+    assertEquals(got.value, reference.value)
+  }
+
   test("a windowed re-cut with NO mark far enough back still refuses, and says why") {
     val j = StopAt(1)
     val _ = intercept[StopAt.Stopped](

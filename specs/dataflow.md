@@ -508,7 +508,7 @@ Stage 13 — rescale at an epoch boundary (TestRescale):
       one removed hands its back — the same mechanism as death,
       without the death: the workers vector is a resume argument, so
       a longer or shorter one on resume re-maps partitions.
-- [~] box 2: the same for a WINDOWED sink. Its open panes live in the
+- [x] box 2: the same for a WINDOWED sink. Its open panes live in the
       worker, rebuilt by replay on a same-width resume; a re-cut does
       not replay, so they must be JOURNALLED first. The engine refuses
       a windowed rescale (a clear no over a lost pane) until they are.
@@ -524,6 +524,16 @@ Stage 13 — rescale at an epoch boundary (TestRescale):
       discard by the local watermark" — the obvious version of it is
       wrong in a way nothing would show, and the answer is that the
       WORKER discards nothing and the coordinator decides.
+      **BUILT AND MEASURED BY ITS CONTROLS.** `TestRescale` rescales a
+      windowed job 4->6, 4->2, 6->3 and 2->8 and gets the batch answer
+      each time; both coordinator rules were then REMOVED one at a
+      time and each removal makes an assertion fail — `sift` on the
+      ordinary feed, `reopen` on a feed at the limit of its declared
+      lateness, which is the only one that leaves a pane HANDED but
+      not yet RETIRED (sixteen of them) for the coordinator to hold a
+      partial copy of. A run too young for a mark a horizon back still
+      refuses, and the message says the horizon and where the run
+      stands.
 
 Stage 10 — the election (TestElection, TestPersisted):
 - [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`
