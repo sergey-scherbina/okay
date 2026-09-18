@@ -696,6 +696,27 @@ lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlat
       baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
   )
 
+/**
+ * JavaScript as a VALUE (specs/js.md): a typed tree, a printer, and
+ * a macro that emits the printed text as a compile-time constant.
+ *
+ * NOT a Scala-to-JavaScript compiler — that is Scala.js, which this
+ * build already cross-compiles with. Nothing here translates Scala
+ * semantics; the author writes the JavaScript's structure and the
+ * printer writes the text, which is why this is a few hundred lines
+ * and not a backend. Pure string building, so it cross-builds
+ * everywhere and its tests run on JS and Native too.
+ */
+lazy val okayJs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-js"))
+  .settings(
+    name := "okay-js",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 /** streaming tokenization: pure-state scanners, total, incremental
  * (P5); pure Scala — cross-built, tests run on JS too */
 lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
