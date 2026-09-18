@@ -1,5 +1,42 @@
 # Changelog
 
+## async-supervised - an open scope that owns its children
+
+`Async.supervised` and `Nursery`. Asked for by the operator after an
+Ox spike (com.softwaremill.ox 1.0.7), whose `supervised { fork(...) }`
+okay had no answer to: `par` supervises exactly TWO, and
+`Par.traverse` supervises NONE -- its own header says it "does not
+cancel the siblings of a leaf that failed", and a probe measured
+exactly that: nine siblings sleeping 3 s were all waited for, 3012 ms,
+while the failure did propagate. Honest for a traverse, wrong for a
+scope.
+
+    Async.supervised: n ?=>
+      val a = n.fork(fetchUser)
+      val b = n.fork(fetchOrders)
+      a.joinAsync.flatMap(x => b.joinAsync.map(x + _))
+
+THE GUARANTEE, the same one Ox sells: the scope does not finish while
+a child runs; the FIRST failure -- a child's or the body's -- cancels
+every other child and leaves the scope with that error; cancellation
+is best effort, as everywhere else here.
+
+Callbacks, not parking, so it runs on every platform -- the same
+reason `par` is written that way, and it reuses `par`'s pieces
+(Fiber.onComplete, Fiber.cancel, Async.await).
+
+THE ASSERTIONS ARE TIME, AND THEY ARE NOT VACUOUS. Siblings sleep
+3 s, so a scope that waits for them takes 3 s and one that cancels
+them returns at once: the failure test lands at 15 ms, the body-fails
+test at 1 ms. The same assertions applied to `Par.traverse` FAIL at
+3012 ms, which is what proves they discriminate.
+
+FOUND ON THE WAY, and unrelated: the gate does not compile JMH
+sources at all (`grep Jmh scripts/gate.sh` is empty), so
+unwrap-glyph's rename left `compare`'s GeneratorBenchmark calling `.?`
+on a program -- a call site the spec's "every call site moved"
+missed, and nothing could catch. Fixed in the Ox spike's branch.
+
 ## script-storefront-intake — the offer screen, typed
 
 specs/site-framework.md. The arc's last caveat said the storefront's
