@@ -1,5 +1,32 @@
 # Changelog
 
+## ui-open-records — the last UI stub becomes a record somebody can act on
+
+`ui-windows-terminal — raw mode beyond stty` was a one-line entry, and
+a one-line entry is a note to the person who wrote it. It now says
+what actually breaks (only `Terminal.raw`'s `stty`; the painting is
+ANSI, which Windows 10+ draws), what no longer needs doing
+(ui-terminal-keys landed the decoder, and a Windows console with
+`ENABLE_VIRTUAL_TERMINAL_INPUT` sends the same `ESC [ A` sequences —
+so the remaining job is the MODE, not a second input vocabulary), the
+dependency-free shape (a child process configuring the shared console,
+which is exactly what `stty` already is here), and the trigger: a
+Windows box to verify on.
+
+That last part is the point of writing it rather than doing it. This
+is platform code whose entire content is a side effect on a terminal
+nobody here has; landing it unverified would put a claim in the
+repository that no test and no person has seen hold.
+
+WHAT THE SWEEP LEFT OPEN, all three trigger-gated and each narrowed by
+a lane that landed today: `ui-terminal-v2` (a caret, a scrolling
+viewport, a width-aware layout, the mouse — the last two both mean
+`Frame.render` takes a size), `ui-native-hosts-unread` (a SCREEN under
+a product's density, now that the tokens are asserted on Swing and
+GTK), and this one. `delim-doors-are-prompted` is left exactly as it
+is: it is already a decision-ready record, and it asks for a decision
+about a public signature in two modules rather than for work.
+
 ## ui-terminal-keys — the arrows, Shift-Tab and Home/End, decoded as a value
 
 The terminal moved focus with Tab and nothing else, because escape
