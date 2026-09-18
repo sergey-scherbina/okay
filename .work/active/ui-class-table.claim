@@ -1,0 +1,6 @@
+feature/ui-class-table 2026-09-18T14:31:22Z
+agent: claude-code
+heartbeat: 2026-09-18T14:31:22Z
+status: not-started
+done-so-far:
+next: one Scala value for the style-token-to-class names; Html and React read it, LiveJs emits it through okay-js
