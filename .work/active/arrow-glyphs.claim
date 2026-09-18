@@ -1,0 +1,6 @@
+okay-wt-arrow-glyphs 2026-09-18T17:09:49Z
+agent: claude-code
+heartbeat: 2026-09-18T17:09:49Z
+status: in-progress
+done-so-far: >>> is taken by Kleisli composition in Monad.scala; no ***, &&&, +++, ||| anywhere; the glyph policy is one glyph one meaning (specs/unwrap-glyph.md)
+next: the literature glyphs behind an import, on Optic.Arrow/Choice, with laws
