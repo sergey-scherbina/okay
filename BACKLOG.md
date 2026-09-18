@@ -2000,7 +2000,15 @@ one that type-checked, which is a shape worth removing.
       the list.
 - [ ] ui-native-hosts-unread — Swing, GTK, Compose, SwiftUI and the
       Android APK have each drawn the conformance script and a
-      counter; none has drawn a product page. The recorded gaps
+      counter; none has drawn a product page. NARROWED 2026-09-18
+      (native-tokens-tested): the tokens ui-text-intent gave them are
+      no longer a claim — TestSwing asserts a monospaced identifier, a
+      right-aligned `Align.End` label and the ABSENCE of tabular
+      figures Swing cannot draw; TestGtk asserts the `monospace` and
+      `numeric` style classes against real GTK widgets (a
+      `gtk_widget_has_css_class` binding was added to read them back).
+      What is still unread is a SCREEN: layout under a product's
+      density, not a token. The recorded gaps
       (Swing: gap not drawn, weights as natural sizes; GTK: no
       weights, multiline as a plain entry, images as labels,
       `Gtk.window` never run with an app; Compose claims nothing;

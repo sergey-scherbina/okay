@@ -47,6 +47,30 @@ class TestGtk extends munit.FunSuite {
     now(b.apply(Patch.Replace(Nil, ui)))
     show(Gtk4.gtk_widget_get_first_child(root))
 
+  /**
+   * The tokens ui-text-intent gave every host. GTK maps two of them to
+   * style classes it already has — `monospace` for an identifier read
+   * against an explorer, `numeric` for a figure compared down a column
+   * — and draws no alignment, which is recorded rather than hidden and
+   * asserted here as an absence.
+   */
+  test("the text tokens reach GTK as its own style classes") {
+    assume(display, "no display: gtk_init_check failed, so there is nothing to draw on")
+    def has(st: Style, cls: String): Boolean =
+      val (root, b) = mount()
+      now(b.apply(Patch.Replace(Nil, Text("x", st))))
+      val label = Gtk4.gtk_widget_get_first_child(root)
+      var yes = false
+      Zone { yes = Gtk4.gtk_widget_has_css_class(label, toCString(cls)) != 0 }
+      yes
+    assert(has(Style(kind = Kind.Ident), "monospace"), "an identifier is not monospaced")
+    assert(has(Style(kind = Kind.Number), "numeric"), "a number has no tabular figures")
+    assert(!has(Style(), "monospace"), "a defaulted style was dressed")
+    assert(!has(Style(), "numeric"), "a defaulted style was dressed")
+    // the emphasis token is unchanged beside them
+    assert(has(Style(tone = Tone.Emphasis), "heading"))
+  }
+
   test("the law at GTK: patching frame by frame equals building the last frame") {
     assume(display, "no display: gtk_init_check failed — the GTK host is untested here")
     val frames = Vector(

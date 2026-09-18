@@ -1,5 +1,30 @@
 # Changelog
 
+## native-tokens-tested — the half of ui-text-intent that shipped on trust
+
+`ui-text-intent` gave `Kind` and `Align` to every host and tested them
+on the browser roads, the terminal and the wire. Swing's and GTK's
+halves shipped with no test at all — code written, read once, believed.
+This is that debt, and it is small on purpose: the tokens are asserted
+where they are drawn.
+
+Swing: an identifier comes out in the monospaced face, an `Align.End`
+label sits at `SwingConstants.RIGHT`, a defaulted `Style` is the plain
+label it always was — and `Kind.Number` is asserted NOT to change the
+font, because Swing has no tabular-figures switch and a recorded gap
+should be a fact rather than a silence.
+
+GTK: the `monospace` and `numeric` style classes GTK already has,
+asserted against REAL widgets (the suite runs when `gtk_init_check`
+succeeds and says so when it cannot). Reading a class back needed a
+binding that did not exist — `gtk_widget_has_css_class` — which is the
+useful shape of this kind of test: it forces the host to be
+interrogable, not just writable.
+
+BACKLOG's `ui-native-hosts-unread` is narrowed rather than closed:
+what is still unread on a native host is a SCREEN under a product's
+density, which is a layout question and needs a product, not a token.
+
 ## ui-docs-refresh — the guide and the two UI specs catch up with the day
 
 Seven lanes landed against okay-ui today and the pages a reader opens
