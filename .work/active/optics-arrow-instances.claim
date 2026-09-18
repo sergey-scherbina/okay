@@ -1,6 +1,0 @@
-okay-wt-arrow-instances 2026-09-18T12:37:51Z
-agent: claude-code
-heartbeat: 2026-09-18T12:37:51Z
-status: in-progress
-done-so-far: arrow-laws landed (okay.laws.ArrowLawsSuite); lane 4 of arrows-plan is unblocked
-next: Arrow[Function1] and Arrow for the Kleisli A => B ! R, each instantiating the shared suite
