@@ -1,0 +1,6 @@
+feature/ui-terminal-layout-map 2026-09-18T18:11:11Z
+agent: claude-code
+heartbeat: 2026-09-18T18:11:11Z
+status: in-progress
+done-so-far: claimed
+next: render answers positions beside its lines; hit reads the map; focusLine comes from it too
