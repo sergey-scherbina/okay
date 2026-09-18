@@ -1,0 +1,6 @@
+feature/proc-auto-colour 2026-09-18T11:55:05Z
+agent: claude-code
+heartbeat: 2026-09-18T11:55:05Z
+status: in-progress
+done-so-far: claimed
+next: ProcCtx capability + procColor conversion + strip the ctx lambda in the macro
