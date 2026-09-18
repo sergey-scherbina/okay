@@ -35,7 +35,7 @@ class GeneratorBenchmark {
 
   @Benchmark
   def okayProducer(): Any =
-    fibs[Int, Producer].next(N - 1).?
+    fibs[Int, Producer].next(N - 1).peek
 
   @Benchmark
   def fs2Stream(): Option[Int] =
