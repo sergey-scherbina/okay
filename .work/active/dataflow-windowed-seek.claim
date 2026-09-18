@@ -1,6 +1,0 @@
-feature/dataflow-windowed-seek 2026-09-18T17:38:51Z
-agent: claude-code
-heartbeat: 2026-09-18T17:38:51Z
-status: in-progress
-done-so-far: claimed
-next: MEASURE first — delta handovers vs a horizon-bounded replay, as the spec demands
