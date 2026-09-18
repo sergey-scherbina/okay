@@ -429,8 +429,17 @@ lazy val okayKafka = (project in file("okay-kafka"))
   // okay-persist rides along: KafkaStore is the stage-3 interop
   // engine behind the same Store trait (specs/persist.md);
   // test->test borrows the ElectionSuite for the Kafka control-log
-  // leg of the consensus battery (specs/consensus.md)
-  .dependsOn(okay.jvm, okayPersist.jvm % "compile->compile;test->test")
+  // leg of the consensus battery (specs/consensus.md).
+  //
+  // okay-cluster is TEST->TEST ONLY, and the direction is deliberate:
+  // the dataflow engine must not know what a Kafka is (its compile
+  // graph stops at okay-codec, and `Checkpoint` is two methods over
+  // bytes on purpose). What borrows is the staging BATTERY —
+  // `StagingTopicSuite` — so stage 11's last box, the same
+  // exactly-once run against a real broker, asserts the same things
+  // as the memory run rather than a second thing that looks alike.
+  .dependsOn(okay.jvm, okayPersist.jvm % "compile->compile;test->test",
+             okayCluster.jvm % "test->test")
   .settings(
     name := "okay-kafka",
     libraryDependencies ++= Seq(

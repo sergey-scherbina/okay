@@ -476,8 +476,24 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       resumed process is built with no memory at all and learns what
       landed by reading the tail, which is what `TestStaged` could not
       show (its counter was a field that survived the simulated death)
-- [ ] the same on `KafkaStore` when a broker is available (Live) —
-      still open, and it needs a broker rather than a decision
+- [x] the same on `KafkaStore` when a broker is available (Live) —
+      RUN 2026-09-18 (`dataflow-kafka-eos`) against a single-node
+      `apache/kafka:3.9.0` on this machine, and it passes the same
+      four assertions the memory battery makes: a quiet run writes
+      every pane once (3.9 s), a coordinator dying between the append
+      and the journal commit at four epochs is succeeded by a process
+      with no memory that learns what landed from the output's tail
+      (16.1 s), a death after the commit appends nothing again
+      (14.6 s), and a fresh writer over a filled log knows the epoch
+      (6.0 s). It asserts nothing NEW on purpose: the battery is one
+      `StagingTopicSuite`, supplied a `MemoryStore` topic by
+      okay-cluster and a `KafkaStore` one by okay-kafka, so the two
+      runs cannot drift into asserting different things. The only
+      thing a real log can break that a memory one cannot is the
+      reading back — offsets, `TooEarly`, an eventually consistent
+      tail — and that is exactly what the dedup road depends on.
+      Skips in 16 ms with no broker, and the skip was checked by
+      pointing it at a dead port
 
 Stage 12 — the network (BLOCKED: needs machines that are not this one):
 - [ ] the three engines' cross-process harness over a real link, and

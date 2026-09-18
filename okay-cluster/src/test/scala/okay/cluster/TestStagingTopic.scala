@@ -26,10 +26,17 @@ object PaneLog {
   given Schema[(Long, Int, Long)] = Schema.derived
   val codec = Codecs.cbor(summon[Schema[(Long, Int, Long)]])
 
-  /** the output topic, remade per scenario */
+  /**
+   * THE OUTPUT TOPIC, REMADE PER SCENARIO — and it is a `Topic` and
+   * not a `MemoryStore` topic, so the same battery runs against a
+   * REAL log. `okay-kafka`'s `TestDataflowKafka` passes a
+   * `KafkaStore` one and asserts the same things (stage 11's last
+   * box); nothing else here changes, which is the point of the seam.
+   */
   @volatile private var out: Topic | Null = null
   def topic: Topic = out.nn
-  def fresh(): Unit = out = MemoryStore().topic("panes", 1, Policy(compact = false))
+  def fresh(): Unit = fresh(MemoryStore().topic("panes", 1, Policy(compact = false)))
+  def fresh(t: Topic): Unit = out = t
 
   /** every record in the output, with the epoch that wrote it */
   def rows: Vector[(Int, (Long, Int), Long)] =
@@ -98,8 +105,16 @@ object PaneLogJob extends Job[Feed, Long] {
       (epoch, panes) => writer.move(epoch, panes))
 }
 
-class TestStagingTopic extends munit.FunSuite {
+/**
+ * THE BATTERY, over whatever `Topic` the suite supplies — so the
+ * memory run and the Kafka run assert the same things rather than two
+ * things that look alike (specs/dataflow.md, stage 11).
+ */
+trait StagingTopicSuite extends munit.FunSuite {
   import Feeds.*
+
+  /** a fresh, empty output topic for one scenario */
+  def output(): Topic
 
   TestJobs.install()
   Jobs.register(PaneLogJob)
@@ -139,7 +154,7 @@ class TestStagingTopic extends munit.FunSuite {
       s"a pane is in the output twice: ${keys.diff(keys.distinct).distinct.take(5)}")
 
   test("a quiet run writes every pane to the log, once") {
-    PaneLog.fresh()
+    PaneLog.fresh(output())
     val w = newProcess()
     val got = Cluster.stream(PaneLogJob, feed, 4, Vector(Cluster.local), 512).runWith
     once()
@@ -151,7 +166,7 @@ class TestStagingTopic extends munit.FunSuite {
   test("EXACTLY-ONCE: a death between the append and the journal commit") {
     var recovered = 0L
     for at <- Vector(2, 4, 6, 8) do
-      PaneLog.fresh()
+      PaneLog.fresh(output())
       val first = newProcess()
       val j = Dying(at, afterSaving = false)
       val _ = intercept[Dying.Died](
@@ -180,7 +195,7 @@ class TestStagingTopic extends munit.FunSuite {
 
   test("a death AFTER the commit: the successor starts past it and appends nothing again") {
     for at <- Vector(2, 4, 6) do
-      PaneLog.fresh()
+      PaneLog.fresh(output())
       val _ = newProcess()
       val j = Dying(at, afterSaving = true)
       val _ = intercept[Dying.Died](
@@ -197,7 +212,7 @@ class TestStagingTopic extends munit.FunSuite {
     // the property `TestStaged` could not have, stated alone: build a
     // writer that has never run, over a log somebody else filled, and
     // it refuses the epochs already there
-    PaneLog.fresh()
+    PaneLog.fresh(output())
     val _ = newProcess()
     val _ = Cluster.stream(PaneLogJob, feed, 4, Vector(Cluster.local), 512).runWith
     val before = PaneLog.rows.length
@@ -212,4 +227,9 @@ class TestStagingTopic extends munit.FunSuite {
     stranger.move(high + 1, Vector(Pane(0L, Size, 99, 7L)))
     assertEquals(PaneLog.rows.length, before + 1)
   }
+}
+
+/** the battery on a memory log — the one that runs in every gate */
+class TestStagingTopic extends StagingTopicSuite {
+  def output(): Topic = MemoryStore().topic("panes", 1, Policy(compact = false))
 }
