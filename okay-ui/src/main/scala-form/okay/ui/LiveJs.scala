@@ -190,6 +190,13 @@ object LiveJs:
       |    }
       |    return n;
       |  }
+      |  // THE NODE BUILDER IS REACHABLE, so a test can run it.
+      |  // Nothing in a browser calls this; it exists because until it
+      |  // did, NOTHING executed this file — the suite checked that a
+      |  // `case "Table":` was present in the text and compared two
+      |  // SCALA renderers with each other, so a wrong class name or a
+      |  // missed style token passed green (ui-livejs-verified).
+      |  window.okayBuild = build;
       |  window.okayLive = function (id) {
       |    var root = document.getElementById("okay-live-" + id);
       |    if (!root) return;
