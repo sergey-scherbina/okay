@@ -1,5 +1,35 @@
 # Changelog
 
+## ui-direct-example - a form validated applicatively, its errors put back by an optic
+
+Three pieces of this library meeting on one screen, as a test that
+runs rather than a snippet that reads: a `Ui` is a value, `Validated`
+collects every problem instead of the first, the validation is a
+`direct` block at a carrier with no monad, and `Ui.key(k)` puts each
+message under the field it names.
+
+Carrying the field key IN the error is what makes the write-back
+possible - the error type is `Vector[(String, String)]`, so the
+traversal that finds a node by key has something to aim at. The
+user's edits stay where they were, and a good form comes back
+unchanged.
+
+TWO THINGS MEASURED RATHER THAN ASSUMED, both pinned in the test.
+
+`traverseOf` infers its `F` from the expected type INSIDE a direct
+block and outside one alike. The obvious guess is that the block
+helps, because the carrier is known there; it does not. What the block
+buys is the three checks reading as three lines.
+
+And the focus function cannot be written in the enclosing block: a
+mark under a lambda is the corner `direct`'s v1 refuses by design. A
+NESTED direct block is refused for a DIFFERENT reason worth keeping
+apart - its own binds are dependent, which genuinely needs flatMap,
+and that refusal names the line. So an optic and a direct block meet
+at the call, not inside it.
+
+The tutorial's section 23 gains the example and the boundary.
+
 ## optic-carriers - one optic, three effects
 
 A traversal's `traverseOf` asks for an `Applicative[F]` and nothing
