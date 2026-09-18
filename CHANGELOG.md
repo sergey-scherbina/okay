@@ -1,5 +1,33 @@
 # Changelog
 
+## script-storefront-look — the original's theme, and the JavaScript proven in a browser
+
+specs/site-framework.md. The first storefront slice wore a three-line
+stylesheet: it rendered, and it was not the site. The theme of the
+file the live sites are rendered from is ported whole — both
+palettes, the woven texture and the dashed seams for the atelier, the
+night gradient and the sweeping signal for the technical line, the
+serif headline, the offer rows, the intake sheet — chosen by a VALUE,
+so one library still dresses both sites.
+
+The page's own script is ported with it and DRIVEN IN A REAL BROWSER
+(`okay-demo-e2e-browser`, TestStorefrontBrowser, Live-tagged, 4): the
+language switch changes the text with no navigation and the choice
+survives a reload; a placeholder swaps, being an attribute; the
+intake sheet opens, posts, and shows the reference the server sent
+back; the computed background is warm on one site and near-black on
+the other. A `contains` suite cannot tell a script that runs from one
+that throws on line one.
+
+Three findings kept in the spec: a modal takes the clicks (so the
+language is chosen before the sheet opens), a wholesale
+`PlaywrightException` catch reported a 20-second TIMEOUT as "the
+browser isn't installed", and a browser proof must read the same
+fixture the unit tests do — `okayScript % "test->test"`, not a copy
+that drifts. One more found by looking at the page rather than a
+test: a CSS escape is `\2022`, and `\u2022` is JavaScript's spelling,
+which rendered as the literal text "u2022".
+
 ## apdo-forms - the plainest spelling of an applicative direct block
 
 The operator asked whether `direct[F]`'s type argument and the
