@@ -1,0 +1,3 @@
+- handler-fusion-eff — DONE 2026-09-09, REFUTED: Eff + composite is
+  0.58x of the fused Free loop, 2.4x the bytes; the best tree-free road
+  0.86x …

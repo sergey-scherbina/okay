@@ -1,0 +1,3 @@
+- intent-split-other — MEASURED AND DECLINED 2026-09-05. Carving the bin
+  into Social/Support/Errand takes `Other` recall from 46.7% to 6.7%
+  (composite …

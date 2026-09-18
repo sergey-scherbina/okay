@@ -1,0 +1,3 @@
+- single-shot-row — PRICED AND REFUTED 2026-09-09: a mutable cell buys
+  Writer's reverse and nothing else (-8.9% B/op on the mixed program,
+  gate was …

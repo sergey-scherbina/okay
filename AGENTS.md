@@ -1,7 +1,7 @@
 # Working in this repository (agents)
 
-SPRINT: SPRINT.md
-BACKLOG: BACKLOG.md
+SPRINT: sprint.d/ (one file per item; `scripts/board.sh sprint` reads it)
+BACKLOG: backlog.d/ (one file per item, by section; `scripts/board.sh backlog`)
 CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
 
 ## Skills
@@ -198,9 +198,23 @@ force, all already practiced, none previously written down:
 
 ## Boards
 - The protocol is the `scrumban` skill: write the plan into the board
-  BEFORE executing. `SPRINT.md` is what agents pick from (claim before working);
-  `BACKLOG.md` is where found-but-deferred work goes THE MOMENT it is
-  found; a landed task writes `changelog.d/<slug>.md` — ONE FILE, named
+  BEFORE executing. **THE BOARDS ARE DIRECTORIES** (boards-d,
+  2026-09-18), one file per item, for the reason changelog.d is one:
+  a lane edits its own item instead of the middle of everyone's file.
+  `sprint.d/queue/<slug>.md` is what agents pick from (claim before
+  working) and `sprint.d/doing/<slug>.md` is what somebody is on;
+  `backlog.d/<section>/<slug>.md` is where found-but-deferred work
+  goes THE MOMENT it is found. Read a board with
+  `scripts/board.sh sprint|backlog` — never by catting the pointer
+  files, which say only where the real thing is. PICKING is
+  `git mv sprint.d/queue/<x>.md sprint.d/doing/<x>.md`, PROMOTING is
+  `git mv backlog.d/<section>/<x>.md sprint.d/queue/<x>.md`, and the
+  history records both for free. `scripts/board.sh --check` guards the
+  shape and `TestBoardEntries` runs it in the gate — including the one
+  a directory cannot enforce by itself, that the same slug is not
+  filed in two places (a promotion done by copy instead of `git mv`
+  lets two agents pick one task). `_order` is the only line two lanes
+  can both want, and only when a SECTION is added; a landed task writes `changelog.d/<slug>.md` — ONE FILE, named
   after the lane, beginning with a `## ` title and naming the commits.
   It is never the head of `CHANGELOG.md`: that file is the archive of
   everything before 2026-09-18 and is not edited again. Read the log

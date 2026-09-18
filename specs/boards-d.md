@@ -47,19 +47,19 @@ scripts/board.sh --check      naming and shape, run by a test
 
 ## Behavior
 
-- [ ] `scripts/board.sh backlog` assembled from `backlog.d/` is
+- [x] `scripts/board.sh backlog` assembled from `backlog.d/` is
       byte-identical to today's `BACKLOG.md` modulo a stated
       normalisation (trailing whitespace, one blank line between
       items) — the round trip, and the only acceptable evidence that
       2000 lines survived the split
-- [ ] the same for `SPRINT.md`
-- [ ] every item file is named `<slug>.md`, begins with the `- [ ] ` or
+- [x] the same for `SPRINT.md`
+- [x] every item file is named `<slug>.md`, begins with the `- [ ] ` or
       `- ` line the boards use, and no two share a slug
-- [ ] a test in okay-deploy runs the guard, beside `TestDocsIndex` and
+- [x] a test in okay-deploy runs the guard, beside `TestDocsIndex` and
       `TestChangelogEntries`
-- [ ] `scripts/check-citations.sh` reads the directories, so a sha
+- [x] `scripts/check-citations.sh` reads the directories, so a sha
       cited in an item is checked as one in `BACKLOG.md` was
-- [ ] AGENTS.md and the `scrumban` skill point at the directories, and
+- [x] AGENTS.md and the `scrumban` skill point at the directories, and
       the lifecycle reads promote = `git mv`
 
 ## Out of scope
@@ -98,5 +98,50 @@ verified by reading is a migration that quietly loses an item.
 
 ## Results
 
-(none yet — this spec is the plan, written the hour `changelog-d`
-landed so the next agent starts from it rather than from the idea)
+### Landed 2026-09-18
+
+Every behaviour item above is met. What is worth keeping is how the
+migration was checked, because "it looks right" was never going to be
+enough for 2000 lines.
+
+**THREE INDEPENDENT AGREEMENTS, not one.**
+
+1. **The round trip.** Assemble the directory, normalise the original
+   the same way (items inside a section ordered by slug, exactly one
+   blank line between), diff: **zero lines, both boards.**
+2. **The multiset, which does not share the parser.** The round trip's
+   two halves use one parsing, so they could have dropped the same
+   thing twice and agreed about it. So: compare the MULTISET of
+   non-blank lines, original against assembled — 2733 lines in the
+   backlog, 251 in the sprint, **none lost, none gained.**
+3. **A second assembler.** The committed `scripts/board.sh` is shell;
+   the migration's was a throwaway Python script. They produce the
+   same bytes.
+
+The difference that showed up afterwards was explained rather than
+patched: nine lines the assembly had and master did not, which is a
+sibling landing `delim-doors-are-prompted` and deleting its item while
+the split was in flight — the hazard the room was warned about, caught
+because the check was run against `master` rather than against the
+working copy.
+
+**THE CHECK FOUND SOMETHING THE MOMENT IT COULD SEE THE SPRINT.**
+`check-citations.sh` read `CHANGELOG.md` and `BACKLOG.md` and nothing
+else, so SPRINT had never been checked at all. Taught to read the
+directories, it immediately named a dangling sha in the schema-fold
+line: that commit's PRE-REBASE object, which still exists locally, so
+nothing had ever looked wrong. Corrected to the one on master.
+
+**And its own lesson, paid for twice now**: the checker greps every
+8-hex word and cannot tell a citation from a MENTION of one, so a note
+explaining a corrected sha must not quote the old one.
+
+**What the splitter could not name**: nine items out of 218 do not
+start with a slug (they are prose bullets or sub-items) and carry
+`item-NNN`. They are honest rather than pretty, and whoever next
+touches one can `git mv` it to a name.
+
+**The old files stay as POINTERS**, which is the call `CHANGELOG.md`'s
+header already made: fifteen specs and two source comments say "filed
+in BACKLOG.md", and a pointer is cheaper than editing them all to say
+something they do not care about.

@@ -1,0 +1,3 @@
+- sql-plan-cells — MEASURED AND DECLINED 2026-09-07 (taken up on the
+  operator\'s word despite its own condition). Compiling each field\'s
+  Shape into a …

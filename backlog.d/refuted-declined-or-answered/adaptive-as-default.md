@@ -1,0 +1,3 @@
+- adaptive-as-default — decided 2026-09-07: NO, and here is the number
+  that would change it `Queues.strong.adaptive` wins many-to-many (0.63
+  of our …

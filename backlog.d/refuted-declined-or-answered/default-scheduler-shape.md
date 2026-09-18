@@ -1,0 +1,3 @@
+- default-scheduler-shape — REFUTED 2026-09-08 by its own disqualifying
+  evidence, and the entry was built on a mismatched pair besides.
+  Matched by …

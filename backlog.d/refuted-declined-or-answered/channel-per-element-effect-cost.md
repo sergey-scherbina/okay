@@ -1,0 +1,3 @@
+- channel-per-element-effect-cost — CLOSED as an interpreter lane
+  2026-09-06, redirected Taken as free-cont-stack on the hypothesis this
+  entry invites: …

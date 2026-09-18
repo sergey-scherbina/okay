@@ -1,0 +1,3 @@
+- writer-test-no-some — REFUTED 2026-09-09, no code landed. Built
+  (ClassTag class test in the companion, Typeable fallback by given
+  priority) and …

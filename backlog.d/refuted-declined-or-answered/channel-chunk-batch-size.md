@@ -1,0 +1,3 @@
+- channel-chunk-batch-size — REFUTED TWICE 2026-09-06: the consumer
+  already batches at 62 of 64 Taken as channel-batch-floor on the
+  finding that …
