@@ -51,3 +51,17 @@ Not taken: the `set . set` half on products. Its prize is ~2.5 ns and
 NOTHING in bytes on the JVM, because escape analysis already
 scalar-replaces the intermediate; the entry keeps it with the caveat
 that Native and JS have no such analysis and were never measured.
+
+AND, ASKED THE SAME DAY: do optics and arrows work inside a `direct`
+block? `TestDirectOpticsArrows` answers it as seven tests rather than
+from memory — a lens read, a lens write, a composed lens, a traversal,
+two `reflect`s with an optic between them (the block stays APPLICATIVE:
+both errors, not the first), `fanout` on the `Function1` arrow, and
+`compose` on the Kleisli. All green.
+
+The one refusal is the one already recorded, and it is a test now: a
+`.reflect` INSIDE the focus function does not compile — a mark under a
+lambda is the corner `direct`'s v1 refuses by design. The CHANGELOG
+sentence it came from, "an optic and a direct block meet at the call,
+not inside it", reads much wider than it is. It is about a mark under
+the focus lambda and about nothing else.
