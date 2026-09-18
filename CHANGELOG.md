@@ -1,5 +1,24 @@
 # Changelog
 
+## site-framework — stage 3, i18n on the element
+
+specs/site-framework.md. `okay.script.api.Inline` carries every
+language on the element as `data-*`, renders the REQUEST's language
+as the element's own text, draws the language switcher and serves the
+~20 lines that apply a choice — reading the same `OKAYLANG` cookie
+the per-request road writes, so the two roads cannot disagree about
+what the visitor chose. The storefront fixture uses it: `?lang=uk`
+renders Ukrainian with Polish still on the element.
+
+Measured rather than reasoned: with `default` a FIELD, a page's
+`val langs = Langs.of(...)` froze the first visitor's language for
+everyone after them, because a `val` in a declare block is evaluated
+once per COMPILE — a `?lang=en` request answered Ukrainian. `default`
+is a method reading `Lang.current` now, so the value is
+request-independent and the request-dependent part is a function.
+
+TestInlineI18n 6, TestStorefront 4.
+
 ## site-framework — stage 4, the verdict: the storefront ported
 
 specs/site-framework.md. A real slice of busi's `storefront.ssc` —
