@@ -1,0 +1,6 @@
+okay-wt-jvm-parallel 2026-09-18T13:25:22Z
+agent: claude-code
+heartbeat: 2026-09-18T13:25:22Z
+status: in-progress
+done-so-far: JVM phase is 198.6s of test work in 123s wall = 1.6x on 14 cores; suspect my own ThisBuild parallelExecution:=false, which JS/Native needed and the JVM did not
+next: A/B the JVM phase with parallelExecution true vs false, warm both, and scope the bound if the JVM pays for it
