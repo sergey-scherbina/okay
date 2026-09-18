@@ -164,7 +164,7 @@ Behavior:
       renders `<table>`s (their lane, after the bump — the criterion
       of this spec, not a checkbox this repository can tick)
 
-## Stage 2 — text carries its intent (ui-text-intent)
+## Stage 2 — text carries its intent (ui-text-intent, LANDED 2026-09-18)
 
 `Style` gains what the product's stylesheet was saying by position:
 
@@ -201,20 +201,56 @@ final case class Style(bold: Boolean = false, dim: Boolean = false,
   string" is not a rule (an IBAN is prose to a sorter and an
   identifier to a reader).
 
+**THE WIRE CHANGED, AND THIS SPEC SAID IT WOULD NOT.** The stage as
+written promised "a `Style` with both defaults encodes as it always
+did (byte-equal on the conformance script)". That was wrong and the
+first run said so: the derived codec writes EVERY field, so every
+styled `Text` on the wire gained two keys and `conformance.jsonl`
+re-rendered. The precedent for what to do was already here —
+`Table.weights` did exactly this in ui-table-weights — and the rule it
+set is the one followed: a new field is written, an OLD client ignores
+it, and a NEW client reads an absent one as the default. Both halves
+are now tested here, the second against a hand-written line from a
+server that predates the lane.
+
+**AND BOTH THIN CLIENTS HAD TO FOLLOW, for a reason worth keeping:
+their conformance test RE-ENCODES the tree it holds and compares it to
+the script.** So a client that decodes the two tokens but does not
+write them back fails the script — which is the conformance test doing
+exactly its job. `okay-compose/protocol` and `okay-swift`'s
+`OkayProtocol` carry `Kind` and `Align` now, and both draw them
+(Compose: `FontFamily.Monospace`, `TextAlign.End`; SwiftUI:
+`.monospaced` design and `monospacedDigit`). `swift test` 3 of 3,
+`./gradlew :protocol:test` green.
+
 Behavior:
-- [ ] `Text("DE00…", Style(kind = Ident))` renders as a span with
-      `okay-kind-ident` in React/Html, as the same characters in the
-      terminal; `Kind.Number` + `Align.End` right-aligns in the
-      terminal's column and writes the two classes in the browser
-- [ ] the wire: a `Style` with both defaults encodes as it always
-      did (byte-equal on the conformance script); one with a token
-      round-trips through JSON and CBOR; `docs/protocol/frontend.md`
-      re-rendered
-- [ ] `Form.of` marks a numeric field's rendered value `Kind.Number`
-      (it already picks `InputKind.Number`), so a form and a table
-      say the same thing about a number
-- [ ] okay-watch replaces its fifteen positional selectors with
-      tokens on the cells (their lane; the criterion)
+- [x] `Text("DE00", Style(kind = Ident))` is `okay-kind-ident` in
+      React and `Html`; `Kind.Number` with `Align.End` writes both
+      classes; a DEFAULTED `Style` writes neither, on every host
+- [x] the terminal right-aligns an `Align.End` cell inside the column
+      its weights gave it — the padding moves from one side to the
+      other and the row's width does not change
+- [x] `live.js` writes the same two classes from the same short names
+- [x] Swing draws a monospaced identifier and a right-aligned label;
+      GTK adds its own `monospace` and `numeric` style classes.
+      NOT DRAWN, recorded: Swing has no tabular-figures switch, GTK's
+      alignment would need a `gtk_label_set_xalign` binding nothing
+      has asked for
+- [x] the wire: both tokens round-trip through JSON lines and CBOR
+      bytes, spelled short (`"ident"`, `"end"`) like every other
+      enumeration; a `Style` from a server that predates the lane
+      decodes to the defaults; the document and the conformance script
+      are re-rendered
+- [x] the two thin clients carry and draw the tokens, and their
+      conformance suites pass against the re-rendered script
+- [ ] okay-watch replaces its fifteen positional selectors with tokens
+      on the cells (their lane; the criterion)
+
+WITHDRAWN from this stage, with the reason: "`Form.of` marks a numeric
+field's rendered value `Kind.Number`". A form renders a number as an
+`Input` of `InputKind.Number`, which already says what it is — there
+is no `Text` there to mark. The tokens are for what a page DISPLAYS,
+and a form displays fields.
 
 ## Stage 3 — one blank, in Form (form-blank, LANDED 2026-09-18)
 

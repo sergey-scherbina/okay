@@ -74,7 +74,8 @@ public enum Wire {
     }
 
     static func style(_ s: Style) -> [String: Any] {
-        ["bold": s.bold, "dim": s.dim, "tone": s.tone.rawValue, "size": s.size.rawValue]
+        ["bold": s.bold, "dim": s.dim, "tone": s.tone.rawValue, "size": s.size.rawValue,
+         "kind": s.kind.rawValue, "align": s.align.rawValue]
     }
     static func sum(_ name: String, _ fields: [String: Any]) -> [String: Any] { [name: fields] }
 
@@ -193,9 +194,13 @@ public enum Wire {
 
     static func readStyle(_ j: Any?) -> Style {
         guard let f = j as? [String: Any] else { return Style() }
+        // absent is the default: a server older than ui-text-intent says
+        // nothing about either, and this client still draws it
         return Style(bold: f["bold"] as? Bool ?? false, dim: f["dim"] as? Bool ?? false,
                      tone: Tone(rawValue: f["tone"] as? String ?? "") ?? .plain,
-                     size: Size(rawValue: f["size"] as? String ?? "") ?? .normal)
+                     size: Size(rawValue: f["size"] as? String ?? "") ?? .normal,
+                     kind: Kind(rawValue: f["kind"] as? String ?? "") ?? .prose,
+                     align: Align(rawValue: f["align"] as? String ?? "") ?? .start)
     }
 
     /// the one-key object a sum is

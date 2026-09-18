@@ -104,11 +104,12 @@
     carries its trigger in specs/ui-product.md. `Dom.host` lowers with
     the host's own vocabulary; `live.js`'s hello is generated from the
     constant and guarded by a test.
-  - ui-text-intent — `Style` gains `Kind` (Prose/Ident/Number) and
-    `Align`; tokens, mapped per host (mono/tabular classes in the
-    browser, right-aligned columns in the terminal); two optional wire
-    fields, conformance re-rendered. DONE-WHEN: a defaulted `Style`
-    encodes byte-equal to today, `Form.of` marks numbers.
+  - ui-text-intent — LANDED 2026-09-18. `Style` gains `kind` and
+    `align`, drawn by React/Html/live.js, the terminal, Swing, GTK,
+    Compose and SwiftUI. The wire DID change (the derived codec writes
+    every field), so both thin clients gained the two tokens and the
+    conformance script re-rendered; an old server's Style decodes to
+    the defaults, tested.
   - form-blank — LANDED 2026-09-18. `Form.blank[A]`: Checks false,
     Selects on their first option, lists an empty array, Options
     absent. The defect was the SCRIPTLESS road (an unchanged field

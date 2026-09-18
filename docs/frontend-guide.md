@@ -45,7 +45,7 @@ client draws:
 
 | Node | What it is |
 |---|---|
-| `Text(s, style)` | text with TOKENS: `Style(bold, dim, tone, size)`; a host maps `Tone.Danger` to its own red |
+| `Text(s, style)` | text with TOKENS: `Style(bold, dim, tone, size, kind, align)`; a host maps `Tone.Danger` to its own red, `Kind.Ident` to a monospaced face, `Kind.Number` to tabular figures and `Align.End` to the end of its column |
 | `Row`, `Column` | children beside / below each other |
 | `Box(children, dir, weights, gap, pad, key)` | the general container: weights divide the main axis, gap and pad in character units |
 | `Image(src, alt)` | a picture, or its alt where a host has no loader |

@@ -1,5 +1,58 @@
 # Changelog
 
+## ui-text-intent — what a text IS, as a token the tree carries
+
+`Style` gains `kind` (Prose/Ident/Number) and `align` (Start/End).
+An identifier is read AGAINST something — an explorer, a published
+list — so it is monospaced and must arrive whole; a number is compared
+DOWN a column, so its figures are tabular and it sits where the column
+ends; prose is read, so it wraps. okay-watch had been saying exactly
+this with fifteen `nth-child` selectors, which do not survive a column
+being moved, and its own stylesheet says so in a comment.
+
+The token sits on the TEXT, not on the table, because only the author
+knows what a cell says: "eight characters" is not a rule, and an IBAN
+is prose to a sorter and an identifier to a reader. `Kind` and `Align`
+are orthogonal for the same reason — a number in a sentence is not
+right-aligned, and a column of them is, so a column says both.
+
+Hosts: React/`Html`/`live.js` write `okay-kind-*` and `okay-align-*`
+(their stylesheet is ui-html-css, the next lane); the terminal moves a
+cell's padding from one side to the other inside the column its
+weights gave it; Swing draws a monospaced identifier and a
+right-aligned label; GTK adds its own `monospace` and `numeric` style
+classes. NOT DRAWN, recorded rather than hidden: Swing has no
+tabular-figures switch, and GTK's alignment would need a
+`gtk_label_set_xalign` binding nothing has asked for.
+
+THE WIRE CHANGED, AND THE SPEC HAD PROMISED IT WOULD NOT. "A `Style`
+with both defaults encodes as it always did" was written before the
+code was read; the derived codec writes EVERY field, so every styled
+`Text` gained two keys and `conformance.jsonl` re-rendered. The
+precedent was already here — `Table.weights` did this in
+ui-table-weights — and its rule is the one followed: a new field is
+written, an old client ignores it, a new client reads an absent one as
+the default. Both halves are tested, the second against a hand-written
+line from a server that predates the lane.
+
+AND THE TWO THIN CLIENTS HAD TO FOLLOW, which is the conformance test
+doing its job rather than an accident: it RE-ENCODES the tree it holds
+and compares it to the script, so a client that reads the tokens but
+does not write them back fails. `okay-compose/protocol` and
+`okay-swift`'s `OkayProtocol` carry `Kind`/`Align` now and both DRAW
+them (Compose `FontFamily.Monospace` + `TextAlign.End`; SwiftUI a
+`.monospaced` design and `monospacedDigit`). `swift test` 3 of 3,
+`./gradlew :protocol:test` green, the Compose desktop target compiles.
+
+One SwiftUI fact found by the compiler: `.monospacedDigit()` is a
+`Font` method here, not a `View` modifier taking a Bool — the size,
+kind and face are chosen in one `Render.font(style)` instead.
+
+TestTextIntent (6). specs/ui-product.md stage 2, with the withdrawn
+item ("`Form.of` marks a numeric field") and its reason: a form
+renders a number as an `InputKind.Number` input, which already says
+what it is — there is no `Text` there to mark.
+
 ## arrow-laws - one law suite, and the half that makes it evidence
 
 Lane 1 of specs/arrows-plan.md: `okay.laws.ArrowLaws[P]` and

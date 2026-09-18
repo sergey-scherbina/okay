@@ -45,6 +45,8 @@ object LiveJs:
       |        if (st.dim) cls.push("okay-dim");
       |        if (st.tone && st.tone !== "plain") cls.push("okay-tone-" + st.tone);
       |        if (st.size && st.size !== "normal") cls.push("okay-size-" + st.size);
+      |        if (st.kind && st.kind !== "prose") cls.push("okay-kind-" + st.kind);
+      |        if (st.align && st.align !== "start") cls.push("okay-align-" + st.align);
       |        if (cls.length) el.className = cls.join(" ");
       |        el.textContent = f.s;
       |        return el;

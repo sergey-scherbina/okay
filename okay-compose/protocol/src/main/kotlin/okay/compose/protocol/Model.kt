@@ -10,11 +10,20 @@ enum class InputKind { Text, Secret, Multiline, Number }
 enum class Tone { Plain, Emphasis, Muted, Danger }
 enum class Size { Small, Normal, Large }
 
+/** what a text IS, which decides how this client sets it: an
+ * identifier is monospaced, a number's figures are tabular */
+enum class Kind { Prose, Ident, Number }
+
+/** where a text sits in the space its container gave it */
+enum class Align { Start, End }
+
 data class Style(
     val bold: Boolean = false,
     val dim: Boolean = false,
     val tone: Tone = Tone.Plain,
     val size: Size = Size.Normal,
+    val kind: Kind = Kind.Prose,
+    val align: Align = Align.Start,
 )
 
 /** the tree: level L (every client draws it) and level S (claimed, or lowered by the server) */

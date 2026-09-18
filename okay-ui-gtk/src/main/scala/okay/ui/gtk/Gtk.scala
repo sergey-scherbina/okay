@@ -201,6 +201,11 @@ object Gtk {
         if style.tone == Tone.Danger then cstr("error")(Gtk4.gtk_widget_add_css_class(l, _))
         if style.size == okay.ui.Size.Large then cstr("title-2")(Gtk4.gtk_widget_add_css_class(l, _))
         if style.size == okay.ui.Size.Small then cstr("caption")(Gtk4.gtk_widget_add_css_class(l, _))
+        // GTK has both of these as style classes of its own; `Align`
+        // would need `gtk_label_set_xalign`, a binding no consumer has
+        // asked for, so it is not drawn here (recorded, not hidden)
+        if style.kind == okay.ui.Kind.Ident then cstr("monospace")(Gtk4.gtk_widget_add_css_class(l, _))
+        if style.kind == okay.ui.Kind.Number then cstr("numeric")(Gtk4.gtk_widget_add_css_class(l, _))
         l
       case Ui.Row(children, _) => box(GtkConst.HORIZONTAL, children.map(build), 0, 0, Vector.empty)
       case Ui.Column(children, _) => box(GtkConst.VERTICAL, children.map(build), 0, 0, Vector.empty)

@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -31,6 +33,12 @@ fun Render(u: Ui, act: (Event) -> Unit, modifier: Modifier = Modifier) {
                 else -> if (u.style.dim) Color.Gray else Color.Unspecified
             },
             fontSize = when (u.style.size) { Size.Small -> 12.sp; Size.Normal -> 14.sp; Size.Large -> 20.sp },
+            // what the text IS (ui-text-intent): an identifier is read
+            // against something else, so it is monospaced; a number is
+            // compared down a column, so it sits where the column ends.
+            // Compose has no tabular-figures switch, which is not drawn
+            fontFamily = if (u.style.kind == Kind.Ident) FontFamily.Monospace else null,
+            textAlign = if (u.style.align == Align.End) TextAlign.End else null,
         )
         is Ui.Row -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) { u.children.forEach { Render(it, act) } }
         is Ui.Column -> Column(modifier) { u.children.forEach { Render(it, act) } }

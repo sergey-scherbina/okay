@@ -86,7 +86,7 @@ Ui = Text {s: string, style: Style}
   | Disclosure {title: string, open: bool, body: Ui, key: string}
   | Link {label: string, href: string}
 
-Style = {bold: bool, dim: bool, tone: "plain" | "emphasis" | "muted" | "danger", size: "small" | "normal" | "large"}
+Style = {bold: bool, dim: bool, tone: "plain" | "emphasis" | "muted" | "danger", size: "small" | "normal" | "large", kind: "prose" | "ident" | "number", align: "start" | "end"}
 
 Patch = Replace {path: [int], ui: Ui}
   | SetText {path: [int], s: string}

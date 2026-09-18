@@ -24,14 +24,15 @@ object Frame {
       else if style.tone == Tone.Danger then lines.map(l => s"$Esc[31m$l$Esc[0m")
       else lines
     case Column(children, _) => children.flatMap(c => render(c, focus))
-    case Row(children, _) => beside(children.map(c => render(c, focus)), Vector.empty, " ")
+    case Row(children, _) => beside(children.map(c => render(c, focus)), Vector.empty, " ", children.map(alignOf))
     case Box(children, Dir.Vertical, _, gap, pad, _) =>
       val blocks = children.map(c => render(c, focus))
       val joined = blocks.zipWithIndex.flatMap { (b, i) =>
         (if i > 0 then Vector.fill(gap)("") else Vector.empty) ++ b }
       joined.map(l => " " * pad + l)
     case Box(children, Dir.Horizontal, weights, gap, pad, _) =>
-      beside(children.map(c => render(c, focus)), weights, " " * gap).map(l => " " * pad + l)
+      beside(children.map(c => render(c, focus)), weights, " " * gap, children.map(alignOf))
+        .map(l => " " * pad + l)
     case Scroll(child, _) => render(child, focus)
     case Image(_, alt) => Vector(s"[image: $alt]")
     case b @ Button(label, _, role) =>
@@ -53,10 +54,20 @@ object Frame {
       render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus)
     case semantic => render(Ui.lower(semantic, Set.empty), focus)
 
+  /** what a cell says about where it sits — the terminal's half of
+   * `Align` (ui-text-intent). Only a `Text` says it: a container's
+   * alignment would be a layout property, and layout is `Box`'s */
+  private def alignOf(ui: Ui): Align = ui match
+    case Text(_, style) => style.align
+    case _ => Align.Start
+
   /** blocks side by side; with weights, the row's natural width is
    * divided by weight and each block padded to its share — "the
-   * terminal divides width by weight" */
-  private def beside(blocks: Vector[Vector[String]], weights: Vector[Int], sep: String): Vector[String] =
+   * terminal divides width by weight". A block whose text asked for
+   * `Align.End` is padded on the LEFT instead, which is what makes a
+   * column of numbers comparable down the page */
+  private def beside(blocks: Vector[Vector[String]], weights: Vector[Int], sep: String,
+                     aligns: Vector[Align]): Vector[String] =
     val height = blocks.map(_.length).maxOption.getOrElse(0)
     val natural = blocks.map(b => b.map(width).maxOption.getOrElse(0))
     val widths =
@@ -65,8 +76,12 @@ object Frame {
         val sum = weights.sum
         natural.zip(weights).map((n, w) => math.max(n, total * w / sum))
       else natural
-    val padded = blocks.zip(widths).map { (b, w) =>
-      b.padTo(height, "").map(l => l + " " * (w - width(l)))
+    val padded = blocks.zip(widths).zipWithIndex.map { case ((b, w), i) =>
+      val end = aligns.lift(i).contains(Align.End)
+      b.padTo(height, "").map { l =>
+        val pad = " " * (w - width(l))
+        if end then pad + l else l + pad
+      }
     }
     (0 until height).toVector.map(i => padded.map(_(i)).mkString(sep))
 

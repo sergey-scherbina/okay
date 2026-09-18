@@ -83,8 +83,31 @@ enum Tone:
 enum Size:
   case Small, Normal, Large
 
+/**
+ * WHAT A TEXT IS, which decides how a host sets it (ui-text-intent,
+ * specs/ui-product.md stage 2). An identifier is read AGAINST
+ * something — an explorer, a published list — so it is monospaced and
+ * must arrive whole; a number is compared DOWN a column, so its
+ * figures are tabular; prose is read, so it wraps.
+ *
+ * It is a token like `Tone`, and it sits on the text rather than on
+ * the table because only the author knows what a cell says — "eight
+ * characters" is not a rule, and an IBAN is prose to a sorter and an
+ * identifier to a reader. okay-watch had been saying this with fifteen
+ * `nth-child` selectors, which do not survive a column being moved.
+ */
+enum Kind:
+  case Prose, Ident, Number
+
+/** where a text sits in the space its container gave it. ORTHOGONAL
+ * to `Kind` on purpose: a number in a sentence is not right-aligned,
+ * and a column of them is — so a column says both */
+enum Align:
+  case Start, End
+
 final case class Style(bold: Boolean = false, dim: Boolean = false,
-                       tone: Tone = Tone.Plain, size: Size = Size.Normal)
+                       tone: Tone = Tone.Plain, size: Size = Size.Normal,
+                       kind: Kind = Kind.Prose, align: Align = Align.Start)
 object Style:
   val none = Style()
 

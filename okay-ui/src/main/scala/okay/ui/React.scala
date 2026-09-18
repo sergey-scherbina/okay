@@ -74,7 +74,9 @@ object React {
       val cls = (if style.bold then Vector("okay-bold") else Vector.empty) ++
         (if style.dim then Vector("okay-dim") else Vector.empty) ++
         (if style.tone != Tone.Plain then Vector("okay-tone-" + style.tone.toString.toLowerCase) else Vector.empty) ++
-        (if style.size != Size.Normal then Vector("okay-size-" + style.size.toString.toLowerCase) else Vector.empty)
+        (if style.size != Size.Normal then Vector("okay-size-" + style.size.toString.toLowerCase) else Vector.empty) ++
+        (if style.kind != Kind.Prose then Vector("okay-kind-" + style.kind.toString.toLowerCase) else Vector.empty) ++
+        (if style.align != Align.Start then Vector("okay-align-" + style.align.toString.toLowerCase) else Vector.empty)
       Elem("span", if cls.isEmpty then Vector.empty else Vector("className" -> cls.mkString(" ")),
         text = Some(s))
     case Row(children, key) =>

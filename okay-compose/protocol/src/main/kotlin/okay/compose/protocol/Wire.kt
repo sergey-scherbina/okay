@@ -74,6 +74,7 @@ object Wire {
         mapOf(
             "bold" to JsonPrimitive(s.bold), "dim" to JsonPrimitive(s.dim),
             "tone" to str(s.tone.name.lowercase()), "size" to str(s.size.name.lowercase()),
+            "kind" to str(s.kind.name.lowercase()), "align" to str(s.align.name.lowercase()),
         ),
     )
 
@@ -183,6 +184,9 @@ object Wire {
         return Style(
             f.bool("bold") ?: false, f.bool("dim") ?: false,
             enum<Tone>(f.str("tone")) ?: Tone.Plain, enum<Size>(f.str("size")) ?: Size.Normal,
+            // absent is the default: a server older than ui-text-intent
+            // says nothing about either, and this client still draws it
+            enum<Kind>(f.str("kind")) ?: Kind.Prose, enum<Align>(f.str("align")) ?: Align.Start,
         )
     }
 
