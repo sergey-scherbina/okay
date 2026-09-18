@@ -1,6 +1,0 @@
-feature/dataflow-kafka-eos 2026-09-18T19:50:20Z
-agent: claude-code
-heartbeat: 2026-09-18T19:50:20Z
-status: in-progress
-done-so-far: claimed; broker up in docker (okay-kafka-df on 9092) — the last open box of stage 11 was "needs a broker", and this machine can have one
-next: PaneLog takes a Topic factory; a Live-tagged TestDataflowKafka in okay-kafka runs the same exactly-once scenarios against KafkaStore
