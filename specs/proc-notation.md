@@ -167,28 +167,30 @@ Gated on stage 1 showing duplication — the third road in Direct.scala
 (monadic, applicative-only, arrow) is the point at which "count the
 doors" applies:
 
-- [ ] the block normaliser (ANF, dependency analysis, loop and `if`
-      shapes) is ONE function producing a small IR; each target is
-      a translation of the IR — `Target.Monad`, `Target.Applicative`
-      (+ `Selective`), `Target.Arrow` (+ `Choice`, + `Iter`)
-- [ ] the target is chosen by evidence summoned at expansion, strongest
-      available, exactly as `Monad`-then-`Applicative` is today; a
-      shape the chosen target cannot express is refused by the
-      target with the name of the rung it would need
-- [ ] adding a fifth target is one file that pattern-matches the IR,
-      and the spec names the first candidate: `Static` (an input-less
-      Proc), so that a `direct` block at `Static` gets `Select` for
-      its `if` where today it gets `ifS` through the carrier
+**REFUSED FOR NOW, with the evidence in this spec's Results and in
+specs/arrows-plan.md**: the arrow road shares TWENTY LINES with the
+other two, and nothing else was reusable, because a statement NESTS A
+CONTINUATION there and APPENDS TO AN ENVIRONMENT here. One IR would be
+two IRs with one name. The boxes are kept, unticked, as the shape a
+fourth road would have to want:
+
+- [ ] the block normaliser is ONE function producing a small IR; each
+      target is a translation of it
+- [ ] the target is chosen by evidence summoned at expansion
+- [ ] adding a fifth target is one file that pattern-matches the IR
 
 ### Stage 3 — the doors that read as statements (`proc-doors`)
 
-- [ ] `!sleep(d)`, `!awaitSignal(n)` and the other `Unit`-typed doors
-      stand as STATEMENTS without `: Unit` ascriptions, the way
-      `w.tell` does (direct-tell): the door is `transparent inline`
-      and decides by `In` in scope
-- [ ] `patch(id)` in an `if` condition is the Selective shape at the
-      arrow rung: the `Patch` leaf, then `Left` — and `walk` obeys the
-      non-consuming rule through it
+- [x] a `Unit`-typed door stands as a STATEMENT with no ascription —
+      `!timer(t)` always did, and the five-line booking of
+      `TestProcDirect` has one. **The door the box asked for was
+      BUILT AND REMOVED**, see the Results: the coloured spelling
+      cannot be a statement, for a reason that is the rule rather than
+      an omission, and the refusal now names that case
+- [x] `patch(id)` in an `if` condition is the Selective shape at the
+      arrow rung — `TestProcColour`'s branch asks `patch("promo")` in
+      the condition and `TestProc`'s v1 journal shows `walk` obeying
+      the non-consuming rule through it
 
 ## Out of scope
 
@@ -363,6 +365,32 @@ val booking: Wf.Proc[String, String, Unit, String] =
 terms behave identically — the leaves, the answer and the questions
 asked. Compiling was never the claim: a macro that infers its types
 wrongly compiles too.
+
+### Stage 3 — the doors, and a door that was built and removed (`proc-doors`)
+
+Both boxes are met, and one of them is met by a REFUSAL.
+
+`!timer(t)` on its own line has always compiled — the mark makes it a
+leaf, and the five-line booking has one. The COLOURED spelling,
+`timer(t)` alone, cannot, and the reason is the rule the whole feature
+rests on: **auto-colouring fires where an ANSWER is expected, and a
+statement expects nothing.** The conversion has nothing to convert.
+
+**THE DOOR THE BOX ASKED FOR WAS BUILT, MEASURED AGAINST THE REST, AND
+REMOVED.** `Question.asked` — `transparent inline`, gated on the
+capability, ascription built in, exactly the shape `Direct.tell` has —
+works as a piece of Scala and collides with the check that makes
+colouring safe: it expands to `val _ = q.reflect`, the inliner leaves
+a `$proxy` binding holding the question, and the stray-question check
+sees a question nobody asked. Making the check tolerate that means
+teaching it which bindings are consumed by which marks, which is more
+machinery than a spelling is worth.
+
+So the refusal stays and it now NAMES this case among the three that
+reach it. That is the better outcome and not a consolation: a compile
+error saying "mark it" is more useful than a door that compiles and a
+warning nobody reads, which is what the half-built version produced
+(E176 from the typer, before the macro ever sees the statement).
 
 ### Auto-colouring (`proc-auto-colour`, 2026-09-18)
 

@@ -25,6 +25,7 @@ class TestProcColour extends munit.FunSuite:
   def now: Wf.Question[String, String, Long] = Wf.Question.Now()
   def uuid: Wf.Question[String, String, String] = Wf.Question.Uuid()
   def patch(id: String): Wf.Question[String, String, Boolean] = Wf.Question.Patched(id)
+  def timer(at: Long): Wf.Question[String, String, Unit] = Wf.Question.Timer(at)
 
   given Wf.Runtime = Wf.Runtime.scripted(millis = 7L, id = "id-1", dice = 0.25)
 
@@ -129,3 +130,25 @@ class TestProcColour extends munit.FunSuite:
       val escaped: String = ask("city?")
     """)
     assert(e.nonEmpty, "a question read as its answer outside a Proc.direct block")
+
+  test("a Unit door on its own line: the MARK is the spelling, and the refusal says so"):
+    // `!timer(t)` is a statement and always was — TestProcDirect's
+    // five-line booking has one. The COLOURED form cannot be, and the
+    // reason is the rule rather than an omission: colouring fires
+    // where an ANSWER is expected, and a statement expects nothing.
+    val marked: Wf.Proc[String, String, Unit, String] =
+      Proc.direct: _ =>
+        val c: String = ask("city?")
+        !timer(99L)
+        c
+    assertEquals(marked.leaves.map(_.name), Vector("ask", "timer"))
+    val e = compileErrors("""
+      val bad: Wf.Proc[String, String, Unit, String] =
+        Proc.direct { _ =>
+          val c: String = ask("city?")
+          timer(99L)
+          c
+        }
+    """)
+    assert(e.nonEmpty, "a coloured question stood alone on a line and was accepted")
+    assert(e.contains("ALONE ON A LINE"), e)

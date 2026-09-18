@@ -21,4 +21,22 @@
       must be scoped to the failing project, as the Native branch
       already is; and the rate belongs in a ledger here, because a
       re-run that hides a real compile failure is worse than a red
-      gate. Not done: seen once, and once is not a signature.
+      gate.
+      SEEN TWICE NOW, and the second reading WIDENS the cause rather
+      than confirming it. 2026-09-18 (proc-doors), the same shape with
+      a different symbol:
+
+          [error] Bad symbolic reference. A signature
+          [error] refers to RuntimeException/T in package java.lang
+          [error] which is not available.
+
+      `java.lang.RuntimeException` is not loom, not `jdk.internal.vm`,
+      and not anything a classpath can plausibly be missing — so the
+      first entry's reading ("loom's own internal class") was too
+      narrow, and what the two occurrences share is only COLD
+      SIGNATURE READING. A cold `okayJVM/Test/compile` minutes earlier
+      on the same tree was clean in 20 s, and the unchanged gate
+      re-run right after was GREEN with 5450 test results. Still not
+      done, and the bar is unchanged: two is a pattern, not a
+      signature, and the re-run guard the paragraph above describes
+      needs the exact-error check before anybody writes it.

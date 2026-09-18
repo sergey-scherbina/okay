@@ -409,10 +409,13 @@ object ProcMacro:
               super.traverseTree(tree)(owner)
             else report.errorAndAbort(
               "Proc.direct: this question is never asked — it stands where ANY value is " +
-                "accepted (`\"a\" + q`, an interpolation, a `println`), so nothing asked for " +
-                "its answer and auto-colouring had nothing to fire on. Mark it (`!q`), or " +
+                "accepted, so nothing asked for its answer and auto-colouring had nothing " +
+                "to fire on. Three shapes reach this message: `\"a\" + q` and an " +
+                "interpolation (String takes Any), a `println`, and a question ALONE ON A " +
+                "LINE — which reads like `!q` and is not, because colouring fires where an " +
+                "ANSWER is expected and a statement expects nothing. MARK IT: `!q`. Or " +
                 "ascribe what you want (`val a: String = q`). If you really meant the " +
-                "operation itself, build it outside the block.", term.pos)
+                "operation as a VALUE, build it outside the block.", term.pos)
           case _ => super.traverseTree(tree)(owner)
       probe.traverseTree(t)(Symbol.spliceOwner)
 
