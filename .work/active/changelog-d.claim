@@ -1,0 +1,6 @@
+feature/changelog-d 2026-09-18T11:46:43Z
+agent: claude-code
+heartbeat: 2026-09-18T11:46:43Z
+status: in-progress
+done-so-far: claimed
+next: changelog.d — one file per entry, a reader script, a guard, AGENTS.md
