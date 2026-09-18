@@ -1542,15 +1542,18 @@ test; none is promoted until its spec item is read first.
       pays the interpreter while `Lens[S](_.f)` is free. Measure it
       first (it has no benchmark row), then either teach `Fuse` the
       `FieldOf.apply` shape or say the price on the guide page.
-- [ ] ui-path-two-walks — `Ui.patch`'s private `at` and `Ui.path`'s
-      `childAt` walk one index convention in two bodies (a Scroll's
-      child at 0, a Modal's and a Disclosure's body at 1), held equal
-      by a law rather than by being one function. `count-the-doors`:
-      `patch` at a path is `Ui.path(p).modify(f)` once the affine's
-      price is measured against the hand walk (the verdict table says
-      a composed optic named in code is free; this one is built from
-      a runtime `List[Int]`, so it pays the interpreter — measure
-      before replacing).
+- ANSWERED, not a lane (ui-path-two-walks, 2026-09-18): the two walks
+  STAY two, and the measurement is why — `PathWalkProbe` at depths 4,
+  16 and 64 puts the affine at 2.9-7.9x the time and a steady ~5.5x
+  the allocation of the hand walk, because it is built from a runtime
+  `List[Int]` and pays the interpreter per step. What the question
+  found instead was worth more than the tidy-up would have been: the
+  two walks DISAGREED about totality. `Ui.path` answers an Option;
+  `Ui.patch` indexed its Vectors and threw on a path naming nothing —
+  and a Patch arrives over a WIRE, so a well-formed message with a path
+  that is not on the client's tree killed the session inside
+  `Wire.client`'s receive loop. Guarded now, with the law in
+  TestUiOptic extended to cover it.
 - NOT a lane, a record (indexed optics, re-checked 2026-09-18): the
   spec's "nobody has asked" was wrong. Three walks carry an index by
   hand — `Validate`'s `At` path through `Schema.Step`, `Ui.diff`'s

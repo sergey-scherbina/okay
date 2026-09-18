@@ -1,5 +1,37 @@
 # Changelog
 
+## ui-path-two-walks — the answer is "stay two", and the question found a wire defect
+
+MEASURED FIRST, as the entry demanded. `PathWalkProbe` (kept beside the
+tests, the way `MobileProbe` is) puts `Ui.path(p).modify(f)` against
+`Ui.patch`'s hand walk at three depths:
+
+    depth 4    hand 43 ns / 296 B      affine 154 ns / 1576 B
+    depth 16   hand 150 ns / 1064 B    affine 643 ns / 5896 B
+    depth 64   hand 1027 ns / 4136 B   affine 2330 ns / 23176 B
+
+2.9-7.9x the time and a steady ~5.5x the allocation. The time ratio
+swings because the box is shared; the allocation ratio does not, and it
+is the honest number. So the two walks STAY two, held equal by the law
+in TestUiOptic rather than by being one function — the backlog entry's
+own condition, answered rather than assumed.
+
+AND THE QUESTION FOUND SOMETHING THE TIDY-UP WOULD HAVE HIDDEN. The two
+walks disagreed about TOTALITY: `Ui.path` answers an Option, while
+`Ui.patch` indexed its Vectors directly and threw
+`IndexOutOfBoundsException` on a path naming nothing. **A Patch arrives
+over a wire.** `Wire.client` applies one straight onto the tree it
+holds, and a well-FORMED `Msg.Patch` whose path is not on that tree
+parses cleanly, reaches `Ui.patch`, and ended the session from inside
+the receive loop — where the protocol's rule everywhere else is that
+damage is dropped, never a crash. A `Reorder` whose order named a child
+that is not there did the same.
+
+Both guarded, and the law extended to say so: a path that names nothing
+changes nothing, in both walks, for SetText, SetValue, Remove, Insert
+and Reorder alike. The test was watched failing with exactly the
+exception a forged patch would have thrown.
+
 ## ui-table-gap-and-proof — a column boundary is a space, and a browser really does build a table
 
 Two things left over from the table's two roads, closed together

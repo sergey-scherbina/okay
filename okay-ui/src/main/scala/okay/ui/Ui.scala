@@ -262,18 +262,33 @@ object Ui {
    * representation, done to the value: the test that diff-then-apply
    * equals the next tree is what keeps the diff honest */
   def patch(ui: Ui, p: Patch): Ui =
+    // TOTAL, LIKE THE OPTIC BESIDE IT (ui-path-two-walks). The guards
+    // are not defensive programming: a Patch ARRIVES OVER A WIRE —
+    // `Wire.client` applies one straight onto the tree it holds — and a
+    // well-formed message naming a path that is not on that tree used
+    // to throw `IndexOutOfBoundsException` out of the receive loop and
+    // end the session. The protocol's rule everywhere else is that
+    // damage is dropped; this is that rule, here.
+    //
+    // Why this walk and `Ui.path`'s `childAt` are still two bodies:
+    // MEASURED (PathWalkProbe, 2026-09-18) at depths 4, 16 and 64, the
+    // affine costs 2.9-7.9x the time and a steady ~5.5x the allocation
+    // of this walk, because it is built from a RUNTIME `List[Int]` and
+    // pays the interpreter per step. They are held equal by the law in
+    // TestUiOptic instead, now including this totality.
     def at(u: Ui, path: List[Int], f: Ui => Ui): Ui = path match
       case Nil => f(u)
       case i :: rest => u match
-        case Row(c, k) => Row(c.updated(i, at(c(i), rest, f)), k)
-        case Column(c, k) => Column(c.updated(i, at(c(i), rest, f)), k)
-        case b: Box => b.copy(children = b.children.updated(i, at(b.children(i), rest, f)))
+        case Row(c, k) if c.isDefinedAt(i) => Row(c.updated(i, at(c(i), rest, f)), k)
+        case Column(c, k) if c.isDefinedAt(i) => Column(c.updated(i, at(c(i), rest, f)), k)
+        case b: Box if b.children.isDefinedAt(i) =>
+          b.copy(children = b.children.updated(i, at(b.children(i), rest, f)))
         case Scroll(c, k) if i == 0 => Scroll(at(c, rest, f), k)
-        case Form(c, s, k) => Form(c.updated(i, at(c(i), rest, f)), s, k)
-        case Items(c, k) => Items(c.updated(i, at(c(i), rest, f)), k)
+        case Form(c, s, k) if c.isDefinedAt(i) => Form(c.updated(i, at(c(i), rest, f)), s, k)
+        case Items(c, k) if c.isDefinedAt(i) => Items(c.updated(i, at(c(i), rest, f)), k)
         case Modal(t, c, k) if i == 1 => Modal(t, at(c, rest, f), k)
         case Disclosure(t, o, c, k) if i == 1 => Disclosure(t, o, at(c, rest, f), k)
-        case other => other   // a path into a leaf: the diff never makes one
+        case other => other   // a path into a leaf, or an index that names no child
     def kids(u: Ui, f: Vector[Ui] => Vector[Ui]): Ui = u match
       case Row(c, k) => Row(f(c), k)
       case Column(c, k) => Column(f(c), k)
@@ -288,7 +303,12 @@ object Ui {
       case Patch.SetChecked(path, on) => at(ui, path, { case Check(_, k, l) => Check(on, k, l); case u => u })
       case Patch.SetSelected(path, i) => at(ui, path, { case Select(o, _, k) => Select(o, i, k); case u => u })
       case Patch.Remove(path, i) => at(ui, path, kids(_, c => c.patch(i, Nil, 1)))
-      case Patch.Reorder(path, order) => at(ui, path, kids(_, c => order.map(c)))
+      // an order that names a child that is not there, or that does not
+      // name them all, is IGNORED rather than obeyed: the same wire
+      // reasoning as the guards above (a reorder is a permutation or it
+      // is damage)
+      case Patch.Reorder(path, order) => at(ui, path, kids(_, c =>
+        if order.length == c.length && order.forall(c.isDefinedAt) then order.map(c) else c))
       case Patch.Insert(path, i, b) => at(ui, path, kids(_, c => c.patch(i, Seq(b), 0)))
 
   /** every interactive widget, in tab order — focus is a position in
