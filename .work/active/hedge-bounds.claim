@@ -1,6 +1,0 @@
-okay-wt-hedge-bounds 2026-09-18T12:14:46Z
-agent: claude-code
-heartbeat: 2026-09-18T12:14:46Z
-status: in-progress
-done-so-far: 4th sighting today from a lane that changes one build.sbt line; entry says option (a) and calls a third year of ledger entries unacceptable
-next: assert conditions and bounds instead of deadlines and exact counters in TestHedgeStart and TestResilienceTimed
