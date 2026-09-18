@@ -443,18 +443,30 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       that maximum so late-drop decisions do not move). Measure the
       merge traffic of the first against the replay length of the
       second before choosing
-- [ ] a resumed coordinator's workers open at the journal's epoch and
-      read from there: recovery is O(elements since the last epoch),
-      asserted by counting what the topic was asked for
-- [ ] `Sink.stagingTo(topic)`: an epoch's panes appended as records
-      with the epoch in the key; `committed(epoch)` is the append and
-      `recovered(epoch)` reads the topic's tail to know what already
-      landed — the writer's atomicity is the log's append
-- [ ] exactly-once from log to log: kill the coordinator between the
-      append and the journal commit, resume, and the output topic
-      holds every pane once — the stage 9 window, closed by a store
-      that IS the journal's kind
-- [ ] the same on `KafkaStore` when a broker is available (Live)
+- [x] a resumed coordinator's workers open at the journal's epoch and
+      read from there — TICKED LATE 2026-09-18: it is the same
+      assertion as box 2 above, which has been `[x]` since it landed
+      ("reads exactly `total - Σpositions` records, asserted by a
+      counting Topic", `TestSeek`). Two boxes for one property, and
+      the second kept the stage looking open
+- [~] `Sink.stagingTo(topic)` — the WRITER is built and tested
+      (`TestStagingTopic`), the METHOD is not, and the module boundary
+      is the reason rather than an omission: okay-cluster depends on
+      okay-persist in TEST SCOPE ONLY, deliberately (build.sbt says
+      why — `Checkpoint` is two methods over bytes and the STORE is
+      the caller's). A `stagingTo(topic)` in okay-cluster would drag a
+      store into a compile graph that stops at okay-codec. The seam
+      that exists is the right one: `Sink.staging(...)(move)` takes
+      the two moments, and the topic writer is forty lines in whatever
+      module owns the store — which is where a store belongs
+- [x] exactly-once from log to log: the coordinator dies between the
+      append and the journal commit, at four epochs, and the output
+      topic holds every pane once. THE DEDUP STATE IS THE OUTPUT — a
+      resumed process is built with no memory at all and learns what
+      landed by reading the tail, which is what `TestStaged` could not
+      show (its counter was a field that survived the simulated death)
+- [ ] the same on `KafkaStore` when a broker is available (Live) —
+      still open, and it needs a broker rather than a decision
 
 Stage 12 — the network (BLOCKED: needs machines that are not this one):
 - [ ] the three engines' cross-process harness over a real link, and
@@ -972,6 +984,44 @@ no recomputation yet, and a partition being a thunk is what will make
 that cheap in stage 5. One request is in flight per connection. The
 coordinator is a single point of failure. None of that is hidden
 behind a hopeful word.
+
+### Stage 11 — exactly-once from log to log (2026-09-18)
+
+`TestStagingTopic` (4), and the difference from stage 9 is one word:
+SURVIVES.
+
+`TestStaged` closed the commit window with a two-phase writer and
+proved the LOGIC — a successor asked to redo an epoch the writer had
+already applied drops it. What it could not prove is that the
+knowledge survives the death, because its `applied` counter is a field
+of an object in the test's own JVM and the simulated death never took
+it away. A real coordinator's death takes everything.
+
+So the writer's store is a TOPIC and **the dedup state is the
+output**. A resumed process is built with no memory at all — which is
+what a new process is — and `recover()` learns the high-water epoch by
+reading the tail. The writer's atomicity is the log's append, which is
+the one thing a log gives that a cell does not.
+
+**SEEN FAILING.** Making `recover()` read nothing reddens exactly the
+two tests that exist for it, one of them with the pane that appears
+twice. A dedup test that passes because nothing was ever repeated is
+worth nothing, so the suite also asserts that some successor WAS asked
+to redo a landed epoch.
+
+**THE METHOD THE BOX ASKED FOR IS NOT THERE, and the module boundary
+is why.** `Sink.stagingTo(topic)` would drag okay-persist into
+okay-cluster's compile graph, which stops at okay-codec on purpose —
+build.sbt says so, and okay-persist has the same arrangement with
+okay-tls. The seam that exists is the right one: `Sink.staging`
+already takes the two moments, and the topic writer is forty lines in
+whatever module owns the store.
+
+**AND ONE BOX WAS A DUPLICATE OF ANOTHER.** "A resumed coordinator's
+workers open at the journal's epoch" is the assertion box 2 has been
+making since it landed. Two boxes for one property, and the second one
+kept the stage looking open — the same shape as the roadmap summaries
+this spec had to have corrected a few hours earlier.
 
 ### Stage 5 — a worker dies and the job does not
 

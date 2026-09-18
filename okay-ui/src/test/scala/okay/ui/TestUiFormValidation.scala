@@ -3,6 +3,10 @@ package okay.ui
 import okay.*
 import okay.given
 import okay.Direct.{*, given}
+// the colourless vals below go through selfColor, an implicit
+// CONVERSION, so this file needs the language import — the same note
+// TestDirectApplicative carries (test-hygiene-tails, 2026-09-18)
+import scala.language.implicitConversions
 
 /**
  * A FORM, VALIDATED, WITH ITS ERRORS PUT BACK INTO THE TREE.
