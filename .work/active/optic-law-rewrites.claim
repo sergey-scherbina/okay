@@ -1,6 +1,0 @@
-okay-wt-law-rewrites 2026-09-18T14:23:55Z
-agent: claude-code
-heartbeat: 2026-09-18T14:23:55Z
-status: in-progress
-done-so-far: shapes identified — Fuse.modify(o)(g)(Fuse.modify(o)(f)(v)) is the fusible form; the extension form cannot see across the application
-next: PROBE whether modifyImpl receives the inner call unexpanded; that decides whether the rewrite is reachable at all
