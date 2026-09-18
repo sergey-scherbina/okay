@@ -1,0 +1,6 @@
+feature/static-workflow-undo 2026-09-18T18:32:31Z
+agent: claude-code
+heartbeat: 2026-09-18T18:32:31Z
+status: in-progress
+done-so-far: claimed; checked the trigger — okay.persist.Saga exists and is LINEAR, so this is the shape-aware one on the workflow's own journal
+next: Proc.Undo(step, undo); the walk collects a compensation TERM per completed node (no ArrowApply: the pieces are built where the types are still known); Wf.Proc.compensating builds one term the engine runs
