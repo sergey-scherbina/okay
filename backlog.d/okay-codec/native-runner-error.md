@@ -67,3 +67,31 @@
       macro, its tests and prose — no Native source and no codec
       source). ELEVENTH occurrence, hours after the tenth and on the
       same module, again on a lane that could not have caused it.
+      2026-09-18, okayParseNative, ONE module, GREEN on the rerun
+      (dataflow-durable-stage, whose diff is one test file and prose —
+      no Native source, no parse source). TWELFTH occurrence, and the
+      FIRST that is worth more than a tally mark, for two reasons.
+      IT NAMES THE CALL IN FLIGHT. sbt's line is
+      `(okayParseNative / Test / loadedTestFrameworks)`, so the
+      process was lost while sbt was LOADING THE FRAMEWORKS — before
+      any test of that module ran. Every earlier reading said only
+      "the module reports no tests", which is consistent with a death
+      anywhere; this one places it at STARTUP, and the settled cause
+      ("the connection ends and the binary exits 0 while sbt still has
+      a call in flight") now has a specific call attached to it.
+      AND `scripts/gate.sh` DID NOT RECOGNISE IT: the verdict was
+      "RED — a failure this script does not recognise". The two shapes
+      it knows both carry an `Error: Total N, Failed 0, Errors 1` line
+      from the module; this occurrence has NO such line, because the
+      module never got far enough to report a total at all. What the
+      script would have to match is the RPC exception itself
+      (`RPCCore$ClosedException` naming `NativeRunnerRPC$RunTerminated`
+      `Exception`) together with the same conditions it already
+      demands: zero `==> X` anywhere, and no module reporting a
+      non-zero `Failed` or `Errors`. Both held here — 96 module totals,
+      every one green, 5 547 results against 5 558 on the cold run,
+      and 5 559 on the rerun.
+      Load at the start of the failing attempt is in the gate log; the
+      box was carrying sibling builds as usual. Nothing here changes
+      the settled cause, and the third shape is filed so whoever
+      teaches the script has the text.
