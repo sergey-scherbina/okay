@@ -162,7 +162,8 @@ API reference, gotchas.
 
 | module | what it is |
 |---|---|
-| `okay` (core) | effects, streams, chunks, the algebra — covered by the guide/tutorial/typepedia above |
+| `okay` (core) | effects, continuations, the algebra — covered by the guide/tutorial/typepedia above |
+| [`okay-stream`](modules/okay-stream.md) | streams, channels, chunks and the buffers under them; it left the core because nothing in the effect system referred to it, and the core kept only the `Stream` typeclass and `Handoff` |
 | [`okay-cats`](modules/okay-cats.md) | cats instances (law-tested), IO and free-monad bridges, their runtime as our Scheduler |
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
 | [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |

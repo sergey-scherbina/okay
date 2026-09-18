@@ -323,7 +323,7 @@ lazy val okayCats = (project in file("okay-cats"))
 
 /** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
 lazy val okayZio = (project in file("okay-zio"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-zio",
     libraryDependencies ++= Seq(
@@ -351,7 +351,7 @@ lazy val okayKyo = (project in file("okay-kyo"))
  * java.util.function. No dependency to add — it is the platform.
  */
 lazy val okayJava = (project in file("okay-java"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-java",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -359,7 +359,7 @@ lazy val okayJava = (project in file("okay-java"))
 
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-fs2",
     libraryDependencies ++= Seq(
@@ -383,7 +383,7 @@ lazy val okayFs2 = (project in file("okay-fs2"))
 lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-actor"))
-  .dependsOn(okay)
+  .dependsOn(okay, okayStream)
   .settings(
     name := "okay-actor",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -414,7 +414,7 @@ lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * JVM only: `Flow` exists on neither Scala.js nor Native.
  */
 lazy val okayReactive = (project in file("okay-reactive"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, okayStream.jvm)
   .settings(
     name := "okay-reactive",
     libraryDependencies ++= Seq(
@@ -449,7 +449,7 @@ lazy val LegacyStdlib = config("legacyStdlib").hide
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
 lazy val okaySpark = (project in file("okay-spark"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
@@ -802,7 +802,7 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // JVM's alone, so a shared suite put there compiles for okay-lex's
   // JVM and leaves its JS and Native tests with no `okay.laws` at all
   // — measured, as a cyclic-import error, before it was moved.
-  .dependsOn(okay % "compile->compile;test->test")
+  .dependsOn(okay % "compile->compile;test->test", okayStream % "compile->compile;test->test")
   .settings(
     name := "okay-lex",
     libraryDependencies ++= Seq(
@@ -1643,7 +1643,7 @@ lazy val okayChat = project
 
 lazy val okayLive = project
   .in(file("okay-live"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, okayStream.jvm)
   .settings(
     name := "okay-live",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

@@ -152,17 +152,71 @@ where it is not yet obeyed.
 
 ## Behavior
 
-- [ ] one package `okay` across two artifacts resolves `given`s both
+- [x] one package `okay` across two artifacts resolves `given`s both
       ways on 3.9.0 (stage 0, probe)
-- [ ] the core no longer mentions `Channel`, `Source`, `Chunks`,
+- [x] the core no longer mentions `Channel`, `Source`, `Chunks`,
       `Pipe`, `Queues`, `Bulk` in code, on any platform
-- [ ] `Stream` and `Handoff` stay in the core and `Writer`/`Async`
+- [x] `Stream` and `Handoff` stay in the core and `Writer`/`Async`
       still compile against them
-- [ ] every module that used the cluster compiles with no import
+- [x] every module that used the cluster compiles with no import
       edited — only `dependsOn` added
 - [ ] the moved suites run on JVM, and the cross suite on JS and
       Native, exactly as before the move
 - [ ] `ChannelBenchmark` still generates and runs from its new home
+
+## Results
+
+**The 29-module estimate was wrong, and wrong in the useful
+direction: EIGHT modules needed an edge.** `okayActor`, `okayJava`,
+`okayLex`, `okayLive`, `okayReactive`, `okaySpark`, `okayZio` and
+`okayFs2`, and nothing else. The rest of the 73 compile untouched
+because an sbt `dependsOn` is TRANSITIVE for `compile->compile`: a
+module that reaches channels through okay-actor or okay-lex gets
+okay-stream with them. The estimate had counted identifiers in
+sources, which is the right instrument for "who uses this" and the
+wrong one for "who must declare it".
+
+**The survey missed three files, and each miss had its own cause.**
+Worth writing down, because the same two mistakes are available to
+anyone repeating this for stage 2 or 3:
+
+1. `Parallel.scala` lives in `src/main/scala-jvm-native/`, and the
+   first survey walked `src/main/scala/` only. PLATFORM SOURCE
+   DIRECTORIES ARE PART OF THE MODULE. It also turned out to be a
+   file that had to be CUT rather than moved: `parMap` and
+   `retryChunks` are chunk combinators, while `parAll`,
+   `parTraverse`, `retry` and `supervised` need only Async and a
+   Scheduler. They are now `ParallelChunks.scala` and
+   `Parallel.scala` in their respective modules.
+2. `Generate.scala` and `Lines.scala` were missed because the survey
+   grepped for the names of the FILES that move — `Chunks`, `Pipe` —
+   and these use the names of the TYPES inside them: `Chunk`,
+   `Stage`, `Produce`. The fix was to enumerate the top-level symbols
+   the moved files actually define and grep for those; the list is
+   35 names, and it is the instrument stage 2 should start from.
+3. `Windows.scala` and `Tables.scala` reach the stream module for one
+   function each (`paneStage` on `Stage`, the query planner on
+   `Bulk`). Both moved whole rather than being cut, because unlike
+   `Parallel` neither half stands on its own here.
+
+**`Chunk` stayed in the core after all.** The spec above put the
+whole chunked cluster in the module, and then `Producer.concat`
+refused to compile — it is typed on `Chunk[X] ! Produce + G` and five
+modules call it. Looking at what `Chunk` IS settled it:
+`type Chunk[+A] = ArraySeq[A]`, a one-line alias for a standard
+collection. That is an interface by the law above, so it moved next
+to `Producer` in `Generate.scala`, and everything that FILLS a chunk
+stayed in the module. No call site changed.
+
+**Two test harnesses were shared rather than copied.** Two scheduler
+laws use a `Channel` as their blocking device, so they had to follow
+it; `SchedulerFamily` (the member list and `each`) is now a trait in
+the core's JVM test sources, which okay-stream's tests see through
+`test->test`. Copying the list would have been three lines shorter
+and would have let a scheduler added later reach one suite and
+silently not the other. `BenchCross` moved WHOLE instead, because
+three of its five lanes are stream lanes and its 90-line harness
+(`lane`, `only`, `platform`) does not divide.
 
 ## Decisions
 
