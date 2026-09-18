@@ -674,6 +674,32 @@ linear-context patterns and the experimental base in
 specs/context-functions.md; the whole story, told in one place with
 its theory and boundaries, is [capabilities](capabilities.md).
 
+## 10. Optics: naming a path once
+
+A nested `copy` names the path three times; a read chain and a write
+chain of one path are two different expressions; and `case s => s` is
+a promise re-made at every call site. An optic is that path written
+down once, as a value you compose:
+
+```scala
+val city = Lens[Person](_.address).andThen(Prism.some).andThen(Lens[Address](_.city))
+city.preview(p)                  // the read
+city.modify(_.capitalize)(p)     // the write, same path, absent is a no-op
+```
+
+Composition takes the INTERSECTION of what each part needs — a lens
+asks for `Strong`, a prism for `Choice`, and their composition is an
+affine without anyone declaring it. The effects come in through one
+slot: `traverseOf` asks for an `Applicative` and nothing more, so the
+same optic walks at `Validated` (every error), `Par` (at once) and
+`Static` (what it WOULD do).
+
+Price, in one line: name the path in code and the compiler emits the
+update a person would write, allocation identical to the byte; choose
+the optic at run time and you are paying a small interpreter. The
+pairs, the numbers and the case where a `copy` still wins are in
+[optics.md](optics.md); the theory is [ch. 10](theory/10-optics.md).
+
 ## Direct style, in one paragraph
 
 Any monad in this library can be written as plain code:

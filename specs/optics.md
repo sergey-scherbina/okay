@@ -942,8 +942,17 @@ Read these before proposing any of them again.
 
 ### What is needed for it to be convenient
 
-- [ ] **A user-facing optics page.** `docs/guide.md` does not mention
-      `Lens`, `Prism` or `Traversal`; the only prose is tutorial §23
+- [x] **A user-facing optics page.** LANDED 2026-09-18
+      (optics-guide-page): `docs/optics.md`, linked from the docs
+      index and from `docs/guide.md` §10, and every code block on it
+      is RUN by `TestOpticsGuide` — the page fails rather than lies.
+      Two of its five pairs are real call sites (`WordTfIdf.against`,
+      `Parse.rebase`), and the fifth is the one where the `copy`
+      wins, kept for that reason. Found while writing it:
+      `optic-law-rewrites` was cited as filed in benchmarks.md §9b and
+      the CHANGELOG and existed in no board; it is filed now.
+      What it replaced: `docs/guide.md` did not mention
+      `Lens`, `Prism` or `Traversal`; the only prose was tutorial §23
       and theory ch. 10. The page delivers ordinary call sites as
       PAIRS — the nested `copy`, the `Option.map` chain, the
       hand-written walk — each beside the optic that replaces it,

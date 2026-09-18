@@ -105,6 +105,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   counters in one row: why a bare row holds one of each signature, and
   the three routes that lift it (a key with `Tag`, a cell with `Refs`,
   a fresh `Delim` prompt), with what each costs.
+- **[Optics](optics.md)** — naming a path once: the nested `copy`, the
+  `Option.map` chain, the `case s => s` in a rewrite, each beside the
+  optic that replaces it; what each costs, measured; and the one pair
+  where the `copy` is still the right code. Every block on the page is
+  run by a test.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[Dependency injection](di.md)** — the module vocabulary: a

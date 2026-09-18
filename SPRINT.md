@@ -181,8 +181,10 @@
   survey LANDED as the spec section: the tree already runs one
   traversal at `Validated`/`Par`/`Static`/an effect row, `PState.zoom`
   is the lens-meets-continuation seam, `Arrow` has one instance. Five
-  lanes are in BACKLOG under `optics-arrows-effects`; pick
-  `optics-guide-page` first (the convenience item, docs-only), then
+  lanes are in BACKLOG under `optics-arrows-effects`;
+  `optics-guide-page` LANDED 2026-09-18 (docs/optics.md, five pairs
+  run by `TestOpticsGuide`, and it found `optic-law-rewrites` cited as
+  filed in two places and filed in neither). Next is
   `optics-arrow-instances` (its law suite is SHARED with
   static-workflow stage 1 — one suite, two lanes, first to land writes
   it). RE-CHECKED the same day against the plans: `ArrowChoice`'s

@@ -1,5 +1,48 @@
 # Changelog
 
+## optics-guide-page - the library's optics had no page a user could read
+
+`docs/guide.md` did not contain the word `Lens`. Nine sections on
+control, effects, streams, concurrency and capabilities, and the
+optics - closed as an arc, fused to the byte, used by okay-ui and
+okay-codec - existed for a reader only as tutorial section 23 and a
+theory chapter. `docs/optics.md` is the page, linked from the index
+and from a new guide section 10.
+
+It is written as PAIRS, because that is what the last docs lane
+learned the hard way (`useful-not-just-works`: six literature examples
+did not answer "how does this simplify my code"). Left, the code a
+person writes; right, the optic. Two of the five are real call sites
+in this repository rather than invented ones: `WordTfIdf.against` for
+a deep field set, `Parse.rebase` for the pair where the optic does
+NOT win.
+
+**Every block on the page is run** by `TestOpticsGuide`
+(src/test/scala-cross), which asserts the two sides of each pair
+answer the same thing. A page whose examples are checked cannot drift
+the way prose does, and this repository has been bitten by prose that
+outlived its code twice this month.
+
+THE PAIR THAT CORRECTS THE OBVIOUS GUESS is the fifth. Two fields of
+one sub-record through two optics "rebuilds the record twice" - which
+is true of the work and false of the memory. benchmarks.md section 9b
+had already measured it: 1.48 ns for one `copy` of both fields, 3.94
+for two fused optic sets, and **24 B/op for both**, because escape
+analysis scalar-replaces the intermediate. The page states the
+measured shape rather than the intuition, and says the allocation
+column is a JVM claim only.
+
+FOUND ON THE WAY, and the reason this entry is not purely docs:
+`optic-law-rewrites` is cited as "filed" by benchmarks.md section 9b
+AND by its own CHANGELOG entry, and it was in neither board. Two
+documents asserting a lane exists does not make it exist. It is filed
+now, in BACKLOG under optics-arrows-effects, with the measured prize
+attached: the container rewrite (`map . map` into one pass) is worth
+1570 ns against 4006 and half the bytes; the product one is worth
+~2.5 ns and nothing in bytes.
+
+Gate: affected master, green.
+
 ## optics-arrows-recheck - the "out of scope, with triggers" list, checked against the plans
 
 The operator asked whether stage 12's closing list (indexed optics,
