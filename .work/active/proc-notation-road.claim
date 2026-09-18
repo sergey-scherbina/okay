@@ -1,6 +1,0 @@
-feature/proc-notation-road 2026-09-18T09:58:43Z
-agent: claude-code
-heartbeat: 2026-09-18T09:58:43Z
-status: in-progress
-done-so-far: claimed
-next: Proc.direct macro (ANF over an arrow) + docs page for the whole arc
