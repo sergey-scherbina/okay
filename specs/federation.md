@@ -92,11 +92,74 @@ precisely what it does and does not give.
   is stage 3's question, at the door, with `Compat` beside it.
 - **3 — schema at the door.** `Compat` at submission: a job whose
   partial Schema a party cannot decode is refused before it runs.
+  LANDED (`federation-schema-door`, 2026-09-19). See the Design
+  section: a `Schema` cannot itself travel (it carries closures), so
+  a `Compat`-comparable SHAPE does.
 - **4 — the leak, read.** A tool that prints what a job's partial
   Schema lets out, per key, and flags a count that can be one. LANDED
   (`federation-leak-read`, 2026-09-18) as `okay.cluster.Leak`.
 - **5 — the network.** With stage 12 of dataflow: parties on
   machines. BLOCKED on the same machines.
+
+### Stage 3: a Schema cannot travel, so its shape does
+
+`Compat.compare` needs two LIVE `Schema` values, and a `Schema` is not
+itself Schema-derivable: `SProduct`'s `make`/`parts` and every field's
+own thunk are functions, and no codec serialises a function. Two
+processes that do not share a build cannot exchange a `Schema[A]` —
+only a description of its shape.
+
+`okay.codec.Digest` is that description: a small, `derives Schema`
+mirror of exactly what `Compat.walk` reads to compare two schemas —
+names, nesting, field presence, whether a default exists — and nothing
+it does not (never a value, never a function). Reading `Compat.walk`
+proves this is enough: it inspects `.name`, `.fields`/`.cases`
+(thunked SCHEMAS, recursed into — never called for a VALUE) and
+`.defaults` (`.isDefined`, a presence check, never the thunk itself).
+Nothing it does is a value-level operation, so a data-only mirror of
+the same shape carries everything the comparison needs.
+
+**The reconstruction is one isolated, defended cast.** `Digest.of`
+builds a `Digest` from a live `Schema[?]`; `Digest.compare(local,
+remote)` needs to hand the EXISTING `Compat.compare` two live
+schemas, so it turns the remote `Digest` back into a `Schema[Any]`
+SHELL whose `make`/`parts`/`caseOf` throw if ever called. That throw
+never fires — proven by the same reading of `Compat.walk` above — and
+if a future change to `Compat` ever called one, the throw says so
+loudly rather than corrupting a comparison silently. `Compat.scala`
+itself is unchanged: this is new code beside it, not a rewrite of it.
+
+**A self-referential type does not loop.** A recursive schema (a tree)
+needs `Compat.walk`'s own recursion guard (a repeated `(name, name)`
+pair returns `Vector.empty` before touching `.fields`), and `Digest.of`
+needs the SAME guard while BUILDING, for the same reason a live
+schema's thunk would otherwise be re-entered forever. A repeated name
+is truncated to an empty product/sum. This is safe, not merely
+convenient: `Compat.walk`'s guard fires on the NAME PAIR *before* it
+ever inspects a repeated occurrence's fields, so the truncated stub is
+provably never consulted — the outer, first occurrence always carries
+the real fields.
+
+**The direction that matters.** A party ENCODES its own partial with
+its own live schema; the coordinator DECODES it with its own. The
+question a party must answer before writing a byte is "will the
+reader on the other end, with ITS schema, be able to decode what I
+write with MINE?" — exactly `Compat.compare(mine, theirs).backward`
+(the party's schema plays "old"/the producer, the coordinator's
+digest plays "new"/the reader, in `Compat`'s own naming). No other
+direction exists in this protocol: a party never decodes anything with
+`sink.wire` — only `job.params`, a separate schema this box does not
+touch.
+
+**Where the check runs, and where it does not.** `Req.Extent`,
+`Req.Run` and `Req.Open` each NAME a job (the same three
+`Cluster.guarded` already gates by coordinator identity), so each
+carries the coordinator's digest of what it expects. `Req.Advance` and
+`Req.Close` name a SESSION, admitted at `Open`, and carry none — the
+check already happened. An EMPTY digest (the default every existing
+caller gets for free) skips the check entirely: a coordinator that has
+not been rebuilt with this box keeps working exactly as before, the
+same "hasn't asked yet" shape as `Checkpoint.none`/`Lease.solitary`.
 
 ## Behavior
 
