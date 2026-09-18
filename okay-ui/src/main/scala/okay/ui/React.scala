@@ -17,6 +17,32 @@ object React {
 
   import Ui.*
 
+  /**
+   * THE SEMANTIC NODES THIS HOST DRAWS ITSELF — the same set `live.js`
+   * puts in its hello, and the reason it is a named value rather than
+   * a literal at the one call site below.
+   *
+   * A host's catch-all asks `Ui.lower` for the meaning of a node it
+   * does not claim, and `Ui.lower` RECURSES: whatever vocabulary is
+   * handed to it reaches the children too. Passing `Set.empty` there
+   * therefore does not say "lower this node", it says "lower this
+   * whole subtree as if I drew nothing" — and a `Link` in a `Table`
+   * cell came out as `Text("label — href")` one node away from where
+   * the same link was an anchor (react-host-vocab, 2026-09-18, found
+   * from okay-watch's analyst page).
+   *
+   * It also made the two roads disagree on ONE tree: `Wire.serve`
+   * lowers per the client's hello, so the socket sent the anchor while
+   * `Html.render` sent text. A page served both ways is one page only
+   * if this set and `live.js`'s hello are the same set.
+   *
+   * `Frame` and `Swing` claim no semantic node, so `Set.empty` IS
+   * their vocabulary and is correct there; the defect was never that
+   * the set was empty, it was that a constant stood where a host's own
+   * vocabulary belongs.
+   */
+  val Vocabulary: Set[String] = Set(Vocab.link)
+
   /** the tree, in createElement's terms; keys ride as data-key, which
    * is also how the glue knows which Event a DOM event means */
   def elem(ui: Ui): Elem = ui match
@@ -82,8 +108,12 @@ object React {
     // is what a browser has and nothing else does (ui-link)
     case Link(label, href) => Elem("a", Vector("href" -> href), text = Some(label))
     // the React host claims no other semantic node: it draws the
-    // lowering, which is the node's meaning
-    case semantic => elem(Ui.lower(semantic, Set.empty))
+    // lowering, which is the node's meaning — asked for with THIS
+    // host's vocabulary, so a node it does claim survives inside one
+    // it does not (see `Vocabulary`). The recursion terminates because
+    // every name in that set is matched above, so a lowered node is
+    // never handed back to this case
+    case semantic => elem(Ui.lower(semantic, Vocabulary))
 
   /** a style declaration appended to an element's own */
   private def styled(e: Elem, decl: String): Elem =
