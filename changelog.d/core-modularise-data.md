@@ -43,4 +43,4 @@ cheap and its only real cost is a spelling, because `State.zoom`
 cannot stay `State.zoom` in another artifact. Written into the spec
 rather than taken here.
 
-Spec: specs/core-modules.md. Commit 2c728933.
+Spec: specs/core-modules.md. Commit f1c4e219.
