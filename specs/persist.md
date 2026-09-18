@@ -380,7 +380,19 @@ Append-only makes backup boring, which is the point:
 
 - a CLOSED segment never changes, so incremental backup is copying
   new segment files — to an object store (specs/blob.md) or plain
-  rsync; the active segment joins next round, after it rolls.
+  rsync. THE ACTIVE SEGMENT TRAVELS TOO (backup-active-segment,
+  2026-09-18), and the sentence that used to stand here — "the active
+  segment joins next round, after it rolls" — was the defect written
+  down as a design: it bounds a backup by `segmentBytes` of unsaved
+  books, so a shop that appends and then backs up gets everything
+  except what it just wrote. A copy of a live file ends mid-frame, and
+  that is a shape this store already understands: recovery's rule is
+  that a torn tail on the LAST segment of a partition is the ordinary
+  crash artifact, restorable and named. A backup of a running store is
+  a crash that did not happen. What incremental means, exactly: a
+  closed segment is copied ONCE, the active one whenever it has grown,
+  and an idle run copies nothing. `Backup.copy(active = false)` keeps
+  the strict old property for a caller who wants it.
 - RESTORE is placing files back and letting recovery scan them —
   the same code path as every startup, so restore is exercised by
   the ordinary test suite daily, not by an incident yearly.
