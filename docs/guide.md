@@ -592,6 +592,12 @@ retry a lineage recompute, and the whole lex/parse stack incremental
 — and it is exactly where eager runtimes crash (see
 compare/TestLaziness).
 
+A `direct` block asks its carrier only for what the block uses: a run
+of independent binds needs an `Applicative`, and only a bind that
+mentions an earlier name needs a `Monad`. So `Validated` — which
+refuses a monad on purpose — can be written in direct style and still
+collect every error (specs/applicative-do.md).
+
 A `direct` block emits one bind after another. `import
 Direct.parallelBinds.given` changes that for INDEPENDENT ones: a
 maximal run of consecutive `val x = m.reflect` binds whose right-hand

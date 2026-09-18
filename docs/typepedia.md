@@ -326,6 +326,18 @@ same material with the measurements attached.
   `parAll`/`parTraverse` (Parallel.scala): those are JVM/Native, flat,
   one fiber per leaf, joined in order — cheaper for a flat sequence,
   and measured so (theory ch. 12).
+- **`direct` at an applicative-only carrier** (Direct.scala,
+  specs/applicative-do.md) — the entry asks for `Applicative[F]`, not
+  `Monad[F]`, and the macro summons the monad only where it emits a
+  bind. A carrier that HAS one is unaffected, tree for tree. A carrier
+  that refuses one on purpose — `Validated`, whose `Monad` would undo
+  its collecting — can now be written in direct style, and a run of
+  independent binds becomes the idiom bracket
+  `fmap(m1, a => b => body).app(m2)`. Marks in the block's RESULT are
+  leaves too, so `direct[V](f(a.reflect, b.reflect))` works. Refused
+  by name, not by a missing-instance error at the call site: a
+  dependent bind, a statement that is not a marked val, a mark inside
+  a mark.
 - **`Direct.Binds`** / **`Direct.parallelBinds`** (Direct.scala) — a
   `direct` block's bind mode, taken the way `Deferral` is (a `using`
   parameter, default given in the companion, opt-in by importing an

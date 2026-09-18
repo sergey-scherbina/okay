@@ -47,26 +47,26 @@ the refusal names the bind that forced it:
 
 ## Behavior
 
-- [ ] Every existing direct test passes untouched, and the emitted
+- [x] Every existing direct test passes untouched, and the emitted
       tree is unchanged where a `Monad` is available. This is the
       first item because it is the risk: the parameter of a macro used
       across the repository is changing.
-- [ ] A block at `Validated` compiles and COLLECTS: two independent
+- [x] A block at `Validated` compiles and COLLECTS: two independent
       invalid binds report both errors, which is the whole point and
       is impossible through `flatMap`.
-- [ ] A dependent bind at an applicative-only carrier is a compile
+- [x] A dependent bind at an applicative-only carrier is a compile
       error naming the offending val, not a confusing "no Monad" at
       the call site.
-- [ ] The emission at an applicative is the idiom bracket:
+- [x] The emission at an applicative is the idiom bracket:
       `fmap(m1, a1 => a2 => … body).app(m2)…app(mN)` for a run of N,
       asserted on the ANSWER and on the order a recording carrier
       sees, not inferred.
-- [ ] A carrier with BOTH instances keeps the monadic emission. The
+- [x] A carrier with BOTH instances keeps the monadic emission. The
       reason is measured and already recorded: `Monad.app` is
       `f.flatMap(g => fmap(a, g))`, so emitting `app` for `A ! F`
       builds the same binds plus a node (applicative-static stage 3
       Design). Nothing regresses for programs.
-- [ ] A block with no marks at all is unchanged at either carrier.
+- [x] A block with no marks at all is unchanged at either carrier.
 - [ ] Cost, predicted before measuring: the existing direct lanes move
       by less than 2% and not at all in bytes, because the emitted
       tree for a monadic carrier is the same tree. If bytes move, the
@@ -122,5 +122,44 @@ twice.
 ## Results
 
 Stage 0 (this spec): written 2026-09-18, out of the operator's
-question "what about direct style for applicatives", which the arc had
-left open.
+question "what about direct style for applicatives", which the arc
+had left open.
+
+### Landed 2026-09-18
+
+**The split is by whether a `Monad` EXISTS, not by a flag.** The entry
+asks for `Applicative[F]`; the macro summons `Monad[F]` and, finding
+one, runs the existing pipeline untouched — so no program in this
+repository changed emission, which was the first Behavior item and the
+real risk. Finding none, it takes a separate, small road that emits
+the bracket and refuses everything else BY NAME.
+
+**MARKS IN THE RESULT HAD TO BE LEAVES TOO.** The first cut refused
+them, and `direct[V](check(2).reflect + 1)` — the bracket's most
+natural spelling — did not compile. Each mark in the result is now
+replaced by a reference to a fresh name, in evaluation order, and the
+names join the run. They are independent by construction: separate
+subexpressions of one expression cannot mention each other's answers.
+
+**Three things the reflection API decided rather than the design**,
+all caught by a failing splice rather than by reading:
+
+- the curried lambda must be BUILT at the type `fmap` will ask for.
+  Leaving the result at `Any` was refused with "Expected
+  `Int => Int => Any`, Actual `Int => Any`": a function type is not
+  inferred from a nested lambda's body after the fact.
+- `fmap[X, R]` takes R as the function's RESULT, not the function.
+  Passing the whole type was off by one, and the splice printed both
+  types side by side.
+- the carrier's element is its LAST type argument. Reading the only
+  one refused every two-parameter carrier — which is to say
+  `Validated[E, A]`, the consumer this lane exists for — with
+  "expected the carrier applied".
+
+**What v1 refuses**, each with a message naming what it found rather
+than a type error about a class the author never mentioned: a
+dependent bind, a statement that is not a marked val, and a mark
+inside another mark. The refusal reads "this block's carrier has an
+Applicative but no Monad, so it can run INDEPENDENT binds and nothing
+else — `b`, whose right-hand side uses a name this block binds, needs
+flatMap."

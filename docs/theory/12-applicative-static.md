@@ -367,6 +367,22 @@ val profile: Profile ! Async = direct:
   Profile(u, o)                     // so they run together
 ```
 
+The same analysis answers a second question. `direct[F] { ... }` used
+to ask its carrier for a `Monad`, which turned away exactly the types
+where the sugar reads best: `Validated` refuses a monad on purpose,
+because the consistency law would make it stop at the first error. A
+block's needs are the block's, though, not the carrier's — a run of
+independent binds needs only `Applicative` — so the entry asks for
+that and summons the monad only where a bind is actually emitted. At
+`Validated` the block becomes the bracket and collects:
+
+```scala
+val checked: V[Form] = direct[V]:
+  val name  = nonEmpty(raw.name).reflect
+  val email = looksLikeEmail(raw.email).reflect
+  Form(name, email)          // both problems, or a Form
+```
+
 **And here the macro does something `Par` cannot.** `app` is pairwise,
 so an applicative spine of N leaves is N joins and 2N fibers — the ~5×
 measured above. A macro holds the whole GROUP at once, which is the

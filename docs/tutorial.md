@@ -576,6 +576,22 @@ need an earlier answer, `andThen` says so where it happens.
 `okay-conf` is the first consumer: three mistyped environment
 variables come back in one message instead of three runs.
 
+And it reads in direct style, which is the part that used to be
+impossible: a `direct` block asks its carrier only for what the block
+uses, so a run of independent binds needs an `Applicative` and no
+more.
+
+```scala
+val checked: V[Form] = direct[V]:
+  val name  = nonEmpty(raw.name).reflect
+  val email = looksLikeEmail(raw.email).reflect
+  val age   = inRange(raw.age).reflect
+  Form(name, email, age)          // three problems, or a Form
+```
+
+A bind that needs an earlier answer is refused by name, because that
+one really does need a monad.
+
 ## 23. What the program will do, before it does it
 
 A `flatMap` hides the rest of the program behind a function, so the
