@@ -1,0 +1,6 @@
+feature/core-modularise-data 2026-09-18T20:16:38Z
+agent: claude-code
+heartbeat: 2026-09-18T20:16:38Z
+status: in-progress
+done-so-far: claimed; survey done — Sketch has ZERO consumers in 73 modules, Uid/Hlc have two (okay-crdt, okay-security), Aggregator has ten so it stays
+next: specs/core-modules.md stage 3 — okay-data takes Sketch (309), Uid (201), Hlc (173); TOUCHES build.sbt
