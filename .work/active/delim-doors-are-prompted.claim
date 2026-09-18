@@ -1,6 +1,0 @@
-feature/delim-doors-are-prompted 2026-09-18T12:20:49Z
-agent: claude-code
-heartbeat: 2026-09-18T12:20:49Z
-status: in-progress
-done-so-far: claimed
-next: the ambient doors of Scope and Cut take Prompted, so a cancel outside a guard is a compile error
