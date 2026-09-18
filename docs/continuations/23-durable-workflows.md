@@ -162,6 +162,27 @@ produced at **four** doors, and three of them had it. Counting the
 doors after a fix — rather than remembering how many there were —
 turned four call sites into one `placed(d)`.
 
+## The same program as a TERM
+
+Everything above is the monadic shape, and it is the default. Since
+`static-workflow` (2026-09-18) the same workflow can also be written
+as a **value** — `Proc`, the free arrow over the questions this engine
+already journals — and the two share one journal, one worker and one
+envelope, so a run started by either is carried on by the other.
+
+What the term buys is what a closure cannot give: `leaves` before the
+run, a position that is a PATH (with a counter inside a loop), a
+deploy check that asks live journals whether they still fit the new
+code without starting one, and a picture drawn from the program rather
+than from a projection somebody has to keep in step.
+
+What it costs is `ArrowApply`: a step chosen by a value the program
+binds is refused, because that is a monad by Hughes' proof. Branching
+and looping are not — the loop the appendix said a static shape could
+not have is an `Iter` node, and the appendix carries the correction.
+
+[docs/static-workflows.md](../static-workflows.md) is the page.
+
 ## When to reach for this
 
 **Yes** when a business process outlives its process: onboarding,

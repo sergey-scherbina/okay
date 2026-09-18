@@ -69,10 +69,16 @@ do. A static graph with a cursor is checkpointable for free, and the
 whole family of tools arrived at that shape because it is the only one
 that does not have to re-run history.
 
-### What it costs, which is the reason this engine did not
+### What it costs — and this section was REFUTED the next day
 
-No data-dependent structure. `Select` buys a conditional with **both
-sides written down**, and the source names the approximation honestly:
+> **Read the correction below before the argument.** What follows was
+> right about `Selective` and wrong about the conclusion it drew, and
+> the refutation is in this repository: `okay.Proc`, the free ARROW,
+> which does exactly what this section says cannot be done.
+
+The original argument. No data-dependent structure: `Select` buys a
+conditional with **both sides written down**, and the source names the
+approximation honestly:
 
 > `leaves` reports both sides of every `Select`, because which side
 > runs is decided by a value that does not exist yet. It is an upper
@@ -86,21 +92,70 @@ val nights = !w.pause("how many nights?")
 for _ <- 1 to nights do !w.pause("which room?")
 ```
 
-because the *shape* now depends on an answer. The five-line booking of
-chapter 23 ends on `if !w.patch("promo")`, and the reason its programs
-are worth writing at all is that the line between two pauses is
-ordinary Scala.
+because the *shape* now depends on an answer.
 
-So the trade is real and it is a trade:
+### The refutation: the objection was about `Selective`, not about static shapes
+
+That paragraph is true of the applicative and selective rungs and of
+nothing else. `whileS` — the selective literature's loop — is a
+**recursive definition**, and in a strict free structure a recursive
+definition is an infinite term. That is the whole of why the shape
+could not depend on an answer.
+
+**Elgot iteration is a NODE, not a definition:**
+
+```scala
+case Iter(body: Proc[F, X, Either[X, Y]])   // Left goes round, Right leaves
+```
+
+so the term stays finite and the trip count is a value. The loop above
+is written today, in a block, and compiles to it:
+
+```scala
+val rooms = Proc.direct: _ =>
+  val n = !ask("nights?")
+  var got = List.empty[String]
+  while got.length < n.toInt do
+    got = got :+ !ask(s"room ${got.length + 1}?")
+  got
+```
+
+`leaves` reports two questions — the body is counted once, because how
+often it runs is decided by a value that does not exist yet, which is
+the same honest upper bound the section above describes and not an
+obstacle to having the loop at all.
+
+So the trade is real but the third column was wrong, and the corrected
+table has a row this appendix did not imagine:
 
 | | position | restore | language |
 |---|---|---|---|
 | monadic | a closure — cannot be named | replay, O(answers) | anything |
 | applicative / selective | an index into a known shape | a cursor, O(1) | no data-dependent structure |
+| **arrow (`Proc`)** | **a PATH into a finite term, with a counter per loop** | **replay, and `walk` re-derives the position with no runtime** | **anything short of `ArrowApply`** |
 
-This engine took the left column deliberately, because the code between
-pauses is straight-line and replaying it is cheap — chapter 22 measured
-it: 40 answers, 40 steps.
+What the arrow rung still cannot do is the thing Hughes proved it
+cannot: run a step chosen by a value the program binds. That is `app`,
+and an arrow with `app` is a monad — so "the shape may depend on an
+answer" is true for branching and iteration and false for *which
+program to run next*, which is a much smaller loss than this section
+claimed.
+
+This engine's DEFAULT is still the left column, because the code
+between pauses is straight-line and replaying it is cheap — chapter 22
+measured it: 40 answers, 40 steps. What changed is that the right-hand
+column is now available for the programs whose shape really is fixed,
+and what it buys is in
+[docs/static-workflows.md](../static-workflows.md): the questions known
+before the run, a deploy check that asks live journals whether they
+still fit the new code, and a position that can be drawn.
+
+**Why the mistake is worth leaving in place rather than editing out.**
+The argument was sound and the conclusion was too wide, and it was too
+wide because it reasoned from ONE rung of the ladder to every rung
+below the monad. That is the most ordinary way to be wrong about a
+design, and the fix was not cleverness — it was noticing that the
+literature's `whileS` and an iteration NODE are different things.
 
 ### The caveat that survives either choice
 
@@ -780,18 +835,26 @@ function.
 **Do decide, per program, which half it belongs to.** Most systems have
 both kinds and gain by saying which is which:
 
-- A program whose shape is fixed — fetch these twenty keys, run these
-  five stages, apply this rule pack — is **static**, and a `Static`-like
-  type gives you `leaves`, batching, a dry run, a capability list and,
-  if you want it, a cursor.
-- A program whose shape depends on its answers — anything with `if
-  paid` or `while retries < n` in it — is **monadic**, and replay is
-  what it costs. Keep the code between pauses straight-line so replay
-  stays cheap; chapter 22 measured 40 steps for 40 answers.
+- A program with no input whose shape is fixed — fetch these twenty
+  keys, apply this rule pack — is **applicative**, and `Static` gives
+  you `leaves`, batching, a dry run and a capability list.
+- A program that branches and loops but never chooses WHICH PROGRAM to
+  run next is an **arrow**, and `Proc` gives you all of the above plus
+  a position that is a path, a deploy check, and a picture. `if paid`
+  and `while retries < n` are both on this side — see the correction
+  above, which is where this list used to send them to the monad.
+- A program that chooses its next step from a VALUE — "read the
+  workflow's name from an answer and run it" — is **monadic**, because
+  that is `ArrowApply` and `ArrowApply` is a monad. Replay is what it
+  costs. Keep the code between pauses straight-line so replay stays
+  cheap; chapter 22 measured 40 steps for 40 answers.
 
-**Do put the boundary between them somewhere you can name.** The two
-halves compose in one direction: `toFree` turns the static half into a
-program the monadic half can run. Not the other way.
+**Do put the boundary between them somewhere you can name.** They
+compose in one direction: `Static.toFree` and `Wf.Proc.program` turn a
+static half into a program the monadic half can run, and a `Proc` can
+be an activity of a monadic workflow. Not the other way — recovering a
+term from a closure is the thing this appendix opened by saying is
+impossible, and that part is unchanged.
 
 **And if you find yourself defunctionalising by hand** — writing an
 enum of "what to do next" cases and an `apply` over it — stop and
@@ -819,11 +882,13 @@ set of constraints, not a defect in the others.
 What separates the versions that work from the ones that do not is
 never cleverness. It is four habits:
 
-**Know which half your program is in.** A fixed shape is static, and a
-cursor, `leaves`, batching and a dry run come free. A shape that
-depends on its answers is monadic, and replay is its price. Most
-systems contain both, and gain most from saying out loud which is
-which.
+**Know which half your program is in** — and there are three halves,
+which is the joke this appendix had to learn. A fixed shape with no
+input is applicative. A shape that branches and loops is an ARROW, and
+`leaves`, a path-shaped position, a deploy check and a picture come
+with it. Only a program that picks its next step from a value needs a
+monad, and replay is its price. Most systems contain all three, and
+gain most from saying out loud which is which.
 
 **Put only what the program was told into the commit record** — or
 state, where the history has stopped describing anything. That line is
