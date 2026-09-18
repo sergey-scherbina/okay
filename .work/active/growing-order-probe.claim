@@ -1,6 +1,0 @@
-okay-wt-growing-order-probe 2026-09-18T09:57:48Z
-agent: claude-code
-heartbeat: 2026-09-18T09:57:48Z
-status: in-progress
-done-so-far: read the BACKLOG entry, BUGS retraction, Growing/SentinelChannel/TestGrowing; found inner is @volatile since birth
-next: write ProbeGrowingOrder with a Traced Buffer decorator + the two counters, ignored by default
