@@ -1,6 +1,0 @@
-feature/boards-d 2026-09-18T12:22:58Z
-agent: claude-code
-heartbeat: 2026-09-18T12:22:58Z
-status: in-progress
-done-so-far: claimed, room warned to hold BACKLOG/SPRINT edits
-next: splitter + assembler + round-trip test, then the split itself
