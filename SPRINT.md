@@ -73,6 +73,20 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- ui-table-weights — `Ui.Table` cannot say how wide a column is
+  (asked for by the operator, 2026-09-18, after okay-watch hit it
+  twice). The lowering hands every column ONE share
+  (`Vector.fill(n)(1)`) and `React` writes that share INLINE on each
+  cell, so no stylesheet can widen a column either — an inline style
+  wins. okay-watch's analyst page therefore ellipsized an IBAN, a rail
+  and a timestamp in a nine-column list, and had to abandon `Ui.Table`
+  for a hand-lowered `Box` to get the widths back. How wide a column
+  is, is a property of what is IN it, which only the table's author
+  knows: `Table` gains `weights`, `Box`'s own word, empty meaning
+  equal as today. Touches `Ui.lower`/`map`/`withChildren`, the
+  protocol document, and okay-compose's Kotlin `Wire`/`Render` (a
+  separate Gradle build, NOT in the sbt gate — its decoder reads
+  fields by name, so it is tolerant either way).
 - site-framework — okay-script and okay-ui to scalascript's standing
   (specs/site-framework.md). CLOSED 2026-09-18, all four stages: 1
   modules (a definition and a TYPE cross a file), 2 content (the words

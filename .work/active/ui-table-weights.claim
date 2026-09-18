@@ -1,0 +1,6 @@
+okay-wt-ui-table-weights 2026-09-18T07:05:00Z
+agent: claude-code
+heartbeat: 2026-09-18T07:05:00Z
+status: not-started
+done-so-far:
+next: spec in specs/frontend.md, then the failing test on the lowering
