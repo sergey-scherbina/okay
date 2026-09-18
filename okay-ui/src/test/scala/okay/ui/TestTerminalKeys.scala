@@ -330,6 +330,58 @@ class TestTerminalKeys extends munit.FunSuite {
     assert(lines.mkString.contains("transaction".take(3)), lines.mkString("|"))
   }
 
+  /**
+   * ui-terminal-layout-map: `render` answers WHERE it drew, so
+   * hit-testing is a lookup. These two cases are the limits the search
+   * road carried and could not fix.
+   */
+  test("a widget whose text WRAPS is found on every line of it, not just the first"):
+    val wide = Column(Vector(Input("a value long enough to come down onto two lines", "in", "")))
+    val places = Frame.laid(wide, None, 20)._2
+    assertEquals(places.length, 1)
+    assert(places.head.h > 1, places.toString)
+    // the last line of it is still the input
+    assertEquals(Frame.hit(wide, places.head.h - 1, 2, 20), Some(0))
+
+  test("two widgets that render IDENTICALLY are told apart by where they are"):
+    val twins = Column(Vector(Button("go", "a"), Button("go", "b")))
+    assertEquals(Frame.render(twins), Vector("[ go ]", "[ go ]"))
+    assertEquals(Frame.hit(twins, 0, 2), Some(0))
+    assertEquals(Frame.hit(twins, 1, 2), Some(1))
+    // and the keys are on the placements, so a caller need not count
+    assertEquals(Frame.laid(twins)._2.map(_.key), Vector("a", "b"))
+
+  test("a leaf fills its CELL: a click on the padding lands on the widget drawn there"):
+    val row = Box(Vector(Button("go", "go"), Text("a much longer label here")),
+      Dir.Horizontal, weights = Vector(1, 3))
+    val places = Frame.laid(row, None, 40)._2
+    assertEquals(places.length, 1, places.toString)
+    val b = places.head
+    assert(b.w > 6, s"the button's cell is only ${b.w} wide: $b")
+    // the button draws `[ go ]` and its cell is wider — a click past
+    // the text is still a click on the button
+    assertEquals(Frame.hit(row, 0, b.w - 1, 40), Some(0))
+
+  test("the placements come out in the order Ui.focusable walks"):
+    val page = Column(Vector(
+      Text("title"),
+      Row(Vector(Button("a", "a"), Button("b", "b"))),
+      Ui.Form(Vector(Input("", "f", "F")), "save", "form")))
+    val keys = Frame.laid(page)._2.map(_.key)
+    val order = Ui.focusable(page).map(u => Ui.keyOf(u).getOrElse(""))
+    assertEquals(keys, order)
+
+  test("the caret costs no columns when the line WRAPS either"):
+    // the caret is nine characters of escape that occupy no column, so
+    // measuring the raw string wrapped a field that fitted
+    val t = Column(Vector(Input("abcdefghij", "in", "")))
+    val f = Ui.focusable(t).lift(0)
+    val plain = Frame.render(t, None, 14)
+    val marked = Frame.render(t, f, 14, 3)
+    assertEquals(plain.length, 1)
+    assertEquals(marked.length, 1, marked.map(Frame.width).toString)
+    assertEquals(marked.map(Frame.width), plain.map(Frame.width))
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))

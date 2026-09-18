@@ -14,56 +14,78 @@ object Frame {
   private val Esc = "\u001b"
 
   /**
-   * Render a tree as lines; the focused widget is marked.
+   * WHERE A WIDGET WAS DRAWN: the cell it starts at and the cell it
+   * fills, in the frame `render` answers (ui-terminal-layout-map).
    *
-   * `width` is the BUDGET this subtree may use, in characters, and 0
-   * means "no budget" — which is v1's layout exactly, so every caller
-   * that does not pass one is unchanged (ui-terminal-width). With a
-   * budget, a horizontal box divides IT by weight instead of dividing
-   * the row's natural width, which is what `Resized` was always for
-   * and what the spec's sentence "the terminal divides width by
-   * weight" meant; and a text WRAPS to the budget rather than running
-   * past the screen — the same rule the browser's stylesheet states,
-   * for the same reason: a value that is cut cannot be checked against
-   * anything.
+   * `key` is the widget's own, or empty where it has none — the INDEX
+   * is what identifies it, and the placements come out in the order
+   * `Ui.focusable` walks, because this walk and that one descend
+   * through the same nodes in the same order.
    */
-  def render(ui: Ui, focus: Option[Ui] = None, width: Int = 0, caret: Int = -1): Vector[String] = ui match
+  final case class Placed(key: String, row: Int, col: Int, w: Int, h: Int):
+    def holds(r: Int, c: Int): Boolean = r >= row && r < row + h && c >= col && c < col + w
+
+  /**
+   * THE FRAME AND WHERE EVERY FOCUSABLE WIDGET SITS IN IT.
+   *
+   * `render` is this function's first half — one walk, not two, which
+   * is the whole reason it is written this way round: two walks of one
+   * layout convention are held equal by a law until the day they are
+   * not (`ui-path-two-walks` measured the alternative and refused it
+   * for a different reason, and the lesson is the same).
+   *
+   * What it buys: hit-testing reads a MAP rather than searching the
+   * frame for the text each widget drew — which found a widget by its
+   * first line only when the text wrapped, and told two identical
+   * widgets apart by order alone.
+   */
+  def laid(ui: Ui, focus: Option[Ui] = None, width: Int = 0, caret: Int = -1)
+          : (Vector[String], Vector[Placed]) =
+    at(ui, focus, width, caret, 0, 0)
+
+  /** render a tree as lines; the focused widget is marked. The lines
+   * of `laid`, which is where the layout actually happens */
+  def render(ui: Ui, focus: Option[Ui] = None, width: Int = 0, caret: Int = -1): Vector[String] =
+    at(ui, focus, width, caret, 0, 0)._1
+
+  /**
+   * The walk, at an origin. Every case answers the lines it always
+   * answered and the placements those lines imply — a container from
+   * where it put its children, a leaf for itself.
+   *
+   * A LEAF FILLS ITS BUDGET, not its text: a cell wider than the
+   * button in it is still the button's cell, so a click on the padding
+   * lands on the button a reader can see there.
+   */
+  private def at(ui: Ui, focus: Option[Ui], width: Int, caret: Int, row: Int, col: Int)
+               : (Vector[String], Vector[Placed]) = ui match
     case Text(s, style) =>
       val lines = s.split("\n", -1).toVector.flatMap(wrap(_, width))
       // tokens map to the terminal's idiom: emphasis is bold, muted is
       // dim, danger is red; size has no terminal meaning
-      if style.bold || style.tone == Tone.Emphasis then lines.map(l => s"$Esc[1m$l$Esc[0m")
-      else if style.dim || style.tone == Tone.Muted then lines.map(l => s"$Esc[2m$l$Esc[0m")
-      else if style.tone == Tone.Danger then lines.map(l => s"$Esc[31m$l$Esc[0m")
-      else lines
-    case Column(children, _) => children.flatMap(c => render(c, focus, width, caret))
-    case Row(children, _) =>
-      val natural = children.map(c => render(c, focus, 0, caret))
-      val shares = split(width, children.length, Vector.empty, children.length - 1,
-        natural.map(longestWord), natural.map(b => b.map(this.width).maxOption.getOrElse(0)))
-      beside(children.zip(shares).map((c, w) => render(c, focus, w, caret)), Vector.empty, " ",
-        children.map(alignOf), shares)
+      val out =
+        if style.bold || style.tone == Tone.Emphasis then lines.map(l => s"$Esc[1m$l$Esc[0m")
+        else if style.dim || style.tone == Tone.Muted then lines.map(l => s"$Esc[2m$l$Esc[0m")
+        else if style.tone == Tone.Danger then lines.map(l => s"$Esc[31m$l$Esc[0m")
+        else lines
+      (out, Vector.empty)
+
+    case Column(children, _) => stacked(children, focus, width, caret, row, col, gap = 0, pad = 0)
     case Box(children, Dir.Vertical, _, gap, pad, _) =>
-      val blocks = children.map(c => render(c, focus, math.max(width - 2 * pad, 0), caret))
-      val joined = blocks.zipWithIndex.flatMap { (b, i) =>
-        (if i > 0 then Vector.fill(gap)("") else Vector.empty) ++ b }
-      joined.map(l => " " * pad + l)
+      stacked(children, focus, width, caret, row, col, gap, pad)
+
+    case Row(children, _) =>
+      side(children, focus, width, caret, row, col, Vector.empty, " ", 0)
     case Box(children, Dir.Horizontal, weights, gap, pad, _) =>
-      val budget = math.max(width - 2 * pad, 0)
-      // MEASURED before divided: a column narrower than its longest
-      // word breaks the word, and a word is the smallest thing wrapping
-      // must not split (ui-column-minimum)
-      val natural = children.map(c => render(c, focus, 0, caret))
-      val shares = split(budget, children.length, weights, gap * (children.length - 1),
-        natural.map(longestWord), natural.map(b => b.map(this.width).maxOption.getOrElse(0)))
-      beside(children.zip(shares).map((c, w) => render(c, focus, w, caret)), weights, " " * gap,
-        children.map(alignOf), shares)
-        .map(l => " " * pad + l)
-    case Scroll(child, _) => render(child, focus, width, caret)
-    case Image(_, alt) => Vector(s"[image: $alt]")
+      side(children, focus, width, caret, row, col, weights, " " * gap, pad)
+
+    case Scroll(child, _) => at(child, focus, width, caret, row, col)
+    case Image(_, alt) => (Vector(s"[image: $alt]"), Vector.empty)
+
     case b @ Button(label, _, role) =>
-      Vector(if focus.contains(b) then s"[>$label<]"
-             else if role == Role.Active then s"[=$label=]" else s"[ $label ]")
+      leaf(ui, Vector(if focus.contains(b) then s"[>$label<]"
+                      else if role == Role.Active then s"[=$label=]" else s"[ $label ]"),
+        width, row, col)
     case i @ Input(value, _, label, kind, _) =>
       val name = if label.isEmpty then "" else s"$label: "
       val shown = if kind == InputKind.Secret then "*" * value.length else value
@@ -73,25 +95,76 @@ object Frame {
       // column, and past the end of the value it sits on a space,
       // which is where the next character goes. A host with no caret
       // passes -1 and gets v1's trailing mark.
-      Vector(
+      leaf(ui, Vector(
         if !focus.contains(i) then s"$name[$shown]"
         else if caret < 0 then s"$name[$shown*]"
-        else s"$name[${carets(shown, caret)}]")
+        else s"$name[${carets(shown, caret)}]"), width, row, col)
     case c @ Check(on, _, label) =>
       val box = if on then "[x]" else "[ ]"
       val f = if focus.contains(c) then ">" else " "
-      Vector(s"$f$box $label")
+      leaf(ui, Vector(s"$f$box $label"), width, row, col)
     case s @ Select(options, selected, _) =>
       val cur = options.lift(selected).getOrElse("")
-      Vector(if focus.contains(s) then s"<$cur>" else s" $cur ")
+      leaf(ui, Vector(if focus.contains(s) then s"<$cur>" else s" $cur "), width, row, col)
 
     case Form(fields, submit, k) =>
-      render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, width, caret)
+      at(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, width, caret, row, col)
     // the budget reaches THROUGH a lowering, which is where a table is
-    // drawn — the compiler caught both of these dropping it (E221,
+    // drawn - the compiler caught both of these dropping it (E221,
     // "recursive call used a default argument"), and a table is
     // exactly the node whose columns the budget is for
-    case semantic => render(Ui.lower(semantic, Set.empty), focus, width, caret)
+    case semantic => at(Ui.lower(semantic, Set.empty), focus, width, caret, row, col)
+
+  /**
+   * A leaf, WRAPPED TO ITS CELL, and the cell it fills.
+   *
+   * The wrap is not decoration: until ui-terminal-layout-map wrote a
+   * test that expected a wrapped input, only `Text` was wrapped, so an
+   * `Input` holding a long value drew ONE line and ran off the screen —
+   * in a renderer whose whole width lane exists to stop exactly that.
+   * A value that is cut cannot be checked against anything; a value
+   * that comes down onto a second line can.
+   */
+  private def leaf(ui: Ui, lines: Vector[String], budget: Int, row: Int, col: Int)
+                  : (Vector[String], Vector[Placed]) =
+    val out = lines.flatMap(wrap(_, budget))
+    val w = math.max(out.map(width).maxOption.getOrElse(0), budget)
+    (out, Vector(Placed(Ui.keyOf(ui).getOrElse(""), row, col, w, out.length)))
+
+  /** children below one another: gap blank rows between, pad columns in */
+  private def stacked(children: Vector[Ui], focus: Option[Ui], width: Int, caret: Int,
+                      row: Int, col: Int, gap: Int, pad: Int)
+                     : (Vector[String], Vector[Placed]) =
+    val budget = math.max(width - 2 * pad, 0)
+    val (lines, places, _) = children.zipWithIndex
+      .foldLeft((Vector.empty[String], Vector.empty[Placed], row)) {
+        case ((ls, ps, r), (c, i)) =>
+          val top = if i > 0 then r + gap else r
+          val (cl, cp) = at(c, focus, budget, caret, top, col + pad)
+          (ls ++ (if i > 0 then Vector.fill(gap)("") else Vector.empty) ++ cl, ps ++ cp, top + cl.length)
+      }
+    (lines.map(l => " " * pad + l), places)
+
+  /** children beside one another: each in its share, separated */
+  private def side(children: Vector[Ui], focus: Option[Ui], width: Int, caret: Int,
+                   row: Int, col: Int, weights: Vector[Int], sep: String, pad: Int)
+                  : (Vector[String], Vector[Placed]) =
+    val budget = math.max(width - 2 * pad, 0)
+    // MEASURED before divided: a column narrower than its longest
+    // word breaks the word, and a word is the smallest thing wrapping
+    // must not split (ui-column-minimum)
+    val natural = children.map(c => at(c, focus, 0, caret, 0, 0)._1)
+    val shares = split(budget, children.length, weights, sep.length * (children.length - 1),
+      natural.map(longestWord), natural.map(b => b.map(Frame.width).maxOption.getOrElse(0)))
+    val blocks = children.zip(shares).map((c, w) => at(c, focus, w, caret, 0, 0)._1)
+    val widths = columns(blocks, weights, shares)
+    // where each child begins: its own share plus the separators
+    // before it, counted in the SAME widths `beside` pads to
+    val offsets = widths.scanLeft(0)((x, w) => x + w + sep.length).init
+    val places = children.zip(shares).zip(offsets).flatMap { case ((c, w), dx) =>
+      at(c, focus, w, caret, row, col + pad + dx)._2
+    }
+    (beside(blocks, weights, sep, children.map(alignOf), shares).map(l => " " * pad + l), places)
 
   /**
    * A LINE WRAPPED TO A BUDGET — never cut. A budget of 0 is "no
@@ -103,12 +176,33 @@ object Frame {
    * `overflow-wrap: anywhere`.
    */
   private def wrap(line: String, width: Int): Vector[String] =
-    if width <= 0 || line.length <= width then Vector(line)
+    if width <= 0 || Frame.width(line) <= width then Vector(line)
     else
-      val cut = line.lastIndexOf(' ', width)
-      val at = if cut > 0 then cut else width
-      val rest = if cut > 0 then line.substring(at + 1) else line.substring(at)
-      line.substring(0, at) +: wrap(rest, width)
+      // COUNTED IN PRINTABLE COLUMNS, not characters. A focused input
+      // carries its caret as reverse video — nine characters of escape
+      // that occupy no column — so measuring the raw string wrapped it
+      // five columns early and broke a field that fitted
+      // (ui-terminal-layout-map, found by a test that expected a
+      // wrapped input and got a mangled one).
+      var i = 0
+      var cols = 0
+      var lastSpace = -1
+      var cut = -1
+      while i < line.length && cut < 0 do
+        if line.startsWith(Esc, i) then
+          val m = line.indexOf('m', i)
+          i = if m < 0 then line.length else m + 1
+        else
+          if cols == width then cut = i
+          else
+            if line.charAt(i) == ' ' then lastSpace = i
+            cols += 1
+            i += 1
+      if cut < 0 then Vector(line)
+      else
+        val at = if lastSpace > 0 then lastSpace else cut
+        val rest = if lastSpace > 0 then line.substring(at + 1) else line.substring(at)
+        line.substring(0, at) +: wrap(rest, width)
 
   /**
    * A budget divided among children: by WEIGHT when there is one per
@@ -180,6 +274,23 @@ object Frame {
     case Text(_, style) => style.align
     case _ => Align.Start
 
+  /**
+   * THE COLUMN WIDTHS A ROW LAYS OUT IN — one definition, because the
+   * lines and the PLACEMENTS must agree about them or a click lands a
+   * column off (ui-terminal-layout-map).
+   */
+  private def columns(blocks: Vector[Vector[String]], weights: Vector[Int],
+                      shares: Vector[Int]): Vector[Int] =
+    val natural = blocks.map(b => b.map(width).maxOption.getOrElse(0))
+    // a SCREEN budget was handed down: the columns are its shares, and
+    // a block narrower than its share is padded into it
+    if shares.length == blocks.length && shares.forall(_ > 0) then shares
+    else if weights.length == blocks.length && weights.forall(_ > 0) then
+      val total = natural.sum
+      val sum = weights.sum
+      natural.zip(weights).map((n, w) => math.max(n, total * w / sum))
+    else natural
+
   /** blocks side by side; with weights, the row's natural width is
    * divided by weight and each block padded to its share — "the
    * terminal divides width by weight". A block whose text asked for
@@ -188,16 +299,7 @@ object Frame {
   private def beside(blocks: Vector[Vector[String]], weights: Vector[Int], sep: String,
                      aligns: Vector[Align], shares: Vector[Int]): Vector[String] =
     val height = blocks.map(_.length).maxOption.getOrElse(0)
-    val natural = blocks.map(b => b.map(width).maxOption.getOrElse(0))
-    val widths =
-      // a SCREEN budget was handed down: the columns are its shares,
-      // and a block narrower than its share is padded into it
-      if shares.length == blocks.length && shares.forall(_ > 0) then shares
-      else if weights.length == blocks.length && weights.forall(_ > 0) then
-        val total = natural.sum
-        val sum = weights.sum
-        natural.zip(weights).map((n, w) => math.max(n, total * w / sum))
-      else natural
+    val widths = columns(blocks, weights, shares)
     val padded = blocks.zip(widths).zipWithIndex.map { case ((b, w), i) =>
       val end = aligns.lift(i).contains(Align.End)
       b.padTo(height, "").map { l =>
@@ -218,11 +320,9 @@ object Frame {
    * case of it, and it cannot drift from what is actually drawn.
    */
   def focusLine(ui: Ui, focus: Option[Ui], width: Int = 0): Option[Int] =
-    focus.flatMap { _ =>
-      val marked = render(ui, focus, width)
-      val plain = render(ui, None, width)
-      if marked.length != plain.length then Some(0)
-      else marked.indices.find(i => marked(i) != plain(i))
+    focus.flatMap { f =>
+      val i = Ui.focusable(ui).indexOf(f)
+      if i < 0 then None else laid(ui, focus, width)._2.lift(i).map(_.row)
     }
 
   /**
@@ -250,50 +350,20 @@ object Frame {
   def width(s: String): Int = s.replaceAll("\u001b" + "\\[[0-9;]*m", "").length
 
   /**
-   * WHICH FOCUSABLE WIDGET IS AT A CELL — hit-testing (ui-terminal-mouse).
+   * WHICH FOCUSABLE WIDGET IS AT A CELL — a lookup in the map `laid`
+   * answers (ui-terminal-layout-map).
    *
-   * A widget is found by the TEXT IT RENDERS, scanned in focus order:
-   * each focusable draws itself the same way alone as it does in the
-   * frame (a weighted column pads AFTER the text, and wrapping is the
-   * one case that can split it), so the frame is searched for that
-   * text from where the previous widget ended. Focus order is document
-   * order and a row lays out left to right, so the scan never goes
-   * backwards.
-   *
-   * WHAT THIS IS NOT: a layout map. The renderer answers lines, not
-   * positions, and giving it a second return type is the real content
-   * of the lane BACKLOG describes — this is the honest cheap half,
-   * with two limits stated: a widget whose text WRAPS is found only by
-   * its first line, and two widgets that render identically are told
-   * apart by order alone.
+   * It used to SEARCH the frame for the text each focusable draws,
+   * scanned in focus order, and carried two limits for it: a widget
+   * whose text wrapped was found by its first line only, and two
+   * widgets that render identically were told apart by order alone.
+   * Both are gone — a placement knows its height, and two identical
+   * widgets are two placements.
    */
   def hit(ui: Ui, row: Int, col: Int, width: Int = 0): Option[Int] =
-    val lines = render(ui, None, width).map(strip)
-    var r = 0
-    var c = 0
-    var found: Option[Int] = None
-    val order = Ui.focusable(ui)
-    order.indices.foreach { i =>
-      if found.isEmpty then
-        val text = render(order(i), None).map(strip).headOption.getOrElse("")
-        locate(lines, text, r, c) match
-          case Some((lr, lc)) =>
-            if lr == row && col >= lc && col < lc + text.length then found = Some(i)
-            r = lr
-            c = lc + text.length
-          case None => ()
-    }
-    found
-
-  /** the first occurrence of `text` at or after (row, col) */
-  private def locate(lines: Vector[String], text: String, row: Int, col: Int): Option[(Int, Int)] =
-    if text.isEmpty then None
-    else
-      (row until lines.length).view.flatMap { r =>
-        val from = if r == row then col else 0
-        val at = lines(r).indexOf(text, from)
-        if at < 0 then None else Some((r, at))
-      }.headOption
+    val places = laid(ui, None, width)._2
+    val i = places.indexWhere(_.holds(row, col))
+    if i < 0 then None else Some(i)
 
   /** a line without its ANSI escapes — what a reader's columns count */
   private def strip(s: String): String = s.replaceAll(Esc + "\\[[0-9;]*m", "")
