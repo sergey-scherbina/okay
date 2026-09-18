@@ -1,6 +1,0 @@
-feature/ui-terminal-width 2026-09-18T12:27:05Z
-agent: claude-code
-heartbeat: 2026-09-18T12:27:05Z
-status: in-progress
-done-so-far: claimed
-next: Frame.render takes a width budget; weights divide the SCREEN; the host measures and says Resized
