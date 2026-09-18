@@ -1,6 +1,0 @@
-feature/proc-notation 2026-09-18T08:41:16Z
-agent: claude-code
-heartbeat: 2026-09-18T08:41:16Z
-status: in-progress
-done-so-far: claimed
-next: specs/proc-notation.md stage 0 — the direct macro at an arrow: straight-line code for Proc
