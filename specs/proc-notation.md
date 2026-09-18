@@ -138,14 +138,17 @@ measured in Behavior rather than assumed cheap.
 - [~] ONE test source for both spellings — **NOT POSSIBLE while the
       doors differ**, see above; the journal equality is the property
       and it is asserted. Reopen if the doors are ever unified
-- [ ] a `for` over `1 to nights` compiles to an `Iter` — **v1.1**, and
-      refused BY NAME meanwhile (the message says `Proc.iter` is the
-      node); filed as `proc-notation-branches`
-- [ ] an `if` with a leaf inside a branch compiles to `OnRight` —
-      **v1.1**, refused by name with the node named, because hoisting
-      the mark would RUN it whether or not the branch is taken; filed
-      as `proc-notation-branches`. An `if` over bound values, and one
-      whose CONDITION is a question, compile today
+- [x] a loop whose trip count is an ANSWER compiles to an `Iter`
+      (v1.1, `proc-notation-branches`, the same day): written as a
+      `while` over values the block binds, with the loop-carried state
+      being the environment itself. A `for`/`foreach` is a lambda and
+      stays refused, with `while` named in the message
+- [x] an `if` with a question inside a branch compiles to `OnRight`
+      (v1.1): both branches compiled at the SAME environment, `leaves`
+      reporting both, and a run asking only the taken one. Top-level
+      only — a val's right-hand side, a statement of its own, or the
+      block's answer; one nested in a larger expression still refuses,
+      because it would have to hoist
 - [x] a leaf chosen by a bound name is refused, `compileErrors`-pinned,
       with `app`, the monad and the two rewrites in the message
 - [x] every existing `direct` test passes untouched — trivially and on
@@ -327,6 +330,67 @@ root of the marked expression, so a block calling `patch("promo")`
 gives a leaf named `patch` and not `Patched` — a term reads in the
 vocabulary of the program rather than of the library. Found by a test
 that expected the case's name and was wrong.
+
+### Stage 1.1 — branches and loops, landed 2026-09-18 (`proc-notation-branches`)
+
+`TestProcBranches` (13). The flat walk became a recursive body
+compiler, because a branch is a block compiled at the environment the
+`if` sees.
+
+**AN `if` IS TWO `OnRight`s AND THREE `Arr`s**, and the shape is the
+whole design:
+
+```
+Arr(env => if cond then Right(env) else Left(env))   // Left carries the else's env
+  >>> OnRight(thenBranch)                            // Either[E, V]
+  >>> Arr(_.swap)                                    // Either[V, E]
+  >>> OnRight(elseBranch)                            // Either[V, V]
+  >>> Arr(_.fold(identity, identity))
+```
+
+Both branches are in the term, so `leaves` reports both — the
+over-approximation the whole shape is built on — and only the taken
+one asks, which is asserted from both sides.
+
+**AN ASSIGNMENT IS A REBUILD, AND THAT IS WHAT MAKES THE LOOP
+HONEST.** `x = e` emits an `Arr` that reconstructs the environment
+with x's slot replaced, so a name always lives at its own index and
+the layout never depends on what has been assigned. Nothing mutates:
+the value that goes round the loop travels on the arrow's edge, which
+is why a replay re-derives it exactly. The alternative — remapping an
+index per assignment — was rejected before it was written, because the
+projection arithmetic would then depend on the assignment history.
+
+**A `while` IS `Iter` WITH THE TEST IN FRONT:**
+
+```
+Iter( Arr(env => if cond then Right(env) else Left(env))
+        >>> OnRight(body >>> rebuild)
+        >>> Arr(_.swap) )
+```
+
+`Left` goes round and `Right` leaves, so the swap after the body is
+what turns "ran the body" into "go again". A zero-trip loop asks
+nothing, and that is a test because the obvious mis-compile runs the
+body first.
+
+**THE ARITHMETIC WAS WRONG A SECOND TIME, and the fix was to stop
+having two copies of it.** An `if` whose CONDITION asks a question
+hoists that question as a leaf, and the condition was then rewritten
+against the depth AFTER the leaf — the same off-by-one that read
+`r|r` for `l|r` in v1. `hoist` is now one function that answers the
+depth it started at, used by every caller.
+
+**THE UP-FRONT GUARD WAS THE BUG THAT HID THE FEATURE.** v1 swept
+every statement with `guard` before compiling anything, which refused
+the very shapes this stage compiles. The guard now runs on the
+straight-line pieces only — a condition, a branch's statements — and
+an `if` or a `while` is compiled by its own routine.
+
+**SEEN FAILING, twice.** Inverting the branch selector reddens three
+tests (the run asks the wrong question); running the loop's body
+before its test reddens the zero-trip test alone, which is the one
+written for it.
 
 **WHAT IT SHARES WITH `Direct.scala`: twenty lines.** The mark symbols
 and `asMark`/`hasMark`, and nothing else — no ANF machinery, no loop

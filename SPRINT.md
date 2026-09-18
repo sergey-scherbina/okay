@@ -103,6 +103,9 @@
   shares twenty lines with the other two, so one IR would be two IRs
   with one name. Follow-ups filed: `proc-notation-branches` (if/loops
   in the notation) and `proc-notation-liveness`.
+  LANE 3.1 (`proc-notation-branches`) LANDED 2026-09-18: an `if` with
+  questions in its branches is `OnRight`, a `while` is `Iter`, and an
+  assignment is a REBUILD of the environment rather than a mutation.
   THE PLAN'S WORKFLOW SIDE IS DONE. What is left of the plan is the
   optics side's own lanes (4 `optics-arrow-instances`, 6
   `optics-cont-profunctor`), which do not wait on anything here.

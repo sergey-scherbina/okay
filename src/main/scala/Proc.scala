@@ -108,9 +108,23 @@ object Proc:
    * per leaf.
    */
   def keeping[F[+_], E, A](name: String)(run: E => F[A]): Proc[F, E, (E, A)] =
+    alongside(Op(name, run))
+
+  /**
+   * The same, for a whole SUB-PROCEDURE rather than one operation:
+   * run it on the environment and append its answer. An `if` inside a
+   * block compiles to a sub-procedure, so this is the node that puts
+   * the branch's value where the next statement can read it.
+   */
+  def alongside[F[+_], E, A](p: Proc[F, E, A]): Proc[F, E, (E, A)] =
     andThen(
-      andThen(Arr((e: E) => (e, e)), First[F, E, A, E](Op(name, run))),
+      andThen(Arr((e: E) => (e, e)), First[F, E, A, E](p)),
       Arr((ae: (A, E)) => (ae._2, ae._1)))
+
+  /** the choice, as a door: run the step on the right of a sum and
+   * pass the left through */
+  def onRight[F[+_], X, Y, C](f: Proc[F, X, Y]): Proc[F, Either[C, X], Either[C, Y]] =
+    OnRight(f)
 
   /**
    * A STRAIGHT-LINE BLOCK, COMPILED TO AN ARROW

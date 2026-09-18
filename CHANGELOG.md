@@ -1,5 +1,55 @@
 # Changelog
 
+## proc-notation-branches - an `if` is `OnRight`, a `while` is `Iter`
+
+v1.1 of specs/proc-notation.md, the two shapes v1 refused by name.
+A `Proc.direct` block can now branch and loop:
+
+    val rooms = Proc.direct[Sig, Unit, List[String]]: _ =>
+      val n = !ask("nights?")
+      var got = List.empty[String]
+      while got.length < n.toInt do
+        got = got :+ !ask(s"room ${got.length + 1}?")
+      got
+
+AN `if` IS TWO `OnRight`s AND THREE `Arr`s: select Left-or-Right on
+the condition, run the then-branch on the Right, swap, run the
+else-branch on the Right, merge. Both branches are IN the term, so
+`leaves` reports both - the over-approximation the whole shape is
+built on - and only the taken one asks.
+
+AN ASSIGNMENT IS A REBUILD, AND THAT IS WHAT MAKES THE LOOP HONEST.
+`x = e` emits an `Arr` that reconstructs the environment with x's slot
+replaced, so a name always lives at its own index and the layout never
+depends on what has been assigned. Nothing mutates: the value that
+goes round the loop travels on the arrow's edge, which is why a replay
+re-derives it exactly and why the position inside a loop is a path
+with a counter (`round2`).
+
+A `while` is `Iter` with the test IN FRONT of the body, so a zero-trip
+loop asks nothing - a test, because the obvious mis-compile runs the
+body first.
+
+THREE THINGS THIS COST, all worth keeping. The flat walk became a
+recursive body compiler, because a branch is a block compiled at the
+environment the `if` sees. The off-by-one that read `r|r` for `l|r` in
+v1 came back at an `if` whose condition asks a question, and the fix
+was to stop having two copies of the hoisting loop. And the UP-FRONT
+GUARD was the bug that hid the feature: v1 swept every statement
+before compiling anything, which refused the very shapes this stage
+compiles - the guard now runs on the straight-line pieces only.
+
+SEEN FAILING, twice: inverting the branch selector reddens three tests
+(the run asks the wrong question), and running the loop's body before
+its test reddens the zero-trip test alone.
+
+Still refused, each naming the way that works: a `for`/`foreach` over
+a collection (a lambda - write a `while`), a question in a `while`
+condition, and an `if` nested inside a larger expression. Filed as
+`proc-notation-for-loops` and `proc-notation-while-question`.
+
+docs/static-workflows.md gained a Branches section and its "what it
+does not do" list is now true.
 ## native-tokens-tested — the half of ui-text-intent that shipped on trust
 
 `ui-text-intent` gave `Kind` and `Align` to every host and tested them

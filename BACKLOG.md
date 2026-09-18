@@ -940,7 +940,11 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       quiet box. Nothing new: a module the lane could not have
       touched, on a box under no pressure, which is the tenth reading
       that the full matrix itself is the condition.
-
+      2026-09-18, okayCodecNative, same shape, GREEN on the rerun of
+      that module alone (proc-notation-branches, whose diff is a core
+      macro, its tests and prose — no Native source and no codec
+      source). ELEVENTH occurrence, hours after the tenth and on the
+      same module, again on a lane that could not have caused it.
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
       avoid the lossless road's cost, and 131cedc2 + b4172242 removed
@@ -1458,22 +1462,26 @@ test; none is promoted until its spec item is read first.
       change (applicative-do's file, landed the same day); one line,
       and a `-feature` compile of okayJVM's test scope is the check.
 
-- [ ] proc-notation-branches — `if` and loops INSIDE a `Proc.direct`
-      block (v1.1 of specs/proc-notation.md, filed 2026-09-18 when v1
-      landed). v1 refuses both BY NAME and says which node would take
-      them, because hoisting a mark out of a branch would RUN it
-      whether or not the branch is taken — a silent mis-compile is the
-      one outcome worse than a refusal. The work: compile an `if`
-      whose branches contain marks into `OnRight` (each branch
-      compiled at the SAME environment, joined by `|||`), and a
-      `while`/`for` into `Iter` (the loop-carried part of the
-      environment is the set of names the body assigns — the `Assign`
-      shape direct-loops already binds). TRIGGER: a consumer writes a
-      workflow whose branch or loop has a question in it and reaches
-      for `Proc.iter` by hand. DONE-WHEN: the `rooms` term of
-      `TestProc` — ask `nights?`, then one `room?` per night — is
-      written as a block and `walk` puts it at `round2` after two
-      rooms, exactly as the hand-built term does.
+- [ ] proc-notation-for-loops — a `for`/`foreach` over a collection
+      inside a `Proc.direct` block (filed 2026-09-18 when
+      proc-notation-branches landed `while` → `Iter`). The body is a
+      LAMBDA, which is the corner `direct`'s v1 refuses as well, so
+      both macros would need the same whitelisted-combinator treatment
+      direct-loops gave the monadic road: intercept
+      `xs.foreach(x => body)` and `xs.map(x => body)` by shape and
+      compile them to `Iter` over the remaining elements, carried on
+      the edge. TRIGGER: a consumer writes a `while` over a counter
+      where a `for` over a collection is what they meant, and says so.
+      The refusal already names `while` as the spelling that works, so
+      nobody is stuck — this is ergonomics, not capability.
+- [ ] proc-notation-while-question — a question in a `while`
+      CONDITION (filed 2026-09-18 with the loop). The test would ask
+      once per round INSIDE the loop, which `Iter` can express: the
+      condition's leaves go inside the body before the test, and the
+      environment that goes round must be rebuilt past them. Refused
+      by name meanwhile. TRIGGER: a workflow that polls — "while the
+      payment has not cleared, wait a day" — which is the shape this
+      is actually for.
 - [ ] proc-notation-liveness — a `Proc.direct` block carries EVERY
       bound name to the end of the block, as a left-nested tuple
       (filed 2026-09-18 with v1). A liveness pass would drop a name

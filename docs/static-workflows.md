@@ -123,25 +123,59 @@ Breaking the fold three ways:
 | a leaf reads an answer without consuming it | six tests, both agreement properties among them |
 | a patch eats the record after it | the old-journal pair |
 
+## Branches
+
+An `if` whose branches ask questions is part of the term, both sides
+of it:
+
+```scala
+val districted = Proc.direct[Sig, Unit, String]: _ =>
+  val city = !ask("city?")
+  if city == "Kyiv" then
+    val d = !ask("which district?")
+    s"$city/$d"
+  else s"$city/whole"
+
+districted.leaves.map(_.name)   // Vector("ask", "ask") — BOTH branches
+```
+
+`leaves` reports both because which side runs is decided by a value
+that does not exist yet; a run asks only the taken one. That
+over-approximation is the whole point — a capability list, a dry run
+and a deploy check all want the upper bound.
+
+The condition may be a question too (`if !patch("promo") then …`),
+and an `if` over values already bound is ordinary code inside an
+`Arr`, costing no node.
+
+**Top-level only**: a val's right-hand side, a statement of its own,
+or the block's answer. An `if` nested inside a larger expression is
+refused, and the message says why — it would have to hoist, and a
+hoisted mark RUNS whether or not its branch is taken.
+
 ## Loops, and the one node the literature lacks
 
 The classic objection to a static workflow is that its shape cannot
-depend on an answer:
+depend on an answer. That objection is about `Selective`, whose
+`whileS` is a recursive *definition* — an infinite term. **Elgot
+iteration is a node**, so the shape stays finite:
 
 ```scala
-val nights = !ask("nights?")
-for _ <- 1 to nights.toInt do !ask("which room?")
+val rooms = Proc.direct[Sig, Unit, List[String]]: _ =>
+  val n = !ask("nights?")
+  var got = List.empty[String]
+  while got.length < n.toInt do
+    got = got :+ !ask(s"room ${got.length + 1}?")
+  got
 ```
 
-That objection is about `Selective`, whose `whileS` is a recursive
-*definition* — an infinite term. **Elgot iteration is a node**:
+Ask how many nights, then one question per night — in a term whose
+`leaves` are two, because the body is counted once.
 
-```scala
-Proc.iter(body)   // body : X ~> Either[X, Y];  Left goes round, Right leaves
-```
-
-so the term stays finite and the position inside it is a path with a
-counter:
+**Nothing mutates.** An assignment compiles to a rebuild of the
+environment with one slot replaced, so the value that goes round the
+loop travels on the arrow's edge. That is why a replay re-derives it
+exactly, and why the position inside a loop is a path with a counter:
 
 ```scala
 Wf.Proc.walk(rooms)((), List(Right("3"), Right("a"), Right("b")))
@@ -153,14 +187,14 @@ and cannot say "run the body again".
 
 ## What it does not do, stated
 
-- **No `if` with a question inside a branch yet.** The macro refuses
-  it by name and says which node would take it (`OnRight`). An `if`
-  over values already bound, or one whose *condition* is a question,
-  is ordinary code and compiles today.
-- **No loop in the notation yet.** Write it with `Proc.iter` and
-  compose; the refusal says so.
-- **A mark under a lambda** is the same corner `direct`'s v1 refuses,
-  for the same reason.
+- **A `for` or a `foreach` over a collection** is a lambda, and a
+  question under a lambda is the corner `direct`'s v1 refuses too.
+  Write the loop as a `while` over values the block binds; the
+  refusal says exactly that.
+- **A question in a `while` condition.** The test would have to ask
+  once per round inside the loop — expressible, not wired.
+- **An `if` nested inside a larger expression**, for the hoisting
+  reason above. Bind it to a val first.
 - **The environment is not pruned.** Every bound name rides on the
   edge until the end of the block, as a left-nested tuple. A liveness
   pass would drop the dead ones; nothing has asked for it, and the

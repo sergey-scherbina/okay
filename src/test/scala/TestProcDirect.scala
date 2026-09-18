@@ -184,16 +184,21 @@ class TestProcDirect extends munit.FunSuite:
     assert(e.contains("`app`"), e)
     assert(e.contains("monad"), e)
 
-  test("a mark inside an `if` BRANCH is refused, naming the node that would take it"):
+  test("a question in a branch NESTED in a larger expression is refused"):
+    // a top-level `if` compiles to `OnRight` since
+    // proc-notation-branches — see TestProcBranches. One nested
+    // inside a bigger expression still cannot, and the reason is the
+    // one that decided the whole feature: it would have to hoist, and
+    // a hoisted mark RUNS whether or not its branch is taken.
     val e = compileErrors("""
       val bad: Wf.Proc[String, String, Unit, String] =
         Proc.direct[Sig, Unit, String] { _ =>
           val c = !ask("city?")
-          if c == "Kyiv" then !ask("which district?") else c
+          c + (if c == "Kyiv" then !ask("which district?") else c)
         }
     """)
-    assert(e.nonEmpty, "a mark in a branch compiled — it would have run either way")
-    assert(e.contains("OnRight"), e)
+    assert(e.nonEmpty, "a mark in a nested branch compiled — it would have run either way")
+    assert(e.contains("not the whole of a statement"), e)
 
   test("a mark under a lambda keeps direct's own refusal"):
     val e = compileErrors("""
