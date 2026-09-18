@@ -1,6 +1,0 @@
-feature/federation-schema-door 2026-09-18T22:22:58Z
-agent: claude-code
-heartbeat: 2026-09-18T22:22:58Z
-status: in-progress
-done-so-far: claimed; design settled — okay.codec.Digest (a wire-transmissible schema shape, since Schema itself carries closures and cannot travel) reconstructs an unsafe-but-safe SProduct/SSum shell (Compat.walk provably never calls make/parts/caseOf) and reuses Compat.compare unchanged; Req.Extent/Run/Open gain a digest field with an empty-means-not-checked default
-next: write Digest.scala + tests in okay-codec, then wire Req/Workers.scala, then a real cross-schema-version test proving the refusal fires before any read
