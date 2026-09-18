@@ -51,7 +51,7 @@ class TestStorefront extends munit.FunSuite:
       assert(body.contains("""data-pl="Przeróbki odzieży kurierem""""), body)
       assert(body.contains("""data-uk="Переробки одягу кур'єром""""), body)
       assert(body.contains(""">Przeróbki odzieży kurierem</h1>"""), s"?lang=pl must render Polish:\n$body")
-      assert(body.contains("""<a class="offer" href="/s/szykownia/offer/hem">"""), body)
+      assert(body.contains("""<a class="offer" href="/offer/hem">"""), body)
       assert(body.contains("35.00 zł") && body.contains("60.00 zł"), body)
       assert(body.contains("wycena"), "a zero price is a quote, not 0.00")
       assert(body.contains("""data-pl="Skrócenie spodni""""), body)
@@ -84,7 +84,7 @@ class TestStorefront extends munit.FunSuite:
       val (status, body) = get(site, "/it")
       assertEquals(status, 200, body)
       assert(body.contains("--accent: #3b82f6") && body.contains("--void: #05070c"), body)
-      assert(body.contains("""href="/s/it/offer/cicd""""), body)
+      assert(body.contains("""href="/offer/cicd""""), body)
       assert(body.contains("wycena"), body)
     }
   }
@@ -131,3 +131,42 @@ class TestStorefront extends munit.FunSuite:
     val r = site.handle(Request.post(url, okay.http.Body.Text(body),
       Seq(("content-type", "application/x-www-form-urlencoded"))))
     Async.run[String, Pure](Http.text(r)).runWith
+
+  test("the offer screen is a PARAMETER and its form is the Schema's: a good order is taken, a bad one comes back") {
+    withSite { site =>
+      // the page is /offer/<key>, one file
+      val (status, form) = get(site, "/offer/hem")
+      assertEquals(status, 200, form)
+      assert(form.contains("Skrócenie spodni"), form)
+      assert(form.contains("""<form method="post" action="/offer/hem">"""), form)
+      // every field the type has, and nothing else
+      for field <- Vector("need", "delivery.$case", "payment.$case", "itemValue", "name", "contact", "consent") do
+        assert(form.contains(s"""name="$field""""), s"the form has no $field:\n$form")
+      // an offer nobody sells is a 404, not an empty form
+      assertEquals(get(site, "/offer/nonesuch")._1, 404)
+
+      // a REFUSAL is what proves the checks: no consent, no order
+      val refused = post(site, "/offer/hem", Map(
+        "need" -> "wymienić zamek", "delivery.$case" -> "Post", "payment.$case" -> "Transfer",
+        "itemValue" -> "300", "name" -> "Anna", "contact" -> "anna@example.com"))
+      assert(refused.contains("bez zgody nie mogę odpowiedzieć"), refused)
+      assert(!refused.contains("Dziękuję"), "an order without consent was taken")
+      // the item's value is OPTIONAL and numeric by TYPE: left blank
+      // the order goes through, and a word where a number belongs is
+      // refused by the codec rather than by a rule of the page's
+      val blank = post(site, "/offer/hem", Map(
+        "need" -> "x", "delivery.$case" -> "Post", "payment.$case" -> "Transfer",
+        "name" -> "Anna", "contact" -> "a@b.c", "consent" -> "on"))
+      assert(blank.contains("Dziękuję"), s"a blank optional value blocked an order:\n$blank")
+      val bad = post(site, "/offer/hem", Map(
+        "need" -> "x", "delivery.$case" -> "Post", "payment.$case" -> "Transfer",
+        "itemValue" -> "dużo", "name" -> "Anna", "contact" -> "a@b.c", "consent" -> "on"))
+      assert(!bad.contains("Dziękuję"), s"a word was taken where a number belongs:\n$bad")
+
+      val taken = post(site, "/offer/hem", Map(
+        "need" -> "wymienić zamek", "delivery.$case" -> "Post", "payment.$case" -> "OnDelivery",
+        "itemValue" -> "300", "name" -> "Anna", "contact" -> "anna@example.com", "consent" -> "on"))
+      assert(taken.contains("Dziękuję"), taken)
+      assert(taken.contains("R-"), s"no reference on a taken order:\n$taken")
+    }
+  }

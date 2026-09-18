@@ -111,5 +111,33 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .fld textarea { min-height: 82px; resize: vertical; }
 .fld input:focus, .fld textarea:focus { outline: none; border-color: var(--accent); }
 .sheet .buy { width: 100%; text-align: center; }
+/* a Schema-driven form (the offer screen): `Form.of` gives labels,
+   inputs, a Select per sum and a checkbox per flag, so the theme
+   dresses THOSE rather than a hand-written shape */
+.formcard { background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  padding: 24px 20px 28px; margin: 0 0 9vh; }
+.formcard form { display: block; }
+.formcard label { display: block; margin: 0 0 15px; }
+.formcard label > span { display: block; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--mist); margin: 0 0 6px; }
+.formcard input[type=text], .formcard input:not([type]), .formcard textarea, .formcard select {
+  width: 100%; box-sizing: border-box; font-family: var(--sans); font-size: 16px;
+  background: var(--field); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; }
+.formcard select { appearance: none; -webkit-appearance: none; cursor: pointer; }
+.formcard input:focus, .formcard textarea:focus, .formcard select:focus {
+  outline: none; border-color: var(--accent); }
+.formcard label:has(input[type=checkbox]) { display: flex; gap: 9px; align-items: flex-start;
+  font-size: 13px; color: var(--mist); }
+.formcard label:has(input[type=checkbox]) > span { display: inline; text-transform: none;
+  font-family: var(--sans); font-size: 13px; letter-spacing: 0; margin: 0; }
+.formcard input[type=checkbox] { width: auto; margin-top: 3px; }
+.formcard button[type=submit] { width: 100%; font-family: var(--mono); font-size: 14px;
+  letter-spacing: .14em; text-transform: uppercase; color: #0a0d13; background: var(--accent);
+  border: 0; border-radius: 999px; padding: 16px; font-weight: 600; cursor: pointer; }
+.formcard .okay-error { color: var(--accent-text); font-size: 13px; margin: -10px 0 14px; }
+.done { text-align: center; padding: 26px 8px 8px; }
+.done .big { font-family: var(--serif); font-size: 27px; color: var(--ink); margin-bottom: 8px; }
+.done p { color: var(--mist); margin: 0; font-family: var(--mono); }
 """ + darkExtra
 ```

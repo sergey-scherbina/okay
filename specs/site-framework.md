@@ -193,6 +193,36 @@ Three things that cost something and are worth keeping:
   `okayDemoE2eBrowser` gained `okayScript % "test->test"` rather than
   a copy of the pages, because a copy drifts and then proves nothing.
 
+**The intake, typed** (2026-09-18). The arc's last caveat said the
+forms were "porting work, not missing machinery". They were, and the
+port says so with a running page: `/offer/<key>` is one PARAMETRIC
+page whose form is `Forms.html[Intake]` — need, delivery, payment,
+item value, name, contact, consent — read back by `Forms.read` with
+four cross-field `checks`. A consent that is merely present is not
+consent: the refusals are what the test asserts, because an
+acceptance would pass with the checks deleted.
+
+**What the browser taught, and the type absorbed:** a REQUIRED
+`String` field cannot be left blank. An empty text is not posted at
+all, so the decode refuses before any check runs — and a visitor
+leaving "approximate value" empty (which the original invites) was
+refused with "required" rather than asked for consent. The fix was
+the TYPE, not a rule: `itemValue: Option[Int]` says optional and
+numeric at once, and two of the page's four hand-written checks
+disappeared with it. The unit test posts directly and never saw this;
+the browser, filling the form the way a person does, did.
+
+One difference from the original is real and is recorded rather than
+hidden: **a sum renders as a Select, where the original draws radio
+pills.** That is a presentation of the same capability (choose one of
+N), and it belongs to the host rather than to the tree — a `<select>`
+cannot be made into pills by CSS. The page therefore has both roads
+and uses each for what it is good at: the hand-written sheet on the
+front page keeps the pills and the flourish, the typed offer screen
+keeps the value and the validation. Making the vocabulary say
+"this sum is pills" would be a real addition, and it is not one this
+site needs.
+
 What the slice did NOT cover, honestly: the intake and offer FORMS
 (okay-script has two roads for those already — `Forms.html`/`read`
 and the Live app — so this is porting, not building), the courier

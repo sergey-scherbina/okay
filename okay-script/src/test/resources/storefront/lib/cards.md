@@ -18,7 +18,8 @@ def serviceCard(sv: Service, slug: String): String =
   val desc =
     if sv.description.isEmpty then ""
     else "<span class=\"offer-desc\">" + esc(sv.description) + "</span>"
-  "<a class=\"offer\" href=\"/s/" + slug + "/offer/" + sv.key + "\">" +
+  // the offer screen is a PAGE -- one parametric file, /offer/<key>
+  "<a class=\"offer\" href=\"/offer/" + sv.key + "\">" +
     "<span class=\"offer-main\"><span class=\"offer-name\"" +
     i18nAttrs(sv.name, sv.name, sv.name, sv.name) + ">" + esc(sv.name) + "</span>" + desc + "</span>" +
     "<span class=\"offer-price\">" + priceShort(sv.priceCents) + "</span>" +

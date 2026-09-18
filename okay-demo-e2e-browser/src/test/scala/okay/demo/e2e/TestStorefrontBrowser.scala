@@ -120,6 +120,33 @@ class TestStorefrontBrowser extends munit.FunSuite {
     }
   }
 
+  test("the typed offer screen: the card leads to it, the form refuses without consent and takes the order with it") {
+    withSite { (port, _) =>
+      withBrowser { page =>
+        page.navigate(s"http://127.0.0.1:$port/?lang=pl")
+        page.click("a.offer[href='/offer/hem']")
+        page.waitForCondition(() => page.url().endsWith("/offer/hem"))
+        // the form is the Schema's: a Select per sum, a checkbox per flag
+        assertEquals(page.locator("select[name='delivery.$case']").count(), 1)
+        page.fill("textarea[name=need], input[name=need]", "wymienić zamek")
+        page.fill("input[name=name]", "Anna")
+        page.fill("input[name=contact]", "anna@example.com")
+        // sent WITHOUT consent: the page comes back with the reason
+        page.click("button[type=submit]")
+        page.waitForCondition(() => page.content().contains("bez zgody"))
+        assert(!page.content().contains("Dziękuję"), "an order without consent was taken")
+        // now with it
+        page.fill("textarea[name=need], input[name=need]", "wymienić zamek")
+        page.fill("input[name=name]", "Anna")
+        page.fill("input[name=contact]", "anna@example.com")
+        page.check("input[name=consent]")
+        page.click("button[type=submit]")
+        page.waitForCondition(() => page.content().contains("Dziękuję"))
+        assert(page.textContent(".done").contains("R-"), page.textContent(".done"))
+      }
+    }
+  }
+
   test("the theme is really applied: the atelier is warm, the IT line is dark, from ONE library") {
     withSite { (port, _) =>
       withBrowser { page =>
