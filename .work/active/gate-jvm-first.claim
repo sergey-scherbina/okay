@@ -1,0 +1,6 @@
+okay-wt-jvm-first 2026-09-18T13:04:48Z
+agent: claude-code
+heartbeat: 2026-09-18T13:04:48Z
+status: in-progress
+done-so-far: measured node = 72% of a full gate; operator asked for the fix, not the filing
+next: platform arg on `affected`, gate.sh runs JVM then the rest in one sbt session so a JVM red never pays for JS/Native
