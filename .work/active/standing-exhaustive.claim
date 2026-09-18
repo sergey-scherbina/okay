@@ -1,0 +1,6 @@
+feature/standing-exhaustive 2026-09-18T18:33:41Z
+agent: claude-code
+heartbeat: 2026-09-18T18:33:41Z
+status: in-progress
+done-so-far: claimed
+next: TestProcDirect matches two of three Standing cases since Par landed — master is red for everyone
