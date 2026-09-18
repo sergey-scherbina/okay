@@ -1,6 +1,0 @@
-feature/ui-path-two-walks 2026-09-18T10:37:25Z
-agent: claude-code
-heartbeat: 2026-09-18T10:37:25Z
-status: in-progress
-done-so-far: claimed
-next: measure Ui.path(p).modify vs the hand walk, then unify or record the refusal
