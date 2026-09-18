@@ -64,6 +64,38 @@ it, the client picking. The per-request road stays; a page chooses.
 storefront as okay-script pages, rendered and asserted. This stage is
 the arc's verdict: whatever it cannot express is the next stage.
 
+### Stage 4's verdict (2026-09-18, a slice)
+
+A real slice is ported and passing —
+`okay-script/src/test/resources/storefront/`, five library pages
+under `lib/` (escaping, the domain, the i18n attribute seam, money,
+the cards and the theme) and two storefronts that import them, one
+warm-and-clothing, one dark-and-technical, exactly as the two sites
+differ. TestStorefront, 3.
+
+What it proves, and the first item was the open question:
+
+- **A TYPE crosses a module boundary.** `[Service, Shop](/lib/domain.md)`
+  puts a case class and its companion in scope on the importing page,
+  which is what makes every other page ordinary Scala over a domain
+  rather than string-slinging. Without it the port would have been a
+  rewrite; with it the storefront's own shape survives.
+- **One library, two sites.** The same five modules render both,
+  parameterised by a value (`clothing`, `accent`) rather than copied
+  — the thing the 818-line single file could not do.
+- **`route: false` keeps the library off the URL space** while every
+  importer renders, and `warm()` compiles the whole tree with no
+  page broken.
+
+What the slice did NOT cover, honestly: the intake and offer FORMS
+(okay-script has two roads for those already — `Forms.html`/`read`
+and the Live app — so this is porting, not building), the courier
+flow and the RODO consent (forms again), the portfolio and product
+showcase (more cards), and the two things that are genuinely missing
+and remain staged: content edited in the app (stage 2) and the
+client-side language switch that makes the `data-*` attributes do
+something (stage 3).
+
 ## Stage 1 — modules
 
 ```
