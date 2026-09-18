@@ -1,6 +1,0 @@
-feature/terminal-record-true 2026-09-18T17:29:02Z
-agent: claude-code
-heartbeat: 2026-09-18T17:29:02Z
-status: in-progress
-done-so-far: claimed
-next: ui-terminal-v2 still describes the header defect as open — it landed; say what is actually left
