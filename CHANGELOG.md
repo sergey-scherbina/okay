@@ -1,5 +1,39 @@
 # Changelog
 
+## ui-table-weights - a table says how wide its columns are
+
+`Ui.Table` gains `weights`, `Box`'s own word for the same quantity.
+EMPTY MEANS EQUAL, which is exactly what the lowering did
+unconditionally before, so every caller, test and wire message is
+unchanged.
+
+The old behaviour was not a default a caller could override -- it was
+the only thing the node could express, and `Vector.fill(n)(1)` is
+wrong for most real tables: a case id is eight characters and an
+evidence sentence is sixty. **And no stylesheet could correct it**,
+because `React` writes a `Box`'s weights INLINE on each child and an
+inline style beats a rule. okay-watch hit both halves -- a nine-column
+list ellipsized the IBAN, the rail and the timestamp; the CSS written
+to widen its prose columns had never once applied; and the page ended
+up abandoning `Ui.Table` for a hand-lowered `Box`. A level-S node its
+caller rewrites as level L is a node failing to mean anything.
+
+A vector whose length is not the header's is IGNORED rather than
+obeyed or fatal: a tree is data that may arrive over a wire from
+anywhere, and a mis-sized table should draw evenly, not throw in a
+renderer.
+
+`docs/protocol/frontend.md` regenerated -- one line -- and
+TestProtocol's document-cannot-drift check is what caught it.
+okay-compose, the one client that CLAIMS `table`, keeps step: model,
+encoder, a decoder reading the field as absent-means-equal, and
+`Render.kt` honouring the shares (its floor of 1 is Compose's own
+rule; it rejects a zero weight, which CSS accepts). That module is a
+separate Gradle build and NOT in the sbt gate, so it is reviewed
+rather than run here.
+
+TestTableWeights 8; okay-ui JVM 128. specs/frontend.md.
+
 ## react-host-vocab - a host lowers with its own vocabulary, not with Set.empty
 
 `React.elem` claims `Ui.Link` and renders an anchor, and its catch-all
