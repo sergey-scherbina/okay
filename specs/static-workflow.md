@@ -107,17 +107,21 @@ each is a stage below:
 
 What it costs, said before any of it is built:
 
-- **Combinators, not straight-line code.** Scala 3 has no `proc`
-  notation. `arr`, `>>>`, `first`, `left`, `iter` and the optics are
-  the language until a macro desugars a `direct`-like block by
-  Paterson's translation (stage 5, gated on stages 1–4 showing that
-  people cannot live without it).
-- **The state is threaded explicitly.** What a monadic program keeps
-  in local variables, a spine carries on its edges as tuples or a
-  case class; optics are the remedy, not a cure.
+- **Combinators, not straight-line code — DESIGNED AWAY, not gated**
+  (operator, 2026-09-18, the same day). specs/proc-notation.md puts
+  the `direct` macro at an arrow: the block text of the `Wf` booking
+  compiles to a `Proc` at `Proc.direct`, the macro threads the
+  environment (Paterson 2001) in `Arr`s that are never journalled,
+  `if` is `left`, `while`/`for` is `iter`, and the one thing an arrow
+  cannot do — a leaf chosen by a bound value, which is `app` — is
+  refused by name. The three lines that stood here said the state is
+  threaded by hand and the shape is written in combinators; both are
+  the macro's job now, and what remains is the price every `direct`
+  block already pays (a mark under a lambda that is not a loop shape).
 - **Shape only through `left` and `iter`.** "Run the workflow whose
   name arrives in an answer" is a leaf whose activity does that, not
-  a spine that changes.
+  a spine that changes — and in a block that is a compile error naming
+  the line, not a silent fallback.
 - **A second way to write a workflow.** The two compose one way — a
   `Proc` is a program (`toProgram`) and can be an activity of a
   monadic one, and a monadic program can be the oracle of a leaf —
@@ -269,11 +273,10 @@ procedures composes the steps.
 
 Each of these has a TRIGGER and lands only when it fires:
 
-- [ ] `proc`-notation: a macro desugaring a `direct`-like block into
-      `Proc` by Paterson's translation (2001). TRIGGER: a consumer
-      writes a `Proc` of more than ~10 leaves by hand and says so.
-      RISK named: the `direct` macro's lambda boundary
-      (ui-direct-example) is the same wall.
+- [ ] `proc`-notation — MOVED to specs/proc-notation.md and UNGATED
+      (operator, 2026-09-18): it is stage 1's companion, not stage
+      5's option. The lambda-boundary risk it named is stated there
+      as the price that stays.
 - [ ] parallel branches: a `Par(f, g)` node whose position is a PAIR
       of paths, run as two sub-drives that join. TRIGGER: a workflow
       with two independent waits that today serialises them.
@@ -295,7 +298,7 @@ Each of these has a TRIGGER and lands only when it fires:
   this is the "enumerate the shapes" column taken one notch — the
   shapes are the constructors — and it stores exactly what the
   monadic engine stores.
-- Arrow notation in the language. A macro at most, and gated.
+- Arrow notation in the language. A macro — specs/proc-notation.md.
 
 ## Design
 
