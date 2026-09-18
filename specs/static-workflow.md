@@ -130,8 +130,19 @@ What it costs, said before any of it is built:
 
 ## Interface
 
+**AMENDED 2026-09-18 by specs/arrows-plan.md, Decision 1, before any
+of it was written.** `Proc` is over a SIGNATURE `F`, beside `Static`
+(the arrow to its applicative), and the workflow is one signature,
+`Wf.Question[Q, A, *]`, with `Wf.program` (the bridge) and `Wf.walk`
+(the structural fold) living where the journal is. The interface
+below is the workflow instantiation as first drawn; every Behavior box
+stands unchanged, read through `Wf.Proc[Q, A, X, Y] =
+Proc[Wf.Question[Q, A, *], X, Y]`. A leaf is NAMED (`Eff(name, op)`)
+because its operation value does not exist before the input does, and
+`leaves` reports names and kinds, not question values.
+
 ```scala
-// Proc.scala (core, beside Wf.scala)
+// Proc.scala (core, beside Wf.scala) — SUPERSEDED, see the amendment
 
 /** a procedure whose every step is known before it runs:
  *  questions of type Q answered by A, taking X to Y */

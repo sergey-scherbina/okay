@@ -73,6 +73,26 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- arrows-plan — ONE plan across static-workflow, proc-notation and
+  optics stage 12 (specs/arrows-plan.md, LANDED 2026-09-18). Four
+  decisions: `Proc` is over a SIGNATURE beside `Static`, the workflow
+  is the signature `Wf.Question` (static-workflow's Interface amended);
+  the arrow LAWS are their own first lane `arrow-laws` (generic suite
+  in test scope, `TestMealy`'s statements lifted out, instantiated at
+  `Mealy` only — unblocks both `static-workflow-proc` and
+  `optics-arrow-instances`, which each then add one line); the order
+  is 1 arrow-laws → 2 static-workflow-proc (stage 3's optics tests
+  folded in) → 3 proc-notation-road on the workflow side, 4
+  optics-arrow-instances and 6 optics-cont-profunctor on the optics
+  side, neither side waiting on the other after lane 1; and whether
+  `leaves`/`walk`/`render` are ONE path-indexed fold is a sentence
+  stage 1 must write (the fourth indexed-optics seat, or not).
+- arrow-laws — `okay.laws.ArrowLaws[P]` in test scope: Category,
+  Arrow (Hughes' nine, Paterson's normal form) and Choice laws,
+  parameterised by the instance and an observation `P[A, B] => A => B`;
+  `TestMealy`'s law statements move into it and pass at `Mealy`. NO
+  new instance in this lane. DONE-WHEN: the suite exists, `TestMealy`
+  instantiates it, gate green. First to claim of the plan's order.
 - proc-notation — the `direct` macro at an arrow (specs/proc-notation.md,
   stage 0 the spec LANDED 2026-09-18). WHY: static-workflow's first
   price line was "combinators, not straight-line code"; the operator
