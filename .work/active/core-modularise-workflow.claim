@@ -1,6 +1,0 @@
-feature/core-modularise-workflow 2026-09-18T20:04:12Z
-agent: claude-code
-heartbeat: 2026-09-18T20:04:12Z
-status: in-progress
-done-so-far: claimed; survey done with the full instrument — core main names Wf/Proc/ProcMacro ZERO times in code, on any platform dir; 13 test suites and okay-persist/okay-ui are the only users
-next: specs/core-modules.md stage 2 — extract okay-workflow (Wf 980, Proc 551, ProcMacro 698); TOUCHES build.sbt
