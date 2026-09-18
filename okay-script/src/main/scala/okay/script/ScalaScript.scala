@@ -278,6 +278,14 @@ object ScalaScript:
             textStartLine = i + 1
             textLines += line
             i += 1
+          // an IMPORT is not content: `[money](/lib/money.md)` on a
+          // line of its own declares a dependency and must not be
+          // printed into the page. Found by RUNNING the storefront —
+          // every test asserted what the page contains and none what
+          // it does not (specs/site-framework.md stage 1).
+          case _ if Modules.isImportLine(line) =>
+            flushText()
+            i += 1
           case _ =>
             if textLines.isEmpty then textStartLine = i + 1
             textLines += line

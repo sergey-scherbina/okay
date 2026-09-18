@@ -230,3 +230,26 @@ class TestModules extends munit.FunSuite:
       assert(body.contains("notAThing"), body)
     }
   }
+
+  test("an import line is a DEPENDENCY, not content: it never reaches the page's output") {
+    withSite(
+      "lib/money.md" -> money,
+      "index.md" ->
+        """[money, vat](/lib/money.md)
+          |
+          |# Shop
+          |
+          |price: ${money(100)}
+          |
+          |See [the price list](/prices.html) for more.
+          |""".stripMargin,
+    ) { (_, site) =>
+      val (status, body) = get(site, "/")
+      assertEquals(status, 200, body)
+      assert(!body.contains("[money, vat]"), s"the import was printed into the page:\n$body")
+      assert(!body.contains("/lib/money.md"), body)
+      // ...and an ordinary markdown link in a SENTENCE is prose, and stays
+      assert(body.contains("""See [the price list](/prices.html) for more."""), body)
+      assert(body.contains("price: 1.00 zł"), body)
+    }
+  }

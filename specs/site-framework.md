@@ -230,6 +230,10 @@ def money(cents: Long): String = ...
 - [x] a module's compile ERROR is reported against the MODULE's own
       file and line, while the importing page says which import
       failed
+- [x] an import line is a DEPENDENCY and never reaches the output,
+      while an ordinary markdown link inside a SENTENCE stays prose —
+      found by RUNNING the storefront, because every test until then
+      asserted what a page contains and none what it does not
 
 ## The arc's verdict (2026-09-18)
 

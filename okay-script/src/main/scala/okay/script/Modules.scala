@@ -60,6 +60,15 @@ object Modules:
           case _ => ()
     out.result()
 
+  /** is this whole line one import link? What `imports` recognises,
+   * asked of a single line — the renderer needs it to keep a
+   * dependency out of the page's own output */
+  def isImportLine(line: String): Boolean = line match
+    case importLine(names, _) =>
+      val ns = names.split(",").toVector.map(_.trim).filter(_.nonEmpty)
+      ns.nonEmpty && ns.forall(isName)
+    case _ => false
+
   /** a name a Scala identifier could be: a link to a heading or a URL
    * is prose, and this is what tells them apart without a parser */
   private def isName(s: String): Boolean =
