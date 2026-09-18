@@ -1,0 +1,6 @@
+feature/backlog-audit-0918 2026-09-18T20:42:15Z
+agent: claude-code
+heartbeat: 2026-09-18T20:42:15Z
+status: in-progress
+done-so-far: claimed; every board read, 82 ticked files still on the open board, 12 open entries verified stale against the files
+next: move closed entries to the archive, correct the wrong ones, write the verdict
