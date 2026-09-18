@@ -89,12 +89,111 @@ object Frame {
   def width(s: String): Int = s.replaceAll("\u001b" + "\\[[0-9;]*m", "").length
 
   /**
+   * A KEY, after the escape sequences are decoded (ui-terminal-keys).
+   * A terminal sends `ESC [ A` for an arrow and `ESC [ Z` for
+   * Shift-Tab, one BYTE at a time, so naming what arrived has to
+   * happen before a tree can be asked about it — and, like everything
+   * else in this file, it is a value so it can be tested without a
+   * tty.
+   */
+  enum Key:
+    case Ch(c: Char)
+    case Up, Down, Left, Right, BackTab, Home, End
+    /** a sequence this decoder does not name: dropped, never guessed */
+    case Unknown
+
+  /**
+   * The decoder's state between bytes. A terminal hands an escape
+   * sequence over several reads, and a host reads one byte at a time,
+   * so the state is what has been seen so far of a sequence that has
+   * not ended.
+   */
+  enum KeyState:
+    case Plain
+    case Escaped            // ESC seen
+    case Bracket            // ESC [ (or ESC O) seen
+    case Digits(ds: String) // ESC [ 1 … waiting for the final ~
+
+  /**
+   * ONE BYTE IN, the keys it completed out — usually none or one, and
+   * TWO when a lone ESC turns out not to have started a sequence (the
+   * ESC itself, then the byte that followed it). Total: an unknown
+   * final byte answers `Unknown` rather than a guess, and the state
+   * returns to `Plain` so one strange sequence cannot swallow the
+   * keys after it.
+   */
+  def feed(st: KeyState, b: Int): (KeyState, Vector[Key]) =
+    val c = b.toChar
+    st match
+      case KeyState.Plain =>
+        if b == 27 then (KeyState.Escaped, Vector.empty) else (KeyState.Plain, Vector(Key.Ch(c)))
+      case KeyState.Escaped =>
+        if c == '[' || c == 'O' then (KeyState.Bracket, Vector.empty)
+        // ESC that began nothing: the key itself, then this byte
+        else if b == 27 then (KeyState.Escaped, Vector(Key.Ch('\u001b')))
+        else (KeyState.Plain, Vector(Key.Ch('\u001b'), Key.Ch(c)))
+      case KeyState.Bracket =>
+        if c.isDigit then (KeyState.Digits(c.toString), Vector.empty)
+        else (KeyState.Plain, Vector(named(c)))
+      case KeyState.Digits(ds) =>
+        if c.isDigit then (KeyState.Digits(ds + c), Vector.empty)
+        else if c == '~' then (KeyState.Plain, Vector(tilde(ds)))
+        else (KeyState.Plain, Vector(named(c)))
+
+  private def named(c: Char): Key = c match
+    case 'A' => Key.Up
+    case 'B' => Key.Down
+    case 'C' => Key.Right
+    case 'D' => Key.Left
+    case 'Z' => Key.BackTab
+    case 'H' => Key.Home
+    case 'F' => Key.End
+    case _ => Key.Unknown
+
+  /** the numbered forms: `ESC [ 1 ~` is Home on some terminals, `4 ~`
+   * End, `7 ~`/`8 ~` on others */
+  private def tilde(ds: String): Key = ds match
+    case "1" | "7" => Key.Home
+    case "4" | "8" => Key.End
+    case _ => Key.Unknown
+
+  /**
    * One raw key against the tree, at a focus: the next focus and what
    * the key MEANT — Tab moves, Enter presses or toggles, characters
    * edit, angle brackets choose. Interpretation is the host's job
    * precisely so the tree can stay a value.
    */
   def interpret(ui: Ui, focus: Int, ch: Char): (Int, Option[Event]) =
+    interpret(ui, focus, Key.Ch(ch))
+
+  /**
+   * The same, at a decoded key. WHAT THE ARROWS DO, and why this way:
+   * Up/Down and Tab/Shift-Tab move the FOCUS, Home/End jump to the
+   * ends of the tab order, and Left/Right choose within a `Select`
+   * exactly as `<`/`>` already did. Left/Right do nothing in an
+   * `Input` ON PURPOSE — that is where a caret goes when this host
+   * gains one, and taking the keys now would have to be taken back.
+   */
+  def interpret(ui: Ui, focus: Int, key: Key): (Int, Option[Event]) =
+    val order = Ui.focusable(ui)
+    def focused = order.lift(focus)
+    val n = math.max(order.length, 1)
+    def move(d: Int) = (((focus + d) % n) + n) % n
+    key match
+      case Key.Ch(ch) => interpretChar(ui, focus, ch)
+      case Key.Down => (move(1), None)
+      case Key.Up | Key.BackTab => (move(-1), None)
+      case Key.Home => (0, None)
+      case Key.End => (math.max(order.length - 1, 0), None)
+      case Key.Right => focused match
+        case Some(Ui.Select(o, i, k)) if i + 1 < o.length => (focus, Some(Event.Chosen(k, i + 1)))
+        case _ => (focus, None)
+      case Key.Left => focused match
+        case Some(Ui.Select(_, i, k)) if i > 0 => (focus, Some(Event.Chosen(k, i - 1)))
+        case _ => (focus, None)
+      case Key.Unknown => (focus, None)
+
+  private def interpretChar(ui: Ui, focus: Int, ch: Char): (Int, Option[Event]) =
     val order = Ui.focusable(ui)
     def focused = order.lift(focus)
     ch match

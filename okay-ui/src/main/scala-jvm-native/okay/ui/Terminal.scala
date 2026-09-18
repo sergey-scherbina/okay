@@ -30,6 +30,13 @@ object Terminal {
       paint()
     }
 
+    // an arrow arrives as `ESC [ A`, one byte per read, so the bytes
+    // are decoded into KEYS before the tree is asked about them
+    // (ui-terminal-keys). The decoder is pure and lives in `Frame`;
+    // what is here is the one thing that cannot be a value: the state
+    // BETWEEN two reads.
+    @volatile private var keyState: Frame.KeyState = Frame.KeyState.Plain
+
     def events: Source[Event] =
       def go: Source[Event] =
         effect[Writer % Event + Async, Int](Async.Run(() => System.in.read()))
@@ -38,16 +45,24 @@ object Terminal {
             else if b == 3 || b == 17 then           // Ctrl-C, Ctrl-Q
               effect[Writer % Event + Async, Unit](Writer(Event.Closed))
             else
-              val (nf, ev) = Frame.interpret(tree, focus, b.toChar)
-              val moved = nf != focus
-              focus = nf
-              val emit: Unit ! (Writer % Event + Async) = ev match
-                case Some(e) => effect[Writer % Event + Async, Unit](Writer(e))
-                case None =>
-                  // a focus move re-renders the SAME tree, which the
-                  // loop would skip — so the host repaints itself
-                  if moved then effect[Writer % Event + Async, Unit](Async.Run(() => paint()))
-                  else pure(())
+              val (st, keys) = Frame.feed(keyState, b)
+              keyState = st
+              // one byte can complete no key (mid-sequence) or two (a
+              // lone ESC and the byte after it), so this folds
+              val emit = keys.foldLeft(pure(()): Unit ! (Writer % Event + Async)) { (acc, key) =>
+                acc.flatMap { _ =>
+                  val (nf, ev) = Frame.interpret(tree, focus, key)
+                  val moved = nf != focus
+                  focus = nf
+                  ev match
+                    case Some(e) => effect[Writer % Event + Async, Unit](Writer(e))
+                    case None =>
+                      // a focus move re-renders the SAME tree, which the
+                      // loop would skip — so the host repaints itself
+                      if moved then effect[Writer % Event + Async, Unit](Async.Run(() => paint()))
+                      else pure(())
+                }
+              }
               emit.flatMap(_ => go)
           }
       go

@@ -1994,18 +1994,20 @@ one that type-checked, which is a shape worth removing.
       Netty backends (Jetty has it); unblocks MCP push there
 
 ## okay-ui
-- [ ] ui-terminal-v2 — the terminal host is v1's minimum and nothing
-      has asked for more: `Frame.interpret` moves focus with Tab only
-      (no Shift-Tab, no arrows — escape sequences are not read), an
-      `Input` edits by append and backspace (no cursor), `Scroll`
+- [ ] ui-terminal-v2 — what is LEFT of v1's minimum after
+      ui-terminal-keys (2026-09-18) read the escape sequences: an
+      `Input` edits by append and backspace with no CURSOR, `Scroll`
       renders its child whole and scrolls nothing, `Resized` is an
-      event no host consumes, mouse none. Fine for a demo and for
-      okay-watch's `--tty` host test, not for a reader. Found by the
-      ui-product audit (2026-09-18, specs/ui-product.md "Out of
-      scope"). TRIGGER: a product that runs on the terminal host for a
-      person, not a test — the first such page will say which of the
-      five it needs, and it is one lane per need, not one lane for
-      the list.
+      event no host consumes (so a row divides its NATURAL width by
+      weight, never the screen's), and there is no mouse. Each is a
+      lane of its own and each needs a decision the tree is part of:
+      a caret is host state but Left/Right are reserved for it
+      already; a scrolling viewport and a width-aware layout both mean
+      `Frame.render` takes a size, which is the one change that would
+      touch every terminal test. TRIGGER unchanged: a product that
+      runs on the terminal host for a PERSON, not a test — it will say
+      which of the four it needs, and the keys lane is the pattern
+      (one gap, one lane, all of it values).
 - [ ] ui-native-hosts-unread — Swing, GTK, Compose, SwiftUI and the
       Android APK have each drawn the conformance script and a
       counter; none has drawn a product page. NARROWED 2026-09-18

@@ -1,5 +1,41 @@
 # Changelog
 
+## ui-terminal-keys — the arrows, Shift-Tab and Home/End, decoded as a value
+
+The terminal moved focus with Tab and nothing else, because escape
+sequences were never read: a terminal sends `ESC [ A` for an arrow and
+`ESC [ Z` for Shift-Tab, one BYTE per read, and `Frame.interpret` took
+a single `Char`. So naming what arrived had to come first.
+
+`Frame.Key` and `Frame.feed` are that, and they are VALUES like
+everything else in this file: a byte in, the keys it completed out —
+usually none or one, and TWO when a lone ESC turns out not to have
+started a sequence (the ESC itself, then the byte after it). The state
+between two reads is the only thing the host keeps, because it is the
+only thing that cannot be a value.
+
+WHAT THE KEYS DO, and the one deliberate abstention. Up/Down and
+Tab/Shift-Tab move the focus and wrap; Home/End jump to the ends of
+the tab order; Left/Right choose within a `Select`, exactly as `<`/`>`
+already did. **Left/Right do nothing inside an `Input` on purpose** —
+that is where a caret goes when this host gains one, and taking those
+keys now would have to be taken back.
+
+Total by construction: an unnamed final byte answers `Key.Unknown`
+rather than a guess, and the state returns to `Plain`, so one strange
+sequence cannot swallow the keys after it — asserted, along with the
+sequences other terminals send (`ESC O A`, `ESC [ 1 ~`).
+
+`interpret(ui, focus, ch: Char)` stays and delegates, so every caller
+and every existing test is untouched: the char road is the key road at
+`Key.Ch`, and a test asserts the two agree.
+
+TestTerminalKeys (7). BACKLOG's `ui-terminal-v2` is narrowed to what
+is actually left — a caret, a scrolling viewport, a width-aware layout
+and the mouse — with the note that the last two both mean
+`Frame.render` takes a size, which is the change that would touch
+every terminal test and wants a consumer first.
+
 ## proc-notation-branches - an `if` is `OnRight`, a `while` is `Iter`
 
 v1.1 of specs/proc-notation.md, the two shapes v1 refused by name.
