@@ -1,6 +1,0 @@
-feature/source-log-closed 2026-09-18T19:06:59Z
-agent: claude-code
-heartbeat: 2026-09-18T19:06:59Z
-status: in-progress
-done-so-far: claimed
-next: dataflow-source-log is built; close it with evidence and write the rule the four stale records imply
