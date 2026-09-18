@@ -1,0 +1,6 @@
+feature/livejs-from-scala 2026-09-18T15:45:51Z
+agent: claude-code
+heartbeat: 2026-09-18T15:45:51Z
+status: not-started
+done-so-far:
+next: the whole browser client as a Js program, with TestLiveJsDom as the net
