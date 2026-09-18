@@ -110,9 +110,29 @@ object Affected extends AutoPlugin {
     }
   }
 
-  lazy val affected: Command = Command.args("affected", "<git-ref> [task]") { (state, args) =>
+  /**
+   * The platform filter, shared by `affected` and `family` — one
+   * spelling of "what counts as JVM", because two would drift and
+   * the JVM arm is the one a two-phase gate leans on.
+   *
+   * A project with no platform suffix (okay-script, okay-demo, the
+   * jdbc bridges) counts as JVM: it is JVM-only by construction, and
+   * leaving it out of the first phase would mean a lane that touches
+   * it learns nothing until the expensive phase runs.
+   */
+  private def onPlatform(id: String, platform: String): Boolean = platform match {
+    case "all" => true
+    case "jvm" => id.endsWith("JVM") || !(id.endsWith("JS") || id.endsWith("Native"))
+    case "js" => id.endsWith("JS")
+    case "native" => id.endsWith("Native")
+    case "rest" => id.endsWith("JS") || id.endsWith("Native")
+    case _ => true
+  }
+
+  lazy val affected: Command = Command.args("affected", "<git-ref> [task] [jvm|js|native|rest|all]") { (state, args) =>
     val base = args.headOption.getOrElse("origin/master")
     val task = args.drop(1).headOption.getOrElse("test")
+    val platform = args.drop(2).headOption.getOrElse("all").toLowerCase
     val g = new Graph(state)
     changedSince(base, g.root) match {
       case Left(why) =>
@@ -123,7 +143,8 @@ object Affected extends AutoPlugin {
         val direct: Set[ProjectRef] =
           if (buildChanged) g.gate
           else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
-        val all = g.closeOverDependents(direct) intersect g.gate
+        val all = (g.closeOverDependents(direct) intersect g.gate)
+          .filter(r => onPlatform(r.project, platform))
         val outside = changed.filterNot(f => g.refs.exists(r => g.dirs(r).exists(d => under(f, d))))
         state.log.info(s"affected: ${changed.size} file(s) changed since $base" +
           (if (buildChanged) " — the BUILD changed, so every project is" else
@@ -137,16 +158,9 @@ object Affected extends AutoPlugin {
     val platform = args.headOption.getOrElse("all").toLowerCase
     val task = args.drop(1).headOption.getOrElse("test")
     val g = new Graph(state)
-    val chosen = g.gate.filter { r =>
-      val id = r.project
-      platform match {
-        case "all" => true
-        case "jvm" => id.endsWith("JVM") || !(id.endsWith("JS") || id.endsWith("Native"))
-        case "js" => id.endsWith("JS")
-        case "native" => id.endsWith("Native")
-        case other => state.log.error(s"family: '$other' is not a platform (jvm, js, native, all)"); false
-      }
-    }
+    if (!Set("all", "jvm", "js", "native", "rest")(platform))
+      state.log.error(s"family: '$platform' is not a platform (jvm, js, native, rest, all)")
+    val chosen = g.gate.filter(r => onPlatform(r.project, platform))
     g.run(state, chosen, task)
   }
 }

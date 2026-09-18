@@ -150,11 +150,15 @@ stall_evidence() {
 
 # run sbt with the watchdog watching its log. Sets nothing global but
 # the exit status it returns.
+# sbt_run <log> <sbt-command>...  — several commands run IN SEQUENCE
+# inside ONE sbt, and sbt stops at the first that fails, which is what
+# makes the JVM-first split below cost nothing when it is green
 sbt_run() {
-  local c="$1" l="$2" pid quiet base now mt last
+  local l="$1" pid quiet base now mt last
+  shift
   : > "$l"
   # shellcheck disable=SC2086
-  $GATE_SBT "$c" > "$l" 2>&1 &
+  $GATE_SBT "$@" > "$l" 2>&1 &
   pid=$!
   last=$(mtime_of "$l")
   quiet=0
@@ -203,8 +207,39 @@ if [ -n "$replay" ]; then
 else
   cmd="${1:-test}"
   log="${GATE_LOG:-$(mktemp -t okay-gate)}"
-  echo "gate: sbt $cmd  (log: $log)"
-  sbt_run "$cmd" "$log"
+
+  # JVM FIRST, AND THE OTHER PLATFORMS ONLY IF IT IS GREEN
+  # (gate-jvm-first, 2026-09-18). MEASURED: sampling one full gate's
+  # own descendants every 4 s, `node` is 684 of 944 samples — 72% of
+  # a matrix is Scala.js runners, and the Native binaries are most of
+  # the rest. The JVM arm is where a logic error shows; JS and Native
+  # mostly re-check that the same suites compile and run there.
+  #
+  # sbt runs the commands it is given IN SEQUENCE and stops at the
+  # first that fails, so a red JVM never pays for the other two. One
+  # sbt, one JVM start, one log — the phases are two commands inside
+  # it, not two invocations.
+  #
+  # ONLY for the `affected <ref>` form, which is what AGENTS.md tells
+  # every lane to run. Anything else (`test`, an explicit task, a
+  # `family` call) is passed through untouched: this is a faster road
+  # to the same verdict, not a new meaning for the argument.
+  phase2=""
+  case "$cmd" in
+    "affected "*)
+      ref="${cmd#affected }"
+      case "$ref" in
+        *" "*) : ;;                      # a task or platform was given: the caller means it
+        *) cmd="affected $ref test jvm"; phase2="affected $ref test rest" ;;
+      esac ;;
+  esac
+  if [ -n "$phase2" ]; then
+    echo "gate: sbt \"$cmd\" \"$phase2\"  (log: $log)"
+    sbt_run "$log" "$cmd" "$phase2"
+  else
+    echo "gate: sbt $cmd  (log: $log)"
+    sbt_run "$log" "$cmd"
+  fi
   status=$?
 fi
 # ONE stripped copy, then plain greps over the FILE. Not a pipeline:

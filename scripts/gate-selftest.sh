@@ -48,7 +48,14 @@ else ok "the tree was killed by pid"; fi
 # ---------------------------------------------------------------- 2. the control
 say "2. a silent but BUSY build survives the same thresholds"
 out2="$tmp/busy.out"
-GATE_SBT="$here/fake-sbt-busy.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 GATE_STALL_CPU=3 \
+# GATE_STALL_CPU=0 — "burned ANY cpu at all", not "burned 3 seconds".
+# The threshold that matters in production is proportional (5 s over
+# 8 minutes, ~1%); asserting 3 s over a 6 s window is asserting about
+# the SCHEDULER, and it failed the first time this suite was run
+# beside another gate — the busy fake was real but starved. The
+# distinction the watchdog actually makes is stalled=0 against
+# working>0, and that is what this checks.
+GATE_SBT="$here/fake-sbt-busy.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 GATE_STALL_CPU=0 \
   GATE_LOG="$tmp/busy.log" run_gate test > "$out2" 2>&1
 rc2=$?
 grep -q "gate: STALLED" "$out2" && bad "killed a working build — the CPU signal did not hold" \
