@@ -521,8 +521,9 @@ Stage 13 — rescale at an epoch boundary (TestRescale):
       journalling them — and `MeasureWindowedSeek` already priced the
       two: 16 KB once per resume against 3.3 KB every epoch for ever.
       What it takes is in the Design section under "A re-cut cannot
-      discard by the local watermark", because the obvious version of
-      it is wrong in a way nothing would show.
+      discard by the local watermark" — the obvious version of it is
+      wrong in a way nothing would show, and the answer is that the
+      WORKER discards nothing and the coordinator decides.
 
 Stage 10 — the election (TestElection, TestPersisted):
 - [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`
@@ -713,31 +714,43 @@ narrows the band and does not close it: a stripe's maximum still
 trails the global one by whatever `parts` consecutive elements span in
 event time.
 
-**So the discarding must not be the worker's decision at all.** Three
-changes, and each one is exact rather than close:
+**SO THE WORKER DISCARDS NOTHING.** That is the whole answer, and it
+was reached by refuting the obvious alternative twice. Replaying "to
+the stop position and discarding what closed on the way" only moves
+the misclassification from an epoch boundary to a position one: the
+worker still has to decide which panes the coordinator already holds,
+and after a re-cut its watermark is not the one those decisions were
+made under. A worker cannot decide this. The coordinator can, because
+retirement is ITS rule and it knows the number that rule used.
 
-1. **Replay to a POSITION, not to an epoch.** `Req.Open` gains
-   `until`: read from `from`, discard everything closed on the way,
-   and only then answer. Epochs cannot do this after a re-cut —
-   `parts'` partitions consume `parts' * take` elements an epoch, so
-   the epoch that ended at the stop point under the old width ends
-   somewhere else under the new one, and no arithmetic fixes the last
-   short epoch.
-2. **The coordinator EMPTIES its open panes** (`Sink.reopen`: drop the
-   open map, keep the folded answer). It can, because the horizon rule
-   guarantees every still-open pane starts after the mark's maximum —
-   so the replay sees every element of every open pane and rebuilds
-   them IN FULL. A partial copy at the coordinator would be added to a
-   full one.
-3. **Contributions to panes already RETIRED are sifted out**
-   (`Sink.sift(w, below)`), and `below` is the stop watermark, which
-   is precisely the condition retirement used. This is the arm that
-   catches whatever the replay re-closes on its way.
+Two changes, both at the coordinator, and each exact:
 
-None of the three needs the two watermarks to agree, which is the
-property a re-cut cannot have. The test is the one stage 13 already
-uses and the only one that would catch either error: the rescaled
-answer must equal the BATCH answer, pane for pane and drop for drop.
+1. **It EMPTIES its open panes** (`Sink.reopen`: drop the open map,
+   keep the folded answer). It can, because the horizon rule
+   guarantees every still-open pane starts above the mark's maximum —
+   so a session opened at the mark sees every element of every open
+   pane and rebuilds them IN FULL. A partial copy left at the
+   coordinator would be added to a full one.
+2. **It SIFTS out contributions to panes already RETIRED**
+   (`Sink.sift(w, below)`), where `below` is the stop watermark —
+   precisely the number retirement used. Everything the replay hands
+   that is not sifted belongs to a pane the coordinator no longer has,
+   so merging it is right whatever the worker's watermark was doing.
+
+The sessions then need no new protocol at all: they open at the mark's
+re-striped position, at the stop epoch, and the ordinary epoch loop
+re-reads the prefix and hands it over like any other work.
+
+WHAT IS ASSUMED, stated because it is the one thing left: a replayed
+element must not be dropped as LATE by the new session when it belongs
+to a pane the coordinator is waiting to have rebuilt. That holds when
+the feed's out-of-orderness is within the sink's own `lateness`, which
+is what the parameter means — the re-cut reads the same global order,
+striped. A feed that violates its own declared lateness was already
+outside the windowing's contract before any of this.
+
+The test is the one stage 13 already uses, and the only one that would
+catch either error: the rescaled answer must equal the BATCH answer.
 
 ## Results
 
