@@ -1936,6 +1936,42 @@ Filed as `optic-law-rewrites` with these numbers attached, because
 the entry now has what the repository asks of one: a measured prize
 rather than an expectation.
 
+**THE CONTAINER HALF IS TAKEN — MEASURED 2026-09-18 (optic-law-rewrites).**
+`Fuse` rewrites `modify(g) . modify(f)` through ONE optic into
+`modify(f andThen g)`, and the prize is collected. Four lanes, 8
+iterations, 3 forks, 24 measurements each:
+
+| lane | ns/op |
+|---|---|
+| `fuseTwiceByLaw` — two nested `Fuse.modify`, rewritten | **1524 ± 116** |
+| `fuseTwiceHand` — the same fused by hand (the control) | 1421 ± 35 |
+| `traversalFusedByLaw` — one `modify`, extension form | 1535 ± 114 |
+| `traversalTwice` — two `modify`s, extension form | **4063 ± 142** |
+
+2.7x, and within 7% of the hand-written answer with the bars nearly
+touching. `traversalTwice` is the SAME WORK in the extension form and
+is unchanged at 4063 — which is the honest limit of this rewrite and
+the reason both pairs are in one table.
+
+**WHY THE EXTENSION FORM CANNOT HAVE IT.** `o.modify(f)(s)` parses as
+`(o.modify(f))(s)`: the macro answers a FUNCTION and the application
+happens outside it, so the outer call never receives the inner one.
+Only the form that takes the whole directly — `Fuse.modify(o)(f)(s)`
+— puts both in one macro's hands.
+
+**AND WHAT THE OUTER MACRO ACTUALLY SEES**, learned from a probe
+rather than guessed, because the first three theories were wrong. When
+the inner optic is one the planner cannot read — a traversal, which is
+exactly the case with the prize — the inner call has already emitted
+the INTERPRETATION by the time the outer runs:
+
+    o.apply[Function1](g)(using fn).apply(s0)
+
+So the rewrite matches an emitted interpretation, not a nested macro
+call. (A `report.info` probe said the outer macro never ran at all;
+writing to a file from the macro showed it running perfectly. A
+diagnostic can be swallowed, and then absence proves nothing.)
+
 ## 9c. The tax on the idiomatic lens, removed
 
 §9b said fusion already reaches hand-written for a single update. It

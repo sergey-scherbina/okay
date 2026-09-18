@@ -161,6 +161,21 @@ class OpticsBenchmark {
   @Benchmark def mapFused: Vector[Int] = vec.map(x => (x + 1) * 2)
   @Benchmark def traversalTwice: Vector[Int] = each.modify(_ * 2)(each.modify(_ + 1)(vec))
   @Benchmark def traversalFusedByLaw: Vector[Int] = each.modify(x => (x + 1) * 2)(vec)
+
+  // THE LAW REWRITE, PRICED (optic-law-rewrites, 2026-09-18). The two
+  // lanes above are the EXTENSION form: `o.modify(f)` answers a
+  // function and the application happens outside the macro, so the
+  // outer call cannot see the inner and nothing fuses there. These
+  // two are the form that takes the whole directly — where the outer
+  // macro DOES receive the inner call's emitted tree, and rewrites
+  // `modify(g) . modify(f)` into `modify(f andThen g)`.
+  //
+  // `fuseTwiceHand` is the control and must be read as one: it is the
+  // answer the rewrite is trying to reach, written out.
+  @Benchmark def fuseTwiceByLaw: Vector[Int] =
+    Fuse.modify(each)((x: Int) => x * 2)(Fuse.modify(each)((x: Int) => x + 1)(vec))
+  @Benchmark def fuseTwiceHand: Vector[Int] =
+    Fuse.modify(each)((x: Int) => (x + 1) * 2)(vec)
 }
 
 /** the model lives here, not in the class: JMH generates a subclass, and

@@ -1632,7 +1632,28 @@ test; none is promoted until its spec item is read first.
       the program-zooming section, the tutorial's "where to go next"
       links the page, and both theory indexes carry the sharper
       chapter-10 result instead of the old one-line summary.
-- [ ] optic-law-rewrites — CITED AS FILED IN TWO PLACES AND FILED IN
+- [x] optic-law-rewrites — THE CONTAINER HALF IS DONE, 2026-09-18,
+      2.7x collected and measured (`fuseTwiceByLaw` 1524 ns against
+      `traversalTwice` 4063, within 7% of the hand-written control at
+      1421; 3 forks, 24 measurements a lane). `Fuse` rewrites
+      `modify(g) . modify(f)` through one optic into
+      `modify(f andThen g)`.
+      THE SHAPE CAME FROM A PROBE: the outer macro does NOT see a
+      nested macro call, it sees the interpretation the inner already
+      emitted (`o.apply[Function1](g)(fn).apply(s0)`), because the
+      planner cannot read a traversal. Three theories died first, and
+      one probe LIED — `report.info` did not print for the outer
+      expansion while a file written from the same macro showed it
+      running.
+      WHERE IT CANNOT REACH, so nobody re-tries: the extension form.
+      `o.modify(f)(s)` is `(o.modify(f))(s)` — the application is
+      outside the macro, and `traversalTwice` stays at 4063.
+      STILL OPEN, the product half: `set . set` into one `copy` is
+      ~2.5 ns and NOTHING in bytes on the JVM (escape analysis already
+      scalar-replaces the intermediate). Native and JS have no such
+      analysis and were never measured, which is the only reason left
+      to take it. The entry as originally filed:
+- [ ] optic-law-rewrites (the product half) — CITED AS FILED IN TWO PLACES AND FILED IN
       NEITHER (found 2026-09-18 by optics-guide-page, which wanted to
       link it): docs/benchmarks.md §9b ends "Filed as
       `optic-law-rewrites` with these numbers attached" and the

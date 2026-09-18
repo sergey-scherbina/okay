@@ -303,12 +303,52 @@ object Fuse {
       // it here would be an infinite expansion
       case None => '{ $o.apply[Function1]((_: A) => $b)(using $fn)($s) }
 
+  /**
+   * TWO MODIFIES THROUGH ONE OPTIC ARE ONE MODIFY — the functor law,
+   * which the compiler is licensed to use and the JIT is not
+   * (`optic-law-rewrites`, measured in docs/benchmarks.md §9b: one
+   * pass over a 1 000-element Vector is 1570 ns / 19 672 B against
+   * two at 4006 / 38 320).
+   *
+   * WHAT IT MATCHES, and a probe is how the shape was learned rather
+   * than guessed. When the inner optic is one the planner cannot read
+   * — a traversal, which is exactly the case with the prize — the
+   * inner `Fuse.modify` emits the INTERPRETATION:
+   *
+   *     o.apply[Function1](g)(using fn).apply(s0)
+   *
+   * and the outer macro receives that as its whole. So the rewrite is
+   * a pattern match on the emitted interpretation, not on a nested
+   * macro call: by the time this runs, the inner call is gone.
+   *
+   * WHAT IT REFUSES, and each refusal is one the types force:
+   *   - a different optic. `f . g` over two optics is not a law.
+   *   - a type-changing optic. The law needs the two modifies to
+   *     compose, which needs S =:= T and A =:= B; a `Lens[S1, S2, ..]`
+   *     nested in another is not the same arrow twice.
+   * Both fall through to the ordinary path, which is what the code
+   * did before this existed.
+   */
+  private def fuseTwice[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+      o: Expr[Optic[C, S, T, A, B]], f: Expr[A => B], s: Expr[S]): Option[(Expr[A => B], Expr[S])] =
+    import q.reflect.*
+    if !(TypeRepr.of[S] =:= TypeRepr.of[T]) || !(TypeRepr.of[A] =:= TypeRepr.of[B]) then None
+    else s.asTerm match
+      case Inlined(_, _, inner) => fuseTwice(o, f, inner.asExprOf[S])
+      case Typed(inner, _) => fuseTwice(o, f, inner.asExprOf[S])
+      case Apply(Select(Apply(Apply(TypeApply(Select(optic, "apply"), _), List(g)), _), "apply"), List(s0))
+        if optic.show == o.asTerm.show =>
+        val gf = g.asExprOf[A => B]
+        Some(('{ (a: A) => $f(${ gf }(a).asInstanceOf[A]) }, s0.asExprOf[S]))
+      case _ => None
+
   @publicInBinary private[Fuse] def modifyImpl[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
       o: Expr[Optic[C, S, T, A, B]], f: Expr[A => B], s: Expr[S], fn: Expr[C[Function1]]): Expr[T] =
     import q.reflect.*
+    val (f1, s1) = fuseTwice(o, f, s).getOrElse((f, s))
     plan(o.asTerm) match
-      case Some(p) => emitModify(p, s.asTerm, f.asTerm).asExprOf[T]
-      case None => '{ $o.apply[Function1]($f)(using $fn)($s) }
+      case Some(p) => emitModify(p, s1.asTerm, f1.asTerm).asExprOf[T]
+      case None => '{ $o.apply[Function1]($f1)(using $fn)($s1) }
 
   // ---------------------------------------------------------------- fusing by default
   //
