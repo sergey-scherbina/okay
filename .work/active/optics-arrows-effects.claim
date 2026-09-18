@@ -1,0 +1,6 @@
+okay-wt-optics-arrows-effects 2026-09-18T08:26:56Z
+agent: claude-code
+heartbeat: 2026-09-18T08:26:56Z
+status: in-progress
+done-so-far: survey done (see specs/optics.md stage 12)
+next: write the spec section, BACKLOG and SPRINT entries in the worktree
