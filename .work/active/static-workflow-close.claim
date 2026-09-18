@@ -1,0 +1,6 @@
+feature/static-workflow-close 2026-09-18T13:54:39Z
+agent: claude-code
+heartbeat: 2026-09-18T13:54:39Z
+status: in-progress
+done-so-far: claimed
+next: close the static-workflow arc on the boards; tick the stale stage-5 line
