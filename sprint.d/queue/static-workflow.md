@@ -1,18 +1,22 @@
 - static-workflow — the durable spine without `ArrowApply`
-  (specs/static-workflow.md, stage 0 the spec LANDED 2026-09-18). The
-  operator's question from Appendix A's last sentence: the opacity is
-  `flatMap`'s closure, not the continuation's frames — so build a
-  workflow from everything EXCEPT the monad. WHAT: `Proc[Q, A, X, Y]`,
-  a free arrow with `Choice` and an `Iter` node (Elgot iteration — the
-  one thing the operator's list lacked, and the reason Appendix A
-  refused the static route) whose leaves are the questions `Wf`
-  already journals. `toProgram` runs it through `Dialogue.workflow`
-  UNCHANGED; `walk` folds the position with no runtime. WHY: the
-  deploy check becomes structural and pre-deploy, `Replayable` has
-  nothing left to police, fault injection over the leaves is
-  exhaustive, and two derivations of the position must agree. HOW:
-  Proc.scala beside Wf.scala; instances of `Optic.Arrow`/`Optic.Choice`
-  so every optic applies; stages 1-4 in the spec, stage 5 gated with
-  triggers. DONE-WHEN stage 1: the book's booking as a `Proc` runs on
-  the landed engine, a monadic journal is accepted by the static
-  booking, and `walk` agrees with `Wf.replay` by property.
+  (specs/static-workflow.md). STAGE 1 LANDED 2026-09-18 (30f57b4b) and
+  so did its notation (`proc-notation`: the block, branches, loops, the
+  spellings, auto-colouring) and the shared `arrow-laws` suite. What
+  the queue is for now is WHAT IS LEFT, which is stages 2-4 of the
+  spec, thirteen behaviour boxes, in this order:
+  - `static-workflow-strands` (stage 2) — the deploy check that runs
+    BEFORE a deploy (`Proc.strands(topic, term)`: which live runs would
+    this term strand, and where), and the EXHAUSTIVE cut — crash before
+    and after the append at every leaf, resume, compare with the
+    uninterrupted run, count activities per `(id, position)`. A finite
+    term makes that a property rather than a sample, which is most of
+    why the shape exists. NEXT, and the biggest of the three.
+  - `static-workflow-optics` (stage 3) — a lens and a prism applied to
+    a STEP. The instances already exist, so this is tests and an
+    example rather than machinery; it also closes the optics board's
+    `optics-prism-selective`, which waits on it.
+  - `static-workflow-render` (stage 4) — `render` draws the term as
+    Mermaid with the run's position marked. `Proc.nodes` already hands
+    every node its path, so this is a second consumer of one walk.
+  Stage 5 is gated with triggers written where it stands; do not build
+  it without one.

@@ -323,7 +323,7 @@ Stage 4a — what crosses (TestFlow):
       one with late elements
 - [x] what crosses is a SUMMARY plus the boundary panes, not the
       panes — asserted, not described
-- [ ] the worker protocol and four processes — stage 4b
+- [x] the worker protocol and four processes — stage 4b
 
 Stage 4b — across processes (TestDistributed):
 - [x] `Job[P, R]` is the registry entry: a worker is asked for a NAME
@@ -339,9 +339,16 @@ Stage 4b — across processes (TestDistributed):
       seeded its watermark from the coordinator's bounds
 - [x] a job the build does not know is an ANSWER naming what it does
       know, not a crash
-- [ ] a worker that dies mid-run — stage 5
+- [x] a worker that dies mid-run — stage 5
 
-Stage 5 — failure (TestFailure):
+Stage 5 — failure (TestFailure). THE TWO ROADMAP LINES ABOVE WERE
+TICKED ON 2026-09-18, LATE: every box of stage 4b and of stage 5 was
+already `[x]` and had been since they landed, but the one-line
+SUMMARY of each in the roadmap at the top of this file was never
+crossed off — so the spec reported its own finished work as open, and
+the sprint item repeated it ("next is stage 5") for a week. A summary
+line is a claim like any other and goes stale the same way
+(the-record-outlives-the-truth).
 - [x] a worker that throws is buried and its partition is computed on
       a survivor; the answer, the drops and the merged count do not
       move
