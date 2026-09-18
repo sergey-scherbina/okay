@@ -1,6 +1,0 @@
-okay-wt-adopted-window 2026-09-18T11:50:57Z
-agent: claude-code
-heartbeat: 2026-09-18T11:50:57Z
-status: in-progress
-done-so-far: the probe refutes AdaptiveFifo comment "has no window at all" — popManyAdoptedFirst falls through to popManyScanning when part 0 is empty, and a straggler lands there meanwhile
-next: correct the comment, write the window and the sealing candidate into the backlog entry
