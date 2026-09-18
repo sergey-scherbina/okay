@@ -1,6 +1,0 @@
-feature/federation-leak-read 2026-09-18T21:59:26Z
-agent: claude-code
-heartbeat: 2026-09-18T21:59:26Z
-status: in-progress
-done-so-far: claimed; stage 4 of specs/federation.md — a tool that prints what a job's partial Schema lets out, per key, and flags a count that can be one
-next: walk Schema.SProduct fields of a Wire's `wire` Schema, report field names/types, flag Int/Long leaves that could be counts of one (Claim 3)
