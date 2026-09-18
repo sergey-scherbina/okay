@@ -1,6 +1,0 @@
-feature/ui-column-minimum 2026-09-18T13:44:16Z
-agent: claude-code
-heartbeat: 2026-09-18T13:44:16Z
-status: in-progress
-done-so-far: claimed
-next: split measures what is in the columns — a column gets at least its longest word where the budget allows
