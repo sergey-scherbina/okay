@@ -1,6 +1,0 @@
-feature/dataflow-durable-stage 2026-09-18T20:33:53Z
-agent: claude-code
-heartbeat: 2026-09-18T20:33:53Z
-status: in-progress
-done-so-far: claimed; PROBED the hole rather than assumed it — a writer dying 3 panes into epoch 4 loses 93 of 3204 panes SILENTLY (the run reports 3204), because recover() reads `landed = max epoch in output` and a PARTIAL epoch looks complete
-next: the failing test first, then one atomic append per EPOCH so a partial batch cannot exist; state the size caveat and the marker+compaction road for outputs too big for one record
