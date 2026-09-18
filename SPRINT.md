@@ -87,42 +87,18 @@
   side, neither side waiting on the other after lane 1; and whether
   `leaves`/`walk`/`render` are ONE path-indexed fold is a sentence
   stage 1 must write (the fourth indexed-optics seat, or not).
-- ui-product — what the first product with a screenshot found
-  (specs/ui-product.md, stage 0 the spec LANDED 2026-09-18). WHY: the
-  frontend arc is closed and proven by laws and demos; okay-watch drew
-  a real page from one `Analyst.view` and in two days found four
-  things the laws could not — two fixed upstream the same day
-  (react-host-vocab, ui-table-weights), two still living in the
-  product's code and stylesheet. Four lanes, in the order they pay,
-  each with the same criterion: the product deletes its copy and the
-  page is unchanged.
-  - ui-browser-vocab — LANDED 2026-09-18. The set is `table` ALONE,
-    and the reason is mechanical: no patch path descends into a table
-    (`Ui.diff` has no case for it), so a native `<table>` costs the
-    consumers nothing, while `<li>`/`<details>`/tablist each insert
-    work into every patch consumer or every client. Each declined node
-    carries its trigger in specs/ui-product.md. `Dom.host` lowers with
-    the host's own vocabulary; `live.js`'s hello is generated from the
-    constant and guarded by a test.
-  - ui-text-intent — LANDED 2026-09-18. `Style` gains `kind` and
-    `align`, drawn by React/Html/live.js, the terminal, Swing, GTK,
-    Compose and SwiftUI. The wire DID change (the derived codec writes
-    every field), so both thin clients gained the two tokens and the
-    conformance script re-rendered; an old server's Style decodes to
-    the defaults, tested.
-  - form-blank — LANDED 2026-09-18. `Form.blank[A]`: Checks false,
-    Selects on their first option, lists an empty array, Options
-    absent. The defect was the SCRIPTLESS road (an unchanged field
-    posts nothing), which is why a plain-road page found it; the
-    failing test stays in the suite as its record. `Forms.defaults` is
-    one line now.
-  - ui-html-css — LANDED 2026-09-18. `Html.css`, served at
-    `/__okay/okay.css`; `Mobile.css` is it plus the phone's own. The
-    guard walks every class the renderer writes and fails on one with
-    no rule. Theming is six custom properties.
   LANE 1 (`arrow-laws`) LANDED 2026-09-18: 15 laws in
   `okay.laws.ArrowLaws`, `Mealy` instantiates in three lines, and its
   `right` is tested for the first time. NEXT: `static-workflow-proc`.
+- ui-product — CLOSED 2026-09-18, all four lanes landed and in
+  CHANGELOG: ui-browser-vocab (953bb58e), ui-text-intent (930f4a4f),
+  form-blank (c246fee3), ui-html-css (30edd3eb). The arc came from
+  okay-watch drawing a real page and finding, in two days, four things
+  the laws could not. What is left of it is not this repository's: each
+  stage's last box is the product deleting its copy — the `nth-child`
+  table rules, the positional type selectors, `Analyst.blank`, the
+  hand-written token map — at their next submodule bump, and
+  specs/ui-product.md holds those four criteria.
 - proc-notation — the `direct` macro at an arrow (specs/proc-notation.md,
   stage 0 the spec LANDED 2026-09-18). WHY: static-workflow's first
   price line was "combinators, not straight-line code"; the operator
