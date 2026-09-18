@@ -243,6 +243,23 @@ force, all already practiced, none previously written down:
   a conflict on the same three lines, every resolution identical.
   Lifecycle: promote backlog -> sprint -> claim -> land -> DELETE from
   sprint, WRITE the changelog entry as its own file.
+- **WHEN A LANE LANDS, CHECK THE ENTRIES IT MADE FALSE — not only its
+  own** (2026-09-18, after FOUR sightings in one day). Finishing work
+  makes NEIGHBOURING records wrong, and the agent who finished it is
+  the only one who knows: `ui-terminal-v2` still demanded a fix that
+  had landed an hour earlier; the dataflow SPRINT entry named five
+  groups of open work of which four were finished; `dataflow-source-log`
+  said FIRST about a stage another lane had built that morning under a
+  different name; `optic-law-rewrites` was cited as filed in two places
+  and filed in neither. Each was found by a reader who then had to stop
+  and audit instead of working.
+  THE CHECK IS ONE GREP, and it takes a minute: after landing, grep the
+  boards for the AREA you touched — not your slug, which is the one
+  name that is certainly current — and read every entry that names a
+  file, a type or a spec box your lane moved. An entry that asks for
+  what you just built is worse than no entry: it sends the next agent
+  looking for work that is done, and this repository has now paid that
+  four times in a day.
 
 ## Specs
 - The `spec-dev` skill
