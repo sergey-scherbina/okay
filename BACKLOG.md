@@ -1898,6 +1898,30 @@ one that type-checked, which is a shape worth removing.
       Netty backends (Jetty has it); unblocks MCP push there
 
 ## okay-ui
+- [ ] ui-terminal-v2 — the terminal host is v1's minimum and nothing
+      has asked for more: `Frame.interpret` moves focus with Tab only
+      (no Shift-Tab, no arrows — escape sequences are not read), an
+      `Input` edits by append and backspace (no cursor), `Scroll`
+      renders its child whole and scrolls nothing, `Resized` is an
+      event no host consumes, mouse none. Fine for a demo and for
+      okay-watch's `--tty` host test, not for a reader. Found by the
+      ui-product audit (2026-09-18, specs/ui-product.md "Out of
+      scope"). TRIGGER: a product that runs on the terminal host for a
+      person, not a test — the first such page will say which of the
+      five it needs, and it is one lane per need, not one lane for
+      the list.
+- [ ] ui-native-hosts-unread — Swing, GTK, Compose, SwiftUI and the
+      Android APK have each drawn the conformance script and a
+      counter; none has drawn a product page. The recorded gaps
+      (Swing: gap not drawn, weights as natural sizes; GTK: no
+      weights, multiline as a plain entry, images as labels,
+      `Gtk.window` never run with an app; Compose claims nothing;
+      the iOS app bundle and the emulator run are still `[ ]` in
+      specs/frontend.md) are honest and unranked, because nothing
+      with a reader has ranked them. okay-watch found four things in
+      two days on the browser; a native client will find its own. Not
+      a lane — a record with a TRIGGER: the first product screen on a
+      native host, which becomes that host's ui-product.
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-script

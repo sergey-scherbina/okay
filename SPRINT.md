@@ -93,6 +93,38 @@
   `TestMealy`'s law statements move into it and pass at `Mealy`. NO
   new instance in this lane. DONE-WHEN: the suite exists, `TestMealy`
   instantiates it, gate green. First to claim of the plan's order.
+- ui-product — what the first product with a screenshot found
+  (specs/ui-product.md, stage 0 the spec LANDED 2026-09-18). WHY: the
+  frontend arc is closed and proven by laws and demos; okay-watch drew
+  a real page from one `Analyst.view` and in two days found four
+  things the laws could not — two fixed upstream the same day
+  (react-host-vocab, ui-table-weights), two still living in the
+  product's code and stylesheet. Four lanes, in the order they pay,
+  each with the same criterion: the product deletes its copy and the
+  page is unchanged.
+  - ui-browser-vocab — the browser claims `table`, `items`, `tabs`,
+    `disclosure` and draws `<table>`, `<ul>`, `<details>`; ONE
+    `React.Vocabulary` read by `React.elem`, `Html` and `live.js`'s
+    hello (the two-roads test enforces it); the DOM patch consumers
+    learn the wrappers from the mirror. DONE-WHEN: the two-roads test
+    over every semantic node, the DOM law battery inside rows and
+    items, a row shuffle creating no `<tr>`.
+  - ui-text-intent — `Style` gains `Kind` (Prose/Ident/Number) and
+    `Align`; tokens, mapped per host (mono/tabular classes in the
+    browser, right-aligned columns in the terminal); two optional wire
+    fields, conformance re-rendered. DONE-WHEN: a defaulted `Style`
+    encodes byte-equal to today, `Form.of` marks numbers.
+  - form-blank — `Form.blank[A]` in okay-ui; the FAILING TEST FIRST: a
+    `Live.form` over a schema with a sum field, Select untouched,
+    decodes "choose one" today (`Live.scala:118` takes
+    `Forms.defaults`, which sets Checks only; okay-watch's
+    `Analyst.blank` sets Selects too — two doors, disagreeing).
+    DONE-WHEN: `Forms.defaults` is one line, TestForms unchanged.
+  - ui-html-css — `Html.css`, the tokens' stylesheet beside the tree
+    (custom properties for the palette; a cell wraps, never
+    ellipsizes), served by okay-script beside `live.js`; `app.css`
+    keeps only what a phone adds. DONE-WHEN: a test walks every class
+    `React.elem` writes and finds a rule for each.
 - proc-notation — the `direct` macro at an arrow (specs/proc-notation.md,
   stage 0 the spec LANDED 2026-09-18). WHY: static-workflow's first
   price line was "combinators, not straight-line code"; the operator
