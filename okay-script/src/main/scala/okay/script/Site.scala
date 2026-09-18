@@ -440,6 +440,10 @@ final class Site(
     // a `?lang=` choice is remembered by cookie for the requests after
     if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
       resp.cookie(api.Lang.Cookie, lang)
+    // where a page's content files live (specs/site-framework.md
+    // stage 2): the site's own root, and nothing above it
+    api.Content.setRoot(Some(rootAbs))
+    api.Content.clearProblems()
     api.Web.setCurrent(web)
     api.Response.setCurrent(resp)
     api.Session.setCurrent(sess)

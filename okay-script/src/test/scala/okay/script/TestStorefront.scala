@@ -97,3 +97,37 @@ class TestStorefront extends munit.FunSuite:
       assert(broken.isEmpty, broken.map((p, e) => s"$p: ${e.mkString("; ")}").mkString("\n"))
     }
   }
+
+  test("the storefront's words are CONTENT: the editor writes them and the page changes") {
+    withSite { site =>
+      // what ships
+      assert(get(site, "/?lang=pl")._2.contains("Skrócenie spodni"), get(site, "/?lang=pl")._2)
+      // the editor renders a form from the same Schema the page renders from
+      val form = get(site, "/edit")._2
+      assert(form.contains("""<form method="post" action="/edit">"""), form)
+      assert(form.contains("""name="services[0].name""""), form)
+      assert(form.contains("""value="Skrócenie spodni""""), form)
+      // ...and a post writes the content the storefront then shows
+      val saved = post(site, "/edit", Map(
+        "id" -> "site-szykownia", "slug" -> "szykownia", "title" -> "Szykownia",
+        "clothing" -> "on", "accent" -> "#123456",
+        "services[0].key" -> "hem", "services[0].name" -> "Podszycie spodni",
+        "services[0].description" -> "ekspres, 24h", "services[0].priceCents" -> "4200",
+        "services[0].siteId" -> "site-szykownia"))
+      assert(saved.contains("saved 1 services"), saved)
+      val after = get(site, "/?lang=pl")._2
+      assert(after.contains("Podszycie spodni") && after.contains("42.00 zł"), after)
+      assert(after.contains("--accent:#123456"), after)
+      assert(!after.contains("Skrócenie spodni"), "the shipped default is still showing")
+      // and a reset puts back exactly what shipped
+      assert(post(site, "/edit", Map("__reset" -> "1")).contains("reset to what shipped"))
+      assert(get(site, "/?lang=pl")._2.contains("Skrócenie spodni"), get(site, "/?lang=pl")._2)
+    }
+  }
+
+  private def post(site: Site, url: String, fields: Map[String, String]): String =
+    val body = fields.map((k, v) =>
+      s"${java.net.URLEncoder.encode(k, "UTF-8")}=${java.net.URLEncoder.encode(v, "UTF-8")}").mkString("&")
+    val r = site.handle(Request.post(url, okay.http.Body.Text(body),
+      Seq(("content-type", "application/x-www-form-urlencoded"))))
+    Async.run[String, Pure](Http.text(r)).runWith

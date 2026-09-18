@@ -56,6 +56,44 @@ file override and a baked default, plus the editor page that writes
 it. The three-layer lookup the sites use, made a seam rather than a
 convention.
 
+### Stage 2, LANDED 2026-09-18
+
+`okay.script.api.Content`: `read[A](path, default)` answers the file
+under the site root or the baked default, `write[A]` puts one there,
+`clear` takes it away so what shipped answers again, and `problem`
+says whether a file was damaged. Three properties are the design:
+
+- **The default is by-name and is not built when the file answers.**
+  A baked default is usually everything a site ships with; building
+  it per request to discard it is waste that only shows under load.
+- **A damaged file is the DEFAULT, not a 500.** An editor that writes
+  half a value must not take the site down; `problem` lets a page say
+  so without the visitor seeing an error page.
+- **The write is atomic where the filesystem allows it.** The reader
+  is the same site serving requests while the editor saves, so half a
+  file is a state not worth creating on purpose.
+
+Content cannot leave the site root, reading or writing — the router's
+rule, for the router's reason.
+
+The editor is a PAGE, not a feature: `Forms.html[Shop]` renders the
+form from the same `Schema` the storefront renders from, `Forms.read`
+reads the post back, `Content.write` stores it. The fixture has it at
+`/edit`, and the test drives the whole loop — what ships, the form,
+an edit, the storefront showing the edited words, a reset.
+
+- [x] with no file the baked default answers; with a file the default
+      is not even built
+- [x] a write round-trips through the Schema and creates its
+      directories; `clear` puts the shipped default back
+- [x] a damaged file is the default and is reported in `problem`; an
+      empty file is the same without alarm
+- [x] content cannot leave the site root, reading or writing
+- [x] outside a `Site` there is no root and every read is its default
+- [x] the loop, in the storefront: the editor's form comes from the
+      Schema, a post changes what the storefront shows, a reset
+      restores it
+
 **Stage 3 — per-element i18n (`script-i18n-inline`).** Every language
 on the element, the client picking. The per-request road stays; a
 page chooses, and the two COMPOSE.
@@ -192,6 +230,30 @@ def money(cents: Long): String = ...
 - [x] a module's compile ERROR is reported against the MODULE's own
       file and line, while the importing page says which import
       failed
+
+## The arc's verdict (2026-09-18)
+
+All four stages are landed, and the criterion the arc set itself —
+"could the two sites be built here" — is answered for what those
+sites DO: modules carry definitions and types across files, one
+library renders both storefronts parameterised by a value, every
+language rides on the element with the client picking and the server
+still rendering one, and the words are content a person edits through
+a form generated from the same Schema the page renders from.
+
+What is honestly NOT claimed: the 818-line file has more in it than
+the slice ported here — the intake and offer forms, the courier flow,
+the RODO consent, the portfolio and product showcase. Every one of
+those is a `def` over the domain or a form, which is to say more of
+what stage 1 and okay-script's existing form roads already do. They
+are porting work, not missing machinery, and until someone does that
+porting this sentence is the honest statement of where the line is.
+
+Distribution is the one piece of scalascript's own library story left
+out on purpose: `.ssclib` packages, manifests, transitive versioned
+deps. A site's own files answer composition, which is what these
+sites needed; a SECOND site wanting the first's library is when that
+stage earns itself.
 
 ## Decisions
 
