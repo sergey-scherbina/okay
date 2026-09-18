@@ -137,16 +137,4 @@ class TestAsyncCross extends munit.FunSuite {
     Async.runAsync(prog).failed.map(e => assertEquals(e.getMessage, "wire down"))
   }
 
-  test("a channel bridges sent values into an Async stream on every platform") {
-    val c = Channel[Int]()
-    assert(c.offer(1)); assert(c.offer(2)); c.close()
-    assert(!c.offer(3), "send after close must be refused on every platform")
-    val ch = summon[Stream[Channel, Async]]
-    def drain(acc: List[Int]): List[Int] ! Async =
-      ch.uncons(c).flatMap {
-        case Some((a, _)) => drain(a :: acc)
-        case None => pure(acc.reverse)
-      }
-    Async.runAsync(drain(Nil)).map(v => assertEquals(v, List(1, 2)))
-  }
 }

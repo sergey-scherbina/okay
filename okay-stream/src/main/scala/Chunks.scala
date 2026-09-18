@@ -2,10 +2,6 @@ package okay
 
 import scala.collection.immutable.ArraySeq
 
-/** a chunk: an immutable indexed batch of elements (O(1) index, no
- * copy over the generation array) */
-type Chunk[+A] = ArraySeq[A]
-
 /**
  * A chunked stream is an ordinary producer of whole batches — nothing
  * new in the stream layer, elements are polymorphic. What changes is

@@ -7,7 +7,7 @@ package okay
  * — and that a hit really is the fast path: `receiveInto` answers true
  * and nobody parks.
  */
-class TestHandoff extends munit.FunSuite:
+class TestChannelHandoff extends munit.FunSuite:
 
   test("law: an element that is ready is a HIT -- receiveInto answers true, the handoff is filled, no park") {
     val c = Channel[Int](8)

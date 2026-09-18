@@ -250,6 +250,63 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * Streams, channels and the buffers under them (core-modules stage 1,
+ * 2026-09-18). 6 136 lines that left `okay` because nothing in the
+ * control layer referred to them in code — every apparent dependency
+ * from Cont/Free/Effects/Monad/Delim was a comment. What the core
+ * kept is the two INTERFACES it is genuinely typed against:
+ * `Stream.scala` (the `uncons` typeclass, which `Writer` implements)
+ * and `Handoff.scala` (the rendezvous `Async` returns). See
+ * specs/core-modules.md.
+ *
+ * The package is still `okay`, deliberately: measured on 3.9.0
+ * before the move, one package across two artifacts resolves
+ * `import okay.*` and `import okay.given` in both directions, so no
+ * consumer's imports change and only `dependsOn` lines were added.
+ *
+ * The test layout mirrors the core's, INCLUDING the part that is
+ * easy to get wrong: js and native REPLACE `Test /
+ * unmanagedSourceDirectories` rather than adding to it, because the
+ * shared suite leans on JVM-only pieces.
+ */
+lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-stream"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-stream",
+  )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    // the same reason the core suite forks: see okay's own comment
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 /** interop with cats: instances and conversions, nothing more (P3) */
 lazy val okayCats = (project in file("okay-cats"))
   .dependsOn(okay.jvm)
@@ -1858,7 +1915,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,

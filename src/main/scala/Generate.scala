@@ -78,6 +78,15 @@ type Produce[A] = Id[A]
 /** the freer monad over Produce: a computation that emits as it goes */
 type Producer[A] = A ! Produce
 
+/** a chunk: an immutable indexed batch of elements (O(1) index, no
+ * copy over the generation array). It is an ALIAS for a standard
+ * collection, which is why it stayed in the core when the chunked
+ * machinery left for okay-stream (core-modules stage 1): `Chunks[A] =
+ * Producer[Chunk[A]]` is over there, and so is everything that fills
+ * one, but `Producer.concat` below is typed on this and five modules
+ * call it. */
+type Chunk[+A] = scala.collection.immutable.ArraySeq[A]
+
 /**
  * Emit a value as an effect operation.
  *

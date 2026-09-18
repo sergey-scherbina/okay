@@ -80,10 +80,4 @@ class TestStm extends munit.FunSuite {
     futs.foreach(f => assertEquals(scala.concurrent.Await.result(f, scala.concurrent.duration.Duration(1, "s")), true))
   }
 
-  test("the channel's cell is a TRef: a transaction can read the channel's state") {
-    val c = StmChannel[Int]()
-    assert(c.offer(1)); assert(c.offer(2))
-    val n = Stm[Async].atomically(Tx.read(c.cell).map(_.size)).runWith
-    assertEquals(n, 2)
-  }
 }
