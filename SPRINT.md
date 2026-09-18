@@ -74,15 +74,13 @@
 
 ## Queue
 - site-framework — okay-script and okay-ui to scalascript's standing
-  (specs/site-framework.md, stage 0 the spec LANDED 2026-09-18). The
-  criterion is the operator's own two sites, rendered today by busi's
-  818-line `storefront.ssc`: whatever that file does, a page here must
-  do. Four stages, gap-ordered: 1 MODULES (a page exports names, a
-  page imports them by a markdown link — today a `def` cannot cross a
-  file), 2 content as data with a file override and an editor, 3
-  per-element i18n (the sites carry every language on the element and
-  swap in the client; ours is one language per request), 4 the
-  storefront ported, which is the arc's verdict.
+  (specs/site-framework.md). CLOSED 2026-09-18, all four stages: 1
+  modules (a definition and a TYPE cross a file), 2 content (the words
+  as data, edited through a generated form), 3 i18n on the element
+  (the client picks, the server still renders one), 4 the storefront
+  ported as the verdict. What is left is porting, not machinery, and
+  the spec says so; scalascript's `.ssclib` distribution waits for a
+  second site to want the first's library.
 - validated — every error, not the first (specs/validated.md, stage 0
   the spec LANDED 2026-09-18). P13 ITEM 1 AND THE NEXT THING TO PICK:
   `Throws` is monadic and stops at the first error, an applicative

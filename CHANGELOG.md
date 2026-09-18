@@ -1,5 +1,35 @@
 # Changelog
 
+## site-framework — stage 2, content; and the arc CLOSED
+
+specs/site-framework.md. `okay.script.api.Content` holds the words a
+site shows as data a person edits: `read[A](path, default)` answers
+the file under the site root or the baked default, `write` puts one
+there atomically, `clear` restores what shipped, `problem` reports a
+damaged file — which is the DEFAULT rather than a 500, because an
+editor writing half a value must not take the site down. The default
+is by-name, so a file that answers does not pay for building it, and
+nothing may leave the site root.
+
+The editor is a PAGE, not a feature: `Forms.html[Shop]` renders from
+the same `Schema` the storefront renders from, `Forms.read` reads the
+post, `Content.write` stores it. The fixture drives the whole loop —
+what ships, the form, an edit, the storefront showing the edited
+words, a reset.
+
+**The arc is closed.** All four stages landed today: modules carry
+definitions and TYPES across files, one library renders both
+storefronts parameterised by a value, every language rides on the
+element with the client picking and the server still rendering one,
+and the words are content edited through a generated form. What is
+not claimed is written in the spec rather than implied: the rest of
+the 818-line file (intake and offer forms, courier flow, RODO,
+portfolio, showcase) is porting work over machinery that exists, and
+scalascript's `.ssclib` DISTRIBUTION story is deliberately left for
+when a second site wants the first's library.
+
+TestContent 5, TestStorefront 5, TestModules 8, TestInlineI18n 6.
+
 ## site-framework — stage 3, i18n on the element
 
 specs/site-framework.md. `okay.script.api.Inline` carries every
