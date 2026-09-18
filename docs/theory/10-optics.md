@@ -155,6 +155,20 @@ parameterised state are one picture; the prism and the parameterised
 state are one picture *plus a failure case*, and the type is where
 that shows up (`TestContProfunctor.scala`).
 
+**And the failure has a name, because it happens twice.** The same
+carrier has a writable `compose` — two typestate programs sequence,
+threading `A -> B -> C` — and no writable `id`: the identity must
+produce the program's `X` while leaving the state alone, and `X` is
+universally quantified. A category without an identity is a
+*semigroupoid*, and that is what `Zooming` is. `Choice.right` fails
+for the same reason one step along, on the case it must not run. So
+one cause — an answer belongs to whoever computed it — refuses both
+the identity and the sum, while `Strong` survives untouched, because
+`first` and `lens` never answer without running the inner program.
+Parametricity doing load-bearing work rather than decorating a proof:
+the types forbid what no cast could supply
+(`TestContSemigroupoid.scala`).
+
 The ordinary, type-preserving version is an effect *interpretation*
 rather than a handler (`State.scala:132`): every `Get` on the part is
 a `Get` on the whole read through the lens, every `Set` a read, a lens

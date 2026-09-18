@@ -938,6 +938,17 @@ Read these before proposing any of them again.
       `Strong` summon beside it as the control — a refusal is the only
       thing that can prove a refusal.
 
+      AND THE REFUSAL GENERALISES — 2026-09-18 (`cont-category`), the
+      operator asking what optics and arrows do WITH continuations.
+      `Zooming` has a writable `compose` (two typestate programs
+      sequence, threading A -> B -> C) and NO writable `id`: the
+      identity must produce the program's `X` while touching nothing,
+      and only the program makes an `X`. That is a SEMIGROUPOID, not a
+      category — and it is the same cause that refuses `Choice`, one
+      step along. One cause, two refusals; `Strong` survives because
+      `first` and `lens` never answer without running the inner
+      program. `TestContSemigroupoid` pins all three with the `Strong`
+      summon beside them as the control.
       NOT MEASURED, and therefore not claimed: `zoom` now summons a
       fieldless instance per call where it used to be a direct
       `shift`. `PState.zoom` has four callers, all of them tests, and

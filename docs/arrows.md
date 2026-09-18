@@ -142,6 +142,62 @@ in it and the walk becomes a value you can interrogate before running
 — `leaves` lists the operations it *would* perform. An optic you can
 ask what it will do, from one slot and no special code.
 
+## Continuations: where an optic turns out to be the machinery
+
+A typestate program — one that changes the TYPE of its state as it
+runs — is `Cont[X, B => R, A => R]`: it computes an `X` and takes the
+state from `A` to `B`. Read that as `P[A, B]` and it is a profunctor
+in its own state, and a `Strong` one. So this:
+
+```scala
+PState.zoom(item)(parse)   // item: Lens[Box[String], Box[Int], String, Int]
+```
+
+is not a special function. It is `l[Zooming[X, R]](m)` — an ORDINARY
+optic, run at a carrier that happens to be a continuation. The lens
+says which part of the state; the answer-type indices line up on their
+own.
+
+**And then it stops, in a way worth knowing.** Composition is
+writable: two typestate programs run in order, threading `A -> B -> C`.
+The identity is not:
+
+```scala
+// exists: hand it the answer
+def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = shift(k => a => k(x)(a))
+
+// does not: where would the X come from?
+def id[X, R, A]: Zooming[X, R][A, A] = shift(k => a => k(???)(a))
+```
+
+The identity must compute an `X` while leaving the state alone, and
+`X` is universally quantified — only the inner program can make one.
+A category without an identity is a **semigroupoid**, and that is
+exactly what this carrier is.
+
+`Choice` fails for the SAME reason one step along: on the case that is
+not there, `right` must still answer the program's `X` and has no
+program to get it from. So a prism cannot zoom a typestate program
+without changing what it answers, and the door that exists says so in
+its type — `PState.zoomCase` answers `Option[X]`.
+
+**One cause, two refusals**, and that is the interesting part rather
+than either refusal alone:
+
+| | |
+|---|---|
+| `Strong` | yes — every lens zooms a program |
+| composition | yes — programs sequence |
+| identity | **no** — needs an `X` from nowhere |
+| `Choice` | **no** — same |
+
+`Strong` survives precisely because `first` and `lens` NEVER invent an
+`X`: they always run the inner program. The moment an operation must
+answer without running anything, it becomes impossible. That is
+parametricity — the type says an answer belongs to whoever computed
+it — and no cast buys it. `TestContSemigroupoid` runs the three
+claims.
+
 ## Direct style
 
 Optics work inside a `direct` block: reads, writes, composed lenses,
