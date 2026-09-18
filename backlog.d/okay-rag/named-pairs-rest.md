@@ -8,7 +8,7 @@
 
       | where | returns | a swap gives you |
       |---|---|---|
-      | `Secrets.scheme` (okay-conf) | `(String, String)` | the scheme and the rest of the reference exchanged, so a `vault:` ref reads as a literal |
+      | `Conf.scheme` (okay-conf, `Conf.scala:35`, `private[conf]`; the entry said `Secrets.scheme`, corrected 2026-09-18) | `(String, String)` | the scheme and the rest of the reference exchanged, so a `vault:` ref reads as a literal |
       | `KafkaStore.range` (okay-kafka) | `(Long, Long)` | begin and end offsets exchanged, an empty or backwards range |
       | `Smtp.stamp` (okay-mail) | `(String, String)` | the Date header holding a Message-ID and the reverse |
       | ~~`Site.splitUrl` (okay-script)~~ | DONE 2026-09-12 | it was PUBLIC, see the correction below |

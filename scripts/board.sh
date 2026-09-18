@@ -71,6 +71,13 @@ check() {
           { echo "board: $dir/$sec/$base — name an item after its lane, kebab-case" >&2; bad=1; }
         head -1 "$f" | grep -q '^- ' ||
           { echo "board: $dir/$sec/$base — an item starts with '- '" >&2; bad=1; }
+        # THE OPEN BOARD HOLDS OPEN WORK (backlog-audit-0918, 2026-09-18):
+        # 82 ticked entries had piled up on it since the last sweep,
+        # and twelve more read as open whose work had landed. A
+        # closed entry moves to BACKLOG-ARCHIVE.md, verbatim, the day
+        # it closes — a check the same lane runs, so it cannot drift.
+        [ "$dir" = backlog.d ] && head -1 "$f" | grep -q '^- \[x\]' &&
+          { echo "board: $dir/$sec/$base is closed — move it to BACKLOG-ARCHIVE.md, verbatim" >&2; bad=1; }
       done
     done
   done

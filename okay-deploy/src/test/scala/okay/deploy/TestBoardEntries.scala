@@ -55,6 +55,17 @@ class TestBoardEntries extends munit.FunSuite:
       val first = Files.readAllLines(p).asScala.headOption.getOrElse("")
       assert(first.startsWith("- "), s"$n: an item starts with '- ', got: $first")
 
+  test("the backlog holds OPEN work — a ticked entry has moved to the archive"):
+    // the failure this catches is the one backlog-audit-0918 found
+    // 82 times over: an entry closed in place and left on the board
+    // that says "open work only", so the counts a reader takes from
+    // it are wrong and a section can read as all-open with nothing
+    // in it to do. Sprint entries are arcs and are not checked here.
+    val closed = sections(root.resolve("backlog.d")).flatMap(items).filter: p =>
+      Files.readAllLines(p).asScala.headOption.exists(_.startsWith("- [x]"))
+    assertEquals(closed.map(_.getFileName.toString), Nil,
+      "closed entries on the open board — move them to BACKLOG-ARCHIVE.md, verbatim")
+
   test("no slug is in two places at once — an item is in ONE board"):
     // the failure this catches is a promotion done by copy instead of
     // `git mv`, which leaves the same work on both boards and lets two
