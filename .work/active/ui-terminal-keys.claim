@@ -1,0 +1,6 @@
+feature/ui-terminal-keys 2026-09-18T11:05:04Z
+agent: claude-code
+heartbeat: 2026-09-18T11:05:04Z
+status: in-progress
+done-so-far: claimed
+next: the terminal reads escape sequences — arrows, Shift-Tab, Home/End — as a pure decoder in Frame
