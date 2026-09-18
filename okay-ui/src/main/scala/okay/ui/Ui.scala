@@ -556,9 +556,18 @@ object Ui {
           // wire from anywhere, and a mis-sized table should draw
           // evenly rather than throw in a renderer
           def shares(n: Int) = if weights.length == n then weights else Vector.fill(n)(1)
+          // ONE SPACE PER COLUMN BOUNDARY (ui-table-gap-and-proof): a
+          // lowered row pads each cell to its column's width and used
+          // to put nothing between them, so a terminal read
+          // `2023-11-14bread` — two values with no gap are one value
+          // to a reader. The gap belongs to the LOWERING and not to
+          // the terminal, because a table's columns are separated on
+          // every host that draws the lowering; each maps `gap` to its
+          // own unit (a character here, ~8px in GTK, nothing in Swing,
+          // which does not draw gap and says so)
           val head = Box(header.map(h => Text(h, Style(tone = Tone.Emphasis))), Dir.Horizontal,
-            weights = shares(header.length))
-          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = shares(r.length))),
+            weights = shares(header.length), gap = 1)
+          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = shares(r.length), gap = 1)),
             Dir.Vertical, key = k)
       case Tabs(labels, selected, pages, k) =>
         if vocab(Vocab.tabs) then Tabs(labels, selected, pages.map(go), k)

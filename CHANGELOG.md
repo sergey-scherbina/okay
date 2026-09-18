@@ -1,5 +1,35 @@
 # Changelog
 
+## ui-table-gap-and-proof — a column boundary is a space, and a browser really does build a table
+
+Two things left over from the table's two roads, closed together
+because they are the same node seen from each end.
+
+**ONE SPACE PER COLUMN BOUNDARY.** A lowered row pads every cell to its
+column's width and put NOTHING between them, so a terminal read
+`2023-11-14bread` — two values with no gap are one value to a reader,
+and a date that runs into the next column has stopped being a date.
+The gap belongs to the LOWERING, not to the terminal: a table's columns
+are separated on every host that draws the lowering, and each maps
+`gap` to its own unit (a character here, ~8px in GTK, nothing in Swing,
+which does not draw gap and says so). The test was watched failing on
+the unfixed lowering first, printing exactly the string the backlog
+entry had recorded from one-binary-story's page.
+
+**AND THE CLAIMED TABLE HAS REAL-BROWSER EVIDENCE NOW.**
+ui-browser-vocab proved itself on a fake document and on rendered
+strings, which is where the laws live; neither can say whether the page
+a browser actually builds is a table, because `live.js` is 240 lines of
+hand-written JavaScript that no Scala test executes and its HELLO is
+what decides whether a `Table` is ever sent. `TestTableBrowser` drives
+Chromium against a real Live page: the scriptless render is already a
+`<table>` with a `<thead>` and a `<colgroup>` (`width:90%` on the
+second column, the author's shares), the cell carries its own
+`okay-kind-ident`, and then a press over the SOCKET lands a patch
+INSIDE the table — a new row, and the first row's note rewritten.
+Live-tagged, so it runs under `integrationTest` like every other suite
+that needs something outside the JVM.
+
 ## proc-notation-road - the straight-line block, compiled to an arrow
 
 Lane 3 of specs/arrows-plan.md, stage 1 of specs/proc-notation.md.

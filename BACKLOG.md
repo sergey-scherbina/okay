@@ -2398,10 +2398,6 @@ one that type-checked, which is a shape worth removing.
       A shop wants "everything up to now": copy the active segment
       under a distinct key (it changes, so it is not incremental) or
       roll on demand before a backup. Found by one-binary-story.
-- [ ] ui-table-terminal-gap — `Frame`'s lowering of `Ui.Table` pads
-      cells to column width but puts no gap between columns
-      (`2023-11-14bread`); one space per column boundary. Found by
-      one-binary-story's page.
 - [ ] dataflow-machines — stage 12 proper. BLOCKED: needs machines
       that are not this one. Not to be pretended at.
 

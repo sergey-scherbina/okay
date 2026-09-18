@@ -156,6 +156,11 @@ Behavior:
       `Items` as the lowering's boxes — `Ui.diffing`'s `Set.empty`
       default would have lowered BOTH, which is react-host-vocab's
       defect one layer out
+- [x] a REAL browser builds it (ui-table-gap-and-proof,
+      `TestTableBrowser`, Live-tagged): the scriptless render is a
+      `<table>` with its `<colgroup>`, and a press over the socket
+      lands a patch inside it — the half a fake document cannot prove,
+      because `live.js` is JavaScript no Scala test executes
 - [x] `live.js` builds a real table and says exactly `React.Vocabulary`
       in its hello — GENERATED from the constant, not typed, and
       guarded by a test that fails when the set names a node the

@@ -65,6 +65,26 @@ class TestTableWeights extends munit.FunSuite:
         Vector.fill(3)(Vector(1, 1, 1)))
   }
 
+  /**
+   * ONE SPACE PER COLUMN BOUNDARY. A lowered row pads each cell to its
+   * column's width and used to put NOTHING between them, so a terminal
+   * read `2023-11-14bread`: two values with no gap are one value to a
+   * reader, and a date that runs into the next column has lost the
+   * only thing that made it a date. Found by one-binary-story's page.
+   */
+  test("the terminal puts a space between columns — two values with no gap are one value") {
+    val t = Table(Vector("when", "what"),
+      Vector(Vector(Text("2023-11-14"), Text("bread"))), "t")
+    val lines = Frame.render(t)
+    assert(!lines.exists(_.contains("2023-11-14bread")), lines.mkString("|"))
+    assert(lines.exists(_.contains("2023-11-14 bread")), lines.mkString("|"))
+    // the header is separated too, and the gap is the lowering's, so
+    // it is there for every host that draws the lowering
+    assertEquals(Ui.lower(t, Set.empty) match
+      case Box(rows, _, _, _, _, _) => rows.collect { case b: Box => b.gap }
+      case _ => Vector.empty, Vector(1, 1))
+  }
+
   test("a claiming client is handed the weights rather than the lowering") {
     val t = Table(header, body, "t", Vector(3, 1, 9))
     assertEquals(Ui.lower(t, Set(Vocab.table)), t)
