@@ -1,5 +1,19 @@
 # Changelog
 
+## script-import-output — an import line is not content
+
+specs/site-framework.md. Serving the storefront fixture through a
+real `okay.script.Serve` showed every import printed at the top of
+the page: to the tokenizer `[money](/lib/money.md)` on its own line
+was prose. It is a dependency, so it is skipped now — while an
+ordinary markdown link inside a SENTENCE stays prose, which the test
+pins.
+
+Worth recording for its own sake: this was found by RUNNING it, not
+by a test, because every test in the arc asserted what a page
+CONTAINS and none what it does not. A `contains` suite is blind to
+junk.
+
 ## site-framework — stage 2, content; and the arc CLOSED
 
 specs/site-framework.md. `okay.script.api.Content` holds the words a
