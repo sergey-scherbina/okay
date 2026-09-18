@@ -1,5 +1,35 @@
 # Changelog
 
+## ui-docs-refresh — the guide and the two UI specs catch up with the day
+
+Seven lanes landed against okay-ui today and the pages a reader opens
+still described the morning. What changed:
+
+- **docs/frontend-guide.md** — where a form STARTS (`Form.blank`, and
+  why the scriptless road makes it fatal rather than untidy) and what
+  its errors mean (a defaulted field is not "required"; an error inside
+  an `Option` belongs at the field's key or it renders nowhere); the
+  wire's totality restated to cover damage that PARSES (a well-formed
+  patch naming nothing is dropped, not thrown); the lowered table's one
+  space per column boundary.
+- **specs/ui.md** — the behaviour box claiming "a damaged line is
+  dropped, not a crash" was true of unparseable lines and false of a
+  well-formed patch, so the correction sits UNDER it rather than
+  replacing it; and a Decision recording that `Ui.patch`'s walk and
+  `Ui.path`'s stay two bodies, with the measurement that decided it.
+- **specs/ui-toolkit.md** — two new sections: where a form starts (the
+  three doors) and what a form believes about a value (the two defects
+  the probe found).
+- **README.md**, **docs/README.md** — the `ui` entry and the frontend
+  guide's index line name the hosts that exist and the two things a
+  tree says that it did not this morning.
+
+AND WRITING IT FOUND A DEFECT. The sentence "a form starts from
+`Form.blank`, never from an empty object" was checked before being
+published, and `Form.ask`/`askWith` did not do it. That is
+`form-ask-blank`, landed before this page could say it — which is the
+order that keeps a guide worth reading.
+
 ## form-ask-blank — the third door, counted by writing the sentence down
 
 `Form.ask` and `Form.askWith` started their loop from `{}`, so a

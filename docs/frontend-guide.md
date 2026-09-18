@@ -63,6 +63,11 @@ cannot tell the difference — `Ui.keys(node) ==
 Ui.keys(Ui.lower(node))` is a tested law. Write semantics; drop to
 `Box` where you want a non-standard look.
 
+Where a client does NOT claim `Table`, its lowering is rows of boxes
+with one space per column boundary — a gap the LOWERING carries, so a
+terminal reads `2023-11-14 bread` rather than running two values into
+one, and every host maps that space to its own unit.
+
 A browser claims `link` and `table` (`React.Vocabulary`, which
 `live.js` says in its hello and the scriptless `Html` renders by):
 an anchor is an `<a>`, and a table is a real `<table>` whose column
@@ -107,6 +112,27 @@ Scenarios — a wizard, a dialog — are PROGRAMS, not folds:
 a `Schema[A]` and answers the typed value; `Nav` is a stack of
 screens. See `specs/ui.md`.
 
+**A form starts from `Form.blank[A]`, never from an empty object.** A
+`Select` always SHOWS an option and a `Check` always shows a state, so
+the value behind them has to hold what the screen already says, or a
+submit that changed nothing decodes nothing. `Form.blank` is that
+value — every Check false, every Select on its first option (a sum's
+case knob included), every list an empty array, every `Option` absent —
+and it is DERIVED from the rendered form rather than from the Schema a
+second time, so it cannot drift from what is drawn. On the scriptless
+road this is not a nicety: an unchanged field posts nothing, so a form
+that starts from `{}` refuses a submit for a field the user can see is
+answered.
+
+Errors are data, per field: `Form.errors[A](value)` answers
+`(path, message)` pairs and the form renders each under the field its
+path names. Two rules that follow from that and are easy to get wrong
+— both were, until 2026-09-18: a field the SCHEMA defaults is not
+"required" (the decoder applies the default, so refusing it holds a
+submit the wire would accept), and an error inside a present `Option`
+belongs at the FIELD's key (`address.zip`), not at the option's, or it
+renders under nothing at all.
+
 ## 4. Over the wire: a server-driven frontend
 
 ```scala
@@ -129,6 +155,16 @@ either            Close
 else is lowered by the server before it is sent. `Wire.client(host,
 vocab)` is the Scala client over any host. Sessions are event-sourced
 (`Sessions`: journal, refold, snapshot), so a reconnect resumes.
+
+**Damage is dropped, never a crash — including damage that parses.**
+A line that is not valid `Protocol` is ignored, and so is a
+well-FORMED `Patch` whose path names nothing on the tree the client
+holds: `Ui.patch` answers the tree unchanged rather than throwing, and
+a `Reorder` that is not a permutation of the children is ignored the
+same way. A patch arrives from the network like any other input, and
+`Wire.client` applies it straight onto its kept tree, so this is the
+same rule the capability list is: what arrives cannot be trusted to
+name something real.
 
 The contract for a client in another language is RENDERED from the
 schemas — `docs/protocol/frontend.md` — with a shape language on one

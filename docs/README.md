@@ -39,7 +39,9 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   React, DOM, Swing, GTK), the server-driven wire and its rendered
   contract, the hybrid rule (no round trip per keystroke), Live pages,
   the mobile web (installable, offline) and the native thin clients
-  (Compose today; a Swift package is the road for iOS).
+  (Compose and SwiftUI). A browser draws a real `<table>`; a text says
+  what it IS (an identifier, a number) and a host sets it accordingly;
+  the token stylesheet ships with the tree.
 - **[A site out of markdown](okay-script-guide.md)** — from an empty
   directory to a running shop whose pages ARE markdown files compiled
   at runtime: routing by directory, sessions and typed forms, a live

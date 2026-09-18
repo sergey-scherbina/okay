@@ -369,9 +369,14 @@ module with its own page under docs/modules:
   protocol's reference server.
 - **ui** (`okay-ui`) — the view as a value, the loop as a fold over
   merged sources, the renderer as a seam: one application on a
-  terminal, under React, on a test host; forms derived from the same
-  `Schema` that decodes them — which is what lets an MCP server ask
-  the human (elicitation) and get a typed answer.
+  terminal, under React, on the raw DOM, in Swing or GTK, over the
+  wire to a browser or a native phone client, and on a test host;
+  forms derived from the same `Schema` that decodes them — which is
+  what lets an MCP server ask the human (elicitation) and get a typed
+  answer. A tree carries what its text IS (an identifier is read
+  against an explorer, a number is compared down a column) so each
+  host sets it in its own idiom, and a client claims the nodes it
+  draws natively — a browser draws a real table.
 - **security** (`okay-security`) — authorization once: claims as
   values, JWT over a crypto seam, policies as an algebra, protection
   as a route wrapper the type system enforces, OAuth2 client flows —
