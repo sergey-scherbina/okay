@@ -1,6 +1,0 @@
-feature/optics-field-fuse 2026-09-18T14:45:45Z
-agent: claude-code
-heartbeat: 2026-09-18T14:45:45Z
-status: in-progress
-done-so-far: claimed
-next: measure Lens.field against Lens(_.f), then teach Fuse the shape or price it on the guide page
