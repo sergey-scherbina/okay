@@ -903,19 +903,47 @@ Read these before proposing any of them again.
 
 ### What is worth learning, as experiments with a test each
 
-- [ ] **`Cont` as a `Strong & Choice` profunctor.** With
-      `P[A, B] = Cont[X, B => R, A => R]`, `Strong.first` is exactly
-      the `shift` inside `PState.zoom`, written once for the
-      interpretation instead of once per zoom; `Choice.right` is
-      NEW — a typestate program run on one case of a sum, skipped
-      when the case is absent. Success: `PState.zoom` becomes
-      `l[P](m)` and its existing tests pass unchanged; a prism zoom
-      has one test on a two-case protocol state. Refutation is
-      possible and would be recorded here: the answer-type indices
-      may not line up for `right` without a cast, and no cast goes
-      in (operator rule). No `Traversing` is claimed — `wander`
-      needs an applicative to thread the answer type through, and
-      that is a separate question.
+- [x] **`Cont` as a `Strong & Choice` profunctor** — HALF LANDED,
+      HALF REFUTED, 2026-09-18 (`optics-cont-profunctor`). `Strong`
+      exists: `PState.Zooming[X, R] = [A, B] =>> Cont[X, B => R, A =>
+      R]` with `opticZooming` (top-level, so `import okay.given` finds
+      it), and `PState.zoom` is now `l[Zooming[X, R]](m)` — one line,
+      with `TestZoom`'s six tests passing unchanged as the evidence.
+      The `lens` override is held to the derivation it replaces by a
+      test, the house rule for every override in Optic.scala. What the
+      instance BOUGHT, beyond deleting a body: an iso zooms (the
+      `dimap` road no zoom had ever used), `first` zooms a pair state
+      directly, and a COMPOSED optic zooms — none of which the
+      hand-written `shift` could do.
+
+      **`Choice` CANNOT EXIST HERE, and the reason is not the types.**
+      `right` must turn `P[A, B]` into `P[Either[C, A], Either[C, B]]`
+      — on the absent case the zoomed program must still answer the
+      inner program's `X`, and `X` is universally quantified in the
+      instance. There is no `X` to make and no continuation to take
+      one from: the only source of an `X` is the inner program, which
+      is exactly what the absent case says not to run. A parametricity
+      argument, not a compiler complaint. The prediction in this
+      spec's first draft ("the answer-type indices may not line up,
+      and no cast goes in") named the wrong mechanism — a cast would
+      not have helped either.
+
+      So the door that does exist says its price in its type:
+      `PState.zoomCase(prism)(m): Cont[Option[X], S2 => R, S1 => R]`.
+      Present case, the program runs and the answer is `Some`; absent
+      case, nothing runs (pinned by a counter, not by an assertion
+      about the state), the state passes through as the `S2` the
+      prism found, and the answer is `None`.
+      `TestContProfunctor` pins the absence of the instance with the
+      `Strong` summon beside it as the control — a refusal is the only
+      thing that can prove a refusal.
+
+      NOT MEASURED, and therefore not claimed: `zoom` now summons a
+      fieldless instance per call where it used to be a direct
+      `shift`. `PState.zoom` has four callers, all of them tests, and
+      no JMH lane covers it (`statePara` is get/set only), so there is
+      nothing here to regress and nothing measured to report. A lane
+      that gives `zoom` a production caller prices this first.
 - [ ] **A prism over `Selective`, so `Static` sees the untaken
       arm.** `Star[F].right` decides on the VALUE before anything
       enters `F` (`_.fold(c => F.pure(Left(c)), ...)`), so a static

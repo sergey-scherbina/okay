@@ -121,20 +121,39 @@ indexed by an arrow `S -> R` in a category of states
 repository (chapter 3). Put them together and the zoom writes itself:
 
 ```scala
-// State.scala:197
-inline def zoom[S1, S2, A1, A2, X, R](l: Lens[S1, S2, A1, A2])
-                                     (m: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
-  shift(k => (s1: S1) => (m / (x => (a2: A2) => k(x)(l.set(a2)(s1))))(l.get(s1)))
+// State.scala — the body, now the Strong instance's `lens`
+shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
 ```
 
 One `shift`: read the part out of the whole to start the inner
 program, put the part back to finish it. Nothing in the body chooses
-the types — `l.get` produces the `A1` the program needs, `l.set`
-consumes the `A2` it leaves and produces `S2`, and the answer-type
-indices line up. A `Box[String]` becomes a `Box[Int]` because its item
-did; asking for the old type back does not compile
-(`TestZoom.scala`). The lens and the parameterised state are two
-readings of the same arrow, and this line is where they meet.
+the types — `get` produces the `A1` the program needs, `set` consumes
+the `A2` it leaves and produces `S2`, and the answer-type indices line
+up. A `Box[String]` becomes a `Box[Int]` because its item did; asking
+for the old type back does not compile (`TestZoom.scala`). The lens
+and the parameterised state are two readings of the same arrow, and
+this line is where they meet.
+
+**And the meeting is an instance, which says how far it goes.** Read
+`P[A, B] = Cont[X, B => R, A => R]` — a program computing `X` that
+takes the state from `A` to `B` — and that shift above is exactly
+`Strong.lens` at this profunctor. `PState.zoom` is therefore
+`l[Zooming[X, R]](m)`: no body of its own, and every `Strong` optic
+zooms, including an iso (the `dimap` road) and any composition.
+
+`Choice` is a different answer, and a sharper one. `right` would have
+to run the program on one case of a sum and pass the other through —
+but on the case that is not there the zoomed program must still
+produce the inner program's `X`, and `X` is universally quantified.
+There is no `X` to make and no continuation to take one from: the
+only source of an `X` is the program the absent case says not to run.
+That is parametricity, not a limitation of Scala, and no cast would
+buy it either. So a typestate program cannot be zoomed by a prism
+without changing what it answers, and the door that exists says so in
+its type — `PState.zoomCase` answers `Option[X]`. The lens and the
+parameterised state are one picture; the prism and the parameterised
+state are one picture *plus a failure case*, and the type is where
+that shows up (`TestContProfunctor.scala`).
 
 The ordinary, type-preserving version is an effect *interpretation*
 rather than a handler (`State.scala:132`): every `Get` on the part is

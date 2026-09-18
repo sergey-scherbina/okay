@@ -185,8 +185,13 @@
   `Tables.Plan`; `optics-prism-selective` WAITS on static-workflow
   stage 3, which answers it for a term; indexed optics have three
   hand-written seats named in BACKLOG and still no second interpreter;
-  `optics-cont-profunctor` is the one experiment left with a
-  refutation road of its own.
+  `optics-cont-profunctor` LANDED 2026-09-18 — half instance, half
+  refutation: `Strong` exists and `PState.zoom` is now one line
+  through it, `Choice` cannot exist at all (parametricity: the absent
+  case has no `X` to answer with), and `PState.zoomCase` is the door
+  that prices itself in its type. Left on the optics side:
+  `optics-arrow-instances` (waits on the shared `arrow-laws` suite)
+  and the two gated items.
 - unwrap-glyph — one glyph, one meaning. ALL FOUR STAGES LANDED
   2026-09-18 (82753d21, 18a558be, 74ecac89; specs/unwrap-glyph.md
   Results). `.?` is the direct mark again; the Throws glyphs live in

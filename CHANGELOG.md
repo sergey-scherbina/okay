@@ -1,5 +1,68 @@
 # Changelog
 
+## optics-cont-profunctor - a typestate program is a profunctor in its state, and a prism cannot zoom one
+
+Half an instance and half a refutation, and the refutation is the part
+worth reading.
+
+**The instance.** `Cont[X, B => R, A => R]` computes an `X` and takes
+the state from `A` to `B`. Read as `P[A, B]` that is a `Strong`
+profunctor, and `PState.zoom` - which was a hand-written `shift` -
+is now `l[Zooming[X, R]](m)`. `TestZoom`'s six tests pass unchanged,
+which is the whole evidence for the claim. The `lens` override is
+held to the derivation it replaces by a test, as every override in
+Optic.scala is. What it bought beyond deleting a body: an iso zooms
+(the `dimap` road no zoom had ever taken), `first` zooms a pair
+state, and a composed optic zooms.
+
+The given is TOP-LEVEL, and the compiler is why: written inside
+`object PState` it resolved for `zoom` (lexically inside) and for
+nobody else, because the implicit scope of `Cont[X, B => R, A => R]`
+is `Cont`'s companion, not `PState`'s. A user zooming by hand would
+have needed an import nobody could guess. `import okay.given` finds it
+now, which is where every other optic interpretation lives.
+
+**THE REFUTATION.** `Choice` cannot exist for this carrier. `right`
+must run the program on one case of a sum and pass the other through;
+on the case that is NOT there, the zoomed program must still answer
+the inner program's `X`, and `X` is universally quantified in the
+instance. There is no `X` to make and no continuation to take one
+from - the only source of an `X` is the program that the absent case
+says not to run. That is a parametricity argument, not a compiler
+complaint, and it means the spec's own prediction was wrong in its
+mechanism: it expected the answer-type indices not to line up and
+noted that no cast would go in. A cast would not have helped.
+
+So the door that exists prices itself in its type:
+`PState.zoomCase(prism)(m)` answers `Option[X]`. Present case, the
+program runs and the answer is `Some`; absent case, NOTHING runs -
+pinned with a counter rather than an assertion about the state - the
+state passes through as the `S2` the prism found, and the answer is
+`None`.
+
+`TestContProfunctor` pins the absence of the instance with the
+`Strong` summon beside it as the control, because a test that only
+accepts things can never prove a refusal.
+
+Two records corrected on the way, both the same defect class: theory
+ch. 10 quoted `zoom`'s old body with a line number, and the chapter
+now carries the instance reading and the refutation instead.
+
+Not measured, not claimed: `zoom` summons a fieldless instance per
+call where it used to be a direct `shift`. Its four callers are all
+tests, `statePara` is get/set only, and no other lane covers it - so
+there is nothing to regress and nothing measured to report. A lane
+that gives `zoom` a production caller prices it first.
+
+Gate: affected master. The first run was RED on ONE test, and the
+verdict was a load symptom - recorded here rather than swept:
+`TestStorefront."the library answers no URL, and the site warms with
+every page compiling"` timed out at munit's default 30 s. That test
+compiles every page of the site, and the box was at load average 55
+under two sibling processes. Rerun alone at load 30 it takes 2.757 s,
+an 11x margin - not a marginal flake but an 11x-oversubscribed box.
+okay-script contains no `PState`, `Zooming` or `zoom`, so this lane's
+diff cannot reach it. Re-gated green after the load fell.
 ## gate-bound-test-fanout - one line, and the gate stops hanging
 
 The watchdog that landed beside this catches a hung gate. This stops
