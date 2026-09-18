@@ -1,0 +1,6 @@
+feature/static-workflow-walk-cost 2026-09-18T18:48:44Z
+agent: claude-code
+heartbeat: 2026-09-18T18:48:44Z
+status: in-progress
+done-so-far: claimed; found the cursor's gate cites a number about the MONADIC replay prefix, not about Proc.walk — the trigger names walk
+next: MeasureProcWalk over journals of 40..40000, min of several rounds, a count printed beside the time; then the spec says what the trigger actually is
