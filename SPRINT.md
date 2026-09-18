@@ -94,9 +94,18 @@
   a signature, `Wf.Question`/`Wf.Proc.program`/`Wf.Proc.walk`, 37 new
   tests, okay-persist unchanged. Decision 4 answered: `leaves` and
   `render` ARE one path-indexed fold (`Proc.nodes`), `walk` is not —
-  filed as BACKLOG `optics-indexed-fourth-seat`. NEXT: lane 3,
-  `proc-notation-road`, whose motivation the lane made visible (four
-  `keep` helpers in one booking).
+  filed as BACKLOG `optics-indexed-fourth-seat`.
+  LANE 3 (`proc-notation-road`) LANDED 2026-09-18: `Proc.direct`
+  compiles the straight-line block to a term (the environment threaded
+  in `Arr`s, `app` refused by name), `Direct.scala` untouched, and
+  docs/static-workflows.md is the page for the whole arc. STAGE 2 OF
+  THIS PLAN IS REFUSED FOR NOW with its evidence: the third road
+  shares twenty lines with the other two, so one IR would be two IRs
+  with one name. Follow-ups filed: `proc-notation-branches` (if/loops
+  in the notation) and `proc-notation-liveness`.
+  THE PLAN'S WORKFLOW SIDE IS DONE. What is left of the plan is the
+  optics side's own lanes (4 `optics-arrow-instances`, 6
+  `optics-cont-profunctor`), which do not wait on anything here.
 - ui-product — CLOSED 2026-09-18, all four lanes landed and in
   CHANGELOG: ui-browser-vocab (953bb58e), ui-text-intent (930f4a4f),
   form-blank (c246fee3), ui-html-css (30edd3eb). The arc came from

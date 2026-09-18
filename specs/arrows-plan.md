@@ -287,6 +287,29 @@ observe)` — three lines. The `sample` must not be an `arr`: a carrier
 whose only value is an `arr` satisfies laws a real one can break, and
 the test that says so is in the suite's own file.
 
+### Lane 3 — `proc-notation-road`, landed 2026-09-18, and stage 2 is REFUSED for now
+
+The full Results are in specs/proc-notation.md. What belongs here is
+the one decision this document deferred: **"the refactor waits for the
+duplication", and the duplication did not come.**
+
+The arrow road shares TWENTY LINES with `Direct.scala` — the mark
+symbols and `asMark`/`hasMark`. Nothing else was reusable, and the
+reason is structural rather than an accident of how it was written: a
+statement on the monadic and applicative roads NESTS A CONTINUATION,
+and a statement on the arrow road APPENDS TO AN ENVIRONMENT. An IR
+serving all three would have to model both, which is two IRs with one
+name.
+
+So stage 2 (`direct-targets`, "one front end, four back ends") is not
+built, and this is the evidence rather than a preference. It reopens
+when a FOURTH road wants the same normalisation — `Static` was named
+as the next candidate and would share the applicative road's shape,
+not the arrow's, so it is not the trigger either. The lane also cost
+`Direct.scala` nothing at all: the road is its own file, which is why
+"every existing direct test passes untouched" was true by
+construction instead of by measurement.
+
 ### Lane 2 — `static-workflow-proc`, landed 2026-09-18
 
 The full Results are in specs/static-workflow.md; what belongs to THIS

@@ -121,37 +121,42 @@ measured in Behavior rather than assumed cheap.
 
 ## Behavior
 
-### Stage 1 — the arrow road (`proc-notation-road`)
+### Stage 1 — the arrow road (`proc-notation-road`) — LANDED 2026-09-18
 
-- [ ] the five-line booking of docs/continuations/23, with `Proc.direct`
-      in place of `direct` and NO OTHER CHANGE to the text, compiles to
-      a `Proc` whose `leaves` are `[Ask, Now, Timer, Signal, Patch]`
-      in that order, and whose `toProgram` run through
-      `Dialogue.workflow` produces the SAME journal as the monadic
-      booking — pinned by comparing the two journals byte for byte
-- [ ] the same text at `direct` (monadic) and at `Proc.direct` is ONE
-      test source with two expected types, so a spelling that works at
-      one and not the other fails the build
-- [ ] "ask `nights?`, then one `room?` per night" written as a `for`
-      over `1 to nights` compiles to an `Iter`, and the position after
-      the second room is `Iter(2, …)` under `walk`
-- [ ] `if` on a pure condition over a bound name with a leaf inside a
-      branch compiles to `Left`; `leaves` reports both branches; a run
-      asks only the taken one
-- [ ] a leaf chosen by a bound name — `val f = if city == "Kyiv" then
-      askA else askB; !f(x)` — is refused with a message naming `f`,
-      `city`, the line and the rewrite (`!ask(if city == "Kyiv" then
-      qa else qb)`); the refusal is `compileErrors`-pinned
-- [ ] every existing `direct` test passes untouched and the emitted
-      tree for a monadic carrier is unchanged (bytes: the direct lanes
-      move by 0 B/op) — the first risk of touching a macro the whole
-      repository uses, stated first as applicative-do did
-- [ ] a pure `val` between two leaves emits NO node: the term for
-      `val a = !ask(q); val b = a + 1; val c = !ask(b.toString)` has
-      exactly two leaves and its `Arr`s are folded
-- [ ] liveness: a block binding ten names of which the result uses one
-      carries a one-element environment at its last leaf (asserted on
-      the term's shape, and the tuple arity measured, not assumed)
+- [x] the five-line booking of docs/continuations/23 compiles to a
+      `Proc` whose `leaves` are `[ask, now, timer, signal, patch]` in
+      that order, it SUSPENDS at the timer, and `walk` agrees about
+      where it stopped. **AMENDED**: "NO OTHER CHANGE to the text" was
+      not achievable and the reason is worth keeping — a monadic body
+      marks `w.pause(q)` (a program) and a block marks a QUESTION, so
+      the door spellings differ by one word each. What is pinned is
+      the property that phrase was standing in for: the two journals
+      are equal record for record
+- [x] one journal from both front ends, and the stronger form with it:
+      a run started monadically is carried to the end by a term over
+      the same topic (`TestWorkflowProc`, landed with lane 2)
+- [~] ONE test source for both spellings — **NOT POSSIBLE while the
+      doors differ**, see above; the journal equality is the property
+      and it is asserted. Reopen if the doors are ever unified
+- [ ] a `for` over `1 to nights` compiles to an `Iter` — **v1.1**, and
+      refused BY NAME meanwhile (the message says `Proc.iter` is the
+      node); filed as `proc-notation-branches`
+- [ ] an `if` with a leaf inside a branch compiles to `OnRight` —
+      **v1.1**, refused by name with the node named, because hoisting
+      the mark would RUN it whether or not the branch is taken; filed
+      as `proc-notation-branches`. An `if` over bound values, and one
+      whose CONDITION is a question, compile today
+- [x] a leaf chosen by a bound name is refused, `compileErrors`-pinned,
+      with `app`, the monad and the two rewrites in the message
+- [x] every existing `direct` test passes untouched — trivially and on
+      purpose: `Direct.scala` was not touched at all, the road is its
+      own file (`ProcMacro.scala`). The whole core suite (1237) is
+      green
+- [x] a pure `val` between two leaves emits NO leaf, and two `Arr`s in
+      a row fold into one at construction (`Proc.andThen`)
+- [ ] liveness — **not built**, every bound name rides to the end of
+      the block as a left-nested tuple; filed as
+      `proc-notation-liveness` with its trigger
 
 ### Stage 2 — one front end, four back ends (`direct-targets`)
 
@@ -284,4 +289,51 @@ cite each other.
 
 ## Results
 
-(none yet — stage 0 is this document, 2026-09-18)
+### Stage 1 — landed 2026-09-18 (`proc-notation-road`)
+
+`ProcMacro.scala` (a new file), `Proc.direct`, `Proc.andThen` and
+`Proc.keeping`; `TestProcDirect` (13). **`Direct.scala` was not
+touched**, which is the strongest form of the first behavior item: no
+existing emission can have moved.
+
+**THE TRANSLATION IS THE ENVIRONMENT, and nothing else.** What a
+monadic body keeps in its closure, an arrow carries on its edge, so
+the whole macro is: a left-nested tuple that starts as the block's
+input and grows by one at every bound name; a reference becomes a
+projection into it; a leaf becomes `Proc.keeping`; a run of pure
+statements becomes one `Arr`. Two `Arr`s in a row fold at
+construction, so a compiled block's nodes are its leaves and the
+plumbing between them — and a hand-written term gets the same fold.
+
+**THE BUG THE TESTS FOUND, and it is the one this encoding is prone
+to.** A statement with TWO marks read the second answer twice — `r|r`
+where `l|r` was meant. The residual expression was rewritten against
+the depth AFTER its leaves, so the k-th mark projected one place too
+high for each mark before it. The fix is that `emitLeaves` returns the
+depth it STARTED at; the failure is the reason the test asks for
+`"l|r"` rather than just asserting the questions were asked.
+
+**THE REFUSAL TESTS FOUND A SECOND BUG BEFORE THEY COULD PIN
+ANYTHING.** Inside `compileErrors` the macro answered "takes a lambda"
+— because an inline argument arrives there wrapped in `Inlined` nodes
+carrying `$proxy` bindings, and the lambda pattern only looked through
+`Inlined(_, Nil, _)`. That is the same shape Direct.scala records for
+`asMark`, met from the other side. `compileErrors` is a harsher
+environment than an ordinary call site, and a refusal test is
+therefore worth writing even when the refusal already works by hand.
+
+**THE LEAF TAKES THE AUTHOR'S NAME.** `nameOf` reads the callee at the
+root of the marked expression, so a block calling `patch("promo")`
+gives a leaf named `patch` and not `Patched` — a term reads in the
+vocabulary of the program rather than of the library. Found by a test
+that expected the case's name and was wrong.
+
+**WHAT IT SHARES WITH `Direct.scala`: twenty lines.** The mark symbols
+and `asMark`/`hasMark`, and nothing else — no ANF machinery, no loop
+whitelist, no lambda rule was reusable, because the arrow road's
+"statement" is a different thing (it appends to an environment rather
+than nesting a continuation). **That is the datum stage 2 was waiting
+for, and it says stage 2 is NOT earned**: one IR serving three
+translations would have to model the environment for one road and the
+continuation for the other two, which is two IRs with a shared name.
+The line stands until a fourth road wants the same normalisation.

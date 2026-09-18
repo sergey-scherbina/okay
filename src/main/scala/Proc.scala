@@ -81,6 +81,60 @@ object Proc:
   def iter[F[+_], X, Y](body: Proc[F, X, Either[X, Y]]): Proc[F, X, Y] = Iter(body)
 
   /**
+   * COMPOSITION, WITH THE ONE REWRITE THAT PAYS FOR ITSELF: two pure
+   * steps in a row are one pure step.
+   *
+   * It matters because a `Proc.direct` block emits an `Arr` per
+   * statement, and the statements between two leaves are usually all
+   * pure — so without this a five-line block would carry a dozen
+   * nodes that `leaves` has to skip and `render` has to draw. With
+   * it, a term's nodes are its leaves and the plumbing between them.
+   * A hand-written term gets the same fold for free.
+   */
+  def andThen[F[+_], X, Y, Z](f: Proc[F, X, Y], g: Proc[F, Y, Z]): Proc[F, X, Z] =
+    (f, g) match
+      case (Arr(a), Arr(b)) => Arr(a.andThen(b))
+      case _ => Then(f, g)
+
+  /**
+   * THE SHAPE EVERY LEAF OF A BLOCK TAKES: run an operation built
+   * from the environment, and APPEND its answer to the environment.
+   *
+   * What a monadic body keeps in a local variable, a term carries on
+   * its edge — so a block's environment is a left-nested tuple that
+   * grows by one at every bound name, and this is the node that grows
+   * it. Written out rather than left to `second`, whose default
+   * expansion is a `dimap` over a `first` and costs two more nodes
+   * per leaf.
+   */
+  def keeping[F[+_], E, A](name: String)(run: E => F[A]): Proc[F, E, (E, A)] =
+    andThen(
+      andThen(Arr((e: E) => (e, e)), First[F, E, A, E](Op(name, run))),
+      Arr((ae: (A, E)) => (ae._2, ae._1)))
+
+  /**
+   * A STRAIGHT-LINE BLOCK, COMPILED TO AN ARROW
+   * (specs/proc-notation.md).
+   *
+   * The block reads like the monadic workflow it mirrors — one `val`
+   * per question, ordinary Scala between them — and what the macro
+   * does is thread the ENVIRONMENT that a monadic body would keep in
+   * its closure:
+   *
+   *     Proc.direct[Sig, Unit, String]: _ =>
+   *       val city = !Question.Ask("city?")
+   *       val t    = !Question.Now()
+   *       s"$city/$t"
+   *
+   * Every `!` marks an OPERATION of the signature, never a `Proc`:
+   * a step chosen by a value the block binds is `ArrowApply`, which
+   * is a monad, and the macro refuses it by name. That refusal is the
+   * whole difference between this and `direct` — see the spec.
+   */
+  inline def direct[F[+_], X, Y](inline block: X => Y): Proc[F, X, Y] =
+    ${ ProcMacro.impl[F, X, Y]('block) }
+
+  /**
    * THE ALGEBRA, and it is one given with both halves, the way
    * `Mealy.mealyArrow` is: an arrow whose choice is available is an
    * ArrowChoice, and splitting them would make every call site

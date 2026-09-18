@@ -1,5 +1,56 @@
 # Changelog
 
+## proc-notation-road - the straight-line block, compiled to an arrow
+
+Lane 3 of specs/arrows-plan.md, stage 1 of specs/proc-notation.md.
+`Proc.direct` takes the block a monadic workflow is written as and
+compiles it to a term:
+
+    val booking = Proc.direct[Sig, Unit, String]: _ =>
+      val city = !ask("city?")
+      val t    = !now
+      s"$city/$t"
+
+THE TRANSLATION IS THE ENVIRONMENT AND NOTHING ELSE. What a monadic
+body keeps in its closure, an arrow carries on its edge: a left-nested
+tuple that starts as the block's input and grows at every bound name,
+references becoming projections, a leaf becoming `Proc.keeping`, a run
+of pure statements becoming one `Arr`. Two `Arr`s in a row fold at
+construction, so a compiled block's nodes are its leaves and the
+plumbing between them.
+
+What `!` marks is an OPERATION, never a `Proc`: a step chosen by a
+value the block binds is `app`, and an arrow with `app` is a monad
+(Hughes 2000 §4.5). That is refused by name, with the rewrite in the
+message, and pinned by `compileErrors`.
+
+`Direct.scala` WAS NOT TOUCHED - the road is its own file - so "every
+existing direct test passes untouched" is true by construction. And
+the twenty lines it shares with it (the mark symbols) are the datum
+arrows-plan's stage 2 was waiting for: an IR serving all three roads
+would have to model a nested continuation for two of them and an
+appended environment for the third, so stage 2 is REFUSED for now,
+with the trigger written down.
+
+TWO BUGS THE TESTS FOUND, both worth keeping. A statement with two
+marks read the second answer twice (`r|r` where `l|r` was meant): the
+residual was rewritten against the depth AFTER its leaves. And the
+refusal tests found a second one before they could pin anything -
+inside `compileErrors` an inline argument arrives wrapped in `Inlined`
+nodes carrying `$proxy` bindings, which the lambda pattern did not
+look through, so the macro answered "takes a lambda". A refusal test is
+worth writing even when the refusal already works by hand.
+
+WHAT IT REFUSES, each naming the node that would take it: a mark
+inside an `if` branch (`OnRight`) and inside a loop (`Iter`) are v1.1,
+filed as `proc-notation-branches`, because hoisting a mark out of a
+branch would RUN it whether or not the branch is taken. An `if` over
+bound values, and one whose CONDITION is a question, compile today.
+
+Documentation: docs/static-workflows.md is the page - what the shape
+buys, the block beside its monadic twin, the two readings of a
+position, `Iter`, what is not built, and which shape to pick. Linked
+from docs/README.md and from docs/durable-workflows.md.
 ## ui-product-consumer — the arc's four criteria, ticked from the product's side
 
 Every stage of specs/ui-product.md ended with the same line: okay-watch

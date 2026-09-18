@@ -82,6 +82,15 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   an honest list of what a workflow ENGINE has that this does not. Its
   code is compiled by `TestWorkflowGuide`, so the page cannot drift
   from the library.
+- **[Static workflows](static-workflows.md)** — the same workflow as a
+  TERM rather than a monadic program: `Proc`, the free arrow over the
+  questions the engine already journals, written in the same
+  straight-line block (`Proc.direct`). What the shape buys is what a
+  closure cannot give — `leaves` before the run, a deploy check that
+  asks live journals whether they still fit the new code, a position
+  that is a path and can be drawn, and an `Iter` node so a loop's trip
+  count may still be an answer. One journal format underneath: a run
+  started monadically is carried on by a term.
 - **[okay-actor](modules/okay-actor.md)** — actors as composition: the
   mailbox is a `Channel`, one-at-a-time is one consumer, and the only
   new thing is supervision. With the four decisions it makes, and the

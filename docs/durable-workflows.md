@@ -9,6 +9,12 @@ This page is the practical half. The theory is
 record, with every refuted alternative, is
 [specs/durable-workflow.md](../specs/durable-workflow.md).
 
+The same workflow can also be written as a **term** rather than a
+monadic program — see [static workflows](static-workflows.md). It
+shares this engine, this journal and this worker; what it adds is that
+the shape is a value, so the questions, the position and the
+deploy-fits-the-journal check are available without running anything.
+
 ## The one idea
 
 A paused program is a continuation, and a continuation is a closure:

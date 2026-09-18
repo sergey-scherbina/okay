@@ -1453,6 +1453,34 @@ test; none is promoted until its spec item is read first.
       change (applicative-do's file, landed the same day); one line,
       and a `-feature` compile of okayJVM's test scope is the check.
 
+- [ ] proc-notation-branches — `if` and loops INSIDE a `Proc.direct`
+      block (v1.1 of specs/proc-notation.md, filed 2026-09-18 when v1
+      landed). v1 refuses both BY NAME and says which node would take
+      them, because hoisting a mark out of a branch would RUN it
+      whether or not the branch is taken — a silent mis-compile is the
+      one outcome worse than a refusal. The work: compile an `if`
+      whose branches contain marks into `OnRight` (each branch
+      compiled at the SAME environment, joined by `|||`), and a
+      `while`/`for` into `Iter` (the loop-carried part of the
+      environment is the set of names the body assigns — the `Assign`
+      shape direct-loops already binds). TRIGGER: a consumer writes a
+      workflow whose branch or loop has a question in it and reaches
+      for `Proc.iter` by hand. DONE-WHEN: the `rooms` term of
+      `TestProc` — ask `nights?`, then one `room?` per night — is
+      written as a block and `walk` puts it at `round2` after two
+      rooms, exactly as the hand-built term does.
+- [ ] proc-notation-liveness — a `Proc.direct` block carries EVERY
+      bound name to the end of the block, as a left-nested tuple
+      (filed 2026-09-18 with v1). A liveness pass would drop a name
+      after its last use, so a block binding ten names of which the
+      result uses one would carry one. NOT DONE and not obviously
+      worth it: the cost is tuple allocation between leaves that are
+      outside calls, and the benefit is unmeasured. TRIGGER: a term
+      whose environment is measured to cost anything beside its
+      leaves, or a block long enough that the tuple depth shows up in
+      a profile. Measure before building — the entry exists so the
+      shape is known, not so somebody optimises on faith.
+
 - [ ] optics-indexed-fourth-seat — the indexed-optics trigger, part
       met (2026-09-18, by static-workflow-proc). Stage 12's re-check
       asked for "a fourth path-carrying walk, or two of the three
