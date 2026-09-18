@@ -1,0 +1,6 @@
+feature/core-modularise-optics 2026-09-18T20:57:00Z
+agent: claude-code
+heartbeat: 2026-09-18T20:57:00Z
+status: in-progress
+done-so-far: claimed; design found before starting — zoom needs only a getter and a setter, so the core keeps State.zoomWith and okay-optics restores the SPELLING State.zoom as an extension on State.type. No API break.
+next: specs/core-modules.md stage 4 — okay-optics takes Optic (720), Fuse (469), Focus (55) + the zoom family; ArrowLaws moves too (test->test for okay-workflow and okay-lex); TOUCHES build.sbt
