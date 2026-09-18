@@ -1,6 +1,0 @@
-feature/core-modularise-stm 2026-09-18T21:07:34Z
-agent: claude-code
-heartbeat: 2026-09-18T21:07:34Z
-status: in-progress
-done-so-far: claimed; survey done and it CORRECTS the spec — Providing.Facts on TMap is a naming coincidence (TMap is a TYPED map, not transactional), so that seam does not exist; the real edges are in platform dirs (native Platform holds a TRef, two StmPlatform files install given Stm[Async])
-next: specs/core-modules.md stage 5 — okay-stm takes Stm (459) + Refs (117) + both StmPlatform files; TMap/TDict stay; TOUCHES build.sbt
