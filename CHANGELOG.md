@@ -1,5 +1,61 @@
 # Changelog
 
+## ox-compare - Ox in the comparison, and a retraction
+
+com.softwaremill.ox 1.0.7 joins the `compare` module: five fork/join
+lanes and eight tests. Ox is direct-style structured concurrency on
+Loom, and it is the most informative competitor here because it is the
+OTHER answer to okay's question -- it gets direct style from virtual
+threads where okay gets it from delimited control.
+
+INTEROP WORKS, all four directions green: an okay program inside
+`ox.supervised`; an Ox fork joined inside `okay.async`; a one-shot
+capture whose body forks; and a MULTI-SHOT capture over an Ox fork,
+which does not crash -- it forks TWICE (forks=2, recorded). That is
+chapter 19's rule, not a new hazard: a capture invoked n times is n
+open resources, and an Ox fork behaves like one.
+
+THE NUMBERS, K = 100, one run, default (loom) scheduler on both sides:
+
+    rawLoom            18.482 +- 0.776   (floor)
+    okaySpawnInside    32.720 +- 1.734
+    oxUnsupervised     33.271 +- 0.578
+    okaySupervised     39.045 +- 1.204
+    oxForkJoin         53.814 +- 0.650
+
+Without supervision it is a tie (1.02x). With supervision on both
+sides okay is 1.38x ahead. Supervision costs Ox 1.62x, cleanly paired;
+it costs okay about 1.19x, which is an ESTIMATE because those two okay
+lanes differ slightly in how they enter the async world.
+
+THREE PAIRING MISTAKES WERE MADE GETTING THERE, all in okay's favour,
+and none caught by a test. (1) The first round compared Ox WITH
+supervision against okay without, reading 1.55x. (2) Corrected, it
+read a tie. (3) The supervised lane then declared
+`given Scheduler = Schedulers.forkJoin()` inside the method, swapping
+the scheduler the other four lanes take by default -- Platform.scala
+prices that at up to 3.6x on its own -- and it read as SUPERVISION
+BEING FASTER THAN NO SUPERVISION. Implausibility is what caught it,
+not a check.
+
+THE RETRACTION. The async-supervised entry below says `Par.traverse`
+"supervises NONE" and cites a 3012 ms measurement. Both halves are
+wrong. `Par.scala`'s header disclaims cancellation for `parAll` and
+`parTraverse` in scala-jvm-native/Parallel.scala -- DIFFERENT
+functions from `Par.traverse`, which goes through the applicative and
+is built on `par`, and therefore does cancel. Measured here, all on
+the default scheduler: Par.traverse 18 ms (cancels),
+Parallel.parTraverse 809 ms (does not). The 3012 ms does not
+reproduce and no cause is offered for it.
+
+`Async.supervised` still earns its place, for a reason the entry
+should have given: it is an OPEN scope -- fork ad hoc, anywhere in the
+body -- which neither `par` (exactly two) nor `Par.traverse` (a fixed
+traversal) provides. That is what `ox.supervised` gives and what okay
+had no answer to. TestSupervisionShapes now pins all four shapes by
+time, including the documented limit, so none of them can quietly stop
+being true.
+
 ## async-supervised - an open scope that owns its children
 
 `Async.supervised` and `Nursery`. Asked for by the operator after an

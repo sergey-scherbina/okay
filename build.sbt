@@ -1891,6 +1891,7 @@ lazy val compare = (project in file("compare"))
       "dev.zio" %% "zio-streams" % "2.1.14",
       "io.circe" %% "circe-parser" % "0.14.10",
       "io.circe" %% "circe-generic" % "0.14.10",
+      "com.softwaremill.ox" %% "core" % "1.0.7",
     ),
   )
 
