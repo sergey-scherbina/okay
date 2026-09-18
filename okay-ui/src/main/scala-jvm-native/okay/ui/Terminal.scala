@@ -110,7 +110,13 @@ object Terminal {
                     effect[Writer % Event + Async, Unit](Async.Run(() =>
                       page(if key == Frame.Key.PageUp then -1 else 1)))
                   else
-                    val (nf, nc, ev) = Frame.interpretAt(tree, focus, caret, key)
+                    // a click names a cell of the SCREEN; the frame
+                    // may be scrolled under it, so the row is the
+                    // screen's plus the view's top (ui-terminal-mouse)
+                    val at = key match
+                      case Frame.Key.Click(r, c) => Frame.Key.Click(r + top, c)
+                      case other => other
+                    val (nf, nc, ev) = Frame.interpretAt(tree, focus, caret, at)
                     val moved = nf != focus
                     focus = nf
                     caret = nc
@@ -128,11 +134,27 @@ object Terminal {
           }
       first.flatMap(_ => go)
 
-  /** raw mode on, run, raw mode off — a bracket, like any resource */
+  /**
+   * Raw mode on, run, raw mode off — a bracket, like any resource. The
+   * MOUSE is part of the same bracket (ui-terminal-mouse): `1000` asks
+   * for button reports and `1006` for the SGR encoding `Frame.feed`
+   * decodes, and both are turned off again on the way out, because a
+   * terminal left reporting clicks to a shell is a terminal somebody
+   * has to reset by hand.
+   */
   def raw[A](body: => A): A =
     def stty(args: String*): Unit =
       val _ = ProcessBuilder(("stty" +: args)*)
         .redirectInput(ProcessBuilder.Redirect.INHERIT).start().waitFor()
     stty("raw", "-echo")
-    try body finally stty("sane")
+    System.out.print(MouseOn)
+    System.out.flush()
+    try body finally
+      System.out.print(MouseOff)
+      System.out.flush()
+      stty("sane")
+
+  /** ask the terminal for SGR button reports, and stop asking */
+  private val MouseOn = "\u001b[?1000h\u001b[?1006h"
+  private val MouseOff = "\u001b[?1006l\u001b[?1000l"
 }

@@ -255,6 +255,47 @@ class TestTerminalKeys extends munit.FunSuite {
     assertEquals(Frame.clampCaret(t1, 0, -1), 3)
   }
 
+  /**
+   * ui-terminal-mouse. The decoding is ordinary; the interesting half
+   * is HIT-TESTING, which the renderer answers by the trick that
+   * already found the focused line: marking is the one thing focus
+   * changes, so the cells that differ between the marked frame and
+   * the unmarked one are that widget's cells.
+   */
+  test("an SGR mouse report is decoded, and only a left press is a click") {
+    def sgr(s: String): Vector[Key] = decode((Esc +: ("[<" + s).map(_.toInt)).toSeq*)
+    assertEquals(sgr("0;5;3M"), Vector(Key.Click(2, 4)), "1-based on the wire, 0-based here")
+    // a release is not a second click
+    assertEquals(sgr("0;5;3m"), Vector.empty[Key])
+    // a wheel or any other button is dropped rather than guessed at
+    assertEquals(sgr("64;5;3M"), Vector(Key.Unknown))
+    assertEquals(sgr("0;x;3M"), Vector(Key.Unknown))
+  }
+
+  test("hit-testing finds the widget under a cell, and nothing where there is none") {
+    val page = Column(Vector(Text("a title"), Button("go", "go"), Input("abc", "in", "")))
+    // line 1 is the button, line 2 the input
+    assertEquals(Frame.hit(page, 1, 2), Some(0), Frame.render(page).mkString("|"))
+    assertEquals(Frame.hit(page, 2, 2), Some(1))
+    // the title carries no widget, and neither does a cell past the end
+    assertEquals(Frame.hit(page, 0, 2), None)
+    assertEquals(Frame.hit(page, 9, 9), None)
+  }
+
+  test("a click focuses what is under it and means what pressing it means") {
+    val page = Column(Vector(Text("a title"), Button("go", "go"), Check(false, "ok", "Ok")))
+    val (focus, ev) = Frame.interpret(page, 0, Key.Click(1, 2))
+    assertEquals(focus, 0)
+    assertEquals(ev, Some(Event.Pressed("go")))
+    // a check toggles, which is what Enter does there — one table of
+    // meanings, not two
+    val (f2, ev2) = Frame.interpret(page, 0, Key.Click(2, 2))
+    assertEquals(f2, 1)
+    assertEquals(ev2, Some(Event.Toggled("ok", true)))
+    // a click on nothing changes nothing
+    assertEquals(Frame.interpret(page, 1, Key.Click(0, 0)), (1, None))
+  }
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))

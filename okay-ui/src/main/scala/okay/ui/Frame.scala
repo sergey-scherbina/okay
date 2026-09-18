@@ -198,6 +198,55 @@ object Frame {
   def width(s: String): Int = s.replaceAll("\u001b" + "\\[[0-9;]*m", "").length
 
   /**
+   * WHICH FOCUSABLE WIDGET IS AT A CELL — hit-testing (ui-terminal-mouse).
+   *
+   * A widget is found by the TEXT IT RENDERS, scanned in focus order:
+   * each focusable draws itself the same way alone as it does in the
+   * frame (a weighted column pads AFTER the text, and wrapping is the
+   * one case that can split it), so the frame is searched for that
+   * text from where the previous widget ended. Focus order is document
+   * order and a row lays out left to right, so the scan never goes
+   * backwards.
+   *
+   * WHAT THIS IS NOT: a layout map. The renderer answers lines, not
+   * positions, and giving it a second return type is the real content
+   * of the lane BACKLOG describes — this is the honest cheap half,
+   * with two limits stated: a widget whose text WRAPS is found only by
+   * its first line, and two widgets that render identically are told
+   * apart by order alone.
+   */
+  def hit(ui: Ui, row: Int, col: Int, width: Int = 0): Option[Int] =
+    val lines = render(ui, None, width).map(strip)
+    var r = 0
+    var c = 0
+    var found: Option[Int] = None
+    val order = Ui.focusable(ui)
+    order.indices.foreach { i =>
+      if found.isEmpty then
+        val text = render(order(i), None).map(strip).headOption.getOrElse("")
+        locate(lines, text, r, c) match
+          case Some((lr, lc)) =>
+            if lr == row && col >= lc && col < lc + text.length then found = Some(i)
+            r = lr
+            c = lc + text.length
+          case None => ()
+    }
+    found
+
+  /** the first occurrence of `text` at or after (row, col) */
+  private def locate(lines: Vector[String], text: String, row: Int, col: Int): Option[(Int, Int)] =
+    if text.isEmpty then None
+    else
+      (row until lines.length).view.flatMap { r =>
+        val from = if r == row then col else 0
+        val at = lines(r).indexOf(text, from)
+        if at < 0 then None else Some((r, at))
+      }.headOption
+
+  /** a line without its ANSI escapes — what a reader's columns count */
+  private def strip(s: String): String = s.replaceAll(Esc + "\\[[0-9;]*m", "")
+
+  /**
    * A KEY, after the escape sequences are decoded (ui-terminal-keys).
    * A terminal sends `ESC [ A` for an arrow and `ESC [ Z` for
    * Shift-Tab, one BYTE at a time, so naming what arrived has to
@@ -211,6 +260,9 @@ object Frame {
     // the frame is taller than the screen: these move the VIEW, not
     // the focus (ui-terminal-scroll), and the host reads them itself
     case PageUp, PageDown
+    // a mouse press at a cell of the frame (ui-terminal-mouse), 0-based
+    // — a key like any other, so the host still reads ONE door
+    case Click(row: Int, col: Int)
     /** a sequence this decoder does not name: dropped, never guessed */
     case Unknown
 
@@ -225,6 +277,9 @@ object Frame {
     case Escaped            // ESC seen
     case Bracket            // ESC [ (or ESC O) seen
     case Digits(ds: String) // ESC [ 1 … waiting for the final ~
+    /** ESC [ < … — an SGR mouse report, ended by M (press) or m
+     * (release); the digits are `button;column;row` */
+    case Mouse(ds: String)
 
   /**
    * ONE BYTE IN, the keys it completed out — usually none or one, and
@@ -245,8 +300,18 @@ object Frame {
         else if b == 27 then (KeyState.Escaped, Vector(Key.Ch('\u001b')))
         else (KeyState.Plain, Vector(Key.Ch('\u001b'), Key.Ch(c)))
       case KeyState.Bracket =>
-        if c.isDigit then (KeyState.Digits(c.toString), Vector.empty)
+        if c == '<' then (KeyState.Mouse(""), Vector.empty)
+        else if c.isDigit then (KeyState.Digits(c.toString), Vector.empty)
         else (KeyState.Plain, Vector(named(c)))
+      case KeyState.Mouse(ds) =>
+        // a report ends at M or m and NOWHERE else: bailing out on the
+        // first odd byte would leak the rest of it into the stream as
+        // keystrokes, which is a damaged report typing for the user
+        if c == 'M' then (KeyState.Plain, Vector(click(ds)))
+        // a RELEASE is not a click: a press names the cell, and
+        // reporting both would deliver every click twice
+        else if c == 'm' then (KeyState.Plain, Vector.empty)
+        else (KeyState.Mouse(ds + c), Vector.empty)
       case KeyState.Digits(ds) =>
         if c.isDigit then (KeyState.Digits(ds + c), Vector.empty)
         else if c == '~' then (KeyState.Plain, Vector(tilde(ds)))
@@ -260,6 +325,16 @@ object Frame {
     case 'Z' => Key.BackTab
     case 'H' => Key.Home
     case 'F' => Key.End
+    case _ => Key.Unknown
+
+  /** `button;column;row`, 1-based on the wire and 0-based here; only
+   * the LEFT button (0) is a click, and anything else — a wheel, a
+   * drag, a damaged report — is dropped rather than guessed at */
+  private def click(ds: String): Key = ds.split(";") match
+    case Array(b, x, y) =>
+      (b.toIntOption, x.toIntOption, y.toIntOption) match
+        case (Some(0), Some(col), Some(row)) if col > 0 && row > 0 => Key.Click(row - 1, col - 1)
+        case _ => Key.Unknown
     case _ => Key.Unknown
 
   /** the numbered forms: `ESC [ 1 ~` is Home on some terminals, `4 ~`
@@ -395,6 +470,12 @@ object Frame {
       // the view is the host's, not the tree's: these say nothing and
       // move no focus, and the host reads them itself
       case Key.PageUp | Key.PageDown | Key.Unknown => (focus, None)
+      // a click FOCUSES what is under it, and then means what pressing
+      // that widget means — which is Enter's answer, so it is Enter's
+      // code that answers it and there is no second table of meanings
+      case Key.Click(row, col) => hit(ui, row, col) match
+        case Some(i) => (i, interpret(ui, i, Key.Ch('\n'))._2)
+        case None => (focus, None)
 
   private def interpretChar(ui: Ui, focus: Int, ch: Char): (Int, Option[Event]) =
     val order = Ui.focusable(ui)
