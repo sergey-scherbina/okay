@@ -1,0 +1,6 @@
+feature/static-workflow-par 2026-09-18T18:18:32Z
+agent: claude-code
+heartbeat: 2026-09-18T18:18:32Z
+status: in-progress
+done-so-far: claimed; design settled (the journal carries no per-branch tag, so a Par orders its records and parallelises the WAITING)
+next: Proc.Par + Step.Both, leaves/render/mermaid/foldMap, Wf walk reporting both pending questions, the walk/replay property
