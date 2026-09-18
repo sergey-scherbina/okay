@@ -543,8 +543,25 @@ object Wf:
     import okay.Proc.op
 
     /** ask the outside world, through the author's own question type */
-    def ask[Q, A, X](q: X => Q): Wf.Proc[Q, A, X, A] =
-      op("ask")(x => Question.Ask(q(x)))
+    def ask[Q, A, X](q: X => Q): Wf.Proc[Q, A, X, A] = asking("ask")(q)
+
+    /**
+     * THE SAME, UNDER A NAME THE PICTURE CAN SHOW (proc-form-consumer,
+     * 2026-09-18). A leaf is drawn by its operation's name, and for a
+     * workflow that is exactly right: `charge`, `ship`, `notify`. For a
+     * FORM every leaf is the same operation — ask a field — so a term
+     * of them draws as "ask, ask, ask" and the picture says nothing
+     * about which field the run is standing at.
+     *
+     * Inside a `Proc.direct` block the name comes from the FUNCTION the
+     * author called, so a form written there can name its fields by
+     * writing a helper per field. That is fine when the fields are
+     * code and impossible when they are DATA — a form derived from a
+     * `Schema` has no place to put one def per field — which is why
+     * the name is a parameter here.
+     */
+    def asking[Q, A, X](name: String)(q: X => Q): Wf.Proc[Q, A, X, A] =
+      op(name)(x => Question.Ask(q(x)))
 
     /** the same under the name the literature uses */
     def perform[Q, A, X](cmd: X => Q): Wf.Proc[Q, A, X, A] = ask(cmd)
