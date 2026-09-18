@@ -1,0 +1,6 @@
+okay-wt-kleisli-glyph 2026-09-18T17:17:00Z
+agent: claude-code
+heartbeat: 2026-09-18T17:17:00Z
+status: in-progress
+done-so-far: Kleisli >>> in Monad.scala has ZERO call sites; two test files hand-roll a local >>> for Proc because no arrow one exists
+next: rename Kleisli to >=> (the literature glyph), give >>> to arrows, delete the two local copies
