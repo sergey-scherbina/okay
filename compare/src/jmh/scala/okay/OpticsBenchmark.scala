@@ -23,6 +23,11 @@ import okay.given
  *   fusedComposedSet    against nestedCopy — optics-fuse: the update
  *     emitted by the compiler, which should BE the hand-written one
  *   fusedLensSet        against copySet — the same, one field deep
+ *   fusedFieldSet       against fieldSet and copySet — optics-field-fuse:
+ *     `Lens.field[S]("f")` is the ONE constructor the planner cannot
+ *     read, so this row says what that costs, and whether teaching it
+ *     the shape could even reach `copy` (the Mirror route rebuilds
+ *     through `fromProduct`, which `copy` does not)
  *
  * Read per-lane MINIMA across forks (bench-one-round-lies), not the mean.
  */
@@ -78,6 +83,19 @@ class OpticsBenchmark {
   @Benchmark def copySet: Person = { n += 1; p.copy(age = n) }
   @Benchmark def lensSet: Person = { n += 1; age.set(n)(p) }
   @Benchmark def fieldSet: Person = { n += 1; ageByName.set(n)(p) }
+  // optics-field-fuse. NOT written at the call site, and that is the
+  // first half of the finding: `Fuse.set(Lens.field[Person]("age"))`
+  // does not TYPE-CHECK — the by-name lens's focus type comes from a
+  // Mirror in its own using-clause, and as an argument to an inline
+  // method with an expected `Optic[...]` type that inference collapses
+  // to `Nothing`. So the only road is through a val, which is the road
+  // real code takes anyway.
+  @Benchmark def fusedFieldSet: Person = { n += 1; Fuse.set(ageByName)(n)(p) }
+  // and the Mirror route with NO optic at all: the floor this
+  // constructor could ever reach, fused or not
+  @Benchmark def mirrorSet: Person =
+    n += 1
+    OpticsBenchmark.mirror.fromProduct(Optic.Replaced(p, 1, n))
   @Benchmark def handLensSet: Person = { n += 1; ageByHand.set(n)(p) }
 
   @Benchmark def nestedCopy: Person = { n += 1; p.copy(address = p.address.map(_.copy(zip = n))) }
@@ -152,3 +170,6 @@ class OpticsBenchmark {
 object OpticsBenchmark:
   final case class Address(city: String, zip: Int)
   final case class Person(name: String, age: Int, address: Option[Address])
+  /** the Mirror the by-name lens goes through, so its floor can be
+   * measured with no optic above it (optics-field-fuse) */
+  val mirror = summon[scala.deriving.Mirror.ProductOf[Person]]

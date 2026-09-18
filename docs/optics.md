@@ -33,8 +33,8 @@ probeTaxon.set(taxon)(t)
 `Lens(get, set)` — the field is ordinary code, so the IDE completes
 it, renames it and refuses a wrong name with the compiler's own
 error. There is also `Lens.field[Trained]("probe")`, by name, checked
-at compile time against the `Mirror`; see the price table below
-before reaching for it.
+at compile time against the `Mirror`; see "what the by-name lens
+costs" below before reaching for it.
 
 ## 2. Read through an absence — and write through it
 
@@ -140,6 +140,39 @@ costs is work: it reads and writes every field again. So an optic
 names one path, and when you are writing two fields of one record at
 once, the record's own constructor is the thing that names them
 together and does the job in one pass.
+
+### What the by-name lens costs
+
+`Lens.field[S]("age")` and `Lens[S](_.age)` are the same lens by two
+roads, and they are NOT the same price (measured 2026-09-18,
+`OpticsBenchmark`, per-lane minima across three forks):
+
+| lane | ns/op | B/op |
+|---|---|---|
+| `copy` by hand | 1.44 | 24 |
+| `Lens[S](_.age)`, live | 1.45 | 24 |
+| the same, fused | 1.45 | 24 |
+| `Mirror.fromProduct` alone, no optic | 2.30 | **40** |
+| `Lens.field[S]("age")`, fused | 3.96 | 56 |
+| `Lens.field[S]("age")`, live | 5.69 | 56 |
+
+**The selector lens is free** — it is the hand-written `copy` to the
+byte, with or without fusion, because the macro wrote the `copy`.
+
+**The by-name lens is not, and the reason is not the optic.** Its
+floor is the row in the middle: rebuilding a case class through
+`Mirror.fromProduct` costs 40 B/op with NO optic above it at all,
+where `copy` costs 24. So the by-name road can never reach the
+selector road, however well it fuses, and what the optic adds on top
+of the Mirror is 16 more bytes.
+
+That is why `Fuse` is not taught to read it: the whole prize is 16
+bytes and about 1.7 ns, and the constructor cannot be written at a
+`Fuse.set` call site anyway — its focus type comes from a `Mirror` in
+its own using-clause, which an inline parameter's expected type
+collapses to `Nothing`. **Use `Lens[S](_.f)` wherever the name is
+known when you write the code**, which is nearly always;
+`Lens.field` is for the case where the name arrives as data.
 
 Two footnotes, both honest. That gap is a missing rewrite, not a law:
 `set ∘ set` into one `copy` is filed as `optic-law-rewrites` with
