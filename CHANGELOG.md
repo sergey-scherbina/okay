@@ -1,5 +1,63 @@
 # Changelog
 
+## gate-watchdog - a gate that hangs now says so, with the dump beside it
+
+A gate sat **57 minutes** with its log frozen mid-sentence and was
+found only because the operator asked how it was going. Nothing in
+`gate.sh` checked that the run was still alive.
+
+THE CAUSE, from a `jcmd` dump taken before anything was killed:
+
+    main                           parked in sbt.Execute.next
+    sbt.ForkTests$Acceptor$1$.run  blocked in Net.accept - NO TIMEOUT
+    165 child processes            100 node + 65 Scala Native binaries
+                                   all spawned in the first 20 seconds
+                                   all at 0.0% CPU, on 14 cores
+    java forks among those 165     NONE
+
+`ForkTests` opens a socket, starts a forked JVM and waits for it to
+connect back. The fork was not there, and `accept()` has no alarm, so
+sbt waited for a task that could never finish. Scala Native's runner
+has a 40 s accept timeout, which is why THAT failure shows up as exit
+137 instead of silence - the same family, the opposite symptom.
+
+THE GUARD: `gate.sh` now watches its own log. Eight minutes with no
+new output AND an idle process tree is a stall; it writes a thread
+dump and a `ps` of the tree beside the log, kills the run by PID, and
+prints `gate: STALLED` (exit 124). Deliberately not RED and not
+KILLED: a stall says nothing about the tree, and `gate-retry.sh`
+retries anything that reaches no verdict - it now names this one.
+
+TWO SIGNALS, NOT ONE, and that is the whole design. Silence alone is
+a cold compile of a big module; idleness alone is sbt between tasks.
+A stall is silent AND burning no CPU. `ps -o pcpu` could not be used
+for the second half - it reports a process's average over its whole
+life, and read 5.8% for a JVM that had been idle for an hour - so the
+watchdog differences cumulative CPU TIME across the silent window.
+
+TESTED IN BOTH DIRECTIONS, which is the point of
+`scripts/gate-selftest.sh`: a silent idle build must be killed, and a
+silent BUSY one must survive. The second assertion is the one that
+matters, because a watchdog that fires on every long compile is worse
+than none. A third case runs the whole suite again under `/bin/sh`,
+and it earned its place immediately: the first cut used a `case`
+inside a command substitution, which is a syntax error under `sh` -
+and AGENTS.md invokes the gate as `sh scripts/gate.sh`, so the
+watchdog would have been dead in the only invocation that matters
+while passing its own test through the bash shebang.
+
+LAYERING, stated because there are now two. `gate-retry.sh` has had a
+stall watchdog for longer - log size, once a minute, 10 minutes - and
+it stays as the backstop for a wedged `gate.sh`. The new one sits
+below it at 8 minutes so that the layer which takes evidence is the
+layer that fires.
+
+What this does NOT fix: 165 runner processes on 14 cores is still
+unbounded, and nothing in the build limits it. That is the other half,
+filed as `gate-bound-test-fanout` with the measurement attached.
+
+Gate: scripts and docs; `scripts/gate-selftest.sh` passes under both
+shells.
 ## ui-open-records — the last UI stub becomes a record somebody can act on
 
 `ui-windows-terminal — raw mode beyond stty` was a one-line entry, and

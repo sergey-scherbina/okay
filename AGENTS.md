@@ -166,7 +166,26 @@ force, all already practiced, none previously written down:
   pays for it and a module nobody's lane touched is still tested
   every night — and READ the merge output; git refuses a
   fast-forward over a sibling's uncommitted files, and the refusal
-  scrolls past a `tail -1`. HARDENED after three incidents: the merge
+  scrolls past a `tail -1`.
+- **A GATE THAT HANGS NOW SAYS SO (gate-watchdog, 2026-09-18).**
+  `gate.sh` watches its own log: 8 minutes with no new output AND an
+  idle process tree is a STALL, and it takes a `jcmd` thread dump plus
+  a `ps` of the tree beside the log, kills the run BY PID, and prints
+  `gate: STALLED` with exit 124. That is NOT a verdict — like
+  `KILLED`, it says nothing about the tree, and `gate-retry.sh`
+  retries it. Two signals and not one, because silence alone is a cold
+  compile: the run has to be silent AND burning no CPU.
+  WHY IT EXISTS: measured the same day, a gate sat **57 minutes** with
+  its log frozen and was found only because a human asked how it was
+  going. The dump named the cause — `sbt.ForkTests$Acceptor` blocked
+  in `Net.accept` with no timeout, waiting for a forked JVM that was
+  not among the 165 live children (100 `node` + 65 Scala Native
+  binaries, all spawned in the first 20 seconds, all at 0.0% CPU, on
+  14 cores). `scripts/gate-selftest.sh` exercises both directions in
+  seconds — a silent idle build must die, a silent BUSY one must
+  live — and runs itself under `/bin/sh` as well as bash, because the
+  first cut of the watchdog was bash-only and this file invokes the
+  gate as `sh scripts/gate.sh`. HARDENED after three incidents: the merge
   runs ALONE (its own command, from the main checkout, exit code
   printed), and only after reading exit 0 do worktree removal, branch
   deletion, boards and the claim release run. A `;` after a failed

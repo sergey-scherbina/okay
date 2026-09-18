@@ -107,6 +107,7 @@ verdict() {
   if grep -q "gate: GREEN" "$1"; then echo green
   elif grep -q "gate: RED" "$1"; then echo red
   elif grep -q "gate: KILLED" "$1"; then echo killed
+  elif grep -q "gate: STALLED" "$1"; then echo stalled
   else echo none
   fi
 }
@@ -117,6 +118,7 @@ if [ "${1:-}" = "--read" ]; then
     green)  echo "$L: gate: GREEN — done, exit 0" ;;
     red)    echo "$L: gate: RED — done, the gate's exit code stands; NOT retried" ;;
     killed) echo "$L: gate: KILLED — a signal, not a verdict; retry" ;;
+    stalled) echo "$L: gate: STALLED — the watchdog killed a silent, idle run; retry, and READ the dump beside the log first" ;;
     none)   echo "$L: no verdict — the box took it; retry" ;;
   esac
   exit 0
@@ -134,6 +136,14 @@ N="${3:-6}"
 # Minutes of SILENCE that mean a hang rather than a long compile.
 # Ten, because the longest legitimate quiet stretch here is one big
 # module's compile and the measured hang was 28 minutes and counting.
+# THE BACKSTOP, not the first line of defence any more (gate-watchdog,
+# 2026-09-18). `gate.sh` now watches itself at 8 minutes of silence
+# WITH an idle process tree, and takes a jcmd dump before it kills —
+# so in the ordinary case that one fires first and this never runs.
+# This stays for the case it still covers: gate.sh's own loop wedged,
+# or a stall in something gate.sh does not run under its watchdog.
+# Keep it ABOVE gate.sh's threshold or the diagnosing layer never gets
+# to look.
 STALL="${GATE_STALL_MIN:-10}"
 
 : > "$LOG"
