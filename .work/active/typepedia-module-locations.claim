@@ -1,6 +1,0 @@
-feature/typepedia-module-locations 2026-09-18T21:34:27Z
-agent: claude-code
-heartbeat: 2026-09-18T21:34:27Z
-status: in-progress
-done-so-far: claimed; two stale claims found in docs/typepedia.md after the core-modules arc — "every walker in the core" lists stream walkers that left, and the Optics section is headed "(Optic.scala)" with no module named
-next: fix both, docs only
