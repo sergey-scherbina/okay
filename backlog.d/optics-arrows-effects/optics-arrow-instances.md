@@ -1,4 +1,4 @@
-- [ ] optics-arrow-instances — `Arrow[Function1]` and
+- [x] optics-arrow-instances — DONE 2026-09-18. `Arrow[Function1]` and
       `Arrow[[A, B] =>> A => B ! R]`, so `split`/`fanout` exist on
       plain and effectful functions and the "one Profunctor" sentence
       in Optic.scala is a fact. Deliverable is the laws' tests
@@ -11,3 +11,10 @@
       (`TestMealy` observes over an input) serves both; whichever
       lane lands first writes it reusable, the other reuses it.
       Neither lane adds the other's instance (that spec's Design).
+      LANDED: `Arrow[Function1]` is a WIDENING of the instance that
+      already existed — one given, not two, because `Arrow` extends
+      `Strong` and a second given would make `Strong[Function1]`
+      ambiguous at every optic call site in the library. The Kleisli
+      half is `Optic.Star`. Both instantiate the shared `arrow-laws`
+      suite in three lines apiece, which is what the suite was split
+      out for: two lanes wanted the same laws and neither owned them.
