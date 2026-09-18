@@ -1398,6 +1398,51 @@ or not at all).
       one module and missed in the other. Also fixed `TestSignals`,
       which used a spin budget as a timeout and failed 2 of 3 runs on
       untouched master.
+## optics-arrows-effects — the questions the closed arc leaves (specs/optics.md stage 12, operator's ask 2026-09-18)
+
+The operator asked what optics, profunctors and arrows can do together
+with the monads, applicatives, effects and continuations already here,
+and what is missing for that to be convenient. Stage 12 of the spec
+records what the tree ALREADY answers (one traversal runs at
+`Validated`, `Par`, `Static` and an effect row with no code in the
+optics; `PState.zoom` is the lens-meets-continuation seam; `Arrow` has
+one instance, `Mealy`), and leaves these. Each is one lane with one
+test; none is promoted until its spec item is read first.
+
+- [ ] optics-guide-page — the convenience item, and the first to
+      pick: `docs/guide.md` does not mention `Lens`, `Prism` or
+      `Traversal`; tutorial §23 and theory ch. 10 are all the prose.
+      A page of PAIRS — nested `copy`, an `Option.map` chain, a
+      hand-written walk, each beside the optic that replaces it and
+      the verdict table's price for both — and the two roads named:
+      a path written in code is free, an optic chosen at run time
+      pays the interpreter. Docs-only; the guide's index guard is the
+      gate.
+- [ ] optics-arrow-instances — `Arrow[Function1]` and
+      `Arrow[[A, B] =>> A => B ! R]`, so `split`/`fanout` exist on
+      plain and effectful functions and the "one Profunctor" sentence
+      in Optic.scala is a fact. Deliverable is the laws' tests
+      (`TestMealy` states them over an input), not a capability: with
+      a monad in hand `fanout` adds little over a for-comprehension,
+      and the entry says so before anyone measures it.
+- [ ] optics-cont-profunctor — `Cont[X, B => R, A => R]` as
+      `Strong & Choice`: `first` is `PState.zoom`'s shift written
+      once, `right` is NEW (a typestate program on one case of a sum).
+      Success: `PState.zoom` becomes `l[P](m)` with its tests
+      unchanged, plus one prism-zoom test. May be REFUTED by the
+      answer-type indices at `right` — no cast goes in, and a
+      refusal is recorded in the spec's Results like the others.
+- [ ] optics-prism-selective — a second `Star` interpretation over
+      `Selective[F]` whose `right` lifts the preview into `F` and
+      `branch`es, so `Static` through a prism reports BOTH arms where
+      the applicative road reports the one taken. One test with the
+      matched control beside it.
+- [ ] optics-field-fuse — `Lens.field[S]("name")` is the one
+      constructor the planner cannot read (verdict, 2026-09-10), so it
+      pays the interpreter while `Lens[S](_.f)` is free. Measure it
+      first (it has no benchmark row), then either teach `Fuse` the
+      `FieldOf.apply` shape or say the price on the guide page.
+
 ## openapi — the document as a rendering (specs/openapi.md, operator's ask 2026-09-11)
 
 The spec is written and names the consumer first, as

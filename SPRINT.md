@@ -91,6 +91,16 @@
   the day the instance exists. First real consumer: `okay-conf`
   reporting every missing key in one run, which is also the item that
   decides whether it earned its place.
+- optics-arrows-effects — what optics, profunctors and arrows do with
+  the monads, applicatives, effects and continuations already here
+  (specs/optics.md stage 12, the operator's question 2026-09-18). The
+  survey LANDED as the spec section: the tree already runs one
+  traversal at `Validated`/`Par`/`Static`/an effect row, `PState.zoom`
+  is the lens-meets-continuation seam, `Arrow` has one instance. Five
+  lanes are in BACKLOG under `optics-arrows-effects`; pick
+  `optics-guide-page` first (the convenience item, docs-only), then
+  `optics-arrow-instances`; the two experiments (`optics-cont-profunctor`,
+  `optics-prism-selective`) each carry a stated refutation road.
 - unwrap-glyph — one glyph, one meaning. ALL FOUR STAGES LANDED
   2026-09-18 (82753d21, 18a558be, 74ecac89; specs/unwrap-glyph.md
   Results). `.?` is the direct mark again; the Throws glyphs live in

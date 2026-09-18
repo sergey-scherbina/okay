@@ -1,5 +1,33 @@
 # Changelog
 
+## optics-arrows-effects - the closed optics arc, asked what it leaves open
+
+The operator asked what optics, profunctors and arrows do TOGETHER
+with the monads, applicatives, effects and continuations this library
+already has, and what is missing for that to be convenient. The
+answer is specs/optics.md stage 12, written against the tree at
+`d9eae6d1`, and its first job is to stop the next agent re-deriving
+what exists: one traversal already runs at `Validated`, `Par`,
+`Static` and inside an effect row with no code in the optics
+(`TestOpticCarriers`); `PState.zoom` is where a lens meets a
+continuation; `Optic.Arrow` has exactly one instance, `Mealy`, and
+`Function1` is not one. Where an arrow would earn its place is not
+Kleisli (a monad is in hand there) but a static graph that branches
+on a value, and that trigger was already recorded under
+optics-outside "topology".
+
+What it leaves, each as one lane with one test and a stated
+refutation road, is in BACKLOG under `optics-arrows-effects`: a
+user-facing guide page (docs/guide.md does not mention a lens),
+`Arrow` for plain and effectful functions, `Cont` as a `Strong &
+Choice` profunctor so `PState.zoom` is an instance and a prism zoom
+becomes possible, a prism over `Selective` so `Static` sees the
+untaken arm, and the by-name lens the planner cannot fuse. SPRINT
+names the order.
+
+Gate: docs only (specs and the three boards); `check-citations.sh`
+passes.
+
 ## ui-table-weights - a table says how wide its columns are
 
 `Ui.Table` gains `weights`, `Box`'s own word for the same quantity.

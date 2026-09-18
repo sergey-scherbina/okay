@@ -846,3 +846,124 @@ So the guidance is no longer "optics are a convenience layer". It is:
 name the path in code and the optic is free; choose it at run time and
 you are paying an interpreter, which is the honest trade and always
 was.
+
+## Stage 12 — arrows, effects and continuations: what the closed arc leaves open (optics-arrows-effects, 2026-09-18)
+
+The operator asked what optics, profunctors and arrows can do TOGETHER
+with the monads, applicatives, effects and continuations this library
+already has, and what is missing for that to be convenient. This
+section is the answer, measured against the tree as of `d9eae6d1`,
+so that the next agent starts from what exists rather than from the
+question. Nothing below is implemented; every item states what would
+prove it and what it waits for.
+
+### What the tree already answers
+
+Read these before proposing any of them again.
+
+- **One traversal, N semantics — the applicative slot IS the effect
+  slot.** `traverseOf[F]` asks for `Applicative[F]` and nothing else,
+  so every carrier of the applicative arc drops in without a line in
+  the optics: `Validated` reports every bad focus, `Par` visits them
+  at once, `Static` says what the walk WOULD do, and `[X] =>> X ! State
+  % Int` runs it inside an effect row (`TestOpticCarriers`,
+  `TestOptics` "traverseOf in the row"). This is the whole of "optics
+  meet effects" for a traversal, and it needed no design.
+- **Optics meet continuations at `PState.zoom`.** A four-parameter
+  `Lens[S1, S2, A1, A2]` zooms a `Cont[X, A2 => R, A1 => R]` to
+  `Cont[X, S2 => R, S1 => R]` in one `shift` (State.scala). The
+  type-changing lens and Atkey's parameterised state are one picture;
+  theory ch. 10 "Type-changing optics are parameterised state" says
+  why.
+- **Arrows exist, with ONE instance.** `Optic.Category` and
+  `Optic.Arrow` sit beside `Profunctor` (stage 5) and `Mealy` in
+  okay-lex is the only value that has them. `Function1` is
+  `Traversing` and nothing more, so `split` and `fanout` cannot be
+  called on a plain function, and `Star[F]` has no `Category`, so two
+  effectful steps `A => B ! R` compose only through `Monad.scala`'s
+  `>>>`.
+- **Where arrows would earn their place is recorded, and it is not
+  Kleisli.** Hughes' reason for an arrow is a computation with a
+  STATIC part — something a monad cannot expose because its shape
+  lives in a continuation. In this tree that static part is `Static`
+  (applicative) and `Tables.Plan` (a GADT), and specs/optics-outside.md
+  "topology" already names the one reopen trigger: a plan that must
+  branch on a VALUE and still be drawn, which is `ArrowChoice`. The
+  same day this section was written a sibling claimed
+  `static-workflow` — "the durable spine without ArrowApply" — which
+  is that trigger being pulled from the workflow side; a lane here
+  reads specs/static-workflow.md before adding any arrow instance,
+  so the two do not build the same thing twice.
+- **The families nobody has asked for stay out**: indexed optics,
+  `Grate`/`Closed`, optics over `Source`, and the four open
+  optics-outside candidates (policy, query, live, tools-effectful).
+  Each has a trigger written where it stands. The arc's rule holds:
+  a declaration earns an optic when it is handed to more than one
+  interpreter and one of them DESCRIBES rather than runs.
+
+### What is worth learning, as experiments with a test each
+
+- [ ] **`Cont` as a `Strong & Choice` profunctor.** With
+      `P[A, B] = Cont[X, B => R, A => R]`, `Strong.first` is exactly
+      the `shift` inside `PState.zoom`, written once for the
+      interpretation instead of once per zoom; `Choice.right` is
+      NEW — a typestate program run on one case of a sum, skipped
+      when the case is absent. Success: `PState.zoom` becomes
+      `l[P](m)` and its existing tests pass unchanged; a prism zoom
+      has one test on a two-case protocol state. Refutation is
+      possible and would be recorded here: the answer-type indices
+      may not line up for `right` without a cast, and no cast goes
+      in (operator rule). No `Traversing` is claimed — `wander`
+      needs an applicative to thread the answer type through, and
+      that is a separate question.
+- [ ] **A prism over `Selective`, so `Static` sees the untaken
+      arm.** `Star[F].right` decides on the VALUE before anything
+      enters `F` (`_.fold(c => F.pure(Left(c)), ...)`), so a static
+      walk through a prism describes only the road taken. A
+      `Selective[F]`-backed interpretation would lift the preview
+      into `F` and `branch`, and `Static` would then report both
+      arms — which is what "describe before running" means for a
+      sum. Success: one test where `Kaleidoscope`-free
+      `Prism.some.traverseOf[[X] =>> Static[W, X]]` answers the
+      writes of BOTH arms; a matched control shows the applicative
+      road answering one. Cost to state: a `Selective` is a
+      stronger ask than an `Applicative`, so this is a second
+      `Star` given, not a change to the first.
+- [ ] **`Arrow[Function1]` and `Arrow[[A, B] =>> A => B ! R]`.**
+      Five lines each; they make "arrows and optics are written on
+      one `Profunctor`" a fact about the tree rather than a sentence
+      in a comment, and let `lens(step)` for a `Star` be followed by
+      `fanout`. The honest expectation, stated up front so the lane
+      does not oversell: with a monad in hand `fanout` adds little
+      over a for-comprehension, so this lane's deliverable is the
+      table's honesty and the laws' tests, not a new capability.
+      Success: the arrow laws (`TestMealy` states them over an
+      input) pass at both instances.
+
+### What is needed for it to be convenient
+
+- [ ] **A user-facing optics page.** `docs/guide.md` does not mention
+      `Lens`, `Prism` or `Traversal`; the only prose is tutorial §23
+      and theory ch. 10. The page delivers ordinary call sites as
+      PAIRS — the nested `copy`, the `Option.map` chain, the
+      hand-written walk — each beside the optic that replaces it,
+      with the verdict table's numbers for what each costs
+      (`useful-not-just-works`: literature examples did not answer
+      "how does this simplify my code"). It names the two roads the
+      verdict already names: a path written in code is free, an
+      optic chosen at run time pays the interpreter.
+- [ ] **`Lens.field[S]("name")` and the planner.** The verdict says
+      its expansion "the planner still cannot read", so the one
+      by-name lens pays the interpretation while the selector lens
+      is free. Either teach `Fuse` the `FieldOf.apply` shape (a
+      `constValue` index into a `Replaced` product) or say so on the
+      guide page beside the constructor. Measure before choosing:
+      the by-name lens has no benchmark row of its own.
+
+### Out of scope for stage 12
+- indexed optics, `Grate`, optics over a stream, and the
+  optics-outside candidates: each keeps its recorded trigger
+- `Traversing` for `Cont`: needs an applicative over answer-type
+  modification, and no consumer has asked
+- an `ArrowChoice` for `Tables.Plan`: reopens with the trigger in
+  specs/optics-outside.md, not from here
