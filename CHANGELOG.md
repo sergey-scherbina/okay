@@ -1,5 +1,16 @@
 # Changelog
 
+> **New entries live in [`changelog.d/`](changelog.d/), one file per
+> landed lane** (changelog-d, 2026-09-18) — a landing writes its own
+> file instead of the head of this one, so two lanes landing in the
+> same hour no longer conflict. Read them with
+> `scripts/changelog.sh`, or the whole history with
+> `scripts/changelog.sh --all`.
+>
+> Everything below landed before the switch. It is the archive and is
+> not edited again; its order is the one thing it carries that a
+> directory of filenames cannot, which is why it was not split.
+
 ## proc-notation-forms - the type arguments were never required
 
 The operator's traditional question, asked of the arrow road this

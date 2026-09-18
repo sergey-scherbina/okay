@@ -22,7 +22,12 @@
 # moment.)
 set -e
 files="$*"
-[ -n "$files" ] || files="CHANGELOG.md BACKLOG.md"
+# The default set: the two ledgers, plus every entry in changelog.d —
+# a sha cited in a new entry is checked exactly as one in the archive
+# always was (changelog-d, 2026-09-18). The glob may match nothing on
+# a tree from before the directory existed, and `[ -f ]` below skips
+# the literal pattern.
+[ -n "$files" ] || files="CHANGELOG.md BACKLOG.md changelog.d/*.md"
 bad=0
 for f in $files; do
   [ -f "$f" ] || continue

@@ -2,7 +2,7 @@
 
 SPRINT: SPRINT.md
 BACKLOG: BACKLOG.md
-CHANGELOG: CHANGELOG.md
+CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
 
 ## Skills
 - Skills live in the `.agents/plugins` submodule (fresh clone:
@@ -200,9 +200,18 @@ force, all already practiced, none previously written down:
 - The protocol is the `scrumban` skill: write the plan into the board
   BEFORE executing. `SPRINT.md` is what agents pick from (claim before working);
   `BACKLOG.md` is where found-but-deferred work goes THE MOMENT it is
-  found; `CHANGELOG.md` is append-only, newest first, one entry per
-  landed task naming the commits. Lifecycle: promote backlog -> sprint
-  -> claim -> land -> DELETE from sprint, prepend to changelog.
+  found; a landed task writes `changelog.d/<slug>.md` — ONE FILE, named
+  after the lane, beginning with a `## ` title and naming the commits.
+  It is never the head of `CHANGELOG.md`: that file is the archive of
+  everything before 2026-09-18 and is not edited again. Read the log
+  with `scripts/changelog.sh` (new entries, newest first, ordered by
+  the commit that ADDED each one) or `--all` for the archive too.
+  `--check` guards the naming and shape, and `TestChangelogEntries`
+  runs that guard in the gate. The reason is measured rather than
+  stylistic: four rebases of one docs-only lane in an hour, every one
+  a conflict on the same three lines, every resolution identical.
+  Lifecycle: promote backlog -> sprint -> claim -> land -> DELETE from
+  sprint, WRITE the changelog entry as its own file.
 
 ## Specs
 - The `spec-dev` skill

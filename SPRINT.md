@@ -73,6 +73,19 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- boards-d — one file per item for SPRINT and BACKLOG too
+  (specs/boards-d.md, the spec LANDED 2026-09-18). WHY: `changelog-d`
+  removed the conflict class for landings; the boards have the same
+  shape and the operator asked for the same treatment the same hour.
+  WHAT: `sprint.d/<slug>.md` and `backlog.d/<section>/<slug>.md`,
+  promotion by `git mv`, `scripts/board.sh` to read them. HOW IT
+  DIFFERS from changelog-d, and why it is its own lane: the changelog
+  switched ADDITIVELY (archive stays, new entries are files) while a
+  board must be MIGRATED whole — half in a file and half in a
+  directory is worse than either. DONE-WHEN: the assembled directory
+  is byte-identical to today's file modulo a stated normalisation,
+  asserted by a test written BEFORE the split; a migration verified by
+  reading is one that quietly loses an item.
 - arrows-plan — ONE plan across static-workflow, proc-notation and
   optics stage 12 (specs/arrows-plan.md, LANDED 2026-09-18). Four
   decisions: `Proc` is over a SIGNATURE beside `Static`, the workflow
