@@ -3,8 +3,9 @@
 The ledger for defects whose FIX lands in the root module's own sources
 (`src/main/scala-jvm`, `scala-js`, `scala-native`, `src/main/scala`).
 A module with its own sources keeps its own file beside them —
-`okay-http/BUGS.md` is the other one today. This is not a leftovers
-bin: an entry whose fix belongs to a module belongs in that module.
+`okay-http/BUGS.md` and `okay-ui/BUGS.md` are the other two today.
+This is not a leftovers bin: an entry whose fix belongs to a module
+belongs in that module.
 
 Newest first. Status lives in the machine-readable header, never in
 the prose.
