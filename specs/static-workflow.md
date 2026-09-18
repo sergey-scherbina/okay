@@ -324,9 +324,18 @@ a consumer.
       journal format is out of scope, so a `Par` does not interleave
       RECORDS; what it parallelises is the WAITING, which is the half
       that costs calendar days.
-- [ ] compensation as structure: a leaf carrying an undo, and a
-      failure walking the path backwards. TRIGGER: a saga written by
-      hand on the cancelled branch twice.
+- [x] compensation as structure: a leaf carrying an undo, and a
+      failure walking the path backwards. UNGATED BY THE OPERATOR
+      (2026-09-18) and landed as `static-workflow-undo`. ITS TRIGGER
+      HAD NOT FIRED, and the check found something better than a
+      missing trigger: `okay.persist.Saga` already does this for a
+      LINEAR sequence, journaled intent-first with forward and
+      backward recovery. So the question was not "build a saga" but
+      "what does a TERM add", and the answer is three things —
+      compensation over a SHAPE (branches, loops) rather than a
+      vector; on the workflow's own journal rather than a second one;
+      and an undo chain that is itself a term, so it walks, draws and
+      resumes like any other. See the Design section.
 - [ ] the cursor chapter: a snapshot format of `(path, carried
       values)` giving O(1) restore, with `Schema` demanded on the
       carried types at construction. TRIGGER: a term whose walk is
@@ -372,6 +381,38 @@ pops. A journal that ends inside the third iteration stands at
 `Iter(3, inner)`. Under `toProgram` the loop is `Free.defer`-driven
 so a loop of any length costs no host stack (the same move as
 `Static.toFree`).
+
+**Compensation needs no `ArrowApply`, and that is the whole trick.**
+The obvious design carries the undos as values on the edge — a stack
+of computations to run later — and a computation as a value that is
+later run IS `app`, the one thing this type refuses. The way round it
+is the thing the type was built for: the undos are not carried, they
+are FOUND, at the paths where their steps ran.
+
+`Undo(step, undo)` is a step with its inverse beside it: `step: X =>
+Y` and `undo: (X, Y) => Unit`, so a compensation sees both what its
+step was given and what it produced. Under `foldMap` an `Undo` IS its
+step — the inverse is metadata until something fails.
+
+When something does, `Wf.Proc.compensating(p)(x, journal)` walks the
+term over the journal exactly as `walk` does, and at every `Undo` that
+COMPLETED it builds one piece:
+
+    Proc.arr((_: Unit) => (x, y)) >>> undo
+
+built at the point in the fold where `x` and `y` still have their
+types, so there is no cast anywhere in it. The pieces come back in
+reverse order, composed into ONE `Wf.Proc[Q, A, Unit, Unit]` — which
+is an ordinary term. It runs on the same engine, writes to the same
+journal, walks, draws, and resumes if the compensation itself is
+interrupted. A saga that is a workflow, rather than a second
+mechanism beside one.
+
+FAILURE IS NOT A NEW NODE. A term that can fail threads
+`Either[E, ·]` and `OnRight` already passes a `Left` through
+untouched, so a failure short-circuits the rest of the term by the
+ordinary choice. What `compensating` needs is only "which `Undo`s
+completed", which is what the walk knows.
 
 **`Par` parallelises the WAITING, not the journal.** A record is
 `Ans[A] = Either[SysA, A]` and carries nothing that says which
