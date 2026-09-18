@@ -1,6 +1,0 @@
-feature/ui-open-records 2026-09-18T11:10:34Z
-agent: claude-code
-heartbeat: 2026-09-18T11:10:34Z
-status: in-progress
-done-so-far: claimed
-next: make ui-windows-terminal and delim-doors-are-prompted decision-ready records rather than stubs
