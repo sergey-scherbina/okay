@@ -166,6 +166,7 @@ API reference, gotchas.
 | [`okay-stream`](modules/okay-stream.md) | streams, channels, chunks and the buffers under them; it left the core because nothing in the effect system referred to it, and the core kept only the `Stream` typeclass and `Handoff` |
 | [`okay-workflow`](modules/okay-workflow.md) | the static workflow: `Wf`'s questions, `Proc`'s free arrow over them, and the macro that builds one — a leaf of the core, so it became a module |
 | [`okay-data`](modules/okay-data.md) | data structures that are not the effect system: the approximate aggregators (`Sketch`), and the coordination-free pair `Uid` and `Hlc`. `Aggregator` itself stayed in the core |
+| [`okay-optics`](modules/okay-optics.md) | profunctor optics and the `Fuse` planner: Iso/Lens/Prism/Traversal and friends, the interpretations, and the optic spelling of zooming |
 | [`okay-cats`](modules/okay-cats.md) | cats instances (law-tested), IO and free-monad bridges, their runtime as our Scheduler |
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
 | [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |

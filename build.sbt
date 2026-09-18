@@ -327,7 +327,7 @@ lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-workflow"))
-  .dependsOn(okay % "compile->compile;test->test")
+  .dependsOn(okay % "compile->compile;test->test", okayOptics % "compile->compile;test->test")
   .settings(
     name := "okay-workflow",
   )
@@ -369,6 +369,51 @@ lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .dependsOn(okay % "compile->compile;test->test")
   .settings(
     name := "okay-data",
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
+ * Profunctor optics and the `Fuse` planner (core-modules stage 4,
+ * 2026-09-18): `Optic` with its constraint classes and
+ * interpretations, `Fuse`, `Focus`, and the optic SPELLING of
+ * zooming.
+ *
+ * WHAT MADE THIS POSSIBLE, after the spec had filed it as blocked on
+ * two seams: stage 2 took `Proc` away, which removed one of them, and
+ * reading the other settled it. `State.zoom` used a lens for exactly
+ * two things, `get` and `set`, so the core now has
+ * `State.zoomWith(look, put)` — no optic in it — and `Zoom.scala`
+ * here gives the lens spelling back as an extension on `State.type`.
+ * `State.zoom(lens)(prog)` still compiles character for character.
+ *
+ * `ArrowLaws` moved with it, because it is typed on `Optic.Arrow`;
+ * okay-workflow and okay-lex reach it through `test->test`.
+ */
+lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-optics"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-optics",
   )
   .jvmSettings(
     Test / unmanagedSourceDirectories +=
@@ -895,7 +940,7 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // JVM's alone, so a shared suite put there compiles for okay-lex's
   // JVM and leaves its JS and Native tests with no `okay.laws` at all
   // — measured, as a cyclic-import error, before it was moved.
-  .dependsOn(okay % "compile->compile;test->test", okayStream % "compile->compile;test->test")
+  .dependsOn(okay % "compile->compile;test->test", okayStream % "compile->compile;test->test", okayOptics % "compile->compile;test->test")
   .settings(
     name := "okay-lex",
     libraryDependencies ++= Seq(
@@ -2014,7 +2059,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,

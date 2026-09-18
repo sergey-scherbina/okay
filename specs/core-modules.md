@@ -177,34 +177,57 @@ first time, in okay-data's `TestUidReplayable` — with the control the
 repo's rule asks for: pointed at a replayable row the assertion
 FAILS, so it is the refusal that carries it.
 
-## Not yet — optics and STM
+## Stage 4 — `okay-optics` (DONE)
 
-Both are extractable in principle and neither is extractable by
-moving files, because in both the core is typed against the
-implementation rather than an interface:
+`Optic` (720), `Fuse` (469), `Focus` (55) and the optic spelling of
+zooming, with fourteen suites and the `ArrowLaws` helper.
 
-- optics: **HALF THIS SEAM CLOSED BY ITSELF IN STAGE 2.**
-  `Proc.procArrow` was one of the two edges and `Proc` left with the
-  workflow, so the core's only remaining tie to optics is `State`'s
-  zoom family — `zoom`, `zoomCase`, `strong`, `ZoomStrong`,
-  `opticZooming` — typed on `Lens`, `Prism` and `Optic.Strong`.
-  Measured after stage 2: that family has **ZERO callers outside the
-  core's own tests**, 25 mentions across TestZoom, TestContProfunctor
-  and TestContSemigroupoid and nowhere else in 73 modules. The lane is
-  therefore cheap, and its one real cost is a SPELLING: `State.zoom`
-  cannot stay `State.zoom` in another artifact, because an object
-  cannot be reopened across compilation units — the same wall
-  `Producer.concat` hit in stage 1 — so it becomes something like
-  `Zoom.state(l)(p)` and three test files follow. `PState.Zooming` is
-  a `Cont` alias with no optics in it and stays. The classes (`Strong`,
-  `Choice`, `Arrow`, `Traversing`) are interfaces; the concrete optics
-  and the `Fuse` macro are machinery.
-- `Providing.Facts` is backed by `TMap`, and `Stm.sim` is an
-  instance for `Sim`. Two seams, both small, both real.
+**THE SEAM WAS HALF GONE BEFORE ANYONE TOUCHED IT.** This was filed
+as blocked on two edges, `State.zoom` typed on `Lens` and
+`Proc.procArrow` typed on `Optic.Arrow`. Stage 2 moved `Proc` out with
+the workflow, so the second one left on its own — a lane closing
+another lane's blocker without either knowing.
 
-Filed rather than done: a lane that cuts one of these seams is worth
-more than the lines it moves, because it is the law being applied
-where it is not yet obeyed.
+**AND THE REMAINING ONE WAS NEVER ABOUT OPTICS.** `State.zoom` took a
+`Lens[S, S, A, A]` and used, of the whole optic, `l.get` and `l.set`.
+So the core now carries `State.zoomWith(look: S => A, put: A => S => S)`
+— an interpretation of one effect into another, spelled in the core's
+own terms — and okay-optics gives the lens spelling back:
+
+    extension (st: State.type)
+      def zoom[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F) =
+        State.zoomWith[S, A, X, F](s => l.get(s), a => s => l.set(a)(s))(p)
+
+`State.zoom(lens)(prog)` therefore still compiles character for
+character. NO API BREAK, where stage 1 had to accept one at the
+`Producer.concat` wall: an object cannot be reopened across
+compilation units, but a singleton type can be EXTENDED, and that is
+the difference. The spec's own estimate had said a rename was the
+lane's one real cost; it was wrong, and the escape was in the
+language.
+
+`PState.zoom` was already `l[Zooming[X, R]](m)`, one line, so only the
+`Optic.Strong` instance for the carrier moved. The `Zooming` alias
+names a `Cont` and nothing else, and stayed.
+
+TWO `dependsOn` edges: okay-workflow and okay-lex, both
+`compile->compile;test->test` because `ArrowLaws` is typed on
+`Optic.Arrow` and their suites run it. okay-codec, okay-ui, okay-sql,
+okay-http and okay-persist all use optics and needed nothing —
+transitivity again.
+
+The core is now **46 files and 11 553 lines**, from 74 and 21 914:
+**47% gone across four stages**, with not one consumer's import or
+call site edited.
+
+## Not yet — STM
+
+`Providing.Facts` is backed by `TMap`, and `Stm.sim` is an instance
+for `Sim`. Two seams, both small, both real. Worth doing for the same
+reason optics was: it is the law applied where it is not yet obeyed.
+And stage 4 is the precedent for how — look at what the core actually
+USES of the thing it is typed against, before assuming the type is
+the dependency.
 
 ## Behavior
 

@@ -132,22 +132,31 @@ object State {
 
   /**
    * A program written against a PART of the state, run against the
-   * whole (specs/optics.md stage 3): the lens says which part, and
-   * nothing else about the state is touched.
+   * whole (specs/optics.md stage 3): the two functions say which
+   * part, and nothing else about the state is touched.
    *
    * Not a handler — an INTERPRETATION of one effect into another, the
    * shape `docs/your-own-effect.md` names: every `Get` on the part
-   * becomes a `Get` on the whole read through the lens, every `Set`
-   * becomes a read, a `set` through the lens and a write. The
-   * forwarded arm carries the rest of the row untouched, as `handle`'s
-   * does.
+   * becomes a `Get` on the whole read through `look`, every `Set`
+   * becomes a read, a `put` and a write. The forwarded arm carries
+   * the rest of the row untouched, as `handle`'s does.
+   *
+   * WHY TWO FUNCTIONS AND NOT A LENS (core-modules stage 4). This was
+   * `zoom(l: Lens[S, S, A, A])`, and it was the CORE's only reference
+   * to optics — the one edge that kept `Optic.scala` from becoming a
+   * module. Reading it settled what to do: of the whole lens it used
+   * exactly `l.get` and `l.set`, so the interpretation was never
+   * about optics at all. It says so now, and okay-optics gives back
+   * the lens SPELLING as an extension, so `State.zoom(lens)(prog)`
+   * still compiles character for character wherever that module is on
+   * the classpath.
    */
-  def zoom[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F): X ! State % S + F = {
-    // the part, read and written through the lens, as a program over
-    // the whole — the two operations this interpretation is made of
-    def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => l.get(a)))
+  def zoomWith[S, A, X, F[+_]](look: S => A, put: A => S => S)(p: X ! State % A + F): X ! State % S + F = {
+    // the part, read and written through the two functions, as a
+    // program over the whole — what this interpretation is made of
+    def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => look(a)))
     def writePart(a: A): A ! State % S + F =
-      !.widen[A, State % S, F](get[S].flatMap(s => set(l.set(a)(s))).map(_ => a))
+      !.widen[A, State % S, F](get[S].flatMap(s => set(put(a)(s))).map(_ => a))
 
     def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
     def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
@@ -197,102 +206,21 @@ object PState {
     (m / (a => s2 => (s2, a)))(s)
 
   /**
-   * A typestate program over a PART, run over the whole — and this is
-   * the stage's whole argument (specs/optics.md stage 3, theory ch. 3).
-   *
-   * A four-parameter lens `Lens[S1, S2, A1, A2]` is a type-changing
-   * update: the whole goes S1 -> S2 exactly when the part goes
-   * A1 -> A2. `PState` is Atkey's parameterised state: a transition
-   * that carries the state's TYPE in the answer type. Zooming one by
-   * the other is one `shift` — read the part out of the whole to start
-   * the inner program, and put the part back to finish it — and the
-   * types line up on their own, which is the sense in which the
-   * type-changing lens and parameterised state are the same picture.
-   */
-  inline def zoom[S1, S2, A1, A2, X, R](l: Lens[S1, S2, A1, A2])
-                                       (m: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
-    l[Zooming[X, R]](m)
-
-  /**
    * THE CARRIER: a typestate transition, seen as a profunctor in its
    * state (specs/optics.md stage 12, `optics-cont-profunctor`).
    *
    * `Cont[X, B => R, A => R]` computes an `X` and takes the state from
-   * `A` to `B`. Read as `P[A, B]`, that is a profunctor — and the
-   * instance below is what makes `zoom` above one line: an optic IS a
-   * function `P[A1, A2] => P[S1, S2]` for every `P` with the right
-   * structure, so the zoom that used to be a hand-written `shift` is
-   * now the optic run at this carrier. Nothing about `zoom` changed;
-   * what changed is that the same body now also serves every other
-   * `Strong` optic, and `TestZoom` passes unchanged as the proof.
+   * `A` to `B`. Read as `P[A, B]`, that is a profunctor — and an optic
+   * IS a function `P[A1, A2] => P[S1, S2]` for every `P` with the
+   * right structure, which is why `PState.zoom` is one line: the
+   * optic run at this carrier.
+   *
+   * THE ALIAS IS ALL THAT IS LEFT HERE (core-modules stage 4). It
+   * names a `Cont` and nothing else, so it stays in the core; the
+   * `Optic.Strong` instance for it, and the `zoom` and `zoomCase`
+   * spellings that need one, moved to okay-optics (`Zoom.scala`).
+   * Callers write the same thing they always did.
    */
   type Zooming[X, R] = [A, B] =>> Cont[X, B => R, A => R]
 
-  /**
-   * `Strong`, and why `first` is the whole content: the state is a
-   * PAIR, the program works on its left half, and the right half
-   * rides along untouched. That is exactly what a lens does to a
-   * record, which is why `first` and `lens` are the same shape here.
-   *
-   * `lens` is overridden rather than derived so that no tuple is
-   * built per zoom — the direct road every interpretation in
-   * Optic.scala is allowed to take, and here it is the body `zoom`
-   * had before this instance existed, character for character.
-   */
-  /** the instance is TOP-LEVEL, below — see the note there */
-  def strong[X, R]: Optic.Strong[Zooming[X, R]] = opticZooming[X, R]
-
-  private[okay] class ZoomStrong[X, R] extends Optic.Strong[Zooming[X, R]]:
-    def dimap[A, B, C, D](p: Cont[X, B => R, A => R])(f: C => A, g: B => D): Cont[X, D => R, C => R] =
-      shift(k => (c: C) => (p / (x => (b: B) => k(x)(g(b))))(f(c)))
-
-    def first[A, B, C](p: Cont[X, B => R, A => R]): Cont[X, ((B, C)) => R, ((A, C)) => R] =
-      shift(k => (ac: (A, C)) => (p / (x => (b: B) => k(x)((b, ac._2))))(ac._1))
-
-    override def lens[S1, S2, A1, A2](get: S1 => A1, set: (S1, A2) => S2)
-                                     (p: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
-      shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
-
-  /**
-   * A PRISM CANNOT BE AN INSTANCE HERE, AND THE REASON IS NOT THE
-   * TYPES — it is that the program has no answer to give.
-   *
-   * `Choice.right` would have to turn a `P[A, B]` into a
-   * `P[Either[C, A], Either[C, B]]`: a program that runs on the
-   * `Right` and passes a `Left` through. On the `Right` that is
-   * ordinary. On the `Left` the zoomed program must still produce the
-   * answer `X` — and `X` is universally quantified in this instance,
-   * so there is no `X` to produce and no continuation to get one
-   * from. It is a parametricity argument, not a compiler complaint:
-   * the only source of an `X` is the inner program, and the inner
-   * program is exactly what the absent case says not to run.
-   *
-   * So the honest door is the one below, and what it costs is written
-   * in its type: the answer becomes `Option[X]`. `TestZoomPrism` pins
-   * that the instance is absent (a refusal is the only thing that can
-   * prove it) and that this door does what a prism should.
-   */
-  def zoomCase[S1, S2, A1, A2, X, R](p: Prism[S1, S2, A1, A2])
-                                    (m: Cont[X, A2 => R, A1 => R]): Cont[Option[X], S2 => R, S1 => R] =
-    // the prism's own pair, taken by running it at `Market` — the
-    // representation `Optic.compiled` exists for exactly this: to hand
-    // an optic's two halves to something that is not a profunctor
-    val pair = p.compiled
-    shift(k => (s1: S1) => pair.look(s1) match
-      case Right(a1) => (m / (x => (a2: A2) => k(Some(x))(pair.put(s1, a2))))(a1)
-      // the case is not there: the program never runs, the state is
-      // already the `S2` the prism found, and the answer says so
-      case Left(s2) => k(None)(s2))
 }
-
-
-/**
- * The zooming carrier's `Strong`, TOP-LEVEL so that `import
- * okay.given` finds it — the placement every interpretation in
- * Optic.scala uses, and for the reason the compiler gave when this
- * one was written inside `object PState`: the implicit scope of
- * `Cont[X, B => R, A => R]` is `Cont`'s, not `PState`'s, so a user
- * zooming by hand would have needed an import nobody could guess.
- * `PState.zoom` never noticed, because it is lexically inside.
- */
-given opticZooming[X, R]: Optic.Strong[PState.Zooming[X, R]] = PState.ZoomStrong[X, R]()
