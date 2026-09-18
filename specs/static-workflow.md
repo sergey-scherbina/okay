@@ -299,14 +299,20 @@ procedures composes the steps.
 - [x] `mermaid(Some(path))` marks the run's position, taken from
       `walk` — so a dashboard draws a position without replaying
 
-### Stage 5 — gated: notation and the rest the closure forbade
+### Stage 5 — gated: the rest the closure forbade
 
-Each of these has a TRIGGER and lands only when it fires:
+**THE ARC IS CLOSED FOR EVERY STAGE THAT WAS IN SCOPE** (2026-09-18):
+stages 1-4 landed the same day, and what is left below is gated on
+purpose. Each has a TRIGGER and lands only when it fires — a list of
+things nobody has asked for is not a plan, and building one of these
+without its trigger would be building it for the spec rather than for
+a consumer.
 
-- [ ] `proc`-notation — MOVED to specs/proc-notation.md and UNGATED
-      (operator, 2026-09-18): it is stage 1's companion, not stage
-      5's option. The lambda-boundary risk it named is stated there
-      as the price that stays.
+- [x] `proc`-notation — MOVED to specs/proc-notation.md and UNGATED
+      (operator, 2026-09-18), and LANDED there in full the same day:
+      the block, branches and loops, the spellings (no type arguments
+      where there is an expected type) and auto-colouring. It was
+      never a stage-5 option; it is stage 1's companion.
 - [ ] parallel branches: a `Par(f, g)` node whose position is a PAIR
       of paths, run as two sub-drives that join. TRIGGER: a workflow
       with two independent waits that today serialises them.
