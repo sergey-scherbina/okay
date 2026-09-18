@@ -1,5 +1,49 @@
 # Changelog
 
+## ui-html-css — the tokens' stylesheet moves beside the tree
+
+`okay.ui.Html.css`: the level-L stylesheet for the browser roads —
+the tree's containers, the text tokens (`okay-bold`, `okay-tone-*`,
+`okay-size-*`, `okay-kind-*`, `okay-align-*`), a button's role, and
+the table the browser now draws. okay-script serves it at
+`/__okay/okay.css`, and `Mobile.css` is that file plus what a PHONE
+adds — 44px tap targets, 16px inputs, a wrapping row, a reading
+measure — so a page still makes one request.
+
+WHY IT BELONGS HERE. `React.elem` writes those class names, and until
+now the only file that knew them was okay-script's phone stylesheet.
+A product serving `Html.render` itself therefore started from
+unstyled HTML and wrote the token map again by hand: okay-watch did,
+including fifteen `nth-child` selectors for what `Kind` and `Align`
+now say. `LiveJs` moved into okay-ui for this reason (the client of
+the tree lives beside the tree); this is the same argument for the
+same host.
+
+THE GUARD IS THE POINT OF THE LANE. A test walks a tree using every
+node and every token, collects the classes the renderer ACTUALLY
+wrote, and fails on any that has no rule — so a token added to the
+tree without one is a red test, not a page that quietly renders it
+unstyled. It also shows itself non-vacuous: three classes named from
+the walk's own result, and a name nothing writes shown absent from the
+file.
+
+Theming is six custom properties, not a fork of the rules:
+`--okay-fg`, `--okay-muted`, `--okay-accent`, `--okay-danger`,
+`--okay-line`, `--okay-base`. What is deliberately NOT in the file is
+layout the tree did not say — a `Box`'s weights stay inline, where
+React writes them and where an author's shares cannot be overruled.
+
+A CELL WRAPS; IT NEVER ELLIPSIZES is okay-watch's rule, promoted from
+a product stylesheet to the base: a page exists so a reader can CHECK
+what it says, and `DE000000000…` can be checked against nothing,
+copied nowhere and compared with nothing. `anywhere`, because an IBAN
+and a transaction hash have no spaces to break at; the header row
+keeps the ordinary word rules, or "weight" comes out as "weigh / t".
+
+TestHtmlCss (3). specs/ui-product.md stage 4 — the last of the four,
+which closes the arc this repository can close; what is left in it is
+each lane's last box, and those are okay-watch's to tick.
+
 ## ui-text-intent — what a text IS, as a token the tree carries
 
 `Style` gains `kind` (Prose/Ident/Number) and `align` (Start/End).

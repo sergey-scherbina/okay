@@ -302,7 +302,7 @@ makes it unable to drift from the renderer.
       shows, made into a value
 - [ ] okay-watch deletes `Analyst.blank` (their lane; the criterion)
 
-## Stage 4 — the tokens' stylesheet, beside the tree (ui-html-css)
+## Stage 4 — the tokens' stylesheet, beside the tree (ui-html-css, LANDED 2026-09-18)
 
 ```scala
 object Html:
@@ -327,18 +327,28 @@ object Html:
   rule's, stated once.
 
 Behavior:
-- [ ] `Html.css` names every class `React.elem` writes: a test walks
-      the renderer's class vocabulary (a tree with every node, every
-      token) and asserts each class has a rule — a token added without
-      a rule fails here rather than rendering unstyled
-- [ ] the base rules: a `Box` weight is `flex`, a cell wraps
-      (`overflow-wrap:anywhere` on `td`, `normal` on `th`), a `Form`
-      is a column, `Tone.Danger` reads `--okay-danger`
-- [ ] okay-script serves the file and `installable`'s `app.css`
-      carries the base; TestMobileHead's four files are five, or
-      `app.css` embeds the base — either way one request per page
-- [ ] okay-watch's stylesheet is its palette and scale (their lane;
-      the criterion)
+- [x] `Html.css` names every class `React.elem` can write: the test
+      walks a tree using every node and every token, collects the
+      classes the renderer actually wrote, and fails on any without a
+      rule — so a token added to the tree without a rule is a red test
+      rather than a page that quietly renders it unstyled. The walk is
+      shown to be non-vacuous (three classes named, a name nothing
+      writes shown absent)
+- [x] the base rules: a cell wraps and never ellipsizes
+      (`overflow-wrap: anywhere` on `td`, `normal` on `th`), an
+      identifier is monospaced, a number's figures are tabular; and
+      NOTHING about a `Box`'s weights, because layout is the tree's and
+      React writes the flex inline
+- [x] theming is six custom properties (`--okay-fg`, `--okay-muted`,
+      `--okay-accent`, `--okay-danger`, `--okay-line`, `--okay-base`),
+      read by the rules rather than restated
+- [x] okay-script serves the base at `/__okay/okay.css` and
+      `Mobile.css` is `Html.css` plus what a PHONE adds — one file,
+      one request, no `@import`. What stayed there is exactly the
+      phone's own: 44px tap targets, 16px inputs, a wrapping row, a
+      reading measure on a wide screen
+- [ ] okay-watch's stylesheet shrinks to its palette and type scale
+      (their lane; the criterion)
 
 ## Out of scope
 - **`Modal` as `<dialog>`** — needs a script to open; the plain road

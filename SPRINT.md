@@ -116,11 +116,10 @@
     posts nothing), which is why a plain-road page found it; the
     failing test stays in the suite as its record. `Forms.defaults` is
     one line now.
-  - ui-html-css — `Html.css`, the tokens' stylesheet beside the tree
-    (custom properties for the palette; a cell wraps, never
-    ellipsizes), served by okay-script beside `live.js`; `app.css`
-    keeps only what a phone adds. DONE-WHEN: a test walks every class
-    `React.elem` writes and finds a rule for each.
+  - ui-html-css — LANDED 2026-09-18. `Html.css`, served at
+    `/__okay/okay.css`; `Mobile.css` is it plus the phone's own. The
+    guard walks every class the renderer writes and fails on one with
+    no rule. Theming is six custom properties.
   LANE 1 (`arrow-laws`) LANDED 2026-09-18: 15 laws in
   `okay.laws.ArrowLaws`, `Mealy` instantiates in three lines, and its
   `right` is tested for the first time. NEXT: `static-workflow-proc`.

@@ -198,6 +198,10 @@ final class Site(
     // worker, the manifest and the icon, all from the container
     else if path == Mobile.CssPath then
       HttpResponse(200, Vector("Content-Type" -> "text/css; charset=utf-8"), Http.one(Mobile.css.getBytes(UTF_8)))
+    // the level-L stylesheet alone, for a page that draws the tree
+    // without being a phone application (ui-html-css)
+    else if path == Mobile.BaseCssPath then
+      HttpResponse(200, Vector("Content-Type" -> "text/css; charset=utf-8"), Http.one(okay.ui.Html.css.getBytes(UTF_8)))
     else if path == Mobile.SwPath then
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8", "Service-Worker-Allowed" -> "/"),
         Http.one(Mobile.serviceWorker.getBytes(UTF_8)))

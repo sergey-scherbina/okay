@@ -89,6 +89,14 @@ is no `Cmd` type; subscriptions are `merge`). Hosts:
 | `okay.ui.gtk.Gtk.host(box)`, `Gtk.window(title)(app)` | Scala Native | GTK 4; present only where `pkg-config --exists gtk4` answers (`brew install gtk4 pkg-config`) |
 | the test host | tests | renders to a value, feeds scripted events — the whole loop with no screen |
 
+`Html.css` is the level-L stylesheet for the browser roads: the
+containers, the text tokens, a button's role, the table. A product
+themes it by setting six custom properties (`--okay-fg`,
+`--okay-muted`, `--okay-accent`, `--okay-danger`, `--okay-line`,
+`--okay-base`) and writes no token rules of its own; okay-script
+serves it at `/__okay/okay.css`, and `installable`'s `/__okay/app.css`
+is that file plus what a phone adds.
+
 A `Host` takes the whole tree; a `Backend` takes patches, and
 `Ui.diffing` turns one into the other with the core diff (keyed
 children move rather than rebuild; the law "diff then patch equals
