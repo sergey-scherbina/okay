@@ -327,6 +327,79 @@ object Proc:
           case Iter(_) => b ++= s"${pad}loop$mark\n"
       b.result()
 
+    /**
+     * THE TERM AS A PICTURE (specs/static-workflow.md stage 4), in
+     * Mermaid, which this repository's docs already render.
+     *
+     * It is drawn FROM THE TERM, and that is the difference worth the
+     * feature: a monadic engine can only draw a process from a status
+     * projection somebody keeps in step with the code by hand, so the
+     * picture and the program drift and the picture is the one nobody
+     * checks. Here they cannot disagree — it is the same value the
+     * engine runs.
+     *
+     * What it shows: every leaf by the name the AUTHOR gave its door,
+     * BOTH sides of a choice (which one runs is decided by a value
+     * that does not exist yet — the same upper bound `leaves`
+     * reports), and a back edge for an `Iter`. Pure steps are not
+     * drawn: an `Arr` performs nothing, and a picture of the plumbing
+     * between two questions is a picture of nothing.
+     *
+     * `at` marks where a run stands — the path `Wf.Proc.walk` answers,
+     * so a dashboard draws a position without replaying anything.
+     */
+    def mermaid(at: Option[Path] = None): String =
+      val b = StringBuilder("flowchart TD\n")
+      var n = 0
+      def fresh(kind: String): String =
+        n += 1
+        s"$kind$n"
+      def edge(from: String, to: String, label: String = ""): Unit =
+        if label.isEmpty then b ++= s"  $from --> $to\n"
+        else b ++= s"  $from -->|$label| $to\n"
+      def mark(id: String, path: Path): Unit =
+        if at.contains(path) then b ++= s"  class $id here\n"
+      /** draw `q`, entered from `in`, and answer where it leaves */
+      def go(q: Proc[F, ?, ?], path: Path, in: String): String = q match
+        case Arr(_) => in
+        case Op(name, _) =>
+          val id = fresh("q")
+          b ++= s"""  $id["$name"]\n"""
+          mark(id, path)
+          edge(in, id)
+          id
+        case Then(f, g) => go(g, path / Step.Snd, go(f, path / Step.Fst, in))
+        case First(f) => go(f, path / Step.In, in)
+        case OnRight(f) =>
+          val choice = fresh("c")
+          b ++= s"""  $choice{"which side?"}\n"""
+          mark(choice, path)
+          edge(in, choice)
+          val taken = go(f, path / Step.In, choice)
+          val join = fresh("j")
+          b ++= s"  $join(( ))\n"
+          edge(taken, join, "right")
+          edge(choice, join, "left")
+          join
+        case Iter(body) =>
+          val head = fresh("l")
+          b ++= s"""  $head{"loop"}\n"""
+          mark(head, path)
+          edge(in, head)
+          // ONE round is drawn and the back edge says the rest: how
+          // often the body runs is decided by a value that does not
+          // exist yet, so a picture that unrolled it would be lying
+          // about a number it cannot know
+          val out = go(body, path / Step.Round(0), head)
+          edge(out, head, "again")
+          out
+      b ++= "  s0(( ))\n"
+      val last = go(p, Path.root, "s0")
+      b ++= "  e0(( ))\n"
+      edge(last, "e0")
+      b ++= "  classDef here stroke-width:3px\n"
+      b.result()
+
   /**
    * EVERY NODE OF THE TERM WITH ITS PATH, outermost first — and it
    * answers a question specs/arrows-plan.md Decision 4 asked rather

@@ -271,22 +271,33 @@ procedures composes the steps.
 
 ### Stage 3 — optics as the state glue (`static-workflow-optics`)
 
-- [ ] a lens applied to a step runs the step on the focused part and
+- [x] a lens applied to a step runs the step on the focused part and
       puts the result back; the surrounding state is untouched and
-      the journal holds only the step's answers
-- [ ] a prism applied to a step runs it on the matching variant and
-      passes every other variant through with no leaf asked
-- [ ] the form of `ui-direct-example` (validated applicatively, errors
-      put back by an optic) rewritten as a `Proc` whose questions are
-      the form's fields, resumed from a journal after a crash between
-      two fields
+      the journal holds only the step's answers — and the term folds
+      that journal back to the same whole
+- [x] a prism applied to a step runs it on the matching variant and
+      passes every other variant through with no leaf asked; `leaves`
+      still reports the step, because which variant arrives is decided
+      by a value that does not exist yet
+- [~] the form of `ui-direct-example` rewritten as a `Proc` — NOT
+      done, and named rather than quietly dropped. The two claims it
+      was there to make are made by the tests above (an optic applies
+      to a step with no new machinery; the journal holds the step's
+      answers and nothing else) and by `TestProcCut` (a crash between
+      two questions resumes). What a form would add is a CONSUMER, and
+      that is `ui-`something's lane, not this one — filed as
+      `proc-form-consumer`
 
 ### Stage 4 — the picture (`static-workflow-render`)
 
-- [ ] `render` draws the term (Mermaid) with every leaf named, both
-      sides of a `Left`, a back-edge for an `Iter`
-- [ ] `render(Some(path))` marks the run's position, taken from
-      `walk` — no `Statuses` projection consulted
+- [x] `Proc.mermaid` draws the term with every leaf named by the door
+      the AUTHOR called, both sides of a choice, and a back edge for
+      an `Iter` — drawn ONCE, because how often a body runs is not a
+      fact the term has. Pure steps are not drawn. (`render`, the
+      indented form from stage 1, stays: it is what a failure message
+      wants and Mermaid is what a page wants)
+- [x] `mermaid(Some(path))` marks the run's position, taken from
+      `walk` — so a dashboard draws a position without replaying
 
 ### Stage 5 — gated: notation and the rest the closure forbade
 
@@ -519,6 +530,39 @@ named directly broke `Proc.direct` twice:
 Every earlier test went through a door whose declared result type was
 the parent, and every earlier slot was a reference. Two coincidences
 held the encoding up.
+
+### Stages 3 and 4 — landed 2026-09-18 (`static-workflow-optics`)
+
+`Proc.mermaid` and `TestProcOptics` (11).
+
+**STAGE 3 BUILT NOTHING, WHICH WAS THE CLAIM.** An optic is a function
+polymorphic in a profunctor constrained by what it needs — a lens asks
+for `Strong`, a prism for `Choice` — and `Proc` has had both since
+stage 1, so `lens(step)` type-checked before this lane existed. What
+the lane adds is the answer to whether it BEHAVES, which is not the
+same question: the step sees only the focused part, the surrounding
+state comes back untouched, the journal holds the step's answers and
+nothing else, and the term folds that journal back to the same whole.
+A prism's absent case asks nothing and journals nothing, while
+`leaves` still reports its step — the over-approximation, once more,
+and in the one place where it is most obviously right.
+
+**THE PICTURE IS DRAWN FROM THE TERM, and that is the whole feature.**
+A monadic engine can only draw a process from a status projection
+somebody keeps in step with the code by hand, so the picture and the
+program drift and the picture is the one nobody checks. Here they
+cannot disagree — it is the same value the engine runs. Both sides of
+a choice are drawn because which one runs is decided by a value that
+does not exist yet; a loop is drawn ONCE with a back edge, because a
+picture that unrolled it would be lying about a number the term does
+not have.
+
+**WHAT WAS NOT DONE IS NAMED.** The third box asked for the
+`ui-direct-example` form as a `Proc`. Its two claims are already made
+— an optic applies to a step with no new machinery, and a crash
+between two questions resumes — so what a form would add is a
+CONSUMER, which belongs to a UI lane. Filed rather than quietly
+ticked.
 
 **THE PRICE proc-notation EXISTS TO REMOVE IS NOW VISIBLE.** Every
 test term needed a `keep` helper — `arr(x => (x, x)) >>> second(p)` —

@@ -223,6 +223,69 @@ Wf.Proc.walk(rooms)((), List(Right("3"), Right("a"), Right("b")))
 `Iter` is not `ArrowLoop` — Paterson's `loop` is lazy *value* feedback
 and cannot say "run the body again".
 
+## The picture
+
+A term draws itself, and the drawing cannot disagree with the program
+because it IS the program:
+
+```scala
+booking.mermaid()                 // the shape
+booking.mermaid(Some(at))         // ...with a run's position marked
+```
+
+```mermaid
+flowchart TD
+  s0(( ))
+  q1["ask"]
+  s0 --> q1
+  c2{"which side?"}
+  q1 --> c2
+  q3["ask"]
+  c2 --> q3
+  j4(( ))
+  q3 -->|right| j4
+  c2 -->|left| j4
+  q5["ask"]
+  j4 --> q5
+  e0(( ))
+  q5 --> e0
+  classDef here stroke-width:3px
+```
+
+Both sides of a choice are there, because which one runs is decided by
+a value that does not exist yet. A loop is drawn ONCE with a back
+edge, for the same reason: how often its body runs is not a fact the
+term has, and a picture that unrolled it would be inventing a number.
+Pure steps are not drawn — an `Arr` performs nothing.
+
+**The position comes from `walk`**, so a dashboard marks where a run
+stands without replaying it or consulting a projection somebody has to
+keep in step.
+
+## Optics on a step
+
+An optic is a function polymorphic in a profunctor, constrained by
+what it needs — a lens asks for `Strong`, a prism for `Choice` — and a
+`Proc` has both. So a step written against the PART of the state it
+cares about drops into a term whose edge carries the whole, with no
+new machinery:
+
+```scala
+val confirmCity: Wf.Proc[String, String, String, String] =
+  Proc.direct: c =>
+    val answer: String = ask(s"is $c right?")
+    answer
+
+val step: Wf.Proc[String, String, Booking, Booking] =
+  guest.andThen(city)(confirmCity)     // Booking ~> Booking
+```
+
+The journal holds `List(Right("Lviv"))` — the step's answer and
+nothing about the booking around it — and the term folds that journal
+back to the whole. A prism does the same for one variant of a sum and
+asks nothing for the others, while `leaves` still reports its step,
+because which variant arrives is decided at run time.
+
 ## What it does not do, stated
 
 - **A `for` or a `foreach` over a collection** is a lambda, and a
