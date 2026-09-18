@@ -403,6 +403,46 @@ vocabulary".
       draws `label — href`, which is what a link means where nothing
       can be clicked
 
+**A TABLE SAYS HOW WIDE ITS COLUMNS ARE** (ui-table-weights,
+2026-09-18, asked for by the operator after okay-watch hit it twice).
+`Table` carried a header, rows and a key, and its lowering gave every
+column ONE share — `Box(..., weights = Vector.fill(n)(1))`. That is
+not a default a caller can override, it is the only thing the node can
+express, and it is wrong for most real tables: a case id is eight
+characters and an evidence sentence is sixty.
+
+**And no stylesheet can correct it.** `React` writes a `Box`'s weights
+INLINE on each child (`style="flex:1"`), and an inline style beats a
+rule in a stylesheet whatever the rule says. okay-watch discovered
+both halves the hard way: a nine-column list ellipsized the IBAN, the
+rail and the timestamp; the CSS written to widen the prose columns had
+never once applied; and the page ended up abandoning `Ui.Table` for a
+hand-lowered `Box` to get the widths back — a level-S node rewritten
+as level L by its caller is the node failing to mean anything.
+
+So `Table` gains `weights`, which is `Box`'s own word for the same
+quantity rather than a new one. **Empty means equal**, so every
+existing caller and every existing wire message is unchanged; a
+claiming client gets the vector and honours it; the lowering hands it
+to the head row and every body row. A vector whose length is not the
+header's is IGNORED rather than obeyed or fatal — a tree is data that
+may arrive over a wire from anywhere, and a mis-sized table should
+draw evenly, not throw.
+
+- [x] `Table(h, rows, k)` lowers exactly as before — equal shares — so
+      the change is invisible to every caller that does not use it
+- [x] `Table(h, rows, k, Vector(3, 1, 9))` lowers to a head `Box` and
+      body `Box`es all carrying those weights, and `React` writes them
+      as `flex:3`, `flex:1`, `flex:9`
+- [x] a weights vector of the wrong length is ignored, and the table
+      draws evenly
+- [x] `map`, `withChildren` and `keys` carry the weights through
+      unchanged — a diff of two tables differing only in weights is
+      a change, not a no-op
+- [x] the wire: a `Table` with weights round-trips through `Protocol`,
+      and one WITHOUT them encodes as it always did, so an old client
+      reads a new server
+
 ## Mobile
 
 The operator's next direction (2026-09-09): mobile frontends and
