@@ -25,6 +25,9 @@ import okay.persist.{Ack, MemoryStore, Policy, Topic}
 object PaneLog {
   given Schema[(Long, Int, Long)] = Schema.derived
   val codec = Codecs.cbor(summon[Schema[(Long, Int, Long)]])
+  /** ONE EPOCH, ONE RECORD — see `Writer.move` for why the batch and
+   * not the pane is the unit that crosses */
+  val batch = Codecs.cbor(Schema.SVector(() => summon[Schema[(Long, Int, Long)]]))
 
   /**
    * THE OUTPUT TOPIC, REMADE PER SCENARIO — and it is a `Topic` and
@@ -33,6 +36,12 @@ object PaneLog {
    * `KafkaStore` one and asserts the same things (stage 11's last
    * box); nothing else here changes, which is the point of the seam.
    */
+  /** kill the writer at this epoch — the death stage 9's other cases
+   * do not cover, since they kill the COORDINATOR. Two points, which
+   * is all there are: before its one append and after it. */
+  @volatile var dieInside: Option[Int] = None
+  @volatile var dieAfter: Option[Int] = None
+
   @volatile private var out: Topic | Null = null
   def topic: Topic = out.nn
   def fresh(): Unit = fresh(MemoryStore().topic("panes", 1, Policy(compact = false)))
@@ -52,9 +61,23 @@ object PaneLog {
             rs.foreach: r =>
               from = r.offset + 1
               val epoch = new String(r.key, "UTF-8").toInt
-              val (start, key, value) = codec.decode(r.value).fold(e => sys.error(e), identity)
-              acc += ((epoch, (start, key), value))
+              batch.decode(r.value).fold(e => sys.error(e), identity).foreach: (start, key, value) =>
+                acc += ((epoch, (start, key), value))
     acc.result()
+
+  /** how many RECORDS the output holds — one per epoch, which is what
+   * makes `recover()`'s rule sound */
+  def records: Int =
+    var from = topic.begin(0)
+    var n = 0
+    var going = true
+    while going do
+      topic.read(0, from, 256) match
+        case Topic.Read.TooEarly(b) => from = b
+        case Topic.Read.Records(rs) =>
+          if rs.isEmpty then going = false
+          else { n += rs.length; from = rs.last.offset + 1 }
+    n
 
   /** the answer the output holds, as a map — and it is a map ONLY if
    * nothing was written twice, which `once` checks separately */
@@ -74,13 +97,41 @@ object PaneLog {
     def move(epoch: Int, panes: Vector[Pane[Int, Long]]): Unit = synchronized:
       if epoch <= landed then dropped += 1
       else
-        // ONE APPEND PER PANE, each carrying the epoch in its key —
-        // the log's append is the atomicity a two-phase writer needs,
-        // and a partial batch is readable as a partial batch
-        panes.foreach: p =>
-          topic.append(0, epoch.toString.getBytes("UTF-8"),
-            codec.encode((p.start, p.key, p.value)), Ack.Durable): Unit
+        // ONE APPEND PER EPOCH, and that is the whole of the fix
+        // (specs/dataflow.md, stage 9's last box). The first version
+        // appended one record per PANE and said "the log's append is
+        // the atomicity a two-phase writer needs" — which was true of
+        // each record and false of the batch. A writer that died
+        // three panes into an epoch left an epoch that LOOKED
+        // complete to `recover()`, whose rule is "the highest epoch
+        // in the output"; the successor dropped the re-move as a
+        // duplicate and 93 panes of 3 204 were never written, with
+        // the run reporting all 3 204. Measured, not feared.
+        //
+        // A batch in ONE record cannot be half-written: the append
+        // either happened or it did not, which is exactly the
+        // atomicity the comment always claimed.
+        //
+        // WHAT THIS COSTS, said rather than discovered: an epoch must
+        // FIT in one record. Here the largest is about 64 KB (3 204
+        // panes over eleven epochs), well under Kafka's 1 MB default;
+        // a job whose epoch does not fit needs either chunking with a
+        // completion marker per epoch — and then a reader that
+        // ignores an unmarked tail — or a transactional writer, which
+        // the Kafka interop has and `TestKafkaEos` exercises. Neither
+        // is built, because nothing here has an epoch that big.
+        // THE ONLY TWO PLACES THIS WRITER CAN DIE, and that is the
+        // fix: before the append, or after it. There is no third,
+        // because the epoch is ONE record.
+        if dieInside.contains(epoch) then
+          dieInside = None
+          throw IllegalStateException(s"the writer died before appending epoch $epoch")
+        topic.append(0, epoch.toString.getBytes("UTF-8"),
+          batch.encode(panes.map(p => (p.start, p.key, p.value))), Ack.Durable): Unit
         appends += 1
+        if dieAfter.contains(epoch) then
+          dieAfter = None
+          throw IllegalStateException(s"the writer died after appending epoch $epoch")
         landed = epoch
 
     /** what a new process does before it starts: read the tail and
@@ -191,6 +242,54 @@ trait StagingTopicSuite extends munit.FunSuite {
     assert(recovered > 0,
       "four deaths inside the window and no successor ever recognised a landed epoch — " +
         "this test is not exercising the thing it exists for")
+  }
+
+  test("AN EPOCH IS ONE RECORD, so a writer cannot leave half of one") {
+    // specs/dataflow.md stage 9's last box, and the whole of the fix.
+    // `recover()` learns what landed from the output, by the HIGHEST
+    // EPOCH in it — a rule that is only sound if an epoch is in the
+    // output entirely or not at all. The first version of this writer
+    // appended one record per PANE and said "the log's append is the
+    // atomicity a two-phase writer needs", which was true of each
+    // record and false of the batch: measured, a writer dying three
+    // panes into epoch 4 left an epoch that LOOKED complete, the
+    // successor dropped the re-move as a duplicate, and 93 panes of
+    // 3 204 were never written while the run reported all 3 204.
+    //
+    // One append per epoch removes the state rather than detecting
+    // it. This is the assertion that keeps it that way.
+    PaneLog.fresh(output())
+    val _ = newProcess()
+    val got = Cluster.stream(PaneLogJob, feed, 4, Vector(Cluster.local), 512).runWith
+    assertEquals(got.value, panes.size.toLong)
+    val epochs = PaneLog.rows.map(_._1).distinct
+    assertEquals(PaneLog.records, epochs.length,
+      s"${PaneLog.records} records for ${epochs.length} epochs: an epoch is no longer one record, " +
+        "so a death inside `move` can leave half of one")
+  }
+
+  test("THE WRITER ITSELF DIES, and the successor is right either side of the append") {
+    // the death stage 9's other cases do not cover: they kill the
+    // COORDINATOR, and this kills the writer. Both points are
+    // exercised because they are the only two there are.
+    for (before, at) <- Vector((true, 4), (false, 4)) do
+      PaneLog.fresh(output())
+      val first = newProcess()
+      if before then PaneLog.dieInside = Some(at) else PaneLog.dieAfter = Some(at)
+      val died = try
+        val _ = Cluster.stream(PaneLogJob, feed, 4, Vector(Cluster.local), 512).runWith
+        false
+      catch case _: Throwable => true
+      assert(died, s"the writer never died (before=$before) — nothing is being exercised")
+      val _ = first
+
+      // a NEW process, no memory of its own, recovering from the output
+      val second = newProcess()
+      val got = Cluster.stream(PaneLogJob, feed, 4, Vector(Cluster.local), 512).runWith
+      once()
+      assertEquals(PaneLog.answer, panes, s"a writer death before=$before lost or doubled panes")
+      assertEquals(got.value, panes.size.toLong)
+      val _ = second
   }
 
   test("a death AFTER the commit: the successor starts past it and appends nothing again") {

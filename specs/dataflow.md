@@ -617,9 +617,31 @@ Stage 9 — the commit window (TestStaged):
 - [x] both controlled: journalling before telling the writer loses
       panes, and makes the window test say it is not exercising
       anything
-- [ ] a writer whose stage is DURABLE, so the two-phase commit
-      survives the writer's own death as well as the coordinator's.
-      The seam is enough for one; nothing here has asked yet
+- [x] a writer whose stage is DURABLE, so the two-phase commit
+      survives the writer's own death as well as the coordinator's —
+      BUILT 2026-09-18 (`dataflow-durable-stage`), and the hole was
+      MEASURED before it was closed. `recover()` learns what landed
+      from the output by the HIGHEST EPOCH in it, which is only sound
+      if an epoch is there entirely or not at all — and the writer
+      appended one record per PANE while its own comment claimed "the
+      log's append is the atomicity a two-phase writer needs". True of
+      each record, false of the batch. A probe killed the writer three
+      panes into epoch 4: the successor read the epoch as complete,
+      dropped the re-move as a duplicate, and **93 panes of 3 204 were
+      never written while the run reported all 3 204** — a silent
+      short write, which is the failure mode this stage exists to
+      prevent.
+      ONE APPEND PER EPOCH removes the state rather than detecting it:
+      there is no third place for the writer to die, only before the
+      append or after it, and both are tested. The guard is structural
+      — `records == distinct epochs` — and it fails at "3 204 records
+      for 11 epochs" the moment anybody appends per pane again.
+      THE COST IS STATED: an epoch must fit in one record (the largest
+      here is ~64 KB, well under Kafka's 1 MB default). A job whose
+      epoch does not fit needs chunking with a per-epoch completion
+      marker, or a transactional writer — the Kafka interop has
+      transactions and `TestKafkaEos` exercises them. Neither is
+      built, because nothing here has an epoch that big
 
 Stage 8 — the coordinator survives (TestResume, TestPersisted):
 - [x] `Wire.state: Schema[S]` — the coordinator's fold is a value,
