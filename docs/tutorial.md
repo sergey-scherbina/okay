@@ -659,6 +659,38 @@ of its answer.
 The worked versions of all three are `TestOpticCarriers`, which is
 where the outputs above come from.
 
+### The three on one screen
+
+A form is a value, `Validated` collects every problem, and an optic
+puts each message next to the field it names. The validation is a
+`direct` block, which needs no monad because the checks do not depend
+on each other:
+
+```scala
+type Errors = Vector[(String, String)]          // field key -> message
+
+def validate(in: Map[String, String]): Validated[Errors, Signup] = direct:
+  val name  = nonEmpty("name", in)
+  val email = hasAt("email", in)
+  val age   = number("age", in)
+  Signup(name, email, age)
+
+def withErrors(tree: Ui, errs: Errors): Ui =
+  errs.foldLeft(tree) { case (t, (k, msg)) =>
+    Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
+  }
+```
+
+Carrying the field key in the error is what makes the write-back
+possible: `Ui.key(k)` is the traversal that finds a node by key, so
+each message lands under its own field and the user's edits stay where
+they were. `TestUiFormValidation` is the worked version.
+
+One boundary the same test pins: the per-focus function is an ordinary
+method, not a nested block. A mark under a lambda is what `direct`'s
+v1 refuses, so an optic and a direct block meet at the call, not
+inside it.
+
 ## 24. What the program will do, before it does it
 
 A `flatMap` hides the rest of the program behind a function, so the
