@@ -1,5 +1,29 @@
 # Changelog
 
+## ui-applicative - what the applicative traversals buy, pinned; and a second validator named
+
+`okay-ui`'s `everywhere` and `shown` are declared
+`(F: Applicative[F]) ?=>`, so `Validated` - written years later -
+works at them with no change to that module: a walk reports EVERY bad
+node instead of the first. The property held by construction from the
+day `Validated` landed and nothing recorded it. TestUiApplicative
+records it now, with the same walk at `Either` beside it as the
+comparison that makes it mean something.
+
+AND THE CHECK FOUND A SECOND DOOR. `okay-codec`'s `Validate.gather` is
+`Validated.app` written by hand on `Either`, and its own comment says
+as much: "the applicative step: both sides' errors survive". Two
+answers to one question in one repository is the shape this evening
+kept producing, so it is written down rather than left to be
+rediscovered - a line in each file pointing at the other, and BACKLOG
+`two-accumulating-validators` with the trigger.
+
+NOT a rewrite, and the reasons are specific: that walk works, is
+tested, carries PATHS in its errors which this type does not, and sits
+in the schema hot path. What is worth building is a bridge, and the
+trigger for it is the first consumer that wants a schema walk's errors
+inside a `direct` block.
+
 ## selective-do - an `if` with an effectful condition, and by-name branches
 
 An `if` whose CONDITION is an effect is the one shape an applicative
