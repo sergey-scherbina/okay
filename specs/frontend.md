@@ -369,6 +369,40 @@ to copy the URL. It carries NO KEY on purpose: going somewhere is the
 client's own act, so `Wire.permitted` can never admit anything about
 it and `update` never hears of it. TestLink, 6.
 
+**A HOST LOWERS WITH ITS OWN VOCABULARY, NEVER WITH NOTHING**
+(react-host-vocab, 2026-09-18, found from okay-watch). The rule above
+— "every other client gets the lowering" — says what happens to a node
+the host does not claim. It says nothing about a node the host DOES
+claim that happens to sit inside one it does not, and that case was
+wrong: `React.elem` matched `Link` and rendered an anchor, then met a
+`Table` it does not claim and asked for the lowering with
+`Set.empty`. `Ui.lower` recurses, so the empty vocabulary reached the
+CELLS, and a `Link` in a table cell arrived as `Text("label — href")`
+one node away from where the same link was an `<a>`.
+
+**It made the two roads disagree on one tree**, which is the sharper
+statement of the defect and the reason it matters: `live.js` says
+`vocab: ["link"]` in its hello, so `Wire.serve` lowered with `link`
+and the socket sent the anchor, while `Html.render` — the scriptless
+road through `React.elem` — sent text. okay-watch serves both from one
+`Analyst.view`, and a page that renders differently depending on
+whether a script ran is not one page.
+
+So a host's catch-all lowers with the set it claims:
+`Ui.lower(semantic, React.Vocabulary)`, `React.Vocabulary =
+Set(Vocab.link)`. `Frame` and `Swing` claim NO semantic node, so their
+`Set.empty` is already their own vocabulary and is left alone — the
+bug is not "`Set.empty` is wrong", it is "a constant is not a host's
+vocabulary".
+
+- [x] a `Ui.Link` inside a `Ui.Table` cell renders as an `<a>`, and so
+      does one inside `Items`, `Tabs`, `Modal` and `Disclosure`
+- [x] the two roads agree: `Html.render(t)` and the tree `Wire` shows
+      a client whose hello said `["link"]` carry the same anchors
+- [x] a host that claims nothing is unchanged — the terminal still
+      draws `label — href`, which is what a link means where nothing
+      can be clicked
+
 ## Mobile
 
 The operator's next direction (2026-09-09): mobile frontends and
