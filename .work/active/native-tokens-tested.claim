@@ -1,6 +1,0 @@
-feature/native-tokens-tested 2026-09-18T11:00:57Z
-agent: claude-code
-heartbeat: 2026-09-18T11:00:57Z
-status: in-progress
-done-so-far: claimed
-next: TestSwing and TestGtk cover Kind/Align — the native halves of ui-text-intent shipped untested
