@@ -21,7 +21,19 @@
   WHAT IS LEFT: the difference is the full-matrix gate itself — 108
   projects, a dozen forked JVMs at -Xmx1g each, beside a sibling
   agent's gate. Nothing smaller has reproduced it in four attempts.
-  NEXT: run the gate with the A/B probe still in the test and READ the
-  two ratios in the context that actually fails; only then choose
-  between making the control robust and tagging the suite `Live` the
-  way `BenchCross` is. Do not file a third theory without that number.
+  THE GATE WAS RUN WITH THE PROBE IN, and it went GREEN, reading
+  **9.14x** with the small arm at 126 µs — the same number every other
+  context gives. The probe sits AFTER the two measurements it would
+  perturb, so it cannot have helped; what changed was the box, since
+  the sibling agent's gate had finished by then. So the count stands
+  at two REDs and one GREEN on the same code, and the flake is
+  INTERMITTENT rather than a property of the gate.
+  WHAT IS STILL UNEXPLAINED: for the minimum of seven rounds on the
+  400-record arm to inflate from 98 µs to something that makes the
+  ratio 1.86, EVERY one of those seven rounds has to be hit. Nothing
+  measured so far does that, including a box at load 45.
+  NEXT, and only when it fires again: re-measure the control once
+  before failing it. A transient that survives two independent
+  `best(7)` measurements is real; one that does not is the box. That
+  costs 0.13s and keeps the superlinearity law in the gate, which
+  tagging the suite `Live` would not.
