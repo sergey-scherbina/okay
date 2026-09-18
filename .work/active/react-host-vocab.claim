@@ -1,0 +1,6 @@
+okay-wt-react-host-vocab 2026-09-18T06:44:59Z
+agent: claude-code
+heartbeat: 2026-09-18T06:44:59Z
+status: not-started
+done-so-far:
+next: write the spec paragraph in specs/ui.md, then the failing test
