@@ -146,6 +146,45 @@ object Frame {
     }
     (0 until height).toVector.map(i => padded.map(_(i)).mkString(sep))
 
+  /**
+   * WHICH LINE THE FOCUSED WIDGET IS ON, so a host that clips a tall
+   * frame to its screen can keep the focus visible (ui-terminal-scroll).
+   *
+   * Found by the ONE difference between the marked frame and the
+   * unmarked one: marking is the only thing `focus` changes, so the
+   * first line that differs is the line the focus is on. That reuses
+   * the renderer rather than threading a line counter through every
+   * case of it, and it cannot drift from what is actually drawn.
+   */
+  def focusLine(ui: Ui, focus: Option[Ui], width: Int = 0): Option[Int] =
+    focus.flatMap { _ =>
+      val marked = render(ui, focus, width)
+      val plain = render(ui, None, width)
+      if marked.length != plain.length then Some(0)
+      else marked.indices.find(i => marked(i) != plain(i))
+    }
+
+  /**
+   * A frame clipped to a screen: `rows` lines from `top`, padded to
+   * the height so a shorter frame does not leave the previous paint
+   * behind it. `rows <= 0` is "no screen" and the frame is itself.
+   */
+  def clip(lines: Vector[String], top: Int, rows: Int): Vector[String] =
+    if rows <= 0 then lines
+    else
+      val from = math.max(0, math.min(top, math.max(lines.length - rows, 0)))
+      val taken = lines.slice(from, from + rows)
+      taken ++ Vector.fill(math.max(rows - taken.length, 0))("")
+
+  /** the top a view must have to keep `line` on a screen of `rows`,
+   * moving as little as possible — the rule a reader expects when
+   * Tab walks off the bottom */
+  def follow(top: Int, line: Int, rows: Int): Int =
+    if rows <= 0 then top
+    else if line < top then line
+    else if line >= top + rows then line - rows + 1
+    else top
+
   /** printable width — the ANSI escapes a styled Text carries are zero wide */
   def width(s: String): Int = s.replaceAll("\u001b" + "\\[[0-9;]*m", "").length
 
@@ -160,6 +199,9 @@ object Frame {
   enum Key:
     case Ch(c: Char)
     case Up, Down, Left, Right, BackTab, Home, End
+    // the frame is taller than the screen: these move the VIEW, not
+    // the focus (ui-terminal-scroll), and the host reads them itself
+    case PageUp, PageDown
     /** a sequence this decoder does not name: dropped, never guessed */
     case Unknown
 
@@ -216,6 +258,8 @@ object Frame {
   private def tilde(ds: String): Key = ds match
     case "1" | "7" => Key.Home
     case "4" | "8" => Key.End
+    case "5" => Key.PageUp
+    case "6" => Key.PageDown
     case _ => Key.Unknown
 
   /**
@@ -252,7 +296,9 @@ object Frame {
       case Key.Left => focused match
         case Some(Ui.Select(_, i, k)) if i > 0 => (focus, Some(Event.Chosen(k, i - 1)))
         case _ => (focus, None)
-      case Key.Unknown => (focus, None)
+      // the view is the host's, not the tree's: these say nothing and
+      // move no focus, and the host reads them itself
+      case Key.PageUp | Key.PageDown | Key.Unknown => (focus, None)
 
   private def interpretChar(ui: Ui, focus: Int, ch: Char): (Int, Option[Event]) =
     val order = Ui.focusable(ui)

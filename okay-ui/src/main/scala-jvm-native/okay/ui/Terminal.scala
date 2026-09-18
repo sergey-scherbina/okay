@@ -42,13 +42,27 @@ object Terminal {
      * is what a terminal that would not say its size gets */
     private val measured: Option[(Int, Int)] = size()
     private val cols = measured.map(_._1).getOrElse(0)
+    /** the screen's height, and the first line of it that is shown:
+     * a frame taller than the screen is CLIPPED, and the view follows
+     * the focus rather than losing it off the bottom
+     * (ui-terminal-scroll) */
+    private val rows = measured.map(_._2).getOrElse(0)
+    @volatile private var top = 0
 
     private def paint(): Unit =
       val f = Ui.focusable(tree).lift(focus)
       val lines = Frame.render(tree, f, cols)
+      Frame.focusLine(tree, f, cols).foreach(l => top = Frame.follow(top, l, rows))
       out.print("\u001b[2J\u001b[H")          // clear, home
-      lines.foreach(l => out.print(l + "\r\n"))
+      Frame.clip(lines, top, rows).foreach(l => out.print(l + "\r\n"))
       out.flush()
+
+    /** a page of the view, bounded by what there is to show */
+    private def page(d: Int): Unit =
+      val height = Frame.render(tree, Ui.focusable(tree).lift(focus), cols).length
+      val step = math.max(rows - 1, 1)
+      top = math.max(0, math.min(top + d * step, math.max(height - rows, 0)))
+      paint()
 
     def render(ui: Ui): Unit ! Async = async {
       tree = ui
@@ -83,16 +97,23 @@ object Terminal {
               // lone ESC and the byte after it), so this folds
               val emit = keys.foldLeft(pure(()): Unit ! (Writer % Event + Async)) { (acc, key) =>
                 acc.flatMap { _ =>
-                  val (nf, ev) = Frame.interpret(tree, focus, key)
-                  val moved = nf != focus
-                  focus = nf
-                  ev match
-                    case Some(e) => effect[Writer % Event + Async, Unit](Writer(e))
-                    case None =>
-                      // a focus move re-renders the SAME tree, which the
-                      // loop would skip — so the host repaints itself
-                      if moved then effect[Writer % Event + Async, Unit](Async.Run(() => paint()))
-                      else pure(())
+                  // the view keys are the HOST's: they move no focus
+                  // and say nothing to the application
+                  if key == Frame.Key.PageUp || key == Frame.Key.PageDown then
+                    effect[Writer % Event + Async, Unit](Async.Run(() =>
+                      page(if key == Frame.Key.PageUp then -1 else 1)))
+                  else
+                    val (nf, ev) = Frame.interpret(tree, focus, key)
+                    val moved = nf != focus
+                    focus = nf
+                    ev match
+                      case Some(e) => effect[Writer % Event + Async, Unit](Writer(e))
+                      case None =>
+                        // a focus move re-renders the SAME tree, which
+                        // the loop would skip — so the host repaints
+                        // itself, and the view follows the focus
+                        if moved then effect[Writer % Event + Async, Unit](Async.Run(() => paint()))
+                        else pure(())
                 }
               }
               emit.flatMap(_ => go)

@@ -146,6 +146,48 @@ class TestTerminalKeys extends munit.FunSuite {
     assert(Frame.render(form, None, 12).forall(l => Frame.width(l) <= 12))
   }
 
+  /**
+   * ui-terminal-scroll: a frame taller than the screen. The view is
+   * the HOST's — the tree says nothing about it — so the pure half is
+   * three functions a host composes: which line the focus is on, the
+   * frame clipped to a screen, and the top that keeps a line visible.
+   */
+  test("PgUp and PgDn are decoded, and they move no focus and say nothing") {
+    assertEquals(decode(Esc, '['.toInt, '5'.toInt, '~'.toInt), Vector(Key.PageUp))
+    assertEquals(decode(Esc, '['.toInt, '6'.toInt, '~'.toInt), Vector(Key.PageDown))
+    assertEquals(Frame.interpret(tree, 1, Key.PageUp), (1, None))
+    assertEquals(Frame.interpret(tree, 1, Key.PageDown), (1, None))
+  }
+
+  test("focusLine finds the focused widget by the ONE thing focus changes") {
+    val order = Ui.focusable(tree)
+    assertEquals(Frame.focusLine(tree, order.lift(0)), Some(0))
+    // the Input is the second line of this column, the Select the third
+    assertEquals(Frame.focusLine(tree, order.lift(1)), Some(1))
+    assertEquals(Frame.focusLine(tree, order.lift(2)), Some(2))
+    assertEquals(Frame.focusLine(tree, None), None)
+  }
+
+  test("clip shows a screen of the frame, and pads a short one") {
+    val lines = (0 until 10).toVector.map(i => s"line $i")
+    assertEquals(Frame.clip(lines, 0, 3), Vector("line 0", "line 1", "line 2"))
+    assertEquals(Frame.clip(lines, 4, 3), Vector("line 4", "line 5", "line 6"))
+    // a top past the end is pulled back, never a gap of nothing
+    assertEquals(Frame.clip(lines, 99, 3), Vector("line 7", "line 8", "line 9"))
+    // a frame SHORTER than the screen is padded, so the last paint
+    // does not show through under it
+    assertEquals(Frame.clip(Vector("a"), 0, 3), Vector("a", "", ""))
+    // no screen is the frame itself
+    assertEquals(Frame.clip(lines, 5, 0), lines)
+  }
+
+  test("follow moves the view as little as it can, and only when it must") {
+    assertEquals(Frame.follow(0, 2, 5), 0, "already visible: do not move")
+    assertEquals(Frame.follow(0, 7, 5), 3, "off the bottom: just enough")
+    assertEquals(Frame.follow(6, 2, 5), 2, "off the top: to the line")
+    assertEquals(Frame.follow(3, 9, 0), 3, "no screen: nothing to follow")
+  }
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))
