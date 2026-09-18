@@ -202,6 +202,29 @@ class TestLiveJsDom extends munit.FunSuite {
     agree("a table inside items", Items(Vector(table), "i"))
   }
 
+  test("A LIVE PRESS DOES NOT ALSO SUBMIT THE FORM UNDER IT") {
+    // every button of the plain road is a <button> inside
+    // <form method=post>, so it is a submit button. Without
+    // preventDefault a live press did BOTH — sent the event up the
+    // socket AND reloaded the page — and the socket road was
+    // invisible because every press looked like the scriptless one.
+    val js = LiveJs.source
+    assert(js.contains("ev.preventDefault()"), "a live press still submits the form")
+    // and it is in the CLICK handler, after the button is known to be
+    // ours: preventing every click on the page would take the plain
+    // road's links with it
+    val click = js.substring(js.indexOf("addEventListener(\"click\""))
+    val guard = click.indexOf("return;")
+    val prevent = click.indexOf("ev.preventDefault()")
+    assert(prevent > guard && guard > 0,
+      "preventDefault must come after the guard that says the button is ours")
+  }
+
+  test("only the click handler prevents a default: typing and choosing do not") {
+    val js = LiveJs.source
+    assertEquals("ev.preventDefault()".r.findAllIn(js).size, 1)
+  }
+
   test("a real page's worth of tree, all at once") {
     agree("a page", Column(Vector(
       Text("okay-watch", Style(bold = true, size = Size.Large)),

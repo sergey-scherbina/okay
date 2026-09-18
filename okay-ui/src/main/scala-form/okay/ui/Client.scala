@@ -462,6 +462,17 @@ object Client:
       Stmt.Var("el", Call(Name("keyed"), Vector(Field(Name("ev"), "target")))),
       ifSet(Bin("||", Unary("!", el), Bin("!==", Field(el, "tagName"), Str("BUTTON"))),
         Stmt.Return(None)),
+      Stmt.Comment("AND THE FORM UNDER IT DOES NOT SUBMIT. Every button of\n" +
+        "the plain road is a <button> inside <form method=post>, so\n" +
+        "it is a submit button — and without this a live press did\n" +
+        "BOTH: it sent the event up the socket and reloaded the whole\n" +
+        "page. The socket road was invisible because every press\n" +
+        "looked exactly like the scriptless one.\n" +
+        "\n" +
+        "Here is the right place for it: this listener exists only\n" +
+        "when the script ran, so a browser with no script still\n" +
+        "submits the form and nothing is taken away."),
+      call(Field(Name("ev"), "preventDefault")),
       Stmt.Var("form", Call(Name("formOf"), Vector(el))),
       Stmt.If(Bin("&&", form, Bin("===", data(form, "form"), key)),
         Vector(call(Name("event"), Obj(Vector("Submitted" -> Obj(Vector(
