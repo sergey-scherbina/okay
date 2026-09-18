@@ -93,30 +93,42 @@ object Cut {
   // ADDITIVE: guarded/cut/checked stay. The prompt becomes ambient;
   // a validator holds no name, and nesting cuts to the NEAREST guard.
 
-  /** the boundary with an ambient prompt */
-  def guard[A](gen: Prompt[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
+  /**
+   * The boundary with an ambient prompt — and the evidence is
+   * `Delim.Prompted`, not `Prompt` (delim-doors-are-prompted,
+   * 2026-09-18). A `Prompt` is one line to make, so asking for one as
+   * a GIVEN proves nothing: a `violation` outside any guard compiled
+   * and then failed at runtime with `NoPrompt`. `Prompted`'s
+   * constructor is private to `Delim`, so holding one means being
+   * inside the guard that installed it. The explicit forms
+   * (`guarded`, `cut`, `checked(p, …)`) are unaffected.
+   */
+  def guard[A](gen: Delim.Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
   : Either[Violation, A] ! (Writer % String + Async) =
-    guarded[A](p => gen(using p))
+    // `Delim.scope` is the only door that hands out the evidence —
+    // its constructor is private to `Delim`, which is exactly what
+    // makes the evidence worth asking for
+    Delim.run(Delim.scope[Either[Violation, A], Writer % String + Async](gen.map(Right(_))))
 
   /** `checked` against the NEAREST guard — the prompt is ambient
    * (the ctx-prompts door; the explicit form stays) */
   def checked[A](tokens: Unit ! (Writer % String + Async))
                 (check: (Int, String) => Option[Violation])
-                (using p: Prompt[Either[Violation, A]])
+                (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
-    checked(p, tokens)(check)
+    checked(p.prompt, tokens)(check)
 
   /** abort to the nearest guard — no prompt in hand */
-  def violation[A, X](v: Violation)(using p: Prompt[Either[Violation, A]])
+  def violation[A, X](v: Violation)(using p: Delim.Prompted[Either[Violation, A]])
   : X ! (Writer % String + (Delim + Async)) =
-    cut[A, X](p)(v)
+    cut[A, X](p.prompt)(v)
 
   /** `checked`, prompt ambient */
   def watched[A](tokens: Unit ! (Writer % String + Async))
                 (check: (Int, String) => Option[Violation])
-                (using p: Prompt[Either[Violation, A]])
+                (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
-    checked[A](p, tokens)(check)
+    checked[A](p.prompt, tokens)(check)
 
   // ── the repair door (specs/condition.md): between passing a token
   // and cutting the stream there is REPAIRING it. ADDITIVE:
@@ -137,7 +149,7 @@ object Cut {
    */
   def screened[A](tokens: Unit ! (Writer % String + Async))
                  (check: (Int, String) => Option[Violation])
-                 (using p: Prompt[Either[Violation, A]])
+                 (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! Screened =
     type R = Writer % String + (Delim + Async)
     def emit(t: String): Unit ! Screened =

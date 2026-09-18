@@ -107,15 +107,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       `gate.sh` reporting how many of its module compiles actually
       compiled something, or the gate removing test-classes first.
       The measured incident is in that lane's CHANGELOG entry.
-- [ ] delim-doors-are-prompted — okay-llm's `Cut` and okay-ui's
-      `Scope` take their ambient delimiter as a `Prompt[A] ?=>`, which
-      ANY caller can construct (`Delim.prompt[A]` is one line and
-      proves nothing), where `Delim.Prompted` cannot be forged. Moving
-      them would make `cut`/`cancel` outside a guard a compile error
-      rather than a runtime `NoPrompt`. It changes a public signature
-      in two modules, so it is a decision, not a tidy-up. Found while
-      landing delim-patterns-in-modules (2026-09-17), which left them
-      alone on purpose: they duplicate nothing.
 - [ ] delim-region-prompts — NARROWED 2026-09-17 by
       delim-forward-not-throw: the NESTING case is solved (the nested
       forms, the OneMachine guard, and `runNested` for a machine you
