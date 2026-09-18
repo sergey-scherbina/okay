@@ -17,15 +17,19 @@
   `dataflow-netem` are all ticked in `backlog.d/`. A sprint entry that
   names finished work is the first thing the next agent reads, so it
   is the worst place for it.
-  The five that are genuinely unticked, by value:
+  The four that are genuinely unticked, by value (five when
+  this was written; the fifth closed the same day):
   - `dataflow-source-log` (stage 11) — `Flow.topic` over okay-persist
     partitions that SEEK by epoch, and `Sink.stagingTo(topic)` whose
     append IS the commit: exactly-once from log to log on this
     repository's own primitive, verifiable on ONE machine. Its own
     entry says FIRST and that still reads right.
-  - `dataflow-rescale-windowed` (stage 13 box 2) — journal a windowed
-    operator's OPEN panes so a re-cut can rescale it; today a windowed
-    rescale is refused by name, which is the honest half already done.
+  - ~~`dataflow-rescale-windowed`~~ (stage 13 box 2) — CLOSED
+    2026-09-18, an hour after this list was written, and by the other
+    road: a re-cut REPLAYS its open panes from box 2b's horizon mark
+    instead of journalling them (`dataflow-windowed-rescale`,
+    21d96006). The refusal is gone; what refuses now is only a run too
+    young to have a mark a horizon back, and it says so.
   - `federation-refusal` (specs/federation.md stage 2) — a worker with
     an allow-list of jobs and a coordinator identity checked before
     the pre-pass.
