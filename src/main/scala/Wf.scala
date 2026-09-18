@@ -669,7 +669,13 @@ object Wf:
                         : Either[Stranded, Standing[Q, A, Y]] =
       go(p, x, journal, 0, okay.Proc.Path.root) match
         case Walked.Ran(y, _, _) => Right(Standing.Done(y))
-        case Walked.Asking(at, q, used) => Right(Standing.Asking(at, q, used))
+        // ONE question is still an `Asking`, which is what keeps this
+        // additive: a term with no `Par` in it answers exactly what it
+        // answered before the node existed, and every consumer that
+        // matches on `Asking` is untouched
+        case Walked.Asking(on, used) =>
+          if on.sizeIs == 1 then Right(Standing.Asking(on.head._1, on.head._2, used))
+          else Right(Standing.Waiting(on, used))
         case Walked.Bad(at, rec, why) => Left(Stranded(at, rec, why))
 
     /**
@@ -732,6 +738,30 @@ object Wf:
        * records of the journal accepted */
       case Asking[Q, A](at: okay.Proc.Path, q: Question[Q, A, ?], accepted: Int)
         extends Standing[Q, A, Nothing]
+      /**
+       * WAITING ON MORE THAN ONE QUESTION AT ONCE — a `Par` whose
+       * branches are both outstanding (specs/static-workflow.md,
+       * stage 5).
+       *
+       * `on` is in the order the journal will record the answers,
+       * which is term order: its HEAD is the question the engine will
+       * consume next and the one `Wf.replay` reports, and the rest
+       * are questions a front end may put to the world today rather
+       * than after the head comes back. That ordering is the whole
+       * contract — an answer to the second cannot be committed before
+       * an answer to the first, because a record says nothing about
+       * which question it answers.
+       */
+      case Waiting[Q, A](on: Vector[(okay.Proc.Path, Question[Q, A, ?])], accepted: Int)
+        extends Standing[Q, A, Nothing]
+
+      /** every question this run is waiting on: none when it is done,
+       * one for an `Asking`, two or more for a `Par` — so a caller
+       * that wants "what is outstanding" need not know which */
+      def pending: Vector[(okay.Proc.Path, Question[Q, A, ?])] = this match
+        case Done(_) => Vector.empty
+        case Asking(at, q, _) => Vector((at, q))
+        case Waiting(on, _) => on
 
     /** the journal does not fit the term, and where */
     final case class Stranded(at: okay.Proc.Path, record: Int, why: String):
@@ -739,7 +769,17 @@ object Wf:
 
     private enum Walked[Q, A, +V]:
       case Ran[Q, A, V](value: V, left: Journal[A], used: Int) extends Walked[Q, A, V]
-      case Asking[Q, A](at: okay.Proc.Path, q: Question[Q, A, ?], used: Int)
+      /**
+       * WAITING — on one question, or on SEVERAL when a `Par` has
+       * branches outstanding.
+       *
+       * A vector rather than a single pair, so that every arm below
+       * that forwards a stop (`case stop: Walked.Asking => stop`)
+       * stayed exactly as it was when the `Par` case arrived: the
+       * shape of a stop did not change, only how much it can carry.
+       * They are in the order the journal will record their answers.
+       */
+      case Asking[Q, A](on: Vector[(okay.Proc.Path, Question[Q, A, ?])], used: Int)
         extends Walked[Q, A, Nothing]
       case Bad[Q, A](at: okay.Proc.Path, record: Int, why: String) extends Walked[Q, A, Nothing]
 
@@ -754,7 +794,7 @@ object Wf:
           val q = run(x)
           j match
             // caught up with the journal: this is where the run stands
-            case Nil => Walked.Asking(at, q, used)
+            case Nil => Walked.Asking(Vector((at, q)), used)
             case (r @ Right(_)) :: _ if isPatch(q) =>
               // THE NON-CONSUMING RULE, and it is the one subtle
               // thing in this fold. The journal has no decision for
@@ -793,6 +833,27 @@ object Wf:
                 case Walked.Ran(v, left, u) => Walked.Ran(Right(v), left, u)
                 case stop: Walked.Asking[Q, A] => stop
                 case stop: Walked.Bad[Q, A] => stop
+
+        case okay.Proc.Par(f, g) =>
+          go(f, x, j, used, at / okay.Proc.Step.Side(0)) match
+            case Walked.Ran(y, left, u) =>
+              go(g, x, left, u, at / okay.Proc.Step.Side(1)) match
+                case Walked.Ran(z, l2, u2) => Walked.Ran((y, z), l2, u2)
+                case stop: Walked.Asking[Q, A] => stop
+                case stop: Walked.Bad[Q, A] => stop
+            case waiting @ Walked.Asking(on, u) =>
+              // THE LEFT BRANCH IS WAITING, SO THE JOURNAL IS EMPTY —
+              // `Asking` is produced in exactly one place, the `Op`
+              // case's `Nil` arm. So the right branch starts from an
+              // empty journal too, and its own first question is
+              // knowable here without a second pass over anything.
+              go(g, x, Nil, u, at / okay.Proc.Step.Side(1)) match
+                case Walked.Asking(more, _) => Walked.Asking(on ++ more, u)
+                // the right branch asks nothing: there is one question
+                // outstanding and this is an ordinary wait
+                case _: Walked.Ran[Q, A, ?] => waiting
+                case stop: Walked.Bad[Q, A] => stop
+            case stop: Walked.Bad[Q, A] => stop
 
         case okay.Proc.Iter(body) =>
           def loop(cur: X, left: Journal[A], u: Int, round: Int): Walked[Q, A, Y] =

@@ -69,7 +69,11 @@ class TestProcBranches extends munit.FunSuite:
       val prefix = j.take(n)
       val byTerm = Wf.Proc.walk(districted)((), prefix) match
         case Right(Wf.Proc.Standing.Done(y)) => Right(Left(y))
-        case Right(Wf.Proc.Standing.Asking(_, q, _)) => Right(Right(Wf.Proc.tag(q)))
+        // THE FIRST PENDING QUESTION is the one the engine will
+        // consume — `Standing.pending` reads an `Asking` and a `Par`'s
+        // `Waiting` alike, and for a term with no `Par` in it there is
+        // exactly one (static-workflow-par)
+        case Right(st) => Right(Right(Wf.Proc.tag(st.pending.head._2)))
         case Left(bad) => Left(bad.toString)
       val paused = !.run(Wf.replay[String, String, String, P](
         Wf.Proc.program(districted)(()))(prefix))
@@ -140,7 +144,11 @@ class TestProcBranches extends munit.FunSuite:
       val prefix = full.take(n)
       val byTerm = Wf.Proc.walk(rooms)((), prefix) match
         case Right(Wf.Proc.Standing.Done(y)) => Right(Left(y))
-        case Right(Wf.Proc.Standing.Asking(_, q, _)) => Right(Right(Wf.Proc.tag(q)))
+        // THE FIRST PENDING QUESTION is the one the engine will
+        // consume — `Standing.pending` reads an `Asking` and a `Par`'s
+        // `Waiting` alike, and for a term with no `Par` in it there is
+        // exactly one (static-workflow-par)
+        case Right(st) => Right(Right(Wf.Proc.tag(st.pending.head._2)))
         case Left(bad) => Left(bad.toString)
       val paused = !.run(Wf.replay[String, String, List[String], P](
         Wf.Proc.program(rooms)(()))(prefix))

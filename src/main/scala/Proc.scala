@@ -67,6 +67,29 @@ enum Proc[F[+_], X, Y]:
   /** Elgot iteration: `Left` goes round from the new value, `Right` leaves */
   case Iter(body: Proc[F, X, Either[X, Y]])
 
+  /**
+   * TWO INDEPENDENT BRANCHES OVER THE SAME INPUT
+   * (specs/static-workflow.md, stage 5).
+   *
+   * Both read `X` — that is what independent MEANS here. A branch
+   * that needed the other's answer would be a `Then`, and writing it
+   * as a `Par` would be a lie the type system can tell.
+   *
+   * WHAT IS PARALLEL IS THE WAITING. A durable journal's record says
+   * nothing about which question it answers (the driver matches
+   * positionally), so the two branches' answers are still RECORDED in
+   * term order — left, then right. What the node buys is that both
+   * pending questions are known at once, so a front end can put them
+   * to two people on the same morning instead of one after the other.
+   * `Wf.Proc.walk` answers `Standing.Waiting` with both.
+   *
+   * It is not `&&&`: an arrow's fanout is derivable from `first` and
+   * `compose` and would be a `Then` of plumbing, which walks as ONE
+   * position. The node exists precisely so that the position can be a
+   * pair.
+   */
+  case Par[F[+_], X, Y, Z](f: Proc[F, X, Y], g: Proc[F, X, Z]) extends Proc[F, X, (Y, Z)]
+
 object Proc:
 
   import Path.{/, steps}
@@ -79,6 +102,9 @@ object Proc:
 
   /** iteration, as the door rather than the constructor */
   def iter[F[+_], X, Y](body: Proc[F, X, Either[X, Y]]): Proc[F, X, Y] = Iter(body)
+
+  /** two independent branches over the same input, as the door */
+  def par[F[+_], X, Y, Z](f: Proc[F, X, Y], g: Proc[F, X, Z]): Proc[F, X, (Y, Z)] = Par(f, g)
 
   /**
    * COMPOSITION, WITH THE ONE REWRITE THAT PAYS FOR ITSELF: two pure
@@ -217,6 +243,10 @@ object Proc:
     case In
     /** inside an `Iter`'s body, on its nth turn (from 0) */
     case Round(n: Int)
+    /** inside a `Par`'s nth branch (0 left, 1 right) — its own step
+     * and not `Fst`/`Snd`, so a path says which KIND of node it went
+     * into and `render` knows to indent */
+    case Side(n: Int)
 
   opaque type Path = List[Step]
 
@@ -230,6 +260,7 @@ object Proc:
         case Step.Snd => "2"
         case Step.In => "in"
         case Step.Round(n) => s"round$n"
+        case Step.Side(n) => s"par$n"
       .mkString("/")
 
   /** a leaf of the term, where it is */
@@ -292,6 +323,17 @@ object Proc:
             case Right(y) => G.pure(y)
           loop(_)
 
+        // LEFT THEN RIGHT, and the order is the contract rather than
+        // an implementation detail: it is the order the journal
+        // records the two branches' answers in, and the order
+        // `Wf.Proc.walk` reports them in. A `Monad` cannot run two
+        // things at once in any case — what a `Par` parallelises is
+        // the waiting, which happens outside this fold entirely.
+        case Par(a, b) =>
+          val aa = a.foldMap(nt)
+          val bb = b.foldMap(nt)
+          x => aa(x).flatMap(y => bb(x).map(z => (y, z)))
+
     /**
      * The same term as an ordinary program of the signature's row —
      * `Static.toFree`'s counterpart, and the bridge every runtime in
@@ -316,6 +358,7 @@ object Proc:
         val depth = path.steps.count:
           case Step.In => true
           case Step.Round(_) => true
+          case Step.Side(_) => true
           case _ => false
         val pad = "  " * depth
         q match
@@ -325,6 +368,7 @@ object Proc:
           case First(_) => b ++= s"${pad}first$mark\n"
           case OnRight(_) => b ++= s"${pad}right$mark\n"
           case Iter(_) => b ++= s"${pad}loop$mark\n"
+          case Par(_, _) => b ++= s"${pad}par$mark\n"
       b.result()
 
     /**
@@ -381,6 +425,23 @@ object Proc:
           edge(taken, join, "right")
           edge(choice, join, "left")
           join
+        case Par(f, g) =>
+          // A FORK AND A JOIN, both drawn, because a reader's first
+          // question about a parallel branch is where it comes back
+          // together — and the answer is a fact of the term rather
+          // than of a runtime that might or might not be concurrent
+          val fork = fresh("p")
+          b ++= s"""  $fork{{"both"}}\n"""
+          mark(fork, path)
+          edge(in, fork)
+          val l = go(f, path / Step.Side(0), fork)
+          val r = go(g, path / Step.Side(1), fork)
+          val join = fresh("j")
+          b ++= s"  $join(( ))\n"
+          edge(l, join)
+          edge(r, join)
+          join
+
         case Iter(body) =>
           val head = fresh("l")
           b ++= s"""  $head{"loop"}\n"""
@@ -430,4 +491,7 @@ object Proc:
       case First(a) => nodes(a, at / Step.In)(f)
       case OnRight(a) => nodes(a, at / Step.In)(f)
       case Iter(body) => nodes(body, at / Step.Round(0))(f)
+      case Par(a, b) =>
+        nodes(a, at / Step.Side(0))(f)
+        nodes(b, at / Step.Side(1))(f)
       case Arr(_) | Op(_, _) => ()

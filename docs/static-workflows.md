@@ -223,6 +223,56 @@ Wf.Proc.walk(rooms)((), List(Right("3"), Right("a"), Right("b")))
 `Iter` is not `ArrowLoop` — Paterson's `loop` is lazy *value* feedback
 and cannot say "run the body again".
 
+## Two waits at once
+
+A workflow that needs finance and legal to approve something asks
+finance, waits a week, asks legal, waits another. The two approvals
+have nothing to do with each other — the calendar is what the
+sequencing costs, and it is the expensive half.
+
+`Proc.par` puts the two branches side by side over the same input:
+
+```scala
+val approvals: Wf.Proc[String, String, Unit, (String, String)] =
+  Proc.par(Wf.Proc.ask[String, String, Unit](_ => "finance?"),
+           Wf.Proc.ask[String, String, Unit](_ => "legal?"))
+```
+
+Both questions are now known before either is answered, so the run's
+position is a **pair of paths**:
+
+```scala
+Wf.Proc.walk(approvals)((), Nil)
+// Waiting(Vector((par0, Ask("finance?")), (par1, Ask("legal?"))), accepted = 0)
+```
+
+A front end reads that and puts both questions out on the same
+morning. `Standing.pending` reads it and an ordinary `Asking` alike,
+so a caller that only wants "what is this run waiting on" need not
+know which it has.
+
+**What is parallel is the waiting, not the journal.** A record says
+nothing about which question it answers — the engine matches records
+positionally — so the answers are still recorded in term order, left
+then right. Once finance answers, the run is an ordinary wait on
+legal:
+
+```scala
+Wf.Proc.walk(approvals)((), List(Right("yes")))
+// Asking(par1, Ask("legal?"), accepted = 1)
+```
+
+The consequence, so nobody meets it in production: an answer **cannot
+be committed out of order**. If legal replies first, the front end
+holds that answer until finance's arrives. Committing it early would need
+a record that says which branch it belongs to, which is a second
+journal format — and this whole design is built on there being one.
+
+`Par` is a node and not `&&&` for exactly this reason: an arrow's
+fanout is derivable from `first` and `compose`, and what it derives is
+plumbing that walks as **one** position. The node exists so the
+position can be a pair.
+
 ## The picture
 
 A term draws itself, and the drawing cannot disagree with the program

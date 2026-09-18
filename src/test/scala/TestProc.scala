@@ -161,7 +161,11 @@ class TestProc extends munit.FunSuite:
       val prefix = full.take(n)
       val byTerm = Wf.Proc.walk(bookingTerm)((), prefix) match
         case Right(Wf.Proc.Standing.Done(y)) => Right(Left(y))
-        case Right(Wf.Proc.Standing.Asking(_, q, _)) => Right(Right(Wf.Proc.tag(q)))
+        // THE FIRST PENDING QUESTION is the one the engine will
+        // consume — `Standing.pending` reads an `Asking` and a `Par`'s
+        // `Waiting` alike, and for a term with no `Par` in it there is
+        // exactly one (static-workflow-par)
+        case Right(st) => Right(Right(Wf.Proc.tag(st.pending.head._2)))
         case Left(bad) => Left(bad.toString)
       val paused = !.run(Wf.replay[String, String, String, P](bookingStatic)(prefix))
       val byReplay = paused.finished match
@@ -225,7 +229,11 @@ class TestProc extends munit.FunSuite:
       val prefix = full.take(n)
       val byTerm = Wf.Proc.walk(rooms)((), prefix) match
         case Right(Wf.Proc.Standing.Done(y)) => Right(Left(y))
-        case Right(Wf.Proc.Standing.Asking(_, q, _)) => Right(Right(Wf.Proc.tag(q)))
+        // THE FIRST PENDING QUESTION is the one the engine will
+        // consume — `Standing.pending` reads an `Asking` and a `Par`'s
+        // `Waiting` alike, and for a term with no `Par` in it there is
+        // exactly one (static-workflow-par)
+        case Right(st) => Right(Right(Wf.Proc.tag(st.pending.head._2)))
         case Left(bad) => Left(bad.toString)
       val paused = !.run(Wf.replay[String, String, List[String], P](roomsProgram)(prefix))
       val byReplay = paused.finished match
@@ -269,7 +277,11 @@ class TestProc extends munit.FunSuite:
       val prefix = v1.take(n)
       val byTerm = Wf.Proc.walk(v2)((), prefix) match
         case Right(Wf.Proc.Standing.Done(y)) => Right(Left(y))
-        case Right(Wf.Proc.Standing.Asking(_, q, _)) => Right(Right(Wf.Proc.tag(q)))
+        // THE FIRST PENDING QUESTION is the one the engine will
+        // consume — `Standing.pending` reads an `Asking` and a `Par`'s
+        // `Waiting` alike, and for a term with no `Par` in it there is
+        // exactly one (static-workflow-par)
+        case Right(st) => Right(Right(Wf.Proc.tag(st.pending.head._2)))
         case Left(bad) => Left(bad.toString)
       val paused = !.run(Wf.replay[String, String, String, P](v2Program)(prefix))
       val byReplay = paused.finished match
