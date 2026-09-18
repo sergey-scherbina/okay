@@ -112,7 +112,29 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * element landed behind its own successors: 1 run in 400, as
    * `... 27 29 31 33 23 35 37`, where the mass reordering it replaced
    * was 73 in 300. Standing on the rule costs one `pop` on an empty
-   * ring per read once part 0 is drained, and has no window at all.
+   * ring per read once part 0 is drained.
+   *
+   * "AND HAS NO WINDOW AT ALL" — REFUTED 2026-09-18 by
+   * `ProbeGrowingOrder`, and the sentence is corrected here rather
+   * than deleted, because the rule IS the improvement it claims to be
+   * and only its last clause was wrong. THE RULE HOLDS PER CALL, AND
+   * THE CALL IS NOT ATOMIC: `popManyAdoptedFirst` finds part 0 empty,
+   * falls through to `popManyScanning`, and a straggler whose route
+   * was read before the swap can land in part 0 while that scan is
+   * reading another part. Its elements are then delivered behind
+   * their own successors, which is the same shape the rule fixed:
+   * measured `1, 3, 7, 9, 11, 13, 15, 5, 17, ...` at round 6303 of
+   * 40 000 under 20 burners, with the parking path firing 0 times and
+   * nothing going back into the adopted part. The window is the two
+   * reads inside one call, not a phase and not a route.
+   *
+   * WHAT WOULD CLOSE IT is a design question with a cost, so it is
+   * filed (`growing-order-drain-guarantee`) rather than taken here:
+   * the candidate is to SEAL part 0 to pushes at the moment of
+   * adoption, so a straggler is refused and reroutes to its own part
+   * — where it lands after its predecessors instead of before them.
+   * That is a hot-path change in a class whose header carries four
+   * benchmark tables, and this repository prices those first.
    *
    * Only a buffer that ADOPTED one has a part 0 like this; the
    * others open every part themselves and no producer ever moves.
