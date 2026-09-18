@@ -37,6 +37,24 @@
       SIGNATURE READING. A cold `okayJVM/Test/compile` minutes earlier
       on the same tree was clean in 20 s, and the unchanged gate
       re-run right after was GREEN with 5450 test results. Still not
-      done, and the bar is unchanged: two is a pattern, not a
-      signature, and the re-run guard the paragraph above describes
-      needs the exact-error check before anybody writes it.
+      done.
+      THREE TIMES IN ONE DAY, AND THE THIRD NAMES THE STDLIB ITSELF.
+      2026-09-18 (dataflow-windowed-seek), in `okayFrameJS`:
+
+          [error] Bad symbolic reference. A signature in
+          .../scala-library-3.9.0.jar(scala/LowPriorityImplicits.tasty)
+          [error] refers to LowPriorityImplicits2/T in package scala
+          which is not available.
+
+      Three occurrences, three DIFFERENT symbols — `jdk.internal.vm`,
+      `java.lang`, and now `scala` read out of the standard library's
+      own tasty file, which is on every classpath in the build by
+      definition. Nothing about the SYMBOL is the cause; what the
+      three share is a cold read of a TASTy signature, and the third
+      makes "a missing classpath entry" untenable as a reading.
+      The entry's own name is now misleading (`jdk-internal-` was the
+      first symptom, not the cause) and should be renamed when
+      somebody picks it up. THE BAR FOR A RE-RUN GUARD IS UNCHANGED:
+      three is a pattern, not a signature, and a guard that hides a
+      real compile failure is worse than a red gate — the three
+      conditions in the paragraph above still have to be met first.

@@ -433,16 +433,18 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       records, asserted by a counting Topic; a windowed one reads the
       whole topic again. Controlled: opening at zero fails both seek
       tests
-- [ ] box 2b — a WINDOWED sink that seeks. Two roads, neither free:
-      delta handovers of open panes every epoch (a change to
-      `okay.Windows`, and the merge traffic grows from panes-closed to
-      panes-open per epoch), or a replay bounded by the window horizon
-      (the session records a (position, max event time) pair per
-      epoch; a fresh one seeks to the epoch whose maximum is below the
-      oldest open pane's start and replays from there, seeded with
-      that maximum so late-drop decisions do not move). Measure the
-      merge traffic of the first against the replay length of the
-      second before choosing
+- [~] box 2b — a WINDOWED sink that seeks. **MEASURED 2026-09-18
+      (`dataflow-windowed-seek`), and the measurement CHOOSES: road B,
+      the horizon-bounded replay, by a factor nobody has to argue
+      about.** Neither road is built yet; what the box asked for
+      first — "measure the merge traffic of the first against the
+      replay length of the second before choosing" — is done, and the
+      numbers are in `MeasureWindowedSeek` and in the Results below.
+      The remaining work is road B alone: a `(position, max event
+      time)` pair per epoch in the journal, and a session that seeks
+      to the epoch whose maximum is below the oldest open pane's start
+      and replays from there, seeded with that maximum so late-drop
+      decisions do not move
 - [x] a resumed coordinator's workers open at the journal's epoch and
       read from there — TICKED LATE 2026-09-18: it is the same
       assertion as box 2 above, which has been `[x]` since it landed
@@ -984,6 +986,44 @@ no recomputation yet, and a partition being a thunk is what will make
 that cheap in stage 5. One request is in flight per connection. The
 coordinator is a single point of failure. None of that is hidden
 behind a hopeful word.
+
+### Box 2b measured: the horizon replay wins, and not narrowly (2026-09-18)
+
+The box refused to be decided by taste and asked for a number. Here it
+is, from `MeasureWindowedSeek` over the cluster suites' own feed
+(200 000 events, sliding 1000/250, lateness 300), in bytes:
+
+| | batch 512 (391 epochs) | batch 4096 (49 epochs) |
+|---|---|---|
+| road A — open panes, EVERY epoch | 3 334 B | 3 291 B |
+| what an epoch costs today (closed panes) | 15 683 B | 125 148 B |
+| road B — horizon replay, per RESUME | 16 368 B | 130 612 B |
+| a resume TODAY | 6 400 000 B | 6 400 000 B |
+
+**Both roads are an enormous improvement on today**: a windowed resume
+currently replays the whole topic, 6.4 MB, against road B's 16 KB —
+390x at batch 512.
+
+**And between them it is not close.** Road A's traffic is paid EVERY
+epoch for the life of the run; road B's is paid only when a session
+actually resumes. Road A is cheaper only above **4.91 resumes per
+epoch** (39.69 at batch 4096), and a system resuming five times per
+epoch has a problem no sink design will fix.
+
+**Why road A is as cheap as it is, which is the honest caveat.** Only
+~69 panes are open at any moment on this feed, because its jitter is
+below the declared lateness and panes close almost as fast as they
+open. A feed with real disorder, or many more keys, keeps far more
+open — and every one of those makes road A WORSE while leaving road
+B's horizon roughly where it is. The measurement's error bar therefore
+points away from the road it already rejects, which is the direction
+that makes a verdict safe.
+
+**Why it is arithmetic rather than a run**: neither road exists, so
+there is nothing to run. What the numbers price is the SHAPE of the
+feed — how many panes are open when, and how far back the horizon sits
+— which is a property of the window and the event times, not of an
+implementation that has not been written.
 
 ### Stage 11 — exactly-once from log to log (2026-09-18)
 
