@@ -106,4 +106,17 @@ operator's order) and today's boards, not from a wish list:
    its swap. It is a decision before it is a lane, and it is listed
    first above for that reason.
 
-Commits: this one.
+**RE-CHECKED THE SAME EVENING (backlog-recheck), when the operator said
+the data looked stale — and six of the 92 were.** `optic-law-rewrites`
+had LANDED that afternoon (the audit listed it as open); `windows-int-
+key-panes` was REFUTED on 2026-09-11 by the very lane whose archived
+entry sat beside it; `gate-warm-warning-blindness` asks for exactly the
+count the gate has printed since the watchdog; `freer-base` and
+`freer-base-stage2` were one open item filed twice; and two entries
+that call themselves SUPERSEDED in their first line were still ticked
+open. The sweep's rule caught only `- [x]`; an entry closed in PROSE
+and left `- [ ]` is the shape it missed, and the six are in the archive
+now. The count of open work is 86. The verdict above stands with one
+correction: `optic-law-rewrites` is not open.
+
+Commits: this one, and the recheck.

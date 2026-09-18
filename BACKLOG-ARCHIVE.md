@@ -7263,3 +7263,164 @@ matched so every backup pass re-copied, and the restore answered
 round-trip test found both. Nothing here is a bug report — the
 algebra does exactly what it documents — but the wrong thing was the
 one that type-checked, which is a shape worth removing.
+
+## Moved from the open board on 2026-09-18 (backlog-recheck) — six the audit an hour earlier missed
+
+## optics-arrows-effects — the questions the closed arc leaves (specs/optics.md stage 12, operator's ask 2026-09-18) (moved 2026-09-18, backlog-recheck)
+
+- [x] optic-law-rewrites — CITED AS FILED IN TWO PLACES AND FILED IN
+      NEITHER (found 2026-09-18 by optics-guide-page, which wanted to
+      link it): docs/benchmarks.md §9b ends "Filed as
+      `optic-law-rewrites` with these numbers attached" and the
+      CHANGELOG entry says the same, and no board ever got the entry.
+      The work: teach `Fuse` the two rewrites its own measurement
+      priced. `map(f) . map(g) == map(f . g)` on a container is the
+      big one — one pass is 1570 ns / 19 672 B against two at 4006 /
+      38 320, and the JIT cannot do it because it does not know the
+      law. `set ∘ set` into one `copy` on a product is the small one:
+      1.48 ns against 3.94 for two fused sets, with allocation equal
+      at 24 B because escape analysis already scalar-replaces the
+      intermediate — so the prize there is ~2.5 ns of field traffic
+      and nothing in bytes, ON THE JVM. Native and JS have no escape
+      analysis of that quality, so the allocation half is unmeasured
+      there and a lane should measure before claiming it.
+      CLOSED 2026-09-18 (backlog-recheck): LANDED as `optic-law-rewrites` (changelog.d/optic-law-rewrites.md) — `Fuse` knows the functor law, two modifies through one optic are one, the 2.7x collected. The audit an hour earlier listed it as open; it had landed that afternoon.
+
+- [x] gate-bound-test-fanout (superseded; kept for its measurement) — THE OTHER HALF OF THE 57-MINUTE STALL
+      (gate-watchdog, 2026-09-18). The watchdog now catches a hung
+      gate; nothing yet stops it happening. MEASURED at the stall: 165
+      test-runner processes alive at once — 100 `node` (Scala.js) and
+      65 Scala Native binaries — all spawned inside the first 20
+      seconds, on a 14-core box, with `Tags`/`concurrentRestrictions`
+      set NOWHERE in build.sbt or project/. sbt's own default limits
+      TASKS, not the processes a single test task spawns, which is why
+      the fan-out is what it is. WHAT TO DO, in order: (1) `show
+      concurrentRestrictions` and record what the default actually is
+      here — do not guess it; (2) count the fan-out per platform on a
+      quiet box; (3) bound it with `Tags.limit`, and measure the wall
+      clock before and after, because the whole point of the fan-out
+      is speed. TRIGGER TO DO IT NOW: a second stall whose dump shows
+      the same shape. The dump that opened this is the one named in
+      the CHANGELOG entry.
+      ARCHIVED 2026-09-18 (backlog-recheck): SUPERSEDED in its own first line, kept for its measurement — `gate-bound-test-fanout` landed the bound (`Test / parallelExecution := false`, 165 -> 104 processes) and what the 104 still are is `gate-fanout-what-is-left`, open beside it.
+
+## okay core (moved 2026-09-18, backlog-recheck)
+
+- [x] windows-int-key-panes — the OTHER third of the same gap
+      (docs/benchmarks.md §20, "Why one core loses"): `okay.Windows`
+      keys panes by `HashMap[K, LongMap[Acc]]`, which boxes an `Int`
+      key and hashes twice where the packed benchmark form does one
+      `LongMap` lookup — 8.5-11% measured. A `PaneKey[K]` seam with a
+      packed store for `Int` keys and today's store for everything
+      else would take it, IF the window index and the key both fit in
+      a `Long` (they do for any `Int` key and a slide over ~2 ms, and
+      the fallback must be chosen at construction rather than
+      mid-run). Measure before believing: the same 2x2 is in
+      `OkayLane` and prices it on every run.
+      CLOSED 2026-09-18 (backlog-recheck): REFUTED by `windows-packed-key` (BACKLOG-ARCHIVE.md, 2026-09-11) — the `PaneKey` seam this entry asks for was WRITTEN, measured in place on the Wrocław job, and LOST: 9.3% more allocation on the fan and 13.1% on the sliding stage, because an open-addressing `LongMap` copies its table on every growth where a `HashMap` allocates a node once, and the engine has eighteen maps growing into the total the ceiling was measured on. The instruments (`MeasurePaneStore`, `MeasureWroclawBytes`) stay; reopen only with a number from the second.
+
+- [x] gate-warm-warning-blindness — PARTLY ANSWERED 2026-09-17 by
+      gate-stall-watchdog: a GREEN whose warning check was blind now
+      SAYS SO in the log ("the WARNING CHECK WAS BLIND — this worktree
+      was already built"), so silence no longer reads as cleanliness.
+      What is still open is making it impossible rather than visible:
+      `gate.sh` reporting how many of its module compiles actually
+      compiled something, or the gate removing test-classes first.
+      The measured incident is in that lane's CHANGELOG entry.
+      CLOSED 2026-09-18 (backlog-recheck): the first of its two options is what the gate does now — `gate: no compile warnings (N module compile(s) looked at)` counts the `[info] compiling` lines, and a run that compiled nothing prints `warnings NOT checked — nothing was compiled` instead of a green. The second option (removing test-classes first) is answered by the rule that a lane gates in a FRESH worktree, which is cold by construction.
+
+- [x] freer-base — specs/freer-base.md. STAGE 0 IS LANDED: `Cont` is
+      `Freer[Shift, …]`, one enum, one absorption rule, at parity or
+      better on every core lane. NEXT IS STAGE 1: `Free` on the same
+      base, `A ! F` an alias at a pinned `Unit` index, `object !`
+      exporting the cases so the 89 `(x.resume: @unchecked)` sites and
+      the 20 files outside the core compile unchanged, and the
+      rotation law (already written, `TestFreer`) extended to the Free
+      side. It is the bigger half and the one the design is for: the
+      rotation still exists FOUR times (`Free.fold`, `runFree`,
+      `!.resume`, Async's loop) and stage 1 is what makes it one.
+      Three findings from stage 0 apply to it directly and should be
+      used rather than rediscovered: a hot loop's BYTECODE SIZE can
+      matter more than its data (relay's 305-vs-325 cliff), a `map`
+      that misses its carrier's own path costs a node per element, and
+      one `apply` body beats two because the JIT counts call targets,
+      not receiver types. Stage 2 (the indexes as typestate, Delim
+      first) is independent and does not block it.
+      SUPERSEDED THE SAME DAY by cont-on-free: `Freer` deleted, `Free`
+      kept as the base untouched, `Cont` an opaque facade over
+      `Free[Shift, A]` with the indexes on the facade — every core lane
+      within 1% of master, allocation identical to the byte, two
+      trusted lines under one invariant. Stage 2 (typestate) is now one
+      more facade over `Free[F, A]` and cannot leak the way stage 1 did.
+      STAGE 2's LANGUAGE QUESTION IS ANSWERED — YES (2026-09-15,
+      stage2-probe), asked BEFORE claiming the lane because stage 1
+      died on this class of question after its implementation was
+      written. A prompt's IDENTITY does reach the type level, so
+      `NoPrompt` can become a compile error:
+      `scripts/stage2-prompt-identity-probe.scala` runs it — five
+      positives compile, three negatives are refused, including a
+      prompt that ESCAPES its reset, which is exactly today's throw.
+      Four compiler facts were paid for and are in specs/freer-base.md
+      so nobody re-buys them: a for-comprehension HEAD has no expected
+      type (so the stack must be a given, not an inferred parameter); a
+      CURRIED dependent context function is refused outright; a
+      non-curried one compiles but CRASHES dotty when it carries the
+      stack (`wildApprox failed to remove uninstantiated R`); and a
+      `using` clause after the continuation loses to the lambda's own
+      typing, so it goes before and the stack is a type MEMBER.
+      COST AT THE CALL SITE, measured by writing it: `reset { p => … }`
+      becomes `reset { s => import s.given; … }`, one line per reset.
+      STILL UNPRICED, and the lane must not assume them: `shift0` and
+      `control0` CONSUME the delimiter so their index is unbalanced and
+      the probe never exercised it; `abort` still drops a promised
+      transition (the spec's own caveat, already a required test); the
+      four files outside the core that name Delim (okay-ui `Scope`,
+      `Screen`, okay-agent `Stepper`, okay-llm `Cut`) pay the per-reset
+      line and none was read; and nothing is measured.
+      The refutation below is kept because it is why the facade is the
+      shape, not a step toward something else.
+      STAGE 1 IS REFUTED AS SPECIFIED (2026-09-15, branch
+      `feature/freer-base-stage1`, WIP commit kept and never to be
+      merged). `Bind` carries the LEFT side's answer index, so a match
+      on a `Free` hands back its continuation at an existential index
+      while all 89 sites want `A ! F`. An existential outer index
+      fixes elimination and breaks construction; a pinning `unapply`
+      is refuted by the compiler, which infers its free parameter as
+      `Nothing` instead of skolemizing, so the link between an
+      operation's answer type and its continuation is lost. The one
+      road that would work is a UNIFORM-INDEX bind case in the base
+      (`Seq[G, A, B, R]`), and it costs what stage 1 was for: `Cont`
+      still needs the non-uniform `Bind` for `PState`, so the base
+      carries both and `resume` rotates both. THAT IS A DECISION, not
+      a task — specs/freer-base.md Results has the full reasoning. ONE enum `Freer[G, A, S, R]` — Pure,
+      Op, Bind, Defer, one `resume` rotation — under `Cont`
+      (`Freer[Shift]`, index = answer type) and `Free` (`Freer[Lift[F]]`
+      at a pinned `Unit` index, later typestate). Three stages, each
+      its own lane with its own gate and disqualifying numbers in the
+      spec: 0 = enum + Cont (absorbs cont-fuse-one-step below: fusion
+      becomes the `Shift.Absorbed` class, no budget, 40 B/shift vs 48);
+      1 = Free on it, `object !` exports the cases so the 89 `resume:
+      @unchecked` sites and 20 outside files compile unchanged, a
+      rotation law lets eliminators inline; 2 = the index as typestate,
+      Delim first (`NoPrompt` → compile error). Start with stage 0.
+      CLOSED 2026-09-18 (backlog-recheck): this entry is the arc's HISTORY — stage 0 landed, stage 1 refuted with its reasoning, stage 2's language question answered — and its only open sentence is stage 2, which has its own entry beside it (`freer-base-stage2`, road 3 of specs/continuations-roadmap.md). One open item, not two; the history is kept here.
+
+## okay-cluster / dataflow (moved 2026-09-18, backlog-recheck)
+
+- [x] (SUPERSEDED, kept for the reasoning) dataflow-complete-panes: 84%
+      of the Wrocław run was the sliding stop-window sink, and not
+      because the windowing is slow: the job makes 362 983 stop panes,
+      every partition holds most of them, and the coordinator merges
+      ~2.9 million accumulators on ONE thread.
+      `OkayLane.parallel` does not parallelise that merge, it avoids
+      it — it emits at the slice every pane no other slice can touch
+      (`p.start > hi(i-1) && p.end <= hi(i) - back`) and hands back
+      only the handful that span a boundary. The engine already
+      computes `hi`: it is the prefix-maximum array gathered for the
+      watermark seeding. What is missing is `back`, the greatest
+      backwardness, which is two more columns in the same pre-pass
+      (each partition's local backwardness and its minimum event
+      time). The bar is MeasureWroclawFlow's table: 121 ms against
+      the hand-written 22.
+      ARCHIVED 2026-09-18 (backlog-recheck): SUPERSEDED in its own first line, kept for the reasoning — which is what the archive is for. `dataflow-run-complete-panes` landed the rule (3.6x, `Run.merged` asserted equal at 2, 4 and 8 partitions).
+
