@@ -1,5 +1,31 @@
 # Changelog
 
+## script-storefront-intake — the offer screen, typed
+
+specs/site-framework.md. The arc's last caveat said the storefront's
+forms were "porting work, not missing machinery". They were, and now
+a running page says so: `/offer/<key>` is ONE parametric page whose
+form is the `Intake` Schema — need, delivery, payment, item value,
+name, contact, consent — read back by `Forms.read` with cross-field
+checks. The REFUSALS are what the tests assert; an acceptance-only
+suite would pass with every check deleted.
+
+Found by driving the form in a browser rather than posting to it: a
+REQUIRED `String` field cannot be left blank, because an empty text
+is not posted at all and the decode refuses before any check runs. A
+visitor leaving the optional "approximate value" empty was answered
+"required" instead of being asked for consent. The fix was the TYPE —
+`Option[Int]` says optional and numeric at once — and two of the
+page's four hand-written checks disappeared with it.
+
+Recorded rather than hidden: a sum renders as a `Select` where the
+original draws radio pills. That is presentation of the same
+capability and belongs to a host, not to the tree; the page keeps
+both roads and uses each for what it is good at — the hand-written
+sheet for the flourish, the typed screen for the value.
+
+TestStorefront 6, TestStorefrontBrowser 5.
+
 ## ui-applicative - what the applicative traversals buy, pinned; and a second validator named
 
 `okay-ui`'s `everywhere` and `shown` are declared
@@ -23,6 +49,7 @@ tested, carries PATHS in its errors which this type does not, and sits
 in the schema hot path. What is worth building is a bridge, and the
 trigger for it is the first consumer that wants a schema walk's errors
 inside a `direct` block.
+
 
 ## selective-do - an `if` with an effectful condition, and by-name branches
 
