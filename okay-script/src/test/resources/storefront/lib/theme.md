@@ -86,7 +86,7 @@ body { margin: 0; color: var(--ink); font-family: var(--sans); font-size: 17px; 
   transition: box-shadow .25s ease, background .25s ease; }
 .cta:hover, .cta:focus-visible { background: rgba(142,162,190,.10); box-shadow: 0 0 22px 0 var(--accent); outline: none; }
 .sla { font: 500 14px var(--mono); letter-spacing: .02em; color: var(--mist); margin: 14px 0 0; }
-.sla::before { content: "\u2022"; color: var(--accent-text); margin-right: 8px; }
+.sla::before { content: "\2022"; color: var(--accent-text); margin-right: 8px; }
 .foot { font-family: var(--mono); font-size: 13px; letter-spacing: .12em; color: var(--mist);
   margin-top: 8vh; text-transform: uppercase; }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
