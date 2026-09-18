@@ -48,15 +48,15 @@ class TestStorefront extends munit.FunSuite:
       // the type crossed a module boundary, and so did its companion;
       // the title is one translated element: EVERY language on it, and
       // the request's own as its text (stage 3)
-      assert(body.contains("""data-pl="Szykownia""""), body)
-      assert(body.contains("""data-uk="Ательє""""), body)
-      assert(body.contains(""">Szykownia</span></h1>"""), s"?lang=pl must render Polish:\n$body")
+      assert(body.contains("""data-pl="Przeróbki odzieży kurierem""""), body)
+      assert(body.contains("""data-uk="Переробки одягу кур'єром""""), body)
+      assert(body.contains(""">Przeróbki odzieży kurierem</h1>"""), s"?lang=pl must render Polish:\n$body")
       assert(body.contains("""<a class="offer" href="/s/szykownia/offer/hem">"""), body)
       assert(body.contains("35.00 zł") && body.contains("60.00 zł"), body)
       assert(body.contains("wycena"), "a zero price is a quote, not 0.00")
       assert(body.contains("""data-pl="Skrócenie spodni""""), body)
       assert(body.contains("""data-uk="Wymiana zamka""""), body)
-      assert(body.contains("--accent:#9e1042") && body.contains("--void:#dcc4b6"), body)
+      assert(body.contains("--accent: #9e1042") && body.contains("--void: #dcc4b6"), body)
       assert(!body.contains("""<span class="offer-desc"></span>"""), body)
       // and the client that switches them is on the page, with the
       // same cookie the per-request road reads
@@ -68,10 +68,10 @@ class TestStorefront extends munit.FunSuite:
   test("the two i18n roads compose: the request picks the TEXT, the element still carries the rest") {
     withSite { site =>
       val (_, uk) = get(site, "/?lang=uk")
-      assert(uk.contains(""">Ательє</span></h1>"""), s"the request's language must be the rendered text:\n$uk")
-      assert(uk.contains("""data-pl="Szykownia""""), uk)
+      assert(uk.contains(""">Переробки одягу кур'єром</h1>"""), s"the request's language must be the rendered text:\n$uk")
+      assert(uk.contains("""data-pl="Przeróbki odzieży kurierem""""), uk)
       val (_, en) = get(site, "/?lang=en")
-      assert(en.contains(""">The atelier</span></h1>"""), en)
+      assert(en.contains(""">Alterations, by courier</h1>"""), en)
       // ...and the script's default follows the request, so it does
       // not undo what the server just decided
       assert(en.contains("dflt='en'"), en)
@@ -83,7 +83,7 @@ class TestStorefront extends munit.FunSuite:
     withSite { site =>
       val (status, body) = get(site, "/it")
       assertEquals(status, 200, body)
-      assert(body.contains("--accent:#3b82f6") && body.contains("--void:#05070c"), body)
+      assert(body.contains("--accent: #3b82f6") && body.contains("--void: #05070c"), body)
       assert(body.contains("""href="/s/it/offer/cicd""""), body)
       assert(body.contains("wycena"), body)
     }
@@ -117,7 +117,7 @@ class TestStorefront extends munit.FunSuite:
       assert(saved.contains("saved 1 services"), saved)
       val after = get(site, "/?lang=pl")._2
       assert(after.contains("Podszycie spodni") && after.contains("42.00 zł"), after)
-      assert(after.contains("--accent:#123456"), after)
+      assert(after.contains("--accent: #123456"), after)
       assert(!after.contains("Skrócenie spodni"), "the shipped default is still showing")
       // and a reset puts back exactly what shipped
       assert(post(site, "/edit", Map("__reset" -> "1")).contains("reset to what shipped"))

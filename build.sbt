@@ -1734,7 +1734,12 @@ lazy val okayOnnx = (project in file("okay-onnx"))
  * "okayDemoE2eBrowser/test"`.
  */
 lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
-  .dependsOn(okayDemo, okayScript)   // okayScript: the mobile-web proof drives a Live page (ui-mobile)
+  // okayScript: the mobile-web proof drives a Live page (ui-mobile).
+  // test->test as well since script-storefront-look: the storefront
+  // fixture those pages ARE lives in okay-script's test resources, and
+  // a browser proof of it must read the same files the unit tests do
+  // rather than a copy that can drift.
+  .dependsOn(okayDemo, okayScript % "compile->compile;test->test")
   .settings(
     name := "okay-demo-e2e-browser",
     // forked, as okay-script's own tests are: a Live page is compiled

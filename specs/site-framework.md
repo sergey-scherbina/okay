@@ -161,6 +161,38 @@ What it proves, and the first item was the open question:
   importer renders, and `warm()` compiles the whole tree with no
   page broken.
 
+**The LOOK, and the JavaScript** (2026-09-18, on the operator's eye).
+The first slice wore a three-line stylesheet, and "it renders" is not
+"it is the site". The original's own theme is ported whole — both
+palettes, the woven texture and the dashed seams for the atelier, the
+night gradient and the sweeping signal for the technical line, the
+serif headline, the offer rows, the intake sheet — chosen by a VALUE,
+so one library still dresses both sites.
+
+The page's own script is ported with it and PROVEN IN A BROWSER
+(`okay-demo-e2e-browser`, TestStorefrontBrowser, Live-tagged, 4): the
+language switch changes the text with no navigation and the choice
+survives a reload; a placeholder swaps, being an attribute rather
+than a text node; the intake sheet opens, posts, and shows the
+reference the SERVER sent back; and the computed background is the
+atelier's warm ground on one site and the technical line's near-black
+on the other. A `contains` suite cannot tell a script that runs from
+one that throws on line one, which is why this exists.
+
+Three things that cost something and are worth keeping:
+
+- **The modal takes the clicks.** Switching language with the sheet
+  open is not possible and should not be: the scrim is what a modal
+  is for. The test chooses the language first — the fixture's own UX
+  fact, found by driving it.
+- **A swallowed failure looks like a skip.** The harness caught
+  `PlaywrightException` wholesale, so a 20-second TIMEOUT was
+  reported as "the browser isn't installed". Only a missing
+  executable is a skip now.
+- **A browser proof must read the SAME fixture the unit tests do.**
+  `okayDemoE2eBrowser` gained `okayScript % "test->test"` rather than
+  a copy of the pages, because a copy drifts and then proves nothing.
+
 What the slice did NOT cover, honestly: the intake and offer FORMS
 (okay-script has two roads for those already — `Forms.html`/`read`
 and the Live app — so this is porting, not building), the courier
