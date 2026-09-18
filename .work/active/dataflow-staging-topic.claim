@@ -1,0 +1,6 @@
+feature/dataflow-staging-topic 2026-09-18T14:44:13Z
+agent: claude-code
+heartbeat: 2026-09-18T14:44:13Z
+status: in-progress
+done-so-far: claimed
+next: Sink.stagingTo(topic) + exactly-once from log to log (stage 11 boxes 3-4)
