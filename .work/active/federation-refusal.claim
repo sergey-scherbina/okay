@@ -1,6 +1,0 @@
-feature/federation-refusal 2026-09-18T20:02:21Z
-agent: claude-code
-heartbeat: 2026-09-18T20:02:21Z
-status: in-progress
-done-so-far: claimed; stage 2's two boxes plus the stage-1 box road B unblocked (a party resumes from ITS log at a position)
-next: Cluster.guarded(jobs, coordinators)(caller)(base) answering Resp.Failed before any read; three tests in TestFederation
