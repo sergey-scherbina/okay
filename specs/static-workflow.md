@@ -336,10 +336,34 @@ a consumer.
       vector; on the workflow's own journal rather than a second one;
       and an undo chain that is itself a term, so it walks, draws and
       resumes like any other. See the Design section.
-- [ ] the cursor chapter: a snapshot format of `(path, carried
+- [~] the cursor chapter: a snapshot format of `(path, carried
       values)` giving O(1) restore, with `Schema` demanded on the
       carried types at construction. TRIGGER: a term whose walk is
       measured to cost more than its next leaf's activity.
+      **THE TRIGGER NOW HAS A NUMBER AND HAS STILL NOT FIRED**
+      (`static-workflow-walk-cost`, 2026-09-18). It had been answered
+      by citing the appendix — "priced O(1) restore against a
+      microsecond prefix and found the benefit inverted" — and the
+      appendix's number is about something else: chapter 22's forty
+      answers through the MONADIC replay, a program being re-run.
+      `Proc.walk` had never been timed. `MeasureProcWalk` times it:
+      **183 ns a record, linear** (4 000 records take 9.3x the time of
+      400), so a walk is 35 µs at 40 records, 167 µs at 400, 1.1 ms at
+      4 000 and 6.3 ms at 40 000. Against one leaf's activity that is
+      a crossover rather than a verdict, so the file prints the
+      crossover: an activity of 100 µs is worth **546 records** of
+      journal, one of 1 ms is worth 5 460, one of 10 ms is worth
+      54 601. A workflow whose leaves are outside calls (milliseconds)
+      needs thousands of records between `continueAs` calls before a
+      walk costs one of them — and `continueAs` collapses the history
+      at no cost, which is the cheaper answer to the same problem.
+      SO THE TRIGGER IS: sub-millisecond leaves AND more than ~5 000
+      records of unbroken journal. Nobody here has that. (The first
+      cut of the measurement reported the walk as QUADRATIC — 4.05 s
+      at 40 000 — and it was the instrument: the term carried its
+      answers in a `List` and did `:+` and `.length` per round. The
+      control caught the superlinearity and could not say whose it
+      was; the term carries an `Int` now.)
 
 ## Out of scope
 
@@ -486,9 +510,13 @@ gives: a second copy of that rule would drift).
 - **Stage 1 runs through the existing engine (`toProgram`), not a
   cursor runtime.** A cursor runtime would buy O(1) restore at the
   price of `Schema` on every carried type and a second driver beside
-  `Dialogue`'s; the appendix already priced O(1) restore against a
-  microsecond prefix and found the benefit inverted. The cursor is
-  stage 5, gated on a measurement.
+  `Dialogue`'s; the appendix priced O(1) restore against a microsecond
+  prefix and found the benefit inverted — though that number is about
+  the MONADIC replay, not about `walk`, and the one about `walk` is in
+  stage 5's cursor box above: 183 ns a record, linear, which is 546
+  records of journal to the cost of a 100 µs activity and 5 460 to a
+  millisecond one. The cursor is stage 5, and its gate is a
+  measurement that has now been taken and has not fired.
 - **`walk` exists beside `replay` even though `replay` would do.** A
   second derivation of the position, with no runtime in its
   signature, is what the deploy check runs and what the agreement
