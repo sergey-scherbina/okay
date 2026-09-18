@@ -1,6 +1,0 @@
-feature/core-modularise 2026-09-18T18:30:52Z
-agent: claude-code
-heartbeat: 2026-09-18T18:30:52Z
-status: in-progress
-done-so-far: claimed; split-package probe PASSED on 3.9.0 (package okay across two artifacts, import okay.* and okay.given resolve both ways, compile + run)
-next: spec, then extract okay-stream (5888 lines, 27% of core); TOUCHES build.sbt
