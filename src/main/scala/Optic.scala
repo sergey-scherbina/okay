@@ -188,6 +188,43 @@ object Optic {
   /** the constant functor, an Applicative by the Monoid — what `foldMap` walks with */
   final case class Const[R, A](value: R)
 
+  /**
+   * THE KLEISLI ARROW, as a `def` and deliberately not a given
+   * (optics-arrow-instances, 2026-09-18).
+   *
+   * `Star[F, A, B]` IS the Kleisli `A => F[B]`, and with a `Monad[F]`
+   * it is an arrow: `arr` is `pure` after the function, `compose` is
+   * `flatMap`, `first` carries the second half of the pair past the
+   * effect, and `right` skips the effect entirely on a `Left`.
+   *
+   * NOT A GIVEN, for the reason `opticFunction1` is one instance
+   * instead of two: `opticStarTraversing` already provides
+   * `Strong[Star[F]]` for every `Applicative[F]`, and a second given
+   * that also extends `Strong` would make every optic call at `Star`
+   * ambiguous the moment a `Monad` was in scope. So the arrow
+   * operations are ASKED FOR by name — `Optic.kleisliArrow[F]` — and
+   * the traversal ones stay implicit. That asymmetry is the honest
+   * one: a program written against `traverseOf` should not start
+   * failing to compile because someone imported a monad.
+   *
+   * What it does NOT buy, said before anyone reaches for it: with a
+   * monad in hand `fanout` is a for-comprehension with extra syntax.
+   * This exists so the laws can be stated at the carrier and so the
+   * table in theory ch. 10 has its second row; it is not a better way
+   * to write effectful code.
+   */
+  def kleisliArrow[F[_]](using F: Monad[F]): Arrow[[A, B] =>> Star[F, A, B]] & Choice[[A, B] =>> Star[F, A, B]] =
+    new Arrow[[A, B] =>> Star[F, A, B]] with Choice[[A, B] =>> Star[F, A, B]]:
+      def dimap[A, B, C, D](p: Star[F, A, B])(f: C => A, g: B => D): Star[F, C, D] =
+        Star(c => F.fmap(p.run(f(c)), g))
+      def first[A, B, C](p: Star[F, A, B]): Star[F, (A, C), (B, C)] =
+        Star(ac => F.fmap(p.run(ac._1), (b: B) => (b, ac._2)))
+      def right[A, B, C](p: Star[F, A, B]): Star[F, Either[C, A], Either[C, B]] =
+        Star(_.fold(c => F.pure(Left(c)), a => F.fmap(p.run(a), (b: B) => Right(b))))
+      def arr[A, B](f: A => B): Star[F, A, B] = Star(a => F.pure(f(a)))
+      def compose[A, B, C](g: Star[F, B, C], f: Star[F, A, B]): Star[F, A, C] =
+        Star(a => F.flatMap(f.run(a))(g.run))
+
   /** first-wins: `preview`'s monoid */
   final case class First[A](value: Option[A])
   object First:
@@ -307,19 +344,39 @@ object Optic {
 
 import Optic.{Profunctor, Strong, Choice, Traversing, Reflecting, Classifying, Aggregating, Walk, Forget, Const, First, Star, Market, Compiled, Shop, CompiledLens}
 
-/** plain functions: `modify` and `set` */
-given opticFunction1: Traversing[Function1] with
-  def dimap[A, B, C, D](p: A => B)(f: C => A, g: B => D): C => D = f.andThen(p).andThen(g)
-  def first[A, B, C](p: A => B): ((A, C)) => (B, C) = ac => (p(ac._1), ac._2)
-  def right[A, B, C](p: A => B): Either[C, A] => Either[C, B] = _.map(p)
-  def wander[S, T, A, B](w: Walk[S, T, A, B])(p: A => B): S => T = w[Id](using Optic.idApplicative)(p)
-  // the direct roads: no tuple, no Either, no fold — the same functions
-  override def lens[S, T, A, B](get: S => A, set: (S, B) => T)(p: A => B): S => T = s => set(s, p(get(s)))
-  override def prism[S, T, A, B](preview: S => Either[T, A], review: B => T)(p: A => B): S => T =
-    s => preview(s) match
-      case Right(a) => review(p(a))
-      case Left(t) => t
-  override def eachVector[A, B](p: A => B): Vector[A] => Vector[B] = _.map(p)
+/**
+ * Plain functions: `modify` and `set` — AND the arrow, on the same
+ * instance (optics-arrow-instances, 2026-09-18).
+ *
+ * ONE GIVEN, NOT TWO, and that is forced rather than tidy. `Arrow`
+ * extends `Strong`, so a second given carrying `Arrow[Function1]`
+ * would make `Strong[Function1]` ambiguous at every optic call site
+ * in the library — every `set`, every `modify`. Widening the
+ * instance that already exists costs nothing and cannot collide.
+ *
+ * What it buys: `split` and `fanout` on ordinary functions, so the
+ * sentence in `Optic.Arrow`'s own comment — that arrows and optics
+ * are written on one `Profunctor` here — is a fact about the tree
+ * rather than a remark. `TestFunctionArrowLaws` holds it to the
+ * shared suite.
+ */
+given opticFunction1: (Traversing[Function1] & Optic.Arrow[Function1]) =
+  new Traversing[Function1] with Optic.Arrow[Function1]:
+    def dimap[A, B, C, D](p: A => B)(f: C => A, g: B => D): C => D = f.andThen(p).andThen(g)
+    def first[A, B, C](p: A => B): ((A, C)) => (B, C) = ac => (p(ac._1), ac._2)
+    def right[A, B, C](p: A => B): Either[C, A] => Either[C, B] = _.map(p)
+    def wander[S, T, A, B](w: Walk[S, T, A, B])(p: A => B): S => T = w[Id](using Optic.idApplicative)(p)
+    // the direct roads: no tuple, no Either, no fold — the same functions
+    override def lens[S, T, A, B](get: S => A, set: (S, B) => T)(p: A => B): S => T = s => set(s, p(get(s)))
+    override def prism[S, T, A, B](preview: S => Either[T, A], review: B => T)(p: A => B): S => T =
+      s => preview(s) match
+        case Right(a) => review(p(a))
+        case Left(t) => t
+    override def eachVector[A, B](p: A => B): Vector[A] => Vector[B] = _.map(p)
+    // the arrow half: a function IS its own lift, and composition is
+    // composition — the two lines that make `split`/`fanout` available
+    def arr[A, B](f: A => B): A => B = f
+    def compose[A, B, C](g: B => C, f: A => B): A => C = f.andThen(g)
 
 given opticForgetStrong[R]: Strong[[A, B] =>> Forget[R, A, B]] with
   def dimap[A, B, C, D](p: Forget[R, A, B])(f: C => A, g: B => D): Forget[R, C, D] = Forget(f.andThen(p.run))
