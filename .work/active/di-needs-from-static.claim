@@ -1,0 +1,6 @@
+feature/di-needs-from-static 2026-09-18T21:03:03Z
+agent: claude-code
+heartbeat: 2026-09-18T21:03:03Z
+status: in-progress
+done-so-far: claimed; P13 item 4 — a module whose acquisition is a Static over Provision, needs read off its leaves
+next: Provision in okay-deploy, Needs.provisioned, TestNeeds, the demo converted, spec + docs
