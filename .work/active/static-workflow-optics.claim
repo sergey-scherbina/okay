@@ -1,6 +1,0 @@
-feature/static-workflow-optics 2026-09-18T13:40:01Z
-agent: claude-code
-heartbeat: 2026-09-18T13:40:01Z
-status: in-progress
-done-so-far: claimed
-next: a lens and a prism on a step (stage 3); render as Mermaid with the position marked (stage 4)
