@@ -307,6 +307,46 @@ lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * The static workflow: `Wf`'s questions, `Proc`'s free arrow over
+ * them, and the macro that builds one (core-modules stage 2,
+ * 2026-09-18). 2 229 lines that left `okay` because the core is a
+ * LEAF here — no file in the core names Wf, Proc or ProcMacro in
+ * code, on any platform source directory. What the core keeps is
+ * `Replayable`, the 78-line marker `Delim` is typed on, which is the
+ * whole of its side of the seam.
+ *
+ * It is a crossProject because these three files sat in the shared
+ * source directory and so compile on JS and Native today; making the
+ * module JVM-only would have been a silent loss of that. The suites
+ * are JVM, exactly as they were.
+ *
+ * The package is still `okay` — see okay-stream's comment and
+ * specs/core-modules.md for the probe that settled it.
+ */
+lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-workflow"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-workflow",
+  )
+  .jvmSettings(
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    // no suite here: the workflow tests are the core's JVM-only shape
+    Test / unmanagedSourceDirectories := Seq.empty,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories := Seq.empty,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 /** interop with cats: instances and conversions, nothing more (P3) */
 lazy val okayCats = (project in file("okay-cats"))
   .dependsOn(okay.jvm)
@@ -967,7 +1007,7 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay-persist"))
   // the core for the streaming reads (Chunk ! Produce + Async, the
   // JdbcInterop shape); the codec for the typed Schema view
-  .dependsOn(okay, okayCodec)
+  .dependsOn(okay, okayWorkflow, okayCodec)
   // okay-tls joins TEST scope only, for the persist-wire-over-TLS
   // acceptance: the wire's transport is injectable, so the SSLSocket
   // is built in the test and okay-persist keeps its core-only compile
@@ -1924,7 +1964,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,

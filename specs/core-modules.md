@@ -121,10 +121,27 @@ that cannot run it.
 `ChannelBenchmark` moves to the new module's `src/jmh`, because the
 core cannot depend on a module that depends on it.
 
-## Stage 2 — `okay-workflow` (not this lane)
+## Stage 2 — `okay-workflow` (DONE)
 
-`Wf`, `Proc`, `ProcMacro`, 1 979 lines, already a leaf: no core file
-uses them. `Replayable` stays, because `Delim` is typed on it.
+`Wf` (980), `Proc` (551) and `ProcMacro` (698) with their thirteen
+suites. `Replayable` stays, because `Delim` is typed on it.
+
+It was a leaf and it behaved like one. The survey ran with the full
+instrument this time — comments stripped, every platform source
+directory walked, the grep keyed on the TOP-LEVEL SYMBOLS the files
+define rather than their names, and the test scan reading string
+literals — and the core named `Wf`, `Proc` or `ProcMacro` **zero
+times in code**. Both halves compiled on the first attempt, and the
+whole family needed exactly **one** `dependsOn`: okay-persist.
+okay-ui uses `Proc` in a suite and got it transitively.
+
+It is a crossProject, not a JVM module, because the three files sat
+in the shared source directory and therefore compile on JS and Native
+today; a JVM-only module would have been a silent loss of that. The
+suites stay JVM, which is the shape they already had.
+
+The core is now **52 files and 13 555 lines**, down from 74 and
+21 914 — 38% gone in two stages, with no consumer's import edited.
 
 ## Stage 3 — `okay-data` (not this lane)
 
