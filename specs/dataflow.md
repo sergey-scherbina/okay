@@ -433,18 +433,27 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       records, asserted by a counting Topic; a windowed one reads the
       whole topic again. Controlled: opening at zero fails both seek
       tests
-- [~] box 2b — a WINDOWED sink that seeks. **MEASURED 2026-09-18
-      (`dataflow-windowed-seek`), and the measurement CHOOSES: road B,
+- [x] box 2b — a WINDOWED sink that seeks. **MEASURED 2026-09-18
+      (`dataflow-windowed-seek`), and the measurement CHOSE: road B,
       the horizon-bounded replay, by a factor nobody has to argue
-      about.** Neither road is built yet; what the box asked for
-      first — "measure the merge traffic of the first against the
-      replay length of the second before choosing" — is done, and the
-      numbers are in `MeasureWindowedSeek` and in the Results below.
-      The remaining work is road B alone: a `(position, max event
-      time)` pair per epoch in the journal, and a session that seeks
-      to the epoch whose maximum is below the oldest open pane's start
-      and replays from there, seeded with that maximum so late-drop
-      decisions do not move
+      about** — the numbers are in `MeasureWindowedSeek` and in the
+      Results below. **BUILT the same day (`dataflow-horizon-seek`):**
+      `Sink.horizon` is how far back a sink's state reaches (`size +
+      lateness` for a window, `0` for a sink that hands over deltas
+      and answers `seekable` instead), `Folded.marks` is the
+      `(epoch, positions, max event time per partition)` the journal
+      now carries, and `opening` picks, per PARTITION, the newest mark
+      whose own maximum is a horizon below where that partition stands
+      now. The seed the box asked for turned out not to be needed: the
+      catch-up reaches the same maximum before the requested epoch, so
+      the late-drop decisions of that epoch are made under the same
+      watermark either way — and the panes that DID lose a skipped
+      element are all closed during the catch-up, which discards them.
+      `TestSeek` asserts the answer first and the reads second: the
+      resumed windowed job answers identically and reads
+      `total - Σmark.positions` (15 904 of 20 000), and a mid-run
+      replacement re-reads exactly one epoch (512 elements) where the
+      replay from zero re-read 2 560
 - [x] a resumed coordinator's workers open at the journal's epoch and
       read from there — TICKED LATE 2026-09-18: it is the same
       assertion as box 2 above, which has been `[x]` since it landed

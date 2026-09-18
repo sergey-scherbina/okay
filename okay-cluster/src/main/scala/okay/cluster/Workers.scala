@@ -392,15 +392,79 @@ object Cluster {
      * re-stripes the rest (stage 13). So a re-cut reads only the
      * suffix — no replay — and the fold carries the prefix.
      */
-    def opening(i: Int, positions: Vector[Long], absorbed: Int): Req.Open =
+    def opening(i: Int, positions: Vector[Long], absorbed: Int,
+                seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek]): Req.Open =
       if (sink.seekable || rescaling) && positions.nonEmpty then
         Req.Open(job.name, encoded, i, parts, sessions(i), positions(i), absorbed)
-      else Req.Open(job.name, encoded, i, parts, sessions(i))
+      else
+        val at = seeking(i, seen, marks)
+        if at < 0 then Req.Open(job.name, encoded, i, parts, sessions(i))
+        else Req.Open(job.name, encoded, i, parts, sessions(i),
+          marks(at).positions(i), marks(at).epoch)
+
+    // -- ROAD B: where a sink with a HORIZON opens -------------------
+    //   (specs/dataflow.md, stage 11 box 2b)
+    //
+    // A windowed partition keeps its open panes inside itself, so a
+    // session at a position has none of them and every session
+    // replayed from zero. It does not have to. Partition i's own
+    // operator closes a pane when `start + size <= max_i - lateness`,
+    // so every pane STILL OPEN there starts above `max_i -
+    // sink.horizon` and holds only elements above that point. A
+    // session opened at an epoch where partition i's maximum was
+    // already that far back therefore skips nothing an open pane
+    // wants: the panes that DID hold a skipped element are all closed
+    // again before the requested epoch, and a catch-up discards
+    // exactly those (Job's `advance`).
+    //
+    // The cut is per PARTITION, not global, because the operator that
+    // holds the panes is per partition — a global watermark would be
+    // the slowest partition's clock and would refuse every seek on a
+    // feed whose partitions cover different times.
+    //
+    // A mark records the HIGHEST event time over the sink's time
+    // columns and the cut is taken from the LOWEST, so a sink reading
+    // two clocks (`and`) is offered a mark only when both are past it.
+    def high(e: Vector[Flows.Extent]): Long =
+      if e.isEmpty then Long.MinValue else e.map(_.max).max
+    def low(e: Vector[Flows.Extent]): Long =
+      if e.isEmpty then Long.MinValue else e.map(_.max).min
+    /** the newest mark partition `i` may open at, or -1 for none */
+    def seeking(i: Int, seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek]): Int =
+      if sink.horizon <= 0L || marks.isEmpty then -1
+      else
+        val now = low(seen(i))
+        if now == Long.MinValue then -1
+        else
+          val cut = now - sink.horizon
+          marks.lastIndexWhere(m => m.maxes(i) != Long.MinValue && m.maxes(i) <= cut)
+
+    /**
+     * THE MARKS THIS EPOCH LEAVES BEHIND, pruned.
+     *
+     * Everything older than the oldest partition's own target is
+     * unreachable for ever — a cut only rises — so it is dropped. The
+     * cap is a second bound for a feed whose partitions run at wildly
+     * different event times: dropping the OLDEST mark costs a
+     * partition seek distance and can never cost correctness, since
+     * the fallback is the replay from zero that was the only road
+     * before this box.
+     */
+    def marking(seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek],
+                round: Int, stood: Vector[Long]): Vector[Seek] =
+      if sink.seekable || sink.horizon <= 0L then Vector.empty
+      else
+        val grown = marks :+ Seek(round, stood, Vector.tabulate(parts)(i => high(seen(i))))
+        val oldest = (0 until parts).map(i => seeking(i, seen, grown)).min
+        val kept = if oldest <= 0 then grown else grown.drop(oldest)
+        if kept.length <= Seeks then kept else kept.takeRight(Seeks)
 
     def commit(round: Int, st: sink.S, seen: Vector[Vector[Flows.Extent]],
-               drops: Long, merged: Long, positions: Vector[Long], over: Boolean = false): Unit =
+               drops: Long, merged: Long, positions: Vector[Long],
+               marks: Vector[Seek], over: Boolean = false): Unit =
       journal.save(round,
-        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over, positions)))
+        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over,
+          positions, marks)))
 
     // NO UPFRONT OPEN. The first `Advance` finds no session and opens
     // one, which is the identical path a replacement worker takes —
@@ -408,7 +472,7 @@ object Cluster {
     // than only when something has died.
     locally:
       def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long,
-                positions: Vector[Long], round: Int): Run[R] ! Async =
+                positions: Vector[Long], marks: Vector[Seek], round: Int): Run[R] ! Async =
         // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
         // place the streaming engine had to stop copying the batch
         // one.
@@ -440,7 +504,7 @@ object Cluster {
         // upper bound at MinValue is what finishes nothing locally.
         val bs = Vector.fill(parts)(sink.times.map(_ => Bounds(Long.MinValue, Long.MinValue)))
         Flows.spread(parts) { i =>
-          advancing(workers, living, i, opening(i, positions, round - 1),
+          advancing(workers, living, i, opening(i, positions, round - 1, seen, marks),
             Req.Advance(sessions(i), take, bs(i), round)) match
             case e: Resp.Epoch => e
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
@@ -478,7 +542,8 @@ object Cluster {
           // twice, which a writer that records the epoch number with
           // its data ignores.
           sink.committed(round)
-          commit(round, next, grown, d, m, stood)
+          val left = marking(grown, marks, round, stood)
+          commit(round, next, grown, d, m, stood, left)
           if es.forall(_.drained) then
             // THE CLOSE CARRIES A PARTIAL. Every pane still open when
             // the source ran out is swept out by `finish` and comes
@@ -516,10 +581,10 @@ object Cluster {
               // the last round's, which is exactly what happened the
               // first time this was written.
               sink.committed(round + 1)
-              commit(round + 1, end, grown, dd, mm, stood, over = true)
+              commit(round + 1, end, grown, dd, mm, stood, left, over = true)
               Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
-          else epoch(next, grown, d, m, stood, round + 1)
+          else epoch(next, grown, d, m, stood, left, round + 1)
         }
 
       /**
@@ -534,7 +599,8 @@ object Cluster {
        * replacement worker for everyone at once.
        */
       resuming match
-        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, Vector.fill(parts)(0L), 1)
+        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L,
+          Vector.fill(parts)(0L), Vector.empty, 1)
         case Some(f) =>
           held.decode(f.state) match
             case Left(why) =>
@@ -600,7 +666,14 @@ object Cluster {
                   val g = f.positions.sum
                   (Vector.fill(parts)(Vector.empty[Flows.Extent]),
                    Vector.tabulate(parts)(j => math.max(0L, (g - j + parts - 1) / parts)))
-              epoch(st, seen0, f.drops, f.merged, pos0, f.epoch + 1)
+              // THE MARKS COME BACK TOO, and only when they still fit:
+              // a rescale re-cuts the partitions and a mark's
+              // positions are the OLD cut's (a windowed sink refuses
+              // to rescale above, so this is belt and braces).
+              val marks0 =
+                if f.seen.length == parts then f.marks.filter(_.positions.length == parts)
+                else Vector.empty
+              epoch(st, seen0, f.drops, f.merged, pos0, marks0, f.epoch + 1)
 
   /**
    * RUN THE JOB IF THIS PROCESS IS THE COORDINATOR
@@ -688,6 +761,18 @@ object Cluster {
             living.failed(w)
             go(tried + 1, if first == null then t else first)
     go(0, null)
+
+  /**
+   * HOW MANY SEEK MARKS A JOURNAL RECORD CARRIES AT MOST
+   * (specs/dataflow.md, stage 11 box 2b).
+   *
+   * Pruning by the oldest partition's target already bounds this on
+   * any feed whose partitions keep pace; the cap bounds it on one
+   * where they do not. A mark is three numbers per partition, so 64
+   * of them at 8 partitions is under 16 KB — the same order as the
+   * one-off 16 KB the measurement priced the seek at.
+   */
+  private val Seeks = 64
 
   /** a partition's extent so far, taking this epoch's into the last */
   private def merge(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =

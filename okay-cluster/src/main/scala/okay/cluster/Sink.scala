@@ -175,6 +175,29 @@ abstract class Sink[A, R]:
    */
   def seekable: Boolean = false
 
+  /**
+   * HOW FAR BACK OF THE WATERMARK THIS SINK'S STATE REACHES
+   * (specs/dataflow.md, stage 11 box 2b) — and it is the number that
+   * lets a NON-seekable sink seek after all.
+   *
+   * A windowed partition keeps its open panes inside itself, so a
+   * fresh session at a position has none of them and it replays from
+   * zero. But it does not have to replay from zero: no pane starting
+   * before `watermark - (size + lateness)` can still be open, so a
+   * session opened at the last epoch whose maximum event time is
+   * below that point rebuilds exactly the panes that are still open
+   * and nothing earlier. That is road B of box 2b, and the
+   * measurement that chose it over handing the open panes over every
+   * epoch is `MeasureWindowedSeek`: 16 KB once per resume against
+   * 3.3 KB every epoch for ever, and 6.4 MB per resume before either.
+   *
+   * ZERO means "this sink's state does not reach back at all" — a
+   * fold or a keyed sink, which hands over a delta and clears, and
+   * which therefore answers `seekable` instead. A sink with a horizon
+   * is not seekable and does not pretend to be: it replays, bounded.
+   */
+  def horizon: Long = 0L
+
   def recovered(epoch: Int): Unit = ()
 
   /** two sinks over one pass */
@@ -206,6 +229,7 @@ abstract class Sink[A, R]:
       override def recovered(epoch: Int): Unit =
         { self.recovered(epoch); that.recovered(epoch) }
       override def seekable: Boolean = self.seekable && that.seekable
+      override def horizon: Long = math.max(self.horizon, that.horizon)
 
 object Sink {
 
@@ -337,6 +361,11 @@ object Sink {
         s
       def emit(s: S): R = into.present(s.acc)
       def slack: Long = lateness
+      // NO pane starting before `watermark - (size + lateness)` can
+      // still be open, so that is exactly how far a fresh session has
+      // to go back to rebuild this partition's state — and not one
+      // element further (stage 11 box 2b, road B)
+      override def horizon: Long = size + lateness
       def drops(ws: Vector[W]): Long =
         var d = 0L
         for w <- ws do d += w.late
@@ -496,6 +525,7 @@ object Sink {
       def slack: Long = base.slack
       def merged(ws: Vector[W]): Long = base.merged(ws)
       override def seekable: Boolean = base.seekable
+      override def horizon: Long = base.horizon
       override def committed(epoch: Int): Unit =
         val batch = stage.synchronized { val b = stage.toVector; stage.clear(); b }
         if batch.nonEmpty then move(epoch, batch)

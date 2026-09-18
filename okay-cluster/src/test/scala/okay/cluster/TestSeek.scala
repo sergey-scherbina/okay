@@ -15,14 +15,17 @@ import java.util.concurrent.atomic.AtomicLong
  * log as the source that is the one cost a log exists to remove: a
  * position is a number, and a session can open AT it.
  *
- * BUT NOT EVERY SINK CAN, and the test says which. A keyed sink hands
- * over a DELTA each epoch and clears, so a session opened at epoch
- * N-1's position with an empty map is exactly right. A windowed sink
- * keeps its open panes inside the partition and hands them over only
- * when they close — a fresh session at a position has none of them,
- * and their contributions from before it would reach nobody. So the
- * windowed sink still replays, and this suite asserts BOTH behaviours
- * by counting what the topic was asked for, not by trusting a flag.
+ * BUT NOT EVERY SINK SEEKS THE SAME WAY, and the tests say which. A
+ * keyed sink hands over a DELTA each epoch and clears, so a session
+ * opened at epoch N-1's position with an empty map is exactly right.
+ * A windowed sink keeps its open panes inside the partition and hands
+ * them over only when they close, so it cannot open THERE — but it
+ * does not have to replay from zero either: no pane still open starts
+ * more than `size + lateness` below where its partition stands, so it
+ * opens at the last epoch that far back and rebuilds exactly the
+ * panes that are open (stage 11 box 2b, road B — the road
+ * `MeasureWindowedSeek` chose). This suite asserts both roads by
+ * counting what the topic was asked for, not by trusting a flag.
  */
 object SeekStore {
   import Feeds.*
@@ -165,7 +168,29 @@ class TestSeek extends munit.FunSuite {
       assertEquals(read, total - f.positions.sum, s"died after epoch $at")
   }
 
-  test("A WINDOWED JOB STILL REPLAYS, and says so by reading the whole topic again") {
+  test("every wrapper forwards the HORIZON, not only `seekable`") {
+    // COUNT THE DOORS. The first cut of road B put `horizon` on the
+    // Sink and forgot the five Wire wrappers, so `Wire.tumbling`
+    // answered 0 and the seek never fired — the windowed test below
+    // passed for the wrong reason. A wrapper that forwards one of the
+    // two answers and not the other is exactly that bug.
+    val w = WindowLogJob.sink(feed)
+    assertEquals(w.horizon, Size + Late, "a windowed wire reaches back size + lateness")
+    assertEquals(KeyedLogJob.sink(feed).horizon, 0L, "a keyed wire hands over deltas: no reach")
+    assertEquals(KeyedLogJob.sink(feed).and(w).horizon, Size + Late, "`and` takes the furthest")
+    assertEquals(Sink.windowed(Size, Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts,
+      value, true)(paneSum).horizon, Size + Late)
+    assertEquals(Sink.fold(Aggregator.count[Ev]).horizon, 0L)
+  }
+
+  test("A WINDOWED JOB SEEKS TO ITS HORIZON: the same answer, and it stops reading where the panes start") {
+    // ROAD B (specs/dataflow.md, stage 11 box 2b). Before this box a
+    // windowed sink replayed its partition from ZERO on every resume,
+    // because its open panes live in the worker. It no longer does:
+    // no pane still open in partition i starts below `max_i -
+    // (size + lateness)`, so the session opens at the last epoch whose
+    // own maximum was already that far back, and everything it skips
+    // belongs to panes the catch-up closes and throws away.
     SeekStore.fill(events(feed), Parts)
     val reference = Flows.fan(Flow.slices(events(feed), Parts), WindowJob.sink(feed)).runWith
     val j = Dying(3)
@@ -176,9 +201,56 @@ class TestSeek extends munit.FunSuite {
     val before = SeekStore.counting.records.get
     val got = Cluster.stream(WindowLogJob, feed, Parts, Vector(Cluster.local), Take, j.kept).runWith
     val read = SeekStore.counting.records.get - before
+    // THE ANSWER FIRST. A seek that answers differently is not a
+    // faster resume, it is a wrong one — and this is the assertion
+    // that would have caught a horizon one element too short.
     assertEquals(got.value, reference.value, "the resumed windowed job answered wrong")
+    assertEquals(got.dropped, reference.dropped, "the resumed windowed job dropped differently")
+    assert(read < total, s"a windowed sink with a horizon replayed from zero: $read of $total")
+    // AND NOT TOO FAR. A keyed sink would have opened at
+    // `f.positions`; this one must go back at least its horizon from
+    // there, so it reads strictly more than a keyed resume would.
+    assert(read > total - f.positions.sum,
+      s"read $read of $total: a windowed sink seeked as far as a keyed one, which cannot be right")
+    // EXACTLY where the marks say. The journal keeps the epochs a
+    // session may open at, pruned to the oldest partition's own
+    // target — every partition here runs at the same rate, so they
+    // share it and the head of the list is where all four opened.
+    assert(f.marks.nonEmpty, "the journal carries no seek marks")
+    assert(f.marks.length <= 3, s"the marks were not pruned: ${f.marks.length} of them")
+    assertEquals(read, total - f.marks.head.positions.sum,
+      s"the run did not open at the mark it recorded (${f.marks.head})")
+  }
+
+  test("a replacement worker MID-RUN seeks by the horizon too, and the answer is untouched") {
+    // The coordinator has not died here: the marks it seeks by are
+    // the ones in its own hand, never journalled. `opening` is one
+    // function for both roads (a resume and a replacement), so this
+    // is the same seek arriving by the other door — and the reason
+    // the function is one.
+    SeekStore.fill(events(feed), Parts)
+    val reference = Flows.fan(Flow.slices(events(feed), Parts), WindowJob.sink(feed)).runWith
+    val n = AtomicLong(0)
+    val dying: Cluster.Serve = req =>
+      req match
+        case Req.Advance(session, _, _, _) if n.incrementAndGet() == 6 =>
+          Sessions.drop(session)
+          throw java.io.IOException("the worker died at its sixth request")
+        case other => Cluster.local(other)
+    val before = SeekStore.counting.records.get
+    val got = Cluster.stream(WindowLogJob, feed, Parts, Vector(dying, Cluster.local), Take).runWith
+    val read = SeekStore.counting.records.get - before
+    assertEquals(got.value, reference.value, "the windowed job answered wrong after a worker died")
     assertEquals(got.dropped, reference.dropped)
-    assert(read >= total, s"a windowed sink cannot seek, and yet read only $read of $total")
+    assert(got.failed > 0, "the death never happened")
+    // ONE EPOCH BACK, and the number is the point. The horizon is
+    // 1300 of event time and an epoch carries 5120 of it, so the
+    // newest mark that clears the horizon is always the last one —
+    // 512 elements re-read where a replay from zero would have re-read
+    // the 2560 this partition had already consumed.
+    assert(read > total, s"$read records for $total: the replacement rebuilt no panes at all")
+    assertEquals(read - total, Take.toLong,
+      s"$read records for $total: the replacement did not open at the last mark")
   }
 
   test("a replacement worker MID-RUN opens at the position too — the same road as a resume") {

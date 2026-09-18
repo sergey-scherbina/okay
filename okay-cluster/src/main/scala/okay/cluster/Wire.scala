@@ -83,6 +83,7 @@ abstract class Wire[A, R] extends Sink[A, R]:
       override def recovered(epoch: Int): Unit =
         { self.recovered(epoch); that.recovered(epoch) }
       override def seekable: Boolean = self.seekable && that.seekable
+      override def horizon: Long = math.max(self.horizon, that.horizon)
 
 object Wire {
 
@@ -113,6 +114,7 @@ object Wire {
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
 
   /** one accumulator per key: the partial is the key/accumulator pairs */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -141,6 +143,7 @@ object Wire {
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
 
   /**
    * An event-time windowed aggregation.
@@ -179,6 +182,7 @@ object Wire {
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
@@ -272,6 +276,7 @@ object Wire {
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
 
   def tumblingStaged[A, K, Acc, O](size: Long, lateness: Long,
                                    key: A => K, at: A => Long,

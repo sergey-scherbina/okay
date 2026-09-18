@@ -142,6 +142,33 @@ object Checkpoint:
       s"this coordinator no longer holds the lease (term $term) and did not commit epoch $epoch")
 
 /**
+ * WHERE A NON-SEEKABLE SINK MAY OPEN AFTER ALL
+ * (specs/dataflow.md, stage 11 box 2b, road B).
+ *
+ * One epoch's `(where every partition stood, how high its event time
+ * had reached by then)`. A windowed partition keeps its open panes
+ * inside itself, so a session at a position has none of them — but no
+ * pane starting more than `sink.horizon` below where that partition
+ * stands NOW can still be open, so a session opened at a mark whose
+ * own maximum is that far back rebuilds exactly the panes that are
+ * open and nothing earlier.
+ *
+ * `maxes(i)` is partition i's GREATEST event time as of this epoch,
+ * over every time column the sink reads — greatest, so that a mark is
+ * only offered when every column is below the cut.
+ *
+ * The record and not a second journal: `Checkpoint` is two methods
+ * with no history (`save`, `latest`), so the marks ride in the fold
+ * they belong to. They are pruned at every commit — everything older
+ * than the oldest partition's target is unreachable for ever, since
+ * the cut only rises.
+ */
+final case class Seek(epoch: Int, positions: Vector[Long], maxes: Vector[Long])
+
+object Seek:
+  given Schema[Seek] = Schema.derived
+
+/**
  * WHAT THE COORDINATOR HOLDS, AS A VALUE.
  *
  * The folded state is only half of it. The watermark is computed from
@@ -228,7 +255,12 @@ final case class Folded(epoch: Int,
                          * epoch, in elements consumed — what a
                          * seekable sink's sessions open at on resume
                          * (stage 11 box 2); empty before that box */
-                        positions: Vector[Long] = Vector.empty)
+                        positions: Vector[Long] = Vector.empty,
+                        /** the epochs a sink with a HORIZON may open
+                         * at — empty for a seekable sink, which has
+                         * `positions`, and for a sink whose state
+                         * reaches back for ever (stage 11 box 2b) */
+                        marks: Vector[Seek] = Vector.empty)
 
 object Folded:
   given Schema[Flows.Extent] = Resp.given_Schema_Extent
