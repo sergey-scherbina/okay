@@ -380,6 +380,102 @@ same material with the measurements attached.
   with an internal cast, done without one (50 000 leaves fold; it
   overflowed at 10 000 until static-foldmap-stack-safe).
 
+## Optics (Optic.scala)
+
+- **`Optic[C[_[_, _]], S, T, A, B]`** — a path into a value, as a
+  value. It is a function polymorphic in a profunctor `P`, and its
+  CONSTRAINT on `P` is a type parameter: composition takes the
+  INTERSECTION of the two constraints, so `lens andThen prism` asks
+  for `Strong[P] & Choice[P]` and an interpretation satisfies the
+  meet by subtyping. Nobody writes a table of family pairs. Nominal
+  on purpose — a transparent alias for the polymorphic function
+  cannot have its constraint inferred by an extension method, which
+  the prototype found by failing.
+- The families, each one constraint: **`Iso`** (`Profunctor`),
+  **`Lens`** (`Strong`), **`Prism`** (`Choice`), **`Affine`** (both,
+  and usually not written — compose a lens with a prism and the type
+  appears), **`Traversal`** (`Traversing`), and the two that
+  AGGREGATE rather than iterate: **`Kaleidoscope`** (`Reflecting` —
+  lift through any Applicative, collapse many focuses into one) and
+  **`AlgebraicLens`** (`Classifying` — put by an algebra over all the
+  wholes, which is what "decide what this is, given everything seen"
+  needs).
+- The lattice: `Profunctor` → `Strong` (`first`) and `Choice`
+  (`right`); `Traversing` extends both and adds `wander` over a
+  `Walk` (Purescript's, applicative-polymorphic). Each class DERIVES
+  its operation from its structure map with the textbook formula as
+  the default — `Strong.lens` from `first`, `Choice.prism` from
+  `right`, `Traversing.eachVector` from `wander` — and an
+  interpretation may override with a direct road. TestOptics holds
+  every override to the default it replaces; that is the house rule,
+  not a courtesy.
+- The interpretations (they ride `import okay.given`):
+  **`Function1`** (`Traversing`: `modify`, `set`), **`Forget[R]`**
+  (the read side: `get`, and with a `Monoid` `preview`, `foldMap`,
+  `toVector`), **`Star[F]`** (`traverseOf` for any `Applicative` —
+  where `Validated`, `Par`, `Static` and an effect row all drop in
+  with no code in the optics), **`Aggregating`** (`Reflecting` AND
+  `Classifying` in one instance, because the intersection is
+  satisfied by one value), and the concrete pairs **`Shop`** (a
+  lens's) and **`Market`** (an affine's).
+- **Fusion, and the two roads.** `set`/`modify`/`get`/`preview`/
+  `foldMap`/`toVector`/`traverseOf` are inline and planned by `Fuse`:
+  where the optic's shape is readable at compile time — written
+  literally, named by an `inline def`, `Lens[S](_.f)`, chains of them
+  — the emitted code is what a person would write, allocation
+  identical to the byte. Where it is not — an optic behind a `val`,
+  chosen at run time, a traversal — it falls back to the
+  interpretation, which is an object per level. Both are correct;
+  only the price differs. Measured pairs are in docs/optics.md and
+  specs/optics.md.
+- **The two field constructors.** `Lens[S](_.f)` is a macro that
+  READS the selector and writes `Lens(get, set)` (the policy is "a
+  macro only reads; it never writes"), so the field is ordinary code
+  the IDE completes and renames. `Lens.field[S]("name")` is by name,
+  the label checked against the `Mirror` at compile time with no
+  macro at all — and it is the one constructor `Fuse` cannot read, so
+  it pays the interpretation.
+- **`Iso.non(d)`** — Kmett's: an absent value reads as `d`, and
+  writing `d` back makes it absent again. This is what turns
+  "create the missing parent" from an unlawful lens into a lawful
+  composition; it is an iso modulo one normalisation, and the test
+  names it (`Some(d)` and `None` are one point, so writing the
+  default PRUNES the spine).
+- **`PState.Zooming[X, R]`** (`[A, B] =>> Cont[X, B => R, A => R]`) —
+  a typestate transition read as a profunctor in its STATE, with
+  `opticZooming` its `Strong`. `PState.zoom` is `l[Zooming[X, R]](m)`
+  and has no body of its own, so every `Strong` optic zooms a
+  parameterised-state program: an iso, a `first` over a pair state, a
+  composed chain. **There is no `Choice` here and cannot be** — on
+  the absent case the zoomed program must still answer the inner
+  program's `X`, which is universally quantified, and the only source
+  of an `X` is the program that case says not to run. Parametricity,
+  not a type error. The door that exists prices itself in its type:
+  `PState.zoomCase(prism)(m)` answers `Option[X]`.
+- Gotchas, each one paid for:
+  - `.compiled` (the optic run at its own `Market` pair) is
+    MEASURED SLOWER than the optic — 8.0 ns against 3.0 for a
+    one-field set, because the `Either` a market carries costs more
+    than it saves and a `val`-held optic is a monomorphic call site
+    the JIT inlines through. It is kept for the PAIR (to hand across
+    a boundary, to store an optic as data), never for speed.
+  - a traversal cannot be `.compiled` at all, and the missing given
+    is the honest reason: a pair holds ONE focus, so there is no
+    `wander` for it.
+  - `Aggregating` is deliberately NOT `Strong`: `first` would have to
+    answer a `C` from a `Vector[C]` and there is no honest choice, so
+    an ordinary lens does not compose into that road — the
+    classifying lens stands in its place.
+  - `Optic.idApplicative` and `Optic.zipLazy` are NOT givens.
+    `Applicative[Id]` would be ambiguous with the package's
+    `Comonad[Id]`, and a lawful zip applicative on a finite sequence
+    does not exist (`pure` for zipping must be the infinite repeat),
+    which is why the zip one is a `LazyList`.
+  - a bottom-up rewrite is NOT a traversal — applying `f` to a
+    REBUILT node binds the effect, which is a monad, so that is a
+    catamorphism. `Ui.everywhere` is top-down and its test names an
+    `f` for which the two differ.
+
 ## Streams and consumption
 
 - **`Stream[S[_], F[+_]]`** — codata: `uncons: Option[(A, S[A])] ! F`.

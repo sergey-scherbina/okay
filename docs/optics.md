@@ -5,11 +5,13 @@ compose it, you hand it around, and then you read through it, write
 through it, walk it with an effect or ask it what it would do.
 
 This page is pairs: the code a person writes today on the left, the
-optic that replaces it on the right. Every block below is run by
-`TestOpticsGuide` (`src/test/scala-cross/`), which asserts the two
-sides answer the same thing — so if the library moves, the page
-fails rather than lying. The theory is [chapter 10](theory/10-optics.md);
-the design record with every refuted alternative is `specs/optics.md`.
+optic that replaces it on the right. Every block below is run by a
+test, which asserts the two sides answer the same thing — so if the
+library moves, the page fails rather than lying. The pairs are
+`TestOpticsGuide`; the program-zooming section at the end is
+`TestContProfunctor`, both in `src/test/scala-cross/`. The theory is
+[chapter 10](theory/10-optics.md); the design record, with every
+refuted alternative, is `specs/optics.md`.
 
 ## 1. Set a field one level down
 
@@ -198,6 +200,42 @@ knowing which one you are in.
 with a prism and the type appears. The last two aggregate rather than
 iterate — they are how "decide what this is, given everything seen"
 is written — and they live in `TestAggregationOptics`.
+
+## An optic can zoom a PROGRAM, not just a value
+
+Everything above focuses inside a value. The same optic also focuses
+inside a *stateful program*, and this is the part with no counterpart
+in the hand-written column — there is nothing short to compare it to.
+
+A typestate program `Cont[X, B => R, A => R]` computes an `X` and
+moves the state from `A` to `B`. Read as `P[A, B]` that is a
+profunctor, so a lens onto part of the state turns a program over the
+part into a program over the whole:
+
+```scala
+PState.zoom(item)(parse)     // item: Lens[Box[String], Box[Int], String, Int]
+```
+
+The program never mentions the whole. The lens says which part, the
+compiler carries the state's TYPE change through — `Box[String]`
+becomes `Box[Int]` because its item did, and asking for the old type
+back does not compile. Any `Strong` optic works here, including an
+iso and a composed chain.
+
+**A prism cannot do this, and the reason is worth knowing.** If the
+case is not there, the zoomed program must still answer the `X` the
+inner program would have produced — and the only thing that can make
+an `X` is the program the missing case says not to run. So there is
+no lawful instance, and the door that exists says its price in its
+type:
+
+```scala
+PState.zoomCase(prism)(m)    // answers Option[X]
+```
+
+Present case, the program runs and the answer is `Some`. Absent case,
+nothing runs at all, the state passes through, and the answer is
+`None`.
 
 ## Where to go next
 

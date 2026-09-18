@@ -1,5 +1,41 @@
 # Changelog
 
+## optics-typepedia - the reference had no optics in it
+
+`docs/typepedia.md` calls itself "every core type and typeclass with
+its meaning and the recurring gotchas; the reference you grep". It is
+911 lines long and the words `Lens`, `Prism`, `Traversal` and `Optic`
+did not occur in it. A reader who knew the library had optics could
+find the theory chapter and, since this morning, the page of pairs -
+but the thing they would actually grep had nothing.
+
+It has an Optics section now, in the file's own register: the
+constraint lattice and why composition is an intersection, the seven
+families with the one constraint each, the five interpretations, the
+two roads through `Fuse` (named path emits code, run-time choice pays
+an interpreter), the two field constructors and which of them fusion
+cannot read, and the zooming carrier.
+
+THE PART WORTH THE LANE is the gotchas, because every one of them
+existed only as a comment in `Optic.scala` where nobody looks:
+`.compiled` is measured SLOWER than the optic and is kept for the
+pair rather than for speed; a traversal cannot be compiled at all and
+the missing given is the honest reason; `Aggregating` is deliberately
+not `Strong` because `first` would have to invent a `C` from a
+`Vector[C]`; `idApplicative` and `zipLazy` are not givens, each for a
+stated reason; and a bottom-up rewrite is a catamorphism rather than
+a traversal. Five facts the library had paid for and never published.
+
+Three smaller records brought level with the code: `docs/optics.md`
+gained the program-zooming section (a lens zooms a typestate program;
+a prism cannot, by parametricity; `zoomCase` is the door that exists)
+and its "every block is run by a test" claim now names both tests
+rather than one; the tutorial's "where to go next" links the optics
+page; and both theory indexes carried a chapter-10 summary that
+stopped at "the type-changing lens IS parameterised state", which is
+now "as an instance - with the prism that cannot be one".
+
+Gate: docs only.
 ## optics-cont-profunctor - a typestate program is a profunctor in its state, and a prism cannot zoom one
 
 Half an instance and half a refutation, and the refutation is the part

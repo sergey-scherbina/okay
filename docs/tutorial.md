@@ -722,7 +722,9 @@ unchanged. [Chapter 12](theory/12-applicative-static.md) builds it.
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference;
 [capabilities](capabilities.md) and [direct style](direct-style.md)
-tell the wiring and syntax stories end to end; the
+tell the wiring and syntax stories end to end; [optics](optics.md)
+puts the nested `copy` and the `Option.map` chain beside the optic
+that replaces each, with what both cost; the
 [benchmark explainer](benchmarks.md) walks every measured case; each
 module page under [modules/](modules) is that module's full
 documentation — guide, tutorial, API reference, gotchas. The specs
