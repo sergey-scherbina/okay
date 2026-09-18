@@ -313,9 +313,17 @@ a consumer.
       the block, branches and loops, the spellings (no type arguments
       where there is an expected type) and auto-colouring. It was
       never a stage-5 option; it is stage 1's companion.
-- [ ] parallel branches: a `Par(f, g)` node whose position is a PAIR
-      of paths, run as two sub-drives that join. TRIGGER: a workflow
-      with two independent waits that today serialises them.
+- [x] parallel branches: a `Par(f, g)` node whose position is a PAIR
+      of paths. UNGATED BY THE OPERATOR (2026-09-18, "сделай gated
+      потом пригодится") and landed the same day as
+      `static-workflow-par`. Its trigger had not fired — no workflow
+      here yet serialises two independent waits — so it is built for
+      the shape rather than for a consumer, which is stated rather
+      than dressed up. WHAT IT IS AND IS NOT is in the Design section
+      below: the journal carries no per-branch tag and a second
+      journal format is out of scope, so a `Par` does not interleave
+      RECORDS; what it parallelises is the WAITING, which is the half
+      that costs calendar days.
 - [ ] compensation as structure: a leaf carrying an undo, and a
       failure walking the path backwards. TRIGGER: a saga written by
       hand on the cancelled branch twice.
@@ -364,6 +372,39 @@ pops. A journal that ends inside the third iteration stands at
 `Iter(3, inner)`. Under `toProgram` the loop is `Free.defer`-driven
 so a loop of any length costs no host stack (the same move as
 `Static.toFree`).
+
+**`Par` parallelises the WAITING, not the journal.** A record is
+`Ans[A] = Either[SysA, A]` and carries nothing that says which
+question it answers — the monadic driver matches records
+POSITIONALLY, and a tagged record would be the second journal format
+this spec puts out of scope. So two branches that are both pending
+cannot both take the next record, and `Par(f, g)` does not mean "the
+journal interleaves". It means:
+
+> the two branches are independent, so every question they are waiting
+> on is known AT ONCE — the run's position is a pair of paths — while
+> the journal still records the answers in TERM ORDER.
+
+That is the half of the problem that costs calendar days. A workflow
+awaiting finance and legal asks finance today, waits a week, then asks
+legal; with a `Par` a front end puts both questions out on the same
+morning and holds whichever answer comes back first until the earlier
+one arrives. What it does NOT buy, said plainly so nobody discovers
+it in production: an answer cannot be COMMITTED out of order.
+
+The walk can see both because of an accident of the fold that is
+worth naming: `Walked.Asking` happens ONLY when the journal is empty
+(the `Op` case matches `Nil`), so when the left branch is asking, the
+right branch starts from an empty journal too and its first question
+is just as knowable. No lookahead, no second pass.
+
+`Standing.Waiting` is ADDITIVE beside `Standing.Asking`, which keeps
+every landed consumer — `accepts`, `strands`, the picture — working
+unchanged on the terms that have no `Par` in them, and `Standing.on`
+reads both uniformly. The keystone property still holds because
+`program` maps `Par(f, g)` to `f` then `g`: the engine's pending
+question is the FIRST of `Waiting.on`, and a term whose two branches
+were ordered differently by the two derivations would fail it.
 
 **Optics need no bridge.** `Optic[C, S, T, A, B]` is `P[A, B] =>
 P[S, T]` for every `P` with `C[P]`; with `Strong`/`Choice` instances
