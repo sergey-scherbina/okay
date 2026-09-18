@@ -13,27 +13,46 @@ object Frame {
 
   private val Esc = "\u001b"
 
-  /** render a tree as lines; the focused widget is marked */
-  def render(ui: Ui, focus: Option[Ui] = None): Vector[String] = ui match
+  /**
+   * Render a tree as lines; the focused widget is marked.
+   *
+   * `width` is the BUDGET this subtree may use, in characters, and 0
+   * means "no budget" — which is v1's layout exactly, so every caller
+   * that does not pass one is unchanged (ui-terminal-width). With a
+   * budget, a horizontal box divides IT by weight instead of dividing
+   * the row's natural width, which is what `Resized` was always for
+   * and what the spec's sentence "the terminal divides width by
+   * weight" meant; and a text WRAPS to the budget rather than running
+   * past the screen — the same rule the browser's stylesheet states,
+   * for the same reason: a value that is cut cannot be checked against
+   * anything.
+   */
+  def render(ui: Ui, focus: Option[Ui] = None, width: Int = 0): Vector[String] = ui match
     case Text(s, style) =>
-      val lines = s.split("\n", -1).toVector
+      val lines = s.split("\n", -1).toVector.flatMap(wrap(_, width))
       // tokens map to the terminal's idiom: emphasis is bold, muted is
       // dim, danger is red; size has no terminal meaning
       if style.bold || style.tone == Tone.Emphasis then lines.map(l => s"$Esc[1m$l$Esc[0m")
       else if style.dim || style.tone == Tone.Muted then lines.map(l => s"$Esc[2m$l$Esc[0m")
       else if style.tone == Tone.Danger then lines.map(l => s"$Esc[31m$l$Esc[0m")
       else lines
-    case Column(children, _) => children.flatMap(c => render(c, focus))
-    case Row(children, _) => beside(children.map(c => render(c, focus)), Vector.empty, " ", children.map(alignOf))
+    case Column(children, _) => children.flatMap(c => render(c, focus, width))
+    case Row(children, _) =>
+      val shares = split(width, children.length, Vector.empty, children.length - 1)
+      beside(children.zip(shares).map((c, w) => render(c, focus, w)), Vector.empty, " ",
+        children.map(alignOf), shares)
     case Box(children, Dir.Vertical, _, gap, pad, _) =>
-      val blocks = children.map(c => render(c, focus))
+      val blocks = children.map(c => render(c, focus, math.max(width - 2 * pad, 0)))
       val joined = blocks.zipWithIndex.flatMap { (b, i) =>
         (if i > 0 then Vector.fill(gap)("") else Vector.empty) ++ b }
       joined.map(l => " " * pad + l)
     case Box(children, Dir.Horizontal, weights, gap, pad, _) =>
-      beside(children.map(c => render(c, focus)), weights, " " * gap, children.map(alignOf))
+      val budget = math.max(width - 2 * pad, 0)
+      val shares = split(budget, children.length, weights, gap * (children.length - 1))
+      beside(children.zip(shares).map((c, w) => render(c, focus, w)), weights, " " * gap,
+        children.map(alignOf), shares)
         .map(l => " " * pad + l)
-    case Scroll(child, _) => render(child, focus)
+    case Scroll(child, _) => render(child, focus, width)
     case Image(_, alt) => Vector(s"[image: $alt]")
     case b @ Button(label, _, role) =>
       Vector(if focus.contains(b) then s"[>$label<]"
@@ -51,8 +70,47 @@ object Frame {
       Vector(if focus.contains(s) then s"<$cur>" else s" $cur ")
 
     case Form(fields, submit, k) =>
-      render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus)
-    case semantic => render(Ui.lower(semantic, Set.empty), focus)
+      render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, width)
+    // the budget reaches THROUGH a lowering, which is where a table is
+    // drawn — the compiler caught both of these dropping it (E221,
+    // "recursive call used a default argument"), and a table is
+    // exactly the node whose columns the budget is for
+    case semantic => render(Ui.lower(semantic, Set.empty), focus, width)
+
+  /**
+   * A LINE WRAPPED TO A BUDGET — never cut. A budget of 0 is "no
+   * budget" and the line is itself. Breaking prefers the last SPACE
+   * inside the budget, because prose reads better broken at a word;
+   * where there is none (an IBAN, a hash, a URL — exactly the values
+   * a reader must be able to copy and compare) it breaks at the
+   * budget, which is the terminal's spelling of the browser's
+   * `overflow-wrap: anywhere`.
+   */
+  private def wrap(line: String, width: Int): Vector[String] =
+    if width <= 0 || line.length <= width then Vector(line)
+    else
+      val cut = line.lastIndexOf(' ', width)
+      val at = if cut > 0 then cut else width
+      val rest = if cut > 0 then line.substring(at + 1) else line.substring(at)
+      line.substring(0, at) +: wrap(rest, width)
+
+  /**
+   * A budget divided among children: by WEIGHT when there is one per
+   * child, and evenly otherwise. The separators between them are
+   * taken off the top, so the shares plus the gaps are the budget. A
+   * budget of 0 hands every child 0, which is "no budget" all the way
+   * down — v1's layout.
+   */
+  private def split(width: Int, n: Int, weights: Vector[Int], gaps: Int): Vector[Int] =
+    if width <= 0 || n <= 0 then Vector.fill(math.max(n, 0))(0)
+    else
+      val room = math.max(width - math.max(gaps, 0), 0)
+      val ws = if weights.length == n && weights.forall(_ > 0) then weights else Vector.fill(n)(1)
+      val total = ws.sum
+      // the remainder goes to the last child rather than being lost,
+      // so the shares always add up to the room
+      val base = ws.map(w => room * w / total)
+      base.updated(n - 1, base.last + (room - base.sum))
 
   /** what a cell says about where it sits — the terminal's half of
    * `Align` (ui-text-intent). Only a `Text` says it: a container's
@@ -67,11 +125,14 @@ object Frame {
    * `Align.End` is padded on the LEFT instead, which is what makes a
    * column of numbers comparable down the page */
   private def beside(blocks: Vector[Vector[String]], weights: Vector[Int], sep: String,
-                     aligns: Vector[Align]): Vector[String] =
+                     aligns: Vector[Align], shares: Vector[Int]): Vector[String] =
     val height = blocks.map(_.length).maxOption.getOrElse(0)
     val natural = blocks.map(b => b.map(width).maxOption.getOrElse(0))
     val widths =
-      if weights.length == blocks.length && weights.forall(_ > 0) then
+      // a SCREEN budget was handed down: the columns are its shares,
+      // and a block narrower than its share is padded into it
+      if shares.length == blocks.length && shares.forall(_ > 0) then shares
+      else if weights.length == blocks.length && weights.forall(_ > 0) then
         val total = natural.sum
         val sum = weights.sum
         natural.zip(weights).map((n, w) => math.max(n, total * w / sum))

@@ -13,14 +13,39 @@ import okay.*
  */
 object Terminal {
 
+  /**
+   * THE TERMINAL'S SIZE, asked of the terminal (ui-terminal-width).
+   * `stty size` prints "rows cols"; a terminal that will not say
+   * answers None and the host renders unbudgeted, which is v1's
+   * layout. Measured ONCE, when the host is made: re-measuring per
+   * paint is a process spawn per frame, and SIGWINCH is not something
+   * this file can hear without a signal handler — so a resize needs a
+   * new host today, and that is stated rather than pretended.
+   */
+  def size(): Option[(Int, Int)] =
+    try
+      val p = ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start()
+      val said = String(p.getInputStream.readAllBytes, "UTF-8").trim
+      if p.waitFor() != 0 then None
+      else said.split("\\s+") match
+        case Array(r, c) => (r.toIntOption, c.toIntOption) match
+          case (Some(rows), Some(cols)) if rows > 0 && cols > 0 => Some((cols, rows))
+          case _ => None
+        case _ => None
+    catch case _: Exception => None
+
   def host(): Host = new Host:
     @volatile private var tree: Ui = Ui.Text("")
     @volatile private var focus = 0
     private val out = System.out
+    /** the width the frames are laid out in — 0 is "unbudgeted", which
+     * is what a terminal that would not say its size gets */
+    private val measured: Option[(Int, Int)] = size()
+    private val cols = measured.map(_._1).getOrElse(0)
 
     private def paint(): Unit =
       val f = Ui.focusable(tree).lift(focus)
-      val lines = Frame.render(tree, f)
+      val lines = Frame.render(tree, f, cols)
       out.print("\u001b[2J\u001b[H")          // clear, home
       lines.foreach(l => out.print(l + "\r\n"))
       out.flush()
@@ -38,6 +63,13 @@ object Terminal {
     @volatile private var keyState: Frame.KeyState = Frame.KeyState.Plain
 
     def events: Source[Event] =
+      // the size is the FIRST thing the application hears, so a view
+      // that wants to lay itself out differently on a narrow terminal
+      // can — `Resized` had been an event no host ever sent
+      def first: Source[Event] = measured match
+        case Some((w, h)) => effect[Writer % Event + Async, Unit](Writer(Event.Resized(w, h)))
+        case None => pure(())
+
       def go: Source[Event] =
         effect[Writer % Event + Async, Int](Async.Run(() => System.in.read()))
           .flatMap { b =>
@@ -65,7 +97,7 @@ object Terminal {
               }
               emit.flatMap(_ => go)
           }
-      go
+      first.flatMap(_ => go)
 
   /** raw mode on, run, raw mode off — a bracket, like any resource */
   def raw[A](body: => A): A =

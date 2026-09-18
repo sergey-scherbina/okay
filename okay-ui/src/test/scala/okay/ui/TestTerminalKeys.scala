@@ -89,6 +89,63 @@ class TestTerminalKeys extends munit.FunSuite {
     assertEquals(Frame.interpret(tree, 1, Key.Left), (1, None))
   }
 
+  /**
+   * ui-terminal-width: `Resized` existed as an event no host consumed,
+   * and a row divided its NATURAL width by weight — never the
+   * screen's. With a budget it divides the screen, and a value too
+   * long for its column WRAPS rather than running past the edge,
+   * which is the terminal's spelling of the rule the browser's
+   * stylesheet already states.
+   */
+  test("a width budget divides the SCREEN by weight, and the shares add up to it") {
+    val row = Box(Vector(Text("id"), Text("note")), Dir.Horizontal, weights = Vector(1, 3))
+    val lines = Frame.render(row, None, 40)
+    assertEquals(lines.length, 1)
+    assertEquals(Frame.width(lines.head), 40, lines.head)
+    // 1:3 of 40 is 10 and 30
+    assert(lines.head.startsWith("id" + " " * 8), s"[${lines.head}]")
+    // no budget is v1's layout, unchanged — this Box has gap 0, so
+    // its columns touch, exactly as they did before there was a budget
+    assertEquals(Frame.render(row, None), Vector("idnote"))
+    // and a Row, which separates by a space, is unchanged too
+    assertEquals(Frame.render(Row(Vector(Text("id"), Text("note"))), None), Vector("id note"))
+  }
+
+  test("a value too long for its column wraps — prose at a space, an identifier anywhere") {
+    val prose = Frame.render(Text("the quick brown fox jumps"), None, 10)
+    assertEquals(prose, Vector("the quick", "brown fox", "jumps"))
+    // an IBAN has no space to break at, so it breaks at the budget —
+    // and every character survives, which is the point
+    val iban = "DE89370400440532013000"
+    val wrapped = Frame.render(Text(iban), None, 10)
+    assertEquals(wrapped.mkString, iban)
+    assert(wrapped.forall(_.length <= 10), wrapped.toString)
+  }
+
+  test("the budget reaches through the containers a page is made of") {
+    val page = Column(Vector(
+      Box(Vector(Text("a b c d e f g h")), Dir.Vertical, pad = 2),
+      Scroll(Text("x y z w v u t s"), "sc")))
+    val lines = Frame.render(page, None, 10)
+    // pad takes 2 from each side, so the text inside wraps at 6
+    assert(lines.exists(l => l.startsWith("  ") && Frame.width(l) <= 10), lines.toString)
+    assert(lines.forall(l => Frame.width(l) <= 10), lines.toString)
+  }
+
+  test("the budget reaches through a lowering, which is where a table's columns are") {
+    // the compiler found this one: the semantic catch-all and `Form`
+    // both recursed WITHOUT the budget, so a table — the node the
+    // budget exists for — laid itself out naturally and ran past the
+    // screen
+    val t = Table(Vector("id", "note"),
+      Vector(Vector(Text("c-1"), Text("a sentence that is long"))), "t", Vector(1, 4))
+    val lines = Frame.render(t, None, 24)
+    assert(lines.forall(l => Frame.width(l) <= 24), lines.mkString("|"))
+    assert(lines.exists(_.contains("sentence")), lines.mkString("|"))
+    val form = Ui.Form(Vector(Text("a b c d e f g h i j k")), "Save", "f")
+    assert(Frame.render(form, None, 12).forall(l => Frame.width(l) <= 12))
+  }
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))
