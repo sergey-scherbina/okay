@@ -331,6 +331,17 @@ P[S, T]` for every `P` with `C[P]`; with `Strong`/`Choice` instances
 for `Proc`, `lens(step)` type-checks today. What stage 3 adds is the
 tests and the example, not machinery.
 
+**The neighbouring lane, and the line between them.** specs/optics.md
+stage 12 (optics-arrows-effects, landed the same morning) surveys
+arrows against the tree: `Optic.Arrow` has ONE instance, `Mealy` in
+okay-lex, and `TestMealy` states the arrow laws over an input — stage
+1's law test takes that shape rather than inventing one. Its lanes
+add instances for `Function1` and the Kleisli `A => B ! R`; this
+spec adds the instances for `Proc` and the FIRST `Optic.Choice` for
+an arrow, which stage 12 names as the trigger it defers to here
+("a plan that must branch on a VALUE and still be drawn"). Neither
+lane adds the other's instance.
+
 **Why `Sys` is a case and not nine.** The nine doors differ only in
 which `Wf.Sys` they ask and which `SysA` they read; the walk treats
 them alike except `Patch` (the non-consuming rule, copied from
