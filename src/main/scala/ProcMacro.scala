@@ -102,6 +102,31 @@ object ProcMacro:
     val procSym = TypeRepr.of[Proc[[A] =>> Any, Any, Any]].typeSymbol
 
     /**
+     * THE ANSWER A MARKED OPERATION PROMISES, and it is NOT simply the
+     * last type argument.
+     *
+     * A signature may be a GADT whose cases carry their own parameter
+     * lists: `Wf.Question.Now[Q, A]` extends `Question[Q, A, Long]`, so
+     * reading `args.last` off the CASE gives `A` where `Long` is meant
+     * — and the block then ascribes its environment slot at the wrong
+     * type, which fails at the splice with "Expected type: scala.Long,
+     * Actual type: java.lang.String". Measured by a block that named a
+     * case directly instead of going through a door whose result type
+     * is the parent. So the answer is read off the base type at the
+     * SIGNATURE's own symbol, and the plain reading is the fallback for
+     * a signature that is not a class at all.
+     */
+    lazy val sigSym = TypeRepr.of[F].appliedTo(TypeRepr.of[Any]).typeSymbol
+
+    def answerType(t: TypeRepr): Option[TypeRepr] =
+      val w = t.widen.dealias
+      w.baseType(sigSym) match
+        case AppliedType(_, args) if args.nonEmpty => Some(args.last)
+        case _ => w match
+          case AppliedType(_, args) if args.nonEmpty => Some(args.last)
+          case _ => None
+
+    /**
      * The shapes that are refused, checked on a STRAIGHT-LINE
      * expression only: an `if` and a `while` are compiled by their
      * own routines below, and this runs on the pieces of them that
@@ -199,11 +224,20 @@ object ProcMacro:
     // so a name always lives at its own index and the layout never
     // depends on what has been assigned. Nothing mutates; the arrow
     // carries the new value on its edge.
-    def project(env: Term, depth: Int, i: Int): Term =
-      if i == 0 then (1 to depth).foldLeft(env)((t, _) => Select.unique(t, "_1"))
-      else
-        val base = (1 to (depth - i)).foldLeft(env)((t, _) => Select.unique(t, "_1"))
-        Select.unique(base, "_2")
+    //
+    // THE PROJECTION IS ASCRIBED, and it has to be: `Select.unique(env,
+    // "_2")` types as the path-dependent `env._2`, which unifies with
+    // a reference type by luck and NOT with a primitive. Measured by a
+    // block whose bound value was a `Long`: "Expected type: scala.Long,
+    // Actual type: env._2". So every projection is written at the slot
+    // type the compiler recorded when the slot was pushed.
+    def projectAt(env: Term, depth: Int, i: Int, slots: Vector[TypeRepr]): Term =
+      val raw =
+        if i == 0 then (1 to depth).foldLeft(env)((t, _) => Select.unique(t, "_1"))
+        else
+          val base = (1 to (depth - i)).foldLeft(env)((t, _) => Select.unique(t, "_1"))
+          Select.unique(base, "_2")
+      if i < slots.length then Typed(raw, Inferred(slots(i))) else raw
 
     // NESTED rather than a pair pattern: `(a.asType, b.asType) match
     // case ('[x], '[y])` is not seen as exhaustive and a wildcard arm
@@ -312,17 +346,19 @@ object ProcMacro:
      * `TreeMap`, so the k-th mark here is the k-th mark there.
      */
     def rewrite(t: Term, env: Term, depth: Int, idx: Map[Symbol, Int], firstMark: Int,
+                slots: Vector[TypeRepr],
                 isLeafArg: Boolean = false): Term =
       var k = 0
       val tm = new TreeMap:
         override def transformTerm(tree: Term)(owner: Symbol): Term =
           asMark(tree) match
             case Some(_) =>
-              val here = project(env, depth, firstMark + k)
+              val here = projectAt(env, depth, firstMark + k, slots)
               k += 1
               here
             case None => tree match
-              case id: Ident if idx.contains(id.symbol) => project(env, depth, idx(id.symbol))
+              case id: Ident if idx.contains(id.symbol) =>
+                projectAt(env, depth, idx(id.symbol), slots)
               case _ => super.transformTerm(tree)(owner)
       val out = tm.transformTerm(t)(Symbol.spliceOwner)
       // a LEAF's own argument IS a question at its root — that is what
@@ -420,16 +456,15 @@ object ProcMacro:
       var st = st0
       var acc: Option[Term] = None
       marksOf(t).foreach: arg =>
-        val vT = arg.tpe.widen.dealias match
-          case AppliedType(_, args) if args.nonEmpty => args.last
-          case other => report.errorAndAbort(
-            s"Proc.direct: a mark's value must be an operation of this procedure's " +
-              s"signature — got ${other.show}", arg.pos)
+        val vT = answerType(arg.tpe).getOrElse(report.errorAndAbort(
+          s"Proc.direct: a mark's value must be an operation of this procedure's " +
+            s"signature — got ${arg.tpe.widen.dealias.show}", arg.pos))
         val before = st.envT
         val d = st.depth
         val here = st.idx
+        val slots0 = st.slots
         val fn = lam(before, TypeRepr.of[F].appliedTo(vT))((_, env) =>
-          rewrite(arg, env, d, here, d + 1, isLeafArg = true))
+          rewrite(arg, env, d, here, d + 1, slots0, isLeafArg = true))
         st = st.push(vT)
         acc = Some(chain(st0.envT, before, st.envT, acc, opTerm(before, vT, nameOf(arg), fn)))
       (base, st, acc)
@@ -444,7 +479,7 @@ object ProcMacro:
       val e = st.envT
       val eE = eitherT(e, e)
       val sel = arrTerm(e, eE, lam(e, eE): (_, env) =>
-        If(rewrite(cond, env, st.depth, st.idx, condBase + 1),
+        If(rewrite(cond, env, st.depth, st.idx, condBase + 1, st.slots),
           rightTerm(e, e, env), leftTerm(e, e, env)))
       val thenP = compileValue(th, st, outT)
       val elseP = compileValue(el, st, outT)
@@ -468,7 +503,7 @@ object ProcMacro:
       val e = st.envT
       val eE = eitherT(e, e)
       val test = arrTerm(e, eE, lam(e, eE): (_, env) =>
-        If(rewrite(cond, env, st.depth, st.idx, st.depth + 1),
+        If(rewrite(cond, env, st.depth, st.idx, st.depth + 1, st.slots),
           rightTerm(e, e, env), leftTerm(e, e, env)))
       val bodyP = compileEnvBody(body, st)
       val s1 = onRightTerm(e, e, e, bodyP)
@@ -502,7 +537,7 @@ object ProcMacro:
             (0 to target.depth).foldLeft(Option.empty[(TypeRepr, Term)]): (soFar, i) =>
               val piece = replace match
                 case Some((s, f)) if s == i => f(env)
-                case _ => project(env, d, i)
+                case _ => projectAt(env, d, i, st.slots)
               Some(soFar match
                 case None => (target.slots.head, piece)
                 case Some((accT, accV)) =>
@@ -527,9 +562,10 @@ object ProcMacro:
               val before = st.envT
               val d = st.depth
               val here = st.idx
+              val sl = st.slots
               st = st.push(vT)
               val fn = lam(before, st.envT): (_, env) =>
-                pairTerm(before, vT, env, rewrite(rhs, env, d, here, base + 1))
+                pairTerm(before, vT, env, rewrite(rhs, env, d, here, base + 1, sl))
               add(arrTerm(before, st.envT, fn), before, st.envT)
           st = st.bind(vd.symbol)
 
@@ -542,7 +578,8 @@ object ProcMacro:
           val base = emitLeaves(rhs)
           val d = st.depth
           val here = st.idx
-          rebuild(target, Some((slot, (env: Term) => rewrite(rhs, env, d, here, base + 1))))
+          val sl = st.slots
+          rebuild(target, Some((slot, (env: Term) => rewrite(rhs, env, d, here, base + 1, sl))))
 
         case w @ While(c, b) =>
           guard(w)
@@ -566,8 +603,9 @@ object ProcMacro:
               val before = st.envT
               val d = st.depth
               val here = st.idx
+              val sl = st.slots
               val fn = lam(before, before): (_, env) =>
-                Block(List(rewrite(t, env, d, here, base + 1)), env)
+                Block(List(rewrite(t, env, d, here, base + 1, sl)), env)
               add(arrTerm(before, before, fn), before, before)
 
         case other => report.errorAndAbort(
@@ -620,8 +658,9 @@ object ProcMacro:
       val before = st.envT
       val d = st.depth
       val here = st.idx
+      val sl = st.slots
       val fn = lam(before, outT): (_, env) =>
-        rewrite(strip(lastE), env, d, here, base + 1)
+        rewrite(strip(lastE), env, d, here, base + 1, sl)
       add(arrTerm(before, outT, fn), before, outT)
       acc.get
 
@@ -638,7 +677,7 @@ object ProcMacro:
       else
         val fn = lam(stEnd.envT, e0): (_, env) =>
           (0 to st0.depth).foldLeft(Option.empty[(TypeRepr, Term)]): (soFar, i) =>
-            val piece = project(env, stEnd.depth, i)
+            val piece = projectAt(env, stEnd.depth, i, stEnd.slots)
             Some(soFar match
               case None => (st0.slots.head, piece)
               case Some((accT, accV)) =>

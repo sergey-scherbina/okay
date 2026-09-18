@@ -245,22 +245,29 @@ procedures composes the steps.
 
 ### Stage 2 — the deploy check and the exhaustive cut (`static-workflow-strands`)
 
-- [ ] a v2 term with a new first question REFUSES the v1 journal at
-      `walk`, naming record 0 and the position — failure B of
-      durable-workflow, caught with no run started
-- [ ] `Proc.strands(topic, term)` lists, over every live run in a
-      topic, the ones the term would strand and where; a run the
-      term accepts is not listed; the census reads envelopes and
-      answers only
-- [ ] EVERY cut: for a generated term and oracle, crash before the
-      append and after the append at every leaf, resume from the
-      journal, and the final answer equals the uninterrupted run's;
-      every activity ran at most once per `(id, position)` when the
-      cut was after the append and at most twice when before — the
-      at-least-once floor, measured, not assumed
-- [ ] a `Sys.Patch` leaf under `walk` obeys the non-consuming rule
-      (answer `false`, entry NOT consumed, on a journal written
-      before the patch existed) exactly as `Wf.replaying` does
+- [~] a v2 term with a new first question REFUSES the v1 journal —
+      **PARTLY, and the limit is the important half**: `walk` sees the
+      SHAPE of an answer, so a new question whose answer is tagged (a
+      clock, a patch) strands the old journal at record 0 as promised.
+      Two AUTHOR questions of the same answer type are
+      indistinguishable in a journal of answers, so inserting one
+      before them reads every old answer one place across and carries
+      on — failure B exactly, and `walk` cannot see it. The envelope's
+      `program` field is still the mechanism for that case. Both are
+      asserted, including the one that does not work
+- [x] `Proc.strands(term)(x)(journals)` lists the runs a term would
+      strand and where; a run it accepts is not listed. A PURE
+      function — no row, no runtime — which is what lets it be asked
+      of ten thousand journals before a deploy rather than during one
+- [x] EVERY cut: crash at every leaf, resume from the journal, and the
+      final answer equals the uninterrupted run's; every activity ran
+      once except the one the crash caught in flight, which ran twice
+      — the at-least-once floor with a window of exactly one call,
+      measured over a REAL topic (`TestProcCut`, okay-persist)
+- [x] a `Sys.Patch` leaf under `walk` obeys the non-consuming rule —
+      `TestProc`, "a v1 journal takes the OLD branch, and its next
+      answer is not eaten", and again through `strands` on a term
+      whose change was made WITH a patch, which strands nobody
 
 ### Stage 3 — optics as the state glue (`static-workflow-optics`)
 
@@ -449,6 +456,69 @@ accumulator would carry the value, the remaining journal, the count
 and an early exit — the interpreter with a fold's spelling on top. So
 the indexed-optics seat the optics board is watching for is worth ONE
 entry here, not three.
+
+### Stage 2 — landed 2026-09-18 (`static-workflow-strands`)
+
+`Wf.Proc.strands`, `TestProcStrands` (5) and `TestProcCut` (4).
+
+**THE DEPLOY CHECK IS TWO QUESTIONS, NOT ONE, and writing the test is
+what said so.** The stage was specified as "a v2 term refuses the v1
+journal". It does not, and the reason is the doctrine working exactly
+as designed: a journal holds ANSWERS. Two author questions whose
+answers have the same type are indistinguishable in it, so a term that
+inserts one before them reads every old answer one place across and
+carries on — failure B of specs/durable-workflow.md, silently. What
+`walk` DOES catch is a shape: a clock reading where an author's answer
+sits, a tagged answer where an untagged one belongs. So:
+
+| the question | the tool | what it costs |
+|---|---|---|
+| does this journal's SHAPE still fit the code? | `Proc.strands` | nothing — a pure fold, no runtime |
+| was it written by THIS program? | the envelope's `program` field / `Retire.census` | one pass over the envelopes |
+
+Neither is enough alone, and the honest version of the stage is that
+sentence rather than a green test. The test asserts BOTH — including
+the mis-mapping that is not caught, because a limit nobody has written
+down is a limit somebody will discover in production.
+
+**`strands` IS PURE, and that is the whole point.** No row, no monad,
+no `Runtime` in its signature — the same proof `walk` carries. A
+deploy can ask ten thousand live journals whether they still fit the
+code about to ship, before shipping it. `Retire.states` answers a
+neighbouring question and cannot do this: it replays, so it needs a
+row and a runtime and costs a run apiece.
+
+**THE EXHAUSTIVE CUT IS A PROPERTY, WHICH IS MOST OF WHY THE SHAPE
+EXISTS.** "A crash resumes correctly" is normally a sample — somebody
+picks a plausible moment. A term has finitely many leaves, so it is a
+loop: crash at every one, resume, compare. Over a real topic, every
+activity runs once except the one the crash caught in flight, which
+runs twice. That is the at-least-once floor with a window of exactly
+one call, measured rather than asserted.
+
+**THE FIRST CUT OF THAT TEST MODELLED THE WRONG CRASH.** It threw
+BEFORE counting the activity, which models a process that died without
+making its outside call — not a window anybody worries about. The
+window is that the call HAPPENED, the card was charged, and the answer
+never reached the log. One line, and the test failed loudly at cut 1
+until it was right.
+
+**TWO MACRO BUGS FELL OUT, both invisible to every earlier test.**
+Writing a term whose slot is a `Long` and whose leaf is a GADT case
+named directly broke `Proc.direct` twice:
+
+- a projection typed as the path-dependent `env._2` unifies with a
+  reference type by luck and NOT with a primitive ("Expected type:
+  scala.Long, Actual type: env._2"). Every projection is now ascribed
+  at the slot type the compiler recorded when the slot was pushed.
+- the answer type of a leaf is NOT the last type argument.
+  `Wf.Question.Now[Q, A]` extends `Question[Q, A, Long]`, so reading
+  `args.last` off the CASE gives `A`. It is read off the base type at
+  the signature's own symbol now.
+
+Every earlier test went through a door whose declared result type was
+the parent, and every earlier slot was a reference. Two coincidences
+held the encoding up.
 
 **THE PRICE proc-notation EXISTS TO REMOVE IS NOW VISIBLE.** Every
 test term needed a `keep` helper — `arr(x => (x, x)) >>> second(p)` —

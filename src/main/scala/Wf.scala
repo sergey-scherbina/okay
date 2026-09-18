@@ -678,6 +678,36 @@ object Wf:
     def accepts[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A]): Boolean =
       walk(p)(x, journal).isRight
 
+    /**
+     * THE DEPLOY CHECK OVER A WHOLE TOPIC: which live runs would this
+     * term STRAND, and where.
+     *
+     * It is a pure function, and that is the feature rather than an
+     * implementation note — `walk` performs nothing, so this asks ten
+     * thousand journals whether they still fit the code you are about
+     * to ship WITHOUT starting one of them, before the deploy rather
+     * than during it. `Retire.states` cannot do that: it replays, so
+     * it needs a row and a runtime and it costs a run apiece.
+     *
+     * A run the term ACCEPTS is not in the answer. What comes back is
+     * the stranding and where it happens, which is what an operator
+     * has to decide from: a `patch` for the runs that predate the
+     * change, or a wait for them to drain.
+     *
+     * The journals come from the caller — `okay.persist.Dialogue`'s
+     * `recovered.answers` is the usual source — for the reason
+     * `Retire.patches` takes them too: a tool over data, not a second
+     * way to open a dialogue.
+     */
+    def strands[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X)
+                           (journals: List[(String, Journal[A])])
+                           : Map[String, Stranded] =
+      journals.foldLeft(Map.empty[String, Stranded]): (acc, idAndJ) =>
+        val (id, j) = idAndJ
+        walk(p)(x, j) match
+          case Left(bad) => acc + (id -> bad)
+          case Right(_) => acc
+
     /** where a fold of the term over a journal ended */
     enum Standing[Q, A, +Y]:
       case Done[Q, A, Y](value: Y) extends Standing[Q, A, Y]
