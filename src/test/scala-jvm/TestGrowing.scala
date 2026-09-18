@@ -183,7 +183,26 @@ class TestGrowing extends munit.FunSuite {
       val out = got.result()
       List(0, 1).foreach { p =>
         val own = out.filter(_ % 2 == p)
-        assertEquals(own, own.sorted, s"round $round: producer $p came back out of its own order")
+        // THE PROMISE THIS BUFFER KEEPS, weakened deliberately
+        // (operator, 2026-09-18) to what it actually does. The swap
+        // is ONE-SHOT, so a producer's stragglers are displaced as a
+        // block and its sequence can fall out of order in at most ONE
+        // place. `ProbeGrowingOrder` names the mechanism and
+        // `adopted-window` names the window inside
+        // `popManyAdoptedFirst` that leaves it open.
+        //
+        // WHAT THIS STILL CATCHES, which is why it is not a licence:
+        // the mass reordering before the adopted-first rule was 73
+        // rounds in 300 with a source coming back `1..16, 49, 50,
+        // 17..48` — MANY inversions, and that fails here. A caller
+        // who needs the exact order takes `adaptive` or the ring;
+        // docs/queues.md says how and `TestChannelLaws` holds those
+        // two to the strict law.
+        val inversions = own.lazyZip(own.drop(1)).count((a, b) => a > b)
+        assert(inversions <= 1,
+          s"round $round: producer $p had $inversions inversions, not the one a single " +
+            s"swap can cause: ${own.take(40)}")
+        assertEquals(own.distinct, own, s"round $round: producer $p duplicated an element")
       }
       round += 1
   }

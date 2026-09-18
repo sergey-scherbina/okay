@@ -85,6 +85,37 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
    * on the promise of exactly one does not claim it, and says so in
    * the gate's output the way an un-drained one does */
   private val singleConsumerOnly = Set("SentinelChannel/single-consumer")
+
+  /**
+   * THE IMPLEMENTATIONS THAT GIVE UP EXACT PER-PRODUCER ORDER, and
+   * there is exactly one: the default (operator's decision,
+   * 2026-09-18). `growing` ADOPTS the ring producers were already
+   * pushing into, so a producer's elements can straddle the one-shot
+   * swap — and `AdaptiveFifo.popManyAdoptedFirst` orders the read to
+   * put them back, per CALL, with a window between the two reads
+   * inside it (`adopted-window`). What it costs is ONE displacement
+   * per producer per swap, and that is now what this states rather
+   * than a promise the buffer does not keep.
+   *
+   * EVERY OTHER MECHANISM HERE STILL CLAIMS THE EXACT LAW, which is
+   * the point of naming this set instead of weakening the law for
+   * everyone: `adaptive` never adopts (`first` is null, so `adopted`
+   * is false) and every producer's elements live in one part, and the
+   * plain ring orders every push on one tail. A caller who needs the
+   * exact order asks for one of those BY NAME, and docs/queues.md
+   * says how.
+   */
+  private val swapsItsBuffer = Set("SentinelChannel/growing")
+
+  /** an ordering law whose NAME says which claim was checked, because
+   * one implementation signs for a weaker one and a gate line reading
+   * "each arrive in the order they sent" against a buffer that does
+   * not promise that is the kind of half-truth this file exists to
+   * prevent */
+  private def eachOrdered(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
+    impls.foreach: (n, _, mk) =>
+      val claim = if swapsItsBuffer(n) then s"$name — EXCEPT once, across its one swap" else name
+      test(s"$claim — $n")(law(n, mk))
   private def manyConsumers(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
     impls.foreach: (n, _, mk) =>
       if singleConsumerOnly(n) then test(s"$name — $n (single consumer: not claimed)".ignore)(())
@@ -203,7 +234,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     assertEquals(out, sent.take(out.length), s"$n: FIFO per producer")
   }
 
-  each("law: TWO producers each arrive in the order they sent") { (n, mk) =>
+  eachOrdered("law: TWO producers each arrive in the order they sent") { (n, mk) =>
     // one producer is not enough to state this law, and that gap is
     // how a reordering default shipped: a buffer that partitions by
     // producer has nothing to partition until there are two, so with
@@ -236,8 +267,24 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
       (0 to 1).foreach { p =>
         val own = out.filter(_ % 2 == p)
         val sent = each.map(2 * _ + p)
-        assertEquals(own, sent.take(own.length),
-          s"$n: round $round, producer $p out of its own order")
+        if !swapsItsBuffer(n) then
+          assertEquals(own, sent.take(own.length),
+            s"$n: round $round, producer $p out of its own order")
+        else
+          // THE WEAKENED LAW, and it is not a licence to reorder.
+          // A swap is ONE-SHOT and displaces a producer's stragglers
+          // as a block, so its own sequence can fall out of order in
+          // at most ONE place. The mass reordering this buffer had
+          // before `popManyAdoptedFirst` (73 rounds in 300, and a
+          // source coming back `1..16, 49, 50, 17..48`) shows up as
+          // MANY inversions and still fails here.
+          val inversions = own.lazyZip(own.drop(1)).count((a, b) => a > b)
+          assert(inversions <= 1,
+            s"$n: round $round, producer $p had $inversions inversions; a one-shot " +
+              s"swap can displace its stragglers once, not repeatedly: ${own.take(40)}")
+          // and nothing may be invented or lost, whatever the order
+          assertEquals(own.sorted, own.sorted.distinct, s"$n: round $round, producer $p duplicated")
+          assert(own.forall(sent.contains), s"$n: round $round, producer $p invented an element")
       }
       round += 1
   }

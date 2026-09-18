@@ -211,6 +211,23 @@ WOULD have been harmful before 2026-09-14, and none of them can reach
 the part selection now. Whatever causes the 2026-09-17 recurrence, it
 is not a stale route surviving into `pushDecidingAt`.
 
+**CLOSED 2026-09-18 AS A DOCUMENTED TRADE, by the operator's
+decision.** The promise is weakened to what the buffer keeps — a
+producer's own order, broken in at most ONE place, ONCE, across the
+one-shot swap — and the two mechanisms that keep the exact order are
+offered by name instead: `Queues.strong[A].adaptive` (it never adopts
+a buffer, so there is no swap) and `Queues.strong[A].fifo` (one tail).
+`TestChannelLaws` states the weakened law and still fails on MASS
+reordering; `TestGrowing` likewise; `TestMailboxChoice` compiles and
+runs the three spellings; docs/queues.md carries the table; and
+`ActorRef`'s header repeats the choice where an actor author meets it,
+because a mailbox is one of these channels and nobody reads a buffer's
+page before spawning an actor. The optional fix stays filed as
+`growing-order-drain-guarantee` — it is no longer a bug to fix, it is
+a guarantee somebody may decide to buy back with a measurement.
+
+*What follows is the diagnosis that made the decision possible.*
+
 **THE MECHANISM, NAMED 2026-09-18 by `ProbeGrowingOrder`** — and it is
 neither of the two candidates below, nor the one this entry retracted.
 

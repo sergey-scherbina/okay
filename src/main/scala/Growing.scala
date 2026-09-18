@@ -148,6 +148,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Whoever wants the ring's 9.036 and knows there is one producer can
  * still have it: `Queues.strong[A].fifo(capacity)`.
+ *
+ * WHAT THIS BUFFER GIVES UP, stated plainly since the operator's
+ * decision of 2026-09-18: a producer's own order, IN AT MOST ONE
+ * PLACE, ONCE, across the swap. Adopting the ring is what makes the
+ * one-producer row 6.4x faster than building parts up front, and it
+ * is also what lets a producer's elements straddle the adoption —
+ * `popManyAdoptedFirst` orders the read to put them back and has a
+ * window between its two reads (`adopted-window`, with the
+ * reproducer in `ProbeGrowingOrder`). The law says exactly this now
+ * rather than promising more, and a caller who needs the exact order
+ * takes `Queues.strong[A].adaptive` (no adoption, so no swap) or the
+ * ring. docs/queues.md has the table with the numbers.
  */
 final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) extends Buffer[A] {
 

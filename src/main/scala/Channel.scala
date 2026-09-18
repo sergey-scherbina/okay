@@ -595,11 +595,29 @@ object Channel {
    * name — `Queues.strong[A].fifo(capacity)` is the ring this default
    * used to be.
    *
-   * The per-producer half of that is a LAW and is tested as one
-   * (`TestGrowing`, "each producer's own order survives the swap").
-   * It was broken for a day when this became the default: the swap
-   * moved producers to new parts while their earlier elements were
-   * still in the adopted one (merge-chunked-order, 2026-09-09).
+   * AND THE PER-PRODUCER HALF COSTS ONE DISPLACEMENT, decided by the
+   * operator on 2026-09-18 after the mechanism was finally named.
+   * The swap adopts the ring producers were already pushing into, so
+   * a producer whose elements straddle it can have its own order
+   * broken IN AT MOST ONE PLACE, ONCE. `TestChannelLaws` states that
+   * and no more ("EXCEPT once, across its one swap");
+   * `ProbeGrowingOrder` reproduces it and `AdaptiveFifo`'s
+   * `popManyAdoptedFirst` carries the window that leaves it open.
+   *
+   * IT IS A CHOICE, NOT A WART, and both alternatives already exist:
+   * `Queues.strong[A].adaptive.each(n).build` keeps each producer's
+   * order exactly (it never adopts a buffer, so there is no swap) and
+   * is 38x faster than a ring at sixteen producers;
+   * `Queues.strong[A].fifo(n).build` is the total order. docs/queues.md
+   * has the table, `TestMailboxChoice` compiles and runs all three,
+   * and `ActorRef`'s header repeats it where an actor author will
+   * meet it — a mailbox is one of these channels.
+   *
+   * The MASS reordering is still a defect and still tested: it was
+   * broken for a day when this became the default, the swap moving
+   * producers to new parts while their earlier elements were still in
+   * the adopted one (merge-chunked-order, 2026-09-09), and the law
+   * fails on more than one inversion.
    *
    * WHY NOT `adaptive`, which this comment argued for until the
    * measurement came in: it splits its capacity across parts up

@@ -280,18 +280,35 @@ their order among themselves. Nothing is lost or duplicated. The
 channel laws state exactly this — "one producer's elements arrive in
 the order it sent them".
 
-> **This promise currently has a KNOWN DEFECT, and the page says so
-> rather than letting you find out.** `TestGrowing`'s per-producer law
-> has broken four times under a full test matrix — 2026-09-10,
-> 09-11, and again on 09-17 after the fix that closed the first two
-> (`growing-stale-route`). Each time it is one element of one
-> producer arriving ahead of its own predecessors across a part swap.
-> It is rare — thousands of rounds pass between sightings, and 2 000
-> rounds on a quiet box reproduced nothing — but rare is not never.
-> The open entry, with the measurements and the leads already ruled
-> out, is `growing-stale-route` in BUGS.md. If your use depends on
-> per-producer order under many producers, read it before you depend
-> on it.
+> **THE DEFAULT GIVES THIS UP ONCE, ON PURPOSE, AND HERE IS THE
+> CHOICE** (operator's decision, 2026-09-18). `Channel(n)` is the
+> `growing` buffer: it starts as one ring and, when a second producer
+> shows up, ADOPTS that ring as part 0 and hands every producer a
+> part of its own. A producer whose messages straddle that one-shot
+> swap can have its own order broken **in at most one place, once** —
+> the mechanism is `ProbeGrowingOrder` and the window is named in
+> `AdaptiveFifo.popManyAdoptedFirst`. It is rare (thousands of loaded
+> rounds between sightings) and it is not a bug any more: the law
+> states it (`TestChannelLaws`, "EXCEPT once, across its one swap").
+>
+> CHOOSING FOR ORDER, and every row of this is measured elsewhere on
+> this page:
+>
+> | what you have | what to write | what you get |
+> |---|---|---|
+> | one producer, or order between senders does not decide anything | `Channel[A](n)` | the default; fastest at one producer, one displacement across the swap |
+> | many producers AND one producer's own order means something | `Queues.strong[A].adaptive.each(n).build` | exact per-producer order — it never adopts a buffer, so there is no swap. 38x faster than a ring at sixteen producers, 19% slower at one |
+> | you need the exact order across ALL producers | `Queues.strong[A].fifo(n).build` | one tail, one CAS, total FIFO — and no partitioning to gain from |
+>
+> Those three spellings are compiled and run by
+> `TestMailboxChoice` in okay-actor, so this table cannot rot into
+> something that does not typecheck.
+>
+> **If you are spawning an ACTOR, read this twice.** A mailbox is a
+> `Channel[M]` and the default is the growing one. "Messages from one
+> sender arrive in the order it sent them" is what a reader of an
+> actor model assumes without being told, so `ActorRef`'s own header
+> repeats this choice where an actor author will actually meet it.
 
 A relaxed buffer says so: `buffer.parts > 1`. It is stated in the
 interface rather than left implicit, because a relaxed buffer that
