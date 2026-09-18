@@ -198,6 +198,14 @@ anyone repeating this for stage 2 or 3:
    function each (`paneStage` on `Stage`, the query planner on
    `Bulk`). Both moved whole rather than being cut, because unlike
    `Parallel` neither half stands on its own here.
+4. A FOURTH cause that only the GATE could find, because no compiler
+   can: `TestErrorMessages` names `okay.Channel` inside a
+   `compileErrors` STRING. The file compiles perfectly without the
+   type — the reference is data until the macro runs — so the suite
+   went green at `Test/compile` and failed at `sbt test` with a
+   comparison failure. Stripping comments is not enough; a symbol
+   survey has to look inside string literals too, and the one place
+   that matters here is `compileErrors`.
 
 **`Chunk` stayed in the core after all.** The spec above put the
 whole chunked cluster in the module, and then `Producer.concat`

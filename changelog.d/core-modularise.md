@@ -44,14 +44,20 @@ transitive for `compile->compile`. The 29 came from counting
 identifiers in sources, which answers "who uses this" and not "who
 must declare it".
 
-THREE FILES THE SURVEY MISSED, EACH FOR ITS OWN REASON, all caught by
-the compiler and all written into the spec: `Parallel.scala` lives in a
+FOUR FILES THE SURVEY MISSED, EACH FOR ITS OWN REASON, three caught by
+the compiler and one only by the gate, all written into the spec: `Parallel.scala` lives in a
 PLATFORM source directory the first walk did not enter, and had to be
 cut in half rather than moved; `Generate.scala` and `Lines.scala` use
 the names of the TYPES inside the moved files (`Chunk`, `Stage`,
 `Produce`) rather than the names of the files, so the survey's
 instrument was rebuilt around the 35 top-level symbols that actually
 left.
+
+The fourth no compiler could have caught: `TestErrorMessages` names
+`okay.Channel` inside a `compileErrors` STRING, so the file compiled
+without the type and the suite only failed at `sbt test`. Stripping
+comments is not enough - a symbol survey has to read string literals
+too.
 
 `Chunk` STAYED. The plan had the whole chunked cluster leaving, and
 then `Producer.concat` refused to compile - five modules call it, and
@@ -72,5 +78,5 @@ not by moving files - `State.zoom` is typed on `Lens`, `Providing.Facts`
 on `TMap` - and cutting one of those seams is worth more than the lines
 it moves.
 
-Spec: specs/core-modules.md. Commits bbf8eaf8 (spec and the stage-0
-probe), e09f59ed (the move), a35000d4 (what the measurement refuted).
+Spec: specs/core-modules.md. Commits f5bc298e (spec and the stage-0
+probe), f2a5753a (the move), 5776f887 (what the measurement refuted).
