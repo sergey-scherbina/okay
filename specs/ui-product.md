@@ -160,9 +160,9 @@ Behavior:
       in its hello — GENERATED from the constant, not typed, and
       guarded by a test that fails when the set names a node the
       script cannot build
-- [ ] okay-watch deletes its `nth-child` table rules and the page
-      renders `<table>`s (their lane, after the bump — the criterion
-      of this spec, not a checkbox this repository can tick)
+- [x] okay-watch deleted its forty lines of table dressing and the
+      page renders real `<table>`s (their 56289bc, okay submodule at
+      7e756f87) — the criterion, ticked from their side
 
 ## Stage 2 — text carries its intent (ui-text-intent, LANDED 2026-09-18)
 
@@ -243,8 +243,10 @@ Behavior:
       are re-rendered
 - [x] the two thin clients carry and draw the tokens, and their
       conformance suites pass against the re-rendered script
-- [ ] okay-watch replaces its fifteen positional selectors with tokens
-      on the cells (their lane; the criterion)
+- [x] okay-watch replaced its fifteen positional selectors with
+      tokens on the cells (their 56289bc): `Style(kind = Kind.Ident)`
+      on every identifier a reader checks against an explorer,
+      `Kind.Number` on every figure compared down a column
 
 WITHDRAWN from this stage, with the reason: "`Form.of` marks a numeric
 field's rendered value `Kind.Number`". A form renders a number as an
@@ -300,7 +302,7 @@ makes it unable to drift from the renderer.
 - [x] `Form.of[A](Form.blank[A])` renders the same tree as
       `Form.of[A](JObj(empty))` — the blank is what the tree already
       shows, made into a value
-- [ ] okay-watch deletes `Analyst.blank` (their lane; the criterion)
+- [x] okay-watch deleted `Analyst.blank` (their 56289bc)
 
 ## Stage 4 — the tokens' stylesheet, beside the tree (ui-html-css, LANDED 2026-09-18)
 
@@ -347,8 +349,30 @@ Behavior:
       one request, no `@import`. What stayed there is exactly the
       phone's own: 44px tap targets, 16px inputs, a wrapping row, a
       reading measure on a wide screen
-- [ ] okay-watch's stylesheet shrinks to its palette and type scale
-      (their lane; the criterion)
+- [x] okay-watch's stylesheet shrank to its palette, its doubled type
+      scale, the filter strip, the case's forms and the door (their
+      56289bc); the base is `Html.css`, inlined in their own `<style>`
+      because that product serves its own routes rather than
+      okay-script's container
+
+## The consumer closed every criterion (2026-09-18)
+
+All four stages ended with the same line — "okay-watch deletes its
+copy and the page is unchanged" — and all four are ticked from that
+side now (their commit 56289bc, this repository at 7e756f87). The page
+looks as it did and cannot drift: a column's width lives in the
+`<colgroup>` the author's weights render to, and what a cell IS
+travels with the cell.
+
+ONE THING THE MOVE ITSELF BROKE, and it is the lesson worth keeping
+from the consumer side: their two widest tables scrolled because the
+stylesheet made them `display:block`, which stops a table being a
+table box — so the `<colgroup>` this arc existed to deliver would have
+stopped applying at exactly the two tables that needed it. The fix was
+not CSS: `Ui.Scroll` is the level-L node for "this box scrolls", every
+host draws it, and saying it in the TREE is what the two levels are
+for. A stylesheet that has to change an element's display type is
+usually saying something the tree should have said.
 
 ## Out of scope
 - **`Modal` as `<dialog>`** — needs a script to open; the plain road

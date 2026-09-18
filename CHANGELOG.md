@@ -1,5 +1,29 @@
 # Changelog
 
+## ui-product-consumer — the arc's four criteria, ticked from the product's side
+
+Every stage of specs/ui-product.md ended with the same line: okay-watch
+deletes its copy and the page is unchanged. All four are done (their
+commit 56289bc, this repository's 7e756f87): the forty lines that
+dressed rows of `<div>` as a table, the fifteen `nth-child` rules that
+said by POSITION what a cell is, the copy of the token map, and
+`Analyst.blank`. The page looks as it did and can no longer drift.
+
+THE CONSUMER FOUND ONE MORE THING, which is why this entry is not just
+four checkboxes. Their two widest tables scrolled by a stylesheet rule
+that made them `display:block` — and a table with `display:block` is
+not a table box, so the `<colgroup>` this whole arc existed to deliver
+would have stopped applying at exactly the two tables that needed it
+most. The fix was not CSS: `Ui.Scroll` is the level-L node for "this
+box scrolls", every host draws it, and saying it in the TREE is what
+having two levels is for. **A stylesheet that has to change an
+element's display type is usually saying something the tree should
+have said** — which is the same shape as the defect that started this
+arc, where a page said with `nth-child` what a cell should have said
+itself.
+
+Spec only; the code it describes is in okay-watch.
+
 ## static-workflow-proc - a durable workflow as a term, on the engine that already exists
 
 Lane 2 of specs/arrows-plan.md, stage 1 of specs/static-workflow.md.
