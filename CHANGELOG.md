@@ -1,5 +1,40 @@
 # Changelog
 
+## optic-carriers - one optic, three effects
+
+A traversal's `traverseOf` asks for an `Applicative[F]` and nothing
+more, so the applicative slot is where the effect goes. Every carrier
+of the applicative arc drops into it with NO code in the optics for
+any of them, and all three properties held by construction from the
+day each carrier landed while nothing recorded them.
+
+TestOpticCarriers records them, on one optic over the lines of an
+order (`Lens[Order](_.lines).andThen(Traversal.each)`):
+
+- `Validated` reports EVERY bad line, with the same walk at `Either`
+  beside it stopping at the first - the comparison that makes the
+  first line mean something;
+- `Par` visits the foci at once, proven by a rendezvous each focus
+  must reach rather than by a clock;
+- `Static` makes the walk a VALUE: `leaves` lists the operations it
+  would perform before it performs any, `toFree` runs the same value
+  the ordinary way, and `foldMap` answers all of them in ONE round
+  trip. An optic that can be asked what it will do, which follows from
+  the applicative slot and from nothing else.
+
+The file doubles as the worked example the tutorial's new section 23
+points at, and theory ch. 12 gains the paragraph naming the boundary
+in okay-ui's own words: `Ui.map` rewrites bottom-up, which is not a
+traversal at all, because applying a function to a REBUILT node binds
+the effect and a traversal has only an applicative. Everything weaker
+than a monad fits the slot; nothing stronger does.
+
+THE COMONAD[ID] FOOTGUN CAUGHT A THIRD CARRIER while these were
+written: `Static.op(x).map(f)` type-checks as the identity comonad's
+map and hands `f` the program instead of its answer. The examples use
+`fmap` through the instance and say why, because a reader will write
+`.map` first.
+
 ## script-storefront-intake — the offer screen, typed
 
 specs/site-framework.md. The arc's last caveat said the storefront's
