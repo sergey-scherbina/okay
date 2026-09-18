@@ -84,6 +84,8 @@ abstract class Wire[A, R] extends Sink[A, R]:
         { self.recovered(epoch); that.recovered(epoch) }
       override def seekable: Boolean = self.seekable && that.seekable
       override def horizon: Long = math.max(self.horizon, that.horizon)
+      override def reopen(st: S): S = (self.reopen(st._1), that.reopen(st._2))
+      override def sift(w: W, below: Long): W = (self.sift(w._1, below), that.sift(w._2, below))
 
 object Wire {
 
@@ -115,6 +117,8 @@ object Wire {
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
       override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   /** one accumulator per key: the partial is the key/accumulator pairs */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -144,6 +148,8 @@ object Wire {
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
       override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   /**
    * An event-time windowed aggregation.
@@ -183,6 +189,8 @@ object Wire {
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
       override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
@@ -277,6 +285,8 @@ object Wire {
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
       override def seekable: Boolean = local.seekable
       override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   def tumblingStaged[A, K, Acc, O](size: Long, lateness: Long,
                                    key: A => K, at: A => Long,

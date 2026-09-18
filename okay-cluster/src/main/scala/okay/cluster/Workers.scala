@@ -472,7 +472,8 @@ object Cluster {
     // than only when something has died.
     locally:
       def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long,
-                positions: Vector[Long], marks: Vector[Seek], round: Int): Run[R] ! Async =
+                positions: Vector[Long], marks: Vector[Seek], below: Long,
+                round: Int): Run[R] ! Async =
         // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
         // place the streaming engine had to stop copying the batch
         // one.
@@ -512,7 +513,14 @@ object Cluster {
         }.flatMap { es =>
           val ws = es.zipWithIndex.map { (e, i) =>
             Codecs.cbor(sink.wire).decode(e.bytes) match
-              case Right(w) => w
+              // SIFTED, and `below` is `Long.MinValue` for every run
+              // that is not a windowed re-cut — which keeps every
+              // pane, so this costs those runs one comparison a pane
+              // and changes nothing. After a re-cut it is the
+              // watermark the coordinator's retirement used, and it
+              // is what stops a replayed element counting twice
+              // (specs/dataflow.md stage 13 box 2).
+              case Right(w) => sink.sift(w, below)
               case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
           }
           val grown = seen.indices.toVector.map(i => merge(seen(i), es(i).extent))
@@ -563,7 +571,7 @@ object Cluster {
             }.map { last =>
               val lw = last.zipWithIndex.map { (e, i) =>
                 Codecs.cbor(sink.wire).decode(e.bytes) match
-                  case Right(w) => w
+                  case Right(w) => sink.sift(w, below)
                   case Left(why) => throw IllegalStateException(s"partition $i's last partial: $why")
               }
               val end = sink.absorb(next, lw, Long.MaxValue)
@@ -584,7 +592,7 @@ object Cluster {
               commit(round + 1, end, grown, dd, mm, stood, left, over = true)
               Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
-          else epoch(next, grown, d, m, stood, left, round + 1)
+          else epoch(next, grown, d, m, stood, left, below, round + 1)
         }
 
       /**
@@ -600,7 +608,7 @@ object Cluster {
        */
       resuming match
         case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L,
-          Vector.fill(parts)(0L), Vector.empty, 1)
+          Vector.fill(parts)(0L), Vector.empty, Long.MinValue, 1)
         case Some(f) =>
           held.decode(f.state) match
             case Left(why) =>
@@ -657,23 +665,61 @@ object Cluster {
                     "(specs/dataflow.md stage 13): its source is a contiguous cut, whose " +
                     "per-partition positions do not survive a re-cut. Only a striped source " +
                     "(Job.rescalable) has a clean global prefix to resume from.")
-                else if !sink.seekable then throw IllegalStateException(
-                  s"job '${job.name}' cannot rescale a WINDOWED sink " +
-                    "(specs/dataflow.md stage 13, box 2): its open panes live in the worker and " +
-                    "are not in the journal, so a re-cut that does not replay would lose the " +
-                    "panes open at the stop point. A keyed or fold sink rescales.")
-                else
+                else if sink.seekable then
                   val g = f.positions.sum
                   (Vector.fill(parts)(Vector.empty[Flows.Extent]),
                    Vector.tabulate(parts)(j => math.max(0L, (g - j + parts - 1) / parts)))
-              // THE MARKS COME BACK TOO, and only when they still fit:
-              // a rescale re-cuts the partitions and a mark's
-              // positions are the OLD cut's (a windowed sink refuses
-              // to rescale above, so this is belt and braces).
+                else
+                  // A WINDOWED RE-CUT REPLAYS ITS OPEN PANES RATHER
+                  // THAN READING THEM OUT OF A JOURNAL (stage 13 box
+                  // 2, the second answer). Every pane still open
+                  // starts above the horizon mark's maximum, so new
+                  // sessions opened at that mark's global prefix
+                  // rebuild all of them — and the coordinator empties
+                  // its partial copies and sifts out whatever reaches
+                  // a pane it has already retired.
+                  //
+                  // The cut is GLOBAL here where box 2b's is per
+                  // partition, and for the same reason it was per
+                  // partition there: each new partition reads a stripe
+                  // of the WHOLE range, so the clock a re-cut session
+                  // runs on is the stream's, not one slice's.
+                  val hi = f.seen.map(e => if e.isEmpty then Long.MinValue else e.map(_.max).max).max
+                  val lo = f.seen.map(e => if e.isEmpty then Long.MinValue else e.map(_.max).min).min
+                  val cut = if lo == Long.MinValue then Long.MinValue else lo - sink.horizon
+                  val target = f.marks.reverseIterator.find(m =>
+                    m.positions.length == f.seen.length &&
+                      m.maxes.max != Long.MinValue && m.maxes.max <= cut)
+                  val m = target.getOrElse(throw IllegalStateException(
+                    s"job '${job.name}' cannot rescale a WINDOWED sink yet " +
+                      "(specs/dataflow.md stage 13, box 2): its open panes live in the worker, " +
+                      "and a re-cut rebuilds them by replaying from the horizon mark — but no " +
+                      s"mark in the journal is a horizon (${sink.horizon}) below where the run " +
+                      s"stands (event time $hi, cut $cut). A run too young to have one, or a " +
+                      "sink with no horizon at all, still has to keep its width."))
+                  val gm = m.positions.sum
+                  (Vector.fill(parts)(Vector.empty[Flows.Extent]),
+                   Vector.tabulate(parts)(j => math.max(0L, (gm - j + parts - 1) / parts)))
+              // THE MARKS COME BACK TOO, and only when they still
+              // fit: a rescale re-cuts the partitions and a mark's
+              // positions are the OLD cut's, so a re-cut starts
+              // collecting fresh ones.
               val marks0 =
                 if f.seen.length == parts then f.marks.filter(_.positions.length == parts)
                 else Vector.empty
-              epoch(st, seen0, f.drops, f.merged, pos0, marks0, f.epoch + 1)
+              // A WINDOWED RE-CUT, AND THE TWO RULES THAT MAKE IT
+              // EXACT (specs/dataflow.md stage 13 box 2). The open
+              // panes here are partial copies of panes the replay is
+              // about to rebuild in full, so they go; and everything
+              // the replay hands that belongs to a pane ALREADY
+              // RETIRED — at or below the watermark retirement used —
+              // is sifted out for the rest of the run, because after
+              // the resume no such pane can be contributed to again
+              // except by a replayed element that has been counted.
+              val recut = f.seen.length != parts && !sink.seekable
+              val below = if recut then watermark(f.seen, sink.slack) else Long.MinValue
+              val st0 = if recut then sink.reopen(st) else st
+              epoch(st0, seen0, f.drops, f.merged, pos0, marks0, below, f.epoch + 1)
 
   /**
    * RUN THE JOB IF THIS PROCESS IS THE COORDINATOR

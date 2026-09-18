@@ -46,6 +46,10 @@ class TestRescale extends munit.FunSuite {
   lazy val batch: Run[Sum] =
     Flows.fan(StripeKeyedJob.flow(feed, 4), StripeKeyedJob.sink(feed)).runWith
 
+  /** the same, for the windowed job — box 2's definition of correct */
+  lazy val windowBatch: Run[Sum] =
+    Flows.fan(StripeWindowJob.flow(feed, 4), StripeWindowJob.sink(feed)).runWith
+
   /** a coordinator that commits epoch `at` and then stops — a death,
    * or a deposition, at a boundary; its journal is what resumes */
   final class StopAt(at: Int) extends Checkpoint:
@@ -101,14 +105,32 @@ class TestRescale extends munit.FunSuite {
     assert(e.getMessage.contains("contiguous cut"), e.getMessage)
   }
 
-  test("a WINDOWED sink refuses to rescale — its open panes are not in the journal (box 2)") {
-    val j = StopAt(2)
+  test("a WINDOWED sink RESCALES by replaying its open panes from the horizon mark (box 2)") {
+    // Box 2 used to be a refusal: open panes live in the worker, so a
+    // re-cut that does not replay loses them. Box 2b's horizon gave a
+    // second answer — replay them instead of journalling them — and
+    // this is the test that says the answer is the batch answer,
+    // which is the only assertion that catches BOTH failure modes: a
+    // pane counted twice and a pane counted short.
+    for (from, to) <- Vector((4, 6), (4, 2), (6, 3), (2, 8)) do
+      val j = StopAt(2)
+      val stop = intercept[StopAt.Stopped](
+        Cluster.stream(StripeWindowJob, feed, from, Vector(Cluster.local), 500, j).runWith)
+      assertEquals(stop.epoch, 2)
+      val got = Cluster.stream(StripeWindowJob, feed, to, Vector(Cluster.local), 500, j.kept).runWith
+      assertEquals(got.value, windowBatch.value, s"rescaled $from -> $to")
+      assertEquals(got.partitions, to, s"the resumed run reports its NEW width, $from -> $to")
+  }
+
+  test("a windowed re-cut with NO mark far enough back still refuses, and says why") {
+    val j = StopAt(1)
     val _ = intercept[StopAt.Stopped](
-      Cluster.stream(StripeWindowJob, feed, 4, Vector(Cluster.local), 500, j).runWith)
+      Cluster.stream(StripeWindowJob, feed, 4, Vector(Cluster.local), 20, j).runWith)
     val e = intercept[IllegalStateException](
-      Cluster.stream(StripeWindowJob, feed, 6, Vector(Cluster.local), 500, j.kept).runWith)
+      Cluster.stream(StripeWindowJob, feed, 6, Vector(Cluster.local), 20, j.kept).runWith)
     assert(e.getMessage.contains("cannot rescale a WINDOWED sink"), e.getMessage)
     assert(e.getMessage.contains("box 2"), e.getMessage)
+    assert(e.getMessage.contains("horizon"), e.getMessage)
   }
 }
 
