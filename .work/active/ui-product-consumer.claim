@@ -1,0 +1,6 @@
+feature/ui-product-consumer 2026-09-18T10:02:25Z
+agent: claude-code
+heartbeat: 2026-09-18T10:02:25Z
+status: in-progress
+done-so-far: claimed
+next: tick the four consumer criteria in specs/ui-product.md — okay-watch deleted its copies (56289bc)
