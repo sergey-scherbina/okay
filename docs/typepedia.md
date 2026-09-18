@@ -337,7 +337,10 @@ same material with the measurements attached.
   leaves too, so `direct[V](f(a.reflect, b.reflect))` works. Refused
   by name, not by a missing-instance error at the call site: a
   dependent bind, a statement that is not a marked val, a mark inside
-  a mark.
+  a mark. THE SPELLINGS ARE ALL OPTIONAL: the type argument only where
+  there is no expected type, and an effect is said by a mark, by a
+  type annotation, or by nothing at all (a colourless val, whose
+  inferred type is a program of the carrier).
 - **`Direct.Binds`** / **`Direct.parallelBinds`** (Direct.scala) — a
   `direct` block's bind mode, taken the way `Deferral` is (a `using`
   parameter, default given in the companion, opt-in by importing an

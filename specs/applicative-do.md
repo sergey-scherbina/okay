@@ -125,6 +125,37 @@ Stage 0 (this spec): written 2026-09-18, out of the operator's
 question "what about direct style for applicatives", which the arc
 had left open.
 
+### The spellings, pinned (apdo-forms, 2026-09-18)
+
+The operator asked whether the type argument and the marks are
+required. Neither is, and the plainest spelling works:
+
+```scala
+val checked: Checked[Form] = direct:     // carrier from the expected type
+  val name = nonEmpty(raw.name)          // colourless val, no mark
+  val age  = inRange(raw.age)            // and no annotation
+  Form(name, age)                        // uses are auto-coloured
+```
+
+- The TYPE ARGUMENT is needed only where there is no expected type.
+- A MARK (`.reflect`) is one of three ways to say "this is an effect";
+  a type annotation on the val is the second, and nothing at all is
+  the third.
+- A COLOURLESS VAL — inferred type is a program of the carrier — is
+  bound the way the monadic road has bound one since
+  direct-colourless-val. The applicative road refused it at first,
+  which was an inconsistency of this lane and not a limit of the
+  language.
+- All three spellings mix in one block.
+
+**One bug came out of the plainest form**, and it is the kind only a
+run finds: `a * 10 + a` failed with "a reference to value a was used
+outside the scope where it was defined". Auto-colouring wraps the
+USE of a name, so the result-hoisting step took each use for a leaf of
+its own and lifted a reference to `a` out of the scope that binds it.
+A coloured use of a name the block itself binds is now skipped — the
+curried lambda binds it already.
+
 ### Landed 2026-09-18
 
 **The split is by whether a `Monad` EXISTS, not by a flag.** The entry

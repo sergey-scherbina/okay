@@ -377,9 +377,9 @@ that and summons the monad only where a bind is actually emitted. At
 `Validated` the block becomes the bracket and collects:
 
 ```scala
-val checked: V[Form] = direct[V]:
-  val name  = nonEmpty(raw.name).reflect
-  val email = looksLikeEmail(raw.email).reflect
+val checked: Checked[Form] = direct:
+  val name  = nonEmpty(raw.name)
+  val email = looksLikeEmail(raw.email)
   Form(name, email)          // both problems, or a Form
 ```
 

@@ -406,12 +406,33 @@ object Direct:
      * program that fills it */
     final case class Leaf(sym: Symbol, name: String, tpe: TypeRepr, prog: Term)
 
+    /**
+     * A COLOURLESS VAL: `val n = nonEmpty(raw.name)`, with no mark and
+     * no annotation. Its inferred type IS a program of this carrier,
+     * and the monadic road has bound such a val since
+     * direct-colourless-val — the applicative road refused it, which
+     * was an inconsistency of mine and not a limit of the language.
+     *
+     * The val's own type decides, exactly as it does there: if it is
+     * `F[X]`, the right-hand side is the leaf and the name binds at
+     * `X`. A rhs that carries marks of its own is not a plain leaf and
+     * still takes the other road.
+     */
+    def colourless(vd: ValDef, rhs: Term): Option[TypeRepr] =
+      if hasMark(rhs) then None
+      else vd.tpt.tpe.widen.dealias match
+        case AppliedType(_, args) if args.nonEmpty &&
+          TypeRepr.of[F].appliedTo(args.last) =:= vd.tpt.tpe.widen.dealias => Some(args.last)
+        case _ => None
+
     val fromVals: List[Leaf] =
       stats.map {
         case vd @ ValDef(_, _, Some(rhs)) if hasMark(rhs) =>
           leafOf(rhs) match
             case Some(m) => Leaf(vd.symbol, vd.name, vd.tpt.tpe.widen, m)
             case None => refuse(vd.pos, s"`${vd.name}`'s right-hand side")
+        case vd @ ValDef(_, _, Some(rhs)) if colourless(vd, rhs).isDefined =>
+          Leaf(vd.symbol, vd.name, colourless(vd, rhs).get, rhs)
         case other => refuse(other.pos, "a statement that is not a marked val")
       }
 
@@ -432,11 +453,20 @@ object Direct:
      * mention each other's answers.
      */
     var hoisted: List[Leaf] = Nil
+    // a COLOURED USE of a val this block binds is not a leaf: the
+    // conversion wraps the NAME, and the name is bound by the curried
+    // lambda below. Hoisting it lifted a reference to `n` out of the
+    // scope that defines it, which is exactly what the compiler said.
+    val ownNames: Set[Symbol] = fromVals.map(_.sym).toSet
+    def ownUse(m: Term): Boolean = strip(m) match
+      case id: Ident => ownNames.contains(id.symbol)
+      case _ => false
     val body2 =
       if !hasMark(result) then result
       else
         val tm = new TreeMap:
           override def transformTerm(t: Term)(o: Symbol): Term = asMark(t) match
+            case Some(m) if ownUse(m) => super.transformTerm(t)(o)
             case Some(m) if !hasMark(m) =>
               val sym = Symbol.newVal(Symbol.spliceOwner, s"ap$$${hoisted.length}",
                 t.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)

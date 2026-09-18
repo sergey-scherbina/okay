@@ -1,6 +1,6 @@
 package okay
 
-import Direct.*
+import okay.Direct.{*, given}
 
 /**
  * Direct style at a carrier with no monad (specs/applicative-do.md).
@@ -40,6 +40,39 @@ class TestDirectApplicative extends munit.FunSuite {
   test("one bind, and none at all") {
     assertEquals(direct[V](check(2).reflect + 1), Validated.Valid(3))
     assertEquals(direct[V](7), Validated.Valid(7))
+  }
+
+  test("THE SHORTEST SPELLING: no type argument, no marks, no annotations") {
+    // the carrier comes from the expected type; the vals are
+    // COLOURLESS (their inferred type is a program of the carrier, so
+    // the macro binds them); the uses are auto-coloured. Every one of
+    // the three is optional, and all three can be left out at once.
+    val f: V[Int] = direct:
+      val a = check(1)
+      val b = check(3)
+      a + b
+    assertEquals(f, Validated.Invalid(Vector("1 is odd", "3 is odd")))
+  }
+
+  test("the spellings mix: a mark here, an annotation there, a bare val next") {
+    val f: V[Int] = direct[V]:
+      val a = check(1).reflect
+      val b: Int = check(3)
+      val c = check(5)
+      a + b + c
+    assertEquals(f, Validated.Invalid(Vector("1 is odd", "3 is odd", "5 is odd")))
+  }
+
+  test("a coloured USE of a bound name is not a leaf of its own") {
+    // the conversion wraps the NAME, and the name is bound by the
+    // curried lambda. Hoisting it as a leaf lifted a reference out of
+    // the scope that defines it — "a reference to value a was used
+    // outside the scope where it was defined", which is how this case
+    // was found.
+    val f: V[Int] = direct:
+      val a = check(2)
+      a * 10 + a
+    assertEquals(f, Validated.Valid(22))
   }
 
   test("a DEPENDENT bind is refused by name, not by a missing-Monad at the call site") {

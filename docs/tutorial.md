@@ -582,12 +582,16 @@ uses, so a run of independent binds needs an `Applicative` and no
 more.
 
 ```scala
-val checked: V[Form] = direct[V]:
-  val name  = nonEmpty(raw.name).reflect
-  val email = looksLikeEmail(raw.email).reflect
-  val age   = inRange(raw.age).reflect
+val checked: Checked[Form] = direct:
+  val name  = nonEmpty(raw.name)
+  val email = looksLikeEmail(raw.email)
+  val age   = inRange(raw.age)
   Form(name, email, age)          // three problems, or a Form
 ```
+
+The carrier comes from the expected type, and a val whose type is a
+program of it binds without a mark. `.reflect` and a type annotation
+are the two louder ways to say the same thing, and all three mix.
 
 A bind that needs an earlier answer is refused by name, because that
 one really does need a monad.
