@@ -379,6 +379,52 @@ object Direct:
         case other => asMark(other).map(strip)
       go(rhs)
 
+    /**
+     * `if` WITH AN EFFECTFUL CONDITION is the Selective rung, and it
+     * is the one shape an applicative cannot express: `<*>` runs both
+     * of its arguments, so a branch would happen whether or not it
+     * was taken. `ifS` runs the scrutinee and then AT MOST ONE side
+     * (Mokhov et al. 2019), which for a validator is the difference
+     * between reporting a bad shipping address on an order that was
+     * never going to be shipped and not reporting it.
+     *
+     * The shape reaching the macro is `If(mark(cond), then, else)`:
+     * the condition must typecheck as a Boolean, so a program in that
+     * position has already been marked or auto-coloured.
+     */
+    def isSelectiveIf(t: Term): Boolean = strip(t) match
+      case If(c, _, _) => asMark(strip(c)).isDefined
+      case _ => false
+
+    def selectiveIf(t: Term): Term = strip(t) match
+      case If(c, th, el) =>
+        val ce = asMark(strip(c)).getOrElse(
+          report.errorAndAbort("direct: selectiveIf on a pure condition (macro bug)", t.pos))
+        val sel = Expr.summon[Selective[F]].getOrElse(report.errorAndAbort(
+          "direct: an `if` whose CONDITION is an effect needs a Selective for this " +
+            "block's carrier — an Applicative alone would have to run BOTH branches, " +
+            "which is what `ifS` exists to avoid. Give the carrier a Selective, or " +
+            "bind the condition to a val first.", t.pos))
+        ifSOf(strip(ce), strip(th), strip(el), sel, t.tpe.widen)
+      case other => other
+
+    /** the carrier's element, when this type is the carrier applied */
+    def carrierElem(tpe: TypeRepr): Option[TypeRepr] = tpe.widen.dealias match
+      case AppliedType(_, args) if args.nonEmpty &&
+        TypeRepr.of[F].appliedTo(args.last) =:= tpe.widen.dealias => Some(args.last)
+      case _ => None
+
+    def ifSOf(cond: Term, th: Term, el: Term, sel: Expr[Selective[F]], res: TypeRepr): Term =
+      val elem = res.dealias match
+        case AppliedType(_, args) if args.nonEmpty => args.last
+        case other => report.errorAndAbort(s"direct: expected the carrier applied, got ${other.show}")
+      tpe2A[F, A](elem) { [X] => (tX: Type[X]) ?=>
+        // the type parameter of an extension comes AFTER the receiver
+        // (generalized method syntax), so it is left to inference here
+        '{ $sel.ifS(${ cond.asExprOf[F[Boolean]] })(
+             ${ th.asExprOf[F[X]] })(${ el.asExprOf[F[X]] }) }.asTerm
+      }
+
     def refuse(at: Position, what: String): Nothing =
       report.errorAndAbort(
         s"direct: this block's carrier has an Applicative but no Monad, so it can run " +
@@ -427,6 +473,12 @@ object Direct:
 
     val fromVals: List[Leaf] =
       stats.map {
+        // the Selective rung FIRST: an `if` with an effectful condition
+        // is marked (the condition is), so it would otherwise be taken
+        // for a mark whose argument the walk cannot find
+        case vd @ ValDef(_, _, Some(rhs)) if isSelectiveIf(rhs) =>
+          val elem = carrierElem(vd.tpt.tpe).getOrElse(vd.tpt.tpe.widen)
+          Leaf(vd.symbol, vd.name, elem, selectiveIf(rhs))
         case vd @ ValDef(_, _, Some(rhs)) if hasMark(rhs) =>
           leafOf(rhs) match
             case Some(m) => Leaf(vd.symbol, vd.name, vd.tpt.tpe.widen, m)

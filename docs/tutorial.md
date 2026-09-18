@@ -590,7 +590,19 @@ val checked: Checked[Form] = direct:
 ```
 
 The carrier comes from the expected type, and a val whose type is a
-program of it binds without a mark. `.reflect` and a type annotation
+program of it binds without a mark. An `if` whose CONDITION is an
+effect becomes `ifS`, so a branch that is not taken does not run:
+
+```scala
+val order: Validated[Errors, Order] = direct:
+  val item = checkItem(raw.item)
+  val ship = if wantsDelivery(raw.delivery) then checkAddress(raw.address)
+             else pickup
+  Order(item, ship)
+```
+
+A bad address is not reported on an order that was never going to be
+shipped, and the checks around the conditional still accumulate. `.reflect` and a type annotation
 are the two louder ways to say the same thing, and all three mix.
 
 A bind that needs an earlier answer is refused by name, because that

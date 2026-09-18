@@ -79,10 +79,8 @@ the refusal names the bind that forced it:
   needs a way to say "this carrier's `app` is not derived from its
   monad", which the compiler cannot see. Named here so the next reader
   does not look for it.
-- `Selective` emission for `if` inside a direct block. The rung is
-  real and `ifS` exists, but the macro's conditional handling is its
-  own body of work (`direct-macro`'s `compileMarked`), and nothing
-  asks for it yet.
+- ~~`Selective` emission for `if` inside a direct block.~~ DONE
+  (selective-do, 2026-09-18) — see Results.
 - Changing `Validated` in any way. It is the consumer, not the
   subject.
 
@@ -124,6 +122,44 @@ twice.
 Stage 0 (this spec): written 2026-09-18, out of the operator's
 question "what about direct style for applicatives", which the arc
 had left open.
+
+### The Selective rung (selective-do, 2026-09-18)
+
+An `if` whose CONDITION is an effect is the one shape an applicative
+cannot express: `<*>` runs both of its arguments, so a branch would
+happen whether or not it was taken. `ifS` runs the scrutinee and then
+at most one side, and the macro now emits it:
+
+```scala
+val order: Validated[Errors, Order] = direct:
+  val item = checkItem(raw.item)
+  val ship = if wantsDelivery(raw.delivery) then checkAddress(raw.address)
+             else pickup
+  Order(item, ship)
+```
+
+`wantsDelivery` is itself a check and can fail on its own. When it
+answers `false`, `checkAddress` does not run and its errors are not in
+the answer — a bad address is not reported on an order that was never
+going to be shipped. The independent checks around the conditional
+still accumulate.
+
+**`Validated` gained a real `Selective`**, not `selectA`: a `Right`
+scrutinee is already the answer and the handler is skipped, and a
+FAILED scrutinee does not run it either. That is the reference
+implementation's reading (Haskell's `selective` package, the
+`Validation` instance), and the honest one: which branch would have
+been taken is not known, so there is nothing to check yet.
+
+**THE BRANCHES HAD TO BECOME BY-NAME, and only a run showed why.**
+"At most one branch runs" is free in a lazy language; in Scala a
+branch is an ordinary argument, so by value it does its work whether
+or not it is chosen. The first version passed all the ANSWER
+assertions — the skipped branch's errors were correctly absent — and
+failed the one that recorded which checks had actually been performed:
+`address` was in the list for a pickup order. `select`, `branch` and
+`ifS` now take their handlers by name. Every instance uses a handler
+at most once, so nothing pays for repeated evaluation.
 
 ### The spellings, pinned (apdo-forms, 2026-09-18)
 

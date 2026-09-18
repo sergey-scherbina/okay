@@ -92,14 +92,27 @@ trait Applicative[F[_]] extends Functor[F]:
  */
 trait Selective[F[_]] extends Applicative[F]:
   extension [A, B](fe: F[Either[A, B]])
-    def select(f: F[A => B]): F[B]
-    def branch[C](fa: F[A => C])(fb: F[B => C]): F[C] =
+    /**
+     * BY NAME, and in Scala that is the whole point of the class.
+     *
+     * "Runs at most one branch" is free in a lazy language; here a
+     * branch is an ordinary argument, so passing it by value does the
+     * work whether or not it is chosen. Measured the plain way, by a
+     * validator that records each check it performs: with a by-value
+     * handler the skipped branch still ran, and only its ERRORS were
+     * dropped. By name, it does not run at all.
+     *
+     * A handler is used at most once by every instance here, so the
+     * repeated-evaluation cost of a by-name parameter does not arise.
+     */
+    def select(f: => F[A => B]): F[B]
+    def branch[C](fa: => F[A => C])(fb: => F[B => C]): F[C] =
       fe.map(_.map(Left(_))).select(fa.map(_.andThen(Right(_)))).select(fb)
   extension (x: F[Boolean])
     // branch sends Left to its FIRST argument, so true must become
     // Left — Either.cond puts true on the Right and inverted the
     // whole conditional (caught the day ifS was first tested)
-    def ifS[A](t: F[A])(e: F[A]): F[A] =
+    def ifS[A](t: => F[A])(e: => F[A]): F[A] =
       x.map(b => if b then Left(()) else Right(()))
         .branch(t.map(Function.const))(e.map(Function.const))
 
@@ -117,7 +130,7 @@ trait Monad[F[_]] extends Selective[F]:
     // the derived app; the generic combinators are also the test bed.
     def app(a: F[A]): F[B] = f.flatMap(g => fmap(a, g))
   extension [A, B](e: F[Either[A, B]])
-    override def select(f: F[A => B]): F[B] =
+    override def select(f: => F[A => B]): F[B] =
       e.flatMap(_.fold(a => f.map(_(a)), pure))
 
 /** choice with a neutral element */

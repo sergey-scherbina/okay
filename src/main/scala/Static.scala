@@ -72,7 +72,7 @@ object Static:
     extension [A, B](f: Static[F, A => B])
       def app(a: Static[F, A]): Static[F, B] = Ap(f, a)
     extension [A, B](e: Static[F, Either[A, B]])
-      def select(f: Static[F, A => B]): Static[F, B] = Select(e, f)
+      def select(f: => Static[F, A => B]): Static[F, B] = Select(e, f)
 
   /**
    * THE ARGUMENTS OF A SPINE, TYPE-ALIGNED — what makes `foldMap`

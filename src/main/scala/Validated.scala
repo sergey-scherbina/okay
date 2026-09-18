@@ -59,7 +59,23 @@ object Validated:
    * sequence would allocate one per leaf and settle a question three
    * consumers answer differently.
    */
-  given validated[E](using S: Semigroup[E]): Applicative[[A] =>> Validated[E, A]] with
+  /**
+   * The rung above, and it is a REAL one rather than `selectA`.
+   *
+   * Mokhov, Lukyanov, Marlow and Dimino's `select` runs the scrutinee
+   * and then AT MOST ONE handler: a `Right` is already the answer, so
+   * the handler is skipped and its effects never happen. For a
+   * validator that is the difference between "the address is wrong"
+   * being reported on an order that was never going to be shipped and
+   * not being reported at all.
+   *
+   * A FAILED scrutinee does not run the handler either. That is the
+   * reference implementation (Haskell's `selective` package, the
+   * `Validation` instance) and it is the honest reading: the branch
+   * that was going to be taken is not known, so there is nothing to
+   * check yet.
+   */
+  given selective[E](using S: Semigroup[E]): Selective[[A] =>> Validated[E, A]] with
     def pure[A](a: A): Validated[E, A] = Valid(a)
 
     override def fmap[A, B](v: Validated[E, A], f: A => B): Validated[E, B] = v match
@@ -72,6 +88,14 @@ object Validated:
         case (Invalid(e1), Invalid(e2)) => Invalid(S.combine(e1, e2))
         case (Invalid(e1), _) => Invalid(e1)
         case (_, Invalid(e2)) => Invalid(e2)
+
+    extension [A, B](e: Validated[E, Either[A, B]])
+      override def select(f: => Validated[E, A => B]): Validated[E, B] = e match
+        case Valid(Right(b)) => Valid(b)              // the handler is SKIPPED
+        case Valid(Left(a)) => f match
+          case Valid(g) => Valid(g(a))
+          case Invalid(err) => Invalid(err)
+        case Invalid(err) => Invalid(err)
 
   extension [E, A](v: Validated[E, A])
     /** the Either road back, for a caller that wants to branch */

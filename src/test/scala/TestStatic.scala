@@ -91,7 +91,7 @@ class TestStatic extends munit.FunSuite {
       extension [A, B](e: Batch[Either[A, B]])
         // selectA: an accumulating carrier must ask for what the
         // program MIGHT need, which is exactly what `leaves` reports
-        def select(f: Batch[A => B]): Batch[B] =
+        def select(f: => Batch[A => B]): Batch[B] =
           Batch(e.keys ++ f.keys, m => e.run(m).fold(f.run(m), identity))
 
     val toBatch: Fetch ==> Batch = [X] => (op: Fetch[X]) => op match
@@ -142,7 +142,7 @@ class TestStatic extends munit.FunSuite {
       extension [X, Y](f: Count[X => Y])
         def app(a: Count[X]): Count[Y] = Count(f.n + a.n, f.x(a.x))
       extension [X, Y](e: Count[Either[X, Y]])
-        def select(f: Count[X => Y]): Count[Y] =
+        def select(f: => Count[X => Y]): Count[Y] =
           Count(e.n + f.n, e.x.fold(f.x, identity))
     val nt: Fetch ==> Count = [X] => (op: Fetch[X]) => op match
       case Get(k) => Count(1, 0)

@@ -289,9 +289,17 @@ same material with the measurements attached.
   (Selective: the branch is DECLARED statically, run at most once),
   **`>>>`** (Kleisli composition).
 - `Selective`'s `ifS`/`branch`/`select` sit between Applicative and
-  Monad: both branches visible, at most one runs.
+  Monad: both branches visible, at most one runs. Their handlers are
+  BY NAME, and in Scala that is the whole point — "at most one runs"
+  is free in a lazy language, but here a branch is an ordinary
+  argument and by value it does its work whether or not it is chosen
+  (measured: a validator recorded the skipped check as having run).
 - **`Validated[E, A]`** (Validated.scala) — `Valid | Invalid`, whose
-  Applicative COMBINES two failures where `Either`'s keeps the first.
+  Applicative COMBINES two failures where `Either`'s keeps the first,
+  and whose `Selective` is a real one rather than `selectA`: a `Right`
+  scrutinee is already the answer so the handler is skipped, and a
+  FAILED scrutinee does not run it either (the reference reading —
+  which branch would have been taken is not known yet).
   `E` is a `Semigroup`, not a fixed `Seq`, so the caller decides what
   accumulation means (a vector for a form, a count for a sampler, a
   map keyed by field for an API). There is deliberately NO
