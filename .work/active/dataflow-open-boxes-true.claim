@@ -1,0 +1,6 @@
+feature/dataflow-open-boxes-true 2026-09-18T20:26:10Z
+agent: claude-code
+heartbeat: 2026-09-18T20:26:10Z
+status: in-progress
+done-so-far: claimed; after cas-commit, kafka-eos, windowed-rescale and federation-refusal, the remaining open boxes are blocked-on-machines or declined in their own text — two read as unbuilt work and are not
+next: correct stage 8's election box (done in stage 10, waiting loop declined by leading's own Scaladoc) and stage 8's batch-resume box; leave the machines ones exactly as they are
