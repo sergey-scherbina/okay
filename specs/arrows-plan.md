@@ -214,6 +214,61 @@ are useful.
 
 ## Results
 
-(none — a plan is judged by whether the lanes above land in this
-order without a duplicate; the first duplicate is a defect of this
-document and is recorded here)
+A plan is judged by whether the lanes above land in this order without
+a duplicate; the first duplicate is a defect of this document and is
+recorded here.
+
+### Lane 1 — `arrow-laws`, landed 2026-09-18
+
+`okay.laws.ArrowLaws[P]` and `ArrowLawsSuite[P]` in the core's test
+scope, 15 laws: three Category, seven Arrow (Hughes in Paterson's
+normal form), five Choice stated on `Optic.Choice.right`. `Mealy`
+instantiates it in three lines and its four hand-written law tests are
+gone; okay-lex gained `test->test` on okay to see the suite, with the
+reason in a comment beside it. NO instance was added, which was the
+lane's constraint.
+
+**`Mealy`'s `right` had never been tested.** The four statements that
+moved out were all about `arr`, `id`, `first` and composition; the
+suite's five choice laws are the first check that a machine skipped on
+a `Left` keeps its state and steps on a `Right`. All fifteen pass. So
+the lane's value was not only saving the second lane a copy — it
+doubled what is known about the one instance the tree already had.
+
+**THE OBSERVATION IS WHAT MAKES IT REUSABLE, and `TestMealy` had
+already found it**: two arrows are equal when they answer the same
+over a SEQUENCE of inputs, because a single step cannot show a state.
+`Observe` takes exactly that, with `Out[_]` as a type member rather
+than `Any` so that `==` compares two values of one type — a `Mealy`
+answers `Vector[Y]`, the test carrier answers `Seq[(Vector[String], Y)]`,
+and neither needs an `Eq`.
+
+**THE SUITE WAS SEEN TO REFUSE, and the refusal test was wrong
+first.** A law suite whose acceptances are all anybody has watched is
+not evidence (no-failing-test-no-fix). So a local carrier — a function
+that writes as it goes — is given two instances, one right and one
+whose `first` runs its argument TWICE and keeps the second answer:
+every answer correct, only the writing doubled, so a test comparing
+results alone passes it. That is precisely the defect `Proc` must not
+have, since an arrow carrying a workflow leaf run twice under a
+`first` is an activity performed twice.
+
+The first draft claimed FOUR laws would catch it. Two did, and the
+test's own assertion said which — the reason is the keeper:
+
+> a law catches a doubled `first` only when `first` appears a
+> DIFFERENT NUMBER OF TIMES on its two sides.
+
+`first(f) >>> arr(fst)` (one against none) fires; `first(first f) >>>
+arr(assoc)` (two against one) fires and shows four writes against two.
+`first(f >>> g) == first(f) >>> first(g)` does not, because `g` is an
+`arr` and doubling something that writes nothing is invisible;
+`first(f) >>> arr(id x g)` does not, because `first` appears once on
+each side and the defect cancels. Both quiet laws are now asserted
+QUIET, so the claim is exact in both directions and a future change
+that makes one of them fire will say so.
+
+**What a later lane does**: `def laws = ArrowLaws(instance, sample,
+observe)` — three lines. The `sample` must not be an `arr`: a carrier
+whose only value is an `arr` satisfies laws a real one can break, and
+the test that says so is in the suite's own file.

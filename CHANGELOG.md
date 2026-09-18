@@ -1,5 +1,39 @@
 # Changelog
 
+## arrow-laws - one law suite, and the half that makes it evidence
+
+Lane 1 of specs/arrows-plan.md: `okay.laws.ArrowLaws[P]` and
+`ArrowLawsSuite[P]` in the core's test scope - three Category laws,
+seven Arrow laws (Hughes, in Paterson's normal form) and five Choice
+laws stated on `Optic.Choice.right`. Two lanes wanted these on the
+same day and each was written to wait for the other, so they are
+written once, with NO instance added: `optics-arrow-instances` and
+`static-workflow-proc` each instantiate in three lines.
+
+`Mealy` is the first instantiation and its four hand-written law tests
+are gone. Its `right` had never been tested at all - the five choice
+laws are the first check that a machine skipped on a `Left` keeps its
+state, and all fifteen pass.
+
+What makes the suite reusable is the OBSERVATION, and TestMealy had
+already found it: two arrows are equal when they answer the same over
+a SEQUENCE of inputs, because one step cannot show a state. A pure
+function is that with a one-element sequence.
+
+A LAW SUITE NOBODY HAS SEEN REFUSE IS NOT EVIDENCE. So a local
+carrier - a function that writes as it goes - gets two instances, the
+second with a `first` that runs its argument twice and keeps the
+second answer: every answer correct, only the writing doubled. That is
+the defect `Proc` must not have, an activity performed twice.
+
+THE REFUSAL TEST WAS WRONG FIRST, and its own assertion said so. It
+claimed four laws would catch the defect; two do, because a law
+catches a doubled `first` only when `first` appears a DIFFERENT NUMBER
+OF TIMES on its two sides. The two that cannot are now asserted
+QUIET, so the claim is exact in both directions.
+
+okay-lex gained `test->test` on okay to see the suite, with the reason
+in a comment beside it in build.sbt.
 ## form-blank — the value a form starts from, in one place and total
 
 `okay.ui.Form.blank[A]`: every `Check` false, every `Select` on its

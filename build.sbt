@@ -673,7 +673,11 @@ lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlat
 lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-lex"))
-  .dependsOn(okay)
+  // test->test borrows okay's ArrowLaws for Mealy's instance, which is
+  // the only Arrow in the tree until optics-arrow-instances and
+  // static-workflow-proc add theirs (specs/arrows-plan.md, Decision 2:
+  // one law suite, no carrier writes its own)
+  .dependsOn(okay % "compile->compile;test->test")
   .settings(
     name := "okay-lex",
     libraryDependencies ++= Seq(

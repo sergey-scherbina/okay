@@ -1440,6 +1440,21 @@ test; none is promoted until its spec item is read first.
       field traffic). Linked from docs/README.md and guide.md §10.
       It also found `optic-law-rewrites` unfiled, above. The entry as
       written: `docs/guide.md` does not mention `Lens`, `Prism` or
+- [ ] direct-applicative-feature-warnings — `TestDirectApplicative.scala`
+      raises 9 FEATURE warnings (`Use of implicit conversion given
+      instance selfColor in object Direct`), found 2026-09-18 while
+      hunting under `-feature` for the arrow-laws lane. They are
+      invisible by default, which is why they have ridden through
+      every green gate: AGENTS.md's "no warnings, ever" says to hunt
+      with `-feature -deprecation` precisely for this. The fix is the
+      per-file `import scala.language.implicitConversions` that the
+      memory note `direct-given-import-needed` records as the standing
+      answer since the operator removed the build flag. Not mine to
+      change (applicative-do's file, landed the same day); one line,
+      and a `-feature` compile of okayJVM's test scope is the check.
+
+- [ ] optics-guide-page — the convenience item, and the first to
+      pick: `docs/guide.md` does not mention `Lens`, `Prism` or
       `Traversal`; tutorial §23 and theory ch. 10 are all the prose.
       A page of PAIRS — nested `copy`, an `Option.map` chain, a
       hand-written walk, each beside the optic that replaces it and

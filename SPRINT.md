@@ -87,12 +87,6 @@
   side, neither side waiting on the other after lane 1; and whether
   `leaves`/`walk`/`render` are ONE path-indexed fold is a sentence
   stage 1 must write (the fourth indexed-optics seat, or not).
-- arrow-laws — `okay.laws.ArrowLaws[P]` in test scope: Category,
-  Arrow (Hughes' nine, Paterson's normal form) and Choice laws,
-  parameterised by the instance and an observation `P[A, B] => A => B`;
-  `TestMealy`'s law statements move into it and pass at `Mealy`. NO
-  new instance in this lane. DONE-WHEN: the suite exists, `TestMealy`
-  instantiates it, gate green. First to claim of the plan's order.
 - ui-product — what the first product with a screenshot found
   (specs/ui-product.md, stage 0 the spec LANDED 2026-09-18). WHY: the
   frontend arc is closed and proven by laws and demos; okay-watch drew
@@ -126,6 +120,9 @@
     ellipsizes), served by okay-script beside `live.js`; `app.css`
     keeps only what a phone adds. DONE-WHEN: a test walks every class
     `React.elem` writes and finds a rule for each.
+  LANE 1 (`arrow-laws`) LANDED 2026-09-18: 15 laws in
+  `okay.laws.ArrowLaws`, `Mealy` instantiates in three lines, and its
+  `right` is tested for the first time. NEXT: `static-workflow-proc`.
 - proc-notation — the `direct` macro at an arrow (specs/proc-notation.md,
   stage 0 the spec LANDED 2026-09-18). WHY: static-workflow's first
   price line was "combinators, not straight-line code"; the operator

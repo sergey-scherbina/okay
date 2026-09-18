@@ -1,11 +1,41 @@
 package okay.lex
 
 import okay.Optic
+import okay.laws.{ArrowLaws, ArrowLawsSuite}
+
+/**
+ * THE LAWS, from the shared suite (specs/arrows-plan.md, Decision 2).
+ *
+ * They used to be stated here, and this file is where the reusable
+ * shape came from: a machine's equality can only be observed OVER A
+ * SEQUENCE of inputs, because a single step cannot show a state.
+ * `ArrowLaws` takes exactly that as its `Observe`, so `Mealy` is now
+ * three lines and `Function1`, the Kleisli and `Proc` will each be
+ * three of their own instead of copies of these.
+ *
+ * The sample arrow is STATEFUL on purpose: a machine whose every
+ * value is an `arr` satisfies laws that a real one can break.
+ */
+class TestMealyLaws extends ArrowLawsSuite[Mealy] {
+  def laws: ArrowLaws[Mealy] = ArrowLaws(Mealy.mealyArrow, TestMealyLaws.running(0), TestMealyLaws.observe)
+}
+
+object TestMealyLaws {
+  /** a running sum: the state is the whole point */
+  def running(n: Int): Mealy[Int, Int] =
+    Mealy(i => { val m = n + i; (running(m), m) })
+
+  def observe: ArrowLaws.Observe[Mealy] = new ArrowLaws.Observe[Mealy] {
+    type Out[Y] = Vector[Y]
+    def run[X, Y](p: Mealy[X, Y], xs: Seq[X]): Vector[Y] = Mealy.runAll(p, xs)
+  }
+}
 
 /**
  * A scanner is a Mealy machine, and a Mealy machine is an arrow
- * (specs/optics.md stage 5). The laws are observed the only way a
- * machine's equality can be observed: over an input.
+ * (specs/optics.md stage 5). What is left here is what the laws do
+ * not say: that the machine agrees with the scanner's own driver, and
+ * that composing them costs nothing a consumer can see.
  */
 class TestMealy extends munit.FunSuite {
 
@@ -13,35 +43,9 @@ class TestMealy extends munit.FunSuite {
 
   val chars = "{\"a\": [1, 2],\n \"b\": true}"
 
-  def same[B](x: Mealy[Char, B], y: Mealy[Char, B], clue: String): Unit =
-    assertEquals(Mealy.runString(x, chars), Mealy.runString(y, chars), clue)
 
-  test("arr is functorial: arr(f) then arr(g) IS arr(f then g)") {
-    val f = (c: Char) => c.toInt
-    val g = (i: Int) => i * 2
-    same(A.compose(A.arr(g), A.arr(f)), A.arr(f.andThen(g)), "arr(g) . arr(f)")
-  }
 
-  test("identity is an identity on both sides") {
-    val m = Mealy.ofScan(Json.scan)
-    same(A.compose(A.id[Vector[Token[Json.K]]], m), m, "id . m")
-    same(A.compose(m, A.id[Char]), m, "m . id")
-  }
 
-  test("first respects arr: first(arr f) IS arr(f on the left of a pair)") {
-    val f = (c: Char) => c.isDigit
-    val left = A.first[Char, Boolean, Int](A.arr(f))
-    val right = A.arr[(Char, Int), (Boolean, Int)]((ci: (Char, Int)) => (f(ci._1), ci._2))
-    val input = chars.toVector.zipWithIndex
-    assertEquals(Mealy.runAll(left, input), Mealy.runAll(right, input))
-  }
-
-  test("composition is associative, over the same input") {
-    val m = Mealy.ofScan(Json.scan)
-    val f = A.arr[Vector[Token[Json.K]], Int](_.length)
-    val g = A.arr[Int, String](_.toString)
-    same(A.compose(A.compose(g, f), m), A.compose(g, A.compose(f, m)), "associativity")
-  }
 
   test("the door: the machine emits exactly what the scanner's own driver does") {
     // the input ends on a structural character, so `flush` adds nothing
