@@ -74,6 +74,12 @@ class TestProcDirect extends munit.FunSuite:
       val byTerm = Wf.Proc.walk(booking)((), prefix) match
         case Right(Wf.Proc.Standing.Done(y)) => Right(Left(y))
         case Right(Wf.Proc.Standing.Asking(_, q, _)) => Right(Right(Wf.Proc.tag(q)))
+        // this booking has no `Par`, so it can never stand on two
+        // questions at once — but the case has existed since
+        // static-workflow-par and a match that ignores it is a
+        // warning, which this repository counts as red
+        case Right(w: Wf.Proc.Standing.Waiting[?, ?]) =>
+          fail(s"a term with no Par stood on ${w.pending.length} questions at $n answers")
         case Left(bad) => Left(bad.toString)
       val paused = !.run(Wf.replay[String, String, String, P](
         Wf.Proc.program(booking)(()))(prefix))
