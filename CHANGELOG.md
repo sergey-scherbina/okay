@@ -1,5 +1,60 @@
 # Changelog
 
+## growing-order-probe - the break finally said which road it took
+
+Five sightings of one shape existed and a sixth would have added
+nothing; what was missing was a break that names its mechanism. This
+is the instrumented reproducer BACKLOG asked for, and it answered on
+its first loaded run.
+
+THE ANSWER IS NEITHER CANDIDATE. BUGS.md ranked the parking path first
+(`pushDecidingAtOnBehalf` does not repair its route) and a window
+around `inner` second. Under 20 burners the probe caught the break at
+round 6303 of 40 000 and printed:
+
+    drained:  1, 3, 7, 9, 11, 13, 15, 5, 17, ...
+    landed:   1->0  3->0  5->0  7->1  9->1  ... 399->1
+    parking path fired               0 times
+    went back into the adopted part  0 times
+
+Element 5 was pushed into part 0 while part 0 was still that
+producer's part, and came out after 7..15 from part 1. No route was
+stale and nobody went back: the producer's elements are SPLIT across
+the swap, and the CONSUMER passed part 0 before 5 landed, drained part
+1, and returned for 5 afterwards. "Part 0 is read first, on purpose"
+holds per scan, not globally.
+
+So the defect is in the DRAIN, not the push, and it is a design
+statement about `Growing` rather than a missing repair. Nothing is
+proposed here: both candidate fixes are hot-path, and this repository
+prices those before it lands them. Filed as
+`growing-order-drain-guarantee`.
+
+TWO METHOD FINDINGS, each worth as much as the answer.
+
+THE INSTRUMENT MASKED THE EFFECT. The first cut recorded every push
+into one shared queue. With it off the break came at round 1959 of
+2000; with it on, 6000 rounds found nothing - a shared tail is the
+very thing `Growing` exists to avoid. The trace is now one byte per
+element, the part it landed in, written once by whoever pushed it,
+with the full trace an opt-in that says why it is off.
+
+AND A GREEN HAD TO PROVE IT REACHED THE STATE UNDER TEST. "4000
+rounds, no break" says nothing if the buffer never grew, so the probe
+counts the rounds in which it did - 40 000 of 40 000 here. That
+counter was added out of suspicion about an earlier green, and it is
+what makes both the greens and the reds readable.
+
+Two corrections made on the way. BUGS.md called `Growing.inner` "a
+plain `var`" with no happens-before edge; it is `@volatile` and has
+been since the file was created, so the real window is staleness
+between the `grown` CAS and the assignment, not visibility. And the
+probe's own header told you to pass `-Dokay.probe.rounds` while the
+test was statically ignored AND the module forks its tests, so the
+property could not arrive - the environment is the switch now.
+
+Gate: the probe is ignored unless `OKAY_PROBE_ROUNDS` is set, so it
+costs the gate nothing.
 ## optics-typepedia - the reference had no optics in it
 
 `docs/typepedia.md` calls itself "every core type and typeclass with

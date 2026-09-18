@@ -211,13 +211,63 @@ WOULD have been harmful before 2026-09-14, and none of them can reach
 the part selection now. Whatever causes the 2026-09-17 recurrence, it
 is not a stale route surviving into `pushDecidingAt`.
 
-**So the cause is unknown again**, and the entry stays reopened with
-the search narrowed rather than the bug explained. Candidates not yet
+**THE MECHANISM, NAMED 2026-09-18 by `ProbeGrowingOrder`** — and it is
+neither of the two candidates below, nor the one this entry retracted.
+
+The probe reproduces the break under load (20 burners, 14 cores) and
+prints, for the producer whose order broke, the part each of its
+elements landed in. One catch, round 6303 of 40 000:
+
+    drained:  1, 3, 7, 9, 11, 13, 15, **5**, 17, 19, ...
+    landed:   1->0  3->0  5->0  7->1  9->1  ... 399->1
+    resumedOntoForeignRoute      = 0      (the parking path did NOT fire)
+    went from a part above 0 back to 0 = 0 times
+
+So element 5 was pushed into part 0 — correctly, while part 0 was
+still this producer's part — and came out AFTER 7..15, which are in
+part 1. Nobody went back to the adopted part, and no route was stale:
+the producer's elements are simply SPLIT ACROSS THE SWAP, 1/3/5 in
+part 0 and everything from 7 on in part 1.
+
+What breaks the order is the DRAIN, not the push. The consumer took
+1 and 3 from part 0, passed on while 5 was not yet there, drained
+7..15 from part 1, and only then came back to part 0 and found 5.
+"Part 0 is read first, on purpose" holds per SCAN and not globally,
+and a producer whose elements straddle the swap has no guarantee left.
+
+That is a design-level statement about `Growing`, not a missing route
+repair, so nothing is proposed here: the two fixes this suggests
+(drain part 0 to empty before adopting, or hold the producer in part 0
+until the consumer has passed it) are both hot-path changes and this
+repository prices those before it lands them.
+
+TWO THINGS THE PROBE ESTABLISHED BESIDE THE MECHANISM. The full
+per-push trace MASKS the race — with it off the break came at round
+1959 of 2000, with it on 6000 rounds found nothing — so the instrument
+had to be reduced to one byte per element, written once by whoever
+pushed it. And the probe counts the rounds in which the buffer
+actually GREW (40 000 of 40 000 here), because "no break in N rounds"
+says nothing unless the swap under test happened.
+
+**The cause was unknown before that**, and the entry stayed reopened
+with the search narrowed rather than the bug explained. Candidates not yet
 examined: the PARKING path (`sendersAt(route)` and the resumed
 `pushDecidingAtOnBehalf`, which by design does NOT repair the route);
-and the visibility of `inner`, which is a plain `var` written after an
-atomic, so a reader may see `grown == true` with the old buffer — safe
-for routing, but not obviously safe for everything else.
+and the window around `inner`, where a reader may see `grown == true`
+with the old buffer — safe for routing, but not obviously safe for
+everything else.
+
+CORRECTED 2026-09-18 (growing-order-probe), because the mechanism
+named here was wrong even though the observation is right: this said
+"the VISIBILITY of `inner`, which is a plain `var` written after an
+atomic". `inner` is `@volatile`, and has been since the file was
+created (3f3adca1), so there is no publication hole — a reader that
+sees the new buffer sees it whole. What is real is STALENESS, not
+visibility: `grow()` sets `grown` by CAS, then builds the
+`AdaptiveFifo`, then assigns `inner`, so anything reading `grown`
+in between still gets the ring. The window is real, the reason given
+for it was not, and a probe built on the wrong reason would have
+measured the wrong thing.
 
 ---
 
