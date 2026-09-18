@@ -230,4 +230,9 @@ Four things the building of it found, each now a test:
 - `null`'s type is `Null`, which is a subtype of everything including
   `Js`, so a splice case placed above the literals swallows it;
 - an `if` at the END of a block is still a statement, and its braces
-  are not an expression.
+  are not an expression;
+- an identifier the block DECLARED is a variable and a `Js` value from
+  outside is a splice, and they are indistinguishable by type because
+  `null` has type `Null`, a subtype of everything;
+- a dynamic call answers `Unit`, because typing a call as a value made
+  every call site a discarded value.

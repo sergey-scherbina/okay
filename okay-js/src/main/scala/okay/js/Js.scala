@@ -234,7 +234,8 @@ object Js:
     val mine = prec(j)
     val wrap = mine < outer
     if wrap then sb += '('
-    j match
+    // the match's own value is a builder nobody wants: this writes
+    val _ : Any = j match
       case Num(v) =>
         sb ++= (if v == v.toLong.toDouble && v.abs < 1e15 then v.toLong.toString else v.toString)
       case Str(s) => sb ++= quote(s)
@@ -254,7 +255,8 @@ object Js:
         sb += '{'
         fields.zipWithIndex.foreach { case ((k, v), i) =>
           if i > 0 then sb ++= ", "
-          sb ++= key(k) ++= ": "
+          sb ++= key(k)
+          sb ++= ": "
           expr(v, 0, sb)
         }
         sb += '}'
@@ -296,7 +298,9 @@ object Js:
           case _ => expr(of, mine, sb)
       case Bin(op, l, r) =>
         expr(l, mine, sb)
-        sb += ' ' ++= op += ' '
+        sb += ' '
+        sb ++= op
+        sb += ' '
         // the right side of a left-associative operator binds tighter
         expr(r, mine + 1, sb)
       case Ternary(c, y, n) =>
@@ -306,7 +310,9 @@ object Js:
         sb ++= " : "
         expr(n, 0, sb)
       case Fun(params, body) =>
-        sb ++= "function (" ++= params.mkString(", ") ++= ") {"
+        sb ++= "function ("
+        sb ++= params.mkString(", ")
+        sb ++= ") {"
         body.foreach(stmt(_, 1, sb))
         sb ++= "}"
     if wrap then sb += ')'
@@ -322,7 +328,9 @@ object Js:
     pad(depth, sb)
     s match
       case Stmt.Var(n, v) =>
-        sb ++= "var " ++= n ++= " = "
+        sb ++= "var "
+        sb ++= n
+        sb ++= " = "
         expr(v, 0, sb)
         sb += ';'
       case Stmt.Set(t, v) =>
@@ -360,7 +368,9 @@ object Js:
       case Stmt.For(init, cond, step, body) =>
         sb ++= "for ("
         init.foreach {
-          case Stmt.Var(n, v) => sb ++= "var " ++= n ++= " = "; expr(v, 0, sb)
+          case Stmt.Var(n, v) =>
+            sb ++= "var "; sb ++= n; sb ++= " = "
+            expr(v, 0, sb)
           case Stmt.Set(t, v) => expr(t, 0, sb); sb ++= " = "; expr(v, 0, sb)
           case Stmt.Do(o) => expr(o, 0, sb)
           case other => sb ++= Js.print(Vector(other)).trim.stripSuffix(";")

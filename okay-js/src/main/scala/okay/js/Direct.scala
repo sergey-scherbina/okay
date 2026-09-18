@@ -39,10 +39,10 @@ object Direct:
   /** the same block, printed at compile time into a constant */
   transparent inline def source(inline body: Any): String = ${ sourceImpl('body) }
 
-  private def jsImpl(body: Expr[Any])(using Quotes): Expr[Vector[Stmt]] =
-    Expr.ofSeq(read(body).map(lift)).let(xs => '{ $xs.toVector })
+  def jsImpl(body: Expr[Any])(using Quotes): Expr[Vector[Stmt]] =
+    '{ ${ Expr.ofSeq(read(body).map(lift)) }.toVector }
 
-  private def sourceImpl(body: Expr[Any])(using q: Quotes): Expr[String] =
+  def sourceImpl(body: Expr[Any])(using q: Quotes): Expr[String] =
     import q.reflect.*
     Literal(StringConstant(Js.print(read(body)))).asExprOf[String]
 
@@ -75,6 +75,15 @@ object Direct:
           "  in a Js.Raw whose one untyped line is visible and countable.",
         where)
 
+    /** WHAT THE BLOCK ITSELF DECLARES.
+     *
+     * An identifier is a JavaScript variable when the block declared
+     * it, and a SPLICE when it is a `Js` value from outside. Without
+     * this the two are indistinguishable: `val c = null` has type
+     * `Null`, which is a subtype of everything including `Js`, so the
+     * splice case swallowed a variable the block had just made. */
+    val declared = scala.collection.mutable.Set.empty[String]
+
     def block(t: Term): Vector[Stmt] = t match
       case Inlined(_, _, inner) => block(inner)
       case Block(stats, last) =>
@@ -92,7 +101,10 @@ object Direct:
       case other => statement(other)
 
     def stat(s: Statement): Vector[Stmt] = s match
-      case ValDef(name, _, Some(rhs)) => Vector(Stmt.Var(name, expr(rhs)))
+      case ValDef(name, _, Some(rhs)) =>
+        val v = Stmt.Var(name, expr(rhs))
+        declared += name
+        Vector(v)
       case ValDef(name, _, None) =>
         no(s"a `val $name` with no value", s.pos, "give it one")
       case t: Term => statement(t)
@@ -103,6 +115,10 @@ object Direct:
      * matters */
     def statement(t: Term): Vector[Stmt] = t match
       case Inlined(_, _, inner) => statement(inner)
+      // `e: Unit` is how a caller says "for the effect", and Scala
+      // spells it `{ e; () }` — a BLOCK, which is a statement and not
+      // an expression
+      case Typed(inner, _) => statement(inner)
       case Block(stats, last) => stats.toVector.flatMap(stat) ++ tail(last)
       case If(c, y, n) =>
         Vector(Stmt.If(expr(c), statement(y), statement(n) match
@@ -156,6 +172,11 @@ object Direct:
       // one share one program. It comes AFTER the literals because
       // `null`'s type is `Null`, which is a subtype of everything —
       // including `Js` — so a splice case above them swallows it.
+      // a name the block made is a VARIABLE, checked before the
+      // splice below, which would otherwise take any identifier whose
+      // type happens to conform to `Js`
+      case i: Ident if declared(i.name) => Js.Name(i.name)
+
       case term if term.tpe <:< TypeRepr.of[Js] =>
         term.asExprOf[Js].value(using Emit.jsOf).getOrElse(
           no("a Js value the compiler cannot read here", term.pos,
@@ -215,20 +236,6 @@ object Direct:
       case other =>
         no(s"`${other.show}`", other.pos, "it is not in the subset")
 
-    /** Scala encodes an operator name; `$plus` is `+` */
-    def decode(op: String): String = op match
-      case "$plus" => "+"
-      case "$minus" => "-"
-      case "$times" => "*"
-      case "$div" => "/"
-      case "$percent" => "%"
-      case "$less" => "<"
-      case "$greater" => ">"
-      case "$less$eq" => "<="
-      case "$greater$eq" => ">="
-      case "$eq$eq" => "=="
-      case "$bang$eq" => "!="
-      case other => other
 
       block(body.asTerm)
 
@@ -285,9 +292,6 @@ object Direct:
   private def liftJsAll(js: Vector[Js])(using Quotes): Expr[Vector[Js]] =
     '{ ${ Expr.ofSeq(js.map(liftJs)) }.toVector }
 
-  extension [A](self: Expr[Seq[A]])
-    private def let[B](f: Expr[Seq[A]] => Expr[B])(using Quotes): Expr[B] = f(self)
-
 
 /**
  * A NAME IN THE BROWSER, so `global.console.log(x)` typechecks and
@@ -299,8 +303,21 @@ object Direct:
  */
 @compileTimeOnly("Dyn only means anything inside js { }")
 class Dyn extends Dynamic:
+  /** a member, which IS a value: `global.document.body` */
   def selectDynamic(name: String): Dyn = ???
-  def applyDynamic(name: String)(args: Any*): Dyn = ???
+
+  /**
+   * A CALL IS A STATEMENT, and that is why this answers `Unit`.
+   *
+   * In a `js { }` block a dynamic call is almost always made for its
+   * effect, and typing it as a value made every one of them a
+   * DISCARDED value — a warning at each call site, in a codebase whose
+   * rule is no warnings ever. A call whose value is wanted is outside
+   * the subset on purpose: build it with `Js.Call` and splice the
+   * value in, where the shape is explicit and nothing is guessed.
+   */
+  def applyDynamic(name: String)(args: Any*): Unit = ???
+
   def updateDynamic(name: String)(value: Any): Unit = ???
 
 /** the browser's globals, as one name. `global.console.log(x)` is the

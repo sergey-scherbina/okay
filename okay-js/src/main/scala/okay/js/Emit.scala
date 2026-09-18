@@ -107,12 +107,12 @@ object Emit:
   transparent inline def program(inline stmts: Vector[Stmt]): String =
     ${ programExpr('stmts) }
 
-  private def emitExpr(js: Expr[Js])(using Quotes): Expr[String] =
+  def emitExpr(js: Expr[Js])(using Quotes): Expr[String] =
     js.value match
       case Some(tree) => constant(Js.print(tree))
       case None => unreadable(js)
 
-  private def programExpr(stmts: Expr[Vector[Stmt]])(using Quotes): Expr[String] =
+  def programExpr(stmts: Expr[Vector[Stmt]])(using Quotes): Expr[String] =
     stmts.value match
       case Some(tree) => constant(Js.print(tree))
       case None => unreadable(stmts)

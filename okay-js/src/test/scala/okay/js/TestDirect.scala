@@ -20,15 +20,17 @@ class TestDirect extends munit.FunSuite:
     val p = Direct.js {
       val x = 1
       val y = x + 2 * 3
+      global.console.log(y)
     }
-    assertEquals(src(p), "var x = 1;\nvar y = x + 2 * 3;")
+    assertEquals(src(p), "var x = 1;\nvar y = x + 2 * 3;\nconsole.log(y);")
   }
 
   test("precedence comes from the TREE, so Scala's grouping is kept") {
     val p = Direct.js {
       val y = (1 + 2) * 3
+      global.f(y)
     }
-    assertEquals(src(p), "var y = (1 + 2) * 3;")
+    assertEquals(src(p), "var y = (1 + 2) * 3;\nf(y);")
   }
 
   test("a string, a boolean and null are themselves") {
@@ -36,8 +38,9 @@ class TestDirect extends munit.FunSuite:
       val a = "hi"
       val b = true
       val c = null
+      global.f(a, b, c)
     }
-    assertEquals(src(p), "var a = \"hi\";\nvar b = true;\nvar c = null;")
+    assertEquals(src(p), "var a = \"hi\";\nvar b = true;\nvar c = null;\nf(a, b, c);")
   }
 
   test("an if is a statement, and an if with a value is a ternary") {
@@ -51,8 +54,9 @@ class TestDirect extends munit.FunSuite:
     val ternary = Direct.js {
       val x = 1
       val y = if (x > 0) 1 else 2
+      global.f(y)
     }
-    assertEquals(src(ternary), "var x = 1;\nvar y = x > 0 ? 1 : 2;")
+    assertEquals(src(ternary), "var x = 1;\nvar y = x > 0 ? 1 : 2;\nf(y);")
   }
 
   test("an if with no else writes no else") {
@@ -82,13 +86,15 @@ class TestDirect extends munit.FunSuite:
   test("a field with no call is a field") {
     val p = Direct.js {
       val d = global.document.body
+      global.f(d)
     }
-    assertEquals(src(p), "var d = document.body;")
+    assertEquals(src(p), "var d = document.body;\nf(d);")
   }
 
   test("a lambda is a function, which is where the two languages agree exactly") {
     val p = Direct.js {
-      val f = (a: Dyn, b: Dyn) => a
+      val f = (a: Dyn, b: Dyn) => global.g(a, b)
+      global.run(f)
     }
     assert(src(p).contains("function (a, b) {"), src(p))
   }
@@ -98,8 +104,9 @@ class TestDirect extends munit.FunSuite:
       val a = true
       val b = false
       val c = a && !b || a
+      global.f(c)
     }
-    assertEquals(src(p), "var a = true;\nvar b = false;\nvar c = a && !b || a;")
+    assertEquals(src(p), "var a = true;\nvar b = false;\nvar c = a && !b || a;\nf(c);")
   }
 
   // ---- the one deliberate mapping, and its limit --------------------
@@ -109,6 +116,7 @@ class TestDirect extends munit.FunSuite:
       val x = 1
       val same = x == 1
       val other = x != 2
+      global.f(same, other)
     }
     assert(src(p).contains("x === 1"), src(p))
     assert(src(p).contains("x !== 2"), src(p))
@@ -119,8 +127,9 @@ class TestDirect extends munit.FunSuite:
   test("a Js value is spliced where it stands, so the two roads share a program") {
     val p = Direct.js {
       val v = Js.Arr(Vector(Js.Str("link"), Js.Str("table")))
+      global.f(v)
     }
-    assertEquals(src(p), """var v = ["link", "table"];""")
+    assertEquals(src(p), "var v = [\"link\", \"table\"];\nf(v);")
   }
 
   // ---- and the whole thing folds to a constant ----------------------
@@ -135,8 +144,8 @@ class TestDirect extends munit.FunSuite:
   }
 
   test("what js { } builds is an ordinary value, so it composes") {
-    val a = Direct.js { val x = 1 }
-    val b = Direct.js { val y = 2 }
-    assertEquals(src(a ++ b), "var x = 1;\nvar y = 2;")
+    val a = Direct.js { val x = 1; global.f(x) }
+    val b = Direct.js { val y = 2; global.f(y) }
+    assertEquals(src(a ++ b), "var x = 1;\nf(x);\nvar y = 2;\nf(y);")
     assertEquals(Js.raws(a ++ b), 0)
   }

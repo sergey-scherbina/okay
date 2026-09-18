@@ -72,6 +72,23 @@ in it:
 `global` is a `Dyn`: a `scala.Dynamic` whose only job is to let
 `global.console.log(x)` typecheck so the macro can read it.
 
+**A dynamic call is a STATEMENT**, which is why `applyDynamic`
+answers `Unit`. In a block like this a call is almost always made for
+its effect, and typing it as a value made every one of them a
+discarded value — a warning at each call site. A call whose value you
+want is outside the subset on purpose: build it with `Js.Call` and
+splice the value in, where the shape is explicit.
+
+**An identifier the block declared is a variable; a `Js` value from
+outside is a splice.** The two have to be told apart, because `val c =
+null` has type `Null`, which is a subtype of everything including
+`Js`.
+
+**Scala still typechecks the block**, so a `val` you declare only for
+the JavaScript's sake reads as an unused local. Real blocks use what
+they declare; one that genuinely does not needs `@nowarn` or a line
+that reads it.
+
 **`==` becomes `===`, and only where that is honest.** Scala's `==`
 means equality; JavaScript's `==` coerces and `===` does not. The
 macro maps to `===` when the operand type is `Int`, `Long`, `Double`,

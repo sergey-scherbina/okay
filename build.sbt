@@ -1293,6 +1293,10 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // the journal is a topic, one session = one key, and recovery is a
   // refold — transitively still zero external dependencies
   .dependsOn(okay, okayPersist)
+  // okay-js prints the browser client's style-token table (Classes)
+  // instead of it being typed a second time in JavaScript — the
+  // module is pure string building and carries no dependency itself
+  .dependsOn(okayJs)
   // Form is the fifth algebra over Schema and rides where the codec
   // does — which since codec-native is every platform.
   .jvmConfigure(_.dependsOn(okayCodec.jvm))

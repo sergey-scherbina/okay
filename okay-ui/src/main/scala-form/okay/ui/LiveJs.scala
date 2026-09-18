@@ -22,6 +22,34 @@ object LiveJs:
    * scriptless road are one page only if they claim the same set
    * (react-host-vocab). A name added to that set without a `build`
    * case below is a defect, and `TestBrowserVocab` fails on it. */
+  /**
+   * THE SIX STYLE TOKENS, GENERATED from `Classes` rather than typed
+   * a second time (ui-class-table).
+   *
+   * `React.elem` reads the same table, so the two renderers that
+   * serve a browser cannot spell a class differently — the defect
+   * that shows up as a page looking right one way and wrong the
+   * other. It is emitted through okay-js, which prints the tree and
+   * escapes the strings, rather than by concatenation here.
+   */
+  private val classPushes: String =
+    import okay.js.{Js, Stmt}
+    val st = Js.Name("st")
+    val push = (v: Js) => Stmt.Do(Js.Call(Js.Field(Js.Name("cls"), "push"), Vector(v)))
+    val flags = Classes.flags.map { (name, _) =>
+      Stmt.If(Js.Field(st, name), Vector(push(Js.Str(Classes.Prefix + name))))
+    }
+    val choices = Classes.choices.map { c =>
+      Stmt.If(
+        Js.Bin("&&", Js.Field(st, c.field),
+          Js.Bin("!==", Js.Field(st, c.field), Js.Str(c.none))),
+        Vector(push(Js.Bin("+", Js.Str(s"${Classes.Prefix}${c.field}-"), Js.Field(st, c.field)))))
+    }
+    // the printer's own indentation is kept, so the generated block
+    // reads like the rest of the file rather than like output
+    Js.print(flags ++ choices).linesIterator
+      .filter(_.trim.nonEmpty).map("      |        " + _.stripPrefix("  ")).mkString("\n")
+
   private val vocabJson: String =
     React.Vocabulary.toVector.sorted.map(v => "\"" + v + "\"").mkString(", ")
 
@@ -41,12 +69,7 @@ object LiveJs:
       |      case "Text":
       |        el = document.createElement("span");
       |        var cls = [], st = f.style || {};
-      |        if (st.bold) cls.push("okay-bold");
-      |        if (st.dim) cls.push("okay-dim");
-      |        if (st.tone && st.tone !== "plain") cls.push("okay-tone-" + st.tone);
-      |        if (st.size && st.size !== "normal") cls.push("okay-size-" + st.size);
-      |        if (st.kind && st.kind !== "prose") cls.push("okay-kind-" + st.kind);
-      |        if (st.align && st.align !== "start") cls.push("okay-align-" + st.align);
+$classPushes
       |        if (cls.length) el.className = cls.join(" ");
       |        el.textContent = f.s;
       |        return el;
