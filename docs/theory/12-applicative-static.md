@@ -309,6 +309,30 @@ spine makes visible; what it must leave alone is exactly what
 `flatMap`'s opaque continuation hides. The two chapters were measuring
 the same wall from opposite sides.
 
+## The optics were already waiting for it
+
+Chapter 10 builds optics on profunctors, and a traversal's constraint
+is `Traversing`, whose `traverseOf` asks for an `Applicative[F]` and
+nothing more. That slot is not decoration: it is the hole every
+carrier of this chapter drops into, with no code in the optics for any
+of them.
+
+One optic over every line of an order gives three different things
+depending on what fills the slot. At `Validated` the walk reports
+every bad line rather than the first. At `Par` the foci are visited at
+once and the structure is rebuilt from the answers. At `Static` the
+walk is a value before it runs, so `leaves` lists the operations it
+would perform — an optic that can be asked what it will do, which
+follows from the applicative slot and from nothing else
+(TestOpticCarriers).
+
+The boundary is the chapter's boundary, and `okay-ui` states it in its
+own words: `Ui.map` rewrites bottom-up, applying its function to the
+REBUILT node, and that is not a traversal at all, because applying a
+function to a rebuilt node means binding the effect — `F[Ui] >>= f` —
+and a traversal has only an applicative. Everything weaker than a
+monad fits the slot. Nothing stronger does.
+
 ## Where Okay was already doing this without the name
 
 The history is older than the vocabulary, and the library is full of

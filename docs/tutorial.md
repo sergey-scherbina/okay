@@ -608,7 +608,58 @@ are the two louder ways to say the same thing, and all three mix.
 A bind that needs an earlier answer is refused by name, because that
 one really does need a monad.
 
-## 23. What the program will do, before it does it
+## 23. One optic, three effects
+
+A traversal's signature asks for an `Applicative` and nothing more:
+
+```scala
+def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]
+```
+
+So the applicative slot is where the effect goes, and every carrier
+drops into it with no code in the optics for any of them. One optic —
+every line of an order:
+
+```scala
+val eachLine = Lens[Order](_.lines).andThen(Traversal.each[Line, Line])
+```
+
+**Report every bad line, not the first.** At `Validated` the walk
+collects; at `Either` it stops.
+
+```scala
+eachLine.traverseOf(check)(order)
+// Invalid(["ink: qty must be > 0", "pad: qty must be > 0"])
+```
+
+**Visit the foci at once.** At `Par` each focus runs on its own fiber
+and the structure is rebuilt from the answers.
+
+```scala
+eachLine.traverseOf[Par](line => Par(price(line)))(order).seq
+```
+
+**Ask what the walk WOULD do.** At `Static` the operations are a value
+before anything runs, so you can audit them, dry-run them, or answer
+them all in one round trip.
+
+```scala
+val plan = eachLine.traverseOf(priceLine)(order)
+plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
+plan.toFree.runWith  // and the same value, run the ordinary way
+plan.foldMap(toBatch)  // or answered in ONE call
+```
+
+One caution that catches everyone once: write `fmap` through the
+instance rather than `.map` on these carriers. The package's
+`given Comonad[Id]` puts a `map` on every type in lexical scope and
+wins the race, so `Static.op(x).map(f)` hands `f` the program instead
+of its answer.
+
+The worked versions of all three are `TestOpticCarriers`, which is
+where the outputs above come from.
+
+## 24. What the program will do, before it does it
 
 A `flatMap` hides the rest of the program behind a function, so the
 only way to learn what it does is to run it. When the program does not
@@ -634,7 +685,7 @@ The batching carrier is the payoff: an `app` that accumulates its
 leaves' requests turns fifty fetches into one call, with the program
 unchanged. [Chapter 12](theory/12-applicative-static.md) builds it.
 
-## 24. Where to go next
+## 25. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference;
