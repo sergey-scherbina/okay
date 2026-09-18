@@ -1,5 +1,31 @@
 # Changelog
 
+## site-framework — stage 0 (the spec) and stage 1 (modules)
+
+specs/site-framework.md. The operator asked for okay-script and
+okay-ui at scalascript's standing, and gave the criterion by naming
+two sites they actually run — szykownia.pl and it.szykownia.pl,
+rendered today by busi's 818-line `storefront.ssc`. Whatever that
+file does, a page here must do; what it cannot is a stage.
+
+The gap, read out of that file: MODULES first (its front matter
+exports names and it imports four files by markdown link, while a
+`def` here could not leave its page), then content as data with a
+file override and an editor, then per-element i18n (the sites carry
+every language on the element and swap in the client; ours is one
+language per request), then the storefront ported, which is the
+arc's verdict.
+
+Stage 1 is landed: a page declares `exports:` and imports with
+`[money, vat](/lib/money.md)`; modules compile once each in
+dependency order under their own object; a cycle is refused with the
+ring named; `route: false` makes a library unroutable; a page keyed
+on `(mtime, module stamp)` re-renders when a module it imports
+changes. TestModules, 8. Two findings recorded in the spec: the
+module classpath must be TRANSITIVE (a diamond failed at run time,
+not compile time), and an unexported name is caught here so the
+message can name the file rather than a mangled object.
+
 ## applicative-do - direct style at a carrier with no monad
 
 `direct[F]` took `using M: Monad[F]`, so it turned away exactly the
