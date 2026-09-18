@@ -47,12 +47,15 @@ day itemtotal
 …
 ```
 
-What it does not pretend: `Backup.copy` takes CLOSED segments and the
-active one stays home until it rolls, so a backup is the books up to
-the last roll and `segmentBytes` is the bound on what a lost disk
-costs. The test asserts exactly that — the report over the restored
-copy equals the report over that prefix, and is NOT the whole — rather
-than hiding it behind a fixture that happens to roll at the end.
+What it does not pretend: a backup copies the segment still being
+appended to as well as the closed ones (backup-active-segment), so the
+restored copy is the books as they stood and the report over it IS the
+whole — and a copy taken mid-write ends mid-frame, the crash shape the
+Doctor already certifies as restorable. `backup(blob, active = false)`
+is the strict road: closed segments only, a prefix of the books bounded
+by `segmentBytes`, and a second run copies nothing at all. The test
+asserts both roads, rather than hiding either behind a fixture that
+happens to roll at the end.
 
 `run / fork := true` — RepoMcp owns its stdin (an MCP client
 launches the class directly; `sbt -batch` keeps stdin for itself).

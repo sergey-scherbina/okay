@@ -27,19 +27,22 @@ import java.nio.file.Path
  *              the one worker is `Cluster.local`;
  *   page     — an okay-ui `Table`, rendered by `Frame` to lines —
  *              the same tree the web and desktop hosts draw;
- *   backup   — okay-blob's `Backup.copy` of the closed segments to a
+ *   backup   — okay-blob's `Backup.copy` of the segments to a
  *              `Blob` (a directory here, S3 when the deployment says
  *              so), `restore` into a fresh directory, and the
  *              `Doctor`'s verdict that the copy is restorable BEFORE
  *              anyone needs it.
  *
- * What it does not pretend: `Backup.copy` takes CLOSED segments —
- * the active one stays home until it rolls, so a backup is the
- * books up to the last roll, and `segmentBytes` is the bound on
- * what a lost disk costs. A shop sets it small; it costs a file
- * per few kilobytes and nothing else. `restored` below says exactly
- * what came back, and the test asserts the report over the copy is
- * the report over that prefix.
+ * What it does not pretend: a backup copies the ACTIVE segment too
+ * (backup-active-segment), so a shop that records and then backs up
+ * has its newest sales offsite — and the copy of a file still being
+ * appended to can end mid-frame. That is the ordinary crash shape
+ * this store already reads: `Doctor` names a torn tail on the last
+ * segment restorable, and the test asserts the verdict rather than
+ * arranging a fixture that happens to roll at the end. `backup(blob,
+ * active = false)` is the strict road — closed segments only, so a
+ * second run copies nothing at all and `segmentBytes` bounds what a
+ * lost disk costs.
  */
 object Ledger {
 
@@ -127,17 +130,21 @@ final class Ledger(root: Path, segmentBytes: Long = 64L * 1024) {
   /** the report, by the engine, in this process */
   def report(): Run[Report] ! Async = Cluster.run(DailyJob, books, 1, Vector(Cluster.local))
 
-  /** every closed segment to the blob; answers what was copied THIS
-   * time — a second call copies nothing */
-  def backup(blob: Blob): Vector[String] ! Async = Backup.copy(root, blob, "books")
+  /** every segment the blob does not hold at that size to the blob,
+   * the one being appended to included; answers what was copied THIS
+   * time — a second call with nothing recorded between copies
+   * nothing. `active = false` leaves the live segment home */
+  def backup(blob: Blob, active: Boolean = true): Vector[String] ! Async =
+    Backup.copy(root, blob, "books", active)
 
   def close(): Unit = Ledger.closed(root)
 }
 
 object Restored {
   /** the copy placed under a fresh root, the Doctor's verdict on it,
-   * and a `Ledger` over it — which answers the report over the books
-   * up to the last roll, because that is what a backup holds */
+   * and a `Ledger` over it — which answers the report over whatever
+   * the backup holds: the books as they stood, or the books up to the
+   * last roll if the copy left the live segment home */
   def apply(blob: Blob, fresh: Path, segmentBytes: Long): (Vector[String], Doctor.Report, Ledger) ! Async =
     Backup.restore(blob, fresh, "books").map { placed =>
       (placed, Doctor.scan(fresh), Ledger(fresh, segmentBytes))

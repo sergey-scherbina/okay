@@ -45,7 +45,7 @@ class TestLedger extends munit.FunSuite {
     ledger.close()
   }
 
-  test("backup leaves the directory; restore comes back certified; the report over the copy is the books up to the last roll") {
+  test("backup leaves the directory with the newest sales; restore comes back certified; the report over the copy is the books") {
     val root = Files.createTempDirectory("okay-ledger")
     val ledger = Ledger(root, segmentBytes = 4096)
     val ss = sales(600)
@@ -56,26 +56,41 @@ class TestLedger extends munit.FunSuite {
     // here, the same trait S3 implements
     val blob = Fs(Files.createTempDirectory("okay-ledger-offsite"))
     val copied = run(ledger.backup(blob))
-    assert(copied.nonEmpty, "nothing rolled — the fixture's segments are too large")
-    assertEquals(run(ledger.backup(blob)), Vector.empty, "a second backup copies nothing")
+    assert(copied.nonEmpty, "nothing was copied")
+    assertEquals(run(ledger.backup(blob)), Vector.empty, "nothing recorded between runs, yet a second backup copied something")
 
     val fresh = Files.createTempDirectory("okay-ledger-restored")
     val (placed, verdict, restored) = run(Restored(blob, fresh, 4096))
     assertEquals(placed.length, copied.length)
     assert(verdict.restorable, verdict.problems.mkString("; "))
 
-    // the copy holds the books up to the last roll — not the active
-    // segment; that bound is `segmentBytes`, and it is stated, not hidden
-    val back = restored.recorded
+    // THE COPY HOLDS THE BOOKS AS THEY STAND (backup-active-segment):
+    // the segment still being appended to travelled too. Nothing was
+    // being written during the copy, so its tail is whole; a copy
+    // taken mid-write ends mid-frame, which is the crash shape the
+    // Doctor's verdict above already covers
+    assertEquals(restored.recorded, 600L, "the newest sales stayed home")
+    assertEquals(run(restored.report()).value, whole)
+
+    // and the strict road is still there: closed segments only is a
+    // PREFIX of the books, bounded by segmentBytes — what it costs
+    // to refuse copying a live file
+    val strict = Fs(Files.createTempDirectory("okay-ledger-strict"))
+    val strictCopied = run(ledger.backup(strict, active = false))
+    assert(strictCopied.nonEmpty, "nothing rolled — the fixture's segments are too large")
+    assert(strictCopied.length < copied.length, "the strict road copied the live segment too")
+    assertEquals(run(ledger.backup(strict, active = false)), Vector.empty, "a second strict backup copies nothing")
+    val (_, strictVerdict, upToRoll) = run(Restored(strict, Files.createTempDirectory("okay-ledger-strict-restored"), 4096))
+    assert(strictVerdict.restorable, strictVerdict.problems.mkString("; "))
+    val back = upToRoll.recorded
     assert(back > 0L && back < 600L, s"expected a prefix of the books, got $back of 600")
-    val over = run(restored.report()).value
+    val over = run(upToRoll.report()).value
     assertEquals(over, byHand(ss.take(back.toInt)))
-    assertNotEquals(over, whole, "the active segment came back — Backup.copy's contract changed")
-    // and the report over the copy is a PREFIX of the whole: no
-    // day's total is larger in the copy than in the books
+    assertNotEquals(over, whole, "the active segment came back on the strict road")
+    // no day's total is larger in the prefix than in the books
     for l <- over.lines do
       val w = whole.lines.find(x => x.day == l.day && x.item == l.item).getOrElse(fail(s"$l is not in the books"))
       assert(l.cents <= w.cents)
-    ledger.close(); restored.close()
+    ledger.close(); restored.close(); upToRoll.close()
   }
 }
