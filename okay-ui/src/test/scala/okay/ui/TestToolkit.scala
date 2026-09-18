@@ -29,6 +29,31 @@ class TestToolkit extends munit.FunSuite {
 
   def texts(ui: Ui): String = Frame.render(ui).mkString("\n")
 
+  enum Colour:
+    case Red, Green
+  given Schema[Colour] = Schema.derived
+  final case class Paint(what: String, colour: Colour, note: String = "")
+  given Schema[Paint] = Schema.derived
+
+  /**
+   * THE THIRD DOOR of form-blank, found while writing the guide's
+   * sentence "a form starts from `Form.blank`" and checking it was
+   * true. It was true of `Live.form` and of okay-watch's page, and
+   * FALSE here: `ask` and `askWith` started their loop from `{}`, so a
+   * dialog whose Select the user never touched submitted a value with
+   * no case behind the option the screen was showing. `count-the-doors`
+   * — after a fix, grep how many places do the same thing.
+   */
+  test("ask starts from the blank: a Select the user never touched is still what the screen shows") {
+    val host = Scripted(Seq(Event.Edited("what", "wall"), Event.Pressed("$ok")))
+    assertEquals(Dialog.run(host)(Form.ask[Paint]("paint?")).runWith,
+      Some(Some(Paint("wall", Colour.Red))))
+    // the same for the policy road, which has its own loop
+    val host2 = Scripted(Seq(Event.Edited("what", "door"), Event.Pressed("$ok")))
+    assertEquals(Dialog.run(host2)(Form.askWith[Paint]("paint?")(Form.forgiving)).runWith,
+      Some(Some(Paint("door", Colour.Red))))
+  }
+
   test("a nested product: titled section, dotted-path edits, decodes by the codec") {
     val host = Scripted(Seq(
       Event.Edited("name", "ada"),

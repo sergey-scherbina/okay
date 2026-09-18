@@ -589,7 +589,12 @@ object Form {
         case e => loop(edit[A](j, e), Vector.empty)
       }
 
-    loop(Json.JObj(Vector.empty), Vector.empty)
+    // FROM THE BLANK, not from `{}` (form-ask-blank): a `Select` the
+    // user never touches still shows an option, and the value has to
+    // hold what the screen says or `ok` submits a form with no answer
+    // where the screen shows one. The same door `Live.form` and
+    // okay-watch's page had, counted here by writing the guide.
+    loop(blank[A], Vector.empty)
 
   /** an invalid submit, as a CONDITION (ui-direct): the errors and
    * which attempt this is — the policy decides how forgiving the
@@ -665,7 +670,8 @@ object Form {
         case e => loop(edit[A](j, e), Vector.empty, n)
       }
 
-    loop(Json.JObj(Vector.empty), Vector.empty, 1)
+    // the policy road has its own loop, and the same start
+    loop(blank[A], Vector.empty, 1)
 
   /** the same flow over a JSON Schema — what elicitation asks with */
   def askSchema(message: String, schema: Json): Option[Json] ! Dialog =

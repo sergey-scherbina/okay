@@ -1,5 +1,32 @@
 # Changelog
 
+## form-ask-blank — the third door, counted by writing the sentence down
+
+`Form.ask` and `Form.askWith` started their loop from `{}`, so a
+dialog whose `Select` the user never touched submitted a value with no
+answer where the screen was showing one. `form-blank` had fixed this at
+`Live.form`'s door and okay-watch had fixed it at theirs; these two were
+never counted.
+
+FOUND BY WRITING THE GUIDE. The sentence being added was "a form starts
+from `Form.blank[A]`, never from an empty object" — and checking it was
+true before publishing it found the two places where it was not.
+`count-the-doors` says to grep how many places do the same thing after
+a fix; a doc sentence is another way of asking the same question, and
+this time it is the one that worked.
+
+The test was watched failing on both roads first: a `Paint(what,
+colour)` whose `Colour` Select shows `Red`, typed into and submitted
+without touching the Select, came back refused instead of
+`Paint("wall", Red)`.
+
+`askSchema` — the dynamic JSON-Schema road elicitation asks with — is
+NOT affected and stays as it is: `ofSchema` renders an unanswered enum
+with `selectedIndex = -1`, so its screen shows no answer either, and
+the two agree.
+
+TestToolkit gains the case. okay-ui 153, okay-script 207, okay-mcp 54.
+
 ## form-errors-on-validate — the question was wording, the answer was two defects
 
 The backlog entry proposed making `Form.errors` be `Validate.errors`
