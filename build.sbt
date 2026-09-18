@@ -676,7 +676,11 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // test->test borrows okay's ArrowLaws for Mealy's instance, which is
   // the only Arrow in the tree until optics-arrow-instances and
   // static-workflow-proc add theirs (specs/arrows-plan.md, Decision 2:
-  // one law suite, no carrier writes its own)
+  // one law suite, no carrier writes its own). The suite lives in
+  // src/test/scala-cross BECAUSE of this line: src/test/scala is the
+  // JVM's alone, so a shared suite put there compiles for okay-lex's
+  // JVM and leaves its JS and Native tests with no `okay.laws` at all
+  // — measured, as a cyclic-import error, before it was moved.
   .dependsOn(okay % "compile->compile;test->test")
   .settings(
     name := "okay-lex",

@@ -33,7 +33,14 @@ OF TIMES on its two sides. The two that cannot are now asserted
 QUIET, so the claim is exact in both directions.
 
 okay-lex gained `test->test` on okay to see the suite, with the reason
-in a comment beside it in build.sbt.
+in a comment beside it in build.sbt - and the suite lives in
+`src/test/scala-cross`, which the GATE is what established. Written
+into `src/test/scala` it compiled and passed on the JVM and then failed
+okay-lex on JS and Native with `value laws is not a member of okay`:
+that directory is the JVM's alone here (154 sources against 15 cross),
+so a shared test helper put in it is invisible to two platforms out of
+three, and a JVM-only check cannot see it. A helper meant for another
+module's tests is cross until proven otherwise.
 ## form-blank — the value a form starts from, in one place and total
 
 `okay.ui.Form.blank[A]`: every `Check` false, every `Select` on its

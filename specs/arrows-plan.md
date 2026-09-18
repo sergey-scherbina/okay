@@ -268,6 +268,20 @@ each side and the defect cancels. Both quiet laws are now asserted
 QUIET, so the claim is exact in both directions and a future change
 that makes one of them fire will say so.
 
+**THE SUITE HAD TO MOVE, and the gate is what said so.** It was
+written into `src/test/scala`, compiled for the JVM, and passed every
+test — and the full matrix then failed okay-lex on JS AND Native with
+a cyclic-import error whose real message was the one below it:
+`value laws is not a member of okay`. `src/test/scala` is the JVM's
+alone in this build (154 sources there, 15 in `src/test/scala-cross`),
+so a shared test helper put in it is invisible to two of the three
+platforms — and the JVM-only run gives no hint, because the classpath
+IS correct where it was checked. The suite lives in
+`src/test/scala-cross`, and the comment in build.sbt beside the
+`test->test` line says why so the next shared helper does not repeat
+it. Worth stating in general: a helper meant for another module's
+tests is cross until proven otherwise.
+
 **What a later lane does**: `def laws = ArrowLaws(instance, sample,
 observe)` — three lines. The `sample` must not be an `arr`: a carrier
 whose only value is an `arr` satisfies laws a real one can break, and
