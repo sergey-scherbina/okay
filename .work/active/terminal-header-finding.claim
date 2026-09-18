@@ -1,0 +1,6 @@
+feature/terminal-header-finding 2026-09-18T13:36:07Z
+agent: claude-code
+heartbeat: 2026-09-18T13:36:07Z
+status: in-progress
+done-so-far: claimed
+next: record the header-breaks-mid-word finding from okay-watch on a real terminal
