@@ -1,0 +1,6 @@
+okay-wt-gate-watchdog 2026-09-18T10:34:23Z
+agent: claude-code
+heartbeat: 2026-09-18T10:34:23Z
+status: in-progress
+done-so-far: diagnosed the stall from a jcmd dump: ForkTests Acceptor blocked in accept() with no timeout, 165 runner processes on 14 cores, nothing bounds them
+next: a watchdog in gate.sh keyed on SILENCE + ZERO CPU, with a fake-sbt selftest; then measure concurrentRestrictions
