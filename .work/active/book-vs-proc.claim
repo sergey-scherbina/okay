@@ -1,6 +1,0 @@
-feature/book-vs-proc 2026-09-18T12:48:12Z
-agent: claude-code
-heartbeat: 2026-09-18T12:48:12Z
-status: in-progress
-done-so-far: found the book contradicts the landed Proc arc
-next: correct Appendix A and chapter 23, point them at the new page
