@@ -59,10 +59,28 @@ given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] =
   DiagonalMonad[M, R](P)
 
 /**
- * Kleisli composition, is the composition of effectful functions:
+ * KLEISLI COMPOSITION, and the glyph is `>=>` because that is what
+ * the literature calls it (`Control.Monad.>=>`). It was `>>>` until
+ * 2026-09-18 (`arrow-glyphs`), which is the ARROW's glyph in the same
+ * literature, and holding it here cost more than it looked:
+ *
+ *   - it had ZERO call sites. Every `>>>` in the tree was either a
+ *     `Long` bit shift (`Uid`, `Hlc`, `Sketch`) or a local one;
+ *   - TWO test files were hand-rolling their own `>>>` for `Proc`
+ *     because the arrow one could not be written while this held the
+ *     name;
+ *   - and an arrow `>>>` added BESIDE it does not coexist, it
+ *     COLLIDES: `A => M[B]` is also a `P[A, B]`, so the arrow
+ *     extension wins resolution and then fails to typecheck. The
+ *     first cut of `Optic.arrows` had exactly that bug, and
+ *     `TestArrowGlyphs` is where it showed.
+ *
+ * So each keeps the name its own literature gives it: `>=>` composes
+ * effectful functions, `>>>` composes arrows (`Optic.arrows`), and a
+ * plain function IS an arrow, so `f >>> g` works on one too.
  */
 extension [M[_] : Monad, A, B](f: A => M[B])
-  def >>>[C](g: B => M[C]): A => M[C] = f(_).flatMap(g)
+  infix def >=>[C](g: B => M[C]): A => M[C] = f(_).flatMap(g)
 
 /**
  * Natural transformation

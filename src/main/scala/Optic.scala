@@ -105,9 +105,94 @@ object Optic {
     def fanout[A, B, C](f: P[A, B], g: P[A, C]): P[A, (B, C)] =
       compose(split(f, g), arr((a: A) => (a, a)))
 
+  /**
+   * THE LITERATURE'S GLYPHS, BEHIND AN IMPORT (`import
+   * okay.Optic.arrows.*`) — Hughes (2000) and `Control.Arrow` spell
+   * these the same way in every language that has arrows, and a
+   * reader who knows them should not have to learn `A.fanout(f, g)`.
+   *
+   * WHY AN IMPORT AND NOT THE DEFAULT SCOPE, which is the whole
+   * design decision here. These are extension methods on a bare
+   * `P[A, B]` — that is every two-parameter type in the library, and
+   * `universal-extension-apply-breaks-features` is what happens when
+   * a universal extension goes into package scope (`import okay.*`
+   * disabled named tuples for everyone). Behind a named import they
+   * reach only the file that asked.
+   *
+   * `>>>` IS HERE, AND TAKING IT COST A RENAME ELSEWHERE — which is
+   * the lane's real finding. `Monad.scala` held `>>>` for KLEISLI
+   * composition, and an arrow `>>>` does not sit beside that one, it
+   * COLLIDES: an effectful function `Int => Option[Int]` is also a
+   * `P[A, B]` with `B = Option[Int]`, so the arrow extension wins
+   * resolution and then cannot typecheck. The first cut of this
+   * object had that bug and `TestArrowGlyphs` is where it showed.
+   *
+   * The fix was not to give up the glyph but to give each one the
+   * name its own literature uses: `Control.Arrow.>>>` composes
+   * arrows, `Control.Monad.>=>` composes Kleisli arrows. Monad.scala
+   * is `>=>` now. THAT RENAME WAS FREE — the Kleisli `>>>` had ZERO
+   * call sites (every `>>>` in the tree was a `Long` bit shift or a
+   * local definition), and it was BLOCKING: two test files were
+   * hand-rolling their own `>>>` for `Proc` because this name was
+   * taken. Both now use this one.
+   *
+   * NO GLYPH FOR OPTIC COMPOSITION, deliberately. `andThen` is the
+   * composition and a `>>>` beside it would be a second spelling of
+   * one idea, which specs/unwrap-glyph.md refuses by name: one glyph,
+   * one meaning. An optic is not an `Arrow` instance either — it is a
+   * natural transformation between Tambara modules (theory ch. 10) —
+   * so the glyphs below would be a pun rather than an alias.
+   */
+  object arrows:
+    extension [P[_, _], A, B](p: P[A, B])
+      /** left to right: `p` then `q` (`Control.Arrow.>>>`). A plain
+       * function is an arrow, so this composes those too — and for
+       * effectful functions the glyph is `>=>` (Monad.scala), which
+       * is a different composition and says so by its name. */
+      infix def >>>[C](q: P[B, C])(using A: Arrow[P]): P[A, C] = A.compose(q, p)
+      /** right to left, the literature's `<<<` */
+      infix def <<<[Z](q: P[Z, A])(using A: Arrow[P]): P[Z, B] = A.compose(p, q)
+      /** a pair, each half through its own arrow (`split`) */
+      infix def ***[C, D](q: P[C, D])(using A: Arrow[P]): P[(A, C), (B, D)] = A.split(p, q)
+      /** one input, both arrows, both answers (`fanout`) */
+      infix def &&&[C](q: P[A, C])(using A: Arrow[P]): P[A, (B, C)] = A.fanout(p, q)
+
+      /**
+       * a sum, each side through its own arrow — `left(p)` then
+       * `right(q)`, which is the literature's definition verbatim now
+       * that `Choice.left` exists.
+       */
+      infix def +++[X, Y](q: P[X, Y])(using A: Arrow[P], C: Choice[P]): P[Either[A, X], Either[B, Y]] =
+        A.compose(C.right[X, Y, B](q), C.left[A, B, X](p))
+
+      /** a sum, both sides to one answer (`fanin`) */
+      infix def |||[X](q: P[X, B])(using A: Arrow[P], C: Choice[P]): P[Either[A, X], B] =
+        A.compose(A.arr((e: Either[B, B]) => e.merge), p +++ q)
+
   /** a prism's requirement; `prism` derived from `right`, overridable likewise */
   trait Choice[P[_, _]] extends Profunctor[P]:
     def right[A, B, C](p: P[A, B]): P[Either[C, A], Either[C, B]]
+
+    /**
+     * THE MIRROR OF `right`, derived by swapping and overridable —
+     * the same shape `Strong` gives `second`, and it was missing
+     * until 2026-09-18 (`arrow-glyphs`, the operator asking where
+     * `left` was).
+     *
+     * THE LITERATURE HAS IT THE OTHER WAY ROUND, and the asymmetry is
+     * worth one sentence rather than a shrug. Hughes' `ArrowChoice`
+     * takes `left` as the primitive and derives `right`; this library
+     * takes `right`, because a PRISM is what `Choice` is here for and
+     * a prism's requirement is `right` (see `prism` below). The two
+     * are interderivable by swapping the sum, which is exactly what
+     * this does — so a reader coming from `Control.Arrow` finds the
+     * name they expect, and an interpretation that has a direct road
+     * to it may override.
+     */
+    def left[A, B, C](p: P[A, B]): P[Either[A, C], Either[B, C]] =
+      val swapAC: Either[A, C] => Either[C, A] = _.fold(Right(_), Left(_))
+      val swapCB: Either[C, B] => Either[B, C] = _.fold(Right(_), Left(_))
+      dimap(right[A, B, C](p))(swapAC, swapCB)
     def prism[S, T, A, B](preview: S => Either[T, A], review: B => T)(p: P[A, B]): P[S, T] =
       dimap(right[A, B, T](p))(preview, (e: Either[T, B]) => e.fold(identity, review))
 

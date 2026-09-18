@@ -5,6 +5,7 @@ import okay.{!, +, Delim, Optic, Proc, Pure, Wf}
 import okay.codec.Schema
 import okay.Direct.*
 import scala.language.implicitConversions
+import okay.Optic.arrows.*
 
 /**
  * A STATIC SPINE ON THE LANDED ENGINE (specs/static-workflow.md
@@ -25,9 +26,9 @@ class TestWorkflowProc extends FunSuite {
   val A: Optic.Arrow[[X, Y] =>> Proc[Sig, X, Y]] & Optic.Choice[[X, Y] =>> Proc[Sig, X, Y]] =
     Proc.procArrow[Sig]
 
-  extension [X, Y](p: Wf.Proc[String, String, X, Y])
-    def >>>[Z](q: Wf.Proc[String, String, Y, Z]): Wf.Proc[String, String, X, Z] =
-      A.compose(q, p)
+  // the local `>>>` that stood here is gone: `Optic.arrows` composes
+  // any `Arrow`, and `Proc` is one (arrow-glyphs, 2026-09-18). It only
+  // existed because `Monad.scala` held the name for Kleisli.
 
   def keep[X, Y](p: Wf.Proc[String, String, X, Y]): Wf.Proc[String, String, X, (X, Y)] =
     A.arr((x: X) => (x, x)) >>> A.second(p)

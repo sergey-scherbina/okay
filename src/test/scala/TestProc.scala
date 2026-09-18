@@ -2,6 +2,7 @@ import okay.*
 import okay.Direct.*
 import okay.laws.{ArrowLaws, ArrowLawsSuite}
 import scala.language.implicitConversions
+import okay.Optic.arrows.*
 
 /**
  * A SIGNATURE WITH A STATE BEHIND IT, so the laws have an effect to
@@ -63,9 +64,9 @@ class TestProc extends munit.FunSuite:
   val A: Optic.Arrow[[X, Y] =>> Proc[Sig, X, Y]] & Optic.Choice[[X, Y] =>> Proc[Sig, X, Y]] =
     Proc.procArrow[Sig]
 
-  extension [X, Y](p: Wf.Proc[String, String, X, Y])
-    def >>>[Z](q: Wf.Proc[String, String, Y, Z]): Wf.Proc[String, String, X, Z] =
-      A.compose(q, p)
+  // the local `>>>` that stood here is gone: `Optic.arrows` composes
+  // any `Arrow`, and `Proc` is one (arrow-glyphs, 2026-09-18). It only
+  // existed because `Monad.scala` held the name for Kleisli.
 
   /** run a step and KEEP what went in: the arrow's answer to a local
    * variable, and the price `proc-notation` exists to remove */
