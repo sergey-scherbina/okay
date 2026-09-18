@@ -1,0 +1,6 @@
+okay-wt-cont-category 2026-09-18T18:04:33Z
+agent: claude-code
+heartbeat: 2026-09-18T18:04:33Z
+status: in-probe
+done-so-far: Zooming is Strong (landed); Choice refuted by parametricity. Hypothesis: Category fails for the SAME reason (id needs an X from nowhere), which would unify the two refusals
+next: try to write Category[Zooming] and see what the compiler and the types say
