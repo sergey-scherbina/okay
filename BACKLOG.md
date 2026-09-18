@@ -1425,7 +1425,31 @@ optics; `PState.zoom` is the lens-meets-continuation seam; `Arrow` has
 one instance, `Mealy`), and leaves these. Each is one lane with one
 test; none is promoted until its spec item is read first.
 
-- [ ] gate-bound-test-fanout — THE OTHER HALF OF THE 57-MINUTE STALL
+- [x] gate-bound-test-fanout — DONE 2026-09-18, one line and a
+      measurement: `ThisBuild / Test / parallelExecution := false`.
+      MEASURED rather than guessed: `show concurrentRestrictions` says
+      `Limit all to 14` (TASKS) and `Limit forked-test-group to 1`,
+      but `Test / parallelExecution` was TRUE on all three platforms —
+      and on JS/Native a test CLASS is an OS PROCESS. One task fans
+      out into all of its classes; 14 x ~10 is the 145-165 both dumps
+      caught.
+      THE PROOF IS THE CONDITION, not the clock: the same `affected
+      master` scope that STALLED TWICE (module 77, then 78) ran to
+      completion — 92 modules, 303 s — while a sibling's unbounded
+      gate held 152 node processes at load 76. Peak children 104.
+      NOT CLAIMED: 104 is not the ~14 one-task-per-core predicts, and
+      the remainder is unmeasured (`gate-fanout-what-is-left`); and
+      303 s is not comparable to the 179 s baseline, which was a quiet
+      box. Only failure: `hedge-start-timing-flake`, 4th sighting,
+      3 of 3 green alone.
+- [ ] gate-fanout-what-is-left — the bound took the peak from 165 to
+      104, not to the ~14 one task per core would predict. What the
+      rest IS, is unmeasured: link steps, the gtk test, whatever else
+      spawns beside the runners. Sample the tree BY COMMAND during one
+      quiet full gate and name what makes up the 104. Key the sampler
+      on the descendants of ONE pid — the first cut matched `^node$`
+      and reported a peak that was mostly a sibling's build.
+- [ ] gate-bound-test-fanout (superseded; kept for its measurement) — THE OTHER HALF OF THE 57-MINUTE STALL
       (gate-watchdog, 2026-09-18). The watchdog now catches a hung
       gate; nothing yet stops it happening. MEASURED at the stall: 165
       test-runner processes alive at once — 100 `node` (Scala.js) and
@@ -2545,6 +2569,13 @@ one that type-checked, which is a shape worth removing.
       THIRD SIGHTING 2026-09-17, workflow-suspended-driver's gate —
       same test, same message, another lane that cannot have caused
       it (okay core and okay-persist).
+      FOURTH SIGHTING 2026-09-18, gate-bound-test-fanout's gate — same
+      test, same message, and the lane changes ONE LINE of build.sbt
+      and nothing else. Box at load 76 under a sibling's gate; 3 of 3
+      green in isolation on the same tree minutes later. Four lanes,
+      none of which can have caused it, is the whole argument: the
+      assertion is about the scheduler, not about hedging. Option (a)
+      above is the one to take.
       ONE THEORY TESTED AND NOT CONFIRMED, recorded so nobody spends
       the same hour twice: the suite's `until` helper waits by
       spinning on `Thread.yield()` for up to five seconds, and a

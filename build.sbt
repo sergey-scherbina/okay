@@ -133,6 +133,34 @@ ThisBuild / versionScheme := Some("early-semver")
  * runs and is still read.
  */
 ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "--exclude-tags=Live")
+
+/**
+ * ONE TEST PROCESS PER MODULE AT A TIME (gate-bound-test-fanout,
+ * 2026-09-18). On JS and Native a test CLASS is an OS PROCESS — a
+ * `node` for Scala.js, a linked binary for Native — and with
+ * `parallelExecution` on, one module's task starts all of its classes
+ * at once. sbt caps concurrent TASKS at the core count (measured
+ * here: `Limit all to 14`), so the ceiling was 14 modules times their
+ * classes, and two dumps caught it: 100 node + 65 Native on a 14-core
+ * box, and 88 + 57 an hour later, every one of them at 0.0% CPU while
+ * sbt waited for tasks that never finished. The gate hung for 57
+ * minutes and then again for 18.
+ *
+ * The bound is per MODULE, not global, so the 14 modules still run at
+ * once — what stops is a single module fanning out inside its own
+ * task. It applies to the JVM too, where a "class" is a thread rather
+ * than a process and the cost is different; that it is one line
+ * instead of forty is the reason, and the measurement below is what
+ * pays for it.
+ *
+ * MEASURED, same worktree, same `affected master` scope, quiet box:
+ * the run that STALLED TWICE at module 77 and 78 finishes, and the
+ * numbers are in CHANGELOG `gate-bound-test-fanout`. Re-measure before
+ * changing this: a gate that is fast because it is unbounded is a
+ * gate that hangs when a sibling is building too, which is most of
+ * the day here.
+ */
+ThisBuild / Test / parallelExecution := false
 addCommandAlias("integrationTest",
   "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test")
 

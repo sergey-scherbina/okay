@@ -1,5 +1,50 @@
 # Changelog
 
+## gate-bound-test-fanout - one line, and the gate stops hanging
+
+The watchdog that landed beside this catches a hung gate. This stops
+it happening, and it is one line: `ThisBuild / Test /
+parallelExecution := false`.
+
+MEASURED FIRST, because the knob had never been looked at. `show
+concurrentRestrictions` answers `Limit all to 14` - sbt does bound
+concurrent TASKS to the core count - and `Limit forked-test-group to
+1`. What nothing bounded was the fan-out INSIDE a task:
+`Test / parallelExecution` was true on all three platforms, and on JS
+and Native a test CLASS is an operating-system PROCESS, a `node` or a
+linked binary. Fourteen tasks times their classes is the 145-165 both
+stall dumps caught, on a 14-core box.
+
+THE PROOF IS THE CONDITION, NOT THE CLOCK. The same `affected master`
+scope that stalled twice - at module 77, then at 78 - ran to
+completion: 92 modules, 303 s, while a sibling's unbounded gate held
+152 node processes and the box sat at load average 76. Peak children
+104 against 165.
+
+TWO THINGS THIS DOES NOT CLAIM. 104 is not the ~14 that one task per
+core would predict; that prediction was wrong, the remainder is
+unmeasured, and `gate-fanout-what-is-left` holds the question with the
+method attached. And 303 s is not comparable to the 179 s baseline,
+which was measured on a quiet box - a timing claim needs both sides in
+one minute, and these are not.
+
+The run's only failure was `hedge-start-timing-flake`, the fourth
+sighting of a wall-clock assertion on a shared box, from a fourth lane
+that cannot have caused it: this one changes one line of build.sbt.
+3 of 3 green in isolation. That entry has said since the third
+sighting that the owner's choice is overdue.
+
+A MEASUREMENT MISTAKE WORTH RECORDING, because it happened three times
+in one afternoon and never once touched the subject under test: the
+peak-runner sampler matched `^node$` and counted a sibling's 152
+processes as mine; a `pkill -f` aimed at that sampler matched the text
+of my own background command and killed the measurement's wrapper (the
+gate itself survived, reparented to init); and a liveness check
+grepped for a worktree path in a command line that never carries one.
+Three instruments wrong, the fix under test fine each time.
+
+Gate: affected master.
+
 ## gate-watchdog - a gate that hangs now says so, with the dump beside it
 
 A gate sat **57 minutes** with its log frozen mid-sentence and was
