@@ -1,0 +1,6 @@
+feature/proc-notation-forms 2026-09-18T11:19:34Z
+agent: claude-code
+heartbeat: 2026-09-18T11:19:34Z
+status: in-progress
+done-so-far: probed — all three type arguments are inferable from an expected type
+next: pin the spellings as tests, document them
