@@ -1,0 +1,6 @@
+feature/arrow-laws 2026-09-18T09:04:32Z
+agent: claude-code
+heartbeat: 2026-09-18T09:04:32Z
+status: in-progress
+done-so-far: claimed
+next: okay.laws.ArrowLaws generic suite, TestMealy instantiates it
