@@ -1,5 +1,35 @@
 # Changelog
 
+## apdo-forms - the plainest spelling of an applicative direct block
+
+The operator asked whether `direct[F]`'s type argument and the
+`.reflect` marks are required. Neither is, and neither is a type
+alias:
+
+    val form: Validated[Seq[String], Form] = direct:
+      val name = nonEmpty(raw.name)
+      val age  = inRange(raw.age)
+      Form(name, age)
+
+The carrier comes from the expected type, which the macro could
+already do. A mark is one of three ways to say "this is an effect": a
+type annotation on the val is the second, and NOTHING AT ALL is the
+third - a colourless val, whose inferred type is a program of the
+carrier. The monadic road has bound those since direct-colourless-val;
+the applicative road refused them, which was an inconsistency of the
+applicative-do lane and not a limit of the language. All three
+spellings now mix in one block.
+
+ONE BUG CAME OUT OF THE PLAINEST FORM, and only a run finds this kind.
+`a * 10 + a` failed with "a reference to value a was used outside the
+scope where it was defined". Auto-colouring wraps the USE of a name,
+so the result-hoisting step took each use for a leaf of its own and
+lifted a reference to `a` out of the scope that binds it. A coloured
+use of a name the block itself binds is now skipped, because the
+curried lambda binds it already.
+
+Nine tests pin the spellings, including the mixed block and the
+coloured-use case.
 ## script-import-output — an import line is not content
 
 specs/site-framework.md. Serving the storefront fixture through a
