@@ -1,6 +1,0 @@
-feature/static-workflow-strands 2026-09-18T12:53:07Z
-agent: claude-code
-heartbeat: 2026-09-18T12:53:07Z
-status: in-progress
-done-so-far: claimed
-next: Proc.strands + the exhaustive cut; then stages 3 and 4
