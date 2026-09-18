@@ -220,6 +220,7 @@ final class Site(
   def close(): Unit =
     pages.values.forEach(_.close())
     pages.clear()
+    loader.close()
 
   // ---- warm and stats (okay-script-warm)
 
@@ -315,6 +316,11 @@ final class Site(
     segments(path).flatMap { segs =>
       val trailingSlash = path.endsWith("/") || segs.isEmpty
       literal(segs, trailingSlash).orElse(parametric(segs))
+    }.filter {
+      // a library says `route: false` and answers no URL, while every
+      // page that imports it still renders (specs/site-framework.md)
+      case Hit.PageFile(f, _) => Modules.routed(Files.readString(f))
+      case _ => true
     }
 
   private def segments(path: String): Option[Vector[String]] =
@@ -386,8 +392,12 @@ final class Site(
 
   // ---- serving a page
 
+  /** the site's ONE module loader: a module imported by three pages
+   * is compiled once (specs/site-framework.md stage 1) */
+  private val loader = Modules.Loader(root, classpath, tempRoot)
+
   private def pageFor(f: Path): Page =
-    pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot))
+    pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot, Some(loader)))
 
 
   /** a page's front-matter; a language VARIANT inherits its base

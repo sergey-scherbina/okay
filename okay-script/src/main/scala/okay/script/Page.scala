@@ -13,8 +13,15 @@ import java.nio.file.attribute.FileTime
  * `Site` maps a directory of these to URLs and serves them over
  * okay-http/okay-jetty -- see "Site — the container".
  */
-final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot: Path = ScalaScript.defaultTempRoot):
-  private var cached: Option[(FileTime, Either[Result, Compiled])] = None
+final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot: Path = ScalaScript.defaultTempRoot,
+                 /** the site's module loader, when this page belongs to
+                  * one (specs/site-framework.md stage 1): it builds what
+                  * the page imports and says how fresh that is */
+                 modules: Option[Modules.Loader] = None):
+  // the module STAMP rides in the key beside the file's own mtime: a
+  // page whose module changed is as stale as one whose own text did,
+  // and nothing else can tell the two apart
+  private var cached: Option[((FileTime, Long), Either[Result, Compiled])] = None
 
   /** Compiles on the FIRST call, or whenever `path`'s mtime has
    * changed since the last compile; otherwise re-invokes the
@@ -34,13 +41,19 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot:
 
   private def compiled(): Either[Result, Compiled] = synchronized:
     val mtime = Files.getLastModifiedTime(path)
+    val markdown = Files.readString(path)
+    val prepared = modules match
+      case None => Right(Modules.Prepared.none)
+      case Some(l) => l.prepare(path, markdown)
+    val stamp = prepared.fold(_ => -1L, _.stamp)
     cached match
-      case Some((t, c)) if t == mtime => c
+      case Some((key, c)) if key == (mtime, stamp) => c
       case _ =>
         cached.foreach { case (_, Right(c)) => c.close(); case _ => () }
-        val markdown = Files.readString(path)
-        val c = ScalaScript.compileRender(markdown, classpath, tempRoot)
-        cached = Some(mtime -> c)
+        val c = prepared.flatMap { p =>
+          ScalaScript.compileRender(markdown, classpath ++ p.classpath.entries, tempRoot, p.prelude)
+        }
+        cached = Some((mtime, stamp) -> c)
         c
 
   /** Compiles the page WITHOUT invoking it, answering its compile

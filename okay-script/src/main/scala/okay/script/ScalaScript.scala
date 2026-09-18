@@ -498,7 +498,25 @@ object ScalaScript:
    * repeatedly without recompiling -- the primitive `Page` (hot-reload)
    * is built on. See specs/okay-script.md "Hot-reload".
    */
-  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot): Either[Result, Compiled] =
+  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot,
+                    /** the `import` lines a page's modules put above it
+                     * (specs/site-framework.md stage 1); empty for a page
+                     * that imports nothing */
+                    prelude: Vector[String] = Vector.empty): Either[Result, Compiled] =
+    compileAs(markdown, "OkayScriptMain", None, classpath, tempRoot, prelude).map(_._1)
+
+  /** a MODULE: the same page, compiled under its own name in its own
+   * package, so an importing page can `import` its members. The pair
+   * is the handle and the output directory that must go on the
+   * importer's classpath. */
+  private[script] def compileModule(markdown: String, objectName: String, pkg: String,
+                                    classpath: Classpath, tempRoot: Path,
+                                    prelude: Vector[String]): Either[Result, (Compiled, Path)] =
+    compileAs(markdown, objectName, Some(pkg), classpath, tempRoot, prelude)
+
+  private def compileAs(markdown: String, objectName: String, pkg: Option[String],
+                        classpath: Classpath, tempRoot: Path,
+                        prelude: Vector[String]): Either[Result, (Compiled, Path)] =
     resolvedClasspath(markdown, classpath).flatMap: cp =>
       val doc = Meta.parse(markdown)
       val toks = tokenize(markdown)
@@ -509,7 +527,7 @@ object ScalaScript:
         case (Segment.Code(code, startLine), path) => (path, code, startLine, false)
         case (Segment.Declare(_, _), path) => (path, "", -1, true) // object-level, see `declares`
       }
-      compileOnly(withMeta(doc, items, declares(toks)), cp, tempRoot)
+      compileOnly(withMeta(doc, items, declares(toks)), cp, tempRoot, objectName, pkg, prelude)
 
   /** mdoc-style: runs the whole document once via `run`, then checks
    * every ` ```stdout ` fence's (trimmed) content appears as an
@@ -546,7 +564,7 @@ object ScalaScript:
         Right(classpath ++ extra)
 
   private def compileAndRun(synth: Synth, classpath: Classpath, tempRoot: Path): Result =
-    compileOnly(synth, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
+    compileOnly(synth, classpath, tempRoot).fold(identity, (c, _) => try c.invoke() finally c.close())
 
   /** The script's classloader: isolated from the host (platform-only
    * parent, okay-script-classloader-isolation) for everything EXCEPT
@@ -604,7 +622,9 @@ object ScalaScript:
    * anything: the returned `Compiled` owns both (its `close()` deletes
    * the temp dir this creates).
    */
-  private def compileOnly(synth: Synth, classpath: Classpath, tempRoot: Path): Either[Result, Compiled] =
+  private def compileOnly(synth: Synth, classpath: Classpath, tempRoot: Path,
+                          objectName: String = "OkayScriptMain", pkg: Option[String] = None,
+                          prelude: Vector[String] = Vector.empty): Either[Result, (Compiled, Path)] =
     // `synth`'s parts are already at their FINAL depth (withMeta
     // indents per physical line, once) -- do NOT re-indent here by
     // prefixing every physical line: the body can contain a Text
@@ -620,16 +640,22 @@ object ScalaScript:
     // since okay-script-site: the request reaches a page through the
     // shared `okay.script.api` package, not through an encoding.
     val declLines = synth.decls.linesWithSeparators.toVector
-    val wrapped = "object OkayScriptMain:\n" + synth.decls + "  def run(args: Array[String]): Unit =\n" + synth.body
+    // the header: a package (a module has one, a page does not), the
+    // module imports, and the object. Every one of these lines has no
+    // original counterpart, so each adds a -1 to the line map -- an
+    // error in a page must still report the page's own line.
+    val header = pkg.map(p => s"package $p").toVector ++ prelude
+    val wrapped = header.map(_ + "\n").mkString +
+      s"object $objectName:\n" + synth.decls + "  def run(args: Array[String]): Unit =\n" + synth.body
     // one entry per PHYSICAL line of `wrapped`, aligned with dotc's
     // own 0-based line() -- the two header lines have no original
     // counterpart (-1); the declare and body maps (built alongside
     // their text in `withMeta`) supply the rest, entry for entry.
     assert(declLines.length == synth.declLines.length, "declare line map out of step with its text")
-    val fullLineMap = (-1 +: synth.declLines) ++ (-1 +: synth.bodyLines)
+    val fullLineMap = (header.map(_ => -1) ++ (-1 +: synth.declLines)) ++ (-1 +: synth.bodyLines)
 
     val dir = Files.createTempDirectory(tempRoot, "okay-script-")
-    val srcFile = dir.resolve("OkayScriptMain.scala")
+    val srcFile = dir.resolve(objectName + ".scala")
     Files.writeString(srcFile, wrapped)
     val outDir = Files.createDirectory(dir.resolve("out"))
 
@@ -662,7 +688,7 @@ object ScalaScript:
       // its own compiled classes, its own Classpath, and the JDK.
       val loaderUrls = (outDir +: classpath.entries).map(_.toUri.toURL).toArray
       val loader = new ScriptClassLoader(loaderUrls, getClass.getClassLoader)
-      val cls = loader.loadClass("OkayScriptMain")
+      val cls = loader.loadClass(pkg.fold(objectName)(p => s"$p.$objectName"))
       val method = cls.getMethod("run", classOf[Array[String]])
 
       // okay-script-page (2026-09-03) found that host-side
@@ -674,7 +700,7 @@ object ScalaScript:
       // ScriptClassLoader), so the script's `println` IS the host's
       // `Console` -- and `Capture.capturing` scopes it per thread with
       // plain `Console.withOut`, no reflection, concurrent-safe.
-      Right(new Compiled:
+      Right((new Compiled:
         def invoke(): Result =
           val (thrown, out) = Capture.capturing[Option[Throwable]] {
             try
@@ -690,7 +716,7 @@ object ScalaScript:
 
         def close(): Unit =
           loader.close()
-          deleteRecursively(dir))
+          deleteRecursively(dir), outDir))
 
   /** `lineMap` maps a 0-based synthetic-source line (dotc's own
    * `SourcePosition.line()` convention, confirmed empirically -- see

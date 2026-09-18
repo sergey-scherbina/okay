@@ -106,22 +106,22 @@ def money(cents: Long): String = ...
 
 ### Behavior
 
-- [ ] a page imports a `def` from another page and calls it in a
+- [x] a page imports a `def` from another page and calls it in a
       `${}` marker, in a body block and in its own declare block
-- [ ] the import is by NAME: an exported name not asked for is not in
+- [x] the import is by NAME: an exported name not asked for is not in
       scope, and asking for a name the module does not export is a
       compile error naming the module and the name
-- [ ] a relative target resolves against the importing page's
+- [x] a relative target resolves against the importing page's
       directory; a leading `/` resolves from the site root
-- [ ] a module imports a module: the chain compiles in dependency
+- [x] a module imports a module: the chain compiles in dependency
       order, and a diamond compiles the shared module ONCE
-- [ ] a cycle is refused with a message naming the ring, not a stack
+- [x] a cycle is refused with a message naming the ring, not a stack
       overflow
-- [ ] `route: false` makes a module unroutable: a GET of its path is
+- [x] `route: false` makes a module unroutable: a GET of its path is
       a 404 while an importing page still renders
-- [ ] editing a module re-renders the pages that import it (the
+- [x] editing a module re-renders the pages that import it (the
       dependents are invalidated, not just the file that changed)
-- [ ] a module's compile ERROR is reported against the MODULE's own
+- [x] a module's compile ERROR is reported against the MODULE's own
       file and line, while the importing page says which import
       failed
 
@@ -147,4 +147,26 @@ def money(cents: Long): String = ...
 
 ## Results
 
-(stage 0 is this document)
+Stage 1 LANDED 2026-09-18. `Modules.scala` (200 lines) parses the
+front matter and the import links, resolves targets, orders the
+graph and compiles each module once; `ScalaScript.compileAs` gained
+the three parameters a module needs (its object name, its package,
+the import lines above it) and `compileRender`/`compileModule` are
+its two callers. `Page` keys its cache on `(mtime, module stamp)`,
+which is how editing a module re-renders its importers without a
+dependents map. `Site` owns one `Loader` and refuses to route a
+`route: false` page. TestModules, 8; the okay-script suite passes
+unchanged.
+
+Two things the tests found, both the kind a green first run would
+have hidden:
+
+- **A module's classpath must be TRANSITIVE.** An importer that
+  carried only the modules it names compiles — and then fails at run
+  time with `NoClassDefFoundError`, because a module's class
+  references the classes of the modules IT imports. The diamond test
+  is what caught it, one level deeper than the obvious case.
+- **An unexported name is caught HERE, not by the compiler.** Asking
+  for a name the module does not export says which file exports what,
+  where dotty would have said only "value secret is not a member of
+  M_lib_money_md_f99ca5cf" — a name no author wrote.
