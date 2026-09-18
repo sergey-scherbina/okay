@@ -1,6 +1,0 @@
-okay-wt-arrows-guide 2026-09-18T17:45:02Z
-agent: claude-code
-heartbeat: 2026-09-18T17:45:02Z
-status: in-progress
-done-so-far: operator asked for a tutorial with examples on arrows+optics+glyphs+direct/non-direct+streams
-next: TestArrowsGuide first, then docs/arrows.md written from what it runs
