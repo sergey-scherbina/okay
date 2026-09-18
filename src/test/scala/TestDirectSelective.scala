@@ -1,6 +1,10 @@
 package okay
 
 import okay.Direct.{*, given}
+// the auto-coloured `if` below goes through `selfColor`, an implicit
+// CONVERSION, so the file needs the language import — see the note in
+// TestDirectApplicative.scala
+import scala.language.implicitConversions
 
 /**
  * An `if` whose CONDITION is an effect, in a direct block at a

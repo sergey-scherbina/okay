@@ -993,25 +993,6 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       cost question is `optics-field-fuse` (the planner cannot read
       the by-name constructor, so it pays the interpreter today).
 
-- [ ] jetty-peer-address-flake — `okay.jetty.TestPeerAddress` failed
-      under a FULL matrix on 2026-09-18 ("the server saw no peer
-      address") and passed alone, immediately, on the same tree; the
-      lane it failed under (proc-auto-colour) touches only the core's
-      Proc macro and has no dependency path to okay-jetty at all.
-      WHY IT IS FILED RATHER THAN SHRUGGED AT: the suite BINDS A REAL
-      PORT (`Jetty.serve(0)`) and is not `Live`-tagged, which is
-      exactly the class AGENTS.md's nio-port-scope survey put behind
-      `integrationTest` — "anything whose result depends on something
-      `sbt test` cannot control", and a bind plus a loopback connect
-      under a full matrix is that. The survey that tagged the others
-      greps `\.(serve|listen)\(0\)|ServerSocketChannel\.open|new
-      ServerSocket` over the test tree; this one either postdates it
-      or was missed, and the same grep should be re-run for siblings.
-      DONE-WHEN: the suite is tagged (or its race is found and fixed —
-      the assertion reads an AtomicReference the handler sets, so a
-      missing bind is likelier than a missing write), and whichever it
-      is, the reason is written where the tag is.
-
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
       closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
       binary's connection ends and it exits 0 while sbt still has a
@@ -1638,66 +1619,6 @@ test; none is promoted until its spec item is read first.
       field traffic). Linked from docs/README.md and guide.md §10.
       It also found `optic-law-rewrites` unfiled, above. The entry as
       written: `docs/guide.md` does not mention `Lens`, `Prism` or
-- [ ] direct-applicative-feature-warnings — `TestDirectApplicative.scala`
-      raises 9 FEATURE warnings (`Use of implicit conversion given
-      instance selfColor in object Direct`), found 2026-09-18 while
-      hunting under `-feature` for the arrow-laws lane. They are
-      invisible by default, which is why they have ridden through
-      every green gate: AGENTS.md's "no warnings, ever" says to hunt
-      with `-feature -deprecation` precisely for this. The fix is the
-      per-file `import scala.language.implicitConversions` that the
-      memory note `direct-given-import-needed` records as the standing
-      answer since the operator removed the build flag. Not mine to
-      change (applicative-do's file, landed the same day); one line,
-      and a `-feature` compile of okayJVM's test scope is the check.
-
-- [ ] proc-notation-for-loops — a `for`/`foreach` over a collection
-      inside a `Proc.direct` block (filed 2026-09-18 when
-      proc-notation-branches landed `while` → `Iter`). The body is a
-      LAMBDA, which is the corner `direct`'s v1 refuses as well, so
-      both macros would need the same whitelisted-combinator treatment
-      direct-loops gave the monadic road: intercept
-      `xs.foreach(x => body)` and `xs.map(x => body)` by shape and
-      compile them to `Iter` over the remaining elements, carried on
-      the edge. TRIGGER: a consumer writes a `while` over a counter
-      where a `for` over a collection is what they meant, and says so.
-      The refusal already names `while` as the spelling that works, so
-      nobody is stuck — this is ergonomics, not capability.
-- [ ] proc-notation-while-question — a question in a `while`
-      CONDITION (filed 2026-09-18 with the loop). The test would ask
-      once per round INSIDE the loop, which `Iter` can express: the
-      condition's leaves go inside the body before the test, and the
-      environment that goes round must be rebuilt past them. Refused
-      by name meanwhile. TRIGGER: a workflow that polls — "while the
-      payment has not cleared, wait a day" — which is the shape this
-      is actually for.
-- [ ] proc-notation-liveness — a `Proc.direct` block carries EVERY
-      bound name to the end of the block, as a left-nested tuple
-      (filed 2026-09-18 with v1). A liveness pass would drop a name
-      after its last use, so a block binding ten names of which the
-      result uses one would carry one. NOT DONE and not obviously
-      worth it: the cost is tuple allocation between leaves that are
-      outside calls, and the benefit is unmeasured. TRIGGER: a term
-      whose environment is measured to cost anything beside its
-      leaves, or a block long enough that the tuple depth shows up in
-      a profile. Measure before building — the entry exists so the
-      shape is known, not so somebody optimises on faith.
-
-- [ ] optics-indexed-fourth-seat — the indexed-optics trigger, part
-      met (2026-09-18, by static-workflow-proc). Stage 12's re-check
-      asked for "a fourth path-carrying walk, or two of the three
-      wanting one walk"; the fourth now exists and is `Proc.nodes`
-      (Proc.scala), which hands every node of a term its `Path` and
-      which `leaves` and `render` are each one line over. What it does
-      NOT give is the second half of the trigger: `Wf.Proc.walk` was
-      tried as the same fold and is structurally not one (it threads a
-      value and a journal and exits early — an interpreter over two
-      inputs), so the seats are still four separate walks with no
-      shared abstraction and none of them handed to a second
-      interpreter. Decide here whether four is the number that earns
-      the family, or whether the criterion (one declaration, more than
-      one interpreter, one of them DESCRIBES) is still unmet.
-
 - [ ] optics-guide-page — the convenience item, and the first to
       pick: `docs/guide.md` does not mention `Lens`, `Prism` or
       `Traversal`; tutorial §23 and theory ch. 10 are all the prose.

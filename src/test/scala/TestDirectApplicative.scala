@@ -1,6 +1,14 @@
 package okay
 
 import okay.Direct.{*, given}
+// The colourless-val spelling uses `selfColor`, which is an implicit
+// CONVERSION — so the file needs the language import, and without it
+// the nine uses raise feature warnings that no ordinary compile
+// shows. Found 2026-09-18 by hunting with `-feature` for another
+// lane; AGENTS.md says to hunt that way for exactly this reason, and
+// the memory note `direct-given-import-needed` records that the
+// per-file import is the standing answer since the build flag went.
+import scala.language.implicitConversions
 
 /**
  * Direct style at a carrier with no monad (specs/applicative-do.md).

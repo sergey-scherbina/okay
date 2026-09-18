@@ -333,7 +333,13 @@ force, all already practiced, none previously written down:
   survey rather than one flake at a time — the survey is
   `grep -E '\.(serve|listen)\(0\)|ServerSocketChannel\.open|new ServerSocket'`
   over the test tree, and a new binding suite is expected to tag
-  itself. And tagging is not a substitute for understanding: the same
+  itself. RE-RUN 2026-09-18 (test-hygiene-tails): 36 hits, 32 tagged,
+  and of the four that were not, ONE was real — `TestPeerAddress`,
+  which had flaked in a full matrix that morning and is tagged now.
+  The other three are FALSE POSITIVES worth knowing before anybody
+  chases them again: okay-ui's `Wire.serve(0)` takes an initial STATE,
+  not a port, so `\.serve\(0\)` matches a pure stage. The grep is
+  still the right first pass; check what the `0` is before tagging. And tagging is not a substitute for understanding: the same
   lane found that suite's assertion was testing something unassertable
   on a shared machine (a released ephemeral port is immediately
   re-bindable by a neighbour) and fixed the assertion too.
