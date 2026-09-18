@@ -54,17 +54,32 @@ force, all already practiced, none previously written down:
   (`.agents/plugins/multi-agent/commands/multi-agent.md`); this file
   only fixes the repo-specific facts. The branch is `master` (not `main`).
   Claims and merges are LOCAL — no lane needs the network to land, and
-  none should wait for it. Pushing is a SEPARATE, deliberate act by
-  whoever the operator asks; it is not part of landing a lane and not
-  part of the claim procedure. (2026-09-08: `origin` was 60 commits
-  behind and was fast-forwarded to `eca8877e` on the operator's
-  instruction. Before that nothing had pushed for days.)
+  none should wait for it.
+- **PUSH WHAT YOU LAND, IMMEDIATELY, WITHOUT ASKING** (operator,
+  2026-09-18). `git push origin master` is the last step of landing a
+  lane, after the release-claim commit — not a separate errand and not
+  a permission to wait for. The rule it replaces said pushing was "a
+  deliberate act by whoever the operator asks", and what that bought
+  was `origin` sitting 60 commits behind (2026-09-08), then 16
+  (2026-09-18), with every submodule consumer blocked: okay-watch's own
+  rule is that its pointer must name a commit that EXISTS on GitHub, so
+  an unpushed okay is a product that cannot bump. Asking each time cost
+  the operator an interruption per lane and bought nothing.
+  WHAT DOES NOT CHANGE: the gate still runs before the merge, and the
+  merge is still its own command whose exit code you read. You push
+  what is already landed and green — never a branch, never a lane that
+  has not merged.
+  A push that is REJECTED means a sibling pushed first: `git fetch`,
+  see whether origin is genuinely ahead (the bullet below), and land
+  that before pushing again. Never force.
 - **NEVER `reset` or `merge` to `origin/*`.** Not because origin is
   always stale — since 2026-09-08 it is sometimes current — but
   because it is current only in the moments just after somebody
-  pushes, and NOTHING in the landing procedure pushes. So at any
-  instant `origin/master` is master-minus-every-lane-landed-since-the-
-  last-push, and that number is usually not zero. `git log --oneline
+  pushes. Since push-on-landing (above) that window is SECONDS rather
+  than days — the gap between a sibling's `merge --ff-only` and their
+  `push` — but a window that small still discards a whole lane if you
+  `merge --ff-only origin/master` inside it, and the loss looks like
+  nothing happened. `git log --oneline
   origin/master..master` tells you what it is; do not guess, and do
   not assume a fresh `git fetch` made it zero. The
   skill's claim procedure literally says `git fetch origin` and
@@ -188,7 +203,9 @@ force, all already practiced, none previously written down:
   gate as `sh scripts/gate.sh`. HARDENED after three incidents: the merge
   runs ALONE (its own command, from the main checkout, exit code
   printed), and only after reading exit 0 do worktree removal, branch
-  deletion, boards and the claim release run. A `;` after a failed
+  deletion, boards and the claim release run — and then
+  `git push origin master`, which is the last step and needs nobody's
+  permission (see Coordination). A `;` after a failed
   merge has twice deleted an unmerged branch and pushed a release
   entry for work that had not landed.
 - Coordination room: rozum (etiquette: the `rozum` skill). Announce
