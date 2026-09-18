@@ -153,12 +153,27 @@ ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "--exclud
  * instead of forty is the reason, and the measurement below is what
  * pays for it.
  *
- * MEASURED, same worktree, same `affected master` scope, quiet box:
- * the run that STALLED TWICE at module 77 and 78 finishes, and the
- * numbers are in CHANGELOG `gate-bound-test-fanout`. Re-measure before
- * changing this: a gate that is fast because it is unbounded is a
- * gate that hangs when a sibling is building too, which is most of
- * the day here.
+ * MEASURED, same worktree, same `affected master` scope: the run that
+ * STALLED TWICE at module 77 and 78 finishes, and the numbers are in
+ * CHANGELOG `gate-bound-test-fanout`.
+ *
+ * AND WHAT IT COSTS THE JVM — MEASURED 2026-09-18, AND IT REFUTED THE
+ * WORRY THIS COMMENT WAS WRITTEN WITH (`jvm-parallel`). The line above
+ * said the bound "applies to the JVM too, where a class is a thread
+ * rather than a process and the cost is different", and left that
+ * unpriced. Priced now: `family jvm` (59 projects), three alternating
+ * rounds, `set` in BOTH arms so neither pays for the other's reload —
+ *
+ *   parallelExecution := false   145, 118, 126   min 118 s
+ *   parallelExecution := true    204, 128, 141   min 128 s
+ *
+ * Serial wins all three PAIRED rounds and the minima by 8%. Turning
+ * test classes loose inside a module does not help when fourteen
+ * modules are already running: it oversubscribes a 14-core box that
+ * the coarse parallelism already fills. So one line for all three
+ * platforms is not a compromise the JVM pays for — re-measure before
+ * changing it, and note the box is never quiet here, which is why the
+ * arms alternate and the minima are what is compared.
  */
 ThisBuild / Test / parallelExecution := false
 addCommandAlias("integrationTest",
