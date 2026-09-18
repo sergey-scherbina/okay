@@ -1,0 +1,6 @@
+feature/js-tree 2026-09-18T12:30:07Z
+agent: claude-code
+heartbeat: 2026-09-18T12:30:07Z
+status: not-started
+done-so-far:
+next: specs/js.md — a typed JS value tree, printed at runtime and inlined at compile time
