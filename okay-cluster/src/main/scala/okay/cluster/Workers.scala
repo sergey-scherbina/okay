@@ -106,6 +106,67 @@ object Cluster {
   final class Refused(why: String) extends RuntimeException(why)
 
   /**
+   * A WORKER THAT ANSWERS TO ITS OWNER (specs/federation.md, stage 2).
+   *
+   * Stage 1 showed two parties computing one answer without either
+   * one's records leaving. It did so with workers that run ANY job
+   * their build knows, for ANYBODY who asks — which is fine between
+   * processes one person started, and is the whole question between
+   * organisations. This is the door.
+   *
+   * Two checks, in this order and both BEFORE the request reaches the
+   * job:
+   *
+   *   - is the caller a coordinator this party recognises?
+   *   - is this a job this party allows?
+   *
+   * The order matters for what a refusal tells an outsider. An
+   * unrecognised caller learns only that it is not recognised — never
+   * which jobs the party allows, which would be a directory of its
+   * business handed to a stranger.
+   *
+   * WHY IT IS A `Serve` WRAPPER AND NOT A FIELD ON `Req`. The caller
+   * is a property of the CONNECTION, not of each message: a socket
+   * authenticates once and every request on it comes from the party
+   * that authenticated. Putting an identity in `Req` would put it
+   * where the sender controls it, which is the one place it must not
+   * be. Here the transport supplies it and the message cannot argue.
+   *
+   * A REFUSAL IS `Resp.Failed`, not a throw, and that is the same
+   * distinction stage 1 had to make: the coordinator does not carry a
+   * refusal to another worker, so a party that says no is not treated
+   * as a party that died. `Cluster.Refused` says it in process, and
+   * this answers it directly.
+   *
+   * WHAT THIS IS NOT. It is not authentication: `caller` is whoever
+   * the transport says it is, and establishing that is
+   * `okay-security`'s business (a `Capability` narrows without the
+   * issuer, which is the shape a delegated submission wants). This is
+   * the AUTHORISATION half, and it is deliberately dull — a set
+   * membership test in front of a door that had none.
+   */
+  def guarded(jobs: Set[String], coordinators: Set[String])
+             (caller: String)(base: Serve): Serve = req =>
+    if !coordinators.contains(caller) then
+      Resp.Failed(s"this party does not recognise the coordinator '$caller'")
+    else
+      named(req) match
+        case Some(job) if !jobs.contains(job) =>
+          Resp.Failed(s"this party does not run the job '$job'; it allows " +
+            jobs.toVector.sorted.mkString("[", ", ", "]"))
+        case _ => base(req)
+
+  /** the job a request names, where it names one. `Advance` and
+   * `Close` name a SESSION, which was admitted when it was opened —
+   * so the job check has already happened for them, and the
+   * coordinator check above still has not. */
+  private def named(req: Req): Option[String] = req match
+    case Req.Extent(job, _, _, _) => Some(job)
+    case Req.Run(job, _, _, _, _) => Some(job)
+    case Req.Open(job, _, _, _, _, _, _) => Some(job)
+    case Req.Known | Req.Advance(_, _, _, _) | Req.Close(_) => None
+
+  /**
    * Run a registered job across workers, partition i on worker
    * `i % workers.length`.
    *

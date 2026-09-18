@@ -74,12 +74,24 @@ object Party {
 
   /** partition `p` of `parts`, as this party sees it: its own log if
    * `p` is its own, a refusal otherwise */
-  def partition(feed: Feed, parts: Int, p: Int): Chunks[Ev] =
+  /**
+   * A party's partition, FROM A POSITION (specs/federation.md stage 1,
+   * the box that waited on dataflow stage 11 box 2b).
+   *
+   * A party's log is a topic, so `start` is an offset and seeking is
+   * a number rather than a read — which is what makes a resumed
+   * federated run re-read only what the horizon says it must. With
+   * `Flow.of` (no start) the engine skips by READING, so a resume
+   * costs the whole log again and the saving is nil; the refusal
+   * below happens either way, and that is the part that was never in
+   * question.
+   */
+  def partition(feed: Feed, parts: Int, p: Int, start: Long = 0L): Chunks[Ev] =
     val me = current.value
     if me < 0 then throw Cluster.Refused(s"partition $p: this process is no party and holds no log")
     if p != me then throw Cluster.Refused(
       s"partition $p belongs to party $p; this is party $me, and a party does not compute another's share")
-    Chunks.map(Streams.chunks(log(me, feed, parts), 0, 0L))(r =>
+    Chunks.map(Streams.chunks(log(me, feed, parts), 0, start))(r =>
       SeekStore.codec.decode(r.value).fold(why => throw IllegalStateException(why), identity))
 }
 
@@ -91,7 +103,10 @@ object PartyJob extends Job[Feed, Feeds.Sum] {
   def name: String = "test.party"
   def params: Schema[Feed] = summon[Schema[Feed]]
   def flow(f: Feed, parts: Int): Flow[Ev] =
-    Flow.of(Vector.tabulate(parts)(p => () => Party.partition(f, parts, p)))
+    // SEEKABLE: a party's log is a topic and an offset is a number,
+    // so a resumed run opens at its position instead of reading up to
+    // it (specs/federation.md stage 1's last box)
+    Flow.seekable(Vector.tabulate(parts)(p => (start: Long) => Party.partition(f, parts, p, start)))
   def sink(f: Feed): Wire[Ev, Sum] =
     Wire.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)
 }

@@ -85,7 +85,11 @@ precisely what it does and does not give.
   Results).
 - **2 — the refusal.** A worker that runs only jobs its owner
   allowed; a submission from an unrecognised coordinator refused with
-  a reason. `okay-security` connected.
+  a reason. LANDED (`federation-refusal`, 2026-09-18) as
+  `Cluster.guarded`. `okay-security` is NOT connected and is not
+  needed to be: this is authorisation over an identity the transport
+  establishes, and which `Capability` a party accepts as that identity
+  is stage 3's question, at the door, with `Compat` beside it.
 - **3 — schema at the door.** `Compat` at submission: a job whose
   partial Schema a party cannot decode is refused before it runs.
 - **4 — the leak, read.** A tool that prints what a job's partial
@@ -111,15 +115,42 @@ Stage 1:
       another's; with party B dead, A is asked for B's partition and
       REFUSES (`Cluster.Refused` → `Resp.Failed`, not retried), the
       run fails naming B, and B's store counts zero reads
-- [ ] the same over `Cluster.stream` with a seekable sink resuming at
-      a position — a party that resumes must resume from ITS log; box
-      2 of dataflow stage 11 makes this a three-line test, not built
+- [x] the same over `Cluster.stream` resuming at a position — a party
+      that resumes must resume from ITS log (`federation-refusal`,
+      2026-09-18). It was NOT a three-line test, and the reason is
+      worth the correction: the sink here is WINDOWED, so before
+      dataflow's box 2b it could not seek at all, and the party's
+      FLOW was a `Flow.of`, which skips by READING — so the first
+      version of the test seeked correctly and re-read all 10 000
+      records anyway, because a source that cannot seek costs the
+      whole log whatever the session asks for. A party's log is a
+      topic and an offset is a number: `Flow.seekable` closes it, and
+      the test now asserts each party reads MORE than nothing and LESS
+      than its whole log, with the horizon marks in the journal
 
 Stage 2:
-- [ ] a worker with an allow-list refuses a job not on it, by name,
-      with the list
-- [ ] a coordinator without a recognised identity is refused before
-      the pre-pass
+- [x] a worker with an allow-list refuses a job not on it, by name,
+      with the list — `Cluster.guarded(jobs, coordinators)(caller)`
+      wraps any `Serve` and answers `Resp.Failed` before the request
+      reaches the job
+- [x] a coordinator without a recognised identity is refused before
+      the pre-pass, and the checks are in THIS ORDER for a reason: an
+      unrecognised caller learns only that it is not recognised, never
+      which jobs the party allows, which would be a directory of its
+      business handed to whoever knocked. The test asserts the
+      absence, and asserts that the party's log counted zero reads
+- [x] the caller is a property of the CONNECTION, not of `Req`.
+      Putting an identity in the message would put it where the
+      sender controls it; a socket authenticates once and every
+      request on it comes from the party that authenticated. So
+      `guarded` wraps a `Serve` and `Req` is unchanged — this is the
+      AUTHORISATION half, and authentication stays `okay-security`'s
+      (a `Capability` narrows without its issuer, which is the shape a
+      delegated submission wants)
+- [x] `Advance` and `Close` name a SESSION rather than a job, so the
+      job check happened when it was opened — the coordinator check
+      still runs on every request, and a stranger cannot advance a
+      session somebody else opened
 
 ## Results
 

@@ -37,6 +37,17 @@ class TestFederation extends munit.FunSuite {
   def whole(parts: Int): Run[Sum] =
     Flows.fan(Flow.slices(events(feed), parts), PartyJob.sink(feed)).runWith
 
+  /** a coordinator that commits epoch `at` and then dies — the same
+   * shape TestSeek and TestResume use */
+  final class Dying(at: Int) extends Checkpoint:
+    val kept = Checkpoint.Memory()
+    def save(epoch: Int, bytes: Array[Byte]): Unit =
+      kept.save(epoch, bytes)
+      if epoch == at then throw Dying.Died(epoch)
+    def latest: Option[(Int, Array[Byte])] = kept.latest
+  object Dying:
+    final case class Died(epoch: Int) extends RuntimeException(s"died at epoch $epoch")
+
   /** a `Serve` that keeps what crossed on the way OUT */
   def taped(s: Cluster.Serve, tape: ArrayBuffer[Array[Byte]]): Cluster.Serve = req =>
     val r = s(req)
@@ -91,6 +102,38 @@ class TestFederation extends munit.FunSuite {
     val got = Cluster.stream(PartyJob, feed, 2, Vector(Party.as(0), Party.as(1)), 64).runWith
     assertEquals(got.value, whole(2).value)
     assertEquals(got.dropped, whole(2).dropped)
+  }
+
+  test("A PARTY THAT RESUMES RESUMES FROM ITS OWN LOG, and seeks rather than re-reading it") {
+    // The stage-1 box that was waiting on dataflow stage 11: a
+    // federated stream that stops and resumes must have each party
+    // open ITS log at ITS position, and no party may read another's
+    // to catch up. `PartyJob`'s sink is WINDOWED, which used to mean
+    // "replay from zero" — box 2b's horizon (dataflow-horizon-seek)
+    // is what makes this a seek at all, and the read counts are how
+    // the test tells the two apart.
+    val parties = Vector(Party.as(0), Party.as(1))
+    val j = Dying(3)
+    val _ = intercept[Dying.Died](
+      Cluster.stream(PartyJob, feed, 2, parties, 512, j).runWith)
+    // the workers' sessions die with the coordinator
+    val f = Codecs.cbor(summon[okay.codec.Schema[Folded]])
+      .decode(j.latest.get._2).fold(fail(_), identity)
+    Vector.tabulate(2)(i => f.base + i).foreach(Sessions.drop)
+
+    val before = Vector.tabulate(2)(n => Party.log(n, feed, 2).records.get)
+    val got = Cluster.stream(PartyJob, feed, 2, parties, 512, j.kept).runWith
+    val read = Vector.tabulate(2)(n => Party.log(n, feed, 2).records.get - before(n))
+
+    assertEquals(got.value, whole(2).value, "the resumed federated run answered wrong")
+    assertEquals(got.dropped, whole(2).dropped)
+    val own = events(feed).length / 2
+    for n <- 0 until 2 do
+      assert(read(n) > 0, s"party $n read nothing on the resume")
+      assert(read(n) < own.toLong,
+        s"party $n re-read its whole log (${read(n)} of $own) — it did not seek")
+    // AND THE MARKS ARE IN THE JOURNAL, which is what it sought by
+    assert(f.marks.nonEmpty, "a windowed federated run recorded no seek marks")
   }
 
   test("a party does not stand in for another: with B gone the run fails naming B") {
@@ -152,5 +195,65 @@ class TestFederation extends munit.FunSuite {
       assert(e.getMessage.contains("party 1"), s"the failure should name the missing party: ${e.getMessage}")
       assert(e.getMessage.contains("this is party 0"), s"A should have refused, not computed: ${e.getMessage}")
     finally procs.foreach(_.destroyForcibly(): Unit)
+  }
+
+  // ── stage 2: the refusal ─────────────────────────────────────────
+
+  test("a party runs only the jobs its owner allowed, and the refusal names the list") {
+    // the party allows one job and is asked for another
+    val guarded = Cluster.guarded(Set("test.party"), Set("the-hospital"))("the-hospital")(Party.as(0))
+    val ok = guarded(Req.Known)
+    assert(ok.isInstanceOf[Resp.Names], s"a recognised coordinator asking a general question: $ok")
+    val bytes = Codecs.cbor(PartyJob.params).encode(feed)
+    guarded(Req.Extent("test.window", bytes, 0, 1)) match
+      case Resp.Failed(why) =>
+        assert(why.contains("does not run the job 'test.window'"), why)
+        assert(why.contains("test.party"), s"the refusal should name what IS allowed: $why")
+      case other => fail(s"a job off the list was not refused: $other")
+    // and the allowed one still runs
+    guarded(Req.Extent("test.party", bytes, 0, 1)) match
+      case _: Resp.Extents => ()
+      case other => fail(s"the allowed job was refused: $other")
+  }
+
+  test("an UNRECOGNISED coordinator is refused before the pre-pass, and learns nothing else") {
+    val guarded = Cluster.guarded(Set("test.party"), Set("the-hospital"))("a-stranger")(Party.as(0))
+    val bytes = Codecs.cbor(PartyJob.params).encode(feed)
+    val before = Party.log(0, feed, 1).records.get
+    for req <- Vector(Req.Known, Req.Extent("test.party", bytes, 0, 1),
+                      Req.Run("test.party", bytes, 0, 1, Vector.empty)) do
+      guarded(req) match
+        case Resp.Failed(why) =>
+          assert(why.contains("does not recognise the coordinator 'a-stranger'"), why)
+          // THE REFUSAL TELLS A STRANGER NOTHING ELSE. A message that
+          // named the allowed jobs would hand a directory of this
+          // party's business to whoever knocked.
+          assert(!why.contains("test.party"), s"the refusal leaked the allow-list: $why")
+        case other => fail(s"a stranger was served: $other")
+    // AND NOT ONE RECORD WAS READ. The refusal comes before the job,
+    // which is the same rule stage 1 found for a foreign partition:
+    // emptiness is not a refusal, and neither is a read that happened.
+    assertEquals(Party.log(0, feed, 1).records.get, before,
+      "a stranger's request reached the log")
+  }
+
+  test("a session already admitted keeps answering; a stranger's Advance does not") {
+    // `Advance` and `Close` name a SESSION, not a job — the job check
+    // happened when it was opened, and the coordinator check has not,
+    // so it still runs on every request
+    val open = Cluster.guarded(Set("test.party"), Set("the-hospital"))("the-hospital")(Party.as(0))
+    val stranger = Cluster.guarded(Set("test.party"), Set("the-hospital"))("a-stranger")(Party.as(0))
+    val bytes = Codecs.cbor(PartyJob.params).encode(feed)
+    val session = System.nanoTime()
+    open(Req.Open("test.party", bytes, 0, 1, session)) match
+      case Resp.Opened(_) => ()
+      case other => fail(s"the admitted coordinator could not open a session: $other")
+    stranger(Req.Advance(session, 8, Vector(Bounds(Long.MinValue, Long.MinValue)), 1)) match
+      case Resp.Failed(why) => assert(why.contains("does not recognise"), why)
+      case other => fail(s"a stranger advanced somebody else's session: $other")
+    open(Req.Advance(session, 8, Vector(Bounds(Long.MinValue, Long.MinValue)), 1)) match
+      case _: Resp.Epoch => ()
+      case other => fail(s"the session's own coordinator was refused: $other")
+    val _ = open(Req.Close(session))
   }
 }
