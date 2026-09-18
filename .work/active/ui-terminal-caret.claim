@@ -1,6 +1,0 @@
-feature/ui-terminal-caret 2026-09-18T12:50:39Z
-agent: claude-code
-heartbeat: 2026-09-18T12:50:39Z
-status: in-progress
-done-so-far: claimed
-next: a caret in the focused Input — edit/interpretAt as values, reverse video in the frame
