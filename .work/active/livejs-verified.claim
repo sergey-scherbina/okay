@@ -1,0 +1,6 @@
+feature/livejs-verified 2026-09-18T12:56:55Z
+agent: claude-code
+heartbeat: 2026-09-18T12:56:55Z
+status: not-started
+done-so-far:
+next: run LiveJs.build under Node against the existing FakeDoc and compare with React.elem
