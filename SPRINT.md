@@ -73,6 +73,16 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
+- site-framework — okay-script and okay-ui to scalascript's standing
+  (specs/site-framework.md, stage 0 the spec LANDED 2026-09-18). The
+  criterion is the operator's own two sites, rendered today by busi's
+  818-line `storefront.ssc`: whatever that file does, a page here must
+  do. Four stages, gap-ordered: 1 MODULES (a page exports names, a
+  page imports them by a markdown link — today a `def` cannot cross a
+  file), 2 content as data with a file override and an editor, 3
+  per-element i18n (the sites carry every language on the element and
+  swap in the client; ours is one language per request), 4 the
+  storefront ported, which is the arc's verdict.
 - validated — every error, not the first (specs/validated.md, stage 0
   the spec LANDED 2026-09-18). P13 ITEM 1 AND THE NEXT THING TO PICK:
   `Throws` is monadic and stops at the first error, an applicative

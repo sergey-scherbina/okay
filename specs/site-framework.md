@@ -1,0 +1,150 @@
+# The site framework — okay-script and okay-ui as a closed, open, orthogonal whole
+
+## Overview
+
+Operator ask (2026-09-18): finish okay-script and okay-ui into a
+framework of scalascript's standing, so that the two sites this
+operator actually runs — szykownia.pl (an atelier's storefront) and
+it.szykownia.pl (an IT consulting line) — could be built HERE.
+
+That ask has a measurable criterion, which is why it is worth taking
+literally: both sites are rendered today by busi's declarative-site
+system out of `src/v2/http/storefront.ssc`, 818 lines of scalascript.
+A page of that file is the acceptance test. If the same storefront
+can be written as okay-script pages, with no feature simulated by
+hand, the framework is at that level; if it cannot, the missing piece
+is named and staged rather than argued about.
+
+## What the two sites actually need
+
+Read out of `storefront.ssc` and its neighbours, in the order the gap
+matters:
+
+1. **Modules.** The file begins with a front-matter `exports:` list
+   and four import lines written as markdown links —
+   `[i18nAttrs, phAttrs](i18n.ssc)`, `[Site, Service](../domain/site.ssc)`,
+   `[money, compareMoney](std/money.ssc)`. Definitions cross files.
+   okay-script has `include` (which inlines another page's OUTPUT)
+   and `declare` (which is per page); a `def` in one page is
+   unreachable from another. This is the structural gap and stage 1.
+2. **Content as data, edited in the app.** The sites' text lives in a
+   store the owner edits at `/sites`, with a FILE able to override any
+   key (`fileI18nAttrs(slug, "name.hem", fb)`) and a baked default
+   under that. okay-script has `Application` attributes and a
+   persisted store, so the pieces exist; the seam does not.
+3. **Per-element i18n.** Every translatable element carries
+   `data-ru/pl/en/uk` and a few lines of JavaScript swap
+   `textContent` on load. okay-script's i18n is per REQUEST (a
+   variant file, or `t(key)`) — one language per response. Both are
+   legitimate and they answer different questions: a per-request
+   language needs no script and is indexable; a per-element one
+   switches with no round trip. The sites use the second.
+4. **The ordinary furniture of a storefront**: service cards with
+   prices, an intake form and an offer form, a courier flow, a RODO
+   consent, a portfolio section. Every one of these is a `def`
+   returning HTML — which is to say, they are what stage 1 makes
+   possible and nothing more.
+
+## Stages
+
+**Stage 1 — modules (`script-modules`).** A page exports names; a page
+imports them by a markdown link. The unit of reuse becomes a
+definition rather than a rendered fragment.
+
+**Stage 2 — content (`script-content`).** A typed content store with a
+file override and a baked default, plus the editor page that writes
+it. The three-layer lookup the sites use, made a seam rather than a
+convention.
+
+**Stage 3 — per-element i18n (`script-i18n-inline`).** `Ui` and the
+HTML host learn a translated text node: one tree, every language on
+it, the client picking. The per-request road stays; a page chooses.
+
+**Stage 4 — the worked example (`script-storefront`).** The szykownia
+storefront as okay-script pages, rendered and asserted. This stage is
+the arc's verdict: whatever it cannot express is the next stage.
+
+## Stage 1 — modules
+
+```
+---
+name: money
+exports:
+  - money
+  - compareMoney
+---
+
+[t](/i18n/helpers.md)
+
+```scala declare
+def money(cents: Long): String = ...
+```
+```
+
+- A page (any page) may declare `exports:` in its front matter: the
+  names its declare blocks make available to others.
+- A page imports with a markdown link whose TEXT is the names and
+  whose TARGET is the file: `[money, compareMoney](std/money.md)`.
+  Relative to the importing page's directory, or absolute from the
+  site root with a leading `/` — `include`'s own rule.
+- The imported names are in scope in every block of the importing
+  page, declare and body alike.
+- A module is compiled ONCE per site load, to a stable object name
+  derived from its path; the importing page gets that object's
+  output directory on its classpath and an `import` of exactly the
+  named members. A name that is imported but not exported is a
+  compile error naming both files.
+- Cycles are a hard error naming the ring, as `include`'s depth cap
+  is: a module graph that cannot be ordered cannot be compiled.
+- A module page is still a page: it can be routed and rendered. A
+  library that should not be served says `route: false` in its front
+  matter (stage 1 adds that flag), and the `i18n/` precedent — a
+  directory the router never serves — stays as it is.
+- Hot reload: a module's file changing invalidates every page that
+  imports it, transitively. The dependency edges are known, because
+  the imports were parsed to build them.
+
+### Behavior
+
+- [ ] a page imports a `def` from another page and calls it in a
+      `${}` marker, in a body block and in its own declare block
+- [ ] the import is by NAME: an exported name not asked for is not in
+      scope, and asking for a name the module does not export is a
+      compile error naming the module and the name
+- [ ] a relative target resolves against the importing page's
+      directory; a leading `/` resolves from the site root
+- [ ] a module imports a module: the chain compiles in dependency
+      order, and a diamond compiles the shared module ONCE
+- [ ] a cycle is refused with a message naming the ring, not a stack
+      overflow
+- [ ] `route: false` makes a module unroutable: a GET of its path is
+      a 404 while an importing page still renders
+- [ ] editing a module re-renders the pages that import it (the
+      dependents are invalidated, not just the file that changed)
+- [ ] a module's compile ERROR is reported against the MODULE's own
+      file and line, while the importing page says which import
+      failed
+
+## Decisions
+
+- **A module is a page, not a new kind of file.** scalascript's
+  `.ssc` is one format for both, and the reasons carry: one parser,
+  one front matter, one line map, and a library that wants to
+  document itself renders. `route: false` is the only addition, and
+  it exists because a library usually should not answer a URL.
+- **Imports are markdown links, as scalascript writes them.** They
+  read as prose, they survive a markdown renderer, and the file is
+  still a document. The alternative — a front-matter `imports:` list
+  — puts the dependency where a reader is not looking.
+- **Names, not wildcards.** `[money](std/money.md)` says what crosses
+  the boundary; a wildcard would make a module's every private helper
+  part of its surface by accident.
+- **No versions, no manifests, no packages in stage 1.**
+  scalascript's `.ssclib` (a ZIP with a manifest and transitive
+  deps) answers DISTRIBUTION; a site's own files answer composition.
+  This stage is composition. Distribution is a later stage if a
+  second site wants the first's library.
+
+## Results
+
+(stage 0 is this document)
