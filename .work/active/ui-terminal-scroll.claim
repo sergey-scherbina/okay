@@ -1,6 +1,0 @@
-feature/ui-terminal-scroll 2026-09-18T12:34:08Z
-agent: claude-code
-heartbeat: 2026-09-18T12:34:08Z
-status: in-progress
-done-so-far: claimed
-next: Scroll clips to a height budget with a per-key offset; the keys that move it
