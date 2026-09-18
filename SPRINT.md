@@ -73,16 +73,6 @@
   Both are stated in docs/durable-workflows.md rather than discovered.
 
 ## Queue
-- react-host-vocab — a claimed node nested inside an UNCLAIMED one is
-  lowered away (found by okay-watch, 2026-09-18). `React.elem` claims
-  `Ui.Link` and renders it `<a>`, and its catch-all asks for the
-  lowering with `Set.empty` — which recurses, so a `Link` in a
-  `Ui.Table` cell arrives as the text "label — href" one node away
-  from where the same link is an anchor. THE TWO ROADS THEREFORE
-  DISAGREE ON ONE TREE: `LiveJs` sends `vocab: ["link"]`, so over the
-  socket the browser gets the anchor and over the plain road it does
-  not. A host must lower with its OWN vocabulary. Frame and Swing
-  claim nothing, so their `Set.empty` is correct and stays.
 - site-framework — okay-script and okay-ui to scalascript's standing
   (specs/site-framework.md). CLOSED 2026-09-18, all four stages: 1
   modules (a definition and a TYPE cross a file), 2 content (the words

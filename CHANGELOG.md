@@ -1,5 +1,32 @@
 # Changelog
 
+## react-host-vocab - a host lowers with its own vocabulary, not with Set.empty
+
+`React.elem` claims `Ui.Link` and renders an anchor, and its catch-all
+asked `Ui.lower` for every node it does NOT claim with `Set.empty`.
+`Ui.lower` recurses, so the empty vocabulary reached the CELLS: a
+`Link` inside a `Table`, `Items`, `Tabs`, `Modal` or `Disclosure`
+arrived as `Text("label -- href")`, one node away from where the same
+link was an `<a>`.
+
+The defect was never that the set was empty -- it was that a constant
+stood where a host's own vocabulary belongs, so the call said "lower
+this whole subtree as if I drew nothing" when it meant "lower this
+node". `React.Vocabulary = Set(Vocab.link)` names it once, and it is
+the same set `live.js` puts in its hello.
+
+Which is the property that matters: THE TWO ROADS DISAGREED ON ONE
+TREE. `Wire.serve` lowers per the client's hello, so a browser on the
+socket got the anchor while the scriptless road through `Html.render`
+got text. Found from okay-watch, which serves both from one
+`Analyst.view` -- its transfers table links each transaction hash and
+block height into a public explorer, and a chain alert that cannot be
+opened in one is an assertion rather than a fact a reader checks.
+
+`Frame` and `Swing` claim no semantic node, so `Set.empty` already IS
+their vocabulary; both are left alone. TestLink 9, two of the three
+new tests red before the fix. specs/frontend.md.
+
 ## ox-compare - Ox in the comparison, and a retraction
 
 com.softwaremill.ox 1.0.7 joins the `compare` module: five fork/join
