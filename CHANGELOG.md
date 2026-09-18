@@ -1,5 +1,35 @@
 # Changelog
 
+## optics-arrows-recheck - the "out of scope, with triggers" list, checked against the plans
+
+The operator asked whether stage 12's closing list (indexed optics,
+`Grate`, streams, `ArrowChoice` for `Plan`, each "with its trigger")
+had been checked against the boards and the sibling specs. Three of
+four had not, and checking changed them (specs/optics.md stage 12,
+"Re-checked against the plans"):
+
+- `ArrowChoice`: the trigger is PULLED, by `Proc` in
+  specs/static-workflow.md (stage 0 landed the same morning) - the
+  first arrow with choice in the tree, with the three interpreters the
+  criterion asks for (`render` draws, `walk` describes, `toProgram`
+  runs). The line between the lanes holds; the LAW SUITE is shared.
+- a prism over `Selective`: ANSWERED for a term by `Proc.leaves`
+  (both sides of a `Left`); the BACKLOG lane now waits on
+  static-workflow stage 3 and names what would keep it open.
+- indexed optics: "nobody has asked" was wrong - `Validate`, `Ui.diff`
+  and ui-direct-example each carry the index by hand; none has a
+  second interpreter, so the family stays out with the seats named.
+  Found beside it and filed (`ui-path-two-walks`): `Ui.patch` and
+  `Ui.path` walk one index convention in two bodies.
+- `Grate` and streams: checked at okay-crdt, dataflow's `merged` and
+  `Mealy`; no seat, and the stream question is answered by stage 5.
+- `schema-typed-paths` was stale when written: one level of it,
+  `Lens.field[S]("name")`, has existed since 2026-09-09 (c2ff5cfe).
+  Corrected; the chain is what remains.
+
+Gate: docs only (the spec and the three boards); `check-citations.sh`
+passes.
+
 ## optics-arrows-effects - the closed optics arc, asked what it leaves open
 
 The operator asked what optics, profunctors and arrows do TOGETHER

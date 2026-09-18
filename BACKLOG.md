@@ -863,6 +863,13 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       is most of it over `Json`, over `A` it is a macro over the
       Mirror's labels. Filed by specs/schema-fold.md (Out of scope),
       to be taken after stage 3; a different risk (macro) from the fold.
+      STALE BY TWO DAYS when written (found 2026-09-18): one level of
+      this exists — `Lens.field[S]("name")`, by name, the name checked
+      against the Mirror at compile time, the focus typed, no macro —
+      since optics-core on 2026-09-09 (c2ff5cfe). What is still asked
+      for is the CHAIN with the intermediate type inferred, and its
+      cost question is `optics-field-fuse` (the planner cannot read
+      the by-name constructor, so it pays the interpreter today).
 
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
       closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
@@ -1425,6 +1432,12 @@ test; none is promoted until its spec item is read first.
       (`TestMealy` states them over an input), not a capability: with
       a monad in hand `fanout` adds little over a for-comprehension,
       and the entry says so before anyone measures it.
+      RE-CHECKED 2026-09-18: specs/static-workflow.md stage 1 wants
+      the same category/arrow/choice laws as a property at `Proc`.
+      ONE law suite parameterised by the carrier and an observation
+      (`TestMealy` observes over an input) serves both; whichever
+      lane lands first writes it reusable, the other reuses it.
+      Neither lane adds the other's instance (that spec's Design).
 - [ ] optics-cont-profunctor — `Cont[X, B => R, A => R]` as
       `Strong & Choice`: `first` is `PState.zoom`'s shift written
       once, `right` is NEW (a typestate program on one case of a sum).
@@ -1437,11 +1450,35 @@ test; none is promoted until its spec item is read first.
       `branch`es, so `Static` through a prism reports BOTH arms where
       the applicative road reports the one taken. One test with the
       matched control beside it.
+      WAITS on static-workflow stage 3 (2026-09-18): for an arrow
+      that is a TERM the question is already answered — `Proc.leaves`
+      reports both sides of a `Left`, and stage 3 runs a prism's step
+      on the matching variant. What is left is the `Star[F]` road
+      alone; take it only if a consumer wants the applicative `Static`
+      through a sum rather than `Proc`. Close it when stage 3 lands
+      and nobody has.
 - [ ] optics-field-fuse — `Lens.field[S]("name")` is the one
       constructor the planner cannot read (verdict, 2026-09-10), so it
       pays the interpreter while `Lens[S](_.f)` is free. Measure it
       first (it has no benchmark row), then either teach `Fuse` the
       `FieldOf.apply` shape or say the price on the guide page.
+- [ ] ui-path-two-walks — `Ui.patch`'s private `at` and `Ui.path`'s
+      `childAt` walk one index convention in two bodies (a Scroll's
+      child at 0, a Modal's and a Disclosure's body at 1), held equal
+      by a law rather than by being one function. `count-the-doors`:
+      `patch` at a path is `Ui.path(p).modify(f)` once the affine's
+      price is measured against the hand walk (the verdict table says
+      a composed optic named in code is free; this one is built from
+      a runtime `List[Int]`, so it pays the interpreter — measure
+      before replacing).
+- NOT a lane, a record (indexed optics, re-checked 2026-09-18): the
+  spec's "nobody has asked" was wrong. Three walks carry an index by
+  hand — `Validate`'s `At` path through `Schema.Step`, `Ui.diff`'s
+  `path: List[Int]` through `go`, and ui-direct-example's field key
+  IN the error for `Ui.key(k)` to aim at. None is handed to a second
+  interpreter, so the family stays out. TRIGGER, restated with the
+  seats named: a fourth path-carrying walk, or two of these wanting
+  one walk.
 
 ## openapi — the document as a rendering (specs/openapi.md, operator's ask 2026-09-11)
 

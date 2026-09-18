@@ -961,9 +961,92 @@ Read these before proposing any of them again.
       the by-name lens has no benchmark row of its own.
 
 ### Out of scope for stage 12
+(as first written; the re-check below corrects three of these lines
+against the plans, and the corrected reading is the one in force)
 - indexed optics, `Grate`, optics over a stream, and the
-  optics-outside candidates: each keeps its recorded trigger
+  optics-outside candidates: each keeps its recorded trigger — SEE
+  the re-check: indexed optics have three hand-written seats, the
+  stream question is answered by `Mealy`, `Grate` was checked at two
+  seats and has none
 - `Traversing` for `Cont`: needs an applicative over answer-type
   modification, and no consumer has asked
 - an `ArrowChoice` for `Tables.Plan`: reopens with the trigger in
-  specs/optics-outside.md, not from here
+  specs/optics-outside.md, not from here — SEE the re-check: the
+  trigger is pulled by `Proc` (specs/static-workflow.md), and
+  `Tables.Plan` itself is still not asked to branch
+
+### Re-checked against the plans, the same day (optics-arrows-recheck, 2026-09-18)
+
+The operator asked whether the "out of scope, each with its trigger"
+list above was actually checked against the boards and the sibling
+specs, or only against memory. It was the latter for three of the
+four, and this is what checking found. The rule that decides each
+line is still the arc's: an optic (or an arrow) is earned when one
+declaration is handed to more than one interpreter and one of them
+DESCRIBES.
+
+- **`ArrowChoice` — the trigger is PULLED, and not by `Tables.Plan`.**
+  specs/static-workflow.md (stage 0 landed a2d22ed2 the same
+  morning) defines `Proc[Q, A, X, Y]` with `Arr`, `Seq`, `First`,
+  `Left`, `Iter` and gives it `Optic.Arrow` and `Optic.Choice`: the
+  first arrow with choice in the tree. Its three interpreters are
+  exactly the criterion's shape — `render` DRAWS the term, `walk`
+  finds the position with no effects performed, `toProgram` RUNS it
+  on the landed engine — and its stage 3 applies a lens and a prism
+  to a step through those instances with no new machinery. So the
+  sentence above, "reopens with the trigger in optics-outside, not
+  from here", was true of `Plan` and misleading about the tree:
+  nothing asks `Tables.Plan` to branch, and the value the trigger
+  named arrives on the workflow side. The line between the lanes is
+  written in that spec's Design ("Neither lane adds the other's
+  instance") and holds: `Function1` and the Kleisli here, `Proc`
+  there. What the two lanes SHARE is the law test — TestMealy states
+  the arrow laws over an input; stage 1 of static-workflow wants the
+  same laws as a property; `optics-arrow-instances` here wants them
+  at two more carriers. One suite parameterised by the carrier and
+  an observation, written by whichever lane lands first.
+- **A prism over `Selective` — ANSWERED by `Proc`, for the carrier
+  that matters.** The experiment asked whether a static walk through
+  a prism can see the untaken arm. For an arrow that is a TERM the
+  answer is already in static-workflow's interface: `leaves` "of a
+  term with a `Left` reports both sides", and stage 3's prism test
+  runs the step on the matching variant and passes the rest through.
+  What is left of the experiment is the `Star[F]` road alone — the
+  applicative `Static` through a prism — and it is worth a lane only
+  if a consumer wants `Static` rather than `Proc` through a sum. The
+  BACKLOG entry now WAITS on static-workflow stage 3 and says what
+  would keep it open.
+- **Indexed optics — "nobody has asked" was wrong; three walks carry
+  the index by hand.** `Validate` threads a path `At` through a
+  `Schema.Step` so every error lands at its dotted path; `Ui.diff`
+  threads `path: List[Int]` through `go` so every `Patch` names its
+  node; `ui-direct-example` carries the field key IN the error so
+  `Ui.key(k)` has something to aim at. Each is an indexed traversal
+  written out, and none is handed to a second interpreter — so the
+  criterion is not met and the family stays out, but the TRIGGER is
+  restated with the seats named: a fourth path-carrying walk, or two
+  of these three wanting one walk. Found beside it: `Ui.patch`'s
+  private `at` and `Ui.path`'s `childAt` are two doors on one index
+  convention (the comment on `path` says so and a law pins them);
+  `count-the-doors` says that is a defect to file, and it is filed.
+- **`Grate` — no seat, checked at the two places a "zip N wholes"
+  would live.** okay-crdt's wire shapes `derive Schema` and each
+  CRDT's `merge` is its own; no product of CRDTs is merged
+  field-wise. dataflow's coordinator `merged(ps: Vector[P])` is
+  many-partials-in-one-answer, which is the AGGREGATING shape
+  (`Optic.Aggregating`, a kaleidoscope), not a grate — and it is an
+  ordinary method with one interpreter. Stays out; the trigger is a
+  product whose parts each merge and which is merged in two places.
+- **Optics over a stream — ANSWERED, not open.** "A stream is not a
+  value" stands for optics; the arrow question it hid is answered
+  by stage 5: `Mealy` is Category, Strong and Choice over a stream
+  transformer, and dataflow's "one pass, many sinks" is `fanout` on
+  a static plan built as a GADT. Nothing waits here.
+- **`schema-typed-paths` (BACKLOG, 2026-09-11) is stale by two
+  days.** `Lens.field[S]("name")` — the by-name lens, the field name
+  checked at compile time against the Mirror, the focus typed, no
+  macro — landed with optics-core on 2026-09-09 (c2ff5cfe). What
+  that entry still asks for is the CHAIN `path[A].field("address")
+  .field("city")` with the intermediate type inferred; one level is
+  done. The entry is corrected, and `optics-field-fuse` above is the
+  lane that decides what the by-name constructor costs.

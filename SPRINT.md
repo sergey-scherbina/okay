@@ -131,8 +131,15 @@
   is the lens-meets-continuation seam, `Arrow` has one instance. Five
   lanes are in BACKLOG under `optics-arrows-effects`; pick
   `optics-guide-page` first (the convenience item, docs-only), then
-  `optics-arrow-instances`; the two experiments (`optics-cont-profunctor`,
-  `optics-prism-selective`) each carry a stated refutation road.
+  `optics-arrow-instances` (its law suite is SHARED with
+  static-workflow stage 1 — one suite, two lanes, first to land writes
+  it). RE-CHECKED the same day against the plans: `ArrowChoice`'s
+  trigger is pulled by `Proc` (specs/static-workflow.md), not by
+  `Tables.Plan`; `optics-prism-selective` WAITS on static-workflow
+  stage 3, which answers it for a term; indexed optics have three
+  hand-written seats named in BACKLOG and still no second interpreter;
+  `optics-cont-profunctor` is the one experiment left with a
+  refutation road of its own.
 - unwrap-glyph — one glyph, one meaning. ALL FOUR STAGES LANDED
   2026-09-18 (82753d21, 18a558be, 74ecac89; specs/unwrap-glyph.md
   Results). `.?` is the direct mark again; the Throws glyphs live in
