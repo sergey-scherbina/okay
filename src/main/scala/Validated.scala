@@ -23,6 +23,11 @@ package okay
  * works here the day the instance exists, which is the whole argument
  * for having written them generically.
  *
+ * NOT THE ONLY ACCUMULATOR HERE. `okay-codec`'s `Validate` walks a
+ * schema with the same rule written by hand on `Either`, because it
+ * predates this type and its errors carry paths. Both stay for now;
+ * BACKLOG `two-accumulating-validators` holds the note.
+ *
  * THERE IS DELIBERATELY NO `Monad[Validated]`. The monad-applicative
  * consistency law says `app` must agree with the `flatMap`
  * derivation, and that derivation stops at the first error — so a

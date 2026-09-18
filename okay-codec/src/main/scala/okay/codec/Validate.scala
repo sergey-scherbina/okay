@@ -51,7 +51,16 @@ object Validate:
     case Nil => s"[$i]" :: Nil
   private def dotted(k: At): Path = k.reverse.mkString(".")
   private def one(k: At, m: String): Out = Left(Vector(dotted(k) -> m))
-  /** the applicative step: both sides' errors survive */
+  /**
+   * The applicative step: both sides' errors survive.
+   *
+   * This IS `Validated.app` (Validated.scala), written by hand on
+   * `Either` because this walk predates that type and carries paths
+   * its errors need. The two are kept apart deliberately for now —
+   * this one is tested and in the schema hot path — and BACKLOG
+   * `two-accumulating-validators` holds the note and the trigger for
+   * bridging them.
+   */
   private def gather(acc: Acc, r: Out): Acc = (acc, r) match
     case (Right(xs), Right(a)) => Right(xs :+ a)
     case (Left(e1), Left(e2)) => Left(e1 ++ e2)
