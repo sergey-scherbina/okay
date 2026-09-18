@@ -30,7 +30,8 @@ class TestStorefront extends munit.FunSuite:
       if Files.isDirectory(p) then Files.createDirectories(target): Unit
       else Files.copy(p, target): Unit
     }
-    val site = Site(root)
+    // the sites speak four languages, as the real ones do
+    val site = Site(root, languages = Vector("pl", "en", "uk", "ru"))
     try f(site)
     finally
       site.close()
@@ -42,10 +43,14 @@ class TestStorefront extends munit.FunSuite:
 
   test("the storefront renders: a domain TYPE, an i18n seam, prices and cards, all across module boundaries") {
     withSite { site =>
-      val (status, body) = get(site, "/")
+      val (status, body) = get(site, "/?lang=pl")
       assertEquals(status, 200, body)
-      // the type crossed a module boundary, and so did its companion
-      assert(body.contains("<h1>Szykownia</h1>"), body)
+      // the type crossed a module boundary, and so did its companion;
+      // the title is one translated element: EVERY language on it, and
+      // the request's own as its text (stage 3)
+      assert(body.contains("""data-pl="Szykownia""""), body)
+      assert(body.contains("""data-uk="Ательє""""), body)
+      assert(body.contains(""">Szykownia</span></h1>"""), s"?lang=pl must render Polish:\n$body")
       assert(body.contains("""<a class="offer" href="/s/szykownia/offer/hem">"""), body)
       assert(body.contains("35.00 zł") && body.contains("60.00 zł"), body)
       assert(body.contains("wycena"), "a zero price is a quote, not 0.00")
@@ -53,6 +58,24 @@ class TestStorefront extends munit.FunSuite:
       assert(body.contains("""data-uk="Wymiana zamka""""), body)
       assert(body.contains("--accent:#9e1042") && body.contains("--void:#dcc4b6"), body)
       assert(!body.contains("""<span class="offer-desc"></span>"""), body)
+      // and the client that switches them is on the page, with the
+      // same cookie the per-request road reads
+      assert(body.contains("window.setLang") && body.contains("OKAYLANG"), body)
+      assert(body.contains("""onclick="setLang('uk')""""), body)
+    }
+  }
+
+  test("the two i18n roads compose: the request picks the TEXT, the element still carries the rest") {
+    withSite { site =>
+      val (_, uk) = get(site, "/?lang=uk")
+      assert(uk.contains(""">Ательє</span></h1>"""), s"the request's language must be the rendered text:\n$uk")
+      assert(uk.contains("""data-pl="Szykownia""""), uk)
+      val (_, en) = get(site, "/?lang=en")
+      assert(en.contains(""">The atelier</span></h1>"""), en)
+      // ...and the script's default follows the request, so it does
+      // not undo what the server just decided
+      assert(en.contains("dflt='en'"), en)
+      assert(uk.contains("dflt='uk'"), uk)
     }
   }
 

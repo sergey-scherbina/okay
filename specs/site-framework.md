@@ -56,9 +56,45 @@ file override and a baked default, plus the editor page that writes
 it. The three-layer lookup the sites use, made a seam rather than a
 convention.
 
-**Stage 3 — per-element i18n (`script-i18n-inline`).** `Ui` and the
-HTML host learn a translated text node: one tree, every language on
-it, the client picking. The per-request road stays; a page chooses.
+**Stage 3 — per-element i18n (`script-i18n-inline`).** Every language
+on the element, the client picking. The per-request road stays; a
+page chooses, and the two COMPOSE.
+
+### Stage 3, LANDED 2026-09-18
+
+`okay.script.api.Inline`: `attrs` and `placeholder` carry the
+languages, `span`/`element` render one translated element whole,
+`switcher` draws the buttons and `script` is the ~20 lines that pick
+a language and apply it. The element's own content is the REQUEST's
+language, so the page is right before any script runs and right
+without one; the attributes only let the visitor change their mind.
+The client reads the same `OKAYLANG` cookie the per-request road
+writes, so the two roads cannot disagree about what was chosen.
+
+The storefront fixture uses it: the title is one translated element,
+the switcher and the script are on the page, and `?lang=uk` renders
+Ukrainian text with Polish still on the element.
+
+**The trap this stage removed, measured rather than reasoned:** a
+page holds `val langs = Langs.of(...)` in a declare block, and a
+`val` there is evaluated once per COMPILE. With `default` a FIELD,
+the first visitor's language froze for everyone after them — a
+`?lang=en` request answered Ukrainian in the test. `default` is a
+method reading `Lang.current` now, so the value is
+request-independent and the request-dependent part is a function.
+A page that wants one language on purpose passes `pinned`.
+
+- [x] the attributes carry every language given and skip an empty one
+- [x] the element renders the request's language as its text, falls
+      back to what there is when the request's is missing, and never
+      carries a language the page does not offer
+- [x] a placeholder gets its own carrier, being an attribute
+- [x] the switcher marks the current language; the script offers
+      exactly the page's languages and reads the same cookie
+- [x] a held `Langs` answers a NEW request's language, which is what
+      the freeze above was
+- [x] in the storefront: `?lang=uk` renders Ukrainian, `?lang=pl`
+      Polish, and both carry the other languages
 
 **Stage 4 — the worked example (`script-storefront`).** The szykownia
 storefront as okay-script pages, rendered and asserted. This stage is

@@ -2,6 +2,8 @@
 
 [serviceCard, storefrontStyle](/lib/cards.md)
 
+[langs](/lib/i18n.md)
+
 ```scala declare
 val szykownia = Shop("site-szykownia", "szykownia", "Szykownia", true, "#9e1042", Vector(
   Service("hem", "Skrócenie spodni", "wyślij InPost, 3-5 dni", 3500, "site-szykownia"),
@@ -9,6 +11,7 @@ val szykownia = Shop("site-szykownia", "szykownia", "Szykownia", true, "#9e1042"
   Service("bespoke", "Szycie na miarę", "", 0, "site-szykownia")))
 ```
 <!doctype html><html><head><style>${storefrontStyle(szykownia.clothing, szykownia.accent)}</style></head>
-<body><h1>${szykownia.title}</h1>
+<body>${okay.script.api.Inline.switcher(langs)}
+<h1>${okay.script.api.Inline.span(langs, "pl" -> "Szykownia", "en" -> "The atelier", "uk" -> "Ательє")}</h1>
 ${szykownia.services.map(sv => serviceCard(sv, szykownia.slug)).mkString}
-</body></html>
+${okay.script.api.Inline.script(langs)}</body></html>
