@@ -93,7 +93,8 @@ precisely what it does and does not give.
 - **3 — schema at the door.** `Compat` at submission: a job whose
   partial Schema a party cannot decode is refused before it runs.
 - **4 — the leak, read.** A tool that prints what a job's partial
-  Schema lets out, per key, and flags a count that can be one.
+  Schema lets out, per key, and flags a count that can be one. LANDED
+  (`federation-leak-read`, 2026-09-18) as `okay.cluster.Leak`.
 - **5 — the network.** With stage 12 of dataflow: parties on
   machines. BLOCKED on the same machines.
 
@@ -128,6 +129,8 @@ Stage 1:
       the test now asserts each party reads MORE than nothing and LESS
       than its whole log, with the horizon marks in the journal
 
+
+
 Stage 2:
 - [x] a worker with an allow-list refuses a job not on it, by name,
       with the list — `Cluster.guarded(jobs, coordinators)(caller)`
@@ -151,6 +154,32 @@ Stage 2:
       job check happened when it was opened — the coordinator check
       still runs on every request, and a stranger cannot advance a
       session somebody else opened
+
+Stage 4:
+- [x] `Leak.of(wire)` walks a `Wire#wire` Schema and reports every
+      field that crosses, per key where there is one (a `Wire.keyed`
+      or `Wire.windowed` partial's key-then-value convention,
+      `Wire.pair`/`Wire.triple`) and per PARTITION where there is not
+      (a `Wire.fold` partial's whole accumulator, which asks the same
+      question at that grain)
+- [x] a KEY whose shape has no bound on its cardinality (`String`,
+      `Bytes`) is flagged UNBOUNDED — an email address and a
+      two-letter country code have the identical shape, so this is a
+      thing to read, not a verdict
+- [x] a VALUE that is a bare scalar with nothing beside it to say how
+      many records made it is flagged UNCOUNTED — Claim 3's "a count
+      of one, a max over one element" made mechanical: a group of one
+      is then indistinguishable from that record's own field. Proven
+      against this repository's OWN shapes, not invented ones:
+      `TestJobs.value` (a bare `Long` per key) is uncounted;
+      `PartyJob`'s own partial — the job `TestFederation` actually
+      federates over — is uncounted for the identical reason
+- [x] a COMPOUND value (a user's own accumulator, whatever it derives)
+      is named and left there — reported as one field, never
+      fragmented into its own leaves. `Feeds.Sum(n, total, x)` is
+      reported as one `Sum`, not three independently-flagged `Long`s;
+      whether its fields answer "how many" is a question about what
+      they MEAN, which is not a Schema's business
 
 ## Results
 
