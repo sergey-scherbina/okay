@@ -116,6 +116,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   counters in one row: why a bare row holds one of each signature, and
   the three routes that lift it (a key with `Tag`, a cell with `Refs`,
   a fresh `Delim` prompt), with what each costs.
+- **[Arrows](arrows.md)** — a computation you can see before you run
+  it: the glyphs (`>>>`, `&&&`, `+++`, and why Kleisli's is `>=>`),
+  two scanners over one input in a single pass, where optics and
+  arrows meet, and where optics and streams deliberately do not.
 - **[Optics](optics.md)** — naming a path once: the nested `copy`, the
   `Option.map` chain, the `case s => s` in a rewrite, each beside the
   optic that replaces it; what each costs, measured; and the one pair

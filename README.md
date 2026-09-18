@@ -73,6 +73,7 @@ Going deeper:
 
 | | |
 |---|---|
+| [Arrows](docs/arrows.md) | a computation you can see before you run it: the glyphs, two scanners over one input in one pass, and why optics and streams do not meet |
 | [Optics](docs/optics.md) | naming a path once: the nested `copy`, the `Option.map` chain and the `case s => s`, each beside the optic that replaces it — with what both cost, and the one pair where the `copy` still wins |
 | [Benchmarks](docs/benchmarks.md) | every measured case, why each number is what it is, and where the honest limits are |
 | [The cast that could not go](docs/existentials.md) | six encodings tried against one assertion; the five failures are the useful part |

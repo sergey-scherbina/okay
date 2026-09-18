@@ -272,6 +272,8 @@ nothing runs at all, the state passes through, and the answer is
 
 ## Where to go next
 
+- [arrows](arrows.md) — the neighbour in the same table: the glyphs,
+  streams, and the one place the two actually meet
 - [tutorial §23](tutorial.md) — one optic run at `Validated`, `Par`
   and `Static`, which is optics meeting the effect carriers
 - [theory ch. 10](theory/10-optics.md) — profunctors, Tambara
