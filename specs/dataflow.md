@@ -508,11 +508,21 @@ Stage 13 — rescale at an epoch boundary (TestRescale):
       one removed hands its back — the same mechanism as death,
       without the death: the workers vector is a resume argument, so
       a longer or shorter one on resume re-maps partitions.
-- [ ] box 2: the same for a WINDOWED sink. Its open panes live in the
+- [~] box 2: the same for a WINDOWED sink. Its open panes live in the
       worker, rebuilt by replay on a same-width resume; a re-cut does
       not replay, so they must be JOURNALLED first. The engine refuses
       a windowed rescale (a clear no over a lost pane) until they are.
       A contiguous cut is refused too — it has no global prefix.
+      **THERE IS A SECOND ANSWER, AND IT IS THE CHEAPER ONE**
+      (`dataflow-windowed-rescale`, 2026-09-18). Box 2b's road B gave
+      a windowed sink a way to seek: replay from the last epoch whose
+      maximum is a horizon below where the partition stands. A re-cut
+      can use the same road — replay the open panes instead of
+      journalling them — and `MeasureWindowedSeek` already priced the
+      two: 16 KB once per resume against 3.3 KB every epoch for ever.
+      What it takes is in the Design section under "A re-cut cannot
+      discard by the local watermark", because the obvious version of
+      it is wrong in a way nothing would show.
 
 Stage 10 — the election (TestElection, TestPersisted):
 - [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`
@@ -670,6 +680,64 @@ a way to start from a known mark rather than from nothing.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
+
+
+### A re-cut cannot discard by the local watermark
+
+(specs/dataflow.md stage 13 box 2, `dataflow-windowed-rescale`.)
+
+Road B's seek works on a SAME-WIDTH resume for a reason that is easy
+to miss: the session replays the very same elements in the very same
+epochs, so its watermark follows the very same trajectory, so it
+closes exactly the panes the original closed — and the catch-up
+DISCARDS exactly what the coordinator already folded. Correctness
+comes from the trajectories agreeing, not from the discarding.
+
+A RE-CUT BREAKS THAT AGREEMENT. New partition j reads every parts-th
+element of the global stripe, so its local maximum is a sample of the
+global one and its watermark is not the old partition's. Panes are
+closed locally on `start + size <= max - lateness`, so the replay
+closes a slightly different SET, and every misclassification is
+silent and unbounded in neither direction:
+
+  - a pane the original CLOSED and the replay keeps open is handed
+    again and merged into a coordinator that already has it — a
+    DOUBLE COUNT;
+  - a pane the original kept OPEN and the replay closes is discarded
+    with its early elements, and only its later ones are counted — an
+    UNDER COUNT.
+
+Seeding the new session with the mark's maximum (which box 2b
+originally asked for and the same-width road turned out not to need)
+narrows the band and does not close it: a stripe's maximum still
+trails the global one by whatever `parts` consecutive elements span in
+event time.
+
+**So the discarding must not be the worker's decision at all.** Three
+changes, and each one is exact rather than close:
+
+1. **Replay to a POSITION, not to an epoch.** `Req.Open` gains
+   `until`: read from `from`, discard everything closed on the way,
+   and only then answer. Epochs cannot do this after a re-cut —
+   `parts'` partitions consume `parts' * take` elements an epoch, so
+   the epoch that ended at the stop point under the old width ends
+   somewhere else under the new one, and no arithmetic fixes the last
+   short epoch.
+2. **The coordinator EMPTIES its open panes** (`Sink.reopen`: drop the
+   open map, keep the folded answer). It can, because the horizon rule
+   guarantees every still-open pane starts after the mark's maximum —
+   so the replay sees every element of every open pane and rebuilds
+   them IN FULL. A partial copy at the coordinator would be added to a
+   full one.
+3. **Contributions to panes already RETIRED are sifted out**
+   (`Sink.sift(w, below)`), and `below` is the stop watermark, which
+   is precisely the condition retirement used. This is the arm that
+   catches whatever the replay re-closes on its way.
+
+None of the three needs the two watermarks to agree, which is the
+property a re-cut cannot have. The test is the one stage 13 already
+uses and the only one that would catch either error: the rescaled
+answer must equal the BATCH answer, pane for pane and drop for drop.
 
 ## Results
 
