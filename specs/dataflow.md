@@ -652,10 +652,24 @@ Stage 8 — the coordinator survives (TestResume, TestPersisted):
       stream journalled there answers the batch answer, a successor
       given nothing but the log finishes the job, and the log holds
       every epoch's state in order
-- [ ] a batch `Cluster.run` that resumes — it is a two-pass function
-      with nothing to resume from, and restarting it is the answer
-- [ ] a coordinator ELECTION, so a successor starts by itself.
-      okay-persist has `Election`; nothing here asks for it yet
+- [~] a batch `Cluster.run` that resumes — DECLINED, and the box's own
+      text is the reason: it is a two-pass function with nothing to
+      resume from, and restarting it is the answer. Left here as a
+      decision rather than deleted, so the question is not asked a
+      third time
+- [x] a coordinator ELECTION, so a successor starts by itself — DONE,
+      and in two halves that this box was reading as one. The engine's
+      half landed in STAGE 10: `Cluster.leading` takes a `Lease`,
+      `TestPersisted`'s `Elected` binds okay-persist's real `Election`
+      to it (`tryTakeover` is the term, `leader` is `held`), and the
+      two-nodes-one-seat test is ticked there. The other half — a loop
+      that WAITS to be elected — is declined on purpose and
+      `Cluster.leading`'s own Scaladoc argues it: a retry loop needs a
+      clock, a backoff and a decision about how long to keep trying,
+      all of which belong to whatever supervises the process, and one
+      attempt composes into any of them (the snippet is in the
+      Scaladoc). So "nothing here asks for it yet" was true of the
+      waiting and false of the election
 
 Stage 7 — the numbers (MeasureWroclawCluster in compare, `Live`):
 - [x] the Wrocław job as a `Job[Days, R]`: submitted by NAME, its
