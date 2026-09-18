@@ -1,0 +1,6 @@
+feature/queue-audit 2026-09-18T12:45:07Z
+agent: claude-code
+heartbeat: 2026-09-18T12:45:07Z
+status: in-progress
+done-so-far: audited the queue — 7 of 10 items are landed work
+next: delete them, correct what is left, then take static-workflow stage 2
