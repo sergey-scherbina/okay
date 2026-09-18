@@ -608,7 +608,90 @@ are the two louder ways to say the same thing, and all three mix.
 A bind that needs an earlier answer is refused by name, because that
 one really does need a monad.
 
-## 23. What the program will do, before it does it
+## 23. One optic, three effects
+
+A traversal's signature asks for an `Applicative` and nothing more:
+
+```scala
+def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]
+```
+
+So the applicative slot is where the effect goes, and every carrier
+drops into it with no code in the optics for any of them. One optic —
+every line of an order:
+
+```scala
+val eachLine = Lens[Order](_.lines).andThen(Traversal.each[Line, Line])
+```
+
+**Report every bad line, not the first.** At `Validated` the walk
+collects; at `Either` it stops.
+
+```scala
+eachLine.traverseOf(check)(order)
+// Invalid(["ink: qty must be > 0", "pad: qty must be > 0"])
+```
+
+**Visit the foci at once.** At `Par` each focus runs on its own fiber
+and the structure is rebuilt from the answers.
+
+```scala
+eachLine.traverseOf[Par](line => Par(price(line)))(order).seq
+```
+
+**Ask what the walk WOULD do.** At `Static` the operations are a value
+before anything runs, so you can audit them, dry-run them, or answer
+them all in one round trip.
+
+```scala
+val plan = eachLine.traverseOf(priceLine)(order)
+plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
+plan.toFree.runWith  // and the same value, run the ordinary way
+plan.foldMap(toBatch)  // or answered in ONE call
+```
+
+One caution that catches everyone once: write `fmap` through the
+instance rather than `.map` on these carriers. The package's
+`given Comonad[Id]` puts a `map` on every type in lexical scope and
+wins the race, so `Static.op(x).map(f)` hands `f` the program instead
+of its answer.
+
+The worked versions of all three are `TestOpticCarriers`, which is
+where the outputs above come from.
+
+### The three on one screen
+
+A form is a value, `Validated` collects every problem, and an optic
+puts each message next to the field it names. The validation is a
+`direct` block, which needs no monad because the checks do not depend
+on each other:
+
+```scala
+type Errors = Vector[(String, String)]          // field key -> message
+
+def validate(in: Map[String, String]): Validated[Errors, Signup] = direct:
+  val name  = nonEmpty("name", in)
+  val email = hasAt("email", in)
+  val age   = number("age", in)
+  Signup(name, email, age)
+
+def withErrors(tree: Ui, errs: Errors): Ui =
+  errs.foldLeft(tree) { case (t, (k, msg)) =>
+    Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
+  }
+```
+
+Carrying the field key in the error is what makes the write-back
+possible: `Ui.key(k)` is the traversal that finds a node by key, so
+each message lands under its own field and the user's edits stay where
+they were. `TestUiFormValidation` is the worked version.
+
+One boundary the same test pins: the per-focus function is an ordinary
+method, not a nested block. A mark under a lambda is what `direct`'s
+v1 refuses, so an optic and a direct block meet at the call, not
+inside it.
+
+## 24. What the program will do, before it does it
 
 A `flatMap` hides the rest of the program behind a function, so the
 only way to learn what it does is to run it. When the program does not
@@ -634,7 +717,7 @@ The batching carrier is the payoff: an `app` that accumulates its
 leaves' requests turns fifty fetches into one call, with the program
 unchanged. [Chapter 12](theory/12-applicative-static.md) builds it.
 
-## 24. Where to go next
+## 25. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference;
