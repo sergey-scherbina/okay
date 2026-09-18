@@ -1,6 +1,0 @@
-feature/proc-doors 2026-09-18T17:23:27Z
-agent: claude-code
-heartbeat: 2026-09-18T17:23:27Z
-status: in-progress
-done-so-far: claimed
-next: proc-doors (a Unit door as a bare statement under colouring); close two stale workflow backlog items
