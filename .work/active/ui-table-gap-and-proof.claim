@@ -1,0 +1,6 @@
+feature/ui-table-gap-and-proof 2026-09-18T10:30:07Z
+agent: claude-code
+heartbeat: 2026-09-18T10:30:07Z
+status: in-progress
+done-so-far: claimed
+next: the table lowering gains a column gap; a real headless browser proves the claimed <table>
