@@ -259,17 +259,23 @@ each installed value with its plan name and erased class — that is
 what a container registration needs, and no reflection touches the
 values.
 
-**What does it need from the place it runs in?** A component declares
-that where it opens the thing:
+**What does it need from the place it runs in?** A component ASKS
+for it where it opens the thing, and the need is read off the asking:
 
 ```scala
-import okay.deploy.Needs.needs      // the extension lives with its reader
+import okay.deploy.{Needs, Provision}
 
-moduleAs[Store, FileStore](FileStore.open(file))(_.close())
-  .needs(Need.Volume(dir))
+Needs.provisioned[Store, FileStore](
+  Static.op(Provision.Volume(dir)).map(d => FileStore.open(d.resolve("board.log"))))(_.close())
 ```
 
-`and` merges the declarations; `Needs.declared(app)` reads them off
+The acquisition is a `Static` spine over `Provision` — a volume, a
+database, a port, each answering the thing itself — so `leaves` names
+every need before anything runs, and the store opens under the path
+the place ANSWERED: there is no second path to drift from the first.
+A component that opens something no `Provision` names still declares
+it by hand (`import okay.deploy.Needs.needs`; `.needs(Need.…)`), and
+`and` merges both the same way; `Needs.declared(app)` reads them off
 the composed value. The kinds of fact are open: `Fact[V]` is a typed
 key with its own merge, so a reader outside the core defines its own
 kind, and the core knows no deployment word.
@@ -421,8 +427,8 @@ def wiring(using Timer): ChatConf ?=> Module[[X] =>>
   val path = wire[ChatConf].db
   val store =
     if path == ":memory:" then Module.value[Store](MemoryStore())
-    else moduleAs[Store, FileStore](FileStore.open(Path.of(path)))(_.close())
-           .needs(Need.Volume(dirOf(path)))
+    else Needs.provisioned[Store, FileStore](
+           Static.op(Provision.Volume(dirOf(path))).map(d => FileStore.open(d.resolve(Path.of(path).getFileName))))(_.close())
   val board: Store ?=> Module[[X] =>> Board ?=> X] =
     module[Board](Board(Board.topicOf(wire[Store])))(_ => ())
   store and board and

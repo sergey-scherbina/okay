@@ -91,6 +91,18 @@ class TestDiDocs extends munit.FunSuite:
     assertEquals(Needs.declared(conf and store), Vector(Need.Volume("/app/data")))
   }
 
+  test("a component asks the place for what it opens, and the need is read off the asking") {
+    // the guide's first `Needs` sample, di-needs-from-static
+    val conf = Module.value[Conf](Conf("/app/data/board.log"))
+    val store: Conf ?=> Module[[X] =>> Db ?=> X] =
+      val file = java.nio.file.Path.of(wire[Conf].db)
+      Needs.provisioned[Db, FileThing](
+        Static.op(Provision.Volume(file.getParent.nn.toString))
+          .map(d => FileThing(d.resolve(file.getFileName).toString)))(_.closed = true)
+    assertEquals(Needs.declared(conf and store), Vector(Need.Volume("/app/data")))
+    assertEquals(!.run(Resource.run[String, Pure]((conf and store) { wire[Db].q })), "/app/data/board.log")
+  }
+
   test("what a deployment reads by type: the place's inputs, not the runtime's") {
     trait Pg
     given Needs[Pg] = Needs(Need.Database(Engine.Postgres, "16", "shop"))

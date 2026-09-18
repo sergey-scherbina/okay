@@ -584,17 +584,19 @@ object ChatDemo {
    */
   def wiring(using Timer): ChatConf ?=> Module[[X] =>>
       okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
-    import okay.deploy.{Need, Needs}
-    import Needs.needs
+    import okay.deploy.{Needs, Provision}
     val path = wire[ChatConf].db
     val store =
       if path == ":memory:" then Module.value[okay.persist.Store](okay.persist.MemoryStore())
       else
+        // the volume is ASKED FOR, and the log opens under the answer:
+        // the deployment reads the need off this program, and the
+        // path opened cannot be one the place did not mount
+        // (di-needs-from-static)
         val file = java.nio.file.Path.of(path)
         val dir = Option(file.getParent).map(_.toString).getOrElse(".")
-        moduleAs[okay.persist.Store, okay.persist.FileStore](
-          okay.persist.FileStore.open(file))(_.close())
-          .needs(Need.Volume(dir))
+        Needs.provisioned[okay.persist.Store, okay.persist.FileStore](
+          Static.op(Provision.Volume(dir)).map(d => okay.persist.FileStore.open(d.resolve(file.getFileName))))(_.close())
     val board: okay.persist.Store ?=> Module[[X] =>> Board ?=> X] =
       module[Board]({
         val b = Board(Board.topicOf(wire[okay.persist.Store]))

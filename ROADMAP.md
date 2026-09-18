@@ -269,3 +269,8 @@ few machines rather than a thousand.
 before it runs, which is what `okay-di` currently asks authors to
 declare by hand. Deriving needs from the program is the honest
 version of "needs declared where the thing opens".
+DONE 2026-09-18 (di-needs-from-static): `Provision` is the
+deployment's vocabulary as an effect signature, `Needs.provisioned`
+takes a `Static` spine over it and reads the needs off its leaves,
+and the thing opens with the place's answer — the demo's store is
+written this way and declares nothing by hand.

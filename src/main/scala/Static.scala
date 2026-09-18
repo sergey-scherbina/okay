@@ -55,6 +55,16 @@ enum Static[F[+_], A]:
   case Select[F[+_], A, B](e: Static[F, Either[A, B]],
                            f: Static[F, A => B]) extends Static[F, B]
 
+  /**
+   * A pure function over the answer — one `Ap` of a `Pure`, which is
+   * what the instance's `fmap` is. A METHOD, not an extension: with
+   * `okay.given` in scope the lexical `map` for `Id` wins over a
+   * companion extension and types the lambda's argument as the spine
+   * itself (lexical-extension-beats-companion, met again here by
+   * di-needs-from-static). A member is found first.
+   */
+  def map[B](f: A => B): Static[F, B] = Ap(Pure(f), this)
+
 object Static:
 
   /** one operation as a program — the door in */
