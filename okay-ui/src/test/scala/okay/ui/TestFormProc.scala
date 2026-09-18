@@ -1,5 +1,7 @@
 package okay.ui
 
+import scala.annotation.unused
+
 import okay.*
 import okay.Proc.given
 import scala.language.implicitConversions
@@ -40,9 +42,12 @@ class TestFormProc extends munit.FunSuite:
   // straight-line. The picture names the fields because the macro
   // names a leaf after the function that was called.
 
-  private def yourName(u: Unit): Wf.Question[String, String, String] = Wf.Question.Ask("name")
-  private def yourEmail(u: Unit): Wf.Question[String, String, String] = Wf.Question.Ask("email")
-  private def yourCity(u: Unit): Wf.Question[String, String, String] = Wf.Question.Ask("city")
+  // the parameter is the SHAPE the macro reads, not a value any of
+  // these bodies wants — `@unused` says so rather than a reader
+  // wondering what was forgotten
+  private def yourName(@unused u: Unit): Wf.Question[String, String, String] = Wf.Question.Ask("name")
+  private def yourEmail(@unused u: Unit): Wf.Question[String, String, String] = Wf.Question.Ask("email")
+  private def yourCity(@unused u: Unit): Wf.Question[String, String, String] = Wf.Question.Ask("city")
 
   val typed: Wf.Proc[String, String, Unit, Signup] =
     Proc.direct: u =>
