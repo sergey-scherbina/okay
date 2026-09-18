@@ -1,6 +1,0 @@
-feature/dataflow-cas-commit 2026-09-18T20:12:25Z
-agent: claude-code
-heartbeat: 2026-09-18T20:12:25Z
-status: in-progress
-done-so-far: claimed; the box says "no store here offers a conditional write" and that is STALE — okay-docs has Cond.IfVersion
-next: a Docs-backed Checkpoint with Cond.IfVersion in okay-cluster TEST scope (the pattern stage 10 used for Election), and the ghost test that lands a commit today must stop landing it
