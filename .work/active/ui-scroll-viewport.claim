@@ -1,6 +1,0 @@
-feature/ui-scroll-viewport 2026-09-18T18:24:12Z
-agent: claude-code
-heartbeat: 2026-09-18T18:24:12Z
-status: in-progress
-done-so-far: claimed
-next: Ui.Scroll clips its own child — non-Scroll children take natural height, Scroll children share the rest
