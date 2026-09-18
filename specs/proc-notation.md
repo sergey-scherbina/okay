@@ -364,6 +364,61 @@ terms behave identically — the leaves, the answer and the questions
 asked. Compiling was never the claim: a macro that infers its types
 wrongly compiles too.
 
+### Auto-colouring (`proc-auto-colour`, 2026-09-18)
+
+The operator asked for it the hour `proc-notation-forms` said the
+types were not required either. A question reads as its answer, with
+no `!`:
+
+```scala
+import okay.Proc.given
+import scala.language.implicitConversions
+
+val booking: Wf.Proc[String, String, Unit, String] =
+  Proc.direct: _ =>
+    val city: String = ask("city?")
+    val t: Long      = now
+    s"$city/$t"
+```
+
+**The gate is the capability, exactly as `direct`'s is.** The entry's
+block became `ProcCtx[F] ?=> X => Y`, the conversion requires
+`ProcCtx[F]`, and the class's constructor is `private[okay]` — so
+outside a block the conversion cannot resolve and a question used as a
+value stays the compile error it always was. The macro looks through
+the context lambda; taking it for the block's own is how the first cut
+compiled a procedure whose input was a `ProcCtx`.
+
+**ONE conversion where `Direct` has two, and that is the shape of the
+two roads.** A monadic block distinguishes its own programs
+(`selfColor`) from an effect signature's operations (`opColor`, gated
+by a `Direct.Effect` marker) because those are different things there.
+A term's leaves are operations of ONE signature, so there is one case
+— and the marker gate has nothing to add, because the capability
+already names `F`.
+
+**IT IS AN IMPORT, NOT A DEFAULT**, and that fell out of where the
+given can live rather than from taste. `Free.directColor` works with
+no import because `Free`'s companion is in the implicit scope of
+`Free[R, A]`; a `Proc` block's source type is the AUTHOR's signature,
+whose companion this library does not own. So `import okay.Proc.given`
+it is — and the consequence is worth having: a file that did not ask
+for colouring cannot get it by accident, which `TestProcForms` pins by
+NOT writing the import and asserting the error is still there.
+
+**THE ONE FAILURE COLOURING CAN PRODUCE SILENTLY, made loud.** The
+conversion fires where an ANSWER is expected. `"a" + q` expects
+nothing in particular — `String.+` takes `Any` — so the question is
+stringified and the program asks one where it reads as asking two.
+Measured before the check: `ask("left?") + "|" + ask("right?")`
+answered `l|Ask(right?)`. So after rewriting, NOTHING of the
+signature's type may remain in a residual, and what does is refused
+with both fixes named. The check cost three wrong cuts before it was
+right — a positional "skip the root" skipped an `Inlined` wrapper and
+then reported the question under it, which refused every marked val in
+the repository — and the version that stuck counts QUESTIONS, with
+wrappers transparent.
+
 ### Stage 1.1 — branches and loops, landed 2026-09-18 (`proc-notation-branches`)
 
 `TestProcBranches` (13). The flat walk became a recursive body

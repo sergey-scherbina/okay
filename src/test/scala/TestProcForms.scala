@@ -106,11 +106,14 @@ class TestProcForms extends munit.FunSuite:
     assertEquals(run(rooms)(())(q => if q == "nights?" then "2" else q.take(6)),
       (List("room 1", "room 2"), List("nights?", "room 1?", "room 2?")))
 
-  test("a MARK is still required — there is no auto-colouring here"):
-    // `direct` has one, behind the `DirectCtx` capability; this road
-    // has none, so an operation used as a value is the ordinary type
-    // error it should be. Recorded so the difference is a decision
-    // rather than a surprise.
+  test("without the colouring import a mark is required — as it should be"):
+    // AMENDED by proc-auto-colour the same day: this road HAS
+    // auto-colouring now (TestProcColour), and it is opt-in by an
+    // import — `import okay.Proc.given`, which this file deliberately
+    // does not write. Without it a question used as a value is the
+    // ordinary type error it always was, which is the property worth
+    // pinning: the colouring cannot leak into a file that did not ask
+    // for it.
     val e = compileErrors("""
       val bad: Wf.Proc[String, String, Unit, String] =
         Proc.direct { _ =>
@@ -118,4 +121,4 @@ class TestProcForms extends munit.FunSuite:
           city
         }
     """)
-    assert(e.nonEmpty, "an operation was accepted where a value was wanted")
+    assert(e.nonEmpty, "a question was coloured in a file that did not import the conversion")

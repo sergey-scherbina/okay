@@ -55,6 +55,38 @@ the block's parameter type comes with them. `Proc.direct[Sig, X, Y]`
 is available and is what you write where there is no expected type;
 everywhere else it is noise. That holds for branches and loops too.
 
+**And no marks either, if you want.** With
+`import okay.Proc.given` (and `scala.language.implicitConversions`) a
+question reads as its answer:
+
+```scala
+val booking: Wf.Proc[String, String, Unit, String] =
+  Proc.direct: _ =>
+    val city: String = ask("city?")
+    val t: Long      = now
+    s"$city/$t"
+```
+
+The conversion requires a capability that exists only inside a block,
+so outside one a question is not a value — and without the import
+nothing changes at all, which is why a file that did not ask for
+colouring cannot get it by accident. The two spellings mix freely.
+
+**One trap, and it is a compile error rather than a surprise.** The
+conversion fires where an ANSWER is expected, and `"a" + q` expects
+nothing in particular — `String.+` takes `Any`. So a question there
+would be quietly stringified; the macro refuses instead:
+
+```
+Proc.direct: this question is never asked — it stands where ANY value
+is accepted ("a" + q, an interpolation, a println), so nothing asked
+for its answer. Mark it (!q), or ascribe what you want.
+```
+
+That was measured before the check existed:
+`ask("left?") + "|" + ask("right?")` answered `l|Ask(right?)` and
+asked one question.
+
 Beside its monadic twin, which asks the same three questions:
 
 ```scala

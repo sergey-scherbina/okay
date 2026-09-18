@@ -145,8 +145,45 @@ object Proc:
    * is a monad, and the macro refuses it by name. That refusal is the
    * whole difference between this and `direct` — see the spec.
    */
-  inline def direct[F[+_], X, Y](inline block: X => Y): Proc[F, X, Y] =
+  inline def direct[F[+_], X, Y](inline block: ProcCtx[F] ?=> X => Y): Proc[F, X, Y] =
     ${ ProcMacro.impl[F, X, Y]('block) }
+
+  /**
+   * THE CAPABILITY, and it exists only INSIDE a `Proc.direct` block —
+   * the same gate `Direct.DirectCtx` is, for the same reason. The
+   * auto-colouring conversion below requires it, so outside a block
+   * it cannot resolve and an operation used as a value stays the
+   * compile error it always was. A compile-time refusal, where the
+   * phantom marks can only throw at run time.
+   */
+  @scala.annotation.implicitNotFound(
+    "no Proc.ProcCtx[${F}]: a question reads as its answer only INSIDE a Proc.direct block.\n" +
+      "Wrap the code in Proc.direct { x => ... } — or use an explicit mark (!q / q.reflect),\n" +
+      "which needs no capability.")
+  final class ProcCtx[F[+_]] private[okay] ()
+
+  /**
+   * A QUESTION READS AS ITS ANSWER — the block's operations colour
+   * themselves, so `val city = ask("city?")` needs no `!`.
+   *
+   * A phantom: the macro rewrites every one of these calls, and the
+   * body here only runs if one escapes, which it then says loudly
+   * rather than compiling to nothing.
+   *
+   * ONE CONVERSION, WHERE `Direct` HAS TWO, and the difference is the
+   * shape of the two roads rather than an omission. A monadic block
+   * distinguishes its OWN programs (`selfColor`) from an effect
+   * signature's operations (`opColor`, gated by a `Direct.Effect`
+   * marker), because a program of the row and an operation of the row
+   * are different things there. A term's leaves are operations of one
+   * signature and nothing else, so there is one case — and the
+   * marker gate has nothing to add, because the capability already
+   * names `F`: a type that is not this block's signature does not
+   * match, whatever it declares about itself.
+   */
+  given procColor[F[+_], A](using ProcCtx[F]): Conversion[F[A], A] =
+    _ => throw new IllegalStateException(
+      "Proc auto-colouring escaped macro rewriting — this call belongs inside Proc.direct")
 
   /**
    * THE ALGEBRA, and it is one given with both halves, the way

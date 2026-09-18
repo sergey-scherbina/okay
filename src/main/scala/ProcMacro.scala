@@ -54,7 +54,7 @@ object ProcMacro:
   // generate an unstable inline accessor (E192). The object is the
   // implementation of `Proc.direct` and nothing else should call it.
 
-  def impl[F[+_] : Type, X: Type, Y: Type](block: Expr[X => Y])
+  def impl[F[+_] : Type, X: Type, Y: Type](block: Expr[Proc.ProcCtx[F] ?=> X => Y])
                                           (using q: Quotes): Expr[Proc[F, X, Y]] =
     import q.reflect.*
 
@@ -68,8 +68,25 @@ object ProcMacro:
       case Typed(inner, _) => strip(inner)
       case _ => t
 
+    /**
+     * The colouring conversion, recognised the way Direct.scala
+     * recognises its own: the typer inserts `procColor(...).apply(q)`
+     * where a question stands in an answer's place, and the macro
+     * rewrites that call exactly as it rewrites a mark. One dispatch
+     * serves both, because both name the same thing — an operation
+     * whose answer the block wants.
+     */
+    val colorSym = TypeRepr.of[Proc.type].typeSymbol.methodMember("procColor").toSet
+
+    def calleeRoot(t: Term): Symbol = t match
+      case Apply(f, _) => calleeRoot(f)
+      case TypeApply(f, _) => calleeRoot(f)
+      case Inlined(_, Nil, inner) => calleeRoot(inner)
+      case _ => t.symbol
+
     def asMark(t: Term): Option[Term] = t match
       case Apply(TypeApply(fun, _), List(m)) if markSyms(fun.symbol) => Some(m)
+      case Apply(Select(conv, "apply"), List(x)) if colorSym(calleeRoot(conv)) => Some(x)
       case _ => None
 
     def hasMark(t: Tree): Boolean =
@@ -142,11 +159,21 @@ object ProcMacro:
     // the same shape Direct.scala records for `asMark`, met from the
     // other side — so the refusal tests, which exist to pin the
     // errors, found a bug in the macro before they could pin anything.
+    //
+    // AND THROUGH THE CONTEXT LAMBDA the entry wraps the block in:
+    // `Proc.direct { x => … }` arrives as `(ctx: ProcCtx[F]) => (x: X)
+    // => …`, because the capability has to be ambient in the body for
+    // the colouring conversion to resolve there and nowhere else. The
+    // first lambda is the capability's and is never called — taking
+    // it for the block's own is how the first cut compiled a
+    // procedure whose input was a `ProcCtx`.
+    val ctxSym = TypeRepr.of[Proc.ProcCtx[[A] =>> Any]].typeSymbol
+
     def asLambda(t: Term): Option[(Symbol, Term)] = t match
       case Inlined(_, _, inner) => asLambda(inner)
       case Typed(inner, _) => asLambda(inner)
       case Block(List(DefDef(_, List(TermParamClause(List(p))), _, Some(b))), Closure(_, _)) =>
-        Some((p.symbol, b))
+        if p.tpt.tpe.derivesFrom(ctxSym) then asLambda(b) else Some((p.symbol, b))
       case Block(_, inner) => asLambda(inner)
       case _ => None
 
@@ -284,7 +311,8 @@ object ProcMacro:
      * mark's leaf appended. The two passes walk with the SAME
      * `TreeMap`, so the k-th mark here is the k-th mark there.
      */
-    def rewrite(t: Term, env: Term, depth: Int, idx: Map[Symbol, Int], firstMark: Int): Term =
+    def rewrite(t: Term, env: Term, depth: Int, idx: Map[Symbol, Int], firstMark: Int,
+                isLeafArg: Boolean = false): Term =
       var k = 0
       val tm = new TreeMap:
         override def transformTerm(tree: Term)(owner: Symbol): Term =
@@ -296,7 +324,61 @@ object ProcMacro:
             case None => tree match
               case id: Ident if idx.contains(id.symbol) => project(env, depth, idx(id.symbol))
               case _ => super.transformTerm(tree)(owner)
-      tm.transformTerm(t)(Symbol.spliceOwner)
+      val out = tm.transformTerm(t)(Symbol.spliceOwner)
+      // a LEAF's own argument IS a question at its root — that is what
+      // makes it a leaf. Only its subterms can hold a stray one.
+      noStrayQuestion(out, skipRoot = isLeafArg)
+      out
+
+    /** is this term an operation of the block's own signature? */
+    def isQuestion(tpe: TypeRepr): Boolean =
+      tpe.widen.dealias match
+        case a @ AppliedType(_, args) if args.nonEmpty =>
+          a <:< TypeRepr.of[F].appliedTo(args.last)
+        case _ => false
+
+    /**
+     * A QUESTION THAT SURVIVED THE REWRITE IS A QUESTION NOBODY ASKED,
+     * and without this check it is the one failure auto-colouring can
+     * produce silently.
+     *
+     * The conversion fires where an ANSWER is expected. `"a" + q` does
+     * not expect one — `String.+` takes `Any` — so the question is
+     * quietly stringified and the program asks one question where it
+     * reads as asking two. Measured the hour colouring landed:
+     * `ask("left?") + "|" + ask("right?")` answered `l|Ask(right?)`
+     * and asked once.
+     *
+     * So after rewriting, nothing of the signature's type may remain.
+     * A block that genuinely wants an operation AS A VALUE builds it
+     * outside, where it is an ordinary value and not a leaf.
+     */
+    def noStrayQuestion(t: Term, skipRoot: Boolean): Unit =
+      // "skip the root" is the FIRST QUESTION, not the first node: a
+      // leaf's argument arrives wrapped in `Inlined`/`Typed`, so a
+      // positional root check skipped a wrapper and then reported the
+      // question under it — which refused every marked val in the
+      // repository until the traversal was made to count questions
+      // instead of nodes.
+      var toSkip = if skipRoot then 1 else 0
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          // a wrapper carries its content's type, so counting it as a
+          // question spends the skip on nothing and reports the real
+          // one underneath — which is what it did
+          case Inlined(_, _, _) | Typed(_, _) => super.traverseTree(tree)(owner)
+          case term: Term if term.isExpr && isQuestion(term.tpe) =>
+            if toSkip > 0 then
+              toSkip -= 1
+              super.traverseTree(tree)(owner)
+            else report.errorAndAbort(
+              "Proc.direct: this question is never asked — it stands where ANY value is " +
+                "accepted (`\"a\" + q`, an interpolation, a `println`), so nothing asked for " +
+                "its answer and auto-colouring had nothing to fire on. Mark it (`!q`), or " +
+                "ascribe what you want (`val a: String = q`). If you really meant the " +
+                "operation itself, build it outside the block.", term.pos)
+          case _ => super.traverseTree(tree)(owner)
+      probe.traverseTree(t)(Symbol.spliceOwner)
 
     /**
      * WHERE THE COMPILER STANDS: the type of every slot of the
@@ -347,7 +429,7 @@ object ProcMacro:
         val d = st.depth
         val here = st.idx
         val fn = lam(before, TypeRepr.of[F].appliedTo(vT))((_, env) =>
-          rewrite(arg, env, d, here, d + 1))
+          rewrite(arg, env, d, here, d + 1, isLeafArg = true))
         st = st.push(vT)
         acc = Some(chain(st0.envT, before, st.envT, acc, opTerm(before, vT, nameOf(arg), fn)))
       (base, st, acc)

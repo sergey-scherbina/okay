@@ -993,6 +993,25 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       cost question is `optics-field-fuse` (the planner cannot read
       the by-name constructor, so it pays the interpreter today).
 
+- [ ] jetty-peer-address-flake — `okay.jetty.TestPeerAddress` failed
+      under a FULL matrix on 2026-09-18 ("the server saw no peer
+      address") and passed alone, immediately, on the same tree; the
+      lane it failed under (proc-auto-colour) touches only the core's
+      Proc macro and has no dependency path to okay-jetty at all.
+      WHY IT IS FILED RATHER THAN SHRUGGED AT: the suite BINDS A REAL
+      PORT (`Jetty.serve(0)`) and is not `Live`-tagged, which is
+      exactly the class AGENTS.md's nio-port-scope survey put behind
+      `integrationTest` — "anything whose result depends on something
+      `sbt test` cannot control", and a bind plus a loopback connect
+      under a full matrix is that. The survey that tagged the others
+      greps `\.(serve|listen)\(0\)|ServerSocketChannel\.open|new
+      ServerSocket` over the test tree; this one either postdates it
+      or was missed, and the same grep should be re-run for siblings.
+      DONE-WHEN: the suite is tagged (or its race is found and fixed —
+      the assertion reads an AtomicReference the handler sets, so a
+      missing bind is likelier than a missing write), and whichever it
+      is, the reason is written where the tag is.
+
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
       closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
       binary's connection ends and it exits 0 while sbt still has a
