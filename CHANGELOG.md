@@ -1,5 +1,56 @@
 # Changelog
 
+## static-workflow-proc - a durable workflow as a term, on the engine that already exists
+
+Lane 2 of specs/arrows-plan.md, stage 1 of specs/static-workflow.md.
+`okay.Proc[F, X, Y]` is the free ARROW over a signature - `Static`'s
+neighbour one rung up the ladder - with `Arr`, `Op`, `Then`, `First`,
+`OnRight` and `Iter`, an `Optic.Arrow & Optic.Choice` instance, and
+NO `ArrowApply`: no operation takes a computation as data, which is
+Hughes' line between an arrow and a monad.
+
+`Iter` is the one constructor the selective literature lacks and the
+reason Appendix A refused the static route: Elgot iteration is a NODE,
+so "ask N questions where N is an answer" stays a finite term whose
+position is a path with a counter on it.
+
+A workflow is ONE SIGNATURE, `Wf.Question[Q, A, R]` - a GADT indexed
+by the answer, so `Now` IS a question answering `Long` and the nine
+partial functions the monadic doors carry become a type.
+
+THE BET, AND IT PAID: okay-persist did not change by one line.
+`Wf.Proc.program` turns a term into an ordinary durable program, so
+`Dialogue.workflow`, the envelope, the races, the snapshots, the
+suspension and `patch` all work as they stand. The decisive test is
+that the two front ends share a TOPIC: a run started by the monadic
+booking and half-answered is carried to the end by the term, and their
+journals are equal record for record.
+
+`Wf.Proc.walk` is the second reading of a position: it folds the TERM
+over the journal and performs nothing - no row, no monad, no runtime
+in its signature, which is the proof. It and `Wf.replay` must agree,
+and they are asserted to on every PREFIX of three journals.
+
+THE KEYSTONE WAS SEEN TO FAIL, three ways. A green property is worth
+nothing until it has been red for the right reason: stopping the loop
+counting its rounds reddens the position test; reading an answer
+without consuming it reddens SIX tests including both agreement
+properties; making a patch eat the record after it reddens the
+v1-journal pair. The middle failure reads `stranded at 1/1/1/2/2/1/2/in
+on record 1: Now() cannot take Right(Kyiv)` - the path says where, the
+record says which, the question says what it could not take.
+
+WHAT THE COVARIANCE COSTS, said where it is paid: `okay.Proc`'s
+signature is `F[+_]`, so matching the GADT proves `A <: Z` and not
+`A = Z`, and a program is invariant in its value. Every arm of the
+bridge widens through a `map` - one node per leaf, beside a leaf that
+is an outside call, and no `asInstanceOf`.
+
+AND THE PRICE THE NEXT LANE REMOVES IS NOW VISIBLE: every term needed
+a `keep` helper, because what a monadic body holds in a local variable
+a term carries on its edge. Four uses in one booking. That is the
+evidence `proc-notation` was waiting for, and it arrived by writing
+the terms rather than by arguing about them.
 ## ui-html-css — the tokens' stylesheet moves beside the tree
 
 `okay.ui.Html.css`: the level-L stylesheet for the browser roads —

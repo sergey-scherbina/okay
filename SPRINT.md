@@ -89,7 +89,14 @@
   stage 1 must write (the fourth indexed-optics seat, or not).
   LANE 1 (`arrow-laws`) LANDED 2026-09-18: 15 laws in
   `okay.laws.ArrowLaws`, `Mealy` instantiates in three lines, and its
-  `right` is tested for the first time. NEXT: `static-workflow-proc`.
+  `right` is tested for the first time.
+  LANE 2 (`static-workflow-proc`) LANDED 2026-09-18: `okay.Proc` over
+  a signature, `Wf.Question`/`Wf.Proc.program`/`Wf.Proc.walk`, 37 new
+  tests, okay-persist unchanged. Decision 4 answered: `leaves` and
+  `render` ARE one path-indexed fold (`Proc.nodes`), `walk` is not —
+  filed as BACKLOG `optics-indexed-fourth-seat`. NEXT: lane 3,
+  `proc-notation-road`, whose motivation the lane made visible (four
+  `keep` helpers in one booking).
 - ui-product — CLOSED 2026-09-18, all four lanes landed and in
   CHANGELOG: ui-browser-vocab (953bb58e), ui-text-intent (930f4a4f),
   form-blank (c246fee3), ui-html-css (30edd3eb). The arc came from

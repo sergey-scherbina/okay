@@ -286,3 +286,31 @@ tests is cross until proven otherwise.
 observe)` — three lines. The `sample` must not be an `arr`: a carrier
 whose only value is an `arr` satisfies laws a real one can break, and
 the test that says so is in the suite's own file.
+
+### Lane 2 — `static-workflow-proc`, landed 2026-09-18
+
+The full Results are in specs/static-workflow.md; what belongs to THIS
+document is the three decisions it tested.
+
+**Decision 1 held.** `Proc` over a signature, with the workflow as one
+signature, is what made the lane small: the generic core is ~230 lines
+that know nothing about workflows, and `Wf`'s half is the `Question`
+GADT, nine doors, a bridge and a fold. Nothing in okay-persist
+changed, and a `Proc` at any other signature (a plan, a pipeline)
+costs nothing more than its own doors.
+
+**Decision 2 paid immediately.** `TestProcLaws` is three lines, and it
+is the second carrier the suite has served. The `sample` rule the
+suite's own file states — an arrow whose every value is an `arr`
+satisfies laws a real one can break — is why the test signature has a
+state behind its leaf.
+
+**Decision 4, answered by trying it: TWO of the three, not three.**
+`leaves` and `render` are each one line over `Proc.nodes`, a walk that
+hands every node its path; `Wf.Proc.walk` is an interpreter over a
+term AND a journal and cannot be that fold without becoming it again
+under another name. So the indexed-optics trigger the optics board
+restated (`a fourth path-carrying walk, or two of the three wanting
+one`) is met by ONE seat here — `Proc.nodes` — and the other two
+remain `Validate`, `Ui.diff` and ui-direct-example. Filed for the
+optics board rather than acted on here, which is that board's rule.

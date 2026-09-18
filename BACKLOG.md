@@ -1453,6 +1453,21 @@ test; none is promoted until its spec item is read first.
       change (applicative-do's file, landed the same day); one line,
       and a `-feature` compile of okayJVM's test scope is the check.
 
+- [ ] optics-indexed-fourth-seat — the indexed-optics trigger, part
+      met (2026-09-18, by static-workflow-proc). Stage 12's re-check
+      asked for "a fourth path-carrying walk, or two of the three
+      wanting one walk"; the fourth now exists and is `Proc.nodes`
+      (Proc.scala), which hands every node of a term its `Path` and
+      which `leaves` and `render` are each one line over. What it does
+      NOT give is the second half of the trigger: `Wf.Proc.walk` was
+      tried as the same fold and is structurally not one (it threads a
+      value and a journal and exits early — an interpreter over two
+      inputs), so the seats are still four separate walks with no
+      shared abstraction and none of them handed to a second
+      interpreter. Decide here whether four is the number that earns
+      the family, or whether the criterion (one declaration, more than
+      one interpreter, one of them DESCRIBES) is still unmet.
+
 - [ ] optics-guide-page — the convenience item, and the first to
       pick: `docs/guide.md` does not mention `Lens`, `Prism` or
       `Traversal`; tutorial §23 and theory ch. 10 are all the prose.

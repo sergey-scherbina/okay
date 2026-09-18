@@ -214,33 +214,34 @@ procedures composes the steps.
 
 ## Behavior
 
-### Stage 1 — the type, the bridge, the laws (`static-workflow-proc`)
+### Stage 1 — the type, the bridge, the laws (`static-workflow-proc`) — LANDED 2026-09-18
 
-- [ ] `Proc` is an `Optic.Arrow` and an `Optic.Choice`, and the
-      category, arrow and choice laws hold on a term with every
-      constructor present (property, comparing `toProgram` runs
-      against a pure interpreter)
-- [ ] the five-line booking of docs/continuations/23 written as a
-      `Proc` runs through `Dialogue.workflow` with NOTHING in
-      okay-persist changed: the clock read once across a restart,
-      `sleep` suspending with `Waiting(Until(t))`, a signal answered
-      from the mailbox, `patch` taking the old branch on an old
-      journal
-- [ ] a loop: "ask `nights?` and then one `room?` per night" as an
-      `Iter`, with the position after the second room being a path
-      whose iteration count is 2, both under `walk` and under the
-      engine
-- [ ] `walk` and `Wf.replay(toProgram)` AGREE on every journal
-      (property over generated terms and generated answer prefixes,
-      including journals the term refuses)
-- [ ] `walk` performs no effects — its signature is the proof, as
-      `Wf.replay` taking no runtime was
-- [ ] `leaves` of a term with a `Left` reports both sides and of an
+- [x] `Proc` is an `Optic.Arrow` and an `Optic.Choice`, and the
+      category, arrow and choice laws hold — `TestProcLaws`, three
+      lines over `okay.laws.ArrowLaws` (arrows-plan lane 1), at a
+      signature whose leaf has a state so the laws have something to
+      be wrong about
+- [x] the booking written as a `Proc` runs through
+      `Dialogue.workflow` with NOTHING in okay-persist changed
+      (`TestWorkflowProc`, 7 tests): the clock read once across a
+      restart, `sleep` suspending with `Waiting(Until(t))` at a
+      deadline a second process with a different clock agrees on,
+      `patch` taking the old branch on an old journal
+- [x] a loop: "ask `nights?` and then one `room?` per night" as an
+      `Iter`, with the position after two rooms being a path whose
+      round is 2, both under `walk` and under the engine
+- [x] `walk` and `Wf.replay` AGREE — on every PREFIX of three
+      journals (the booking, the loop, and a v1 journal read by a
+      term that gained a patch), and seen to FAIL under three
+      deliberate sabotages of the fold
+- [x] `walk` performs no effects — its signature is the proof, as
+      `Wf.replay` taking no runtime was: no row, no monad, no runtime
+- [x] `leaves` of a term with a choice reports both sides and of an
       `Iter` reports the body once, in term order
-- [ ] an existing `Wf` journal written by the monadic booking is
+- [x] an existing `Wf` journal written by the monadic booking is
       accepted by the `Proc` booking that asks the same questions in
-      the same order — the two front ends share one journal format,
-      pinned
+      the same order — and a run STARTED monadically is carried on by
+      the term from the same topic, which is the stronger form
 
 ### Stage 2 — the deploy check and the exhaustive cut (`static-workflow-strands`)
 
@@ -391,4 +392,67 @@ gives: a second copy of that rule would drift).
 
 ## Results
 
-(none yet — stage 0 is this document, 2026-09-18)
+### Stage 1 — landed 2026-09-18 (`static-workflow-proc`)
+
+`Proc.scala` (the free arrow over a signature), the workflow half in
+`Wf.scala` (`Question`, `Wf.Proc`, the doors, `program`, `walk`,
+`tag`), `TestProc` + `TestProcLaws` (30) and `TestWorkflowProc` (7).
+
+**THE BET PAID: okay-persist did not change by one line.** A term
+becomes an ordinary durable program through `Wf.Proc.program`, so
+`Dialogue.workflow`, the envelope, the races, the snapshots, the
+suspension and `patch` all work as they stand. The decisive test is
+not that the term runs but that the two front ends SHARE A TOPIC: a
+run started by the monadic booking and half-answered is carried to the
+end by the term, and their journals are equal record for record.
+
+**THE ONE THING THE ENCODING COSTS, named where it is paid.**
+`okay.Proc`'s signature parameter is `F[+_]`, so `Wf.Question` must be
+covariant in its answer; matching `Ask` then proves `A <: Z` rather
+than `A = Z`, and a program `A ! Row` is invariant in its value. Every
+arm of the bridge therefore goes through `up`, which is a `map` — one
+node per leaf, beside a leaf that is an outside call, and NOT an
+`asInstanceOf`. The alternative was an invariant signature, which
+`okay.Proc` could not accept at all.
+
+**THE GADT REPLACED NINE PARTIAL FUNCTIONS WITH A TYPE.** The monadic
+doors each carry `case SysA.Millis(v) => v` and throw `Mismatched`
+when the shape is wrong. `Question[Q, A, R]` says it once — `Now` IS a
+`Question[…, Long]` — so the fold's `readInto` is total over the pairs
+that make sense and every other pair is DATA (a `Stranded` naming the
+record), because a fold that throws cannot be a deploy check.
+
+**THE KEYSTONE WAS SEEN TO FAIL, three ways.** A green property is
+worth nothing until it has been red for the right reason, so `walk`
+was sabotaged and the suite watched:
+
+| sabotage | what went red |
+|---|---|
+| the `Iter` loop stops counting its rounds | the position test, naming the path it got |
+| a leaf reads an answer without consuming it | SIX tests, including both agreement properties and the cross-front-end journal |
+| the patch EATS the record that follows it | the v1-journal test and the agreement property over it |
+
+The second is the one to keep: the failure message reads
+`stranded at 1/1/1/2/2/1/2/in on record 1: Now() cannot take
+Right(Kyiv)` — the path says where, the record says which, and the
+question says what it could not take.
+
+**DECISION 4 OF arrows-plan, ANSWERED BY TRYING IT.** Are `leaves`,
+`walk` and `render` one path-indexed fold? **Two of the three are**:
+both are one line over `Proc.nodes`, a walk that hands every node its
+path, with `render`'s indentation READ OFF the path (the steps that go
+inside a node are the levels). **`walk` is not**, and the reason is
+structural rather than effort: it threads a VALUE and a JOURNAL
+through the term and may stop in the middle, so it is an interpreter
+over two inputs, not a traversal of one term; written as a fold its
+accumulator would carry the value, the remaining journal, the count
+and an early exit — the interpreter with a fold's spelling on top. So
+the indexed-optics seat the optics board is watching for is worth ONE
+entry here, not three.
+
+**THE PRICE proc-notation EXISTS TO REMOVE IS NOW VISIBLE.** Every
+test term needed a `keep` helper — `arr(x => (x, x)) >>> second(p)` —
+because what a monadic body keeps in a local variable, a term carries
+on its edge. Four uses in one booking. That is the evidence lane 3
+was waiting for, and it arrived by writing the terms rather than by
+arguing about them.

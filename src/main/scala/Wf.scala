@@ -498,3 +498,304 @@ object Wf:
             Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)
               .flatMap((next, _) => go(next, rest, (q, a) :: seen))
     resumable[Q, A, R, F](body).flatMap(go(_, j, Nil))
+
+  // ── the STATIC half: the same workflow as a term ──────────────────
+  //
+  // specs/static-workflow.md, with the factoring of specs/arrows-plan.md
+  // Decision 1. Everything above is the monadic front end and stays
+  // exactly as it is; what follows says that a durable program's
+  // questions are a SIGNATURE, so `okay.Proc` — the free arrow, which
+  // knows nothing about workflows — can carry one.
+
+  /**
+   * THE QUESTIONS A DURABLE PROCEDURE ASKS, as one signature indexed
+   * by the ANSWER it expects.
+   *
+   * The monadic doors above spell each question twice: once as a
+   * `Sys` case and once as the partial function that reads its answer
+   * back (`case SysA.Millis(v) => v`). A GADT says it once — `Now`
+   * IS a `Question[Q, A, Long]` — so a term built from these cannot
+   * put a clock's answer where a die's belongs, and the reading that
+   * used to be a `Mismatched` at run time is a type.
+   *
+   * `Ask` is the author's own question and the only case that
+   * mentions their types; everything else is the library's, which is
+   * rule 2 of the engine kept exactly: the author's `Q` never grows.
+   */
+  enum Question[Q, A, +R]:
+    case Ask[Q, A](q: Q) extends Question[Q, A, A]
+    case Now[Q, A]() extends Question[Q, A, Long]
+    case Uuid[Q, A]() extends Question[Q, A, String]
+    case Random[Q, A]() extends Question[Q, A, Double]
+    case Patched[Q, A](id: String) extends Question[Q, A, Boolean]
+    case Timer[Q, A](untilMillis: Long) extends Question[Q, A, Unit]
+    case Signalled[Q, A](name: String) extends Question[Q, A, String]
+    case Childed[Q, A](id: String) extends Question[Q, A, String]
+    case Cancelled[Q, A]() extends Question[Q, A, Option[String]]
+
+  /** a durable procedure: a `Proc` over the questions above */
+  type Proc[Q, A, X, Y] = okay.Proc[[R] =>> Question[Q, A, R], X, Y]
+
+  /** the signature alone, for a natural transformation's sake */
+  type Asked[Q, A] = [R] =>> Question[Q, A, R]
+
+  object Proc:
+    import okay.Proc.op
+
+    /** ask the outside world, through the author's own question type */
+    def ask[Q, A, X](q: X => Q): Wf.Proc[Q, A, X, A] =
+      op("ask")(x => Question.Ask(q(x)))
+
+    /** the same under the name the literature uses */
+    def perform[Q, A, X](cmd: X => Q): Wf.Proc[Q, A, X, A] = ask(cmd)
+
+    def now[Q, A, X]: Wf.Proc[Q, A, X, Long] = op("now")(_ => Question.Now())
+    def uuid[Q, A, X]: Wf.Proc[Q, A, X, String] = op("uuid")(_ => Question.Uuid())
+    def random[Q, A, X]: Wf.Proc[Q, A, X, Double] = op("random")(_ => Question.Random())
+
+    def patch[Q, A, X](id: String): Wf.Proc[Q, A, X, Boolean] =
+      op(s"patch:$id")(_ => Question.Patched(id))
+
+    def timer[Q, A]: Wf.Proc[Q, A, Long, Unit] =
+      op("timer")((t: Long) => Question.Timer(t))
+
+    /**
+     * SLEEP, DURABLY — and the deadline is JOURNALLED, not computed
+     * on the fly, exactly as the monadic `sleep` is: `now` is a leaf
+     * whose answer is written down, so every later process wakes at
+     * the instant the FIRST one chose. A sleep relative to the
+     * reading process's clock slides its deadline forward for ever on
+     * every restart, which is the durable-timer bug every engine has
+     * had once.
+     *
+     * Written with the arrow's own combinators, which is the point:
+     * `now >>> arr(_ + millis) >>> timer`.
+     */
+    def sleep[Q, A, X](millis: Long): Wf.Proc[Q, A, X, Unit] =
+      val A = okay.Proc.procArrow[Asked[Q, A]]
+      A.compose(timer[Q, A], A.compose(A.arr((t: Long) => t + millis), now[Q, A, X]))
+
+    def awaitSignal[Q, A, X](name: String): Wf.Proc[Q, A, X, String] =
+      op(s"signal:$name")(_ => Question.Signalled(name))
+
+    def awaitChild[Q, A, X](id: String): Wf.Proc[Q, A, X, String] =
+      op(s"child:$id")(_ => Question.Childed(id))
+
+    def cancelled[Q, A, X]: Wf.Proc[Q, A, X, Option[String]] =
+      op("cancelled")(_ => Question.Cancelled())
+
+    /**
+     * THE BRIDGE, and it is the whole of why stage 1 is small: a term
+     * becomes an ordinary durable program, so `Dialogue.workflow`,
+     * `Worker`, timers, signals, children, retries, cancellation and
+     * `continueAs` all work on day one with nothing changed in any of
+     * them.
+     *
+     * Its row is `Delim + Pure`, which is `Replayable` by
+     * construction — the discipline stage 1 of the spec makes a type
+     * has nothing left to police here, because a term's only effects
+     * ARE its leaves.
+     */
+    def program[Q, A, R, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X)
+                              (using w: Asks[Q, A, R, Pure], at: At): Y ! (Delim + Pure) =
+      p.foldMap[[Z] =>> Z ! (Delim + Pure)](
+        [Z] => (q: Question[Q, A, Z]) => answerOf[Q, A, R, Z](q))(x)
+
+    /**
+     * ONE QUESTION, AS THE MONADIC DOOR THAT ALREADY EXISTS — and
+     * every arm goes through `up`, which is the one place this
+     * encoding costs anything.
+     *
+     * `Question` must be COVARIANT in its answer for `okay.Proc`,
+     * whose signature parameter is `F[+_]`, to accept it at all. So
+     * matching `Ask` proves `A <: Z` rather than `A = Z`, and a
+     * program `A ! Row` is INVARIANT in its value. The widening is
+     * therefore real work rather than a coincidence of spelling — and
+     * it is a `map`, not an `asInstanceOf`: one node per leaf, beside
+     * a leaf that is an outside call, and the compiler still checks
+     * every arm.
+     */
+    private def answerOf[Q, A, R, Z](q: Question[Q, A, Z])
+                                    (using w: Asks[Q, A, R, Pure], at: At): Z ! (Delim + Pure) =
+      q match
+        case Question.Ask(a) => up(w.pause(a))
+        case Question.Now() => up(w.now)
+        case Question.Uuid() => up(w.uuid)
+        case Question.Random() => up(w.random)
+        case Question.Patched(id) => up(w.patch(id))
+        case Question.Timer(t) => up(Wf.timer[Q, A, R, Pure](t)(using w.in, at))
+        case Question.Signalled(n) => up(w.awaitSignal(n))
+        case Question.Childed(i) => up(w.awaitChild(i))
+        case Question.Cancelled() => up(w.cancelled)
+
+    /** a program's value widened to a supertype the GADT has proved */
+    private def up[Z, V <: Z, Row[+_]](p: V ! Row): Z ! Row = p.map(v => v)
+
+    /**
+     * WHERE THE PROCEDURE STANDS, DERIVED FROM THE TERM — the second
+     * of the two readings of a position, and the one a monadic
+     * program cannot have.
+     *
+     * `Wf.replay` re-derives a place by RUNNING the program over its
+     * answers; this folds the TERM over them and performs nothing at
+     * all. Its signature is the proof, the way `Wf.replay` taking no
+     * `Runtime` is: there is no row, no monad and no runtime in it,
+     * so a deploy check can ask "does this journal still fit this
+     * program" of ten thousand runs without starting one.
+     *
+     * The two must agree, and the property that says so is the
+     * keystone of the whole arc: `walk` is what the deploy check and
+     * the picture trust, `replay` is what the engine trusts, and a
+     * disagreement is a bug found before a journal is.
+     */
+    def walk[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A])
+                        : Either[Stranded, Standing[Q, A, Y]] =
+      go(p, x, journal, 0, okay.Proc.Path.root) match
+        case Walked.Ran(y, _, _) => Right(Standing.Done(y))
+        case Walked.Asking(at, q, used) => Right(Standing.Asking(at, q, used))
+        case Walked.Bad(at, rec, why) => Left(Stranded(at, rec, why))
+
+    /**
+     * A QUESTION IN THE JOURNAL'S OWN SPELLING. The GADT is what the
+     * TERM is built from; `Ask[Q] = Either[Sys, Q]` is what the
+     * journal and the monadic driver speak. One function translates,
+     * so "the static and the monadic front end ask the same thing"
+     * is a comparison anybody can make — which is exactly what the
+     * property tying `walk` to `Wf.replay` needs.
+     */
+    def tag[Q, A](q: Question[Q, A, ?]): Ask[Q] = q match
+      case Question.Ask(a) => Right(a)
+      case Question.Now() => Left(Sys.Now)
+      case Question.Uuid() => Left(Sys.Uuid)
+      case Question.Random() => Left(Sys.Random)
+      case Question.Patched(id) => Left(Sys.Patch(id))
+      case Question.Timer(t) => Left(Sys.Timer(t))
+      case Question.Signalled(n) => Left(Sys.Signal(n))
+      case Question.Childed(i) => Left(Sys.Child(i))
+      case Question.Cancelled() => Left(Sys.Cancelled)
+
+    /** the deploy check: this journal still fits this program */
+    def accepts[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A]): Boolean =
+      walk(p)(x, journal).isRight
+
+    /** where a fold of the term over a journal ended */
+    enum Standing[Q, A, +Y]:
+      case Done[Q, A, Y](value: Y) extends Standing[Q, A, Y]
+      /** waiting, at this path, on this question, with this many
+       * records of the journal accepted */
+      case Asking[Q, A](at: okay.Proc.Path, q: Question[Q, A, ?], accepted: Int)
+        extends Standing[Q, A, Nothing]
+
+    /** the journal does not fit the term, and where */
+    final case class Stranded(at: okay.Proc.Path, record: Int, why: String):
+      override def toString = s"stranded at ${at.show} on record $record: $why"
+
+    private enum Walked[Q, A, +V]:
+      case Ran[Q, A, V](value: V, left: Journal[A], used: Int) extends Walked[Q, A, V]
+      case Asking[Q, A](at: okay.Proc.Path, q: Question[Q, A, ?], used: Int)
+        extends Walked[Q, A, Nothing]
+      case Bad[Q, A](at: okay.Proc.Path, record: Int, why: String) extends Walked[Q, A, Nothing]
+
+    import okay.Proc.Path./
+
+    private def go[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y], x: X, j: Journal[A],
+                               used: Int, at: okay.Proc.Path): Walked[Q, A, Y] =
+      p match
+        case okay.Proc.Arr(f) => Walked.Ran(f(x), j, used)
+
+        case okay.Proc.Op(_, run) =>
+          val q = run(x)
+          j match
+            // caught up with the journal: this is where the run stands
+            case Nil => Walked.Asking(at, q, used)
+            case (r @ Right(_)) :: _ if isPatch(q) =>
+              // THE NON-CONSUMING RULE, and it is the one subtle
+              // thing in this fold. The journal has no decision for
+              // this patch and its next record answers something
+              // else, so the run that wrote it PREDATES the branch:
+              // the answer is `false` and the record is NOT eaten —
+              // it still answers the question it was written for.
+              // Copied from `Wf.replaying` in shape and asserted
+              // against it by property, never re-derived.
+              val _ = r
+              readInto(q, Left(SysA.Flag(false))) match
+                case Left(why) => Walked.Bad(at, used, why)
+                case Right(v) => Walked.Ran(v, j, used)
+            case a :: rest =>
+              readInto(q, a) match
+                case Left(why) => Walked.Bad(at, used, why)
+                case Right(v) => Walked.Ran(v, rest, used + 1)
+
+        case okay.Proc.Then(f, g) =>
+          go(f, x, j, used, at / okay.Proc.Step.Fst) match
+            case Walked.Ran(v, left, u) => go(g, v, left, u, at / okay.Proc.Step.Snd)
+            case stop: Walked.Asking[Q, A] => stop
+            case stop: Walked.Bad[Q, A] => stop
+
+        case okay.Proc.First(f) =>
+          go(f, x._1, j, used, at / okay.Proc.Step.In) match
+            case Walked.Ran(v, left, u) => Walked.Ran((v, x._2), left, u)
+            case stop: Walked.Asking[Q, A] => stop
+            case stop: Walked.Bad[Q, A] => stop
+
+        case okay.Proc.OnRight(f) =>
+          x match
+            case Left(c) => Walked.Ran(Left(c), j, used)
+            case Right(a) =>
+              go(f, a, j, used, at / okay.Proc.Step.In) match
+                case Walked.Ran(v, left, u) => Walked.Ran(Right(v), left, u)
+                case stop: Walked.Asking[Q, A] => stop
+                case stop: Walked.Bad[Q, A] => stop
+
+        case okay.Proc.Iter(body) =>
+          def loop(cur: X, left: Journal[A], u: Int, round: Int): Walked[Q, A, Y] =
+            go(body, cur, left, u, at / okay.Proc.Step.Round(round)) match
+              case Walked.Ran(Left(again), l2, u2) => loop(again, l2, u2, round + 1)
+              case Walked.Ran(Right(y), l2, u2) => Walked.Ran(y, l2, u2)
+              case stop: Walked.Asking[Q, A] => stop
+              case stop: Walked.Bad[Q, A] => stop
+          loop(x, j, used, 0)
+
+    private def isPatch[Q, A](q: Question[Q, A, ?]): Boolean = q match
+      case Question.Patched(_) => true
+      case _ => false
+
+    /**
+     * ONE ANSWER, READ BACK AT THE QUESTION'S OWN TYPE — the GADT
+     * paying for itself. The monadic doors each carry a partial
+     * function for this and throw `Mismatched` when it does not
+     * match; here the match is total over the pairs that make sense
+     * and every other pair is DATA (a `Stranded`), because a fold
+     * that throws cannot be a deploy check.
+     */
+    private def readInto[Q, A, Z](q: Question[Q, A, Z], a: Ans[A]): Either[String, Z] =
+      def no = Left(s"$q cannot take $a")
+      q match
+        case Question.Ask(_) => a match
+          case Right(v) => Right(v)
+          case _ => no
+        case Question.Now() => a match
+          case Left(SysA.Millis(v)) => Right(v)
+          case _ => no
+        case Question.Uuid() => a match
+          case Left(SysA.Text(v)) => Right(v)
+          case _ => no
+        case Question.Random() => a match
+          case Left(SysA.Dice(v)) => Right(v)
+          case _ => no
+        case Question.Patched(_) => a match
+          case Left(SysA.Flag(v)) => Right(v)
+          case _ => no
+        case Question.Timer(_) => a match
+          case Left(SysA.Elapsed) => Right(())
+          case _ => no
+        case Question.Signalled(_) => a match
+          case Left(SysA.Got(v)) => Right(v)
+          case _ => no
+        case Question.Childed(_) => a match
+          case Left(SysA.Got(v)) => Right(v)
+          case _ => no
+        case Question.Cancelled() => a match
+          case Left(SysA.Text(why)) => Right(Some(why))
+          case Left(SysA.Flag(false)) => Right(None)
+          case _ => no
