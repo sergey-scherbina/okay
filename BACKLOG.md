@@ -908,6 +908,13 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       three were singles, not pairs, and neither box was busy. The
       only thing that has held across all eight is the settled cause
       itself — the runner, not any suite.
+      2026-09-18, okayCodecNative, ONE module, GREEN on the rerun of
+      that module alone (script-storefront-look, whose diff is a
+      markdown fixture, a stylesheet and a browser test — no Scala on
+      any Native path). TENTH occurrence, load `{ 4.12 6.86 8.90 }`, a
+      quiet box. Nothing new: a module the lane could not have
+      touched, on a box under no pressure, which is the tenth reading
+      that the full matrix itself is the condition.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
