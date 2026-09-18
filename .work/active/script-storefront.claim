@@ -1,0 +1,6 @@
+okay-wt-script-storefront 2026-09-18T00:46:45Z
+agent: claude-live-plain
+heartbeat: 2026-09-18T00:46:45Z
+status: in-progress
+done-so-far: worktree created
+next: port a real slice of busi storefront.ssc (stage 4 of specs/site-framework.md)
