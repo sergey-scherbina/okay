@@ -58,9 +58,20 @@ class TestResilienceTimed extends munit.FunSuite {
     val got = run(Hedge.run(20)(okay.async(starts.incrementAndGet()).flatMap { n =>
       if n == 1 then never[String](cancelled) else after(5)(s"attempt $n")
     }))
-    assertEquals(got, "attempt 2")
-    assertEquals(starts.get, 2)
-    assertEquals(cancelled.get, 1)
+    // WHAT HEDGING PROMISES, AND NOT WHAT THE SCHEDULER DID
+    // (hedge-bounds, 2026-09-18). This test uses real time — a 20 ms
+    // hedge against a 5 ms answer — so on a loaded box a THIRD
+    // attempt can start and win, and `starts == 2` then fails while
+    // hedging worked perfectly. The three claims below hold on any
+    // machine:
+    //   a hedge HAPPENED (the first attempt never answers, so the
+    //   answer can only come from a later one)
+    assert(got.startsWith("attempt "), got)
+    assert(starts.get >= 2, s"no hedge started: starts=${starts.get}")
+    //   EVERY LOSER IS CANCELLED — the promise itself, and the one
+    //   assertion here that is about hedging rather than about time
+    assertEquals(cancelled.get, starts.get - 1,
+      s"starts=${starts.get} cancelled=${cancelled.get}: every attempt but the winner must be cancelled")
   }
 
   test("hedge: a fast first attempt never starts a second, however late the timer fires") {
