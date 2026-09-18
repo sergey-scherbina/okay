@@ -273,7 +273,7 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stream"))
-  .dependsOn(okay % "compile->compile;test->test")
+  .dependsOn(okay % "compile->compile;test->test", okayStm % "test->compile")
   .settings(
     name := "okay-stream",
   )
@@ -431,6 +431,60 @@ lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
+ * Software transactional memory (core-modules stage 5, 2026-09-18):
+ * the `Tx` language, the `Stm` runtimes — TL2 with versions and
+ * CAS-owned commit, the direct one, the simulated one — and the
+ * platform givens that install `Stm[Async]`.
+ *
+ * `TRef` STAYED IN THE CORE, and that is the whole shape of this
+ * lane. Its `modify` is a self-contained CAS loop, "the one-cell
+ * transaction", which needs no `Tx` and no runtime; measured across
+ * this repository, a single-cell `TRef.modify` is what almost every
+ * consumer actually uses, and Scala Native's own scheduler holds its
+ * state in one. So the CELL is the interface and stays; the
+ * MULTI-CELL machinery that commits several of them together is what
+ * left.
+ *
+ * The spec had this lane blocked on `Providing.Facts` being "backed
+ * by `TMap`". That was a naming coincidence: `TMap` is a
+ * heterogeneous map with TYPED keys, nothing transactional, and
+ * `Refs` is run-time state cells rather than STM. Neither moved.
+ */
+lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-stm"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-stm",
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
     Test / unmanagedSourceDirectories :=
       Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -2059,7 +2113,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,

@@ -220,14 +220,48 @@ The core is now **46 files and 11 553 lines**, from 74 and 21 914:
 **47% gone across four stages**, with not one consumer's import or
 call site edited.
 
-## Not yet — STM
+## Stage 5 — `okay-stm` (DONE), and the spec was wrong about it
 
-`Providing.Facts` is backed by `TMap`, and `Stm.sim` is an instance
-for `Sim`. Two seams, both small, both real. Worth doing for the same
-reason optics was: it is the law applied where it is not yet obeyed.
-And stage 4 is the precedent for how — look at what the core actually
-USES of the thing it is typed against, before assuming the type is
-the dependency.
+The `Tx` language, the `Stm` runtimes (TL2, direct, simulated) and the
+two platform files that install `given Stm[Async]`. 326 lines.
+
+**THREE OF THE FIVE THINGS THIS SPEC CALLED "THE STM CLUSTER" WERE
+NAMED STM-ISH AND WERE NOT.** The blocker written above — "`Providing.
+Facts` is backed by `TMap`" — was a naming coincidence, and so were
+two more found while checking it:
+
+| looks like STM | actually is |
+| --- | --- |
+| `TMap`, `TDict` | heterogeneous maps with TYPED keys; the T is *typed*. `Facts` uses `get`, `updated`, `foreach` |
+| `Refs` | run-time state cells, the pair to `Keyed`. Zero mentions of `TRef`, `Tx` or `Stm` |
+| `okay.sql.Tx` | a typestate marker for DATABASE transactions, `Tx.No` / `Tx.Yes` |
+
+So `Providing` was never an STM consumer, and the seam this spec
+filed as blocking did not exist. The lesson is the one stage 4 wrote
+down, arriving from the other direction: a NAME is not a dependency
+either way — check what is used, and check what the thing IS.
+
+**THE REAL SEAM WAS IN PLATFORM DIRECTORIES**, which the first survey
+did not walk (the same miss as `Parallel.scala` in stage 1):
+`src/main/scala-native/Platform.scala` holds its scheduler state in a
+`TRef[State]`, deliberately and with a comment saying why.
+
+**AND THAT SEAM IS WHAT DECIDED THE CUT.** `TRef.modify` is "the
+one-cell transaction" — a self-contained CAS loop that needs no `Tx`
+and no runtime. So `TRef` is the interface and STAYED in the core
+(`TRef.scala`, 127 lines); what left is the machinery that commits
+SEVERAL cells together.
+
+The compiler then proved the split was the right one, and the number
+is worth stating plainly: of the eight modules that name something
+STM-ish, **exactly one needed an edge, and only for a test** —
+okay-stream's `TestStmChannel`, one `Stm[Async].atomically`. Every
+other use in every module is a single-cell `TRef`, which is still in
+the core. okay-http, okay-ops, okay-resilience, okay-sql, okay-ui and
+okay-stream's own main code needed nothing.
+
+The core is now **46 files and 11 229 lines**, from 74 and 21 914:
+**49% gone across five stages.**
 
 ## Behavior
 
