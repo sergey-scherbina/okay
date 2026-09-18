@@ -1,5 +1,29 @@
 # Changelog
 
+## site-framework — stage 4, the verdict: the storefront ported
+
+specs/site-framework.md. A real slice of busi's `storefront.ssc` —
+the file the operator's two live sites are rendered from — now runs
+as okay-script pages: five library pages under `lib/` (escaping, the
+domain, the i18n attribute seam, money, the cards and the theme) and
+two storefronts that import them, one warm-and-clothing, one
+dark-and-technical, exactly as szykownia.pl and it.szykownia.pl
+differ. They are real files in `src/test/resources/storefront`, not
+string literals, so a reader can open them. TestStorefront, 3.
+
+The open question is answered: a TYPE crosses a module boundary.
+`[Service, Shop](/lib/domain.md)` puts a case class and its companion
+in scope, which is what makes the storefront ordinary Scala over a
+domain instead of string-slinging — and it is why one library can
+render both sites parameterised by a value, which the single
+818-line file could not do.
+
+What the slice does not cover is named rather than implied: the
+intake/offer forms (okay-script has two roads for those already),
+and the two genuinely missing pieces, content edited in the app
+(stage 2) and the client-side language switch that makes the `data-*`
+attributes do something (stage 3).
+
 ## site-framework — stage 0 (the spec) and stage 1 (modules)
 
 specs/site-framework.md. The operator asked for okay-script and
