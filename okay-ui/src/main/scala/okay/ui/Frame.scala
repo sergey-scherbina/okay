@@ -27,7 +27,7 @@ object Frame {
    * for the same reason: a value that is cut cannot be checked against
    * anything.
    */
-  def render(ui: Ui, focus: Option[Ui] = None, width: Int = 0): Vector[String] = ui match
+  def render(ui: Ui, focus: Option[Ui] = None, width: Int = 0, caret: Int = -1): Vector[String] = ui match
     case Text(s, style) =>
       val lines = s.split("\n", -1).toVector.flatMap(wrap(_, width))
       // tokens map to the terminal's idiom: emphasis is bold, muted is
@@ -36,23 +36,23 @@ object Frame {
       else if style.dim || style.tone == Tone.Muted then lines.map(l => s"$Esc[2m$l$Esc[0m")
       else if style.tone == Tone.Danger then lines.map(l => s"$Esc[31m$l$Esc[0m")
       else lines
-    case Column(children, _) => children.flatMap(c => render(c, focus, width))
+    case Column(children, _) => children.flatMap(c => render(c, focus, width, caret))
     case Row(children, _) =>
       val shares = split(width, children.length, Vector.empty, children.length - 1)
-      beside(children.zip(shares).map((c, w) => render(c, focus, w)), Vector.empty, " ",
+      beside(children.zip(shares).map((c, w) => render(c, focus, w, caret)), Vector.empty, " ",
         children.map(alignOf), shares)
     case Box(children, Dir.Vertical, _, gap, pad, _) =>
-      val blocks = children.map(c => render(c, focus, math.max(width - 2 * pad, 0)))
+      val blocks = children.map(c => render(c, focus, math.max(width - 2 * pad, 0), caret))
       val joined = blocks.zipWithIndex.flatMap { (b, i) =>
         (if i > 0 then Vector.fill(gap)("") else Vector.empty) ++ b }
       joined.map(l => " " * pad + l)
     case Box(children, Dir.Horizontal, weights, gap, pad, _) =>
       val budget = math.max(width - 2 * pad, 0)
       val shares = split(budget, children.length, weights, gap * (children.length - 1))
-      beside(children.zip(shares).map((c, w) => render(c, focus, w)), weights, " " * gap,
+      beside(children.zip(shares).map((c, w) => render(c, focus, w, caret)), weights, " " * gap,
         children.map(alignOf), shares)
         .map(l => " " * pad + l)
-    case Scroll(child, _) => render(child, focus, width)
+    case Scroll(child, _) => render(child, focus, width, caret)
     case Image(_, alt) => Vector(s"[image: $alt]")
     case b @ Button(label, _, role) =>
       Vector(if focus.contains(b) then s"[>$label<]"
@@ -60,7 +60,16 @@ object Frame {
     case i @ Input(value, _, label, kind, _) =>
       val name = if label.isEmpty then "" else s"$label: "
       val shown = if kind == InputKind.Secret then "*" * value.length else value
-      Vector(if focus.contains(i) then s"$name[$shown*]" else s"$name[$shown]")
+      // THE CARET IS REVERSE VIDEO, which is what a terminal's own
+      // cursor is (ui-terminal-caret). It costs NO COLUMNS - `width`
+      // strips the escapes - so a caret cannot push a value out of its
+      // column, and past the end of the value it sits on a space,
+      // which is where the next character goes. A host with no caret
+      // passes -1 and gets v1's trailing mark.
+      Vector(
+        if !focus.contains(i) then s"$name[$shown]"
+        else if caret < 0 then s"$name[$shown*]"
+        else s"$name[${carets(shown, caret)}]")
     case c @ Check(on, _, label) =>
       val box = if on then "[x]" else "[ ]"
       val f = if focus.contains(c) then ">" else " "
@@ -70,12 +79,12 @@ object Frame {
       Vector(if focus.contains(s) then s"<$cur>" else s" $cur ")
 
     case Form(fields, submit, k) =>
-      render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, width)
+      render(Box(fields :+ Button(submit, k, Role.Primary), Dir.Vertical), focus, width, caret)
     // the budget reaches THROUGH a lowering, which is where a table is
     // drawn — the compiler caught both of these dropping it (E221,
     // "recursive call used a default argument"), and a table is
     // exactly the node whose columns the budget is for
-    case semantic => render(Ui.lower(semantic, Set.empty), focus, width)
+    case semantic => render(Ui.lower(semantic, Set.empty), focus, width, caret)
 
   /**
    * A LINE WRAPPED TO A BUDGET — never cut. A budget of 0 is "no
@@ -261,6 +270,93 @@ object Frame {
     case "5" => Key.PageUp
     case "6" => Key.PageDown
     case _ => Key.Unknown
+
+  /** a value with the character under the caret in reverse video; at
+   * the end of the value the caret is a reversed space */
+  private def carets(shown: String, caret: Int): String =
+    val at = math.max(0, math.min(caret, shown.length))
+    val here = if at < shown.length then shown.charAt(at).toString else " "
+    shown.take(at) + s"$Esc[7m$here$Esc[27m" + shown.drop(at + 1)
+
+  /**
+   * AN EDIT AT A CARET: the key, the value it is editing and where the
+   * caret is - the caret after it, and the value when the key changed
+   * one (ui-terminal-caret).
+   *
+   * v1 appended and backspaced at the END of the value, and that is
+   * THIS function with the caret there, so there is one implementation
+   * and not two: a host without a caret is a host whose caret never
+   * moved.
+   */
+  def edit(value: String, caret: Int, key: Key): (Int, Option[String]) =
+    val at = math.max(0, math.min(caret, value.length))
+    key match
+      case Key.Left => (math.max(at - 1, 0), None)
+      case Key.Right => (math.min(at + 1, value.length), None)
+      case Key.Home => (0, None)
+      case Key.End => (value.length, None)
+      // DEL and BS, by their codes rather than as escapes in the
+      // source: the same two `interpret` has always erased on
+      case Key.Ch(c) if c == 127.toChar || c == 8.toChar =>
+        if at == 0 then (0, None)
+        else (at - 1, Some(value.take(at - 1) + value.drop(at)))
+      case Key.Ch(c) if !c.isControl =>
+        (at + 1, Some(value.take(at) + c + value.drop(at)))
+      case _ => (at, None)
+
+  /**
+   * The host's door: a key against the tree AT a caret - the next
+   * focus, the next caret, and what the key meant. A caret of -1 is
+   * "this host has none", and then this is `interpret` exactly.
+   *
+   * WHICH KEYS BELONG TO THE CARET, and it is a decision rather than
+   * an accident: while an `Input` has the focus, Left/Right/Home/End
+   * move the CARET - what every editor does, and what the keys lane
+   * deliberately left room for when it gave Left/Right to `Select` and
+   * Home/End to the tab order. Everywhere else they still do that.
+   */
+  def interpretAt(ui: Ui, focus: Int, caret: Int, key: Key): (Int, Int, Option[Event]) =
+    Ui.focusable(ui).lift(focus) match
+      case Some(Input(v, k, _, _, _)) if caret >= 0 && caretKey(key) =>
+        val (at, edited) = edit(v, caret, key)
+        (focus, at, edited.map(next => Event.Edited(k, next)))
+      case _ =>
+        val (nf, ev) = interpret(ui, focus, key)
+        (nf, if caret < 0 then caret else caretEnd(ui, nf), ev)
+
+  /**
+   * WHICH KEYS THE CARET TAKES when an `Input` has the focus. Stated
+   * as a SET rather than read off whether `edit` changed anything:
+   * `End` at the end of a value changes nothing, and if that fell
+   * through to the tree it would jump the focus — so pressing End
+   * twice would do two unrelated things, which is not a keyboard
+   * anyone can learn.
+   */
+  private def caretKey(key: Key): Boolean = key match
+    case Key.Left | Key.Right | Key.Home | Key.End => true
+    case Key.Ch(c) => !c.isControl || c == 127.toChar || c == 8.toChar
+    case _ => false
+
+  /**
+   * The caret against a tree that has just arrived: kept where it is
+   * when the focus is still an `Input` (an edit rebuilds the tree on
+   * every keystroke, and a caret that jumped to the end on each one
+   * would make typing in the middle impossible), clamped to the value
+   * it is now in, and the END for a widget that has just taken the
+   * focus.
+   */
+  def clampCaret(ui: Ui, focus: Int, caret: Int): Int =
+    Ui.focusable(ui).lift(focus) match
+      case Some(Input(v, _, _, _, _)) =>
+        if caret < 0 then v.length else math.min(caret, v.length)
+      case _ => caret
+
+  /** the caret a newly focused widget starts with: the end of its
+   * value, so typing appends - v1's behaviour, kept as the default */
+  def caretEnd(ui: Ui, focus: Int): Int =
+    Ui.focusable(ui).lift(focus) match
+      case Some(Input(v, _, _, _, _)) => v.length
+      case _ => 0
 
   /**
    * One raw key against the tree, at a focus: the next focus and what

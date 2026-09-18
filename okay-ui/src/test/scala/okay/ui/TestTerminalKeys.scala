@@ -188,6 +188,73 @@ class TestTerminalKeys extends munit.FunSuite {
     assertEquals(Frame.follow(3, 9, 0), 3, "no screen: nothing to follow")
   }
 
+  /**
+   * ui-terminal-caret: v1 could only append and backspace, so a typo
+   * in the middle of a value meant deleting back to it. The caret is
+   * the HOST's state and the editing is a value: `Frame.edit`.
+   */
+  test("edit inserts and deletes AT the caret, and v1 is this with the caret at the end") {
+    assertEquals(Frame.edit("abc", 3, Key.Ch('d')), (4, Some("abcd")))
+    assertEquals(Frame.edit("abc", 1, Key.Ch('X')), (2, Some("aXbc")))
+    val del = Key.Ch(127.toChar)
+    assertEquals(Frame.edit("abc", 3, del), (2, Some("ab")))
+    assertEquals(Frame.edit("abc", 1, del), (0, Some("bc")))
+    // at the start there is nothing to delete, and it is not an error
+    assertEquals(Frame.edit("abc", 0, del), (0, None))
+  }
+
+  test("the caret moves without editing, and clamps at both ends") {
+    assertEquals(Frame.edit("abc", 1, Key.Left), (0, None))
+    assertEquals(Frame.edit("abc", 0, Key.Left), (0, None))
+    assertEquals(Frame.edit("abc", 2, Key.Right), (3, None))
+    assertEquals(Frame.edit("abc", 3, Key.Right), (3, None))
+    assertEquals(Frame.edit("abc", 1, Key.Home), (0, None))
+    assertEquals(Frame.edit("abc", 1, Key.End), (3, None))
+  }
+
+  test("while an Input has the focus the arrows are the CARET's; elsewhere they are the tree's") {
+    // tree: Button, Input("v"), Select, Button — index 1 is the Input
+    assertEquals(Frame.interpretAt(tree, 1, 1, Key.Left), (1, 0, None), "the caret moved, not the focus")
+    assertEquals(Frame.interpretAt(tree, 1, 0, Key.End), (1, 1, None))
+    // on the Select, Right still chooses
+    assertEquals(Frame.interpretAt(tree, 2, -1, Key.Right)._3, Some(Event.Chosen("sel", 2)))
+    // Tab still moves the focus from inside an Input, and the caret
+    // lands at the end of whatever it moved to
+    val (f, c, _) = Frame.interpretAt(tree, 1, 0, Key.Ch('\t'))
+    assertEquals(f, 2)
+    assertEquals(c, 0, "a Select has no caret")
+  }
+
+  test("a caret of -1 is a host without one: interpretAt is interpret") {
+    for key <- Vector(Key.Down, Key.Up, Key.Home, Key.End, Key.Ch('x'), Key.Ch('\t')) do
+      val (f, _, ev) = Frame.interpretAt(tree, 1, -1, key)
+      assertEquals((f, ev), Frame.interpret(tree, 1, key), s"$key")
+  }
+
+  test("the caret is drawn as reverse video, and costs no columns") {
+    val input = Column(Vector(Input("abc", "k", "")))
+    val focused = Ui.focusable(input).lift(0)
+    val withCaret = Frame.render(input, focused, 0, 1).head
+    val plain = Frame.render(input, focused, 0, -1).head
+    // the value is intact and the caret is on the 'b'
+    assert(withCaret.contains("a\u001b[7mb\u001b[27mc"), withCaret.replace("\u001b", "ESC"))
+    // v1's mark is what a host with no caret still gets
+    assertEquals(plain, "[abc*]")
+    // and the caret is FREE: a marked value is as wide as a bare one
+    assertEquals(Frame.width(withCaret), Frame.width("[abc]"))
+  }
+
+  test("a tree that arrives mid-edit keeps the caret where it was") {
+    // typing rebuilds the tree on every keystroke: a caret that jumped
+    // to the end each time would make editing the middle impossible
+    val t1 = Column(Vector(Input("abc", "k", "")))
+    assertEquals(Frame.clampCaret(t1, 0, 1), 1)
+    // clamped to the value it is now in
+    assertEquals(Frame.clampCaret(Column(Vector(Input("a", "k", ""))), 0, 3), 1)
+    // a widget that has just taken the focus starts at the end
+    assertEquals(Frame.clampCaret(t1, 0, -1), 3)
+  }
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))

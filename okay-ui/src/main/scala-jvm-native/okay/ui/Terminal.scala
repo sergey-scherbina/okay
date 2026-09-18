@@ -48,10 +48,13 @@ object Terminal {
      * (ui-terminal-scroll) */
     private val rows = measured.map(_._2).getOrElse(0)
     @volatile private var top = 0
+    /** where the caret is inside the focused `Input`, or -1 when what
+     * has the focus is not one (ui-terminal-caret) */
+    @volatile private var caret = -1
 
     private def paint(): Unit =
       val f = Ui.focusable(tree).lift(focus)
-      val lines = Frame.render(tree, f, cols)
+      val lines = Frame.render(tree, f, cols, caret)
       Frame.focusLine(tree, f, cols).foreach(l => top = Frame.follow(top, l, rows))
       out.print("\u001b[2J\u001b[H")          // clear, home
       Frame.clip(lines, top, rows).foreach(l => out.print(l + "\r\n"))
@@ -66,6 +69,10 @@ object Terminal {
 
     def render(ui: Ui): Unit ! Async = async {
       tree = ui
+      // a new tree may put a different widget under the focus, and an
+      // edit rebuilds the tree on every keystroke — so the caret is
+      // KEPT where it is and only clamped to the value it is now in
+      caret = Frame.clampCaret(ui, focus, caret)
       paint()
     }
 
@@ -103,9 +110,10 @@ object Terminal {
                     effect[Writer % Event + Async, Unit](Async.Run(() =>
                       page(if key == Frame.Key.PageUp then -1 else 1)))
                   else
-                    val (nf, ev) = Frame.interpret(tree, focus, key)
+                    val (nf, nc, ev) = Frame.interpretAt(tree, focus, caret, key)
                     val moved = nf != focus
                     focus = nf
+                    caret = nc
                     ev match
                       case Some(e) => effect[Writer % Event + Async, Unit](Writer(e))
                       case None =>
