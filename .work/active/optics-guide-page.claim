@@ -1,0 +1,6 @@
+okay-wt-optics-guide-page 2026-09-18T08:55:46Z
+agent: claude-code
+heartbeat: 2026-09-18T08:55:46Z
+status: in-progress
+done-so-far: claimed
+next: read docs/guide.md structure + the docs-index guard, then write the optics page as tested PAIRS
