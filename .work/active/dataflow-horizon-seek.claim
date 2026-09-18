@@ -1,0 +1,6 @@
+feature/dataflow-horizon-seek 2026-09-18T17:55:50Z
+agent: claude-code
+heartbeat: 2026-09-18T17:55:50Z
+status: in-progress
+done-so-far: claimed; the measurement chose road B
+next: (position, max event time) per epoch in the journal; a windowed session seeks to the horizon epoch
