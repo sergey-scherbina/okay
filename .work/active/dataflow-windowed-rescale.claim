@@ -1,0 +1,6 @@
+feature/dataflow-windowed-rescale 2026-09-18T19:03:02Z
+agent: claude-code
+heartbeat: 2026-09-18T19:03:02Z
+status: in-progress
+done-so-far: claimed; stage 13 box 2 was blocked on "journal the open panes" — road B (dataflow-horizon-seek) gives a second answer: replay them from the horizon mark
+next: spec first (the correctness cliff: a re-cut's local watermarks differ, so discarding by LOCAL closing misclassifies panes in a band). Roads: replay by POSITION not epoch (Req.Open.until), empty the coordinator's open panes, sift contributions to already-retired panes.
