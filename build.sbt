@@ -1310,7 +1310,13 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   // compile graph stays at okay-codec and `TestPersisted` shows the
   // assembly against the real compacted log. Same arrangement
   // okay-persist itself uses for okay-tls.
-  .jvmConfigure(_.dependsOn(okayPersist.jvm % Test))
+  // okay-docs joins in TEST scope too, and for one reason: stage 10's
+  // last box wanted a COMPARE-AND-SET commit and said "no store here
+  // offers one". One does — `Cond.IfVersion` — and the seam
+  // (`Fencing`) is only worth having if something real can implement
+  // it. `DocsJournal` in the test tree is that something; the engine
+  // still knows nothing about documents.
+  .jvmConfigure(_.dependsOn(okayPersist.jvm % Test, okayDocs.jvm % Test))
   .settings(
     name := "okay-cluster",
   )

@@ -576,9 +576,25 @@ Stage 10 — the election (TestElection, TestPersisted):
       what a leader should do once an epoch anyway
 - [x] two nodes, one seat, on the real election: the second is told
       no while the lease is live and takes over when it lapses
-- [ ] a compare-and-set commit. The fence is a check before a write,
-      so a leader deposed between the two can land one commit; the
-      seam permits a conditional write and no store here offers one
+- [x] a compare-and-set commit — BUILT 2026-09-18
+      (`dataflow-cas-commit`), and the box's own last clause was
+      stale: `okay-docs` offers a conditional write (`Cond.IfVersion`)
+      and has since it landed. `Fencing` is the seam — "save this at
+      this epoch IF `term` is still the highest any writer has used" —
+      and `Checkpoint.fenced` takes that road when the journal offers
+      it and the old check-then-write when it does not. Over a
+      `Fencing` journal THE LEASE IS NOT ASKED AT ALL: asking twice
+      would only put the gap back, and the store's answer is the
+      authority. `DocsJournal` (test scope, the arrangement stage 10
+      used for `Election`) is forty lines over `Docs` and is what
+      makes the claim demonstrable rather than illustrative.
+      A LOG CANNOT DO THIS and the spec should not pretend otherwise:
+      read-the-tail-then-append is two operations with the same gap.
+      So the two defences stand side by side and the engine takes
+      whichever its store can give — a cell REFUSES the stale commit,
+      a log SHADOWS it (`Checkpoint.newest`, highest (term, epoch)
+      wins). The third test is the control: over `Checkpoint.Memory`
+      the same lying lease still lands the ghost's write
 
 Stage 9 — the commit window (TestStaged):
 - [x] `Sink.committed(epoch)` / `Sink.recovered(epoch)`, defaulting

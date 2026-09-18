@@ -53,6 +53,34 @@ trait Checkpoint:
  * resume would read whichever landed last. The term is what lets the
  * journal refuse it.
  */
+/**
+ * A JOURNAL THAT CAN REFUSE A WRITE IT IS NOT ENTITLED TO MAKE
+ * (specs/dataflow.md, stage 10's last box).
+ *
+ * `Checkpoint.fenced` asks a lease and then writes, which is two
+ * operations with a gap between them: a leader deposed inside that
+ * gap lands one stale commit. The gap cannot be closed by checking
+ * harder — only by making the check and the write ONE thing, which
+ * only the store can do.
+ *
+ * So the seam says what it needs and nothing more: save this, at this
+ * epoch, IF `term` is still the highest any writer has used. `false`
+ * is "somebody newer has written", which is a fact and not a failure
+ * — the caller turns it into `Deposed`.
+ *
+ * WHAT CAN IMPLEMENT IT. A document store with a conditional put:
+ * `okay-docs`' `Cond.IfVersion` is exactly this shape. A LOG cannot,
+ * by itself — read-the-tail-then-append is two operations again —
+ * which is why the read-side defence (`Checkpoint.newest`, highest
+ * (term, epoch) wins) exists and stays: a log's journal is immune to
+ * a stale commit by shadowing it, a cell's journal by refusing it,
+ * and the engine takes whichever the store offers.
+ */
+trait Fencing extends Checkpoint:
+  /** write only if `term` is still the highest any writer has used;
+   * `false` means a newer term has written and this one is deposed */
+  def saveIfTerm(epoch: Int, bytes: Array[Byte], term: Long): Boolean
+
 trait Lease:
   /** become the coordinator, if the seat is free — the TERM if taken */
   def take(): Option[Long]
@@ -109,18 +137,28 @@ object Checkpoint:
    * over its successor's state. Nothing else about the run changes;
    * the exception leaves through `Cluster.stream` like any other.
    *
-   * IT IS A CHECK, NOT A COMPARE-AND-SET, and the difference is one
-   * commit wide: a leader deposed between the check and the write can
-   * still land that write. Closing it needs a conditional write in
-   * the STORE — "save this only if the term is still mine" — and the
-   * seam already permits one, because `save` may throw. The wrapper
-   * here is what can be built over a store that offers no such thing.
+   * IT IS A CHECK, NOT A COMPARE-AND-SET, unless the journal can do
+   * better — and now it can say so. A check before a write is one
+   * commit wide: a leader deposed between the two lands that write.
+   * A journal that implements `Fencing` closes it, and `fenced` uses
+   * that road when it is offered; over a journal that cannot, the
+   * check is still what can be built, and `Checkpoint.newest` is the
+   * READ-side defence that makes the stale commit harmless anyway.
    */
-  def fenced(term: Long, lease: Lease, under: Checkpoint): Checkpoint = new Checkpoint:
-    def save(epoch: Int, bytes: Array[Byte]): Unit =
-      if !lease.held(term) then throw Deposed(term, epoch)
-      under.save(epoch, bytes)
-    def latest: Option[(Int, Array[Byte])] = under.latest
+  def fenced(term: Long, lease: Lease, under: Checkpoint): Checkpoint = under match
+    case cas: Fencing => new Checkpoint:
+      def save(epoch: Int, bytes: Array[Byte]): Unit =
+        // ONE OPERATION, so there is no "between" for a deposition to
+        // arrive in. The lease is not asked at all: the journal's own
+        // answer is the authority, and asking twice would only add a
+        // window back.
+        if !cas.saveIfTerm(epoch, bytes, term) then throw Deposed(term, epoch)
+      def latest: Option[(Int, Array[Byte])] = under.latest
+    case _ => new Checkpoint:
+      def save(epoch: Int, bytes: Array[Byte]): Unit =
+        if !lease.held(term) then throw Deposed(term, epoch)
+        under.save(epoch, bytes)
+      def latest: Option[(Int, Array[Byte])] = under.latest
 
   /**
    * THE RECORD A RESUME SHOULD BELIEVE, out of everything a journal
