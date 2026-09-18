@@ -1,6 +1,0 @@
-okay-wt-optics-typepedia 2026-09-18T09:35:32Z
-agent: claude-code
-heartbeat: 2026-09-18T09:35:32Z
-status: in-progress
-done-so-far: claimed; typepedia has 911 lines and no optics section at all
-next: typepedia Optics section + gotchas; docs/optics.md gains the typestate carrier and zoomCase
