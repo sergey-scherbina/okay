@@ -1,5 +1,51 @@
 # Changelog
 
+## applicative-do - direct style at a carrier with no monad
+
+`direct[F]` took `using M: Monad[F]`, so it turned away exactly the
+types where the sugar reads best. `Validated` refuses a `Monad` ON
+PURPOSE - the consistency law would force `app` to agree with the
+flatMap derivation, which stops at the first error and undoes the
+collecting the type exists for - and a block at it was rejected at the
+call site with `no Monad[V]` before the macro ever ran.
+
+What a block needs is decided by the BLOCK. A run of independent binds
+needs only `Applicative`; only a bind whose right-hand side mentions
+an earlier name needs `Monad`. So the entry asks for `Applicative[F]`,
+which every existing call site already satisfies because `Monad`
+extends it, and the macro summons the monad itself:
+
+    val checked: V[Form] = direct[V]:
+      val name  = nonEmpty(raw.name).reflect
+      val email = looksLikeEmail(raw.email).reflect
+      Form(name, email)          // both problems, or a Form
+
+Finding a monad, the macro runs the existing pipeline untouched - no
+program in this repository changed emission, which was the risk this
+lane had to clear first and the first Behavior item in its spec.
+Finding none, it emits the bracket: fmap the first leaf with the
+curried rest, then app the others in order.
+
+MARKS IN THE RESULT HAD TO BE LEAVES TOO. The first cut refused them
+and `direct[V](check(2).reflect + 1)` did not compile - the bracket's
+most natural spelling, turned away. Each mark in the result is now
+replaced by a reference to a fresh name in evaluation order; they are
+independent by construction, since separate subexpressions of one
+expression cannot mention each other's answers.
+
+THREE THINGS THE REFLECTION API DECIDED rather than the design, each
+caught by a failing splice rather than by reading: the curried lambda
+must be BUILT at the type `fmap` will ask for (leaving its result at
+`Any` was refused with both types printed side by side); `fmap[X, R]`
+takes R as the function's RESULT, not the function, which was off by
+one; and the carrier's element is its LAST type argument, since
+`Validated[E, A]` has two and reading the only one refused every
+two-parameter carrier - the very consumer this lane exists for.
+
+What v1 refuses, each naming what it found instead of erroring about a
+class the author never mentioned: a dependent bind, a statement that
+is not a marked val, and a mark inside a mark.
+
 ## direct-parallel-wider-rows - an Async leaf in a wider row spawns too
 
 `import Direct.parallelBinds.given` did nothing in a block over a row
