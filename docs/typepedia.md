@@ -380,7 +380,7 @@ same material with the measurements attached.
   with an internal cast, done without one (50 000 leaves fold; it
   overflowed at 10 000 until static-foldmap-stack-safe).
 
-## Optics (Optic.scala)
+## Optics (okay-optics: Optic.scala)
 
 - **`Optic[C[_[_, _]], S, T, A, B]`** — a path into a value, as a
   value. It is a function polymorphic in a profunctor `P`, and its
@@ -735,9 +735,10 @@ and nothing else in the library casts for that reason:
   nothing but their result — no Either, no Option per operation —
   and holds the union's two casts; `<|>` is `split` at
   `Left`/`Right` (either-via-split), the `Either` form for drains and
-  tests. `split` is what every walker in the core uses (`State.handle`,
+  tests. `split` is what every walker in this library uses (`State.handle`,
   `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`,
-  `Resource.run`, the stream walkers; split-without-either,
+  `Resource.run` in the core, and the stream walkers in okay-stream;
+  split-without-either,
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the
