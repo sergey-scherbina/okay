@@ -1,6 +1,0 @@
-feature/proc-form-consumer 2026-09-18T14:26:36Z
-agent: claude-code
-heartbeat: 2026-09-18T14:26:36Z
-status: in-progress
-done-so-far: claimed
-next: a Ui form as a Proc — fields are the leaves, a half-filled form is a journal, mermaid draws it
