@@ -1,7 +1,6 @@
 package okay.ui
 
 import scala.scalajs.js
-import scala.scalajs.js.JSConverters.*
 
 /**
  * THE BROWSER CLIENT, EXECUTED (ui-livejs-verified).
