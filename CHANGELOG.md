@@ -1,5 +1,45 @@
 # Changelog
 
+## selective-do - an `if` with an effectful condition, and by-name branches
+
+An `if` whose CONDITION is an effect is the one shape an applicative
+cannot express: `<*>` runs both of its arguments, so a branch happens
+whether or not it is taken. `ifS` runs the scrutinee and then at most
+one side, and the macro emits it now:
+
+    val order: Validated[Seq[String], Order] = direct:
+      val item = checkItem(raw.item)
+      val ship = if wantsDelivery(raw.delivery) then checkAddress(raw.address)
+                 else pickup
+      Order(item, ship)
+
+`wantsDelivery` is itself a check and can fail on its own. When it
+answers false, `checkAddress` does not run and its error is not in the
+answer - a bad address is not reported on an order that was never
+going to be shipped, while the independent checks around the
+conditional still accumulate.
+
+`Validated` gained a REAL Selective rather than `selectA`: a Right
+scrutinee is already the answer so the handler is skipped, and a
+FAILED scrutinee does not run it either (the reference reading - which
+branch would have been taken is not known, so there is nothing to
+check yet). Its separate Applicative given is gone, since Selective
+extends Applicative and two givens would have been ambiguous.
+
+THE BRANCHES HAD TO BECOME BY-NAME, and only a run showed why. "At
+most one branch runs" is free in a lazy language; in Scala a branch is
+an ordinary argument, so by value it does its work whether or not it
+is chosen. The first version passed EVERY assertion about the answer -
+the skipped branch's errors were correctly absent in all four cases -
+and failed the one that recorded which checks had actually been
+performed: `address` was in the list for a pickup order. `select`,
+`branch` and `ifS` now take their handlers by name; every instance
+uses a handler at most once, so nothing pays for repeated evaluation.
+
+The general lesson is in the spec: an assertion on the ANSWER and an
+assertion on the WORK DONE are different tests, and a type class whose
+whole point is not doing work needs the second one.
+
 ## script-storefront-look — the original's theme, and the JavaScript proven in a browser
 
 specs/site-framework.md. The first storefront slice wore a three-line
