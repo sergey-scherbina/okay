@@ -85,8 +85,22 @@ fun Render(u: Ui, act: (Event) -> Unit, modifier: Modifier = Modifier) {
         // level S never arrives: this client claims nothing, the server lowers
         is Ui.Items -> Column(modifier) { u.items.forEach { Render(it, act) } }
         is Ui.Table -> Column(modifier) {
-            Row { u.header.forEach { Text(it, Modifier.weight(1f), fontWeight = FontWeight.Bold) } }
-            u.rows.forEach { r -> Row { r.forEach { Render(it, act, Modifier.weight(1f)) } } }
+            // each COLUMN's share, and an even split when the server
+            // sent none or sent the wrong number of them — a tree
+            // arrives over a wire, so a mis-sized table draws evenly
+            // rather than throwing here (ui-table-weights). The floor
+            // of 1 is Compose's own rule, not the protocol's: it
+            // rejects a weight of zero, which CSS accepts
+            fun share(i: Int, n: Int) =
+                (if (u.weights.size == n) u.weights[i] else 1).coerceAtLeast(1).toFloat()
+            Row {
+                u.header.forEachIndexed { i, h ->
+                    Text(h, Modifier.weight(share(i, u.header.size)), fontWeight = FontWeight.Bold)
+                }
+            }
+            u.rows.forEach { r ->
+                Row { r.forEachIndexed { i, c -> Render(c, act, Modifier.weight(share(i, r.size))) } }
+            }
         }
         is Ui.Tabs -> Column(modifier) {
             Row { u.labels.forEachIndexed { i, l -> Render(Ui.Button(l, "${u.key}\$tab$i", if (i == u.selected) Role.Active else Role.Plain), act) } }

@@ -40,7 +40,17 @@ enum Ui:
   // on the wire; lowered, its buttons round-trip as Pressed
   /** a keyed list of items — `List` is Scala's name, so `Items` */
   case Items(items: Vector[Ui], key: String)
-  case Table(header: Vector[String], rows: Vector[Vector[Ui]], key: String)
+  /** `weights` is each COLUMN's share of the width — `Box`'s own word
+   * for the same quantity. EMPTY means equal, which is what the
+   * lowering did unconditionally before ui-table-weights, so a table
+   * that does not ask for widths is untouched. How wide a column is,
+   * is a property of what is in it and only the author knows it: a
+   * case id is eight characters and an evidence sentence is sixty, and
+   * no stylesheet can correct an even split afterwards, because
+   * `React` writes these INLINE on each cell. A vector whose length is
+   * not the header's is ignored (see `Ui.lower`). */
+  case Table(header: Vector[String], rows: Vector[Vector[Ui]], key: String,
+             weights: Vector[Int] = Vector.empty)
   /** tab i's button is keyed `<key>$tab<i>`; only the selected page
    * is shown, so only its keys are capabilities */
   case Tabs(labels: Vector[String], selected: Int, pages: Vector[Ui], key: String)
@@ -142,7 +152,7 @@ object Ui {
     case Scroll(_, k) if k.nonEmpty => Some(k)
     case Form(_, _, k) if k.nonEmpty => Some(k)
     case Items(_, k) if k.nonEmpty => Some(k)
-    case Table(_, _, k) if k.nonEmpty => Some(k)
+    case Table(_, _, k, _) if k.nonEmpty => Some(k)
     case Tabs(_, _, _, k) if k.nonEmpty => Some(k)
     case Modal(_, _, k) if k.nonEmpty => Some(k)
     case Disclosure(_, _, _, k) if k.nonEmpty => Some(k)
@@ -286,7 +296,7 @@ object Ui {
     case Select(_, _, k) => Set(k)
     case Form(fields, _, k) => fields.flatMap(keys).toSet + k
     case Items(items, _) => items.flatMap(keys).toSet
-    case Table(_, rows, _) => rows.flatten.flatMap(keys).toSet
+    case Table(_, rows, _, _) => rows.flatten.flatMap(keys).toSet
     case Tabs(labels, selected, pages, k) =>
       labels.indices.map(i => tabKey(k, i)).toSet ++ pages.lift(selected).map(keys).getOrElse(Set.empty)
     case Modal(_, body, _) => keys(body)
@@ -305,7 +315,7 @@ object Ui {
     case Scroll(c, _) => forms(c)
     case Form(fields, _, k) => fields.flatMap(forms).toMap + (k -> fields.flatMap(keys).toSet)
     case Items(items, _) => items.flatMap(forms).toMap
-    case Table(_, rows, _) => rows.flatten.flatMap(forms).toMap
+    case Table(_, rows, _, _) => rows.flatten.flatMap(forms).toMap
     case Tabs(_, selected, pages, _) => pages.lift(selected).map(forms).getOrElse(Map.empty)
     case Modal(_, body, _) => forms(body)
     case Disclosure(_, open, body, _) => if open then forms(body) else Map.empty
@@ -435,7 +445,7 @@ object Ui {
     case Scroll(c, _) => Vector(c)
     case Form(fs, _, _) => fs
     case Items(items, _) => items
-    case Table(_, rows, _) => rows.flatten
+    case Table(_, rows, _, _) => rows.flatten
     case Tabs(_, sel, pages, _) => if structural then pages else pages.lift(sel).toVector
     case Modal(_, body, _) => Vector(body)
     case Disclosure(_, open, body, _) => if structural || open then Vector(body) else Vector.empty
@@ -452,7 +462,7 @@ object Ui {
       case Scroll(_, k) => Scroll(cs.head, k)
       case Form(_, sub, k) => Form(cs, sub, k)
       case Items(_, k) => Items(cs, k)
-      case Table(h, rows, k) => Table(h, regroup(cs, rows.map(_.length)), k)
+      case Table(h, rows, k, w) => Table(h, regroup(cs, rows.map(_.length)), k, w)
       case Tabs(l, sel, pages, k) =>
         if structural then Tabs(l, sel, cs, k)
         else Tabs(l, sel, cs.headOption.fold(pages)(c => pages.updated(sel, c)), k)
@@ -481,7 +491,7 @@ object Ui {
       case Scroll(c, k) => Scroll(map(c, f), k)
       case Form(fields, s, k) => Form(fields.map(map(_, f)), s, k)
       case Items(items, k) => Items(items.map(map(_, f)), k)
-      case Table(h, rows, k) => Table(h, rows.map(_.map(map(_, f))), k)
+      case Table(h, rows, k, w) => Table(h, rows.map(_.map(map(_, f))), k, w)
       case Tabs(l, s, pages, k) => Tabs(l, s, pages.map(map(_, f)), k)
       case Modal(t, body, k) => Modal(t, map(body, f), k)
       case Disclosure(t, o, body, k) => Disclosure(t, o, map(body, f), k)
@@ -514,12 +524,18 @@ object Ui {
       case Items(items, k) =>
         if vocab(Vocab.items) then Items(items.map(go), k)
         else Box(items.map(go), Dir.Vertical, key = k)
-      case Table(header, rows, k) =>
-        if vocab(Vocab.table) then Table(header, rows.map(_.map(go)), k)
+      case Table(header, rows, k, weights) =>
+        if vocab(Vocab.table) then Table(header, rows.map(_.map(go)), k, weights)
         else
+          // the declared shares where there are as many as there are
+          // columns, and an even split otherwise. IGNORED rather than
+          // obeyed or fatal: a tree is data that may arrive over a
+          // wire from anywhere, and a mis-sized table should draw
+          // evenly rather than throw in a renderer
+          def shares(n: Int) = if weights.length == n then weights else Vector.fill(n)(1)
           val head = Box(header.map(h => Text(h, Style(tone = Tone.Emphasis))), Dir.Horizontal,
-            weights = Vector.fill(header.length)(1))
-          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = Vector.fill(r.length)(1))),
+            weights = shares(header.length))
+          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = shares(r.length))),
             Dir.Vertical, key = k)
       case Tabs(labels, selected, pages, k) =>
         if vocab(Vocab.tabs) then Tabs(labels, selected, pages.map(go), k)

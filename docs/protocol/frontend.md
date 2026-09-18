@@ -80,7 +80,7 @@ Ui = Text {s: string, style: Style}
   | Scroll {child: Ui, key: string}
   | Form {fields: [Ui], submit: string, key: string}
   | Items {items: [Ui], key: string}
-  | Table {header: [string], rows: [[Ui]], key: string}
+  | Table {header: [string], rows: [[Ui]], key: string, weights: [int]}
   | Tabs {labels: [string], selected: int, pages: [Ui], key: string}
   | Modal {title: string, body: Ui, key: string}
   | Disclosure {title: string, open: bool, body: Ui, key: string}
