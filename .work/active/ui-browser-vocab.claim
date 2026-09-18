@@ -1,6 +1,0 @@
-feature/ui-browser-vocab 2026-09-18T09:09:11Z
-agent: claude-code
-heartbeat: 2026-09-18T09:09:11Z
-status: in-progress
-done-so-far: claimed
-next: React.Vocabulary gains table; elem/live.js render <table>; Dom.host lowers with its own vocabulary
