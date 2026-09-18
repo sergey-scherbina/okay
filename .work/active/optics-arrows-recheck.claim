@@ -1,6 +1,0 @@
-okay-wt-optics-arrows-recheck 2026-09-18T08:43:27Z
-agent: claude-code
-heartbeat: 2026-09-18T08:43:27Z
-status: in-progress
-done-so-far: triggers re-checked against static-workflow, Validate, Ui.diff, Flows.merged
-next: correct specs/optics.md stage 12 and the BACKLOG lanes in the worktree
