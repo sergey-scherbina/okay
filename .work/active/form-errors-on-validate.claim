@@ -1,6 +1,0 @@
-feature/form-errors-on-validate 2026-09-18T10:44:11Z
-agent: claude-code
-heartbeat: 2026-09-18T10:44:11Z
-status: in-progress
-done-so-far: claimed
-next: compare Form.errors and Validate.errors on one schema, then switch or record the refusal
