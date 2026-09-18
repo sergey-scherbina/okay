@@ -667,7 +667,7 @@ object Wf:
      */
     def walk[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A])
                         : Either[Stranded, Standing[Q, A, Y]] =
-      go(p, x, journal, 0, okay.Proc.Path.root) match
+      go(p, x, journal, 0, okay.Proc.Path.root, fresh) match
         case Walked.Ran(y, _, _) => Right(Standing.Done(y))
         // ONE question is still an `Asking`, which is what keeps this
         // additive: a term with no `Par` in it answers exactly what it
@@ -696,6 +696,43 @@ object Wf:
       case Question.Signalled(n) => Left(Sys.Signal(n))
       case Question.Childed(i) => Left(Sys.Child(i))
       case Question.Cancelled() => Left(Sys.Cancelled)
+
+    /**
+     * WHAT THIS RUN WOULD HAVE TO UNDO, AS A TERM
+     * (specs/static-workflow.md, stage 5).
+     *
+     * Walk the term over the journal exactly as `walk` does, and
+     * every `Undo` node whose step COMPLETED contributes one piece:
+     * its compensation, fed the input and output that step actually
+     * had. The pieces come back in REVERSE — the last thing done is
+     * the first thing undone, which is what a saga means — composed
+     * into one ordinary `Wf.Proc`.
+     *
+     * A TERM, and that is the feature rather than a spelling. The
+     * compensation runs on the same engine, writes to the same
+     * journal, draws itself, and — if the compensation is itself
+     * interrupted halfway — resumes from its own position like any
+     * other durable run. `okay.persist.Saga` does this for a LINEAR
+     * sequence with a journal of its own; this does it for a SHAPE,
+     * because branches and loops are nodes and a walk goes through
+     * them.
+     *
+     * It decides nothing about WHEN. A term that can fail threads
+     * `Either[E, ·]` and `OnRight` passes a `Left` through untouched,
+     * so a failure short-circuits the rest by the ordinary choice;
+     * whether that is a reason to compensate is the author's, and
+     * they call this when they have decided it is.
+     *
+     * A run with no `Undo` nodes, or one that has not reached any,
+     * answers the identity — a term that asks nothing, which the
+     * engine runs to `()` without touching the journal.
+     */
+    def compensating[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A])
+                                : Wf.Proc[Q, A, Unit, Unit] =
+      val buf = fresh[Q, A]
+      val _ = go(p, x, journal, 0, okay.Proc.Path.root, buf)
+      buf.reverseIterator.reduceOption(okay.Proc.andThen)
+        .getOrElse(okay.Proc.arr[Wf.Asked[Q, A], Unit, Unit](identity))
 
     /** the deploy check: this journal still fits this program */
     def accepts[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A]): Boolean =
@@ -767,6 +804,10 @@ object Wf:
     final case class Stranded(at: okay.Proc.Path, record: Int, why: String):
       override def toString = s"stranded at ${at.show} on record $record: $why"
 
+    /** where the fold puts the compensations it passed */
+    private type Undos[Q, A] = scala.collection.mutable.ArrayBuffer[Wf.Proc[Q, A, Unit, Unit]]
+    private def fresh[Q, A]: Undos[Q, A] = scala.collection.mutable.ArrayBuffer.empty
+
     private enum Walked[Q, A, +V]:
       case Ran[Q, A, V](value: V, left: Journal[A], used: Int) extends Walked[Q, A, V]
       /**
@@ -785,8 +826,20 @@ object Wf:
 
     import okay.Proc.Path./
 
+    /**
+     * THE FOLD, WITH ONE PLACE TO PUT WHAT IT PASSED
+     * — `undos` collects a compensation term for every `Undo` node
+     * whose step COMPLETED, in the order they ran.
+     *
+     * A parameter rather than a second fold: `walk` hands it a buffer
+     * it then ignores, and `compensating` hands it one it reads. The
+     * alternative was a mirror of this function that only collects,
+     * and a second copy of a fold with the `Patch` rule in it is
+     * exactly the drift this file warns about elsewhere.
+     */
     private def go[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y], x: X, j: Journal[A],
-                               used: Int, at: okay.Proc.Path): Walked[Q, A, Y] =
+                               used: Int, at: okay.Proc.Path,
+                               undos: Undos[Q, A]): Walked[Q, A, Y] =
       p match
         case okay.Proc.Arr(f) => Walked.Ran(f(x), j, used)
 
@@ -814,13 +867,13 @@ object Wf:
                 case Right(v) => Walked.Ran(v, rest, used + 1)
 
         case okay.Proc.Then(f, g) =>
-          go(f, x, j, used, at / okay.Proc.Step.Fst) match
-            case Walked.Ran(v, left, u) => go(g, v, left, u, at / okay.Proc.Step.Snd)
+          go(f, x, j, used, at / okay.Proc.Step.Fst, undos) match
+            case Walked.Ran(v, left, u) => go(g, v, left, u, at / okay.Proc.Step.Snd, undos)
             case stop: Walked.Asking[Q, A] => stop
             case stop: Walked.Bad[Q, A] => stop
 
         case okay.Proc.First(f) =>
-          go(f, x._1, j, used, at / okay.Proc.Step.In) match
+          go(f, x._1, j, used, at / okay.Proc.Step.In, undos) match
             case Walked.Ran(v, left, u) => Walked.Ran((v, x._2), left, u)
             case stop: Walked.Asking[Q, A] => stop
             case stop: Walked.Bad[Q, A] => stop
@@ -829,15 +882,28 @@ object Wf:
           x match
             case Left(c) => Walked.Ran(Left(c), j, used)
             case Right(a) =>
-              go(f, a, j, used, at / okay.Proc.Step.In) match
+              go(f, a, j, used, at / okay.Proc.Step.In, undos) match
                 case Walked.Ran(v, left, u) => Walked.Ran(Right(v), left, u)
                 case stop: Walked.Asking[Q, A] => stop
                 case stop: Walked.Bad[Q, A] => stop
 
-        case okay.Proc.Par(f, g) =>
-          go(f, x, j, used, at / okay.Proc.Step.Side(0)) match
+        case okay.Proc.Undo(step, undo) =>
+          go(step, x, j, used, at / okay.Proc.Step.Back(false), undos) match
             case Walked.Ran(y, left, u) =>
-              go(g, x, left, u, at / okay.Proc.Step.Side(1)) match
+              // BUILT HERE, WHERE THE TYPES ARE STILL KNOWN. `x` and
+              // `y` are this node's own input and output, so the piece
+              // needs no cast — which is the whole reason the
+              // collection happens inside the fold rather than over a
+              // list of paths afterwards.
+              undos += okay.Proc.andThen(okay.Proc.Arr((_: Unit) => (x, y)), undo)
+              Walked.Ran(y, left, u)
+            case stop: Walked.Asking[Q, A] => stop
+            case stop: Walked.Bad[Q, A] => stop
+
+        case okay.Proc.Par(f, g) =>
+          go(f, x, j, used, at / okay.Proc.Step.Side(0), undos) match
+            case Walked.Ran(y, left, u) =>
+              go(g, x, left, u, at / okay.Proc.Step.Side(1), undos) match
                 case Walked.Ran(z, l2, u2) => Walked.Ran((y, z), l2, u2)
                 case stop: Walked.Asking[Q, A] => stop
                 case stop: Walked.Bad[Q, A] => stop
@@ -847,7 +913,12 @@ object Wf:
               // case's `Nil` arm. So the right branch starts from an
               // empty journal too, and its own first question is
               // knowable here without a second pass over anything.
-              go(g, x, Nil, u, at / okay.Proc.Step.Side(1)) match
+              // A THROWAWAY BUFFER. This walk is SPECULATIVE — it asks
+              // what the right branch would ask, over a journal that
+              // has not reached it — so anything it "completes" has
+              // not happened, and a compensation collected here would
+              // undo a step nobody took.
+              go(g, x, Nil, u, at / okay.Proc.Step.Side(1), fresh) match
                 case Walked.Asking(more, _) => Walked.Asking(on ++ more, u)
                 // the right branch asks nothing: there is one question
                 // outstanding and this is an ordinary wait
@@ -857,7 +928,7 @@ object Wf:
 
         case okay.Proc.Iter(body) =>
           def loop(cur: X, left: Journal[A], u: Int, round: Int): Walked[Q, A, Y] =
-            go(body, cur, left, u, at / okay.Proc.Step.Round(round)) match
+            go(body, cur, left, u, at / okay.Proc.Step.Round(round), undos) match
               case Walked.Ran(Left(again), l2, u2) => loop(again, l2, u2, round + 1)
               case Walked.Ran(Right(y), l2, u2) => Walked.Ran(y, l2, u2)
               case stop: Walked.Asking[Q, A] => stop

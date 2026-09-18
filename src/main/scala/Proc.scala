@@ -90,6 +90,28 @@ enum Proc[F[+_], X, Y]:
    */
   case Par[F[+_], X, Y, Z](f: Proc[F, X, Y], g: Proc[F, X, Z]) extends Proc[F, X, (Y, Z)]
 
+  /**
+   * A STEP WITH ITS INVERSE BESIDE IT
+   * (specs/static-workflow.md, stage 5).
+   *
+   * `undo` is given what the step was GIVEN and what it PRODUCED —
+   * both, because a compensation usually needs the second (the charge
+   * id to refund) and sometimes the first (the account to refund it
+   * to).
+   *
+   * UNDER `foldMap` AN `Undo` IS ITS STEP. The inverse is metadata
+   * until something fails, and nothing here decides that something
+   * has: `Wf.Proc.compensating` walks the term over a journal and
+   * builds the undo chain out of the `Undo` nodes that COMPLETED.
+   *
+   * The undos are FOUND rather than carried, and that is what makes
+   * this possible at all: a stack of computations travelling on the
+   * edge, to be run later, is `ArrowApply` — the one thing this type
+   * refuses. A term is walkable, so the compensation for a step is
+   * reachable at the path where the step ran.
+   */
+  case Undo[F[+_], X, Y](step: Proc[F, X, Y], undo: Proc[F, (X, Y), Unit]) extends Proc[F, X, Y]
+
 object Proc:
 
   import Path.{/, steps}
@@ -105,6 +127,10 @@ object Proc:
 
   /** two independent branches over the same input, as the door */
   def par[F[+_], X, Y, Z](f: Proc[F, X, Y], g: Proc[F, X, Z]): Proc[F, X, (Y, Z)] = Par(f, g)
+
+  /** a step with its compensation, as the door */
+  def undoable[F[+_], X, Y](step: Proc[F, X, Y])(undo: Proc[F, (X, Y), Unit]): Proc[F, X, Y] =
+    Undo(step, undo)
 
   /**
    * COMPOSITION, WITH THE ONE REWRITE THAT PAYS FOR ITSELF: two pure
@@ -247,6 +273,9 @@ object Proc:
      * and not `Fst`/`Snd`, so a path says which KIND of node it went
      * into and `render` knows to indent */
     case Side(n: Int)
+    /** inside an `Undo`'s step (`back = false`) or its compensation
+     * (`back = true`) */
+    case Back(back: Boolean)
 
   opaque type Path = List[Step]
 
@@ -261,6 +290,7 @@ object Proc:
         case Step.In => "in"
         case Step.Round(n) => s"round$n"
         case Step.Side(n) => s"par$n"
+        case Step.Back(b) => if b then "undo" else "do"
       .mkString("/")
 
   /** a leaf of the term, where it is */
@@ -334,6 +364,13 @@ object Proc:
           val bb = b.foldMap(nt)
           x => aa(x).flatMap(y => bb(x).map(z => (y, z)))
 
+        // THE STEP, AND ONLY THE STEP. Interpreting the inverse here
+        // would run it on the way past, which is the opposite of what
+        // it is for; a compensation is a term `Wf.Proc.compensating`
+        // BUILDS from the nodes that completed, and then the engine
+        // runs that like any other.
+        case Undo(step, _) => step.foldMap(nt)
+
     /**
      * The same term as an ordinary program of the signature's row —
      * `Static.toFree`'s counterpart, and the bridge every runtime in
@@ -359,6 +396,7 @@ object Proc:
           case Step.In => true
           case Step.Round(_) => true
           case Step.Side(_) => true
+          case Step.Back(_) => true
           case _ => false
         val pad = "  " * depth
         q match
@@ -369,6 +407,7 @@ object Proc:
           case OnRight(_) => b ++= s"${pad}right$mark\n"
           case Iter(_) => b ++= s"${pad}loop$mark\n"
           case Par(_, _) => b ++= s"${pad}par$mark\n"
+          case Undo(_, _) => b ++= s"${pad}undoable$mark\n"
       b.result()
 
     /**
@@ -442,6 +481,18 @@ object Proc:
           edge(r, join)
           join
 
+        case Undo(step, undo) =>
+          val out = go(step, path / Step.Back(false), in)
+          // THE COMPENSATION IS DRAWN OFF THE PATH, on a dotted edge,
+          // because that is the truth about it: it does not run on the
+          // way past. A reader has to see both that it exists and that
+          // it is not in the flow.
+          val c = fresh("u")
+          b ++= s"""  $c{"on failure"}\n"""
+          b ++= s"  $out -.-> $c\n"
+          val _ = go(undo, path / Step.Back(true), c)
+          out
+
         case Iter(body) =>
           val head = fresh("l")
           b ++= s"""  $head{"loop"}\n"""
@@ -494,4 +545,7 @@ object Proc:
       case Par(a, b) =>
         nodes(a, at / Step.Side(0))(f)
         nodes(b, at / Step.Side(1))(f)
+      case Undo(a, b) =>
+        nodes(a, at / Step.Back(false))(f)
+        nodes(b, at / Step.Back(true))(f)
       case Arr(_) | Op(_, _) => ()

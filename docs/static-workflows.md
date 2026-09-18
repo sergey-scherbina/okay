@@ -273,6 +273,68 @@ fanout is derivable from `first` and `compose`, and what it derives is
 plumbing that walks as **one** position. The node exists so the
 position can be a pair.
 
+## Taking it back
+
+A booking that reserves, then charges, then fails at the third step
+has to release the reservation and refund the charge — in that order,
+newest first. `okay.persist.Saga` does exactly that for a **linear**
+sequence of steps, with a journal of its own. A term can do it for a
+**shape**, on the workflow's own journal:
+
+```scala
+def step(q: String, undo: String): Wf.Proc[String, String, Unit, String] =
+  Proc.undoable(Wf.Proc.ask[String, String, Unit](_ => q))(
+    Wf.Proc.ask[String, String, (Unit, String)](p => s"$undo ${p._2}") >>> A.arr(_ => ()))
+```
+
+`undoable(step)(undo)` is a step with its inverse beside it, and the
+inverse is given **both** what the step was handed and what it
+produced — usually the second (the charge id to refund), sometimes the
+first. Nothing runs it on the way past: under `foldMap` an `Undo` *is*
+its step.
+
+When the author decides a run has failed, they ask what it would take
+to undo:
+
+```scala
+Wf.Proc.compensating(booking)((), journal)
+// a Wf.Proc[String, String, Unit, Unit]
+```
+
+What comes back is **a term** — an ordinary workflow. It runs on the
+same engine, writes to the same journal, draws itself, and resumes
+from its own position if the compensation is itself interrupted
+halfway. The pieces are in reverse: the last thing done is the first
+thing undone.
+
+It works over shapes a `Vector[Step]` cannot express, because the walk
+goes through the nodes:
+
+```scala
+// one room per night, where the number of nights is an ANSWER
+val nights = Proc.iter(Proc.alongside(bookRoom) >>> A.arr(decide))
+
+Wf.Proc.compensating(nights)(Nil, List(Right("a"), Right("b"), Right("c")))
+// asks: cancel c, cancel b, cancel a
+```
+
+A branch not taken leaves nothing to undo; two rounds of a loop leave
+two cancellations, not three.
+
+**Failure is not a new node.** A term that can fail threads
+`Either[E, ·]`, and `OnRight` already passes a `Left` through
+untouched — so a failure short-circuits the rest by the ordinary
+choice. Whether that is a reason to compensate is the author's
+decision, and `compensating` is what they call once they have made
+it.
+
+**The undos are found, not carried.** The obvious design puts a stack
+of compensations on the arrow's edge, to be run when something breaks
+— and a computation carried as a value and later run is `ArrowApply`,
+which is a monad, which is the one thing this type refuses. Because a
+term is walkable, the compensation for a step is simply *there*, at
+the path where the step ran.
+
 ## The picture
 
 A term draws itself, and the drawing cannot disagree with the program
