@@ -1,6 +1,0 @@
-feature/dataflow-rescale-windowed-record 2026-09-18T19:21:03Z
-agent: claude-code
-heartbeat: 2026-09-18T19:21:03Z
-status: in-progress
-done-so-far: claimed; 21d96006 landed windowed rescale by REPLAY, so the backlog entry and the sprint line that both say "journal the open panes / refused by name" are now wrong
-next: move the backlog entry to refuted-declined-or-answered with the answer, fix the sprint line
