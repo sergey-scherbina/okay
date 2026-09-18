@@ -42,12 +42,18 @@ and it compiles to the term:
 
 ```scala
 val booking: Wf.Proc[String, String, Unit, String] =
-  Proc.direct[Sig, Unit, String]: _ =>
+  Proc.direct: _ =>
     val city = !ask("city?")
     val t    = !now
     val id   = !uuid
     s"$city/$t/$id"
 ```
+
+**No type arguments.** The expected type on the `val` — or on a
+`def`'s result — carries the signature, the input and the answer, and
+the block's parameter type comes with them. `Proc.direct[Sig, X, Y]`
+is available and is what you write where there is no expected type;
+everywhere else it is noise. That holds for branches and loops too.
 
 Beside its monadic twin, which asks the same three questions:
 
@@ -129,7 +135,7 @@ An `if` whose branches ask questions is part of the term, both sides
 of it:
 
 ```scala
-val districted = Proc.direct[Sig, Unit, String]: _ =>
+val districted: Wf.Proc[String, String, Unit, String] = Proc.direct: _ =>
   val city = !ask("city?")
   if city == "Kyiv" then
     val d = !ask("which district?")
@@ -161,7 +167,7 @@ depend on an answer. That objection is about `Selective`, whose
 iteration is a node**, so the shape stays finite:
 
 ```scala
-val rooms = Proc.direct[Sig, Unit, List[String]]: _ =>
+val rooms: Wf.Proc[String, String, Unit, List[String]] = Proc.direct: _ =>
   val n = !ask("nights?")
   var got = List.empty[String]
   while got.length < n.toInt do
@@ -195,6 +201,9 @@ and cannot say "run the body again".
   once per round inside the loop — expressible, not wired.
 - **An `if` nested inside a larger expression**, for the hoisting
   reason above. Bind it to a val first.
+- **A mark is still required.** `direct` has auto-colouring behind a
+  capability; this road has none, so an operation used where a value
+  is wanted is the ordinary type error it should be.
 - **The environment is not pruned.** Every bound name rides on the
   edge until the end of the block, as a left-nested tuple. A liveness
   pass would drop the dead ones; nothing has asked for it, and the

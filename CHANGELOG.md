@@ -1,5 +1,36 @@
 # Changelog
 
+## proc-notation-forms - the type arguments were never required
+
+The operator's traditional question, asked of the arrow road this
+time: are the types obligatory? No - and every test in the repository
+was writing three of them.
+
+    val booking: Wf.Proc[String, String, Unit, String] =
+      Proc.direct: _ =>
+        val city = !ask("city?")
+        val t    = !now
+        s"$city/$t"
+
+The expected type on a `val` or a `def` carries the signature, the
+input and the answer, and the block's parameter type comes with them.
+`Proc.direct[Sig, X, Y]` stays available and is what you write where
+there is no expected type. Branches and loops need none either, which
+was worth checking separately - they are compiled by their own
+routines and could have lost the expected type on the way.
+
+TestProcForms compiles the SAME block four ways and asserts the terms
+behave identically: the leaves, the answer and the questions asked.
+Compiling was never the claim - a macro that infers its types wrongly
+compiles too.
+
+What IS still required is a mark. `direct` has auto-colouring behind
+the DirectCtx capability; this road has none, so an operation used
+where a value is wanted is the ordinary type error it should be -
+recorded as a decision rather than left as a surprise.
+
+docs/static-workflows.md now shows the short spelling everywhere,
+with one paragraph saying when the long one is needed.
 ## growing-order-probe - the break finally said which road it took
 
 Five sightings of one shape existed and a sixth would have added

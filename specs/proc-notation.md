@@ -331,6 +331,39 @@ gives a leaf named `patch` and not `Patched` — a term reads in the
 vocabulary of the program rather than of the library. Found by a test
 that expected the case's name and was wrong.
 
+### The spellings, pinned (`proc-notation-forms`, 2026-09-18)
+
+The operator asked the question `apdo-forms` asked of the applicative
+road — **are the types required?** — and the answer is the same shape:
+fewer than every test in this repository was writing.
+
+```scala
+val booking: Wf.Proc[String, String, Unit, String] =
+  Proc.direct: _ =>                       // no type arguments at all
+    val city = !ask("city?")
+    val t    = !now
+    s"$city/$t"
+```
+
+- **The three type arguments are needed only where there is NO
+  expected type.** On a `val`'s or a `def`'s declared type they are
+  all inferred — the signature, the input and the answer — and the
+  block's parameter type comes with them.
+- **The input is inferred too**, so `Proc.direct: who => …` at a
+  `Wf.Proc[…, String, String]` gives `who: String`.
+- **Branches and loops need none either**, which was worth checking
+  separately: they are compiled by their own routines and could have
+  lost the expected type on the way.
+- **A MARK is still required.** `direct` has auto-colouring behind
+  the `DirectCtx` capability; this road has none, so an operation
+  used where a value is wanted is the ordinary type error it should
+  be. Recorded as a decision rather than left as a surprise.
+
+`TestProcForms` compiles the same block FOUR ways and asserts the
+terms behave identically — the leaves, the answer and the questions
+asked. Compiling was never the claim: a macro that infers its types
+wrongly compiles too.
+
 ### Stage 1.1 — branches and loops, landed 2026-09-18 (`proc-notation-branches`)
 
 `TestProcBranches` (13). The flat walk became a recursive body
