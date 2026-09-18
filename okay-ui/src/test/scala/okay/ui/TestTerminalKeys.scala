@@ -296,6 +296,40 @@ class TestTerminalKeys extends munit.FunSuite {
     assertEquals(Frame.interpret(page, 1, Key.Click(0, 0)), (1, None))
   }
 
+  /**
+   * ui-column-minimum: weights alone gave a column less than its own
+   * header word, and the word broke — `weigh/t`. A word is the
+   * smallest thing wrapping must not split, so a column that can hold
+   * its longest one does not break it.
+   */
+  test("a column is never narrower than its longest word, where the budget allows") {
+    val t = Table(Vector("case", "weight", "note"),
+      Vector(Vector(Text("c-1"), Text("30"),
+        Text("a sentence long enough that it has to come down onto another line"))),
+      "t", Vector(1, 1, 8))
+    val lines = Frame.render(t, None, 40)
+    // the header words arrive whole — none of them is split across two
+    // lines, which is what `weigh` + `t` looked like
+    assert(lines.head.contains("weight"), lines.mkString("|"))
+    assert(lines.head.contains("case") && lines.head.contains("note"), lines.mkString("|"))
+    // and the budget is still respected
+    assert(lines.forall(l => Frame.width(l) <= 40), lines.mkString("|"))
+    // the long cell still wraps: a minimum is a floor, not a width, and
+    // the sentence comes down onto more lines rather than running off
+    assert(lines.length > 2, lines.mkString("|"))
+    assert(lines.mkString(" ").contains("another"), lines.mkString("|"))
+  }
+
+  test("a screen too narrow for the words is where breaking is still the answer") {
+    val t = Table(Vector("transaction", "evidence"),
+      Vector(Vector(Text("0xabc"), Text("x"))), "t", Vector(1, 1))
+    // 8 columns cannot hold either word; the shares stand and the
+    // words break, rather than the layout throwing or overflowing
+    val lines = Frame.render(t, None, 8)
+    assert(lines.forall(l => Frame.width(l) <= 8), lines.mkString("|"))
+    assert(lines.mkString.contains("transaction".take(3)), lines.mkString("|"))
+  }
+
   test("every key the v1 char road knew still means what it meant") {
     assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
     assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))

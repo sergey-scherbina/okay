@@ -38,7 +38,9 @@ object Frame {
       else lines
     case Column(children, _) => children.flatMap(c => render(c, focus, width, caret))
     case Row(children, _) =>
-      val shares = split(width, children.length, Vector.empty, children.length - 1)
+      val natural = children.map(c => render(c, focus, 0, caret))
+      val shares = split(width, children.length, Vector.empty, children.length - 1,
+        natural.map(longestWord), natural.map(b => b.map(this.width).maxOption.getOrElse(0)))
       beside(children.zip(shares).map((c, w) => render(c, focus, w, caret)), Vector.empty, " ",
         children.map(alignOf), shares)
     case Box(children, Dir.Vertical, _, gap, pad, _) =>
@@ -48,7 +50,12 @@ object Frame {
       joined.map(l => " " * pad + l)
     case Box(children, Dir.Horizontal, weights, gap, pad, _) =>
       val budget = math.max(width - 2 * pad, 0)
-      val shares = split(budget, children.length, weights, gap * (children.length - 1))
+      // MEASURED before divided: a column narrower than its longest
+      // word breaks the word, and a word is the smallest thing wrapping
+      // must not split (ui-column-minimum)
+      val natural = children.map(c => render(c, focus, 0, caret))
+      val shares = split(budget, children.length, weights, gap * (children.length - 1),
+        natural.map(longestWord), natural.map(b => b.map(this.width).maxOption.getOrElse(0)))
       beside(children.zip(shares).map((c, w) => render(c, focus, w, caret)), weights, " " * gap,
         children.map(alignOf), shares)
         .map(l => " " * pad + l)
@@ -105,12 +112,30 @@ object Frame {
 
   /**
    * A budget divided among children: by WEIGHT when there is one per
-   * child, and evenly otherwise. The separators between them are
-   * taken off the top, so the shares plus the gaps are the budget. A
-   * budget of 0 hands every child 0, which is "no budget" all the way
-   * down — v1's layout.
+   * child, and evenly otherwise. The separators between them are taken
+   * off the top, so the shares plus the gaps are the budget. A budget
+   * of 0 hands every child 0, which is "no budget" all the way down —
+   * v1's layout.
+   *
+   * AND NO COLUMN IS NARROWER THAN ITS LONGEST WORD, where the budget
+   * allows it (ui-column-minimum). Weights alone gave okay-watch's
+   * analyst page headers that broke mid-word at 80 columns —
+   * `alert/s`, `weigh/t`, `hel/d/by` — which is the defect that page
+   * had already met in a browser and fixed there with
+   * `overflow-wrap: normal` on `th`. A terminal has no stylesheet to
+   * say it with, so the layout says it: a word is the smallest thing
+   * that must not be broken, and a column that can hold its longest
+   * one does not break it.
+   *
+   * The room is taken from columns that have SLACK — more share than
+   * their content needs — and the widest of them first, because that
+   * is where a character costs a reader least. When the minimums do
+   * not fit at all, the shares stand: a screen too narrow to hold the
+   * words is a screen where breaking is the honest answer, not an
+   * error.
    */
-  private def split(width: Int, n: Int, weights: Vector[Int], gaps: Int): Vector[Int] =
+  private def split(width: Int, n: Int, weights: Vector[Int], gaps: Int,
+                    mins: Vector[Int], naturals: Vector[Int]): Vector[Int] =
     if width <= 0 || n <= 0 then Vector.fill(math.max(n, 0))(0)
     else
       val room = math.max(width - math.max(gaps, 0), 0)
@@ -119,7 +144,34 @@ object Frame {
       // the remainder goes to the last child rather than being lost,
       // so the shares always add up to the room
       val base = ws.map(w => room * w / total)
-      base.updated(n - 1, base.last + (room - base.sum))
+      val shares = base.updated(n - 1, base.last + (room - base.sum))
+      if mins.length != n || mins.sum > room then shares else raise(shares, mins, naturals)
+
+  /** every share up to its minimum, paid for out of the slack in the
+   * others — widest first */
+  private def raise(shares: Vector[Int], mins: Vector[Int], naturals: Vector[Int]): Vector[Int] =
+    val out = scala.collection.mutable.ArrayBuffer.from(shares)
+    def slack(i: Int): Int =
+      val need = if naturals.length == out.length then math.max(naturals(i), mins(i)) else mins(i)
+      math.max(out(i) - math.max(need, 1), 0)
+    out.indices.foreach { i =>
+      var owed = mins(i) - out(i)
+      while owed > 0 do
+        val from = out.indices.filter(j => j != i && slack(j) > 0).maxByOption(out(_))
+        from match
+          case Some(j) =>
+            val take = math.min(owed, slack(j))
+            out(j) -= take
+            out(i) += take
+            owed -= take
+          case None => owed = 0     // nothing to take: the share stands
+    }
+    out.toVector
+
+  /** the longest unbreakable run in what a child draws: a word, since
+   * a word is the smallest thing wrapping must not split */
+  private def longestWord(block: Vector[String]): Int =
+    block.flatMap(l => strip(l).split(" ")).map(_.length).maxOption.getOrElse(0)
 
   /** what a cell says about where it sits — the terminal's half of
    * `Align` (ui-text-intent). Only a `Text` says it: a container's
