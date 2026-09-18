@@ -1,0 +1,6 @@
+feature/optics-arrow-instances 2026-09-18T14:23:56Z
+agent: claude-code
+heartbeat: 2026-09-18T14:23:56Z
+status: in-progress
+done-so-far: claimed
+next: Arrow[Function1] and the Kleisli, instantiate arrow-laws; close prism-selective; tidy the queue
