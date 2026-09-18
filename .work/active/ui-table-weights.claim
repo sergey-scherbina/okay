@@ -1,0 +1,6 @@
+okay-wt-table-weights 2026-09-18T07:20:04Z
+agent: claude-live-plain
+heartbeat: 2026-09-18T07:20:04Z
+status: in-progress
+done-so-far: worktree created
+next: Ui.Table carries column weights; the lowering uses them (the half react-host-vocab left open)
