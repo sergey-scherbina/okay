@@ -1,0 +1,6 @@
+feature/proc-notation-branches 2026-09-18T10:36:27Z
+agent: claude-code
+heartbeat: 2026-09-18T10:36:27Z
+status: in-progress
+done-so-far: claimed
+next: if -> OnRight and while -> Iter inside a Proc.direct block
