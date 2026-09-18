@@ -1,6 +1,0 @@
-feature/backup-active-segment 2026-09-18T20:16:24Z
-agent: claude-code
-heartbeat: 2026-09-18T20:16:24Z
-status: in-progress
-done-so-far: claimed
-next: a backup that omits the active segment omits the newest books; copy it, torn tail and all
