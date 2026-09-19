@@ -303,6 +303,95 @@ object Chunks {
       s
 
   /**
+   * The writer carrier's own chunk-aware fold — the analogue of
+   * `foldLeft` above, for a `Feed[Chunk[A]]` (or `Source[Chunk[A]]`
+   * under G) instead of a `Chunks[A]` (producer-to-writer-carrier,
+   * the chunk-aware fold stage 0 found missing).
+   *
+   * PARITY, MEASURED, when called directly with a literal step: a
+   * fresh `Chunks.foldLeftWriter(feed)(z)(literal step)` call site
+   * measures WITHIN NOISE of `Chunks.foldLeft` — three rounds,
+   * medians 5.00 vs 4.76 us/op (N=10000/64) — this is the shape
+   * `okay-cluster`'s own call sites (`Flows.scala`, `Job.scala`)
+   * already use, calling `Chunks.foldLeft` with a literal step, never
+   * through a `Fold` instance. Built on `Writer.foldWith`: it steps
+   * once per TOLD CHUNK, exactly like the bare `Writer.fold` below;
+   * the per-element `while` runs INSIDE that one step, in the SAME
+   * non-recursive scope where `f` is written, so the `inline`
+   * parameter substitutes cleanly (a first, hand-rolled walker put
+   * the per-element loop inside a recursive local `loop` instead and
+   * measured 17.6us — `inline` does not follow a call through a
+   * nested recursive def's own boundary).
+   *
+   * `foldWriter` BELOW — the `Fold`-INSTANCE-dispatched form, what
+   * `Chunks.fold`/`agg.fold` need (`Bulk.scala`, `Pipeline.scala`,
+   * `Acceptance.scala`) — does NOT reach this parity, and the gap is
+   * real, not measurement noise: three rounds, median 17.30 us/op,
+   * across three shapes tried (a hand-rolled walker, this `foldWith`-
+   * based one, and this one with `foldWriter` ALSO marked `inline`) —
+   * 3.5x `foldLeftWriter` called directly (5.00, SAME carrier, SAME
+   * per-element arithmetic, no dispatch — isolates the dispatch tax
+   * specifically) and 6.8x `Chunks.fold`'s own Fold-dispatched 2.54.
+   * The one isolating fact in hand: the ONLY difference between the
+   * fast direct call and the slow dispatched one is that the
+   * dispatched step captures the MATCHED `Fold.OfLong` instance and
+   * calls a method ON it (`l.addLong(s,a)`) rather than being a fully
+   * literal expression (`s + a`) — so the cost is a virtual dispatch
+   * that fails to devirtualize somewhere in the three layers of
+   * `inline` this shape asks the compiler to flatten, not (as first
+   * suspected) the recursive-def boundary, which the `foldWith`-based
+   * rewrite already fixed for the direct case. `Chunks.fold` has the
+   * identical `l.addLong` call and does NOT pay this cost, so the
+   * difference is specific to going through THIS combinator's extra
+   * inlined layers, not to virtual dispatch on a matched `Fold` in
+   * general — diagnosing further needs a profiler this environment
+   * does not have (JITWatch or `-prof perfasm`); see specs/producer-
+   * to-writer-carrier.md's Results and the sprint entry before
+   * retrying, so a second attempt does not repeat the same three.
+   *
+   * SHIP THE HALF THAT WORKS: `foldLeftWriter` is safe to use now, at
+   * parity. `foldWriter` stays, correct and tested, for call sites
+   * that need `Fold`-instance dispatch — Producer stays the faster
+   * choice for THOSE until this gap closes.
+   */
+  inline def foldLeftWriter[A, S, G[+_]](p: Unit ! (Writer % Chunk[A] + G))(z: S)
+                                        (inline f: (S, A) => S)
+                                        (using okay.TypeableK[Writer % Chunk[A]]): (S, Unit) ! G =
+    Writer.foldWith[Chunk[A], S, Unit, G](p)(z): (s, c) =>
+      var acc = s
+      var i = 0
+      while i < c.length do
+        acc = f(acc, c(i))
+        i += 1
+      acc
+
+  /**
+   * `foldLeftWriter`, dispatched on a `Fold` instance the way
+   * `Chunks.fold` dispatches on one — CORRECT (tested against
+   * `Chunks.fold` on the same data) but NOT at parity with it; see
+   * `foldLeftWriter`'s own doc for the measured gap and what is ruled
+   * out. Kept non-`inline`: marking it `inline` was one of the three
+   * shapes tried and measured no faster, and non-`inline` at least
+   * keeps a literal `G=Nothing`/`Pure` compiling at a fresh call site
+   * (an unrelated inliner limitation `foldLeftWriter`, `inline`,
+   * cannot avoid: use `G=Async` there instead).
+   */
+  def foldWriter[A, S, G[+_]](p: Unit ! (Writer % Chunk[A] + G))(using fo: Fold[A, S])
+                             (using okay.TypeableK[Writer % Chunk[A]]): (S, Unit) ! G =
+    // explicit type arguments, not inferred through the GADT
+    // refinement `fo match` gives each branch — Writer.fold takes the
+    // same precaution for the same reason: `S` is bound at the OUTER
+    // method, and a `using`-bound scrutinee under two `using` clauses
+    // does not narrow it far enough for inference alone to see `Long`
+    // where the call site still says `S`
+    fo match
+      case l: Fold.OfLong[A @unchecked] => foldLeftWriter[A, Long, G](p)(l.initLong)((s, a) => l.addLong(s, a))
+      case i: Fold.OfInt[A @unchecked] => foldLeftWriter[A, Int, G](p)(i.initInt)((s, a) => i.addInt(s, a))
+      case d: Fold.OfDouble[A @unchecked] => foldLeftWriter[A, Double, G](p)(d.initDouble)((s, a) => d.addDouble(s, a))
+      case b: Fold.OfBoolean[A @unchecked] => foldLeftWriter[A, Boolean, G](p)(b.initBoolean)((s, a) => b.addBoolean(s, a))
+      case _ => foldLeftWriter[A, S, G](p)(fo.init)((s, a) => fo.add(s, a))
+
+  /**
    * Pair two chunked streams elementwise, realigning chunk boundaries:
    * each emitted chunk is the overlap window of the two current
    * chunks; the stream ends at the shorter side. Lazy, one window at

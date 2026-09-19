@@ -38,6 +38,30 @@
       Until it exists, `Chunks` stays on `Producer` — a legitimate,
       narrow, documented exception, not a reason to stop the rest.
 
+      THE CHUNK-AWARE FOLD PREREQUISITE, HALF DONE (2026-09-19). Built
+      `Chunks.foldLeftWriter`/`foldWriter` (okay-stream/src/main/scala/
+      Chunks.scala, on `Writer.foldWith`). MIXED, 3-round-measured, full
+      writeup in the spec's `## Results`: `foldLeftWriter` (literal
+      step) reaches PARITY with `Chunks.foldLeft` (5.00 vs 4.76 us/op)
+      — this is the shape okay-cluster's `Flows.scala`/`Job.scala` call
+      sites already use, so THOSE can migrate now. `foldWriter` (the
+      `Fold`-instance-dispatched form `Chunks.fold`/`agg.fold` need —
+      `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala`, the only 3 call
+      sites) does NOT reach parity — 17.30 us/op, 3.5x the direct call,
+      6.8x `Chunks.fold` itself, stable across three tried
+      implementations. Diagnosed as far as this environment allows (no
+      profiler available); root cause and what's ruled out are in
+      Chunks.scala's doc comments on both combinators — read them before
+      a retry so it doesn't repeat the same three shapes. `writerk-
+      companion-scope` landed alongside this (found while writing this
+      combinator's tests): `given writerK` moved into `object Writer`'s
+      own body so it resolves from any package with no import — a bare
+      top-level given wasn't found without one, forcing `import
+      okay.writerK` + `@nowarn` at every `Writer.fold`/`.collect` call
+      site on a parameterized W; now just the `@nowarn` remains (E092 is
+      a real, sound-by-construction erasure caveat, not fixable the same
+      way).
+
       STAGE 1 IS DONE (2026-09-19). The pure writer stream is named
       `Feed[W] = Unit ! Writer % W` (src/main/scala/Writer.scala,
       operator's choice over no-alias and `Told[W]`). docs/guide.md
@@ -83,10 +107,13 @@
       cold-compiled, zero warnings throughout.
 
       NEXT CLAIMABLE SLICE = STAGE 2, MODULE 2/6: okay-cluster
-      Flow/Flows, then okay-persist Streams/Wire, okay-sql/okay-jdbc,
+      Flow/Flows/Job — `Chunks.foldLeft` call sites (6 in Flows.scala, 1
+      in Job.scala) migrate onto `foldLeftWriter`, now at parity, per
+      above. Then okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops —
-      leaves first, `Chunks` last and gated on the fold combinator
-      below; each lane `sbt Test/compile` repo-wide before its gate;
+      leaves first, `Chunks` last and gated on `foldWriter` closing its
+      remaining dispatch-tax gap (above); each lane `sbt Test/compile`
+      repo-wide before its gate;
       deletions (`produced`, `Producer.fold/each/concat`, the Produce
       Stream instances, the three Source bridges) land with the last
       module. `writerK` (or `okay.given`) must be in scope at every
