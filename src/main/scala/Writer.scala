@@ -330,6 +330,39 @@ object Writer {
       (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
       { w0 => (w0: @unchecked) match
           case Say(w) => okay.pure(Right((w, k(())))) }
+
+  /**
+   * Writer's split is COMPLETE, and now unconditionally so.
+   *
+   * Two tests, in order: is this a writer operation at all (its own
+   * class, distinct from every other value in the row), and if so, is it
+   * THIS writer's (the told value's class, which separates
+   * `Writer % String + Writer % Int` — `TestRowIdentity` asserts they
+   * route correctly).
+   *
+   * The first test is what the identity encoding could not make. There
+   * an operation WAS its element, so a told String and a bare String
+   * from any other effect were the same runtime value, and the split
+   * came with a caveat: forward only effects whose operations are
+   * class-distinct from W. A `Say` is class-distinct from everything,
+   * and the caveat is gone.
+   *
+   * IN Writer'S OWN COMPANION, not a bare top-level given (moved
+   * 2026-09-19, writerk-companion-scope): a `given` here is in the
+   * IMPLICIT SCOPE of every `TypeableK[Writer % W]` query, from any
+   * package, with no import — the top-level placement was why every
+   * `Writer.fold`/`.collect`/`.run` call site outside package `okay`
+   * needed an explicit `import okay.writerK` (or `okay.given`) just to
+   * satisfy this `using` clause, found the hard way across okay-blob's
+   * migration (producer-to-writer-carrier, stage 2).
+   */
+  given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
+    // `Typeable.unapply` still answers an Option for the told value's
+    // own test (the JDK's Typeable has no boolean form); the Say wrapper
+    // and the outer Option are gone
+    def test(x: Any): Boolean = x match
+      case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
+      case _ => false
 }
 
 /**
@@ -400,28 +433,4 @@ given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
 given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G] = new:
   def uncons[W](s: A ! Writer % W + G): Option[(W, A ! Writer % W + G)] ! G =
     Writer.uncons[W, A, G](s).map(_.toOption)
-
-/**
- * Writer's split is COMPLETE, and now unconditionally so.
- *
- * Two tests, in order: is this a writer operation at all (its own
- * class, distinct from every other value in the row), and if so, is it
- * THIS writer's (the told value's class, which separates
- * `Writer % String + Writer % Int` — `TestRowIdentity` asserts they
- * route correctly).
- *
- * The first test is what the identity encoding could not make. There
- * an operation WAS its element, so a told String and a bare String
- * from any other effect were the same runtime value, and the split
- * came with a caveat: forward only effects whose operations are
- * class-distinct from W. A `Say` is class-distinct from everything,
- * and the caveat is gone.
- */
-given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
-  // `Typeable.unapply` still answers an Option for the told value's
-  // own test (the JDK's Typeable has no boolean form); the Say wrapper
-  // and the outer Option are gone
-  def test(x: Any): Boolean = x match
-    case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
-    case _ => false
 

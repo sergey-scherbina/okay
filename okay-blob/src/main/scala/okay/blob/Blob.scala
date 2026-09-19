@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, async, writerK}
+import okay.{!, +, %, Async, Chunk, Source, Writer, async}
 import okay.RowLift.plus
 import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq

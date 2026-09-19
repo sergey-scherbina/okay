@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, Async, Chunk, Source, Writer, async, pure, writerK}
+import okay.{!, Async, Chunk, Source, Writer, async, pure}
 import java.nio.file.{Files, Path}
 import scala.annotation.nowarn
 import scala.jdk.CollectionConverters.*

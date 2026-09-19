@@ -1,7 +1,6 @@
 package okay.llm
 
 import okay.{!, %, +, Async, Stage, Writer, effect, pure}
-import okay.given
 import okay.codec.{Json, Schema}
 
 /**

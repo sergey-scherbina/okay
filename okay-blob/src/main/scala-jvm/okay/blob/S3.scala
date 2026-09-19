@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, pure, writerK}
+import okay.{!, +, %, Async, Chunk, Source, Writer, pure}
 import okay.RowLift.plus
 import okay.http.{Body, Http, Method, Request, Response}
 import scala.annotation.nowarn

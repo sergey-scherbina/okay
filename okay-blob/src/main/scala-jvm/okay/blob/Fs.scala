@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect, pure, writerK}
+import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect, pure}
 import okay.RowLift.plus
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.annotation.nowarn
