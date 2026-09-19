@@ -1,6 +1,0 @@
-feature/spark-jdk25-guard-fix 2026-09-19T12:01:51Z
-agent: claude-code
-heartbeat: 2026-09-19T12:01:51Z
-status: in-progress
-done-so-far: root cause found (munitIgnore >= 24 was skipping 25 too, not an sbt/JDK bug); guard narrowed to == 24 in scratch
-next: worktree, apply fix, standalone JDK25 probe for real verification, update docs, gate, land
