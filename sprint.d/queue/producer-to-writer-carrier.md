@@ -49,10 +49,28 @@
       `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala`, the only 3 call
       sites) does NOT reach parity — 17.30 us/op, 3.5x the direct call,
       6.8x `Chunks.fold` itself, stable across three tried
-      implementations. Diagnosed as far as this environment allows (no
-      profiler available); root cause and what's ruled out are in
-      Chunks.scala's doc comments on both combinators — read them before
-      a retry so it doesn't repeat the same three shapes. `writerk-
+      implementations. ROOT CAUSE FOUND 2026-09-19 (a follow-up lane,
+      producer-writer-carrier-foldwriter-fix, using `-prof gc`/`-prof
+      jfr`/`javap` — all in-JDK, no external profiler needed, unlike
+      the earlier "would need one" claim): `Fold.OfLong[A].addLong`
+      takes its element generically by design, so every call boxes it
+      via a synthetic bridge; `Chunks.fold` makes the IDENTICAL call
+      and pays nothing because escape analysis eliminates the box
+      inside `Chunks.foldLeft`'s small compiled loop, but the SAME
+      analysis fails inside `Writer.foldWith`'s bigger resume/split/
+      Bind trampoline. Ruled out with evidence: raising
+      `-XX:MaxInlineLevel`/`-XX:FreqInlineSize` (no change); extracting
+      the per-chunk loop into its own small standalone method (no
+      change either — the JIT re-inlines it straight back in, `javap`
+      confirmed, so this attempt was reverted rather than kept as dead
+      weight). Still OPEN: the real fix needs `Writer`'s `Stream`
+      instance to grow its own `.iterator` (decoupling the tree walk
+      from consumption, matching how Producer's `Chunks.foldLeft` stays
+      small) — blocked on an API-contract question (`.iterator` runs
+      eagerly with a `Handler[G]`, `foldWriter` currently returns a
+      suspended program), not a quick patch. Full diagnosis in
+      Chunks.scala's `foldWriter` doc comment and the spec's `## Results`
+      follow-up section — read them before a retry. `writerk-
       companion-scope` landed alongside this (found while writing this
       combinator's tests): `given writerK` moved into `object Writer`'s
       own body so it resolves from any package with no import — a bare
