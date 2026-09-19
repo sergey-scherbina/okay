@@ -1,6 +1,0 @@
-feature/pwc-arc-close 2026-09-19T20:51:14Z
-agent: claude-code
-heartbeat: 2026-09-19T20:51:14Z
-status: in-progress
-done-so-far: worktree created
-next: spec deletion bullets -> declined; sprint item closes the arc; changelog
