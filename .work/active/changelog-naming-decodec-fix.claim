@@ -1,0 +1,6 @@
+feature/changelog-naming-decodec-fix 2026-09-19T16:15:00Z
+agent: claude-code
+heartbeat: 2026-09-19T16:15:00Z
+status: in-progress
+done-so-far: found blocking TestChangelogEntries failure while gating an unrelated lane
+next: rename changelog.d/decodeC-ssum-defer.md to kebab-case, gate scoped, land
