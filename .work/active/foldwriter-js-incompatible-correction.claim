@@ -1,0 +1,6 @@
+feature/foldwriter-js-incompatible-correction 2026-09-19T19:05:00Z
+agent: claude-code
+heartbeat: 2026-09-19T19:05:00Z
+status: in-progress
+done-so-far: surveyed Bulk.scala/Pipeline.scala/Acceptance.scala (the three call sites foldWriter's fix was meant to unblock) while continuing producer-to-writer-carrier work; found all three live in cross-platform shared source (okay-stream/src/main/scala, okay-cluster and okay-http's Acceptance.scala) that also builds for JS -- confirmed via src/main/scala-js/Platform.scala that JS has NO Handler[Async] at all (drives Async via a callback-based Scheduler/Fiber, not blocking), so foldWriter's CanBlock requirement makes it genuinely unusable there. The "UNBLOCKED" claim in the sprint item/memory from the writer-stream-specialized-iterator lane was wrong for these three specific call sites.
+next: correct the sprint item, spec, and memory with this finding; do NOT attempt to design a JS-compatible foldWriter overload in this same pass -- that's a real, separate architectural question (a callback/event-loop-driven walk, not the eager blocking one foldWriter uses), flag it as backlog for a deliberate design pass
