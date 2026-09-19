@@ -1,6 +1,6 @@
 feature/pwc-sql-seam 2026-09-19T20:02:34Z
 agent: claude-code
-heartbeat: 2026-09-19T20:02:34Z
+heartbeat: 2026-09-19T20:07:23Z
 status: in-progress
-done-so-far: survey done (Sql.query seam, 3 impls, Typed.rows, 6 drains, ~20 test walkers); worktree created
-next: retype Sql.query -> Source[Chunk[Vector[SqlValue]]], impls, consumers, tests
+done-so-far: main + 18 test files retyped by script; Source.concat added; first repo-wide Test/compile running
+next: fix compile errors/warnings, okaySql+jdbc+pg tests, gate
