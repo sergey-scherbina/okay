@@ -1,1 +1,0 @@
-why TestStackBytes measures 256 KB in this container and 16 on the operator machine: measure the cause rather than close it twice
