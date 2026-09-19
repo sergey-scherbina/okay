@@ -1,0 +1,6 @@
+feature/chunks-foldwriter-docs-condense 2026-09-19T21:31:32Z
+agent: claude-code
+heartbeat: 2026-09-19T21:31:32Z
+status: in-progress
+done-so-far: worktree created
+next: condense the two doc blocks; close foldwriter-js-incompatible as moot
