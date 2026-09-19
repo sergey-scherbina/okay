@@ -1,6 +1,0 @@
-feature/producer-effectful-stream-iterator 2026-09-19T21:32:52Z
-agent: claude-code
-heartbeat: 2026-09-19T21:32:52Z
-status: in-progress
-done-so-far: worktree created
-next: iterator override on Stream[A ! Produce + G, G]; oracle test; JMH before/after
