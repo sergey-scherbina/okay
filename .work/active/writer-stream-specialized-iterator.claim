@@ -1,0 +1,6 @@
+feature/writer-stream-specialized-iterator 2026-09-19T17:20:00Z
+agent: claude-code
+heartbeat: 2026-09-19T17:20:00Z
+status: in-progress
+done-so-far: producer-writer-carrier-foldwriter-eager landed (2d2a010c): foldWriter went from 18.14 to 6.29us via writerStreamIn's default .iterator, but left a residual: Iterator.unfold's generic Option+Either+Free-node allocation once per chunk (157x), not writer-specific -- Producer's own G-effectful Stream instance has no specialized iterator override either
+next: write a hand-specialized, mutable-state iterator override for writerStreamIn (mirroring Stream[Producer, Pure]'s own override in Generate.scala), using Handler[G].handle for forwarded G-ops directly (no program construction); measure whether it closes the remaining gap toward Chunks.fold's 2.55us; land if it helps
