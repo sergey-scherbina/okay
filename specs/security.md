@@ -354,6 +354,104 @@ object OAuth2:                           // the client flows, over trait Http
         `OneTimeCode`) — through the real demo's existing session
         and admin-auth tests, unchanged in substance
 
+- **7 — security-mcp-tools**: AUTHORIZATION REACHES THE TOOL.
+
+  The hole, found 2026-09-19 while answering a stranger's question
+  about exactly this boundary: `McpAuth.protect` asks the policy
+  `(p, r.method.name, r.url)`, so the finest thing it can say is
+  "this caller may POST /mcp". Past that door every tool on the
+  server is callable and `tools/list` advertises all of them — a
+  valid bearer IS the whole server. That is the common shape in the
+  ecosystem and it is still wrong: an agent that needs to read a
+  calendar gets the tool that writes one.
+
+  **The rule: a tool a caller may not use is ABSENT, not refused.**
+  Not a check inside a handler — that has to be written once per tool
+  and remembered forever, and the one nobody wrote is the hole. The
+  tool set is a VALUE, narrowed before the server ever sees it.
+
+  ```scala
+  // okay-mcp — pure, no security dependency, no transport
+  final case class Serving(...):
+    /** the same server with only these tools: `tools` and `call`
+     * narrowed TOGETHER, so the list and the table cannot disagree */
+    def only(allowed: String => Boolean): Serving
+
+  // okay-security, jvm
+  object McpAuth:
+    /** the MCP route with the policy asked per TOOL rather than per
+     * URL: `policy(p, Mcp.ToolsCall, name)` */
+    def tools(verify: String => Verified, metadataUrl: String,
+              policy: Policy)(route: Request => Response ! Async)
+    : Request => Response ! Async
+
+    /** the same door, where the credential is a CAPABILITY and the
+     * question is the capability's own */
+    def capabilities(rootKey: Array[Byte], metadataUrl: String,
+                     now: () => Long = () => System.currentTimeMillis(),
+                     scopeOf: String => String = "tool:" + _)
+                    (route: Request => Response ! Async)
+                    (using Crypto): Request => Response ! Async
+  ```
+
+  **Per REQUEST, not per session.** A bearer arrives on every
+  request, so the gate reads it on every request: a token revoked
+  between two calls is refused on the NEXT CALL rather than whenever
+  the client happens to reconnect. The narrowing is part of the same
+  pass and holds no state.
+
+  **The gate filters the ANSWER to `tools/list`; it does not compose
+  one.** The stage owns the protocol — a `tools/list` before
+  `initialize` is `InvalidRequest`, and a server with no tools
+  answers `MethodNotFound` — and a guard that serves its own list
+  re-implements those branches and drifts from them. A refused
+  `tools/call` is stopped before the table runs and answers
+  `no such tool '<name>'` with `isError`: the same answer a
+  misspelling gets, because absent is absent.
+
+  **The capability door is the half `Policy` cannot reach.** A policy
+  is the SERVER's table; a capability is the HOLDER's. `Capability`
+  (specs/coordination-free.md stage 4) already says anyone can narrow
+  and nobody can widen, and it needs no new caveat kind here:
+  `Caveat.Scope` spells the tool, and whether a tool may be called is
+  `cap.verify(rootKey, Capability.checking(now, Set(scopeOf(name))))`
+  — the module's existing question, asked once per tool. So a holder
+  attenuates the tool set for the agent it is handing the capability
+  to, with no issuer, no registry and no round trip, and the user's
+  own authorization is untouched because the root capability never
+  moved.
+
+  This is still not revocation — the module says so already, and the
+  Out-of-scope list below stands. A capability is good until its
+  `until=` caveat; `id` is a `Uid`, sortable by issue time, so
+  "nothing issued before T" is a comparison when a cheap check is
+  wanted.
+
+  Behavior:
+  - [ ] `Serving.only` narrows `tools` and `call` together; a name in
+        one and not the other cannot survive it
+  - [ ] a Serving narrowed to nothing declares NO tools capability —
+        the handshake is honest about a caller who has none
+  - [ ] a caller whose policy permits two of three tools sees exactly
+        two in `tools/list`
+  - [ ] calling the third by name answers `no such tool`, `isError`,
+        and the table never runs — asserted by a tool that records
+        having been called
+  - [ ] the gate is per request: two calls on ONE session, the
+        principal's permission withdrawn between them, and the second
+        is refused
+  - [ ] `tools/list` before `initialize` is still `InvalidRequest`
+        through the gate, and a server with no tools still answers
+        `MethodNotFound` — the guard answers neither itself
+  - [ ] the SSE GET passes through untouched
+  - [ ] a capability attenuated to one tool calls that one and sees
+        only it; an unattenuated root capability sees them all
+  - [ ] an expired capability (`until=`) is refused for every tool,
+        and a capability with a caveat REMOVED fails the chain
+  - [ ] hostile input answers rather than throws: a damaged body, a
+        `tools/call` with no name, a bearer that is not a capability
+        at all
+
 ## Out of scope (module-wide, until a stage names them)
 - being an authorization SERVER (issuing codes/tokens to third
   parties) — stage 0 issues only its own JWTs and API keys; the stub
