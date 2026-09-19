@@ -1,6 +1,0 @@
-feature/jdk-adaptive-scheduler 2026-09-19T12:25:18Z
-agent: claude-code
-heartbeat: 2026-09-19T12:25:18Z
-status: in-progress
-done-so-far: MRJar hypothesis refuted by direct experiment (JVM constant-pool resolution is lazy per-method); simpler adaptive-selector design worked out
-next: worktree, implement Schedulers.hasVirtualThreads/auto + adaptive given Timer/Scheduler, verify on JDK21 and JDK17 directly, gate, land

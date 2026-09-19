@@ -7,33 +7,53 @@ below pull in opposite directions, and nothing before this doc wrote
 either one down. `.sdkmanrc` pins the one JDK version known to satisfy
 both; this doc is why.
 
-## The floor: JDK 21
+## The floor: JDK 21 — narrower than it looked, and getting narrower
 
-`src/main/scala-jvm/Platform.scala`'s **default `Scheduler` is Loom
-itself** — `val loom: Scheduler = ...`, `Thread.startVirtualThread`
-one call away from every fiber this library forks — so the floor is
-not a feature some modules opt into, it is the JVM runtime's own
-default execution model. Virtual threads (`Thread.ofVirtual`,
-`Thread.startVirtualThread`, `Executors.newVirtualThreadPerTaskExecutor`)
-became a normal, non-preview, GA API in **JDK 21** (JEP 444) — nothing
-here uses `--enable-preview`, and nothing needs to.
+`src/main/scala-jvm/Platform.scala`'s **default `Scheduler` was Loom
+unconditionally** — `Thread.startVirtualThread` one call away from
+every fiber this library forked, no fallback. Virtual threads
+(`Thread.ofVirtual`, `Thread.startVirtualThread`,
+`Executors.newVirtualThreadPerTaskExecutor`) became a normal,
+non-preview, GA API in **JDK 21** (JEP 444) — nothing here uses
+`--enable-preview`, and nothing needs to.
 
-Every one of these calls it directly, all JVM-only source:
+**Correction (jdk-adaptive-scheduler, 2026-09-19): "breaks at compile
+time" below was wrong, and it mattered — it nearly drove an
+MRJar-based rewrite of `Schedulers` for a problem that doesn't exist.**
+Checked directly rather than assumed: a class compiled by dotc
+(hosted on JDK 21, our only real toolchain) referencing
+`Thread.startVirtualThread` in one method loads and runs FINE on JDK
+17, calling any OTHER method in that same class — JVM constant-pool
+resolution is lazy, per call site, not per class. The class file
+itself was always JDK17-loadable (dotc's default target is class file
+major version 61 regardless of host JDK). The real failure mode is
+narrower and later: the first TIME one of these call sites actually
+RUNS on a JDK that lacks the API, not when the class loads and not
+when it's built.
 
-| module | file | what it does with the thread |
-|---|---|---|
-| core | `Platform.scala` | the default `Async` scheduler (`loom`), and the delay timer's fire callback |
-| okay-http | `Server.scala` (the JDK backend) | `Executors.newVirtualThreadPerTaskExecutor()` — one thread per request |
-| okay-jetty | `Jetty.scala` | streams a response body off the event thread |
-| okay-netty | `Netty.scala` | same, for a server-sent-events push that must not block the event loop |
-| okay-cluster | `Served.scala` | one thread per accepted connection |
-| okay-script | `Sessions.scala` | the live-reload tail loop |
-| okay-persist | `Wire.scala`, `RaftWire.scala` | one thread per connection, the accept loop, Raft's tick loop |
+`core`'s row is now fixed (`Schedulers.hasVirtualThreads` /
+`Schedulers.auto`, see specs/jdk-adaptive-scheduler.md) — `okayJVM`
+and anything depending only on it is now genuinely correct on JDK 17,
+proven with a standalone probe there, not assumed. The other rows are
+UNCHANGED and still call these APIs unconditionally, so for them the
+practical effect is the same as "breaks immediately" even though the
+mechanism is "throws on first use, not on load" — a server's first
+request or connection is not far from immediate:
 
-A build floor below 21 (17, 11, 8) breaks all of these at compile
-time (the APIs do not exist) or, for the ones reflection could paper
-over, at the JVM's own default scheduler — there is no fallback path
-that runs this library without Loom.
+| module | file | what it does with the thread | JDK <21 |
+|---|---|---|---|
+| core | `Platform.scala` | the default `Async` scheduler, the delay timer's fire callback | **adaptive** (jdk-adaptive-scheduler) |
+| okay-http | `Server.scala` (the JDK backend) | `Executors.newVirtualThreadPerTaskExecutor()` — one thread per request | throws on the first request |
+| okay-jetty | `Jetty.scala` | `VirtualThreadPool` (jetty-virtual-threads) on the main connector, plus streams a response body off the event thread | throws on the first request |
+| okay-netty | `Netty.scala` | server-sent-events push that must not block the event loop | throws on the first such push |
+| okay-cluster | `Served.scala` | one thread per accepted connection | throws on the first connection |
+| okay-script | `Sessions.scala` | the live-reload tail loop | throws when live-reload is used |
+| okay-persist | `Wire.scala`, `RaftWire.scala` | one thread per connection, the accept loop, Raft's tick loop | throws on the first connection |
+
+Each of the un-adapted rows *could* get the same treatment
+`Schedulers` got — none of them are compile-time blockers either, now
+that the actual mechanism is understood — but none has, and this doc
+does not claim otherwise.
 
 ## The ceiling: okay-spark wants JDK ≤ 23
 
@@ -89,10 +109,14 @@ confirmed here, not just upstream-claimed.
 
 ## What this means for "can we bump the JDK"
 
-- **Lowering the floor** (17, 11, 8) is not on the table while
-  `Platform.scala`'s default scheduler is Loom: every JVM consumer of
-  this library, not just the ones in the table above, inherits the
-  requirement transitively.
+- **Lowering the floor for `okayJVM` core alone is done** — its
+  scheduler and timer now adapt (jdk-adaptive-scheduler). Lowering it
+  for the WHOLE project is not: every other row in the table above
+  still calls a JDK21-only API unconditionally, and moving the floor
+  would mean the same fix, call site by call site, for each — not
+  attempted here, and each one is its own decision (a server's request
+  path is a hotter, more load-bearing place to add a branch than a
+  core scheduler default).
 - **Raising the floor past 23 no longer needs okay-spark's own JDK 24
   ceiling to move with it** — Spark 4.2.0 (landed spark-4-2-0-jdk25 +
   spark-jdk25-guard-fix, 2026-09-19) runs on 17/21/25, confirmed here

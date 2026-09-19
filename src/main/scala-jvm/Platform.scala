@@ -165,7 +165,22 @@ private lazy val timerWheel: java.util.concurrent.ScheduledExecutorService =
 
 given Timer = new:
   def after(millis: Long)(k: () => Unit): () => Unit =
-    val fire: Runnable = () => { Thread.startVirtualThread(() => k()); () }
+    // jdk-adaptive-scheduler, 2026-09-19: a virtual thread where this
+    // JVM has one, an ordinary daemon thread where it does not --
+    // Schedulers.hasVirtualThreads, checked once. Without this, a
+    // fired timer on a pre-21 JDK is a NoSuchMethodError the first
+    // time anything sleeps or times out, not a JDK version this file
+    // fails to LOAD on (it loads fine either way -- constant-pool
+    // resolution of Thread.startVirtualThread is lazy, per call site,
+    // not per class; only calling it unconditionally is the problem).
+    val fire: Runnable =
+      if Schedulers.hasVirtualThreads then
+        () => { Thread.startVirtualThread(() => k()); () }
+      else
+        () =>
+          val t = Thread(() => k())
+          t.setDaemon(true)
+          t.start()
     val f = timerWheel.schedule(fire, millis, java.util.concurrent.TimeUnit.MILLISECONDS)
     () => { f.cancel(false); () }
 
@@ -177,6 +192,21 @@ given Timer = new:
  * fiber.
  */
 object Schedulers {
+
+  /** whether THIS JVM has virtual threads (Loom, JEP 444, JDK 21+),
+   * checked once. `Runtime.version()` is JDK 9+, safe to call on
+   * anything this library runs on at all (jdk-adaptive-scheduler,
+   * 2026-09-19). */
+  val hasVirtualThreads: Boolean = Runtime.version().feature() >= 21
+
+  /** the right default for THIS JVM, with no property and no `given`
+   * needed to get it: `loom` where virtual threads exist, `own`
+   * (the fastest platform-thread scheduler measured here — see its
+   * own doc below) where they don't. `given Scheduler` below is
+   * exactly this, plus `-Dokay.scheduler` as an override; call `auto`
+   * directly from code that wants the adaptive pick without going
+   * through either. */
+  def auto: Scheduler = if hasVirtualThreads then loom else own.build
 
   /** a scheduler that owns threads, so it can be stopped. `close()`
    * lets the workers finish what they hold and then exit; a fiber
@@ -691,14 +721,26 @@ object Schedulers {
 }
 
 /** The default scheduler is Loom — a fiber IS a virtual thread, which
- * is the design and stays it. `okay.scheduler` selects another for the
- * A/B that prices that choice (`Schedulers.own` reads 750us per 10 000
- * fork/joins against kyo's 880, where the Loom default reads 2715);
- * `loom` is the shipped behaviour and the only value a released build
- * should see. scripts/ab-defaults.sh drives both arms. */
+ * is the design and stays it, on a JVM that HAS Loom (JDK 21+).
+ * `okay.scheduler` selects another for the A/B that prices that choice
+ * (`Schedulers.own` reads 750us per 10 000 fork/joins against kyo's
+ * 880, where the Loom default reads 2715); `loom` is the shipped
+ * behaviour and the only value a released build should see there.
+ * scripts/ab-defaults.sh drives both arms.
+ *
+ * jdk-adaptive-scheduler (2026-09-19): on a JVM WITHOUT Loom, none of
+ * that is available to ask for, property or no property — asking for
+ * `loom` there (explicitly, or by leaving `okay.scheduler` unset,
+ * which used to mean the same "loom" default unconditionally) now
+ * degrades to `Schedulers.auto`, which is `own` on such a JVM, rather
+ * than compiling fine and then throwing the first time a fiber forks.
+ * `own`/`adaptive`/`drive`/`threads` need nothing JDK21-specific and
+ * are always honoured as asked. */
 given Scheduler =
-  scala.util.Try(System.getProperty("okay.scheduler", "loom")).getOrElse("loom") match
-    case "own"      => Schedulers.own.build
-    case "adaptive" => Schedulers.adaptive.build
-    case "drive"    => Schedulers.drive()
-    case _          => Schedulers.loom
+  scala.util.Try(Option(System.getProperty("okay.scheduler"))).toOption.flatten match
+    case Some("own")      => Schedulers.own.build
+    case Some("adaptive") => Schedulers.adaptive.build
+    case Some("drive")    => Schedulers.drive()
+    case Some("threads")  => Schedulers.threads
+    case Some("loom") if Schedulers.hasVirtualThreads => Schedulers.loom
+    case _ => Schedulers.auto
