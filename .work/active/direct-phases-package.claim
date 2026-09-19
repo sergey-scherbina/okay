@@ -1,6 +1,0 @@
-feature/direct-phases-package 2026-09-19T23:32:38Z
-agent: claude-code
-heartbeat: 2026-09-19T23:32:38Z
-status: in-progress
-done-so-far: okay.direct refuted by a probe compile (E049 ambiguous with import okay.*); operator chose okay.macros
-next: git mv the nine Direct phase files to src/main/scala/macros, package okay.macros, spec/changelog, cold gate
