@@ -1,6 +1,0 @@
-feature/script-scoped-state-followup 2026-09-19T09:33:00Z
-agent: claude-code
-heartbeat: 2026-09-19T09:33:00Z
-status: in-progress
-done-so-far: sprint item written
-next: worktree, fix docs, add leak test
