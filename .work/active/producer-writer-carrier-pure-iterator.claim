@@ -1,0 +1,6 @@
+feature/producer-writer-carrier-pure-iterator 2026-09-19T18:20:06Z
+agent: claude-code
+heartbeat: 2026-09-19T18:20:06Z
+status: in-progress
+done-so-far: diagnosis (Chunks is Pure; the pure writer Stream instance lacks an iterator override)
+next: pure iterator override in Writer.scala + JMH chunksFoldFeedPure vs chunksFoldProducer
