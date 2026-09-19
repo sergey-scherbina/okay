@@ -1,0 +1,6 @@
+feature/spark-4-2-0-jdk25 2026-09-19T11:26:09Z
+agent: claude-code
+heartbeat: 2026-09-19T11:26:09Z
+status: in-progress
+done-so-far: verified upstream (SPARK-51167 fixed in 4.2.0, resolved 2026-05-11); sprint item written
+next: worktree, bump build.sbt, compile+test okay-spark on JDK21 then JDK25
