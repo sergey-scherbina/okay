@@ -1,6 +1,0 @@
-feature/wire-server-close-results 2026-09-19T09:53:00Z
-agent: claude-code
-heartbeat: 2026-09-19T09:53:00Z
-status: in-progress
-done-so-far: docs only
-next: fill specs/wire-server-close.md Results, land
