@@ -1,6 +1,0 @@
-feature/board-pointer-restore 2026-09-19T12:33:01Z
-agent: claude-code
-heartbeat: 2026-09-19T12:33:01Z
-status: in-progress
-done-so-far: root cause found (140c2539 + 481ec3c9 broke boards-d/changelog-d discipline); fix planned
-next: worktree, relocate the two prepended pieces, restore pointers, verify, gate, land
