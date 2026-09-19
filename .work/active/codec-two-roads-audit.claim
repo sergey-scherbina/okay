@@ -1,0 +1,8 @@
+feature/codec-two-roads-audit 2026-09-19T13:05:00Z
+agent: claude-code
+heartbeat: 2026-09-19T13:05:00Z
+status: in-progress
+done-so-far: worktree created
+next: check the two named suspects (CBOR pair beside Json/JsonValue,
+  Codecs.current) for the json-parse-fast-road shape; write the
+  verdict into the backlog
