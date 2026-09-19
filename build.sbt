@@ -1821,6 +1821,39 @@ lazy val okayScript = project
     // relative to it (`store`) still resolves.
     run / fork := true,
     run / baseDirectory := (ThisBuild / baseDirectory).value,
+    // Multi-Release JAR (script-scoped-state-mrjar, 2026-09-19):
+    // okay.script.api.Scoped ships a JDK21-and-up ThreadLocal backend
+    // in the jar root and, WHEN scripts/build-mrjar-jdk25.sh has been
+    // run, a java.lang.ScopedValue backend under META-INF/versions/25/
+    // -- the JVM picks per JEP 238, nothing here branches at runtime.
+    // The script needs an actual JDK 25+ JVM to compile against (no
+    // -release flag can grant an older compiler that API), so this is
+    // NOT a normal sbt sub-project on this session's own JDK -- it is
+    // a standalone compile whose output this task picks up IF PRESENT.
+    // A checkout that never ran the script packages the exact jar it
+    // always has: this is additive, never a new hard dependency. See
+    // specs/script-scoped-state-mrjar.md.
+    Compile / packageBin / mappings := {
+      val base = (Compile / packageBin / mappings).value
+      val classesDir = baseDirectory.value / "jdk25" / "target" / "classes"
+      def classFiles(dir: File): Seq[File] =
+        Option(dir.listFiles).toSeq.flatten.flatMap { f =>
+          if (f.isDirectory) classFiles(f)
+          else if (f.getName.endsWith(".class")) Seq(f)
+          else Seq.empty
+        }
+      if (classesDir.exists) {
+        val extra = classFiles(classesDir).map { f =>
+          f -> ("META-INF/versions/25/" + IO.relativize(classesDir, f).get)
+        }
+        base ++ extra
+      } else base
+    },
+    packageOptions ++= {
+      val classesDir = baseDirectory.value / "jdk25" / "target" / "classes"
+      if (classesDir.exists) Seq(Package.ManifestAttributes("Multi-Release" -> "true"))
+      else Seq.empty
+    },
   )
 
 lazy val okayAdmin = project
