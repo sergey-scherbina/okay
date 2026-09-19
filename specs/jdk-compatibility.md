@@ -132,11 +132,50 @@ confirmed here, not just upstream-claimed.
   the running JVM per JEP 238 with no runtime branch in this
   library's own code. Nothing else here does this yet, and nothing
   requires it to.
-- **The working range today is 21–23.** `.sdkmanrc` pins
-  `21.0.7-tem` — the floor exactly, and the version every contributor
-  and CI runner should default to — because it is inside okay-spark's
-  supported range (17, 21) and needs no `-Djava.security.manager`
-  flag at all.
+- **`.sdkmanrc`'s `21.0.7-tem` is the AMBIENT/compile pin, not the
+  whole story any more (jdk26-default-runtime, below).** What sbt
+  itself launches on, and so what compiles everything, stays 21 —
+  inside every module's compile-time needs, no `-Djava.security.manager`
+  flag required for the compiler itself.
+
+## Runtime defaults to JDK 26, floor stays 21 (jdk26-default-runtime, 2026-09-19)
+
+Compiling and running are different JVMs now, on purpose.
+`ThisBuild / Test / javaHome` and `ThisBuild / run / javaHome` default
+to the newest GA JDK this project has verified end to end — 26,
+installed at `~/.sdkman/candidates/java/26.0.2.1-tem` (27 is not GA at
+this date; Adoptium's `available_releases` tops out at 26, 27/28 are
+tip/EA only — not repeating the preview-API mistake
+script-scoped-state already made once, for a whole JDK this time).
+This only takes effect where `Test / fork` / `run / fork` is already
+`true`, the existing convention across most test-bearing modules —
+checked directly (`show okayJVM/Test/javaHome`), not assumed.
+Compiling (sbt's own JVM, in-process dotc) is untouched, still 21.
+
+**First full-matrix run on 26 found exactly one new problem**, not the
+handful feared: `okay-delta`'s `TestDelta`, 4 failures, all the same
+`KernelEngineException: ... getSubject is not supported` — Delta
+Kernel resolves paths through Hadoop's `Configuration`/
+`UserGroupInformation`, same as Spark, so it hits the identical JEP
+486 wall (Security Manager gone, JDK 24+). A different library, the
+same root cause `.sdkmanrc` already named for Spark. Unlike Spark
+4.2.0, no upstream JDK25+ fix was found for delta-kernel 4.4.0, so
+`okayDelta` shadows the build-wide default back to `None` (the
+ambient/compile JDK, 21) rather than assuming a newer version also
+works. `okaySpark` already had its own shadow, to 25
+(spark-jdk25-guard-fix) — both now co-exist as the two modules that
+opt OUT of the build-wide 26 default; everything else opts in
+untested-before-today and passed (5664 tests, 181 modules, cold, no
+warnings).
+
+**Everywhere else checked directly, not just "the gate didn't fail
+somewhere else":** `okayJVM` (746/746, unchanged count from before
+this session's other JDK work), `okayScript` (208/208 — its own
+in-process dotc now itself running hosted on JDK 26), `okayJetty`'s
+real integration suite (19/19, `Live`-tagged, actual sockets,
+WebSocket sessions, the `VirtualThreadPool` from jetty-virtual-threads
+actually serving under 26), `okaySpark` (4/4, confirmed still pinned
+and unaffected).
 
 ## Related
 

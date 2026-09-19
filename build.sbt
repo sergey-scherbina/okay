@@ -180,6 +180,39 @@ addCommandAlias("integrationTest",
   "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test")
 
 /**
+ * jdk26-default-runtime (2026-09-19): the ambient JVM that launches
+ * sbt itself — and so compiles everything, `.sdkmanrc` pins it —
+ * stays JDK 21. This is a SEPARATE knob: the JVM a forked `Test` or
+ * `run` actually EXECUTES on, which only a module that already sets
+ * `Test / fork := true` / `run / fork := true` (most test-bearing
+ * ones already do, for reasons of their own — a real classpath, a
+ * real -Xmx, isolation) ever reads. Compiling stays where it always
+ * was; running now defaults to the newest GA JDK this project has
+ * actually checked works, not the oldest one it still supports.
+ *
+ * Why 26 and not the true latest: 27 is not GA at this date (Adoptium
+ * `available_releases` tops out at 26; 27/28 are tip/EA only) —
+ * finding was this project already made once with a preview API
+ * (script-scoped-state), not repeated here for a whole JDK.
+ *
+ * okaySpark overrides this back down, below its own settings: Spark
+ * 4.2.0's own confirmed range is 17/21/25 (spark-jdk25-guard-fix) —
+ * no JDK 26 support is documented upstream, and `.sdkmanrc`'s own
+ * comment already recorded 26 refusing the security-manager flag
+ * outright. Every OTHER module inherits this default untested against
+ * 26 before today — see specs/jdk-compatibility.md for what the first
+ * full run under it found.
+ */
+val jdk26Home = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "26.0.2.1-tem"
+// a machine that never installed it keeps the ambient JDK for
+// Test/run too — ADDITIVE, exactly like the JDK25 MRJar script, never
+// a hard new dependency to build or test this project at all
+Seq(
+  ThisBuild / Test / javaHome := (if (jdk26Home.exists) Some(jdk26Home) else None),
+  ThisBuild / run / javaHome := (if (jdk26Home.exists) Some(jdk26Home) else None),
+)
+
+/**
  * The core: plain `okay`, no suffix, dependency-free. One shared
  * source tree (src/main/scala) for JVM, JS and Native — Async included
  * (specs/cross-platform-async.md): each platform contributes its
@@ -744,6 +777,15 @@ lazy val okaySpark = (project in file("okay-spark"))
     libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.18" % LegacyStdlib,
     Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
     Test / fork := true,
+    // jdk26-default-runtime: shadow the build-wide JDK26 Test/run
+    // default back down to Spark 4.2.0's own confirmed range
+    // (spark-jdk25-guard-fix) -- 25 rather than .sdkmanrc's ambient
+    // 21, since 25 is verified end to end and strictly newer.
+    Test / javaHome := {
+      val jdk25 = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "25.0.4.1-tem"
+      if (jdk25.exists) Some(jdk25) else None
+    },
+    run / javaHome := (Test / javaHome).value,
     // bench-across-processes: SparkClusterBench starts a REAL
     // standalone cluster — a Master and Workers as their own JVMs —
     // and the driver must come out of THIS build, or it serialises a
@@ -910,6 +952,17 @@ lazy val okayDelta = (project in file("okay-delta"))
       "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
     ),
     Test / fork := true,
+    // jdk26-default-runtime, 2026-09-19: found by the first full-matrix
+    // run on JDK26 -- delta-kernel resolves a path through Hadoop's
+    // Configuration/UserGroupInformation the same as Spark does, so it
+    // hits the identical JEP 486 wall (Security Manager gone, JDK
+    // 24+): "KernelEngineException: ... getSubject is not supported".
+    // A different library than okaySpark's, the same root cause and
+    // the same shadow-back-down fix; unlike Spark, delta-kernel 4.4.0
+    // has no similar upstream JDK25 fix found, so this pins to the
+    // ambient/compile JDK (21) rather than assuming 25 also works.
+    Test / javaHome := None,
+    run / javaHome := None,
   )
 
 /** the R2DBC hatch of the Sql seam (sql-r2dbc, specs/sql.md): any

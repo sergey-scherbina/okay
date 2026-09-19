@@ -1,14 +1,27 @@
-# Java 21, not whatever the shell happens to have.
+# Java 21 — the AMBIENT JVM: what launches sbt, and so what compiles
+# everything (in-process dotc). This is not a preference, and it is
+# not the whole story any more (jdk26-default-runtime, 2026-09-19) —
+# see below for what actually RUNS on.
 #
-# This is not a preference. Spark 4.0.0 supports Java 17 and 21; on
-# JDK 24+ the Security Manager is gone (JEP 486) and with it
+# On JDK 24+ the Security Manager is gone (JEP 486) and with it
 # Subject.getSubject, which Hadoop's UserGroupInformation calls on
-# every job. The failure is
+# every job Spark runs. The failure is
 #
 #   UnsupportedOperationException: getSubject is not supported
 #
 # and there is no flag for it: -Djava.security.manager=allow, the
-# remedy for 18..23, makes a JDK 26 refuse to start at all.
+# remedy for 18..23, makes a JDK 26 refuse to start at all. Spark
+# 4.2.0's own confirmed range is 17/21/25 (spark-jdk25-guard-fix) —
+# nothing here changes that, and okaySpark's own build.sbt settings
+# pin its Test/run to 25 regardless of what this file says.
 #
 # `sdk env install` here, or `sdk env` in a shell that already has it.
 java=21.0.7-tem
+
+# TEST/RUN — a SEPARATE knob (jdk26-default-runtime, 2026-09-19):
+# build.sbt defaults every module's forked Test/run to the newest GA
+# JDK this project has actually verified end to end
+# (~/.sdkman/candidates/java/26.0.2.1-tem — 27 is not GA at this date),
+# not the ambient one above. Compiling never moves off 21; a released
+# service, a `sbt run`, and every test suite but okaySpark's now
+# execute on 26 by default. See specs/jdk-compatibility.md.
