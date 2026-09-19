@@ -1,0 +1,6 @@
+feature/scoped-cross-platform 2026-09-19T11:14:50Z
+agent: claude-code
+heartbeat: 2026-09-19T11:14:50Z
+status: in-progress
+done-so-far: feasibility verified (ThreadLocal already compiles on js+native via AdaptiveFifo precedent)
+next: worktree, move Scoped to shared source, compile/test all platforms
