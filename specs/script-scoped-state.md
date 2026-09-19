@@ -104,18 +104,18 @@ object Requested:
              secure: Boolean, application: Application,
              contentRoot: Option[java.nio.file.Path])(body: => B): B =
     Web.scoped.where(web):
-    Response.scoped.where(resp):
-    Response.secureScoped.where(secure):
-    Session.scoped.where(sess):
-    Error.scoped.where(None):
-    Lang.scoped.where(lang):
-    Container.includerScoped.where(includer):
-    Container.livesScoped.where(liveRegistrar):
-    Container.translatorsScoped.where(translator):
-    Container.issuersScoped.where(issuer):
-    Application.scoped.where(application):
-    Content.scoped.where(contentRoot):
-      body
+      Response.scoped.where(resp):
+        Response.secureScoped.where(secure):
+          Session.scoped.where(sess):
+            Error.scoped.where(None):
+              Lang.scoped.where(lang):
+                Container.includerScoped.where(includer):
+                  Container.livesScoped.where(liveRegistrar):
+                    Container.translatorsScoped.where(translator):
+                      Container.issuersScoped.where(issuer):
+                        Application.scoped.where(application):
+                          Content.scoped.where(contentRoot):
+                            body
 ```
 
 `Principal` is deliberately NOT a `Requested.run` parameter — it was

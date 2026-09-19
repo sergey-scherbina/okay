@@ -34,10 +34,10 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot:
    * `render(webB)` each see their own `Web`.
    */
   def render(web: api.Web = api.Web.current): Result =
-    api.Web.setCurrent(web)
-    compiled() match
-      case Left(r) => r
-      case Right(c) => c.invoke()
+    api.Web.scoped.where(web):
+      compiled() match
+        case Left(r) => r
+        case Right(c) => c.invoke()
 
   private def compiled(): Either[Result, Compiled] = synchronized:
     val mtime = Files.getLastModifiedTime(path)

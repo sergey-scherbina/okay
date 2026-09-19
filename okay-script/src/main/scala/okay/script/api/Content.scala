@@ -32,12 +32,9 @@ object Content:
 
   /** where content lives: the site root, set by the container. Outside
    * a `Site` there is none, and every read is its default. */
-  private val roots: ThreadLocal[Option[java.nio.file.Path]] =
-    ThreadLocal.withInitial(() => None)
+  private[script] val scoped: Scoped[Option[java.nio.file.Path]] = Scoped(None)
 
-  def setRoot(p: Option[java.nio.file.Path]): Unit = roots.set(p)
-
-  def root: Option[java.nio.file.Path] = roots.get()
+  def root: Option[java.nio.file.Path] = scoped.current
 
   private val problems: ThreadLocal[Vector[String]] = ThreadLocal.withInitial(() => Vector.empty)
 

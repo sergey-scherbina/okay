@@ -52,14 +52,13 @@ class TestInlineI18n extends munit.FunSuite:
   test("the default is read at USE time, so a `val langs` in a declare block cannot freeze one visitor's language") {
     // a page holds this as a val: it is built ONCE per compile
     val held = Inline.Langs.of("pl", "en", "uk")
-    Lang.setCurrent("uk")
-    assertEquals(held.default, "uk")
-    Lang.setCurrent("en")
-    assertEquals(held.default, "en")          // the same value, a new request
-    Lang.setCurrent("de")
-    assertEquals(held.default, "pl")          // a language the page does not offer
-    Lang.setCurrent("uk")
-    assertEquals(held.pinned, None)
-    assertEquals(Inline.Langs(Vector("pl", "en"), pinned = Some("en")).default, "en")
-    Lang.setCurrent("en")
+    Lang.scoped.where("uk"):
+      assertEquals(held.default, "uk")
+    Lang.scoped.where("en"):
+      assertEquals(held.default, "en")        // the same value, a new request
+    Lang.scoped.where("de"):
+      assertEquals(held.default, "pl")        // a language the page does not offer
+    Lang.scoped.where("uk"):
+      assertEquals(held.pinned, None)
+      assertEquals(Inline.Langs(Vector("pl", "en"), pinned = Some("en")).default, "en")
   }

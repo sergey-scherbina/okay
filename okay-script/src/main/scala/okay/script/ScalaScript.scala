@@ -497,8 +497,8 @@ object ScalaScript:
    * okay-script.md "Hot-reload").
    */
   def render(markdown: String, classpath: Classpath = Classpath.ambient, web: api.Web = api.Web.current, tempRoot: Path = defaultTempRoot): Result =
-    api.Web.setCurrent(web)
-    compileRender(markdown, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
+    api.Web.scoped.where(web):
+      compileRender(markdown, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
 
   /** `render`'s compile step, split from invocation: `Left` carries a
    * `Result` with dependency-resolution or compile errors (never

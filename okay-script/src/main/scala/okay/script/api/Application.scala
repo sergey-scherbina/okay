@@ -31,11 +31,9 @@ object Application:
    * shared by every bare render in the process */
   val detached: Application = memory()
 
-  private val local: ThreadLocal[Application] = ThreadLocal.withInitial(() => detached)
+  private[script] val scoped: Scoped[Application] = Scoped(detached)
 
-  def current: Application = local.get()
-
-  def setCurrent(a: Application): Unit = local.set(a)
+  def current: Application = scoped.current
 
   def memory(): Application = new Memory
 

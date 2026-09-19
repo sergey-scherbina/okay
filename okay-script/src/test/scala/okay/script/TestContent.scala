@@ -18,11 +18,11 @@ class TestContent extends munit.FunSuite:
 
   private def withRoot[A](f: Path => A): A =
     val root = Files.createTempDirectory("okay-script-content-")
-    Content.setRoot(Some(root))
-    Content.clearProblems()
-    try f(root)
+    try
+      Content.scoped.where(Some(root)):
+        Content.clearProblems()
+        f(root)
     finally
-      Content.setRoot(None)
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
 
   test("with no file the baked default answers, and the default is not even built when a file does") {
@@ -75,8 +75,8 @@ class TestContent extends munit.FunSuite:
   }
 
   test("outside a Site there is no root, and every read is its default") {
-    Content.setRoot(None)
-    assertEquals(Content.read[Shop]("content/shop.json", shipped), shipped)
-    assert(!Content.write("content/shop.json", shipped))
-    assert(!Content.exists("content/shop.json"))
+    Content.scoped.where(None):
+      assertEquals(Content.read[Shop]("content/shop.json", shipped), shipped)
+      assert(!Content.write("content/shop.json", shipped))
+      assert(!Content.exists("content/shop.json"))
   }

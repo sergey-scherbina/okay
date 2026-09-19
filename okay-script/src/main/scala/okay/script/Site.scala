@@ -435,48 +435,30 @@ final class Site(
     val sess = sessions.handle(web.cookies.get(SessionCookie))
     val lang = langOf(web)
     val f = localized(base, lang)
-    api.Lang.setCurrent(lang)
-    api.Container.setTranslator(Some(translator(lang)))
     // every cookie this request sets -- the container's own and the
     // page's -- carries Secure iff this request was secure
     val secure = secureFor(web)
-    api.Response.setSecureByDefault(secure)
-    // a `?lang=` choice is remembered by cookie for the requests after
-    if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
-      resp.cookie(api.Lang.Cookie, lang)
-    // where a page's content files live (specs/site-framework.md
-    // stage 2): the site's own root, and nothing above it
-    api.Content.setRoot(Some(rootAbs))
     api.Content.clearProblems()
-    api.Web.setCurrent(web)
-    api.Response.setCurrent(resp)
-    api.Session.setCurrent(sess)
-    api.Error.setCurrent(None)
-    api.Container.setIncluder(Some(includer))
-    api.Container.setLiveRegistrar(Some((id, app) =>
-      lives.put((including.get().headOption.getOrElse(f), id), app): Unit))
-    api.Container.setIssuer(issue)
-    api.Application.setCurrent(application)
-    try
+    api.Requested.run(
+      web = web, resp = resp, sess = sess, lang = lang,
+      translator = Some(translator(lang)),
+      includer = Some(includer),
+      liveRegistrar = Some((id, app) =>
+        lives.put((including.get().headOption.getOrElse(f), id), app): Unit),
+      issuer = issue, secure = secure, application = application,
+      // where a page's content files live (specs/site-framework.md
+      // stage 2): the site's own root, and nothing above it
+      contentRoot = Some(rootAbs),
+    ):
+      // a `?lang=` choice is remembered by cookie for the requests after
+      if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
+        resp.cookie(api.Lang.Cookie, lang)
       val body = dispatch(f, web, resp, 0)
       if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
       else if sess.created then resp.cookie(SessionCookie, sess.id, httpOnly = true)
       val bytes = if resp.redirected.isDefined then Array.empty[Byte] else body.getBytes(UTF_8)
       hstsHeader(secure).foreach((k, v) => resp.header(k, v))
       cached(r, web, base, resp, bytes)
-    finally
-      api.Response.setSecureByDefault(false)
-      api.Container.setIncluder(None)
-      api.Container.setLiveRegistrar(None)
-      api.Container.setIssuer(None)
-      api.Container.setTranslator(None)
-      api.Lang.setCurrent(languages.head)
-      api.Application.setCurrent(api.Application.detached)
-      api.Principal.setCurrent(None)
-      api.Web.setCurrent(api.Web.empty)
-      api.Response.setCurrent(new api.Response)
-      api.Session.setCurrent(api.Session.detached)
-      api.Error.setCurrent(None)
 
   /** The rendered page as a response, with the validators and the
    * directive its `cache:` earns (okay-script-cache). Opt-in per
@@ -511,8 +493,8 @@ final class Site(
     access(f, web, api.Session.current) match
       case Access.Open => render(f, web, resp, forwards)
       case Access.Granted(p) =>
-        api.Principal.setCurrent(Some(p))
-        render(f, web, resp, forwards)
+        api.Principal.scoped.where(Some(p)):
+          render(f, web, resp, forwards)
       case Access.Login(to) =>
         resp.redirect(to + "?next=" + java.net.URLEncoder.encode(web.path, UTF_8))
         ""
@@ -592,10 +574,10 @@ final class Site(
       s"${rootAbs.relativize(f)}: $message$extra"
     findErrorPage(f) match
       case Some(ep) =>
-        api.Error.setCurrent(Some(err))
         resp.contentType(HtmlUtf8)
         frontMatter(ep).get("contentType").foreach(resp.contentType)
-        val r2 = rendering(ep)(pageFor(ep).render(web))
+        val r2 = api.Error.scoped.where(Some(err)):
+          rendering(ep)(pageFor(ep).render(web))
         if r2.ok then r2.stdout
         else
           val second =
