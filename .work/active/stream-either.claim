@@ -1,6 +1,0 @@
-task: stream-either
-what: add `either` (Source elementwise+chunked, Chunks, Flushing) that
-  tags each side Left/Right before merging, so a merge's caller can
-  tell which source an element came from without losing it in the
-  A|B union.
-where: okay-stream/src/main/scala/Source.scala
