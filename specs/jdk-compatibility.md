@@ -57,15 +57,43 @@ already carries this as an `override def munitIgnore: Boolean =
 Runtime.version().feature() >= 24`, so a run on 24+ skips rather than
 fails opaquely — the ceiling is enforced there, not merely documented.
 
+**Update (spark-4-2-0-jdk25, 2026-09-19): the ceiling moves with the
+Spark version, and 4.2.0 raises it past 24.** Checked upstream, not
+assumed — Apache JIRA SPARK-51167 ("Build and Run Spark on Java 25")
+is Resolved/Fixed in 4.2.0 (created 2025-02-11, resolved 2026-05-11);
+Spark's own 4.2.0 release notes say it runs on Java 17/21/25. Bumped
+`build.sbt`'s `spark-sql` dependency to 4.2.0 and re-paired the
+`legacyStdlib` fix above (its `scala-library` pin has to track
+`scala-reflect`'s — both went to 2.13.18): `TestSparkInterop` passes
+all 4 tests on this box's JDK 21 floor, confirming 4.2.0 is a safe
+upgrade for the range we actually run.
+
+**What is NOT yet verified: an actual JDK 25 run of okay-spark's
+tests on THIS machine.** Forking `okaySpark/Test` through
+`~/.sdkman/candidates/java/25.0.4.1-tem` (via `Test / javaHome`)
+discovered zero tests — no exception, no Spark startup log, sbt just
+reported `Total 0` — which reads as an sbt-test-fork/JDK-25
+compatibility wrinkle in THIS setup rather than a Spark defect (Spark
+4.2.0's own CI already ran 66,716 tests green on Java 25, per the
+same JIRA). Not chased further this session; the `munitIgnore` guard
+at `>= 24` is consequently still accurate to LEAVE IN — it now
+under-states what Spark itself supports, but removing it would need
+the local JDK25 run actually working first, not just the upstream
+claim.
+
 ## What this means for "can we bump the JDK"
 
 - **Lowering the floor** (17, 11, 8) is not on the table while
   `Platform.scala`'s default scheduler is Loom: every JVM consumer of
   this library, not just the ones in the table above, inherits the
   requirement transitively.
-- **Raising the floor past 23** breaks okay-spark specifically (JDK
-  24+, JEP 486) and nothing else identified so far — a build that
-  never touches Spark has no ceiling.
+- **Raising the floor past 23 no longer needs okay-spark's own JDK 24
+  ceiling to move with it** — Spark 4.2.0 (landed spark-4-2-0-jdk25,
+  2026-09-19) claims 17/21/25 upstream, verified here on the 21 end.
+  The ceiling this section opens with is Spark 4.0.0's; 4.2.0 is what
+  is actually in `build.sbt` now. The local JDK 25 run is still
+  unverified (see above), so treat "past 23 is safe for Spark" as
+  upstream-claimed-and-partially-confirmed, not fully closed.
 - **JDK 25** is not a floor-or-ceiling question at all: it is an
   *additive* per-feature answer. `okay.Scoped` (core,
   `specs/script-scoped-state-mrjar.md`) ships as a Multi-Release JAR —

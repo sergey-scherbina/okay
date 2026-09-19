@@ -678,7 +678,7 @@ lazy val okaySpark = (project in file("okay-spark"))
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
-      ("org.apache.spark" %% "spark-sql" % "4.0.0").cross(CrossVersion.for3Use2_13),
+      ("org.apache.spark" %% "spark-sql" % "4.2.0").cross(CrossVersion.for3Use2_13),
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
     // Spark's 2.13 artifacts bring scala-reflect, a Scala 2 artifact
@@ -686,7 +686,7 @@ lazy val okaySpark = (project in file("okay-spark"))
     // it correctly (2.13.16); what fails is sbt asking for it at the
     // project's own Scala version. Naming the 2.13 artifact
     // explicitly settles it before anything can rewrite the version.
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.16",
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.18",
     /**
      * THE ONE THING 3.9 BROKE, and the whole reason okay-spark used to
      * cap this build at 3.7 (scala-3-9, 2026-09-07).
@@ -724,9 +724,15 @@ lazy val okaySpark = (project in file("okay-spark"))
      * The version tracks the `scala-reflect` pin three lines up — one
      * Scala 2 library and its own reflect, never a mixed pair.
      *
-     * Spark 4.2.0 was tried first and changes NOTHING here: same error,
-     * same line. Spark is still 2.13-only at 4.2.0, so a Spark bump is
-     * an independent decision and is deliberately not part of this one.
+     * Spark 4.2.0 was tried against this fix WITHOUT bumping the pair
+     * (spark-4-2-0-jdk25, 2026-09-19) and DID reproduce "same error,
+     * same line" — because only the `scala-reflect` pin three lines up
+     * had moved to 2.13.18, and this jar's own pin was still 2.13.16:
+     * exactly the "mixed pair" this comment already warned against.
+     * Bumping BOTH to 2.13.18 together passes all of TestSparkInterop
+     * on this box's JDK 21. Spark is still 2.13-only at 4.2.0 (that
+     * part holds), but the earlier "changes NOTHING" verdict was
+     * itself the mixed-pair mistake, not a fact about Spark 4.2.0.
      *
      * This is a deliberate two-stdlib classpath in ONE module's tests.
      * It is legitimate because the two jars are the same library
@@ -735,7 +741,7 @@ lazy val okaySpark = (project in file("okay-spark"))
      * it — the config, the jar, and this comment.
      */
     ivyConfigurations += LegacyStdlib,
-    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.16" % LegacyStdlib,
+    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.18" % LegacyStdlib,
     Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
     Test / fork := true,
     // bench-across-processes: SparkClusterBench starts a REAL
