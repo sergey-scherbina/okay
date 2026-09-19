@@ -2196,7 +2196,12 @@ lazy val okayStaging = project
 lazy val compare = (project in file("compare"))
   .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm,
     okayActor.jvm, okayReactive,   // actor-reactive-bench: the two modules that had no numbers
-    okayStaging)                   // staged-runtime: the run-time staged codec beside the compile-time one
+    okayStaging,                   // staged-runtime: the run-time staged codec beside the compile-time one
+    okayData.jvm, okayStm.jvm)     // SketchBenchmark, StmBenchmark: core-modularise moved Sketch and
+                                    // Stm/Tx/TRef out of `okay` without adding the two modules here
+                                    // (compare-jmh-missing-deps, 2026-09-19) — compare/Jmh/compile has
+                                    // been broken on master since that migration, unrelated to any one
+                                    // benchmark added after it
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",
