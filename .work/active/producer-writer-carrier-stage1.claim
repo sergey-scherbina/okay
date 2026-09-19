@@ -1,0 +1,6 @@
+feature/producer-writer-carrier-stage1 2026-09-19T10:54:41Z
+agent: claude-code
+heartbeat: 2026-09-19T10:54:41Z
+status: in-progress
+done-so-far: name decided (Feed[W], operator choice)
+next: add type Feed[W] = Unit ! Writer % W in Writer.scala, docs/guide.md rule, compileErrors test, gate, land
