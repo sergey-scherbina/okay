@@ -1,0 +1,10 @@
+feature/put-de-diagonal 2026-09-19T11:35:00Z
+agent: claude-code
+heartbeat: 2026-09-19T11:35:00Z
+status: in-progress
+done-so-far: worktree created
+next: move the wip (Put[S[_]] undiagonalized to Unit /> S[W]; LazyList,
+  Producer, and the new writer-stream instances updated; Teller
+  removed and replaced by the writer-stream carrier; Put[Source]
+  added in okay-stream; tests + docs/guide.md section) into the
+  worktree, compile, gate, land
