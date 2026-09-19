@@ -1,0 +1,9 @@
+feature/ci-affected-tests-only 2026-09-19T11:50:00Z
+agent: claude-code
+heartbeat: 2026-09-19T11:50:00Z
+status: in-progress
+done-so-far: worktree created
+next: project/Affected.scala — seed the dependent closure from MAIN
+  changes only, not test-only changes; verify with a synthetic
+  test-only diff in okay-lex (one dependent: okay-parse) before and
+  after; land
