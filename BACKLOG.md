@@ -1,32 +1,5 @@
 # Backlog
 
-## mcp-tool-authorization, what it opens
-
-Landed as part of security.md stage 7: the tool gate and the
-capability door. Three follow-ups it names rather than does, in the
-order they would matter.
-
-- [ ] mcp-tools-granted — the principal AMBIENT in the gated route,
-      the way `Secure.granted` and `McpAuth.granted` already close
-      that family (`Principal ?=> route`). `tools` hands the route
-      nothing today, so a handler that wants to know WHO is calling
-      reads it out of the request again. Small, and it waits for a
-      caller: nothing in the tree wants it yet.
-- [ ] mcp-policy-for-resources-and-prompts — the same per-item
-      question for `resources/read` and `prompts/get`. The shape is
-      settled now (ask the policy with the item's name, filter the
-      answer to the list); what is missing is a caller who serves
-      resources under authorization. Do it when one exists rather
-      than by symmetry — a door with no traffic is a door nobody
-      tests.
-- [ ] capability-as-a-credential-elsewhere — `Capability` reaches
-      exactly one door (MCP tools). `Secure.bearer` still takes a
-      `String => Verified`, which a capability cannot be: whether it
-      permits something is a question about the REQUEST, not about
-      the token alone. If a second consumer appears, the shape to
-      copy is the one used here — a liveness probe against the
-      capability's own scopes, and the real decision per action.
-
 > **The backlog is [`backlog.d/`](backlog.d/), one file per item**
 > (boards-d, 2026-09-18) — a lane edits its own item instead of the
 > middle of everyone's file, so two lanes filing work in the same hour
