@@ -1,6 +1,0 @@
-feature/wire-close-test-hang 2026-09-19T09:37:16Z
-agent: claude-code
-heartbeat: 2026-09-19T09:37:16Z
-status: not-started
-done-so-far:
-next: fix the hang, run integrationTest for real this time
