@@ -417,7 +417,9 @@ object Client:
               Vector(call(Field(root, "removeChild"), Field(root, "firstChild")))),
             append(root, Call(Name("build"), Vector(Field(Field(Name("j"), "Tree"), "ui"))))),
           Vector(Stmt.If(Bin("===", Name("t"), Str("Patch")),
-            Vector(call(Name("apply"), Field(Field(Name("j"), "Patch"), "patch")))))))))) ++
+            Vector(call(Name("apply"), Field(Field(Name("j"), "Patch"), "patch"))),
+            Vector(Stmt.If(Bin("===", Name("t"), Str("Close")),
+              Vector(call(Field(ws, "close")))))))))))) ++
       listeners
 
   /** TYPING: inside a form the DOM keeps the value and only an input

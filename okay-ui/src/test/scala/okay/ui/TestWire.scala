@@ -117,4 +117,45 @@ class TestWire extends munit.FunSuite {
 
     assertEquals(frames.toList, List(view(0), view(1), view(2), view(1)))
   }
+
+  test("end to end, SERVER-initiated: the client gets no frame after the close, and stops hearing") {
+    def closingUpdate(n: Int, e: Event): (Int, Boolean) = e match
+      case Event.Pressed("inc") => (n + 1, false)
+      case Event.Pressed("logout") => (n, true)
+      case _ => (n, false)
+
+    val up = Channel[String]()
+    val down = Channel[String]()
+
+    Async.spawn {
+      val src: Source[String] = Writer.of(up)
+      def drain(p: Int ! (Writer % String + Async)): Unit ! Async =
+        Writer.uncons[String, Int, Async](p).flatMap {
+          case Left(_) => async(down.close())
+          case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
+        }
+      drain(through[String, String, Async, Unit, Int](src)(
+        !.widen[Int, okay.Take % String + Writer % String, Async](
+          Wire.serveClosing(0)(view)(closingUpdate))))
+    }: Unit
+
+    val frames = scala.collection.mutable.Buffer[Ui]()
+    val feed = Channel[Event]()
+    val host = new Host:
+      def render(ui: Ui): Unit ! Async = async { frames += ui; () }
+      def events: Source[Event] = Writer.of(feed)
+
+    val fiber = Async.spawn(Wire.client(host)(Writer.of(down), l => up.send(l).map(_ => ())))
+    // a press AFTER the server's own close: the client's forward loop
+    // is still running (nothing told IT to stop), but nothing comes
+    // back for it, because the SERVER side ended when it saw "logout"
+    Seq(Event.Pressed("inc"), Event.Pressed("logout"), Event.Pressed("inc"))
+      .foreach(feed.offer)
+    feed.close()
+    fiber.join()
+
+    // one frame for "inc" (0 -> 1), and NONE for the trailing "inc"
+    // that arrived after the server had already closed
+    assertEquals(frames.toList, List(view(0), view(1)))
+  }
 }

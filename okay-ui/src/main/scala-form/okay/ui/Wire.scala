@@ -45,16 +45,36 @@ object Wire {
    * semantic nodes it draws; everything else is LOWERED before it is
    * sent. Then the FULL TREE, then the narrow patches the diff makes.
    * A damaged line is dropped (totality); a forged key is dropped
-   * (the capability rule); Closed (or Close) ends the session,
-   * answering the final state. A client that sends an event before
-   * any hello is served as level L.
+   * (the capability rule); Closed (or Close), from EITHER side, ends
+   * the session, answering the final state. A client that sends an
+   * event before any hello is served as level L.
+   *
+   * `serve` is `serveClosing` whose second half is never true — one
+   * loop, not two (wire-server-close).
    */
   def serve[S](init: S)(view: S => Ui)(update: (S, Event) => S): Stage[String, String, S] =
-    serve(init, Set.empty)(view)(update)
+    serveClosing(init)(view)((s, e) => (update(s, e), false))
 
   /** `vocab` is the vocabulary assumed when the client sends no
    * hello; a hello replaces it (unknown names are ignored) */
   def serve[S](init: S, vocab: Set[String])(view: S => Ui)(update: (S, Event) => S): Stage[String, String, S] =
+    serveClosing(init, vocab)(view)((s, e) => (update(s, e), false))
+
+  /**
+   * `serve`, but `update` may also decide THIS event is the session's
+   * last one (wire-server-close): the server side of what only a
+   * client's own `Closed`/`Close` could do before. `true` still sends
+   * the patches this event made — the last thing the client sees
+   * before the door shuts is what actually happened — then ONE
+   * `Msg.Close` line, then the loop ends the same way a client-sent
+   * Close already did.
+   */
+  def serveClosing[S](init: S)(view: S => Ui)
+                      (update: (S, Event) => (S, Boolean)): Stage[String, String, S] =
+    serveClosing(init, Set.empty)(view)(update)
+
+  def serveClosing[S](init: S, vocab: Set[String])(view: S => Ui)
+                      (update: (S, Event) => (S, Boolean)): Stage[String, String, S] =
     def shownView(v: Set[String]): S => Ui = s => Ui.lower(view(s), v)
 
     def loop(v: Set[String], s: S, shown: Ui): Stage[String, String, S] =
@@ -69,13 +89,16 @@ object Wire {
         case Some(Msg.Close) | Some(Msg.Event(Event.Closed)) => pure(s)
         case Some(Msg.Event(e)) if !permitted(shown, e) => loop(v, s, shown)   // forged is dropped
         case Some(Msg.Event(e)) =>
-          val s2 = update(s, e)
+          val (s2, done) = update(s, e)
           val next = shownView(v)(s2)
           val patches = Ui.diff(shown, next)
           def tell(ps: Vector[Patch]): Stage[String, String, Unit] = ps match
             case p +: more => Stage.tell[String, String](Protocol.line(Msg.Patch(p))).flatMap(_ => tell(more))
             case _ => pure(())
-          tell(patches).flatMap(_ => loop(v, s2, next))
+          if done then
+            tell(patches).flatMap(_ => Stage.tell[String, String](Protocol.line(Msg.Close)))
+              .flatMap(_ => pure(s2))
+          else tell(patches).flatMap(_ => loop(v, s2, next))
         case Some(_) => loop(v, s, shown)                             // a second hello, a stray tree: ignored
 
     def start(v: Set[String], pending: Option[String]): Stage[String, String, S] =
