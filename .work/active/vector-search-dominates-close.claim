@@ -1,8 +1,0 @@
-feature/vector-search-dominates-close 2026-09-19T16:20:29Z
-agent: claude-code
-heartbeat: 2026-09-19T16:20:29Z
-status: in-progress
-done-so-far: read the entry — it is explicitly "Not a defect", filed
-  purely as a record of where retrieval time goes
-next: move it to refuted-declined-or-answered as a closed record
-  (no code change), commit, gate (board.sh --check), land
