@@ -67,3 +67,15 @@
       and `-prof perfasm` if it ever becomes available. No longer on
       the writer migration's path — Feed reaches parity with
       `Chunks.fold` on its own.
+      AFTER THE RETYPE (76408290, 2026-09-19): `Chunks.fold`/`foldLeft`
+      no longer take a `Producer[Chunk[A]]`, so the fast row this entry
+      is about (library `Chunks.fold` on Producer, 2.53) cannot be
+      re-run through the library; the Producer walk survives only as
+      `Probe.foldProducer`/`foldLeftProducer` in
+      ProducerWriterCarrierBenchmark.scala (4.5, the slow placement).
+      The question is now academic for okay — every chunked fold in
+      the library walks the writer iterator (2.65 on the same loop) —
+      and stays filed only as a JIT curiosity: why one compilation of
+      the same loop over Producer's iterator ran 1.8x faster than any
+      other. Reproduce it from git history (master before 76408290,
+      `compare/Jmh/run .*chunksFoldProducer$`) if ever picked up.

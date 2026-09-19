@@ -176,9 +176,14 @@
       drop/rechunkWith` themselves, retyped in place. The bridge
       shortcut (1.5x slower) stays refuted — spec Results keeps it.
 
-      THE `Chunks` RETYPE — CLAIMED AND LANDING (producer-writer-carrier-
-      chunks-retype, 2026-09-19; the operator confirmed "Chunks first"
-      the same evening, the spec's Decisions says so). `type Chunks[A] =
+      THE `Chunks` RETYPE — LANDED as 76408290 (producer-writer-carrier-
+      chunks-retype, 2026-09-19; the operator confirmed "Chunks first",
+      then "приземляй" after seeing the measured cost: 4-8% on the
+      tightest chunked folds — `Chunks.fold` 2.53 -> 2.65 us, map+fold
+      7.70 -> 8.30 — merge/StreamOps pipelines within noise, +16 B per
+      told chunk per stage, the `Say` node; three alternating before/
+      after rounds, table in the spec's Results). What follows is the
+      plan as executed, kept for the next module lanes: `type Chunks[A] =
       Feed[Chunk[A]]`; in Chunks.scala `produce(c)` → `Writer.tell(c)`,
       `Inject(c)` → `Inject(Say(c))`, `k(c)` → `k(())`, `bound[A]` goes
       (the Say refines the type), `pull`/`end` on the pure writer
@@ -201,8 +206,8 @@
       (Chunks is cross-platform). Delete `foldLeftWriter`/`foldWriter`
       only if no G-effectful caller appears — they are correct, tested
       and off the path; not this lane's call.
-      Then, AFTER `Chunks` (order amended 2026-09-19, see above and the
-      spec's Decisions): okay-persist Streams/Wire, okay-sql/okay-jdbc,
+      NEXT CLAIMABLE SLICE — the G-effectful modules, one lane each:
+      okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops —
       these hold the G-effectful `Chunk[X] ! Produce + G` carrier
       (`Producer.concat`/`fold` callers), I/O-bound, migrated by the
@@ -228,9 +233,8 @@
       count with grep before each remaining module lane, not from this
       line: it is already stale.
 
-      DONE-WHEN (whole arc): no `Produce` in main sources except where
-      `Chunks` is a documented exception (or the fold combinator above
-      closes even that), `Blob.get` typed `Either[String, Unit] !
+      DONE-WHEN (whole arc): no `Produce` in main sources (`Chunks` is
+      no exception any more — retyped 76408290), `Blob.get` typed `Either[String, Unit] !
       (Writer % Chunk[Byte] + Async)` — DONE, docs/benchmarks.md rows
       re-measured for the shapes that changed, spec Results filled per
       stage.
