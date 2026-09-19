@@ -35,11 +35,15 @@ class TestTaxiAlgebra extends munit.FunSuite:
     val here = new File("okay-spark/target/data/yellow_tripdata_2024-01.parquet")
     if here.isFile then here else new File("target/data/yellow_tripdata_2024-01.parquet")
 
+  // spark-jdk25-guard-fix (TestSparkInterop): 24 specifically lacks
+  // the Security Manager (JEP 486) Hadoop's UGI calls; 25 fixed it
+  // upstream (SPARK-51167) and is what build.sbt now forks this
+  // suite's own Test onto. `>= 24` here was the same stale guard.
   val javaFeature: Int = Runtime.version().feature()
-  override def munitIgnore: Boolean = javaFeature >= 24 || !data.isFile
+  override def munitIgnore: Boolean = javaFeature == 24 || !data.isFile
 
   override def beforeAll(): Unit =
-    if javaFeature >= 24 then println("  taxi demo: skipped — Spark 4.0.0 wants Java 17 or 21")
+    if javaFeature == 24 then println(s"  taxi demo: skipped on Java $javaFeature — JEP 486 removed what Hadoop's UGI calls")
     else if !data.isFile then println(s"  taxi demo: skipped — no ${data.getPath}")
 
   lazy val spark: SparkSession = SparkSession.builder()

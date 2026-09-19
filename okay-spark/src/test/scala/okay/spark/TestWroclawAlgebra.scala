@@ -57,13 +57,20 @@ final case class Service(from: Long, to: Long, days: Vector[Boolean]):
  * — so the last step expands it.
  */
 object Gtfs:
+  // named payloads throughout (wroclaw-pipeline-named, 2026-09-19):
+  // this used to carry a positional twin beside a GtfsNamed proving
+  // the named version computed the same thing (CHANGELOG.md,
+  // "named-tuples-stage0"); that measurement is done, so there is
+  // one pipeline now, not two, and the equality test below checks
+  // against a RECORDED summary rather than a twin that no longer
+  // exists.
   def departures(file: String => String): Table[Dep] ! Tables = direct {
     // `columns` is structural, so the rewrite pushes it into the read and
     // the platform prunes at the parser; `select` is a function, opaque
     val stopTimes = !read(file("stop_times.txt")).columns("trip_id", "departure_time")
       .select(r => r("trip_id") -> r("departure_time"))
     val trips = !read(file("trips.txt")).columns("trip_id", "route_id", "service_id")
-      .select(r => r("trip_id") -> (r("route_id"), r("service_id")))
+      .select(r => r("trip_id") -> (route = r("route_id"), service = r("service_id")))
     val routes = !read(file("routes.txt")).columns("route_id", "route_type2_id")
       .select(r => r("route_id") -> (r("route_type2_id").toInt == 31))
     val calendar = !read(file("calendar.txt")).select { r =>
@@ -73,25 +80,22 @@ object Gtfs:
     // the first day of the feed, by the algebra: the minimum start date
     val day0 = (!calendar.aggregate(Aggregator.min[Long].contramap((kv: (String, Service)) => kv._2.from))).get
 
-    !stopTimes.join(trips)                                                      // trip    -> (time, (route, service))
-      .select { case (_, (time, (route, service))) => route -> (time, service) } // route   -> (time, service)
-      .join(routes)                                                             // route   -> ((time, service), tram)
-      .select { case (route, ((time, service), tram)) => service -> (time, tram, route.hashCode) }
-      .join(calendar)                                                           // service -> ((time, tram, route), Service)
-      .expand { case (_, ((time, tram, route), service)) =>
-        val h = time.substring(0, 2).toInt // GTFS lets a late trip run past 24:00
-        val m = time.substring(3, 5).toInt
+    !stopTimes.join(trips)
+      .select { case (_, (time, trip)) => trip.route -> (time = time, service = trip.service) }
+      .join(routes)
+      .select { case (route, (dep, tram)) => dep.service -> (time = dep.time, tram = tram, route = route.hashCode) }
+      .join(calendar)
+      .expand { case (_, (dep, service)) =>
+        val h = dep.time.substring(0, 2).toInt // GTFS lets a late trip run past 24:00
+        val m = dep.time.substring(3, 5).toInt
         service.dates.map { d =>
           // an "25:10" departure is 01:10 the next day, and lands there
-          Dep(((d - day0).toInt) * 1440 + h * 60 + m, (h * 60 + m) / 60 % 24, tram, route)
+          Dep(((d - day0).toInt) * 1440 + h * 60 + m, (h * 60 + m) / 60 % 24, dep.tram, dep.route)
         }
       }
   }
 
-  // `private[spark]` so the named-tuple twin (GtfsNamed) shares the
-  // EXACT helper rather than a copy — the twin's whole claim is that
-  // it computes the same thing (named-tuples-stage0)
-  private[spark] def epochDay(yyyymmdd: String): Long = LocalDate.parse(yyyymmdd, BASIC_ISO_DATE).toEpochDay
+  private def epochDay(yyyymmdd: String): Long = LocalDate.parse(yyyymmdd, BASIC_ISO_DATE).toEpochDay
 
 /**
  * The aggregation algebra on the city's own timetable, on two
@@ -109,12 +113,16 @@ class TestWroclawAlgebra extends munit.FunSuite:
     if here.isDirectory then here else new File("target/data/gtfs")
   def file(name: String): String = new File(gtfs, name).getPath
 
+  // spark-jdk25-guard-fix (TestSparkInterop): 24 specifically lacks
+  // the Security Manager (JEP 486) Hadoop's UGI calls; 25 fixed it
+  // upstream (SPARK-51167) and is what build.sbt now forks this
+  // suite's own Test onto. `>= 24` here was the same stale guard.
   val javaFeature: Int = Runtime.version().feature()
   override def munitIgnore: Boolean =
-    javaFeature >= 24 || !new File(gtfs, "stop_times.txt").isFile
+    javaFeature == 24 || !new File(gtfs, "stop_times.txt").isFile
 
   override def beforeAll(): Unit =
-    if javaFeature >= 24 then println("  wroclaw demo: skipped — Spark 4.0.0 wants Java 17 or 21")
+    if javaFeature == 24 then println(s"  wroclaw demo: skipped on Java $javaFeature — JEP 486 removed what Hadoop's UGI calls")
     else if munitIgnore then println(s"  wroclaw demo: skipped — no ${gtfs.getPath}/stop_times.txt")
 
   lazy val spark: SparkSession = SparkSession.builder()
@@ -209,20 +217,18 @@ class TestWroclawAlgebra extends munit.FunSuite:
     assertEquals(plan.count(_ == "Join"), 3)
   }
 
-  test("the named-tuple twin computes the same departures (named-tuples-stage0)") {
-    // The twin in GtfsNamed names the payloads that this file's
-    // `departures` can only describe in comments. A named tuple erases
-    // to the plain one, so the two programs should be the same
-    // computation — asserted here on the real feed rather than
-    // assumed. The measure mixes all four fields, so a swapped pair
-    // would move `sum` even where `count` agreed.
-    def summarise(p: Table[Dep] ! Tables): Aggregator.Summary =
-      Tables.run(localBulk)(p.aggregate(Aggregator.summary[Dep](d =>
-        d.minute.toLong * 31 + d.hour * 7 + (if d.tram then 1L else 0L) + d.route)))
-    val plain = summarise(Gtfs.departures(file))
-    val named = summarise(GtfsNamed.departures(file))
-    assertEquals(named, plain)
-    println(f"  named-tuple twin: ${named.count}%,d departures, identical summary")
+  test("departures match the recorded summary (wroclaw-pipeline-named)") {
+    // named-tuples-stage0 proved a named GtfsNamed.departures computed
+    // the same thing as this file's plain-tuple original, on this
+    // exact feed; wroclaw-pipeline-named merged the two into the one
+    // pipeline above. What is left to check against is the SUMMARY
+    // that measurement recorded, not a twin that no longer exists —
+    // the measure mixes all four fields, so a swapped pair would move
+    // `sum` even where `count` agreed.
+    val summary = Tables.run(localBulk)(Gtfs.departures(file).aggregate(Aggregator.summary[Dep](d =>
+      d.minute.toLong * 31 + d.hour * 7 + (if d.tram then 1L else 0L) + d.route)))
+    assertEquals(summary, Aggregator.Summary(4593288L, 1679478374436L, 7203L, 730111L))
+    println(f"  departures: ${summary.count}%,d, matches the recorded summary")
   }
 
   test("routes are counted by a hash, and the hash does not collide here") {
