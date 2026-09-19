@@ -1,0 +1,11 @@
+feature/stackbytes-json-read-not-flat-on-aarch64 2026-09-19T15:25:00Z
+agent: claude-code
+heartbeat: 2026-09-19T15:25:00Z
+status: in-progress
+done-so-far: ran the entry's own discriminator (okayCodecJVM/testOnly
+  okay.codec.TestStackBytes) on the operator's own machine (arm64
+  Apple Silicon, also aarch64, JDK 21.0.12) — GREEN, Json.read[Tree]
+  flat at 16 KB at depth 8 and depth 100, not 256 KB
+next: update okay-codec/BUGS.md with the finding per the entry's own
+  stated conclusion (green here -> the test's portability/the
+  container's measurement, not Json.read); no code change
