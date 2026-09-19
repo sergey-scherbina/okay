@@ -1,6 +1,0 @@
-okay-wt-topk-insert 2026-09-19T06:12:43Z
-agent: claude-code
-heartbeat: 2026-09-19T06:12:43Z
-status: in-progress
-done-so-far: promoted from backlog, claimed
-next: implement insert-instead-of-sort in Aggregator.topK
