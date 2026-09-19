@@ -146,16 +146,25 @@ class TestWire extends munit.FunSuite {
       def events: Source[Event] = Writer.of(feed)
 
     val fiber = Async.spawn(Wire.client(host)(Writer.of(down), l => up.send(l).map(_ => ())))
-    // a press AFTER the server's own close: the client's forward loop
-    // is still running (nothing told IT to stop), but nothing comes
-    // back for it, because the SERVER side ended when it saw "logout"
-    Seq(Event.Pressed("inc"), Event.Pressed("logout"), Event.Pressed("inc"))
-      .foreach(feed.offer)
-    feed.close()
+    // "logout" is the LAST press this client makes; the point is what
+    // happens to a session the SERVER decided to end, not a race
+    // against more presses arriving after it (up and down are two
+    // independently scheduled fibers, so an event sent after "logout"
+    // has no ordering guarantee against when the server actually
+    // acts on it — asserting across that race would test the
+    // scheduler, not `serveClosing`). The CLIENT's own `forward` loop
+    // is a separate thing that only ever stops on its OWN Closed
+    // (`Wire.client`'s hybrid rule) — `feed.close()` alone does not
+    // end it, and `fiber.join()` hung forever on that
+    // (wire-close-test-hang, okay-ui/BUGS.md: this exact line wedged
+    // a real gate).
+    Seq(Event.Pressed("inc"), Event.Pressed("logout"), Event.Closed).foreach(feed.offer)
     fiber.join()
 
-    // one frame for "inc" (0 -> 1), and NONE for the trailing "inc"
-    // that arrived after the server had already closed
+    // one frame for "inc" (0 -> 1); "logout" changed no text of its
+    // own, so its only wire effect is the Close line, which the
+    // SCALA client (unlike `live.js`) has no special reaction to
+    // beyond stopping — no third frame either way
     assertEquals(frames.toList, List(view(0), view(1)))
   }
 }

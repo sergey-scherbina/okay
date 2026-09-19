@@ -3,6 +3,52 @@
 Defects owned by this module. Status lives in the machine-readable
 header, never in prose. Newest first.
 
+## wire-close-test-hang — a Live end-to-end test hung forever, on the CLIENT side
+<!-- status: fixed
+     lane: wire-close-test-hang
+     area: okay-ui/src/test/scala/okay/ui/TestWire.scala
+     found-by: manually running the new "end to end, SERVER-initiated"
+       test (added by wire-server-close) with `sbt integrationTest` —
+       the process sat at 0% CPU for 2h44m; a thread dump pinned it to
+       `TestWire.$anonfun$7` at `fiber.join()`
+     gate: `sbt integrationTest` (scoped: `okayUiJVM/testOnly
+       okay.ui.TestWire` with the class's own Live tag disabled
+       locally to drive it directly), 5 repeats clean; the full
+       monorepo `sbt test` afterward, 0 failures
+     fixed-in: (this lane)
+     confirmed: yes -->
+
+**The gate that landed `wire-server-close` never actually ran this
+test.** Its default form (`sbt test`) excludes anything tagged
+`Live`, and this suite is tagged at the class level — so the new test
+compiled, was described as passing in that lane's own changelog
+entry, and never once executed before landing on `origin/master`,
+where the NEXT person to run `sbt integrationTest` would have hung
+for however long they were willing to wait.
+
+The test ended its own event feed with `feed.close()`, on the
+assumption that closing the channel `Wire.client`'s `forward` loop
+reads from would end it. It does not: `forward` only ever stops on
+its OWN `Event.Closed` (the hybrid rule `Wire.client` documents),
+and `Writer.uncons` on a channel that is closed-but-otherwise-idle
+still awaits a next item that is never coming. `fiber.join()` — a raw
+thread park with no timeout of its own — then never returns.
+
+The fix sends `Event.Closed` as the client's own last event, the same
+way every other test in this file already does, and drops the
+trailing press the test used to race against the server's close: `up`
+and `down` are two independently scheduled fibers, so an event sent
+after "logout" has no ordering guarantee against when the server acts
+on it, and asserting across that race tested the scheduler rather
+than `Wire.serveClosing`.
+
+**The lesson, not just the fix:** a Live-tagged test is invisible to
+the default gate in BOTH directions — a broken one and a hung one
+look identical to `sbt test`, which is silence. Landing anything that
+touches a Live suite needs the Live suite actually run, once, before
+the claim is released; a changelog line describing what a test does
+is not evidence that it ran.
+
 ## react-host-vocab — a node the host DOES claim is lowered away inside one it does not
 <!-- status: fixed
      lane: ui
