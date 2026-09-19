@@ -1,5 +1,15 @@
 # Scoped request state (script-scoped-state, 2026-09-19)
 
+**`Scoped[A]` itself has since moved (scoped-to-core, 2026-09-19):**
+`okay.script.api.Scoped` → `okay.Scoped`, physically
+`src/main/scala-jvm/Scoped.scala` (repo root, beside `Platform.scala`)
+— nothing about it was script-specific, and every JVM module already
+depends on core. The MRJar wiring below moved with it, onto `okay`'s
+`.jvmSettings`; see specs/script-scoped-state-mrjar.md. Everything
+past this note describes the ORIGINAL landing, in `okay.script.api` —
+read `current`/`where`/the design as still accurate, just mentally
+substitute the new package for the old.
+
 Prompted by a Habr article on `java.lang.ScopedValue` replacing
 `ThreadLocal` for security-context propagation: no public `set()` so
 a callee cannot mutate the binding, install-for-a-block only, cleanup

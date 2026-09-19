@@ -904,8 +904,9 @@ left to a hand-matched `finally` in `Site.servePage` that had already
 drifted (`Content`'s root/problems were never in its reset list, and
 `Principal` was reset to `None` only there, never bound at the top --
 one dropped line away from leaking a previous request's principal into
-the next on a reused thread). `Scoped[A]` (`okay.script.api.Scoped`)
-replaces the raw `ThreadLocal`: no public `set`, `where(value)(body)`
+the next on a reused thread). `Scoped[A]` (`okay.Scoped` since
+scoped-to-core, 2026-09-19 -- `okay.script.api.Scoped` at first
+landing) replaces the raw `ThreadLocal`: no public `set`, `where(value)(body)`
 binds for `body`'s extent only and restores whatever was bound before
 on every exit, exception included. Every `current` above still reads
 the same way; every `setCurrent`/`setX` is gone. See

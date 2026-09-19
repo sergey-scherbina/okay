@@ -1,5 +1,7 @@
 package okay.script.api
 
+import okay.Scoped
+
 /** The page API -- what a `.md` page sees of the request it answers,
  * the response it shapes, and the container around it. See
  * specs/okay-script.md "Site — the container".

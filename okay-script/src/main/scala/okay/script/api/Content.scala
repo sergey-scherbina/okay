@@ -1,5 +1,6 @@
 package okay.script.api
 
+import okay.Scoped
 import okay.codec.{Json, Schema}
 
 /**

@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 #
-# Compiles okay-script/jdk25/Scoped.scala against a REAL JDK 25+
-# toolchain -- java.lang.ScopedValue does not exist on any older
-# JDK's own runtime classes, and no `-release` flag can grant a
-# compiler access to a newer platform's API than the JVM it itself
-# runs on. So this runs the Scala 3 compiler's own main class through
-# a JDK 25+ `java` binary, found rather than assumed.
+# Compiles jdk25/Scoped.scala against a REAL JDK 25+ toolchain --
+# java.lang.ScopedValue does not exist on any older JDK's own runtime
+# classes, and no `-release` flag can grant a compiler access to a
+# newer platform's API than the JVM it itself runs on. So this runs
+# the Scala 3 compiler's own main class through a JDK 25+ `java`
+# binary, found rather than assumed.
 #
-# Output: okay-script/jdk25/target/classes/okay/script/api/*.class,
-# picked up by build.sbt's okayScript settings (Compile/packageBin/
-# mappings) IF this has been run -- never a hard dependency. A
-# machine that never runs this script builds the exact same jar it
-# always has. See specs/script-scoped-state-mrjar.md.
+# Output: jdk25/target/classes/okay/*.class, picked up by build.sbt's
+# `okay` crossProject .jvmSettings (Compile/packageBin/mappings) IF
+# this has been run -- never a hard dependency. A machine that never
+# runs this script builds the exact same jar it always has. See
+# specs/script-scoped-state-mrjar.md.
 #
 # Usage: scripts/build-mrjar-jdk25.sh
 #   OKAY_JDK25_HOME=/path/to/jdk25   -- overrides auto-discovery
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-src="$root/okay-script/jdk25/Scoped.scala"
-out="$root/okay-script/jdk25/target/classes"
+src="$root/jdk25/Scoped.scala"
+out="$root/jdk25/target/classes"
 
 jdk25_home() {
   if [ -n "${OKAY_JDK25_HOME:-}" ]; then
@@ -48,7 +48,7 @@ jdk25_home() {
 
 home="$(jdk25_home || true)"
 if [ -z "${home:-}" ] || [ ! -x "$home/bin/java" ]; then
-  echo "build-mrjar-jdk25: no JDK 25+ toolchain found (set OKAY_JDK25_HOME, or install one under ~/.sdkman/candidates/java/) -- skipping, okayScript will package the base-only jar" >&2
+  echo "build-mrjar-jdk25: no JDK 25+ toolchain found (set OKAY_JDK25_HOME, or install one under ~/.sdkman/candidates/java/) -- skipping, okay's jvm package will be the base-only jar" >&2
   exit 0
 fi
 

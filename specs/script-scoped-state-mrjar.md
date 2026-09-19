@@ -1,5 +1,15 @@
 # Scoped as a Multi-Release JAR (script-scoped-state-mrjar, 2026-09-19)
 
+**Since moved to core (scoped-to-core, 2026-09-19):** every
+`okay.script.api.Scoped` / `okay-script/jdk25/...` /
+`okayScript` settings reference below is what this looked like on
+first landing, in `okay-script`. The class is now `okay.Scoped`
+(`src/main/scala-jvm/Scoped.scala`), its JDK25 variant is
+`jdk25/Scoped.scala` (repo root), and the `packageBin`/manifest
+wiring lives on the `okay` crossProject's `.jvmSettings` in
+build.sbt, not on `okayScript`. The mechanism, the reasoning, and the
+verification method described here are unchanged — only the location.
+
 `Scoped[A]` (specs/script-scoped-state.md) was built with a thin
 public facade -- `current`, `where` -- specifically so its backend
 could change without touching any of the 13 call sites. This ships

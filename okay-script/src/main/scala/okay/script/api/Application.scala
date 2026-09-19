@@ -1,5 +1,6 @@
 package okay.script.api
 
+import okay.Scoped
 import okay.codec.Schema
 import okay.persist.{Ack, Policy, Store, Topic}
 
