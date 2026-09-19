@@ -194,6 +194,18 @@ class ProducerWriterCarrierBenchmark {
   def chunksFoldProducerOwnMethod(): Long = Probe.foldProducer(producerChunks, Fold.sumLong)
   @Benchmark
   def chunksFoldLeftProducerOwnMethod(): Long = Probe.foldLeftProducer(producerChunks)
+
+  // chunks-fold-vs-foldleft-2x-gap, the probe the entry named next:
+  // the SAME loop with A kept ABSTRACT at the loop (a generic method
+  // dispatching on Fold.OfLong[A], as Chunks.fold's OfLong arm had it
+  // when it was the library's own method over Producer) — the one
+  // semantic difference found between the 2.53 library row and every
+  // 4.5 row compiled in this module (with A = Long, dotty unboxes c(i)
+  // before addLong boxes it again)
+  @Benchmark
+  def chunksFoldProducerAbstractOwnMethod(): Long = Probe.foldProducerAbstract[Long](producerChunks)(using Fold.sumLong)
+  @Benchmark
+  def chunksFoldFeedPureAbstractOwnMethod(): Long = Probe.foldFeedAbstract[Long](writerChunks)(using Fold.sumLong)
   @Benchmark
   def chunksFoldFeedPureOwnMethod(): Long = Probe.foldFeed(writerChunks, Fold.sumLong)
   @Benchmark
@@ -396,6 +408,35 @@ object Probe {
         s = l.addLong(s, c(i))
         i += 1
     s
+
+  /** A abstract at the loop: `c(i)` is `apply(i): Object` handed
+   * straight to `addLong(J, Object)`, no unbox-then-box — the shape
+   * `Chunks.fold`'s OfLong arm compiles to inside the library */
+  def foldProducerAbstract[A](p: Producer[Chunk[A]])(using fo: Fold[A, Long]): Long = fo match
+    case l: Fold.OfLong[A @unchecked] =>
+      var s = l.initLong
+      val it = producerStream.iterator(p)
+      while it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length do
+          s = l.addLong(s, c(i))
+          i += 1
+      s
+    case _ => throw IllegalArgumentException("the probe is for Fold.OfLong")
+
+  def foldFeedAbstract[A](p: Unit ! Writer % Chunk[A])(using fo: Fold[A, Long]): Long = fo match
+    case l: Fold.OfLong[A @unchecked] =>
+      var s = l.initLong
+      val it = okay.feedStream[Unit].iterator(p)
+      while it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length do
+          s = l.addLong(s, c(i))
+          i += 1
+      s
+    case _ => throw IllegalArgumentException("the probe is for Fold.OfLong")
 
   def foldLeftProducer(p: Producer[Chunk[Long]]): Long =
     var s = 0L
