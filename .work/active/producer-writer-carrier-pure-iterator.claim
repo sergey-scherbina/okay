@@ -1,6 +1,0 @@
-feature/producer-writer-carrier-pure-iterator 2026-09-19T18:20:06Z
-agent: claude-code
-heartbeat: 2026-09-19T18:29:14Z
-status: in-progress
-done-so-far: pure iterator override + TestGenerate green; JMH round 1: Feed pure 4.95 = Producer foldLeft 4.79, Chunks.fold 2.56 (the 2x is inline-vs-own-method, probing)
-next: own-method probe round, then spec Results + ordering proposal
