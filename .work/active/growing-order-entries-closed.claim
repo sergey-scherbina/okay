@@ -1,0 +1,6 @@
+feature/growing-order-entries-closed 2026-09-19T23:38:30Z
+agent: claude-code
+heartbeat: 2026-09-19T23:38:30Z
+status: in-progress
+done-so-far: worktree created
+next: rewrite the two growing-order backlog entries to state the 2026-09-18 closure; gate; land
