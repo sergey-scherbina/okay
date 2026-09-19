@@ -538,8 +538,15 @@ object Cbor {
                 // sc(): Schema[C] for some C <: X (su.cases' own bound) —
                 // getC(in, sc()) is Either[String, C] /> R, widened to
                 // Either[String, X] /> R the same way getNative's plain
-                // `get(in, sc())` widens via Either's own covariance
-                case Some((_, sc)) => getC(in, sc()).map(e => e: Either[String, X])
+                // `get(in, sc())` widens via Either's own covariance.
+                // Deferred like every other recursive case
+                // (decodeC-ssum-defer): a case's payload is ordinarily a
+                // product, whose own field is deferred one level in, so
+                // this was never the source of unbounded native stack in
+                // practice — but a hand-written Schema whose case
+                // recurses directly, with no product between, would have
+                // paid full native depth here undetected
+                case Some((_, sc)) => Cont.defer(() => getC(in, sc()))(r => Cont.Pure(r: Either[String, X]))
             }
           case Right(n) => Cont.Pure(Left(s"expected a one-entry map, got $n entries"))
         }
