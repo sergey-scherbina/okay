@@ -1,6 +1,0 @@
-feature/producer-writer-carrier-foldwriter-eager 2026-09-19T17:00:00Z
-agent: claude-code
-heartbeat: 2026-09-19T17:00:00Z
-status: in-progress
-done-so-far: root-caused Chunks.foldWriter's gap (landed d740d052): a box that only escape analysis can eliminate, and EA fails inside Writer.foldWith's bigger trampoline; the real fix needs Writer's Stream instance to walk eagerly via .iterator instead of the fused trampoline, changing foldWriter's contract from a suspended program over an arbitrary G to one specialized for Async+CanBlock, wrapped in `async{}` so the RETURNED value is still a suspended program
-next: confirmed zero production callers of foldWriter today (Bulk.scala/Pipeline.scala/Acceptance.scala all still call Chunks.fold on Producer directly), so the signature is free to change; implement the async{}+iterator-based foldWriter, correctness-test it, benchmark it against Chunks.fold, land if it reaches parity
