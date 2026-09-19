@@ -64,9 +64,12 @@ class TestMcpTools extends munit.FunSuite {
       (_, _, resource) => if allow(resource) then Decision.Permit
                           else Decision.Deny("not for you"))(McpHttp.route(s))
 
-  /** the capability door */
-  private def byCapability(board: Board): Request => Response ! Async =
-    McpAuth.capabilities(root, Meta, () => nowMs)(McpHttp.route(board.serving))
+  /** the capability door, with the caller's list of what is off */
+  private def byCapability(board: Board,
+                           revoked: String => Boolean = _ => false)
+  : Request => Response ! Async =
+    McpAuth.capabilities(root, Meta, () => nowMs,
+      revoked = revoked)(McpHttp.route(board.serving))
 
   // ── talking to it ──────────────────────────────────────────────
 
@@ -297,5 +300,46 @@ class TestMcpTools extends munit.FunSuite {
       """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
       bearer("okc1.nonsense"))
     assertEquals(st, 401)
+  }
+
+  test("a revoked agent is refused — and so is everything attenuated FROM it") {
+    val b = Board()
+    val leaf = Capability.issue(root, "alice").attenuate(Caveat.Agent("a1"))
+    // the holder narrows again, freely, with nobody's permission
+    val child = leaf.attenuate(Caveat.Scope("tool:read"))
+    val route = byCapability(b, revoked = _ == "a1")
+
+    for cap <- Seq(leaf, child) do
+      val (st, _, _) = post(route,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+        bearer(cap.encoded))
+      assertEquals(st, 401, "a revoked branch cannot shed the caveat")
+
+    // an unrelated branch of the SAME root still works
+    val other = Capability.issue(root, "alice").attenuate(Caveat.Agent("a2"))
+    val creds = session(route, bearer(other.encoded))
+    assertEquals(listed(route, creds).toSet, Set("read", "write", "admin"))
+  }
+
+  test("revoking the root id voids every branch of that grant") {
+    val b = Board()
+    val whole = Capability.issue(root, "alice")
+    val route = byCapability(b, revoked = _ == whole.id)
+    for cap <- Seq(whole, whole.attenuate(Caveat.Agent("a1")),
+                   whole.attenuate(Caveat.Agent("a1")).attenuate(Caveat.Scope("tool:read"))) do
+      val (st, _, _) = post(route,
+        """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+        bearer(cap.encoded))
+      assertEquals(st, 401)
+  }
+
+  test("an agent caveat costs nothing while nothing is revoked") {
+    val b = Board()
+    val route = byCapability(b)
+    val cap = Capability.issue(root, "alice")
+      .attenuate(Caveat.Agent("a1")).attenuate(Caveat.Scope("tool:read"))
+    val creds = session(route, bearer(cap.encoded))
+    assertEquals(listed(route, creds), Seq("read"))
+    assert(called(route, creds, "read").contains("read ok"))
   }
 }

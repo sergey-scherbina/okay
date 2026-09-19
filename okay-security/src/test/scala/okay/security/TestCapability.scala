@@ -166,4 +166,58 @@ class TestCapability extends munit.FunSuite {
     assertEquals(Caveat.Until(17L).text, "until=17")
     assertEquals(Caveat.Scope("read").text, "scope=read")
   }
+
+  // ── the handle a revocation list can catch (stage 7) ────────────
+
+  test("Caveat.Agent round-trips: agent=<id>, and parse reads it back") {
+    assertEquals(Caveat.Agent("a1").text, "agent=a1")
+    assertEquals(Caveat.parse("agent=a1"), Some(Caveat.Agent("a1")))
+    assertEquals(Caveat.parse("agent="), None)
+  }
+
+  test("an agent caveat is inert while nothing is revoked") {
+    val c = Capability.issue(root, "alice").attenuate(Caveat.Agent("a1"))
+    assert(c.verify(root, Capability.checking(Now, Set.empty)))
+  }
+
+  test("REVOKING THE AGENT CATCHES ITS DESCENDANTS, which is why it is the handle") {
+    val leaf = Capability.issue(root, "alice").attenuate(Caveat.Agent("a1"))
+    // the holder narrows again — freely, and with nobody's permission
+    val child = leaf.attenuate(Caveat.Scope("read"))
+    val off: String => Boolean = _ == "a1"
+
+    assert(!leaf.verify(root, Capability.checking(Now, Set("read"), off)))
+    assert(!child.verify(root, Capability.checking(Now, Set("read"), off)),
+      "a descendant carries the caveat and cannot shed it")
+    // and an unrelated branch is untouched
+    val other = Capability.issue(root, "alice").attenuate(Caveat.Agent("a2"))
+    assert(other.verify(root, Capability.checking(Now, Set.empty, off)))
+  }
+
+  test("THE TRAP: a deny-list of TOKENS cannot catch a branch") {
+    // the tag IS the token, so it is the first thing anyone reaches
+    // for — and it is new at every step, so one more attenuate and
+    // the holder is out from under the list
+    val leaf = Capability.issue(root, "alice").attenuate(Caveat.Agent("a1"))
+    val child = leaf.attenuate(Caveat.Scope("read"))
+    assertNotEquals(child.tag, leaf.tag)
+    assertEquals(child.id, leaf.id, "the id, by contrast, survives")
+  }
+
+  test("revoking the root id voids the whole tree") {
+    val whole = Capability.issue(root, "alice")
+    val leaf = whole.attenuate(Caveat.Agent("a1"))
+    val off: String => Boolean = _ == whole.id
+    // the id is not a caveat, so the DOOR asks about it (McpAuth);
+    // here the point is only that every descendant carries it
+    assertEquals(leaf.id, whole.id)
+    assertEquals(leaf.attenuate(Caveat.Scope("read")).id, whole.id)
+    assert(off(leaf.id) && off(whole.id))
+  }
+
+  test("checking without a revoked argument behaves exactly as before") {
+    val c = Capability.issue(root, "alice").attenuate(Caveat.Scope("read"))
+    assert(c.verify(root, Capability.checking(Now, Set("read"))))
+    assert(!c.verify(root, Capability.checking(Now, Set("write"))))
+  }
 }

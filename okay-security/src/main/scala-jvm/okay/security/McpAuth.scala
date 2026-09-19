@@ -103,25 +103,42 @@ object McpAuth {
    */
   def capabilities(rootKey: Array[Byte], metadataUrl: String,
                    now: () => Long = () => System.currentTimeMillis(),
-                   scopeOf: String => String = (n: String) => "tool:" + n)
+                   scopeOf: String => String = (n: String) => "tool:" + n,
+                   /**
+                    * WHAT IS OFF, and the caller keeps the list.
+                    *
+                    * Asked about every identifier the capability
+                    * carries: its root `id`, which voids the whole
+                    * tree, and each `Agent` caveat, which voids one
+                    * branch and everything attenuated from it. One
+                    * predicate, because an operator holds one list of
+                    * things that are off — and a function rather than
+                    * a set, so a database or a cache fits too.
+                    *
+                    * NOT the tag: it is new at every attenuation, so a
+                    * deny-list of tokens is escaped by one more
+                    * `attenuate` (specs/security.md stage 7).
+                    */
+                   revoked: String => Boolean = _ => false)
                   (route: Request => Response ! Async)
                   (using Crypto): Request => Response ! Async =
     r =>
       Secure.bearerToken(r).flatMap(Capability.decode) match
         case None => challenge(metadataUrl, 401, "no token")
-        case Some(cap) if !alive(cap, rootKey, now()) =>
+        case Some(cap) if !alive(cap, rootKey, now(), revoked) =>
           challenge(metadataUrl, 401, "invalid_token")
         case Some(cap) =>
           gate(name => cap.verify(rootKey,
-            Capability.checking(now(), Set(scopeOf(name)))))(route)(r)
+            Capability.checking(now(), Set(scopeOf(name)), revoked)))(route)(r)
 
-  /** well-formed, unexpired and ours: the capability against its own
-   * scopes, so an unknown caveat kind refuses here rather than
-   * silently emptying the tool set */
-  private def alive(cap: Capability, rootKey: Array[Byte], now: Long)
-                   (using Crypto): Boolean =
-    cap.verify(rootKey, Capability.checking(now,
-      cap.caveats.flatMap(Caveat.parse).collect { case Caveat.Scope(n) => n }.toSet))
+  /** well-formed, unexpired, not revoked and ours: the capability
+   * against its own scopes, so an unknown caveat kind refuses here
+   * rather than silently emptying the tool set */
+  private def alive(cap: Capability, rootKey: Array[Byte], now: Long,
+                    revoked: String => Boolean)(using Crypto): Boolean =
+    !revoked(cap.id) && cap.verify(rootKey, Capability.checking(now,
+      cap.caveats.flatMap(Caveat.parse).collect { case Caveat.Scope(n) => n }.toSet,
+      revoked))
 
   /**
    * The narrowing itself, per REQUEST — a bearer arrives on every

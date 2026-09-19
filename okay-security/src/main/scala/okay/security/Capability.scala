@@ -50,6 +50,29 @@ import okay.Uid
  * is sortable by issue time, so "everything issued before T is void"
  * is a comparison rather than a list.
  *
+ * AND IF YOU DO KEEP A LIST, KEY IT ON THE RIGHT THING. What
+ * `attenuate` does to each field decides what a deny-list can reach:
+ * `id` and `subject` are unchanged, `caveats` only ever grow, and
+ * `tag` is NEW at every step because it IS the running signature.
+ * So:
+ *
+ *   - denying an `id` voids the whole tree — the root and every leaf
+ *     ever derived from it. "This grant is gone."
+ *   - **denying a `tag` voids exactly one leaf and none of its
+ *     descendants, and that is a trap.** The tag is the token, so it
+ *     is what anyone reaches for first; the holder escapes it by
+ *     calling `attenuate` once more, which costs nothing and needs
+ *     nobody. A deny-list of tokens looks like revocation and is not.
+ *   - a CAVEAT survives downward and cannot be removed, so the handle
+ *     that catches ONE BRANCH is a caveat naming it —
+ *     `Caveat.Agent(id)`, written when the capability is handed over.
+ *     Revoking that id catches the leaf and everything attenuated
+ *     from it, however many times (specs/security.md stage 7).
+ *
+ * The list itself stays the caller's: `Capability.checking` takes a
+ * `revoked` predicate, so a set, a database or a cache all fit and
+ * this file keeps its property of needing none.
+ *
  * (An earlier draft of the spec said a capability's `until` wants an
  * `Hlc`. That was wrong and is corrected there: an expiry is checked
  * by the VERIFIER against the verifier's own clock, and a logical
@@ -162,10 +185,16 @@ object Capability:
    * verifier cannot enforce, and ignoring it grants MORE than the
    * token says.
    */
-  def checking(now: Long, scopes: Set[String]): String => Boolean = text =>
+  def checking(now: Long, scopes: Set[String],
+               /** the caller's own list of what is off, asked about
+                * each `Agent` caveat. A function rather than a set so
+                * a database or a cache fits as well as a `Set`, and so
+                * this file still needs no registry of its own. */
+               revoked: String => Boolean = _ => false): String => Boolean = text =>
     Caveat.parse(text) match
       case Some(Caveat.Until(millis)) => now < millis
       case Some(Caveat.Scope(name)) => scopes.contains(name)
+      case Some(Caveat.Agent(id)) => !revoked(id)
       case None => false        // unknown: refuse, never ignore
 
   // ── bytes and spellings ────────────────────────────────────────
@@ -226,6 +255,17 @@ enum Caveat(val text: String):
   /** one named permission; several scopes are several caveats, and
    * they intersect, because every caveat must hold */
   case Scope(name: String) extends Caveat(s"scope=$name")
+  /**
+   * WHO THIS BRANCH WAS DELEGATED TO — the handle a revocation list
+   * can actually catch (specs/security.md stage 7).
+   *
+   * Written when a capability is handed over, and thereafter
+   * unremovable: every further attenuation carries it, so revoking
+   * the id catches this leaf AND everything derived from it. That is
+   * the property the `tag` does not have, which is why the token
+   * itself is the wrong key for a deny-list.
+   */
+  case Agent(id: String) extends Caveat(s"agent=$id")
 
 object Caveat:
   def parse(text: String): Option[Caveat] =
@@ -234,4 +274,7 @@ object Caveat:
     else if text.startsWith("scope=") then
       val n = text.substring(6)
       if n.isEmpty then None else Some(Caveat.Scope(n))
+    else if text.startsWith("agent=") then
+      val n = text.substring(6)
+      if n.isEmpty then None else Some(Caveat.Agent(n))
     else None
