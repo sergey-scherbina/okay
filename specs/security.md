@@ -592,6 +592,72 @@ the trust boundary held by making them look. 4 tests.
   database, a cache — and the library keeps its property of needing
   none.
 
+  ### An external registry, when somebody else keeps the list
+
+  `revoked` is a predicate rather than a set precisely so the list can
+  live anywhere — including in somebody else's service. That is worth
+  building for rather than against: a product whose business is
+  keeping this list is a supplier, not a competitor, and the library
+  should be able to consume one without knowing whose it is.
+
+  What an external list changes is not the interface. It changes what
+  can go WRONG, and those are the parts a seam has to make explicit:
+
+  ```scala
+  object Revocations:
+    /** an external registry as this library needs it: an answer, or a
+     * NAMED FAILURE — never an empty set standing in for "I could not
+     * ask" */
+    type Source = () => Either[String, Set[String]] ! Async
+
+    /** what the door does while the snapshot is stale */
+    enum Stale:
+      case Allow   // the registry is advisory; keep serving the last answer
+      case Deny    // the registry is load-bearing; refuse rather than guess
+
+  final class Revocations(freshFor: Long, whileStale: Revocations.Stale):
+    /** the predicate `checking` and `McpAuth.capabilities` already take */
+    def revoked(now: () => Long): String => Boolean
+    /** one pass against a source: takes a new list, or KEEPS the old */
+    def refresh(source: Revocations.Source)(now: () => Long): Unit ! Async
+    def age(now: Long): Option[Long]
+  ```
+
+  **The dangerous failure is not "the registry is down".** It is "the
+  registry answered empty": a source that turns an error into
+  `Set.empty` un-revokes everyone the instant it breaks, silently and
+  at exactly the wrong moment. So `Source` answers `Either`, a failed
+  refresh keeps the previous list, and nothing in this type ever
+  shrinks a list by accident.
+
+  **Staleness is the caller's decision and has to be made.** A remote
+  list is only as good as its last successful fetch, so after
+  `freshFor` the snapshot stops being evidence and `whileStale` says
+  what that means here: `Allow` for an advisory list (a kill switch
+  that lags is better than a door that jams), `Deny` where the list is
+  load-bearing. Neither is the default-shaped right answer, which is
+  why there is no default.
+
+  **The hot path stays synchronous and pure.** A capability check must
+  not make a network call — per tool, on `tools/list`, that is one
+  round trip per tool. The snapshot is read; refreshing it is a
+  separate program the caller runs on whatever schedule it already
+  has. The library does not invent a polling policy it cannot measure.
+
+  Nothing above changes `Capability`, `checking` or the door: the
+  predicate was already the right shape, which is the point.
+
+  - [ ] a refreshed snapshot revokes what it holds and nothing else
+  - [ ] A FAILED REFRESH KEEPS THE PREVIOUS LIST — a broken registry
+        cannot un-revoke anyone
+  - [ ] past `freshFor`, `Stale.Deny` refuses every identifier while
+        `Stale.Allow` keeps serving the last answer, and `age` says
+        how old it is either way
+  - [ ] a source that throws is a failure like any other: named, kept,
+        never an empty list
+  - [ ] the MCP door composes with it unchanged — the capability door
+        takes `revocations.revoked(now)` where it took any predicate
+
   Behavior:
   - [x] `Caveat.Agent` round-trips: its text is `agent=<id>`, and
         `Caveat.parse` reads it back (an empty id is not a caveat)
