@@ -65,15 +65,25 @@ object Fuse {
 
   // ---------------------------------------------------------------- what the macro understood
 
-  private enum Plan:
+  /**
+   * TYPED ON THE TERM, not `Any` (fuse-plan-typed-term, 2026-09-20).
+   * `Plan` is declared outside any `Quotes`, so it cannot NAME the
+   * path-dependent `q.reflect.Term` — which is why its halves were
+   * `Any` and every emitter cast them back, ten times. A type
+   * parameter says it instead: `plan` builds a `Plan[q.reflect.Term]`
+   * and the emitters read the halves as what they are. Covariant so
+   * the leaf with no halves is `Plan[Nothing]` and needs no parameter
+   * of its own.
+   */
+  private enum Plan[+T]:
     /** a lens, as its two halves */
-    case L(get: Any, put: Any)
+    case L(get: T, put: T)
     /** Option's `Some` — the prism the tree shapes actually use */
-    case Some_
+    case Some_ extends Plan[Nothing]
     /** two in sequence */
-    case Then(outer: Plan, inner: Plan)
+    case Then(outer: Plan[T], inner: Plan[T])
 
-  private def plan(using q: Quotes)(t: q.reflect.Term): Option[Plan] =
+  private def plan(using q: Quotes)(t: q.reflect.Term): Option[Plan[q.reflect.Term]] =
     import q.reflect.*
     t match
       case Inlined(_, _, inner) => plan(inner)
@@ -160,14 +170,14 @@ object Fuse {
    * (`s.copy(f = s.f.map(...))` reads the field twice as well), and a
    * field read is not what this lane is about.
    */
-  private def emitSet(using q: Quotes)(p: Plan, s: q.reflect.Term, b: q.reflect.Term): q.reflect.Term =
+  private def emitSet(using q: Quotes)(p: Plan[q.reflect.Term], s: q.reflect.Term, b: q.reflect.Term): q.reflect.Term =
     import q.reflect.*
     p match
-      case Plan.L(_, put) => beta(apply2(put.asInstanceOf[Term], s, b))
+      case Plan.L(_, put) => beta(apply2(put, s, b))
       case Plan.Some_ => optionOf(s, b)
       case Plan.Then(Plan.L(get, put), inner) =>
-        val part = beta(apply1(get.asInstanceOf[Term], s))
-        beta(apply2(put.asInstanceOf[Term], s, emitSet(inner, part, b)))
+        val part = beta(apply1(get, s))
+        beta(apply2(put, s, emitSet(inner, part, b)))
       case Plan.Then(Plan.Some_, inner) =>
         optionOf(s, emitSet(inner, Select.unique(s, "get"), b))
       case Plan.Then(outer, inner) =>
@@ -175,16 +185,16 @@ object Fuse {
         // flattened here rather than duplicated above
         emitSet(flatten(Plan.Then(outer, inner)), s, b)
 
-  private def emitModify(using q: Quotes)(p: Plan, s: q.reflect.Term, f: q.reflect.Term): q.reflect.Term =
+  private def emitModify(using q: Quotes)(p: Plan[q.reflect.Term], s: q.reflect.Term, f: q.reflect.Term): q.reflect.Term =
     import q.reflect.*
     p match
       case Plan.L(get, put) =>
-        val part = beta(apply1(get.asInstanceOf[Term], s))
-        beta(apply2(put.asInstanceOf[Term], s, beta(apply1(f, part))))
+        val part = beta(apply1(get, s))
+        beta(apply2(put, s, beta(apply1(f, part))))
       case Plan.Some_ => optionOf(s, beta(apply1(f, Select.unique(s, "get"))))
       case Plan.Then(Plan.L(get, put), inner) =>
-        val part = beta(apply1(get.asInstanceOf[Term], s))
-        beta(apply2(put.asInstanceOf[Term], s, emitModify(inner, part, f)))
+        val part = beta(apply1(get, s))
+        beta(apply2(put, s, emitModify(inner, part, f)))
       case Plan.Then(Plan.Some_, inner) =>
         optionOf(s, emitModify(inner, Select.unique(s, "get"), f))
       case Plan.Then(outer, inner) => emitModify(flatten(Plan.Then(outer, inner)), s, f)
@@ -199,13 +209,12 @@ object Fuse {
    * with `Some_` anywhere answers None here and the caller falls back
    * to the interpretation, which knows what to do about absence.
    */
-  private def emitGet(using q: Quotes)(p: Plan, s: q.reflect.Term): Option[q.reflect.Term] =
-    import q.reflect.*
+  private def emitGet(using q: Quotes)(p: Plan[q.reflect.Term], s: q.reflect.Term): Option[q.reflect.Term] =
     flatten(p) match
-      case Plan.L(get, _) => Some(beta(apply1(get.asInstanceOf[Term], s)))
+      case Plan.L(get, _) => Some(beta(apply1(get, s)))
       case Plan.Some_ => None
       case Plan.Then(Plan.L(get, _), inner) =>
-        emitGet(inner, beta(apply1(get.asInstanceOf[Term], s)))
+        emitGet(inner, beta(apply1(get, s)))
       case Plan.Then(_, _) => None
 
   /**
@@ -220,25 +229,25 @@ object Fuse {
    *   - a `some` in the middle is the test, `if defined then … else
    *     None`, with the rest emitted inside it.
    */
-  private def emitPreview(using q: Quotes)(p: Plan, s: q.reflect.Term): Option[q.reflect.Term] =
+  private def emitPreview(using q: Quotes)(p: Plan[q.reflect.Term], s: q.reflect.Term): Option[q.reflect.Term] =
     import q.reflect.*
     flatten(p) match
-      case Plan.L(get, _) => Some(someOf(beta(apply1(get.asInstanceOf[Term], s))))
+      case Plan.L(get, _) => Some(someOf(beta(apply1(get, s))))
       case Plan.Some_ => Some(s)
       case Plan.Then(Plan.L(get, _), inner) =>
-        emitPreview(inner, beta(apply1(get.asInstanceOf[Term], s)))
+        emitPreview(inner, beta(apply1(get, s)))
       case Plan.Then(Plan.Some_, inner) =>
         emitPreview(inner, Select.unique(s, "get")).map(v => ifDefined(s, v))
       case Plan.Then(_, _) => None
 
   /** a plan the read side can emit: no absence anywhere in it */
-  private def readable(p: Plan): Boolean = p match
+  private def readable(p: Plan[?]): Boolean = p match
     case Plan.L(_, _) => true
     case Plan.Some_ => false
     case Plan.Then(a, b) => readable(a) && readable(b)
 
   /** `andThen` may nest either way; the emitters want it right-nested */
-  private def flatten(p: Plan): Plan = p match
+  private def flatten[T](p: Plan[T]): Plan[T] = p match
     case Plan.Then(Plan.Then(a, b), c) => flatten(Plan.Then(a, flatten(Plan.Then(b, c))))
     case other => other
 
