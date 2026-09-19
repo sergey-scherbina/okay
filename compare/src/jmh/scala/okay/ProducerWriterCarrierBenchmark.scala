@@ -152,7 +152,7 @@ class ProducerWriterCarrierBenchmark {
   // `CanBlock`, no `TypeableK`. Every earlier writer row in this file
   // walks the G-effectful `writerStreamIn`; these two are the honest
   // pair for `chunksFoldProducer` / `chunksFoldLeftProducerDirect`.
-  private val feedStream = summon[Stream[[W] =>> Unit ! Writer % W, Pure]]
+  private val feedStream = okay.feedStream[Unit]
 
   @Benchmark
   def chunksFoldFeedPure(): Long =
@@ -360,7 +360,7 @@ class ProducerWriterCarrierBenchmark {
  * methods — `Chunks.fold`'s own shape, one compiled unit each; see the
  * `*OwnMethod` rows in the class above for what they answer */
 object Probe {
-  private val feedStream = summon[Stream[[W] =>> Unit ! Writer % W, Pure]]
+  private val feedStream = okay.feedStream[Unit]
   private val producerStream = summon[Stream[Producer, Pure]]
 
   def foldProducer(p: Producer[Chunk[Long]], l: Fold.OfLong[Long]): Long =
@@ -398,7 +398,7 @@ object Probe {
 
   def foldFeedSummon(p: Unit ! Writer % Chunk[Long], l: Fold.OfLong[Long]): Long =
     var s = l.initLong
-    val it = summon[Stream[[W] =>> Unit ! Writer % W, Pure]].iterator(p)
+    val it = okay.feedStream[Unit].iterator(p)
     while it.hasNext do
       val c = it.next()
       var i = 0

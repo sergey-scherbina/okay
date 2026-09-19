@@ -250,7 +250,7 @@ object Chunks {
    */
   inline def foldLeft[A, S](p: Chunks[A])(z: S)(inline f: (S, A) => S): S =
     var s = z
-    val it = summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p)
+    val it = feedStream[Unit].iterator(p)
     while it.hasNext do
       val c = it.next()
       var i = 0
@@ -287,7 +287,7 @@ object Chunks {
       foldLeft(p)(b.initBoolean)((s, a) => b.addBoolean(s, a))
     case _ =>
       var s = fo.init
-      val it = summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p)
+      val it = feedStream[Unit].iterator(p)
       while it.hasNext do
         val c = it.next()
         var i = 0
@@ -616,9 +616,9 @@ object Chunks {
       // 4-5%). The per-element cost here is boxing through
       // Iterator[A], not the protocol; the chunk-native path
       // (`Chunks.map`/`fold`) is the one that avoids it, at 9.5.
-      summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p).flatMap(_.iterator)
+      feedStream[Unit].iterator(p).flatMap(_.iterator)
 
     /** the chunks, memoized (first-order: see merge) */
     def toLazyList: LazyList[Chunk[A]] =
-      LazyList.from(summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p))
+      LazyList.from(feedStream[Unit].iterator(p))
 }

@@ -74,7 +74,7 @@ class TestGenerate extends munit.FunSuite {
   }
 
   test("Feed's specialized iterator agrees with Writer.collect on every tree shape") {
-    val St = summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]]
+    val St = feedStream[Unit]
     def walk[W](f: Feed[W]): Vector[W] = St.iterator(f).toVector
     def oracle[W](f: Feed[W]): Vector[W] = Writer.collect[W, Unit, okay.Pure](f).runWith._1
 

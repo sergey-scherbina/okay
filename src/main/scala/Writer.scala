@@ -429,8 +429,11 @@ given Put[Feed] with
  * A writer program is a stream of its told values: the same
  * observation as Writer.uncons with the answer forgotten (Left becomes
  * the end) — an infinite teller unfolds on demand like any stream.
+ * Named `feedStream` beside its G-effectful twin `writerStreamIn`
+ * (feed-stream-given-name): a summon spells `feedStream[Unit]` instead
+ * of the whole type lambda.
  */
-given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
+given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
   def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Pure =
     pure(Writer.uncons(s).toOption)
 
