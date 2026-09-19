@@ -125,9 +125,23 @@
       cold-compiled, zero warnings throughout.
 
       NEXT CLAIMABLE SLICE = STAGE 2, MODULE 2/6: okay-cluster
-      Flow/Flows/Job — `Chunks.foldLeft` call sites (6 in Flows.scala, 1
-      in Job.scala) migrate onto `foldLeftWriter`, now at parity, per
-      above. Then okay-persist Streams/Wire, okay-sql/okay-jdbc,
+      Flow/Flows/Job. SCOPE CORRECTED 2026-09-19 (surveyed while
+      checking whether `foldLeftWriter`'s parity actually unblocks
+      this): NOT a 7-call-site swap. `Flows.scala`'s `Shape[A]` trait —
+      the module's own core streaming abstraction — is declared AROUND
+      `Chunks[A]` itself (`source: Int => Chunks[A]`, `sourceAt: (Int,
+      Long) => Chunks[A]`, `out(ps, lo, hi): Chunks[A]`,
+      `andThen[B](f: Chunks[A] => Chunks[B]): Shape[B]`), with several
+      concrete implementations (`partition`, `one`, the K/O pane
+      `out`s). The 6 `Chunks.foldLeft` call sites (+1 in Job.scala) are
+      just where `Shape[A]`'s OWN `Chunks[A]` gets consumed — retyping
+      them to `foldLeftWriter` means retyping `Shape[A]`'s interface
+      itself to `Feed[Chunk[A]]`/`Source[Chunk[A]]` first, cascading
+      through every implementer. This is real module-2/6 work, not a
+      quick unblock — claim it as its own staged effort (survey
+      `Shape[A]`'s full contract and test coverage before touching the
+      trait), not a same-session follow-on to the fold combinator.
+      Then okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops —
       leaves first, `Chunks` last and gated on `foldWriter` closing its
       remaining dispatch-tax gap (above); each lane `sbt Test/compile`
