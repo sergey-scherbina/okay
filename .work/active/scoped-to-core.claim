@@ -1,6 +1,0 @@
-feature/scoped-to-core 2026-09-19T10:53:45Z
-agent: claude-code
-heartbeat: 2026-09-19T10:53:45Z
-status: in-progress
-done-so-far: sprint item written
-next: worktree, git mv, rewire build.sbt, verify
