@@ -1,0 +1,13 @@
+feature/scan-into-the-other-scanners 2026-09-19T14:25:00Z
+agent: claude-code
+heartbeat: 2026-09-19T14:25:00Z
+status: in-progress
+done-so-far: worktree created
+next: one scanner first (the backlog's own ask) — Markdown (okay-codec,
+  151 lines, smallest of the four named): extend okay.lex.ScanInto
+  instead of Scan, write stepInto directly onto the Growable sink
+  instead of building a Vector per step; parse() already calls
+  scan.stepInto generically so no caller changes. Add a JMH lane
+  (compare/src/jmh/scala/okay/TextBenchmark.scala already has the
+  Json equivalent, Scan.all(scanner)(doc)) and measure before/after,
+  alternating arms, before landing
