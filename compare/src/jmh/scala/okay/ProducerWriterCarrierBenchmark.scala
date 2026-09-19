@@ -42,6 +42,20 @@ import RowLift.plus
  * numbers, per the performance skill: three whole runs of this class
  * (each fork already restarts the JVM), median compared, host load
  * recorded, a row appended to src/jmh/history.tsv.
+ *
+ * ADDED LATER, the chunk-aware fold stage 0 named as a prerequisite
+ * (`Chunks.foldLeftWriter`/`foldWriter` in okay-stream's Chunks.scala):
+ * `chunksFoldWriterAsync` / `chunksFoldLeftWriterDirect` /
+ * `chunksFoldLeftProducerDirect` / `chunksFoldWriterDispatched` — a
+ * MIXED result, three rounds, medians: the literal-step form
+ * (`foldLeftWriter`, what `okay-cluster`'s own `Chunks.foldLeft` call
+ * sites use) reaches parity — 5.00 vs `chunksFoldLeftProducerDirect`'s
+ * 4.76 us/op. The `Fold`-instance-dispatched form (`foldWriter`, what
+ * `Chunks.fold`/`agg.fold` need) does not: 17.30 us/op, three different
+ * implementations landing there — 3.5x `foldLeftWriter`'s OWN direct
+ * call (5.00, same carrier, no dispatch), 6.8x `chunksFoldProducer`'s
+ * 2.54 (the Fold-dispatch baseline on Producer). See each benchmark's
+ * own comment and Chunks.scala's doc on both combinators.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -75,6 +89,12 @@ class ProducerWriterCarrierBenchmark {
       else Writer.tell(chunks(i)).flatMap(_ => go(i + 1))
     go(0)
 
+  private def writerChunksAsync: Source[Chunk[Long]] =
+    def go(i: Int): Source[Chunk[Long]] =
+      if i >= chunks.length then okay.pure(())
+      else Writer.tell(chunks(i)).plus[Async].flatMap(_ => go(i + 1))
+    go(0)
+
   /** the same unboxed per-chunk sum on both sides: `Chunks.fold`
    * dispatches to this shape internally for `Fold.OfLong`; `Writer`
    * has no such dispatch (its own told value IS the chunk here), so
@@ -98,6 +118,55 @@ class ProducerWriterCarrierBenchmark {
   @Benchmark
   def chunksFoldWriter(): Long =
     Writer.fold[Chunk[Long], Long, Unit, Nothing](writerChunks).runWith._1
+
+  // The three below are Async-shaped (Blob's own shape) rather than
+  // Pure, only because `Chunks.foldWriter`/`foldLeftWriter` marked
+  // `inline` (needed to reach parity, see their doc in Chunks.scala)
+  // stop compiling a literal `Nothing`/`Pure` at a fresh call site —
+  // an unrelated inliner limitation. `Chunks.fold` has no G-generic
+  // form to build an Async-shaped Producer control from (`Chunks[A]`
+  // is Pure by definition), so the control these three compare
+  // against stays the Pure `chunksFoldProducer` above; Async overhead
+  // with no real async op is a few ns, not the multi-us this measures.
+
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def chunksFoldWriterAsync(): Long =
+    given CanBlock = cb
+    Writer.fold[Chunk[Long], Long, Unit, Async](writerChunksAsync).runWith._1
+
+  // PARITY, MEASURED: foldLeftWriter called DIRECTLY, a literal step,
+  // no Fold instance — the shape okay-cluster's own Chunks.foldLeft
+  // call sites (Flows.scala, Job.scala) already use. This is the
+  // number that says stage 2 can migrate THOSE, today.
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def chunksFoldLeftWriterDirect(): Long =
+    given CanBlock = cb
+    Chunks.foldLeftWriter[Long, Long, Async](writerChunksAsync)(0L)((s, a) => s + a).runWith._1
+
+  // the SAME literal-step shape on Producer, chunked — the control
+  // chunksFoldLeftWriterDirect reads against, since chunksFoldProducer
+  // above uses Chunks.fold(using a Fold instance), not foldLeft
+  @Benchmark
+  def chunksFoldLeftProducerDirect(): Long =
+    Chunks.foldLeft(producerChunks)(0L)((s, a) => s + a)
+
+  // NOT AT PARITY, MEASURED, and the gap is real: foldWriter, the
+  // Fold-INSTANCE-dispatched form Chunks.fold/agg.fold need (Bulk.scala,
+  // Pipeline.scala, Acceptance.scala) — three shapes tried (a hand-
+  // rolled walker, this foldWith-based one, and this one with
+  // foldWriter ALSO inline) all land at 16.7-17.8us: 3.5x
+  // chunksFoldLeftWriterDirect above (SAME carrier, SAME per-element
+  // arithmetic, no dispatch — isolates the dispatch tax specifically)
+  // and 6.8x chunksFoldProducer (the Fold-dispatch baseline on
+  // Producer). See Chunks.scala's own doc on foldWriter/foldLeftWriter
+  // for what is ruled out.
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def chunksFoldWriterDispatched(): Long =
+    given CanBlock = cb
+    Chunks.foldWriter[Long, Long, Async](writerChunksAsync)(using Fold.sumLong).runWith._1
 
   /** the per-chunk doubler `Chunks.map` specializes internally
    * (`ChunkBuf.mapper`); `Writer.map` has no chunk-aware combinator

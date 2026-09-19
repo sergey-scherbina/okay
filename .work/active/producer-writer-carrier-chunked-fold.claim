@@ -1,6 +1,0 @@
-feature/producer-writer-carrier-chunked-fold 2026-09-19T11:46:35Z
-agent: claude-code
-heartbeat: 2026-09-19T11:46:35Z
-status: in-progress
-done-so-far: writerK moved into object Writer companion, full-repo compile+Test/compile verified zero warnings, 4 files fixed, tests green (743/21/20/109)
-next: land this as its own commit, then continue the actual chunk-aware writer fold

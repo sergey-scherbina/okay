@@ -316,3 +316,65 @@ Not a reason to block stage 1; a reason to expect a real, if small,
 regression on `Blob.getSource`'s own drain once something folds it the
 way this benchmark does, until the same chunk-aware fold from the
 paragraph above exists.
+
+### The chunk-aware fold prerequisite, measured 2026-09-19
+
+Stage 0's own diagnosis named the missing piece: a chunk-aware fold for
+the writer carrier, walking told chunks with an inlined per-element
+loop, the writer analogue of `Chunks.foldLeft`/`Fold.OfLong` dispatch.
+Built as `Chunks.foldLeftWriter` (a literal-step form) and
+`Chunks.foldWriter` (a `Fold`-instance-dispatched form, matching what
+`Chunks.fold` itself does) in `okay-stream/src/main/scala/Chunks.scala`,
+on top of the existing `Writer.foldWith` trampoline. Three whole-suite
+JMH rounds, `compare/src/jmh/scala/okay/ProducerWriterCarrierBenchmark.scala`
+(N=10000, chunk=64), medians:
+
+| benchmark | round 1 | round 2 | round 3 | shape |
+|---|---|---|---|---|
+| `chunksFoldLeftProducerDirect` | 4.755 | — | 4.755 | `Chunks.foldLeft`, literal step (control) |
+| `chunksFoldLeftWriterDirect` | 5.034 | 4.969 | 5.004 | `foldLeftWriter`, literal step, called directly |
+| `chunksFoldProducer` | 2.540 | 2.544 | 2.558 | `Chunks.fold`, `Fold.OfLong` dispatch (control) |
+| `chunksFoldWriter` | — | — | 5.143 | pre-existing Pure baseline, unchanged from stage 0 |
+| `chunksFoldWriterAsync` | — | — | 4.991 | same, Async-shaped |
+| `chunksFoldWriterDispatched` | 17.815 | 16.727 | 17.304 | `foldWriter`, `Fold.OfLong` dispatch |
+
+**Mixed result, and the split is real, not noise.** `foldLeftWriter`
+called directly with a literal step — the shape `okay-cluster`'s own
+`Chunks.foldLeft` call sites (`Flows.scala`: 6, `Job.scala`: 1) already
+use — reaches **parity**: 5.00 vs the Producer control's 4.76 us/op,
+consistent across all three rounds. `foldWriter`, the `Fold`-instance-
+dispatched form that `Chunks.fold`/`agg.fold` need (`Bulk.scala`,
+`Pipeline.scala`, `Acceptance.scala` — the only three such call sites)
+does **not**: 17.30 us/op, stable across three different implementation
+attempts (a hand-rolled recursive walker, a `Writer.foldWith`-based
+rewrite, and the same rewrite with the dispatcher itself also marked
+`inline`) — **3.5x** `foldLeftWriter`'s own direct call (same carrier,
+same per-element arithmetic, no dispatch — isolates the dispatch tax)
+and **6.8x** `chunksFoldProducer`, the Fold-dispatch baseline on
+Producer.
+
+**Diagnosed as far as this environment allows.** The first attempt put
+the per-element step inside a nested `@tailrec` recursive local `def`;
+an `inline` parameter stops being inlined across that boundary, boxing
+the step into a real `Function2` called once per ELEMENT instead of
+once per chunk — fixed by moving the per-element `while` into the same
+flat, non-recursive scope where `Writer.foldWith`'s own step closure is
+written (this is what `foldLeftWriter` reaching parity proves). The
+remaining gap is isolated to the dispatch layer specifically: the ONLY
+difference between the fast direct call and the slow dispatched one is
+that the dispatched step captures a matched `Fold.OfLong` instance and
+calls a method on it (`l.addLong(s,a)`) instead of being a fully
+literal expression — but `Chunks.fold` has the identical virtual-call
+shape and pays no such cost, so the tax is specific to the extra
+`inline` layers `foldWriter` asks the compiler to flatten, not to
+virtual dispatch on `Fold` in general. Root cause not fully isolated;
+would need a profiler (JITWatch or `-prof perfasm`) this environment
+does not have.
+
+**Ship the half that works.** `foldLeftWriter` is at parity now — it
+unblocks `okay-cluster`'s `Flows.scala`/`Job.scala` stage-2 migration
+today. `foldWriter`'s gap stays open and documented; `Bulk.scala`,
+`Pipeline.scala`, and `Acceptance.scala` stay on `Producer`/`Chunks.fold`
+until it closes. A retry should start from `Chunks.scala`'s doc comments
+on both combinators, which name the three shapes already tried, so a
+second attempt does not repeat them.
