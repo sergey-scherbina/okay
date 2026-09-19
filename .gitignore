@@ -9,7 +9,13 @@ target/
 .worktrees/
 okay-chat*.db
 okay-chat.log/
-# the demo board is a FileStore directory the demo writes at its root
+# the demo board and the two-node log are FileStore DIRECTORIES the
+# demo creates where it is told. Their defaults now live under
+# target/ (ChatDemo.ChatConf.dbDefault), so these two lines are for
+# older checkouts and for anyone who points the env var back here.
+# Keep in mind what caught us once: an ignore rule does not reach a
+# path that is ALREADY TRACKED — 8f2c56d7 committed a segment of the
+# first one straight past this line.
 okay-board.log/
 hs_err_pid*.log
 

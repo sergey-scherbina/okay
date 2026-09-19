@@ -61,3 +61,25 @@ class TestDemoDeploy extends munit.FunSuite:
     val file = Module.value[ChatDemo.ChatConf](ChatDemo.ChatConf("/nowhere/at/all/board.log")) and ChatDemo.wiring
     assertEquals(okay.deploy.Needs.declared(file), Vector(okay.deploy.Need.Volume("/nowhere/at/all")))
   }
+
+  /**
+   * THE DEFAULT MAY NOT WRITE WHERE GIT IS LOOKING.
+   *
+   * `ChatConf.dbDefault` is a FileStore DIRECTORY the demo creates
+   * wherever it points. It used to point at `okay-board.log` — the
+   * repository root of whoever ran the demo — and on 2026-09-19 a
+   * 273-byte segment of one was found committed (8f2c56d7), past a
+   * `.gitignore` line that had named the directory all along: an
+   * ignore rule cannot reach a path that is already tracked, so such
+   * a file survives every later sweep.
+   *
+   * Asserted rather than remembered, because the next person to edit
+   * a default will not have read that story.
+   */
+  test("the local default writes under target/, not at the repository root") {
+    assert(ChatDemo.ChatConf.dbDefault.startsWith("target/"),
+      s"${ChatDemo.ChatConf.dbDefault} would be created wherever the demo is run from")
+    // and the boot path uses the same constant rather than its own copy
+    assert(!ChatDemo.ChatConf.dbDefault.contains(".."),
+      "a default that climbs out of target/ is the same defect wearing a path")
+  }

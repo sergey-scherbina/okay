@@ -59,7 +59,7 @@ object ChatDemo {
    * meet one log.
    */
   lazy val boardStore: okay.persist.Store =
-    Board.store(sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log"))
+    Board.store(sys.env.getOrElse(ChatConf.dbVar, ChatConf.dbDefault))
   def opsStore: okay.persist.Store = boardStore
 
   /** graceful shutdown and per-route RED (specs/ops.md): `/readyz`
@@ -546,8 +546,30 @@ object ChatDemo {
   final case class ChatConf(db: String)
   object ChatConf:
     val dbVar = "OKAY_CHAT_DB"
+    /**
+     * UNDER `target/`, and said ONCE.
+     *
+     * The store is a FileStore DIRECTORY the demo creates wherever
+     * this points, so a default of `okay-board.log` created it at the
+     * repository root of whoever ran the demo — and on 2026-09-19 a
+     * 273-byte segment of one was found committed (8f2c56d7), past a
+     * `.gitignore` line that had named the directory all along: an
+     * ignore rule does not reach a path already tracked, which is how
+     * such a file survives every later sweep.
+     *
+     * `target/` is ignored wholesale and is where a build already
+     * writes, so a local run has nowhere to offer the repository.
+     * Every deployment sets `OKAY_CHAT_DB` explicitly (see
+     * `DemoDeploy`: `/app/data/okay-board.log` on its volume), so
+     * this default is the local run's and nothing else's.
+     *
+     * And it lives here rather than in two string literals, because
+     * two copies of a default are how the boot path and the config
+     * value drift apart while both look right.
+     */
+    val dbDefault = "target/okay-board.log"
     def from(env: String => Option[String]): ChatConf =
-      ChatConf(env(dbVar).getOrElse("okay-board.log"))
+      ChatConf(env(dbVar).getOrElse(dbDefault))
 
   /** the application's root, named so a deployment can read it
    * (specs/di.md stage 3): the config is a VALUE, so everything after
@@ -613,7 +635,9 @@ object ChatDemo {
   : (ChatConf, okay.persist.Store, Board, Transport, Secrets) ?=> Unit ! Resource =
       Jetty.serve(port)(app(wire[okay.persist.Store])(node match
         case Some(n) =>
-          val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")
+          // under target/ for the same reason as ChatConf.dbDefault:
+          // the two-node log is a directory this writes where it is told
+          val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "target/okay-chat.log")
           val tickMs = sys.env.get("OKAY_CHAT_TICK_MS").flatMap(_.toLongOption).getOrElse(500L)
           val leaseMs = sys.env.get("OKAY_CHAT_LEASE_MS").flatMap(_.toLongOption).getOrElse(5000L)
           val twoNode = TwoNode(java.nio.file.Path.of(logDir), n, tickMs, leaseMs)
