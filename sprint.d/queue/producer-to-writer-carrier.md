@@ -172,6 +172,21 @@
       quick unblock — claim it as its own staged effort (survey
       `Shape[A]`'s full contract and test coverage before touching the
       trait), not a same-session follow-on to the fold combinator.
+      FULL SCOPE FOUND 2026-09-19: `Shape[A]` traces to `Flow.Src`, a
+      PUBLIC type 21 call sites across 4 modules construct directly,
+      and a full retype ALSO needs a writer-carrier `map`/`filter`/
+      `take`/`drop`/`rechunk` family that does not exist yet (only the
+      fold terminals do) — genuinely multi-session work, not started.
+      A SCOPED-DOWN MIDDLE GROUND WAS TRIED AND MEASURED, RULED OUT:
+      bridging the existing `Chunks[A]` source into a writer `Feed` via
+      `Source.ofProducer` at just the 7 fold call sites, keeping
+      `Flow.Src` on `Producer`, measures 7.425us/34,080 B/op against
+      plain `Chunks.foldLeft`'s 4.966us/10,064 B/op — 1.5x SLOWER, 3.4x
+      more garbage (JDK 21.0.12, N=10000/64). The bridge tax eats the
+      entire benefit `foldLeftWriter`'s own fix bought. There is no
+      cheap middle ground here: full retype or nothing. See the spec's
+      `## Results` and backlog.d/okay-core/
+      okay-cluster-flow-retype-needs-combinator-library.md.
       Then okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops —
       leaves first, `Chunks` last; the `foldWriter` gate above is

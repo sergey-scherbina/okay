@@ -555,3 +555,38 @@ different, larger question (closing it would mean Producer's own
 G-effectful walk needs the same treatment `Chunks.foldLeft`'s PURE walk
 already has) than this combinator's own dispatch tax, which is now
 closed.
+
+### Stage 2 module 2/6 (okay-cluster): the scoped-down retype does NOT work either (2026-09-19)
+
+Surveyed `Flows.scala`/`Flow.scala` in full. `Shape[A]` (the internal
+compiled-plan type) is entirely private, but its `source`/`sourceAt`/
+`out` all produce `Chunks[A]`, tracing back to `Flow.Src[A](parts:
+Vector[Long => Chunks[A]])` — a PUBLIC type 21 call sites across
+okay-cluster's own tests, `compare/wroclaw`, `okay-persist`, and
+`okay-demo` construct directly. A full retype would ALSO need a
+writer-carrier equivalent of `Chunks.mapWith`/`filterWith`/`take`/
+`drop`/`takeWhile`/`dropWhile`/`rechunkWith` — none exist yet, only the
+fold terminals (`foldLeftWriter`/`foldWriter`) do — so "retype Flow"
+is really "build a combinator library, then update 21 call sites,"
+correctly assessed as multi-session work, deferred.
+
+**The scoped-down middle ground was tried and measured, closing it off
+for good:** keep `Flow.Src`/`map`/`filter` on `Producer`, and at
+Flows.scala's 7 internal `Chunks.foldLeft` call sites, bridge the
+existing `Chunks[A]` into a writer `Feed` via `Source.ofProducer`
+(already exists) and fold with the now-fast `foldLeftWriter`. Measured,
+JDK 21.0.12, N=10000/64: `chunksFoldLeftViaOfProducerBridge` 7.425us,
+34,080 B/op vs `chunksFoldLeftProducerDirect`'s 4.966us, 10,064 B/op —
+**1.5x SLOWER, 3.4x more garbage.** The bridge tax (stage 0's own
+elementwise finding: 75-90% overhead) dominates and eats the entire
+benefit `foldLeftWriter`'s own fix bought — bridging a Producer source
+into a writer program just to fold it is never worth it; only a
+GENUINELY writer-native source (no bridge at all) reaches parity.
+
+**Conclusion: there is no cheap middle ground for okay-cluster.**
+Either the full retype (public `Flow.Src` + the missing combinator
+library, a real multi-session undertaking) or nothing — a partial,
+bridge-based swap makes Flows.scala's fold sites slower for no reason.
+Filed as backlog.d/okay-core/okay-cluster-flow-retype-needs-combinator-library.md
+so a future attempt starts from the full-retype path, not this
+already-refuted shortcut.
