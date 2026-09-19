@@ -1,0 +1,13 @@
+feature/wroclaw-pipeline-named 2026-09-19T16:36:43Z
+agent: claude-code
+heartbeat: 2026-09-19T16:36:43Z
+status: in-progress
+done-so-far: read the entry; confirmed the Wroclaw GTFS feed data is
+  present locally at okay-spark/target/data/gtfs, so
+  TestWroclawAlgebra (Live-tagged) is actually runnable here
+next: merge GtfsNamed.departures into Gtfs.departures (named
+  payloads, comments deleted), update TestWroclawAlgebra's call
+  sites (analysis, the trace test), replace the twin-equality test
+  with an assertion against a recorded summary constant, delete
+  GtfsNamed.scala, run TestWroclawAlgebra Live to get the real
+  numbers, gate, changelog, land
