@@ -1,0 +1,6 @@
+feature/producer-to-writer-carrier 2026-09-19T09:34:17Z
+agent: claude-code
+heartbeat: 2026-09-19T09:34:17Z
+status: in-progress
+done-so-far: spec landed 5080cdcc; starting stage 0 (benchmark-only)
+next: write the A/B benchmark (Producer[Chunk[A]] vs Unit ! Writer % Chunk[A]) on Chunks.fold/map, run alternating, record verdict
