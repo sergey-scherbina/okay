@@ -508,3 +508,14 @@ force, all already practiced, none previously written down:
   7.6 µs thread handoff (§0 of docs/benchmarks.md) and no okay lane
   does — quote it where a cats number is close.
 - `organization` is `dev.okay` (build.sbt is the decision in force).
+- **There is no single JDK the project targets — 21 is the floor,
+  23 the ceiling, and `.sdkmanrc` pins the one version inside both**
+  (specs/jdk-compatibility.md, jdk-compatibility-matrix). The floor
+  is JDK 21 because `Platform.scala`'s DEFAULT scheduler is Loom
+  (virtual threads, JEP 444, non-preview since 21) — not an opt-in
+  a few modules made, the JVM runtime's own execution model. The
+  ceiling is okay-spark: Hadoop's `UserGroupInformation` reaches
+  the Security Manager, removed outright in JDK 24 (JEP 486), no
+  flag reaches past it (`TestSparkInterop` skips itself on 24+
+  rather than fail opaquely). Read the doc before proposing either
+  direction on "bump the JDK".
