@@ -374,20 +374,27 @@ A phase is asserted ON ITS OWN through `src/test/scala/DirectProbe.scala`,
 test-side macros that run one phase over a block and answer with plain
 data, before any bind is emitted and without running anything:
 
-- [ ] `DirectProbe.deferred` — the block after the defer pre-pass,
+- [x] `DirectProbe.deferred` — the block after the defer pre-pass,
   shown: a marked call at the program type carries `Free.delay` by
   default and not under `eagerCalls`; a tail call carries it under
-  both; a call already under `!.tailcall` is wrapped once, not twice
-- [ ] `DirectProbe.marks` — how many marks the mark analysis finds,
+  both; a call already under `!.tailcall` is wrapped once, not twice;
+  and a block with no enclosing def (one in a class body) is left as
+  written — the pass finds the def a self-call would name by walking
+  up from the splice owner, and stops when there is none
+- [x] `DirectProbe.marks` — how many marks the mark analysis finds,
   counting an auto-colouring conversion as the mark it is
-- [ ] `DirectProbe.runnable` — the element type a value could RUN at
+- [x] `DirectProbe.runnable` — the element type a value could RUN at
   as a bare statement of a block over F: `Some(Unit)` for an operation
   of the row and for a program of it, `None` for a foreign monad
-- [ ] `DirectProbe.dropped` — whether a statement of that type would
-  be a silent drop (the error's own predicate)
-- [ ] `DirectProbe.independentRun` — the names of the leading vals the
+- [x] `DirectProbe.dropped` — whether a statement of that type would
+  be a silent drop (the error's own predicate); and that the predicate
+  asks for `Direct.Effect`, the auto-colouring marker — the one name
+  that resolved differently outside `object Direct` (`okay.Effect` is
+  the narrower type, and the compiler said nothing); red with the bare
+  name, green qualified
+- [x] `DirectProbe.independentRun` — the names of the leading vals the
   parallel analysis would spawn together; a dependent leaf ends the run
-- [ ] `DirectProbe.slots` — the value slots an application spine
+- [x] `DirectProbe.slots` — the value slots an application spine
   hoists: receiver and arguments, the elements of a varargs
 
 ## Decisions
