@@ -1,0 +1,10 @@
+feature/changelog-kebab-case-decodeC 2026-09-19T16:10:00Z
+agent: claude-code
+heartbeat: 2026-09-19T16:10:00Z
+status: in-progress
+done-so-far: found while gating aggregator-sum-hides-its-specialization
+  (the affected closure reached okay-deploy for the first time this
+  session) — changelog.d/decodeC-ssum-defer.md (my own earlier lane)
+  is not kebab-case, TestChangelogEntries fails on it
+next: git mv to a kebab-case name, land quickly since it blocks any
+  gate whose affected closure reaches okay-deploy
