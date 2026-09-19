@@ -1,6 +1,0 @@
-feature/jetty-virtual-threads 2026-09-19T12:06:27Z
-agent: claude-code
-heartbeat: 2026-09-19T12:06:27Z
-status: in-progress
-done-so-far: VirtualThreadPool confirmed present in jetty-util 12.0.13 via javap, Server(ThreadPool) ctor confirmed
-next: worktree, one-line swap, test, gate
