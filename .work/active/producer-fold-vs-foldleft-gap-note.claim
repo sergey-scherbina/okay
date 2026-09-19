@@ -1,6 +1,0 @@
-feature/producer-fold-vs-foldleft-gap-note 2026-09-19T18:30:00Z
-agent: claude-code
-heartbeat: 2026-09-19T18:30:00Z
-status: in-progress
-done-so-far: investigated whether foldWriter's remaining ~2x gap vs Chunks.fold could be closed further (producer-fold-dispatch-vs-direct-gap, released without landing code -- a decisive diagnostic test was blocked by severe host contention, load average 30+, not a real code problem)
-next: record the finding -- the gap is NOT writer-specific, it's identical on Producer's own chunksFoldLeftProducerDirect vs chunksFoldProducer, allocation/warmup already ruled out, needs perfasm/JITWatch this environment doesn't reliably have -- in the sprint item and a backlog entry so a future attempt with real profiling tools knows where to start
