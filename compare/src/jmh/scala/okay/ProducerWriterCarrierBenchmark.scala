@@ -296,6 +296,29 @@ class ProducerWriterCarrierBenchmark {
     given CanBlock = cb
     Stream.fold(producerLongs)(using Fold.sumLong)
 
+  // producer-effectful-stream-iterator: the G-effectful producer's
+  // `.iterator`, specialized (an override, mirroring writerStreamIn's)
+  // against the DEFAULT walk it replaced, written out here verbatim
+  // (`Iterator.unfold(s)(uncons(_).runWith)`) so the pair alternates
+  // in one run. Elementwise, N=10000 Async-widened produces.
+  private val producerStreamAsync = summon[Stream[[A] =>> A ! (Produce + Async), Async]]
+
+  @Benchmark
+  def producerIteratorSpecialized(): Long =
+    given CanBlock = cb
+    var s = 0L
+    val it = producerStreamAsync.iterator(producerLongs)
+    while it.hasNext do s += it.next()
+    s
+
+  @Benchmark
+  def producerIteratorDefaultUnfold(): Long =
+    given CanBlock = cb
+    var s = 0L
+    val it = Iterator.unfold(producerLongs)(x => producerStreamAsync.uncons(x).runWith)
+    while it.hasNext do s += it.next()
+    s
+
   @Benchmark
   def bridgeProducerThroughSource(): Long =
     given CanBlock = cb

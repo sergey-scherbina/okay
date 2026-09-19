@@ -1,6 +1,7 @@
 package okay
 
 import !.*
+import RowLift.plus
 
 import scala.util.chaining.*
 
@@ -71,6 +72,41 @@ class TestGenerate extends munit.FunSuite {
     // adaptation needed since the value already IS Unit
     val empty: Feed[Int] = pure(())
     assertEquals(Writer.uncons(empty), Left(()))
+  }
+
+  test("the G-effectful producer's specialized iterator agrees with the uncons walk, Async performed") {
+    type P = Produce + Async
+    val S = summon[Stream[[A] =>> A ! P, Async]]
+    // the oracle: the DEFAULT walk this override replaces, one uncons
+    // program run per step
+    def oracle[A](p: A ! P): Vector[A] =
+      Iterator.unfold(p)(s => S.uncons(s).runWith).toVector
+    def walk[A](p: A ! P): Vector[A] = S.iterator(p).toVector
+
+    var performed = 0
+    val mixed: Int ! P =
+      produce(1).plus[Async].flatMap(_ => async { performed += 1 }.plus[Produce])
+        .flatMap(_ => produce(2).plus[Async]).flatMap(_ => async { performed += 1 }.plus[Produce])
+        .flatMap(_ => produce(3).plus[Async])
+    assertEquals(walk(mixed), Vector(1, 2, 3))
+    val n1 = performed
+    assertEquals(oracle(mixed), Vector(1, 2, 3))
+    assertEquals(performed - n1, n1, "both walks perform every Async op")
+    // ends in an Async op, not a produce: the terminal Inject(g) arm
+    val tail: Int ! P = produce(7).plus[Async].flatMap(_ => async { 9 }.plus[Produce])
+    assertEquals(walk(tail), Vector(7))
+    assertEquals(oracle(tail), Vector(7))
+    // a bare produce is one element; a bare pure is none
+    assertEquals(walk(produce(5).plus[Async]), Vector(5))
+    assertEquals(walk(pure[P, Int](5)), Vector.empty)
+    // lazy: an endless effectful producer yields on demand
+    def endless(i: Int): Int ! P = produce(i).plus[Async].flatMap(_ => endless(i + 1))
+    assertEquals(S.iterator(endless(0)).take(4).toVector, Vector(0, 1, 2, 3))
+    // stack-safe across a long Async-interleaved walk
+    def long(i: Int): Int ! P =
+      if i >= 200000 then pure(i)
+      else produce(i).plus[Async].flatMap(_ => async { () }.plus[Produce]).flatMap(_ => long(i + 1))
+    assertEquals(S.iterator(long(0)).drop(199999).next(), 199999)
   }
 
   test("Feed's specialized iterator agrees with Writer.collect on every tree shape") {

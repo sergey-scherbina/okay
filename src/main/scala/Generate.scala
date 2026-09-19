@@ -283,6 +283,52 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
       (g => Inject(g).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
       (w => pure(Some((produced[A](w), k(w)))))
 
+  /**
+   * The specialized linear view, mirroring `writerStreamIn`'s own
+   * (Writer.scala) and the pure instance's above: no `Option`, no
+   * `Either`, no program built and run per step — the DEFAULT
+   * `Iterator.unfold(s)(uncons(_).runWith)` pays all three per
+   * element. A forwarded `G`-operation is answered by `Handler[G].
+   * handle` directly (producer-effectful-stream-iterator; the writer
+   * twin measured 6.29 -> 5.43 us and 32,952 -> 12,688 B/op on 157
+   * chunks for the same move). The `produced` casts are the identity
+   * signature's own, as in `uncons` above.
+   */
+  override def iterator[A](p: A ! Produce + G)(using H: Handler[G]): Iterator[A] =
+    import scala.annotation.tailrec
+    new Iterator[A]:
+      private var cur: A ! Produce + G = p
+      private var ready = false
+      private var ended = false
+      private var elem: A = scala.compiletime.uninitialized
+
+      @tailrec private def advance(): Unit = cur match
+        case Free.Pure(_) => ended = true
+        case Inject(e) =>
+          split[G, Produce](e)(
+            g => { val _ = H.handle(g); ended = true }
+          )(
+            w => { elem = produced[A](w); ready = true; ended = true }
+          )
+        case Bind(Inject(e), k) =>
+          split[G, Produce](e)(
+            g => { cur = k(H.handle(g)); advance() }
+          )(
+            w => { elem = produced[A](w); ready = true; cur = k(w) }
+          )
+        case _ =>
+          cur = cur.resume
+          advance()
+
+      def hasNext: Boolean =
+        if !ready && !ended then advance()
+        ready
+
+      def next(): A =
+        if !hasNext then throw java.util.NoSuchElementException("empty producer")
+        ready = false
+        elem
+
 import scala.math.Numeric.Implicits.given
 
 /** the naturals: 0, 1, 2, ... */
