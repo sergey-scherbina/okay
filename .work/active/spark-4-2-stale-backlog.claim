@@ -1,0 +1,10 @@
+feature/spark-4-2-stale-backlog 2026-09-19T17:00:00Z
+agent: claude-code
+heartbeat: 2026-09-19T17:00:00Z
+status: in-progress
+done-so-far: worktree created; confirmed the ask (spark-sql 4.0.0 ->
+  4.2.0, scala-reflect/legacyStdlib 2.13.16 -> 2.13.18 together) is
+  already landed — 58b67499 (spark-4-2-0-jdk25), with its own
+  changelog.d/spark-4-2-0-jdk25.md; the entry in backlog.d/okay-spark
+  is a stale duplicate, not new work
+next: git rm the stale backlog entry, no code change
