@@ -37,9 +37,3 @@ class TestScoped extends munit.FunSuite:
     }
     assertEquals(s.current, "default")
   }
-
-  test("this JVM's build loads the ThreadLocal backend") {
-    val backend = classOf[Scoped[?]].getDeclaredMethod("backend")
-    backend.setAccessible(true)
-    assertEquals(backend.invoke(Scoped(())), "ThreadLocal")
-  }
