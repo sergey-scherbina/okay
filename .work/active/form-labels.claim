@@ -1,9 +1,0 @@
-feature/form-labels 2026-09-19T12:20:00Z
-agent: claude-code
-heartbeat: 2026-09-19T12:20:00Z
-status: in-progress
-done-so-far: claimed
-next: spec (specs/form-labels.md), then Form.of/ofWith/render gain an
-  optional caller-supplied labels map (Map[String, String], dotted key
-  or bare field name), backward compatible via overloads/trailing
-  defaults; okay-watch is the trigger client
