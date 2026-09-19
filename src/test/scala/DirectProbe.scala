@@ -2,6 +2,7 @@ package okay
 
 import scala.quoted.*
 import Direct.{DirectCtx, Deferral}
+import okay.macros.DirectCompiler
 
 /**
  * Probes into the phases of the direct compiler (direct-compiler-phases,

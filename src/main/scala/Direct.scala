@@ -305,7 +305,7 @@ object Direct:
     Expr.summon[Monad[F]] match
       // a monad: the road every existing block takes, unchanged
       case Some(m) =>
-        DirectCompiler.pipeline[F, A](topBody, m,
+        macros.DirectCompiler.pipeline[F, A](topBody, m,
           d.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Deferral.Eager.type],
           b.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Binds.Parallel.type])
       // no monad: the idiom bracket, for the carriers that refuse one
