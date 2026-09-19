@@ -201,7 +201,7 @@ object Streams {
       val sink: Consumer[A] = a => { buf(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.produce(buf.take(n)).flatMap(_ => go())
+      else okay.Writer.tell(buf.take(n)).flatMap(_ => go())
     go()
 
   /**
@@ -217,7 +217,7 @@ object Streams {
       val sink: LongConsumer = a => { arr(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.produce(wrapLong(arr, n)).flatMap(_ => go())
+      else okay.Writer.tell(wrapLong(arr, n)).flatMap(_ => go())
     go()
 
   def ints(s: IntStream, size: Int = 64): Chunks[Int] =
@@ -228,7 +228,7 @@ object Streams {
       val sink: IntConsumer = a => { arr(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.produce(wrapInt(arr, n)).flatMap(_ => go())
+      else okay.Writer.tell(wrapInt(arr, n)).flatMap(_ => go())
     go()
 
   def doubles(s: DoubleStream, size: Int = 64): Chunks[Double] =
@@ -239,7 +239,7 @@ object Streams {
       val sink: DoubleConsumer = a => { arr(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.produce(wrapDouble(arr, n)).flatMap(_ => go())
+      else okay.Writer.tell(wrapDouble(arr, n)).flatMap(_ => go())
     go()
 
   private def wrapLong(a: Array[Long], n: Int): Chunk[Long] =

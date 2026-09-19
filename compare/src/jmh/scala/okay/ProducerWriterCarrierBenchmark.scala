@@ -95,8 +95,12 @@ class ProducerWriterCarrierBenchmark {
     LazyList.range(0L, n.toLong).grouped(chunkSize)
       .map(g => ArraySeq.from(g): Chunk[Long]).toArray
 
-  private def producerChunks: Chunks[Long] =
-    def go(i: Int): Chunks[Long] =
+  // the OLD carrier, kept as the historical control: `Chunks[A]` was
+  // `Producer[Chunk[A]]` until producer-writer-carrier-chunks-retype
+  // (2026-09-19), so the library's `Chunks.*` can no longer take this;
+  // the `Probe` loops below walk it the way `Chunks.fold` used to
+  private def producerChunks: Producer[Chunk[Long]] =
+    def go(i: Int): Producer[Chunk[Long]] =
       if i >= chunks.length then okay.pure(Chunks.emptyChunk[Long])
       else produce(chunks(i)).flatMap(_ => go(i + 1))
     go(0)
@@ -125,9 +129,14 @@ class ProducerWriterCarrierBenchmark {
       i += 1
     t
 
+  // THE LIBRARY METHOD ON THE RETYPED CARRIER (producer-writer-carrier-
+  // chunks-retype): `Chunks.fold` over `Chunks[Long] = Feed[Chunk[Long]]`
+  // — the number that replaces `chunksFoldProducer`'s 2.53 (the same
+  // method over `Producer[Chunk[Long]]`, history.tsv up to
+  // producer-writer-carrier-pure-iterator; it cannot be run any more)
   @Benchmark
-  def chunksFoldProducer(): Long =
-    Chunks.fold(producerChunks)(using Fold.sumLong)
+  def chunksFoldChunks(): Long =
+    Chunks.fold(writerChunks)(using Fold.sumLong)
 
   // Writer % Chunk[X]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), same caveat
@@ -191,13 +200,11 @@ class ProducerWriterCarrierBenchmark {
   def chunksFoldFeedPureOwnMethod(): Long = Probe.foldFeed(writerChunks, Fold.sumLong)
   @Benchmark
   def chunksFoldLeftFeedPureOwnMethod(): Long = Probe.foldLeftFeed(writerChunks)
-  // two more, refining the split above: the INLINE `Chunks.foldLeft`
-  // (a static `summon` of Producer's given object) inside an own
-  // method, and the Feed loop with the instance summoned INSIDE the
-  // method (a fresh `new` per call — the exact shape a retyped
-  // `Chunks.fold` has)
-  @Benchmark
-  def chunksFoldLeftProducerInlineOwnMethod(): Long = Probe.foldLeftProducerInline(producerChunks)
+  // the Feed loop with the instance summoned INSIDE the method (a
+  // fresh `new` per call — the shape `Chunks.fold` itself has now). A
+  // sibling row that ran the INLINE `Chunks.foldLeft` on Producer
+  // inside an own method (4.53, same as the other Producer rows) went
+  // with the retype: `Chunks.foldLeft` no longer takes a Producer.
   @Benchmark
   def chunksFoldFeedPureSummonOwnMethod(): Long = Probe.foldFeedSummon(writerChunks, Fold.sumLong)
 
@@ -231,8 +238,8 @@ class ProducerWriterCarrierBenchmark {
   // chunksFoldLeftWriterDirect reads against, since chunksFoldProducer
   // above uses Chunks.fold(using a Fold instance), not foldLeft
   @Benchmark
-  def chunksFoldLeftProducerDirect(): Long =
-    Chunks.foldLeft(producerChunks)(0L)((s, a) => s + a)
+  def chunksFoldLeftChunksDirect(): Long =
+    Chunks.foldLeft(writerChunks)(0L)((s, a) => s + a)
 
   // AT PARITY (2026-09-19, fixed): foldWriter, the Fold-INSTANCE-
   // dispatched form Chunks.fold/agg.fold need (Bulk.scala,
@@ -264,8 +271,8 @@ class ProducerWriterCarrierBenchmark {
     ArraySeq.unsafeWrapArray(arr)
 
   @Benchmark
-  def chunksMapProducer(): Long =
-    Chunks.fold(Chunks.map(producerChunks)(_ * 2L))(using Fold.sumLong)
+  def chunksMapChunks(): Long =
+    Chunks.fold(Chunks.map(writerChunks)(_ * 2L))(using Fold.sumLong)
 
   // Writer % Chunk[X]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), same caveat
@@ -362,7 +369,7 @@ object Probe {
   private val feedStream = summon[Stream[[W] =>> Unit ! Writer % W, Pure]]
   private val producerStream = summon[Stream[Producer, Pure]]
 
-  def foldProducer(p: Chunks[Long], l: Fold.OfLong[Long]): Long =
+  def foldProducer(p: Producer[Chunk[Long]], l: Fold.OfLong[Long]): Long =
     var s = l.initLong
     val it = producerStream.iterator(p)
     while it.hasNext do
@@ -373,7 +380,7 @@ object Probe {
         i += 1
     s
 
-  def foldLeftProducer(p: Chunks[Long]): Long =
+  def foldLeftProducer(p: Producer[Chunk[Long]]): Long =
     var s = 0L
     val it = producerStream.iterator(p)
     while it.hasNext do
@@ -394,9 +401,6 @@ object Probe {
         s = l.addLong(s, c(i))
         i += 1
     s
-
-  def foldLeftProducerInline(p: Chunks[Long]): Long =
-    Chunks.foldLeft(p)(0L)((s, a) => s + a)
 
   def foldFeedSummon(p: Unit ! Writer % Chunk[Long], l: Fold.OfLong[Long]): Long =
     var s = l.initLong

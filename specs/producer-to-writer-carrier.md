@@ -41,7 +41,7 @@ Nothing new is added. What callers depend on after each stage:
 ```scala
 // today: two carriers for one stream, bridged by hand
 type Producer[A]  = A ! Produce                       // element = answer
-type Chunks[A]    = Producer[Chunk[A]]                // okay-stream Chunks.scala
+type Chunks[A]    = Producer[Chunk[A]]                // okay-stream Chunks.scala — Feed[Chunk[A]] since the retype
 type Source[W]    = Unit ! (Writer % W + Async)       // element named, answer Unit
 Source.fromProducer / ofProducer / toProducer         // the bridges (Source.scala ~132-162)
 Producer.fold / each / concat / log                   // duplicates of Writer.fold / uncons / of
@@ -144,9 +144,16 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       generic per-chunk box; the "~2x, walking a Free tree at all" of
       the foldWriter lanes was the loop living INSIDE the JMH benchmark
       method. See Results.
-- [ ] `Chunks[A]` retyped; `Chunks.generate/range/fromIterator` emit with
-      `tell`; the specialised `iterator` walk that `Stream[Producer, Pure]`
-      has is carried over to the writer instance, not lost
+- [x] `Chunks[A]` retyped — `type Chunks[A] = Feed[Chunk[A]]`
+      (producer-writer-carrier-chunks-retype, 2026-09-19): every
+      `Chunks.*` generator/transformer emits with `tell` and matches
+      `Say`; `pull` is `Writer.uncons(p).toOption`; `foldLeft`/`fold`/
+      `elements`/`toLazyList` and the chunked `Source.merge` walk
+      `Stream[[W] =>> Unit ! Writer % W, Pure]`, whose specialised
+      `iterator` the previous lane added; `bound` (the Bind-payload cast)
+      is gone — the `Say` match refines the type. ParallelChunks, Lex,
+      Fs2Interop and java Streams changed one `produce` → `Writer.tell`
+      per emit; okay-cluster, persist Streams, wroclaw: NO change
 - [ ] deletions land with the last module: `produced`, `Producer.fold/each/
       concat`, the Produce Stream instances, the three Source bridges
 - [ ] `Put[Producer]` (landed in put-de-diagonal, c9a3f561) follows
@@ -227,8 +234,9 @@ the same thing.
   is a pure win in types with the bridges still standing. Rejected:
   retype `Chunks` first (every module breaks at once; one lane of ~60
   files cannot be gated in pieces).
-  AMENDMENT PROPOSED 2026-09-19 (producer-writer-carrier-pure-iterator,
-  pending the operator): reverse it — `Chunks` FIRST, then the
+  AMENDED 2026-09-19 (producer-writer-carrier-pure-iterator; CONFIRMED
+  by the operator the same evening, executed as
+  producer-writer-carrier-chunks-retype): reverse it — `Chunks` FIRST, then the
   G-effectful producers module by module. The premise was wrong twice.
   (1) The "leaves" are not leaves: okay-cluster's `Flow.Src[A](parts:
   Vector[Long => Chunks[A]])`, `Flow.map` = `Chunks.map`, persist's
@@ -682,3 +690,48 @@ are not on the migration's path and the JS question filed against them
 is moot for `Chunks`. okay-cluster needs no lane: it names no `Produce`
 and moves with the alias. The next slice is the `Chunks` retype itself
 — see the sprint item and the amended decision above.
+
+### The `Chunks` retype, measured before/after (2026-09-19, producer-writer-carrier-chunks-retype)
+
+`type Chunks[A] = Feed[Chunk[A]]`. Every `Chunks.*` combinator retyped
+in place (`produce(c)` → `Writer.tell(c)`, `Inject(c)` → `Inject(Say(c))`,
+`k(c)` → `k(())`, the `bound` cast gone, `pull` = `Writer.uncons(p).toOption`,
+the walks on `Stream[[W] =>> Unit ! Writer % W, Pure]`); `Source.merge`
+on chunks names the writer instances; ParallelChunks, Lex, Fs2Interop,
+java Streams changed one `produce` → `tell` per emit. okay-cluster,
+persist Streams, wroclaw, and every `Chunks.*`-API caller: unchanged,
+as predicted. Repo-wide `Test/compile` on all three platforms clean;
+okay-stream 347/347.
+
+Measured — BEFORE on master in the main checkout, AFTER in the lane's
+worktree, three rounds each, ALTERNATING (b1 a1 b2 a2 b3 a3), JDK
+21.0.12 pinned, N=10000/64, host load 1.4-2.5, medians:
+
+| lane | before | after | ratio | sign 3/3 | spread of identical runs |
+|---|---|---|---|---|---|
+| PWC `Chunks.fold(sumLong)` | 2.533 | 2.647 | **1.045** | yes | before 2.530-2.538 |
+| PWC `Chunks.foldLeft` literal, inline | 4.618 | 4.793 | 1.038 | yes | before 4.58-4.75 |
+| PWC `Chunks.fold(Chunks.map(_*2))` | 7.704 | 8.295 | **1.077** | yes | before 7.63-7.97 |
+| FoldBox `foldLeftSum` (`Chunks.range`) | 6.917 | 7.444 | 1.076 | yes | before 6.905-6.932 |
+| FoldBox `foldSum` / `foldCount` | 8.11 / 6.00 | 7.48 / 5.27 | noise | — | before 6.98-8.75 / 4.94-7.15 |
+| Merge `okayChunksMerge` | 10.457 | 10.474 | 1.002 | no | |
+| StreamOps `okayChunks` / `Transform` / `TransformWide` | 21.88 / 9.98 / 7.48 | 21.95 / 10.27 / 7.47 | 1.003 / 1.028 / 0.999 | no | |
+
+Allocation, `-prof gc`: +16 B per told chunk per stage, exactly — 10,088
+→ 12,640 B/op on the fold (157 chunks), 115,328 → 120,368 on map+fold
+(two stages). That is the `Say` node, the tag that makes the answer type
+recoverable (12120c2a): on the elementwise `Writer` loop it measured
+free because the interpreter step around it is ~150 us per 10k; on a
+chunked fold the whole per-chunk step is ~16 ns, so one 16-byte
+allocation and one extra match level are a visible fraction of it.
+
+**VERDICT: a real, bounded cost on the tightest chunked folds — 4-5% on
+`Chunks.fold`/`foldLeft`, 7-8% where two stages stack (map+fold,
+`range`+foldLeft) — and nothing measurable on merge or the StreamOps
+transform pipelines.** The previous lane's "parity" (2.63 vs 2.53,
+called ±4%) was this same 4%, read optimistically from one shape;
+alternating rounds on four classes make it a number rather than a
+rounding. What the cost buys is the spec's Overview: no `pure(c)`
+emitting nothing, no `produced` cast on the chunked path, one carrier
+for `Chunks`, `Feed` and `Source`, and `Chunks.merge`/`Flow`/`Lex`/the
+interops all on it with no bridge.

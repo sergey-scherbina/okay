@@ -3,16 +3,26 @@ package okay
 import scala.collection.immutable.ArraySeq
 
 /**
- * A chunked stream is an ordinary producer of whole batches — nothing
- * new in the stream layer, elements are polymorphic. What changes is
- * the arithmetic: the freer tree steps once per CHUNK, and an element
- * inside costs an array index — the amortization the chunked runtimes
- * (ZStream, fs2, kyo) are built on. Generators below fill each chunk
- * in a tight while-loop, so no tree node is ever paid per element;
- * merge of chunked streams is the existing Channel.merge applied to
- * Chunks values — one queue operation per chunk, for free.
+ * A chunked stream is an ordinary pure writer stream of whole batches
+ * — `Feed[Chunk[A]]`, nothing new in the stream layer, elements are
+ * polymorphic. What changes is the arithmetic: the freer tree steps
+ * once per CHUNK, and an element inside costs an array index — the
+ * amortization the chunked runtimes (ZStream, fs2, kyo) are built on.
+ * Generators below fill each chunk in a tight while-loop, so no tree
+ * node is ever paid per element; merge of chunked streams is the
+ * existing Channel.merge applied to Chunks values — one queue
+ * operation per chunk, for free.
+ *
+ * It was `Producer[Chunk[A]]` until producer-to-writer-carrier
+ * (2026-09-19): the identity signature put the chunk in the ANSWER
+ * position, so `pure(c)` type-checked as a chunk and emitted nothing.
+ * On the writer carrier a chunk is `Writer.tell(c)` — a `Say` node the
+ * walk matches, `Handler[Pure]` only — and the stream instance is
+ * `Stream[[W] =>> Unit ! Writer % W, Pure]` (Writer.scala), whose
+ * hand-specialized `iterator` measured at parity with the producer
+ * walk (specs/producer-to-writer-carrier.md, Results).
  */
-type Chunks[A] = Producer[Chunk[A]]
+type Chunks[A] = Feed[Chunk[A]]
 
 object Chunks {
 
@@ -28,16 +38,16 @@ object Chunks {
   /** the recursion behind the inline `generate` — public for the same
    * binary-compatibility reason as `mapWith` */
   def generateWith[A, B](a: A)(fill: A => (Chunk[B], A)): Chunks[B] =
-    def go(s: A): Chunks[B] = pure[Produce, Unit](()).flatMap: _ =>
+    def go(s: A): Chunks[B] = defer:
       val (c, cur) = fill(s)
-      produce(c).flatMap(_ => go(cur))
+      Writer.tell(c).flatMap(_ => go(cur))
 
     go(a)
 
   /** the numbers from until (exclusive), a short tail chunk if needed */
   def range(from: Long, until: Long, size: Int = 64): Chunks[Long] =
-    def go(s: Long): Chunks[Long] = pure[Produce, Unit](()).flatMap: _ =>
-      if s >= until then pure(ArraySeq.empty)
+    def go(s: Long): Chunks[Long] = defer:
+      if s >= until then end
       else
         val n = math.min(size.toLong, until - s).toInt
         // Long is concrete here, so this is a long[] with no boxing —
@@ -49,7 +59,7 @@ object Chunks {
         while i < n do
           arr(i) = s + i
           i += 1
-        produce(ArraySeq.unsafeWrapArray(arr)).flatMap(_ => go(s + n))
+        Writer.tell(ArraySeq.unsafeWrapArray(arr)).flatMap(_ => go(s + n))
 
     go(from)
 
@@ -75,7 +85,7 @@ object Chunks {
         val n = math.min(size, text.length - from)
         val arr = new Array[Char](n)
         text.getChars(from, from + n, arr, 0)
-        produce(scala.collection.immutable.ArraySeq.unsafeWrapArray(arr))
+        Writer.tell(scala.collection.immutable.ArraySeq.unsafeWrapArray(arr))
           .flatMap(_ => go(from + n))
 
     go(0)
@@ -87,7 +97,7 @@ object Chunks {
    * same binary-compatibility reason as `mapWith` */
   def fromIteratorWith[A](it: Iterator[A])(fresh: () => ChunkBuf[A])
                          (size: Int): Chunks[A] =
-    def go(): Chunks[A] = pure[Produce, Unit](()).flatMap: _ =>
+    def go(): Chunks[A] = defer:
       if !it.hasNext then end
       else
         val buf = fresh()
@@ -96,7 +106,7 @@ object Chunks {
           buf(i) = it.next()
           i += 1
         val c = buf.take(i)
-        produce(c).flatMap(_ => go())
+        Writer.tell(c).flatMap(_ => go())
 
     go()
 
@@ -113,42 +123,31 @@ object Chunks {
   import !.*
 
   /** defer one step: nothing before the bind runs at construction */
-  private[okay] inline def defer[X](inline x: => Producer[X]): Producer[X] =
-    pure[Produce, Unit](()).flatMap(_ => x)
+  private[okay] inline def defer[X](inline x: => Feed[X]): Feed[X] =
+    pure[Writer % X, Unit](()).flatMap(_ => x)
 
-  /** the empty chunk — what a producer of chunks ENDS in (its final
-   * `Pure`, which the stream instance never reads), and the `end` a
-   * `Source.toProducer` over chunks is given. Public since
+  /** the empty chunk — what a G-effectful `Chunk[X] ! (Produce + G)`
+   * ends in (its final `Pure`, which its stream instance never reads),
+   * and the `end` a `Source.toProducer` over chunks is given. A
+   * `Chunks[A]` itself ends in `()` now. Public since
    * producer-drains: a consumer spelling `ArraySeq.empty` and hoping
    * it was the same thing was right, and should not have to hope */
   def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
 
-  /**
-   * The chunk a `Bind(Inject(c), k)` node carries.
-   *
-   * `case Inject(c)` needs no such thing — the refinement gives the
-   * type back — but under a `Bind` the element is the BIND's
-   * intermediate, which is existential, so the type is known only
-   * from the surrounding `Chunks[A]` and nothing about the value says
-   * so. Named once here rather than asserted at each of the eight
-   * places that pattern appears.
-   */
-  private[okay] def bound[A](c: Any): Chunk[A] = c.asInstanceOf[Chunk[A]]
-
-  /** the end of a chunked stream */
-  private[okay] def end[B]: Chunks[B] = pure(emptyChunk)
+  /** the end of a chunked stream: its answer, which is no chunk */
+  private[okay] def end[B]: Chunks[B] = pure(())
 
   /** pull one chunk: the pure step of a chunked stream */
   private[okay] def pull[A](p: Chunks[A]): Option[(Chunk[A], Chunks[A])] =
-    summon[Stream[Producer, okay.Pure]].uncons(p).runWith
+    Writer.uncons(p).toOption
 
   /**
    * The chunk-in, chunk-out transformers: each stage is a tight array
    * pass and the result is still Chunks, so downstream keeps the
    * amortization. Spelled as functions, like Stream.map — the postfix
-   * names belong to the monad (Free's map transforms the answer). The
-   * op-value casts are the identity-signature discipline, as in the
-   * Producer stream instance.
+   * names belong to the monad (Free's map transforms the answer).
+   * `Say` is Writer's only constructor, so the match refines the
+   * chunk's type — no cast, unlike the identity signature this had.
    */
   /**
    * Map, with the element type carried as far as the call site knows
@@ -170,9 +169,9 @@ object Chunks {
   def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Inject(c) => produce(g(c))
-      case Bind(Inject(c), k) =>
-        produce(g(bound[A](c))).flatMap(_ => mapWith(k(c))(g))
+      case Inject(Writer.Say(c)) => Writer.tell(g(c))
+      case Bind(Inject(Writer.Say(c)), k) =>
+        Writer.tell(g(c)).flatMap(_ => mapWith(k(()))(g))
 
   /** keep the elements satisfying pred (empty result chunks are skipped) */
   inline def filter[A](p: Chunks[A])(inline pred: A => Boolean): Chunks[A] =
@@ -183,58 +182,53 @@ object Chunks {
   def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Inject(c) => produce(g(c))
-      case Bind(Inject(c), k) =>
-        val fc = g(bound[A](c))
-        if fc.isEmpty then filterWith(k(c))(g)
-        else produce(fc).flatMap(_ => filterWith(k(c))(g))
+      case Inject(Writer.Say(c)) => Writer.tell(g(c))
+      case Bind(Inject(Writer.Say(c)), k) =>
+        val fc = g(c)
+        if fc.isEmpty then filterWith(k(()))(g)
+        else Writer.tell(fc).flatMap(_ => filterWith(k(()))(g))
 
   /** the first n elements (the last chunk truncated) */
   def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then end
     else (p.resume: @unchecked) match
       case Pure(_) => end
-      case Inject(c) => produce(c.take(n))
-      case Bind(Inject(c), k) =>
-        val ca = bound[A](c)
-        if ca.length >= n then produce(ca.take(n))
-        else produce(ca).flatMap(_ => take(k(c))(n - ca.length))
+      case Inject(Writer.Say(c)) => Writer.tell(c.take(n))
+      case Bind(Inject(Writer.Say(c)), k) =>
+        if c.length >= n then Writer.tell(c.take(n))
+        else Writer.tell(c).flatMap(_ => take(k(()))(n - c.length))
 
   /** all but the first n elements */
   def drop[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then p
     else (p.resume: @unchecked) match
       case Pure(_) => end
-      case Inject(c) => produce(c.drop(n))
-      case Bind(Inject(c), k) =>
-        val ca = bound[A](c)
-        if ca.length <= n then drop(k(c))(n - ca.length)
-        else produce(ca.drop(n)).flatMap(_ => k(c))
+      case Inject(Writer.Say(c)) => Writer.tell(c.drop(n))
+      case Bind(Inject(Writer.Say(c)), k) =>
+        if c.length <= n then drop(k(()))(n - c.length)
+        else Writer.tell(c.drop(n)).flatMap(_ => k(()))
 
   /** the longest prefix satisfying pred */
   def takeWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Inject(c) =>
-        val ca = bound[A](c)
-        produce(ca.takeWhile(pred))
-      case Bind(Inject(c), k) =>
-        val ca = bound[A](c)
-        val i = ca.indexWhere(a => !pred(a))
-        if i < 0 then produce(ca).flatMap(_ => takeWhile(k(c))(pred))
-        else produce(ca.take(i))
+      case Inject(Writer.Say(c)) =>
+        Writer.tell(c.takeWhile(pred))
+      case Bind(Inject(Writer.Say(c)), k) =>
+        val i = c.indexWhere(a => !pred(a))
+        if i < 0 then Writer.tell(c).flatMap(_ => takeWhile(k(()))(pred))
+        else Writer.tell(c.take(i))
 
   /** the rest, after the longest prefix satisfying pred */
   def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Inject(c) => produce(c.dropWhile(pred))
-      case Bind(Inject(c), k) =>
-        val ca = bound[A](c)
-        val i = ca.indexWhere(a => !pred(a))
-        if i < 0 then dropWhile(k(c))(pred)
-        else if i == 0 then k(c)
-        else produce(ca.drop(i)).flatMap(_ => k(c))
+      case Inject(Writer.Say(c)) => Writer.tell(c.dropWhile(pred))
+      case Bind(Inject(Writer.Say(c)), k) =>
+        val i = c.indexWhere(a => !pred(a))
+        if i < 0 then dropWhile(k(()))(pred)
+        else if i == 0 then k(())
+        else Writer.tell(c.drop(i)).flatMap(_ => k(()))
 
   /**
    * The terminal, SPECIALIZED: the step is known where the fold is
@@ -256,7 +250,7 @@ object Chunks {
    */
   inline def foldLeft[A, S](p: Chunks[A])(z: S)(inline f: (S, A) => S): S =
     var s = z
-    val it = summon[Stream[Producer, okay.Pure]].iterator(p)
+    val it = summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p)
     while it.hasNext do
       val c = it.next()
       var i = 0
@@ -293,7 +287,7 @@ object Chunks {
       foldLeft(p)(b.initBoolean)((s, a) => b.addBoolean(s, a))
     case _ =>
       var s = fo.init
-      val it = summon[Stream[Producer, okay.Pure]].iterator(p)
+      val it = summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p)
       while it.hasNext do
         val c = it.next()
         var i = 0
@@ -535,7 +529,7 @@ object Chunks {
         while i < n do
           buf(i) = (ca(ia + i), cb(ib + i))
           i += 1
-        produce(buf.chunk).flatMap(_ => go(ca, ia + n, ra, cb, ib + n, rb))
+        Writer.tell(buf.chunk).flatMap(_ => go(ca, ia + n, ra, cb, ib + n, rb))
 
     go(emptyChunk, 0, pa, emptyChunk, 0, pb)
 
@@ -554,7 +548,7 @@ object Chunks {
       pull(rest) match
         case None =>
           if have == 0 then end
-          else produce(buf.take(have))
+          else Writer.tell(buf.take(have))
         case Some((c, r)) =>
           val room = size - have
           if c.length < room then
@@ -569,8 +563,8 @@ object Chunks {
               buf(have + i) = c(i)
               i += 1
             val leftover = c.drop(room)
-            val next = if leftover.isEmpty then r else produce(leftover).flatMap(_ => r)
-            produce(buf.chunk).flatMap(_ => go(fresh(), 0, next))
+            val next = if leftover.isEmpty then r else Writer.tell(leftover).flatMap(_ => r)
+            Writer.tell(buf.chunk).flatMap(_ => go(fresh(), 0, next))
 
     go(fresh(), 0, p)
 
@@ -622,9 +616,9 @@ object Chunks {
       // 4-5%). The per-element cost here is boxing through
       // Iterator[A], not the protocol; the chunk-native path
       // (`Chunks.map`/`fold`) is the one that avoids it, at 9.5.
-      summon[Stream[Producer, okay.Pure]].iterator(p).flatMap(_.iterator)
+      summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p).flatMap(_.iterator)
 
     /** the chunks, memoized (first-order: see merge) */
     def toLazyList: LazyList[Chunk[A]] =
-      LazyList.from(summon[Stream[Producer, okay.Pure]].iterator(p))
+      LazyList.from(summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]].iterator(p))
 }

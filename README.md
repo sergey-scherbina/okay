@@ -202,7 +202,7 @@ inspect, ship — the inline shape is for speed.)
   is the skeleton they all share (state, a step that tells what the
   input is worth, a flush), `Stage.mapAccumulate` the fs2-shaped 1:1
   special case.
-- `Chunks[A] = Producer[Chunk[A]]` (Chunks.scala) — the tree steps per
+- `Chunks[A] = Feed[Chunk[A]]` (Chunks.scala) — the tree steps per
   chunk, an element costs an array index: generators, transformers,
   zip, rechunk, fold, pipe; spec in specs/chunked-streams.md.
 

@@ -176,9 +176,9 @@
       drop/rechunkWith` themselves, retyped in place. The bridge
       shortcut (1.5x slower) stays refuted — spec Results keeps it.
 
-      NEXT CLAIMABLE SLICE = THE `Chunks` RETYPE (reverses the spec's
-      "Chunks last" — amendment in Decisions, PENDING the operator's
-      confirmation; do not claim before that). `type Chunks[A] =
+      THE `Chunks` RETYPE — CLAIMED AND LANDING (producer-writer-carrier-
+      chunks-retype, 2026-09-19; the operator confirmed "Chunks first"
+      the same evening, the spec's Decisions says so). `type Chunks[A] =
       Feed[Chunk[A]]`; in Chunks.scala `produce(c)` → `Writer.tell(c)`,
       `Inject(c)` → `Inject(Say(c))`, `k(c)` → `k(())`, `bound[A]` goes
       (the Say refines the type), `pull`/`end` on the pure writer

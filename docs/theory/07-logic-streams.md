@@ -74,7 +74,7 @@ law, filter fusion and take-pushdown are the fold-fusion family, each
 property-tested rather than assumed.
 
 Two engineering notes the theory predicts and the benchmarks confirm.
-Chunking (`Chunks[A] = Producer[Chunk[A]]`) amortizes the tree step of
+Chunking (`Chunks[A] = Feed[Chunk[A]]`) amortizes the tree step of
 chapter 4 over a batch, which is the whole arithmetic of the streaming
 runtimes it is compared against. And the fold algebra being *first
 order* — a start and a step, no combine — is what lets `Aggregator`

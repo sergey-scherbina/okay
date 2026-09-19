@@ -364,7 +364,8 @@ cannot be removed.
 
 ## 4. Chunks: the tree steps per batch
 
-`Chunks[A] = Producer[Chunk[A]]` — a stream of array batches. The
+`Chunks[A] = Feed[Chunk[A]]` — a pure writer stream of array batches
+(`Producer[Chunk[A]]` until producer-to-writer-carrier, 2026-09-19). The
 freer tree steps once per CHUNK and an element costs an array index,
 which is where the benchmark numbers come from — every lane below
 chunked the way its own author intended (pipeline 8.2us for one chunk,

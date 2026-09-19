@@ -30,7 +30,7 @@ def parMap[A, B](p: Chunks[A], parallelism: Int = Runtime.getRuntime.availablePr
 
     val (q, r) = fill(inflight, rest)
     q match
-      case h +: t => produce(h.join()).flatMap(_ => go(t, r))
+      case h +: t => Writer.tell(h.join()).flatMap(_ => go(t, r))
       case _ => Chunks.end
 
   go(Vector.empty, p)
@@ -54,7 +54,7 @@ def retryChunks[A](p: Chunks[A], policy: LazyList[Long] = Retry.immediate(3)): C
 
   def go(rest: Chunks[A]): Chunks[A] = Chunks.defer:
     attempt(rest, policy) match
-      case Some((c, r)) => produce(c).flatMap(_ => go(r))
+      case Some((c, r)) => Writer.tell(c).flatMap(_ => go(r))
       case None => Chunks.end
 
   go(p)

@@ -549,7 +549,7 @@ extension [A](s: Chunks[A])
    * defaulted: only one overload of a name may carry default
    * arguments, and the source merge has them) */
   def merge(t: Chunks[A], capacity: Int)(using Scheduler): Channel[Chunk[A]] =
-    Channel.merge[Chunk[A], Producer, Pure, Producer, Pure](s, t, capacity)
+    Channel.merge[Chunk[A], [W] =>> Unit ! Writer % W, Pure, [W] =>> Unit ! Writer % W, Pure](s, t, capacity)
 
   /**
    * `merge`, tagging which side each element came from — the same
