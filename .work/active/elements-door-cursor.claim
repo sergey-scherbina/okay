@@ -1,0 +1,10 @@
+feature/elements-door-cursor 2026-09-19T16:55:00Z
+agent: claude-code
+heartbeat: 2026-09-19T16:55:00Z
+status: in-progress
+done-so-far: worktree created
+next: close wontfix — docs/benchmarks.md already fully explains the
+  2.2x as the structural cost of the per-element cursor over the
+  chunk-batched transformers (not the tree, not a bug), and
+  contextualizes it as 1.6x the floor beside ZIO 2.3x/fs2 1.5x, not
+  a regression to chase; no code change, no proposed remedy anywhere
