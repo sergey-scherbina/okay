@@ -32,6 +32,17 @@ class TestOpsSurface extends munit.FunSuite {
     assertEquals(Ops.readyz.describe, "/readyz")
   }
 
+  test("no operation is undeclared (openapi-ops): every entry names a 2xx answer") {
+    // the same condition okay-openapi's own renderer uses to decide
+    // whether to print "undeclared — this operation builds its own
+    // Response" — checked here directly on the Router so this suite
+    // does not need okay-openapi to state the property
+    val store = MemoryStore()
+    for e <- Ops.router(store).entries do
+      assert(e.answers.exists(a => a.status >= 200 && a.status < 300),
+        s"${e.method.name} ${e.path} has no declared 2xx answer")
+  }
+
   /** the repo root, without a dependency on okay-deploy for three lines */
   private def repoRoot: java.nio.file.Path =
     Iterator.iterate(java.nio.file.Path.of(".").toAbsolutePath.normalize)(_.getParent)

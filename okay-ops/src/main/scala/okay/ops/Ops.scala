@@ -1,7 +1,7 @@
 package okay.ops
 
 import okay.{!, Async, pure}
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import okay.http.{Http, Request, Response, Route, Router}
 import okay.persist.{Offsets, Store, Topic}
 import java.nio.charset.StandardCharsets.UTF_8
@@ -55,25 +55,29 @@ object Ops:
              docs: Vector[(String, () => okay.docs.Docs.Stats)] = Vector.empty,
              blobs: Vector[(String, () => okay.blob.Blob.Stats)] = Vector.empty)
   : Router = Router.empty
+    // the status genuinely varies at request time (a Kubernetes probe
+    // is exactly the caller who reads it), which every declaring
+    // combinator cannot say — `out`/`media` fix the status at
+    // declaration time. `on` stays the handler; `.answering` states
+    // BOTH outcomes so the operation does not read as undeclared
+    // (openapi-ops) the way a route with no 2xx answer at all does.
     .on(okay.http.Method.Get, healthz) { _ =>
       val h = Health.of(store)
       text(if h.live then 200 else 503, s"live=${h.live}" + h.reason.fold("")(x => s" ($x)"))
-    }
+    }.answering(200).answering(503)
     .on(okay.http.Method.Get, readyz) { _ =>
       // liveness above stays true while draining: an un-live pod is
       // restarted, an un-ready one is taken out of the endpoints
       val h = Health.of(store)
       if lifecycle.exists(_.draining) then text(503, "ready=false (draining)")
       else text(if h.ready then 200 else 503, s"ready=${h.ready}" + h.reason.fold("")(x => s" ($x)"))
-    }
-    .on(okay.http.Method.Get, stats) { _ =>
-      text(200, Json.encode(summon[Schema[Store.Stats]])(store.stats), "application/json")
-    }
-    .on(okay.http.Method.Get, metrics) { _ =>
-      text(200, Prom.render(store.stats, lagOf) + Prom.guards(guards) + Prom.pools(pools) + Prom.sagas(sagas)
+    }.answering(200).answering(503)
+    .out(okay.http.Method.Get, stats, description = "the store's stats")(_ => pure(store.stats))
+    .bytes(okay.http.Method.Get, metrics, "text/plain; version=0.0.4; charset=utf-8",
+      description = "Prometheus text exposition") { _ =>
+      pure((Prom.render(store.stats, lagOf) + Prom.guards(guards) + Prom.pools(pools) + Prom.sagas(sagas)
         + lifecycle.fold("")(Prom.lifecycle) + Prom.red(red)
-        + Prom.docs(docs) + Prom.blobs(blobs),
-        "text/plain; version=0.0.4; charset=utf-8")
+        + Prom.docs(docs) + Prom.blobs(blobs)).getBytes(UTF_8))
     }
 
   /** the same, as the partial function every server here takes */
