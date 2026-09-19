@@ -1,7 +1,8 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Produce, Source, Writer, async, produce}
+import okay.{!, +, %, Async, Chunk, Source, Writer, async, writerK}
 import okay.RowLift.plus
+import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -19,48 +20,32 @@ final case class Meta(key: String, size: Long, etag: Etag, modified: Long)
 
 trait Blob:
   /** stream bytes in; the etag identifies what landed */
-  def put(key: String, bytes: Chunk[Byte] ! (Produce + Async)): Etag ! Async
+  def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async
 
-  /** stream bytes out — the chunks are the body, the ANSWER is the
-   * outcome: an absent key is a Left naming it, never a throw */
+  /** stream bytes out — the chunks are told, the ANSWER is the
+   * outcome: an absent key is a Left naming it, never a throw
+   * (producer-to-writer-carrier, stage 2: this was `Produce`, where
+   * the element sat in the ANSWER position and `pure(chunk)` type-
+   * checked and emitted nothing — specs/blob.md's old "Source road"
+   * paragraph, now the only road) */
   def get(key: String, range: Option[(Long, Long)] = None)
-  : Either[String, Unit] ! (Produce + Async)
+  : Either[String, Unit] ! (Writer % Chunk[Byte] + Async)
 
   /** size, etag, modified — no body */
   def head(key: String): Option[Meta] ! Async
 
-  /** every key under the prefix, once, in key order; paged
+  /** every key under the prefix, once, in key order, told — paged
    * underneath where the engine pages */
-  def list(prefix: String): Chunk[Meta] ! (Produce + Async)
+  def list(prefix: String): Source[Chunk[Meta]]
 
   /** idempotent — deleting the absent is a no-op */
   def delete(key: String): Unit ! Async
-
-  // ── the Source road ─────────────────────────────────────────────
-  //
-  // `put` and `get` are typed on `Produce`, where the element type
-  // sits in the ANSWER position and `pure(chunk)` type-checks and
-  // emits nothing (specs/blob.md, the Source road). A `Source` is
-  // `Unit ! (Writer % W + Async)`: the answer is Unit and the element
-  // type is in the signature, so that mistake cannot be written. Both
-  // roads reach the same engine; these are concrete so no engine and
-  // no caller changes.
-
-  /** put from a Source: every told chunk is the body */
-  def putSource(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async =
-    put(key, Source.toProducer(bytes)(okay.Chunks.emptyChunk))
-
-  /** get as a Source that still ANSWERS the outcome: the chunks are
-   * told, and an absent key is the Left, exactly as `get` says it */
-  def getSource(key: String, range: Option[(Long, Long)] = None)
-  : Either[String, Unit] ! (Writer % Chunk[Byte] + Async) =
-    Source.fromProducer[Chunk[Byte], Either[String, Unit], Async](get(key, range))
 
   // ── the plain road: what most callers actually hold ─────────────
 
   /** one chunk, whole */
   def putChunk(key: String, chunk: Chunk[Byte]): Etag ! Async =
-    put(key, produce(chunk).plus[Async])
+    put(key, Writer.tell(chunk).plus[Async])
 
   /** an array, whole — the way a small object is usually in hand */
   def putBytes(key: String, bytes: Array[Byte]): Etag ! Async =
@@ -69,11 +54,16 @@ trait Blob:
   /** the whole object in memory, or the Left naming the key. For an
    * object that fits; the streaming `get` is the road for one that
    * does not, and this is a consumer of it, not a second engine call */
+  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
+  // by construction (Say is Writer's ONLY constructor), the TypeableK
+  // caveat Writer.scala documents on Writer.run
+  @nowarn("msg=cannot be checked at runtime")
   def getBytes(key: String, range: Option[(Long, Long)] = None)
   : Either[String, Array[Byte]] ! Async =
     async(java.io.ByteArrayOutputStream()).flatMap { out =>
-      okay.Producer.each[Chunk[Byte], Either[String, Unit], Async](get(key, range))(
-        c => out.write(c.toArray)).map(_.map(_ => out.toByteArray))
+      val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
+      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](get(key, range))(using summon, sink)
+        .map((_, outcome) => outcome.map(_ => out.toByteArray))
     }
 
 object Blob:
@@ -99,15 +89,14 @@ object Blob:
         () => ()
       }
 
-    def put(key: String, bytes: Chunk[Byte] ! (Produce + Async)): Etag ! Async = counting(puts)(inner.put(key, bytes))
-    def get(key: String, range: Option[(Long, Long)] = None): Either[String, Unit] ! (Produce + Async) =
+    def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async = counting(puts)(inner.put(key, bytes))
+    def get(key: String, range: Option[(Long, Long)] = None): Either[String, Unit] ! (Writer % Chunk[Byte] + Async) =
       gets.incrementAndGet()
       inner.get(key, range).map { r => if r.isLeft then misses.incrementAndGet(): Unit; r }
     def head(key: String): Option[Meta] ! Async = counting(heads)(inner.head(key))
-    def list(prefix: String): Chunk[Meta] ! (Produce + Async) =
+    def list(prefix: String): Source[Chunk[Meta]] =
       lists.incrementAndGet()
       inner.list(prefix)
     def delete(key: String): Unit ! Async = counting(deletes)(inner.delete(key))
 
     def stats: Stats = Stats(engine, puts.get, gets.get, misses.get, heads.get, lists.get, deletes.get, failures.get)
-

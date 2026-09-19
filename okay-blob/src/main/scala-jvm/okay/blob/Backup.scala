@@ -1,8 +1,8 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, async, pure}
+import okay.{!, Async, Chunk, Source, Writer, async, pure, writerK}
 import java.nio.file.{Files, Path}
-import scala.collection.immutable.ArraySeq
+import scala.annotation.nowarn
 import scala.jdk.CollectionConverters.*
 
 /**
@@ -60,7 +60,7 @@ object Backup {
   /** place the copied files back under `root` — recovery does the
    * rest, exactly as on every startup */
   def restore(blob: Blob, root: Path, prefix: String = "persist"): Vector[String] ! Async =
-    okay.Producer.concat[Meta, Async](blob.list(s"$prefix/")).flatMap { metas =>
+    Writer.collect(blob.list(s"$prefix/")).map((chunks, _) => chunks.flatMap(_.toVector)).flatMap { metas =>
       def go(rest: List[Meta], acc: Vector[String]): Vector[String] ! Async = rest match
         case Nil => pure(acc)
         case m :: more =>
@@ -86,18 +86,23 @@ object Backup {
         if active then ordered else ordered.dropRight(1)
       }.toList.map(p => (p, root.relativize(p).toString.replace('\\', '/')))
 
-  /** the file as the producer `put` takes — `Bytes.file`, which was
-   * this, private, until a consumer copied it verbatim */
-  private def stream(path: Path): Chunk[Byte] ! (Produce + Async) = Bytes.file(path)
+  /** the file as `put` takes — `Bytes.file`, which was this, private,
+   * until a consumer copied it verbatim */
+  private def stream(path: Path): Source[Chunk[Byte]] = Bytes.file(path)
 
+  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
+  // by construction (Say is Writer's ONLY constructor), the TypeableK
+  // caveat Writer.scala documents on Writer.run
+  @nowarn("msg=cannot be checked at runtime")
   private def fetch(blob: Blob, key: String, target: Path): Unit ! Async =
     async(Files.newOutputStream(target)).flatMap { out =>
-      okay.Producer.each[Chunk[Byte], Either[String, Unit], Async](blob.get(key))(
-        c => out.write(c.toArray)).map { outcome =>
-        out.close()
-        outcome match
-          case Left(why) => throw IllegalStateException(s"restore '$key': $why")
-          case Right(()) => ()
-      }
+      val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
+      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](blob.get(key))(using summon, sink)
+        .map { (_, outcome) =>
+          out.close()
+          outcome match
+            case Left(why) => throw IllegalStateException(s"restore '$key': $why")
+            case Right(()) => ()
+        }
     }
 }

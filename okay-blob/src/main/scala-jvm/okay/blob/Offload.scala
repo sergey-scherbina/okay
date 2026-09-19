@@ -66,7 +66,8 @@ object Offload {
    * documented format, filtered and bounded like a local read */
   def read(blob: Blob, prefix: String, topic: String, partition: Int,
            from: Long, max: Int): Vector[Record] ! Async =
-    okay.Producer.concat[Meta, Async](blob.list(s"$prefix/$topic/$partition/")).flatMap { metas =>
+    okay.Writer.collect(blob.list(s"$prefix/$topic/$partition/"))
+      .map((chunks, _) => chunks.flatMap(_.toVector)).flatMap { metas =>
       val sorted = metas.sortBy(_.key)
       def go(rest: List[Meta], acc: Vector[Record]): Vector[Record] ! Async = rest match
         case Nil => pure(acc)

@@ -59,13 +59,39 @@
       unverified by its own test — left alone, not wrong in substance,
       just under-proven; not mine to touch.
 
-      NEXT CLAIMABLE SLICE = STAGE 2, per module, leaves first
-      (okay-blob, okay-cluster, okay-persist, okay-sql/okay-jdbc,
-      okay-docs, the kafka/fs2/zio/java interops), `Chunks` last and
-      gated on the fold combinator below; each lane `sbt Test/compile`
-      repo-wide before its gate; deletions (`produced`,
-      `Producer.fold/each/concat`, the Produce Stream instances, the
-      three Source bridges) land with the last module.
+      STAGE 2, MODULE 1/6 (okay-blob) IS DONE (2026-09-19). `Blob.get`/
+      `put`/`list` all three retyped to the writer carrier;
+      `getSource`/`putSource` deleted (redundant now); every
+      `Producer.each`/`Producer.concat` call site in Fs/S3/Backup/Offload
+      became `Writer.fold`/`Writer.collect`. `S3.get` simplified for
+      real, not just renamed: its response body was ALREADY a
+      `Source[Chunk[Byte]]` from okay-http, so the old code was paying
+      exactly the bridge tax stage 0 measured (walking it chunk by chunk
+      back into a `Produce` row); now it's `Writer.expand(src)(filter)
+      .map(_ => Right(()))`, no bridge crossed. `E092`'s TypeableK
+      caveat shows up at every `Writer.fold`/`Writer.collect` call site
+      typed on a parameterized `W` (here `Chunk[Byte]`/`Chunk[Meta]`) —
+      `@nowarn("msg=cannot be checked at runtime")` at each one, same as
+      the compare-jmh benchmark from stage 0; if stage 2 keeps
+      accumulating these, a scoped `-Wconf` entry might be worth
+      proposing instead of one `@nowarn` per call site — not decided
+      here. Full blast-radius check: okay-ops/okay-demo/okay-docs-dynamo/
+      okay-acme depend on okay-blob but only for `Blob.Stats`/SigV4,
+      untouched; okay-watch (Blob.get -> Producer.each restore) is a
+      private repo, not reachable from here. Gate: okayBlobJVM/test
+      21/21 green; all three platforms plus every dependent module
+      cold-compiled, zero warnings throughout.
+
+      NEXT CLAIMABLE SLICE = STAGE 2, MODULE 2/6: okay-cluster
+      Flow/Flows, then okay-persist Streams/Wire, okay-sql/okay-jdbc,
+      okay-docs and its backends, the kafka/fs2/zio/java interops —
+      leaves first, `Chunks` last and gated on the fold combinator
+      below; each lane `sbt Test/compile` repo-wide before its gate;
+      deletions (`produced`, `Producer.fold/each/concat`, the Produce
+      Stream instances, the three Source bridges) land with the last
+      module. `writerK` (or `okay.given`) must be in scope at every
+      `Writer.fold`/`.collect`/`.run` call site typed on a parameterized
+      W — the E006 "Not Found" error names it if it's missing.
 
       GOTCHAS: `put-de-diagonal` LANDED as `c9a3f561` (2026-09-19) —
       `Generate.scala` is no longer a shared-edit hazard, and `Put[S[_]]`
@@ -76,14 +102,14 @@
       picked up `okayData`/`okayStm` after core-modularise moved `Sketch`
       and `Stm`/`Tx`/`TRef` out of `okay`, so `compare/Jmh/compile` was
       broken on master for anyone touching that project (fixed in
-      build.sbt, landed with this stage). ~60 main files name
-      Producer/produce/Chunks (okay-stream, blob, cluster, persist,
-      sql/jdbc, docs, kafka/fs2/zio/java interops) — count with grep
-      before each module lane, not from this line.
+      build.sbt, landed with this stage). ~60 main files named
+      Producer/produce/Chunks before okay-blob's 6 files moved off —
+      count with grep before each remaining module lane, not from this
+      line: it is already stale.
 
       DONE-WHEN (whole arc): no `Produce` in main sources except where
       `Chunks` is a documented exception (or the fold combinator above
       closes even that), `Blob.get` typed `Either[String, Unit] !
-      (Writer % Chunk[Byte] + Async)`, docs/benchmarks.md rows
+      (Writer % Chunk[Byte] + Async)` — DONE, docs/benchmarks.md rows
       re-measured for the shapes that changed, spec Results filled per
       stage.

@@ -24,7 +24,7 @@ class TestNoLeak extends munit.FunSuite {
     assertEquals(run(s3.head("k")), None)
     run(s3.delete("k"))
     val err = intercept[IllegalStateException](
-      run(s3.put("k", pure(okay.Chunks.emptyChunk))))
+      run(s3.put("k", pure(()))))
     assert(!err.getMessage.contains(canary))
 
     for r <- seen do

@@ -115,9 +115,18 @@ carrier in general (`Chunks.map` and every elementwise shape win). DONE
       resolves to — no third pair
 
 Stage 2 — migrate, one module per lane, `Chunks` LAST:
-- [ ] okay-blob: `Blob.get` answers its outcome beside the bytes as
-      `Either[String, Unit] ! (Writer % Chunk[Byte] + Async)`; `Producer.each`
-      call sites (Backup, Offload, okay-watch restore) become a Writer fold
+- [x] okay-blob DONE (2026-09-19): `Blob.get`/`put`/`list` all three
+      retyped to the writer carrier (`Either[String, Unit] ! (Writer %
+      Chunk[Byte] + Async)`, `Source[Chunk[Byte]]`, `Source[Chunk[Meta]]`);
+      `getSource`/`putSource` deleted (redundant — `get`/`put` ARE that
+      now); every `Producer.each`/`Producer.concat` call site (Fs, S3,
+      Backup, Offload) became `Writer.fold`/`Writer.collect`. One
+      genuine simplification found along the way: S3's `get` used to
+      walk its own response body — ALREADY a `Source[Chunk[Byte]]` from
+      okay-http — chunk by chunk back into the Produce row it had to
+      answer; now it is `Writer.expand(src)(filter).map(_ => Right(()))`,
+      no bridge crossed at all. `okay-watch restore` is a private repo,
+      not touched here.
 - [ ] okay-cluster Flow/Flows, okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops — each
       lane: `sbt Test/compile` across the WHOLE repo first (a signature
