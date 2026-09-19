@@ -103,3 +103,18 @@ class TestSourceProducer extends munit.FunSuite:
     val _ = run(Producer.each[Int, Int, Async](produce(1).plus[Async])(_ => told += 1))
     assertEquals(told, 1)
   }
+
+  test("put-de-diagonal: generate materializes into a live Source, for free") {
+    // no diagonal Put[Source] could ever have existed: Source's own
+    // answer is always Unit, never the element, which is exactly the
+    // structural proof the backlog entry argues from
+    def firstN[W](s: Source[W], n: Int): Vector[W] ! Async =
+      if n <= 0 then pure(Vector.empty)
+      else Writer.uncons[W, Unit, Async](s).flatMap {
+        case Left(_) => pure(Vector.empty)
+        case Right((w, rest)) => firstN(rest, n - 1).map(w +: _)
+      }
+    assertEquals(run(firstN(nats[Int, Source], 5)), Vector(0, 1, 2, 3, 4))
+    assertEquals(run(firstN(fibs[Long, Source], 10)),
+      Vector(0L, 1L, 1L, 2L, 3L, 5L, 8L, 13L, 21L, 34L))
+  }

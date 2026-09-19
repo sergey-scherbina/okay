@@ -98,10 +98,11 @@ class TestStream extends munit.FunSuite {
     assertEquals(residue.toLazyList.toList, List("n3+0", "n2+3", "n1+5"))
   }
 
-  test("the triangle closes: generate materializes into the Teller too") {
-    assertEquals(fibs[Long, Teller].toLazyList.take(10).toList,
+  test("the fourth carrier closes: generate materializes into the writer stream too") {
+    type Told[W] = Unit ! Writer % W
+    assertEquals(fibs[Long, Told].toLazyList.take(10).toList,
       fibs[Long, LazyList].take(10).toList)
-    assertEquals(nats[Int, Teller].toLazyList.take(5).toList, List(0, 1, 2, 3, 4))
+    assertEquals(nats[Int, Told].toLazyList.take(5).toList, List(0, 1, 2, 3, 4))
   }
 
   test("Writer.of: any stream as a program — the direction back") {

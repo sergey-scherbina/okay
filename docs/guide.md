@@ -268,7 +268,24 @@ or `Source.of(stream)` — and is an ordinary `Stream` in `Async`.
 (`ZStream.unfold`'s shape — 3x ahead of it, measured, since `unfold`
 pays a chunk-of-one tax any array-native representation does);
 `Source.range` is that specialised to `Long` and costs one fewer
-tuple allocation per step. Two terminals read the whole thing while
+tuple allocation per step.
+
+One unfold, four carriers: `generate(a)(f)(g): F[B]` runs a loop from
+seed `a`, telling `f(a)` each round and continuing from `g(a)`, into
+whichever `F` has a `Put` instance — `nats`/`fibs` are the two
+examples. `Put[S[_]] { def put[W](w: W): Unit /> S[W] }` answers
+`Unit`, not the element: the obvious diagonal signature
+(`put[A](a: A): A /> F[A]`) forces the carrier to answer with what it
+was just told, which is why the instances are `LazyList` (laziness:
+`put` captures the continuation in the lazy tail), `Producer` (the
+identity signature, `put` an ordinary emit), a plain writer stream
+(`Unit ! Writer % W`, `put` an ordinary tell) and `Source` (the same
+tell, widened onto the row that also admits `Async`) — a live,
+asynchronous generator for free, which a diagonal `Put` could never
+have given `Source`: its own answer is always `Unit`, never the
+element.
+
+Two terminals read the whole thing while
 staying IN the program — `runCollect: Vector[A] ! Async` and
 `runForeach(f: A => Unit ! Async): Unit ! Async`, this library's own
 `run`-prefix (`Writer.run`, `Async.run`) at the shape `ZStream`'s and

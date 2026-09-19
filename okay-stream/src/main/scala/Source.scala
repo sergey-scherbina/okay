@@ -41,6 +41,18 @@ type Flushing[W] = Unit ! (Flush + (Writer % W + Async))
 
 type Source[W] = Unit ! (Writer % W + Async)
 
+/**
+ * `generate`/`nats`/`fibs` (Generate.scala) produce a live source for
+ * free (put-de-diagonal, 2026-09-19): put is tell, widened onto the
+ * row that also admits Async, with the continuation resumed by `()`
+ * rather than the told value — the answer `Put` asks for now, and the
+ * one no `Source` could ever give before, since its own answer is
+ * always `Unit` and never the element.
+ */
+given Put[Source] with
+  final override inline def put[W](w: W): Unit /> Source[W] =
+    shift(k => !.widen[Unit, Writer % W, Async](Writer.tell(w)).flatMap(_ => k(())))
+
 object Source {
   /**
    * Any PURE stream as a source: a List, a LazyList, a Producer, a

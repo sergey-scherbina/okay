@@ -332,20 +332,24 @@ object Writer {
           case Say(w) => okay.pure(Right((w, k(())))) }
 }
 
-/** the diagonal writer: it tells its own answers, like Producer but
- * with the element type visible in the signature */
-type Teller[A] = A ! Writer % A
-
 /**
- * The third corner of the triangle: generate materializes into the
- * diagonal writer too — one unfold, three carriers (LazyList by pure
- * laziness, Producer by identity operations, Teller by typed ones).
- * put is tell as a delimited-control operation: shift captures the
- * continuation and binds it after the emission.
+ * The fourth carrier: generate materializes into a plain writer
+ * stream too — one unfold, four carriers (LazyList by pure laziness,
+ * Producer by identity operations, this by typed telling, Source by
+ * the same telling plus Async). put is tell as a delimited-control
+ * operation: shift captures the continuation and resumes it with
+ * `()`, not the told value.
+ *
+ * This replaces the diagonal `Teller[A] = A ! Writer % A`
+ * (put-de-diagonal, 2026-09-19): its answer tied the program's own
+ * result to the element type for no reason a real seam ever used —
+ * nothing outside this file ever took a `Teller`, and `Put`'s answer
+ * is `Unit` now, so the diagonal bought nothing the row's own
+ * element didn't already carry.
  */
-given Put[Teller] with
-  final override inline def put[A](a: A): A /> Teller[A] =
-    shift(k => Writer.tell(a).flatMap(_ => k(a)))
+given Put[[W] =>> Unit ! Writer % W] with
+  final override inline def put[W](w: W): Unit /> (Unit ! Writer % W) =
+    shift(k => Writer.tell(w).flatMap(_ => k(())))
 
 /**
  * A writer program is a stream of its told values: the same

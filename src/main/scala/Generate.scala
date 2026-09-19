@@ -50,12 +50,25 @@ inline def loop[A, R](f: A Loop R): A => R =
   lazy val step: A => R = f / (step(_))
   step
 
-/** the interface of an F that accepts produced values */
-trait Put[F[_]]:
-  def put[A](a: A): A /> F[A]
+/**
+ * The interface of an S that accepts produced values.
+ *
+ * NOT diagonal (put-de-diagonal, 2026-09-19): the answer is `Unit`,
+ * decoupled from the element `W`. The obvious signature —
+ * `put[A](a: A): A /> F[A]` — forces the carrier to answer with the
+ * value it was just told, which is why no real seam ever took one: a
+ * real source is `Source[W] = Unit ! (Writer % W + Async)`, answer
+ * `Unit`, element `W`. Every instance survives the change (the
+ * continuation is now resumed with `()` instead of the element), and
+ * `Source` gains one it structurally could not have had before — its
+ * answer is never the element, so no diagonal `Put[Source]` instance
+ * could exist.
+ */
+trait Put[S[_]]:
+  def put[W](w: W): Unit /> S[W]
 
-/** put a value through the instance of F */
-inline def put[A, F[_] : Put as F](a: A): A /> F[A] = F.put(a)
+/** put a value through the instance of S */
+inline def put[W, S[_] : Put as S](w: W): Unit /> S[W] = S.put(w)
 
 /** unfold: take the seed, put f(a), continue with the seed g(a) */
 inline def generate[A, B, F[_] : Put](a: A)(f: A => B)
@@ -69,8 +82,8 @@ inline def generateLazy[A, B](a: A)(f: A => B)
 
 /** put captures the continuation in the lazy tail */
 given Put[LazyList] with
-  final override inline def put[A](a: A): A /> LazyList[A] =
-    shift(a #:: _(a))
+  final override inline def put[W](w: W): Unit /> LazyList[W] =
+    shift(w #:: _(()))
 
 /** the identity signature: an operation is the value it produces */
 type Produce[A] = Id[A]
@@ -119,10 +132,11 @@ inline def produce[A](a: A): Producer[A] = effect(a)
  */
 def produced[A](e: Any): A = e.asInstanceOf[A]
 
-/** put suspends the value as an effect operation */
+/** put suspends the value as an effect operation, and drops the echo
+ * a diagonal Producer answer would have given — no caller used it */
 given Put[Producer] with
-  final override inline def put[A](a: A): A /> Producer[A] =
-    shift(produce(a).flatMap(_))
+  final override inline def put[W](w: W): Unit /> Producer[W] =
+    shift(k => produce(w).flatMap(_ => k(())))
 
 object Producer {
 
