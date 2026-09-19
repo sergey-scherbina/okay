@@ -28,6 +28,16 @@ granularity cannot itself explain, and nobody has reproduced on that
 specific container since. If it recurs there, open a fresh entry
 naming the container image and JVM build; this one is closed.
 
+Investigating it did find one real thing, elsewhere: `decodeC-ssum-
+defer` (changelog.d/decodeC-ssum-defer.md) — `SSum`'s case in both
+`Json.decodeC` and `Cbor.getC` called its own recursion directly
+instead of through `Cont.defer`, the one recursive branch in either
+fold that didn't. Not the cause of THIS entry (`Tree` has no sum
+type; `Schema.derived` always wraps a case's payload in a product,
+whose own field IS deferred, so no `derives`-built schema could ever
+observe the gap either) — found and fixed on its own merits, with a
+hand-built `Schema.SSum` that reaches it directly.
+
 ### Original report (superseded 2026-09-19)
 
 `TestStackBytes` asserted that past the trampoline threshold a door's
