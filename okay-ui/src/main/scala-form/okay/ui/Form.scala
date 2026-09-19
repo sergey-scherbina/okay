@@ -28,6 +28,15 @@ object Form {
   /** the form of A, over its partial value */
   def of[A](using s: Schema[A]): Json => Ui = j => render(s, j, Vector.empty, "")
 
+  /** the form of A, with a caller-stated LABEL per field (form-labels):
+   * a dotted path (`addr.city`) or, failing that, a bare field name
+   * (`city`), overriding the schema's own name in what a reader sees.
+   * An overload rather than a defaulted parameter on `of` itself,
+   * since `of` has no explicit parameter list today and every
+   * existing call site relies on that (specs/form-labels.md) */
+  def of[A](labels: Map[String, String])(using s: Schema[A]): Json => Ui =
+    j => render(s, j, Vector.empty, "", labels)
+
   /**
    * THE VALUE A FORM STARTS FROM: every `Check` false, every `Select`
    * on its first option — a sum's case knob included, since that is a
@@ -75,6 +84,11 @@ object Form {
   def ofWith[A](errors: Vector[(String, String)])(using s: Schema[A]): Json => Ui =
     j => render(s, j, errors, "")
 
+  /** `ofWith`, with the same caller-stated labels `of` takes */
+  def ofWith[A](errors: Vector[(String, String)], labels: Map[String, String])
+               (using s: Schema[A]): Json => Ui =
+    j => render(s, j, errors, "", labels)
+
   private def key(prefix: String, name: String): String =
     if prefix.isEmpty then name else s"$prefix.$name"
 
@@ -99,12 +113,15 @@ object Form {
    * this door's own copy (`renderC` and friends) is deleted.
    */
   def render[A](s: Schema[A], value: Json, errors: Vector[(String, String)],
-                prefix: String): Ui =
-    Schema.Step.walk(renderer(s), RenderEnv(errors, prefix, ""), Some(value))
+                prefix: String, labels: Map[String, String] = Map.empty): Ui =
+    Schema.Step.walk(renderer(s), RenderEnv(errors, prefix, "", labels), Some(value))
 
-  private final case class RenderEnv(errors: Vector[(String, String)], key: String, name: String):
+  private final case class RenderEnv(errors: Vector[(String, String)], key: String, name: String,
+                                      labels: Map[String, String] = Map.empty):
     def root: Boolean = name.isEmpty
-    def field(n: String): RenderEnv = RenderEnv(errors, Form.key(key, n), n)
+    def field(n: String): RenderEnv =
+      val k = Form.key(key, n)
+      RenderEnv(errors, k, labels.getOrElse(k, labels.getOrElse(n, n)), labels)
 
   private type Render[A] = Schema.Step[RenderEnv, Option[Json], Ui]
   private val renderer = Schema.Folded[Render](new Schema.Algebra[Render]:
@@ -139,7 +156,7 @@ object Form {
           val vs = v match
             case Some(Json.JArr(xs)) => xs
             case _ => Vector.empty
-          vs.zipWithIndex.map((iv, i) => Step.Kid(each(), RenderEnv(e.errors, s"${e.key}[$i]", s"${e.name} $i"), Some(iv))),
+          vs.zipWithIndex.map((iv, i) => Step.Kid(each(), RenderEnv(e.errors, s"${e.key}[$i]", s"${e.name} $i", e.labels), Some(iv))),
         _ :+ _,
         (e, _, uis) =>
           if e.root then unsupported(e, "a list")
@@ -184,7 +201,7 @@ object Form {
           val c = chosen(value)
           su.cases(c)._2() match
             case p: Schema.SProduct[?] if p.fields.nonEmpty =>
-              Vector(Step.Kid(cases(c)._2(), RenderEnv(e.errors, e.key, ""), Some(inner(value))))
+              Vector(Step.Kid(cases(c)._2(), RenderEnv(e.errors, e.key, "", e.labels), Some(inner(value))))
             case _ => Vector.empty,
         _ :+ _,
         (_, _, all) => Ui.Column(all))

@@ -57,23 +57,23 @@ is the only non-breaking shape.
 
 ## Behavior
 
-- [ ] a field with no entry in `labels` (or no `labels` argument at
+- [x] a field with no entry in `labels` (or no `labels` argument at
       all) renders EXACTLY as `Form.of[A]` does today — the field
       name, unchanged; this is the regression bar, since the whole
       point is that nothing already using `Form.of`/`render` moves
-- [ ] a `labels` entry keyed by a field's DOTTED PATH labels that one
+- [x] a `labels` entry keyed by a field's DOTTED PATH labels that one
       occurrence only, even when the same bare name recurs elsewhere
       (`addr.city` labels the address's city but not a different
       `city` field two levels away)
-- [ ] a `labels` entry keyed by a BARE field name labels every
+- [x] a `labels` entry keyed by a BARE field name labels every
       occurrence of that name that has no more specific dotted entry
-- [ ] a dotted entry wins over a bare one for the same field, when
+- [x] a dotted entry wins over a bare one for the same field, when
       both are given
-- [ ] the "(optional)" suffix `option` already appends still appends
+- [x] the "(optional)" suffix `option` already appends still appends
       to the LOOKED-UP label, not the raw field name, so a labeled
       optional field reads `<label> (optional)`, not `<field>
       (optional)`
-- [ ] a labeled nested product's own title (the bold `Ui.Text` above
+- [x] a labeled nested product's own title (the bold `Ui.Text` above
       its fields) uses the lookup too, not only its leaves — a title
       is rendered from the same `RenderEnv.name` a leaf is
 
@@ -121,3 +121,21 @@ is the only non-breaking shape.
   existing site makes.
 
 ## Results
+
+**Landed 2026-09-19.** `Form.of[A](labels: Map[String, String])` and
+`Form.ofWith[A](errors, labels)` overloads, `Form.render`'s new
+defaulted `labels` parameter, and `RenderEnv.field` doing the
+dotted-then-bare lookup. `TestFormLabels` (7 tests) drives every
+Behavior box above against a schema where the same bare field name
+(`city`) recurs at two depths through two occurrences of the same
+nested type (`Addr`), which is the shape the dotted/bare distinction
+exists for. Every PRE-EXISTING `Form`/`okay-script` test (24 in
+okay-ui's own Form suites, plus every `Form.of`/`ofWith` caller in
+okay-script) passes unchanged — the overload and the defaulted
+parameter are additive, never a call-site change. Full monorepo gate:
+green, every module.
+
+Trigger: okay-watch's configuration page (BACKLOG `form-labels`),
+whose forms show raw field names like `perMinute` and
+`pagesPerAddress`. Wiring okay-watch's own call sites to pass a
+labels map is that consumer's own change, not this one's.
