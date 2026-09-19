@@ -1,6 +1,9 @@
 feature/wire-server-close 2026-09-19T06:10:46Z
 agent: claude-code
-heartbeat: 2026-09-19T06:10:46Z
+heartbeat: 2026-09-19T09:10:00Z
 status: in-progress
-done-so-far: worktree created
-next: write the spec, then implement Wire.serveClosing
+done-so-far: spec written; Wire.serveClosing implemented + tests
+  (TestWireClosing new, TestWire server-initiated close test added);
+  LiveJs/Client.scala now closes the socket on a Close line from the
+  server, restored the TEMP-disabled Live tag override in TestWire
+next: gate the branch (affected), then rebase/merge/push
