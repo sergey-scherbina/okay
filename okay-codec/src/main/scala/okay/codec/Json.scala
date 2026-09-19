@@ -735,7 +735,13 @@ object Json {
     case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
       su.cases.find(_._1 == name) match
         case None => Cont.Pure(Left(s"unknown case '$name' of ${su.name}"))
-        case Some((_, sc)) => decodeC(sc(), v).map(e => e: Either[String, A])
+        // deferred like every other recursive case (decodeC-ssum-defer):
+        // a case's payload is ordinarily a product, whose own field is
+        // deferred one level in, so this was never the source of
+        // unbounded native stack in practice — but a hand-written
+        // Schema whose case recurses directly, with no product between,
+        // would have paid full native depth here undetected
+        case Some((_, sc)) => Cont.defer(() => decodeC(sc(), v))(r => Cont.Pure(r: Either[String, A]))
     case (Schema.SIso(u, to, _), v) =>
       Cont.defer(() => decodeC(u(), v))(r => Cont.Pure(r.flatMap(to)))
     case (_, JErr(m)) => Cont.Pure(Left(m))
