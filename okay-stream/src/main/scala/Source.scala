@@ -387,6 +387,21 @@ extension [A](s: Source[A])
           !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
             Stage.unchunk[A | B]))
 
+  /**
+   * `merge`, but keeping which side each element came from instead of
+   * losing it in the union: this source's elements arrive as `Left`,
+   * `t`'s as `Right`. Built on `merge` itself — tag each side first,
+   * then the ordinary merge — so it inherits `merge`'s concurrency,
+   * its per-side ordering guarantee, and its `chunked`/`flushAfter`
+   * knobs unchanged; the tagging costs one `Writer.map` walk per side
+   * rather than a second concurrent join.
+   */
+  infix def either[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false,
+                      flushAfter: Option[Long] = None)
+                     (using Scheduler, CanBlock, Timer): Source[Either[A, B]] =
+    Writer.map[A, Either[A, B], Unit, Async](s)(a => Left(a))
+      .merge(Writer.map[B, Either[A, B], Unit, Async](t)(b => Right(b)), capacity, chunked, flushAfter)
+
 extension [A](s: Source[A])
   /**
    * Chunking as a property of the STREAM rather than a parameter of
@@ -437,6 +452,26 @@ extension [A](s: Source[Chunk[A]])
     // and re-tells the elements into a plain Free chain.
     Writer.expand[Chunk[A], A, Unit, Async](s)(c => c)
 
+/** map the elements of a `Flushing` stream, leaving its `Flush.now`
+ * marks exactly where the producer put them — `Writer.map` alone
+ * cannot do this: its `G` needs a `TypeableK` instance and none exists
+ * for the compound `Flush + Async`, so the split is spelled out here,
+ * the same two-step `feedFlushing` (Channel.scala) already does */
+private def mapFlushing[A, B](a: Flushing[A])(f: A => B): Flushing[B] =
+  import !.*
+  (a.resume: @unchecked) match
+    case Free.Pure(x) => Free.Pure(x)
+    case Inject(e) => split[Flush, Writer % A + Async](e)
+      (fl => Inject(fl): Flushing[B])
+      (wa => split[Async, Writer % A](wa)
+        (g => Inject(g): Flushing[B])
+        { case Writer.Say(w) => Inject(Writer(f(w))) })
+    case Bind(Inject(e), k) => split[Flush, Writer % A + Async](e)
+      (fl => Inject(fl).flatMap(x => mapFlushing(k(x))(f)))
+      (wa => split[Async, Writer % A](wa)
+        (g => Inject(g).flatMap(x => mapFlushing(k(x))(f)))
+        { case Writer.Say(w) => Inject(Writer(f(w))).flatMap(_ => mapFlushing(k(()))(f)) })
+
 extension [A](s: Flushing[A])
   /**
    * Merge two sources that mark their own chunk boundaries. Same
@@ -461,6 +496,18 @@ extension [A](s: Flushing[A])
         Writer.of(Channel.mergeFlushing[A | B](sw, tw, slots, Source.ChunkSize, flushAfter)))(
         !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
           Stage.unchunk[A | B]))
+
+  /**
+   * `mergeFlushing`, but tagging which side each element came from —
+   * the same `Left`/`Right` convention as `Source.either`, and the
+   * same trick: tag each side's elements first (`mapFlushing` leaves
+   * its `Flush.now` marks untouched), then the ordinary flushing merge.
+   */
+  infix def eitherFlushing[B](t: Flushing[B], capacity: Int = 64,
+                              flushAfter: Option[Long] = None)
+                             (using Scheduler, Timer): Source[Either[A, B]] =
+    mapFlushing[A, Either[A, B]](s)(a => Left(a))
+      .mergeFlushing(mapFlushing[B, Either[A, B]](t)(b => Right(b)), capacity, flushAfter)
 
 extension [A](s: Chunks[A])
   /**
@@ -489,3 +536,18 @@ extension [A](s: Chunks[A])
    * arguments, and the source merge has them) */
   def merge(t: Chunks[A], capacity: Int)(using Scheduler): Channel[Chunk[A]] =
     Channel.merge[Chunk[A], Producer, Pure, Producer, Pure](s, t, capacity)
+
+  /**
+   * `merge`, tagging which side each element came from — the same
+   * `Left`/`Right` convention as `Source.either`, built the same way:
+   * a `Chunks.map` walk tags each side, then the existing chunked
+   * merge (unlike `Source.either` this needs no `Writer.map`, since a
+   * chunked stream's element mapper already runs inside its chunks).
+   */
+  infix def either[B](t: Chunks[B])(using Scheduler): Channel[Chunk[Either[A, B]]] =
+    either(t, 64)
+
+  def either[B](t: Chunks[B], capacity: Int)(using Scheduler): Channel[Chunk[Either[A, B]]] =
+    val ls: Chunks[Either[A, B]] = Chunks.map(s)(a => Left(a))
+    val rt: Chunks[Either[A, B]] = Chunks.map(t)(b => Right(b))
+    ls.merge(rt, capacity)
