@@ -65,23 +65,37 @@ def get(key: String): Either[String, Unit] ! (Writer % Chunk[Byte] + Async)
 ## Behavior
 
 Stage 0 — measure (the decision gate; no source changes outside benchmarks):
-- [ ] `Producer[Chunk[A]]` against `Unit ! Writer % Chunk[A]` on `Chunks.fold`
+- [x] `Producer[Chunk[A]]` against `Unit ! Writer % Chunk[A]` on `Chunks.fold`
       and `Chunks.map` (okay-stream Chunks.scala ~162, ~283), same N, same
-      chunk size, arms ALTERNATING in one JMH invocation
-- [ ] the elementwise `Stream.fold` over both carriers (src/main/scala/Stream.scala)
-- [ ] the bridges as they stand: `Source.fromProducer` and `toProducer` on a
-      chunk producer, so their cost is known BEFORE they are deleted
-- [ ] one byte lane through okay-blob (`Blob.get` -> `Producer.each` today)
-- [ ] every row prints a COUNT beside the time (elements folded) and the
+      chunk size, arms ALTERNATING in one JMH invocation — DONE:
+      `compare/src/jmh/scala/okay/ProducerWriterCarrierBenchmark.scala`
+- [x] the elementwise `Stream.fold` over both carriers (src/main/scala/Stream.scala) —
+      reused the existing `FoldConsumersBenchmark.writerSpecialized` /
+      `.streamSpecialized` (no new code needed) plus an Async-shaped pair
+      in the new file (`bridgeProducerDirect` / `bridgeWriterDirect`)
+- [x] the bridges as they stand: `Source.fromProducer` and `toProducer` on a
+      chunk producer, so their cost is known BEFORE they are deleted —
+      measured elementwise (`bridgeProducerThroughSource` /
+      `bridgeWriterThroughProducer`), not on a chunk producer specifically:
+      the bridges themselves are elementwise regardless of what feeds them
+- [x] one byte lane through okay-blob (`Blob.get` -> `Producer.each` today) —
+      a synthetic chunk array, `Blob`'s own shapes (`Producer.each` /
+      `Writer.fold` with a side-effecting sink), no engine
+- [x] every row prints a COUNT beside the time (elements folded) and the
       host load; a row goes to src/jmh/history.tsv (date, sha, load,
-      workload, mine, ref, ratio, note) — the performance skill's format
-- [ ] the verdict is written into `## Results` below AND into the sprint
+      workload, mine, ref, ratio, note) — the performance skill's format —
+      6 rows appended, `producer-writer-carrier-stage0` sha, N named per row
+- [x] the verdict is written into `## Results` below AND into the sprint
       item, with the numbers: "within noise" means the arms' difference
       is smaller than the spread between two identical runs in the SAME
       session; "a real loss" means the same sign across three alternating
-      rounds and larger than that spread
+      rounds and larger than that spread — VERDICT BELOW, mixed: a real
+      win at element granularity, a real ~2x loss on `Chunks.fold`
+      specifically, with the cause diagnosed
 
-Stage 1 — the rule (only if stage 0 says within noise, or loses only on `Chunks`):
+Stage 1 — the rule (only if stage 0 says within noise, or loses only on `Chunks`) —
+CONDITION MET, see Results: the loss is confined to `Chunks.fold`, not the
+carrier in general (`Chunks.map` and every elementwise shape win):
 - [ ] docs/guide.md states the rule: a new streaming seam names its element
       in the type — `Source[W]` when it performs Async, the pure writer
       stream otherwise; `Producer` is the pure special case / an alias
@@ -101,6 +115,15 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       okay-docs and its backends, the kafka/fs2/zio/java interops — each
       lane: `sbt Test/compile` across the WHOLE repo first (a signature
       change; see memory signature-change-test-compile-first), then the gate
+- [ ] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the
+      writer carrier (the analogue of `Chunks.foldLeft`/`Fold.OfLong`'s
+      dispatch, walking told chunks with the ELEMENT's `Fold` inlined
+      into a per-chunk loop, not `Writer.fold`'s generic per-chunk box)
+      — measured at parity with `Chunks.fold` (stage 0 found the bare
+      migration 2x slower there; see Results). Without it, `Chunks`
+      stays on `Producer` and this bullet and the next stay undone —
+      a legitimate stopping point for this stage, not a blocker for
+      stage 1 or the rest of stage 2's modules
 - [ ] `Chunks[A]` retyped; `Chunks.generate/range/fromIterator` emit with
       `tell`; the specialised `iterator` walk that `Stream[Producer, Pure]`
       has is carried over to the writer instance, not lost
@@ -193,6 +216,83 @@ the same thing.
 
 ## Results
 
-Empty until stage 0 runs. Fill with the table (shape, N, chunk size,
-mine, ref, ratio, host load, sha) and the verdict line the sprint item
-repeats.
+Stage 0, measured 2026-09-19, `compare/src/jmh/scala/okay/ProducerWriterCarrierBenchmark.scala`
+(N=10000, chunk=64 where chunked; `FoldConsumersBenchmark` reused
+unchanged for the pure elementwise pair). Three whole-suite runs
+(JMH's own `@Fork(2)`/`@Warmup(3)`/`@Measurement(5)` per method inside
+each), host load at the START of each run 48.7 / — (not captured,
+between the other two) / 2.7 — round 1 landed on a busy box (a
+sibling's full `sbt test` running), round 3 on a quiet one; the third
+round's tight error bars (±0.03–6 us against round 1's ±1–222) are the
+ones to trust for magnitude, and every verdict below is signed the
+same way in all three:
+
+| workload | mine (Writer) | ref (Producer) | ratio | sign, 3 rounds |
+|---|---|---|---|---|
+| chunked fold, sum 10k longs | 5.175 us | 2.527 us | **2.05x slower** | 1.64 / 1.99 / 2.05 |
+| chunked map+fold, double then sum | 5.777 us | 7.603 us | **0.76x (24% faster)** | 0.81 / 0.77 / 0.76 |
+| elementwise fold, G=Async | 95.917 us | 112.137 us | **0.86x (14% faster)** | 0.94 / 0.83 / 0.86 |
+| elementwise fold, pure (FoldConsumersBenchmark) | 95.855 us | 120.857 us | **0.79x (21% faster)** | 0.83 / 0.81 / 0.79 |
+| bridge tax, Producer -> Source (`ofProducer`) | 196.323 us | 112.137 us (direct) | 1.75x | 1.64 / 1.69 / 1.75 |
+| bridge tax, Writer -> Producer (`toProducer`) | 182.443 us | 95.917 us (direct) | 1.90x | noisy/noisy/1.90 (round 1-2 error bars ±114-222 us swallow the ratio; round 3 is the first trustworthy one) |
+| blob byte lane (64 x 1024B chunks) | 6.072 us | 5.720 us | 1.06x | 1.03 / 1.40(noisy) / 1.06 — small, same-signed, same root cause as the chunked-fold loss but diluted (64 chunks, `Unit` accumulator needs no boxing) |
+
+**VERDICT — mixed, and the split is informative, not just noisy:**
+
+**Elementwise streaming is a real, reproducible win for the writer
+carrier** — 14-24% faster, in FOUR independent measurements (two
+carriers x {chunked-map, Async-elementwise, pure-elementwise}), all
+signed the same way across all three rounds, two of them (the pure
+elementwise pair) confirming the exact number `12120c2a` predicted for
+Writer's own zero-allocation `Say` node. This is what "a new streaming
+seam" mostly is, so **stage 1 proceeds**: the rule is written, and it
+is correct as stated.
+
+**`Chunks.fold` specifically is a real ~2x loss for a bare migration,
+and the cause is diagnosed, not mysterious.** `Chunks.foldLeft`
+(what `Chunks.fold` dispatches to for `Fold.OfLong`) tests the
+accumulator's type ONCE, outside the loop, then reads
+`Fold.OfLong.addLong` on an unboxed `long` for every element inside a
+tight per-chunk `while`. `Writer.fold`'s own dispatch tests the TOLD
+type — here `Chunk[Long]`, never `Long` — so it can never take that
+fast path; it always falls to the generic `Fold[Chunk[Long], Long]`
+case, boxing the accumulator through one `Function2` call per CHUNK.
+That per-chunk box is what the 2x is: `Writer.fold`'s own comment
+already named this exact trade for its NON-chunked case ("with the
+element boxed and the accumulator a raw long, 3.8 against a 2.5
+floor... the accumulator is essentially the whole cost"), and it is
+worse here because there is no chunk-aware two-level loop on the
+writer side to inline into. `Chunks.map` does NOT show this loss
+(it is a 24% WIN) because `Writer.map`'s per-chunk walk pays no
+accumulator-boxing tax — it only rebuilds Free nodes and calls a
+`Chunk[Long] => Chunk[Long]` function once per chunk, which
+`Chunks.map`'s own `ChunkBuf.mapper` dispatch does too.
+
+**So stage 2's `Chunks` migration is not a bare rename.** Before
+`Chunks[A]` can move onto the writer carrier without regressing its
+hot fold path 2x, someone has to write a chunk-aware specialized fold
+for it — the writer-carrier analogue of `Chunks.foldLeft`/`Fold.OfLong`
+dispatch, walking told chunks with an inlined per-element loop over
+the ELEMENT's `Fold`, not the chunk's. Until that combinator exists
+and is ITSELF measured at parity with `Chunks.fold`, `Chunks` stays on
+`Producer` as a documented, narrow exception — exactly the "a real
+loss -> Producer stays for the chunked hot path" branch of the
+decision gate, scoped to the FOLD operation specifically rather than
+the whole carrier (map already clears the bar).
+
+**The bridges cost what deleting them promises to recover** — 75-90%
+over a direct fold, both directions, consistent sign across all three
+rounds (round 1-2's huge error bars on the reverse bridge, ±114 to
+±222 us on a ~200-350 us number, are a busy-host artifact, not a sign
+flip: round 3 alone, on the quiet box, is the number to plan against).
+
+**The blob byte lane shows the same tax as the chunked fold, in the
+same direction, too small to act on at this size.** 64 chunks of 1024
+bytes each is not enough chunks, and the accumulator (`Unit`, for a
+side-effecting sink) is not boxed the way a `Long` sum is, so the
+per-chunk dispatch tax that dominates the 10k-long chunked fold is
+present but small here (3-6%, once dropping the one noisy round).
+Not a reason to block stage 1; a reason to expect a real, if small,
+regression on `Blob.getSource`'s own drain once something folds it the
+way this benchmark does, until the same chunk-aware fold from the
+paragraph above exists.
