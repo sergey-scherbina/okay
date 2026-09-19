@@ -1,0 +1,6 @@
+feature/producer-to-writer-carrier-followup 2026-09-19T10:38:11Z
+agent: claude-code
+heartbeat: 2026-09-19T10:38:11Z
+status: in-progress
+done-so-far: checked put-de-diagonal landed as c9a3f561
+next: update stale references in spec + sprint item + memory, board-only, land
