@@ -1,0 +1,20 @@
+- [ ] mrjar-jdk25-ci-gap — nothing automatically re-verifies the
+      JDK25 (ScopedValue) side of okay.script.api.Scoped's
+      Multi-Release JAR (script-scoped-state-mrjar, 2026-09-19).
+      scripts/gate.sh runs on whatever JDK is on the box (JDK 21 on
+      the machines seen so far), which structurally cannot load the
+      META-INF/versions/25/ variant -- a future change to
+      okay-script/jdk25/Scoped.scala that broke it would go unnoticed
+      until someone ran the manual probe in specs/
+      script-scoped-state-mrjar.md by hand.
+
+      Two ways to close it, neither attempted here: (a) get a JDK 25+
+      runner into the gate/CI pipeline and add an automated version of
+      the probe (package the jar, run a tiny class reading
+      Scoped.backend under that JDK, assert "ScopedValue"); (b) decide
+      the project's baseline JDK is moving to 25 everywhere, which
+      would make the whole Multi-Release split unnecessary and this
+      item moot. Not urgent: the base (JDK21) path is unaffected by
+      drift on the JDK25 side, so a broken variant fails silently
+      rather than breaking anyone's build -- it just quietly stops
+      giving JDK25 users the ScopedValue benefit.
