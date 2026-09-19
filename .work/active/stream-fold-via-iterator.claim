@@ -1,0 +1,6 @@
+feature/stream-fold-via-iterator 2026-09-19T23:04:11Z
+agent: claude-code
+heartbeat: 2026-09-19T23:04:11Z
+status: in-progress
+done-so-far: worktree created
+next: spec, Stream.fold + postfix consumers over St.iterator, control rows in FoldConsumersBenchmark
