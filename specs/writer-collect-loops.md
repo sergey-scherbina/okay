@@ -95,5 +95,41 @@ chunk and no intermediate `Vector` of chunks.
 
 ## Results
 
-(filled by the lane: `IdiomaticApiBenchmark.okayCollection_elem_runCollect`
-before/after, and a `Source.concat` row.)
+Measured 2026-09-20, `ProducerWriterCarrierBenchmark` section 5: each
+new drain beside the shape it replaced, written out verbatim as its
+control row so the pair alternates in one run. `-f 2 -wi 3 -i 5 -prof
+gc`, two whole rounds, quiet box (load 2.7–2.8 at start). Rows
+`wcl-*` in history.tsv.
+
+| lane | new | control | B/op new | B/op control |
+|---|---|---|---|---|
+| `runCollect`, 10k Longs, round 1 | 141.4 ±15.7 us | 154.4 ±4.5 | 1 564 129 | 2 365 497 |
+| `runCollect`, 10k Longs, round 2 | 135.9 ±13.7 | 158.9 ±6.2 | 1 564 121 | 2 365 497 |
+| `concat`, 64×1024 bytes, round 1 | 89.6 ±1.2 | 90.4 ±1.5 | 313 512 | 317 496 |
+| `concat`, 64×1024 bytes, round 2 | 89.6 ±1.7 | 91.3 ±3.6 | 313 512 | 317 496 |
+| `concat` + one `async` per chunk, round 1 | 90.4 ±0.9 | 91.1 ±0.4 | 323 240 | 331 329 |
+| `concat` + one `async` per chunk, round 2 | 91.9 ±3.2 | 95.1 ±5.9 | 323 240 | 331 329 |
+
+What the numbers say, and no more:
+
+- **`runCollect`: −34% B/op, exact both rounds, and 8–14% time with
+  the same sign both rounds.** 80 bytes per element gone, which is
+  the `Vector :+` price either-scalarised measured on `Writer.run`
+  (−35% B/op there). The time bars are wide on the new arm
+  (±14–16 us); the sign is what two rounds establish, not the digit.
+- **`concat`: time PARITY.** The lane is a 64 KB byte copy; the
+  drain's own cost is a few percent of it, and the bars overlap. Not
+  a win in time and not claimed as one — the change is the one loop
+  and the allocation.
+- **The mapped residual, priced: 126 B per forwarded operation.**
+  The plain and the async source differ only by one `async` per
+  chunk, and the async control row allocates 8 088 B more than the
+  new async row over 64 chunks where the plain pair differ by
+  3 984 B — the extra 4 104 B are 64 rotations of ~64 B plus the
+  per-op re-bind, the trap `loopWith`'s doc describes, seen
+  directly. On a page-fetching driver that is per page and does not
+  matter in time; it is recorded because it is the first time the
+  trap has been priced at the seam rather than argued.
+
+Behaviour: core 748, okay-stream 347, okay-blob 21 tests green on the
+JVM before the gate; the full affected gate is the landing's.
