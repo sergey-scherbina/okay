@@ -1,7 +1,8 @@
 package okay.codec
 
-import okay.lex.{Channel, Scan, Span, Token}
+import okay.lex.{Channel, Scan, ScanInto, Span, Token}
 import okay.parse.{Cst, Instr, Parse}
+import scala.collection.mutable.Growable
 
 /**
  * The XML/HTML dialect — the NESTING prover. JSON nests by
@@ -38,7 +39,13 @@ object Xml {
 
   final case class S(mode: Mode, buf: String, start: P, at: P)
 
-  val scan: Scan[K, S] = new Scan[K, S]:
+  // extends ScanInto rather than Scan (scan-into-the-other-scanners):
+  // step never recurses into itself here (unlike Yaml/Code, left for
+  // later), so the conversion is mechanical — writing straight onto
+  // the sink instead of building a (S, Vector[Token[K]]) pair avoids
+  // both the Tuple2 per character and the Vector per finished token
+  // (docs/benchmarks.md §10, the same move Markdown already made).
+  val scan: Scan[K, S] = new ScanInto[K, S]:
     def init: S = S(Mode.Text, "", P(0, 0, 0), P(0, 0, 0))
 
     override def key(s: S): Any = (s.mode.ordinal, s.buf)
@@ -59,22 +66,20 @@ object Xml {
       else if buf.forall(_.isWhitespace) then K.Ws
       else K.Text
 
-    private def tok(s: S, k: K): Vector[T] =
-      if s.buf.isEmpty then Vector.empty
-      else
+    private def tokInto(s: S, k: K, out: Growable[T]): Unit =
+      if s.buf.nonEmpty then
         val ch = k match
           case K.Comment => Channel.Comment
           case K.Ws => Channel.Trivia
           case _ => Channel.Syntax
-        Vector(Token(k, s.buf,
-          Span(s.start.off, s.start.line, s.start.col, s.buf.length), ch))
+        out += Token(k, s.buf,
+          Span(s.start.off, s.start.line, s.start.col, s.buf.length), ch)
 
-    private def flushed(s: S): Vector[T] = s.mode match
-      case Mode.Text => tok(s, kindOf(s.buf))
+    private def flushedInto(s: S, out: Growable[T]): Unit =
       // an unterminated tag, comment or CDATA is still a token
-      case _ => tok(s, kindOf(s.buf))
+      tokInto(s, kindOf(s.buf), out)
 
-    def step(s: S, c: Char): (S, Vector[T]) =
+    override def stepInto(s: S, c: Char, out: Growable[T]): S =
       val next = s.at + c
       def keep = s.copy(buf = s.buf + c, at = next)
       def begin(m: Mode) = S(m, c.toString, s.at, next)
@@ -83,21 +88,22 @@ object Xml {
         case Mode.InComment =>
           val b = s.buf + c
           if b.endsWith("-->") then
-            (S(Mode.Text, "", next, next), tok(s.copy(buf = b), K.Comment))
-          else (keep, Vector.empty)
+            tokInto(s.copy(buf = b), K.Comment, out)
+            S(Mode.Text, "", next, next)
+          else keep
 
         case Mode.InCdata =>
           val b = s.buf + c
           if b.endsWith("]]>") then
-            (S(Mode.Text, "", next, next), tok(s.copy(buf = b), K.Cdata))
-          else (keep, Vector.empty)
+            tokInto(s.copy(buf = b), K.Cdata, out)
+            S(Mode.Text, "", next, next)
+          else keep
 
         case Mode.InQuote(q) =>
-          if c == q then (keep.copy(mode = Mode.InTag), Vector.empty)
-          else (keep, Vector.empty)
+          if c == q then keep.copy(mode = Mode.InTag) else keep
 
         case Mode.InTag =>
-          if c == '"' || c == '\'' then (keep.copy(mode = Mode.InQuote(c)), Vector.empty)
+          if c == '"' || c == '\'' then keep.copy(mode = Mode.InQuote(c))
           else if c == '>' then
             // no comment check here: a `<!--` has already switched to
             // InComment in the branch below, so by the time a `>` is
@@ -105,27 +111,32 @@ object Xml {
             // check, computing a mode and discarding it — dead since
             // the switch moved, and the compiler was saying so.)
             val b = s.buf + c
-            (S(Mode.Text, "", next, next), tok(s.copy(buf = b), kindOf(b)))
+            tokInto(s.copy(buf = b), kindOf(b), out)
+            S(Mode.Text, "", next, next)
           else
             val b = s.buf + c
             // the shape is decided as it is read: a comment or CDATA
             // swallows everything up to its own terminator
-            if b == "<!--" then (S(Mode.InComment, b, s.start, next), Vector.empty)
-            else if b == "<![CDATA[" then (S(Mode.InCdata, b, s.start, next), Vector.empty)
-            else (keep, Vector.empty)
+            if b == "<!--" then S(Mode.InComment, b, s.start, next)
+            else if b == "<![CDATA[" then S(Mode.InCdata, b, s.start, next)
+            else keep
 
         case Mode.Text =>
           if c == '<' then
-            val closing = flushed(s)
-            (S(Mode.InTag, "<", s.at, next), closing)
-          else if s.buf.isEmpty then (begin(Mode.Text), Vector.empty)
+            flushedInto(s, out)
+            S(Mode.InTag, "<", s.at, next)
+          else if s.buf.isEmpty then begin(Mode.Text)
           // text and whitespace are different tokens, so a run breaks
           // where the character class does
           else if s.buf.forall(_.isWhitespace) != c.isWhitespace then
-            (begin(Mode.Text), flushed(s))
-          else (keep, Vector.empty)
+            flushedInto(s, out)
+            begin(Mode.Text)
+          else keep
 
-    def flush(s: S): Vector[T] = flushed(s)
+    def flush(s: S): Vector[T] =
+      val sink = new Scan.Sink[K]
+      flushedInto(s, sink)
+      sink.result()
 
   // ---------------------------------------------------------------- drive
 
