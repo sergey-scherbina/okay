@@ -1,6 +1,0 @@
-feature/cluster-shape-scope-note 2026-09-19T16:35:00Z
-agent: claude-code
-heartbeat: 2026-09-19T16:35:00Z
-status: in-progress
-done-so-far: surveyed okay-cluster's Chunks.foldLeft call sites for the writer-carrier migration
-next: record the scope finding in the sprint item (Shape[A]'s own interface is built on Chunks[A], not just 7 fold call sites) and land
