@@ -1,0 +1,6 @@
+feature/jdk26-default-runtime 2026-09-19T12:48:28Z
+agent: claude-code
+heartbeat: 2026-09-19T12:48:28Z
+status: in-progress
+done-so-far: JDK 26.0.2.1-tem installed (~/.sdkman/candidates/java/); scope narrowed with operator to runtime-only, Spark excluded, after checking the compile-side ask is much bigger
+next: build.sbt ThisBuild Test/run javaHome default, okaySpark override, verify sample modules, full gate, triage findings
