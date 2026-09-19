@@ -1,6 +1,0 @@
-feature/pwc-deletions-minimal 2026-09-19T20:43:31Z
-agent: claude-code
-heartbeat: 2026-09-19T20:47:37Z
-status: blocked
-done-so-far: deletions committed on the branch only (4365cac2), gate stopped, NOT merged — operator said wait
-next: operator decides — keep everything (drop the branch) or a different subset
