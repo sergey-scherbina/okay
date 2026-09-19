@@ -647,15 +647,19 @@ the trust boundary held by making them look. 4 tests.
   Nothing above changes `Capability`, `checking` or the door: the
   predicate was already the right shape, which is the point.
 
-  - [ ] a refreshed snapshot revokes what it holds and nothing else
-  - [ ] A FAILED REFRESH KEEPS THE PREVIOUS LIST — a broken registry
-        cannot un-revoke anyone
-  - [ ] past `freshFor`, `Stale.Deny` refuses every identifier while
+  - [x] a refreshed snapshot revokes what it holds and nothing else
+  - [x] A FAILED REFRESH KEEPS THE PREVIOUS LIST — a broken registry
+        cannot un-revoke anyone, and `age` stays the last GOOD
+        answer's rather than the last attempt's
+  - [x] past `freshFor`, `Stale.Deny` refuses every identifier while
         `Stale.Allow` keeps serving the last answer, and `age` says
         how old it is either way
-  - [ ] a source that throws is a failure like any other: named, kept,
-        never an empty list
-  - [ ] the MCP door composes with it unchanged — the capability door
+  - [x] before the first answer the same rule holds: `Deny` refuses
+        everything, `Allow` refuses nothing
+  - [x] a source that throws is a failure like any other: named,
+        kept, never an empty list — and an EMPTIED list is only ever
+        an answer, which the registry is allowed to give
+  - [x] the MCP door composes with it unchanged — the capability door
         takes `revocations.revoked(now)` where it took any predicate
 
   Behavior:

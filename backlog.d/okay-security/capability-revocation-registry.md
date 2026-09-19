@@ -8,5 +8,8 @@
       that matters when somebody picks this up: the door already asks
       about the root id AND each `Agent` caveat, so the registry only
       has to be a set of strings — the hard part is where it lives,
-      not what it holds. Filed by capability-revocation-handle
+      not what it holds. `Revocations` already consumes an external
+      one (a snapshot, a named failure that keeps the old list, and a
+      staleness decision with no default), so what is missing is a
+      source to point it at, not a shape to hold it. Filed by capability-revocation-handle
       (security.md stage 7).
