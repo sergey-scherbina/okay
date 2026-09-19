@@ -139,4 +139,50 @@ class TestStreamSource extends munit.FunSuite {
       .toLazyList.toList
     assertEquals(out, (1 to 20).toList)
   }
+
+  test("either: merge's own union, but each element still says which side it came from") {
+    val a: Source[Int] = Source.of((1 to 50).toList)
+    val b: Source[String] = Source.of((51 to 100).map(_.toString).toList)
+    val out = a.either(b).toLazyList.toList
+    assertEquals(out.length, 100)
+    // no element crosses sides, and each side's own order survives —
+    // the same promise `merge` makes, now checkable without a type test
+    assertEquals(out.collect { case Left(i) => i }, (1 to 50).toList)
+    assertEquals(out.collect { case Right(s) => s.toInt }, (51 to 100).toList)
+  }
+
+  test("either(chunked): the same tagging under the chunked merge") {
+    val a: Source[Int] = Source.of((1 to 50).toList)
+    val b: Source[String] = Source.of((51 to 100).map(_.toString).toList)
+    val out = a.either(b, chunked = true).toLazyList.toList
+    assertEquals(out.collect { case Left(i) => i }, (1 to 50).toList)
+    assertEquals(out.collect { case Right(s) => s.toInt }, (51 to 100).toList)
+  }
+
+  test("Chunks.either: the chunked-stream merge, tagged the same way") {
+    val a = Chunks.range(0, 50)
+    val b = Chunks.map(Chunks.range(0, 50))(x => (x + 1000).toString)
+    val merged = a.either(b)
+    var out = Vector.empty[Either[Long, String]]
+    var c = merged.receiveBlocking()
+    while c.isDefined do { out ++= c.get; c = merged.receiveBlocking() }
+    assertEquals(out.collect { case Left(i) => i }.sorted, (0L until 50L).toVector)
+    assertEquals(out.collect { case Right(s) => s.toInt }.sorted, (1000 until 1050).toVector)
+  }
+
+  test("eitherFlushing: mergeFlushing's boundaries, elements tagged by side") {
+    type R = Flush + (Writer % Int + Async)
+    def marked(base: Int): Flushing[Int] =
+      okay.effect[R, Unit](Writer(base + 1))
+        .flatMap(_ => okay.effect[R, Unit](Writer(base + 2)))
+        .flatMap(_ => okay.effect[R, Unit](Writer(base + 3)))
+        .flatMap(_ => Flush.now[Writer % Int + Async])
+        .flatMap(_ => okay.effect[R, Unit](Async.Run(() => Thread.sleep(60000))))
+
+    val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
+      marked(0).eitherFlushing(marked(100)).toLazyList.take(6).toList)
+    val got = f.get(10, java.util.concurrent.TimeUnit.SECONDS)
+    assertEquals(got.collect { case Left(i) => i }.sorted, List(1, 2, 3))
+    assertEquals(got.collect { case Right(i) => i }.sorted, List(101, 102, 103))
+  }
 }

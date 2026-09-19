@@ -465,12 +465,14 @@ private def mapFlushing[A, B](a: Flushing[A])(f: A => B): Flushing[B] =
       (fl => Inject(fl): Flushing[B])
       (wa => split[Async, Writer % A](wa)
         (g => Inject(g): Flushing[B])
-        { case Writer.Say(w) => Inject(Writer(f(w))) })
+        { w0 => (w0: @unchecked) match
+            case Writer.Say(w) => Inject(Writer(f(w))) })
     case Bind(Inject(e), k) => split[Flush, Writer % A + Async](e)
       (fl => Inject(fl).flatMap(x => mapFlushing(k(x))(f)))
       (wa => split[Async, Writer % A](wa)
         (g => Inject(g).flatMap(x => mapFlushing(k(x))(f)))
-        { case Writer.Say(w) => Inject(Writer(f(w))).flatMap(_ => mapFlushing(k(()))(f)) })
+        { w0 => (w0: @unchecked) match
+            case Writer.Say(w) => Inject(Writer(f(w))).flatMap(_ => mapFlushing(k(()))(f)) })
 
 extension [A](s: Flushing[A])
   /**
