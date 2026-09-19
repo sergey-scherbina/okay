@@ -206,9 +206,17 @@
       (Chunks is cross-platform). Delete `foldLeftWriter`/`foldWriter`
       only if no G-effectful caller appears — they are correct, tested
       and off the path; not this lane's call.
-      NEXT CLAIMABLE SLICE — the G-effectful modules, one lane each:
-      okay-persist Streams/Wire, okay-sql/okay-jdbc,
-      okay-docs and its backends, the kafka/fs2/zio/java interops —
+      okay-persist Streams: DONE (pwc-persist-streams, 2026-09-19 —
+      `stream`/`tail` are `Source[Chunk[Record]]`; `Wire`'s `Produce`
+      is the replication request, not the effect).
+      NEXT CLAIMABLE SLICE — the remaining G-effectful modules, one
+      lane each (recount with the grep in the spec; as of this lane:
+      okay-jdbc 6 files, okay-sql 2, okay-docs 2 + mongo/dynamo/
+      cassandra 1 each, okay-rag 1, okay-r2dbc 1, okay-pg 1,
+      okay-outbox 1, okay-kafka 1, okay-blob 3 stragglers, compare 1):
+      okay-sql/okay-jdbc (+ pg/r2dbc/rag, the same `Producer.concat`
+      shape), okay-docs and its backends, the kafka/fs2/zio/java
+      interops —
       these hold the G-effectful `Chunk[X] ! Produce + G` carrier
       (`Producer.concat`/`fold` callers), I/O-bound, migrated by the
       blob pattern (`Writer.fold`/`.collect`), no fold parity needed —

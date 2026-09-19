@@ -127,10 +127,17 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       answer; now it is `Writer.expand(src)(filter).map(_ => Right(()))`,
       no bridge crossed at all. `okay-watch restore` is a private repo,
       not touched here.
-- [ ] okay-cluster Flow/Flows, okay-persist Streams/Wire, okay-sql/okay-jdbc,
-      okay-docs and its backends, the kafka/fs2/zio/java interops — each
-      lane: `sbt Test/compile` across the WHOLE repo first (a signature
-      change; see memory signature-change-test-compile-first), then the gate
+- [x] okay-cluster Flow/Flows — moved WITH the `Chunks` alias
+      (76408290), no source change: it names no `Produce`
+- [x] okay-persist Streams — `stream`/`tail` are `Source[Chunk[Record]]`
+      (pwc-persist-streams, 2026-09-19); `Wire`'s `Produce` is the
+      replication request, not the effect
+- [ ] okay-sql/okay-jdbc (+ pg/r2dbc/rag: the `Chunk[Vector[SqlValue]] !
+      (Produce + Async)` / `Producer.concat` shape), okay-docs and its
+      backends, okay-outbox, the kafka/fs2/zio/java interops, okay-blob's
+      three stragglers — each lane: `sbt Test/compile` across the WHOLE
+      repo first (a signature change; see memory
+      signature-change-test-compile-first), then the gate
 - [x] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the
       writer carrier, measured at parity with `Chunks.fold` — DONE
       (producer-writer-carrier-pure-iterator, 2026-09-19), and it was

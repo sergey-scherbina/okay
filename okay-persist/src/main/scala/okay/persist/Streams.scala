@@ -1,11 +1,14 @@
 package okay.persist
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, Timer, effect}
+import okay.{!, +, %, Async, Chunk, ChunkBuf, Chunks, Source, Timer, Writer, effect}
 
 /**
- * Streaming reads over a topic (specs/persist.md, Interface): the
- * `JdbcInterop` shape — each chunk is one `Async` operation,
- * constant memory for any log size. `stream` ends when it catches
+ * Streaming reads over a topic (specs/persist.md, Interface): a
+ * `Source[Chunk[Record]]` — each chunk is one told value, each read
+ * one `Async` operation, constant memory for any log size (the
+ * writer carrier since producer-to-writer-carrier, 2026-09-19; it was
+ * `Chunk[Record] ! (Produce + Async)`, the `JdbcInterop` shape, whose
+ * element sat in the answer position). `stream` ends when it catches
  * up; `tail` never ends — at `end` it parks on the platform timer
  * and polls, which is the contract the poll-on-end behavior test
  * guarantees engine-side (ui-durable, resumable SSE).
@@ -25,19 +28,19 @@ object Streams:
       s"offset $asked is before the first retained record $begin — " +
         "history was dropped; resume from begin or from a snapshot")
 
-  private type F = Produce + Async
+  private type F = Writer % Chunk[Record] + Async
 
   /** every record from `from` to the moment the stream catches up
    * (a read returning nothing ends it), `chunk` records per pull */
   def stream(t: Topic, partition: Int, from: Long, chunk: Int = 256,
              onTooEarly: OnTooEarly = OnTooEarly.Fail)
-  : Chunk[Record] ! F =
-    def go(at: Long): Chunk[Record] ! F =
+  : Source[Chunk[Record]] =
+    def go(at: Long): Source[Chunk[Record]] =
       effect[F, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).flatMap {
         case Topic.Read.TooEarly(b) => tooEarly(at, b, onTooEarly)(go)
         case Topic.Read.Records(rs) =>
-          if rs.isEmpty then okay.pure(Chunks.emptyChunk)
-          else effect[F, Chunk[Record]](ChunkBuf.of(rs)).flatMap(_ => go(rs.last.offset + 1))
+          if rs.isEmpty then okay.pure(())
+          else effect[F, Unit](Writer(ChunkBuf.of(rs))).flatMap(_ => go(rs.last.offset + 1))
       }
     go(from)
 
@@ -85,20 +88,20 @@ object Streams:
   def tail(t: Topic, partition: Int, from: Long, chunk: Int = 256,
            pollMillis: Long = 25, onTooEarly: OnTooEarly = OnTooEarly.Fail)
           (using Timer)
-  : Chunk[Record] ! F =
-    def go(at: Long): Chunk[Record] ! F =
+  : Source[Chunk[Record]] =
+    def go(at: Long): Source[Chunk[Record]] =
       effect[F, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).flatMap {
         case Topic.Read.TooEarly(b) => tooEarly(at, b, onTooEarly)(go)
         case Topic.Read.Records(rs) =>
           if rs.isEmpty then
-            okay.!.widen[Unit, Async, Produce](Async.sleep(pollMillis)).flatMap(_ => go(at))
-          else effect[F, Chunk[Record]](ChunkBuf.of(rs)).flatMap(_ => go(rs.last.offset + 1))
+            okay.!.widen[Unit, Async, Writer % Chunk[Record]](Async.sleep(pollMillis)).flatMap(_ => go(at))
+          else effect[F, Unit](Writer(ChunkBuf.of(rs))).flatMap(_ => go(rs.last.offset + 1))
       }
     go(from)
 
   private def tooEarly(asked: Long, begin: Long, on: OnTooEarly)
-                      (resume: Long => Chunk[Record] ! F): Chunk[Record] ! F =
+                      (resume: Long => Source[Chunk[Record]]): Source[Chunk[Record]] =
     on match
       case OnTooEarly.Resume => resume(begin)
       case OnTooEarly.Fail =>
-        effect[F, Chunk[Record]](Async.Run(() => throw DroppedHistory(asked, begin)))
+        effect[F, Unit](Async.Run(() => throw DroppedHistory(asked, begin)))

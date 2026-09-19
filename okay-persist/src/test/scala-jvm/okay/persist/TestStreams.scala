@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.{!, +, Async, Chunk, Handler, Produce}
+import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
 import okay.given
 
 /**
@@ -14,23 +14,13 @@ class TestStreams extends munit.FunSuite {
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
 
-  /** step the freer tree until `n` chunks are collected (or the
-   * stream ends), handling Async on the current thread */
-  def takeChunks[A](s0: Chunk[A] ! (Produce + Async), n: Int): List[Chunk[A]] =
-    import okay.!.*
-    var acc = List.empty[Chunk[A]]
-    var cur = s0
-    var going = true
-    while going && acc.length < n do
-      (cur.resume: @unchecked) match
-        case Pure(_) => going = false
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); going = false
-          case Right(c) => acc ::= c.asInstanceOf[Chunk[A]]; going = false
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => cur = k(summon[Handler[Async]].handle(a))
-          case Right(c) => acc ::= c.asInstanceOf[Chunk[A]]; cur = k(c)
-    acc.reverse
+  /** the first `n` told chunks (or all, if the source ends first),
+   * walked by the writer stream's own iterator — Async handled on
+   * the current thread; `take` stops asking after `n`, so `tail`'s
+   * endless source is fine here */
+  def takeChunks[A](s0: Source[Chunk[A]], n: Int): List[Chunk[A]] =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]]
+      .iterator(s0).take(n).toList
 
   test("stream: chunked to the end, bounded chunks, then it ends") {
     val t = MemoryStore().topic("s")

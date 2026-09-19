@@ -112,9 +112,10 @@ trait Store:
 
 Conveniences over the core, not part of it: `append(key, value)`
 routing by key hash; a chunked streaming read
-`Chunk[Record] ! (Produce + Async)` in the `JdbcInterop` shape
-(each chunk one `Async` operation, constant memory for any log
-size); a typed view `Topic.of[A](using Schema[A])` that encodes and
+`Source[Chunk[Record]]` (the writer carrier — each chunk one told
+value, each read one `Async` operation, constant memory for any log
+size; `Chunk[Record] ! (Produce + Async)`, the `JdbcInterop` shape,
+until producer-to-writer-carrier 2026-09-19); a typed view `Topic.of[A](using Schema[A])` that encodes and
 decodes at the edge and returns damage as data, never throws.
 
 `Policy` names the segment roll size, retention (by size, by age, or
@@ -895,8 +896,9 @@ Stage 1 landed — the consumers prove the seam.
   convenience the ui lane asked for; `latest` scans what compaction
   left, which is the point of pairing them.
 - **Streams**: `stream` (chunked to end) and `tail` (parks on the
-  platform timer, sees later appends) as `Chunk[Record] !
-  (Produce + Async)`, the JdbcInterop shape; dropped history stops
+  platform timer, sees later appends) as `Source[Chunk[Record]]`
+  (retyped from `Chunk[Record] ! (Produce + Async)`, the JdbcInterop
+  shape, 2026-09-19); dropped history stops
   a stream by declared `OnTooEarly` decision (`Fail` throws naming
   `begin`, `Resume` jumps there loudly). okay-persist now depends
   on the core for this (and okay-agent on okay-persist for the
