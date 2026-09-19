@@ -99,9 +99,6 @@ final class Writes(db: Sql, topic: Topic, run: String):
                 from = off
     intents
 
-  // Writer % Chunk[..]'s split test is unchecked under erasure — the
-  // E092 TypeableK caveat Writer.scala documents on Writer.run
-  @scala.annotation.nowarn("msg=cannot be checked at runtime")
   private def countRows(p: okay.Source[Chunk[Vector[SqlValue]]]): Long ! Async =
     given okay.Fold[Chunk[Vector[SqlValue]], Long] = okay.Fold(0L)((n, c) => n + c.length)
     okay.Writer.fold[Chunk[Vector[SqlValue]], Long, Unit, Async](p).map(_._1)

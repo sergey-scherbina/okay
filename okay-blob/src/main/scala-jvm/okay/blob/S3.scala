@@ -3,7 +3,6 @@ package okay.blob
 import okay.{!, +, %, Async, Chunk, Source, Writer, pure}
 import okay.RowLift.plus
 import okay.http.{Body, Http, Method, Request, Response}
-import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -169,7 +168,6 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
   // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), the TypeableK
   // caveat Writer.scala documents on Writer.run
-  @nowarn("msg=cannot be checked at runtime")
   private def drainBytes(p: Source[Chunk[Byte]]): Array[Byte] ! Async =
     // the buffer is allocated when the program RUNS, so the program
     // is a value that can run twice

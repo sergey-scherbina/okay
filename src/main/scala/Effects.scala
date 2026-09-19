@@ -270,8 +270,9 @@ def typeableK[F[_]](cls: Class[?]): TypeableK[F] = Effect.ByClass[F](cls)
  * and `Distinct[R]`, which `Handler.union` requires, refuses the row
  * at COMPILE time rather than leaving it to the first wrong answer. A
  * test that is finer than the class says so in its declared type
- * (`TypeableK.ByValue`) and is allowed to repeat; `writerK` is the one
- * that does. Two — `Reader % Int + Reader % String` — misroute, and
+ * (`TypeableK.ByValue`) and is allowed to repeat; `Writer.byValue.writerK`
+ * is the one that does, an opt-in — Writer's DEFAULT test is the class
+ * of `Say`, total and warning-free (writer-typeablek-by-class). Two — `Reader % Int + Reader % String` — misroute, and
  * `TestRowIdentity` demonstrates exactly how (the first handler
  * answers both asks and the second continuation gets a
  * ClassCastException: loud, at the first wrong answer).
@@ -316,8 +317,11 @@ object TypeableK:
    * Int` is the good row it is, or the misroute that the same shape
    * over `Reader` would be.
    *
-   * One instance in this tree carries it: `writerK`, whose test is
-   * `Typeable[W]` on the told value. Marking a test that is NOT finer
+   * One instance in this tree carries it: `Writer.byValue.writerK`,
+   * whose test is `Typeable[W]` on the told value — an OPT-IN
+   * (`import okay.Writer.byValue.given`), since the default `writerK`
+   * tests the class of `Say` alone and pays no E092 for it. Marking a
+   * test that is NOT finer
    * than the class defeats the check for that signature, so mark it
    * only after reading the `unapply`.
    */

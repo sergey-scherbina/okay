@@ -407,7 +407,6 @@ object OkayLane {
   // Writer.fold's inline body checks the told value's type at an
   // abstract type — the trusted kernel's warning (Effects.scala), the
   // same one TestPhased silences at the same call
-  @scala.annotation.nowarn("msg=cannot be checked at runtime")
   def routeWindowsOnly(feed: Feed, road: String, chunk: Int = 256): Long = {
     val tram = tramTable(feed)
     var wins = 0L

@@ -4,7 +4,6 @@ import !.*
 import Chunks.*
 import RowLift.plus
 import RowLift.at
-import scala.annotation.nowarn
 
 /** Chunked streams: batch amortization over the ordinary stream layer. */
 class TestChunks extends munit.FunSuite {
@@ -146,12 +145,6 @@ class TestChunks extends munit.FunSuite {
     assertEquals(List[BigInt](1, 2, 3).foldLeft(big.init)(big.add), BigInt(6))
   }
 
-  // Writer % Chunk[Long]'s split test is unchecked under erasure —
-  // sound by construction, the TypeableK caveat Writer.scala documents
-  // (the annotation goes on this helper, not on `test(...)`: `test` is
-  // an ordinary call, not a definition, so `@nowarn` cannot attach to
-  // it directly)
-  @nowarn("msg=cannot be checked at runtime")
   private def checkFoldWriterAgreesWithFold(): Unit = {
     // Async-shaped, matching the real shape every future caller has
     // (a bare Nothing/Pure row hits an unrelated inline-with-Nothing

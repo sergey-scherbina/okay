@@ -99,11 +99,6 @@ class TestJetty extends munit.FunSuite {
             s"http://127.0.0.1:${Jetty.port(server)}/big")).flatMap { r =>
             given Fold[Chunk[Byte], Long] =
               Fold.long[Chunk[Byte]](0L)((n, c) => n + c.length)
-            given scala.reflect.Typeable[Chunk[Byte]] = new:
-              def unapply(x: Any): Option[x.type & Chunk[Byte]] = x match
-                case _: scala.collection.immutable.ArraySeq[?] =>
-                  Some(x.asInstanceOf[x.type & Chunk[Byte]])
-                case _ => None
             Writer.fold[Chunk[Byte], Long, Unit, Async](r.body).map(_._1)
           }).runWith
       }).runWith

@@ -168,7 +168,6 @@ object Source {
   // Writer % Chunk[X]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), the E092
   // TypeableK caveat Writer.scala documents on Writer.run
-  @scala.annotation.nowarn("msg=cannot be checked at runtime")
   def concat[X](s: Source[Chunk[X]]): Vector[X] ! Async =
     Writer.collect[Chunk[X], Unit, Async](s).map(_._1.flatten)
 

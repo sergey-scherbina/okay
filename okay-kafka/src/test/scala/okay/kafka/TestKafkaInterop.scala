@@ -33,7 +33,6 @@ class TestKafkaInterop extends munit.FunSuite {
 
   /** pull exactly one told chunk out of the async source (the source
    * never ends, so `uncons`, not a collect) */
-  @scala.annotation.nowarn("msg=cannot be checked at runtime") // E092, Writer.run's caveat
   def firstChunk(s: KafkaChunks[String, String]): Chunk1 ! okay.Async =
     okay.Writer.uncons[Chunk1, Unit, okay.Async](s).map {
       case Right((c, _)) => c

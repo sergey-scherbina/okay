@@ -15,7 +15,6 @@ private[outbox] object Rows:
 
   def all[A: Schema](db: Sql, sql: String, params: Vector[SqlValue] = Vector.empty): Vector[A] ! Async =
     // generic in B so the damage type is whatever `Typed.rows` says
-    @scala.annotation.nowarn("msg=cannot be checked at runtime") // E092, Writer.run's caveat
     def go[B](p: Source[Chunk[Either[B, A]]]): Vector[A] ! Async =
       given Fold[Chunk[Either[B, A]], Vector[A]] = Fold(Vector.empty[A]) { (acc, c) =>
         val (bad, good) = c.partitionMap(identity)

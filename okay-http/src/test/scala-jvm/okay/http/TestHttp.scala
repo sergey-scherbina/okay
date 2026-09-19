@@ -98,11 +98,6 @@ class TestHttp extends munit.FunSuite {
       val n = Async.run[Long, Pure](
         client.send(Request.get(s"http://127.0.0.1:$port/big")).flatMap { r =>
           given Fold[Chunk[Byte], Long] = Fold.long[Chunk[Byte]](0L)((n, c) => n + c.length)
-          given scala.reflect.Typeable[Chunk[Byte]] = new:
-            def unapply(x: Any): Option[x.type & Chunk[Byte]] = x match
-              case _: scala.collection.immutable.ArraySeq[?] =>
-                Some(x.asInstanceOf[x.type & Chunk[Byte]])
-              case _ => None
           Writer.fold[Chunk[Byte], Long, Unit, Async](r.body).map(_._1)
         }).runWith
       assertEquals(n, big.length.toLong)

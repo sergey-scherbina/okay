@@ -23,8 +23,10 @@ import scala.quoted.*
  * They are broken when the test is the erasure, which is the default
  * and the common case. No macro can read the semantics of a
  * hand-written `TypeableK`, so the instance declares it:
- * `TypeableK.ByValue` is the opt-in, `writerK` is the one instance in
- * this tree that carries it, and everything unmarked is taken to test
+ * `TypeableK.ByValue` is the opt-in, `Writer.byValue.writerK` is the one
+ * instance in this tree that carries it (imported where a row holds
+ * two Writers; the default `writerK` is by class), and everything
+ * unmarked is taken to test
  * by class. That direction is the safe one — an unmarked fine
  * instance is refused and fixed by one word, while the reverse would
  * pass a row that misroutes.

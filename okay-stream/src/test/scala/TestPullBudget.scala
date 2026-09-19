@@ -1,6 +1,5 @@
 package okay
 
-import scala.annotation.nowarn
 
 /**
  * chunk-stack-safety: a stage that accumulates without emitting takes
@@ -34,7 +33,6 @@ class TestPullBudget extends munit.FunSuite {
   // Writer.run's inline body checks the answer at the chunk type,
   // abstract here — the trusted kernel's warning (Effects.scala), not
   // a cast this file adds
-  @nowarn("msg=cannot be checked at runtime")
   def runChunks(told: Int ! Writer % Int, k: Int): Seq[Chunk[Int]] =
     !.run(Writer.run(through(told)(Stage.chunked[Int](k))))._1
 

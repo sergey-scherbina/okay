@@ -1,5 +1,7 @@
 package okay
 
+import okay.Writer.byValue.given
+
 /** two signatures with nothing but their class to be told apart by */
 enum Ping[+A] derives Effect:
   case Pong() extends Ping[Int]
@@ -30,8 +32,13 @@ class TestDistinct extends munit.FunSuite {
   test("two WRITERS are told apart — the test reads the told value") {
     // TestRowIdentity runs this row and both writers collect the
     // right elements; the check must not refuse what works, and it
-    // knows only because `writerK` declares TypeableK.ByValue
+    // knows only because `Writer.byValue.writerK` (imported above)
+    // declares TypeableK.ByValue — the default `writerK` is by the
+    // class of `Say`, unmarked, and would refuse this row
     summon[Distinct[Writer % String + Writer % Int]]
+    // the same import, used in the open where the linter can see it
+    // (Distinct's macro-time search does not count as a use)
+    val _ = summon[TypeableK.ByValue[Writer % String]]
   }
 
   test("three members, the collision in the middle") {

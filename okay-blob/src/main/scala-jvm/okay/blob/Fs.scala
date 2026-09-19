@@ -3,7 +3,6 @@ package okay.blob
 import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect, pure}
 import okay.RowLift.plus
 import java.nio.file.{Files, Path, StandardCopyOption}
-import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -37,7 +36,6 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
   // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), the TypeableK
   // caveat Writer.scala documents on Writer.run
-  @nowarn("msg=cannot be checked at runtime")
   def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async =
     resolve(key) match
       case Left(why) => throw IllegalArgumentException(why)   // a broken caller, not hostile data

@@ -2,7 +2,6 @@ package okay.blob
 
 import okay.{!, +, %, Async, Chunk, Source, Writer, async}
 import okay.RowLift.plus
-import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -57,7 +56,6 @@ trait Blob:
   // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), the TypeableK
   // caveat Writer.scala documents on Writer.run
-  @nowarn("msg=cannot be checked at runtime")
   def getBytes(key: String, range: Option[(Long, Long)] = None)
   : Either[String, Array[Byte]] ! Async =
     async(java.io.ByteArrayOutputStream()).flatMap { out =>

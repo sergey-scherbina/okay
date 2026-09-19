@@ -112,20 +112,6 @@ trait Http:
 
 object Http {
 
-  /**
-   * A `Typeable` for a chunk of bytes.
-   *
-   * `Writer`'s row split tests the operation's own class first (it is
-   * a `Say`) and the told value's class only to separate two writers
-   * in one row. A row here holds exactly one, so the test is the
-   * erasure of `ArraySeq` and there is nothing finer to ask for.
-   */
-  private given scala.reflect.Typeable[Chunk[Byte]] = new scala.reflect.Typeable[Chunk[Byte]]:
-    def unapply(x: Any): Option[x.type & Chunk[Byte]] = x match
-      case _: scala.collection.immutable.ArraySeq[?] =>
-        Some(x.asInstanceOf[x.type & Chunk[Byte]])
-      case _ => None
-
   /** a body that is already in hand — one chunk, then done */
   def one(bs: Array[Byte]): Source[Chunk[Byte]] =
     if bs.isEmpty then pure(())

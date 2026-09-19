@@ -332,37 +332,48 @@ object Writer {
           case Say(w) => okay.pure(Right((w, k(())))) }
 
   /**
-   * Writer's split is COMPLETE, and now unconditionally so.
+   * Writer's split is COMPLETE, and by the CLASS of `Say` alone.
    *
-   * Two tests, in order: is this a writer operation at all (its own
-   * class, distinct from every other value in the row), and if so, is it
-   * THIS writer's (the told value's class, which separates
-   * `Writer % String + Writer % Int` — `TestRowIdentity` asserts they
-   * route correctly).
-   *
-   * The first test is what the identity encoding could not make. There
-   * an operation WAS its element, so a told String and a bare String
-   * from any other effect were the same runtime value, and the split
-   * came with a caveat: forward only effects whose operations are
-   * class-distinct from W. A `Say` is class-distinct from everything,
-   * and the caveat is gone.
+   * `Say` is Writer's only constructor and is class-distinct from every
+   * other signature's operations, so "is this a writer operation" is
+   * one `isInstance` — total, needing no `Typeable[W]`, and therefore
+   * free of the E092 "cannot be checked at runtime" warning that the
+   * previous default paid at EVERY `Writer.fold`/`collect`/`run`/
+   * `uncons` call site whose W was parameterised (`Chunk[Byte]`,
+   * `Either[Bad, A]`, an abstract `O`): 23 `@nowarn`s across ten
+   * modules, each explaining the same caveat (writer-typeablek-by-class,
+   * 2026-09-19). What that default bought — telling `Writer % String`
+   * from `Writer % Int` in ONE row by the told value's class — no
+   * module used; it is `Writer.byValue` now, an opt-in
+   * (`import okay.Writer.byValue.given`), and `Distinct` refuses a
+   * two-Writer row without it, which is the direction Distinct.scala
+   * says is the safe one: an unmarked instance is refused and fixed by
+   * one import, where the reverse would pass a row that misroutes.
    *
    * IN Writer'S OWN COMPANION, not a bare top-level given (moved
    * 2026-09-19, writerk-companion-scope): a `given` here is in the
    * IMPLICIT SCOPE of every `TypeableK[Writer % W]` query, from any
-   * package, with no import — the top-level placement was why every
-   * `Writer.fold`/`.collect`/`.run` call site outside package `okay`
-   * needed an explicit `import okay.writerK` (or `okay.given`) just to
-   * satisfy this `using` clause, found the hard way across okay-blob's
-   * migration (producer-to-writer-carrier, stage 2).
+   * package, with no import.
    */
-  given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
-    // `Typeable.unapply` still answers an Option for the told value's
-    // own test (the JDK's Typeable has no boolean form); the Say wrapper
-    // and the outer Option are gone
-    def test(x: Any): Boolean = x match
-      case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
-      case _ => false
+  given writerK[W]: TypeableK[Writer % W] = typeableK[Writer % W](classOf[Writer.Say[?, ?]])
+
+  /**
+   * The finer test, opt-in: the told value's own class as well, which
+   * is what separates `Writer % String + Writer % Int` in one row
+   * (`TestRowIdentity` asserts they route correctly, `TestDistinct`
+   * that the row is accepted) — declared `TypeableK.ByValue` so
+   * `Distinct` can read that it is finer than the class. It needs a
+   * `Typeable[W]`, and for a parameterised W that is an erased test
+   * and an E092 warning at the call site: the price of the finer
+   * question, paid only where it is asked.
+   */
+  object byValue:
+    given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
+      // `Typeable.unapply` answers an Option for the told value's own
+      // test (the JDK's Typeable has no boolean form)
+      def test(x: Any): Boolean = x match
+        case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
+        case _ => false
 }
 
 /**

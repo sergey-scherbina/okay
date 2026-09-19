@@ -3,7 +3,6 @@ package okay.blob
 import okay.{!, +, %, Async, Chunk, Fold, Source, Writer}
 import okay.RowLift.plus
 import okay.given
-import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -31,7 +30,6 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
    * chunk seen — the constant-memory witness */
   // Writer % Chunk[Byte]'s split test is unchecked under erasure —
   // sound by construction, the TypeableK caveat Writer.scala documents
-  @nowarn("msg=cannot be checked at runtime")
   def drainGet(p: Either[String, Unit] ! (Writer % Chunk[Byte] + Async)): (Array[Byte], Either[String, Unit], Int) =
     val out = java.io.ByteArrayOutputStream()
     var biggest = 0

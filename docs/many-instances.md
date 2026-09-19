@@ -266,19 +266,30 @@ summon[Distinct[Reader % Int + Reader % String]]        // refused
 
 What it compares is **the test, not the type**, and that distinction is
 the whole design. `Writer % String + Writer % Int` is a good row — the
-two writers collect the right elements, because `writerK` reads the
-told VALUE with a `Typeable[W]` rather than testing the class. The
-same shape over `Reader` is broken, because `Ask()` is one class
-whatever `R` is. Nothing about the two TYPES says which is which; only
-the instance knows, so the instance declares it:
+two writers collect the right elements — but only under
+`Writer.byValue.writerK`, which reads the told VALUE with a
+`Typeable[W]` rather than testing the class, and is an OPT-IN:
 
 ```scala
+import okay.Writer.byValue.given
 given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
 ```
 
+Writer's DEFAULT test (writer-typeablek-by-class, 2026-09-19) is the
+class of `Say` alone — total, since `Say` is Writer's only constructor,
+and free of the E092 "cannot be checked at runtime" warning a
+`Typeable[Chunk[Byte]]` or `Typeable[O]` costs at every call site (it
+had cost 23 `@nowarn`s across ten modules, for a two-Writer row no
+module had). So without the import `Distinct` refuses
+`Writer % String + Writer % Int`, exactly as it refuses the same shape
+over `Reader`, where `Ask()` is one class whatever `R` is. Nothing about
+the two TYPES says which is which; only the instance knows, so the
+instance declares it.
+
 Unmarked means "tests by erasure", which is the safe default: an
 instance that really is finer gets refused until someone adds the
-word, while the opposite default would pass a row that misroutes.
+word (or the import), while the opposite default would pass a row that
+misroutes.
 
 The wrappers are read structurally. `Tag.Of[K, F]` collides only with
 the same key over a colliding `F`; `Instances.Of[F]` collides only

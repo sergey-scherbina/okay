@@ -1,6 +1,5 @@
 import okay.*
 import okay.given
-import scala.annotation.nowarn
 import scala.collection.mutable
 
 /**
@@ -127,9 +126,6 @@ class TestWindows extends munit.FunSuite {
       (m, e) => m.flatMap(_ => Writer.tell(e).map(_ => e))
 
   /** feed events through a stage, collect what it tells */
-  // Writer.run's inline body checks the answer at an abstract type —
-  // the trusted kernel's warning (Effects.scala), as in TestPhased
-  @nowarn("msg=cannot be checked at runtime")
   def runStage[O, R](evs: Seq[Ev])(st: Stage[Ev, O, R]): (Seq[O], R) =
     !.run(Writer.run(through(producer(evs))(st)))
 

@@ -3,7 +3,6 @@ package okay
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable.ArraySeq
-import scala.annotation.nowarn
 import RowLift.plus
 
 /**
@@ -141,7 +140,6 @@ class ProducerWriterCarrierBenchmark {
   // Writer % Chunk[X]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), same caveat
   // Writer.scala documents on Writer.run (E092, the TypeableK caveat)
-  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def chunksFoldWriter(): Long =
     Writer.fold[Chunk[Long], Long, Unit, Nothing](writerChunks).runWith._1
@@ -218,7 +216,6 @@ class ProducerWriterCarrierBenchmark {
   // against stays the Pure `chunksFoldProducer` above; Async overhead
   // with no real async op is a few ns, not the multi-us this measures.
 
-  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def chunksFoldWriterAsync(): Long =
     given CanBlock = cb
@@ -228,7 +225,6 @@ class ProducerWriterCarrierBenchmark {
   // no Fold instance — the shape okay-cluster's own Chunks.foldLeft
   // call sites (Flows.scala, Job.scala) already use. This is the
   // number that says stage 2 can migrate THOSE, today.
-  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def chunksFoldLeftWriterDirect(): Long =
     given CanBlock = cb
@@ -277,7 +273,6 @@ class ProducerWriterCarrierBenchmark {
   // Writer % Chunk[X]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), same caveat
   // Writer.scala documents on Writer.run (E092, the TypeableK caveat)
-  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def chunksMapWriter(): Long =
     Writer.fold[Chunk[Long], Long, Unit, Nothing](Writer.map(writerChunks)(doubleChunk)).runWith._1
@@ -352,7 +347,6 @@ class ProducerWriterCarrierBenchmark {
   // Writer % Chunk[X]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), same caveat
   // Writer.scala documents on Writer.run (E092, the TypeableK caveat)
-  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def blobBytesWriter(): Array[Byte] =
     given CanBlock = cb

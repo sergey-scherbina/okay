@@ -2,7 +2,6 @@ package okay.blob
 
 import okay.{!, Async, Chunk, Source, Writer, async, pure}
 import java.nio.file.{Files, Path}
-import scala.annotation.nowarn
 import scala.jdk.CollectionConverters.*
 
 /**
@@ -93,7 +92,6 @@ object Backup {
   // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), the TypeableK
   // caveat Writer.scala documents on Writer.run
-  @nowarn("msg=cannot be checked at runtime")
   private def fetch(blob: Blob, key: String, target: Path): Unit ! Async =
     async(Files.newOutputStream(target)).flatMap { out =>
       val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))

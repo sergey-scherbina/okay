@@ -1,6 +1,7 @@
 package okay
 
 import okay.given
+import okay.Writer.byValue.given
 
 /**
  * What a row can and cannot tell apart, made executable.
@@ -32,9 +33,11 @@ import okay.given
  */
 class TestRowIdentity extends munit.FunSuite {
 
-  test("Writer is told apart by its ELEMENT's class — the opaque type erases to W") {
-    // `opaque type Writer[W, +A] = W`, so telling a String IS a String
-    // at runtime and the test is complete for class-distinct W
+  test("Writer is told apart by its ELEMENT's class — with `Writer.byValue` in scope") {
+    // the default `writerK` tests the class of `Say` alone (one Writer
+    // per row, no Typeable[W], no E092); `Writer.byValue.writerK`,
+    // imported above, reads the told value's class as well, which is
+    // what routes two Writers in one row
     val prog: Unit ! (Writer % String + Writer % Int) =
       okay.effect[Writer % String + Writer % Int, Unit](Writer("hello"))
         .flatMap(_ => okay.effect[Writer % String + Writer % Int, Unit](Writer(42)))

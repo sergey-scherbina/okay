@@ -288,7 +288,6 @@ object Typed:
   // Writer % Chunk[..]'s split test is unchecked under erasure — sound
   // by construction (Say is Writer's ONLY constructor), the E092
   // TypeableK caveat Writer.scala documents on Writer.run
-  @scala.annotation.nowarn("msg=cannot be checked at runtime")
   def rows[A](db: Sql, sql: String, params: Vector[SqlValue] = Vector.empty)
              (using s: Schema[A]): Source[Chunk[Either[Bad, A]]] =
     type W = Chunk[Either[Bad, A]]
