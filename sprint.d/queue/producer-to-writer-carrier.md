@@ -213,10 +213,11 @@
       `Sql.query` is `Source[Chunk[Vector[SqlValue]]]`, `Source.concat`
       replaces `Producer.concat` at every drain; okay-cache/okay-delta
       tests found by the repo-wide compile, moved too).
+      okay-docs + Topic/Mongo/Dynamo/Cassandra: DONE (pwc-docs-seam,
+      2026-09-19 — `Docs.query` is `Source[Chunk[(String, A)]]`).
       NEXT CLAIMABLE SLICE — what is left of the G-effectful carrier:
-      okay-docs (`Docs.query: Chunk[(String, A)] ! (Produce + Async)` +
-      TopicDocs/Mongo/Dynamo/Cassandra + DocsSuite's walker), then the
-      kafka interop (`KafkaChunks`), then okay-blob's stragglers —
+      the kafka interop (`KafkaChunks`), then okay-blob's stragglers,
+      then the deletions —
       these hold the G-effectful `Chunk[X] ! Produce + G` carrier
       (`Producer.concat`/`fold` callers), I/O-bound, migrated by the
       blob pattern (`Writer.fold`/`.collect`), no fold parity needed —

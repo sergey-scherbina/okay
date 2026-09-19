@@ -1,6 +1,6 @@
 package okay.docs
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import scala.collection.mutable
@@ -87,8 +87,8 @@ final class TopicDocs[A](topic: Topic,
   }
 
   def query(field: String, equals: String, max: Int)
-  : Chunk[(String, A)] ! (Produce + Async) =
-    type F = Produce + Async
+  : Source[Chunk[(String, A)]] =
+    type F = Writer % Chunk[(String, A)] + Async
     val f = indexes.getOrElse(field,
       throw IllegalArgumentException(
         s"field $field is not a declared index — a scan wearing a query's hat " +
@@ -100,7 +100,7 @@ final class TopicDocs[A](topic: Topic,
           .collect { case (id, v) if f(v.value) == equals => (id, v.value) }
           .take(max).toVector.sortBy(_._1))
       }
-    }).flatMap(c => effect[F, Chunk[(String, A)]](c))
+    }).flatMap(c => effect[F, Unit](Writer(c)))
 
   /** a single fold has no weaker truth to offer */
   def grants(requested: Consistency): Consistency = Consistency.Strong

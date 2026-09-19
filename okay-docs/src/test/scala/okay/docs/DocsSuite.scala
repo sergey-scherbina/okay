@@ -1,7 +1,6 @@
 package okay.docs
 
-import okay.{!, +, Async, Chunk, Produce, Stream}
-import okay.given
+import okay.{!, Async, Chunk, Source}
 import okay.codec.Schema
 import munit.FunSuite
 
@@ -30,14 +29,7 @@ abstract class DocsSuite extends FunSuite:
       case Some(t) => t.get
       case None => fail("the test program did not complete synchronously")
 
-  def collect[A](s: Chunk[A] ! (Produce + Async)): List[A] =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    def go(rest: Chunk[A] ! (Produce + Async)): Vector[A] ! Async =
-      S.uncons(rest).flatMap {
-        case None => okay.pure(Vector.empty)
-        case Some((c, more)) => go(more).map(c.toVector ++ _)
-      }
-    run(go(s)).toList
+  def collect[A](s: Source[Chunk[A]]): List[A] = run(Source.concat(s)).toList
 
   test("put then get round-trips; versions are monotone per document") {
     val d = mkDocs()

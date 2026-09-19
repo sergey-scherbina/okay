@@ -136,9 +136,10 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       `Sql.query` and everything typed on it are `Source[Chunk[..]]`;
       `Source.concat` is `Producer.concat`'s writer twin
       (pwc-sql-seam, 2026-09-19)
-- [ ] okay-docs and its backends (`Docs.query` and Topic/Mongo/Dynamo/
-      Cassandra), the kafka interop (`KafkaChunks`), okay-blob's three
-      stragglers — each lane: `sbt Test/compile` across the WHOLE repo
+- [x] okay-docs and its backends — `Docs.query` and Topic/Mongo/Dynamo/
+      Cassandra are `Source[Chunk[(String, A)]]` (pwc-docs-seam, 2026-09-19)
+- [ ] the kafka interop (`KafkaChunks`), okay-blob's three stragglers,
+      then the deletions — each lane: `sbt Test/compile` across the WHOLE repo
       first (a signature change; see memory
       signature-change-test-compile-first), then the gate
 - [x] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the

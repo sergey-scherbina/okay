@@ -1,6 +1,6 @@
 package okay.docs.cassandra
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
 import okay.codec.{Codecs, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
@@ -128,8 +128,8 @@ final class CassandraDocs[A](session: CqlSession, keyspace: String, table: Strin
         else PutResult.Stale(if row.getColumnDefinitions.contains("ver") && !row.isNull("ver") then Some(row.getLong("ver")) else None)
   }
 
-  def query(field: String, equals: String, max: Int): Chunk[(String, A)] ! (Produce + Async) =
-    type F = Produce + Async
+  def query(field: String, equals: String, max: Int): Source[Chunk[(String, A)]] =
+    type F = Writer % Chunk[(String, A)] + Async
     if !indexes.contains(field) then
       throw IllegalArgumentException(
         s"field $field is not a declared index — refused (declared: ${indexes.keys.mkString(", ")})")
@@ -137,7 +137,7 @@ final class CassandraDocs[A](session: CqlSession, keyspace: String, table: Strin
       val rows = exec(s"SELECT id, d, ver FROM $t WHERE ix_$field = ? LIMIT ?", equals, java.lang.Integer.valueOf(max))
         .all().asScala.toVector
       ChunkBuf.of(rows.flatMap(r => decode(r).map(v => (r.getString("id"), v.value))).sortBy(_._1))
-    }).flatMap(c => effect[F, Chunk[(String, A)]](c))
+    }).flatMap(c => effect[F, Unit](Writer(c)))
 
   /** the dial itself: ONE, QUORUM, ALL — each granted as asked; the
    * deployment's replication factor decides what a quorum is */

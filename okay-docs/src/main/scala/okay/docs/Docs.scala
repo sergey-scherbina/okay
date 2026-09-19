@@ -1,6 +1,6 @@
 package okay.docs
 
-import okay.{!, +, Async, Chunk, Produce}
+import okay.{!, Async, Chunk, Source}
 
 /**
  * The document seam (specs/data.md, "the one new seam"): the access
@@ -33,7 +33,7 @@ trait Docs[A]:
    * loudly — a scan wearing a query's hat is the lie this seam
    * refuses to tell */
   def query(field: String, equals: String, max: Int = 256)
-  : Chunk[(String, A)] ! (Produce + Async)
+  : Source[Chunk[(String, A)]]
 
   /** the engine's honest consistency mapping (the granted-isolation
    * move): ask once at startup what a request will actually mean */
@@ -73,7 +73,7 @@ object Docs:
       counting(puts)(inner.put(id, a, cond))(outcome)
     def delete(id: String, cond: Cond): PutResult ! Async =
       counting(deletes)(inner.delete(id, cond))(outcome)
-    def query(field: String, equals: String, max: Int): Chunk[(String, A)] ! (Produce + Async) =
+    def query(field: String, equals: String, max: Int): Source[Chunk[(String, A)]] =
       queries.incrementAndGet()
       inner.query(field, equals, max)
     def grants(requested: Consistency): Consistency = inner.grants(requested)

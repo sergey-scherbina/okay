@@ -3,7 +3,7 @@ package okay.docs.mongo
 import com.mongodb.MongoWriteException
 import com.mongodb.client.{MongoClient, MongoClients, MongoCollection}
 import com.mongodb.client.model.{Filters, FindOneAndUpdateOptions, IndexOptions, Indexes, ReturnDocument, Updates}
-import okay.{!, +, Async, Chunk, ChunkBuf, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
 import okay.codec.Schema
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import org.bson.Document
@@ -90,8 +90,8 @@ final class MongoDocs[A](coll: MongoCollection[Document],
   }
 
   def query(field: String, equals: String, max: Int)
-  : Chunk[(String, A)] ! (Produce + Async) =
-    type F = Produce + Async
+  : Source[Chunk[(String, A)]] =
+    type F = Writer % Chunk[(String, A)] + Async
     if !indexes.contains(field) then
       throw IllegalArgumentException(
         s"field $field is not a declared index — refused (declared: ${indexes.keys.mkString(", ")})")
@@ -100,7 +100,7 @@ final class MongoDocs[A](coll: MongoCollection[Document],
         .iterator().asScala
         .flatMap(d => decode(d).map(v => (d.getString("_id"), v.value)))
         .toVector.sortBy(_._1))
-    }).flatMap(c => effect[F, Chunk[(String, A)]](c))
+    }).flatMap(c => effect[F, Unit](Writer(c)))
 
   /** a standalone node answers Strong for everything it accepts;
    * on a replica set the deployment's read/write concerns decide,

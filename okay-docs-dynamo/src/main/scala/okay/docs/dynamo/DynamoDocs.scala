@@ -1,6 +1,6 @@
 package okay.docs.dynamo
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
 import okay.given
 import okay.codec.{Codecs, Json, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
@@ -162,8 +162,8 @@ final class DynamoDocs[A](http: Http, endpoint: String, region: String, creds: S
           case Left(e) => throw IllegalStateException(s"DeleteItem on '$table': $e")
   }
 
-  def query(field: String, equals: String, max: Int): Chunk[(String, A)] ! (Produce + Async) =
-    type F = Produce + Async
+  def query(field: String, equals: String, max: Int): Source[Chunk[(String, A)]] =
+    type F = Writer % Chunk[(String, A)] + Async
     if !indexes.contains(field) then
       throw IllegalArgumentException(
         s"field $field is not a declared index — refused (declared: ${indexes.keys.mkString(", ")})")
@@ -177,7 +177,7 @@ final class DynamoDocs[A](http: Http, endpoint: String, region: String, creds: S
         case JArr(vs) => vs
         case _ => Vector.empty
       ChunkBuf.of(items.flatMap(it => for id <- jsonText(jsonField(it, "id"), "S"); v <- decode(it) yield (id, v.value)).sortBy(_._1))
-    }).flatMap(c => effect[F, Chunk[(String, A)]](c))
+    }).flatMap(c => effect[F, Unit](Writer(c)))
 
   /** two read modes exist: eventual (One) and consistent (Strong);
    * a Quorum request is granted Strong — named, not hidden */
