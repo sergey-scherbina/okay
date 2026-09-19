@@ -1,6 +1,0 @@
-feature/wroclaw-feed-shadowed-fix 2026-09-19T11:28:01Z
-agent: claude-code
-heartbeat: 2026-09-19T11:28:01Z
-status: in-progress
-done-so-far: root cause diagnosed and fix verified in scratch (compare/compile: 30 errors -> clean)
-next: worktree, apply fix, gate, land
