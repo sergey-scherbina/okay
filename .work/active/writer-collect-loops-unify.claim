@@ -1,6 +1,6 @@
-feature/writer-collect-loops-unify 2026-09-19T22:40:20Z
+feature/writer-collect-loops-unify 2026-09-19T22:36:00Z
 agent: claude-code
-heartbeat: 2026-09-19T22:40:20Z
+heartbeat: 2026-09-19T22:59:13Z
 status: in-progress
-done-so-far: review findings written; worktree created
-next: spec, then unify Writer.collect/Source.runCollect/Source.concat on loopWith
+done-so-far: code + bench + boards committed in worktree, tests green, numbers measured (2 rounds)
+next: rebase on master, check-citations, gate affected, ff-merge, push
