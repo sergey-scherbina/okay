@@ -1,0 +1,12 @@
+feature/ci-native-flake 2026-09-19T14:05:00Z
+agent: claude-code
+heartbeat: 2026-09-19T14:05:00Z
+status: in-progress
+done-so-far: worktree created
+next: .github/workflows/ci.yml's nightly `family` job calls sbt
+  directly ("sbt \"family ${{ matrix.platform }}\""), with none of
+  gate.sh's watchdog or native-runner-error rerun-alone logic — swap
+  it for `sh scripts/gate.sh "family ${{ matrix.platform }}"`
+  (gate.sh passes any command through untouched except the
+  "affected <ref>" special case), which is the exact ask: reuse the
+  logic rather than re-teach a workflow the same lesson
