@@ -1,6 +1,0 @@
-feature/producer-fold-dispatch-vs-direct-gap 2026-09-19T18:05:00Z
-agent: claude-code
-heartbeat: 2026-09-19T18:05:00Z
-status: in-progress
-done-so-far: found and confirmed the writer carrier's foldWriter now matches Producer's own equivalent shapes almost exactly (writer-stream-specialized-iterator, cc2ba66b); the REMAINING ~2x gap against Chunks.fold's 2.55us is NOT writer-specific -- it's present identically on Producer's OWN chunksFoldLeftProducerDirect (4.9us) vs chunksFoldProducer (2.55us), with near-identical allocation (10064 vs 10088 B/op) and confirmed stable at -wi 20 (not a warmup artifact)
-next: test whether extracting the literal-step loop into its own small, non-inline, separately-compiled method (mirroring how Chunks.fold's own body is structured -- a tiny wrapper delegating to a method that gets its OWN JIT compilation) closes the gap; if it does, this points at a genuine, fixable JIT-compilation-unit-sharing effect independent of `inline`, not a Writer defect
