@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import okay.lex.{Scan, Json as JsonLex}
 import okay.parse.{Cst, JsonParse, Parse}
-import okay.codec.{Cbor, Json, Markdown, Schema}
+import okay.codec.{Cbor, Json, Markdown, Xml, Schema}
 import okay.lex.Bpe
 import io.circe.syntax.*
 
@@ -72,6 +72,17 @@ class TextBenchmark {
    * variable is which scanner overrides stepInto directly */
   @Benchmark
   def lexMarkdownElementwise: Int = Scan.all(Markdown.scan)(mdDoc).tokens.length
+
+  // ~2KB: tags with attributes, text, a comment, CDATA — every branch
+  // of Xml.scan's stepInto
+  val xmlDoc: String = (0 until 20)
+    .map(i => s"""<item id="$i" class="row"><!-- c$i --><name>text $i</name><data><![CDATA[raw$i]]></data></item>""")
+    .mkString("<root>\n", "\n", "\n</root>")
+
+  /** Xml.scan on ScanInto (scan-into-the-other-scanners), the same
+   * comparison as lexMarkdownElementwise above */
+  @Benchmark
+  def lexXmlElementwise: Int = Scan.all(Xml.scan)(xmlDoc).tokens.length
 
   // ---- parsing, full and incremental
 

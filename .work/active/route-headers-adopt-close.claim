@@ -1,9 +1,0 @@
-feature/route-headers-adopt-close 2026-09-19T16:20:57Z
-agent: claude-code
-heartbeat: 2026-09-19T16:20:57Z
-status: in-progress
-done-so-far: read the entry — REDUCED 2026-09-11, "no clean seat...
-  left open in case McpHttp ever becomes a table, not as work
-  waiting to be done"
-next: move to refuted-declined-or-answered as a closed record (no
-  code change), commit, gate (board.sh --check), land

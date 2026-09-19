@@ -74,6 +74,19 @@
       now closed. `foldWriter`'s signature narrowed from an arbitrary
       `G[+_]` to `Async`+`CanBlock` as part of the fix — safe because
       it had ZERO production callers at the time.
+      CHECKED WHETHER THAT REMAINING ~2x CAN CLOSE TOO
+      (producer-fold-dispatch-vs-direct-gap, same day, no code landed):
+      it can't be closed from the writer side — the SAME ~2x gap
+      exists identically on `Producer`'s OWN two forms
+      (`chunksFoldLeftProducerDirect` 4.9-5.0us vs `chunksFoldProducer`
+      2.55us), allocation nearly identical (10,064 vs 10,088 B/op) and
+      the ratio unchanged at `-wi 20`, so `foldWriter` has already
+      reached the ceiling its own carrier's direct-call analog reaches.
+      A decisive diagnostic (route the literal-step loop through its
+      own small, non-inline compiled method, matching `Chunks.fold`'s
+      own shape) was built but couldn't get a clean measurement — the
+      host was under severe unrelated contention (load 30+) during the
+      attempt. See backlog.d/okay-core/chunks-fold-vs-foldleft-2x-gap.md.
       `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala` are now
       UNBLOCKED to migrate onto it (their `G` is already `Async`-shaped)
       but not yet migrated — each sits inside its own `Chunks[A]`-typed
