@@ -164,12 +164,31 @@ object Source {
    * twin of `Producer.concat` (producer-to-writer-carrier): the drain
    * okay-sql/jdbc/pg/r2dbc/rag and their tests each spelled by hand
    * over `Produce + Async`. The answer is `Unit`, dropped.
+   *
+   * `Writer.loopWith` with the flattening as its finisher, so the
+   * chunks are consed as they arrive and copied ONCE into the result
+   * where the program ends — not `Writer.collect(s).map(_._1.flatten)`,
+   * which built a `Vector` of chunks by `:+` and then mapped over a
+   * program still forwarding Async, a rotation per forwarded
+   * operation (writer-collect-loops).
    */
-  // Writer % Chunk[X]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), the E092
-  // TypeableK caveat Writer.scala documents on Writer.run
   def concat[X](s: Source[Chunk[X]]): Vector[X] ! Async =
-    Writer.collect[Chunk[X], Unit, Async](s).map(_._1.flatten)
+    Writer.loopWith[Chunk[X], List[Chunk[X]], Unit, Vector[X], Async](s)(Nil)((l, c) => c :: l)((l, _) => flattenReversed(l))
+
+  /** the chunks consed newest-first, as one Vector in arrival order */
+  private def flattenReversed[X](l: List[Chunk[X]]): Vector[X] =
+    var n = 0
+    var cs = l
+    while cs.nonEmpty do
+      n += cs.head.length
+      cs = cs.tail
+    val b = Vector.newBuilder[X]
+    b.sizeHint(n)
+    var rs = l.reverse
+    while rs.nonEmpty do
+      b ++= rs.head
+      rs = rs.tail
+    b.result()
 
   def toProducer[A, G[+_] : TypeableK](s: Unit ! (Writer % A + G))(end: A): A ! (Produce + G) =
     import !.*
@@ -223,29 +242,15 @@ extension [A](s: Source[A])
     // did `uncons` per element and rebuilt the rest as a new program
     // -- `flatMap` per element -- which the Async handler then
     // interpreted a second time: every element cost a Free node here
-    // and a step there. `Writer.run` is the tail loop the Writer
-    // handler already has: it walks the tree once, forwarding only
-    // the Async operations it meets. Measured 201 -> (see history.tsv)
-    // The split is on `TypeableK[Async]` -- concrete -- not on
-    // `TypeableK[Writer % A]`, whose derivation at an abstract A is
-    // an unchecked type test (E092, the TypeableK caveat). Same loop
-    // shape as `Writer.foldWith`: tail-recursive across tells,
-    // re-entered through `flatMap` only when an Async operation
-    // has to be forwarded.
-    import !.*
-    import scala.annotation.tailrec
-    def again(acc: Vector[A])(x: Source[A]): Vector[A] ! Async = loop(acc)(x)
-    @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
-      (x.resume: @unchecked) match
-        case Free.Pure(_) => okay.pure(acc)
-        case Inject(e) => split[Async, Writer % A](e)
-          (g => Inject(g).map(_ => acc): Vector[A] ! Async)
-          { case Writer.Say(a) => okay.pure(acc :+ a) }
-        case Bind(Inject(e), k) => split[Async, Writer % A](e)
-          (g => Inject(g).flatMap(v => again(acc)(k(v))))
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(a) => loop(acc :+ a)(k(())) }
-    loop(Vector.empty)(s)
+    // and a step there. The walk is `Writer.loopWith`'s: tail-
+    // recursive across tells, re-entered through `flatMap` only when
+    // an Async operation has to be forwarded, the accumulator a cons
+    // list reversed once where the program ends. It was a copy of
+    // that loop split on `TypeableK[Async]` while `writerK` at an
+    // abstract A was an unchecked E092 test; since
+    // writer-typeablek-by-class (2026-09-19) it is a call
+    // (writer-collect-loops).
+    Writer.loopWith[A, List[A], Unit, Vector[A], Async](s)(Nil)((l, a) => a :: l)((l, _) => l.reverse.toVector)
 
   /**
    * Run `f` for each element, in order — `ZStream#runForeach`,

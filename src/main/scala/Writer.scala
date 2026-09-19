@@ -87,32 +87,36 @@ object Writer {
   inline def foldWith[W, S, A, F[+_]](a: A ! Writer % W + F)(z: S)
                                      (inline step: (S, W) => S)
                                      (using TypeableK[Writer % W]): (S, A) ! F =
-    loopWith[W, S, S, A, F](a)(z)(step)(s => s)
+    loopWith[W, S, A, (S, A), F](a)(z)(step)((s, a) => (s, a))
 
   /**
-   * The loop itself, with a `finish` applied to the accumulator where
-   * the PROGRAM ends — inside the loop, never as a `.map` over the
-   * residual: a map wrapped around a program that still forwards
-   * effects makes every forwarded node left-nested under it, and
-   * `resume` then rotates each of them again (either-scalarised,
-   * 2026-09-09: one outer `.map` cost 61 KB over 667 forwarded
-   * operations — more than the accumulator it was finishing).
+   * The loop itself, with a `finish` applied to the accumulator AND
+   * the program's answer where the PROGRAM ends — inside the loop,
+   * never as a `.map` over the residual: a map wrapped around a
+   * program that still forwards effects makes every forwarded node
+   * left-nested under it, and `resume` then rotates each of them
+   * again (either-scalarised, 2026-09-09: one outer `.map` cost 61 KB
+   * over 667 forwarded operations — more than the accumulator it was
+   * finishing). The answer reaches the finisher so that a drain
+   * wanting only the accumulator (`Source.runCollect`), or the
+   * accumulator reshaped (`Source.concat`), finishes here too instead
+   * of mapping the tuple away afterwards (writer-collect-loops).
    */
-  inline def loopWith[W, S, S2, A, F[+_]](a: A ! Writer % W + F)(z: S)
-                                          (inline step: (S, W) => S)
-                                          (inline finish: S => S2)
-                                          (using TypeableK[Writer % W]): (S2, A) ! F = {
-    def _loop(s: S)(x: A ! Writer % W + F): (S2, A) ! F = loop(s)(x)
+  inline def loopWith[W, S, A, R, F[+_]](a: A ! Writer % W + F)(z: S)
+                                         (inline step: (S, W) => S)
+                                         (inline finish: (S, A) => R)
+                                         (using TypeableK[Writer % W]): R ! F = {
+    def _loop(s: S)(x: A ! Writer % W + F): R ! F = loop(s)(x)
 
     // `split`, not `<|>` (split-without-either): no Either per tell.
-    @tailrec def loop(s: S)(x: A ! Writer % W + F): (S2, A) ! F = (x.resume: @unchecked) match
-      case Pure(a) => Pure((finish(s), a))
+    @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F = (x.resume: @unchecked) match
+      case Pure(a) => Pure(finish(s, a))
       case Inject(e) => split[Writer % W, F](e) {
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
           // the ascription is where the refined value meets the loop
-          case Say(v) => Pure((finish(step(s, v)), ())): (S2, A) ! F
-        } { e => Inject(e).map((finish(s), _)) }
+          case Say(v) => Pure(finish(step(s, v), ())): R ! F
+        } { e => Inject(e).map(finish(s, _)) }
       case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
           // ordinary call and not an assertion; the checker cannot see
@@ -133,39 +137,22 @@ object Writer {
     // `Writer.run` at 197 B per tell with the split, Either and Option
     // all costing NOTHING on this loop — the whole price was `:+`
     // (~150 B per append). A cons is 24 B, the reverse is one pass.
-    loopWith[W, List[W], Seq[W], A, F](a)(Nil)((s, w) => w :: s)(_.reverse)
+    loopWith[W, List[W], A, (Seq[W], A), F](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse, a))
 
   /**
-   * `run`, split the OTHER way: on G, which is concrete, rather than
-   * on `Writer % W`, whose derived test at a parameterised W — a
-   * `Writer % Chunk[Byte]`, say — is an unchecked one (E092, the
-   * TypeableK caveat). `Source.runCollect` makes the same choice for
-   * the same reason; this is that loop with the answer KEPT, which a
+   * `run` answering a `Vector`, with the answer KEPT — which a
    * `Blob.getSource` needs because its answer is the outcome.
    *
-   * For a row holding ONE Writer, which is every row a Source is. A
-   * row with two Writers of different W needs `run`'s finer test and
-   * pays for it there.
+   * It used to be its own copy of the loop, split on G rather than on
+   * `Writer % W`, because `writerK` at a parameterised W (`Writer %
+   * Chunk[Byte]`) was an unchecked E092 test until
+   * writer-typeablek-by-class (2026-09-19); with the test now the
+   * class of `Say` there is one loop, and this is a call to it — a
+   * cons per tell and one reverse, not a `Vector :+` per tell
+   * (writer-collect-loops).
    */
-  def collect[W, A, G[+_] : TypeableK](a: A ! Writer % W + G): (Vector[W], A) ! G =
-    import !.*
-    import scala.annotation.tailrec
-    def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
-    @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
-      (x.resume: @unchecked) match
-        case Free.Pure(v) => okay.pure((acc, v))
-        case Inject(e) => split[G, Writer % W](e)
-          (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
-          // a terminal Say answers Unit, which is then the program's
-          // own answer — the GADT the enum's shape gives (`fold`'s
-          // terminal case reads the same way)
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => okay.pure((acc :+ w, ())) }
-        case Bind(Inject(e), k) => split[G, Writer % W](e)
-          (g => Inject(g).flatMap(v => again(acc)(k(v))))
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => loop(acc :+ w)(k(())) }
-    loop(Vector.empty)(a)
+  def collect[W, A, G[+_]](a: A ! Writer % W + G): (Vector[W], A) ! G =
+    loopWith[W, List[W], A, (Vector[W], A), G](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))
 
   /**
    * Map the told values, keeping the PROGRAM.
