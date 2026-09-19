@@ -34,6 +34,14 @@ import scala.sys.process._
  * test` at the root runs — a project the family deliberately keeps
  * out of the gate stays out.
  *
+ * The closure is seeded by MAIN changes only (ci-affected-tests-only,
+ * 2026-09-19): a project's own `Test` sources cannot break a
+ * dependent — a dependent only ever sees what `Compile` built — so a
+ * lane that edited nothing but a test still runs THAT project's own
+ * tests (it stays in `direct`) but does not sweep in everything
+ * downstream of it. Measured before the fix: one test-only line in
+ * okay-lex (one dependent, okay-parse) pulled in 52 projects.
+ *
  * Both commands run their projects through sbt's own `all`, so the
  * tasks run in parallel exactly as they do under `sbt test`.
  */
@@ -74,10 +82,18 @@ object Affected extends AutoPlugin {
     def resolved(r: ProjectRef): Option[ResolvedProject] =
       ex.structure.units.get(r.build).flatMap(_.defined.get(r.project))
 
-    def dirs(r: ProjectRef): Seq[File] =
+    def dirs(r: ProjectRef): Seq[File] = mainDirs(r) ++ testDirs(r)
+
+    /** the half of `dirs` that can break a DEPENDENT — a project's own
+     * tests cannot (ci-affected-tests-only): its compiled artifact,
+     * which is all a dependent ever sees, is built from `Compile`
+     * alone */
+    def mainDirs(r: ProjectRef): Seq[File] =
       ex.getOpt(r / Compile / unmanagedSourceDirectories).getOrElse(Nil) ++
-        ex.getOpt(r / Test / unmanagedSourceDirectories).getOrElse(Nil) ++
-        ex.getOpt(r / Compile / unmanagedResourceDirectories).getOrElse(Nil) ++
+        ex.getOpt(r / Compile / unmanagedResourceDirectories).getOrElse(Nil)
+
+    def testDirs(r: ProjectRef): Seq[File] =
+      ex.getOpt(r / Test / unmanagedSourceDirectories).getOrElse(Nil) ++
         ex.getOpt(r / Test / unmanagedResourceDirectories).getOrElse(Nil)
 
     /** who depends on whom, reversed: the projects a change reaches */
@@ -143,7 +159,16 @@ object Affected extends AutoPlugin {
         val direct: Set[ProjectRef] =
           if (buildChanged) g.gate
           else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
-        val all = (g.closeOverDependents(direct) intersect g.gate)
+        // a project whose diff touched only its TESTS cannot have
+        // broken a dependent (ci-affected-tests-only): nothing under
+        // Compile moved for it, so the dependent closure is seeded by
+        // MAIN changes only. `direct` still runs its own tests either
+        // way — this only stops a leaf's test-only edit from paying
+        // for everything downstream of it.
+        val mainChanged: Set[ProjectRef] =
+          if (buildChanged) g.gate
+          else g.refs.filter { r => val ds = g.mainDirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
+        val all = ((direct ++ g.closeOverDependents(mainChanged)) intersect g.gate)
           .filter(r => onPlatform(r.project, platform))
         val outside = changed.filterNot(f => g.refs.exists(r => g.dirs(r).exists(d => under(f, d))))
         state.log.info(s"affected: ${changed.size} file(s) changed since $base" +
