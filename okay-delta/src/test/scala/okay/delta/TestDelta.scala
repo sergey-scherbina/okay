@@ -1,6 +1,6 @@
 package okay.delta
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Handler, Produce}
+import okay.{!, +, %, Async, Chunk, ChunkBuf, Source, Stream, Writer}
 import okay.given
 import okay.sql.{SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -18,18 +18,8 @@ class TestDelta extends munit.FunSuite:
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  def collectChunks[A](s: Chunk[A] ! (Produce + Async)): List[Chunk[A]] =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc.reverse
-          case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
-    go(s, Nil)
+  def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   val columns = Vector(
     Delta.Column("id", SqlType.I32, nullable = false),

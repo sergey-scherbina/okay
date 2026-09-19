@@ -1,6 +1,6 @@
 package okay.pg
 
-import okay.{!, +, Async, Chunk, Handler, Produce}
+import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
 import okay.given
 import okay.crypto.given
 import okay.sql.SqlValue
@@ -27,18 +27,8 @@ class TestPgComposite extends munit.FunSuite:
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  private def collectChunks[A](s: Chunk[A] ! (Produce + Async)): List[Chunk[A]] =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc.reverse
-          case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
-    go(s, Nil)
+  private def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   /** the single cell of a single-row, single-column query */
   private def cell(sql: String): SqlValue =

@@ -77,7 +77,9 @@ final case class Col(label: String, tpe: SqlType, nullable: Boolean)
 trait Sql:
   def describe(sql: String): Vector[Col] ! Async
   def query(sql: String, params: Vector[SqlValue])
-  : Chunk[Vector[SqlValue]] ! (Produce + Async)      // frames, chunked
+  : Source[Chunk[Vector[SqlValue]]]                  // frames, chunked, each chunk told
+  //   (was `Chunk[Vector[SqlValue]] ! (Produce + Async)` — the writer carrier
+  //    since producer-to-writer-carrier, 2026-09-19)
   def update(sql: String, params: Vector[SqlValue]): Long ! Async
   def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async
   def begin(isolation: Isolation): Granted ! Async

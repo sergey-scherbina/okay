@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
+import okay.{!, +, %, Async, Chunk, effect, Resource, Source, Stream, Throws, Writer}
 import okay.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Typed as PTyped}
@@ -56,18 +56,8 @@ class TestSqlite extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  def collectChunks[A](s: Chunk[A] ! (Produce + Async)): List[Chunk[A]] =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc.reverse
-          case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
-    go(s, Nil)
+  def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   test("rows decode by label from SQLite's honest metadata; verify passes") {
     withDb { db =>

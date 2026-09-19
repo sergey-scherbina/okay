@@ -1,6 +1,6 @@
 package okay.sql
 
-import okay.{!, +, Async, Chunk, Chunks, Handler, Produce, effect, pure}
+import okay.{!, +, %, Async, Chunk, effect, pure, Source, Stream, Writer}
 import okay.given
 import okay.codec.Schema
 
@@ -37,11 +37,10 @@ class TestRowDecode extends munit.FunSuite {
   private final class Fixed(cols: Vector[Col], frames: Vector[Vector[SqlValue]]) extends Sql:
     def describe(sql: String): Vector[Col] ! Async = pure(cols)
     def query(sql: String, params: Vector[SqlValue] = Vector.empty)
-    : Chunk[Vector[SqlValue]] ! (Produce + Async) =
-      type F = Produce + Async
-      if frames.isEmpty then pure(Chunks.emptyChunk)
-      else effect[F, Chunk[Vector[SqlValue]]](scala.collection.immutable.ArraySeq.from(frames))
-        .flatMap(_ => pure(Chunks.emptyChunk))
+    : Source[Chunk[Vector[SqlValue]]] =
+      type F = Writer % Chunk[Vector[SqlValue]] + Async
+      if frames.isEmpty then pure(())
+      else effect[F, Unit](Writer(scala.collection.immutable.ArraySeq.from(frames)))
     def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = pure(0L)
     def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = pure(Granted(isolation, isolation))
@@ -50,19 +49,8 @@ class TestRowDecode extends munit.FunSuite {
     def cancel(): Unit = ()
 
   private def readAll[A: Schema](cols: Vector[Col], frames: Vector[Vector[SqlValue]]): Vector[Either[Bad, A]] =
-    import okay.!.*
     val db = Fixed(cols, frames)
-    def go(rest: Chunk[Either[Bad, A]] ! (Produce + Async),
-           acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc
-          case Right(c) => acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]]
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]])
-    go(Typed.rows[A](db, "select ..."), Vector.empty)
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(Typed.rows[A](db, "select ...")).toVector.flatten
 
   private def col(label: String, t: SqlType, nullable: Boolean = false) = Col(label, t, nullable)
 

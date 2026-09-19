@@ -1,7 +1,7 @@
 package okay.pg
 
 
-import okay.{!, +, Async, Chunk, Produce, Stream}
+import okay.{!, Async, Chunk, Source}
 import okay.given
 import okay.crypto.given
 import okay.sql.SqlValue
@@ -20,14 +20,7 @@ class TestPgNode extends munit.FunSuite:
   val host = "127.0.0.1"
   val port = 5432
 
-  def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    def go(rest: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-      S.uncons(rest).flatMap {
-        case None => okay.pure(Vector.empty)
-        case Some((c, more)) => go(more).map(c.toVector ++ _)
-      }
-    go(p)
+  def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
 
   test("a Node process speaks SCRAM and portals to a real Postgres: no JVM, no JDBC") {
     val prog: (Vector[Vector[SqlValue]], Long) ! Async =

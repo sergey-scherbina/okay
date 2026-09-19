@@ -7,7 +7,7 @@
 > stages (specs/persist.md).
 
 Depends on: `okay-codec` (the typed view and stats ride Schema) and
-the core (the streaming reads speak `Chunk ! (Produce + Async)`).
+the core (the streaming reads speak `Source[Chunk[Record]]`).
 
 ## Guide
 
@@ -55,7 +55,7 @@ as records to a compacted topic and refolds them on restart — the
 Last-Event-ID shape; `lag` is the drowning number. `Snapshots` is
 put/latest over a compacted keyed topic (the ui lane's refold
 anchor). `Streams.stream`/`Streams.tail` read chunked —
-`Chunk[Record] ! (Produce + Async)`, a caught-up tail parks on the
+`Source[Chunk[Record]]` (the writer carrier since 2026-09-19), a caught-up tail parks on the
 platform timer — and dropped history stops a stream by declared
 `OnTooEarly` decision, never silently. In okay-agent,
 `TopicJournal` is `Durable.Journal` over a keyed topic: intent and

@@ -159,6 +159,19 @@ object Source {
    * because a null in a Pure is a cast in disguise, and the caller
    * knows its own element type.
    */
+  /**
+   * A source of CHUNKS as one Vector of their elements — the writer
+   * twin of `Producer.concat` (producer-to-writer-carrier): the drain
+   * okay-sql/jdbc/pg/r2dbc/rag and their tests each spelled by hand
+   * over `Produce + Async`. The answer is `Unit`, dropped.
+   */
+  // Writer % Chunk[X]'s split test is unchecked under erasure — sound
+  // by construction (Say is Writer's ONLY constructor), the E092
+  // TypeableK caveat Writer.scala documents on Writer.run
+  @scala.annotation.nowarn("msg=cannot be checked at runtime")
+  def concat[X](s: Source[Chunk[X]]): Vector[X] ! Async =
+    Writer.collect[Chunk[X], Unit, Async](s).map(_._1.flatten)
+
   def toProducer[A, G[+_] : TypeableK](s: Unit ! (Writer % A + G))(end: A): A ! (Produce + G) =
     import !.*
     type R = Produce + G

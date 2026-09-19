@@ -1,6 +1,6 @@
 package okay.sql
 
-import okay.{!, +, Async, Chunk, Produce}
+import okay.{!, Async, Chunk, Source}
 
 /**
  * The relational driver seam (specs/sql.md): a driver is a way to
@@ -93,10 +93,13 @@ trait Sql:
   /** the shape of this statement's result, for verify */
   def describe(sql: String): Vector[Col] ! Async
 
-  /** row frames, chunked — one Async operation per chunk, constant
-   * memory for any result size */
+  /** row frames, chunked — each chunk told, one Async operation per
+   * chunk, constant memory for any result size (the writer carrier
+   * since producer-to-writer-carrier, 2026-09-19; it was
+   * `Chunk[Vector[SqlValue]] ! (Produce + Async)`, the chunk in the
+   * answer position) */
   def query(sql: String, params: Vector[SqlValue] = Vector.empty)
-  : Chunk[Vector[SqlValue]] ! (Produce + Async)
+  : Source[Chunk[Vector[SqlValue]]]
 
   /** affected-row count */
   def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async

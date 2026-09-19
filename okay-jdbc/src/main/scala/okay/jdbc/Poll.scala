@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, async}
+import okay.{!, Async, async, Chunk}
 import okay.codec.Schema
 import okay.persist.{Ack, Offsets}
 import okay.sql.{Bad, Sql, SqlValue, Typed}
@@ -49,8 +49,8 @@ final class Poll(db: Sql, offsets: Offsets, group: String, source: String,
       }
     }
 
-  private def drain[A](p: Chunk[Either[Bad, A]] ! (Produce + Async))
-  : Vector[Either[Bad, A]] ! Async = okay.Producer.concat[Either[Bad, A], Async](p)
+  private def drain[A](p: okay.Source[Chunk[Either[Bad, A]]])
+  : Vector[Either[Bad, A]] ! Async = okay.Source.concat(p)
 
 object Poll:
   /** what one poll answered: the rows that decoded (in column

@@ -1,8 +1,7 @@
 package okay.sql
 
-import okay.{!, +, Async, Chunk, Produce, effect}
+import okay.{!, +, %, Async, Chunk, effect, Source, Writer}
 import okay.codec.Schema
-import scala.annotation.nowarn
 
 /** the platform-free half: name mapping, parameter binding, the
  * granted-isolation vocabulary — runs on JVM, JS and Native, which
@@ -68,8 +67,8 @@ class TestSqlPure extends munit.FunSuite {
    * binding is platform-free, so it is proven here on all three */
   final class OneFrame(cols: Vector[Col], rows: Vector[Vector[SqlValue]]) extends Sql:
     def describe(sql: String): Vector[Col] ! Async = okay.pure(cols)
-    def query(sql: String, params: Vector[SqlValue]): Chunk[Vector[SqlValue]] ! (Produce + Async) =
-      effect[Produce + Async, Chunk[Vector[SqlValue]]](scala.collection.immutable.ArraySeq.from(rows))
+    def query(sql: String, params: Vector[SqlValue]): Source[Chunk[Vector[SqlValue]]] =
+      effect[Writer % Chunk[Vector[SqlValue]] + Async, Unit](Writer(scala.collection.immutable.ArraySeq.from(rows)))
     def update(sql: String, params: Vector[SqlValue]): Long ! Async = okay.pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
     def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.pure(Granted(isolation, isolation))
@@ -87,29 +86,24 @@ class TestSqlPure extends munit.FunSuite {
     Col("work", addrT, true))
 
   /** OneFrame never performs an Async operation, so its programs run
-   * on JS too: Produce yields chunks, anything else is a test bug */
+   * on JS too: the told chunks are the answer, anything else is a test bug */
   def pureOf[A, F[+_]](p: A ! F): A =
     import okay.!.*
     (p.resume: @unchecked) match
       case Pure(a) => a
       case other => fail(s"an effect where none was expected: $other")
 
-  // <|>'s own split (Effects.scala: "the union's excluded middle") does
-  // an Async[Nothing] type test that erasure cannot verify — the
-  // trusted kernel's warning, inlined into this call site, not a cast
-  // this file introduces
-  @nowarn("msg=cannot be checked at runtime")
+  /** the told chunks, walked purely: `Say` is Writer's only
+   * constructor, so the match refines the chunk — no cast, no
+   * Handler, which is what lets this run on all three platforms */
   def decoded[A: Schema](db: Sql): Vector[Either[Bad, A]] =
     import okay.!.*
-    def go(rest: Chunk[Either[Bad, A]] ! (Produce + Async), acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
+    def go(rest: Source[Chunk[Either[Bad, A]]], acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
       (rest.resume: @unchecked) match
         case Pure(_) => acc
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Right(c) => acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]]
-          case Left(_) => fail("Async where none was expected")
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]])
-          case Left(_) => fail("Async where none was expected")
+        case Inject(Writer.Say(c)) => acc ++ c
+        case Bind(Inject(Writer.Say(c)), k) => go(k(()), acc ++ c)
+        case other => fail(s"Async where none was expected: $other")
     go(Typed.rows[A](db, "q"), Vector.empty)
 
   test("Arr/Row decode into Vector/List/nested case class, recursively — the mirror of bind") {

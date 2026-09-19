@@ -1,6 +1,6 @@
 package okay.pg
 
-import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Stream, Throws, effect}
+import okay.{!, +, %, Async, Chunk, effect, Resource, Source, Stream, Throws, Writer}
 import okay.given
 import okay.crypto.given
 import okay.codec.Schema
@@ -56,18 +56,8 @@ class TestPg extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  def collectChunks[A](s: Chunk[A] ! (Produce + Async)): List[Chunk[A]] =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc.reverse
-          case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
-    go(s, Nil)
+  def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   final case class Customer(id: Long, userName: String, age: Option[Int],
                             balance: Double, active: Boolean,
@@ -183,12 +173,7 @@ class TestPg extends munit.FunSuite {
     try
       run(a.update("drop table if exists ssi")): Unit
       run(a.update("create table ssi(k int not null)")): Unit
-      def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-        val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-        S.uncons(p).flatMap {
-          case None => okay.pure(Vector.empty)
-          case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-        }
+      def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
       def count(db: Sql): Long ! Async =
         drain(db.query("select count(*) from ssi")).map(_.head.head match
           case SqlValue.I64(n) => n

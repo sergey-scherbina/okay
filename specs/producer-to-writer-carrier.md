@@ -132,11 +132,14 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
 - [x] okay-persist Streams — `stream`/`tail` are `Source[Chunk[Record]]`
       (pwc-persist-streams, 2026-09-19); `Wire`'s `Produce` is the
       replication request, not the effect
-- [ ] okay-sql/okay-jdbc (+ pg/r2dbc/rag: the `Chunk[Vector[SqlValue]] !
-      (Produce + Async)` / `Producer.concat` shape), okay-docs and its
-      backends, okay-outbox, the kafka/fs2/zio/java interops, okay-blob's
-      three stragglers — each lane: `sbt Test/compile` across the WHOLE
-      repo first (a signature change; see memory
+- [x] okay-sql/okay-jdbc + pg/r2dbc/rag/outbox (+ cache and delta tests):
+      `Sql.query` and everything typed on it are `Source[Chunk[..]]`;
+      `Source.concat` is `Producer.concat`'s writer twin
+      (pwc-sql-seam, 2026-09-19)
+- [ ] okay-docs and its backends (`Docs.query` and Topic/Mongo/Dynamo/
+      Cassandra), the kafka interop (`KafkaChunks`), okay-blob's three
+      stragglers — each lane: `sbt Test/compile` across the WHOLE repo
+      first (a signature change; see memory
       signature-change-test-compile-first), then the gate
 - [x] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the
       writer carrier, measured at parity with `Chunks.fold` — DONE

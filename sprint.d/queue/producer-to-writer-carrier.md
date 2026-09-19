@@ -209,14 +209,14 @@
       okay-persist Streams: DONE (pwc-persist-streams, 2026-09-19 —
       `stream`/`tail` are `Source[Chunk[Record]]`; `Wire`'s `Produce`
       is the replication request, not the effect).
-      NEXT CLAIMABLE SLICE — the remaining G-effectful modules, one
-      lane each (recount with the grep in the spec; as of this lane:
-      okay-jdbc 6 files, okay-sql 2, okay-docs 2 + mongo/dynamo/
-      cassandra 1 each, okay-rag 1, okay-r2dbc 1, okay-pg 1,
-      okay-outbox 1, okay-kafka 1, okay-blob 3 stragglers, compare 1):
-      okay-sql/okay-jdbc (+ pg/r2dbc/rag, the same `Producer.concat`
-      shape), okay-docs and its backends, the kafka/fs2/zio/java
-      interops —
+      okay-sql/jdbc/pg/r2dbc/rag/outbox: DONE (pwc-sql-seam, 2026-09-19 —
+      `Sql.query` is `Source[Chunk[Vector[SqlValue]]]`, `Source.concat`
+      replaces `Producer.concat` at every drain; okay-cache/okay-delta
+      tests found by the repo-wide compile, moved too).
+      NEXT CLAIMABLE SLICE — what is left of the G-effectful carrier:
+      okay-docs (`Docs.query: Chunk[(String, A)] ! (Produce + Async)` +
+      TopicDocs/Mongo/Dynamo/Cassandra + DocsSuite's walker), then the
+      kafka interop (`KafkaChunks`), then okay-blob's stragglers —
       these hold the G-effectful `Chunk[X] ! Produce + G` carrier
       (`Producer.concat`/`fold` callers), I/O-bound, migrated by the
       blob pattern (`Writer.fold`/`.collect`), no fold parity needed —

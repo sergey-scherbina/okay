@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, %, +, Async, Chunk, Produce, Throws, effect}
+import okay.{!, +, %, Async, Chunk, effect, Source, Stream, Throws, Writer}
 import okay.given
 import JdbcInterop.*
 import java.sql.DriverManager
@@ -29,18 +29,8 @@ class TestJdbcInterop extends munit.FunSuite {
   }
 
   /** drain the effectful chunked stream into a list of chunks */
-  def collectChunks[A](s: Chunk[A] ! (Produce + Async)): List[Chunk[A]] =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[okay.Handler[Async]].handle(a): Unit); acc.reverse
-          case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[okay.Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
-    go(s, Nil)
+  def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   test("the Resource region closes the connection on a handled abort") {
     type F = Throws % String + okay.Resource

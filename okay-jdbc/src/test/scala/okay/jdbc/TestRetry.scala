@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, Resource, Stream}
+import okay.{!, +, Async, Chunk, Resource, Source}
 import okay.given
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
 import java.sql.{DriverManager, SQLException}
@@ -48,12 +48,7 @@ class TestRetry extends munit.FunSuite {
       f(Losing(JdbcSql(conn), failures, state))
     finally conn.close()
 
-  def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(Vector.empty)
-      case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-    }
+  def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
 
   def hits(db: Sql): Long =
     run(drain(db.query("select count(*) from hits", Vector.empty)).map(_.head.head)) match

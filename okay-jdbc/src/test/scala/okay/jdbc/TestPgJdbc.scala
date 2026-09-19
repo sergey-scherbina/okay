@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, Resource, Stream}
+import okay.{!, +, Async, Chunk, Resource, Source}
 import okay.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
@@ -32,12 +32,7 @@ class TestPgJdbc extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  def drain[A](p: Chunk[A] ! (Produce + Async)): Vector[A] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(Vector.empty)
-      case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-    }
+  def drain[A](p: Source[Chunk[A]]): Vector[A] ! Async = Source.concat(p)
 
   def count(db: Sql, sql: String): Long =
     run(drain(db.query(sql, Vector.empty))).head.head match

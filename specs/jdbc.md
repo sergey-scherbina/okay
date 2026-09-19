@@ -241,7 +241,7 @@ object Typed:
 
   /** typed streaming read; per-row damage is data */
   def rows[A: Schema](db: Sql, sql: String, params: Product = EmptyTuple)
-  : Chunk[Either[Bad, A]] ! (Produce + Async)
+  : Source[Chunk[Either[Bad, A]]]   // was `Chunk[Either[Bad, A]] ! (Produce + Async)`, retyped 2026-09-19
 
   /** typed write; params from the product, always prepared */
   def update[P: Schema](db: Sql, sql: String)(p: P): Long ! Async

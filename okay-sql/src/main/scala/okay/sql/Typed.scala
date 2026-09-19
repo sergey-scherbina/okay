@@ -1,7 +1,6 @@
 package okay.sql
 
-import okay.{!, +, Async, Chunk, Chunks, Produce, Resource, Scheduler, Stream, Timer, effect, pure}
-import okay.given
+import okay.{!, +, %, Async, Chunk, effect, pure, Resource, Scheduler, Source, Timer, Writer}
 import okay.codec.Schema
 import scala.collection.immutable.ArraySeq
 
@@ -282,40 +281,43 @@ object Typed:
             }
     case _ => Left(Bad("<schema>", "a row is a product (a case class)"))
 
-  private type F = Produce + Async
-
   /** typed streaming read: the mapping resolves once via `describe`,
    * then every frame decodes to `Either[Bad, A]` — per-row damage is
    * data carrying the row position, and after a passing `verify` it
    * means the world changed mid-run: the CALLER decides */
+  // Writer % Chunk[..]'s split test is unchecked under erasure — sound
+  // by construction (Say is Writer's ONLY constructor), the E092
+  // TypeableK caveat Writer.scala documents on Writer.run
+  @scala.annotation.nowarn("msg=cannot be checked at runtime")
   def rows[A](db: Sql, sql: String, params: Vector[SqlValue] = Vector.empty)
-             (using s: Schema[A]): Chunk[Either[Bad, A]] ! F =
-    !.widen[Vector[Col], Async, Produce](db.describe(sql)).flatMap { cols =>
+             (using s: Schema[A]): Source[Chunk[Either[Bad, A]]] =
+    type W = Chunk[Either[Bad, A]]
+    type F = Writer % W + Async
+    !.widen[Vector[Col], Async, Writer % W](db.describe(sql)).flatMap { cols =>
       planOf(s, cols) match
         case Left(bad) =>
           // the whole statement cannot decode: one chunk of the answer
-          effect[F, Chunk[Either[Bad, A]]](ArraySeq(Left(bad)))
+          effect[F, Unit](Writer(ArraySeq(Left(bad)): W))
         case Right(dec) =>
-          val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-          def go(p: Chunk[Vector[SqlValue]] ! F, row: Long): Chunk[Either[Bad, A]] ! F =
-            !.widen[Option[(Chunk[Vector[SqlValue]], Chunk[Vector[SqlValue]] ! F)], Async, Produce](
-              S.uncons(p)).flatMap {
-              case None => okay.pure(Chunks.emptyChunk)
-              case Some((c, rest)) =>
+          def go(p: Source[Chunk[Vector[SqlValue]]], row: Long): Source[W] =
+            !.widen[Either[Unit, (Chunk[Vector[SqlValue]], Source[Chunk[Vector[SqlValue]]])], Async, Writer % W](
+              Writer.uncons[Chunk[Vector[SqlValue]], Unit, Async](p)).flatMap {
+              case Left(_) => okay.pure(())
+              case Right((c, rest)) =>
                 var r = row
-                val decoded: Chunk[Either[Bad, A]] = c.map { frame =>
+                val decoded: W = c.map { frame =>
                   val out = dec(frame).left.map(b => b.copy(row = r))
                   r += 1
                   out
                 }
-                effect[F, Chunk[Either[Bad, A]]](decoded).flatMap(_ => go(rest, r))
+                effect[F, Unit](Writer(decoded)).flatMap(_ => go(rest, r))
             }
           go(db.query(sql, params), 0L)
     }
 
   /** typed read with params bound from a product */
   def rowsOf[A, P](db: Sql, sql: String)(p: P)
-                  (using Schema[A], Schema[P]): Chunk[Either[Bad, A]] ! F =
+                  (using Schema[A], Schema[P]): Source[Chunk[Either[Bad, A]]] =
     rows[A](db, sql, Params.bind(p))
 
   // ── writes: params from the product, always prepared ───────────
@@ -408,7 +410,7 @@ object Typed:
   final class Db[S] private[sql] (private[sql] val db: Sql):
     def describe(sql: String): Vector[Col] ! Async = db.describe(sql)
     def query(sql: String, params: Vector[SqlValue] = Vector.empty)
-    : Chunk[Vector[SqlValue]] ! (Produce + Async) = db.query(sql, params)
+    : Source[Chunk[Vector[SqlValue]]] = db.query(sql, params)
     def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async =
       db.update(sql, params)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async =

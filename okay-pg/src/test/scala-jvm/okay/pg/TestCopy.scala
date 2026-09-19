@@ -1,6 +1,6 @@
 package okay.pg
 
-import okay.{!, +, Async, Chunk, Handler, Produce}
+import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
 import okay.given
 import okay.crypto.given
 import okay.sql.SqlValue
@@ -43,18 +43,8 @@ class TestCopy extends munit.FunSuite {
     }
 
   def countBulk(db: PgSql): Long =
-    import okay.!.*
-    def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] =
-      def go(rest: Chunk[Vector[SqlValue]] ! (Produce + Async), acc: Vector[Vector[SqlValue]]): Vector[Vector[SqlValue]] =
-        (rest.resume: @unchecked) match
-          case Pure(_) => acc
-          case Inject(e) => okay.<|>[Async, Produce](e) match
-            case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc
-            case Right(c) => acc ++ c.asInstanceOf[Chunk[Vector[SqlValue]]]
-          case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-            case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-            case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[Vector[SqlValue]]])
-      go(p, Vector.empty)
+    def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] =
+      summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(p).toVector.flatten
     drain(db.query("select count(*) from bulk")).head.head match
       case SqlValue.I64(n) => n
       case other => fail(s"expected a count, got $other")
@@ -80,18 +70,8 @@ class TestCopy extends munit.FunSuite {
       given okay.codec.Schema[Row] = okay.codec.Schema.derived
       import okay.sql.Typed
       val back = {
-        import okay.!.*
-        def drain[A](p: Chunk[A] ! (Produce + Async)): Vector[A] =
-          def go(rest: Chunk[A] ! (Produce + Async), acc: Vector[A]): Vector[A] =
-            (rest.resume: @unchecked) match
-              case Pure(_) => acc
-              case Inject(e) => okay.<|>[Async, Produce](e) match
-                case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc
-                case Right(c) => acc ++ c.asInstanceOf[Chunk[A]]
-              case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-                case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-                case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[A]])
-          go(p, Vector.empty)
+        def drain[A](p: Source[Chunk[A]]): Vector[A] =
+          summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(p).toVector.flatten
         drain(Typed.rows[Row](db, "select label from bulk where id >= 2001 order by id"))
       }
       assertEquals(back.collect { case Right(r) => r.label },

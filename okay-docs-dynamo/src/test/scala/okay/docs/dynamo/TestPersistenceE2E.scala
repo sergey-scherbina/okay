@@ -1,6 +1,6 @@
 package okay.docs.dynamo
 
-import okay.{!, +, Async, Chunk, Produce, Resource, Stream}
+import okay.{!, +, Async, Chunk, Resource, Source}
 import okay.given
 import okay.crypto.given
 import okay.blob.SigV4
@@ -35,12 +35,7 @@ class TestPersistenceE2E extends munit.FunSuite:
       s.connect(java.net.InetSocketAddress(u.getHost, u.getPort), 300); s.close(); true
     catch case _: Exception => false
 
-  def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(Vector.empty)
-      case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-    }
+  def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
   def count(db: Sql, table: String): Long ! Async =
     drain(db.query(s"select count(*) from $table")).map(_.head.head match
       case SqlValue.I64(n) => n

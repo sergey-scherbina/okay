@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Chunks, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, effect, Source, Writer}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 
 /**
@@ -25,8 +25,8 @@ object JdbcInterop {
    * scope the CONNECTION, whose close closes its statements.)
    */
   def query[A](conn: Connection, sql: String, fetchSize: Int = 64)(f: ResultSet => A)
-  : Chunk[A] ! (Produce + Async) =
-    type F = Produce + Async
+  : Source[Chunk[A]] =
+    type F = Writer % Chunk[A] + Async
 
     def readChunk(rs: ResultSet): Chunk[A] =
       val buf = okay.ChunkBuf[A](fetchSize)
@@ -36,14 +36,14 @@ object JdbcInterop {
         i += 1
       buf.take(i)
 
-    def go(rs: ResultSet, st: java.sql.Statement): Chunk[A] ! F =
+    def go(rs: ResultSet, st: java.sql.Statement): Source[Chunk[A]] =
       effect[F, Chunk[A]](Async.Run(() => readChunk(rs))).flatMap { c =>
         if c.length < fetchSize then
           effect[F, Unit](Async.Run { () => rs.close(); st.close() }).flatMap { _ =>
-            if c.isEmpty then okay.pure(Chunks.emptyChunk)
-            else effect[F, Chunk[A]](c)
+            if c.isEmpty then okay.pure(())
+            else effect[F, Unit](Writer(c))
           }
-        else effect[F, Chunk[A]](c).flatMap(_ => go(rs, st))
+        else effect[F, Unit](Writer(c)).flatMap(_ => go(rs, st))
       }
 
     effect[F, (ResultSet, java.sql.Statement)](Async.Run { () =>

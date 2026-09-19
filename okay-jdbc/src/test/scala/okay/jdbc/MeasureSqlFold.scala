@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Chunks, Handler, Produce, effect}
+import okay.{!, +, %, Async, Chunk, effect, Source, Stream, Writer}
 import okay.given
 import okay.codec.Schema
 import okay.sql.{Bad, Col, Granted, Isolation, Sql, SqlValue, Typed}
@@ -73,14 +73,14 @@ class MeasureSqlFold extends munit.FunSuite:
   private final class Replay(cols: Vector[Col], frames: Vector[Vector[SqlValue]], per: Int) extends Sql:
     def describe(sql: String): Vector[Col] ! Async = okay.pure(cols)
     def query(sql: String, params: Vector[SqlValue] = Vector.empty)
-    : Chunk[Vector[SqlValue]] ! (Produce + Async) =
-      type F = Produce + Async
-      def go(rest: Vector[Vector[SqlValue]]): Chunk[Vector[SqlValue]] ! F =
-        if rest.isEmpty then okay.pure(Chunks.emptyChunk)
+    : Source[Chunk[Vector[SqlValue]]] =
+      type F = Writer % Chunk[Vector[SqlValue]] + Async
+      def go(rest: Vector[Vector[SqlValue]]): Source[Chunk[Vector[SqlValue]]] =
+        if rest.isEmpty then okay.pure(())
         else
           val (c, more) = rest.splitAt(per)
           val chunk: Chunk[Vector[SqlValue]] = scala.collection.immutable.ArraySeq.from(c)
-          effect[F, Chunk[Vector[SqlValue]]](chunk).flatMap(_ => go(more))
+          effect[F, Unit](Writer(chunk)).flatMap(_ => go(more))
       go(frames)
     def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = okay.pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
@@ -94,18 +94,8 @@ class MeasureSqlFold extends munit.FunSuite:
     try f(JdbcSql(conn))
     finally conn.close()
 
-  private def drain[A](s: Chunk[A] ! (Produce + Async)): Int =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), seen: Int): Int =
-      (rest.resume: @unchecked) match
-        case Pure(_) => seen
-        case Inject(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); seen
-          case Right(c) => seen + c.asInstanceOf[Chunk[A]].length
-        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), seen)
-          case Right(c) => go(k(c), seen + c.asInstanceOf[Chunk[A]].length)
-    go(s, 0)
+  private def drain[A](s: Source[Chunk[A]]): Int =
+    summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).map(_.length).sum
 
   private def median(xs: Vector[Double]): Double =
     val s = xs.sorted
@@ -143,17 +133,7 @@ class MeasureSqlFold extends munit.FunSuite:
     val (cols, frames) = withDb { db =>
       val cs = !.run(Async.run[Vector[Col], Nothing](db.describe(select)))
       val fs = scala.collection.mutable.ArrayBuffer.empty[Vector[SqlValue]]
-      import okay.!.*
-      def go(rest: Chunk[Vector[SqlValue]] ! (Produce + Async)): Unit =
-        (rest.resume: @unchecked) match
-          case Pure(_) => ()
-          case Inject(e) => okay.<|>[Async, Produce](e) match
-            case Left(a) => (summon[Handler[Async]].handle(a): Unit)
-            case Right(c) => fs ++= c.asInstanceOf[Chunk[Vector[SqlValue]]]
-          case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-            case Left(a) => go(k(summon[Handler[Async]].handle(a)))
-            case Right(c) => fs ++= c.asInstanceOf[Chunk[Vector[SqlValue]]]; go(k(c))
-      go(db.query(select))
+      fs ++= summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(db.query(select)).flatten
       (cs, fs.toVector)
     }
     assertEquals(frames.length, n, "the fixture loaded")
@@ -192,17 +172,7 @@ class MeasureSqlFold extends munit.FunSuite:
   test("the decoded values are the fixture's, so the numbers measure real work") {
     withDb { db =>
       val got = scala.collection.mutable.ArrayBuffer.empty[Either[Bad, Row]]
-      import okay.!.*
-      def go(rest: Chunk[Either[Bad, Row]] ! (Produce + Async)): Unit =
-        (rest.resume: @unchecked) match
-          case Pure(_) => ()
-          case Inject(e) => okay.<|>[Async, Produce](e) match
-            case Left(a) => (summon[Handler[Async]].handle(a): Unit)
-            case Right(c) => got ++= c.asInstanceOf[Chunk[Either[Bad, Row]]]
-          case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
-            case Left(a) => go(k(summon[Handler[Async]].handle(a)))
-            case Right(c) => got ++= c.asInstanceOf[Chunk[Either[Bad, Row]]]; go(k(c))
-      go(Typed.rows[Row](db, select))
+      got ++= summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(Typed.rows[Row](db, select)).flatten
       assertEquals(got.length, n)
       assertEquals(got.head, Right(Row(1L, "user-1", Some(21), 1.5, false, "a label for row 1")))
       assertEquals(got(2), Right(Row(3L, "user-3", None, 4.5, false, "a label for row 3")))

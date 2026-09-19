@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.{!, +, Async, Chunk, Produce}
+import okay.{!, Async, Chunk}
 import okay.lex.Span
 import okay.sql.{Sql, SqlValue}
 
@@ -93,8 +93,8 @@ final class PgVector(db: Sql, table: String, dim: Int,
   /** everything out, for the doctor and the test */
   def truncate(): Unit ! Async = db.update(s"truncate $table").map(_ => ())
 
-  private def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async))
-  : Vector[Vector[SqlValue]] ! Async = okay.Producer.concat[Vector[SqlValue], Async](p)
+  private def drain(p: okay.Source[Chunk[Vector[SqlValue]]])
+  : Vector[Vector[SqlValue]] ! Async = okay.Source.concat(p)
 
 object PgVector:
 

@@ -1,6 +1,6 @@
 package okay.pg
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, effect, pure}
+import okay.{!, +, %, Async, Chunk, ChunkBuf, effect, Net, NetConn, pure, Source, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8
@@ -87,8 +87,9 @@ final class PgSql private (conn: NetConn) extends Sql:
     }
 
   def query(sql: String, params: Vector[SqlValue])
-  : Chunk[Vector[SqlValue]] ! (Produce + Async) =
-    type F = Produce + Async
+  : Source[Chunk[Vector[SqlValue]]] =
+    type W = Chunk[Vector[SqlValue]]
+    type F = Writer % W + Async
 
     def openPortal: Vector[Int] ! Async =
       conn.write(concat(
@@ -119,19 +120,19 @@ final class PgSql private (conn: NetConn) extends Sql:
           go(Vector.empty)
         }
 
-    def emit(oids: Vector[Int]): Chunk[Vector[SqlValue]] ! F =
-      !.widen[(Chunk[Vector[SqlValue]], Boolean), Async, Produce](readChunk(oids))
+    def emit(oids: Vector[Int]): Source[W] =
+      !.widen[(Chunk[Vector[SqlValue]], Boolean), Async, Writer % W](readChunk(oids))
         .flatMap { (c, more) =>
           if !more then
-            !.widen[Unit, Async, Produce](finishPortal).flatMap { _ =>
-              if c.isEmpty then pure(Chunks.emptyChunk)
-              else effect[F, Chunk[Vector[SqlValue]]](c)
+            !.widen[Unit, Async, Writer % W](finishPortal).flatMap { _ =>
+              if c.isEmpty then pure(())
+              else effect[F, Unit](Writer(c))
             }
-          else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => emit(oids))
+          else effect[F, Unit](Writer(c)).flatMap(_ => emit(oids))
         }
 
-    !.widen[Unit, Async, Produce](settled(pure(())))
-      .flatMap(_ => !.widen[Vector[Int], Async, Produce](openPortal))
+    !.widen[Unit, Async, Writer % W](settled(pure(())))
+      .flatMap(_ => !.widen[Vector[Int], Async, Writer % W](openPortal))
       .flatMap(emit)
 
   def update(sql: String, params: Vector[SqlValue]): Long ! Async =

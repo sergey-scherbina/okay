@@ -1,6 +1,6 @@
 package okay.r2dbc
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
 import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement, TransactionDefinition}
 import java.nio.ByteBuffer
@@ -38,17 +38,17 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   }
 
   def query(sql: String, params: Vector[SqlValue])
-  : Chunk[Vector[SqlValue]] ! (Produce + Async) =
-    type F = Produce + Async
+  : Source[Chunk[Vector[SqlValue]]] =
+    type F = Writer % Chunk[Vector[SqlValue]] + Async
 
-    def go(rows: RowStream): Chunk[Vector[SqlValue]] ! F =
+    def go(rows: RowStream): Source[Chunk[Vector[SqlValue]]] =
       effect[F, (Vector[Vector[SqlValue]], Boolean)](Async.Run(() => rows.next(fetchSize))).flatMap {
         case (items, done) =>
           val c = ChunkBuf.of(items)
           if done then
-            if c.isEmpty then okay.pure(Chunks.emptyChunk)
-            else effect[F, Chunk[Vector[SqlValue]]](c)
-          else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => go(rows))
+            if c.isEmpty then okay.pure(())
+            else effect[F, Unit](Writer(c))
+          else effect[F, Unit](Writer(c)).flatMap(_ => go(rows))
       }
 
     effect[F, RowStream](Async.Run { () =>

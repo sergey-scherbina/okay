@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, async, effect}
+import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import java.sql.{Connection, PreparedStatement, ResultSet, ResultSetMetaData, Types}
 
@@ -44,8 +44,8 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   }
 
   def query(sql: String, params: Vector[SqlValue])
-  : Chunk[Vector[SqlValue]] ! (Produce + Async) =
-    type F = Produce + Async
+  : Source[Chunk[Vector[SqlValue]]] =
+    type F = Writer % Chunk[Vector[SqlValue]] + Async
 
     def readChunk(rs: ResultSet, cols: Vector[SqlType], codes: Vector[Int]): Chunk[Vector[SqlValue]] =
       val buf = ChunkBuf[Vector[SqlValue]](fetchSize)
@@ -56,14 +56,14 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
       buf.take(i)
 
     def go(rs: ResultSet, ps: PreparedStatement, cols: Vector[SqlType], codes: Vector[Int])
-    : Chunk[Vector[SqlValue]] ! F =
+    : Source[Chunk[Vector[SqlValue]]] =
       effect[F, Chunk[Vector[SqlValue]]](Async.Run(() => readChunk(rs, cols, codes))).flatMap { c =>
         if c.length < fetchSize then
           effect[F, Unit](Async.Run { () => rs.close(); ps.close() }).flatMap { _ =>
-            if c.isEmpty then okay.pure(Chunks.emptyChunk)
-            else effect[F, Chunk[Vector[SqlValue]]](c)
+            if c.isEmpty then okay.pure(())
+            else effect[F, Unit](Writer(c))
           }
-        else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => go(rs, ps, cols, codes))
+        else effect[F, Unit](Writer(c)).flatMap(_ => go(rs, ps, cols, codes))
       }
 
     effect[F, (ResultSet, PreparedStatement, Vector[SqlType], Vector[Int])](Async.Run { () =>

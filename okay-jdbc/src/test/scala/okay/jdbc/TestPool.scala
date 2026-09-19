@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, Resource, Stream}
+import okay.{!, +, Async, Chunk, Resource, Source}
 import okay.given
 import okay.sql.{Isolation, Pool, Sql, SqlValue}
 import java.sql.DriverManager
@@ -20,12 +20,7 @@ class TestPool extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(Vector.empty)
-      case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-    }
+  def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
 
   def count(db: Sql): Long ! Async =
     drain(db.query("select count(*) from marks", Vector.empty)).map(_.head.head match

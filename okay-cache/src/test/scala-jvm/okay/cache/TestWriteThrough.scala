@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +, Async, Produce, Stream}
+import okay.{!, Async, Source}
 import okay.given
 import okay.jdbc.JdbcSql
 import okay.sql.{Sql, SqlValue, Typed}
@@ -33,14 +33,11 @@ class TestWriteThrough extends munit.FunSuite {
     (JdbcSql(conn), Cache.memory[String, Long](Regime.Invalidated, 64))
 
   def load(db: Sql)(k: String): Long ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(db.query("select price from price where id = ?",
-        Vector(SqlValue.Text(k)))).map {
-      case Some((c, _)) if c.nonEmpty => c(0) match
-        case Vector(SqlValue.I64(p)) => p
-        case other => fail(other.toString)
-      case _ => fail("no row")
-    }
+    Source.concat(db.query("select price from price where id = ?",
+        Vector(SqlValue.Text(k)))).map(_.headOption match
+      case Some(Vector(SqlValue.I64(p))) => p
+      case Some(other) => fail(other.toString)
+      case None => fail("no row"))
 
   def commitUpdate(db: Sql, price: Long): Long ! Async =
     Typed.update[Row](db, "update price set price = ? where id = 'okay'")(Row(price))
