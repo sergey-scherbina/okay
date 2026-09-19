@@ -1,0 +1,6 @@
+feature/script-scoped-state 2026-09-19T08:05:40Z
+agent: claude-code
+heartbeat: 2026-09-19T08:05:40Z
+status: in-progress
+done-so-far: spec next
+next: write specs/script-scoped-state.md, then Scoped.scala
