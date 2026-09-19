@@ -68,18 +68,24 @@ Spark's own 4.2.0 release notes say it runs on Java 17/21/25. Bumped
 all 4 tests on this box's JDK 21 floor, confirming 4.2.0 is a safe
 upgrade for the range we actually run.
 
-**What is NOT yet verified: an actual JDK 25 run of okay-spark's
-tests on THIS machine.** Forking `okaySpark/Test` through
-`~/.sdkman/candidates/java/25.0.4.1-tem` (via `Test / javaHome`)
-discovered zero tests — no exception, no Spark startup log, sbt just
-reported `Total 0` — which reads as an sbt-test-fork/JDK-25
-compatibility wrinkle in THIS setup rather than a Spark defect (Spark
-4.2.0's own CI already ran 66,716 tests green on Java 25, per the
-same JIRA). Not chased further this session; the `munitIgnore` guard
-at `>= 24` is consequently still accurate to LEAVE IN — it now
-under-states what Spark itself supports, but removing it would need
-the local JDK25 run actually working first, not just the upstream
-claim.
+**Update (spark-jdk25-guard-fix, 2026-09-19): the "not yet verified"
+above was a false alarm, and closed.** Forking `okaySpark/Test`
+through `~/.sdkman/candidates/java/25.0.4.1-tem` did report `Total 0`
+with no exception — but that was never an sbt/JDK-25 fork wrinkle.
+`TestSparkInterop.munitIgnore` read `javaFeature >= 24`, a guard
+written for Spark 4.0.0's ceiling and never updated when 4.2.0 landed
+— it was silently skipping every test on JDK 25 right along with the
+genuinely broken 24, and a skip is exactly what an sbt fork reports
+as `Total 0, no exception`. Narrowed the guard to `== 24` (24 has no
+workaround, JEP 486; 22/23 still have a deprecated Security Manager
+and are simply untested here, not assumed broken either way), then
+verified 25 for real: ran `TestSparkInterop`'s own
+SparkSession-creation-and-aggregation path as a standalone `java -cp
+<test classpath>` process (bypassing sbt's fork entirely) under
+25.0.4.1 — `local=8333333.25 onSpark=8333333.25 diff=0.0`, a genuine
+distributed job (8 partitions, DAGScheduler, real task log), not a
+process-exit-code check. Spark 4.2.0 on JDK 25 is now directly
+confirmed here, not just upstream-claimed.
 
 ## What this means for "can we bump the JDK"
 
@@ -88,12 +94,12 @@ claim.
   this library, not just the ones in the table above, inherits the
   requirement transitively.
 - **Raising the floor past 23 no longer needs okay-spark's own JDK 24
-  ceiling to move with it** — Spark 4.2.0 (landed spark-4-2-0-jdk25,
-  2026-09-19) claims 17/21/25 upstream, verified here on the 21 end.
-  The ceiling this section opens with is Spark 4.0.0's; 4.2.0 is what
-  is actually in `build.sbt` now. The local JDK 25 run is still
-  unverified (see above), so treat "past 23 is safe for Spark" as
-  upstream-claimed-and-partially-confirmed, not fully closed.
+  ceiling to move with it** — Spark 4.2.0 (landed spark-4-2-0-jdk25 +
+  spark-jdk25-guard-fix, 2026-09-19) runs on 17/21/25, confirmed here
+  directly on both the 21 and 25 ends (see above). The ceiling this
+  section opens with is Spark 4.0.0's; 4.2.0 is what is actually in
+  `build.sbt` now. 22 and 23 remain genuinely untested — not claimed
+  either way — and 24 stays a real ceiling with no known fix.
 - **JDK 25** is not a floor-or-ceiling question at all: it is an
   *additive* per-feature answer. `okay.Scoped` (core,
   `specs/script-scoped-state-mrjar.md`) ships as a Multi-Release JAR —
