@@ -1,6 +1,0 @@
-feature/producer-writer-carrier-chunks-retype 2026-09-19T19:02:20Z
-agent: claude-code
-heartbeat: 2026-09-19T19:44:12Z
-status: in-progress
-done-so-far: retype done, gate GREEN + cold warning check clean; before/after measured: 4-8% on tightest chunked folds, noise elsewhere; branch 7541ee3b
-next: WAITING for the operator: land with that cost, or keep Chunks on Producer (spec's own branch)
