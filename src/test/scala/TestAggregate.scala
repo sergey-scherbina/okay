@@ -29,12 +29,14 @@ class TestAggregate extends munit.FunSuite {
 
   test("zipLong: the flat pair answers what the tuple pair answers") {
     val ns = List(3L, 1L, 4L, 1L, 5L, 9L, 2L, 6L)
-    // the UNBOXED spellings: `sum[N]`'s declared return type is
-    // `Aggregator[N, N, N]`, which hides the `OfLong` underneath it —
-    // so the flat pair is reached through `sumLong`, and this line is
-    // the whole usability cost of the specialization
-    val tupled = A.count[Long].zip(A.sumLong)
-    val flat = A.count[Long].zipLong(A.sumLong)
+    // the idiomatic spelling now reaches the specialization directly
+    // (aggregator-sum-hides-its-specialization): `sum[Long]`'s
+    // declared return used to be `Aggregator[Long, Long, Long]`,
+    // hiding the `OfLong` underneath and forcing `A.sumLong` by name
+    // to reach `.zipLong` at all — `SumOf[N]` (a match type on
+    // `sum`'s own return) makes `sum[Long]` answer `OfLong` directly
+    val tupled = A.count[Long].zip(A.sum[Long])
+    val flat = A.count[Long].zipLong(A.sum[Long])
     assertEquals(flat.run(ns), tupled.run(ns))
     assertEquals(flat.run(Nil), tupled.run(Nil))
     // and it merges like the pair it replaces, at every cut
