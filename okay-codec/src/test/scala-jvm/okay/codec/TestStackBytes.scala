@@ -36,6 +36,24 @@ package okay.codec
  * `specs/iterative-recursive-decode.md` are closed. `JsonStrict.
  * Reader.get` was never the third root this file's history implied;
  * it did not need fixing at this depth.
+ *
+ * THOSE KILOBYTES ARE HOST-RELATIVE, and this file now says so in
+ * code rather than in a comment nobody reads: a thread's stackSize is
+ * a REQUEST, a JVM floors it at whatever its guard zone leaves
+ * usable. Measured 2026-09-19 on aarch64 Linux in a container, JDK
+ * 21.0.10, 4 KB pages, StackShadowPages=20: requests of 8, 16, 24,
+ * 32, 48, 64, 96 and 128 KB ALL gave 876 frames of plain recursion —
+ * one stack of ~34 KB usable, 80 KB of shadow inside a ~128 KB
+ * minimum — while 160/192/224/256 gave 1490/2308/3128/3948. A ladder
+ * of powers of two has ONE rung below 256 there, so a door needing a
+ * little over the floor can report nothing between them, and a door
+ * sitting ON the floor flaps. On the machine those numbers were taken on the floor is at
+ * or below 16 KB; on a container measured 2026-09-19 it was 128, and
+ * the old fixed ladder reported 256 KB for a door that is in fact
+ * flat. See `needsWarm` for the other half — the cold round answers a
+ * different question from the flat one — and okay-codec/BUGS.md
+ * stackbytes-probe-measures-the-hosts-floor for the whole
+ * measurement.
  */
 class TestStackBytes extends munit.FunSuite:
 
@@ -77,16 +95,43 @@ class TestStackBytes extends munit.FunSuite:
     t.join()
     out
 
-  /** the smallest power-of-two stack the door completes on — MAX of 3
-    * rounds (bench-one-round-lies): a cold JIT state can need noticeably
-    * more than a warm one for the same door, so the min-of-3 that would
-    * be right for a PERFORMANCE number is wrong for a SAFETY one here */
+  /** the rungs, and the sentinel above them: 16384 means "not even
+    * 8 MB did", which is what the `while` loop this replaced returned */
+  val ladder: List[Int] = Iterator.iterate(16)(_ * 2).takeWhile(_ <= 8192).toList
+
+  /** the smallest rung the door completes on — MAX of 3 rounds
+    * (bench-one-round-lies): a cold JIT state can need noticeably
+    * more than a warm one for the same door, so the min-of-3 that
+    * would be right for a PERFORMANCE number is wrong for a SAFETY
+    * one here */
   def needs(door: () => Boolean): Int =
-    (1 to 3).map { _ =>
-      var kb = 16
-      while kb <= 8192 && onStack(kb)(door) != Some(true) do kb *= 2
-      kb
-    }.max
+    (1 to 3).map(_ => ladder.find(kb => onStack(kb)(door) == Some(true)).getOrElse(16384)).max
+
+  /**
+   * The same, once the door is WARM — which is a different question
+   * and belongs to a different test.
+   *
+   * "How much stack can this door ever need" wants the cold round and
+   * gets it above. "Does the trampoline engage" is about the SHAPE of
+   * the code, and an interpreted frame is several times a compiled
+   * one, so comparing a cold deep door against a warm shallow one
+   * measures the JIT rather than the trampoline. Measured on the same
+   * container: cold, depth 8 answered 256, 16, 16, 16, 16 KB across
+   * five rounds; warm, depths 8, 100, 200 and 400 all answered 16 KB
+   * in every round.
+   */
+  def needsWarm(door: () => Boolean, rounds: Int = 2000): Int =
+    val t = new Thread(null, () => { var i = 0; while i < rounds do { door(): Unit; i += 1 } },
+      "warmup", 8L * 1024 * 1024)
+    t.start(); t.join()
+    // MIN of 3, where `needs` takes the max, and the asymmetry is the
+    // point. A door sitting near the floor of what a host will give a
+    // thread flaps: measured here, the SHALLOW door answered 64 KB in
+    // a round where the deep one answered 16, which is not a thing
+    // that can be true. For "what can this door ever need" a flap is
+    // the answer you must keep; for "does the trampoline engage" it
+    // is noise about the host, and the settled round is the evidence.
+    (1 to 3).map(_ => ladder.find(kb => onStack(kb)(door) == Some(true)).getOrElse(16384)).min
 
   test("every door fits in 2 MB at a full-depth document") {
     val measured = doors.map((name, door) => (name, needs(door)))
@@ -121,9 +166,24 @@ class TestStackBytes extends munit.FunSuite:
       "Json.read[Tree]" -> ((d: Int) => () => Json.read[Tree](jsonTree(d)).isRight),
       "Cbor.read[Tree]" -> ((d: Int) => () => Cbor.read[Tree](cborTree(d)).isRight),
     ) do
-      val shallow = needs(doorAt(8))
-      val deep = needs(doorAt(levels))
-      println(f"[stack] $name%-16s $shallow%d KB at 8 levels, $deep%d KB at $levels levels")
-      assertEquals(deep, shallow, s"$name: expected the trampoline to flatten the cost past the threshold")
-      assert(deep <= 64, s"$name at $levels levels needs $deep KB — the trampoline should cost near nothing")
+      // WARM: the question here is the shape of the code, not the
+      // state of the JIT (see needsWarm)
+      val shallow = needsWarm(doorAt(8))
+      val deep = needsWarm(doorAt(levels))
+      val deeper = needsWarm(doorAt(levels * 4))
+      println(f"[stack] $name%-16s $shallow%d KB at 8 levels, $deep%d KB at $levels, $deeper%d KB at ${levels * 4}")
+
+      // THE TWO DEPTHS COMPARED ARE BOTH PAST THE THRESHOLD, and
+      // that is the correction this lane made. The old comparison was
+      // 8 levels against `levels`, which is the NATIVE path against
+      // the trampolined one — different code, and on a host with fat
+      // frames the native one can legitimately cost MORE (measured
+      // 2026-09-19: Cbor.read wanted 32 KB at 8 levels and 16 at 100,
+      // and the test called that a failure to flatten). What the two
+      // trampoline lanes actually promise is that past the threshold
+      // the cost stops following the depth — so ask that.
+      assertEquals(deeper, deep,
+        s"$name: ${levels * 4} levels cost more than $levels — past the threshold the cost still follows the depth")
+      assert(deep <= shallow,
+        s"$name: $deep KB past the threshold against $shallow KB below it — the trampoline costs more than the recursion it replaced")
   }

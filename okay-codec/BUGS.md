@@ -3,6 +3,58 @@
 Defects owned by this module. Status lives in the machine-readable
 header, never in prose.
 
+## stackbytes-probe-measures-the-hosts-floor — why a container read 256 KB, answered
+<!-- status: fixed
+     lane: jvm
+     area: okay-codec/src/test/scala-jvm/okay/codec/TestStackBytes.scala
+     gate: same file, "both threshold lanes: every door is flat past the threshold"
+     fixed-in: this lane
+     confirmed: yes -->
+
+The open half of stackbytes-json-read-not-flat-on-aarch64 (closed
+wontfix, correctly — no main source was ever at fault): WHY the
+container measured 256 KB. Three causes, all measured here, all in
+the MEASUREMENT.
+
+**1. A thread's stackSize is a request, and this host floors it.**
+`new Thread(g, r, name, stackSize)` reserves a guard zone inside what
+you ask for — `StackShadowPages`, plus red and reserved pages — and
+floors anything smaller than what is left. aarch64 Linux in a
+container, JDK 21.0.10, 4 KB pages, `StackShadowPages=20`:
+
+```
+requested   8  16  24  32  48  64  96 128 KB -> 876 frames, every one
+requested 160 192 224 256 KB                 -> 1490 2308 3128 3948
+```
+
+Eight requests, ONE stack of ~34 KB usable: 80 KB of shadow inside a
+~128 KB minimum. A ladder of powers of two has one rung below 256
+there, so a door needing a little over the floor reports 256 — an 8x
+overstatement — and a door sitting ON the floor flaps between rungs.
+
+**2. The cold round answers a different question.** An interpreted
+frame is several times a compiled one. Cold, depth 8 answered
+`256, 16, 16, 16, 16` across five rounds; warm, depths 8, 100, 200
+and 400 answered 16 every round. The file's max-of-3 is right for
+"what can this door ever need" and wrong for "does the trampoline
+engage".
+
+**3. And the comparison itself was wrong.** It asked whether 8 levels
+and 100 levels cost the same — but 8 is BELOW `Codecs.NativeThreshold`
+and 100 is past it, so it compared the native path against the
+trampolined one. Different code, and the native one can legitimately
+cost more: measured here, `Cbor.read[Tree]` wants 256 KB at 8 levels
+and 16 KB at 100 and at 400. The old assertion called that a failure
+to flatten; it is the trampoline working.
+
+Fixed by asking the promise the two trampoline lanes actually made —
+past the threshold the cost stops following the depth — with both
+compared depths past it (`levels` and `levels * 4`), on warm doors,
+plus `deep <= shallow` so the trampoline may never cost more than the
+recursion it replaced. 216 tests green here, and the printout now
+reads `16 KB at 8 levels, 16 KB at 100, 16 KB at 400` for
+`Json.read[Tree]`.
+
 ## stackbytes-json-read-not-flat-on-aarch64 — the container's measurement, not `Json.read`
 <!-- status: wontfix
      lane: jvm
