@@ -1,0 +1,6 @@
+feature/producer-writer-carrier-foldwriter-fix 2026-09-19T13:22:10Z
+agent: claude-code
+heartbeat: 2026-09-19T13:22:10Z
+status: in-progress
+done-so-far: chunk-fold prerequisite landed (4a015181): foldLeftWriter at parity, foldWriter dispatch gap open (~6.8x, isolated to the dispatch layer but not explained)
+next: try -XX:+PrintInlining/-XX:+PrintCompilation on the JMH fork (not tried yet, no external profiler needed) to see if the JIT is refusing to inline Writer.foldWith's expansion inside foldWriter's 4-branch match; fix if confirmed, then continue stage 2 module 2/6 (okay-cluster Flows.scala/Job.scala onto foldLeftWriter)
