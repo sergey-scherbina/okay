@@ -1,0 +1,6 @@
+feature/producer-writer-carrier-stage2-blob 2026-09-19T11:17:28Z
+agent: claude-code
+heartbeat: 2026-09-19T11:17:28Z
+status: in-progress
+done-so-far: scoped (Blob.scala, Fs, S3, Bytes, Backup, Offload, 4 test files, ~1000 lines)
+next: flip Blob get/put/list to the writer carrier (Feed/Source), rewrite implementations, tests, gate, land
