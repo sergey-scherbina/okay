@@ -1,0 +1,6 @@
+feature/pwc-docs-seam 2026-09-19T20:13:50Z
+agent: claude-code
+heartbeat: 2026-09-19T20:13:50Z
+status: in-progress
+done-so-far: survey done (Docs.query + Topic/Mongo/Dynamo/Cassandra + DocsSuite.collect); worktree created
+next: retype, Test/compile, gate
