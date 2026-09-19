@@ -45,6 +45,22 @@ class TestStream extends munit.FunSuite {
     assertEquals(nats[Int, Producer].take(5).foldLeft(0)(_ + _), 10)
   }
 
+  test("the linear consumers agree with the LazyList bridge, on a Producer and on a Feed") {
+    // stream-fold-via-iterator: foldLeft/foreach/toList/Stream.fold walk
+    // `iterator`; the bridge is the oracle they must agree with
+    val feed: Feed[Int] = Writer.tell(1).flatMap(_ => Writer.tell(2)).flatMap(_ => Writer.tell(3))
+    val St = feedStream[Unit]
+    assertEquals(St.iterator(feed).toList, feed.toLazyList.toList)
+    assertEquals(p12.toList, p12.toLazyList.toList)
+    assertEquals(p12.foldLeft(List.empty[Int])((l, a) => a :: l), p12.toLazyList.foldLeft(List.empty[Int])((l, a) => a :: l))
+    val seen = collection.mutable.ListBuffer.empty[Int]
+    p12.foreach(seen += _)
+    assertEquals(seen.toList, List(1, 2))
+    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.Pure, Int, Int](feed)(using Fold.sum[Int]), 6)
+    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.Pure, Int, Long](feed)(using Fold.count[Int]), 3L)
+    assertEquals(Stream.fold(okay.pure[Produce, Int](0): Producer[Int])(using Fold.count[Int]), 0L)
+  }
+
   test("search stops early, even on an infinite stream") {
     assertEquals(nats[Int, Producer].exists(_ > 5), true)
     assertEquals(nats[Int, Producer].forall(_ < 3), false)

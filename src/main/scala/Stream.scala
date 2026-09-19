@@ -107,8 +107,6 @@ extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
  */
 object Stream:
 
-  import scala.annotation.tailrec
-
   /** transform each element (the monad owns the postfix .map) */
   def map[S[_], F[+_], A, B](s: S[A])(f: A => B)(using Stream[S, F], Handler[F]): LazyList[B] =
     s.toLazyList.map(f)
@@ -119,25 +117,27 @@ object Stream:
     s.toLazyList.flatMap(f(_).toLazyList)
 
   /**
-   * Consume with a Fold algebra, one uncons at a time.
+   * Consume with a Fold algebra, over the LINEAR view.
+   *
+   * `iterator`, not `uncons` per element: every instance overrides
+   * the linear view with a direct walk of its carrier, and the
+   * default it replaces — an `Option`, a tuple and a program built
+   * and run per element — was measured at 103.6–114.5 us per 10k on
+   * the G-effectful producer against the walk's 57.3
+   * (producer-effectful-stream-iterator). This loop used to be that
+   * default, spelled out (stream-fold-via-iterator, 2026-09-20; the
+   * numbers are in specs/stream-fold-via-iterator.md).
    *
    * Deliberately NOT dispatching on the accumulator, unlike
-   * `Chunks.fold` and `Writer.fold`. The dispatch was written here and
-   * measured: 139.9us against 157.2 per 10k, error bars +/-20 and
-   * +/-27 — overlapping, so no effect was demonstrated. This is the
-   * un-chunked path, where the freer tree steps once per ELEMENT and
-   * that step is ~150us per 10k; the fold's share of it is a fraction
-   * of a percent, and an inline dispatch would leave five copies of
-   * this loop behind for nothing. Chunked folding is where the
-   * accumulator is worth specializing, and `Chunks.fold` does it.
+   * `Chunks.fold` and `Writer.fold`: measured on the old walk the
+   * dispatch bought nothing (139.9 vs 157.2 us, bars overlapping),
+   * and the spec's Results re-ask the question on this one.
    */
-  def fold[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B = {
-    @tailrec def loop(b: B, x: S[A]): B = St.uncons(x).runWith match
-      case None => b
-      case Some((a, t)) => loop(f.add(b, a), t)
-
-    loop(f.init, s)
-  }
+  def fold[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B =
+    val it = St.iterator(s)
+    var b = f.init
+    while it.hasNext do b = f.add(b, it.next())
+    b
 
 extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
   /** keep the elements satisfying p */
@@ -166,26 +166,33 @@ extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
   def ++[T[_], G[+_]](that: T[A])(using Stream[T, G], Handler[G]): LazyList[A] =
     s.toLazyList #::: that.toLazyList
 
+  // The consumers below answer a VALUE, not a stream, so they walk the
+  // linear view: `iterator` observes each element once and keeps
+  // nothing, where `toLazyList` memoises a cell — and a synchronised
+  // lazy state — per element for a value read once
+  // (stream-fold-via-iterator). The combinators above answer a
+  // LazyList and keep the bridge: a memoised stream is their contract.
+
   /** fold all the elements strictly (diverges on an infinite stream) */
-  def foldLeft[B](z: B)(op: (B, A) => B): B = s.toLazyList.foldLeft(z)(op)
+  def foldLeft[B](z: B)(op: (B, A) => B): B = s.iterator.foldLeft(z)(op)
 
   /** run f on every element */
-  def foreach(f: A => Unit): Unit = s.toLazyList.foreach(f)
+  def foreach(f: A => Unit): Unit = s.iterator.foreach(f)
 
   /** the first element, if any */
   def headOption: Option[A] = s.uncons.map(_._1)
 
   /** the first element satisfying p (stops as soon as it is found) */
-  def find(p: A => Boolean): Option[A] = s.toLazyList.find(p)
+  def find(p: A => Boolean): Option[A] = s.iterator.find(p)
 
   /** is there an element satisfying p (stops as soon as one is found) */
-  def exists(p: A => Boolean): Boolean = s.toLazyList.exists(p)
+  def exists(p: A => Boolean): Boolean = s.iterator.exists(p)
 
   /** do all elements satisfy p (stops at the first that does not) */
-  def forall(p: A => Boolean): Boolean = s.toLazyList.forall(p)
+  def forall(p: A => Boolean): Boolean = s.iterator.forall(p)
 
   /** all the elements, strictly */
-  def toList: List[A] = s.toLazyList.toList
+  def toList: List[A] = s.iterator.toList
 
 /**
  * The same observations directly on a writer program (as overloads
