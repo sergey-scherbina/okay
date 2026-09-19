@@ -378,3 +378,62 @@ today. `foldWriter`'s gap stays open and documented; `Bulk.scala`,
 until it closes. A retry should start from `Chunks.scala`'s doc comments
 on both combinators, which name the three shapes already tried, so a
 second attempt does not repeat them.
+
+### The root cause, actually found (2026-09-19, follow-up)
+
+The "would need a profiler this environment does not have" line above
+was wrong — JMH ships `-prof gc` and `-prof jfr` (Java Flight Recorder)
+in-JDK, no external tool needed, and `javap` reads the compiled
+bytecode directly. Using them:
+
+**`-prof gc`** on a fresh `chunksFoldWriterDispatched` run: 249,584 B/op
+against `foldLeftWriter`'s own direct call at 12,656 B/op — about
+10,000 extra bytes-worth of boxed `java.lang.Long`, one per element
+(N=10000). Raising `-XX:MaxInlineLevel` and `-XX:FreqInlineSize` well
+past their defaults changed nothing (still exactly 249,584 B/op),
+ruling out a simple JIT inlining-budget explanation.
+
+**`-prof jfr`**'s allocation stack traces name the box exactly:
+`ArraySeq$ofLong.apply` -> `boxToLong` -> `Fold$OfLong.addLong`,
+present in the dispatched path's profile (867 of 910 sampled
+allocations) and essentially absent from the direct call's (1 of 245).
+
+**The box itself is not a defect** — `Fold.OfLong[A]`'s own
+`addLong(s: Long, a: A): Long` takes its element generically BY DESIGN
+(a fold over `A`, not necessarily over `Long`), so a synthetic bridge
+method boxes on every call. `javap` confirms `Chunks.fold` makes the
+IDENTICAL call (`ArraySeq.apply` -> `boxToLong` -> `addLong`, same
+bytecode shape) and pays nothing for it, because the JIT's escape
+analysis proves the box never escapes `Chunks.foldLeft`'s small,
+standalone compiled loop and eliminates it entirely. The SAME analysis
+fails inside `Writer.foldWith`'s bigger resume/split/Bind tailrec
+trampoline, so the box becomes a real heap allocation there — the
+entire 6.8x is this one box, paid once per element, that a smaller
+compiled method gets for free.
+
+**A second fix attempt, tried and reverted:** pulling the per-chunk
+consuming loop out into its own small, standalone method
+(`foldChunkLong`/`foldChunkInt`/etc., one per `Fold.OfX` case) measured
+NO CHANGE (still exactly 249,584 B/op). `javap` explains why: the JIT
+re-inlines the small, hot, `invokespecial`-called helper straight back
+into the trampoline anyway, reproducing the identical combined compiled
+unit either way. Escape analysis is gated by what ends up in ONE
+compiled unit after the JIT's OWN inlining decisions, not by
+Scala-level method boundaries — refactoring the source cannot
+out-maneuver that on its own, so this is reverted rather than kept as
+dead weight.
+
+**What would actually fix it, not yet tried:** decouple the tree walk
+from the per-chunk consumption so the box-unbox pair sits in a small
+compiled unit the JIT cannot re-merge with the trampoline — concretely,
+give `Writer`'s `Stream` instances (`src/main/scala/Writer.scala`) their
+OWN `iterator` override (they currently fall back to the generic
+`Iterator.unfold(s)(uncons(_).runWith)`), and run `Chunks.foldLeft`'s
+own tiny per-chunk loop against THAT instead of routing through
+`Writer.foldWith`. The obstacle is the API contract, not the walk
+itself: `.iterator` needs a `Handler[G]` and runs EAGERLY, where
+`foldWriter` currently returns `(S, Unit) ! G` — a suspended PROGRAM,
+composable with `flatMap` before anything runs. Making `foldWriter`
+eager would be a real, visible API change, not a drop-in performance
+fix, and deserves its own design pass rather than a rushed patch riding
+this one.

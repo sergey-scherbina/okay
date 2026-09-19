@@ -369,12 +369,62 @@ object Chunks {
    * `foldLeftWriter`, dispatched on a `Fold` instance the way
    * `Chunks.fold` dispatches on one — CORRECT (tested against
    * `Chunks.fold` on the same data) but NOT at parity with it; see
-   * `foldLeftWriter`'s own doc for the measured gap and what is ruled
-   * out. Kept non-`inline`: marking it `inline` was one of the three
-   * shapes tried and measured no faster, and non-`inline` at least
-   * keeps a literal `G=Nothing`/`Pure` compiling at a fresh call site
-   * (an unrelated inliner limitation `foldLeftWriter`, `inline`,
-   * cannot avoid: use `G=Async` there instead).
+   * `foldLeftWriter`'s own doc for the measured gap. Kept non-`inline`:
+   * marking it `inline` was one of several shapes tried and measured
+   * no faster, and non-`inline` at least keeps a literal
+   * `G=Nothing`/`Pure` compiling at a fresh call site (an unrelated
+   * inliner limitation `foldLeftWriter`, `inline`, cannot avoid: use
+   * `G=Async` there instead).
+   *
+   * ROOT CAUSE, FOUND (2026-09-19, `-prof gc`/`-prof jfr`/`javap` — all
+   * in-JDK, no external profiler needed; an earlier draft of this
+   * comment said the diagnosis needed one, which was wrong). `-prof gc`
+   * on a fresh call: 249,584 B/op dispatched vs 12,656 for
+   * `foldLeftWriter` called directly — ~10,000 boxed `java.lang.Long`,
+   * one per element (N=10000). `-prof jfr`'s allocation stack traces
+   * name it exactly: `ArraySeq$ofLong.apply` -> `boxToLong` ->
+   * `Fold$OfLong.addLong`, present in the dispatched path's profile and
+   * absent from the direct call's. The box itself is NOT the defect —
+   * `Fold.OfLong[A]`'s own `addLong(s: Long, a: A): Long` takes its
+   * element generically by design (a fold over `A`, not over `Long`),
+   * so a synthetic bridge boxes on every call; `Chunks.fold` makes the
+   * IDENTICAL call (confirmed via `javap`: same `ArraySeq.apply` ->
+   * `boxToLong` -> `addLong` bytecode sequence) and pays nothing,
+   * because the JIT's escape analysis proves the box never escapes
+   * `Chunks.foldLeft`'s small, standalone compiled loop and eliminates
+   * it. The SAME analysis fails inside `Writer.foldWith`'s bigger
+   * resume/split/Bind tailrec trampoline, so the box becomes a real
+   * allocation there.
+   *
+   * RULED OUT, with evidence: raising `-XX:MaxInlineLevel` and
+   * `-XX:FreqInlineSize` well past their defaults changed nothing
+   * (still exactly 249,584 B/op) — not a simple inlining-budget
+   * problem. Pulling the per-chunk consuming loop into its own small,
+   * standalone method (`private def foldChunkLong(c, z, l): Long`,
+   * tried and reverted) ALSO changed nothing: `javap` confirms the JIT
+   * re-inlines it straight back into the trampoline (it is a small,
+   * hot, `invokespecial` callee — exactly what C2 inlines by default),
+   * reproducing the same combined compiled unit either way. Escape
+   * analysis is not gated by SOURCE-level method boundaries, only by
+   * what actually ends up in one compiled unit after the JIT's own
+   * inlining decisions — Scala-level refactoring cannot out-maneuver
+   * that on its own.
+   *
+   * WHAT WOULD ACTUALLY FIX IT, not yet tried: decouple the tree walk
+   * from the per-chunk consumption so the box-unbox pair sits in a
+   * SMALL compiled unit the JIT cannot re-merge with the trampoline —
+   * concretely, materialize the chunks via `Stream[[W] =>> Unit !
+   * Writer % W + G, G]`'s `.iterator` (Writer.scala already has the
+   * `Stream` instance; it has no `iterator` override yet, only the
+   * default `Iterator.unfold(s)(uncons(_).runWith)`) and run
+   * `Chunks.foldLeft`'s own tiny per-chunk loop against THAT, instead
+   * of routing through `Writer.foldWith`. The obstacle is the API
+   * contract, not the walk: `.iterator` needs a `Handler[G]` and runs
+   * EAGERLY, where `foldWriter` currently returns `(S, Unit) ! G` — a
+   * suspended PROGRAM, composable with `flatMap` before anything runs.
+   * Making `foldWriter` eager would be a real, visible API change, not
+   * a drop-in performance fix, and deserves its own design pass rather
+   * than a rushed patch riding this one.
    */
   def foldWriter[A, S, G[+_]](p: Unit ! (Writer % Chunk[A] + G))(using fo: Fold[A, S])
                              (using okay.TypeableK[Writer % Chunk[A]]): (S, Unit) ! G =
