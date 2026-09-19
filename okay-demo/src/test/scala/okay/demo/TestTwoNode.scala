@@ -14,6 +14,18 @@ import java.nio.file.Files
  * FileStore directory, a real kill).
  */
 class TestTwoNode extends munit.FunSuite {
+  // twonode-fixed-ports (2026-09-11): the two ports (18091/18092) are
+  // hardcoded, not ephemeral — two agents gating at once collide on
+  // them (seen: a run got past readiness, so something was already
+  // listening, and it was not this run's children). Reading an
+  // ephemeral port back from the child is real work (stdout is
+  // currently DISCARDed; the child would have to print its bound
+  // port and the parent parse it before the readiness poll can even
+  // start) — `Live`, the cheaper of the entry's two priced fixes and
+  // the one its two neighbors already carry, for the same reason:
+  // out of the default gate, in `sbt integrationTest`.
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override val munitTimeout = scala.concurrent.duration.Duration(60, "s")
 
   val client = HttpClient.newHttpClient()
