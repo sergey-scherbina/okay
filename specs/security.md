@@ -593,17 +593,20 @@ the trust boundary held by making them look. 4 tests.
   none.
 
   Behavior:
-  - [ ] `Caveat.Agent` round-trips: its text is `agent=<id>`, and
-        `Caveat.parse` reads it back
-  - [ ] a capability carrying `agent=a1` works normally while nothing
-        is revoked
-  - [ ] revoking `a1` refuses that capability for every tool — and
+  - [x] `Caveat.Agent` round-trips: its text is `agent=<id>`, and
+        `Caveat.parse` reads it back (an empty id is not a caveat)
+  - [x] a capability carrying `agent=a1` works normally while nothing
+        is revoked, and costs nothing at the door
+  - [x] revoking `a1` refuses that capability for every tool — and
         refuses a capability ATTENUATED FROM IT, which is the property
-        the caveat was chosen for
-  - [ ] revoking the root `id` refuses the root and every descendant
-  - [ ] the trap is pinned: a descendant's `tag` differs from its
-        parent's, so a deny-list of tags cannot catch a branch
-  - [ ] `checking` without a `revoked` argument behaves exactly as
+        the caveat was chosen for; a sibling branch of the same root
+        is untouched
+  - [x] revoking the root `id` refuses the root and every descendant
+  - [x] the trap is pinned: a descendant's `tag` differs from its
+        parent's while its `id` does not, so a deny-list of tags
+        cannot catch a branch and a deny-list of ids cannot catch less
+        than the tree
+  - [x] `checking` without a `revoked` argument behaves exactly as
         before — the default revokes nothing
 
 ## Results (stage 7)
@@ -634,6 +637,14 @@ The lane was opened by a stranger's question about exactly this
 boundary — whether a caller, once authenticated, can use every tool.
 It could, and the honest answer was that we had the hole we would
 have pointed at.
+
+The revocation handle followed from the same conversation (2026-09-19,
+`capability-revocation-handle`): `Caveat.Agent`, `checking`'s
+`revoked` predicate and the door asking it about every identifier a
+capability carries — 80 tests in okay-security, the load-bearing one
+being that a holder who attenuates again does NOT escape the list.
+The registry stays a deployment's to bring; what the library owed was
+the handle and the warning about the obvious wrong one.
 
 ## See also
 `Secure.granted` — the capability form of the route wrapper
