@@ -1,0 +1,6 @@
+feature/writer-typeablek-by-class 2026-09-19T20:59:24Z
+agent: claude-code
+heartbeat: 2026-09-19T20:59:24Z
+status: in-progress
+done-so-far: survey (23 Writer E092 sites; Distinct needs ByValue for two-Writer rows — tests import the refined given); worktree created
+next: default writerK by the Say class; Writer.byValue opt-in; drop the nowarns; backlog entries for the other proposals
