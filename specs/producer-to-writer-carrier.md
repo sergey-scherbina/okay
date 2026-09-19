@@ -129,13 +129,16 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       has is carried over to the writer instance, not lost
 - [ ] deletions land with the last module: `produced`, `Producer.fold/each/
       concat`, the Produce Stream instances, the three Source bridges
-- [ ] `Put[Producer]` (from the put-de-diagonal lane) follows Producer: an
-      alias keeps it for free, a deletion removes it with the type
+- [ ] `Put[Producer]` (landed in put-de-diagonal, c9a3f561) follows
+      Producer: an alias keeps it for free, a deletion removes it with
+      the type
 
 ## Out of scope
 
-- `Put`'s signature and its instances — the put-de-diagonal lane
-  (claimed 2026-09-19, 307304cb), which lands first and independently.
+- `Put`'s signature and its instances — landed independently in
+  put-de-diagonal (c9a3f561, 2026-09-19), before this stage measured
+  anything. `Generate.scala` is no longer a shared-edit hazard with
+  any other lane.
 - `Channel`, `Drain`, the chunk buffers, `Flush`: the concurrent side
   is untouched; it consumes streams through `Stream` and does not care
   which carrier.
@@ -182,8 +185,8 @@ bridges keep working until the last one.
 **What Writer already has that Producer duplicates.** `Writer.of`
 (any Stream told into a writer program), `Writer.fold` (with the
 accumulator dispatch), `Writer.collect`, `Writer.uncons` in both rows,
-two Stream instances (pure and `+ G`), and — from the put-de-diagonal
-lane — a `Put` instance. `Producer.log` (a printing Handler) has no
+two Stream instances (pure and `+ G`), and — landed in put-de-diagonal
+— a `Put` instance. `Producer.log` (a printing Handler) has no
 Writer twin and is not worth one; a `Writer.fold` with `println` is
 the same thing.
 

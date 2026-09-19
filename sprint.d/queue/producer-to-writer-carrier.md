@@ -52,11 +52,11 @@
       (`produced`, `Producer.fold/each/concat`, the Produce Stream
       instances, the three Source bridges) land with the last module.
 
-      GOTCHAS: `put-de-diagonal` (claim 307304cb) edits Generate.scala —
-      check `.work/active/` and `git worktree list` before touching that
-      file, not just the room (a silent sibling is normal here,
-      [[okay-claim-discipline]] 2026-09-19 addendum); its `Put[Producer]`
-      instance follows Producer's fate. Stage 0 ALSO found and fixed a
+      GOTCHAS: `put-de-diagonal` LANDED as `c9a3f561` (2026-09-19) —
+      `Generate.scala` is no longer a shared-edit hazard, and `Put[S[_]]`
+      is now `def put[W](w: W): Unit /> S[W]` (undiagonalized, `Source`
+      has an instance, `Teller` is gone); its `Put[Producer]` instance
+      follows Producer's fate in stage 2. Stage 0 ALSO found and fixed a
       pre-existing, unrelated build break: `compare`'s `dependsOn` never
       picked up `okayData`/`okayStm` after core-modularise moved `Sketch`
       and `Stm`/`Tx`/`TRef` out of `okay`, so `compare/Jmh/compile` was
