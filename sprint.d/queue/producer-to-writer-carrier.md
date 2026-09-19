@@ -38,19 +38,34 @@
       Until it exists, `Chunks` stays on `Producer` — a legitimate,
       narrow, documented exception, not a reason to stop the rest.
 
-      NEXT CLAIMABLE SLICE = STAGE 1: docs/guide.md states the rule (new
-      seams name their element in the type — `Source[W]` under Async,
-      the pure writer stream otherwise), a `compileErrors` test that
-      `pure(a)` is not an element on that carrier, and the pure writer
-      stream gets a name (an operator naming call — ASK, do not invent;
-      candidates and the "no third carrier name" constraint are in the
-      spec's Decisions).
-      THEN stage 2 per module, leaves first (okay-blob, okay-cluster,
-      okay-persist, okay-sql/okay-jdbc, okay-docs, the kafka/fs2/zio/java
-      interops), `Chunks` last and gated on the fold combinator above;
-      each lane `sbt Test/compile` repo-wide before its gate; deletions
-      (`produced`, `Producer.fold/each/concat`, the Produce Stream
-      instances, the three Source bridges) land with the last module.
+      STAGE 1 IS DONE (2026-09-19). The pure writer stream is named
+      `Feed[W] = Unit ! Writer % W` (src/main/scala/Writer.scala,
+      operator's choice over no-alias and `Told[W]`). docs/guide.md
+      states the rule: a new streaming seam names its element in the
+      type — `Feed[W]` when it performs no other effect, `Source[W]`
+      when it performs `Async`; `Producer` is the pure special case for
+      code already written against it. ONE CORRECTION FROM THE ORIGINAL
+      PLAN, found while writing the test: the `pure(a)` trap is NOT
+      closed by a type error at `Feed`/`Source` — `compileErrors` proved
+      the wrong tool to test it (it reports hard errors only; munit's
+      macro drops warnings entirely, verified directly against the
+      classic `val u: Unit = 5` shape before trusting it). The real
+      mechanism, checked by an actual `sbt` compile: `val f: Feed[Int]
+      = pure(5)` prints `[E190] ... Discarded non-Unit value`, which
+      this repo's gate refuses as any other warning — inspectable, not
+      type-closed. `TestGenerate` documents this and asserts what IS
+      testable (no hard error, same as `Producer`); `TestSourceProducer`
+      carried the same over-claim for `Source` in its own comment,
+      unverified by its own test — left alone, not wrong in substance,
+      just under-proven; not mine to touch.
+
+      NEXT CLAIMABLE SLICE = STAGE 2, per module, leaves first
+      (okay-blob, okay-cluster, okay-persist, okay-sql/okay-jdbc,
+      okay-docs, the kafka/fs2/zio/java interops), `Chunks` last and
+      gated on the fold combinator below; each lane `sbt Test/compile`
+      repo-wide before its gate; deletions (`produced`,
+      `Producer.fold/each/concat`, the Produce Stream instances, the
+      three Source bridges) land with the last module.
 
       GOTCHAS: `put-de-diagonal` LANDED as `c9a3f561` (2026-09-19) —
       `Generate.scala` is no longer a shared-edit hazard, and `Put[S[_]]`

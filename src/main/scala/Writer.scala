@@ -333,12 +333,42 @@ object Writer {
 }
 
 /**
- * The fourth carrier: generate materializes into a plain writer
- * stream too — one unfold, four carriers (LazyList by pure laziness,
- * Producer by identity operations, this by typed telling, Source by
- * the same telling plus Async). put is tell as a delimited-control
- * operation: shift captures the continuation and resumes it with
- * `()`, not the told value.
+ * The fourth carrier, named: the pure (no other effect) writer
+ * stream — one unfold, four carriers (LazyList by pure laziness,
+ * Producer by identity operations, Feed by typed telling, Source by
+ * the same telling plus Async). Every existing instance already
+ * covers it — `Stream[[W] =>> A ! Writer % W, Pure]` below resolves
+ * at `A = Unit`, and the elementwise extensions in Stream.scala match
+ * its shape directly — so naming it adds nothing to the type system,
+ * only to signatures and docs (producer-to-writer-carrier, stage 1:
+ * a new streaming seam names its element in the type, `Feed[W]` when
+ * it performs no other effect, `Source[W]` when it performs Async).
+ *
+ * THE TRAP `Produce` HAS IS MADE INSPECTABLE HERE, not closed by a
+ * type error — verified directly (`sbt okayStreamJVM/compile` on
+ * `val f: Feed[Int] = pure(5)` prints `[E190] ... Discarded non-Unit
+ * value of type Int`), not assumed: `compileErrors` cannot see this,
+ * since it reports hard errors only and munit's own macro drops
+ * warnings entirely, so `TestGenerate` documents the fact rather than
+ * asserting it through that tool. `Producer[A] = A ! Produce` makes
+ * the element type the ANSWER type, so `pure(a): Producer[A]`
+ * type-checks as an ORDINARY well-typed answer — nothing distinguishes
+ * it from the honest `Producer[A]` that ends with `a`, and no warning
+ * fires either — and it emits nothing: the note lives on `produce`'s
+ * scaladoc, a comment, not a type (bit okay-watch, blob-source-seam).
+ * `Feed[W]`'s answer is always `Unit`, so `pure(w): Feed[W]` for an
+ * element `w` of any other type needs Scala's own value-discard
+ * adaptation to compile at all, which — unlike Producer's identical-
+ * looking mistake — a real compile FLAGS, and this repo's gate then
+ * refuses as any other warning.
+ */
+type Feed[W] = Unit ! Writer % W
+
+/**
+ * `generate`/`put` materialize into `Feed` too — one unfold, four
+ * carriers. `put` is tell as a delimited-control operation: shift
+ * captures the continuation and resumes it with `()`, not the told
+ * value.
  *
  * This replaces the diagonal `Teller[A] = A ! Writer % A`
  * (put-de-diagonal, 2026-09-19): its answer tied the program's own
@@ -347,8 +377,8 @@ object Writer {
  * is `Unit` now, so the diagonal bought nothing the row's own
  * element didn't already carry.
  */
-given Put[[W] =>> Unit ! Writer % W] with
-  final override inline def put[W](w: W): Unit /> (Unit ! Writer % W) =
+given Put[Feed] with
+  final override inline def put[W](w: W): Unit /> Feed[W] =
     shift(k => Writer.tell(w).flatMap(_ => k(())))
 
 /**

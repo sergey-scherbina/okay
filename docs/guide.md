@@ -278,12 +278,26 @@ examples. `Put[S[_]] { def put[W](w: W): Unit /> S[W] }` answers
 (`put[A](a: A): A /> F[A]`) forces the carrier to answer with what it
 was just told, which is why the instances are `LazyList` (laziness:
 `put` captures the continuation in the lazy tail), `Producer` (the
-identity signature, `put` an ordinary emit), a plain writer stream
-(`Unit ! Writer % W`, `put` an ordinary tell) and `Source` (the same
-tell, widened onto the row that also admits `Async`) — a live,
-asynchronous generator for free, which a diagonal `Put` could never
-have given `Source`: its own answer is always `Unit`, never the
-element.
+identity signature, `put` an ordinary emit), `Feed[W] = Unit ! Writer
+% W` (`put` an ordinary tell) and `Source` (the same tell, widened
+onto the row that also admits `Async`) — a live, asynchronous
+generator for free, which a diagonal `Put` could never have given
+`Source`: its own answer is always `Unit`, never the element.
+
+Which carrier for a NEW seam (producer-to-writer-carrier, stage 1):
+name the element in the type, not the answer. `Feed[W]` when the
+stream performs no other effect, `Source[W]` when it performs `Async`
+— both make the `pure(a)` trap VISIBLE rather than closing it by a
+type error: their answer is always `Unit`, so `pure(w)` for an
+element `w` needs Scala's own value-discard adaptation to compile at
+all, and `-Wall`'s `[E190]` lint flags exactly that (verified by a
+real compile, not `compileErrors` — munit's macro reports hard errors
+only and drops warnings entirely), which this repo's gate then
+refuses as any other warning. `Producer`'s identity signature has no
+such tell — `pure(a)` type-checks as an ordinary, unflagged answer and
+emits nothing (the paragraph above) — which is why it is the PURE
+SPECIAL CASE for code already written against it, not the default for
+code being written now.
 
 Two terminals read the whole thing while
 staying IN the program — `runCollect: Vector[A] ! Async` and

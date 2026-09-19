@@ -46,10 +46,9 @@ type Source[W]    = Unit ! (Writer % W + Async)       // element named, answer U
 Source.fromProducer / ofProducer / toProducer         // the bridges (Source.scala ~132-162)
 Producer.fold / each / concat / log                   // duplicates of Writer.fold / uncons / of
 
-// stage 1: the rule, and the pure writer stream given a name
+// stage 1 — DONE: the rule, and the pure writer stream named Feed
 //   NEW STREAMING SEAMS ARE TYPED ON THE WRITER CARRIER.
-//   (name to be settled in stage 1 — see Decisions; the shape is fixed)
-type <PureSource>[W] = Unit ! Writer % W
+type Feed[W] = Unit ! Writer % W                      // src/main/scala/Writer.scala
 // an outcome travels beside the elements, typed:
 def get(key: String): Either[String, Unit] ! (Writer % Chunk[Byte] + Async)
 
@@ -95,15 +94,23 @@ Stage 0 — measure (the decision gate; no source changes outside benchmarks):
 
 Stage 1 — the rule (only if stage 0 says within noise, or loses only on `Chunks`) —
 CONDITION MET, see Results: the loss is confined to `Chunks.fold`, not the
-carrier in general (`Chunks.map` and every elementwise shape win):
-- [ ] docs/guide.md states the rule: a new streaming seam names its element
-      in the type — `Source[W]` when it performs Async, the pure writer
-      stream otherwise; `Producer` is the pure special case / an alias
-- [ ] the trap is closed by type: a test asserts with `compileErrors` that
-      `pure(a)` does NOT type-check where an element is expected on the
-      writer carrier, beside the existing runtime check that `produce`
-      and `tell` do emit
-- [ ] the pure writer stream has a name and the two Stream instances
+carrier in general (`Chunks.map` and every elementwise shape win). DONE
+(2026-09-19), the name is `Feed[W]` (operator's choice, over no-alias and
+`Told[W]`):
+- [x] docs/guide.md states the rule: a new streaming seam names its element
+      in the type — `Source[W]` when it performs Async, `Feed[W]`
+      otherwise; `Producer` is the pure special case / an alias
+- [x] the trap is CORRECTED FROM THE PLAN, not closed by type: a real
+      compile of `val f: Feed[Int] = pure(5)` prints `[E190] ... Discarded
+      non-Unit value`, which this repo's gate refuses as any warning —
+      but `compileErrors` cannot see this (it reports hard errors only,
+      and munit's macro drops warnings entirely; checked directly
+      against `val u: Unit = 5` before trusting it, since `Source`'s own
+      version of this exact claim — `TestSourceProducer`'s comment on
+      `-Wvalue-discard` — was never actually verified by its own test
+      either, only asserted in prose). `TestGenerate` documents the fact
+      and asserts what IS testable: no hard error, same as `Producer`.
+- [x] the pure writer stream has a name and the two Stream instances
       Writer already has (Writer.scala ~359, ~370) are the ones the name
       resolves to — no third pair
 
@@ -211,11 +218,12 @@ the same thing.
   chunked hot carrier, stage 1's RULE still applies to new seams, and
   the loss is recorded here with its numbers so nobody re-measures it
   from memory.
-- **The name of the pure writer stream** — an operator preference
-  (naming), settled in stage 1, not here. Candidates: keep spelling it
-  `Unit ! Writer % W` (no alias; explicit, and what `Writer.of`
-  already returns), or one short alias beside `Source`. A third
-  carrier name is NOT a candidate.
+- **The name of the pure writer stream is `Feed[W]`** — settled
+  2026-09-19, the operator's call over no-alias and `Told[W]`
+  (candidates were `type Feed[W] = Unit ! Writer % W`, a short alias
+  symmetric with `Source[W] = Unit ! (Writer % W + Async)`, against
+  keeping it unaliased). Declared in `Writer.scala` beside the `Put`
+  instance it names.
 
 ## Results
 
