@@ -369,27 +369,131 @@ object Chunks {
    * `foldLeftWriter`, dispatched on a `Fold` instance the way
    * `Chunks.fold` dispatches on one — CORRECT (tested against
    * `Chunks.fold` on the same data) but NOT at parity with it; see
-   * `foldLeftWriter`'s own doc for the measured gap and what is ruled
-   * out. Kept non-`inline`: marking it `inline` was one of the three
-   * shapes tried and measured no faster, and non-`inline` at least
-   * keeps a literal `G=Nothing`/`Pure` compiling at a fresh call site
-   * (an unrelated inliner limitation `foldLeftWriter`, `inline`,
-   * cannot avoid: use `G=Async` there instead).
+   * `foldLeftWriter`'s own doc for the measured gap. Kept non-`inline`:
+   * marking it `inline` was one of several shapes tried and measured
+   * no faster, and non-`inline` at least keeps a literal
+   * `G=Nothing`/`Pure` compiling at a fresh call site (an unrelated
+   * inliner limitation `foldLeftWriter`, `inline`, cannot avoid: use
+   * `G=Async` there instead).
+   *
+   * ROOT CAUSE, FOUND (2026-09-19, `-prof gc`/`-prof jfr`/`javap` — all
+   * in-JDK, no external profiler needed; an earlier draft of this
+   * comment said the diagnosis needed one, which was wrong). `-prof gc`
+   * on a fresh call: 249,584 B/op dispatched vs 12,656 for
+   * `foldLeftWriter` called directly — ~10,000 boxed `java.lang.Long`,
+   * one per element (N=10000). `-prof jfr`'s allocation stack traces
+   * name it exactly: `ArraySeq$ofLong.apply` -> `boxToLong` ->
+   * `Fold$OfLong.addLong`, present in the dispatched path's profile and
+   * absent from the direct call's. The box itself is NOT the defect —
+   * `Fold.OfLong[A]`'s own `addLong(s: Long, a: A): Long` takes its
+   * element generically by design (a fold over `A`, not over `Long`),
+   * so a synthetic bridge boxes on every call; `Chunks.fold` makes the
+   * IDENTICAL call (confirmed via `javap`: same `ArraySeq.apply` ->
+   * `boxToLong` -> `addLong` bytecode sequence) and pays nothing,
+   * because the JIT's escape analysis proves the box never escapes
+   * `Chunks.foldLeft`'s small, standalone compiled loop and eliminates
+   * it. The SAME analysis fails inside `Writer.foldWith`'s bigger
+   * resume/split/Bind tailrec trampoline, so the box becomes a real
+   * allocation there.
+   *
+   * RULED OUT, with evidence: raising `-XX:MaxInlineLevel` and
+   * `-XX:FreqInlineSize` well past their defaults changed nothing
+   * (still exactly 249,584 B/op) — not a simple inlining-budget
+   * problem. Pulling the per-chunk consuming loop into its own small,
+   * standalone method (`private def foldChunkLong(c, z, l): Long`,
+   * tried and reverted) ALSO changed nothing: `javap` confirms the JIT
+   * re-inlines it straight back into the trampoline (it is a small,
+   * hot, `invokespecial` callee — exactly what C2 inlines by default),
+   * reproducing the same combined compiled unit either way. Escape
+   * analysis is not gated by SOURCE-level method boundaries, only by
+   * what actually ends up in one compiled unit after the JIT's own
+   * inlining decisions — Scala-level refactoring cannot out-maneuver
+   * that on its own.
+   *
+   * FIXED (2026-09-19), by doing exactly what the paragraph above this
+   * one used to say was blocked: `writerStreamIn`'s `.iterator` walks
+   * the tree through repeated small `uncons` calls instead of
+   * `Writer.foldWith`'s fused resume/split/Bind trampoline, so the
+   * per-chunk consuming loop below sits in its own small compiled
+   * unit — and escape analysis eliminates the ELEMENT box there, the
+   * ~10,000-boxed-`Long`s problem this doc used to describe. First cut
+   * (producer-writer-carrier-foldwriter-eager, using `.iterator`'s
+   * DEFAULT `Iterator.unfold` implementation): 18.14 -> 6.29 us/op,
+   * 249,584 -> 32,952 B/op. Second cut, same day
+   * (writer-stream-specialized-iterator): `writerStreamIn` grew its
+   * OWN hand-specialized, mutable-state `iterator` override — mirroring
+   * `Stream[Producer, Pure]`'s own override in Generate.scala, using
+   * `Handler[G].handle` (comonadic, one value per forwarded operation)
+   * instead of building and running a program per step — closing the
+   * `Option`+`Either`+`Free`-node-per-chunk tax the default walk still
+   * paid. MEASURED, 3 rounds, N=10000/64: 6.29 -> 5.43 us/op, 32,952 ->
+   * 12,688 B/op — now matching `foldLeftWriter`'s own direct-call
+   * baseline (12,656 B/op, 5.0us) almost exactly; `-prof jfr` confirms
+   * `Right`/`Some` samples are gone entirely. Total from the original
+   * dispatched form: 18.14 -> 5.43 us/op (3.3x faster), 249,584 ->
+   * 12,688 B/op (19.7x less garbage).
+   *
+   * The remaining ~2x against `Chunks.fold`'s 2.55us is NOT a Writer
+   * defect: it is the SAME gap `foldLeftWriter`'s own direct call
+   * already has and was accepted as "at parity" for (its own doc,
+   * above) — the cost of walking a `Free`-tree program at all
+   * (`resume`, `Bind` chains) versus `Chunks.foldLeft`'s specialized,
+   * non-program iterator. Closing THAT is a different, larger question
+   * than this combinator's own dispatch tax, which is what this doc
+   * originally set out to fix.
+   *
+   * The "API contract" obstacle the earlier draft worried about is
+   * real but not a blocker: `.iterator` needs a `Handler[G]` and runs
+   * eagerly, so this signature is narrowed from an arbitrary `G[+_]`
+   * to `Async` specifically, gated on `CanBlock` (the same capability
+   * every other blocking door in this library already requires) —
+   * `async { ... }` wraps that eager walk back into a SUSPENDED
+   * program (`Async.Run`, not run until `.runWith`), so the RETURN
+   * value is still composable, only the row it accepts is narrower.
+   * This was safe to do because `foldWriter` had ZERO production call
+   * sites when this landed — `Bulk.scala`, `Pipeline.scala`, and
+   * `Acceptance.scala` (the three call sites this unblocks) all still
+   * call `Chunks.fold` on `Producer` directly, not this combinator, so
+   * no caller's contract broke. A future caller needing a truly
+   * arbitrary `G` (not just `Async`) would need its own overload —
+   * not written, because nothing asks for it yet.
    */
-  def foldWriter[A, S, G[+_]](p: Unit ! (Writer % Chunk[A] + G))(using fo: Fold[A, S])
-                             (using okay.TypeableK[Writer % Chunk[A]]): (S, Unit) ! G =
-    // explicit type arguments, not inferred through the GADT
-    // refinement `fo match` gives each branch — Writer.fold takes the
-    // same precaution for the same reason: `S` is bound at the OUTER
-    // method, and a `using`-bound scrutinee under two `using` clauses
-    // does not narrow it far enough for inference alone to see `Long`
-    // where the call site still says `S`
-    fo match
-      case l: Fold.OfLong[A @unchecked] => foldLeftWriter[A, Long, G](p)(l.initLong)((s, a) => l.addLong(s, a))
-      case i: Fold.OfInt[A @unchecked] => foldLeftWriter[A, Int, G](p)(i.initInt)((s, a) => i.addInt(s, a))
-      case d: Fold.OfDouble[A @unchecked] => foldLeftWriter[A, Double, G](p)(d.initDouble)((s, a) => d.addDouble(s, a))
-      case b: Fold.OfBoolean[A @unchecked] => foldLeftWriter[A, Boolean, G](p)(b.initBoolean)((s, a) => b.addBoolean(s, a))
-      case _ => foldLeftWriter[A, S, G](p)(fo.init)((s, a) => fo.add(s, a))
+  def foldWriter[A, S](p: Unit ! (Writer % Chunk[A] + Async))(using fo: Fold[A, S])
+                       (using CanBlock): (S, Unit) ! Async =
+    async:
+      val it = writerStreamIn[Unit, Async].iterator(p)
+      val result: S = fo match
+        case l: Fold.OfLong[A @unchecked] =>
+          var s = l.initLong
+          while it.hasNext do
+            val c = it.next(); var i = 0
+            while i < c.length do { s = l.addLong(s, c(i)); i += 1 }
+          s
+        case n: Fold.OfInt[A @unchecked] =>
+          var s = n.initInt
+          while it.hasNext do
+            val c = it.next(); var i = 0
+            while i < c.length do { s = n.addInt(s, c(i)); i += 1 }
+          s
+        case d: Fold.OfDouble[A @unchecked] =>
+          var s = d.initDouble
+          while it.hasNext do
+            val c = it.next(); var i = 0
+            while i < c.length do { s = d.addDouble(s, c(i)); i += 1 }
+          s
+        case b: Fold.OfBoolean[A @unchecked] =>
+          var s = b.initBoolean
+          while it.hasNext do
+            val c = it.next(); var i = 0
+            while i < c.length do { s = b.addBoolean(s, c(i)); i += 1 }
+          s
+        case _ =>
+          var s = fo.init
+          while it.hasNext do
+            val c = it.next(); var i = 0
+            while i < c.length do { s = fo.add(s, c(i)); i += 1 }
+          s
+      (result, ())
 
   /**
    * Pair two chunked streams elementwise, realigning chunk boundaries:

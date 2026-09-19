@@ -81,7 +81,7 @@ specific container since. If it recurs there, open a fresh entry
 naming the container image and JVM build; this one is closed.
 
 Investigating it did find one real thing, elsewhere: `decodeC-ssum-
-defer` (changelog.d/decodeC-ssum-defer.md) — `SSum`'s case in both
+defer` (changelog.d/decode-c-ssum-defer.md) — `SSum`'s case in both
 `Json.decodeC` and `Cbor.getC` called its own recursion directly
 instead of through `Cont.defer`, the one recursive branch in either
 fold that didn't. Not the cause of THIS entry (`Tree` has no sum

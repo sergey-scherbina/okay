@@ -248,21 +248,50 @@ object Aggregator {
     def present(acc: Double): Double = acc
 
   /**
+   * The specialization `sum[N]` answers with, visible in its own
+   * return type (aggregator-sum-hides-its-specialization): the
+   * declared `Aggregator[N, N, N]` used to hide the `OfLong`/`OfInt`/
+   * `OfDouble` underneath, so `.zipLong` was unreachable from the
+   * idiomatic spelling and needed `Aggregator.sumLong` by name
+   * instead. A match type reduces `SumOf[Long]` to `OfLong[Long,
+   * Long]` structurally — the same substitution `sum` already made
+   * for `Aggregator[X, X, X]` transports it to `SumOf[N]` with no new
+   * cast in the three specialized branches, for the same reason `zip`
+   * and its own `.zipLong` twin have (no-casts-without-necessity: the
+   * one branch that does need one is isolated and explained where it
+   * is, below).
+   */
+  type SumOf[N] = N match
+    case Long => OfLong[Long, Long]
+    case Int => OfInt[Int, Int]
+    case Double => OfDouble[Double, Double]
+    case _ => Aggregator[N, N, N]
+
+  /**
    * The sum, unboxed where the type is known — the same selection
    * `Fold.sum` makes, for the same reason. `Numeric` cannot specialize
    * anything (`plus(x: T, y: T): T` erases like every other generic
    * method); it can only SAY which type this is, and the `=:=` that
    * says it also transports the aggregator, with no cast.
    */
-  inline def sum[N](using N: Numeric[N]): Aggregator[N, N, N] =
+  inline def sum[N](using N: Numeric[N]): SumOf[N] =
     summonFrom {
       case ev: (N =:= Long) =>
-        ev.flip.substituteCo[[X] =>> Aggregator[X, X, X]](sumLong)
+        ev.flip.substituteCo[[X] =>> SumOf[X]](sumLong)
       case ev: (N =:= Int) =>
-        ev.flip.substituteCo[[X] =>> Aggregator[X, X, X]](sumInt)
+        ev.flip.substituteCo[[X] =>> SumOf[X]](sumInt)
       case ev: (N =:= Double) =>
-        ev.flip.substituteCo[[X] =>> Aggregator[X, X, X]](sumDouble)
-      case _ => apply(N.zero)(N.plus)(N.plus)(identity)
+        ev.flip.substituteCo[[X] =>> SumOf[X]](sumDouble)
+      // the one branch `SumOf` cannot reduce for: N here is proven
+      // to be none of Long/Int/Double (the three summonFrom arms
+      // above all failed to find their evidence), which IS exactly
+      // SumOf's own wildcard case — but a match type reduces only
+      // when it can show a concrete scrutinee is DISJOINT from every
+      // earlier case, and an abstract N carries no such proof the
+      // type checker can use, so SumOf[N] stays stuck here. The cast
+      // is sound by the same summonFrom exhaustion that picked this
+      // branch, not by assumption.
+      case _ => apply(N.zero)(N.plus)(N.plus)(identity).asInstanceOf[SumOf[N]]
     }
 
   /**

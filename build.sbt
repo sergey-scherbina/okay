@@ -180,6 +180,36 @@ addCommandAlias("integrationTest",
   "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test")
 
 /**
+ * jdk17-compat-check (2026-09-19): "does this module actually RUN on
+ * JDK 17 today", push-button, rather than re-derived by hand each
+ * time (Scoped, Schedulers and this itself all started as a manual
+ * probe this project wrote from scratch). `sbt verifyJdk17` forks
+ * every already-forking module's tests onto the installed JDK 17
+ * candidate and reports pass/fail per module -- real, current data,
+ * not a table kept by inspection (which already went stale once: see
+ * specs/jdk-compatibility.md's own correction history). A machine
+ * without the candidate gets a clear one-line failure from `set`
+ * itself (`jdk17Home` below does not exist), not a silent no-op --
+ * unlike the Test/run DEFAULT (jdk26-default-runtime), this command
+ * is explicitly opt-in, so "I asked for it and it's missing" should
+ * be loud, not swallowed.
+ *
+ * Deliberately does NOT fix anything: okay-http, okay-jetty's own
+ * direct virtual-thread call (the connector's VirtualThreadPool
+ * itself needs nothing from OUR source, only its jetty-virtual-threads
+ * import), okay-netty, okay-cluster, okay-persist and okay-script all
+ * call a JDK21+ API unconditionally outside any Scoped/Schedulers-
+ * style guard — expect this command to name them FAILING until each
+ * gets the same per-callsite adaptive treatment those two got
+ * (jdk-adaptive-scheduler). Expect okaySpark and okayDelta to PASS —
+ * their ceiling is JDK 24+ specifically (JEP 486 removing the
+ * Security Manager), and 17 is well under that.
+ */
+val jdk17Home = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "17.0.19-tem"
+addCommandAlias("verifyJdk17",
+  "; set every Test / javaHome := Some(file(\"" + jdk17Home.getAbsolutePath + "\")); test")
+
+/**
  * jdk26-default-runtime (2026-09-19): the ambient JVM that launches
  * sbt itself — and so compiles everything, `.sdkmanrc` pins it —
  * stays JDK 21. This is a SEPARATE knob: the JVM a forked `Test` or
