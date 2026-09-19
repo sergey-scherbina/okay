@@ -1,6 +1,6 @@
-feature/wire-server-close 2026-09-19T06:10:32Z
+feature/wire-server-close 2026-09-19T06:10:46Z
 agent: claude-code
-heartbeat: 2026-09-19T06:10:32Z
-status: not-started
-done-so-far:
-next: write the spec
+heartbeat: 2026-09-19T06:10:46Z
+status: in-progress
+done-so-far: worktree created
+next: write the spec, then implement Wire.serveClosing
