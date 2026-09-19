@@ -520,6 +520,92 @@ works on the protected one, with nothing above the link changed.
 Discovered is a VALUE the caller sees before any secret travels —
 the trust boundary held by making them look. 4 tests.
 
+  ### Revocation: what survives attenuation (2026-09-19)
+
+  Attenuation is PREVENTION — the holder narrows before delegating.
+  The operational question is the other one: an agent misbehaving NOW,
+  which no amount of narrowing-at-hand-out reaches, because the holder
+  who would narrow it is the one misbehaving. `Capability` says out
+  loud that it is not revocation, and that stays true: a verifier that
+  needs no registry cannot reach out and cancel anything. But WHICH
+  handle a registry would be keyed on is a property of the type, and
+  it is not the obvious one.
+
+  What `attenuate` does to each field decides it:
+
+  | field | on attenuation |
+  |---|---|
+  | `id` | unchanged — every descendant of a root carries the root's |
+  | `subject` | unchanged |
+  | `caveats` | grown, never shrunk (shrinking breaks the chain) |
+  | `tag` | NEW at every step — it is the running signature |
+
+  Three consequences, and the middle one is a trap:
+
+  - **Denying an `id` voids the whole tree** — the root and every leaf
+    ever derived from it. That is "this user's grant is gone", the big
+    hammer, and it already works with no new code.
+  - **Denying a `tag` voids exactly one leaf and none of its
+    descendants.** The tag IS the token, so it is what anyone reaches
+    for first — and the holder escapes it by calling `attenuate` once
+    more, which costs nothing and needs nobody. A deny-list of tokens
+    looks like revocation and is not.
+  - **A CAVEAT survives downward**, and cannot be removed. So the
+    handle that catches one branch is a caveat naming that branch:
+    `Caveat.Agent(id)`, written when the capability is handed over.
+    Revoking that id catches the leaf and everything attenuated from
+    it, however many times.
+
+  ```scala
+  enum Caveat(val text: String):
+    case Until(millis: Long)
+    case Scope(name: String)
+    /** who this branch was delegated to (`agent=<id>`) */
+    case Agent(id: String)
+
+  object Capability:
+    /** `revoked` is asked about each `Agent` caveat; a revoked branch
+     * satisfies nothing */
+    def checking(now: Long, scopes: Set[String],
+                 revoked: String => Boolean = _ => false): String => Boolean
+
+  object McpAuth:                       // jvm
+    def capabilities(rootKey: Array[Byte], metadataUrl: String,
+                     now: () => Long = ...,
+                     scopeOf: String => String = "tool:" + _,
+                     revoked: String => Boolean = _ => false)
+                    (route: Request => Response ! Async)
+                    (using Crypto): Request => Response ! Async
+  ```
+
+  The door asks `revoked` about every identifier the capability
+  carries: its root `id` (the whole grant) and each `Agent` caveat
+  (one branch). One predicate, because an operator holds one list of
+  things that are off.
+
+  **The registry stays out of scope**, deliberately. What store, what
+  TTL, who writes to it and how it reaches several verifiers are
+  answers a deployment gives; designed blind they are the thing this
+  repository defers elsewhere (specs/market.md's "designed blind
+  without traffic" applies to our own tools too). `revoked` is a
+  function, so the caller brings whatever it already has — a set, a
+  database, a cache — and the library keeps its property of needing
+  none.
+
+  Behavior:
+  - [ ] `Caveat.Agent` round-trips: its text is `agent=<id>`, and
+        `Caveat.parse` reads it back
+  - [ ] a capability carrying `agent=a1` works normally while nothing
+        is revoked
+  - [ ] revoking `a1` refuses that capability for every tool — and
+        refuses a capability ATTENUATED FROM IT, which is the property
+        the caveat was chosen for
+  - [ ] revoking the root `id` refuses the root and every descendant
+  - [ ] the trap is pinned: a descendant's `tag` differs from its
+        parent's, so a deny-list of tags cannot catch a branch
+  - [ ] `checking` without a `revoked` argument behaves exactly as
+        before — the default revokes nothing
+
 ## Results (stage 7)
 Shipped 2026-09-19. `Serving.only`, `McpAuth.tools`, `McpAuth.capabilities`
 and the per-request gate behind both; 16 tests, no port bound — a
