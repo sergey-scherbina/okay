@@ -1,0 +1,11 @@
+feature/openapi-ops 2026-09-19T13:25:00Z
+agent: claude-code
+heartbeat: 2026-09-19T13:25:00Z
+status: in-progress
+done-so-far: worktree created
+next: Ops.router — /stats via Router.out (Schema[Store.Stats] already
+  derived), /metrics via Router.media (Prometheus content-type),
+  /healthz and /readyz stay Router.on (status genuinely varies
+  200/503 at runtime) but gain .answering(200)/.answering(503) so
+  neither reads as undeclared; TestOpsRoutes/TestOpsSurface must stay
+  green unchanged
