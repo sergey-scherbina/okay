@@ -215,9 +215,19 @@
       tests found by the repo-wide compile, moved too).
       okay-docs + Topic/Mongo/Dynamo/Cassandra: DONE (pwc-docs-seam,
       2026-09-19 — `Docs.query` is `Source[Chunk[(String, A)]]`).
-      NEXT CLAIMABLE SLICE — what is left of the G-effectful carrier:
-      the kafka interop (`KafkaChunks`), then okay-blob's stragglers,
-      then the deletions —
+      okay-kafka: DONE (pwc-kafka-source, 2026-09-19 — `KafkaChunks` is
+      `Source[Chunk[ConsumerRecord]]`); okay-blob's "stragglers" were
+      comments. NO MODULE outside the core and okay-stream's bridges
+      builds a `Produce` stream any more.
+      NEXT — THE DELETIONS, an operator decision first: delete
+      `Producer`/`Produce`/`produce` outright (Generate.scala:
+      `Put[Producer]`, `Producer.fold/each/concat/log`, both `Stream`
+      instances, `Foldable[Producer]`; `Source.fromProducer/ofProducer/
+      toProducer`; then 11 core test files, 3 in okay-stream, 1 in
+      okay-cats, the JMH controls written against them), or keep
+      `Producer` as the guide's documented pure special case and delete
+      only the bridges and the G-effectful `Producer.fold/each/concat`
+      that now have no caller. Whichever: the remaining lanes are —
       these hold the G-effectful `Chunk[X] ! Produce + G` carrier
       (`Producer.concat`/`fold` callers), I/O-bound, migrated by the
       blob pattern (`Writer.fold`/`.collect`), no fold parity needed —

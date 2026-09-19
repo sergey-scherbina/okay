@@ -138,8 +138,10 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       (pwc-sql-seam, 2026-09-19)
 - [x] okay-docs and its backends — `Docs.query` and Topic/Mongo/Dynamo/
       Cassandra are `Source[Chunk[(String, A)]]` (pwc-docs-seam, 2026-09-19)
-- [ ] the kafka interop (`KafkaChunks`), okay-blob's three stragglers,
-      then the deletions — each lane: `sbt Test/compile` across the WHOLE repo
+- [x] the kafka interop — `KafkaChunks[K, V] = Source[Chunk[ConsumerRecord[K, V]]]`
+      (pwc-kafka-source, 2026-09-19); okay-blob's "stragglers" were
+      three comments naming the old carrier, no code
+- [ ] the deletions (next bullet) — each lane: `sbt Test/compile` across the WHOLE repo
       first (a signature change; see memory
       signature-change-test-compile-first), then the gate
 - [x] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the

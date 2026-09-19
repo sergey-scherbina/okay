@@ -1,6 +1,6 @@
 package okay.kafka
 
-import okay.{!, +}
+import okay.!
 import okay.given
 import KafkaInterop.*
 import org.apache.kafka.clients.consumer.{ConsumerRecord, MockConsumer, OffsetResetStrategy}
@@ -25,21 +25,20 @@ class TestKafkaInterop extends munit.FunSuite {
     val c = mockConsumer(10)
     val s = source(c, pollMillis = 10)
     // take one chunk: the mock returns everything scheduled in one poll
-    val first = okay.Async.run[Chunk1, okay.Produce](firstChunk(s)).runWith
+    val first = !.run(okay.Async.run[Chunk1, Nothing](firstChunk(s)))
     assertEquals(first.map(_.value).toList, (0 until 10).map(i => s"v$i").toList)
   }
 
   type Chunk1 = okay.Chunk[ConsumerRecord[String, String]]
 
-  /** pull exactly one emitted chunk out of the async source */
-  def firstChunk(s: KafkaChunks[String, String])
-  : Chunk1 ! (okay.Produce + okay.Async) =
-    import okay.!.*
-    (s.resume: @unchecked) match
-      case Bind(Inject(e), k) => okay.<|>[okay.Async, okay.Produce](e) match
-        case Left(a) => Inject(a).flatMap(x => firstChunk(k(x)))
-        case Right(c) => okay.pure(c.asInstanceOf[Chunk1])
-      case _ => fail("no chunk")
+  /** pull exactly one told chunk out of the async source (the source
+   * never ends, so `uncons`, not a collect) */
+  @scala.annotation.nowarn("msg=cannot be checked at runtime") // E092, Writer.run's caveat
+  def firstChunk(s: KafkaChunks[String, String]): Chunk1 ! okay.Async =
+    okay.Writer.uncons[Chunk1, Unit, okay.Async](s).map {
+      case Right((c, _)) => c
+      case Left(_) => fail("no chunk")
+    }
 
   test("commit records the position; a restarted consumer resumes there") {
     val c = mockConsumer(5)

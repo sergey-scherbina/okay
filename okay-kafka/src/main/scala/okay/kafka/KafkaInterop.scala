@@ -1,6 +1,6 @@
 package okay.kafka
 
-import okay.{!, +, Async, Chunk, Produce, async, effect}
+import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect}
 import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer as JProducer, ProducerRecord}
 import scala.jdk.CollectionConverters.*
@@ -9,7 +9,9 @@ import scala.jdk.CollectionConverters.*
  * Kafka as chunked async streams (specs/external-systems.md): the
  * consumer's poll returns a batch, which is exactly a Chunk — one
  * poll, one chunk, nothing re-buffered. The source is an effectful
- * chunked stream (`Chunk[Record] ! Produce + Async`): between
+ * chunked stream (`Source[Chunk[Record]]` — each poll's batch told;
+ * `Chunk[Record] ! (Produce + Async)` until producer-to-writer-carrier,
+ * 2026-09-19): between
  * emissions the virtual thread parks in poll. Delivery is
  * at-least-once: commit after processing a chunk, and a supervised
  * consumer restarted from committed offsets re-reads only the
@@ -19,7 +21,7 @@ import scala.jdk.CollectionConverters.*
 object KafkaInterop {
 
   /** the stream type of a kafka source: chunks of records, awaited */
-  type KafkaChunks[K, V] = Chunk[ConsumerRecord[K, V]] ! (Produce + Async)
+  type KafkaChunks[K, V] = Source[Chunk[ConsumerRecord[K, V]]]
 
   /**
    * A subscribed/assigned consumer as an infinite chunked stream:
@@ -28,14 +30,14 @@ object KafkaInterop {
    * is NOT closed by the stream; scope it with Resource below.
    */
   def source[K, V](consumer: Consumer[K, V], pollMillis: Long = 1000): KafkaChunks[K, V] =
-    type F = Produce + Async
+    type F = Writer % Chunk[ConsumerRecord[K, V]] + Async
     def go(): KafkaChunks[K, V] =
       effect[F, Chunk[ConsumerRecord[K, V]]](Async.Run { () =>
         val records = consumer.poll(java.time.Duration.ofMillis(pollMillis))
         okay.ChunkBuf.ofSpecialized(records.iterator.asScala)
       }).flatMap { chunk =>
         if chunk.isEmpty then go()
-        else effect[F, Chunk[ConsumerRecord[K, V]]](chunk).flatMap(_ => go())
+        else effect[F, Unit](Writer(chunk)).flatMap(_ => go())
       }
 
     go()
