@@ -1,6 +1,0 @@
-feature/direct-compiler-phases 2026-09-19T22:45:48Z
-agent: claude-code
-heartbeat: 2026-09-19T22:45:48Z
-status: in-progress
-done-so-far: read compileAll (Direct.scala 641-2105), phases mapped
-next: worktree, spec section, split compileAll into DirectCompiler phase traits + probe tests
