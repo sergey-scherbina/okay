@@ -34,6 +34,7 @@ class TestSecure extends munit.FunSuite:
     page("secret.md", "---\nsecure: admin\n---\n" + Api + "hello ${Principal.current.map(_.id).getOrElse(\"?\")}\n")
     page("members.md", "---\nsecure: any\n---\n" + Api + "member ${Principal.current.map(_.id).getOrElse(\"?\")}\n")
     page("open.md", "open\n")
+    page("plain.md", Api + "principal=${Principal.current.map(_.id).getOrElse(\"none\")}\n")
     val site = Site(root, verify = verify)
     try body(site, root)
     finally
@@ -83,6 +84,20 @@ class TestSecure extends munit.FunSuite:
       val any = site.handle(Request.get("/members", Seq("Authorization" -> s"Bearer $user")))
       assertEquals(any.status, 200)
       assert(text(any).contains("member bob"), text(any))
+    }
+  }
+
+  test("Principal does not survive a Granted request into a later Open one on the same thread (script-scoped-state)") {
+    withRoot(Some(issuer.verify(_))) { (site, _) =>
+      val granted = site.handle(Request.get("/secret", Seq("Authorization" -> s"Bearer $admin")))
+      assertEquals(granted.status, 200)
+      assert(text(granted).contains("hello ann"), text(granted))
+      // a plain page, right after -- same calling thread, no `secure:`
+      // of its own -- must see NO principal. Before script-scoped-state
+      // this depended on Site.servePage's `finally` resetting Principal
+      // to None; now it depends on `Requested.run`'s own unwind, which
+      // this asserts directly rather than by construction alone.
+      assertEquals(text(site.handle(Request.get("/plain"))), "principal=none")
     }
   }
 

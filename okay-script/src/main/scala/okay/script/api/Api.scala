@@ -14,12 +14,19 @@ package okay.script.api
  * Everything in `okay.script` proper stays isolated (a script gets its
  * own copy of `Meta`, set from inside the script by synthesized code).
  *
- * Per-request state lives in a `ThreadLocal`: a server answers many
- * requests at once on many threads, the container sets `Web`/
- * `Response`/`Session` on the request's thread before invoking the
- * page, and the page reads them on that same thread. `include` runs
- * the included page on the same thread and so sees the same three --
- * which is what `<jsp:include>` means.
+ * Per-request state lives in a `Scoped` (script-scoped-state): a
+ * server answers many requests at once on many threads, `Requested.
+ * run` binds `Web`/`Response`/`Session`/... for the request's thread
+ * before invoking the page, and the page reads them on that same
+ * thread with a plain always-fresh method (`Web.current` etc. --
+ * see "Metadata as context" in specs/okay-script.md for why not a
+ * `given`). `include` runs the included page on the same thread,
+ * inside the same binding, and so sees the same three -- which is
+ * what `<jsp:include>` means. Unlike the raw `ThreadLocal` this
+ * replaced, nothing outside `okay.script.api` can rebind one of
+ * these: `Scoped.where` is the only way in, and it always restores
+ * what it shadowed when its block exits, exception included. See
+ * specs/script-scoped-state.md.
  */
 final case class Web(
   method: String,

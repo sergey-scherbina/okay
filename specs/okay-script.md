@@ -561,8 +561,11 @@ one place concurrency actually matters: two threads calling
 `page.render(webA)` and `page.render(webB)` concurrently on the SAME
 `Page` must never let one thread's script read the OTHER thread's
 `Web`. Because `Page.render` is `synchronized` end to end (was already
-true for the cache/compile logic; `setCurrent` now happens inside that
-same block, before `invoke()`), this holds. `ScalaScript.render` gets
+true for the cache/compile logic; the `Web.scoped.where` binding now
+happens inside that same block, before `invoke()`), this holds. Since
+script-scoped-state (2026-09-19) that binding also restores whatever
+`Web` was current before `render` was called, once `invoke()` returns
+-- see specs/script-scoped-state.md. `ScalaScript.render` gets
 the same optional `web` parameter for API symmetry, but is NOT
 synchronized (a one-shot call was never meant to serialize) — a caller
 mixing concurrent one-shot `render` calls WITH real per-request `Web`
@@ -851,12 +854,12 @@ runtime.
 package okay.script.api            // DELEGATED — the host's classes
 
 final case class Web(method, path, query, headers, form, cookies, body, params)
-object Web:  current / setCurrent   // ThreadLocal — one request per thread
+object Web:  current   // ThreadLocal at the time; Scoped since script-scoped-state, 2026-09-19
 final class Response:               // mutable, per request
   status / header / contentType / redirect / cookie
-object Response: current / setCurrent
+object Response: current
 trait Session: id / get / set / remove / invalidate
-object Session: current / setCurrent
+object Session: current
 def include(page: String): Unit     // renders another page INTO this output
 def forward(path: String): Nothing  // abandons this page, dispatches to another
 final case class Forwarded(path) extends RuntimeException  // what forward throws
@@ -893,6 +896,23 @@ compile — many requests render the same compiled page at once, each
 with its own `Web`. (Holding it across `invoke` would also have let
 two pages that include each other deadlock two threads; that cycle
 is now caught by the include depth cap instead.)
+
+**Superseded (script-scoped-state, 2026-09-19):** the raw `ThreadLocal`
+above had a public `setCurrent`/`setX` on every one of these objects
+-- readable and writable by anything holding a reference, with cleanup
+left to a hand-matched `finally` in `Site.servePage` that had already
+drifted (`Content`'s root/problems were never in its reset list, and
+`Principal` was reset to `None` only there, never bound at the top --
+one dropped line away from leaking a previous request's principal into
+the next on a reused thread). `Scoped[A]` (`okay.script.api.Scoped`)
+replaces the raw `ThreadLocal`: no public `set`, `where(value)(body)`
+binds for `body`'s extent only and restores whatever was bound before
+on every exit, exception included. Every `current` above still reads
+the same way; every `setCurrent`/`setX` is gone. See
+specs/script-scoped-state.md for the full design, including why this
+is not `java.lang.ScopedValue` (still preview on JDK 21) or context
+functions (measured and rejected for this exact subsystem already, in
+"Metadata as context" above).
 
 ### Routing — `Site`
 
@@ -2284,8 +2304,7 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient):
 final case class Web(method: String, path: String, query: Map[String, String] = Map.empty, headers: Map[String, String] = Map.empty)
 object Web:
   val empty: Web
-  def current: Web
-  def setCurrent(w: Web): Unit
+  def current: Web   // bound via Scoped.where, not a public setter -- see script-scoped-state
 
 /** Front-matter + heading-scoped ```yaml metadata, as a typed AST and
  * as a current-position Context -- see "Metadata as context" above.
