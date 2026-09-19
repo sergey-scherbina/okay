@@ -1,0 +1,6 @@
+feature/own-lost-wakeup 2026-09-19T23:59:15Z
+agent: claude-code
+heartbeat: 2026-09-19T23:59:15Z
+status: in-progress
+done-so-far: JDK17 TestNio hang reproduced, thread dump names a lost wakeup in Schedulers.own (1 worker blocked in accept, 13 parked, submission never signalled)
+next: failing laws in TestSchedulerLaws, then fix in Platform.scala (auto -> watched own on non-Loom; stuck-check unparks before it grows)
