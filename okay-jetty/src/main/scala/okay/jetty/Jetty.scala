@@ -7,6 +7,7 @@ import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 import org.eclipse.jetty.client.{HttpClient as JettyClient, InputStreamResponseListener, Request as JRequest}
 import org.eclipse.jetty.server.{Handler, HttpConnectionFactory, Server, ServerConnector, SslConnectionFactory, Request as JsrRequest, Response as JsrResponse}
 import org.eclipse.jetty.util.Callback
+import org.eclipse.jetty.util.thread.VirtualThreadPool
 import org.eclipse.jetty.websocket.api.{Callback as WsCallback, Session}
 import org.eclipse.jetty.websocket.server.{ServerUpgradeRequest, ServerUpgradeResponse, WebSocketUpgradeHandler}
 
@@ -112,7 +113,13 @@ object Jetty {
             ssl: Option[javax.net.ssl.SSLContext] = None)
            (using CanBlock, Scheduler): Server ! Resource =
     Resource.acquire {
-      val server = Server()
+      // one virtual thread per request on the main connector
+      // (jetty-virtual-threads, 2026-09-19): Jetty's own pool, not
+      // Thread.startVirtualThread by hand -- okay-http's JDK backend
+      // and this module's own streaming-body write path (below,
+      // `stream`) already fork a virtual thread per unit of work;
+      // this was the one place still on an ordinary QueuedThreadPool.
+      val server = Server(VirtualThreadPool())
       val http = HttpConnectionFactory()
       val connector = ssl match
         case None => ServerConnector(server, http)
