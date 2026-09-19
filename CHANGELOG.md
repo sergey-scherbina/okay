@@ -2,6 +2,10 @@
 
 ## mcp-tool-authorization — a valid bearer stops meaning every tool
 
+Landed as faa4b97c (the spec, before the code), f9289e74 (the three
+pieces and the two defects), 140c2539 (the boards) and 3dad0dc3 (a
+failure the gate found on master, recorded rather than diagnosed).
+
 Opened by a stranger's question about exactly this boundary: once a
 caller is authenticated, can it use every tool, or can one misbehaving
 caller be restricted without revoking the user's authorization? The
