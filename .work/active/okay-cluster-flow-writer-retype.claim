@@ -1,6 +1,0 @@
-feature/okay-cluster-flow-writer-retype 2026-09-19T19:20:00Z
-agent: claude-code
-heartbeat: 2026-09-19T19:20:00Z
-status: in-progress
-done-so-far: surveyed Flow.scala and Flows.scala in full (production-writer-carrier stage 2 module 2/6). Shape[A] is entirely private/internal but its source/sourceAt/out all produce Chunks[A], and that ultimately traces to Flow.Src[A](parts: Vector[Long => Chunks[A]]) -- a PUBLIC type. A bridge-only swap at the 7 Chunks.foldLeft call sites would just pay the bridge tax stage 0 already measured as expensive, so the retype has to reach the public Flow.Src/Flow.of/seekable/one/slices/striped/map/filter surface to be worth anything. User explicitly chose the full retype (including public Flow.Src) over deferring or a smaller survey-first step.
-next: survey every external caller of Flow.Src/Flow.of/Flow.seekable/Flow.one/Flow.slices/Flow.striped/Flow.map/Flow.filter across the repo (tests, other modules) to know the real blast radius before changing signatures; check okay.Windows' own Chunks dependency; then retype Flow.scala's public constructors + Flows.scala's internal Shape/Job/Pipe/Wide machinery to the writer carrier (foldLeftWriter, no CanBlock needed, works on JS); test thoroughly (existing TestFlows or similar), gate okay-cluster on JVM+JS (crossProject), land
