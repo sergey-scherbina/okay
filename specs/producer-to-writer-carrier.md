@@ -131,15 +131,19 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       okay-docs and its backends, the kafka/fs2/zio/java interops — each
       lane: `sbt Test/compile` across the WHOLE repo first (a signature
       change; see memory signature-change-test-compile-first), then the gate
-- [ ] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the
-      writer carrier (the analogue of `Chunks.foldLeft`/`Fold.OfLong`'s
-      dispatch, walking told chunks with the ELEMENT's `Fold` inlined
-      into a per-chunk loop, not `Writer.fold`'s generic per-chunk box)
-      — measured at parity with `Chunks.fold` (stage 0 found the bare
-      migration 2x slower there; see Results). Without it, `Chunks`
-      stays on `Producer` and this bullet and the next stay undone —
-      a legitimate stopping point for this stage, not a blocker for
-      stage 1 or the rest of stage 2's modules
+- [x] BEFORE `Chunks[A]` retypes: a chunk-aware specialized fold on the
+      writer carrier, measured at parity with `Chunks.fold` — DONE
+      (producer-writer-carrier-pure-iterator, 2026-09-19), and it was
+      not a new combinator: `Chunks[A]` is PURE, so what `Chunks.fold`/
+      `foldLeft` need is the PURE writer stream's own hand-specialized
+      `iterator` (Writer.scala, the twin of `Stream[Producer, Pure]`'s
+      in Generate.scala; `Handler[Pure]` only — no `CanBlock`, no
+      `TypeableK`, every platform). `Chunks.fold`'s own loop over it,
+      in an ordinary method: 2.63 vs 2.53 us/op, 3 rounds, +2.5 KB/op
+      (one `Say` per chunk). The "2x" of stage 0 was `Writer.fold`'s
+      generic per-chunk box; the "~2x, walking a Free tree at all" of
+      the foldWriter lanes was the loop living INSIDE the JMH benchmark
+      method. See Results.
 - [ ] `Chunks[A]` retyped; `Chunks.generate/range/fromIterator` emit with
       `tell`; the specialised `iterator` walk that `Stream[Producer, Pure]`
       has is carried over to the writer instance, not lost
@@ -223,6 +227,23 @@ the same thing.
   is a pure win in types with the bridges still standing. Rejected:
   retype `Chunks` first (every module breaks at once; one lane of ~60
   files cannot be gated in pieces).
+  AMENDMENT PROPOSED 2026-09-19 (producer-writer-carrier-pure-iterator,
+  pending the operator): reverse it — `Chunks` FIRST, then the
+  G-effectful producers module by module. The premise was wrong twice.
+  (1) The "leaves" are not leaves: okay-cluster's `Flow.Src[A](parts:
+  Vector[Long => Chunks[A]])`, `Flow.map` = `Chunks.map`, persist's
+  Streams, wroclaw — all typed ON `Chunks[A]`; they cannot move before
+  it, only through bridges, and the bridge measured 1.5x slower. They
+  move for free WITH it: okay-cluster has ZERO direct `produce`/
+  `Produce` uses in main sources. (2) The blast radius of the alias
+  flip is 14 files (main + test: those naming `Chunks` AND calling
+  `produce`/`Produce`/`Producer.` directly — Chunks.scala,
+  ParallelChunks, Source, wroclaw OkayLane, Fs2Interop, java Streams,
+  JdbcInterop, JdbcSql, PgSql, R2dbcSql, sql Typed, Lex, persist
+  Streams, two tests), not ~60: the 60 count every file naming
+  Producer, most of them the separate G-effectful `Chunk[X] ! Produce +
+  G` carrier (`Producer.concat` callers), which is I/O-bound, migrates
+  by the blob pattern, and never needed fold parity.
 - **If stage 0 shows a real loss on Chunks** — Producer stays as the
   chunked hot carrier, stage 1's RULE still applies to new seams, and
   the loss is recorded here with its numbers so nobody re-measures it
@@ -590,3 +611,74 @@ bridge-based swap makes Flows.scala's fold sites slower for no reason.
 Filed as backlog.d/okay-core/okay-cluster-flow-retype-needs-combinator-library.md
 so a future attempt starts from the full-retype path, not this
 already-refuted shortcut.
+
+### The prerequisite met — and the plan's order was the blocker (2026-09-19, producer-writer-carrier-pure-iterator)
+
+Picked up after the arc had stalled twice in a row ("foldWriter cannot
+be used at any of its three call sites" — JS has no `CanBlock`; "okay-
+cluster needs a combinator library that does not exist"). Both stalls
+had the same root: the fold prerequisite was chased on the G-EFFECTFUL
+carrier (`Unit ! (Writer % Chunk[A] + G)`), whose eager walk needs a
+`Handler[G]`, while `Chunks[A]` — and every one of the three call sites,
+`Bulk.scala:106`, `Pipeline.scala:92`, `Acceptance.scala:29`, all
+`Chunks.fold` on a `Chunks[A]` — is PURE. `Chunks.fold`/`foldLeft` walk
+`Stream[Producer, Pure].iterator` under `Handler[Pure]`, which every
+platform has. The pure writer instance `Stream[[W] =>> A ! Writer % W,
+Pure]` (Writer.scala) was the ONLY stream instance in the library with
+no `iterator` override — the default `Iterator.unfold` paid an
+`Option`+`Either`+`Free` node per chunk. That is the whole prerequisite:
+~30 lines mirroring Generate.scala's, no `CanBlock`, no `TypeableK`, no
+`@nowarn`. Test: every tree shape (bare tell, right- and left-nested
+binds, a mid-stream pure, 1M-element stack safety) against
+`Writer.collect` as the oracle.
+
+Measured — 3 rounds, JDK 21.0.12 pinned (`# VM version` checked),
+N=10000/64, `-prof gc`, host load 3.26 / 2.50 / 2.03:
+
+| lane | where the loop lives | round 1 | round 2 | round 3 | B/op |
+|---|---|---|---|---|---|
+| `chunksFoldProducer` — library `Chunks.fold` (control) | okay-stream | 2.56 | 2.54 | 2.53 | 10,088 |
+| `chunksFoldFeedPureOwnMethod` — the same loop over the pure Feed iterator, own method | compare `Probe` | — | **2.64** | **2.63** | 12,600 |
+| `chunksFoldLeftFeedPureOwnMethod` — literal step, own method | compare `Probe` | — | 2.60 | 2.63 | 12,600 |
+| `chunksFoldFeedPureSummonOwnMethod` — `summon` inside the method (the retyped `Chunks.fold` shape exactly) | compare `Probe` | — | — | 2.63 | 12,616 |
+| `chunksFoldFeedPure` — the same loop written INSIDE the `@Benchmark` method | benchmark method | 4.95 | 4.81 | 4.98 | 12,600 |
+| `chunksFoldLeftFeedPure` — same, literal step | benchmark method | 4.88 | 4.94 | 4.88 | 12,600 |
+| `chunksFoldLeftProducerDirect` — inline `Chunks.foldLeft` on Producer | benchmark method | 4.79 | 4.68 | 4.85 | 10,064 |
+| `chunksFoldProducerOwnMethod` / `LeftProducerOwnMethod` / `LeftProducerInlineOwnMethod` — the identical loops over Producer, own methods | compare `Probe` | — | 4.55 / 4.52 / — | 4.68 / 4.53 / 4.53 | 10,064 |
+| `chunksFoldWriter` — generic `Writer.fold` (stage 0's loser) | library | 5.02 | 5.15 | 5.12 | 16,400 |
+
+**Verdict: PARITY.** The pure Feed iterator, walked by `Chunks.fold`'s
+own loop in an ordinary method — which is what a retyped `Chunks.fold`
+IS — costs 2.63 against 2.53 (+4%, 3 rounds within ±0.08), and the 2,512
+extra B/op are exactly 157 chunks × one 16-byte `Say` node, the price
+12120c2a already measured as free at element granularity. The "2x
+loss" this spec has carried since stage 0 was two different artefacts:
+stage 0 measured `Writer.fold`'s generic `Fold[Chunk[Long], Long]` path
+(one boxed accumulator per chunk — 16,400 B/op, still 5.1 today), and
+the three foldWriter lanes then compared loops written INSIDE the JMH
+benchmark method (4.8-5.0) against a library method (2.5) and called
+the residual "walking a Free tree at all". Moving the identical loop
+into its own method halves it. Nothing about the writer carrier was
+ever slower than Producer here.
+
+**The Producer twist, recorded, not resolved.** The same own-method
+placement does NOTHING for Producer: every Producer loop compiled in
+`compare` — own method, inline `Chunks.foldLeft` inside an own method,
+inline in the benchmark — sits at 4.5-4.85, and only okay-stream's own
+compiled `Chunks.fold` reaches 2.53. So in `compare`'s compilation
+units Feed is 1.7x FASTER than Producer for byte-identical loops,
+allocation identical. Mechanism open (something dotty emits differently
+with `A` abstract vs `Long` at the inline expansion is the one semantic
+difference found); the data is appended to
+backlog.d/okay-core/chunks-fold-vs-foldleft-2x-gap.md, whose "own
+method" probe this lane ran. It does not touch the migration: a retyped
+`Chunks.fold` is a library method over the Feed iterator, measured.
+
+**What this makes false, corrected in the same lane:** `Chunks.foldWriter`
+(Async + `CanBlock`) and `foldLeftWriter` (`+ G`) were built for three
+call sites that are pure and never needed them — they stay, correct
+and tested, for a genuinely G-effectful `Source[Chunk[A]]`, but they
+are not on the migration's path and the JS question filed against them
+is moot for `Chunks`. okay-cluster needs no lane: it names no `Produce`
+and moves with the alias. The next slice is the `Chunks` retype itself
+— see the sprint item and the amended decision above.

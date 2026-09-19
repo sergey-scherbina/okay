@@ -73,4 +73,29 @@ class TestGenerate extends munit.FunSuite {
     assertEquals(Writer.uncons(empty), Left(()))
   }
 
+  test("Feed's specialized iterator agrees with Writer.collect on every tree shape") {
+    val St = summon[Stream[[W] =>> Unit ! Writer % W, okay.Pure]]
+    def walk[W](f: Feed[W]): Vector[W] = St.iterator(f).toVector
+    def oracle[W](f: Feed[W]): Vector[W] = Writer.collect[W, Unit, okay.Pure](f).runWith._1
+
+    // empty: Pure only
+    assertEquals(walk(pure(()): Feed[Int]), Vector.empty)
+    // a bare tell: the terminal Inject(Say) with no continuation
+    assertEquals(walk(Writer.tell(7)), Vector(7))
+    // right-nested binds, the shape generate/tell.flatMap build
+    val right: Feed[Int] = Writer.tell(1).flatMap(_ => Writer.tell(2)).flatMap(_ => Writer.tell(3))
+    // left-nested binds and a leading pure: the `case _ => resume` arm
+    val left: Feed[Int] = pure(()).flatMap(_ => (Writer.tell(1).flatMap(_ => Writer.tell(2))).flatMap(_ => Writer.tell(3)))
+    // a tell followed by a pure that is NOT the end, then more tells
+    val mid: Feed[Int] = Writer.tell(1).flatMap(_ => pure(())).flatMap(_ => Writer.tell(2).map(_ => ()))
+    for f <- List(right, left, mid) do
+      assertEquals(walk(f), oracle(f))
+    assertEquals(walk(right), Vector(1, 2, 3))
+    assertEquals(walk(mid), Vector(1, 2))
+    // laziness: an infinite feed yields on demand
+    assertEquals(St.iterator(nats[Long, Feed]).take(5).toVector, Vector(0L, 1L, 2L, 3L, 4L))
+    // and the long walk is stack-safe
+    assertEquals(St.iterator(nats[Int, Feed]).drop(1000000).next(), 1000000)
+  }
+
 }

@@ -39,3 +39,31 @@
       or once host contention is confirmed clear (check `uptime`
       first, load under ~4 on this 14-core box, before trusting any
       number).
+      THE "NOT YET TRIED" PROBE, RUN (2026-09-19,
+      producer-writer-carrier-pure-iterator, quiet host, load 2.0-2.5,
+      JDK 21.0.12 pinned, 2 rounds, ±0.04): routing the loop through
+      its own non-inline method (`Probe` in
+      ProducerWriterCarrierBenchmark.scala, kept) does NOTHING for
+      Producer — `chunksFoldProducerOwnMethod` 4.55/4.68,
+      `chunksFoldLeftProducerOwnMethod` 4.52/4.53, and even the inline
+      `Chunks.foldLeft` (static `summon` of the given object) inside an
+      own method 4.53 — while library `Chunks.fold` stays 2.53. Ruled
+      out therefore: placement (benchmark method vs own method), and
+      how the instance is reached (val of interface type vs static
+      summon). THE SURPRISE: the byte-identical loop over the PURE
+      WRITER stream's new iterator (Writer.scala) in the same own-method
+      placement IS 2.63 (from 4.9 inside the benchmark method), so
+      placement matters for Feed and not for Producer, and in
+      `compare`'s compiled units Feed beats Producer 1.7x with identical
+      allocation (10,064 vs 12,600 B/op — the 2.5 KB is `Say` nodes).
+      What is left: every Producer loop COMPILED IN `compare` is
+      4.5-4.85; the only one compiled in okay-stream (`Chunks.fold`,
+      `A` abstract at the inline expansion of `foldLeft`) is 2.53. One
+      semantic difference found, unmeasured: with `A` abstract, `c(i)`
+      is `ArraySeq.apply(i): Object` handed straight to
+      `addLong(J,Object)`; with `A = Long` at the call site dotty
+      unboxes it first. Next probe: an own method in compare with `A`
+      kept abstract (`def f[A](p: Chunks[A])(using Fold.OfLong[A])`),
+      and `-prof perfasm` if it ever becomes available. No longer on
+      the writer migration's path — Feed reaches parity with
+      `Chunks.fold` on its own.

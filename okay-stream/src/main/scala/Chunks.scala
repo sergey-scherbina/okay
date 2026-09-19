@@ -441,6 +441,15 @@ object Chunks {
    * non-program iterator. Closing THAT is a different, larger question
    * than this combinator's own dispatch tax, which is what this doc
    * originally set out to fix.
+   * CORRECTED (producer-writer-carrier-pure-iterator, 2026-09-19): the
+   * paragraph above is wrong about the cause. Both numbers it compares
+   * (5.0 and 5.43) are loops written INSIDE a JMH benchmark method;
+   * the same loop in an ordinary method measures 2.63 over the PURE
+   * writer stream's `iterator` (Writer.scala) against `Chunks.fold`'s
+   * 2.53 — parity, `Say` node included. `Chunks[A]` is Pure, so THAT
+   * is the walk a retyped `Chunks.fold` takes; this combinator and
+   * `foldLeftWriter` serve a genuinely G-effectful `Source[Chunk[A]]`
+   * only. Spec Results has the table.
    *
    * The "API contract" obstacle the earlier draft worried about is
    * real but not a blocker: `.iterator` needs a `Handler[G]` and runs

@@ -64,6 +64,16 @@ import RowLift.plus
  * for why the remaining ~2x against `chunksFoldProducer`'s 2.55us is a
  * different, larger question (walking a `Free`-tree program at all)
  * than this combinator's own dispatch tax.
+ *
+ * CORRECTED (producer-writer-carrier-pure-iterator, 2026-09-19): that
+ * "~2x" was the loop living INSIDE the `@Benchmark` method. The
+ * `chunksFold*FeedPure*` rows and the `Probe` object below measure
+ * `Chunks.fold`'s own loop over the PURE writer stream's new
+ * `.iterator` (`Chunks[A]` is Pure — no G, no `CanBlock`): 4.9 inside
+ * the benchmark method, 2.63 in an ordinary method, against library
+ * `Chunks.fold`'s 2.53. Parity. The same move does nothing for
+ * Producer in this module (4.5 either way) — see
+ * backlog.d/okay-core/chunks-fold-vs-foldleft-2x-gap.md.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -126,6 +136,70 @@ class ProducerWriterCarrierBenchmark {
   @Benchmark
   def chunksFoldWriter(): Long =
     Writer.fold[Chunk[Long], Long, Unit, Nothing](writerChunks).runWith._1
+
+  // THE PURE SHAPE (producer-writer-carrier-pure-iterator): `Chunks[A]`
+  // is `Producer[Chunk[A]]` — PURE, no G — so what `Chunks.fold` will
+  // do once `Chunks[A] = Feed[Chunk[A]]` is exactly `Chunks.fold`'s
+  // own loop over the PURE writer stream's `.iterator` (Writer.scala,
+  // the override added in this lane), `Handler[Pure]` only, no
+  // `CanBlock`, no `TypeableK`. Every earlier writer row in this file
+  // walks the G-effectful `writerStreamIn`; these two are the honest
+  // pair for `chunksFoldProducer` / `chunksFoldLeftProducerDirect`.
+  private val feedStream = summon[Stream[[W] =>> Unit ! Writer % W, Pure]]
+
+  @Benchmark
+  def chunksFoldFeedPure(): Long =
+    // `Chunks.fold`'s `Fold.OfLong` arm, verbatim: dispatch once
+    // outside, `addLong` on a raw long inside
+    val l: Fold.OfLong[Long] = Fold.sumLong
+    var s = l.initLong
+    val it = feedStream.iterator(writerChunks)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = l.addLong(s, c(i))
+        i += 1
+    s
+
+  @Benchmark
+  def chunksFoldLeftFeedPure(): Long =
+    // `Chunks.foldLeft` with a literal step, verbatim
+    var s = 0L
+    val it = feedStream.iterator(writerChunks)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = s + c(i)
+        i += 1
+    s
+
+  // THE SAME FOUR LOOPS, EACH IN ITS OWN NON-INLINE METHOD (the probe
+  // backlog.d/okay-core/chunks-fold-vs-foldleft-2x-gap.md never got to
+  // measure): `Chunks.fold` is an ordinary library method the JIT
+  // compiles as ITS OWN unit; `Chunks.foldLeft` is `inline`, and the
+  // two `*FeedPure` rows above are written out longhand, so those
+  // three loops all land INSIDE the JMH-generated benchmark method.
+  // If the gap is the compiled unit rather than the loop, these four
+  // agree with `chunksFoldProducer` and not with the inline rows.
+  @Benchmark
+  def chunksFoldProducerOwnMethod(): Long = Probe.foldProducer(producerChunks, Fold.sumLong)
+  @Benchmark
+  def chunksFoldLeftProducerOwnMethod(): Long = Probe.foldLeftProducer(producerChunks)
+  @Benchmark
+  def chunksFoldFeedPureOwnMethod(): Long = Probe.foldFeed(writerChunks, Fold.sumLong)
+  @Benchmark
+  def chunksFoldLeftFeedPureOwnMethod(): Long = Probe.foldLeftFeed(writerChunks)
+  // two more, refining the split above: the INLINE `Chunks.foldLeft`
+  // (a static `summon` of Producer's given object) inside an own
+  // method, and the Feed loop with the instance summoned INSIDE the
+  // method (a fresh `new` per call — the exact shape a retyped
+  // `Chunks.fold` has)
+  @Benchmark
+  def chunksFoldLeftProducerInlineOwnMethod(): Long = Probe.foldLeftProducerInline(producerChunks)
+  @Benchmark
+  def chunksFoldFeedPureSummonOwnMethod(): Long = Probe.foldFeedSummon(writerChunks, Fold.sumLong)
 
   // The three below are Async-shaped (Blob's own shape) rather than
   // Pure, only because `Chunks.foldWriter`/`foldLeftWriter` marked
@@ -279,4 +353,70 @@ class ProducerWriterCarrierBenchmark {
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => out.write(c.toArray))
     val _ = Writer.fold[Chunk[Byte], Unit, Unit, Async](byteSource)(using summon, sink).runWith
     out.toByteArray
+}
+
+/** the four chunked-fold loops as ordinary (non-inline, non-benchmark)
+ * methods — `Chunks.fold`'s own shape, one compiled unit each; see the
+ * `*OwnMethod` rows in the class above for what they answer */
+object Probe {
+  private val feedStream = summon[Stream[[W] =>> Unit ! Writer % W, Pure]]
+  private val producerStream = summon[Stream[Producer, Pure]]
+
+  def foldProducer(p: Chunks[Long], l: Fold.OfLong[Long]): Long =
+    var s = l.initLong
+    val it = producerStream.iterator(p)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = l.addLong(s, c(i))
+        i += 1
+    s
+
+  def foldLeftProducer(p: Chunks[Long]): Long =
+    var s = 0L
+    val it = producerStream.iterator(p)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = s + c(i)
+        i += 1
+    s
+
+  def foldFeed(p: Unit ! Writer % Chunk[Long], l: Fold.OfLong[Long]): Long =
+    var s = l.initLong
+    val it = feedStream.iterator(p)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = l.addLong(s, c(i))
+        i += 1
+    s
+
+  def foldLeftProducerInline(p: Chunks[Long]): Long =
+    Chunks.foldLeft(p)(0L)((s, a) => s + a)
+
+  def foldFeedSummon(p: Unit ! Writer % Chunk[Long], l: Fold.OfLong[Long]): Long =
+    var s = l.initLong
+    val it = summon[Stream[[W] =>> Unit ! Writer % W, Pure]].iterator(p)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = l.addLong(s, c(i))
+        i += 1
+    s
+
+  def foldLeftFeed(p: Unit ! Writer % Chunk[Long]): Long =
+    var s = 0L
+    val it = feedStream.iterator(p)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = s + c(i)
+        i += 1
+    s
 }

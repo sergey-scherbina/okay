@@ -155,44 +155,59 @@
       21/21 green; all three platforms plus every dependent module
       cold-compiled, zero warnings throughout.
 
-      NEXT CLAIMABLE SLICE = STAGE 2, MODULE 2/6: okay-cluster
-      Flow/Flows/Job. SCOPE CORRECTED 2026-09-19 (surveyed while
-      checking whether `foldLeftWriter`'s parity actually unblocks
-      this): NOT a 7-call-site swap. `Flows.scala`'s `Shape[A]` trait —
-      the module's own core streaming abstraction — is declared AROUND
-      `Chunks[A]` itself (`source: Int => Chunks[A]`, `sourceAt: (Int,
-      Long) => Chunks[A]`, `out(ps, lo, hi): Chunks[A]`,
-      `andThen[B](f: Chunks[A] => Chunks[B]): Shape[B]`), with several
-      concrete implementations (`partition`, `one`, the K/O pane
-      `out`s). The 6 `Chunks.foldLeft` call sites (+1 in Job.scala) are
-      just where `Shape[A]`'s OWN `Chunks[A]` gets consumed — retyping
-      them to `foldLeftWriter` means retyping `Shape[A]`'s interface
-      itself to `Feed[Chunk[A]]`/`Source[Chunk[A]]` first, cascading
-      through every implementer. This is real module-2/6 work, not a
-      quick unblock — claim it as its own staged effort (survey
-      `Shape[A]`'s full contract and test coverage before touching the
-      trait), not a same-session follow-on to the fold combinator.
-      FULL SCOPE FOUND 2026-09-19: `Shape[A]` traces to `Flow.Src`, a
-      PUBLIC type 21 call sites across 4 modules construct directly,
-      and a full retype ALSO needs a writer-carrier `map`/`filter`/
-      `take`/`drop`/`rechunk` family that does not exist yet (only the
-      fold terminals do) — genuinely multi-session work, not started.
-      A SCOPED-DOWN MIDDLE GROUND WAS TRIED AND MEASURED, RULED OUT:
-      bridging the existing `Chunks[A]` source into a writer `Feed` via
-      `Source.ofProducer` at just the 7 fold call sites, keeping
-      `Flow.Src` on `Producer`, measures 7.425us/34,080 B/op against
-      plain `Chunks.foldLeft`'s 4.966us/10,064 B/op — 1.5x SLOWER, 3.4x
-      more garbage (JDK 21.0.12, N=10000/64). The bridge tax eats the
-      entire benefit `foldLeftWriter`'s own fix bought. There is no
-      cheap middle ground here: full retype or nothing. See the spec's
-      `## Results` and backlog.d/okay-core/
-      okay-cluster-flow-retype-needs-combinator-library.md.
-      Then okay-persist Streams/Wire, okay-sql/okay-jdbc,
+      THE STALL, DIAGNOSED AND CLEARED (2026-09-19,
+      producer-writer-carrier-pure-iterator). Two wrong premises, one
+      root: `Chunks[A]` is PURE, and the fold prerequisite was chased on
+      the G-effectful carrier (`+ G` → `Handler[G]` → `CanBlock` → no
+      JS) while all three `Chunks.fold` call sites (`Bulk.scala:106`,
+      `Pipeline.scala:92`, `Acceptance.scala:29`) fold a pure
+      `Chunks[A]` under `Handler[Pure]`. The pure writer stream
+      instance (Writer.scala) simply had no `iterator` override — now
+      it has one (twin of Generate.scala's), and `Chunks.fold`'s own
+      loop over it measures 2.63 vs 2.53 us/op (3 rounds, JDK 21,
+      +2.5 KB/op = one `Say` per chunk): PARITY, the spec's
+      prerequisite met. The "~2x, walking a Free tree" was the loop
+      sitting INSIDE the JMH benchmark method — own method halves it.
+      And "leaves first" was backwards: okay-cluster (`Flow.Src` over
+      `Chunks[A]`, `Flow.map` = `Chunks.map`), persist Streams and
+      wroclaw are typed ON `Chunks[A]` and move WITH it; okay-cluster
+      has ZERO direct `produce`/`Produce` uses in main. The "combinator
+      library that does not exist" is `Chunks.mapWith/filterWith/take/
+      drop/rechunkWith` themselves, retyped in place. The bridge
+      shortcut (1.5x slower) stays refuted — spec Results keeps it.
+
+      NEXT CLAIMABLE SLICE = THE `Chunks` RETYPE (reverses the spec's
+      "Chunks last" — amendment in Decisions, PENDING the operator's
+      confirmation; do not claim before that). `type Chunks[A] =
+      Feed[Chunk[A]]`; in Chunks.scala `produce(c)` → `Writer.tell(c)`,
+      `Inject(c)` → `Inject(Say(c))`, `k(c)` → `k(())`, `bound[A]` goes
+      (the Say refines the type), `pull`/`end` on the pure writer
+      instance, `foldLeft`/`fold` on its `.iterator`; `generate/range/
+      fromIterator` emit with `tell`. Blast radius, counted 2026-09-19
+      (files naming `Chunks` AND calling `produce`/`Produce`/
+      `Producer.` directly — the ones that break; `grep -rlE
+      '\bChunks\b' | xargs grep -lE 'produce\(|Produce\b|Producer\.'`
+      to recount): Chunks.scala, ParallelChunks.scala (2 lines),
+      Source.scala (`ofProducer`/`toProducer` on a Chunks arg), wroclaw
+      OkayLane, Fs2Interop, java Streams, JdbcInterop, JdbcSql, PgSql,
+      R2dbcSql, sql Typed, Lex, persist Streams, tests MeasureSqlFold,
+      TestRowDecode, TestParallelChunks — 14 main + 2 test. Of those,
+      the jdbc/sql/pg/r2dbc ones mostly build `Chunk[X] ! Produce + G`
+      (`Producer.concat` callers), a G-effectful producer that is NOT
+      `Chunks` — separate this lane's edits from theirs by whether the
+      value is typed `Chunks[A]`. 41 main + 28 test files name
+      `Chunks`; the rest use only the `Chunks.*` API and compile
+      unchanged. `sbt Test/compile` repo-wide first, JVM+JS+Native
+      (Chunks is cross-platform). Delete `foldLeftWriter`/`foldWriter`
+      only if no G-effectful caller appears — they are correct, tested
+      and off the path; not this lane's call.
+      Then, AFTER `Chunks` (order amended 2026-09-19, see above and the
+      spec's Decisions): okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops —
-      leaves first, `Chunks` last; the `foldWriter` gate above is
-      CLEARED (2.9x faster, not full Producer parity but close enough
-      to unblock, see above) — each lane `sbt Test/compile` repo-wide
-      before its gate;
+      these hold the G-effectful `Chunk[X] ! Produce + G` carrier
+      (`Producer.concat`/`fold` callers), I/O-bound, migrated by the
+      blob pattern (`Writer.fold`/`.collect`), no fold parity needed —
+      each lane `sbt Test/compile` repo-wide before its gate;
       deletions (`produced`, `Producer.fold/each/concat`, the Produce
       Stream instances, the three Source bridges) land with the last
       module. `writerK` (or `okay.given`) must be in scope at every

@@ -423,6 +423,53 @@ given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
   def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Pure =
     pure(Writer.uncons(s).toOption)
 
+  /**
+   * The specialized linear view of the PURE writer stream — the twin
+   * of `Stream[Producer, Pure]`'s own override in Generate.scala, and
+   * the one `Chunks.fold`/`foldLeft` will walk once `Chunks[A]` is
+   * `Feed[Chunk[A]]`. No `Option`, no `Either`, no program built per
+   * step: the DEFAULT `Iterator.unfold(s)(uncons(_).runWith)` pays all
+   * three once per element — which on a chunked stream is once per
+   * CHUNK, and was the whole of the ~2x stage 0 measured on
+   * `Chunks.fold` (producer-to-writer-carrier, `## Results`). Needs
+   * only `Handler[Pure]`, which every platform has — nothing here
+   * blocks, so nothing here needs `CanBlock`, unlike `writerStreamIn`'s
+   * G-forwarding twin below.
+   */
+  override def iterator[W](s: A ! Writer % W)(using Handler[Pure]): Iterator[W] =
+    import !.*
+    import scala.annotation.tailrec
+    new Iterator[W]:
+      private var cur: A ! Writer % W = s
+      private var ready = false
+      private var ended = false
+      private var elem: W = scala.compiletime.uninitialized
+
+      // `Say` is Writer's only constructor, so the two Inject shapes
+      // are exhaustive over what a pure writer program can resume to
+      @tailrec private def advance(): Unit = (cur: @unchecked) match
+        case Free.Pure(_) => ended = true
+        case Inject(Writer.Say(w)) =>
+          elem = w
+          ready = true
+          ended = true
+        case Bind(Inject(Writer.Say(w)), k) =>
+          elem = w
+          ready = true
+          cur = k(())
+        case _ =>
+          cur = cur.resume
+          advance()
+
+      def hasNext: Boolean =
+        if !ready && !ended then advance()
+        ready
+
+      def next(): W =
+        if !hasNext then throw java.util.NoSuchElementException("empty writer stream")
+        ready = false
+        elem
+
 /**
  * And a writer program performing ARBITRARY effects G is a stream in
  * G: the same observation, with the G-operations met on the way
