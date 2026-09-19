@@ -60,26 +60,30 @@ agrees with reality on both sides.
 
 ## Behavior
 
-- [ ] `serveClosing` sends the SAME patches for a closing event as a
+- [x] `serveClosing` sends the SAME patches for a closing event as a
       non-closing one would, then one `Msg.Close` line, then ends —
       no patch is skipped and no patch follows the close
-- [ ] `serve(init)(view)(update)` behaves EXACTLY as before: the
+- [x] `serve(init)(view)(update)` behaves EXACTLY as before: the
       existing `TestWire` suite passes unchanged, proving the
       `(S, Boolean)` refactor changed nothing observable when the
       boolean is always false
-- [ ] a `Msg.Close` line round-trips through `Protocol` the same way
+- [x] a `Msg.Close` line round-trips through `Protocol` the same way
       `Msg.Hello`/`Tree`/`Patch` already do (JSON and CBOR)
-- [ ] the pure stage test: driving `serveClosing` with events where
+- [x] the pure stage test: driving `serveClosing` with events where
       one decides `true` produces the tree, the patches up to and
       including that event, a `Close` line, and nothing after — even
       when more lines follow it in the input
-- [ ] end to end over channels (Live-tagged, mirrors `TestWire`'s own
+- [x] end to end over channels (Live-tagged, mirrors `TestWire`'s own
       channel test): a client that keeps sending events after the
       server closes gets no further patches, and the value host's
       last frame is the one from the closing event
 - [ ] `live.js` closes its own WebSocket on receiving a `Close` line,
       proven the way `ui-table-browser` proves DOM behavior: a real
-      browser, `TestBrowserClose` or equivalent, Live-tagged
+      browser, `TestBrowserClose` or equivalent, Live-tagged. NOT
+      DONE: the JS change is one line, read as correct, but nothing
+      drives a real browser against it yet — okay-watch's own gate
+      (BUGS.md's TestKafkaFeed lesson applies equally here) is the
+      first real-world exercise of it so far
 
 ## Out of scope
 
@@ -123,4 +127,46 @@ agrees with reality on both sides.
 
 ## Results
 
-(filled after the lane lands)
+**LANDED 2026-09-19** (`2e7b7e52`): `Wire.serveClosing` and `serve`
+refactored onto it, `LiveJs`'s generated client closing its own socket
+on a `Close` line, `TestWireClosing` (five pure tests) and one new
+end-to-end case in `TestWire`. Every Behavior box above is checked.
+
+**A follow-up lane (`wire-close-test-hang`, `6b805fc3`) found and
+fixed a real problem in the original landing itself:** the new
+end-to-end test was never actually executed before it landed. `sbt
+test` — the gate `wire-server-close` ran — excludes `Live`-tagged
+suites by default, and `TestWire` is tagged at the class level, so
+the test compiled and was described in the lane's own changelog entry
+as passing, but nothing had run it. Run for real with `sbt
+integrationTest`, it hung forever: it ended its scripted client's own
+event feed with `feed.close()`, which does not stop `Wire.client`'s
+`forward` loop (that loop only ever ends on its OWN `Event.Closed`,
+per the hybrid rule `Wire.client` already documents) — `fiber.join()`
+is a raw thread park with no timeout, and parked for over two hours
+before being killed by hand. `okay-ui/BUGS.md` has the full account.
+
+The fix sends `Event.Closed` as the client's own last event, matching
+every other test in the file, and drops a trailing press the original
+test used to race against the server's own close — `up` and `down`
+are two independently scheduled fibers, so an event sent after the
+closing one has no ordering guarantee against when the server acts on
+it, and the first version of the test was asserting on that race
+rather than on `serveClosing` itself. Verified: 5 repeats of the
+fixed suite clean (`okayUiJVM/testOnly okay.ui.TestWire` with the
+class's own Live tag disabled locally to drive it directly, since
+that is what actually executes a `Live`-tagged suite's tests without
+sbt's `set`-based `testOptions` override — which, separately, wedged
+for 30 minutes with zero CPU on first attempt and had to be killed;
+the working substitute for a one-off check is disabling the tag
+locally rather than fighting `set`). The full monorepo `sbt test`
+afterward: 0 failures, 736+ per-module suites green.
+
+**The lesson this leaves behind, beyond the one bug:** a `Live`-tagged
+test is invisible to the default gate in BOTH directions. A broken
+one and a hung one look identical to `sbt test` — silence — so
+landing anything that touches a `Live` suite needs that suite
+actually run once, with `sbt integrationTest` or an equivalent, before
+the claim is released. A changelog line describing what a test does
+is not evidence that it ran, and this lane is the proof: it said so,
+correctly, about a test that had never once executed.
