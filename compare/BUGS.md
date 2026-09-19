@@ -5,14 +5,23 @@ The ledger for defects whose fix lands in `compare`'s own sources.
 Newest first. Status lives in the machine-readable header, never in the prose.
 
 ## wroclaw-feed-shadowed — `okay.wroclaw.Feed` loses to `okay.Feed[W]` under `import okay.*`
-<!-- status: open
+<!-- status: fixed
      lane: compare (okay.wroclaw)
      area: compile
      found-by: gate on feature/scoped-cross-platform pulled `compare` into
        "affected" for the first time this session (it depends on okayJVM,
        which that branch touches); the failure is unrelated to that branch
-     gate: none
+     gate: compare/compile, compare/test
+     fixed-in: wroclaw-feed-shadowed-fix (2026-09-19)
 -->
+
+**Root cause, confirmed**: Scala 3 ranks an explicit (even wildcard)
+import above a same-package top-level member from another file —
+`import okay.*` in `OkayLane.scala` wins over `okay.wroclaw.Feed`
+(defined in the sibling `Gtfs.scala`, same package, same compilation
+batch). **Fix**: exclude the one name from the wildcard —
+`import okay.{Feed as _, *}` — one line, `compare/compile` goes from
+30 errors to clean.
 
 `compare/src/main/scala/okay/wroclaw/OkayLane.scala` fails to compile on
 plain `origin/master` (confirmed on a clean detached worktree at
