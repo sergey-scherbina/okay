@@ -484,12 +484,27 @@ carrier. Closing it — a mutable-state `iterator` override mirroring
 `Stream[Producer, Pure]`'s shape, but handling a forwarded G-effect —
 would benefit both carriers equally. Not written here; its own lane.
 
-**Consequence:** `Bulk.scala`, `Pipeline.scala`, and `Acceptance.scala`
-can migrate onto `foldWriter` now (their `G` is `Async`-shaped already,
-matching the narrowed signature) — not yet done, since each is embedded
-in a `Chunks[A]`-typed surrounding context of its own (the same
-"leaves first" caution `Flows.scala`'s `Shape[A]` triggered), not a
-same-session follow-on to this fix.
+**Consequence, CORRECTED (2026-09-19, fourth follow-up):** the original
+claim here — that `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala` are
+"unblocked" because their `G` is already `Async`-shaped — was wrong.
+Being `Async`-shaped is not enough: `foldWriter` also needs `CanBlock`,
+and all three files live in cross-platform shared source
+(`okay-stream/src/main/scala`, and BOTH `okay-cluster`'s and
+`okay-http`'s `Acceptance.scala`) that also builds for JS, where
+`src/main/scala-js/Platform.scala` says outright: "There is no
+`CanBlock` on JS, so a blocking join is a compile error." JS has no
+`Handler[Async]` at all — it drives `Async` programs through a
+completely different, callback-based `Scheduler`/`Fiber` mechanism
+(`Async.PromiseDrive`), not the blocking one `foldWriter`'s `async {
+... }` wrapper depends on. `foldWriter` in its CURRENT form is
+genuinely unusable at any of the three call sites this fix was
+supposedly for, embedded-context caution aside.
+
+A JS-compatible `foldWriter` would need a fundamentally different
+walk — driven by callbacks/the event loop, not an eager blocking
+`Iterator` — which is a real, separate design question, not a
+follow-on to this fix. Not attempted here; see
+backlog.d/okay-core/foldwriter-js-incompatible.md.
 
 ### The remaining gap, also closed (2026-09-19, third follow-up)
 

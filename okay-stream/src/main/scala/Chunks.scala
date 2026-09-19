@@ -451,12 +451,21 @@ object Chunks {
    * program (`Async.Run`, not run until `.runWith`), so the RETURN
    * value is still composable, only the row it accepts is narrower.
    * This was safe to do because `foldWriter` had ZERO production call
-   * sites when this landed — `Bulk.scala`, `Pipeline.scala`, and
-   * `Acceptance.scala` (the three call sites this unblocks) all still
-   * call `Chunks.fold` on `Producer` directly, not this combinator, so
-   * no caller's contract broke. A future caller needing a truly
-   * arbitrary `G` (not just `Async`) would need its own overload —
-   * not written, because nothing asks for it yet.
+   * sites when this landed, so no caller's contract broke.
+   *
+   * IT DOES NOT ACTUALLY UNBLOCK `Bulk.scala`/`Pipeline.scala`/
+   * `Acceptance.scala` (2026-09-19, corrected) — an earlier version of
+   * this comment claimed it did, because their `G` is `Async`-shaped;
+   * that missed that `CanBlock` is ALSO required, and all three live
+   * in cross-platform shared source that also builds for JS, where
+   * there is no `CanBlock` and no `Handler[Async]` at all
+   * (`src/main/scala-js/Platform.scala`: JS drives `Async` through a
+   * callback-based `Scheduler`/`Fiber`, not blocking). A future caller
+   * needing a truly arbitrary `G` — or specifically a JS-compatible
+   * walk, driven by callbacks/the event loop rather than an eager
+   * blocking `Iterator` — would need its own overload and its own
+   * design pass; not written here. See
+   * backlog.d/okay-core/foldwriter-js-incompatible.md.
    */
   def foldWriter[A, S](p: Unit ! (Writer % Chunk[A] + Async))(using fo: Fold[A, S])
                        (using CanBlock): (S, Unit) ! Async =

@@ -87,12 +87,20 @@
       own shape) was built but couldn't get a clean measurement — the
       host was under severe unrelated contention (load 30+) during the
       attempt. See backlog.d/okay-core/chunks-fold-vs-foldleft-2x-gap.md.
-      `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala` are now
-      UNBLOCKED to migrate onto it (their `G` is already `Async`-shaped)
-      but not yet migrated — each sits inside its own `Chunks[A]`-typed
-      surrounding context, the same "leaves first" caution
-      `Flows.scala`'s `Shape[A]` triggered below. Full story in
-      Chunks.scala's `foldWriter` doc and the spec's `## Results`.
+      CORRECTED (2026-09-19): `Bulk.scala`/`Pipeline.scala`/
+      `Acceptance.scala` are NOT unblocked — that claim missed that
+      `foldWriter` needs `CanBlock`, not just `G=Async`, and all three
+      live in cross-platform shared source that also builds for JS,
+      where there is no `CanBlock` and no `Handler[Async]` at all (JS
+      drives `Async` via a callback `Scheduler`, confirmed in
+      `src/main/scala-js/Platform.scala`). `foldWriter` in its current
+      form genuinely cannot be used at any of the three call sites.
+      A JS-compatible version needs a callback/event-loop-driven walk,
+      not the eager blocking one this fix built — a real, separate
+      design question, filed as
+      backlog.d/okay-core/foldwriter-js-incompatible.md, not attempted
+      here. Full story in Chunks.scala's `foldWriter` doc and the
+      spec's `## Results`.
       `writerk-
       companion-scope` landed alongside this (found while writing this
       combinator's tests): `given writerK` moved into `object Writer`'s
