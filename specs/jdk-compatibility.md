@@ -177,6 +177,64 @@ WebSocket sessions, the `VirtualThreadPool` from jetty-virtual-threads
 actually serving under 26), `okaySpark` (4/4, confirmed still pinned
 and unaffected).
 
+## Building for JDK 17 is not the question — running on it is (jdk17-compat-check, 2026-09-19)
+
+**"Can we optionally build the library for JVM 17?" has a one-line answer: it already
+does, for every module, with no separate build step.** dotc's classfile target is major
+version 61 (JDK 17) by default regardless of the host JDK compiling it — the whole
+`.jvmSettings` tree here is compiled once, on the ambient JDK 21, and every `.jar` it
+produces already loads on a JDK 17 JVM. There is nothing to opt into at build time. The
+real question this session measured is the one the by-inspection table above could only
+guess at: **which modules, once loaded, actually run correctly on JDK 17**, given that
+six of them call a JDK 21+ `Thread`/`Executors` API unconditionally. `sbt verifyJdk17`
+(build.sbt, forks `Test`/`run` onto `~/.sdkman/candidates/java/17.0.19-tem`) exists now
+so this is checkable again, not just claimed once.
+
+**A trap the first pass fell into, worth naming because it produces a false PASS, not a
+crash: `Test / javaHome` is silently a no-op unless `Test / fork := true` is ALSO set for
+that same project.** `okay-http`, `okay-persist`, and `okay-netty` have no
+`Test / fork := true` of their own — running `set every Test / javaHome := Some(jdk17)`
+and then `okayHttpJVM/test` looked like a clean 109/109 pass, but the sbt banner still
+read "Eclipse Adoptium Java 21.0.12": the tests ran in-process, on the JVM that launched
+sbt, not on the requested one. Only forcing `set every Test / fork := true` in the same
+command revealed the real (broken) behavior underneath. Any future JDK-version check
+here must force both settings `every`, together, and confirm from the sbt banner or a
+genuine JDK-version-gated failure that the fork actually happened — a clean pass alone is
+not evidence.
+
+Measured (fork + javaHome + `--include-tags=Live` where a module's real integration
+suite is Live-tagged, since that is where the unconditional call sites actually run):
+
+| module | JDK 17, for real | evidence |
+|---|---|---|
+| `okayJVM` (core) | **yes**, with one caveat below | 736/746 — all 10 failures name `Schedulers.loom` or a JDK21+ `Thread` API by identifier, in the test's own source, by design |
+| `okaySpark` | **yes** | 4/4, unaffected — ceiling is JDK 24+, 17 is far under it |
+| `okayDelta` | **yes** | 4/4, same ceiling story |
+| `okayScript` | no | `Sessions.scala:89`, `PersistedBackend`'s constructor: `Thread.ofVirtual()`, unconditional, in the live-reload tail loop |
+| `okayHttpJVM` | no | `Server.scala:34`: `Executors.newVirtualThreadPerTaskExecutor()`, unconditional — first surfaced only once fork was forced (see trap above) |
+| `okayClusterJVM` | no | socket-accept loop: `Thread.ofVirtual()`, unconditional |
+| `okayPersistJVM` | no | `RaftWire.scala:150`, `Node`'s constructor: `Thread.ofVirtual()`, unconditional — every wire-backed Raft test fails at construction |
+| `okayJetty` | no | `VirtualThreadPool.<init>` throws `IllegalStateException: Virtual Threads not supported` directly (jetty-virtual-threads' own guard, not even a linkage error) — the `Server(VirtualThreadPool())` change this session made |
+| `okayNetty` | no | fails through its `okayHttp.jvm` dependency the moment a test builds a real server — same call site as `okayHttpJVM`, one hop away |
+
+**`okayJVM`'s own caveat, found by measurement, not assumed away:** two of the ten
+"expected" failures are not API-absence at all. `TestPar`'s fail-fast timing assertion
+and `TestDirectParallel`'s rendezvous test both use the ambient default scheduler (no
+explicit `Schedulers.loom`), and both fail differently — not `NoSuchMethodError`, but
+wrong answers / blown timing budgets — because `Schedulers.auto` correctly falls back to
+`own.build` (a bounded platform-thread pool) on JDK 17, and `own.build`'s workers do not
+tolerate a fiber body making a *real* OS-level blocking call (`Thread.sleep`,
+`CountDownLatch.await`) the way a virtual thread can. A fiber that blocks its own
+platform-thread worker can starve a sibling fiber waiting on the same bounded pool — the
+exact hazard the source article this session started from was about. This is a genuine,
+expected trade-off of the adaptive fallback, not a bug in it: code written against
+`Async`'s own primitives (not raw `java.util.concurrent` blocking calls) does not hit it.
+
+**What this measurement does NOT do: fix the six broken modules.** Each would need the
+same treatment `Schedulers`/`Timer` already got (`hasVirtualThreads`-gated branch, a
+portable fallback) at its own unconditional call site — real, separate work, one module
+at a time, not attempted here.
+
 ## Related
 
 `backlog.d/okay-script/mrjar-jdk25-ci-gap.md` — nothing automatically
