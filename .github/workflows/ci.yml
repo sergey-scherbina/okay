@@ -101,5 +101,12 @@ jobs:
             targets-${{ runner.os }}-
       - name: The whole family on one platform, and the benchmarks compiled
         run: |
-          sbt "family ${{ matrix.platform }}"
+          # gate.sh, not a bare sbt call (ci-native-flake): a lost test
+          # process on Native is a known, false failure shape
+          # (native-runner-error), and the nightly job was re-teaching
+          # itself the same lesson gate.sh already knows how to answer —
+          # its watchdog and rerun-alone logic apply to "family <platform>"
+          # exactly as they do to "affected <ref>", since anything but
+          # the "affected" form passes through gate.sh untouched.
+          sh scripts/gate.sh "family ${{ matrix.platform }}"
           if [ "${{ matrix.platform }}" = "jvm" ]; then sbt okayJVM/Jmh/compile compare/Jmh/compile; fi
