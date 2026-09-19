@@ -169,6 +169,7 @@ external list actually bites:
 
 | | |
 |---|---|
-| `../docs/modules/okay-mcp.md` | how the module is built: the pieces, and where each MCP capability lands in this library's vocabulary |
-| `../specs/mcp.md` | the design and its decisions |
-| `../specs/security.md` | stage 1 (MCP as an OAuth resource server) and stage 7 (the tool gate, capabilities, the external list) |
+| [`docs/modules/okay-mcp.md`](../docs/modules/okay-mcp.md) | how the module is built: the pieces, and where each MCP capability lands in this library's vocabulary |
+| [`specs/mcp.md`](../specs/mcp.md) | the design and its decisions |
+| [`specs/security.md`](../specs/security.md) | stage 1 (MCP as an OAuth resource server) and stage 7 (the tool gate, capabilities, the external list) |
+| [`okay-security/`](../okay-security) | the module the access-control half lives in |
