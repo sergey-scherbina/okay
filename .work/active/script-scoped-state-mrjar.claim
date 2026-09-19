@@ -1,0 +1,6 @@
+feature/script-scoped-state-mrjar 2026-09-19T10:03:15Z
+agent: claude-code
+heartbeat: 2026-09-19T10:03:15Z
+status: in-progress
+done-so-far: PoC proven in scratch (JDK25 compiles java.lang.ScopedValue variant, API matches base)
+next: write spec, then implement
