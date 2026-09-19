@@ -128,16 +128,46 @@ object Stream:
    * default, spelled out (stream-fold-via-iterator, 2026-09-20; the
    * numbers are in specs/stream-fold-via-iterator.md).
    *
-   * Deliberately NOT dispatching on the accumulator, unlike
-   * `Chunks.fold` and `Writer.fold`: measured on the old walk the
-   * dispatch bought nothing (139.9 vs 157.2 us, bars overlapping),
-   * and the spec's Results re-ask the question on this one.
+   * AND dispatching on the accumulator, as `Chunks.fold` and
+   * `Writer.fold` do — which this loop used to decline: on the old
+   * walk the dispatch bought nothing (139.9 vs 157.2 us, bars
+   * overlapping) because the per-element `uncons` program dwarfed it.
+   * On the iterator it is the remaining cost: the generic
+   * `add(Object, Object)Object` boxes a `Long` accumulator per
+   * element — 240 KB and 40 us of a 98 us walk over 10k, measured
+   * against the same iterator in a hand-written `while` (spec
+   * Results, round 2). Each arm is four lines now, so five copies
+   * cost what they weigh.
    */
-  def fold[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B =
-    val it = St.iterator(s)
-    var b = f.init
-    while it.hasNext do b = f.add(b, it.next())
-    b
+  def fold[S[_], F[+_], A, B](s: S[A])(using fo: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B =
+    // the element type is erased, so these tests see only the shape —
+    // the same unavoidable `@unchecked` `Chunks.fold` carries
+    fo match
+      case l: Fold.OfLong[A @unchecked] =>
+        val it = St.iterator(s)
+        var b = l.initLong
+        while it.hasNext do b = l.addLong(b, it.next())
+        b
+      case i: Fold.OfInt[A @unchecked] =>
+        val it = St.iterator(s)
+        var b = i.initInt
+        while it.hasNext do b = i.addInt(b, it.next())
+        b
+      case d: Fold.OfDouble[A @unchecked] =>
+        val it = St.iterator(s)
+        var b = d.initDouble
+        while it.hasNext do b = d.addDouble(b, it.next())
+        b
+      case bo: Fold.OfBoolean[A @unchecked] =>
+        val it = St.iterator(s)
+        var b = bo.initBoolean
+        while it.hasNext do b = bo.addBoolean(b, it.next())
+        b
+      case _ =>
+        val it = St.iterator(s)
+        var b = fo.init
+        while it.hasNext do b = fo.add(b, it.next())
+        b
 
 extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
   /** keep the elements satisfying p */
