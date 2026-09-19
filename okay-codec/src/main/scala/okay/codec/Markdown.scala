@@ -1,7 +1,8 @@
 package okay.codec
 
-import okay.lex.{Scan, Span, Token}
+import okay.lex.{Scan, ScanInto, Span, Token}
 import okay.parse.{Cst, Instr, Parse}
+import scala.collection.mutable.Growable
 
 /**
  * The Markdown dialect — the REFRAMING prover of specs/codecs.md.
@@ -31,7 +32,14 @@ object Markdown {
 
   final case class S(buf: String, start: P, at: P)
 
-  val scan: Scan[K, S] = new Scan[K, S]:
+  // extends ScanInto rather than Scan (scan-into-the-other-scanners):
+  // writing straight onto the sink `stepInto` is handed, instead of
+  // building the (S, Vector[Token[K]]) pair `step` answered, avoids
+  // both the Tuple2 per character and the Vector per finished token
+  // (docs/benchmarks.md §10, Json's own move). `parse` below already
+  // calls `scan.stepInto` — Scan's interface always exposes it — so
+  // nothing at any call site changes; only which one does the work.
+  val scan: Scan[K, S] = new ScanInto[K, S]:
     def init: S = S("", P(0, 0, 0), P(0, 0, 0))
 
     override def key(s: S): Any = s.buf
@@ -48,7 +56,7 @@ object Markdown {
       else Vector(Token(K.Text, s.buf,
         Span(s.start.off, s.start.line, s.start.col, s.buf.length)))
 
-    def step(s: S, c: Char): (S, Vector[Token[K]]) =
+    override def stepInto(s: S, c: Char, out: Growable[Token[K]]): S =
       val special = c match
         case '#' => Some(K.Hash)
         case '*' => Some(K.Star)
@@ -59,10 +67,13 @@ object Markdown {
       special match
         case Some(k) =>
           val next = s.at + c
-          (S("", next, next), flushed(s) :+ one(k, c, s.at))
+          if s.buf.nonEmpty then
+            out += Token(K.Text, s.buf, Span(s.start.off, s.start.line, s.start.col, s.buf.length))
+          out += one(k, c, s.at)
+          S("", next, next)
         case None =>
-          if s.buf.isEmpty then (S(c.toString, s.at, s.at + c), Vector.empty)
-          else (s.copy(buf = s.buf + c, at = s.at + c), Vector.empty)
+          if s.buf.isEmpty then S(c.toString, s.at, s.at + c)
+          else s.copy(buf = s.buf + c, at = s.at + c)
 
     def flush(s: S): Vector[Token[K]] = flushed(s)
 

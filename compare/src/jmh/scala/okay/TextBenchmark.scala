@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import okay.lex.{Scan, Json as JsonLex}
 import okay.parse.{Cst, JsonParse, Parse}
-import okay.codec.{Cbor, Json, Schema}
+import okay.codec.{Cbor, Json, Markdown, Schema}
 import okay.lex.Bpe
 import io.circe.syntax.*
 
@@ -59,6 +59,19 @@ class TextBenchmark {
   def lexChunked8: Long =
     Chunks.fold(Scan.chunks(JsonLex.scan)(Chunks.fromIterator(doc.iterator, 8)))(
       using Fold.count)
+
+  // ~1.3KB: headings, paragraphs, emphasis crossing (the reframing
+  // case), code spans — every branch of Markdown.scan's step
+  val mdDoc: String = (0 until 30)
+    .map(i => s"# heading $i\n\nsome *em _crossing${i}_ text* and `code $i` here\n")
+    .mkString
+
+  /** Markdown.scan on ScanInto (scan-into-the-other-scanners): the
+   * comparison this backlog entry asked for, against JsonLex's own
+   * lexElementwise above — both drive through Scan.all, so the only
+   * variable is which scanner overrides stepInto directly */
+  @Benchmark
+  def lexMarkdownElementwise: Int = Scan.all(Markdown.scan)(mdDoc).tokens.length
 
   // ---- parsing, full and incremental
 
