@@ -1,0 +1,10 @@
+feature/json-strict-is-now-the-slow-door 2026-09-19T12:20:00Z
+agent: claude-code
+heartbeat: 2026-09-19T12:20:00Z
+status: in-progress
+done-so-far: worktree created
+next: confirm the DISQUALIFYING condition against docs/benchmarks.md
+  section 10 (it already states the strict walk costs ~3.3x the bare
+  parse for the field map/erased-parts/make, which the backlog item's
+  own text treats as sufficient to close wontfix); close the backlog
+  entry with that verdict, no code change
