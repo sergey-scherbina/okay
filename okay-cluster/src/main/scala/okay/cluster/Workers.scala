@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.*
-import okay.codec.{Codecs, Schema}
+import okay.codec.{Codecs, Digest, Schema}
 
 /**
  * THE WORKER PROTOCOL (specs/dataflow.md, stage 4b).
@@ -21,10 +21,15 @@ import okay.codec.{Codecs, Schema}
  * different answer.
  */
 enum Req:
-  /** the pre-pass over one partition */
-  case Extent(job: String, params: Array[Byte], part: Int, of: Int)
+  /** the pre-pass over one partition. `digest` is the coordinator's
+   * own `okay.codec.Digest` of the job's partial Schema, encoded —
+   * empty when the coordinator has not been built with the door
+   * check (specs/federation.md, stage 3), which skips it entirely,
+   * the same "hasn't asked yet" shape as `Checkpoint.none` */
+  case Extent(job: String, params: Array[Byte], part: Int, of: Int, digest: Array[Byte] = Array.emptyByteArray)
   /** run one partition under the bounds the coordinator computed */
-  case Run(job: String, params: Array[Byte], part: Int, of: Int, bounds: Vector[Bounds])
+  case Run(job: String, params: Array[Byte], part: Int, of: Int, bounds: Vector[Bounds],
+           digest: Array[Byte] = Array.emptyByteArray)
   /** what this worker's build knows how to run */
   case Known
 
@@ -32,7 +37,13 @@ enum Req:
 
   /** begin an epoch-by-epoch run of one partition, and keep its
    * operator state between rounds */
-  case Open(job: String, params: Array[Byte], part: Int, of: Int, session: Long)
+  case Open(job: String, params: Array[Byte], part: Int, of: Int, session: Long,
+            /** where to open: `from` elements in and already at
+             * `epoch` — zero and zero is the start, and what a
+             * windowed sink always asks for (stage 11 box 2) */
+            from: Long = 0L, epoch: Int = 0,
+            /** the door check (specs/federation.md, stage 3) — see `Extent` */
+            digest: Array[Byte] = Array.emptyByteArray)
   /**
    * Advance this partition to EPOCH `epoch` — by up to `take`
    * elements per epoch — and hand back what it closed in that one.
@@ -60,7 +71,10 @@ enum Resp:
    * coordinator needs the second to compute the watermark, which in a
    * stream is the MINIMUM over the partitions rather than the maximum
    * over everything */
-  case Epoch(bytes: Array[Byte], extent: Vector[Flows.Extent], drained: Boolean)
+  case Epoch(bytes: Array[Byte], extent: Vector[Flows.Extent], drained: Boolean,
+             /** elements consumed so far — the position a seekable
+              * sink's replacement opens at */
+             consumed: Long = 0L)
   case Opened(session: Long)
   case Failed(why: String)
 
@@ -88,6 +102,118 @@ object Cluster {
   type Serve = Req => Resp
 
   /**
+   * A JOB'S CONSIDERED "NO" for a partition (specs/federation.md,
+   * stage 1). Thrown from a flow's partition thunk when this process
+   * must not compute that partition — it is another party's — and
+   * answered as `Resp.Failed`, which the coordinator does not retry
+   * elsewhere. Distinct from any other throwable on purpose: a crash
+   * in-process still propagates (and is retried as a death), a
+   * refusal never does.
+   */
+  final class Refused(why: String) extends RuntimeException(why)
+
+  /**
+   * A WORKER THAT ANSWERS TO ITS OWNER (specs/federation.md, stage 2).
+   *
+   * Stage 1 showed two parties computing one answer without either
+   * one's records leaving. It did so with workers that run ANY job
+   * their build knows, for ANYBODY who asks — which is fine between
+   * processes one person started, and is the whole question between
+   * organisations. This is the door.
+   *
+   * Two checks, in this order and both BEFORE the request reaches the
+   * job:
+   *
+   *   - is the caller a coordinator this party recognises?
+   *   - is this a job this party allows?
+   *
+   * The order matters for what a refusal tells an outsider. An
+   * unrecognised caller learns only that it is not recognised — never
+   * which jobs the party allows, which would be a directory of its
+   * business handed to a stranger.
+   *
+   * WHY IT IS A `Serve` WRAPPER AND NOT A FIELD ON `Req`. The caller
+   * is a property of the CONNECTION, not of each message: a socket
+   * authenticates once and every request on it comes from the party
+   * that authenticated. Putting an identity in `Req` would put it
+   * where the sender controls it, which is the one place it must not
+   * be. Here the transport supplies it and the message cannot argue.
+   *
+   * A REFUSAL IS `Resp.Failed`, not a throw, and that is the same
+   * distinction stage 1 had to make: the coordinator does not carry a
+   * refusal to another worker, so a party that says no is not treated
+   * as a party that died. `Cluster.Refused` says it in process, and
+   * this answers it directly.
+   *
+   * WHAT THIS IS NOT. It is not authentication: `caller` is whoever
+   * the transport says it is, and establishing that is
+   * `okay-security`'s business (a `Capability` narrows without the
+   * issuer, which is the shape a delegated submission wants). This is
+   * the AUTHORISATION half, and it is deliberately dull — a set
+   * membership test in front of a door that had none.
+   */
+  def guarded(jobs: Set[String], coordinators: Set[String])
+             (caller: String)(base: Serve): Serve = req =>
+    if !coordinators.contains(caller) then
+      Resp.Failed(s"this party does not recognise the coordinator '$caller'")
+    else
+      named(req) match
+        case Some(job) if !jobs.contains(job) =>
+          Resp.Failed(s"this party does not run the job '$job'; it allows " +
+            jobs.toVector.sorted.mkString("[", ", ", "]"))
+        case _ => base(req)
+
+  /** the job a request names, where it names one. `Advance` and
+   * `Close` name a SESSION, which was admitted when it was opened —
+   * so the job check has already happened for them, and the
+   * coordinator check above still has not. */
+  private def named(req: Req): Option[String] = req match
+    case Req.Extent(job, _, _, _, _) => Some(job)
+    case Req.Run(job, _, _, _, _, _) => Some(job)
+    case Req.Open(job, _, _, _, _, _, _, _) => Some(job)
+    case Req.Known | Req.Advance(_, _, _, _) | Req.Close(_) => None
+
+  /**
+   * THE DOOR CHECK (specs/federation.md, stage 3): a job whose
+   * partial Schema this party would produce differently from what
+   * the coordinator's own `Digest` expects is refused before a byte
+   * of it runs — the same shape `guarded` uses for identity, applied
+   * to the wire's shape instead. OPT IN, like `guarded`: a party that
+   * wraps its `Serve` with this pays for the check; one that does not
+   * pays nothing, and the coordinator's digest (always sent, computed
+   * once per run) simply goes unread.
+   *
+   * An EMPTY digest skips the check — a coordinator built before this
+   * box, or one that never populates it, changes nothing for a party
+   * that opts in; a job NOT FOUND is left to the ordinary "no job
+   * named" answer downstream rather than duplicated here.
+   */
+  def schemaChecked(base: Serve): Serve = req =>
+    digestOf(req) match
+      case None => base(req)
+      case Some((_, _, digest)) if digest.isEmpty => base(req)
+      case Some((jobName, params, digest)) =>
+        Jobs.find(jobName) match
+          case None => base(req)
+          case Some(job) =>
+            job.wireSchema(params) match
+              case Left(why) => Resp.Failed(s"parameters for '$jobName': $why")
+              case Right(mine) =>
+                Codecs.cbor(summon[Schema[Digest]]).decode(digest) match
+                  case Left(why) => Resp.Failed(s"the coordinator's schema digest for '$jobName': $why")
+                  case Right(theirs) =>
+                    val v = Digest.compare(mine, theirs).backward
+                    if v.compatible then base(req)
+                    else Resp.Failed(s"the coordinator cannot decode '$jobName''s partial:\n" +
+                      v.reasons.mkString("\n"))
+
+  private def digestOf(req: Req): Option[(String, Array[Byte], Array[Byte])] = req match
+    case Req.Extent(job, params, _, _, digest) => Some((job, params, digest))
+    case Req.Run(job, params, _, _, _, digest) => Some((job, params, digest))
+    case Req.Open(job, params, _, _, _, _, _, digest) => Some((job, params, digest))
+    case _ => None
+
+  /**
    * Run a registered job across workers, partition i on worker
    * `i % workers.length`.
    *
@@ -96,19 +222,30 @@ object Cluster {
    * count mean the same thing whether the partitions ran here or on
    * four machines.
    */
-  def run[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve])
+  def run[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve],
+                /** consecutive failures that bury a worker — see
+                 * `Living.Tolerance` for the default and dataflow-netem
+                 * for what it means on a lossy wire */
+                tolerance: Int = Living.Tolerance)
                (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
+    require(tolerance > 0, "a worker is buried after at least one failure")
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    val living = Living(workers.length)
+    val living = Living(workers.length, tolerance)
+    // THE DOOR CHECK'S OTHER HALF (specs/federation.md, stage 3):
+    // computed ONCE per run and attached to every request that names
+    // this job. A party who never opts into `schemaChecked` never
+    // decodes it; the cost of ALWAYS sending it is one small,
+    // structural CBOR encode per run, not per partition or element.
+    val digest = Codecs.cbor(summon[Schema[Digest]]).encode(Digest.of(sink.wire))
 
     val bounds: Vector[Vector[Bounds]] ! Async =
       if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
       else
         Flows.spread(parts)(i =>
-          ask(workers, living, i, Req.Extent(job.name, encoded, i, parts)) match
+          ask(workers, living, i, Req.Extent(job.name, encoded, i, parts, digest)) match
             case Resp.Extents(cols) => cols
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
             case other => throw IllegalStateException(s"partition $i answered $other to a pre-pass"))
@@ -116,7 +253,7 @@ object Cluster {
 
     bounds.flatMap: bs =>
       Flows.spread(parts) { i =>
-        ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i))) match
+        ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i), digest)) match
           case Resp.Partial(bytes) =>
             Codecs.cbor(sink.wire).decode(bytes) match
               case Right(w) => w
@@ -231,7 +368,13 @@ object Cluster {
      * HOW MANY CONSECUTIVE FAILURES ARE A DEATH.
      *
      * Three, and the number is a judgement rather than a
-     * measurement: one is what the engine did and could not survive a
+     * measurement — and dataflow-netem then measured what it does on
+     * a LOSSY wire, where a failure is a packet and not a machine:
+     * the count converts loss into burials from about 30% loss up,
+     * and burying a worker whose wire is merely lossy is what ends a
+     * run. It is a default for a wire that is not known to be lossy;
+     * `Cluster.run` and `Cluster.stream` take it as a parameter.
+     * The original reasoning: one is what the engine did and could not survive a
      * blip, and a large number keeps asking a corpse. What makes
      * three cheap is that the count is per WORKER and per RUN, so a
      * worker that is really gone costs three attempts once, not three
@@ -244,14 +387,25 @@ object Cluster {
    * up and running it. This is what a served process does, and it is
    * also what an in-process worker does — one function, so a test
    * without sockets exercises the same code a socket does.
+   *
+   * A `Refused` thrown by the job is answered as `Resp.Failed`, here
+   * as over a socket (`Served.handle` does the same for every
+   * throwable): a refusal is the worker's considered answer and must
+   * reach the coordinator as one, or `ask` would carry it to the next
+   * worker as if the first had died — which for a federated job means
+   * asking party A to compute party B's share (specs/federation.md).
    */
-  val local: Serve = {
+  val local: Serve = req =>
+    try serving(req)
+    catch case r: Refused => Resp.Failed(r.getMessage)
+
+  private val serving: Serve = {
     case Req.Known => Resp.Names(Jobs.names)
-    case Req.Open(name, params, part, of, session) =>
+    case Req.Open(name, params, part, of, session, from, epoch, _) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
-          job.openAt(params, part, of) match
+          job.openAt(params, part, of, from, epoch) match
             case Right(st) => { Sessions.put(session, st); Resp.Opened(session) }
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
     case Req.Advance(session, take, bounds, epoch) =>
@@ -265,14 +419,14 @@ object Cluster {
           val out = st.finish()
           Sessions.drop(session)
           out
-    case Req.Extent(name, params, part, of) =>
+    case Req.Extent(name, params, part, of, _) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
           job.extentAt(params, part, of) match
             case Right(cols) => Resp.Extents(cols)
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
-    case Req.Run(name, params, part, of, bounds) =>
+    case Req.Run(name, params, part, of, bounds, _) =>
       Jobs.find(name) match
         case None => Resp.Failed(s"no job named '$name' in this build; it knows ${Jobs.names}")
         case Some(job) =>
@@ -308,14 +462,19 @@ object Cluster {
    * batch one is wrong rather than different.
    */
   def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
-                   journal: Checkpoint = Checkpoint.none, term: Long = 0L)
+                   journal: Checkpoint = Checkpoint.none, term: Long = 0L,
+                   tolerance: Int = Living.Tolerance)
                   (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
     require(take > 0, "an epoch advances by at least one element")
+    require(tolerance > 0, "a worker is buried after at least one failure")
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    val living = Living(workers.length)
+    val living = Living(workers.length, tolerance)
+    // the door check's other half (specs/federation.md, stage 3) —
+    // see `Cluster.run`'s identical line
+    val digest = Codecs.cbor(summon[Schema[Digest]]).encode(Digest.of(sink.wire))
     val folded = Codecs.cbor(Folded.given_Schema_Folded)
     val held = Codecs.cbor(sink.state)
     // the ids this run's sessions carry — inherited from the journal
@@ -326,14 +485,103 @@ object Cluster {
         case Right(f) => Some(f)
         case Left(why) => throw IllegalStateException(s"the journal at epoch $at: $why")
     }
-    val base = resuming.fold(System.nanoTime())(_.base)
+    // A RESCALE (stage 13) is a resume whose new width differs from
+    // the journal's. It mints FRESH session ids rather than inheriting
+    // the predecessor's: those sessions were reading the OLD cut's
+    // slices, and reusing them under the new cut would read the wrong
+    // elements. (A same-width resume still inherits, so it strands
+    // none — the property TestResume pins.)
+    val rescaling: Boolean = resuming.exists(_.seen.length != parts)
+    val base =
+      if rescaling then System.nanoTime()
+      else resuming.fold(System.nanoTime())(_.base)
     val sessions = Vector.tabulate(parts)(i => base + i)
-    def opening(i: Int): Req.Open = Req.Open(job.name, encoded, i, parts, sessions(i))
+    /**
+     * WHERE A SESSION OPENS — and it is the same question on a resume
+     * and on a replacement worker mid-run, which is why it is one
+     * function. A seekable sink's session opens at the position the
+     * last absorbed epoch left it, already at that epoch; a windowed
+     * sink's opens at zero and replays (stage 11 box 2).
+     *
+     * A RESCALE opens at a position too, even for a windowed sink: the
+     * position is the clean global PREFIX the old run consumed, the
+     * same for every new partition, and a striped source skips it and
+     * re-stripes the rest (stage 13). So a re-cut reads only the
+     * suffix — no replay — and the fold carries the prefix.
+     */
+    def opening(i: Int, positions: Vector[Long], absorbed: Int,
+                seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek]): Req.Open =
+      if (sink.seekable || rescaling) && positions.nonEmpty then
+        Req.Open(job.name, encoded, i, parts, sessions(i), positions(i), absorbed, digest)
+      else
+        val at = seeking(i, seen, marks)
+        if at < 0 then Req.Open(job.name, encoded, i, parts, sessions(i), digest = digest)
+        else Req.Open(job.name, encoded, i, parts, sessions(i),
+          marks(at).positions(i), marks(at).epoch, digest)
+
+    // -- ROAD B: where a sink with a HORIZON opens -------------------
+    //   (specs/dataflow.md, stage 11 box 2b)
+    //
+    // A windowed partition keeps its open panes inside itself, so a
+    // session at a position has none of them and every session
+    // replayed from zero. It does not have to. Partition i's own
+    // operator closes a pane when `start + size <= max_i - lateness`,
+    // so every pane STILL OPEN there starts above `max_i -
+    // sink.horizon` and holds only elements above that point. A
+    // session opened at an epoch where partition i's maximum was
+    // already that far back therefore skips nothing an open pane
+    // wants: the panes that DID hold a skipped element are all closed
+    // again before the requested epoch, and a catch-up discards
+    // exactly those (Job's `advance`).
+    //
+    // The cut is per PARTITION, not global, because the operator that
+    // holds the panes is per partition — a global watermark would be
+    // the slowest partition's clock and would refuse every seek on a
+    // feed whose partitions cover different times.
+    //
+    // A mark records the HIGHEST event time over the sink's time
+    // columns and the cut is taken from the LOWEST, so a sink reading
+    // two clocks (`and`) is offered a mark only when both are past it.
+    def high(e: Vector[Flows.Extent]): Long =
+      if e.isEmpty then Long.MinValue else e.map(_.max).max
+    def low(e: Vector[Flows.Extent]): Long =
+      if e.isEmpty then Long.MinValue else e.map(_.max).min
+    /** the newest mark partition `i` may open at, or -1 for none */
+    def seeking(i: Int, seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek]): Int =
+      if sink.horizon <= 0L || marks.isEmpty then -1
+      else
+        val now = low(seen(i))
+        if now == Long.MinValue then -1
+        else
+          val cut = now - sink.horizon
+          marks.lastIndexWhere(m => m.maxes(i) != Long.MinValue && m.maxes(i) <= cut)
+
+    /**
+     * THE MARKS THIS EPOCH LEAVES BEHIND, pruned.
+     *
+     * Everything older than the oldest partition's own target is
+     * unreachable for ever — a cut only rises — so it is dropped. The
+     * cap is a second bound for a feed whose partitions run at wildly
+     * different event times: dropping the OLDEST mark costs a
+     * partition seek distance and can never cost correctness, since
+     * the fallback is the replay from zero that was the only road
+     * before this box.
+     */
+    def marking(seen: Vector[Vector[Flows.Extent]], marks: Vector[Seek],
+                round: Int, stood: Vector[Long]): Vector[Seek] =
+      if sink.seekable || sink.horizon <= 0L then Vector.empty
+      else
+        val grown = marks :+ Seek(round, stood, Vector.tabulate(parts)(i => high(seen(i))))
+        val oldest = (0 until parts).map(i => seeking(i, seen, grown)).min
+        val kept = if oldest <= 0 then grown else grown.drop(oldest)
+        if kept.length <= Seeks then kept else kept.takeRight(Seeks)
 
     def commit(round: Int, st: sink.S, seen: Vector[Vector[Flows.Extent]],
-               drops: Long, merged: Long, over: Boolean = false): Unit =
+               drops: Long, merged: Long, positions: Vector[Long],
+               marks: Vector[Seek], over: Boolean = false): Unit =
       journal.save(round,
-        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over)))
+        folded.encode(Folded(round, seen, drops, merged, held.encode(st), base, term, over,
+          positions, marks)))
 
     // NO UPFRONT OPEN. The first `Advance` finds no session and opens
     // one, which is the identical path a replacement worker takes —
@@ -341,6 +589,7 @@ object Cluster {
     // than only when something has died.
     locally:
       def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long,
+                positions: Vector[Long], marks: Vector[Seek], below: Long,
                 round: Int): Run[R] ! Async =
         // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
         // place the streaming engine had to stop copying the batch
@@ -373,7 +622,7 @@ object Cluster {
         // upper bound at MinValue is what finishes nothing locally.
         val bs = Vector.fill(parts)(sink.times.map(_ => Bounds(Long.MinValue, Long.MinValue)))
         Flows.spread(parts) { i =>
-          advancing(workers, living, i, opening(i),
+          advancing(workers, living, i, opening(i, positions, round - 1, seen, marks),
             Req.Advance(sessions(i), take, bs(i), round)) match
             case e: Resp.Epoch => e
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
@@ -381,10 +630,18 @@ object Cluster {
         }.flatMap { es =>
           val ws = es.zipWithIndex.map { (e, i) =>
             Codecs.cbor(sink.wire).decode(e.bytes) match
-              case Right(w) => w
+              // SIFTED, and `below` is `Long.MinValue` for every run
+              // that is not a windowed re-cut — which keeps every
+              // pane, so this costs those runs one comparison a pane
+              // and changes nothing. After a re-cut it is the
+              // watermark the coordinator's retirement used, and it
+              // is what stops a replayed element counting twice
+              // (specs/dataflow.md stage 13 box 2).
+              case Right(w) => sink.sift(w, below)
               case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
           }
           val grown = seen.indices.toVector.map(i => merge(seen(i), es(i).extent))
+          val stood = es.map(_.consumed)
           // NOT `drained`: the SOURCES being exhausted is not the
           // stream being over. Every operator still holds the panes
           // its own watermark never closed, and those come out on the
@@ -410,7 +667,8 @@ object Cluster {
           // twice, which a writer that records the epoch number with
           // its data ignores.
           sink.committed(round)
-          commit(round, next, grown, d, m)
+          val left = marking(grown, marks, round, stood)
+          commit(round, next, grown, d, m, stood, left)
           if es.forall(_.drained) then
             // THE CLOSE CARRIES A PARTIAL. Every pane still open when
             // the source ran out is swept out by `finish` and comes
@@ -430,7 +688,7 @@ object Cluster {
             }.map { last =>
               val lw = last.zipWithIndex.map { (e, i) =>
                 Codecs.cbor(sink.wire).decode(e.bytes) match
-                  case Right(w) => w
+                  case Right(w) => sink.sift(w, below)
                   case Left(why) => throw IllegalStateException(s"partition $i's last partial: $why")
               }
               val end = sink.absorb(next, lw, Long.MaxValue)
@@ -448,10 +706,10 @@ object Cluster {
               // the last round's, which is exactly what happened the
               // first time this was written.
               sink.committed(round + 1)
-              commit(round + 1, end, grown, dd, mm, over = true)
+              commit(round + 1, end, grown, dd, mm, stood, left, over = true)
               Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
-          else epoch(next, grown, d, m, round + 1)
+          else epoch(next, grown, d, m, stood, left, below, round + 1)
         }
 
       /**
@@ -466,7 +724,8 @@ object Cluster {
        * replacement worker for everyone at once.
        */
       resuming match
-        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L, 1)
+        case None => epoch(sink.empty, Vector.fill(parts)(Vector.empty), 0L, 0L,
+          Vector.fill(parts)(0L), Vector.empty, Long.MinValue, 1)
         case Some(f) =>
           held.decode(f.state) match
             case Left(why) =>
@@ -487,7 +746,97 @@ object Cluster {
               // thing a writer needs to know before the first pane of
               // the resumed run reaches it
               sink.recovered(f.epoch)
-              epoch(st, f.seen, f.drops, f.merged, f.epoch + 1)
+              // RESCALE (specs/dataflow.md, stage 13). The journal's
+              // per-partition vectors are as WIDE as the run that wrote
+              // them; a resume at a different `parts` re-cuts the source
+              // and they no longer fit. The FOLD (`st`) carries across
+              // untouched — it is keyed by (window, key), not by
+              // partition, which is the whole reason a re-cut is
+              // possible at all.
+              //
+              // Only a STRIPED source can be re-cut (`Job.rescalable`).
+              // Its consumed elements are a clean global PREFIX [0, G)
+              // after a lockstep run — the same set whatever the
+              // partition count — where G is the SUM of the
+              // per-partition positions (lockstep, so they tile [0, G)
+              // with no gap). Each NEW partition j then skips the count
+              // of its own elements that fall in [0, G) — ceil((G-j) /
+              // parts) — and reads the rest, so the re-striped
+              // partitions read exactly xs[G..] between them and the
+              // fold carries xs[..G). No replay: the skips are exact.
+              //
+              // Two refusals, both to avoid a quietly wrong answer:
+              //   - a CONTIGUOUS cut has no global prefix to skip (its
+              //     positions are offsets into slices a re-cut redraws);
+              //   - a WINDOWED sink keeps open panes in the WORKER, not
+              //     in the journal (they are rebuilt by replay on a
+              //     same-width resume), so a re-cut that does not replay
+              //     would lose the panes open at the stop point. A
+              //     keyed or fold sink keeps everything in the fold and
+              //     rescales cleanly. (Windowed rescale needs those
+              //     open panes journalled — stage 13's box 2.)
+              val (seen0, pos0) =
+                if f.seen.length == parts then (f.seen, f.positions)
+                else if !job.rescalable then throw IllegalStateException(
+                  s"job '${job.name}' cannot rescale ${f.seen.length} -> $parts partitions " +
+                    "(specs/dataflow.md stage 13): its source is a contiguous cut, whose " +
+                    "per-partition positions do not survive a re-cut. Only a striped source " +
+                    "(Job.rescalable) has a clean global prefix to resume from.")
+                else if sink.seekable then
+                  val g = f.positions.sum
+                  (Vector.fill(parts)(Vector.empty[Flows.Extent]),
+                   Vector.tabulate(parts)(j => math.max(0L, (g - j + parts - 1) / parts)))
+                else
+                  // A WINDOWED RE-CUT REPLAYS ITS OPEN PANES RATHER
+                  // THAN READING THEM OUT OF A JOURNAL (stage 13 box
+                  // 2, the second answer). Every pane still open
+                  // starts above the horizon mark's maximum, so new
+                  // sessions opened at that mark's global prefix
+                  // rebuild all of them — and the coordinator empties
+                  // its partial copies and sifts out whatever reaches
+                  // a pane it has already retired.
+                  //
+                  // The cut is GLOBAL here where box 2b's is per
+                  // partition, and for the same reason it was per
+                  // partition there: each new partition reads a stripe
+                  // of the WHOLE range, so the clock a re-cut session
+                  // runs on is the stream's, not one slice's.
+                  val hi = f.seen.map(e => if e.isEmpty then Long.MinValue else e.map(_.max).max).max
+                  val lo = f.seen.map(e => if e.isEmpty then Long.MinValue else e.map(_.max).min).min
+                  val cut = if lo == Long.MinValue then Long.MinValue else lo - sink.horizon
+                  val target = f.marks.reverseIterator.find(m =>
+                    m.positions.length == f.seen.length &&
+                      m.maxes.max != Long.MinValue && m.maxes.max <= cut)
+                  val m = target.getOrElse(throw IllegalStateException(
+                    s"job '${job.name}' cannot rescale a WINDOWED sink yet " +
+                      "(specs/dataflow.md stage 13, box 2): its open panes live in the worker, " +
+                      "and a re-cut rebuilds them by replaying from the horizon mark — but no " +
+                      s"mark in the journal is a horizon (${sink.horizon}) below where the run " +
+                      s"stands (event time $hi, cut $cut). A run too young to have one, or a " +
+                      "sink with no horizon at all, still has to keep its width."))
+                  val gm = m.positions.sum
+                  (Vector.fill(parts)(Vector.empty[Flows.Extent]),
+                   Vector.tabulate(parts)(j => math.max(0L, (gm - j + parts - 1) / parts)))
+              // THE MARKS COME BACK TOO, and only when they still
+              // fit: a rescale re-cuts the partitions and a mark's
+              // positions are the OLD cut's, so a re-cut starts
+              // collecting fresh ones.
+              val marks0 =
+                if f.seen.length == parts then f.marks.filter(_.positions.length == parts)
+                else Vector.empty
+              // A WINDOWED RE-CUT, AND THE TWO RULES THAT MAKE IT
+              // EXACT (specs/dataflow.md stage 13 box 2). The open
+              // panes here are partial copies of panes the replay is
+              // about to rebuild in full, so they go; and everything
+              // the replay hands that belongs to a pane ALREADY
+              // RETIRED — at or below the watermark retirement used —
+              // is sifted out for the rest of the run, because after
+              // the resume no such pane can be contributed to again
+              // except by a replayed element that has been counted.
+              val recut = f.seen.length != parts && !sink.seekable
+              val below = if recut then watermark(f.seen, sink.slack) else Long.MinValue
+              val st0 = if recut then sink.reopen(st) else st
+              epoch(st0, seen0, f.drops, f.merged, pos0, marks0, below, f.epoch + 1)
 
   /**
    * RUN THE JOB IF THIS PROCESS IS THE COORDINATOR
@@ -575,6 +924,18 @@ object Cluster {
             living.failed(w)
             go(tried + 1, if first == null then t else first)
     go(0, null)
+
+  /**
+   * HOW MANY SEEK MARKS A JOURNAL RECORD CARRIES AT MOST
+   * (specs/dataflow.md, stage 11 box 2b).
+   *
+   * Pruning by the oldest partition's target already bounds this on
+   * any feed whose partitions keep pace; the cap bounds it on one
+   * where they do not. A mark is three numbers per partition, so 64
+   * of them at 8 partitions is under 16 KB — the same order as the
+   * one-off 16 KB the measurement priced the seek at.
+   */
+  private val Seeks = 64
 
   /** a partition's extent so far, taking this epoch's into the last */
   private def merge(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =

@@ -1,6 +1,6 @@
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
-ThisBuild / version := "0.1.0-SNAPSHOT"
+ThisBuild / version := "0.1.1"
 // Scala 3.9.0 — the LTS line, opened by 3.9 as 3.3's successor and
 // maintained for at least three years. Until 3.9 this build ran the
 // latest non-LTS release on purpose (specs/modules-infra.md), because
@@ -26,6 +26,12 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / scalacOptions ++= Seq(
   "-Xkind-projector",
+  // NOT `-language:implicitConversions` build-wide: it was here for a
+  // day (direct-no-ceremony, 2026-09-15) and the operator took it out
+  // (2026-09-16) because TestThrows proves `throws`'s `into` by the
+  // ABSENCE of that import, and a build-wide flag makes the absence
+  // prove nothing. A file that colours inside `direct` imports
+  // `scala.language.implicitConversions` itself.
   "-Wall",
   // `-Wall` includes a lint that fires whenever a non-String is
   // interpolated. Everywhere it fires here, the interpolation is a
@@ -127,6 +133,49 @@ ThisBuild / versionScheme := Some("early-semver")
  * runs and is still read.
  */
 ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "--exclude-tags=Live")
+
+/**
+ * ONE TEST PROCESS PER MODULE AT A TIME (gate-bound-test-fanout,
+ * 2026-09-18). On JS and Native a test CLASS is an OS PROCESS — a
+ * `node` for Scala.js, a linked binary for Native — and with
+ * `parallelExecution` on, one module's task starts all of its classes
+ * at once. sbt caps concurrent TASKS at the core count (measured
+ * here: `Limit all to 14`), so the ceiling was 14 modules times their
+ * classes, and two dumps caught it: 100 node + 65 Native on a 14-core
+ * box, and 88 + 57 an hour later, every one of them at 0.0% CPU while
+ * sbt waited for tasks that never finished. The gate hung for 57
+ * minutes and then again for 18.
+ *
+ * The bound is per MODULE, not global, so the 14 modules still run at
+ * once — what stops is a single module fanning out inside its own
+ * task. It applies to the JVM too, where a "class" is a thread rather
+ * than a process and the cost is different; that it is one line
+ * instead of forty is the reason, and the measurement below is what
+ * pays for it.
+ *
+ * MEASURED, same worktree, same `affected master` scope: the run that
+ * STALLED TWICE at module 77 and 78 finishes, and the numbers are in
+ * CHANGELOG `gate-bound-test-fanout`.
+ *
+ * AND WHAT IT COSTS THE JVM — MEASURED 2026-09-18, AND IT REFUTED THE
+ * WORRY THIS COMMENT WAS WRITTEN WITH (`jvm-parallel`). The line above
+ * said the bound "applies to the JVM too, where a class is a thread
+ * rather than a process and the cost is different", and left that
+ * unpriced. Priced now: `family jvm` (59 projects), three alternating
+ * rounds, `set` in BOTH arms so neither pays for the other's reload —
+ *
+ *   parallelExecution := false   145, 118, 126   min 118 s
+ *   parallelExecution := true    204, 128, 141   min 128 s
+ *
+ * Serial wins all three PAIRED rounds and the minima by 8%. Turning
+ * test classes loose inside a module does not help when fourteen
+ * modules are already running: it oversubscribes a 14-core box that
+ * the coarse parallelism already fills. So one line for all three
+ * platforms is not a compromise the JVM pays for — re-measure before
+ * changing it, and note the box is never quiet here, which is why the
+ * arms alternate and the minima are what is compared.
+ */
+ThisBuild / Test / parallelExecution := false
 addCommandAlias("integrationTest",
   "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test")
 
@@ -176,6 +225,39 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / javaOptions += "-Xmx1g",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+    // Multi-Release JAR (script-scoped-state-mrjar, scoped-to-core,
+    // 2026-09-19): okay.Scoped ships a JDK21-and-up ThreadLocal
+    // backend in the jar root and, WHEN scripts/build-mrjar-jdk25.sh
+    // has been run, a java.lang.ScopedValue backend under
+    // META-INF/versions/25/ -- the JVM picks per JEP 238, nothing here
+    // branches at runtime. The script needs an actual JDK 25+ JVM to
+    // compile against (no -release flag can grant an older compiler
+    // that API), so this is NOT a normal sbt sub-project on this
+    // session's own JDK -- it is a standalone compile whose output
+    // this task picks up IF PRESENT. A checkout that never ran the
+    // script packages the exact jar it always has: this is additive,
+    // never a new hard dependency. See specs/script-scoped-state-mrjar.md.
+    Compile / packageBin / mappings := {
+      val base = (Compile / packageBin / mappings).value
+      val classesDir = baseDirectory.value.getParentFile / "jdk25" / "target" / "classes"
+      def classFiles(dir: File): Seq[File] =
+        Option(dir.listFiles).toSeq.flatten.flatMap { f =>
+          if (f.isDirectory) classFiles(f)
+          else if (f.getName.endsWith(".class")) Seq(f)
+          else Seq.empty
+        }
+      if (classesDir.exists) {
+        val extra = classFiles(classesDir).map { f =>
+          f -> ("META-INF/versions/25/" + IO.relativize(classesDir, f).get)
+        }
+        base ++ extra
+      } else base
+    },
+    packageOptions ++= {
+      val classesDir = baseDirectory.value.getParentFile / "jdk25" / "target" / "classes"
+      if (classesDir.exists) Seq(Package.ManifestAttributes("Multi-Release" -> "true"))
+      else Seq.empty
+    },
   )
   .jsSettings(
     Compile / unmanagedSourceDirectories +=
@@ -201,6 +283,246 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * Streams, channels and the buffers under them (core-modules stage 1,
+ * 2026-09-18). 6 136 lines that left `okay` because nothing in the
+ * control layer referred to them in code — every apparent dependency
+ * from Cont/Free/Effects/Monad/Delim was a comment. What the core
+ * kept is the two INTERFACES it is genuinely typed against:
+ * `Stream.scala` (the `uncons` typeclass, which `Writer` implements)
+ * and `Handoff.scala` (the rendezvous `Async` returns). See
+ * specs/core-modules.md.
+ *
+ * The package is still `okay`, deliberately: measured on 3.9.0
+ * before the move, one package across two artifacts resolves
+ * `import okay.*` and `import okay.given` in both directions, so no
+ * consumer's imports change and only `dependsOn` lines were added.
+ *
+ * The test layout mirrors the core's, INCLUDING the part that is
+ * easy to get wrong: js and native REPLACE `Test /
+ * unmanagedSourceDirectories` rather than adding to it, because the
+ * shared suite leans on JVM-only pieces.
+ */
+lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-stream"))
+  .dependsOn(okay % "compile->compile;test->test", okayStm % "test->compile")
+  .settings(
+    name := "okay-stream",
+  )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    // the same reason the core suite forks: see okay's own comment
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
+ * The static workflow: `Wf`'s questions, `Proc`'s free arrow over
+ * them, and the macro that builds one (core-modules stage 2,
+ * 2026-09-18). 2 229 lines that left `okay` because the core is a
+ * LEAF here — no file in the core names Wf, Proc or ProcMacro in
+ * code, on any platform source directory. What the core keeps is
+ * `Replayable`, the 78-line marker `Delim` is typed on, which is the
+ * whole of its side of the seam.
+ *
+ * It is a crossProject because these three files sat in the shared
+ * source directory and so compile on JS and Native today; making the
+ * module JVM-only would have been a silent loss of that. The suites
+ * are JVM, exactly as they were.
+ *
+ * The package is still `okay` — see okay-stream's comment and
+ * specs/core-modules.md for the probe that settled it.
+ */
+lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-workflow"))
+  .dependsOn(okay % "compile->compile;test->test", okayOptics % "compile->compile;test->test")
+  .settings(
+    name := "okay-workflow",
+  )
+  .jvmSettings(
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    // no suite here: the workflow tests are the core's JVM-only shape
+    Test / unmanagedSourceDirectories := Seq.empty,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories := Seq.empty,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
+ * Data structures that are not the effect system (core-modules stage
+ * 3, 2026-09-18): the approximate aggregators (`Sketch`) and the
+ * coordination-free pair, a sortable 128-bit identity (`Uid`) and the
+ * hybrid logical clock (`Hlc`) underneath it.
+ *
+ * Two themes in one module, deliberately, and the trigger to split
+ * them is either one growing a second file. What made them one lane
+ * is a measurement rather than a theme: the core named none of the
+ * three, `Sketch` had ZERO consumers among the 73 modules, and `Uid`
+ * and `Hlc` had exactly two each. `Aggregator` STAYED in the core —
+ * ten modules are typed on it, which is what an interface looks like.
+ *
+ * A crossProject because these files sat in the shared source
+ * directory and compile on JS and Native today.
+ */
+lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-data"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-data",
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
+ * Profunctor optics and the `Fuse` planner (core-modules stage 4,
+ * 2026-09-18): `Optic` with its constraint classes and
+ * interpretations, `Fuse`, `Focus`, and the optic SPELLING of
+ * zooming.
+ *
+ * WHAT MADE THIS POSSIBLE, after the spec had filed it as blocked on
+ * two seams: stage 2 took `Proc` away, which removed one of them, and
+ * reading the other settled it. `State.zoom` used a lens for exactly
+ * two things, `get` and `set`, so the core now has
+ * `State.zoomWith(look, put)` — no optic in it — and `Zoom.scala`
+ * here gives the lens spelling back as an extension on `State.type`.
+ * `State.zoom(lens)(prog)` still compiles character for character.
+ *
+ * `ArrowLaws` moved with it, because it is typed on `Optic.Arrow`;
+ * okay-workflow and okay-lex reach it through `test->test`.
+ */
+lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-optics"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-optics",
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
+ * Software transactional memory (core-modules stage 5, 2026-09-18):
+ * the `Tx` language, the `Stm` runtimes — TL2 with versions and
+ * CAS-owned commit, the direct one, the simulated one — and the
+ * platform givens that install `Stm[Async]`.
+ *
+ * `TRef` STAYED IN THE CORE, and that is the whole shape of this
+ * lane. Its `modify` is a self-contained CAS loop, "the one-cell
+ * transaction", which needs no `Tx` and no runtime; measured across
+ * this repository, a single-cell `TRef.modify` is what almost every
+ * consumer actually uses, and Scala Native's own scheduler holds its
+ * state in one. So the CELL is the interface and stays; the
+ * MULTI-CELL machinery that commits several of them together is what
+ * left.
+ *
+ * The spec had this lane blocked on `Providing.Facts` being "backed
+ * by `TMap`". That was a naming coincidence: `TMap` is a
+ * heterogeneous map with TYPED keys, nothing transactional, and
+ * `Refs` is run-time state cells rather than STM. Neither moved.
+ */
+lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-stm"))
+  .dependsOn(okay % "compile->compile;test->test")
+  .settings(
+    name := "okay-stm",
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 /** interop with cats: instances and conversions, nothing more (P3) */
 lazy val okayCats = (project in file("okay-cats"))
   .dependsOn(okay.jvm)
@@ -217,7 +539,7 @@ lazy val okayCats = (project in file("okay-cats"))
 
 /** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
 lazy val okayZio = (project in file("okay-zio"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-zio",
     libraryDependencies ++= Seq(
@@ -245,7 +567,7 @@ lazy val okayKyo = (project in file("okay-kyo"))
  * java.util.function. No dependency to add — it is the platform.
  */
 lazy val okayJava = (project in file("okay-java"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-java",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -253,7 +575,7 @@ lazy val okayJava = (project in file("okay-java"))
 
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-fs2",
     libraryDependencies ++= Seq(
@@ -277,7 +599,7 @@ lazy val okayFs2 = (project in file("okay-fs2"))
 lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-actor"))
-  .dependsOn(okay)
+  .dependsOn(okay, okayStream)
   .settings(
     name := "okay-actor",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -308,7 +630,7 @@ lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * JVM only: `Flow` exists on neither Scala.js nor Native.
  */
 lazy val okayReactive = (project in file("okay-reactive"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, okayStream.jvm)
   .settings(
     name := "okay-reactive",
     libraryDependencies ++= Seq(
@@ -323,8 +645,17 @@ lazy val okayKafka = (project in file("okay-kafka"))
   // okay-persist rides along: KafkaStore is the stage-3 interop
   // engine behind the same Store trait (specs/persist.md);
   // test->test borrows the ElectionSuite for the Kafka control-log
-  // leg of the consensus battery (specs/consensus.md)
-  .dependsOn(okay.jvm, okayPersist.jvm % "compile->compile;test->test")
+  // leg of the consensus battery (specs/consensus.md).
+  //
+  // okay-cluster is TEST->TEST ONLY, and the direction is deliberate:
+  // the dataflow engine must not know what a Kafka is (its compile
+  // graph stops at okay-codec, and `Checkpoint` is two methods over
+  // bytes on purpose). What borrows is the staging BATTERY —
+  // `StagingTopicSuite` — so stage 11's last box, the same
+  // exactly-once run against a real broker, asserts the same things
+  // as the memory run rather than a second thing that looks alike.
+  .dependsOn(okay.jvm, okayPersist.jvm % "compile->compile;test->test",
+             okayCluster.jvm % "test->test")
   .settings(
     name := "okay-kafka",
     libraryDependencies ++= Seq(
@@ -343,11 +674,11 @@ lazy val LegacyStdlib = config("legacyStdlib").hide
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
 lazy val okaySpark = (project in file("okay-spark"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
-      ("org.apache.spark" %% "spark-sql" % "4.0.0").cross(CrossVersion.for3Use2_13),
+      ("org.apache.spark" %% "spark-sql" % "4.2.0").cross(CrossVersion.for3Use2_13),
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
     // Spark's 2.13 artifacts bring scala-reflect, a Scala 2 artifact
@@ -355,7 +686,7 @@ lazy val okaySpark = (project in file("okay-spark"))
     // it correctly (2.13.16); what fails is sbt asking for it at the
     // project's own Scala version. Naming the 2.13 artifact
     // explicitly settles it before anything can rewrite the version.
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.16",
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.18",
     /**
      * THE ONE THING 3.9 BROKE, and the whole reason okay-spark used to
      * cap this build at 3.7 (scala-3-9, 2026-09-07).
@@ -393,9 +724,15 @@ lazy val okaySpark = (project in file("okay-spark"))
      * The version tracks the `scala-reflect` pin three lines up — one
      * Scala 2 library and its own reflect, never a mixed pair.
      *
-     * Spark 4.2.0 was tried first and changes NOTHING here: same error,
-     * same line. Spark is still 2.13-only at 4.2.0, so a Spark bump is
-     * an independent decision and is deliberately not part of this one.
+     * Spark 4.2.0 was tried against this fix WITHOUT bumping the pair
+     * (spark-4-2-0-jdk25, 2026-09-19) and DID reproduce "same error,
+     * same line" — because only the `scala-reflect` pin three lines up
+     * had moved to 2.13.18, and this jar's own pin was still 2.13.16:
+     * exactly the "mixed pair" this comment already warned against.
+     * Bumping BOTH to 2.13.18 together passes all of TestSparkInterop
+     * on this box's JDK 21. Spark is still 2.13-only at 4.2.0 (that
+     * part holds), but the earlier "changes NOTHING" verdict was
+     * itself the mixed-pair mistake, not a fact about Spark 4.2.0.
      *
      * This is a deliberate two-stdlib classpath in ONE module's tests.
      * It is legitimate because the two jars are the same library
@@ -404,7 +741,7 @@ lazy val okaySpark = (project in file("okay-spark"))
      * it — the config, the jar, and this comment.
      */
     ivyConfigurations += LegacyStdlib,
-    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.16" % LegacyStdlib,
+    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.18" % LegacyStdlib,
     Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
     Test / fork := true,
     // bench-across-processes: SparkClusterBench starts a REAL
@@ -662,12 +999,41 @@ lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlat
       baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
   )
 
+/**
+ * JavaScript as a VALUE (specs/js.md): a typed tree, a printer, and
+ * a macro that emits the printed text as a compile-time constant.
+ *
+ * NOT a Scala-to-JavaScript compiler — that is Scala.js, which this
+ * build already cross-compiles with. Nothing here translates Scala
+ * semantics; the author writes the JavaScript's structure and the
+ * printer writes the text, which is why this is a few hundred lines
+ * and not a backend. Pure string building, so it cross-builds
+ * everywhere and its tests run on JS and Native too.
+ */
+lazy val okayJs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-js"))
+  .settings(
+    name := "okay-js",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 /** streaming tokenization: pure-state scanners, total, incremental
  * (P5); pure Scala — cross-built, tests run on JS too */
 lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-lex"))
-  .dependsOn(okay)
+  // test->test borrows okay's ArrowLaws for Mealy's instance, which is
+  // the only Arrow in the tree until optics-arrow-instances and
+  // static-workflow-proc add theirs (specs/arrows-plan.md, Decision 2:
+  // one law suite, no carrier writes its own). The suite lives in
+  // src/test/scala-cross BECAUSE of this line: src/test/scala is the
+  // JVM's alone, so a shared suite put there compiles for okay-lex's
+  // JVM and leaves its JS and Native tests with no `okay.laws` at all
+  // — measured, as a cyclic-import error, before it was moved.
+  .dependsOn(okay % "compile->compile;test->test", okayStream % "compile->compile;test->test", okayOptics % "compile->compile;test->test")
   .settings(
     name := "okay-lex",
     libraryDependencies ++= Seq(
@@ -688,7 +1054,7 @@ lazy val okayCrdt = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay-crdt"))
   // okay for `Hlc` and `Uid`; okay-codec so a replica ships as data
   // (`Wire`). Both are JVM + JS + Native, so nothing narrows.
-  .dependsOn(okay, okayCodec)
+  .dependsOn(okay, okayData, okayCodec)
   .settings(
     name := "okay-crdt",
     libraryDependencies ++= Seq(
@@ -823,7 +1189,7 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay-persist"))
   // the core for the streaming reads (Chunk ! Produce + Async, the
   // JdbcInterop shape); the codec for the typed Schema view
-  .dependsOn(okay, okayCodec)
+  .dependsOn(okay, okayWorkflow, okayCodec)
   // okay-tls joins TEST scope only, for the persist-wire-over-TLS
   // acceptance: the wire's transport is injectable, so the SSLSocket
   // is built in the test and okay-persist keeps its core-only compile
@@ -1126,7 +1492,13 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   // compile graph stays at okay-codec and `TestPersisted` shows the
   // assembly against the real compacted log. Same arrangement
   // okay-persist itself uses for okay-tls.
-  .jvmConfigure(_.dependsOn(okayPersist.jvm % Test))
+  // okay-docs joins in TEST scope too, and for one reason: stage 10's
+  // last box wanted a COMPARE-AND-SET commit and said "no store here
+  // offers one". One does — `Cond.IfVersion` — and the seam
+  // (`Fencing`) is only worth having if something real can implement
+  // it. `DocsJournal` in the test tree is that something; the engine
+  // still knows nothing about documents.
+  .jvmConfigure(_.dependsOn(okayPersist.jvm % Test, okayDocs.jvm % Test))
   .settings(
     name := "okay-cluster",
   )
@@ -1179,7 +1551,7 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
 lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
-  .dependsOn(okayHttp)
+  .dependsOn(okayHttp, okayData)
   .settings(
     name := "okay-security",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -1215,6 +1587,10 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // the journal is a topic, one session = one key, and recovery is a
   // refold — transitively still zero external dependencies
   .dependsOn(okay, okayPersist)
+  // okay-js prints the browser client's style-token table (Classes)
+  // instead of it being typed a second time in JavaScript — the
+  // module is pure string building and carries no dependency itself
+  .dependsOn(okayJs)
   // Form is the fifth algebra over Schema and rides where the codec
   // does — which since codec-native is every platform.
   .jvmConfigure(_.dependsOn(okayCodec.jvm))
@@ -1504,7 +1880,7 @@ lazy val okayChat = project
 
 lazy val okayLive = project
   .in(file("okay-live"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, okayStream.jvm)
   .settings(
     name := "okay-live",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -1622,7 +1998,9 @@ lazy val okayDeploy = (project in file("okay-deploy"))
 lazy val okayDemo = (project in file("okay-demo"))
   // okayResilience: the guards around the one live outbound call
   // (demo-guarded-llm) — the arc's worked instance
-  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayResilience.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
+  // okayCluster + okayBlob: the one-binary story (`Ledger`) — record,
+  // report, page, backup, in one process
+  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayResilience.jvm, okayAdmin, okayChat, okayLive, okayDeploy, okayOpenapi, okayCluster.jvm, okayBlob.jvm)
   // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
   .settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(
@@ -1726,7 +2104,12 @@ lazy val okayOnnx = (project in file("okay-onnx"))
  * "okayDemoE2eBrowser/test"`.
  */
 lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
-  .dependsOn(okayDemo, okayScript)   // okayScript: the mobile-web proof drives a Live page (ui-mobile)
+  // okayScript: the mobile-web proof drives a Live page (ui-mobile).
+  // test->test as well since script-storefront-look: the storefront
+  // fixture those pages ARE lives in okay-script's test resources, and
+  // a browser proof of it must read the same files the unit tests do
+  // rather than a copy that can drift.
+  .dependsOn(okayDemo, okayScript % "compile->compile;test->test")
   .settings(
     name := "okay-demo-e2e-browser",
     // forked, as okay-script's own tests are: a Live page is compiled
@@ -1769,7 +2152,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,
@@ -1819,7 +2202,12 @@ lazy val okayStaging = project
 lazy val compare = (project in file("compare"))
   .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm,
     okayActor.jvm, okayReactive,   // actor-reactive-bench: the two modules that had no numbers
-    okayStaging)                   // staged-runtime: the run-time staged codec beside the compile-time one
+    okayStaging,                   // staged-runtime: the run-time staged codec beside the compile-time one
+    okayData.jvm, okayStm.jvm)     // SketchBenchmark, StmBenchmark: core-modularise moved Sketch and
+                                    // Stm/Tx/TRef out of `okay` without adding the two modules here
+                                    // (compare-jmh-missing-deps, 2026-09-19) — compare/Jmh/compile has
+                                    // been broken on master since that migration, unrelated to any one
+                                    // benchmark added after it
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",
@@ -1878,6 +2266,7 @@ lazy val compare = (project in file("compare"))
       "dev.zio" %% "zio-streams" % "2.1.14",
       "io.circe" %% "circe-parser" % "0.14.10",
       "io.circe" %% "circe-generic" % "0.14.10",
+      "com.softwaremill.ox" %% "core" % "1.0.7",
     ),
   )
 

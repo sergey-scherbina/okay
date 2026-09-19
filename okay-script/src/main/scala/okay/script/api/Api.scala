@@ -1,5 +1,7 @@
 package okay.script.api
 
+import okay.Scoped
+
 /** The page API -- what a `.md` page sees of the request it answers,
  * the response it shapes, and the container around it. See
  * specs/okay-script.md "Site — the container".
@@ -14,12 +16,19 @@ package okay.script.api
  * Everything in `okay.script` proper stays isolated (a script gets its
  * own copy of `Meta`, set from inside the script by synthesized code).
  *
- * Per-request state lives in a `ThreadLocal`: a server answers many
- * requests at once on many threads, the container sets `Web`/
- * `Response`/`Session` on the request's thread before invoking the
- * page, and the page reads them on that same thread. `include` runs
- * the included page on the same thread and so sees the same three --
- * which is what `<jsp:include>` means.
+ * Per-request state lives in a `Scoped` (script-scoped-state): a
+ * server answers many requests at once on many threads, `Requested.
+ * run` binds `Web`/`Response`/`Session`/... for the request's thread
+ * before invoking the page, and the page reads them on that same
+ * thread with a plain always-fresh method (`Web.current` etc. --
+ * see "Metadata as context" in specs/okay-script.md for why not a
+ * `given`). `include` runs the included page on the same thread,
+ * inside the same binding, and so sees the same three -- which is
+ * what `<jsp:include>` means. Unlike the raw `ThreadLocal` this
+ * replaced, nothing outside `okay.script.api` can rebind one of
+ * these: `Scoped.where` is the only way in, and it always restores
+ * what it shadowed when its block exits, exception included. See
+ * specs/script-scoped-state.md.
  */
 final case class Web(
   method: String,
@@ -55,11 +64,9 @@ final case class Part(name: String, filename: Option[String], contentType: Optio
 object Web:
   val empty: Web = Web("GET", "/")
 
-  private val local: ThreadLocal[Web] = ThreadLocal.withInitial(() => empty)
+  private[script] val scoped: Scoped[Web] = Scoped(empty)
 
-  def current: Web = local.get()
-
-  def setCurrent(w: Web): Unit = local.set(w)
+  def current: Web = scoped.current
 
 /** The response a page shapes while its stdout becomes the body.
  * Output is buffered (the page's whole stdout is captured before
@@ -118,17 +125,13 @@ object Response:
    * the container before the page runs: the request arrived over
    * TLS, or a trusted proxy said it did. A page that wants the other
    * answer passes `secure =` explicitly. */
-  private val secureLocal: ThreadLocal[Boolean] = ThreadLocal.withInitial(() => false)
+  private[script] val secureScoped: Scoped[Boolean] = Scoped(false)
 
-  def secureByDefault: Boolean = secureLocal.get()
+  def secureByDefault: Boolean = secureScoped.current
 
-  def setSecureByDefault(b: Boolean): Unit = secureLocal.set(b)
+  private[script] val scoped: Scoped[Response] = Scoped(new Response)
 
-  private val local: ThreadLocal[Response] = ThreadLocal.withInitial(() => new Response)
-
-  def current: Response = local.get()
-
-  def setCurrent(r: Response): Unit = local.set(r)
+  def current: Response = scoped.current
 
 /** A session -- attributes that survive across requests from one
  * client. Created lazily on the first `set`: a request that never
@@ -155,11 +158,9 @@ object Session:
     def attributes: Map[String, String] = m.toMap
     def invalidate(): Unit = m.clear()
 
-  private val local: ThreadLocal[Session] = ThreadLocal.withInitial(() => detached)
+  private[script] val scoped: Scoped[Session] = Scoped(detached)
 
-  def current: Session = local.get()
-
-  def setCurrent(s: Session): Unit = local.set(s)
+  def current: Session = scoped.current
 
 /** What `forward` throws -- a control exception the container
  * dispatches on. Stackless: it is not an error. */
@@ -170,42 +171,32 @@ final case class Forwarded(path: String)
 final case class Error(message: String, errors: Vector[String], thrown: Option[Throwable])
 
 object Error:
-  private val local: ThreadLocal[Option[Error]] = ThreadLocal.withInitial(() => None)
+  private[script] val scoped: Scoped[Option[Error]] = Scoped(None)
 
-  def current: Option[Error] = local.get()
-
-  def setCurrent(e: Option[Error]): Unit = local.set(e)
+  def current: Option[Error] = scoped.current
 
 /** The container's hooks, set by `okay.script.Site` on the request
  * thread. A page never touches this directly -- it calls `include`/
  * `forward` below. */
 object Container:
-  private val local: ThreadLocal[Option[String => String]] = ThreadLocal.withInitial(() => None)
+  private[script] val includerScoped: Scoped[Option[String => String]] = Scoped(None)
 
-  def includer: Option[String => String] = local.get()
+  def includer: Option[String => String] = includerScoped.current
 
-  def setIncluder(f: Option[String => String]): Unit = local.set(f)
-
-  private val lives: ThreadLocal[Option[(String, Live[?]) => Unit]] = ThreadLocal.withInitial(() => None)
+  private[script] val livesScoped: Scoped[Option[(String, Live[?]) => Unit]] = Scoped(None)
 
   /** how `mount` tells the container which app answers which id */
-  def liveRegistrar: Option[(String, Live[?]) => Unit] = lives.get()
+  def liveRegistrar: Option[(String, Live[?]) => Unit] = livesScoped.current
 
-  def setLiveRegistrar(f: Option[(String, Live[?]) => Unit]): Unit = lives.set(f)
-
-  private val translators: ThreadLocal[Option[String => Option[String]]] = ThreadLocal.withInitial(() => None)
+  private[script] val translatorsScoped: Scoped[Option[String => Option[String]]] = Scoped(None)
 
   /** the container's message lookup for the request's language */
-  def translator: Option[String => Option[String]] = translators.get()
+  def translator: Option[String => Option[String]] = translatorsScoped.current
 
-  def setTranslator(f: Option[String => Option[String]]): Unit = translators.set(f)
-
-  private val issuers: ThreadLocal[Option[(String, Set[String]) => String]] = ThreadLocal.withInitial(() => None)
+  private[script] val issuersScoped: Scoped[Option[(String, Set[String]) => String]] = Scoped(None)
 
   /** the container's token minter, when the Site was given one */
-  def issuer: Option[(String, Set[String]) => String] = issuers.get()
-
-  def setIssuer(f: Option[(String, Set[String]) => String]): Unit = issuers.set(f)
+  def issuer: Option[(String, Set[String]) => String] = issuersScoped.current
 
 /** Renders another page -- relative to the including page's
  * directory, or from the site root with a leading `/` -- with the same
@@ -224,11 +215,9 @@ def forward(path: String): Nothing = throw Forwarded(path)
  * `secure:` constraint (and for anything it includes); `None` on a
  * page without one. See specs/okay-script.md "Declarative security". */
 object Principal:
-  private val local: ThreadLocal[Option[okay.security.Principal]] = ThreadLocal.withInitial(() => None)
+  private[script] val scoped: Scoped[Option[okay.security.Principal]] = Scoped(None)
 
-  def current: Option[okay.security.Principal] = local.get()
-
-  def setCurrent(p: Option[okay.security.Principal]): Unit = local.set(p)
+  def current: Option[okay.security.Principal] = scoped.current
 
   /** the session attribute a browser's bearer token rides in */
   val TokenAttribute = "okay.token"
@@ -245,11 +234,9 @@ def login(token: String): Unit = Session.current.set(Principal.TokenAttribute, t
  * chose the page variant being rendered and what `t` translates
  * into. See specs/okay-script.md "Languages". */
 object Lang:
-  private val local: ThreadLocal[String] = ThreadLocal.withInitial(() => "en")
+  private[script] val scoped: Scoped[String] = Scoped("en")
 
-  def current: String = local.get()
-
-  def setCurrent(l: String): Unit = local.set(l)
+  def current: String = scoped.current
 
   val Cookie = "OKAYLANG"
 
@@ -274,3 +261,36 @@ def signIn(subject: String, scopes: Set[String] = Set.empty): Unit =
  * login page again. The session itself stays (the cart survives a
  * sign-out) -- `Session.current.invalidate()` is the other choice. */
 def logout(): Unit = Session.current.remove(Principal.TokenAttribute)
+
+/** One call that installs every per-request ambient this package
+ * carries, for `body`'s extent -- what `Site.servePage` used to do
+ * as twelve `setCurrent` calls followed by a hand-matched `finally`
+ * undoing eleven of them (drifted: `Content`'s root was never in
+ * that list). Nesting `Scoped.where` this way means there is no
+ * separate teardown to keep in sync -- unwinding IS the reset, on
+ * every exit path including an exception. `Principal` is
+ * deliberately not a parameter here: it is bound narrower, around
+ * one `render` call, by whoever decides a request is authenticated
+ * (`Site.dispatch`'s `Access.Granted` branch). See
+ * specs/script-scoped-state.md. */
+private[script] object Requested:
+  def run[B](web: Web, resp: Response, sess: Session, lang: String,
+             translator: Option[String => Option[String]],
+             includer: Option[String => String],
+             liveRegistrar: Option[(String, Live[?]) => Unit],
+             issuer: Option[(String, Set[String]) => String],
+             secure: Boolean, application: Application,
+             contentRoot: Option[java.nio.file.Path])(body: => B): B =
+    Web.scoped.where(web):
+      Response.scoped.where(resp):
+        Response.secureScoped.where(secure):
+          Session.scoped.where(sess):
+            Error.scoped.where(None):
+              Lang.scoped.where(lang):
+                Container.includerScoped.where(includer):
+                  Container.livesScoped.where(liveRegistrar):
+                    Container.translatorsScoped.where(translator):
+                      Container.issuersScoped.where(issuer):
+                        Application.scoped.where(application):
+                          Content.scoped.where(contentRoot):
+                            body

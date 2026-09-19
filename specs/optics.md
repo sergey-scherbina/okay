@@ -846,3 +846,255 @@ So the guidance is no longer "optics are a convenience layer". It is:
 name the path in code and the optic is free; choose it at run time and
 you are paying an interpreter, which is the honest trade and always
 was.
+
+## Stage 12 — arrows, effects and continuations: what the closed arc leaves open (optics-arrows-effects, 2026-09-18)
+
+The operator asked what optics, profunctors and arrows can do TOGETHER
+with the monads, applicatives, effects and continuations this library
+already has, and what is missing for that to be convenient. This
+section is the answer, measured against the tree as of `d9eae6d1`,
+so that the next agent starts from what exists rather than from the
+question. Nothing below is implemented; every item states what would
+prove it and what it waits for.
+
+### What the tree already answers
+
+Read these before proposing any of them again.
+
+- **One traversal, N semantics — the applicative slot IS the effect
+  slot.** `traverseOf[F]` asks for `Applicative[F]` and nothing else,
+  so every carrier of the applicative arc drops in without a line in
+  the optics: `Validated` reports every bad focus, `Par` visits them
+  at once, `Static` says what the walk WOULD do, and `[X] =>> X ! State
+  % Int` runs it inside an effect row (`TestOpticCarriers`,
+  `TestOptics` "traverseOf in the row"). This is the whole of "optics
+  meet effects" for a traversal, and it needed no design.
+- **Optics meet continuations at `PState.zoom`.** A four-parameter
+  `Lens[S1, S2, A1, A2]` zooms a `Cont[X, A2 => R, A1 => R]` to
+  `Cont[X, S2 => R, S1 => R]` in one `shift` (State.scala). The
+  type-changing lens and Atkey's parameterised state are one picture;
+  theory ch. 10 "Type-changing optics are parameterised state" says
+  why.
+- **Arrows exist, with ONE instance.** `Optic.Category` and
+  `Optic.Arrow` sit beside `Profunctor` (stage 5) and `Mealy` in
+  okay-lex is the only value that has them. `Function1` is
+  `Traversing` and nothing more, so `split` and `fanout` cannot be
+  called on a plain function, and `Star[F]` has no `Category`, so two
+  effectful steps `A => B ! R` compose only through `Monad.scala`'s
+  `>>>`.
+- **Where arrows would earn their place is recorded, and it is not
+  Kleisli.** Hughes' reason for an arrow is a computation with a
+  STATIC part — something a monad cannot expose because its shape
+  lives in a continuation. In this tree that static part is `Static`
+  (applicative) and `Tables.Plan` (a GADT), and specs/optics-outside.md
+  "topology" already names the one reopen trigger: a plan that must
+  branch on a VALUE and still be drawn, which is `ArrowChoice`. The
+  same day this section was written a sibling claimed
+  `static-workflow` — "the durable spine without ArrowApply" — which
+  is that trigger being pulled from the workflow side; a lane here
+  reads specs/static-workflow.md before adding any arrow instance,
+  so the two do not build the same thing twice.
+- **The families nobody has asked for stay out**: indexed optics,
+  `Grate`/`Closed`, optics over `Source`, and the four open
+  optics-outside candidates (policy, query, live, tools-effectful).
+  Each has a trigger written where it stands. The arc's rule holds:
+  a declaration earns an optic when it is handed to more than one
+  interpreter and one of them DESCRIBES rather than runs.
+
+### What is worth learning, as experiments with a test each
+
+- [x] **`Cont` as a `Strong & Choice` profunctor** — HALF LANDED,
+      HALF REFUTED, 2026-09-18 (`optics-cont-profunctor`). `Strong`
+      exists: `PState.Zooming[X, R] = [A, B] =>> Cont[X, B => R, A =>
+      R]` with `opticZooming` (top-level, so `import okay.given` finds
+      it), and `PState.zoom` is now `l[Zooming[X, R]](m)` — one line,
+      with `TestZoom`'s six tests passing unchanged as the evidence.
+      The `lens` override is held to the derivation it replaces by a
+      test, the house rule for every override in Optic.scala. What the
+      instance BOUGHT, beyond deleting a body: an iso zooms (the
+      `dimap` road no zoom had ever used), `first` zooms a pair state
+      directly, and a COMPOSED optic zooms — none of which the
+      hand-written `shift` could do.
+
+      **`Choice` CANNOT EXIST HERE, and the reason is not the types.**
+      `right` must turn `P[A, B]` into `P[Either[C, A], Either[C, B]]`
+      — on the absent case the zoomed program must still answer the
+      inner program's `X`, and `X` is universally quantified in the
+      instance. There is no `X` to make and no continuation to take
+      one from: the only source of an `X` is the inner program, which
+      is exactly what the absent case says not to run. A parametricity
+      argument, not a compiler complaint. The prediction in this
+      spec's first draft ("the answer-type indices may not line up,
+      and no cast goes in") named the wrong mechanism — a cast would
+      not have helped either.
+
+      So the door that does exist says its price in its type:
+      `PState.zoomCase(prism)(m): Cont[Option[X], S2 => R, S1 => R]`.
+      Present case, the program runs and the answer is `Some`; absent
+      case, nothing runs (pinned by a counter, not by an assertion
+      about the state), the state passes through as the `S2` the
+      prism found, and the answer is `None`.
+      `TestContProfunctor` pins the absence of the instance with the
+      `Strong` summon beside it as the control — a refusal is the only
+      thing that can prove a refusal.
+
+      AND THE REFUSAL GENERALISES — 2026-09-18 (`cont-category`), the
+      operator asking what optics and arrows do WITH continuations.
+      `Zooming` has a writable `compose` (two typestate programs
+      sequence, threading A -> B -> C) and NO writable `id`: the
+      identity must produce the program's `X` while touching nothing,
+      and only the program makes an `X`. That is a SEMIGROUPOID, not a
+      category — and it is the same cause that refuses `Choice`, one
+      step along. One cause, two refusals; `Strong` survives because
+      `first` and `lens` never answer without running the inner
+      program. `TestContSemigroupoid` pins all three with the `Strong`
+      summon beside them as the control.
+      NOT MEASURED, and therefore not claimed: `zoom` now summons a
+      fieldless instance per call where it used to be a direct
+      `shift`. `PState.zoom` has four callers, all of them tests, and
+      no JMH lane covers it (`statePara` is get/set only), so there is
+      nothing here to regress and nothing measured to report. A lane
+      that gives `zoom` a production caller prices this first.
+- [ ] **A prism over `Selective`, so `Static` sees the untaken
+      arm.** `Star[F].right` decides on the VALUE before anything
+      enters `F` (`_.fold(c => F.pure(Left(c)), ...)`), so a static
+      walk through a prism describes only the road taken. A
+      `Selective[F]`-backed interpretation would lift the preview
+      into `F` and `branch`, and `Static` would then report both
+      arms — which is what "describe before running" means for a
+      sum. Success: one test where `Kaleidoscope`-free
+      `Prism.some.traverseOf[[X] =>> Static[W, X]]` answers the
+      writes of BOTH arms; a matched control shows the applicative
+      road answering one. Cost to state: a `Selective` is a
+      stronger ask than an `Applicative`, so this is a second
+      `Star` given, not a change to the first.
+- [ ] **`Arrow[Function1]` and `Arrow[[A, B] =>> A => B ! R]`.**
+      Five lines each; they make "arrows and optics are written on
+      one `Profunctor`" a fact about the tree rather than a sentence
+      in a comment, and let `lens(step)` for a `Star` be followed by
+      `fanout`. The honest expectation, stated up front so the lane
+      does not oversell: with a monad in hand `fanout` adds little
+      over a for-comprehension, so this lane's deliverable is the
+      table's honesty and the laws' tests, not a new capability.
+      Success: the arrow laws (`TestMealy` states them over an
+      input) pass at both instances.
+
+### What is needed for it to be convenient
+
+- [x] **A user-facing optics page.** LANDED 2026-09-18
+      (optics-guide-page): `docs/optics.md`, linked from the docs
+      index and from `docs/guide.md` §10, and every code block on it
+      is RUN by `TestOpticsGuide` — the page fails rather than lies.
+      Two of its five pairs are real call sites (`WordTfIdf.against`,
+      `Parse.rebase`), and the fifth is the one where the `copy`
+      wins, kept for that reason. Found while writing it:
+      `optic-law-rewrites` was cited as filed in benchmarks.md §9b and
+      the CHANGELOG and existed in no board; it is filed now.
+      What it replaced: `docs/guide.md` did not mention
+      `Lens`, `Prism` or `Traversal`; the only prose was tutorial §23
+      and theory ch. 10. The page delivers ordinary call sites as
+      PAIRS — the nested `copy`, the `Option.map` chain, the
+      hand-written walk — each beside the optic that replaces it,
+      with the verdict table's numbers for what each costs
+      (`useful-not-just-works`: literature examples did not answer
+      "how does this simplify my code"). It names the two roads the
+      verdict already names: a path written in code is free, an
+      optic chosen at run time pays the interpreter.
+- [ ] **`Lens.field[S]("name")` and the planner.** The verdict says
+      its expansion "the planner still cannot read", so the one
+      by-name lens pays the interpretation while the selector lens
+      is free. Either teach `Fuse` the `FieldOf.apply` shape (a
+      `constValue` index into a `Replaced` product) or say so on the
+      guide page beside the constructor. Measure before choosing:
+      the by-name lens has no benchmark row of its own.
+
+### Out of scope for stage 12
+(as first written; the re-check below corrects three of these lines
+against the plans, and the corrected reading is the one in force)
+- indexed optics, `Grate`, optics over a stream, and the
+  optics-outside candidates: each keeps its recorded trigger — SEE
+  the re-check: indexed optics have three hand-written seats, the
+  stream question is answered by `Mealy`, `Grate` was checked at two
+  seats and has none
+- `Traversing` for `Cont`: needs an applicative over answer-type
+  modification, and no consumer has asked
+- an `ArrowChoice` for `Tables.Plan`: reopens with the trigger in
+  specs/optics-outside.md, not from here — SEE the re-check: the
+  trigger is pulled by `Proc` (specs/static-workflow.md), and
+  `Tables.Plan` itself is still not asked to branch
+
+### Re-checked against the plans, the same day (optics-arrows-recheck, 2026-09-18)
+
+The operator asked whether the "out of scope, each with its trigger"
+list above was actually checked against the boards and the sibling
+specs, or only against memory. It was the latter for three of the
+four, and this is what checking found. The rule that decides each
+line is still the arc's: an optic (or an arrow) is earned when one
+declaration is handed to more than one interpreter and one of them
+DESCRIBES.
+
+- **`ArrowChoice` — the trigger is PULLED, and not by `Tables.Plan`.**
+  specs/static-workflow.md (stage 0 landed a2d22ed2 the same
+  morning) defines `Proc[Q, A, X, Y]` with `Arr`, `Seq`, `First`,
+  `Left`, `Iter` and gives it `Optic.Arrow` and `Optic.Choice`: the
+  first arrow with choice in the tree. Its three interpreters are
+  exactly the criterion's shape — `render` DRAWS the term, `walk`
+  finds the position with no effects performed, `toProgram` RUNS it
+  on the landed engine — and its stage 3 applies a lens and a prism
+  to a step through those instances with no new machinery. So the
+  sentence above, "reopens with the trigger in optics-outside, not
+  from here", was true of `Plan` and misleading about the tree:
+  nothing asks `Tables.Plan` to branch, and the value the trigger
+  named arrives on the workflow side. The line between the lanes is
+  written in that spec's Design ("Neither lane adds the other's
+  instance") and holds: `Function1` and the Kleisli here, `Proc`
+  there. What the two lanes SHARE is the law test — TestMealy states
+  the arrow laws over an input; stage 1 of static-workflow wants the
+  same laws as a property; `optics-arrow-instances` here wants them
+  at two more carriers. One suite parameterised by the carrier and
+  an observation, written by whichever lane lands first.
+- **A prism over `Selective` — ANSWERED by `Proc`, for the carrier
+  that matters.** The experiment asked whether a static walk through
+  a prism can see the untaken arm. For an arrow that is a TERM the
+  answer is already in static-workflow's interface: `leaves` "of a
+  term with a `Left` reports both sides", and stage 3's prism test
+  runs the step on the matching variant and passes the rest through.
+  What is left of the experiment is the `Star[F]` road alone — the
+  applicative `Static` through a prism — and it is worth a lane only
+  if a consumer wants `Static` rather than `Proc` through a sum. The
+  BACKLOG entry now WAITS on static-workflow stage 3 and says what
+  would keep it open.
+- **Indexed optics — "nobody has asked" was wrong; three walks carry
+  the index by hand.** `Validate` threads a path `At` through a
+  `Schema.Step` so every error lands at its dotted path; `Ui.diff`
+  threads `path: List[Int]` through `go` so every `Patch` names its
+  node; `ui-direct-example` carries the field key IN the error so
+  `Ui.key(k)` has something to aim at. Each is an indexed traversal
+  written out, and none is handed to a second interpreter — so the
+  criterion is not met and the family stays out, but the TRIGGER is
+  restated with the seats named: a fourth path-carrying walk, or two
+  of these three wanting one walk. Found beside it: `Ui.patch`'s
+  private `at` and `Ui.path`'s `childAt` are two doors on one index
+  convention (the comment on `path` says so and a law pins them);
+  `count-the-doors` says that is a defect to file, and it is filed.
+- **`Grate` — no seat, checked at the two places a "zip N wholes"
+  would live.** okay-crdt's wire shapes `derive Schema` and each
+  CRDT's `merge` is its own; no product of CRDTs is merged
+  field-wise. dataflow's coordinator `merged(ps: Vector[P])` is
+  many-partials-in-one-answer, which is the AGGREGATING shape
+  (`Optic.Aggregating`, a kaleidoscope), not a grate — and it is an
+  ordinary method with one interpreter. Stays out; the trigger is a
+  product whose parts each merge and which is merged in two places.
+- **Optics over a stream — ANSWERED, not open.** "A stream is not a
+  value" stands for optics; the arrow question it hid is answered
+  by stage 5: `Mealy` is Category, Strong and Choice over a stream
+  transformer, and dataflow's "one pass, many sinks" is `fanout` on
+  a static plan built as a GADT. Nothing waits here.
+- **`schema-typed-paths` (BACKLOG, 2026-09-11) is stale by two
+  days.** `Lens.field[S]("name")` — the by-name lens, the field name
+  checked at compile time against the Mirror, the focus typed, no
+  macro — landed with optics-core on 2026-09-09 (c2ff5cfe). What
+  that entry still asks for is the CHAIN `path[A].field("address")
+  .field("city")` with the intermediate type inferred; one level is
+  done. The entry is corrected, and `optics-field-fuse` above is the
+  lane that decides what the by-name constructor costs.

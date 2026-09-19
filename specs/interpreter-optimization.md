@@ -169,3 +169,47 @@ Experiment A (closure fusion, Fuse = 128): KEPT.
   essentially complete; Experiment B stays unneeded.
 
 Tests: 23/23 green, including the new fusion-budget spill stress.
+
+2026-09-15 re-measurement (fuse-bench): does fusion STILL pay, now that
+handler-fusion stage B found a Free node cheaper than a closure pair?
+Same code, `-Dokay.cont.fuse=0` (every bind a `Bind` node) against the
+shipped 128, per-lane minimum of 3 alternating rounds, load 1.6–3.0
+(history.tsv `fuse0-*`). fuse=0 is slower on every lane and in every
+round: fib10 1.17x (by medians 1.26x), fib50 1.23x, fib100 1.13x,
+fib1000 1.12x. The 2026-08-29 gains stand. Consequence for the shared
+`Freer` base sketched in the Cont/Free discussion: fusion cannot be
+dropped to make `flatMap` generic — it stays the Shift leaf's own
+business (a `Sig[G]`-style fuse hook), and `Cont` keeps its depth.
+
+2026-09-15, same day (fuse-depth): how much of that win is the FIRST
+fusion step? `fuse=1`, `2`, `4` against `128`, three rounds with the
+config order rotated, per-lane minimum (history.tsv `fuse1-*`):
+fuse=1 reads 0.98 / 1.00 / 1.02 / 1.01 of fuse=128 on fib10/50/100/1000,
+fuse=2 and fuse=4 the same within JMH's ±1–3% bars. The budget of 128
+buys nothing the first step does not: the fib program builds one
+`shift` and one or two binds per element, so a segment never grows
+past depth one or two before the runner consumes it. Consequence: the
+depth is one bit ("already fused"), which needs no field at all — a
+named `Fused` function class the size of the lambda it replaces, and
+`Op(f)` in a shared base costs 40 B per shift against today's 48.
+Measured on the Fib lanes only; `PState` (HandlerBenchmark) and
+`Monadic.reflect` are Cont-fusion consumers not covered here, so
+lower the default only after those lanes agree.
+
+2026-09-15, third run (fuse-consumers): those lanes, `fuse=1` against
+`128`, three rotated rounds, per-lane minimum (history.tsv
+`fuse1-statePara` etc.). `Monadic.reflect` (okayDirect 1.00,
+okayDirectRec 1.00) and both controls (stateEffect 1.00, cont24 0.99)
+are unchanged. `statePara` — PState, 1 000 operations LEFT-nested, the
+one shape where a segment actually reaches the 128 budget — is
+**12% faster at fuse=1** (27.8 vs 31.7 µs, 3/3 rounds). The prediction
+was the opposite (10–30% slower) and is refuted: a fused segment 128
+deep is a chain of 128 nested closure calls per run, while the same
+binds as `Bind` nodes are rotated by the tail-recursive loop — the
+handler-fusion finding "a node beats a closure pair" again, now on
+Cont's own path. So the depth budget is not merely unneeded, it costs
+on the shape it was designed for. Every Cont-fusion consumer measured
+is at parity or better at `fuse=1`. Decision left to a lane with a
+gate: `Cont.Fuse` default 128 → 1 is a one-line change (the `depth`
+field then carries one bit and can go), TestCont's spill stress
+assumes a budget and must be re-read against it.

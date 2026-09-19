@@ -380,7 +380,19 @@ Append-only makes backup boring, which is the point:
 
 - a CLOSED segment never changes, so incremental backup is copying
   new segment files — to an object store (specs/blob.md) or plain
-  rsync; the active segment joins next round, after it rolls.
+  rsync. THE ACTIVE SEGMENT TRAVELS TOO (backup-active-segment,
+  2026-09-18), and the sentence that used to stand here — "the active
+  segment joins next round, after it rolls" — was the defect written
+  down as a design: it bounds a backup by `segmentBytes` of unsaved
+  books, so a shop that appends and then backs up gets everything
+  except what it just wrote. A copy of a live file ends mid-frame, and
+  that is a shape this store already understands: recovery's rule is
+  that a torn tail on the LAST segment of a partition is the ordinary
+  crash artifact, restorable and named. A backup of a running store is
+  a crash that did not happen. What incremental means, exactly: a
+  closed segment is copied ONCE, the active one whenever it has grown,
+  and an idle run copies nothing. `Backup.copy(active = false)` keeps
+  the strict old property for a caller who wants it.
 - RESTORE is placing files back and letting recovery scan them —
   the same code path as every startup, so restore is exercised by
   the ordinary test suite daily, not by an incident yearly.
@@ -598,6 +610,62 @@ through the Typed envelope.
       answers Stale, which the step reads as "already happened" — the
       far end's idempotency, exactly as stated; okay-ops renders
       `Saga.Status` as `okay_saga_*` rows (Live)
+
+## The durable dialogue (durable-dialogue)
+
+Event sourcing, where the fold is the program. `Delim.resumable` stops
+a program in the middle and hands the rest of it back as a value; the
+value is a closure and does not survive a restart, so what is kept is
+the JOURNAL — the answers it has been given — and where it stands is
+re-derived by running it again and feeding those answers back without
+asking. `okay.persist.Dialogue[Q, A, R, F](topic, id)(body)` puts that
+journal in a partition.
+
+The difference from event sourcing as usually written: the events are
+the ANSWERS — under the discipline that everything the outside world
+tells the program enters through `pause`, they are the only
+non-determinism there is — and the aggregate's state is where the
+program stands, so the fold that rebuilds it is the program itself.
+There is no `apply(state, event)` to write, keep in step with the
+code, and get wrong.
+
+Order, as everywhere here: the answer is appended DURABLY BEFORE the
+program advances, so a crash in the window replays to the same place.
+One dialogue = one key = one partition, the `Saga` convention; damage
+is data, and the fold stops at a record that does not decode and
+names its offset rather than putting the program somewhere nobody
+chose.
+
+Cost, in two paths (durable-dialogue, then dialogue-snapshots). WARM,
+holding the program: `step(p, a)` journals the answer and advances it
+by one, so a drive of n answers is O(n) — measured, `run` over 40
+answers reads zero records where a loop of the replaying `answer`
+reads 820 = 40·41/2. COLD, holding only the log: `answer(a)` replays,
+and a `Snapshots` plus an interval makes the dialogue write CHAPTERS
+(a journal prefix and the offset it ends at), so a start reads one
+chapter and a tail — the snapshot topic's own scan counted on the
+same bill. What no snapshot removes: the program is run once over the
+answers to find where it stands, which is what "the fold is the
+program" costs.
+
+- [x] a second `Dialogue` over the same topic stands where the first
+      one stood, and finishes the dialogue the first one started
+- [x] `run(oracle)` calls the oracle once per question and NEVER for
+      a question the journal already answered — the property, measured
+      by counting: a second process over a complete log asks nothing
+- [x] two dialogues in ONE partition do not see each other's answers
+      (the key filter, proven load-bearing by removing it: the test
+      fails)
+- [x] a record that does not decode ends the journal, names its
+      offset, and leaves the program on the intact prefix
+- [x] (dialogue-snapshots) the warm path reads NOTHING: `run` over 40
+      answers reads 0 records, the replaying loop 820 — both exact,
+      MemoryStore being deterministic
+- [x] (dialogue-snapshots) a snapshotted cold start reads a tail, not
+      a history: 40 records plain against the chapters plus tail, with
+      the snapshot topic's scan counted too
+- [x] (dialogue-snapshots) the log stays the truth: a reader with no
+      snapshot store at all sees the same journal and the same answer
 
 ## Out of scope
 

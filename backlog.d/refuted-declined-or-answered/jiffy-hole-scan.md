@@ -1,0 +1,3 @@
+- jiffy-hole-scan — MEASURED and DECLINED 2026-09-07: a real latency
+  hazard with no measurable throughput cost The operator pointed at
+  Jiffy (Adas & …

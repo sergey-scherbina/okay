@@ -64,6 +64,5835 @@ use (asserted by a tool that records having been called), a refused
 tool is byte-for-byte what a misspelled one answers, a caveat removed
 fails the chain, and a caveat kind the verifier cannot enforce refuses
 rather than being ignored.
+> **New entries live in [`changelog.d/`](changelog.d/), one file per
+> landed lane** (changelog-d, 2026-09-18) — a landing writes its own
+> file instead of the head of this one, so two lanes landing in the
+> same hour no longer conflict. Read them with
+> `scripts/changelog.sh`, or the whole history with
+> `scripts/changelog.sh --all`.
+>
+> Everything below landed before the switch. It is the archive and is
+> not edited again; its order is the one thing it carries that a
+> directory of filenames cannot, which is why it was not split.
+
+## proc-notation-forms - the type arguments were never required
+
+The operator's traditional question, asked of the arrow road this
+time: are the types obligatory? No - and every test in the repository
+was writing three of them.
+
+    val booking: Wf.Proc[String, String, Unit, String] =
+      Proc.direct: _ =>
+        val city = !ask("city?")
+        val t    = !now
+        s"$city/$t"
+
+The expected type on a `val` or a `def` carries the signature, the
+input and the answer, and the block's parameter type comes with them.
+`Proc.direct[Sig, X, Y]` stays available and is what you write where
+there is no expected type. Branches and loops need none either, which
+was worth checking separately - they are compiled by their own
+routines and could have lost the expected type on the way.
+
+TestProcForms compiles the SAME block four ways and asserts the terms
+behave identically: the leaves, the answer and the questions asked.
+Compiling was never the claim - a macro that infers its types wrongly
+compiles too.
+
+What IS still required is a mark. `direct` has auto-colouring behind
+the DirectCtx capability; this road has none, so an operation used
+where a value is wanted is the ordinary type error it should be -
+recorded as a decision rather than left as a surprise.
+
+docs/static-workflows.md now shows the short spelling everywhere,
+with one paragraph saying when the long one is needed.
+## growing-order-probe - the break finally said which road it took
+
+Five sightings of one shape existed and a sixth would have added
+nothing; what was missing was a break that names its mechanism. This
+is the instrumented reproducer BACKLOG asked for, and it answered on
+its first loaded run.
+
+THE ANSWER IS NEITHER CANDIDATE. BUGS.md ranked the parking path first
+(`pushDecidingAtOnBehalf` does not repair its route) and a window
+around `inner` second. Under 20 burners the probe caught the break at
+round 6303 of 40 000 and printed:
+
+    drained:  1, 3, 7, 9, 11, 13, 15, 5, 17, ...
+    landed:   1->0  3->0  5->0  7->1  9->1  ... 399->1
+    parking path fired               0 times
+    went back into the adopted part  0 times
+
+Element 5 was pushed into part 0 while part 0 was still that
+producer's part, and came out after 7..15 from part 1. No route was
+stale and nobody went back: the producer's elements are SPLIT across
+the swap, and the CONSUMER passed part 0 before 5 landed, drained part
+1, and returned for 5 afterwards. "Part 0 is read first, on purpose"
+holds per scan, not globally.
+
+So the defect is in the DRAIN, not the push, and it is a design
+statement about `Growing` rather than a missing repair. Nothing is
+proposed here: both candidate fixes are hot-path, and this repository
+prices those before it lands them. Filed as
+`growing-order-drain-guarantee`.
+
+TWO METHOD FINDINGS, each worth as much as the answer.
+
+THE INSTRUMENT MASKED THE EFFECT. The first cut recorded every push
+into one shared queue. With it off the break came at round 1959 of
+2000; with it on, 6000 rounds found nothing - a shared tail is the
+very thing `Growing` exists to avoid. The trace is now one byte per
+element, the part it landed in, written once by whoever pushed it,
+with the full trace an opt-in that says why it is off.
+
+AND A GREEN HAD TO PROVE IT REACHED THE STATE UNDER TEST. "4000
+rounds, no break" says nothing if the buffer never grew, so the probe
+counts the rounds in which it did - 40 000 of 40 000 here. That
+counter was added out of suspicion about an earlier green, and it is
+what makes both the greens and the reds readable.
+
+Two corrections made on the way. BUGS.md called `Growing.inner` "a
+plain `var`" with no happens-before edge; it is `@volatile` and has
+been since the file was created, so the real window is staleness
+between the `grown` CAS and the assignment, not visibility. And the
+probe's own header told you to pass `-Dokay.probe.rounds` while the
+test was statically ignored AND the module forks its tests, so the
+property could not arrive - the environment is the switch now.
+
+Gate: the probe is ignored unless `OKAY_PROBE_ROUNDS` is set, so it
+costs the gate nothing.
+## optics-typepedia - the reference had no optics in it
+
+`docs/typepedia.md` calls itself "every core type and typeclass with
+its meaning and the recurring gotchas; the reference you grep". It is
+911 lines long and the words `Lens`, `Prism`, `Traversal` and `Optic`
+did not occur in it. A reader who knew the library had optics could
+find the theory chapter and, since this morning, the page of pairs -
+but the thing they would actually grep had nothing.
+
+It has an Optics section now, in the file's own register: the
+constraint lattice and why composition is an intersection, the seven
+families with the one constraint each, the five interpretations, the
+two roads through `Fuse` (named path emits code, run-time choice pays
+an interpreter), the two field constructors and which of them fusion
+cannot read, and the zooming carrier.
+
+THE PART WORTH THE LANE is the gotchas, because every one of them
+existed only as a comment in `Optic.scala` where nobody looks:
+`.compiled` is measured SLOWER than the optic and is kept for the
+pair rather than for speed; a traversal cannot be compiled at all and
+the missing given is the honest reason; `Aggregating` is deliberately
+not `Strong` because `first` would have to invent a `C` from a
+`Vector[C]`; `idApplicative` and `zipLazy` are not givens, each for a
+stated reason; and a bottom-up rewrite is a catamorphism rather than
+a traversal. Five facts the library had paid for and never published.
+
+Three smaller records brought level with the code: `docs/optics.md`
+gained the program-zooming section (a lens zooms a typestate program;
+a prism cannot, by parametricity; `zoomCase` is the door that exists)
+and its "every block is run by a test" claim now names both tests
+rather than one; the tutorial's "where to go next" links the optics
+page; and both theory indexes carried a chapter-10 summary that
+stopped at "the type-changing lens IS parameterised state", which is
+now "as an instance - with the prism that cannot be one".
+
+Gate: docs only.
+## optics-cont-profunctor - a typestate program is a profunctor in its state, and a prism cannot zoom one
+
+Half an instance and half a refutation, and the refutation is the part
+worth reading.
+
+**The instance.** `Cont[X, B => R, A => R]` computes an `X` and takes
+the state from `A` to `B`. Read as `P[A, B]` that is a `Strong`
+profunctor, and `PState.zoom` - which was a hand-written `shift` -
+is now `l[Zooming[X, R]](m)`. `TestZoom`'s six tests pass unchanged,
+which is the whole evidence for the claim. The `lens` override is
+held to the derivation it replaces by a test, as every override in
+Optic.scala is. What it bought beyond deleting a body: an iso zooms
+(the `dimap` road no zoom had ever taken), `first` zooms a pair
+state, and a composed optic zooms.
+
+The given is TOP-LEVEL, and the compiler is why: written inside
+`object PState` it resolved for `zoom` (lexically inside) and for
+nobody else, because the implicit scope of `Cont[X, B => R, A => R]`
+is `Cont`'s companion, not `PState`'s. A user zooming by hand would
+have needed an import nobody could guess. `import okay.given` finds it
+now, which is where every other optic interpretation lives.
+
+**THE REFUTATION.** `Choice` cannot exist for this carrier. `right`
+must run the program on one case of a sum and pass the other through;
+on the case that is NOT there, the zoomed program must still answer
+the inner program's `X`, and `X` is universally quantified in the
+instance. There is no `X` to make and no continuation to take one
+from - the only source of an `X` is the program that the absent case
+says not to run. That is a parametricity argument, not a compiler
+complaint, and it means the spec's own prediction was wrong in its
+mechanism: it expected the answer-type indices not to line up and
+noted that no cast would go in. A cast would not have helped.
+
+So the door that exists prices itself in its type:
+`PState.zoomCase(prism)(m)` answers `Option[X]`. Present case, the
+program runs and the answer is `Some`; absent case, NOTHING runs -
+pinned with a counter rather than an assertion about the state - the
+state passes through as the `S2` the prism found, and the answer is
+`None`.
+
+`TestContProfunctor` pins the absence of the instance with the
+`Strong` summon beside it as the control, because a test that only
+accepts things can never prove a refusal.
+
+Two records corrected on the way, both the same defect class: theory
+ch. 10 quoted `zoom`'s old body with a line number, and the chapter
+now carries the instance reading and the refutation instead.
+
+Not measured, not claimed: `zoom` summons a fieldless instance per
+call where it used to be a direct `shift`. Its four callers are all
+tests, `statePara` is get/set only, and no other lane covers it - so
+there is nothing to regress and nothing measured to report. A lane
+that gives `zoom` a production caller prices it first.
+
+Gate: affected master. The first run was RED on ONE test, and the
+verdict was a load symptom - recorded here rather than swept:
+`TestStorefront."the library answers no URL, and the site warms with
+every page compiling"` timed out at munit's default 30 s. That test
+compiles every page of the site, and the box was at load average 55
+under two sibling processes. Rerun alone at load 30 it takes 2.757 s,
+an 11x margin - not a marginal flake but an 11x-oversubscribed box.
+okay-script contains no `PState`, `Zooming` or `zoom`, so this lane's
+diff cannot reach it. Re-gated green after the load fell.
+## gate-bound-test-fanout - one line, and the gate stops hanging
+
+The watchdog that landed beside this catches a hung gate. This stops
+it happening, and it is one line: `ThisBuild / Test /
+parallelExecution := false`.
+
+MEASURED FIRST, because the knob had never been looked at. `show
+concurrentRestrictions` answers `Limit all to 14` - sbt does bound
+concurrent TASKS to the core count - and `Limit forked-test-group to
+1`. What nothing bounded was the fan-out INSIDE a task:
+`Test / parallelExecution` was true on all three platforms, and on JS
+and Native a test CLASS is an operating-system PROCESS, a `node` or a
+linked binary. Fourteen tasks times their classes is the 145-165 both
+stall dumps caught, on a 14-core box.
+
+THE PROOF IS THE CONDITION, NOT THE CLOCK. The same `affected master`
+scope that stalled twice - at module 77, then at 78 - ran to
+completion: 92 modules, 303 s, while a sibling's unbounded gate held
+152 node processes and the box sat at load average 76. Peak children
+104 against 165.
+
+TWO THINGS THIS DOES NOT CLAIM. 104 is not the ~14 that one task per
+core would predict; that prediction was wrong, the remainder is
+unmeasured, and `gate-fanout-what-is-left` holds the question with the
+method attached. And 303 s is not comparable to the 179 s baseline,
+which was measured on a quiet box - a timing claim needs both sides in
+one minute, and these are not.
+
+The run's only failure was `hedge-start-timing-flake`, the fourth
+sighting of a wall-clock assertion on a shared box, from a fourth lane
+that cannot have caused it: this one changes one line of build.sbt.
+3 of 3 green in isolation. That entry has said since the third
+sighting that the owner's choice is overdue.
+
+A MEASUREMENT MISTAKE WORTH RECORDING, because it happened three times
+in one afternoon and never once touched the subject under test: the
+peak-runner sampler matched `^node$` and counted a sibling's 152
+processes as mine; a `pkill -f` aimed at that sampler matched the text
+of my own background command and killed the measurement's wrapper (the
+gate itself survived, reparented to init); and a liveness check
+grepped for a worktree path in a command line that never carries one.
+Three instruments wrong, the fix under test fine each time.
+
+Gate: affected master.
+
+## gate-watchdog - a gate that hangs now says so, with the dump beside it
+
+A gate sat **57 minutes** with its log frozen mid-sentence and was
+found only because the operator asked how it was going. Nothing in
+`gate.sh` checked that the run was still alive.
+
+THE CAUSE, from a `jcmd` dump taken before anything was killed:
+
+    main                           parked in sbt.Execute.next
+    sbt.ForkTests$Acceptor$1$.run  blocked in Net.accept - NO TIMEOUT
+    165 child processes            100 node + 65 Scala Native binaries
+                                   all spawned in the first 20 seconds
+                                   all at 0.0% CPU, on 14 cores
+    java forks among those 165     NONE
+
+`ForkTests` opens a socket, starts a forked JVM and waits for it to
+connect back. The fork was not there, and `accept()` has no alarm, so
+sbt waited for a task that could never finish. Scala Native's runner
+has a 40 s accept timeout, which is why THAT failure shows up as exit
+137 instead of silence - the same family, the opposite symptom.
+
+THE GUARD: `gate.sh` now watches its own log. Eight minutes with no
+new output AND an idle process tree is a stall; it writes a thread
+dump and a `ps` of the tree beside the log, kills the run by PID, and
+prints `gate: STALLED` (exit 124). Deliberately not RED and not
+KILLED: a stall says nothing about the tree, and `gate-retry.sh`
+retries anything that reaches no verdict - it now names this one.
+
+TWO SIGNALS, NOT ONE, and that is the whole design. Silence alone is
+a cold compile of a big module; idleness alone is sbt between tasks.
+A stall is silent AND burning no CPU. `ps -o pcpu` could not be used
+for the second half - it reports a process's average over its whole
+life, and read 5.8% for a JVM that had been idle for an hour - so the
+watchdog differences cumulative CPU TIME across the silent window.
+
+TESTED IN BOTH DIRECTIONS, which is the point of
+`scripts/gate-selftest.sh`: a silent idle build must be killed, and a
+silent BUSY one must survive. The second assertion is the one that
+matters, because a watchdog that fires on every long compile is worse
+than none. A third case runs the whole suite again under `/bin/sh`,
+and it earned its place immediately: the first cut used a `case`
+inside a command substitution, which is a syntax error under `sh` -
+and AGENTS.md invokes the gate as `sh scripts/gate.sh`, so the
+watchdog would have been dead in the only invocation that matters
+while passing its own test through the bash shebang.
+
+LAYERING, stated because there are now two. `gate-retry.sh` has had a
+stall watchdog for longer - log size, once a minute, 10 minutes - and
+it stays as the backstop for a wedged `gate.sh`. The new one sits
+below it at 8 minutes so that the layer which takes evidence is the
+layer that fires.
+
+What this does NOT fix: 165 runner processes on 14 cores is still
+unbounded, and nothing in the build limits it. That is the other half,
+filed as `gate-bound-test-fanout` with the measurement attached.
+
+Gate: scripts and docs; `scripts/gate-selftest.sh` passes under both
+shells.
+## ui-open-records — the last UI stub becomes a record somebody can act on
+
+`ui-windows-terminal — raw mode beyond stty` was a one-line entry, and
+a one-line entry is a note to the person who wrote it. It now says
+what actually breaks (only `Terminal.raw`'s `stty`; the painting is
+ANSI, which Windows 10+ draws), what no longer needs doing
+(ui-terminal-keys landed the decoder, and a Windows console with
+`ENABLE_VIRTUAL_TERMINAL_INPUT` sends the same `ESC [ A` sequences —
+so the remaining job is the MODE, not a second input vocabulary), the
+dependency-free shape (a child process configuring the shared console,
+which is exactly what `stty` already is here), and the trigger: a
+Windows box to verify on.
+
+That last part is the point of writing it rather than doing it. This
+is platform code whose entire content is a side effect on a terminal
+nobody here has; landing it unverified would put a claim in the
+repository that no test and no person has seen hold.
+
+WHAT THE SWEEP LEFT OPEN, all three trigger-gated and each narrowed by
+a lane that landed today: `ui-terminal-v2` (a caret, a scrolling
+viewport, a width-aware layout, the mouse — the last two both mean
+`Frame.render` takes a size), `ui-native-hosts-unread` (a SCREEN under
+a product's density, now that the tokens are asserted on Swing and
+GTK), and this one. `delim-doors-are-prompted` is left exactly as it
+is: it is already a decision-ready record, and it asks for a decision
+about a public signature in two modules rather than for work.
+
+## ui-terminal-keys — the arrows, Shift-Tab and Home/End, decoded as a value
+
+The terminal moved focus with Tab and nothing else, because escape
+sequences were never read: a terminal sends `ESC [ A` for an arrow and
+`ESC [ Z` for Shift-Tab, one BYTE per read, and `Frame.interpret` took
+a single `Char`. So naming what arrived had to come first.
+
+`Frame.Key` and `Frame.feed` are that, and they are VALUES like
+everything else in this file: a byte in, the keys it completed out —
+usually none or one, and TWO when a lone ESC turns out not to have
+started a sequence (the ESC itself, then the byte after it). The state
+between two reads is the only thing the host keeps, because it is the
+only thing that cannot be a value.
+
+WHAT THE KEYS DO, and the one deliberate abstention. Up/Down and
+Tab/Shift-Tab move the focus and wrap; Home/End jump to the ends of
+the tab order; Left/Right choose within a `Select`, exactly as `<`/`>`
+already did. **Left/Right do nothing inside an `Input` on purpose** —
+that is where a caret goes when this host gains one, and taking those
+keys now would have to be taken back.
+
+Total by construction: an unnamed final byte answers `Key.Unknown`
+rather than a guess, and the state returns to `Plain`, so one strange
+sequence cannot swallow the keys after it — asserted, along with the
+sequences other terminals send (`ESC O A`, `ESC [ 1 ~`).
+
+`interpret(ui, focus, ch: Char)` stays and delegates, so every caller
+and every existing test is untouched: the char road is the key road at
+`Key.Ch`, and a test asserts the two agree.
+
+TestTerminalKeys (7). BACKLOG's `ui-terminal-v2` is narrowed to what
+is actually left — a caret, a scrolling viewport, a width-aware layout
+and the mouse — with the note that the last two both mean
+`Frame.render` takes a size, which is the change that would touch
+every terminal test and wants a consumer first.
+
+## proc-notation-branches - an `if` is `OnRight`, a `while` is `Iter`
+
+v1.1 of specs/proc-notation.md, the two shapes v1 refused by name.
+A `Proc.direct` block can now branch and loop:
+
+    val rooms = Proc.direct[Sig, Unit, List[String]]: _ =>
+      val n = !ask("nights?")
+      var got = List.empty[String]
+      while got.length < n.toInt do
+        got = got :+ !ask(s"room ${got.length + 1}?")
+      got
+
+AN `if` IS TWO `OnRight`s AND THREE `Arr`s: select Left-or-Right on
+the condition, run the then-branch on the Right, swap, run the
+else-branch on the Right, merge. Both branches are IN the term, so
+`leaves` reports both - the over-approximation the whole shape is
+built on - and only the taken one asks.
+
+AN ASSIGNMENT IS A REBUILD, AND THAT IS WHAT MAKES THE LOOP HONEST.
+`x = e` emits an `Arr` that reconstructs the environment with x's slot
+replaced, so a name always lives at its own index and the layout never
+depends on what has been assigned. Nothing mutates: the value that
+goes round the loop travels on the arrow's edge, which is why a replay
+re-derives it exactly and why the position inside a loop is a path
+with a counter (`round2`).
+
+A `while` is `Iter` with the test IN FRONT of the body, so a zero-trip
+loop asks nothing - a test, because the obvious mis-compile runs the
+body first.
+
+THREE THINGS THIS COST, all worth keeping. The flat walk became a
+recursive body compiler, because a branch is a block compiled at the
+environment the `if` sees. The off-by-one that read `r|r` for `l|r` in
+v1 came back at an `if` whose condition asks a question, and the fix
+was to stop having two copies of the hoisting loop. And the UP-FRONT
+GUARD was the bug that hid the feature: v1 swept every statement
+before compiling anything, which refused the very shapes this stage
+compiles - the guard now runs on the straight-line pieces only.
+
+SEEN FAILING, twice: inverting the branch selector reddens three tests
+(the run asks the wrong question), and running the loop's body before
+its test reddens the zero-trip test alone.
+
+Still refused, each naming the way that works: a `for`/`foreach` over
+a collection (a lambda - write a `while`), a question in a `while`
+condition, and an `if` nested inside a larger expression. Filed as
+`proc-notation-for-loops` and `proc-notation-while-question`.
+
+docs/static-workflows.md gained a Branches section and its "what it
+does not do" list is now true.
+## native-tokens-tested — the half of ui-text-intent that shipped on trust
+
+`ui-text-intent` gave `Kind` and `Align` to every host and tested them
+on the browser roads, the terminal and the wire. Swing's and GTK's
+halves shipped with no test at all — code written, read once, believed.
+This is that debt, and it is small on purpose: the tokens are asserted
+where they are drawn.
+
+Swing: an identifier comes out in the monospaced face, an `Align.End`
+label sits at `SwingConstants.RIGHT`, a defaulted `Style` is the plain
+label it always was — and `Kind.Number` is asserted NOT to change the
+font, because Swing has no tabular-figures switch and a recorded gap
+should be a fact rather than a silence.
+
+GTK: the `monospace` and `numeric` style classes GTK already has,
+asserted against REAL widgets (the suite runs when `gtk_init_check`
+succeeds and says so when it cannot). Reading a class back needed a
+binding that did not exist — `gtk_widget_has_css_class` — which is the
+useful shape of this kind of test: it forces the host to be
+interrogable, not just writable.
+
+BACKLOG's `ui-native-hosts-unread` is narrowed rather than closed:
+what is still unread on a native host is a SCREEN under a product's
+density, which is a layout question and needs a product, not a token.
+
+## ui-docs-refresh — the guide and the two UI specs catch up with the day
+
+Seven lanes landed against okay-ui today and the pages a reader opens
+still described the morning. What changed:
+
+- **docs/frontend-guide.md** — where a form STARTS (`Form.blank`, and
+  why the scriptless road makes it fatal rather than untidy) and what
+  its errors mean (a defaulted field is not "required"; an error inside
+  an `Option` belongs at the field's key or it renders nowhere); the
+  wire's totality restated to cover damage that PARSES (a well-formed
+  patch naming nothing is dropped, not thrown); the lowered table's one
+  space per column boundary.
+- **specs/ui.md** — the behaviour box claiming "a damaged line is
+  dropped, not a crash" was true of unparseable lines and false of a
+  well-formed patch, so the correction sits UNDER it rather than
+  replacing it; and a Decision recording that `Ui.patch`'s walk and
+  `Ui.path`'s stay two bodies, with the measurement that decided it.
+- **specs/ui-toolkit.md** — two new sections: where a form starts (the
+  three doors) and what a form believes about a value (the two defects
+  the probe found).
+- **README.md**, **docs/README.md** — the `ui` entry and the frontend
+  guide's index line name the hosts that exist and the two things a
+  tree says that it did not this morning.
+
+AND WRITING IT FOUND A DEFECT. The sentence "a form starts from
+`Form.blank`, never from an empty object" was checked before being
+published, and `Form.ask`/`askWith` did not do it. That is
+`form-ask-blank`, landed before this page could say it — which is the
+order that keeps a guide worth reading.
+
+## form-ask-blank — the third door, counted by writing the sentence down
+
+`Form.ask` and `Form.askWith` started their loop from `{}`, so a
+dialog whose `Select` the user never touched submitted a value with no
+answer where the screen was showing one. `form-blank` had fixed this at
+`Live.form`'s door and okay-watch had fixed it at theirs; these two were
+never counted.
+
+FOUND BY WRITING THE GUIDE. The sentence being added was "a form starts
+from `Form.blank[A]`, never from an empty object" — and checking it was
+true before publishing it found the two places where it was not.
+`count-the-doors` says to grep how many places do the same thing after
+a fix; a doc sentence is another way of asking the same question, and
+this time it is the one that worked.
+
+The test was watched failing on both roads first: a `Paint(what,
+colour)` whose `Colour` Select shows `Red`, typed into and submitted
+without touching the Select, came back refused instead of
+`Paint("wall", Red)`.
+
+`askSchema` — the dynamic JSON-Schema road elicitation asks with — is
+NOT affected and stays as it is: `ofSchema` renders an unanswered enum
+with `selectedIndex = -1`, so its screen shows no answer either, and
+the two agree.
+
+TestToolkit gains the case. okay-ui 153, okay-script 207, okay-mcp 54.
+
+## form-errors-on-validate — the question was wording, the answer was two defects
+
+The backlog entry proposed making `Form.errors` be `Validate.errors`
+with a `Wording` parameter, on the reading that the two walks differ in
+how they SAY things. Running both over one schema first
+(`FormErrorsProbe`, kept beside the tests) showed they differ in what
+they BELIEVE, twice, and the form was wrong both times.
+
+**A field the schema DEFAULTS was reported "required".** `Close(disposition,
+note = "", tags = Vector.empty)` decodes from a value carrying only the
+disposition — the decoder applies the defaults, as the wire's own
+decoder does. `Form.errors` called `note` and `tags` required, so
+`Live.form` refused the submit and showed two messages under two fields
+the user cannot see are empty. Forever: nothing the user types makes an
+untouched defaulted field stop being "required".
+
+**An error inside a present `Option` rendered nowhere.** An
+`Option[Address]` with the city typed and the zip not put its message at
+the key `address`, and a form renders errors under the key of a FIELD —
+`address.city`, `address.zip`. The message existed, blocked the submit,
+and was invisible. The option is walked now when it is present (absent
+is still fine and silent), so the message lands on `address.zip`.
+
+Both were watched failing first, the second with the assertion that
+names the form's own rendered keys, which is what makes "renders
+nowhere" a test rather than a claim.
+
+THE WORDING QUESTION IS WITHDRAWN. "required" is the right word for a
+person; "missing field 'zip' in Address" is the right word for a wire.
+The two walks stay two — as `ui-path-two-walks` concluded the same day,
+for its own measured reason — and `Validate` keeps the wire's voice.
+`SIso` still hands its refinement whole to the decoder, which is right:
+a refinement belongs to the wrapper, not to a field under it.
+
+TestFormErrors (3). okay-ui 152, okay-script 207.
+
+## ui-path-two-walks — the answer is "stay two", and the question found a wire defect
+
+MEASURED FIRST, as the entry demanded. `PathWalkProbe` (kept beside the
+tests, the way `MobileProbe` is) puts `Ui.path(p).modify(f)` against
+`Ui.patch`'s hand walk at three depths:
+
+    depth 4    hand 43 ns / 296 B      affine 154 ns / 1576 B
+    depth 16   hand 150 ns / 1064 B    affine 643 ns / 5896 B
+    depth 64   hand 1027 ns / 4136 B   affine 2330 ns / 23176 B
+
+2.9-7.9x the time and a steady ~5.5x the allocation. The time ratio
+swings because the box is shared; the allocation ratio does not, and it
+is the honest number. So the two walks STAY two, held equal by the law
+in TestUiOptic rather than by being one function — the backlog entry's
+own condition, answered rather than assumed.
+
+AND THE QUESTION FOUND SOMETHING THE TIDY-UP WOULD HAVE HIDDEN. The two
+walks disagreed about TOTALITY: `Ui.path` answers an Option, while
+`Ui.patch` indexed its Vectors directly and threw
+`IndexOutOfBoundsException` on a path naming nothing. **A Patch arrives
+over a wire.** `Wire.client` applies one straight onto the tree it
+holds, and a well-FORMED `Msg.Patch` whose path is not on that tree
+parses cleanly, reaches `Ui.patch`, and ended the session from inside
+the receive loop — where the protocol's rule everywhere else is that
+damage is dropped, never a crash. A `Reorder` whose order named a child
+that is not there did the same.
+
+Both guarded, and the law extended to say so: a path that names nothing
+changes nothing, in both walks, for SetText, SetValue, Remove, Insert
+and Reorder alike. The test was watched failing with exactly the
+exception a forged patch would have thrown.
+
+## ui-table-gap-and-proof — a column boundary is a space, and a browser really does build a table
+
+Two things left over from the table's two roads, closed together
+because they are the same node seen from each end.
+
+**ONE SPACE PER COLUMN BOUNDARY.** A lowered row pads every cell to its
+column's width and put NOTHING between them, so a terminal read
+`2023-11-14bread` — two values with no gap are one value to a reader,
+and a date that runs into the next column has stopped being a date.
+The gap belongs to the LOWERING, not to the terminal: a table's columns
+are separated on every host that draws the lowering, and each maps
+`gap` to its own unit (a character here, ~8px in GTK, nothing in Swing,
+which does not draw gap and says so). The test was watched failing on
+the unfixed lowering first, printing exactly the string the backlog
+entry had recorded from one-binary-story's page.
+
+**AND THE CLAIMED TABLE HAS REAL-BROWSER EVIDENCE NOW.**
+ui-browser-vocab proved itself on a fake document and on rendered
+strings, which is where the laws live; neither can say whether the page
+a browser actually builds is a table, because `live.js` is 240 lines of
+hand-written JavaScript that no Scala test executes and its HELLO is
+what decides whether a `Table` is ever sent. `TestTableBrowser` drives
+Chromium against a real Live page: the scriptless render is already a
+`<table>` with a `<thead>` and a `<colgroup>` (`width:90%` on the
+second column, the author's shares), the cell carries its own
+`okay-kind-ident`, and then a press over the SOCKET lands a patch
+INSIDE the table — a new row, and the first row's note rewritten.
+Live-tagged, so it runs under `integrationTest` like every other suite
+that needs something outside the JVM.
+
+## proc-notation-road - the straight-line block, compiled to an arrow
+
+Lane 3 of specs/arrows-plan.md, stage 1 of specs/proc-notation.md.
+`Proc.direct` takes the block a monadic workflow is written as and
+compiles it to a term:
+
+    val booking = Proc.direct[Sig, Unit, String]: _ =>
+      val city = !ask("city?")
+      val t    = !now
+      s"$city/$t"
+
+THE TRANSLATION IS THE ENVIRONMENT AND NOTHING ELSE. What a monadic
+body keeps in its closure, an arrow carries on its edge: a left-nested
+tuple that starts as the block's input and grows at every bound name,
+references becoming projections, a leaf becoming `Proc.keeping`, a run
+of pure statements becoming one `Arr`. Two `Arr`s in a row fold at
+construction, so a compiled block's nodes are its leaves and the
+plumbing between them.
+
+What `!` marks is an OPERATION, never a `Proc`: a step chosen by a
+value the block binds is `app`, and an arrow with `app` is a monad
+(Hughes 2000 §4.5). That is refused by name, with the rewrite in the
+message, and pinned by `compileErrors`.
+
+`Direct.scala` WAS NOT TOUCHED - the road is its own file - so "every
+existing direct test passes untouched" is true by construction. And
+the twenty lines it shares with it (the mark symbols) are the datum
+arrows-plan's stage 2 was waiting for: an IR serving all three roads
+would have to model a nested continuation for two of them and an
+appended environment for the third, so stage 2 is REFUSED for now,
+with the trigger written down.
+
+TWO BUGS THE TESTS FOUND, both worth keeping. A statement with two
+marks read the second answer twice (`r|r` where `l|r` was meant): the
+residual was rewritten against the depth AFTER its leaves. And the
+refusal tests found a second one before they could pin anything -
+inside `compileErrors` an inline argument arrives wrapped in `Inlined`
+nodes carrying `$proxy` bindings, which the lambda pattern did not
+look through, so the macro answered "takes a lambda". A refusal test is
+worth writing even when the refusal already works by hand.
+
+WHAT IT REFUSES, each naming the node that would take it: a mark
+inside an `if` branch (`OnRight`) and inside a loop (`Iter`) are v1.1,
+filed as `proc-notation-branches`, because hoisting a mark out of a
+branch would RUN it whether or not the branch is taken. An `if` over
+bound values, and one whose CONDITION is a question, compile today.
+
+Documentation: docs/static-workflows.md is the page - what the shape
+buys, the block beside its monadic twin, the two readings of a
+position, `Iter`, what is not built, and which shape to pick. Linked
+from docs/README.md and from docs/durable-workflows.md.
+## ui-product-consumer — the arc's four criteria, ticked from the product's side
+
+Every stage of specs/ui-product.md ended with the same line: okay-watch
+deletes its copy and the page is unchanged. All four are done (their
+commit 56289bc, this repository's 7e756f87): the forty lines that
+dressed rows of `<div>` as a table, the fifteen `nth-child` rules that
+said by POSITION what a cell is, the copy of the token map, and
+`Analyst.blank`. The page looks as it did and can no longer drift.
+
+THE CONSUMER FOUND ONE MORE THING, which is why this entry is not just
+four checkboxes. Their two widest tables scrolled by a stylesheet rule
+that made them `display:block` — and a table with `display:block` is
+not a table box, so the `<colgroup>` this whole arc existed to deliver
+would have stopped applying at exactly the two tables that needed it
+most. The fix was not CSS: `Ui.Scroll` is the level-L node for "this
+box scrolls", every host draws it, and saying it in the TREE is what
+having two levels is for. **A stylesheet that has to change an
+element's display type is usually saying something the tree should
+have said** — which is the same shape as the defect that started this
+arc, where a page said with `nth-child` what a cell should have said
+itself.
+
+Spec only; the code it describes is in okay-watch.
+
+## static-workflow-proc - a durable workflow as a term, on the engine that already exists
+
+Lane 2 of specs/arrows-plan.md, stage 1 of specs/static-workflow.md.
+`okay.Proc[F, X, Y]` is the free ARROW over a signature - `Static`'s
+neighbour one rung up the ladder - with `Arr`, `Op`, `Then`, `First`,
+`OnRight` and `Iter`, an `Optic.Arrow & Optic.Choice` instance, and
+NO `ArrowApply`: no operation takes a computation as data, which is
+Hughes' line between an arrow and a monad.
+
+`Iter` is the one constructor the selective literature lacks and the
+reason Appendix A refused the static route: Elgot iteration is a NODE,
+so "ask N questions where N is an answer" stays a finite term whose
+position is a path with a counter on it.
+
+A workflow is ONE SIGNATURE, `Wf.Question[Q, A, R]` - a GADT indexed
+by the answer, so `Now` IS a question answering `Long` and the nine
+partial functions the monadic doors carry become a type.
+
+THE BET, AND IT PAID: okay-persist did not change by one line.
+`Wf.Proc.program` turns a term into an ordinary durable program, so
+`Dialogue.workflow`, the envelope, the races, the snapshots, the
+suspension and `patch` all work as they stand. The decisive test is
+that the two front ends share a TOPIC: a run started by the monadic
+booking and half-answered is carried to the end by the term, and their
+journals are equal record for record.
+
+`Wf.Proc.walk` is the second reading of a position: it folds the TERM
+over the journal and performs nothing - no row, no monad, no runtime
+in its signature, which is the proof. It and `Wf.replay` must agree,
+and they are asserted to on every PREFIX of three journals.
+
+THE KEYSTONE WAS SEEN TO FAIL, three ways. A green property is worth
+nothing until it has been red for the right reason: stopping the loop
+counting its rounds reddens the position test; reading an answer
+without consuming it reddens SIX tests including both agreement
+properties; making a patch eat the record after it reddens the
+v1-journal pair. The middle failure reads `stranded at 1/1/1/2/2/1/2/in
+on record 1: Now() cannot take Right(Kyiv)` - the path says where, the
+record says which, the question says what it could not take.
+
+WHAT THE COVARIANCE COSTS, said where it is paid: `okay.Proc`'s
+signature is `F[+_]`, so matching the GADT proves `A <: Z` and not
+`A = Z`, and a program is invariant in its value. Every arm of the
+bridge widens through a `map` - one node per leaf, beside a leaf that
+is an outside call, and no `asInstanceOf`.
+
+AND THE PRICE THE NEXT LANE REMOVES IS NOW VISIBLE: every term needed
+a `keep` helper, because what a monadic body holds in a local variable
+a term carries on its edge. Four uses in one booking. That is the
+evidence `proc-notation` was waiting for, and it arrived by writing
+the terms rather than by arguing about them.
+## ui-html-css — the tokens' stylesheet moves beside the tree
+
+`okay.ui.Html.css`: the level-L stylesheet for the browser roads —
+the tree's containers, the text tokens (`okay-bold`, `okay-tone-*`,
+`okay-size-*`, `okay-kind-*`, `okay-align-*`), a button's role, and
+the table the browser now draws. okay-script serves it at
+`/__okay/okay.css`, and `Mobile.css` is that file plus what a PHONE
+adds — 44px tap targets, 16px inputs, a wrapping row, a reading
+measure — so a page still makes one request.
+
+WHY IT BELONGS HERE. `React.elem` writes those class names, and until
+now the only file that knew them was okay-script's phone stylesheet.
+A product serving `Html.render` itself therefore started from
+unstyled HTML and wrote the token map again by hand: okay-watch did,
+including fifteen `nth-child` selectors for what `Kind` and `Align`
+now say. `LiveJs` moved into okay-ui for this reason (the client of
+the tree lives beside the tree); this is the same argument for the
+same host.
+
+THE GUARD IS THE POINT OF THE LANE. A test walks a tree using every
+node and every token, collects the classes the renderer ACTUALLY
+wrote, and fails on any that has no rule — so a token added to the
+tree without one is a red test, not a page that quietly renders it
+unstyled. It also shows itself non-vacuous: three classes named from
+the walk's own result, and a name nothing writes shown absent from the
+file.
+
+Theming is six custom properties, not a fork of the rules:
+`--okay-fg`, `--okay-muted`, `--okay-accent`, `--okay-danger`,
+`--okay-line`, `--okay-base`. What is deliberately NOT in the file is
+layout the tree did not say — a `Box`'s weights stay inline, where
+React writes them and where an author's shares cannot be overruled.
+
+A CELL WRAPS; IT NEVER ELLIPSIZES is okay-watch's rule, promoted from
+a product stylesheet to the base: a page exists so a reader can CHECK
+what it says, and `DE000000000…` can be checked against nothing,
+copied nowhere and compared with nothing. `anywhere`, because an IBAN
+and a transaction hash have no spaces to break at; the header row
+keeps the ordinary word rules, or "weight" comes out as "weigh / t".
+
+TestHtmlCss (3). specs/ui-product.md stage 4 — the last of the four,
+which closes the arc this repository can close; what is left in it is
+each lane's last box, and those are okay-watch's to tick.
+
+## ui-text-intent — what a text IS, as a token the tree carries
+
+`Style` gains `kind` (Prose/Ident/Number) and `align` (Start/End).
+An identifier is read AGAINST something — an explorer, a published
+list — so it is monospaced and must arrive whole; a number is compared
+DOWN a column, so its figures are tabular and it sits where the column
+ends; prose is read, so it wraps. okay-watch had been saying exactly
+this with fifteen `nth-child` selectors, which do not survive a column
+being moved, and its own stylesheet says so in a comment.
+
+The token sits on the TEXT, not on the table, because only the author
+knows what a cell says: "eight characters" is not a rule, and an IBAN
+is prose to a sorter and an identifier to a reader. `Kind` and `Align`
+are orthogonal for the same reason — a number in a sentence is not
+right-aligned, and a column of them is, so a column says both.
+
+Hosts: React/`Html`/`live.js` write `okay-kind-*` and `okay-align-*`
+(their stylesheet is ui-html-css, the next lane); the terminal moves a
+cell's padding from one side to the other inside the column its
+weights gave it; Swing draws a monospaced identifier and a
+right-aligned label; GTK adds its own `monospace` and `numeric` style
+classes. NOT DRAWN, recorded rather than hidden: Swing has no
+tabular-figures switch, and GTK's alignment would need a
+`gtk_label_set_xalign` binding nothing has asked for.
+
+THE WIRE CHANGED, AND THE SPEC HAD PROMISED IT WOULD NOT. "A `Style`
+with both defaults encodes as it always did" was written before the
+code was read; the derived codec writes EVERY field, so every styled
+`Text` gained two keys and `conformance.jsonl` re-rendered. The
+precedent was already here — `Table.weights` did this in
+ui-table-weights — and its rule is the one followed: a new field is
+written, an old client ignores it, a new client reads an absent one as
+the default. Both halves are tested, the second against a hand-written
+line from a server that predates the lane.
+
+AND THE TWO THIN CLIENTS HAD TO FOLLOW, which is the conformance test
+doing its job rather than an accident: it RE-ENCODES the tree it holds
+and compares it to the script, so a client that reads the tokens but
+does not write them back fails. `okay-compose/protocol` and
+`okay-swift`'s `OkayProtocol` carry `Kind`/`Align` now and both DRAW
+them (Compose `FontFamily.Monospace` + `TextAlign.End`; SwiftUI a
+`.monospaced` design and `monospacedDigit`). `swift test` 3 of 3,
+`./gradlew :protocol:test` green, the Compose desktop target compiles.
+
+One SwiftUI fact found by the compiler: `.monospacedDigit()` is a
+`Font` method here, not a `View` modifier taking a Bool — the size,
+kind and face are chosen in one `Render.font(style)` instead.
+
+TestTextIntent (6). specs/ui-product.md stage 2, with the withdrawn
+item ("`Form.of` marks a numeric field") and its reason: a form
+renders a number as an `InputKind.Number` input, which already says
+what it is — there is no `Text` there to mark.
+
+## arrow-laws - one law suite, and the half that makes it evidence
+
+Lane 1 of specs/arrows-plan.md: `okay.laws.ArrowLaws[P]` and
+`ArrowLawsSuite[P]` in the core's test scope - three Category laws,
+seven Arrow laws (Hughes, in Paterson's normal form) and five Choice
+laws stated on `Optic.Choice.right`. Two lanes wanted these on the
+same day and each was written to wait for the other, so they are
+written once, with NO instance added: `optics-arrow-instances` and
+`static-workflow-proc` each instantiate in three lines.
+
+`Mealy` is the first instantiation and its four hand-written law tests
+are gone. Its `right` had never been tested at all - the five choice
+laws are the first check that a machine skipped on a `Left` keeps its
+state, and all fifteen pass.
+
+What makes the suite reusable is the OBSERVATION, and TestMealy had
+already found it: two arrows are equal when they answer the same over
+a SEQUENCE of inputs, because one step cannot show a state. A pure
+function is that with a one-element sequence.
+
+A LAW SUITE NOBODY HAS SEEN REFUSE IS NOT EVIDENCE. So a local
+carrier - a function that writes as it goes - gets two instances, the
+second with a `first` that runs its argument twice and keeps the
+second answer: every answer correct, only the writing doubled. That is
+the defect `Proc` must not have, an activity performed twice.
+
+THE REFUSAL TEST WAS WRONG FIRST, and its own assertion said so. It
+claimed four laws would catch the defect; two do, because a law
+catches a doubled `first` only when `first` appears a DIFFERENT NUMBER
+OF TIMES on its two sides. The two that cannot are now asserted
+QUIET, so the claim is exact in both directions.
+
+okay-lex gained `test->test` on okay to see the suite, with the reason
+in a comment beside it in build.sbt - and the suite lives in
+`src/test/scala-cross`, which the GATE is what established. Written
+into `src/test/scala` it compiled and passed on the JVM and then failed
+okay-lex on JS and Native with `value laws is not a member of okay`:
+that directory is the JVM's alone here (154 sources against 15 cross),
+so a shared test helper put in it is invisible to two platforms out of
+three, and a JVM-only check cannot see it. A helper meant for another
+module's tests is cross until proven otherwise.
+## form-blank — the value a form starts from, in one place and total
+
+`okay.ui.Form.blank[A]`: every `Check` false, every `Select` on its
+first option (a sum's case knob included), every list an empty array,
+every `Option` absent. okay-script's `Forms.defaults` is now one line
+that calls it; okay-watch's `Analyst.blank`, the second copy, goes at
+their next bump.
+
+THE DEFECT, AND WHICH ROAD HAD IT. `Forms.defaults` set Checks and
+stopped, so a `Select` the form SHOWS on its first option was still
+absent from the value behind it. On the scriptless road `Html.events`
+sends an event only for a field whose post DIFFERS from what was
+shown — so a user who fills the text fields and presses Save says
+nothing at all about that Select, and the submission is refused for a
+field they can see is answered. The live road never had it: `live.js`
+and `Ui.submit` collect every field's current value. That is why a
+plain-road page (okay-watch) found it and okay-script's own live forms
+did not, and it is why the same function had been written twice
+outside okay-ui with two different answers.
+
+THE FAILING TEST CAME FIRST and stays in the suite as the record: the
+post folded through `Html.events` from the empty object IS refused,
+asserted, beside the same post from `Form.blank` decoding cleanly.
+
+A THIRD WIDGET THE PLAN DID NOT NAME, found by the test rather than
+by design: a list. An absent array is a missing field to `Form.errors`
+AND to the codec (measured — they agree; an empty array decodes fine),
+while the form shows an empty list. The tree has no event meaning "be
+empty", but it has two that compose into one — the `+` the form draws
+and the `-` on the item it just made. Pressing both keeps the blank
+inside the edit vocabulary instead of writing JSON at a path, which is
+the property that stops it drifting from the renderer: the blank is
+DERIVED from the shown tree, never from the Schema a second time.
+
+TestFormBlank (5), okay-script unchanged. specs/ui-product.md stage 3.
+
+## ui-browser-vocab — the browser draws a real table
+
+`React.Vocabulary` gains `table`, so the one host whose medium HAS
+tables stops receiving rows of `<div>`. A `Ui.Table` is now a
+`<table>`: a `<colgroup>` carrying each column's SHARE as a
+percentage, a `<thead>` of `<th scope="col">`, a `<tbody>` of
+`<tr>`/`<td>`. Both browser roads change at once because both render
+through `React.elem` — the scriptless `Html` and, over the socket,
+`live.js`, whose hello is now GENERATED from that constant rather than
+typed beside it.
+
+WHY THIS NODE AND NOT THE OTHER THREE. The spec (written before the
+code was read) said the browser should claim `Table`, `Items`, `Tabs`
+and `Disclosure`, because HTML has an element for each. It does, and
+the element is not the cost. **The cost is what a node's element
+structure inserts between a patch PATH and the child that path
+names**, and `Table` inserts NOTHING: `Ui.diff` has no `Table` case,
+so a changed table is a `Replace` at its own path and no consumer ever
+walks inside one. `Items` would insert an `<li>` that every patch
+consumer must unwrap on the way down and wrap on Insert/Reorder/
+Remove — in Scala, again in 240 lines of hand-written JavaScript, and
+again in every future claiming client — to gain `<ul>` over `<div>`.
+`Tabs` would oblige each claiming client to switch tabs itself.
+`Disclosure`'s `<details>` toggles natively and tells nobody, so the
+scriptless road's server flag and the browser's would disagree from
+the first click. `Modal`'s `<dialog>` needs a script to open.
+
+THE PRICE, STATED: a changed CELL now replaces the whole table where
+the lowering gave a narrow `SetText`. That is the same sentence as
+"no path descends into a table", read the other way. The trigger for
+revisiting it is a page that MEASURES the difference; nothing in
+okay-watch's tables changes between its five-second ticks today.
+
+`Dom.host` is new and is the react-host-vocab lesson one layer out:
+`Ui.diffing`'s `Set.empty` default is right for a backend that claims
+nothing (Swing, GTK) and wrong for this one, which builds through
+`React.elem` — lowering a table away before the diff would have the
+consumer build one thing and the diff describe another. A host lowers
+with the set it claims, never with a constant.
+
+ONE TEST SAID THE OLD MECHANISM OUT LOUD, and the gate caught it:
+ui-table-weights' "React writes them inline, which is the half a
+stylesheet cannot do". What that test is FOR — the renderer says the
+shares and no stylesheet can overrule them — is unchanged; where it
+says them moved. It asserts the colgroup for a browser and the inline
+`flex` for a client that lowers, which is both halves of the same
+claim. specs/frontend.md's own landed box is amended beside it rather
+than rewritten.
+
+TestBrowserVocab (5) is the lane's own suite, including the guard that
+matters most: for every name in the vocabulary, `live.js` must contain
+a `build` case for it, and its hello must say exactly that set. A name
+added to the constant without a case in the script is a failing test
+rather than a page that quietly stops drawing. TestDom's law battery
+gained a claimed table; TestLink's two-roads test reads the constant
+now instead of a literal `Set(link)`.
+
+specs/ui-product.md stage 1, with the narrowed set and each declined
+node's trigger recorded rather than the first sketch erased.
+
+## optics-guide-page - the library's optics had no page a user could read
+
+`docs/guide.md` did not contain the word `Lens`. Nine sections on
+control, effects, streams, concurrency and capabilities, and the
+optics - closed as an arc, fused to the byte, used by okay-ui and
+okay-codec - existed for a reader only as tutorial section 23 and a
+theory chapter. `docs/optics.md` is the page, linked from the index
+and from a new guide section 10.
+
+It is written as PAIRS, because that is what the last docs lane
+learned the hard way (`useful-not-just-works`: six literature examples
+did not answer "how does this simplify my code"). Left, the code a
+person writes; right, the optic. Two of the five are real call sites
+in this repository rather than invented ones: `WordTfIdf.against` for
+a deep field set, `Parse.rebase` for the pair where the optic does
+NOT win.
+
+**Every block on the page is run** by `TestOpticsGuide`
+(src/test/scala-cross), which asserts the two sides of each pair
+answer the same thing. A page whose examples are checked cannot drift
+the way prose does, and this repository has been bitten by prose that
+outlived its code twice this month.
+
+THE PAIR THAT CORRECTS THE OBVIOUS GUESS is the fifth. Two fields of
+one sub-record through two optics "rebuilds the record twice" - which
+is true of the work and false of the memory. benchmarks.md section 9b
+had already measured it: 1.48 ns for one `copy` of both fields, 3.94
+for two fused optic sets, and **24 B/op for both**, because escape
+analysis scalar-replaces the intermediate. The page states the
+measured shape rather than the intuition, and says the allocation
+column is a JVM claim only.
+
+FOUND ON THE WAY, and the reason this entry is not purely docs:
+`optic-law-rewrites` is cited as "filed" by benchmarks.md section 9b
+AND by its own CHANGELOG entry, and it was in neither board. Two
+documents asserting a lane exists does not make it exist. It is filed
+now, in BACKLOG under optics-arrows-effects, with the measured prize
+attached: the container rewrite (`map . map` into one pass) is worth
+1570 ns against 4006 and half the bytes; the product one is worth
+~2.5 ns and nothing in bytes.
+
+Gate: affected master, green.
+
+## optics-arrows-recheck - the "out of scope, with triggers" list, checked against the plans
+
+The operator asked whether stage 12's closing list (indexed optics,
+`Grate`, streams, `ArrowChoice` for `Plan`, each "with its trigger")
+had been checked against the boards and the sibling specs. Three of
+four had not, and checking changed them (specs/optics.md stage 12,
+"Re-checked against the plans"):
+
+- `ArrowChoice`: the trigger is PULLED, by `Proc` in
+  specs/static-workflow.md (stage 0 landed the same morning) - the
+  first arrow with choice in the tree, with the three interpreters the
+  criterion asks for (`render` draws, `walk` describes, `toProgram`
+  runs). The line between the lanes holds; the LAW SUITE is shared.
+- a prism over `Selective`: ANSWERED for a term by `Proc.leaves`
+  (both sides of a `Left`); the BACKLOG lane now waits on
+  static-workflow stage 3 and names what would keep it open.
+- indexed optics: "nobody has asked" was wrong - `Validate`, `Ui.diff`
+  and ui-direct-example each carry the index by hand; none has a
+  second interpreter, so the family stays out with the seats named.
+  Found beside it and filed (`ui-path-two-walks`): `Ui.patch` and
+  `Ui.path` walk one index convention in two bodies.
+- `Grate` and streams: checked at okay-crdt, dataflow's `merged` and
+  `Mealy`; no seat, and the stream question is answered by stage 5.
+- `schema-typed-paths` was stale when written: one level of it,
+  `Lens.field[S]("name")`, has existed since 2026-09-09 (c2ff5cfe).
+  Corrected; the chain is what remains.
+
+Gate: docs only (the spec and the three boards); `check-citations.sh`
+passes.
+
+## optics-arrows-effects - the closed optics arc, asked what it leaves open
+
+The operator asked what optics, profunctors and arrows do TOGETHER
+with the monads, applicatives, effects and continuations this library
+already has, and what is missing for that to be convenient. The
+answer is specs/optics.md stage 12, written against the tree at
+`d9eae6d1`, and its first job is to stop the next agent re-deriving
+what exists: one traversal already runs at `Validated`, `Par`,
+`Static` and inside an effect row with no code in the optics
+(`TestOpticCarriers`); `PState.zoom` is where a lens meets a
+continuation; `Optic.Arrow` has exactly one instance, `Mealy`, and
+`Function1` is not one. Where an arrow would earn its place is not
+Kleisli (a monad is in hand there) but a static graph that branches
+on a value, and that trigger was already recorded under
+optics-outside "topology".
+
+What it leaves, each as one lane with one test and a stated
+refutation road, is in BACKLOG under `optics-arrows-effects`: a
+user-facing guide page (docs/guide.md does not mention a lens),
+`Arrow` for plain and effectful functions, `Cont` as a `Strong &
+Choice` profunctor so `PState.zoom` is an instance and a prism zoom
+becomes possible, a prism over `Selective` so `Static` sees the
+untaken arm, and the by-name lens the planner cannot fuse. SPRINT
+names the order.
+
+Gate: docs only (specs and the three boards); `check-citations.sh`
+passes.
+
+## ui-table-weights - a table says how wide its columns are
+
+`Ui.Table` gains `weights`, `Box`'s own word for the same quantity.
+EMPTY MEANS EQUAL, which is exactly what the lowering did
+unconditionally before, so every caller, test and wire message is
+unchanged.
+
+The old behaviour was not a default a caller could override -- it was
+the only thing the node could express, and `Vector.fill(n)(1)` is
+wrong for most real tables: a case id is eight characters and an
+evidence sentence is sixty. **And no stylesheet could correct it**,
+because `React` writes a `Box`'s weights INLINE on each child and an
+inline style beats a rule. okay-watch hit both halves -- a nine-column
+list ellipsized the IBAN, the rail and the timestamp; the CSS written
+to widen its prose columns had never once applied; and the page ended
+up abandoning `Ui.Table` for a hand-lowered `Box`. A level-S node its
+caller rewrites as level L is a node failing to mean anything.
+
+A vector whose length is not the header's is IGNORED rather than
+obeyed or fatal: a tree is data that may arrive over a wire from
+anywhere, and a mis-sized table should draw evenly, not throw in a
+renderer.
+
+`docs/protocol/frontend.md` regenerated -- one line -- and
+TestProtocol's document-cannot-drift check is what caught it.
+okay-compose, the one client that CLAIMS `table`, keeps step: model,
+encoder, a decoder reading the field as absent-means-equal, and
+`Render.kt` honouring the shares (its floor of 1 is Compose's own
+rule; it rejects a zero weight, which CSS accepts). That module is a
+separate Gradle build and NOT in the sbt gate, so it is reviewed
+rather than run here.
+
+TestTableWeights 8; okay-ui JVM 128. specs/frontend.md.
+
+## react-host-vocab - a host lowers with its own vocabulary, not with Set.empty
+
+`React.elem` claims `Ui.Link` and renders an anchor, and its catch-all
+asked `Ui.lower` for every node it does NOT claim with `Set.empty`.
+`Ui.lower` recurses, so the empty vocabulary reached the CELLS: a
+`Link` inside a `Table`, `Items`, `Tabs`, `Modal` or `Disclosure`
+arrived as `Text("label -- href")`, one node away from where the same
+link was an `<a>`.
+
+The defect was never that the set was empty -- it was that a constant
+stood where a host's own vocabulary belongs, so the call said "lower
+this whole subtree as if I drew nothing" when it meant "lower this
+node". `React.Vocabulary = Set(Vocab.link)` names it once, and it is
+the same set `live.js` puts in its hello.
+
+Which is the property that matters: THE TWO ROADS DISAGREED ON ONE
+TREE. `Wire.serve` lowers per the client's hello, so a browser on the
+socket got the anchor while the scriptless road through `Html.render`
+got text. Found from okay-watch, which serves both from one
+`Analyst.view` -- its transfers table links each transaction hash and
+block height into a public explorer, and a chain alert that cannot be
+opened in one is an assertion rather than a fact a reader checks.
+
+`Frame` and `Swing` claim no semantic node, so `Set.empty` already IS
+their vocabulary; both are left alone. TestLink 9, two of the three
+new tests red before the fix. specs/frontend.md.
+
+## ox-compare - Ox in the comparison, and a retraction
+
+com.softwaremill.ox 1.0.7 joins the `compare` module: five fork/join
+lanes and eight tests. Ox is direct-style structured concurrency on
+Loom, and it is the most informative competitor here because it is the
+OTHER answer to okay's question -- it gets direct style from virtual
+threads where okay gets it from delimited control.
+
+INTEROP WORKS, all four directions green: an okay program inside
+`ox.supervised`; an Ox fork joined inside `okay.async`; a one-shot
+capture whose body forks; and a MULTI-SHOT capture over an Ox fork,
+which does not crash -- it forks TWICE (forks=2, recorded). That is
+chapter 19's rule, not a new hazard: a capture invoked n times is n
+open resources, and an Ox fork behaves like one.
+
+THE NUMBERS, K = 100, one run, default (loom) scheduler on both sides:
+
+    rawLoom            18.482 +- 0.776   (floor)
+    okaySpawnInside    32.720 +- 1.734
+    oxUnsupervised     33.271 +- 0.578
+    okaySupervised     39.045 +- 1.204
+    oxForkJoin         53.814 +- 0.650
+
+Without supervision it is a tie (1.02x). With supervision on both
+sides okay is 1.38x ahead. Supervision costs Ox 1.62x, cleanly paired;
+it costs okay about 1.19x, which is an ESTIMATE because those two okay
+lanes differ slightly in how they enter the async world.
+
+THREE PAIRING MISTAKES WERE MADE GETTING THERE, all in okay's favour,
+and none caught by a test. (1) The first round compared Ox WITH
+supervision against okay without, reading 1.55x. (2) Corrected, it
+read a tie. (3) The supervised lane then declared
+`given Scheduler = Schedulers.forkJoin()` inside the method, swapping
+the scheduler the other four lanes take by default -- Platform.scala
+prices that at up to 3.6x on its own -- and it read as SUPERVISION
+BEING FASTER THAN NO SUPERVISION. Implausibility is what caught it,
+not a check.
+
+THE RETRACTION. The async-supervised entry below says `Par.traverse`
+"supervises NONE" and cites a 3012 ms measurement. Both halves are
+wrong. `Par.scala`'s header disclaims cancellation for `parAll` and
+`parTraverse` in scala-jvm-native/Parallel.scala -- DIFFERENT
+functions from `Par.traverse`, which goes through the applicative and
+is built on `par`, and therefore does cancel. Measured here, all on
+the default scheduler: Par.traverse 18 ms (cancels),
+Parallel.parTraverse 809 ms (does not). The 3012 ms does not
+reproduce and no cause is offered for it.
+
+`Async.supervised` still earns its place, for a reason the entry
+should have given: it is an OPEN scope -- fork ad hoc, anywhere in the
+body -- which neither `par` (exactly two) nor `Par.traverse` (a fixed
+traversal) provides. That is what `ox.supervised` gives and what okay
+had no answer to. TestSupervisionShapes now pins all four shapes by
+time, including the documented limit, so none of them can quietly stop
+being true.
+
+## async-supervised - an open scope that owns its children
+
+`Async.supervised` and `Nursery`. Asked for by the operator after an
+Ox spike (com.softwaremill.ox 1.0.7), whose `supervised { fork(...) }`
+okay had no answer to: `par` supervises exactly TWO, and
+`Par.traverse` supervises NONE -- its own header says it "does not
+cancel the siblings of a leaf that failed", and a probe measured
+exactly that: nine siblings sleeping 3 s were all waited for, 3012 ms,
+while the failure did propagate. Honest for a traverse, wrong for a
+scope.
+
+    Async.supervised: n ?=>
+      val a = n.fork(fetchUser)
+      val b = n.fork(fetchOrders)
+      a.joinAsync.flatMap(x => b.joinAsync.map(x + _))
+
+THE GUARANTEE, the same one Ox sells: the scope does not finish while
+a child runs; the FIRST failure -- a child's or the body's -- cancels
+every other child and leaves the scope with that error; cancellation
+is best effort, as everywhere else here.
+
+Callbacks, not parking, so it runs on every platform -- the same
+reason `par` is written that way, and it reuses `par`'s pieces
+(Fiber.onComplete, Fiber.cancel, Async.await).
+
+THE ASSERTIONS ARE TIME, AND THEY ARE NOT VACUOUS. Siblings sleep
+3 s, so a scope that waits for them takes 3 s and one that cancels
+them returns at once: the failure test lands at 15 ms, the body-fails
+test at 1 ms. The same assertions applied to `Par.traverse` FAIL at
+3012 ms, which is what proves they discriminate.
+
+FOUND ON THE WAY, and unrelated: the gate does not compile JMH
+sources at all (`grep Jmh scripts/gate.sh` is empty), so
+unwrap-glyph's rename left `compare`'s GeneratorBenchmark calling `.?`
+on a program -- a call site the spec's "every call site moved"
+missed, and nothing could catch. Fixed in the Ox spike's branch.
+## ui-direct-example - a form validated applicatively, its errors put back by an optic
+
+Three pieces of this library meeting on one screen, as a test that
+runs rather than a snippet that reads: a `Ui` is a value, `Validated`
+collects every problem instead of the first, the validation is a
+`direct` block at a carrier with no monad, and `Ui.key(k)` puts each
+message under the field it names.
+
+Carrying the field key IN the error is what makes the write-back
+possible - the error type is `Vector[(String, String)]`, so the
+traversal that finds a node by key has something to aim at. The
+user's edits stay where they were, and a good form comes back
+unchanged.
+
+TWO THINGS MEASURED RATHER THAN ASSUMED, both pinned in the test.
+
+`traverseOf` infers its `F` from the expected type INSIDE a direct
+block and outside one alike. The obvious guess is that the block
+helps, because the carrier is known there; it does not. What the block
+buys is the three checks reading as three lines.
+
+And the focus function cannot be written in the enclosing block: a
+mark under a lambda is the corner `direct`'s v1 refuses by design. A
+NESTED direct block is refused for a DIFFERENT reason worth keeping
+apart - its own binds are dependent, which genuinely needs flatMap,
+and that refusal names the line. So an optic and a direct block meet
+at the call, not inside it.
+
+The tutorial's section 23 gains the example and the boundary.
+
+## optic-carriers - one optic, three effects
+
+A traversal's `traverseOf` asks for an `Applicative[F]` and nothing
+more, so the applicative slot is where the effect goes. Every carrier
+of the applicative arc drops into it with NO code in the optics for
+any of them, and all three properties held by construction from the
+day each carrier landed while nothing recorded them.
+
+TestOpticCarriers records them, on one optic over the lines of an
+order (`Lens[Order](_.lines).andThen(Traversal.each)`):
+
+- `Validated` reports EVERY bad line, with the same walk at `Either`
+  beside it stopping at the first - the comparison that makes the
+  first line mean something;
+- `Par` visits the foci at once, proven by a rendezvous each focus
+  must reach rather than by a clock;
+- `Static` makes the walk a VALUE: `leaves` lists the operations it
+  would perform before it performs any, `toFree` runs the same value
+  the ordinary way, and `foldMap` answers all of them in ONE round
+  trip. An optic that can be asked what it will do, which follows from
+  the applicative slot and from nothing else.
+
+The file doubles as the worked example the tutorial's new section 23
+points at, and theory ch. 12 gains the paragraph naming the boundary
+in okay-ui's own words: `Ui.map` rewrites bottom-up, which is not a
+traversal at all, because applying a function to a REBUILT node binds
+the effect and a traversal has only an applicative. Everything weaker
+than a monad fits the slot; nothing stronger does.
+
+THE COMONAD[ID] FOOTGUN CAUGHT A THIRD CARRIER while these were
+written: `Static.op(x).map(f)` type-checks as the identity comonad's
+map and hands `f` the program instead of its answer. The examples use
+`fmap` through the instance and say why, because a reader will write
+`.map` first.
+
+## script-storefront-intake — the offer screen, typed
+
+specs/site-framework.md. The arc's last caveat said the storefront's
+forms were "porting work, not missing machinery". They were, and now
+a running page says so: `/offer/<key>` is ONE parametric page whose
+form is the `Intake` Schema — need, delivery, payment, item value,
+name, contact, consent — read back by `Forms.read` with cross-field
+checks. The REFUSALS are what the tests assert; an acceptance-only
+suite would pass with every check deleted.
+
+Found by driving the form in a browser rather than posting to it: a
+REQUIRED `String` field cannot be left blank, because an empty text
+is not posted at all and the decode refuses before any check runs. A
+visitor leaving the optional "approximate value" empty was answered
+"required" instead of being asked for consent. The fix was the TYPE —
+`Option[Int]` says optional and numeric at once — and two of the
+page's four hand-written checks disappeared with it.
+
+Recorded rather than hidden: a sum renders as a `Select` where the
+original draws radio pills. That is presentation of the same
+capability and belongs to a host, not to the tree; the page keeps
+both roads and uses each for what it is good at — the hand-written
+sheet for the flourish, the typed screen for the value.
+
+TestStorefront 6, TestStorefrontBrowser 5.
+
+## ui-applicative - what the applicative traversals buy, pinned; and a second validator named
+
+`okay-ui`'s `everywhere` and `shown` are declared
+`(F: Applicative[F]) ?=>`, so `Validated` - written years later -
+works at them with no change to that module: a walk reports EVERY bad
+node instead of the first. The property held by construction from the
+day `Validated` landed and nothing recorded it. TestUiApplicative
+records it now, with the same walk at `Either` beside it as the
+comparison that makes it mean something.
+
+AND THE CHECK FOUND A SECOND DOOR. `okay-codec`'s `Validate.gather` is
+`Validated.app` written by hand on `Either`, and its own comment says
+as much: "the applicative step: both sides' errors survive". Two
+answers to one question in one repository is the shape this evening
+kept producing, so it is written down rather than left to be
+rediscovered - a line in each file pointing at the other, and BACKLOG
+`two-accumulating-validators` with the trigger.
+
+NOT a rewrite, and the reasons are specific: that walk works, is
+tested, carries PATHS in its errors which this type does not, and sits
+in the schema hot path. What is worth building is a bridge, and the
+trigger for it is the first consumer that wants a schema walk's errors
+inside a `direct` block.
+
+
+## selective-do - an `if` with an effectful condition, and by-name branches
+
+An `if` whose CONDITION is an effect is the one shape an applicative
+cannot express: `<*>` runs both of its arguments, so a branch happens
+whether or not it is taken. `ifS` runs the scrutinee and then at most
+one side, and the macro emits it now:
+
+    val order: Validated[Seq[String], Order] = direct:
+      val item = checkItem(raw.item)
+      val ship = if wantsDelivery(raw.delivery) then checkAddress(raw.address)
+                 else pickup
+      Order(item, ship)
+
+`wantsDelivery` is itself a check and can fail on its own. When it
+answers false, `checkAddress` does not run and its error is not in the
+answer - a bad address is not reported on an order that was never
+going to be shipped, while the independent checks around the
+conditional still accumulate.
+
+`Validated` gained a REAL Selective rather than `selectA`: a Right
+scrutinee is already the answer so the handler is skipped, and a
+FAILED scrutinee does not run it either (the reference reading - which
+branch would have been taken is not known, so there is nothing to
+check yet). Its separate Applicative given is gone, since Selective
+extends Applicative and two givens would have been ambiguous.
+
+THE BRANCHES HAD TO BECOME BY-NAME, and only a run showed why. "At
+most one branch runs" is free in a lazy language; in Scala a branch is
+an ordinary argument, so by value it does its work whether or not it
+is chosen. The first version passed EVERY assertion about the answer -
+the skipped branch's errors were correctly absent in all four cases -
+and failed the one that recorded which checks had actually been
+performed: `address` was in the list for a pickup order. `select`,
+`branch` and `ifS` now take their handlers by name; every instance
+uses a handler at most once, so nothing pays for repeated evaluation.
+
+The general lesson is in the spec: an assertion on the ANSWER and an
+assertion on the WORK DONE are different tests, and a type class whose
+whole point is not doing work needs the second one.
+
+## script-storefront-look — the original's theme, and the JavaScript proven in a browser
+
+specs/site-framework.md. The first storefront slice wore a three-line
+stylesheet: it rendered, and it was not the site. The theme of the
+file the live sites are rendered from is ported whole — both
+palettes, the woven texture and the dashed seams for the atelier, the
+night gradient and the sweeping signal for the technical line, the
+serif headline, the offer rows, the intake sheet — chosen by a VALUE,
+so one library still dresses both sites.
+
+The page's own script is ported with it and DRIVEN IN A REAL BROWSER
+(`okay-demo-e2e-browser`, TestStorefrontBrowser, Live-tagged, 4): the
+language switch changes the text with no navigation and the choice
+survives a reload; a placeholder swaps, being an attribute; the
+intake sheet opens, posts, and shows the reference the server sent
+back; the computed background is warm on one site and near-black on
+the other. A `contains` suite cannot tell a script that runs from one
+that throws on line one.
+
+Three findings kept in the spec: a modal takes the clicks (so the
+language is chosen before the sheet opens), a wholesale
+`PlaywrightException` catch reported a 20-second TIMEOUT as "the
+browser isn't installed", and a browser proof must read the same
+fixture the unit tests do — `okayScript % "test->test"`, not a copy
+that drifts. One more found by looking at the page rather than a
+test: a CSS escape is `\2022`, and `\u2022` is JavaScript's spelling,
+which rendered as the literal text "u2022".
+
+## apdo-forms - the plainest spelling of an applicative direct block
+
+The operator asked whether `direct[F]`'s type argument and the
+`.reflect` marks are required. Neither is, and neither is a type
+alias:
+
+    val form: Validated[Seq[String], Form] = direct:
+      val name = nonEmpty(raw.name)
+      val age  = inRange(raw.age)
+      Form(name, age)
+
+The carrier comes from the expected type, which the macro could
+already do. A mark is one of three ways to say "this is an effect": a
+type annotation on the val is the second, and NOTHING AT ALL is the
+third - a colourless val, whose inferred type is a program of the
+carrier. The monadic road has bound those since direct-colourless-val;
+the applicative road refused them, which was an inconsistency of the
+applicative-do lane and not a limit of the language. All three
+spellings now mix in one block.
+
+ONE BUG CAME OUT OF THE PLAINEST FORM, and only a run finds this kind.
+`a * 10 + a` failed with "a reference to value a was used outside the
+scope where it was defined". Auto-colouring wraps the USE of a name,
+so the result-hoisting step took each use for a leaf of its own and
+lifted a reference to `a` out of the scope that binds it. A coloured
+use of a name the block itself binds is now skipped, because the
+curried lambda binds it already.
+
+Nine tests pin the spellings, including the mixed block and the
+coloured-use case.
+## script-import-output — an import line is not content
+
+specs/site-framework.md. Serving the storefront fixture through a
+real `okay.script.Serve` showed every import printed at the top of
+the page: to the tokenizer `[money](/lib/money.md)` on its own line
+was prose. It is a dependency, so it is skipped now — while an
+ordinary markdown link inside a SENTENCE stays prose, which the test
+pins.
+
+Worth recording for its own sake: this was found by RUNNING it, not
+by a test, because every test in the arc asserted what a page
+CONTAINS and none what it does not. A `contains` suite is blind to
+junk.
+
+## site-framework — stage 2, content; and the arc CLOSED
+
+specs/site-framework.md. `okay.script.api.Content` holds the words a
+site shows as data a person edits: `read[A](path, default)` answers
+the file under the site root or the baked default, `write` puts one
+there atomically, `clear` restores what shipped, `problem` reports a
+damaged file — which is the DEFAULT rather than a 500, because an
+editor writing half a value must not take the site down. The default
+is by-name, so a file that answers does not pay for building it, and
+nothing may leave the site root.
+
+The editor is a PAGE, not a feature: `Forms.html[Shop]` renders from
+the same `Schema` the storefront renders from, `Forms.read` reads the
+post, `Content.write` stores it. The fixture drives the whole loop —
+what ships, the form, an edit, the storefront showing the edited
+words, a reset.
+
+**The arc is closed.** All four stages landed today: modules carry
+definitions and TYPES across files, one library renders both
+storefronts parameterised by a value, every language rides on the
+element with the client picking and the server still rendering one,
+and the words are content edited through a generated form. What is
+not claimed is written in the spec rather than implied: the rest of
+the 818-line file (intake and offer forms, courier flow, RODO,
+portfolio, showcase) is porting work over machinery that exists, and
+scalascript's `.ssclib` DISTRIBUTION story is deliberately left for
+when a second site wants the first's library.
+
+TestContent 5, TestStorefront 5, TestModules 8, TestInlineI18n 6.
+
+## site-framework — stage 3, i18n on the element
+
+specs/site-framework.md. `okay.script.api.Inline` carries every
+language on the element as `data-*`, renders the REQUEST's language
+as the element's own text, draws the language switcher and serves the
+~20 lines that apply a choice — reading the same `OKAYLANG` cookie
+the per-request road writes, so the two roads cannot disagree about
+what the visitor chose. The storefront fixture uses it: `?lang=uk`
+renders Ukrainian with Polish still on the element.
+
+Measured rather than reasoned: with `default` a FIELD, a page's
+`val langs = Langs.of(...)` froze the first visitor's language for
+everyone after them, because a `val` in a declare block is evaluated
+once per COMPILE — a `?lang=en` request answered Ukrainian. `default`
+is a method reading `Lang.current` now, so the value is
+request-independent and the request-dependent part is a function.
+
+TestInlineI18n 6, TestStorefront 4.
+
+## site-framework — stage 4, the verdict: the storefront ported
+
+specs/site-framework.md. A real slice of busi's `storefront.ssc` —
+the file the operator's two live sites are rendered from — now runs
+as okay-script pages: five library pages under `lib/` (escaping, the
+domain, the i18n attribute seam, money, the cards and the theme) and
+two storefronts that import them, one warm-and-clothing, one
+dark-and-technical, exactly as szykownia.pl and it.szykownia.pl
+differ. They are real files in `src/test/resources/storefront`, not
+string literals, so a reader can open them. TestStorefront, 3.
+
+The open question is answered: a TYPE crosses a module boundary.
+`[Service, Shop](/lib/domain.md)` puts a case class and its companion
+in scope, which is what makes the storefront ordinary Scala over a
+domain instead of string-slinging — and it is why one library can
+render both sites parameterised by a value, which the single
+818-line file could not do.
+
+What the slice does not cover is named rather than implied: the
+intake/offer forms (okay-script has two roads for those already),
+and the two genuinely missing pieces, content edited in the app
+(stage 2) and the client-side language switch that makes the `data-*`
+attributes do something (stage 3).
+
+## site-framework — stage 0 (the spec) and stage 1 (modules)
+
+specs/site-framework.md. The operator asked for okay-script and
+okay-ui at scalascript's standing, and gave the criterion by naming
+two sites they actually run — szykownia.pl and it.szykownia.pl,
+rendered today by busi's 818-line `storefront.ssc`. Whatever that
+file does, a page here must do; what it cannot is a stage.
+
+The gap, read out of that file: MODULES first (its front matter
+exports names and it imports four files by markdown link, while a
+`def` here could not leave its page), then content as data with a
+file override and an editor, then per-element i18n (the sites carry
+every language on the element and swap in the client; ours is one
+language per request), then the storefront ported, which is the
+arc's verdict.
+
+Stage 1 is landed: a page declares `exports:` and imports with
+`[money, vat](/lib/money.md)`; modules compile once each in
+dependency order under their own object; a cycle is refused with the
+ring named; `route: false` makes a library unroutable; a page keyed
+on `(mtime, module stamp)` re-renders when a module it imports
+changes. TestModules, 8. Two findings recorded in the spec: the
+module classpath must be TRANSITIVE (a diamond failed at run time,
+not compile time), and an unexported name is caught here so the
+message can name the file rather than a mangled object.
+
+## applicative-do - direct style at a carrier with no monad
+
+`direct[F]` took `using M: Monad[F]`, so it turned away exactly the
+types where the sugar reads best. `Validated` refuses a `Monad` ON
+PURPOSE - the consistency law would force `app` to agree with the
+flatMap derivation, which stops at the first error and undoes the
+collecting the type exists for - and a block at it was rejected at the
+call site with `no Monad[V]` before the macro ever ran.
+
+What a block needs is decided by the BLOCK. A run of independent binds
+needs only `Applicative`; only a bind whose right-hand side mentions
+an earlier name needs `Monad`. So the entry asks for `Applicative[F]`,
+which every existing call site already satisfies because `Monad`
+extends it, and the macro summons the monad itself:
+
+    val checked: V[Form] = direct[V]:
+      val name  = nonEmpty(raw.name).reflect
+      val email = looksLikeEmail(raw.email).reflect
+      Form(name, email)          // both problems, or a Form
+
+Finding a monad, the macro runs the existing pipeline untouched - no
+program in this repository changed emission, which was the risk this
+lane had to clear first and the first Behavior item in its spec.
+Finding none, it emits the bracket: fmap the first leaf with the
+curried rest, then app the others in order.
+
+MARKS IN THE RESULT HAD TO BE LEAVES TOO. The first cut refused them
+and `direct[V](check(2).reflect + 1)` did not compile - the bracket's
+most natural spelling, turned away. Each mark in the result is now
+replaced by a reference to a fresh name in evaluation order; they are
+independent by construction, since separate subexpressions of one
+expression cannot mention each other's answers.
+
+THREE THINGS THE REFLECTION API DECIDED rather than the design, each
+caught by a failing splice rather than by reading: the curried lambda
+must be BUILT at the type `fmap` will ask for (leaving its result at
+`Any` was refused with both types printed side by side); `fmap[X, R]`
+takes R as the function's RESULT, not the function, which was off by
+one; and the carrier's element is its LAST type argument, since
+`Validated[E, A]` has two and reading the only one refused every
+two-parameter carrier - the very consumer this lane exists for.
+
+What v1 refuses, each naming what it found instead of erroring about a
+class the author never mentioned: a dependent bind, a statement that
+is not a marked val, and a mark inside a mark.
+
+## direct-parallel-wider-rows - an Async leaf in a wider row spawns too
+
+`import Direct.parallelBinds.given` did nothing in a block over a row
+wider than `Async`, quietly. v1 said so in its own doc comment and
+pinned the zero forks with a test, which is how the limit came to be
+closed rather than forgotten.
+
+The reason was WHERE the leaf is read. `compile` hands one back
+already lifted by `RowLift.into`, so in a `Reader % Int + Async` block
+its type is `X ! (Reader % Int + Async)` and `Async.spawn` will not
+take it. But the program the AUTHOR wrote is still `X ! Async`, and
+the obstacle was never the narrowing: it was that inline expansion
+wraps a leaf in `Inlined` nodes carrying `$proxy` bindings, which
+`stripped` does not remove - the same thing that made the first cut of
+the whole feature silently inert a day earlier.
+
+`compile` already walks through them, by turning such an `Inlined`
+into a `Block`. Doing the same here while KEEPING the bindings around
+the extracted program makes the leaf self-contained
+(`Block(bindings, program)` is a term of the program's own type) and
+spawnable where it stands. The compiled leaf remains the fallback for
+a mark shape the walk cannot take apart.
+
+The test that pinned the limit now asserts the behaviour: TWO forks in
+a `Reader % Int + Async` block, with the Reader leaf ending the run
+because it is not an Async program. Every doc that stated the limit is
+corrected - the opt-in's comment, the typepedia, theory ch. 12 and the
+spec's Results.
+
+## static-foldmap-stack-safe - the cast the backlog expected was not needed
+
+`Static.foldMap` was the one door of the free selective that recursed
+on the host stack: it folded 5 000 leaves and overflowed at 10 000.
+The BACKLOG entry predicted it "needs the existential reassembly cats
+does with internal casts, which the no-casts rule says must be
+earned". It does not.
+
+`Args[F, T, C]` is a type-aligned list of what is LEFT to apply, and
+its constructors carry the alignment: `Done` exists only at
+`Args[F, C, C]`, and consing an argument of type `X` onto an
+`Args[F, R, C]` yields an `Args[F, X => R, C]`. Matching refines the
+types, so the walk back up is ordinary typed code in two
+tail-recursive loops.
+
+THE FIRST VERSION STILL OVERFLOWED AT THE OLD DEPTH, and that is the
+part worth keeping. Walking down an `Ap`'s FIRST component is the
+obvious axis and the wrong one: `traverse`'s `foldLeft` builds
+`Ap(Ap(Pure(g), acc), leaf)`, so two steps down reach `Pure(g)` and
+the whole accumulator - the deep thing - is pushed as an ARGUMENT and
+folded by an ordinary recursive call. The stack came back by another
+road, and a 50 000-leaf test said so rather than a guess. The answer
+is a third `Args` case: `Ap(Pure(g), a)` is not an application to walk
+past, it is "fold `a`, then map by `g`", which lets the walk continue
+INTO the accumulator. Sound because a `Pure` performs nothing, so
+running `a` first reorders no effects.
+
+Two `@unchecked` type tests remain and are the same claim
+`Free.resume`'s callers make: three cases, the CLASS test is total,
+and the type arguments are the ones the constructors guaranteed. The
+ascription is needed rather than a constructor pattern because `x` and
+`r` must be NAMED - the match refines `T` to `x => r` but `g` is still
+written `G[T]`, and `app` cannot find its `F[A => B]` shape through
+the alias. A helper taking the pieces would work and would cost the
+`@tailrec`, which is the whole point.
+
+50 000 leaves fold now, the depth at which the RECURSIVE walk of
+`leaves` used to die.
+
+## continuations-book - the working book, 28 chapters, complete
+
+Landed as a5020009, 2e4ef2af, 5780a36a (ch14-16), d1a3550a, 0fb88067
+(ch17-21), 58d8220d (ch22) and 66f6ded5 (ch23-28), over the plan in
+docs/continuations/index.md. The operator asked for a textbook devoted
+to continuations alone, beginning by showing programmers AND managers
+why they are needed for real problems, then deepening; every runnable
+snippet in it compiles, in suites named TestBook*.
+
+WHAT IT IS. Seven parts: the problem (1-4), the four shapes as recipes
+(5-9), the machine (10-13), building on it (14-18), the limits
+(19-21), production (22-26), and the history (27-28). 81 book tests.
+Chapters are referenced BY NUMBER, so inserting one is a rename across
+files: `grep -rn "chapter [0-9]\+" docs/continuations/*.md`.
+
+THREE THINGS IT FOUND, none of which was the point of writing it.
+
+ONE. A cost claim was about to be quoted from a source comment: PState
+"measures ~1.7x slower" than the State effect. Re-measured on the
+lanes that were still there: 1.29x (21.23 vs 27.42 us/op,
+HandlerBenchmark, -f 3). State.scala now carries the new number and
+says what it used to claim. Chapter 27 catalogues this exact mistake
+under F1, so the book committing it would have been its own
+counterexample.
+
+TWO. Chapter 22's central claim -- a snapshot cuts READING, not
+RUNNING -- was pinned nowhere, so the book wrote the measurement:
+counting PROGRAM STEPS, not records, over two cold starts of one
+40-answer journal. Plain read 80 records and ran 40 steps;
+snapshotted read 8 and ran 40. Ten times fewer reads, the same amount
+of program. The first cut of that test proved NOTHING -- it measured
+the Dialogue constructor, which does not fold the journal, so both
+counts were 0 and `0 == 0` passed green. The `plainSteps > 0` guard
+caught it on the first run.
+
+THREE. A COLD gate found an unused import that five warm gates could
+not see: a warm worktree recompiles nothing, and the gate said so
+itself ("the WARNING CHECK WAS BLIND"). 186 module compiles later it
+was RED on one E198. Wiping the worktree's target directories before a
+gate that is meant to certify "no warnings" is now the practice, and
+it is the same blind spot that let an E176 ride through five GREEN
+verdicts earlier in this arc.
+
+WHAT CHANGED IN THE TREE BESIDE THE PROSE. State.scala's stale ratio;
+one unused import in TestBookFourCaptures that had landed green in
+ch11; one in TestBookCaptureAndTheRest. Everything else is additive:
+docs/continuations/*.md and the TestBook* suites.
+## validated - every error, not the first (P13 item 1)
+
+`Throws` is monadic, so it stops at the first error. An applicative
+cannot bind one leaf's answer into another's body, so it has no way to
+stop early and therefore COLLECTS. `Validated[E, A]` is that, with a
+`Semigroup[E]` the caller supplies, and every combinator already
+written against `Applicative` works at it the day the instance exists.
+
+There is deliberately NO `Monad[Validated]`, and the absence is pinned
+as a compile error: the consistency law would force `app` to agree
+with the flatMap derivation, which stops at the first error, so the
+instance would quietly turn every `traverse` back into the behaviour
+this type exists to refuse. `andThen` is that step under a name that
+says the branch is deliberate.
+
+INTERFACE CORRECTION, made while implementing. The spec proposed a new
+`Semigroup` trait; `Monoid` already had the same `combine`, so
+`Semigroup` was split out ABOVE it and `Monoid extends Semigroup` -
+additive, every existing instance still answers both. The part that
+was not obvious: the instances live in `object Monoid`, which is in
+the implicit scope of `Monoid` and NOT of `Semigroup`, so
+`Semigroup.fromMonoid` bridges given search or `Validated` refuses the
+vector monoid three lines below it.
+
+THE CONSUMER IS THE RESULT. `okay-conf`'s `fromEnv` did
+`parts.collectFirst { case Left(m) => ... }` - one bad environment
+variable per run. It is a `traverse` at `Validated` now, and three
+mistyped variables come back in one message. Stated honestly in the
+spec rather than oversold: for a FLAT list of parts like this one, a
+hand-rolled `collect` would have done the same in a line; the type
+pays where the walk is nested or generic, which is why the schema
+validator is the consumer that will decide its long-term keep.
+
+THE COST PREDICTION IS REFUTED, in the favourable direction.
+Predicted "within 10% of Either" for an all-valid traverse of 1 000
+leaves; measured 46% LESS - 147 528 against 275 488 B/op. The
+prediction assumed the happy path builds the same number of nodes. It
+does not: `Either`'s traverse goes through the MONAD-DERIVED `app`
+(`flatMap` plus `fmap` per element) while `Validated`'s is one match
+with nothing between. An applicative written directly beats one
+derived from a monad, and that is the number that says by how much.
+Collecting every error costs 277 512 B/op, 0.7% over Either's happy
+path, so programs that never fail do not pay for the behaviour.
+
+Times were unreadable at load 35 (±16.7 on 18.8 for the valid lane,
+while the bytes are exact to the third decimal), so the bytes are the
+verdict.
+
+## par-fail-fast - Async.par sees EITHER side fail
+
+Landed as 97d7026d; BUGS.md `par-right-failure-waits` is closed.
+`par`'s doc said "a child failure fails the pair and cancels the
+sibling", and it did so on the LEFT only: `fb`'s callback was
+registered INSIDE `fa`'s Right branch, so while the left side ran
+nobody was listening to the right one. The same failure in the two
+orders came back after 0.0007 s and 3.017 s, and the healthy sibling
+ran to completion instead of being cancelled. The answer was correct,
+only late, which is why it rode through every test for as long as it
+did.
+
+THE FIX NEEDED NO CELL. The BUGS entry had sketched "register both
+completions independently and join them in a cell"; it turns out only
+the FAILURE watch has to be independent. `fb.onComplete` now watches
+its Left from the start, and the pairing stays nested for the success
+road, where it already holds both values and needs nowhere to keep the
+first. Two facts were checked before relying on them, on all three
+platforms: a fiber takes several subscribers, and a callback
+registered on an already finished fiber fires at once.
+
+THE PIN ANNOUNCED THE FIX, which is the part worth copying. When the
+defect was found by a lane that only INHERITED `par`, it was filed
+rather than fixed, and TestPar pinned BOTH orders - the second with
+the message "par-right-failure-waits is FIXED - strengthen this
+assertion and close the BUGS.md entry". Landing this failed exactly
+that test with exactly that text. The entry is closed because a test
+said to close it, not because anyone remembered.
+
+Measured after: 0.003 s and 0.004 s in the two orders, and the
+sibling is cancelled. Docs corrected in the guide and the typepedia,
+both of which had been taught to describe the asymmetry.
+
+## strategy-record - the positioning answer, written into the boards
+
+ROADMAP P13, specs/validated.md, three BACKLOG entries and a SPRINT
+promotion (spec and prose only; no code moved). The operator asked
+what else the applicative-shaped classes buy, whether we can compete
+with Spark and Flink, and what is missing where. The answer is argued
+from measurements this repository keeps, and the ORDER is the
+operator's.
+
+1. `Validated` - every error, not the first. The classic applicative
+   payoff Okay does not have: `Throws` is monadic and stops at the
+   first error, while an applicative cannot bind one leaf's answer
+   into another's body, so it has no way to stop and therefore
+   collects. Three consumers are worse today for the lack. Its spec
+   is written and it is the next pickable task.
+
+2. Durable workflows as the flagship, AHEAD of dataflow. Younger
+   market, smaller moat, sharper differentiation: Temporal and its kin
+   need determinism by convention, a captured continuation makes
+   replay typed. Most of it is built already.
+
+3. Dataflow repositioned: the EMBEDDED tier with a published ceiling,
+   not a race for nodes. The numbers that say so are §20's - okay
+   22 561 859 ev/s at 8 cores against Flink's 1 679 971 and Spark's
+   338 918, with three of five stages being literally the same code.
+   That is not a licence to claim a win: Flink pays for scheduling and
+   checkpoints, stage 12 is BLOCKED for want of other machines, and
+   the moat is connectors and SQL rather than the engine. What the
+   numbers DO say is that 107 ms for 2.4 million events on one machine
+   puts a twenty-node job in one server, so the position is Flink's
+   semantics as an embeddable library with no cluster to run - what
+   DuckDB did to Spark. Three backlog entries follow: publish the
+   honest CEILING (Flink never does; we can measure ours), document
+   the migration seam okay-flink already proved, and finish stage 12
+   at the scale of a few machines.
+
+4. Capability lists from `Static.leaves`, so okay-di derives a
+   module's needs instead of asking its author to declare them.
+
+## unwrap-glyph - one glyph, one meaning (all four stages)
+
+Landed as 82753d21, 18a558be, 74ecac89 (specs/unwrap-glyph.md).
+`.?` meant three things and reliably did the wrong one.
+
+THE SPEC'S OWN STAGE-1 DESIGN IS REFUTED, and the compiler said so in
+one message. `NotGiven[E =:= Nothing]` rests on a converted receiver
+having `E = Nothing`. It does not: `throws` is COVARIANT in E, so the
+typer solves E to its upper bound. Tried as `NotGiven[E =:= Unsafe]`
+to find out, the refusal for a GENUINE receiver read
+
+    value ? is not a member of String throws okay.Safe.
+      okay.?[A, okay.Unsafe](y)(...)
+
+declared at `Safe`, instantiated at `Unsafe` - and a converted `42`
+lands at `Unsafe` too. No condition on E can tell them apart. The
+first cut of this lane shipped the guard and its own test still
+failed.
+
+WHAT WORKS is the move this file had already made once, for `map` and
+`flatMap`, and for the same stated reason: at package level they
+capture foreign receivers through the Conversion givens. Both `?`
+forms now live in `object throws`, the COMPANION of the opaque type,
+so they are in the implicit scope of `A throws E` - a genuine receiver
+finds them with nothing imported, while a receiver whose actual type
+is `Int` does not, because implicit scope follows the RECEIVER and not
+the conversion target. Zero call sites moved. `42.?`, `"s".?`,
+`List(1).?` and `pure(1).?` are compile errors now.
+
+BOTH forms had to move, and that was measured too: with only the
+no-arg one gone, `x.?` did not become an error, it ETA-EXPANDED to the
+mending `?(f)` and came back as `(Throwable => Int) => Int`. One
+silent shape traded for another.
+
+The Effects row peek is `peek`. It RUNS operations through a Handler,
+which is a great deal to hide behind one character, and the character
+was wanted by the thing users write far more often. Fourteen lines
+moved, none in a module. ONE OF THE FOURTEEN WAS NOT THE PEEK:
+TestCont's `(example1, example2).?.?.?` is a LOCAL extension the test
+declares on a tuple of thunks three lines above its use. The regex
+rewrote it; the file was read and reverted.
+
+`Direct.?` is a mark again, beside `.reflect`, `.!?` and prefix `!`,
+and all three postfix spellings emit the same program - asserted on
+the answers AND on a recording handler's log. `.!?` STAYS, a
+correction to the spec, which had it retiring: it is written across
+the repository and a mark with two symbols costs nothing.
+
+AND THE RECORD IS FIXED, which was the root cause and the one thing
+worth doing regardless. specs/direct-macro.md showed `.?` as THE mark
+in its Interface while its own Decisions said it was retired; that
+contradiction is what made the incident possible. Both now carry the
+history, and typepedia and direct-style follow.
+
+The tests are SPLIT, and the split is the feature: `.?` on a program
+is the mark once `Direct.*` is imported, so a file that imports it
+cannot also assert that a program refuses the glyph. Which `?` a
+program gets now depends on whether the block's marks are in scope,
+and on nothing else.
+
+## ui-link — navigation in the vocabulary
+
+specs/frontend.md, landed as 70b849b1 (the node), ae560200 (the regenerated document). okay-watch's analyst page
+(its specs/ui.md) needed the exports and the goAML filing on the
+tree, and the vocabulary had no way to say "a place to go". `Ui.Link`
+is level S, claimed by the BROWSER alone: `React.elem` draws an
+anchor, `Html` therefore does, and `live.js` now says
+`vocab: ["link"]` in its hello. Every other host gets the lowering,
+`Text("<label> — <href>")` — what a link means where nothing can be
+clicked, and it leaves a terminal analyst able to copy the URL.
+
+It carries NO KEY, which is the point worth keeping: going somewhere
+is the client's own act, so `Wire.permitted` can never admit anything
+about a Link and `update` never hears of it. TestLink, 6.
+
+The gate caught the one thing this kind of change always breaks: the
+protocol DOCUMENT is rendered from the schemas, so a new `Ui` case
+made `docs/protocol/frontend.md` stale and TestProtocol said so. It
+was regenerated with `OKAY_RENDER=1`, not edited.
+
+## applicative-static stage 3 - a direct block runs its independent binds at once
+
+Landed as 883f83dd; the arc's last stage, and the design entry that
+gated it is 0851d3cc. `import okay.Direct.parallelBinds.given`:
+
+    val profile: Profile ! Async = direct:
+      val u = fetchUser(id).reflect     // neither mentions the other,
+      val o = fetchOrders(id).reflect   // so both run at once
+      Profile(u, o)
+
+THE SPEC OFFERED TWO INSTANCES TO EMIT `app` AGAINST and deferred the
+choice to the Results. Both are refused, each for a measured reason.
+The row's own instance derives `app` from `flatMap`, so emitting it
+adds a node per join and buys nothing. `Par` has the right semantics
+and the wrong SHAPE: stage 1 measured the pairwise spine at ~5x a flat
+`parAll`, and a macro holds the whole GROUP at once - the one position
+that never has to be pairwise. So the macro emits neither: N spawns,
+then N joins, out of `Async.spawn` and `joinAsync`, typed per leaf so
+nothing casts.
+
+The analysis is bracket abstraction's own question, and Turner
+answered it in 1979 for the same syntax: `[x](a b)` needs S when x
+occurs free on both sides and K when it does not. Here a right-hand
+side either mentions a name bound earlier in the run, or it does not.
+
+WHAT THE IMPLEMENTATION FOUND. Matching the mark SYNTACTICALLY found
+nothing: by the time the macro sees a leaf, inline expansion has
+wrapped it in `Inlined` nodes carrying `$proxy` bindings that
+`stripped` does not remove, so every leaf answered "no mark" and the
+whole feature was silently off. A fork COUNT of zero caught it - which
+is why that assertion exists. The fix is to ask `compile`, which
+already knows how to get through all of it, and then ask the TYPE
+whether what it hands back is `X ! Async`.
+
+MEASURED, both predictions answered. The macro emits the flat shape:
+parallel8 / parAllFlat8 = 0.956 at eight leaves, inside both error
+bars, against a predicted 20%. "Without the import nothing changes"
+needed a real A/B, and the first attempt was the WRONG PAIR -
+sequential8 against handChain8 prices the direct macro against
+hand-written code, which was never equal and has nothing to do with
+this lane. The right pair is this lane's sequential8 against master's,
+run in a master worktree with the same file: 1344.002 B/op against
+1344.001, identical to the digit. Times were unreadable at load 13-56,
+so the bytes are the verdict.
+
+The limit v1 keeps, stated rather than discovered later: a block over
+a row WIDER than Async gets nothing, quietly, because the compiled
+leaf has already been lifted into the row. Pinned by a test asserting
+zero forks over `Reader % Int + Async`, and filed as BACKLOG
+`direct-parallel-wider-rows`.
+
+Docs: theory ch. 12 gains the macro (and the reason the cheap shape
+belongs in the tool that writes the code), tutorial 20, typepedia,
+guide 8, benchmarks 9i.
+
+## unwrap-glyph - stage 0, the spec: one glyph, one meaning
+
+specs/unwrap-glyph.md (spec only; no code moved). Three different `?`
+reach a value in this library, and on `A ! F` all three are
+candidates: Throws' (the value, or the error thrown), the Effects peek
+(the nearest answer, through a Handler), and the direct mark - which
+was RETIRED from the glyph for exactly that reason and spelled `.!?`
+ever since.
+
+THE INCIDENT THAT OPENED THE FILE. Writing stage 3's tests for
+specs/applicative-static.md I used `.?` as the direct mark, because
+specs/direct-macro.md's Interface section still documents it as one
+while that same file's Decisions section says it was retired. The
+block compiled, ran, and gave the right answers - binding through
+auto-coloring, with the `.?` doing nothing at all. It was found by a
+fork COUNT of zero and a dump of the macro's input.
+
+THE MECHANISM, and it is not cosmetic: `throws` is an `into opaque`
+type with a `Conversion[A, A throws E]`, so EVERY value is an `A
+throws Nothing` and `x.?` type-checks on anything, as a silent no-op.
+Direct.scala's comment calls the collision an ambiguity; it is worse
+than one, because an ambiguity is a compile error and this is silence.
+
+The spec argues the three are ONE IDEA - unwrap here, propagate
+outward, which is Rust's `?` - and stages the way to one glyph:
+refuse `E = Nothing` on the no-arg Throws `?` (closing the no-op),
+rename the Effects peek to `peek` (a name that admits it runs
+effects), give the glyph to the mark, retire `.!?`. Stage 1 is the
+gate because it is the only stage that can surprise: it changes a
+public extension's applicability across ninety modules. Stages 2 and
+4 stand on their own if it refuses.
+
+COUNTED BEFORE PREDICTING, and each one read rather than grepped:
+seventeen lines carry a no-arg `.?`. Three are Throws' and every one
+has a real `E` (`String throws Safe`, `Int throws Unsafe` twice), so
+the prediction is that NO call site moves. The other fourteen are the
+peek, and not one of them is outside the core's own tests and
+benchmarks - which is most of the argument for which spelling gives
+way.
+
+## ui-live-js — the browser's client beside the protocol
+
+specs/ui-html.md stage 2, landed as aa0411b8. `LiveJs` — 226 lines of
+dependency-free JavaScript that applies `Protocol`'s patches and sends
+its events — moved from okay-script to okay-ui beside `Html`. Same
+reason as stage 1: it is the browser's CLIENT of this module's
+protocol, and okay-watch (specs/ui.md stage 3) has its own WebSocket
+route and needs the client without the container. The file moved
+whole and `Site` serves it at the same path; nothing else changed,
+because it was already written against `Protocol` alone.
+
+## ui-html-host — stage 1, okay.ui.Html
+
+specs/ui-html.md, landed as a3fbf2c1. The plain road's three pure
+functions left okay-script, whose module drags the staging compiler,
+deploy and ACME, and became `okay.ui.Html`: `render`/`form` on the way
+out, `events`/`step` on the way in, a host without a loop because a
+scriptless page holds no connection. It sits in `scala-form` beside
+`Wire` — the capability rule must not be defined twice, and that
+directory is on the JVM, JS and Native source sets alike, so the
+cross-platform property the spec asked for holds. okay-script keeps
+`Live.html`/`plain`/`step`/`escape`/`PlainField` as five delegates and
+its four suites pass UNCHANGED (18 tests), which is the proof no page
+notices. TestHtml, 7. `okayUiJVM`'s classpath carries okay, codec,
+lex, parse and persist, and nothing of okay-script — measured, which
+is what okay-watch's specs/ui.md waits for.
+
+Found on the way: an EMPTY post is not the identity. A `Check` shown
+ON reads back as `Toggled(false)` from an empty map, because that is
+HTML's own rule for an unposted checkbox. What makes a GET safe is
+the mount-field guard in `Live.post`, never the emptiness — recorded
+in both specs, since okay-watch renders the tree itself.
+
+## applicative-static stages 1, 2 and 4 - the rung below the monad, put to work
+
+`Monad.scala` has declared Functor < Applicative < Selective < Monad
+since the beginning and used one rung of it: `Selective` had no
+consumer outside its own file, `traverse` over `A ! F` could only
+sequence because its only instance was the Monad-derived one, and
+nothing could list a program's effects without running it. Landed as
+2ec1caa6 (specs/applicative-static.md, stages 1, 2 and 4; stage 3 is
+still gated on these Results).
+
+The ladder is a ladder of VISIBILITY. An applicative program is a pure
+lambda term over effectful ARGUMENTS, so what it cannot do - bind one
+leaf's answer into another leaf's body - is exactly what makes every
+effect it performs knowable before it runs.
+
+**`Par`** is that reading of `A ! Async`: `app` joins two leaves with
+`Async.par`, so generic applicative code becomes concurrent by
+choosing an instance. Opaque INSIDE its object, because a top-level
+opaque type is package-transparent and `Free`'s own Monad would have
+answered for it. `fmap` deliberately does not fork; there is
+deliberately no Monad, Haxl's refusal for Haxl's reason.
+
+**`Static`** is the free selective - `Pure | Op | Ap | Select`, a
+program with no `Bind` in it. `leaves` lists what it MAY do (both
+sides of every Select, an upper bound, exact without branches),
+`toFree` runs it the ordinary way and performs at most one side,
+`foldMap` interprets the spine into any other Selective: 50 leaves,
+1 call to the store against 50, counted rather than asserted.
+
+THREE THINGS THE IMPLEMENTATION FOUND, none of them in the spec:
+
+**The doors already existed.** `parTraverse` and `parAll`
+(scala-jvm-native) have been shipping a fiber per program, joined in
+order, and the build refused the duplicate name. The new doors moved
+inside `object Par`; the spec carries the correction. What stage 1
+adds is the INSTANCE, not the door - and `parAll` stays the cheaper
+road for a flat sequence, by about 5x.
+
+**`Async.par` notices a right-side failure only after the left
+finishes.** Its doc says it fails the pair and cancels the sibling; it
+does so on the LEFT. Measured: 3.017 s against 0.0007 s for the same
+failure in the two orders, because the two completions are registered
+in a nest rather than side by side. Filed as `par-right-failure-waits`
+(BUGS.md) with the reduced repro rather than fixed in a lane that only
+inherits `par`; TestPar pins BOTH orders, so the fix announces itself.
+
+**A plain `.map` on a `Par` is the identity comonad's.**
+`Monad.scala`'s known footgun - `given Comonad[Id]` puts `map` on
+every type in lexical scope - beats an extension written in `Par`'s
+own object, because lexical beats implicit scope. A probe wrote the
+idiom bracket the way a reader would and it type-checked as an `Id`
+whose next `.app` was "not a member". The answer is `Par.map2`, a
+plain method that resolves no extension, plus a compile-error test on
+the bad spelling.
+
+MEASURED: one prediction confirmed, one refuted. The `Par` wrapper is
+free - the matched pair (idiom bracket vs seven hand-written `par`
+calls, same shape) is 1.003 and 0.983, inside the noise, against a
+predicted 10%. `Static.toFree` is 1.72x the monadic program against a
+predicted 1.3x, REFUTED, with the bytes agreeing at 1.77x: the
+prediction treated the conversion as free when `toFree` materialises a
+second tree. Reading those bytes found one unearned `Delay` - the
+right side of an `Ap` is a leaf in every spine a fold builds - worth
+exactly 56 B per leaf, one node and its thunk. Both benchmark files
+were written twice, because the first cut of each paired unlike things
+(benchmark-pairing-rule).
+
+Docs, everywhere they were due: theory ch. 12 (the ladder as the
+staging boundary, `Reader` as S/K/I, Turner's bracket abstraction as
+the history of `Func` and `Fuse`, Miranda as where it ran), tutorial
+5 and a new 22, typepedia, guide - whose claim about `par`'s
+cancellation was wrong and is corrected - benchmarks 9i, and the stale
+chapter and section counts in docs/README.
+## ui-html-host — stage 0, the spec
+
+specs/ui-html.md, landed as a5f88602 (spec only; no code moved). The
+plain road's three pure functions — `Live.html`, `Live.plain`,
+`Live.step` — sit in okay-script, whose module drags the staging
+compiler, deploy and ACME; okay-watch, a submodule consumer with its
+own Jetty router and its own door, wants the analyst page as a tree a
+plain browser draws and cannot take okay-script for three functions
+of strings. The spec moves them to `okay.ui.Html` (a host without a
+loop: `render`/`form` out, `events`/`step` in), keeps okay-script's
+names as delegates and `mountPlain` where the session is, and REVISES
+script-live-plain's same-day decision that the step belonged to
+okay-script — a host knows its medium as the terminal knows ANSI.
+Stage 2 (`ui-live-js`, the browser's half) waits for okay-watch's
+specs/ui.md stage 3. Queued in SPRINT.
+
+## script-live-plain — a Live app on classic HTML, no script
+
+`okay-script/src/main/scala/okay/script/api/Live.scala`, landed as
+28a961d8 (spec c977c68d). The operator asked whether Scala.js is
+mandatory for okay-ui and whether a plain HTML backend could stand
+in. It was already optional — Scala.js is one host of five in
+okay-ui, nobody outside the module depends on it, and the browser's
+Live client is hand-written JavaScript — and the missing piece was
+the plain road for an ARBITRARY Live app, which `Forms` had only for
+one node. Now `mountPlain(id, app)` renders the tree as one
+`<form method="post">` and no script; `Live.step` diffs a POST
+against the tree it was rendered from into the events the socket
+would have sent (a `Form`'s own button becomes ONE `Submitted`, the
+hybrid rule backwards), each checked by `Wire.permitted`; `Live.post`
+keeps the state where `session` keeps it (shared `load`/`store`), so
+a durable app is one state on both roads. Found on the way: a
+textarea carried no `name=` under `Live.html(named = true)`.
+TestLivePlain, 6 tests; okay-ui untouched. specs/okay-script.md
+"The plain road of a Live app".
+
+## applicative-static - stage 0, the spec
+
+specs/applicative-static.md, landed as 0e28811f (spec only; no code
+moved). The observation it starts from: okay has the whole ladder
+Functor < Applicative < Selective < Monad in Monad.scala and uses one
+rung — `Selective` has had no consumer since it was written, `traverse`
+over `A ! F` can only sequence because its only instance is the one
+derived from the Monad, `Async.par` is not an Applicative so `traverse`
+cannot see it, and nothing lists a program's effects without running
+it.
+
+The fact behind the lane, at its true size: the function applicative
+IS SK (`pure` is K, `app` is S, `Reader.ask` is I, and `A ?=> B` with
+`provide` is the same algebra in the language's syntax); an ARBITRARY
+applicative is an idiom bracket — a pure lambda spine over effectful
+leaves — and what it cannot do (bind one effect's answer into another
+effect's body) is exactly what makes every effect known before the
+run. Turner's bracket abstraction, which Miranda ran on, splits K from
+S by "does the variable occur free in what follows", which is the
+question stage 3 asks of a `direct` block.
+
+Four stages, each with the test that decides it: `Par` (parallel
+applicative over Async, `parTraverse`, proven by a rendezvous that
+cannot complete sequentially, not by a clock), `Static` (free
+selective: `leaves` before running, `toFree` to run, `foldMap` for
+batching, shown on a synthetic Fetch), the `direct` macro emitting
+applicative structure for independent binds — GATED on the first two
+having Results, because the instance it should emit against is a
+semantic choice the spec refuses to guess — and the theory chapter.
+Predictions are written before measuring: `Par.app` within 10% of a
+hand-written `Async.par` nest, `toFree` within 1.3x of the monadic
+program at 1 000 leaves.
+
+Decided and recorded: `Par` is not a Monad (Haxl's refusal, a
+`flatMap` would silently sequence); `Free`'s own Applicative stays
+sequential (the monad–applicative consistency law is what every
+existing `traverse` relies on for ordering); `Static` is its own type,
+not new nodes in the priced four-node tree. Out of scope with reasons:
+applicative parsers (okay-parse is an instruction language), the
+general ApplicativeDo transform, distributed batching (dataflow's),
+and the choice of stage 2's first real consumer (okay-di needs,
+okay-sql batching, okay-watch explain — each its own lane).
+
+## delim-diagnostics-position - a stopped fold points at code
+
+`Stopped` named an OFFSET, which says where in the log the trouble is
+and nothing about the program. `Dialogue.diagnosis` adds the line, and
+Worker.Progress.Broken now carries it:
+
+    Mismatch(0,booking/2,booking/1) after 1 answer(s);
+    this program is at Booking.scala:31 asking nights?
+
+THE SPEC'S OWN ASSUMPTION WAS WRONG, and that is the result. The box
+said this "needs the position to travel in the journal" -- a new
+field, a version bump, and an upcast for every journal ever written.
+It does not. The READER holds the body, so replaying the prefix it DID
+accept puts its own program at the question the bad record was meant
+to answer, and At has been on every pause since delim-diagnostics. One
+fold, no format change.
+
+AND IT IS THE MORE USEFUL LINE. Carrying the WRITER's position would
+name the deploy that already went out and worked; the line that helps
+is the one in the program that cannot fold this journal -- the reader,
+who is the one reading the message.
+
+Two things the tests had to be taught. Staging a foreign record needs
+a raw append, because a Dialogue for book/2 REFUSES to append once it
+folds a book/1 record -- two Dialogue objects cannot produce a mixed
+journal between them, which is itself worth knowing. And the assertion
+does NOT hardcode a line number: it asserts that the line TRACKS THE
+POSITION, by checking a run standing at the first question names a
+different line from one standing at the second. A hardcoded number
+would have rotted on the next edit above it -- it already did once,
+between writing the test and running it.
+
+TestDiagnosis (4). The last open box in the continuations arc.
+
+## dialogue-resume-cache - the last cost, paid down
+
+Where a run stands is re-derived by running it over its answers, so a
+process that touches one dialogue ten times replayed it ten times --
+nothing held the program in between. A paused program is a closure: it
+cannot be written down, but it can be KEPT. `Resume` is an LRU of
+id -> (dialogue, paused program, position), and `Worker` takes one.
+
+MEASURED, NOT ASSERTED: a counter in the program body counts how many
+times the body is BUILT, which is how many times the journal was
+replayed. Five touches of a waiting run -- which is what a worker loop
+actually spends its time on -- give 1 replay with the cache and 5
+without. A test that only compared answers would pass against a cache
+that never hit once, which is the failure mode a cache really has.
+
+THE STALENESS CHECK IS THE WHOLE DIFFICULTY, and its requirement is
+sharp: finding out must not cost a fold, or the cache has paid exactly
+what it exists to save. Dialogue.undisturbed is one offset read
+against the partition's end, and it is CONSERVATIVE by construction --
+another dialogue sharing the partition makes it say "disturbed" when
+this one was not. A false "disturbed" costs one replay, which is life
+without a cache; a false "undisturbed" would be a program that has
+missed an answer. Only one of those is affordable.
+
+It holds the Dialogue too, not just the program, because an instance
+carries `seen` -- the offset that makes the won-the-race check free.
+
+Two things fell out. A cache hit skips the look-before-driving check:
+the journal folded when the program was cached and nothing has been
+written since, so it cannot have become unreadable in between. And
+Dialogue.standing returns the program and the position from ONE fold,
+where `at` plus `recovered.accepted` were two that could disagree if
+somebody appended between them.
+
+TestResume (5). Stage 3 of specs/durable-workflow.md closes with it.
+
+## workflow-lease - the lease saves work, expect saves correctness
+
+`Leases` is a compacted topic of Held(owner, until); a Worker given
+one reports Progress.Busy(owner) instead of driving when somebody else
+holds it. That saves the wasted attempt. It does not, and cannot, make
+anything more correct - `expect` already gives one journal out of two
+workers, with a repeated attempt as the worst case.
+
+TWO HOLES, and they are different, so both are named:
+
+  1. Acquisition is not atomic. Topic.append has no conditional form
+     and giving it one would change every store, the wire protocol and
+     the Kafka interop for one consumer - the trade already made for
+     `expect`. Two workers whose reads land before either write both
+     hold it.
+  2. A lease does not FENCE, and an atomic one would not either.
+     Expiry is decided by a clock and a clock cannot stop a thread:
+     the holder whose lease just expired may be inside a slow call and
+     about to append, while the next worker acquires legitimately.
+     Closing that needs a fencing token checked AT THE WRITE, which is
+     what `expect` already is.
+
+THE FIRST TEST WAS WRONG AND ITS OWN ASSERTION CAUGHT IT. It claimed
+to reproduce hole 1 by calling acquire twice and expecting both to
+succeed; the second correctly REFUSED, because sequential calls cannot
+interleave a read with a write. The assert carried the message "the
+test no longer reproduces the race it exists to reproduce", so the
+failure was legible instead of puzzling. The suite now TESTS hole 2 -
+deterministic, and the more important - and STATES hole 1 in a test
+asserting that sequential acquisition does exclude.
+
+A comment had to be retracted with it: the Leases header claimed
+"there is a test that makes them" both hold the lease. Once the test
+could not, the sentence was false and was replaced.
+
+TestLease (8) and one in TestWorkflowGuide.
+
+## workflow-retire - questions about questions are questions for the program
+
+`Retire` is the evidence for deleting code: which programs are still
+present in a topic, which of their runs are still asking, and which
+`patch` branches anybody is still on. Three calls rather than one,
+because they cost three different things, and saying so is most of
+the design:
+
+  census  - envelopes only. No body, no replay, exact. Usually the
+            whole answer: a program with no records is gone.
+  states  - one replay per run, because a journal does not record that
+            a program FINISHED. Where it stands is re-derived, which
+            is the whole doctrine.
+  patches - a replay AND the body.
+
+THAT LAST COST IS THE INTERESTING ONE. A journal holds ANSWERS, and
+the id of a patch lives in the QUESTION. So "which branch does this
+Flag(true) belong to" is not a fact about the journal at all, and no
+reader of records can recover it -- only running the program pairs
+them up again. It is the doctrine seen from the other side: if the
+fold is the program, questions ABOUT the questions are questions FOR
+the program.
+
+Wf.replay was GENERALISED rather than copied: `replaying` reports the
+pairs it answered on the way and `replay` is one line over it, for the
+reason runUntil was generalised -- the Patch decision (answer false
+and do NOT consume the entry) is subtle enough that a second copy
+would drift, and one of the two would be silently wrong about which
+runs predate a branch.
+
+VERIFIED BY BREAKING IT: drop the un-consumed false from what
+`replaying` reports and `skipped` comes back empty, so `oldHalfDead`
+turns true while a run is still standing on the old half - evidence
+for deleting code that is still reachable. The test fails there.
+
+An unreadable record is NAMED rather than skipped: a census that hid
+one would be evidence for a deletion it never checked. And Retire
+deletes nothing and compacts nothing - it answers, the operator acts.
+
+TestRetire (5) and one in TestWorkflowGuide.
+
+## workflow-children - a child is a result to wait for, not a thing to spawn
+
+`Children` is a registry of finished runs' results; a worker given one
+records every run it finishes, and answers a parent standing at
+`awaitChild(id)` with the child's result. The waiting half has existed
+since the suspended driver landed - the program asks Sys.Child(id),
+the runtime declines, the drive ends - and this is the half that
+answers it.
+
+Same shape as Signals, because it is the same problem: a fact from
+outside the parent's journal becoming an answer inside it, exactly
+once. Simpler in one way - a child finishes once and its result does
+not change, so there is no cursor and no mailbox, and `expect` is the
+whole of the guard. A child that finishes BEFORE the parent reaches
+its wait is found waiting, exactly as an early signal is.
+
+WHAT WAS REFUSED: a parent that spawns its child. A Worker is built
+for ONE program - one topic, one body, one set of types - so a
+parent's worker cannot run another program's code, and giving it one
+means a registry of ERASED bodies and a cast at every spawn. The spawn
+is therefore an ORDINARY ACTIVITY: the parent asks its own question,
+the oracle starts the child's worker, and the id comes back as a
+journalled answer. No new machinery, and the spawn is idempotent in
+(id, index) like every activity. The guide compiles that shape.
+
+What it costs, said rather than discovered: parent and child are two
+runs with no enforced relationship. `link` is bookkeeping for the tree
+view (`of(parent)`), not a constraint - nothing stops a child being
+awaited by two parents, or none. That is the price of not owning the
+child's lifetime, and the alternative was the cast.
+
+TestChildren (6) and one in TestWorkflowGuide.
+
+## dialogue-continue-as - bounded history, and the count that must not reset
+
+Replay re-runs the program over its answers, so a dialogue with ten
+thousand answers runs the program over ten thousand answers on every
+cold start. Chapters (dialogue-snapshots) cut the READING; this is
+what cuts the RUNNING. A program ends a stage by returning
+Wf.Next.Continue(seed); the worker writes an Entry.Continued record
+that SUPERSEDES everything before it, so the journal becomes the seed
+alone. Four chapters, a journal of one answer - asserted.
+
+A RESULT, NOT A CALL, and the refutation is the reason. Temporal's
+continueAsNew is a call that never returns; here a call would have to
+carry the seed to the driver, and the seed is the AUTHOR's type while
+the question channel is Sys - a non-generic library enum whose runtime
+answers with no A to put a seed in. The ways out were an untyped
+payload, or a type parameter on Sys/Wait that every workflow pays for
+so the few that bound their history can. The result channel already
+carries the author's types.
+
+THE INVARIANT: a continuation resets the JOURNAL and not the RECORD
+COUNT. `expect` counts records accepted, not answers held, and the two
+are equal until a Continued makes them differ. That is what keeps a
+chapter boundary safe against a second writer - one still standing in
+the old chapter carries a number the fold has already passed, so its
+answer is rejected instead of read onto a question it never saw.
+
+THE TEST FOR THAT WAS WRONG FIRST, which is why it is worth saying: it
+stood the stale writer at position TWO and PASSED against a
+deliberately broken fold, because a fold that reset its count to 1
+rejects expect == 2 by arithmetic rather than by the invariant. At
+position ONE - where the new chapter's first answer goes - it fails
+against the broken fold with the corruption it exists to catch.
+
+Also: Worker runs at most `continuations` chapters per call and hands
+back Progress.Continued(n) rather than spinning, and Chapter gained an
+`accepted` field, so a snapshot from an older build no longer decodes
+and is ignored - the fallback that file already documented.
+
+TestContinueAs (6), TestContinueAsWorker (3), one more in
+TestWorkflowGuide.
+
+## workflow-cancel - asking a run to stop, as a question it answers
+
+`Cancels` is a compacted keyed topic of stop requests, `Wf.cancelled`
+is an ordinary `Sys` question the program asks where its author
+decides it is safe to stop, and `Runtime.cancellable` wraps the
+ambient runtime per dialogue so the worker's `cancel(id, why)` reaches
+the run that is being driven. `Worker` gained a `cancels` option and
+refuses - returns `false` - rather than dropping a request it has
+nowhere to put.
+
+COOPERATIVE, AND NOT BY TASTE. The obvious shape is pre-emptive: the
+driver throws into the program, which catches and compensates. That
+cannot work here, and the fact that kills it was already pinned by
+`TestDelimLimits` - a `direct` block's try/catch guards the BUILDING
+of a program, not its running, so a thrown cancellation could not be
+caught by the program being cancelled. An `if` can.
+
+WHAT IT BUYS is the property the rest of the engine is built on: the
+DECISION IS REPLAYABLE. The request lives in an operational topic, but
+the answer - cancelled or not, and why - is journalled like every
+other answer, so a run told "no" at 10:00 is told "no" by every replay
+of that position even after the request arrives at 10:01. The fifth
+test withdraws the request from a finished run and asserts the run
+still finishes the way it finished; a design that consulted the topic
+at replay time would fail it.
+
+WHAT IT COSTS, said in the guide rather than discovered: a program
+with no check is not cancellable, a run asleep for a year learns it
+was cancelled when it wakes, and a run waiting on a signal that never
+comes never learns at all.
+
+`TestCancel` (6) and one more in `TestWorkflowGuide`, whose example is
+the page's snippet verbatim.
+
+## workflow-docs - the guide, and a test that keeps it honest
+
+`docs/durable-workflows.md`: what a durable workflow is, the one idea
+(the answers are written down, the place is re-derived, and the fold
+IS the program), a five-line workflow in which every line is something
+an engine exists to provide, the pieces and WHICH OF THEM IS THE
+TRUTH, the four rules, how a program changes under a running journal,
+and an honest list of what a workflow ENGINE has that this does not.
+
+Its code is compiled. `TestWorkflowGuide` is the page's own example,
+step by step - it runs until it waits, the deadline is in a topic, a
+day passes, a tick wakes it, it stops on a signal, the dashboard
+answers "who is blocked on payment" with one read, the signal arrives,
+and the oracle turns out to have been asked exactly once in the life
+of the run. If that suite goes red the documentation is wrong, which
+is the only way to keep a guide honest.
+
+WRITING IT FOUND TWO THINGS, which is the usual argument for writing
+documentation as code:
+
+- the page's opening snippet DID NOT COMPILE without a return type on
+  the workflow, so the page was wrong before anybody read it;
+- and the worker promised `Progress.Broken` for a journal it cannot
+  fold while the DRIVER threw instead. A throw takes the whole `tick`
+  with it, so one unreadable run would stop every other run on the
+  box. The worker now looks before it drives, at the cost of one
+  extra fold per advance, and the comment says that is the price of
+  turning an exception into a value rather than leaking it into
+  somebody's scheduler thread.
+
+The practice page's "what this is not" was stale the moment the engine
+started growing; it now names what exists (timers, signals, retries,
+visibility, the worker) and what still does not (cancellation,
+children, bounded history, a lease, a scheduler process).
+
+## workflow-retries - the driver retries, the journal does not notice
+
+An activity fails for reasons that have nothing to do with the
+program: a connection reset, a 503, a lock held elsewhere. The
+workflow should not see those — it asked ONE question and is owed ONE
+answer — so the retry belongs to the driver, and
+`Worker.retrying(policy)(oracle)` is three lines because both halves
+already existed: `Retry`'s policies are streams of delays (so `take`,
+`map` and `++` are the policy algebra) and `workflow-activity-row`
+gave an attempt somewhere it is allowed to fail.
+
+Measured: an oracle that throws twice and then answers is attempted
+three times, and the journal gains exactly ONE entry — the answer.
+
+AND THE USEFUL HALF IS WHAT HAPPENS WHEN THE POLICY RUNS OUT. The last
+error is thrown, NOTHING is appended for that question, and the run is
+still standing exactly where it was. A later worker — the next tick,
+the next process, after the service comes back — asks again from the
+log and finishes it. "Give up" here means "give up for now", never
+"lose the run", and the test walks that whole path: three failed
+attempts, an empty journal, then a second worker completing the run.
+
+## row-membership-crash - the compiler bug that decided three designs, pinned
+
+`RowLift.In`'s inductive given asks the compiler to solve `?G + ?H`
+for its target. When the target is an ABSTRACT type constructor, dotty
+3.9 does not fail - it CRASHES, `AssertionError: Failure to join
+alternatives F and G`, in `TypeOps.orDominator`.
+
+In ONE DAY it decided three designs here: delim-safety's second-machine
+guard is `NotGiven[Delim[Any] <:< F[Any]]` rather than
+`NotGiven[In[Delim, F]]`; `Replayable` is a subtyping test after the
+inductive form was refuted; and the workflow driver's row was written
+as a complement because `In[F, G]` would not compile. Three
+workarounds, no record - until now.
+
+- `ProbeRowCrash` pins the reproducer, compiling, with the crashing
+  line commented and an instruction to uncomment it on the next Scala
+  upgrade. A compiler bug that costs a design decision should be
+  re-tested, not remembered.
+- AGENTS.md states the rule once, where build facts that bite live: an
+  obligation over a row is CARRIED as a parameter, never searched for
+  at an abstract row; and where a witness must be summoned, use
+  subtyping.
+- `RowLift.Sub[F, G]` (`F[Any] <:< G[Any]`) and `p.up[R]` are the
+  shape that does not crash, beside the existing `In`/`at` for
+  concrete rows.
+
+AND IT PAID FOR ITSELF IMMEDIATELY. The workflow driver moved from
+`F + E` to one row `G` with `Sub[F, G]`, which removed the wart that
+form carried: `Pure + Pure` is `[X] =>> Nothing | Nothing`, so a
+worker with NO activity row could not be run at all. Under `Sub` it is
+ordinary, because `Nothing <:< anything` - and the test that could not
+be written before now exists.
+
+WHAT `Sub` IS NOT, said in its own doc rather than discovered later:
+true membership is forall X, `F[X] <: G[X]`, and this tests it at
+`Any`. For rows built pointwise from effect signatures the two
+coincide, and the cast is the one `In` already licenses. An
+approximation, named as one.
+
+## workflow-activity-row - the driver's row is not the program's
+
+Found while wiring retries, and fixed before them because everything
+downstream depends on it: THE ORACLE SHARED THE PROGRAM'S ROW. A
+durable program's row must be `Replayable` - no `Async`, nothing a
+replay would perform again - so the oracle was as constrained as the
+program, and an activity could only do I/O by side-effecting in Scala,
+past the effect system entirely. That is the difference between a
+model and an engine, and it is what this library exists not to do.
+
+The driver now runs in `F + E`: the program's replayable row plus
+whatever the activities need (`Dialogue.runUntilIn`, `runWorkflowIn`,
+`Worker[Q, A, R, F, E]`). The programs it moves are still built in `F`
+and widened at the seam; the journal, the replay and the race check
+never see `E`. The headline test says both halves in one place: an
+activity performs a typed `Async` effect, and a workflow whose own row
+is `Async` does not compile.
+
+ADDITION, NOT MEMBERSHIP, and that was measured rather than chosen.
+The natural spelling is one driver row `G` that CONTAINS `F` -
+`RowLift.at` is exactly that door, one licensed cast - but `In[F, G]`
+over two ABSTRACT rows crashes dotty 3.9 in `orDominator` with
+"Failure to join alternatives F and G". That is the second time in one
+day the same crash has decided a design (delim-safety was the first),
+and it is now recorded in the spec as a fourth architectural rule
+rather than as a surprise.
+
+The cost of the complement form, stated: `F + E` with both `Pure` is
+`[X] =>> Nothing | Nothing`, which is not `Nothing`, so a driver with
+no effects at all cannot be `!.run`. In practice `E` is what the
+activities need and is never `Pure`. The persist tests now run their
+workers through `Async.run`, which is also the first time they show
+the feature rather than only the model.
+
+## workflow-visibility - the dashboard the model cannot afford to compute
+
+"What is every run waiting for" is a question this model answers
+EXPENSIVELY: a dialogue's place is its journal folded by its own
+program, so answering it for a thousand runs means running a thousand
+programs. That is what "the fold is the program" costs, and a
+dashboard refresh is the wrong place to pay it.
+
+So the WORKER writes it down. Every `advance` already knows what it
+learned - finished, sleeping until, waiting on, or broken - and puts
+that under the dialogue's key in a compacted topic, together with the
+standing question and the LINE the run is sitting on (`Paused.where`,
+from delim-diagnostics). `Statuses` is then a cheap read: `get(id)`,
+`all`, `waitingOn("approved")`, `idleSince(t)`.
+
+WHAT IT IS NOT is the same rule as the timers': it is not state. Lose
+the whole index and every run is still exactly where its journal says
+it is — there is a test where a worker with NO index at all finishes a
+run the indexed worker started. The dashboard goes blank and fills
+again as workers touch runs.
+
+And it is written AFTER the journal, never instead of it, so a worker
+that dies in between leaves a STALE LINE and no wrong run. Nothing
+reads the index to decide anything; `at` says when it was written, and
+an operator comparing that to the clock is the honest check. Nothing
+here pretends the index is the truth.
+
+## workflow-signals - the mailbox between a sender and a waiting run
+
+An answer replies to a question the program ASKED. A signal does not:
+it is sent when the sender has something to say, which may be long
+before the run reaches the `awaitSignal` that wants it - and a journal
+has nowhere to put an answer to a question nobody asked, which is the
+one thing a journal must never hold.
+
+So a signal lands in a MAILBOX (an append-only topic keyed by dialogue
+id) and the worker moves it into the journal at the moment the run
+actually waits for it. A compacted topic of cursors, keyed by id AND
+NAME, remembers how far each name has been delivered.
+
+WHY A CURSOR PER NAME rather than a count per dialogue: signals of
+different names arrive interleaved and a run waits for one name at a
+time, so a per-dialogue count would have to skip the names it is not
+waiting for and could not then say what it had skipped. Per name, "the
+first one after the cursor" IS the next one, and order within a name
+is kept - the only ordering anybody can reasonably promise.
+
+DELIVERY IS EXACTLY ONCE INTO THE JOURNAL. The cursor moves only after
+the journal took the answer, so a crash in between re-delivers the
+same signal and the journal's own `expect` refuses the duplicate at a
+position already filled: a repeated attempt, never a doubled answer.
+
+Seven tests, and the two that state the contract are "a signal that
+arrives BEFORE the wait is delivered when the run gets there" and "a
+signal for a name nobody waits on stays in the box".
+
+One lesson from the tooling rather than the design: a scripted edit
+wrote a literal NUL byte into the source (Python read `\u0000` in my
+string, Scala never saw an escape), and the compiler's error for it
+came back TRUNCATED - E006 with no message body. `od -c` on the line
+is what found it, and the separator is a printable `|` now.
+
+## workflow-worker - the loop that carries runs forward
+
+`Wf` says where a run stands and `Timers` says when to come back;
+`Worker` turns those into progress. Built for ONE workflow type - one
+journal topic, one program, one body - it moves ids: `start`,
+`advance`, `wake`, and `tick(now)` for every run whose deadline has
+passed. Each ends by telling the timers what it learned: a sleeping
+run is armed, a finished one or one waiting on a signal is disarmed.
+
+THE CHECK THAT IS NOT OPTIONAL, and it has a test: a due timer is a
+HINT, not an instruction. The worker looks at where the dialogue
+actually stands and appends `Elapsed` only when the run is genuinely
+waiting on a timer whose instant has passed. A stale record - for a
+run that moved on, was cancelled, or was woken by a signal - costs one
+read and nothing else. Without that check an old record in an
+OPERATIONAL topic could put an answer into a journal that nobody
+asked for, which is the one thing a journal must never hold.
+
+NO LEASE, and that is a decision rather than an omission. `expect` is
+what makes two workers safe: an answer carries the position its writer
+expected, so the second worker's answer for the same position is
+rejected by the fold. The test says it plainly - two workers start the
+same id from the same standing start, and the journal comes out with
+ONE answer, the first one's. A lease would make the collision rare; it
+would not make it correct, and a lease can always be lost. When one
+lands it will be named advisory.
+
+Six tests, the last three being the ones worth having: a stale timer
+changes no journal, two workers make one journal, and a worker that
+dies leaves the next one able to finish the run without re-asking
+anything.
+
+## gate-stall-set-e - the watchdog's own bug, caught in production
+
+`gate-stall-watchdog` ran gate.sh in a subshell that writes a sentinel
+file when it finishes. The subshell inherits `set -e` from this
+script, and a RED gate exits non-zero - so the subshell died ON
+gate.sh and never reached the sentinel. Every red gate then sat the
+FULL ten-minute stall timeout before the loop noticed anything, which
+is the exact opposite of the bug the watchdog was written for.
+
+Caught the same afternoon, by the watchdog itself: gate-drv.log holds
+a complete RED verdict and, ten minutes later, "attempt 1 STALLED:
+nothing written for 10 min; killing by pid" - it killed a process that
+had been finished for ten minutes.
+
+`set +e` inside the subshell, and all three paths verified rather than
+assumed: a RED is reported in ten seconds with its own exit code, a
+GREEN in ten, and a genuinely silent gate is still killed by pid,
+retried, and leaves no orphans.
+
+The lesson is the one this session keeps paying for: the watchdog's
+happy path was tested, its own FAILURE path was not, and a supervisor
+is exactly the code whose failure path is the point.
+
+## workflow-timers - durable deadlines, outside the journal
+
+When a drive returns `Waiting(Until(t))` the run is OVER: nothing is
+held in memory, no thread is parked, and the journal says exactly
+where the program stands. What was missing is somebody to come back at
+`t`. `Timers` is that — a compacted keyed topic whose key is the
+dialogue id and whose value is the instant it waits for: `arm`,
+`disarm`, `armed`, `due(now)`.
+
+TWO DESIGN CHOICES, both of which are the architecture's own rules
+made concrete.
+
+- **A deadline is NOT in the journal**, because it is operational data
+  ABOUT a run rather than part of it. There is a test for what that
+  buys: lose the entire timer topic and every workflow is still
+  exactly where its journal says it is — they simply sleep until
+  somebody arms them again, and re-arming is all it takes.
+- **It hands back IDS and appends nothing.** It could append the
+  `Elapsed` answer itself, and then it would need every sleeping
+  dialogue's Schema, program name and body. That is the worker's
+  business, not a clock's.
+
+Cost stated rather than discovered: `due` scans the topic, bounded by
+what compaction left, exactly as `Snapshots.latest` is. Honest for
+thousands of sleepers, wrong for millions; the shape that fixes it is
+a time-bucketed key, and it is a change to this file alone.
+
+One thing worth checking rather than assuming, and it cost five red
+tests: `Snapshots.putValue` writes PLAIN CBOR, with no `Typed`
+envelope. The first cut tried to unwrap one, and every timer read as
+absent.
+
+## workflow-suspended-driver - the engine's keystone
+
+The operator asked for the full engine. Its architecture turns on one
+observation: durable timers, signals and child workflows LOOK like
+three features and are one. Each is a question the driver cannot
+answer when it is asked - a sleep is answered by the passage of time,
+a signal by somebody else's action, a child by another run finishing -
+and `run(oracle)` had no way to say that. It answered every question
+or it threw.
+
+So the runtime may now DECLINE (`answer(q): Either[Wait, SysA]`) and a
+drive returns where it stopped:
+
+    enum Step[Q, R]: case Done(value) | Asking(q) | Waiting(on: Wait)
+    enum Wait:       case Until(millis) | Signal(name) | Child(id)
+
+`Wf.sleep`, `Wf.awaitSignal` and `Wf.awaitChild` are the doors;
+`Wf.advance` is the worker's primitive (no oracle, so the author's own
+questions come back as `Asking`); `Dialogue.runUntil`/`runWorkflow`
+carry it through the log.
+
+THE DEADLINE IS JOURNALLED. `sleep(d)` is `now` followed by
+`Timer(now + d)`, so the clock reading is an ordinary journal entry
+and every later process computes the SAME instant - measured, with a
+second process whose clock reads 9 999 999 still waiting until the
+first one's deadline. A sleep relative to the reading process's clock
+would slide the deadline forward on every restart, which is the
+durable-timer bug every engine has had once.
+
+And the durable side needed a GENERALISATION, not a sibling driver:
+`run(oracle)` is now `runUntil[S](oracle)`, where an oracle answering
+`Left(s)` ends the drive with everything it did answer already
+durable. The warm path, the `expect` race check and the
+append-after-advance order are the same moves either way.
+
+TestWfSuspend (8) and TestWorkflow (2 more): a durable workflow stops
+at a timer, its process dies, the scheduler appends the answer as any
+other answer, and a NEW process finishes it without asking the oracle
+anything.
+
+## wf-direct-door - the evidence carries the doors
+
+`Wf`'s doors took four type arguments at every call site -
+`Wf.pause[String, String, String, Pure]("city?")` - because Q, A, R
+and the row appear only in the evidence and a method cannot read them
+off a `using` parameter it has not been given yet. That works and
+reads badly, which by this project's standing rule ("useful, not just
+works") means it was not finished.
+
+The evidence is no longer a type alias: `Wf.Asks[Q, A, R, F]` is a
+class that knows its four types and offers the doors as methods on
+itself. A body names them once, in its own signature, and every call
+site inside writes none:
+
+    def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+      val city = !w.pause("city?")
+      val when = !w.now
+      if !w.patch("promo") then ... else ...
+
+NO MACRO WAS NEEDED, and that is the other half of the point. The
+inline `Delim.pause` exists because a mark gives its argument no
+expected type, and it pays one documented cast for that. Here the
+types are on the object, so there is nothing to infer and nothing to
+cast.
+
+Every test of `Wf` and of the durable workflow was rewritten in the
+new style and passes unchanged in meaning - which is the only proof
+worth having that an ergonomic change is only ergonomic.
+
+## wf-durable-journal - a durable program with a clock and a branch
+
+`Wf` made the runtime's questions journalled; this carries them into
+the LOG, so a durable program may read a clock, mint an id and take a
+`patch` branch without breaking replay. `Dialogue.workflow(topic, id,
+program)(body)` is the door, and `Dialogue.asking(oracle)` is the
+driver's other half: the author answers their own questions, the
+runtime answers its own, and both are appended tagged.
+
+ONE THING HAD TO CHANGE IN `Dialogue`, and finding it was the work:
+HOW A JOURNAL BECOMES A PLACE. That is the only part of the class the
+program's shape decides - an ordinary dialogue folds with
+`Delim.replay`, a workflow with `Wf.replay`, which knows not to feed
+an answer to a `patch` that was not there when the journal was
+written. So the fold became a parameter and everything else - the
+envelope, the `expect` races, the advance-then-append order, the warm
+path's free win-check - is written once for both. All fourteen of
+`Dialogue`'s tests passed unchanged, which is what says the seam was
+in the right place.
+
+Measured in TestWorkflow, four tests, each one a thing that used to be
+impossible: the clock is read ONCE and the reading outlives the
+process (a second process asks neither the oracle nor the runtime); a
+run finished under v1 keeps its answer when v2 adds a `patch` between
+its two questions; a run STARTED under v2 records the decision in the
+log, so a third process agrees without asking anything; and a
+half-finished old journal goes LIVE at the patch and finishes on the
+new branch with its history intact - the migration case, through the
+durable path, without a migration.
+
+## dialogue-asks - the clock is a question too, and that makes programs changeable
+
+`Replayable` said a durable program may not reach outside except
+through `pause`. Correct, and on its own unusable: every real workflow
+needs a clock, an id and sometimes a die. `okay.Wf` makes those
+QUESTIONS as well - asked of the runtime rather than the author's
+oracle, and remembered in the same journal, so a replay reads the
+writing instead of the wall.
+
+The channel is a sum the LIBRARY owns: `Either[Sys, Q]` for questions,
+`Either[SysA, A]` for answers, and the author never writes the Either
+(`Wf.pause` wraps and unwraps `Right`, `Wf.now` `Left`). The two
+alternatives lost for a stated reason: a second channel would need its
+two journals interleaved to replay, and the interleaving is exactly
+what one tagged journal carries for free; an open sum the author
+extends puts the library's cases into every consumer's match.
+
+AND THE TAG IS WHAT MAKES A PROGRAM CHANGEABLE - it carried stage 2
+(`patch`, Temporal's getVersion) with it, because they are one
+mechanism. The decisive test: a v1 journal `Right("Kyiv"), Right("3")`
+read by a v2 program that gained a `patch` BETWEEN its two questions.
+The patch answers `false` and does NOT consume, so `"3"` still answers
+`nights?` and the old run finishes the way it began. Without the tag
+the patch would have eaten `"3"` - the same silent mis-mapping the
+`program` field exists to stop. A half-finished old journal replays
+into the new program and then goes LIVE at the patch: the driver
+decides `true`, appends the decision, and the run finishes on the new
+branch with its history intact. That is the migration case, working
+without a migration.
+
+`Wf.replay` takes NO runtime. Its signature is the proof that a replay
+cannot read a clock.
+
+`perform` was listed as work and turned out to be a name: an activity
+is a command performed outside and a result remembered, which is a
+question and its answer. There is no second mechanism, and saying so
+is the whole feature.
+
+Not wired yet: `okay.persist.Dialogue` still journals `A` rather than
+`Wf.Ans[A]`, so the durable side cannot carry the library's questions
+yet - mechanical, the envelope already exists. And the doors take four
+type arguments at a call site where `Delim.pause` in a `direct` block
+takes none; the fix needs `Wf` to own an evidence class carrying Q and
+A as members, filed as `wf-direct-door`.
+
+## gate-stall-watchdog - a hung gate is now killed and retried
+
+A gate that HANGS was invisible to `gate-retry.sh`: it reads the log
+only after `gate.sh` returns, and a hung gate never returns. Measured
+2026-09-17: a run reached 80 of 81 modules and then sat 28 minutes
+with sbt's main thread parked in `ExecutorCompletionService.take` and
+~200 forked native/node runners at 0.0% CPU - a runner handshake that
+never completed. Killing it by hand and rerunning cost half an hour,
+twice in one session.
+
+It now runs gate.sh in the background and watches the log GROW. Ten
+minutes of silence (GATE_STALL_MIN) is a hang rather than a long
+compile; the tree is killed BY PID, depth first, and counted as "no
+verdict" - which the loop already knows how to retry.
+
+THREE BUGS IN THE WATCHDOG ITSELF, each caught by a test rather than
+by a later gate, and the negative test is what earned its keep:
+
+- `kill -0` says a FINISHED background child is alive, because a
+  zombie keeps its pid until the shell reaps it. The first cut never
+  noticed a gate finishing. A sentinel file written by the child is
+  the reliable signal.
+- `set -e` plus `wait` on a killed child ENDS THE SCRIPT: the log
+  stopped mid-sentence at "killing by pid" and the exit code was 143,
+  a signal, which is exactly the shape this whole loop exists to tell
+  apart from a verdict. `|| true`.
+- a stall test that is too short proves nothing: the first growth
+  check resets on the gate's own opening line, so the fire happens at
+  the SECOND check. Both tests now run long enough to reach it.
+
+Verified both ways: a gate that never speaks is killed, retried and
+reported (exit 99, no orphans left); a gate that is slow but talking
+is NOT killed and reaches its verdict.
+
+AND THE MEMORY FLOOR IS NOW DERIVED, not guessed. gate-quiet-realistic
+put it at 8 GB this morning. Reading the watchdog that would kill the
+run says that was wrong: `io.scalascript.build-ram-guard` is loaded,
+ticks every 20 s, and its own constants are REAP_FLOOR=8192 MB (start
+reclaiming) and SHED_FLOOR=3072 MB (may kill LIVE work - the heaviest
+build JVM, which during a gate is the gate). sbt here takes 6 GB, so
+starting at 8 GB free lands the host at ~2 GB with the gate as the
+target: the 143 this project already spent three days blaming on its
+own test suite. 10 GB is the first number that keeps the host above
+the shed floor with the gate's own footprint counted, and the machine
+reaches it.
+
+For the record, from the same survey: neither watchdog killed anything
+today. The RAM guard acted 119 times (23 T0, 96 T1) with kills=0, and
+`io.scalascript.kill-stale-builders` (hourly, --idle 30 --kill) logged
+nothing at all. Today's lost time was the unsatisfiable quiet
+condition and one genuine hang inside sbt - not an external killer.
+
+## delim-patterns-in-modules - the stepper was a dialogue all along
+
+okay-agent's `Stepper` was written before `Delim` had the named
+patterns, so it carried its own `Stepping` enum - a `Paused(call,
+resume)` beside a `Done(a)` - and its own driver. That is
+`Delim.Paused` and `Delim.drive`, exactly: a stepping run is a
+dialogue whose questions are tool calls and whose answers are their
+results. `Stepping[A]` is now a type alias for
+`Delim.Dialogue[ToolCall, String, A, Rest]`, and the bespoke enum and
+driver are gone.
+
+It needed one door that did not exist. `Delim.pause` is an inline
+door for a `direct` block, and the stepper builds its pause inside a
+`translate` - a natural transformation is not a direct block. So
+`Delim.ask` is the for-comprehension spelling, and it takes NO cast
+in exchange: with the row written down, `k` already has the type
+`Ask.resume` wants (the inline one casts only because a mark gives
+its argument no expected type).
+
+AND IT CORRECTED A CLAIM OF OURS, which is the part worth reading.
+The backlog entry that asked for this rewrite said the stepper would
+gain `Delim.replay` - a session surviving the process - for free. It
+does not, and the type system is what said so: replay wants
+`Replayable[Delim + Rest]`, and `Rest` is `Context + (Model + Async)`,
+so replaying a stepping session would ASK THE MODEL AGAIN. A stepping
+run is a dialogue in shape and a live one in substance. There is a
+test pinning the refusal, and the claim is corrected where it was
+made.
+
+ONE WARNING CAME FROM THE PREVIOUS LANE, and how it got past a green
+gate is the more useful half. `TestDelimForward` had two imports it
+did not use; delim-forward-not-throw's gate said "no compile
+warnings (196 module compile(s) looked at)" and landed it. The reason
+is that this session ran `testOnly` in that worktree BEFORE gating, so
+the gate's own `sbt test` recompiled nothing in the core test module
+and re-emitted no warnings. AGENTS.md already says an incremental
+compile hides warnings in files it did not touch; what was missing is
+the consequence for how a lane is gated - a worktree somebody has
+already compiled by hand cannot be checked by the warning gate. Fixed
+here, and filed as `gate-warm-warning-blindness`.
+
+Not touched, deliberately: okay-llm's `Cut` and okay-ui's `Scope`.
+They were named in the same backlog entry, but they duplicate
+nothing - they use the primitives directly, which is what the
+primitives are for. The one change worth making there is a different
+one (their ambient door is a `Prompt`, which anyone can construct,
+where `Prompted` cannot be forged), and it changes a public signature,
+so it is its own decision rather than a tidy-up inside this lane.
+## gate-quiet-realistic - the gate stopped waiting for a box that never comes
+
+Every gate this session waited the FULL 30 minutes and then started
+anyway, which is a loop announcing that its condition is
+unsatisfiable rather than that the box is busy. Both halves of
+`quiet()` were measured wrong.
+
+- **HEAVY meant RESIDENT, not BUSY.** It counted any sbt with RSS
+  over 1 GB, and an idle sbt server is the normal state of this
+  machine - there is one in the main checkout up for two days, and
+  today a 1.1 GB sbt in another project sat at 0.0% CPU for 21
+  minutes and made the box "busy" by itself. It now counts a JVM only
+  while it is burning CPU (>20%), which is the distinction AGENTS.md
+  already draws for JMH forks ("a fork at 0% for minutes is asleep,
+  not measuring").
+- **FREE wanted 16 GB**, which this box does not reach while anybody
+  is logged in - measured 14.6 GB with nothing running but an idle
+  sbt and the operator's VM. The number that matters is not "plenty"
+  but "enough not to trip the RAM guard mid-run": the launchd agent
+  kills the heaviest JVM under 3 GB available, and sbt here takes 6.
+  8 GB is the heap plus headroom over the guard's line, and it is a
+  number the machine actually reaches.
+
+And it SAYS SO WHILE WAITING: the log used to stay empty for up to
+half an hour, which from outside is indistinguishable from a hung
+gate - three watchers expired over an empty file today before anybody
+looked at the process list.
+
+Measured immediately after: the same box that read `busy (heavy-jvm=1
+load=2 freeGB=14)` reads `quiet (busy-sbt=0 load=2 freeGB=12)`.
+
+Still open, filed as `gate-warm-warning-blindness` and the stall
+watchdog: a gate that HANGS (once today, ~200 forked native runners at
+0% CPU with sbt parked waiting for a task) is still invisible to
+`gate-retry.sh`, because it only reads the log after `gate.sh`
+returns.
+
+## delim-forward-not-throw - a nested machine that composes
+
+A machine that meets a capture for a prompt it does not hold threw
+`NoPrompt`. The spike asked whether it could re-emit the capture
+outward instead - and the first finding is that the machinery was
+already there. The foreign-operation path is
+
+    (g => Left(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
+
+- re-emit, and resume THIS machine with the same stack when the answer
+arrives. A capture belonging to an outer machine wants exactly that.
+
+`Delim.runNested(prog)(using In[Delim, F])` is the door. It asks for
+the witness because forwarding puts a Delim operation into `F`, so `F`
+must have one - which is the case it exists for, and asking leaves
+`run`'s meaning untouched.
+
+ALL THREE PREDICTED PROPERTIES HOLD (TestDelimForward): the inner
+machine's frames end up inside the outer capture (106, from a `+1`
+inside and a `+100` outside; dropping the continuation skips both);
+multi-shot survives, because Segs is immutable and the loop closes
+over nothing mutable (30 = 10 + 20, two independent re-entries); and
+the inner delimiter is re-installed on resume, so a second capture
+naming it finds it after the round trip. A capture no machine can
+place still throws, from the outermost one.
+
+COST: NONE, and the run was not optional - the lane moves `run`'s body
+into a private `machine`, and a callee crossing the inlining line
+re-decides every caller here. Paired -f 3 -prof gc: time within the
+error on both lanes and the BYTES identical to the digit.
+
+What the verdict changes: nothing about the defaults. `run` still
+throws and `OneMachine` still refuses a second machine in a concrete
+row, because the nested forms (scope/collecting/pausing) install a
+delimiter on the machine already running where forwarding pays a round
+trip per capture - a guard that teaches the cheaper spelling is worth
+more than one that silently makes the dearer one work. What it
+removes is the need for region types in the NESTING case:
+specs/delim-safety.md stage 2 is now open only for evidence that
+escapes its own `delimited`.
+
+## dialogue-replay-discipline - the sentence becomes a type
+
+Replay is exact only while everything the outside world tells the
+program enters through `pause`. That sentence carried the whole
+durable-dialogue design and lived in a document; `Delim.replay` and
+`okay.persist.Dialogue` now ask for `Replayable[F]`, so a body that
+reaches outside between two pauses does not COMPILE as a durable
+dialogue.
+
+THE ENCODING TOOK A SPIKE, and the obvious form is refuted. An
+inductive instance over the row - `given union[F, G](using
+Replayable[F], Replayable[G]): Replayable[F + G]` - does not resolve:
+`F + G` is `[A] =>> F[A] | G[A]`, matching a concrete row against it
+asks the compiler to invert a union into halves, and it leaves both
+unsolved and calls every instance ambiguous for both. What works is
+subtyping with the concrete row on the LEFT - the same trick as
+`Delim.OneMachine`:
+
+    type Safe = Delim[Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+    given replayable[F[+_]](using F[Any] <:< Safe): Replayable[F]
+
+`A | B <: C | D` decomposes the left side, which the compiler does
+happily; an abstract row PROPAGATES the obligation to its caller
+rather than being searched for, which is also what keeps it out of
+the `orDominator` crash that killed the `RowLift.In` formulation.
+
+In: State, Reader, Throws, Delim. Out, each for a measured reason:
+Async and anything reaching outside (replay performs it again),
+Writer (replay tells the log again - TestDelimPersist watches it),
+Resource (replay acquires again), Uid (a fresh id per run is the
+definition of not replayable).
+
+The constraint's ONLY casualty in the whole tree was the test that
+breaks the discipline on purpose, which now says
+`Replayable.unchecked` - a method, not a given, so a deliberate breach
+appears in the diff. Nothing in production code was quietly breaking
+the rule, which is worth recording.
+
+The other half of stage 1 - `now`/`uuid`/`random` as journalled
+questions, and `perform` - is a separate lane: a dialogue's question
+type is the author's own, so "give me the clock" has nowhere to live
+in it, and choosing between a library-owned sum and a second channel
+is a decision this lane should not make in passing.
+
+## delim-diagnostics - the machine says where it is
+
+`NoPrompt` used to say "shift to a prompt that is not on the stack",
+which is the error a newcomer meets first and it named nothing: not
+the capture, not the prompt, not what WAS installed. A captured
+continuation has no useful JVM stack trace either - it is resumed on
+another thread, in another process, a week later - so the answer is
+not to fake one. It is to say what the machine actually knows.
+
+- **`okay.At`** - the caller's `file:line` as a compile-time constant.
+  A GIVEN rather than an inline call, because the position wanted is
+  the CALLER's and implicit search runs there: a plain
+  `def door(using At)` is labelled by whoever called it, with no
+  inline wrapper per door. One reference to an interned literal.
+- **Prompts carry a label** - "collect @ Walk.scala:12" - built once,
+  by the door that made it, out of its own name and the caller's line.
+- **`NoPrompt` prints all of it**: where the capture was written,
+  which prompt it wanted (with the line that made THAT), the
+  delimiters actually installed innermost first, and the one-machine
+  rule that explains the difference. The message is the documentation
+  for the one hazard the types do not close.
+- **`Paused.where`** - the line the `pause` was written on, so a
+  dialogue that has not moved reads as "waiting at Booking.scala:31 on
+  'Pay 270 for Kyiv?'".
+
+MEASURED, as a pair on one box (history.tsv): time inside the error on
+both Delim lanes, and the bytes decompose exactly - +8000.001 B/op on
+delimPushOnly is 1000 prompts x 8 bytes, +8008.476 on delimGenerator is
+1000 captures x 8 plus the one prompt. No allocation added. The FIRST
+cut was 21% slower (23.220 -> 28.155 us/op) because it built the label
+in the constructor and that lane makes a thousand prompts per
+operation; `def label` now joins two stored references on demand.
+
+Two constraints worth the note. A macro cannot be expanded in the run
+that defines it, so okay's own main sources never SUMMON an `At` -
+`Delim` threads the one its caller supplied, and `At`'s header says
+why. And the label is built ONCE: the first cut smuggled the door's
+name through the position and produced "scope @ delimited @ File:41",
+caught by the label test the same minute.
+
+## dialogue-hardening - four ways a durable dialogue broke, and the row guard
+
+Probing the day-old durable dialogue found FOUR failure modes, three
+of them silent, and every one of them fatal to a production workflow.
+They are pinned in `TestDialogueHardening` - each test was a probe
+that failed against the first cut.
+
+- **A poisoned journal.** An answer the program cannot digest was
+  appended BEFORE it was tried, so every later process replayed it and
+  threw: the dialogue was dead and the answer could never be
+  corrected. The append now sits in the CONTINUATION of the advance -
+  a `Paused` is a value, so advancing a copy costs nothing - and a
+  refused answer leaves the journal untouched.
+- **A silent mis-mapping after a deploy.** A v2 program read a v1
+  journal's "Kyiv" as its new first question's answer and carried on.
+  Every record now carries the `program` that wrote it; a foreign one
+  STOPS the fold and names both ids. An outage instead of a
+  corruption; `patch` is stage 2 of specs/durable-workflow.md.
+- **Two writers both accepted.** Each record now carries the position
+  its writer expected, and the fold takes only the one that fits. The
+  loser is reported in `recovered.rejected` and told `Answered.Lost`
+  with where the dialogue actually stands. Optimistic concurrency in
+  the PROJECTION, because `Topic.append` has no conditional form and
+  giving it one would change every store and the wire protocol for one
+  consumer.
+- **A side effect performed twice.** `run`'s oracle now gets an
+  `Attempt(id, index)` - the journal's own position, stable across a
+  restart, which is what an idempotent external call needs. The
+  at-least-once contract is stated rather than discovered.
+
+Two numbers moved, both for a stated reason: the cold loop reads
+N(N-1)/2 instead of N(N+1)/2 (the fold happens before the append now),
+and the warm path stayed at ZERO reads only because an append landing
+exactly where this instance had read to cannot have been overtaken -
+the naive won-the-race check re-folded per answer and put `run` back
+at O(n squared). One landed decision was reversed deliberately: `at`
+refuses to place a dialogue whose log has a record it cannot read,
+because carrying on past it re-asks a question the world has already
+answered.
+
+**And the second machine is now a compile error** (specs/delim-safety.md
+stage 0). The trap continuations-audit found - `collect` inside
+`resumable`, two `Delim` in one row - is refused by
+`Delim.OneMachine[F]`, with a message that names `collecting`. The
+obvious formulation is REFUTED and the refutation is a compiler crash:
+`NotGiven[RowLift.In[Delim, F]]` makes dotty 3.9 die with "Failure to
+join alternatives F and G" in `orDominator`, at Delim's own internal
+call sites. Membership by APPLICATION works instead
+(`NotGiven[Delim[Any] <:< F[Any]]`): a union on the RIGHT of a `<:<`
+needs no join. The limit is pinned too - an abstract row is not
+caught, and a helper that wants the guard for its callers takes the
+witness itself.
+
+Three specs written with the rest of the plan: specs/durable-workflow.md
+(stages 1-4, including what a workflow ENGINE still owes - timers,
+retries, signals, cancellation, visibility, workers, child workflows),
+specs/delim-safety.md (forward-instead-of-throw as a spike, region
+types as the horizon) and specs/delim-diagnostics.md (labelled
+prompts, a `NoPrompt` that prints the delimiter stack, `Paused.where`).
+
+## continuations-audit - one machine, many delimiters
+
+The operator asked whether the continuation story is ready to hand to
+an ordinary engineer. Reading it said yes; running it found one defect
+and a table of unanswered questions.
+
+THE DEFECT. `delimited`, `collect` and `resumable` each ran their own
+machine, and a machine owns one prompt stack - so the patterns did not
+COMPOSE. "A producer that pauses for an answer" is `resumable` around
+`collect`, which reads like ordinary code, typechecks (it merely puts
+a second `Delim` in the row, which rows misroute rather than reject)
+and throws `NoPrompt` at run time. Each pattern now has a half that
+installs a delimiter and leaves the machine alone - `scope`,
+`collecting`, `pausing` - and the outermost combinator is the only one
+that runs. `delimited = run(scope)`, so nothing that worked changed.
+Under one machine the delimiters compose the way multi-prompt
+promises: a `pause` takes the collect's delimiter with it and the
+emits after the answer land in the same list; the dialogue replays
+from its journal, producer and all. TestDelimNesting has both
+directions, the wrong spelling pinned beside the right one.
+
+THE TABLE. `TestDelimLimits` answers, by running, what a capture does
+to everything else - and three of the answers were not the expected
+ones. `Resource` survives a capture (an `exit` that drops the
+continuation still releases; a multi-shot capture holds n handles and
+releases them LIFO at the END of the program), while a cleanup line
+written by hand after the capture point does not run. `bracket` in a
+`Delim` row is a COMPILE error, so the one genuinely unsafe mix cannot
+be written. `try/finally` around a mark is refused by `direct`;
+`try/catch` compiles and catches nothing, because the catch guards the
+BUILDING of the program. `State` around a multi-shot capture is one
+timeline, not a fork. 10 000 emits, 3 000 pauses and a 3 000-answer
+replay all run.
+
+docs/continuations-in-practice.md gains the one-machine rule, that
+table, and an adoption ladder that stops where most modules should
+(step 1 of 5). Three findings went to the backlog rather than into
+this lane: the modules that hand-roll patterns that now exist
+(okay-agent's Stepper, okay-llm's Cut), the region types that would
+make the wrong nesting a compile error, and the missing early stop for
+`collect`.
+
+## dialogue-snapshots - a step that does not replay
+
+`Dialogue`'s step was O(answers so far) because every one of them
+re-derived from the log. Two paths now, because the warm and the cold
+one are different problems.
+
+- **Warm** - `step(p, a)`: you are holding the program, so the answer
+  is journalled and the program in your hand takes ONE step. A drive
+  of n answers is O(n), and `run(oracle)` uses it. Measured: `run`
+  over 40 answers reads ZERO records where a loop of the replaying
+  `answer` reads 820 = 40*41/2 - both exact, MemoryStore being
+  deterministic.
+- **Cold** - `Dialogue(topic, id, Some(snapshots), snapshotEvery = n)`
+  writes CHAPTERS: a journal prefix and the offset it ends at, into
+  the compacted keyed topic `Snapshots` already conventions. A start
+  then reads one chapter and the tail instead of the whole history -
+  and the test counts the snapshot topic's own scan on the same bill,
+  because a chapter is not free.
+
+What no snapshot removes, and the docs say so: the program is run once
+over the answers to find where it stands. That is what "the fold is
+the program" costs.
+
+The log stays the truth. A chapter that does not decode is ignored and
+the log is read from the start; a reader with no snapshot store at all
+sees the same journal and the same answer - a test for each.
+
+## durable-dialogue - the paused program whose journal is a topic
+
+`okay.persist.Dialogue[Q, A, R, F](topic, id)(body)` is the glue
+between `Delim.replay` and the durable log: the answers go in a
+partition, and where the program stands is re-derived from them.
+
+- `at` - where it stands, the program folded over its journal
+- `answer(a)` - append DURABLY, then advance (that order: a crash in
+  the window replays to the same place; the other loses an answer the
+  outside world already acted on)
+- `run(oracle)` - drive to the end, the oracle called once per
+  question and never for one the journal already answered
+- `journal` / `recovered` - the answers, and the damage that ended
+  them if a record did not decode
+
+This is event sourcing with one difference: the events are the ANSWERS
+(under the discipline that everything the outside world tells the
+program enters through `pause`, they are the only non-determinism
+there is), the aggregate's state is where the program stands, and the
+fold that rebuilds it is THE PROGRAM ITSELF - no `apply(state, event)`
+to write, keep in step with the code, and get wrong.
+
+One dialogue = one key = one partition, the `Saga` convention; damage
+is data. `TestDialogue`: 4 tests, including the oracle-count property
+and a key filter proven load-bearing by removing it.
+
+## paused-persist - a paused dialogue that outlives the process
+
+A continuation is a closure and cannot be written to disk. So the
+thing that is persisted is the JOURNAL - the answers given so far, in
+order - and where the dialogue stands is RE-DERIVED by running the
+program again and feeding the recorded answers back without asking:
+
+```scala
+val (p1, j1) = !.run(Delim.answer(p0, Nil)("Kyiv"))
+val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
+// the process dies; only j2 was written down
+val back = !.run(Delim.replay(booking)(j2))
+back.asking    // Some("Pay 270 for Kyiv?") - the same place
+```
+
+- `Delim.Journal[A]` - the answers, in order.
+- `Delim.answer(p, j)(a)` - advance one step and extend the journal:
+  the pair is what you persist after each step.
+- `Delim.replay(body)(j)` - program plus journal gives where it stands.
+- `Paused.finished` / `Paused.asking` - the two readers a caller wants.
+
+This is the durable-workflow trick (Temporal, Cadence, Durable
+Functions) in nine lines rather than a runtime, and it is exact under
+one discipline: EVERYTHING THE OUTSIDE WORLD TELLS THE PROGRAM ENTERS
+THROUGH `pause`. Then the program is a pure function of its journal.
+
+The limit is measured, not claimed. `TestDelimPersist` has both sides:
+a program with a `Writer.tell` outside `pause`, whose log says the
+same thing twice across two runs, and the same program written to the
+discipline, where the driver performs each outside call exactly once.
+
+## delim-patterns - the four shapes of delimited control, as names
+
+A raw `shift` reads like a puzzle. These are the four shapes that
+actually earn a capture in ordinary code, each under a name that says
+what it does, and each taking NO type arguments at the call site (the
+types come off the evidence and the block's `DirectCtx`, as
+`Delim.shift[A]` and `Reader.ask` do):
+
+- `!Delim.exit(value)` - leave the block early with an answer: a
+  capture that DROPS its continuation, which is what an early return
+  is. Out of nested loops, out of a lambda, with the answer in the
+  type. `Delim.abort` is the `for`-style spelling.
+- `Delim.collect { ... }` + `!Delim.emit(a)` - a push producer read as
+  a pull. The producer stays an ordinary recursive walk; `emit` builds
+  the list out of the rest of it, so nothing is inverted.
+- `Delim.resumable { ... }` + `!Delim.pause(q)` + `Delim.drive` - stop
+  in the middle and carry on later. Answers a `Paused[Q, A, R, G]`:
+  `Ask(question, resume)`, where `resume` IS the rest of the program,
+  or `Done(value)`. A `Paused` is a value, so resuming does not consume
+  it; the honest limit is that it lives in memory, so it outlives a
+  request but not a restart.
+- `!Delim.onReturn(f)` - run the rest of the block, then act on its
+  answer. Compensation, undo, audit, measurement - from the middle,
+  without restructuring what follows.
+
+And `docs/continuations-in-practice.md`: each pattern beside the way
+it is usually written, the rule ("reach for an effect first; write
+`shift` only when none fits; then wrap it in a name") with its
+reasons, the cases where a capture makes code WORSE (multi-shot with
+vars, resources under a captured `k`, stack traces, `shift` where
+`flatMap` would do), and a table for deciding.
+
+`TestDelimPatterns`: 7 tests.
+
+## printf-examples - sprintf as examples 5 and 6
+
+`TestDelimExamples` gains the two printf constructions, and with them
+the sharpest statement of what a direct block can and cannot do.
+
+- **Functional unparsing** (Danvy 1998), in plain CPS: a format is a
+  value and the RESULT TYPE is computed from it - `str(lit(" is
+  ")(int(done)))` is a `String => Int => String` nobody wrote down.
+  Arity and argument types are checked; two `compileErrors` assert it.
+- **printf through shift/reset** (Asai 2007): each directive is a
+  `shift` that MOVES the answer type, so the format is a
+  `for`-comprehension with nothing annotated inside - the expected
+  type on `reset` carries the chain.
+- **The boundary, checked**: those directives are exactly what
+  `Cont.direct` cannot express, since `S != R` at every step. A test
+  asserts `AnswerOf` has no instance for a moving answer type, and
+  that the diagonal keeps its witness.
+
+## cont-in-direct — `shift` inside a direct block, and `import` as a statement
+
+`Cont.direct` is a scope you import into a direct block over Cont's
+DIAGONAL (`[X] =>> Cont[X, R, R]`, the blocks whose answer type does
+not move):
+
+```scala
+import okay.Cont.direct.*
+
+val c: String /> String = direct[[X] =>> Cont[X, String, String]]:
+  val x: String = !shift[String](k => k("one") + " " + k("two"))
+  "<" + x + ">"
+
+reset(c)   // "<one> <two>"
+```
+
+`shift[A]` takes ONE type argument — the answer type comes from the
+block, through an `AnswerOf[F]` witness that re-associates
+`Cont[A, R, R]` to `F[A]` by typing it, with no cast — exactly as
+`Delim.shift[A]`'s comes from its `Prompted` evidence.
+
+Its own scope rather than an overload of the package-level `shift`, and
+that is measured: a call with no type arguments (`shift: k => ...`, the
+shape every handler here writes, `runChoice` included) resolves to the
+one-argument alternative and then fails for want of a `DirectCtx`.
+
+Which is why the direct macro now lets an `import` through as an
+ordinary statement — it binds nothing and runs nothing, so it rides
+along into the built tree. It used to be refused as "an unsupported
+statement", making `import Cont.direct.*` (or `import State.modify`)
+unusable inside a block. `TestContDirect` covers both, and the import
+test was watched failing first.
+
+## delim-examples — four worked examples of delimited control, as tests
+
+`TestDelimExamples`, each from the literature and each in `direct`
+style:
+
+- **Reverse-mode AD** (Wang & Rompf 2018): the backward pass IS the
+  continuation — `times` captures, runs the rest through `k`, then
+  accumulates the adjoints. No tape, no graph. Checked against the
+  analytic derivative of `x*x + 3x`.
+- **A generator**: a recursive tree walk that yields, read by the
+  caller as a sequence, with nothing inverted.
+- **A web dialogue** (Queinnec 2000): the rest of the dialogue kept as
+  a value between requests. The test answers the same start page twice,
+  differently — the dialogue is a value, so it resumes more than once.
+- **Answer-type modification** (Danvy & Filinski 1990): the block
+  produces an Int and the delimiter answers a String, which `Cont[A, S,
+  R]` carries and a plain monad cannot.
+
+Danvy's typed `printf` was attempted and left out: it needs directives
+polymorphic in what follows them, and the bind order here composes the
+other way round — a bigger exercise than an example should be.
+
+## delim-one-type — one type argument for a capture in a direct block
+
+`!Delim.shift[Int, Int, W](k => k(5))` asked for three type arguments
+and only one was news. A third overload of the same name — told apart
+by how many type arguments the call site writes — takes the answer type
+from the evidence (`Prompted[R]` carries it as `type Res`) and the ROW from the
+block, read off the `DirectCtx` exactly as `Reader.ask` reads its
+environment:
+
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shift[Int](k => k(5))
+
+`A` stays, and that is not an oversight: a mark gives its argument no
+expected type, so without it `A` falls to `Any` and the next operator
+refuses it — the same dotty fact the for-comprehension head taught.
+`inline` for the same reason `Reader.ask` is: the `DirectCtx` that pins
+the row is a parameter of a lambda the macro strips.
+
+## delim-one-name — the typed door reuses `shift`, and the `In` suffixes go
+
+`shiftIn` was a second name for an operation that already has one.
+Both shapes live under `shift` now, and the compiler picks by what is
+written: a prompt in the first clause is the primitive, a handler
+there is the evidence-taking one. Same for `shift0`, `control`,
+`control0` and `abort`.
+
+    Delim.shift[Int, Int, W](p)(k => k(5))   // the primitive, by prompt
+    Delim.shift[Int, Int, W](k => k(5))      // inside `delimited`, by evidence
+
+## delim-prompted — NoPrompt as a compile error, through evidence rather than a row
+
+`Delim.Prompted[R]` is evidence that a delimiter is INSTALLED. Only
+`Delim.delimited` makes one (the constructor is private to `Delim`),
+so a capture taken through `shiftIn` cannot name a prompt that is not
+on the stack. A portable function reads:
+
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shiftIn[Int, Int, W](k => k(5))
+
+written apart, stored, passed — and callable only where a `delimited`
+put the evidence in scope. `shiftIn`, `shift0In`, `controlIn`,
+`control0In` and `abortIn` are the family; the prompt-taking
+primitives stay for code that juggles prompts itself (okay-llm's
+`Cut`, the machine).
+
+**The obligation is not a row member, and that was measured.** The
+first design put it in the row — `A ! (Delim + Prompted[p.type] + F)`,
+discharged by `push` — and it does not compose: rows are unions and
+`Free` is invariant in them, so a body that does NOT capture to the
+prompt being installed (`push(inner) { shift(outer)(…) }`, or any body
+with no capture at all) cannot be widened into the row the handler
+wants. Both shapes are ordinary and both are in `TestDelim`. The
+evidence design changes no existing type: a program is still
+`A ! (Delim + F)`.
+
+What it does not catch: evidence escaping its own `delimited`. That
+stays the runtime `NoPrompt`, and closing it needs the region trick
+`runST` uses.
+
+## prog-lambda-warn — the gate was RED and I read the exit code instead
+
+direct-program-lambda (188ea4c6) landed with two E198 unused-symbol
+warnings: `programLambda`'s `l` parameter stopped being used when the
+refusal moved to the caller. `scripts/gate.sh` said `RED — 2 compile
+warning(s) … 'no warnings, ever'` and exited 0, and the exit code is
+what I checked. The verdict LINE is the verdict; the runner's status
+is not. Parameter dropped, gate re-run.
+
+## direct-program-lambda — a continuation handler reads as ordinary code
+
+A lambda whose body ends at the block's program type is compiled as
+its own sub-block instead of being refused — the same narrow exception
+`try` and a nested `def` already have, and sound for the same reason:
+the body already answers at the program type, so binding the marks
+inside it changes neither the lambda's type nor where it is evaluated.
+
+    val x = !Delim.shift[Int, Int, W](p): k =>
+      "deciding".tell                       // a mark directly under the lambda
+      if n % 2 == 0 then k(n) else pure(-1)
+
+The general "a mark under a lambda" refusal stands for every other
+lambda, and `TestDirect` still pins it. What the rule does NOT reach
+is a handler body ending in a VALUE — `a + b` — because the lambda's
+result must already be a program when the typer sees it; that is what
+an inner `direct` block is for.
+
+## direct-marked-args — a mark inside a marked call's argument, and delimited control inside a direct block
+
+`!f(!f(5))` was refused as "a mark under a lambda". No lambda was
+written: the defer-every-call rule wraps a call in
+`Free.delay(() => …)` before compilation, so the argument's mark landed
+under that thunk. A call whose arguments carry marks is not deferred
+now — the arguments bind first and the call is built in the
+continuation, where there is nothing left to defer.
+
+What it unlocks is `shift` and `reset` written inside a `direct`
+block, handler and all:
+
+    def both(n: Int): Int ! W = direct:
+      val x = !Delim.reset[Int, W]: p =>
+        direct:
+          !Delim.shift[Int, Int, W](p): k =>
+            direct:
+              "before".tell
+              val a = !k(n)
+              "between".tell
+              val b = !k(n + 1)
+              "after".tell
+              a + b
+      s"used $x".tell
+      x
+
+which answers 21 and logs before, between, after, used 21 — the
+continuation invoked twice with effects around each invocation, in
+ordinary-looking code. `TestDelim` holds it.
+
+## reader-env — `!Reader.ask` with no type argument inside a direct block
+
+A `direct` block names its environment once, in its own row, and never
+again:
+
+    type Test = Writer % String + Reader % (Users, Feeds) + State % Long
+
+    def test[X](e: Fetch[X]): X ! Test = direct:
+      val (users, feeds) = !Reader.ask
+      e.show.tell
+      e match
+        case Fetch.Time() => !State.modify[Long](_ + 10)
+        case Fetch.User(t) => users.get(t)
+        case Fetch.Feed(i) => feeds.get(i)
+
+An OVERLOAD of `ask`, not a second name — it expands to `ask[E]`, and
+`ask[R]` keeps working in and out of a block. Two witnesses find E,
+both resolved at TYPER time, while the row is still the alias the user
+wrote: `RowOf[F]` recovers the row from the block's program type and
+`EnvOf[R]` finds the Reader's environment inside it. (The same
+structural search fails inside the macro, where the row has been
+beta-reduced to a union — measured in direct-narrow-colour.)
+
+`ask` is `inline` for a reason that is not performance: the `DirectCtx`
+that pins the row is a value parameter of the context lambda the macro
+strips, so a non-inline version leaves a dangling reference to it
+("used outside the scope where it was defined"). Inlining removes the
+parameter at expansion and leaves `ask[E]`, which is what the body was.
+
+## reader-read — read the environment by the TYPE read, and colour a narrower row
+
+`Reader.read[E, T]` reads the part of the environment that has type
+`T`: `ask` with a projection through `Reader.Has[E, T]`, the accessor
+as a typeclass (the induction `HMap.Select` already does over a tuple,
+keyed by the value's type instead of a key val), derived for a tuple,
+for a product's fields through its `Mirror`, and for the environment
+itself. No new effect and no new handler — the row holds one
+`Reader % E`, `Reader.run` handles it, nothing casts, and a type the
+environment does not hold does not compile. A component declares
+exactly what it reads:
+
+    def banner[E](using Reader.Has[E, Users]): String ! Reader % E
+
+and runs in any environment holding `Users`.
+
+**direct-narrow-colour**, which is what lets a test harness read as
+ordinary code: a program of a NARROWER row now COLOURS inside a
+`direct` block, not only when marked. The conversion no longer asks
+for `In[R2, R]` — an implicit search for it during conversion
+resolution leaves the row's halves free and fails where
+`summon[In[R2, R]]` succeeds (measured) — and the macro decides
+instead, by SUBTYPING, which is what membership means for a union and
+which the compiler settles on the reduced row the macro actually
+holds. `RowLift.into` is the door, with that side condition stated
+beside the library's one cast.
+
+The by-need example now reads its test data by type:
+
+    type Test = Writer % String + Reader % (Users, Feeds) + State % Long
+
+    def test[X](e: Fetch[X]): X ! Test = direct:
+      e.show.tell
+      e match
+        case Fetch.Time() => !State.modify[Long](_ + 10)
+        case Fetch.User(t) => read[Users].get(t)
+        case Fetch.Feed(i) => read[Feeds].get(i)
+
+The one mark is a GADT branch whose value is the match's answer, which
+types at the abstract `X` where a conversion cannot reach.
+
+## once-example-clock — the by-need example, where every word is required for correctness
+
+The operator's point: reading something twice has to be RIGHT, not
+just wasteful. It is the clock. The example is a page handler that
+stamps its own duration:
+
+    val      started = Fetch.now           // by value: pin the start, once
+    val      user    = Fetch.user(token)   // by value: every branch needs it
+    lazy val feed    = Fetch.feed(user.id) // by need:  costly, ONE list for both reads
+    def      now     = Fetch.now           // by name:  time moves, read it again
+
+`started` and `now` are the same operation under two words, and both
+are right. Swap any of the four and it is a bug: `def started` or
+`lazy val now` answer 0ms, `def feed` can report one list's size
+beside another's head.
+
+The test that shows it is another handler for the same effect — your
+data in through Reader, the calls out through Writer, a clock that
+moves through State — and it is itself a `direct` block:
+
+| request | answer | calls |
+|---|---|---|
+| a banned user | `Banned(Ada)` | `CLOCK`, `GET /user?token=b` |
+| the full page | `Page("3 picks…", 120)` | `CLOCK`, `GET /user`, `GET /feed/3`, `CLOCK` |
+
+**direct-narrow-row**, which is what made that harness readable: a
+mark on a program of a NARROWER row — `!Reader.ask[Db]` in a block at
+`Writer % String + Reader % Db + State % Long` — is now coerced into
+the block's row through `RowLift`'s `In` witness, summoned at
+expansion. Without it every combinator needed a hand-written
+`.plus[...]` naming the other members. A program of an unrelated row
+is refused as before.
+
+## once-example-typed — the by-need example, in the operator's shape
+
+The example that carries direct-once through the docs and
+`TestDirectOnce` is now one handler with one word on each lookup,
+typed all the way (`Response ! Fetch + Once`, ops named after the
+resources, smart constructors on the companion so the block names no
+types):
+
+| request | calls |
+|---|---|
+| `/status` | `GET /user` |
+| a banned user | `GET /user` |
+| an expired plan | `GET /user`, `GET /plan` |
+| the full page | `GET /user`, `GET /plan`, `GET /feed`, `GET /feed` |
+
+`val` fetches even for `/status`, `lazy val` only when a branch reaches
+it and then once, `def` once per mention — and the last line mentions
+`feed` twice. Recorded on the way: `effect(Fetch.User(token))` with no
+expected type infers `Nothing ! Fetch`, losing the answer type and the
+row, which is why the constructors carry it.
+
+## direct-nested-def — a nested def at the block's program type compiles
+
+`def plan = effect(GetPlan(user.planId))` beside a `lazy val user` was
+refused ("a Direct mark inside a nested definition"). It compiles now,
+for the one shape that needs no signature rewritten: a PARAMETERLESS
+local def whose type is already this block's program. Its body is its
+own program, so binding the marks inside it changes nothing about what
+the def means, and `def` goes on meaning by name — a bind, and a run,
+per use. Defs with parameters keep the refusal.
+
+With it the three words are comparable on one realistic function. A
+request handler over three dependent lookups, one word changed and
+nothing else, calls per request:
+
+| request | `val` | `def` | `lazy val` |
+|---|---|---|---|
+| `/health` | 3 | 0 | 0 |
+| a banned user | 3 | 1 | 1 |
+| an expired plan | 3 | 3 | 2 |
+| the full page | 3 | 8 | 3 |
+
+`TestDirectOnce` runs all three.
+
+## direct-colourless-val — val, lazy val and def mean what they say with nothing written on them
+
+Inside a `direct` block, `val x = fetch(k)` with no mark and no
+ascription infers the PROGRAM type, so the colouring conversion fires
+at every USE rather than at the declaration — and `val` and `lazy val`
+both silently meant `def`. Measured, one function, three declarations
+used identically:
+
+| spelling | before | after |
+|---|---|---|
+| `val`/`lazy val`/`def`, colourless | `val, val, lazy val, lazy val, def, def` | `val, lazy val, def, def` |
+| the same, ascribed or marked | `val, lazy val, def, def` | unchanged |
+
+The declaration decides now: a val whose uses are coloured is a
+binding (by value), a lazy val is the `Once` cell (by need), a def
+stays by name. A val held as a PROGRAM — marked at its uses, passed to
+`!.once`, stored — is a value and is untouched, since nothing colours
+it. A val read BOTH ways in one block is refused, with the use counts
+and both fixes named. `TestDirectOnce` holds all four shapes.
+
+## direct-tell — `w.tell`: a statement inside a direct block, a program outside
+
+`"start".tell` on its own line in a block is the mark on `Writer("start")`,
+typed `Unit`, so it reads as a statement and `-Wall` has nothing to
+flag; a bare `Writer("start")` runs too, by do-notation, but the typer
+reports an unused non-Unit value (E176) before the macro sees it.
+Outside a block the same name is `Writer.tell(w)`, the program: one
+`transparent inline` on `Direct`, decided per call site by the block's
+`DirectCtx` capability. The macro now reads an `Inlined` with proxy
+bindings as a block, so `(s + "!").tell` works as well as `s.tell`.
+
+Two more shapes the request-handler example needed, both refused
+before: a mark inside a string interpolation (`s"hello ${user.id}"`
+is `StringContext.s(args*)`, and the varargs `Repeated` now
+contributes its elements as ANF slots), and a lazy val whose
+right-hand side uses another lazy val (`lazy val plan =
+!loadPlan(user.planId)`: the defer-every-call rule wrapped the call
+in a thunk before `user` became a mark, and a call whose arguments
+mention a lazy val of the block is now built where it stands).
+
+## direct-once-bare — a lazy val whose rhs runs an operation by do-notation is by-need too
+
+`lazy val x = { Writer("x"): Unit; 3 }` bound EAGERLY for an hour:
+the direct-once rule keyed on `hasMark`, and a bare runnable
+statement is not a mark syntactically. The rule keys on the compiled
+right-hand side now — `Out.Eff` is the by-need case, `Out.Pure` stays
+a plain lazy val — and `TestDirectOnce` has both, the first written
+to fail before the fix.
+
+## logic-cut — the Prolog cut is `Logic.cut`; `once` means one thing
+
+`Logic.once` (commit to the first answer) is `Logic.cut`. The hour
+direct-once landed, a file importing both `!.*` and `Logic.*` had two
+`once`s and an ambiguity error; now `once` is the by-need effect only.
+The one caller, `okay-agent`'s `Search.bestOf`, and every prose
+mention of the cut follow; the scoped-effects literature's `once` in
+theory ch. 5 is the paper's word and stays.
+
+## direct-once — call-by-need for programs: the `Once` effect, `!.once`, and `lazy val` in a direct block
+
+`Delay` is by-name. `!.once(p)` is by-need: the first demand runs `p`
+and stores the answer, every later demand of that value answers from
+the store — and in a `direct` block Scala's own word says it:
+
+    val prog: Int ! (Once + Writer % String) = direct:
+      lazy val x = !told("abc")      // runs at the FIRST use, once
+      val y = !told("de")            // runs here
+      x + x + y + !told("f")         // log: de, abc, f
+
+The cell is an EFFECT, `Once` (two operations, `Force` and `Store`,
+a handle that is an identity and carries no program), and the cells
+are `Once.run`'s state, threaded through its loop as `State.handle`
+threads `S`. The tree holds no cell: a program run twice replays the
+same trace. Multi-shot is handler order, not a flag —
+`runChoice(Once.run(p))` backtracks the cells with the search, each
+branch its own once; `Once.run(runChoice(p))` shares one store, the
+second branch sees what the first stored, and the types show it. A
+lazy val with a mark in a row without `Once` is refused with the
+effect named; a demand while the program runs (a knot, an
+interleaved search with `Once.run` outside it) throws rather than
+running twice. `Logic.once`, the cut, is `Logic.cut` (logic-cut, below this entry in time, above it in the file). Design
+rationale in specs/direct-macro.md (Decisions, direct-once);
+docs/direct-style.md has the section; `TestDirectOnce`, 18 tests,
+holds every shape including both handler orders.
+
+## direct-defer-default — a direct block defers every call, and one import opts out
+
+Mutual recursion in a `direct` block now needs no word in any position:
+
+    def sumEven(n: Int): Long ! Pure = direct:
+      if n == 0 then 0L else 1L + sumOdd(n - 1)     // not tail — deferred anyway
+    def sumOdd(n: Int): Long ! Pure = direct:
+      if n == 0 then 0L else 1L + sumEven(n - 1)
+
+The rule is "defer every call at the block's program type", which is
+the only one that covers a cycle the macro cannot see — it may be
+closed from any position. It is not free: one `Delay` and its thunk,
+64 bytes, per call a block marks. The operator's call was safety by
+default with the price visible and recoverable, so both lanes are
+published (one run, control `okayFlatMap` 101.2 µs):
+
+| lane | time | allocation |
+|---|---|---|
+| `okayDirect` (default) | 179.3 µs | 2 238 113 B |
+| `okayDirectEager` (`import okay.Direct.eagerCalls.given`) | 113.6 µs | 1 598 113 B |
+
+The opt-out gives the allocation back to the digit. With it in scope
+the two rules measured free stay on — the enclosing def anywhere, and
+another def in tail position — and what you take on is
+`!.tailcall(other(n))` for a mutual call outside tail position.
+
+**Three ways to build this were wrong, each caught by compiling.** A
+default ARGUMENT for the knob (`using d: Deferral = All`) makes
+`apply$default$N` take the inline block again: the whole body is
+duplicated into that call, and a nested `direct` block inside it
+crashes `TreePickler` with `assertion failed: method $anonfun`.
+Declaring the givens at `Deferral` instead of their singleton types
+hands the macro a type that says nothing, so the import resolved and
+changed nothing — the expansion dump showed both modes still
+deferring. And the thunk must be built under the owner at the rewrite
+site, not the splice owner, which is invisible while the rule fires
+only at the top of a block and fatal once it fires inside one. A call
+that carries definitions of its own is left where it stands in either
+mode, for the same reason.
+
+## direct-tail-defer — mutual recursion in a direct block needs no word
+
+(Prose landed late, with direct-defer-any: the lane's own commit
+carried the code, the test and docs/direct-style.md, and this entry
+with the spec's decisions and theory ch. 8 was lost to two heredocs in
+one tool call — the trap this repository already had a note about.)
+
+A call to ANOTHER def at the block's program type is deferred when it
+stands in the block's TAIL position, so
+
+    def isEven(n: Int): Boolean ! Pure = direct:
+      if n == 0 then true else isOdd(n - 1)
+    def isOdd(n: Int): Boolean ! Pure = direct:
+      if n == 0 then false else isEven(n - 1)
+
+answers `isEven(1_000_001)` on the default stack. Until then that code
+compiled, answered at small `n` and threw `StackOverflowError` at
+depth — the failure mode a type system cannot catch and a small test
+does not reach. The failing test was written first and watched to
+throw. Why a position and not a callee: the macro expanding `isEven`
+cannot know that `isOdd` calls back, since the cycle spans compilation
+units, so the enclosing-symbol rule that covers self-recursion is
+blind to it. Two restrictions: only a call is deferred, never a
+tail-position program value; and a term that already defers is
+skipped, so `!.tailcall(p)` does not pay for two nodes — the first cut
+of that check read through the `Inlined`-with-bindings node and
+wrapped it twice, which `-Xprint:inlining` caught. Cost: allocation
+identical to the byte on the DirectBenchmark lanes, time inside their
+noise.
+## ci-affected — a push pays for what it changed
+
+The numbers: every Actions run in the visible history was cancelled
+by the next push — six minutes, twenty-two, ninety-nine, two at the
+six-hour limit — while the same `sbt test` takes two minutes warm on
+the box. Two causes: every push compiled ninety-one modules from
+nothing, and every push tested the family regardless of what changed.
+
+`affected <ref|a..b> [task]` and `family <jvm|js|native|all>` are
+sbt commands in project/Affected.scala, Scala, no plugin. A file
+belongs to a project by that project's source and resource
+directories — the core is a `CrossType.Pure` cross project whose
+sources are in `src/` while `okayJVM`'s base is `.jvm/`, so base
+directories would have missed it — dependents are closed over the
+classpath graph, a change to build files is a change to everything,
+and the root aggregate bounds the result. ci.yml runs `affected` on
+every push with `target/` restored from the nearest previous cache
+key, and the family nightly, one job per platform. Locally the gate
+is `scripts/gate.sh "affected master"`; `scripts/gate.sh` alone is
+still the family.
+
+Measured on the box, warm, against the family's 112 s / 4424 tests:
+
+| lane | files | projects | tests | time |
+| --- | --- | --- | --- | --- |
+| blob-source-docs (prose only) | 4 | 0 | 0 | nothing runs |
+| either-via-split's TestResilienceTimed (one module's test) | 2 | 2: okayResilienceJVM and okayDemo, its dependent | 111 | 31 s |
+| producer-drains (core touched) | 17 | 98 | the family | as before |
+| this lane (project/ touched) | — | 102: the build changed | the family | as before |
+
+The two ends are the point: prose costs nothing and the core costs
+everything, exactly as it should, and the middle — most lanes — costs
+its module and whoever depends on it. In CI the same shape applies
+to a cold runner, where the family was the six hours.
+
+## producer-drains — ten hand-rolled drains onto one walk, and the offload read onto getBytes
+
+`Producer.fold` (elements folded, G forwarded, answer KEPT,
+tail-recursive across chunks) and `Producer.concat` (a producer of
+chunks as one Vector) join `Producer.each` in core. The ten `uncons`
+drains the blob-source-docs survey counted — Backup and Offload
+`drainList`, S3 `drainBytes`, Fs `sink`, jdbc `Poll` / `SqlStore` /
+`Migrate` / `Writes`, outbox `Rows`, rag `PgVector` — are one call
+each; six of them had recursed through `map` per chunk, a closure per
+chunk held to the end. `Offload.fetchBytes` is `Blob.getBytes` with
+its throw, twenty lines that are one call. `Chunks.emptyChunk` is
+public, with its doc saying what it is for. Behaviour-preserving,
+each module's own suite; full gate.
+
+## blob-source-docs — the documentation for the Source road, and what its survey found
+
+docs/modules/okay-blob.md gains the two roads and `Bytes`, and says
+why there are two; docs/guide.md's producer paragraph gains the trap
+(`pure(a)` type-checks where `produce(a)` does and emits nothing),
+the `.plus[Async]` road, `Producer.each`, and the two conversions.
+BACKLOG gains three entries the survey found: ten hand-rolled `uncons`
+drains over `Produce` rows in six modules (producer-drains),
+`Offload.fetchBytes` being `Blob.getBytes` (offload-getbytes), and
+`Chunks.emptyChunk` private to the caller who needs an `end`
+(emptychunk-public). Prose only.
+
+## blob-source-road — the Source road into okay-blob, additively
+
+A consumer (okay-watch) hit the seam's one trap: `Blob.put` is typed
+on `Produce`, where the element type sits in the answer position, so
+`pure(chunk)` type-checks and emits nothing — a zero-byte object under
+the right key. The fix is additive and nothing that implements or
+calls `Blob` changed. Core: `Source.fromProducer` / `ofProducer` /
+`toProducer` (one walk each, element type named apart from the answer,
+`produced` the one cast), `Producer.each` (the walk that keeps the
+answer `uncons` loses), and `produce`'s doc naming the zero-cost
+`.plus[Async]` road and the trap beside it. okay-blob: `putSource`,
+`getSource` (outcome kept), `putBytes`, `putChunk`, `getBytes`; on the
+jvm `Bytes.file`/`stream`/`fileSource` and `putFile` — the 64 KB read
+loop `Backup` had privately, which the consumer had copied verbatim.
+`Writer.collect` (core): `run` split on the concrete G rather than on
+`Writer % W`, answer kept — the E092-free drain for a parameterised W.
+`TestSourceProducer` 6 asserts the asymmetry that justifies the road,
+as measured: `pure(x)` an unflaggable nothing at Produce, a
+flaggable discard at Source (the first draft said "type error" and
+was wrong). BlobContract +2
+(run by fs and, at blob-s3, MinIO), TestFs +1. specs/blob.md "The
+Source road". Full gate.
+## mutual-mark-free — the mark was never needed, and the report that it was came from stale classes
+
+`!.tailcall(other(n))` inside a `direct` block colours through
+`Free.directColor` like any other program value, so mutual recursion
+needs the tailcall (the deferral rule covers a call to the ENCLOSING
+def, which two functions calling each other are not) and nothing else.
+TestDirectDeep now asserts both spellings — with and without
+`.reflect`, 1 000 001 hops each — and the four places that documented
+the marked form are corrected.
+
+**Why it was reported the other way.** A probe run on 2026-09-16
+failed to compile `!.tailcall(isOdd(n - 1))` and I read that as an
+asymmetry in the colouring. The probe compiled against
+`.jvm/target/scala-3.9.0/classes`, last built at 22:06 the previous
+evening; `directColor` landed at 23:14. There was nothing in those
+classes to colour with, so every spelling failed — including
+`fib(n - 1) + fib(n - 2)`, which the green gate was running at the
+same moment. Rebuilding the classes and re-running the whole position
+matrix (self-call and other-def call, in `+`, in an ascribed val, as a
+branch result, under `!.tailcall`) compiles all of it, and the
+mark-free pair answers `isEven(1 000 001)` on a 512 KB stack.
+
+## continuations-roadmap — what continuations are here, and the four roads
+
+The operator asked what the library has with continuations, whether a
+built program can be compiled into something faster, and whether the
+continuation's role can grow. specs/continuations-roadmap.md answers
+with an inventory (one mechanism, three layers, every user-facing
+feature a use of the same continuation), the bounding fact (a freer
+tree is a coroutine, not a syntax tree: its continuations are opaque
+JVM functions, so compilation lives at construction — `Fused`,
+`Eager` — in the interpreter — handler fusion, `relay`, `onAnswer` —
+and in the first-order DSLs — `Pipeline`, `Tables`, `Schema` — never
+on a built tree; and the no-tree road measured at 0.58–0.86x), and
+four roads ranked with the lane and the number each owes:
+`handlers-fused-walk` (capped by handler-fusion's measured 1.1–1.3x),
+`direct-staged` (ceiling 1.9x, the hand-written inline shape),
+`freer-base-stage2` (typestate on a facade; the deliverable is a
+compile error), and a continuations-as-data spike. BACKLOG has the
+four entries, ROADMAP the section.
+
+## docs-arc-refresh — the documentation catches up with the tree
+
+Every document brought to the state of the arc from `tailcall`
+(2026-09-14) to `either-via-split` (2026-09-16), and one chapter
+added. NEW: `docs/theory/11-one-tree.md` — `Cont` as a facade over
+`Free`: why a shift is a freer leaf (Filinski in the data), where the
+answer types went and why the compiler refused to put them on the
+nodes (stages 0 and 1, the three spellings), absorption exactly once,
+one rotation and the `Delay` trampoline, the measurements of every
+step including the JIT's fourth face, what it is better than and what
+it costs, and what was removed with it. UPDATED: theory ch. 2 (`Cont`
+is the tree; absorption, not a budget), ch. 4 (`resume` as the member,
+`Delay`, one tree), ch. 5 (`split` as the kernel and `<|>` its
+`Either` form, `Cont.step` as it is, `handle` forwarding on the tree,
+`Eff` as the encoding that went), ch. 8 (`directColor`, the language
+import and why not a flag, recursion in a block with the prefix mark
+as the no-conversion road), the theory index and map; docs/README's
+papers; direct-style.md (Layer 3: no `Direct.given` for programs, the
+`!` mark as the road without implicit conversions, a new "Recursion
+in a block" section); guide and tutorial (recursion in a block, `Cont`
+is the tree); typepedia (`Cont`, `A ! F` with `Delay` and `Inject`,
+`TypeableK` as `test`, `split`/`<|>`); existentials (a note on the
+spellings); benchmarks §1's `Cont` bullet.
+
+## either-via-split — one function holds the union's casts
+
+`<|>` is `split[F, G](e)(Left(_))(Right(_))`: the operator's proposal,
+after the review reported `<|>` as unused and the report turned out
+to be a truncated grep (29 files in 12 modules use it, as the Either
+form for drains and tests). Both functions were `inline` already; now
+the two `asInstanceOf` on a row live in `split` alone, with `over`'s
+reverse-direction cast beside it as the only other, and `<|>`'s inline
+lambdas beta-reduce to the bytes it had. No caller changed.
+
+Found by the lane's gate and tagged on the spot: `TestResilienceTimed`
+races a real timer (5 ms against a 20 ms hedge) and lost once on a box
+at load 22, 8/8 alone a minute later — `Live` now, per the
+integration-test-gate rule for flakiness found in an untagged suite.
+
+## operator-followups — the flag out, the import back; TestFailure tagged; Resource on split
+
+Three asks in one message (2026-09-16).
+
+**`-language:implicitConversions` is out of build.sbt** and the
+per-file `import scala.language.implicitConversions` is back in the
+six files that colour inside `direct`. The reason is TestThrows: it
+proves `throws`'s `into` by the ABSENCE of that import, and a
+build-wide flag made the absence prove nothing. `Free.directColor`
+stays, so a program still colours without `Direct.given`; the
+language import is the one line a colouring file carries, and
+build.sbt says beside `scalacOptions` why the flag is not there.
+
+**`okay.cluster.TestFailure` is `Live`-tagged**: it binds a real
+`ServerSocket(0)` and spawns worker JVMs, which nio-port-scope's rule
+puts in `integrationTest`; it had slipped the survey, and on
+2026-09-15 a gate reported its 30 s timeout at 315 s under a
+sibling's load with 4314 results where 4424 were due.
+
+**`Resource.run` splits with `split`**, the last walker on `<|>`. Its
+while-and-`return` shape existed so one catch could see the current
+finalizer list; now every call that runs code the walker did not
+write — `resume` (Delay thunks, continuations), an `Acquire`'s `mk`,
+a continuation `k` — goes through `guarded(fin)`, which releases
+what is held and rethrows, and the loop is a `@tailrec` over the
+list. The releases that end a walk stay outside any guard, so a
+throwing finalizer is not released twice — the invariant the old
+`fin = Nil` before `releaseAll(f)` kept. TestResource and TestBracket
+unchanged and green.
+
+## direct-no-ceremony — a direct block colours with nothing imported but direct
+
+`-language:implicitConversions` is in `ThisBuild / scalacOptions`
+(one line, the reason beside it): the auto-colouring `Conversion`s are
+gated by `DirectCtx` and apply only inside a block, and the feature
+warning their use raised without a per-file import was the only
+reason nine files carried `import scala.language.implicitConversions`.
+Measured with scalac before deciding: the missing import is exactly
+that warning, the flag removes it, and `into` — the operator's
+question — would not do, since it lifts the warning in parameter
+positions only and a block colours at ascriptions and receivers.
+Programs need no `Direct.given` either: `Free.directColor` in `Free`'s
+companion is found through the conversion's source type. TestDirectDeep
+now imports `okay.Direct.*` alone and `fib(n - 1) + fib(n - 2)` at
+`Long ! Pure` colours, defers and trampolines. What the flag weakens is
+said in TestThrows: its "deleting the import is the test" for
+`throws`'s `into` no longer tests anything. specs/direct-auto-coloring.md
+"No ceremony".
+
+## inject-not-effect — one word, one meaning
+
+`!.Effect`, the type-and-value alias of `Free.Inject` that freer-base
+kept so the match sites would not move, is gone: the node is `Inject`
+everywhere (`case Inject(e)` at ~150 sites in 52 files, tests and
+benchmarks included), and `Effect` means the `derives` marker alone.
+The ten files that had to write `derives okay.Effect` past the alias
+write `derives Effect`. Asked by the operator after the core review
+listed the collision; mechanical, the compiler was the check, no
+behaviour and no bytes changed.
+
+## deep-recursive-direct — the article's deep recursion, inside direct, with no annotation
+
+Inside a `direct` block a call to the enclosing def, at the block's
+program type, is deferred into the tree wherever it is marked or
+auto-coloured: `fib(n - 1)` becomes `Free.delay(() => fib(n - 1))`
+under the same mark, and the recursion trampolines through `resume`
+instead of the JVM stack. With `import Direct.given` and
+`scala.language.implicitConversions`:
+
+    def fib(n: Int): Long ! Pure = direct:
+      if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+
+That is what "Deep recursion in Scala 3" (Kozak) does with a
+`deepRecursive` macro over `TailRec`, and her `TailRec` is this tree
+node for node (`tailcall` = `Delay`, `flatMap` = `Bind`, `done` =
+`Pure`, `.result` = `!.run`), so here it is a self-call detector in
+front of `direct`'s lowering. What her macro refuses and this does:
+a self-call in `match`, a real row interleaving effects with the
+recursion, mutual recursion (`!.tailcall(other(n)).reflect`).
+TestDirectDeep: fib, `1 + sum(n - 1)` a million deep on the suite's
+stack (on master the same coloured call overflowed 512 KB at
+construction), `count` through `match`, `told` over `Writer`.
+A separate `Direct.deepRecursive` for value-typed defs was built
+first and removed at the operator's ask; the `rowColor` given written
+for a colouring gap that was only two missing imports went with it.
+specs/direct-macro.md "Deep recursion".
+
+## cont-shift-doors — the erased leaf type is written once, behind two named doors
+
+`Cont`'s leaf is stored as `(X => Nothing) => Any`, the one supertype
+every `(X => S) => R` conforms to; the type now lives in one private
+alias with a companion: `Shift.of(f)` forgets the answer types (an
+upcast) and `s.at[S, R](k)` remembers them (THE cast, where `typed`
+was). `shift` and `step` read through the doors; bytes, dispatch and
+the cast count are unchanged. What the lane settled, by compiling
+rather than arguing, while the operator asked for `(A => S) => R` on
+the leaf: `(X => ?) => Any` is refused by the compiler (the argument
+slot needs a subtype of every `X => S`, and only `X => Nothing` is
+one); `Shift[+X, -S] = (X => S) => Any` compiles but the tree can only
+carry it at `S = Nothing`, because answer-type modification puts
+different S on the two sides of one `Bind`; and a leaf enum with its
+own S and R would keep the cast (existential under the tree's
+wildcard) and add a wrapper per raw shift that stage 0 refused. While
+`Cont` is `Free`, the answer types live on the facade and nowhere
+else — the operator chose the doors over an indexed enum.
+
+Not byte-identical after all, and the gate said so: four TestFree
+rotation laws threw `ClassCastException: null`. `s.at(x => run(f(x))
+(k))` in one argument list let the leaf's inner answer — the Bind's
+existential — infer as `Nothing`, and a lambda body typed `Nothing`
+carries a checkcast to `Nothing$` that always throws; the curried
+`typed(s)(...)` had resolved the same variable differently. The site
+now names it, `s.at[Any, R]`. Two smaller findings on the way:
+`private object Shift` and `private[okay] object Shift` both make an
+inline `shift` synthesize an unstable accessor (E192), so the object is
+plain; and the extension needs `import Shift.at` inside the companion,
+because a type alias has no companion of its own.
+
+## split-over-either — the Either per operation was mostly already gone
+
+Fifteen walkers (39 `<|>` sites: Pipe, Writer, Source, Logic, Refs,
+Generate, Condition, Channel, Delim) split their row through `split`
+now, the kernel State and Writer.run already use; Resource keeps `<|>`
+because its arms `return` out of a `while`. Measured first, bytes
+before time because the box was loaded: allocation IDENTICAL TO THE
+BYTE on fib10/100/1000, the Delim lanes, the Channel lanes, viaWiden,
+okayChoice, okayWriter, okayProducer — the JIT was scalar-replacing
+that `Left`/`Right` all along — and down on the one road where the
+arms cross a closure the JIT does not see through: okaySourceMerge
+1 072 482 → 1 027 412 B/op, `elementwise` −1.8…−6.3%. Time neutral in
+a same-window A/B. Landed for one idiom and four lighter lanes; the
+per-walker programme the BACKLOG entry planned is closed, because
+there is no second walker worth a lane. specs/core-cleanup.md,
+rows `so-*`.
+
+## defer-eff-removal — one deferred node, one encoding fewer, and the JIT re-decides
+
+The operator's answer to two questions the Free/Cont/Effects review
+left open (specs/core-cleanup.md, "defer-eff-removal").
+
+**`Defer` is gone.** `Free.defer(t)(f)` builds `Bind(Delay(t), f)`;
+`resume` and `Cont.step` lose two cases each and the tree is `Pure |
+Inject | Bind | Delay`. The price lands only on the codecs' trampoline
+past `NativeThreshold`, and a lane was written to see it before the
+node went: `parseDeep` (2 000 levels) 62.0 → 65.1 µs, +40 B per level.
+
+**`Eff` is gone** with its `Monad`, `Effects[Eff]`, `toEff`,
+`Fused.runEff`, two benchmark lanes, seven tests (now "Free and Eager
+agree") and four doc passages. Nothing outside them ever built one; its
+numbers stay in handler-fusion and eff-stack-safety.
+
+**The JIT, measured rather than feared.** `Free.resume` fell from 495
+bytes to 323, under `FreqInlineSize`, and started inlining into every
+loop that calls it: `relayPrebuilt` 151 → **142 µs** (−6%), but
+`handlePrebuilt` 154 → 177 and `handleCapture` 152 → 172 (+15%), same
+bytes — a 323-byte loop pasted into a 388-byte loop that was already
+"too big". `-XX:+PrintInlining` named it. The fix was already in the
+ledger as a refutation: `handle-loop-inlining` (this morning) moved the
+terminal case and the capturing fallback into their own methods and
+measured nothing, because `resume` was never inlined then. The same
+move now: `handlePrebuilt` **145.5**, `handleCapture` **146.7**, both
+under master. Rows `de-*`, `de-inl-*`.
+
+The fourth face of the inlining rule, for the memory: a callee crossing
+the line re-decides every caller, and a caller-side shape that was
+neutral becomes the fix.
+
+## delay-node — a tail call carries no continuation, so nothing rotates
+
+The speed half of the Free/Cont/Effects review (specs/core-cleanup.md,
+"delay-node"). `Free.Delay(thunk)` beside `Defer`: `resume` forces it
+and continues AS IS, `Bind(Delay(t), g)` is `Bind(t(), g)` with nothing
+composed. `!.tailcall`, `Effects[Free].tailcall`, `handle`'s capturing
+arm and `Cbor`'s item skip build it instead of `Defer(thunk, pure)` —
+the spelling that resumed to `Bind(t(), pure)` and, whenever the thunk
+answered a `Bind`, pushed a `.flatMap(pure)` tail down every bind of
+the deferred subprogram (`hff-defer-cost` had priced that shape at 59
+of 61 µs inside `handle`).
+
+Lanes first, measured before the node existed, `-f 3`:
+
+| | before | after |
+|---|---|---|
+| `tailcallChain` (10 000 hops) | 127.7 µs, 1 359 969 B | **24.1 µs, 400 016 B** |
+| `handleCapture` (100 captures, 10k tree) | 214.1 µs, 2 486 713 B | **159.1 µs, 1 764 361 B** |
+
+5.3x and 1.35x; a capturing handler now costs what an answering one
+costs (`handlePrebuilt` 159.0 in the same run), and a hop is exactly
+one 40-byte node. Controls: B/op identical to the byte on fib10/100/
+1000, relayPrebuilt, handlePrebuilt, statePara; a 2% reading on
+`relayPrebuilt` got a three-round same-window A/B on a box carrying a
+VM at 575% CPU, and per-lane minima came out equal (153.6 vs 152.9).
+Rows `dn-*`. The `mapnode` fear — a fifth case costing the
+interpreter its inlining shape — did not materialise here, and the
+difference is worth naming: `Map` added a case on the HOT path (every
+element), `Delay` adds two type tests that the hot shape fails through
+and a case only a trampoline reaches.
+
+## core-cleanup — Free, Cont, Effects: what nothing called, and one hop where there were two
+
+A review of the three core files (specs/core-cleanup.md), landed as
+the SAFE half of what it found. The other half — a `Delay` node, whose
+mechanism is the one `hff-defer-cost` priced at 59 of 61 µs and which
+`tailcall`, `Eff.flatMap`, the codecs' trampolines and `handle`'s
+capturing arm all still pay — is BACKLOG `delay-node`, because it is
+a fifth case in the two loops whose bytecode shape has already cost
+1.44x and 10% in opposite directions, and that wants a lane of its
+own with `-f 3`.
+
+**Removed, and how "nothing calls it" was known:** grep over every
+module's `src`, then the compiler — the removals were made and
+`Test/compile` over all modules run, and the only callers it found
+were tests spelling `unapply(x).isDefined`, which is `test`.
+
+| gone | why |
+|---|---|
+| `TypeableK.unapply` | no `case T(x)` over a `TypeableK` anywhere; `test` is the interface, and two casts (`typeableK`, `writerK`) went with it |
+| `typeableKByClass` | an alias of `typeableK` with a paragraph on it; the paragraph moved, the two comments naming it now name `typeableK` |
+| `fromFree` | `reflect` under a second name; `reflect` keeps the tree fold |
+| `Effects.foldIn` / `runIn` | specs/staged-effects.md measured the carrier-generic fold no faster than Cont and kept it "with no performance claim"; only that spec's tests and two lanes called it. `Interpr`/`interpr` STAY — `Fused` is built on them |
+| `Free.run` (both) | no caller in any module |
+
+**Folded:** `Effect.derived` builds `Effect.ByClass` directly — one
+class, one `isInstance` under `split` — where it was a wrapper over an
+anonymous `TypeableK` (two virtual calls per test). `reify` is
+`convert[M, Free]`. `!.translate` splits with `split`: no `Either` per
+operation on the road `interpret`, `tracing`, Instances, Tag and
+Tables take. `Free.resume` and `Cont.step` force `Bind(Defer(t, f), g)`
+in ONE hop where they built a `Defer` to match on the next iteration.
+
+**Kept on purpose:** `!.Effect` beside `okay.Effect` (ten files write
+`derives okay.Effect` to get past it; freer-base settled the name
+against 154 match sites), and the sixteen walkers still on `<|>`
+outside the core — each is a `@tailrec` loop with an inlining budget,
+so each is a lane (BACKLOG `split-over-either`).
+
+Controls, this lane's only number — master vs branch in one window,
+`-f 3`, box at load 7-8 both times: fib100 1987.6 → 1981.3 ns,
+fib1000 28 388 → 28 584 ns, relayPrebuilt 153.6 → 151.9 µs,
+handlePrebuilt 168.7 → 170.9 µs, statePara 28.2 → 29.1 µs, every one
+inside its own error bar; allocation IDENTICAL TO THE BYTE on the four
+lanes through `resume`/`step`/`split` (fib100 19 936.014 both sides,
+handle/relay 1 753 945). Rows `cc-*`, specs/core-cleanup.md Results.
+
+## handle-loop-inlining — the diagnosis was right and the fix bought nothing
+
+`handle-forward-fast` left 3% of time with allocation identical to the
+digit, which is the signature of code shape. The entry's rule was to
+run `-XX:+PrintInlining` before touching anything, and it named its
+own suspect precisely:
+
+| | bytes | verdict |
+|---|---|---|
+| `relay`'s loop | 262 | inline (hot) ×4 |
+| `handle`'s loop | 388 | hot method too big ×6 |
+
+Against `FreqInlineSize` 325. Extracting the terminal case and the
+capturing fallback — the move `relay.last` exists for — brought it to
+318 and flipped the verdicts to "inline (hot)" ×3.
+
+**The lane did not move.** Three rounds after the shrink (157.3,
+153.0, 153.2 µs) against two before (154.2, 156.2), with `relay`
+drifting the same way in the same rounds, and the ratio measured
+in-run — so the box cancels — at 1.039 / 1.030 / 1.011 against
+1.029 / 1.039. The ranges overlap completely. Allocation moved by 16
+bytes on the whole run, one closure the extraction stopped building.
+Reverted.
+
+**This is the third face of one rule, and the three together are the
+point.** Over the line COSTS when the body is straight-line: `relay`
+lost 10% to exactly that. Under the line COSTS when the method is a
+loop inlined into callers that are loops: shrinking `Free.resume` cost
+four lanes up to 1.44x. And here, under the line is NEUTRAL — a loop
+whose caller is a 10-byte wrapper gains nothing by being pasted into
+it. The question is not "is it over the line" but "who is the caller,
+and is the body a loop".
+
+So what the 3% is, by elimination and by reading the two loops:
+`handle` does strictly one more test per handled operation than
+`relay` — `Cont.onAnswer`, on top of the `split` they share — and that
+test is what buys `handle` the two things `relay` cannot do, abort and
+perform G. A price, not an overhead. The entry closes.
+
+## handle-forward-fast — the general handler now costs what the fast one costs
+
+`Effects.handle` re-emits a FORWARDED operation on the tree, the way
+`relay` has always done, and enters `Cont` only for an operation the
+handler actually claims. Forwarding is the common case: in a row of
+four effects every handler forwards three quarters of what it sees.
+
+| | before | after |
+|---|---|---|
+| `handlePrebuilt` | 223.3 µs | **154.2 µs** |
+| allocation | 2 869 306 B/op | **1 753 945 B/op** |
+| `relayPrebuilt` (control) | 148.1 µs | 149.9 µs |
+
+The second row is the result, not the first: **`handle` allocates
+exactly what `relay` allocates, to the digit**, and the
+build-on-every-call pair agrees at 2 154 017 on both sides. The 1.51x
+gap is 1.03x, and what is left is 3% of time with identical bytes —
+filed as `handle-loop-inlining`, with the warning that a loop is the
+face of the inlining rule that wants to be left alone.
+
+**Both numbers in the entry that proposed this were wrong, and that is
+the part worth keeping.** The `shift` per forwarded operation, which
+the entry named as the mechanism, was only a THIRD of the gap. The
+other two thirds were introduced by this lane's own first version:
+trampolining every handled operation through `Free.defer` cost 59 µs
+of the 61, because a `Defer` whose continuation is `Pure` rotates into
+a LEFT-nested `Bind`, left-nesting is the one shape `resume` rewrites,
+and so each handled operation taxed every operation after it. That was
+found by deleting the node and measuring — 151.3 µs, with only the
+100k-handled test failing, by StackOverflow — which named the cost and
+the reason the node was there in one run.
+
+So the shipped version pays for the trampoline only where it is
+earned. A handler that does not capture the continuation answers with
+`Cont.Pure`, and the loop goes on from the answer with a tail call;
+`Cont.onAnswer` is that test, inline with inline branches like
+`split`, so neither arm costs an `Option` or a closure. It matches the
+representation, which the facade's rule forbids from OUTSIDE — here
+the companion looks at its own tree, which is the one place allowed
+to.
+
+The order of work was the entry's own condition and it held.
+`TestHandleForward` was written FIRST and pins what a handler may
+observe: what an ABORTING handler forwards, what a MULTI-SHOT handler
+forwards twice, the order of both, and three depths. All seven passed
+against the definition, and four were watched to FAIL against a
+deliberately wrong forwarding arm before the real one existed. The
+disqualifier named in the entry was checked rather than assumed:
+`fusedSWr` reads 13.2 µs / 122 640 B against the recorded floor's
+13.7 / 122 641, and neither floor lane goes through the changed code
+(`State.run` has its own handler, `Writer.run` its own loop over
+`resume`) — also checked, not assumed.
+
+`@tailrec` is absent from the loop for a stated reason: the deferring
+arms mention `loop` inside a closure, which the annotation reads as a
+non-tail call although the closure is a separate method the
+interpreter enters. The three stack-safety tests are the guarantee,
+which is where a guarantee of this kind belongs.
+
+## handle-decompose — the handler gap is 1.51x, and it is allocation
+
+`relay` and `Effects.handle` had been compared by two numbers that each
+included building a 10 000-node tree, so the documented "1.45x" said
+nothing about what either HANDLER costs — the only part either of them
+controls. `relayPrebuilt` got its build/run split this morning;
+`handlePrebuilt` is its missing twin. Same pre-built tree, same
+program, nothing different but the handler.
+
+Like for like, two rounds in opposite lane order, three forks of five
+iterations each, quiet box (rows `hd-*`):
+
+| lane | round 1 | round 2 | B/op |
+|---|---|---|---|
+| buildOnly | 24.570 µs | 24.548 µs | 400 072 |
+| relayPrebuilt | 149.335 µs | 148.100 µs | 1 753 945 |
+| handlePrebuilt | 223.250 µs | 224.794 µs | 2 869 306 |
+
+**1.51x, and the whole of it is allocation.** The two allocation
+figures are identical to the digit across both rounds (error ±0.02
+B/op), and their difference is 1 115 361 B over 10 000 operations of
+which 9 900 are FORWARDED: **+112.7 bytes per forwarded operation**,
+the operation the handler never touches. At the ~12 GB/s these lanes
+allocate at, that megabyte is ~93 µs against a 75 µs time gap, so
+there is nothing else left to explain.
+
+The mechanism was already in the source and is now written where the
+number is: `Effects.handle` folds the program through `Cont` and
+answers a forwarded operation with `shift(k => perform(e).flatMap(k))`,
+spending a continuation capture on an operation no handler claims,
+while `relay` answers the same case on the tree. `buildOnly` is the
+control that makes this readable: identical in both rounds and
+identical to the digit in allocation, so the tree under both handlers
+is the same tree.
+
+Benchmark, numbers and two corrected claims; no behavior changed. The
+follow-on is filed as BACKLOG `handle-forward-fast` with its prize
+priced (up to 33% off `handle` on forwarding-heavy work) and with the
+condition that can kill it: the argument that forwarding is safe to
+move off the continuation is an argument, not a proof, so the aborting
+and multi-shot cases are written and watched to FAIL first.
+
+## stage2-probe — a prompt's identity DOES reach the type level
+
+`Delim.scala:223` throws `NoPrompt` when a shift names a prompt that is
+not installed, and freer-base stage 2's first behavior item is that
+this throw becomes a compile error. Everything in that item rests on
+one question nobody had put to the compiler: a `Prompt[R]` is made at
+RUN time inside `reset`, so can its IDENTITY — not merely its answer
+type — reach the type level?
+
+**It can.** `scripts/stage2-prompt-identity-probe.scala` is the answer
+in one runnable file: five positives compile (a bare reset/shift, a
+for-comprehension, an ordinary effect in the head position, nesting
+with a shift to the OUTER prompt, and a reset inside a larger program)
+and three negatives are refused by the compiler — a shift with no
+reset, a shift to a foreign prompt of the same type, and a prompt that
+ESCAPES its reset and is shifted to afterwards, which is exactly the
+case that throws today.
+
+The question was asked BEFORE the lane was claimed, and that ordering
+is the point. Stage 1 died on this same class of question — whether the
+compiler would skolemize a free parameter — after its implementation
+was written. The two answers are opposite: `unapply` inferred
+`Nothing` where a skolem was needed; a singleton `p.type` of a term
+parameter in a dependent signature is supported outright.
+
+**Four compiler facts were paid for**, each by a round that failed, and
+they are recorded so nobody re-buys them:
+
+1. An expected type is not enough. It fixes the indexes for a `val`
+   and for nesting, but the HEAD of a for-comprehension has none —
+   `x.flatMap(…)` types `x` first — so the stack fell back to its bound
+   and the search failed. The stack must be a GIVEN, not an inferred
+   parameter.
+2. A CURRIED dependent context function is refused outright:
+   "Implementation restriction … not yet supported".
+3. A non-curried one compiles, and nested witnesses of the same shape
+   resolve to the INNER one with no ambiguity — but carrying the stack
+   through it CRASHES dotty: `AssertionError: wildApprox failed to
+   remove uninstantiated R`.
+4. Clause ORDER decides inference: a `using` after the continuation
+   loses to the lambda's own typing. It goes before, and the stack is a
+   type MEMBER so no call site spells it.
+
+The cost at the call site, found by writing it rather than guessing:
+`reset { p => … }` becomes `reset { s => import s.given; … }`, one line
+per reset. The type arguments on `shift` are not new — TestDelim writes
+`shift[Int, Int, okay.Pure](p)` at every call today.
+
+Prose, a board entry and one standalone script; no compiled source
+changed. What stays unpriced is in BACKLOG and the spec: `shift0` and
+`control0` consume the delimiter so their index is unbalanced and the
+probe never exercised it, `abort` still drops a promised transition,
+the four files outside the core that name Delim pay the per-reset line
+and none was read, and nothing is measured.
+
+## runfree-inlined-rotation — refuted, and not in the way the entry expected
+
+The entry asked whether `runFree` should keep its own inlined copy of
+the rotation, to win back the 3–4% that free-one-rotation cost
+`relay`. `-XX:+PrintInlining` gave a better question first:
+`Free.resume` compiled to **352 bytes** against HotSpot's
+`FreqInlineSize` of 325 and refused to inline into ANY caller ("hot
+method too big", fifteen times in one run). So the cost was not the
+extra call — it was an extra call that could not be inlined away, and
+the fix looked like shrinking `resume` rather than duplicating it:
+one rotation kept, and every caller of `.resume` fixed at once, not
+just `runFree`.
+
+Extracting the two cold `Defer` shapes into their own method did
+exactly that — 352 → 306 bytes, and the log turns from "hot method
+too big" ×8 to "inline (hot)" ×8.
+
+**And it made things worse.** Four rounds on a quiet box, rounds tight
+within each arm (rows `rfinline-*`): `effCont24` **1.435**,
+`nestedSWr` 1.074, `fusedSWr` 1.063 — the floor — and
+`relayPrebuilt` **1.065**, which is worse than the 1.039 it set out to
+repair. Allocation is identical everywhere, so nothing structural
+moved; this is inlining shape alone.
+
+The reason is worth keeping: **`resume` is a LOOP**. Making a loop
+inlinable is not the same as making it faster — inlined into callers
+that are themselves loops (`fold`, `runFree`, `relay`'s `loop`) it
+produces nested loops and loses more than the call it saves. The
+325-byte threshold was protecting these lanes rather than obstructing
+them, which is the opposite of the morning's `relay` case, where the
+method over the line was straight-line code.
+
+Reverted; nothing of it lands but this note and the numbers. The
+original lever — `runFree` keeping its own copy — is still untried,
+and after this it should be measured before it is believed.
+
+## free-one-rotation — five copies of the rotation become two
+
+The rotation that rebalances left-nested binds existed FIVE times:
+`Free.fold`, `runFree`, `!.resume`, Async's own drive loop, and
+`Cont.step`. Every edit to `Defer` had to go to all five, and the
+invariant the library's forty-two `@unchecked` matches rely on was
+described in one of them and assumed by the rest.
+
+It is now a MEMBER of `Free` — `resume` — because it is a property of
+the tree rather than of any interpreter, and because a member wins
+resolution, so every `.resume` in the library reaches that one loop
+with nothing imported. `Free.fold`, `runFree` and Async's loop became
+three-case matches over the head form it leaves. The `!.resume`
+extension is deleted; three explicit `import okay.!.resume` in
+okay-ui, okay-resilience and a JMH source were not merely unnecessary
+but wrong afterwards, and only `Jmh/compile` caught the last one.
+
+`Cont.step` keeps its own copy, and that is not an oversight: it
+composes a rotated continuation through `bind`, so the continuation
+can be ABSORBED by the leaf it lands on, which the leaf-agnostic
+`resume` cannot do. The law in TestFree is what keeps the two equal
+where it matters.
+
+Async's `stopped` check no longer falls between two rotation steps.
+Nothing a canceller can observe changes: rotating reassociates nodes
+and runs no user code, and the check that matters — before the next
+operation — is where it was.
+
+**Measured, four rounds on a quiet box** (a first run at load 7–11
+swung 41% within one arm and was discarded; rows `onerot-*`). Seven
+lanes faster, including two real allocation wins: `effCont24` **0.862**
+at −1016 B/op and `effFunc24` 0.975 at −1064 B/op, `fold` over the
+shared rotation building fewer intermediate nodes. `nestedSWr` 0.937,
+`stepOneByOne` 0.955, `stateEffect` 0.972, `fusedSW` 0.973. **The
+`fusedSWr` floor held**: 0.985 with B/op identical to the digit, which
+is the gate this lane existed for.
+
+**The cost, stated rather than netted away:** `relayPrebuilt` 1.039
+and `relayForward` 1.029, plus `nestedSW`/`nestedTSW` ~1.02. It is
+exactly where it was predicted — those lanes end in `runWith` over a
+9 900-operation residual, so `runFree` now pays one `resume` call per
+operation. The entry's own gate said relay must stay within bars and
+it does not; the lane lands anyway because the trade is four rotation
+copies for ≤4% on four lanes with seven faster and two lighter, and
+because that consolidation was the whole point of the arc. The lever,
+if those three percent are ever wanted back, is the clause the spec
+already allows: `runFree` may keep an inlined rotation, checked by the
+law rather than trusted.
+
+## cont-tidy — what the facade made redundant, removed
+
+The operator asked what the new shape leaves unnecessary. Two
+top-level functions in Cont.scala, both of which had no caller left
+outside their own file: `answer`, a second name for `Cont.Pure` (211
+sites say `Cont.Pure`, none said `answer` except `tailcall`), and
+`tailcall`, sugar over `Cont.defer` that only one test used — while
+`Cont.defer` itself has dozens of callers in the codecs' trampolines
+and okay-ui, all of which name their continuation anyway. Both gone;
+the test spells `Cont.defer(() => …)(Cont.Pure)`, which is what it
+always meant. `!.tailcall` stays: eight callers, and its reason to
+be namespaced (a top-level `tailcall` it collided with) is now
+historical, so its comment says so instead.
+
+`Shift`, the erased leaf type, moved from the top level into `object
+Cont` beside the representation it types, with the variance argument
+that rules out every wildcard spelling written once next to it.
+
+Three comments in Free.scala said things that stopped being true when
+the facade landed — that `Defer` is private, that `Cont` has a `Defer`
+of its own, that `Free.defer` mirrors rather than IS the door — and
+two in Effects.scala pointed `tailcall` at a function that no longer
+exists. Fixed. The header of Free.scala now says the one thing a
+reader of that file most needs: this enum is also the tree under
+`Cont`.
+
+Not done here, filed: the rotation still exists five times
+(`Cont.step`, Async's loop, `runFree`, `!.resume`, `Free.fold`), and
+folding the Free-side four into `!.resume` is the arc's original goal
+— but `runFree` is where `fusedSWr` lives, so that is a measured lane
+of its own, not a tidy.
+
+## cont-on-free — `Freer` deleted, `Free` is the base, `Cont` is a facade
+
+The refutation of stage 1 said where an index may not live: on the
+nodes, because a pattern match makes it existential. The operator
+drew the conclusion the other way round. `Free` stays exactly as it
+was — `Pure | Inject | Bind | Defer` — and IS the shared base;
+`Freer.scala` is gone; and `Cont[A, S, R]` is `Cont.Rep[A, S, R]`, an
+opaque type inside its companion over `Free[Shift, A]`, where
+`Shift[+X] = (X => Nothing) => Any` is the one type every
+`(X => S) => R` upcasts into. Answer-type modification lives in the
+companion's signatures and nowhere in the tree.
+
+Nothing about `Free` changed, so the 89 match sites are untouched and
+there is no alias, no `Lift`, no phantom `Unit`. Measured against
+master, four rounds, every core lane: **within ±1% everywhere,
+allocation identical to the byte on every lane** (rows `cof-*`) — the
+nodes are the same objects and the cast is erased.
+
+Two `asInstanceOf` lines under one invariant, "the facade typed it
+when it built it, and nothing else can build one": applying a leaf to
+its continuation, and the runner's `Pure` branch, where the GADT
+equality `S = R` an indexed `Pure` used to carry no longer exists.
+That is the price of the paramonad on a shared homogeneous tree, and
+the operator's rule met to the letter.
+
+Three other spellings were tried by compiling rather than argued:
+the precise leaf `(X => S) => R` types only the diagonal, because one
+`Bind` relates three leaf types and `Free.Bind` has one signature;
+`(X => ?) => R` and `(X => ?) => ?` fail at `shift` on variance — the
+argument slot needs a SUBtype of every `A => S`, which is `A =>
+Nothing`, not a wildcard. And a trap that cost an hour: a top-level
+`opaque type` is transparent to its whole PACKAGE, so the facade only
+seals anything from inside an object. specs/freer-base.md Results.
+
+The principle that carries into stage 2: the tree is syntax, an index
+is a claim about syntax, claims live on facades, facades are never
+matched.
+
+## freer-base stage 1 — refuted, and the reason is worth more than the attempt
+
+`Free` cannot be an alias of the shared `Freer` while the library's
+match sites stay as they are, and the obstacle is exact rather than a
+matter of effort. `Bind` carries the LEFT side's answer index, so
+matching a `Free` hands back its continuation at an EXISTENTIAL index,
+where all 89 `(x.resume: @unchecked) match` sites want `A ! F`. They
+are the same value at run time — `Lift` ignores both indexes and every
+factory pins them at `Unit` — but no type says so, and the spec's own
+Decision ("stage 1 pins `Unit` at every factory and changes no
+signature") was wrong because pinning a FACTORY does not pin a MATCH.
+
+Three roads, one of them a result in its own right:
+
+- an existential outer index fixes elimination and breaks construction
+  symmetrically;
+- a pinning `unapply` in `object !` is refuted BY THE COMPILER, which
+  infers its free type parameter as `Nothing` rather than skolemizing
+  it — so `case Bind(Effect(e), k)` yields `k: Nothing => …` and the
+  link between an operation's answer type and its continuation is
+  gone. That is the load-bearing finding, because it is exactly the
+  trick that makes GADT extractors work elsewhere;
+- a uniform-index bind case in the base WOULD work, and costs most of
+  what stage 1 was for: `Cont` still needs the non-uniform `Bind` for
+  `PState`, so the base would carry both and `resume` would rotate
+  both.
+
+That last one is a decision, not a task, so it is written down rather
+than taken. The attempt lives on `feature/freer-base-stage1` as a WIP
+commit that does not compile and must never be merged, so the next
+person does not re-derive the leak. Stage 0 is unaffected: `Cont` is
+on the shared base and at parity or better.
+
+## freer-base stage 0 — Cont on one shared indexed enum
+
+`Cont` and `Free` were the same data type with one case renamed:
+`Pure | leaf | Bind | Defer`, the same tail-recursive rotation, the
+same `Defer` forcing. The rotation existed FIVE times (`Cont./`,
+`Free.fold`, `runFree`, `!.resume`, Async's own loop) and every edit
+to `Defer` went to all five. `Freer[G, A, S, R]` is now that shared
+part, indexed by Atkey's parameterised-monad indexes, and `Cont` is
+`Freer[Shift, …]` — the leaf being a FUNCTION of the continuation is
+the whole of what makes it `Cont` rather than `Free`. specs/freer-base.md
+carries the design, the three staged lanes, and every refutation.
+
+Two call sites outside the base changed. `relay` says `g(e) / k`, not
+`g(e)(k)`: an `apply` extension cannot win inside package `okay`,
+where Generate.scala's seed-side `apply` is in lexical scope. And
+`ParaMonad.map` lost its `inline` — it was therefore final, so no
+carrier could replace its `flatMap(x => pure(f(x)))` default, which
+builds a node per element that a carrier able to absorb the function
+does not need. That one was worth 96 B per `shift.map(f)` against 40.
+
+**Performance, against master, four rounds on a quiet box, every core
+lane** (rows `once-*`): eight lanes faster — `statePara` 0.860,
+`fib10` 0.884, `handleForward` and `stepBulk` 0.974 — nothing more
+than 2.4% slower (`fib50` 1.024, on the edge of the bars), and
+allocation at or below master EVERYWHERE. The fusion budget is gone:
+absorption is one step, carried by the leaf function's own class, and
+the depth was settled by a sweep (1/4/16/128) rather than an argument.
+
+Getting there took five measurement sessions and cost four plausible
+theories, all recorded in the spec so nobody pays for them twice: the
+`Op` wrapper (refuted in the opposite direction — the leaf is 0.97 and
+lighter), the absorption depth (Fib is flat across it; `statePara`
+reads 0.861 at 1 against 1.15–1.19 deeper), the runner's shape
+(indistinguishable), and the rotation's composition (moves zero
+bytes). What was actually costing the Fib lanes turned out to be two
+things neither profile showed: `map` not reaching the absorbing path,
+and `Once`'s two `apply` bodies giving the runner's call two targets.
+Writing `apply` once, as an enum over `Absorbed | Mapped`, closed the
+rest — 0.955 to 0.968 on the Fib lanes — while splitting the same call
+site to make it bimorphic did nothing at all. The number of call
+TARGETS was the cost, not the number of receiver types.
+
+Every case of `Freer` is public, including `Defer`: hiding a case
+whose smart constructor is public never stopped anyone building the
+node, only matching it, and matching is the half a stepper or an
+outside interpreter needs. The only privacy left is
+`Shift.Absorbed`/`Mapped`, which guard the one real invariant — a leaf
+absorbs at most once.
+
+Stage 1 (`Free` on the same base) and stage 2 (the indexes as
+typestate) are open in BACKLOG under `freer-base`.
+
+## relay-inline-headroom — 20 bytes from a cliff nobody could see
+
+`relay`'s inner loop compiled to 305 bytes. HotSpot stops inlining a
+hot method at `FreqInlineSize`, which is 325. Twenty bytes of margin,
+on the hottest handler in the library, invisible in any profile that
+reports time or allocation.
+
+That is not hypothetical. A sibling branch (specs/freer-base.md) added
+24 bytes to that loop — not to what it does, only to how much bytecode
+it is — and paid 10–12% on `relayForward` for five measurement
+sessions, while its allocation stayed identical to master's to the
+digit and every data-structure theory was refuted in turn. The cause
+was read in one command, `-XX:+PrintInlining`: 329 bytes, "hot method
+too big", and the loop no longer inlined into `relay`.
+
+`split` is an `inline def` taking `inline` branches, so both of its
+arms expand into whatever encloses them, and this loop is made of
+them. The terminal arm — a bare operation with no continuation, which
+a program reaches at most once — now lives in its own method. The loop
+is 256 bytes, and the margin is 69 instead of 20.
+
+Measured, and worth stating plainly: **no speed change**. Four
+alternating rounds, every `HandlerBenchmark` lane within ±0.8% with
+identical allocation (rows `relayheadroom-*`). The loop was already
+being inlined; this buys the margin, not a number. Two lanes land with
+it, because they are what made the diagnosis possible: `buildOnly`
+(construction alone — it measured 1.000 and exonerated the Free tree)
+and `relayPrebuilt` (relay over a tree built once). `relayForward`
+rebuilds 10 000 nodes per invocation, so without the split there is no
+way to say whether a delta is in building or in handling.
+
+## fuse-consumers — fuse=1 is faster on the one lane that reached the 128 budget
+
+Measurement only, the third and last fusion run of the day. The
+remaining Cont-fusion consumers with `-Dokay.cont.fuse=1` against 128,
+three rotated rounds, per-lane minimum: `Monadic.reflect` lanes
+(okayDirect, okayDirectRec) 1.00, controls (stateEffect, cont24)
+unchanged — and `statePara`, PState with 1 000 left-nested operations,
+the only shape whose fused segment actually grows to 128, is 12%
+FASTER at fuse=1 (27.8 vs 31.7 µs, 3/3 rounds). Predicted slower,
+refuted: 128 nested closure calls per run lose to Bind nodes the
+tailrec loop rotates. Together with fuse-depth: every measured
+consumer is at parity or better at one fusion step. The default is
+still 128 — lowering it is a source change with a gate and a re-read
+of TestCont's spill stress, filed here as the next lane. Rows
+`fuse1-statePara`, `fuse1-okayDirect*`, controls in
+`src/jmh/history.tsv`; paragraph in specs/interpreter-optimization.md.
+
+## fuse-depth — one fusion step is the whole win; depth is a bit, not an Int
+
+Measurement only, the follow-up to fuse-bench below. `FibBenchmark`
+with `-Dokay.cont.fuse=1`, `2`, `4` against `128`, three rounds with
+the config order rotated, per-lane minimum: fuse=1 is 0.98/1.00/1.02/
+1.01 of fuse=128 on fib10/50/100/1000, and 2 and 4 sit in the same
+±1–3% bars. The 12–25% fusion win is entirely the first step; the
+128-deep budget never pays on these programs. For the shared `Freer`
+base this means the Shift leaf needs one bit ("already fused"), which
+a named function class carries for free, not a depth field or a
+`(fn, Int)` tuple. The default is NOT changed here: `PState` and
+`Monadic.reflect` lanes were not measured. Rows `fuse1-*` in
+`src/jmh/history.tsv`, paragraph in specs/interpreter-optimization.md.
+
+## fuse-bench — Cont's closure fusion re-measured, still pays 12–25%
+
+Measurement only, no source change. The question came out of a design
+discussion about one `Freer` enum under both `Cont` and `Free`: the
+only thing that resists a shared `flatMap` is Cont's closure fusion
+(`Cont.scala:103-105`, depth budget 128). If fusion no longer paid —
+plausible after handler-fusion stage B measured a Free node cheaper
+than a closure pair — the base would be four cases and one line of
+`flatMap`. It still pays. `FibBenchmark` with `-Dokay.cont.fuse=0`
+against 128, three alternating rounds, per-lane minimum: fib10 1.17x,
+fib50 1.23x, fib100 1.13x, fib1000 1.12x slower without fusion, every
+round in the same direction. Rows `fuse0-*` in `src/jmh/history.tsv`,
+paragraph in specs/interpreter-optimization.md Results. Consequence:
+a shared base keeps fusion as the Shift leaf's own hook.
+
+## wroclaw-benchmark-page — a standalone page for the streams benchmark
+
+`docs/benchmarks.md`'s section 20 — okay against Flink, Spark,
+java.util.stream, fs2, zio-streams and kyo on one real streaming job —
+is 1100+ lines deep inside a 4000-line page, mixed with the
+corrections and refuted first readings that make it trustworthy but
+also make it long. `docs/wroclaw-streams-benchmark.md` is a curated
+entry point: the job and why the comparison is fair, methodology in
+six rules, the core-scaling headline, the full one-run table, five
+supporting findings each with their own table (fixed cost vs marginal,
+merge-parallel scaling with no shuffle, the one-core-loses/eight-core-
+wins reversal decomposed, java.util.stream's two roads, the four-
+process distributed numbers), and the source-code table.
+
+Every number was verified programmatically against section 20 before
+committing: the full 40-row table matched cell for cell, and five
+supporting tables matched value for value — one of them against the
+CORRECT one of two similarly-shaped source tables, after an initial
+mix-up the verification script itself caught. Subsection references
+back to section 20 are plain text rather than link anchors, since a
+prior lane's hand-computed GitHub anchor for that section's own
+heading turned out wrong; a silently-failing jump is worse than a
+name a reader can search for.
+
+Linked from docs/README.md's "Going deeper" list, the same shape as
+`existentials.md`, and from both of README's streaming-speed mentions.
+Landed as 14709b88 and pushed to origin/master.
+
+## scaling-table-sources — clickable links to the code behind the core-scaling table
+
+Section 20 of docs/benchmarks.md already named every path involved in
+the core-scaling table in prose — `compare/src/main/scala/okay/wroclaw/`,
+`scripts/wroclaw-bench.sh` — as inline code, which GitHub renders as
+plain text rather than a link. Added a Source table right beside that
+sentence: the Bench class the driver script actually invokes and the
+Lane file holding its logic, one row per library, plus the shared
+Job/Gtfs/Bench files and the script itself. 18 relative links,
+resolved against the filesystem before committing, 0 broken.
+
+Relative markdown links rather than a URL pinned to a commit — this
+document lives in the repo and every other cross-reference on the page
+already points at the current file by plain path; a pinned commit
+would go stale the moment a file moves. Landed as 61ea050c and pushed
+to origin/master.
+
+## scaling-table-wall — wall clock beside ev/s in every copy of the core-scaling digest
+
+The core-scaling matrix (`scaling-table-docs`, `scaling-table-first`)
+showed events per second only. Every cell in all three copies — the
+headline table at the top of docs/benchmarks.md, section 20's own
+copy, and README's compact version — now reads wall clock time beside
+it, pulled from the same source rows in section 20's raw table. No new
+measurement.
+
+Every number was checked programmatically against the source before
+committing, in both the full-precision docs/benchmarks.md tables and
+README's M-suffix rounded ones. Landed as 1864fb01 and pushed to
+origin/master.
+
+## scaling-table-first — the core-scaling digest moves to the top of the benchmarks page
+
+`docs/benchmarks.md` opens with "The short version" — a one-row digest
+of every section, linking into the detail. The core-scaling table
+landed an hour earlier (`scaling-table-docs`, b7514589) inside section
+20, which is where a reader least likely to keep scrolling would find
+it. It is now the first table on the page, ahead of even the
+per-section summary.
+
+Found on the way: the short version's own §20 summary row was itself
+stale, citing numbers from before `wroclaw-table-refresh`
+(2026-09-11) — 8.9M events/s on four fibres against Flink's 1.87M at
+parallelism 4. The current table reads 22 561 859 at eight fibres and
+Flink 1 679 971 at parallelism 8. Corrected in the same lane, along
+with the row's anchor link, which pointed at a heading that had since
+been reworded.
+
+No new measurement. Every number was checked programmatically against
+the same source table used for `scaling-table-docs`. Landed as
+4363dbe8 and pushed to origin/master.
+
+## scaling-table-docs — the core-scaling matrix, read by core count, published where okay's speed is pitched
+
+`docs/benchmarks.md`'s section 20 (Wrocław's timetable, 2.4M events
+against Flink, Spark and every stream library) carries a 38-row table
+sorted by throughput. Sorted that way it answers "who is fastest",
+which buries a different and more useful answer: read by CORE COUNT,
+okay scales 5.3x from 1 to 8 cores while every other in-process
+library — java.util.stream, zio-streams, kyo, fs2 — plateaus around
+1.6-1.7x, and the plain-JVM thread lane regresses past 4 cores.
+
+Added as a digest table right after the full one, sourced from the
+exact same run (`wroclaw-table-refresh`, 2026-09-11) — no new
+measurement, and every cited number was checked programmatically
+against the source table before committing. The 9% noise-floor
+caveat that sits beside the full table is repeated here too, because
+at ONE core every library but Flink is within a few percent of the
+others: the finding is the slope, not the starting point. The
+mechanism stated once: okay fans the job across fibres joined by
+`merge`, where the others parallelize a single `Stream`/`foreachPar`
+and hit its fan-in cost before they run out of cores.
+
+README's "Fast" bullet gains one sentence naming the result, and a
+compact version of the same table sits beside the existing Stream
+pipeline and Merge tables — the first core-scaling numbers in the
+file a first-time reader sees. Landed as b7514589 and pushed to
+origin/master, per the operator's ask to publish it.
+
+## dataflow-rescale — change the partition count between two epochs
+
+specs/dataflow.md stage 13, boxes 1 and 3 (TestRescale). A stream
+stops at epoch N running `parts` ways and resumes at N+1 running
+`parts'` ways, and the answer is the batch answer — six width changes
+asserted, grow and shrink, down to one partition and up from one.
+Building it found the two conditions a sound re-cut needs, and the
+engine enforces both:
+
+- the SOURCE must be striped, not sliced. `Flow.striped` (global
+  element i to partition i % parts) consumed in lockstep leaves a
+  clean global prefix [0, G); each new partition skips the count of
+  its own elements in it — ceil((G-j)/parts) — and reads the rest, no
+  replay. A contiguous cut has no such prefix and is refused.
+- the SINK must keep its state in the fold, not in open panes. A
+  windowed operator keeps open panes in the WORKER, rebuilt by replay
+  on a same-width resume; a re-cut cannot replay, so those panes would
+  vanish (a diagnostic showed exactly the window straddling the stop
+  watermark lost per rescale). A keyed or fold sink keeps everything
+  in the coordinator's fold, which carries across a re-cut untouched.
+  A windowed rescale is refused, naming box 2 (journal the open panes)
+  as the work that would lift it.
+
+New: `Job.rescalable` (default false), `Flow.striped`. Box 3 fell out
+free — the workers vector is a resume argument, so a different-length
+one re-maps partitions (a death without the death); the test changes
+partition count and worker count together. A rescale mints FRESH
+session ids (the old ones read the old cut). Refuted in place: forcing
+the per-partition skip to zero re-reads the whole feed and doubles the
+answer. Filed: dataflow-rescale-windowed (box 2).
+## split-url-named — the one of the five that was public, and the record that said otherwise
+
+`named-pairs-security` named the two same-typed pairs where a swap is a
+security defect, and filed the other five with a sentence: "All are
+private or module-local, so the blast radius is small and so is the
+value". Four are. `Site.splitUrl` carries no modifier at all. It is
+public API answering `(String, String)` for `(path, query)`, so the
+caller who can take them the wrong way round need not be in this
+repository, and what they get is the query string as the path, with
+nothing to catch it.
+
+The operator asked whether anything was left to do. That question is
+what sent me back to CHECK the claim instead of repeating it, and the
+checking is the whole lane: `private[conf]`, `private[KafkaStore]`,
+`private`, `private` — and one with nothing.
+
+`splitUrl` now answers `(path: String, query: String)`. Its four call
+sites move off position: three destructures inside `Site`, and
+`pathOf`, which read `._1`. A named tuple has no `_1`, so it reads
+`.path`, which is what the line meant. `TestSplitUrl` pins the split
+both ways and that a wrong name does not compile, paired with the
+right one.
+
+The wrong sentence is left STANDING in BACKLOG's `named-pairs-rest`
+with the correction beside it, rather than edited away, because that
+sentence is the reason the row was not taken in the morning. A ledger
+that quietly fixes its own claims teaches nothing about how the claim
+got made.
+
+Landed as 060dbcdc. Gate: the full matrix, 4392 tests, 0 failures, and
+the gate's own warning check across 175 module compiles found none.
+
+## named-pairs-security — two pairs where a swap was a security defect that compiled, and the survey behind them kept whole
+
+After `named-tuples-stage0` showed that named tuples work here and cost
+nothing, the question was where they are actually needed. The survey
+found seven functions in main sources returning a SAME-TYPED pair, so
+that a positional swap compiles and no test catches it by type. Two are
+security primitives whose doc comments already carried what the type
+did not:
+
+    /** a PKCE pair: the verifier stays, the S256 challenge travels */
+    def pkce()(using c: Crypto): (String, String)
+
+    /** (the key to hand out once, the digest to store) */
+    def issue()(using c: Crypto): (String, String)
+
+Swap the first and the verifier travels while the challenge stays,
+which leaves PKCE protecting nothing. Swap the second and the secret
+is stored in the clear while its digest is handed out. Both compiled,
+and every existing test passed, because both components are `String`.
+
+They now answer `(verifier: String, challenge: String)` and
+`(key: String, digest: String)`.
+
+**The call sites moved to field access, and that is the part that
+matters.** A positional destructure of a named tuple still binds BY
+POSITION — measured before the work — so naming a return does not by
+itself stop a caller swapping. The protection lives where the value is
+READ: `p.verifier`, or a named destructure, which binds by name
+whatever order it is written in. `Oidc.login` and the two test call
+sites were changed for that reason and not for style.
+
+`TestNamedPairs` pins all of it: the challenge really is the S256 of
+the verifier, the swapped key pair does not verify, a named
+destructure written challenge-first still binds by name, and a WRONG
+name does not compile — each refusal paired with the right name, so
+what is refused is the name and nothing else about the snippet.
+
+**And the rest of the survey is recorded rather than dropped**, which
+is what the operator asked for. BACKLOG's `named-pairs-rest` carries
+the five remaining pairs with what a swap does in each — `Secrets.scheme`,
+`KafkaStore.range`, `Smtp.stamp`, `Site.splitUrl`, `FileStore.readHeader`
+— and why they were not taken here: all are private or module-local,
+so the blast radius and the value are both small. It also carries the
+method note, which is the reusable part: naming a return is not a
+guard; the call site's spelling is. `wroclaw-pipeline-named` records
+the other follow-on, merging the measurement twin into one named
+pipeline, which both named-tuple lanes deliberately left alone.
+
+Landed as 6a8546e5. Gate: the full matrix, 4388 tests, 0 failures,
+and a repo-wide `Test/compile` before it with 0 errors and 0 warnings
+— which is also what answers the one open question a signature change
+leaves, whether some call site outside okay-security destructured
+these pairs positionally in a way the survey missed. None did.
+
+## named-tuple-unblock — the universal `apply` declines named tuples, and nothing leaves the API
+
+`named-tuples-stage0` found that `import okay.*` disables named
+tuples: `Generate.scala` offers an `apply` on EVERY type so a loop can
+run as `seed(body)`, a named tuple's field access desugars to an apply
+BY INDEX, and so `t.route` reported `Found: (0 : Int)`. The entry
+priced two one-line fixes — move the extension behind an explicit
+import, or drop the `seed(body)` spelling — and took neither, because
+both remove something from the public API and that is the operator's
+call, not a lane's.
+
+The operator asked for the problem solved. There is a third way, and
+it removes nothing:
+
+    extension [A](a: A)(using scala.util.NotGiven[A <:< NamedTuple.AnyNamedTuple])
+      inline def apply[R](f: A Loop R): R = loop(f)(a)
+
+The extension simply declines named tuples, so the selection falls
+through to the compiler's own, and `seed(body)` keeps working for
+every other seed.
+
+**The refuted step is in the entry, because it is the one a reader
+will try first.** Guarding on `Tuple` does NOT work: a named tuple is
+not `<:<` a `Tuple`, so `NotGiven` succeeds, the extension applies
+anyway and the error is unchanged. `NamedTuple.AnyNamedTuple` is the
+exact upper bound, and the difference is the whole fix.
+
+Pinned from both sides in `TestNamedTuples`: the fields are reachable
+under `import okay.*`; a named tuple still IS the plain `Tuple2` at
+runtime and `==` to it, so the names stay free; the `seed(body)`
+spelling still resolves, checked BY TYPE rather than run, since a bare
+`take` body is an infinite loop by construction; and a plain tuple
+still indexes, which is the compiler's own apply and not ours.
+
+And the regression test is real code rather than a snippet:
+`GtfsNamed.scala` went back to the plain wildcard import it had to
+avoid this morning. If the guard ever regresses, that file stops
+compiling, and its 4 593 288-departure equality against the original
+pipeline goes with it. It passes under the wildcard now.
+
+specs/bulk.md's stage 1 — a declared row type for one file, with the
+escape hatch its calendar's computed column names need — is no longer
+blocked.
+
+Landed as 1adff686 (the guard, the test and the twin's import) and
+0f13970a (typepedia's reason). Gate: the full matrix twice, 4378 then
+4380 tests, 0 failures, the second after a rebase because master had
+gained okay-demo's Ledger under a lane that changes the CORE it
+compiles against; a repo-wide `Test/compile` before both, 0 errors and
+0 warnings, which is the real check for a `using` added to a public
+extension. The Live half — the 4 593 288-departure equality under the
+wildcard import — runs in `integrationTest` and was run by hand, since
+the gate must not depend on a 48 MB feed.
+
+## one-binary-story — the small-business path, run end to end in one process
+
+`okay.demo.Ledger`: a shop's sales into an okay-persist `FileStore`,
+a daily report per item by okay-cluster's windowed engine over that
+log (the stage-11 road, `Cluster.local` as the one worker — the same
+`Job` four machines would run), the report as an okay-ui `Table`
+rendered by `Frame`, and a backup of the closed segments to an
+okay-blob `Blob`, restored into a fresh directory and certified by
+the `Doctor`. One process, function calls between the modules,
+`TestLedger` runs it end to end. Every piece existed; the work was
+the seam — okay-demo now depends on okayCluster and okayBlob — and
+the honest sentence: a backup is the books up to the last roll,
+`segmentBytes` bounds what a lost disk costs, and the test asserts
+the restored report is that prefix and NOT the whole. Two findings
+filed: backup-active-segment, ui-table-terminal-gap.
+
+## federation-two-parties — two logs, two processes, one job; the refusal is an answer
+
+specs/federation.md stage 1, landed on one machine because federation
+is about ownership and not distance. Two `WorkerMain` processes, each
+started as a party (`-Dokay.party=N`) holding its own okay-persist
+log, one tumbling job over both: the value, drop count and merged
+count equal the fan's over the whole feed; every partial that crossed
+decodes under the sink's `Wire.wire` AND re-encodes to the same bytes,
+so no byte is outside the Schema; 582 bytes crossed for 341 923 held
+(0.17%). In process, a counting store shows each party handing out
+exactly its own slice — twice, because a windowed sink's pre-pass
+reads the partition before the run does — and none of another's.
+
+The finding is `Cluster.Refused`. A party asked for a partition it
+does not hold refuses, and a refusal must reach the coordinator as a
+`Resp.Failed` — the worker's considered answer, which `ask` does not
+carry to the next worker. Over a socket that was already so
+(`Served.handle` answers any throwable as `Failed`); in process,
+`Cluster.local` let the throwable propagate and `ask` read it as a
+death, buried the refusing party and asked the dead one — "no
+workers left" instead of "partition 1 belongs to party 1; this is
+party 0". `Refused` is answered as `Failed` on both roads now; any
+other throwable keeps its meaning. Refuted in place: with the change
+stashed, both refusal tests fail with "no workers left". Killing
+party B across real processes fails the run naming B, and B's log
+counts zero reads. `TestFederation`, in the default gate. Next:
+federation-refusal (stage 2, the allow-list and the coordinator's
+identity).
+
+## dataflow-netem — on a lossy wire the loss never ends a run; the burial policy does
+
+Stage 12 needs machines that are not this one, and one of its boxes
+never did: `dataflow-reconnect` buried a worker after three
+consecutive failures and called the number a judgement. A `Serve`
+that loses requests by a seeded schedule prices it on one machine
+(TestNetem, in the default gate).
+
+Four workers, eight partitions, forty schedules per rate: tolerance 3
+carries 20% loss with certainty, the knee is at 30%, half the runs die
+at 50%, none finish at 70% — and the runs that die are the runs in
+which workers were BURIED. The same wire with the count as a second
+dimension: with burial off, a 70% wire finishes every run. Three lost
+packets are read as a dead machine, and from 30% up that reading is
+what turns a cluster of live machines into "no workers left".
+
+The count couples two failures that are not the same — a machine that
+is gone, for which every retry is waste, and a link that drops, for
+which every retry has the same chance — and no one number serves
+both. `tolerance` is a parameter of `Cluster.run` and `Cluster.stream`
+now. Telling the two apart BY THE ENGINE (a lost packet answers late
+or not at all; a dead machine refuses the connection) needs a real
+wire, and is stage 12's.
+
+Seeded per worker; which worker a partition's attempt reaches is the
+fibres' order, so the counts move by a run or two and the assertions
+sit far from any edge.
+
+## dataflow-seek — a session opens at its position, for the sinks that can (stage 11, box 2)
+
+A resumed run replayed every partition from zero. With the log as the
+source that is the one cost a log exists to remove, and the claim for
+this box predicted "one Long on the wire and one signature". Reading
+the code first said that was wrong, and the correction is the finding:
+a WINDOWED operator cannot seek, because its open panes live inside
+the partition and are handed over only when they close — a fresh
+session at a position has none of them and their contributions from
+before it reach nobody. A fold and a keyed sink can, because what they
+hand over each epoch is a delta and `peek` empties the map.
+
+So `Sink.seekable` is a property of the sink (fold, keyed: true;
+windowed: false; `and`: both). `Flow.Src` thunks take a start —
+`Flow.slices` and `Streams.chunks` position themselves, `Flow.of`
+reads and drops, which is the replay named in one place. `Resp.Epoch`
+carries the position, the journal carries one per partition, and a
+seekable sink's sessions open AT it — on a resume and on a replacement
+worker mid-run, one road.
+
+Asserted by a counting Topic, not by the flag: a keyed job resumed
+after a coordinator death reads exactly `total - Σpositions`; a
+windowed job on the same schedule reads the whole topic again; a
+mid-run replacement reads its tail. Controlled: opening at zero fails
+both seek assertions.
+
+Box 2b — a windowed sink that seeks — is designed in the spec with its
+two roads and their costs, and not built.
+
+## named-tuples-stage0 — the names are free, the inference holds, and our own wildcard import is what blocks them
+
+A measurement, not a migration, on the job that already needed comments
+to say its types. `Gtfs.departures` writes the shape of every step of
+its join chain in a trailing comment, because the tuples cannot:
+
+    !stopTimes.join(trips)                                             // trip -> (time, (route, service))
+      .select { case (_, (time, (route, service))) => ... }            // route -> (time, service)
+
+Swap `time` and `service` there and it still compiles. `GtfsNamed` is
+the same pipeline with the payloads named and those comments deleted,
+and three questions were set against it before the work started.
+
+**Does it compute the same thing? Yes, on the real feed.** Both
+programs run over the Wrocław GTFS snapshot and are compared by a
+four-way summary (count, sum, min, max) of a measure mixing every
+field of `Dep`, so a swapped pair would move it: **4 593 288
+departures, identical summary**. The names cost nothing at runtime
+either, and that is not an assumption — `(route = "a", service = "b")`
+IS a `scala.Tuple2` and `==` to `("a", "b")`, probed before building.
+
+**Does inference survive our own generic API? Yes, and that was the
+coin toss.** `select[B](f: A => B)` and `join[B](r: Table[(K, B)]):
+Table[(K, (A, B))]` carry a named payload through the whole chain with
+no annotation anywhere. Had it needed one per step, the readability
+win would have been spent and the answer would have been no. What
+stays positional is `join`'s key pairing, by signature, and that is
+where the remaining `case (_, (dep, service))` ugliness lives.
+
+**How much would a declared row type cover? Most, and the exception is
+structural.** 56 reads by a literal column name in the files that read
+CSV rows, each declarable. Three read a column by a COMPUTED name —
+`Vector("monday", ..., "sunday").map(r(_) == "1")` in the calendar —
+which no field access can express, so any row type will need an escape
+hatch for it. This entry also corrects a figure quoted earlier in the
+lane: "410 reads" came from a pattern matching every `r("...")`-shaped
+call in the repository, most of which are not row reads. 56 is honest.
+
+**And the answer nobody asked for.** `import okay.*` disables named
+tuples outright. `Generate.scala:25` extends EVERY type with an
+`apply` so a loop can run as `seed(body)`, and a named tuple's field
+access desugars to an apply by index, so `t.route` reports
+`Found: (0 : Int)`. Reproduced standalone in four lines with a
+stand-in extension of the same shape, so it is the shape and nothing
+else; `import okay.given` alone is fine, it is the wildcard that
+carries it. Filed as `universal-apply-blocks-named-tuples` in BUGS.md
+with two one-line fixes priced and NEITHER TAKEN: both remove a
+spelling from the public API, and the `Loop`/`take` DSL it serves has
+no other user here — no test, no doc example, one mention in
+typepedia's type list. That is the operator's call, not a lane's.
+`GtfsNamed` imports okay's names one by one, which is the only reason
+this measurement could run at all.
+
+Nothing migrates on this stage, by the rule set in the claim. Stage 1,
+a declared row type for one file, is filed BLOCKED on that BUGS entry:
+a feature our own wildcard import disables is not one we can ask users
+to adopt.
+
+Landed as 17d82472. Gate: the full matrix, 4358 tests, 0 failures,
+and the gate's own warning check across 179 module compiles reported
+none. The measurement itself runs in `integrationTest`, not the gate:
+the suite is `Live`-tagged and reads a 48 MB feed, which is exactly
+the kind of test the gate must not depend on. Running it in a fresh
+worktree needs the data linked in, `okay-spark/target/data/gtfs`
+pointing at the main checkout's copy, the same shape as the
+model-gated suites.
+
+## optics-topology-corrected — I measured Stage and wrote about the repo
+
+`ca26605f` recorded, for the topology candidate, that "nothing here
+meets the staticness condition", and explained at length why
+`Stage[I, O, A] = A ! (Take % I + Writer % O)` is a program rather
+than a graph. Every word of that is true of `Stage`. None of it is an
+answer about the tree.
+
+**`okay.Tables.Plan[A]` is the static graph the candidate asks for**,
+and its own comment says why it is a GADT and not a `Free`: *"A `Free`
+program could not offer this (its continuations are functions); the
+tree can."* It carries the three interpreters an `Arrow` would have
+been reached for:
+
+- `Plan.show` DRAWS it — okay-spark's `TestWroclawAlgebra` collects
+  rendered plans;
+- `Plan.optimize` FUSES it — a projection into its `Read`, the small
+  join side to the right — under the law *"the turned join answers
+  exactly what the written one does"*;
+- `compile(B)` RUNS it over any `Bulk[D]`, local `Chunks` and Spark
+  alike.
+
+Drawn, fused, shipped to a cluster: the three things specs/optics-
+outside.md named as the reason to want staticness at all. So the
+candidate is ANSWERED rather than waiting — and answered the way
+`conf` was, by something already in the tree, built from an ordinary
+datatype with no profunctor in it. Reopen it if a plan must branch on
+a VALUE and still be drawable; that is the `ArrowChoice` shape, and it
+is the one thing `Plan` cannot do.
+
+**The lesson is this arc's own, turned on its author.** A measurement
+names what it measured. "Nothing in the tree does X" is a claim about
+the tree, and it costs one more grep than the claim I was entitled to
+make. The entry was written the same day as the rule it broke.
+
+## route-secured-with-a-value — a declaring route declares its answer
+
+The backlog said "mechanical when something asks". Something asked.
+
+`html` and `media` got their `Headed` forms this morning because
+okay-demo's committed document rendered `/admin/replay` with a 401, a
+403 and no success case. The rest follow now: `htmlAt`, `bytes`,
+`bytesAt`, `events`, `eventsAt`, `json`, `jsonAt`, `out`, `outAt`,
+`jsonOut`, `jsonOutAt` — on the class and on the companion. Each is
+its `Routed` twin with one difference repeated: the match is
+`route.read(r)`, which answers the url's tuple AND the headers', the
+handler takes both, and the entry's answers begin with the 401 and 403
+a requirement implies.
+
+```scala
+Router.out(Method.Get, (Route / "t" / "id".as[Int]).secured("admin"),
+           200, "the task")((id, _) => fetch(id))
+```
+
+`events` is the one worth pointing at: a stream that resumes from
+`last-event-id` is the shape stage A declared a header FOR, and until
+now it could declare the header or its media, not both.
+
+**One wrinkle, written down in three places because it is obscure.**
+The `Headed` forms carry NO default arguments — Scala allows defaults
+on only one overload of a name and the `Routed` forms have them — so
+`status` and `description` go POSITIONALLY. A named argument narrows
+overload resolution before the argument types are read, so
+`description = "…"` picks the `Routed` overload and fails to
+typecheck. A compile error rather than a wrong answer, but not an
+obvious one.
+
+## demo-admin-declared — the demo broke its own law, for one route
+
+`grep -c admin okay-demo/openapi.json` was **0**. `/admin/replay` was
+mounted with `.orElse(Admin.routes(...))`, outside `declaredRouter`,
+so it was served and documented nowhere — the one thing this arc's law
+forbids. It could not have been otherwise until stage B: in the
+document it would have rendered as an open door.
+
+`Router.++` is the operation `empty` has been the zero of since stage
+1, finally written down. A service mounting several modules' tables
+had to fall back to `orElse` over `PartialFunction`s, which serves
+them and DESCRIBES NONE — a renderer reads `entries`, and `orElse` has
+none.
+
+**The first real document found two defects in stage B that no
+synthetic test had.**
+
+A secured route could only be declared with `on`/`at`, which say
+nothing about the answer, so `/admin/replay` rendered a 401, a 403 and
+no success case — an operation that reads as unable to succeed. The
+demo's own guard, "no operation in the published document says
+`undeclared`", caught it. `media` and `html` have `Headed` forms now.
+And the renderer says `default: undeclared` whenever nothing declares
+a 2xx, which is the general rule the case belonged to.
+
+The 401 and 403 declared `application/json` by default and send no
+body at all. An answer with no media renders without a `content` key,
+which is how OpenAPI says "no body"; an empty object under a media
+type describes a body nobody sends.
+
+**And two of the demo's document tests assumed every path answers
+GET** — invisible while the document was all-GET, false the moment one
+operation was POST-only. They drive each (path, METHOD) now, and
+compare the content-type against the media the document files THAT
+STATUS under, rather than 200 always. A third was added for stage B's
+set equality on a real service: what the document marks `security` is
+what the table refuses without a credential.
+
+`/admin/replay` now reads: a summary, `security: [{bearer: [admin]}]`,
+200 `text/html`, 401 and 403 each carrying `www-authenticate` and no
+body.
+
+## json-literals — the JSON transparency that was refused, in the shape that makes it safe
+
+`throws-into` had refused `into` on `Json`, and the refusal was right
+about the danger and wrong about the cause. The danger: `Json.parse(s)`
+answers a `Json`, so with an ambient `Conversion[String, Json]` a
+caller who passes an already-serialized document gets `JStr(document)`
+with nothing to catch it — double encoding, in the module whose job is
+encoding. The cause is not `into`, which only says "conversions to me
+need no language import". The cause is an AMBIENT conversion, and the
+operator's shape removes it: the conversions live behind an import, and
+the dangerous one is refused by the compiler rather than by a warning.
+
+    import Json.literals.given
+    obj("name" -> "ada", "age" -> 36, "ok" -> true)
+
+**A string LITERAL converts, a `String` value does not.** That is the
+whole design, and it is a type-level refusal:
+
+    inline given [L <: String & Singleton] => Conversion[L, Json] =
+      inline constValueOpt[L] match
+        case Some(_) => (s: L) => JStr(s)
+        case None    => error("only a string LITERAL converts to Json here. " +
+                              "For a String value write JStr(x); if it holds a " +
+                              "serialized document you want Json.parse(x).")
+
+A conversion is chosen by TYPE and both meanings of a `String` have the
+same type, so it cannot read intent. Restricting it to constant types
+is what separates "text I am writing here" from "a value I am carrying".
+
+**The refuted step is a test.** The singleton bound ALONE does not
+work: every stable `val` has a singleton type, so `f(doc)` type-checked
+with `L = doc.type` and the first attempt let exactly the dangerous
+case through. `constValueOpt` is what distinguishes a constant type
+from a reference to one, and `TestJsonLiterals` pins it.
+
+`Int`, `Double` and `Boolean` convert plainly, since no document can
+hide inside them. **`Long` is deliberately absent**: `JNum` holds a
+`Double`, so a `Long` past 2^53 would convert with silent precision
+loss, which is the same defect one paragraph up.
+
+`===` compares a `Json` with anything the import converts, so
+`json === "x"` reads as the comparison it is. It is sugar, not a guard,
+and the guard was never needed: `json == "x"` does not compile with or
+without this import, because Scala 3 derives `CanEqual` for enums and
+refuses comparison with an unrelated type. An earlier note in this
+repository claimed that comparison silently answered `false`; it does
+not, and the note is corrected.
+
+Every assertion in `TestJsonLiterals` is PAIRED with a positive twin it
+differs from by one word — with the import against without it, a
+literal against a `val`, an `Int` against a `Long` — because a `false`
+from `typeChecks` says "no", not "no for the reason I meant". Coverage,
+measured before building: 239 of 566 string construction sites here are
+literals, so this shortens 42% by design and leaves the other 58%, the
+ones carrying values, spelled `JStr(...)` exactly as before.
+
+Landed as 4ddc07be (the spec, before the code), 678ce272 (the API and
+its test) and 22afc87b (the spec's boxes). Gate: the full matrix, 4353
+tests, 0 failures; a COLD repo-wide `Test/compile` for the warnings,
+since the matrix now says out loud that a warm run checks none, and it
+reported zero across every module; both Jmh configurations, which
+`Test/compile` does not reach. The `into` keyword sits on an enum the
+whole repository uses, and that compile is what priced it: nothing
+outside `Json.literals` changed.
+
+## route-headers-answers — what an answer carries, and which half is load-bearing
+
+Stage C, the last of specs/route-headers.md. `Answer` gains `headers`,
+`Router.answering(status, names*)` declares them on the entry just
+built, and the document renders `responses[*].headers`.
+
+**The stage exists to state a distinction, not to add a field.** There
+are two kinds of declared response header:
+
+- What the ROUTER sends is true BY CONSTRUCTION. A secured route's 401
+  declares `www-authenticate`, and `Router.challenge` writes it from
+  that same value — the document and the wire read one value, not two
+  that agree by care. A test asserts both ends: declared, and present
+  on the response.
+- What an AUTHOR declares is DESCRIPTION. The handler builds its own
+  `Response` and nothing checks the claim.
+
+The second could have been enforced — refuse a response whose declared
+header is missing — and deliberately is not: that turns a
+documentation slip into a 500, which is worse than the slip. Saying
+which half is load-bearing is more useful than pretending both are.
+
+`answering` on an empty table throws where the mistake is, as
+`summarised` does; a status the entry does not answer gets an answer
+with no schema, because "it sends this header" is worth stating even
+when the body is undeclared.
+
+With this the three stages the operator asked for are done: a header
+is a `Named[T]` in a third place, a route declares what it requires
+and the table refuses, and an answer says what it carries.
+
+## route-headers-security — the document stops showing an open door
+
+Stage B of specs/route-headers.md. `POST /admin/replay` rendered as an
+unprotected operation, because `Secure.granted` wrapped the FINISHED
+`PartialFunction`: the requirement was applied after the table was
+built and never reached an entry, so no renderer could see it. A
+caller who believed the document got a 401 it never mentioned.
+
+```scala
+val replay = (Route / "admin" / "replay").secured("admin")
+
+Router.on(Method.Post, replay)((_, _) => doReplay())
+      .enforcing(Secure.verifier(verify))
+```
+
+**The module boundary shaped the interface, and improved it.**
+okay-security depends on okay-http, so `Policy` and `Verified` cannot
+appear in a route declaration and okay-http must not grow an identity
+model of its own. What a route declares is DATA — scheme, scopes,
+realm — which is exactly what an OpenAPI `securityScheme` carries; and
+`Router.Verify` is `String => Either[String, Set[String]]`, a bearer
+token in and the scopes it grants out. `Secure.verifier` adapts. A
+policy that reads the ACTION or the RESOURCE stays with
+`Secure.granted`: both roads exist, and neither is deprecated.
+
+**The behaviour inverts against stage A, deliberately.** A declared
+required HEADER that is absent is a MISS. A missing CREDENTIAL is a
+MATCH that answers 401 — because `Secure.bearer` states the invariant
+in its own comment: *protection must not change WHICH requests a route
+answers, only who gets through*. A secured route that missed would
+answer 404 to everyone without a token: it leaks less and lies more.
+
+**FAIL CLOSED.** A secured entry whose table never got a verifier does
+not serve — 401 `no_verifier`. Declaring a requirement and forgetting
+`enforcing` would otherwise open a hole the document swears is shut,
+which is worse than having no declaration at all; a route that 401s
+everywhere is a loud mistake.
+
+**The handler never runs for a refused request.** Definedness is
+`matches`, never `run` — the distinction that cost a one-time login
+code its 401 in optics-outside stage 7.
+
+**The law is asserted twice, as set equalities.** In okay-http:
+`enforcing` refuses exactly the entries whose `security` is non-empty.
+In okay-openapi: the operations carrying a `security` key are exactly
+those entries.
+
+okay-admin is converted, and the evidence that the conversion
+preserved behaviour is that its seven existing 401/403 tests pass
+through the new road unchanged. Two more were added for what is new:
+that the route DECLARES, and that the declared table with no verifier
+serves nobody.
+
+## openapi-prose — the operation says what it is for
+
+The last open stage of the OpenAPI spec, and the smallest. Every
+operation in the demo's published document was identified by a derived
+id and nothing else: `getEventsByEmail` names the url a second time and
+never says what the operation is FOR. A reader deciding whether it is
+the one they want has nowhere to look.
+
+That sentence is the only part of a declaration nothing else can
+derive. A path comes from the route, a parameter's kind from its
+`Param`, an answer from the handler's type; purpose comes from the
+author or from nowhere. So it is written where the operation is
+declared:
+
+```scala
+Router.html(Method.Get, Route.root)(_ => pure(page))
+  .summarised("open the chat: talk to the agent, which moves the board")
+```
+
+`summarised` attaches to the entry just declared. That is one builder
+method instead of a parameter on each of twenty combinators, and a
+builder chain already reads that way — the declaration says what the
+operation IS, and the sentence is about that, in the order it is
+written. Summarising an EMPTY router throws where the table is built,
+because a method that silently did nothing would put the sentence on
+no operation at all and report that nowhere.
+
+An operation nobody summarised carries no `summary` field rather than
+an empty one: an empty string is a promise of prose that is not there.
+Its derived id is unchanged, which is what identifies an operation
+nobody described.
+
+`out`, `outAt`, `jsonOut` and `jsonOutAt` gained the `description` the
+media combinators already took, so a declared answer can stop reading
+"the declared answer" — okay-demo's `/board.json` now says "every task
+on the board, open and done alike".
+
+Two smaller things found on the way. `out` and its three siblings were
+reachable only through `Router.empty`, because the companion mirrored
+`on`/`at`/`json`/`of` and stopped there; every declaring form can
+begin a table now. And the demo's six operations are summarised, held
+by a test that refuses a published operation with no summary — or with
+one under ten characters, since a placeholder passes a presence check
+and says nothing.
+
+Commit: 8fb278dc.
+
+## route-headers — a header is a Named[T] in a third place (spec + stage A)
+
+The operator asked for a generalized mechanism for headers in the
+routing API. specs/route-headers.md is the design; stage A is the
+request half, landed with it.
+
+**Nothing new was invented, because the general unit already existed.**
+`Route.Named[T]`'s own comment has said since stage 1 that there is
+one type and not two *"because the OPERATOR says where it goes"*. A
+request header is the third place: `/` into the path, `:?` into the
+query, `:@` into the headers, with the same `as`/`opt`/`all`
+spellings. One builder serves query and header alike, because a header
+block IS a `Map[String, Vector[String]]` — the very shape a query
+string is. There is no parallel set of header combinators to keep in
+step.
+
+**The design fact that decides everything: a header cannot join `A`.**
+The law the arc rests on is `unapply(url(a)) == Some(a)`, and if `A`
+carried an `Authorization` value, `url(a)` would have nowhere to put
+it — the law would hold "mostly", which this repository refuses on
+principle (`Param.string` already refuses an empty capture for the
+same reason). So `Routed[A]` stays a prism on the URL, untouched, and
+`:@` produces `Headed[A, H]`, the request-shaped declaration, with a
+law of the same shape: `readHeaders(requestWith(h)) == Some(h)`.
+
+Two behaviours are decided rather than defaulted. A REQUIRED header
+that is absent is a MISS, not a 400 — a router answering 400 would be
+claiming no other route could have matched, which it cannot know.
+Names match case-insensitively whichever casing the declaration used,
+because that is what they are on the wire; the lookup map is built
+under the DECLARED names and filled from whatever arrived.
+
+okay-openapi renders a declared header `in: header`, beside the
+template rather than inside it.
+
+**Found while building it, by the rule that landed an hour earlier:**
+the first name for the description type was `Route.H`, and the
+compiler answered with E226 — it shadows the `H` in
+`Split.cons[H, T, B]` three screens away. Warnings are red in the gate
+now, so that was not a thing to argue with over one letter. It is
+`Route.Hdr`.
+
+Stages B (security declared AND enforced) and C (response headers) are
+specced and filed, not built: B is where the document currently lies,
+and C falls out of it.
+
+**Met on the way, and filed rather than swallowed:** this lane's gate
+caught `okay.TestGrowing`'s "each producer's own order survives the
+swap" a SECOND time, and the signature matches the occurrence recorded
+on 2026-09-10 — producer 1 both times, one element hoisted forward
+past its own predecessors across a part swap, `5, 13, 7, 11, 15`
+against `49, 57, 51, 55, 59`. Two trees, two days, one shape. That
+moves BACKLOG's `growing-channel-order-under-load` from "seen once"
+towards the first of its two hypotheses: a real race in the
+adoption/swap path that needs contention to show. Not tagged, not
+retried into green; the entry has the detail and the log name.
+
+## openapi-media — the pages and the streams declare too
+
+The lane before this one shipped okay-demo's document and every one of
+its six operations said the same thing: `undeclared`. That is not a
+renderer's failure. `out` and `jsonOut` declare an answer BY
+CONSTRUCTION — the router encodes with the same `Schema` the entry
+carries, so the document and the wire are one derivation — but they
+can only encode JSON, and the demo answers a page, two event streams
+and a JavaScript bundle.
+
+Nothing in that argument was ever about JSON. It needs only that the
+ROUTER, and not the handler, decides what goes on the wire. So
+`Router.Answer` carries a media type now, and three combinators keep
+the property for content that has no schema at all:
+
+```scala
+router.html(Method.Get, Route.root)(_ => pure(page))
+router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+```
+
+The handler answers the CONTENT and the router writes the
+content-type, so an operation's `content` key in the document is the
+media type a client will actually receive. `media` is what the three
+are written in terms of, and it is public: the list of media types is
+not ours to close, and a service answering `application/pdf` gets the
+same property without waiting for a combinator here.
+
+**The charset is declared only where the router did the encoding.**
+`html` takes a `String` and writes UTF-8 bytes, so it sends
+`text/html; charset=utf-8`. `bytes` and `events` are handed bytes, and
+nobody in the router knows what encoded them, so the header stays the
+bare media type. The DECLARATION is bare either way — a charset is a
+detail of one response, not a kind of content — and that split is a
+law rather than a convention: for every entry, the media it declares
+is the media its own answer's content-type names. A combinator that
+wrote a header the entry did not declare would fail it, which is the
+whole reason the header is written in the router.
+
+An answer with no schema still gets a `content` block, keyed by its
+media with an empty schema object. `{}` is how OpenAPI says "this
+media type, shape unstated"; leaving content out would say the
+operation answers with no body at all, which is a different and false
+claim.
+
+The demo declares all six operations, and its committed document now
+contains the word `undeclared` zero times. Two tests hold that: one
+that the published document never says it, and one that runs the REAL
+service and checks, for every path the document names, that the
+content-type on the wire is the media type the document files it
+under. `/board.json` went the other way, to `out` over a `BoardView`
+derived from `Board`'s own `Task` — the JSON object it used to build
+by hand named every field a second time, and `None` encodes as `null`
+exactly as that object sent it.
+
+Each combinator takes a `description`, so an answer carries one true
+sentence — "the board feed: a `hello` event, then one `board` event
+naming the kind of every change" — without waiting for stage 3. Per
+operation SUMMARIES, and a description for `out`, are still that
+stage's work.
+
+One Scala note worth keeping: a default argument may not name a
+sibling in the SAME parameter list. `contentType: String = media`
+compiled and resolved `media` to the enclosing METHOD of that name,
+which typechecked as a function value and failed a dozen lines later.
+It is `Option[String] = None` instead.
+
+Commit: 8881bed2.
+
+## schema-fold stage 3 — Validate, the accumulating decoder
+
+`Validate.decode` is `Json.decode`'s applicative twin: every refusal,
+each at its dotted path, the typed value on success — the same rules,
+read off `decodeNative` line by line, as the ninth algebra over
+`Schema`, on `fold` + `Step`. Laws against `decode` on shared
+fixtures: same verdict on every input, same value on success, decode's
+one message among Validate's many.
+
+Two findings. A dotted-path STRING carried per level is O(depth²)
+bytes — a 100 000-level value exhausted the heap on it (the same
+finding as Form.render's keys, TestFormDepth); Validate carries a cons
+list of segments and renders only on error, and the deep test passes.
+And the membership law caught `Json.decode`'s own wording defect:
+`want.getClass.getSimpleName` is empty for an enum's singleton cases,
+so a wrong scalar read "expected , got JStr(x)" — now the node's kind.
+
+`Form.errors` does NOT switch to Validate: its whole-vs-walk rules
+and wording are pinned UI behaviour; filed as `form-errors-on-validate`.
+
+## openapi-serve — the document gets its readers
+
+A document nobody serves rots, and the spec named two readers. Both
+have one now.
+
+`OpenApi.routes(api, router)` serves the document at `/openapi.json`
+and a page at `/openapi`. The page is RENDERED ON THE SERVER — no
+JavaScript, no CDN — and that is a decision rather than an omission:
+this repository renders deployments for machines with no network, and
+the usual `<script src="…swagger-ui…">` produces a page that cannot
+explain the API in an air-gapped cluster. The cost is no "try it"
+button; a test holds the line (`no <script>`, nothing fetched).
+
+The second reader is the integrator, who is not in this repository, so
+the proxy for them is a diff in review: okay-demo now serves both
+routes from the same router that answers its requests, and
+`okay-demo/openapi.json` is COMMITTED with a drift test —
+`sbt "okayDemo/runMain okay.demo.DemoOpenApi"` regenerates it, the way
+DemoDeploy does for the deployment. A third test makes the check
+stronger than drift alone: every path the document names is a path the
+service answers.
+
+One thing moved in the demo to make it possible: its router was a
+local `val` inside `routes`, so the only way to see the service's
+paths was to answer a request with them. It is `ChatDemo.declaredRouter`
+now, taking the capabilities the declarations actually read (the
+secrets and the board, not the store), and `routes` calls it — so the
+document and the dispatch cannot disagree.
+
+The drift test earned its keep on its first full run: the demo serves
+`/app.js` only where the linked bundle is present, so its surface
+varied with the working directory and the committed document did not
+match. What is published is now the PACKAGED surface — what a deployed
+service offers, which is what DemoDeploy's image contains — and
+`declaredRouter` takes that as a parameter rather than reading the
+disk. A document that varies with the machine cannot be diffed, and
+nothing but a drift test would have said so.
+
+17 tests in okay-openapi, 3 in okay-demo. Landed alongside a sibling's
+openapi-parameters, which gave path parameters their kinds and brought
+the queries through — their note is worth keeping: a DESCRIBE
+interpreter is only as good as what survives the boundary it is read
+across. Commit: 4758e8f7 (+456b5460, +1a93f90c, +ab836d23).
+
+One thing outside the lane came with it, because the gate could not
+go green otherwise: `schema-fold-1`'s deliberate-overflow witness in
+okay-codec discarded a `Json`, which is a warning on all three
+platforms, and "no warnings, ever" makes that a red gate for every
+lane that rebases onto master. `val _ =`, not a `: Unit` ascription —
+the ascription does not silence a value discard.
+
+## schema-fold stage 2 — the value walk written once, and four doors on it
+
+`Schema.Step` is the depth-aware value walk: `NativeThreshold`, then
+`Cont.defer`, in ONE place (`Step.child`) where five doors carried a
+hand copy. `Schema.Folded` memoises a fold per schema by identity
+across calls — a fold is per schema, an encode per value. On them:
+`Json.encode`, `Cbor.put`, `Form.render`, `Form.errorsOf`, each's
+`*Native`/`*C` twin pair deleted, no `match` on the GADT and no depth
+logic left in any of the four.
+
+MEASURED against the old code kept verbatim as benchmark lanes in the
+SAME JMH invocation (5 forks): the sum lanes 25% faster on both wires
+with non-overlapping ranges, the JSON product lane 11%, the CBOR
+product lane inside the bars — a fold resolves the GADT dispatch once
+per schema where the interpreter re-matched it per value node, and
+that buys more than the identity lookup costs. `Staged` untouched.
+Rows in src/jmh/history.tsv.
+
+## dataflow-source-log — the partition is a topic partition (stage 11, box 1)
+
+The repository's thesis is one primitive, the durable log, and the
+dataflow engine had never read from it. `Streams.chunks(topic, p,
+from)` is a blocking, iterator-backed `Chunks[Record]` over a topic
+partition, and `Flow.of` takes the thunk: three lines, no dependency in
+either direction, because both halves were built to the same shape.
+
+A job over a MemoryStore topic answers what the fan over the array
+answers at 1, 4 and 8 partitions, batch and streamed — and `merged` is
+the same count, because partition p holds the p-th contiguous slice,
+the cut `Flow.slices` makes.
+
+`TooEarly` is a `DroppedHistory` rather than a resume: a partition that
+silently started later than asked would answer a different question.
+
+Box 2 — seeking by epoch, so a resumed run reads from the last epoch
+instead of replaying from zero — is designed in the lane's claim and
+in the spec, not built: the session records its offset beside its
+extent, and `Flow.Src` thunks take a start.
+
+## Distinct — the row's members, told apart at compile time
+
+`split` decides a union by a runtime test on the left member and takes
+the right by exclusion. That is sound exactly when no member's test
+accepts another member's operations, and nothing checked it:
+`TestRowIdentity` has demonstrated the consequence for as long as it
+has existed — `Reader % Int + Reader % String` sends both asks to the
+Int handler, and the String continuation dies of a ClassCastException
+at its first wrong answer. `summon[Distinct[R]]` is that
+demonstration moved to the time you can still fix it, and
+`Handler.union` now requires it.
+
+**What it compares is the test, not the type**, and that is the whole
+design. The backlog asked for the keys to be compared; two
+measurements killed that plan in both directions. Comparing keys
+refuses `Of["k", Ping] + Of["k", Peng]`, which the morning's
+tag-test-the-signature-too made legal. Comparing erasures instead
+refuses `Writer % String + Writer % Int`, which routes correctly,
+because `writerK` reads the told VALUE with a `Typeable[W]` rather than
+testing a class. Nothing about the two TYPES separates those cases.
+So the instance says it: `TypeableK.ByValue` is the opt-in marker,
+`writerK` is the only instance in this tree that carries it, and
+unmarked means "tests by erasure". The default is the safe direction —
+an unmarked fine instance is refused and fixed by one word, while the
+opposite default would quietly pass a row that misroutes.
+
+That makes it not a Tag check at all. It catches the UNTAGGED
+`Reader % Int + Reader % String`, which is the defect `Tag`, `Refs`,
+`Instances` and `Delim` all exist to work around.
+
+**Where it is required**: `Handler.union`, in a second using clause.
+That is the one place `split`'s excluded middle is claimed, it is 15
+call sites rather than `RowLift.at`/`plus`'s 147, and a second clause
+leaves the sites that pass the first one explicitly alone. Both
+disqualifiers in the backlog entry were measured before the
+requirement was kept: zero breakage (the whole tree compiles, the gate
+is green at 4247 results, all ten okay-agent union sites included) and
+no compile-time cost worth naming (a full Test/compile in 44 s; a cold
+core of 70+105 sources in 34 s with zero warnings).
+
+**Three things the reflection taught, all written into the file.**
+`TypeRepr.of[R]` for a higher-kinded parameter arrives as an
+HKTypeLambda, never as the applied `+` the call site wrote — so the
+row is read from its applied body, where only a union is an `OrType`
+and `%` (also two arguments) is not. A `Tag.Of[K, F][A]` member is an
+applied ALIAS rather than an applied `Tag`, so `baseType(tagSym)` is
+what sees it and a structural match never does. And `F | F` is `F`: a
+row cannot repeat a member at all, so the check only ever fires on two
+DIFFERENT types with one runtime identity.
+
+The witness is a class, not an opaque `Unit`. `RowLift.In` can be the
+latter because it is summoned from outside `RowLift`, where the
+opacity holds; a witness summoned from inside `package okay` cannot —
+the alias is transparent in its own scope, the given's type then
+constrains R to nothing, and every row is satisfied by the macro run
+at some inferred R. `Distinct.unchecked` is the constructor that
+leaves, deliberately public, for the rows the macro cannot see.
+
+## schema-fold stage 1 — the catamorphism, and the first algebra on it
+
+`Schema.scala`'s header promised that every derivation is a
+catamorphism; `Schema.fold` now exists. `Algebra[F]` is a
+paramorphism (the node comes with its folded edges — defaults and
+vocabularies need it), edges are `Edge[F, B]` with a type member
+because `F[?]` is unreducible for an abstract `F`, and the knot of a
+recursive type is tied by schema IDENTITY: a finished node is
+memoised, a named node still on the path is handed to the algebra as
+`ref(name)`. Three casts, each restoring only what erasure took, none
+on a value.
+
+`JsonSchema.of` is the first algebra moved: byte-for-byte what the
+hand-rolled version answered on every non-recursive shape (proved
+against a verbatim copy of the old code kept in the test), and on a
+RECURSIVE schema — where the old `of` descended for ever, which no
+caller had ever asked it — `$defs`/`$ref`. `Compat` does not move: it
+is a walk over two schemas, not a fold over one; the spec is
+corrected.
+
+## dataflow-direction — stages 11-13, and federation as a spec
+
+What is left, written where it can be checked instead of said in a
+chat. Stage 11: the log is the source — partitions that seek by epoch,
+a staging sink whose append is the commit, exactly-once from log to
+log on the repository's own primitive, all on one machine. Stage 12:
+the network, BLOCKED on machines that do not exist, with the boxes
+written so that the day they do the work is a run; and its one-machine
+half, a Serve that delays and drops by a seeded schedule. Stage 13:
+rescale at an epoch boundary.
+
+And specs/federation.md, from the one property the engine already has
+and had not named as a product: accumulators cross, records do not.
+Aggregation across parties where the records stay home — with the
+trust boundary, schema at the door and the bound on the leak named as
+the work rather than waved at, and Claim 3 said plainly: an aggregate
+can still be a record, and what the engine offers is that the leak is
+the Schema.
 
 ## leads-out — the lead ledger leaves the platform; it was product code in the wrong repository
 

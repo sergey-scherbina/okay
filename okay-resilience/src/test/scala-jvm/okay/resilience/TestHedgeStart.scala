@@ -44,12 +44,35 @@ class TestHedgeStart extends munit.FunSuite {
           cancelled.updateAndGet(_ + n): Unit
           f.cancel()
 
-  /** a bounded wait for a state change — a deadline, not a duration
-   * anything is asserted about */
+  /**
+   * A WAIT FOR A CONDITION, WITH A TRIPWIRE — not a deadline anything
+   * is asserted about (hedge-bounds, 2026-09-18).
+   *
+   * The old shape spun on `Thread.yield()` until a FIVE-SECOND wall
+   * clock and then failed. Beside ninety other module runs that is
+   * not a statement about hedging, it is one about the scheduler, and
+   * it failed four landing gates from four lanes that could not have
+   * caused it — the last of them a lane whose whole diff was one line
+   * of build.sbt.
+   *
+   * Two things changed and each has a reason:
+   *
+   *   - THE BUDGET IS A TRIPWIRE. Sixty seconds is not a claim about
+   *     how fast anything is; it is the line past which "slow" has
+   *     become "hung", and it is what keeps a genuine deadlock from
+   *     hanging the gate for ever. The assertion below is still the
+   *     CONDITION; the clock only says when to stop waiting for it.
+   *   - IT SLEEPS INSTEAD OF SPINNING. `Thread.yield()` on a loaded
+   *     box can hand the core straight back to this thread, which is
+   *     the one thread that has nothing to do; a millisecond of sleep
+   *     gives it to the fibre being waited on. (The starvation theory
+   *     was tested and REFUTED with burners at load 22 — this is not
+   *     the cause, it is one less thing competing while we wait.)
+   */
   private def until(what: String)(p: => Boolean): Unit =
-    val deadline = System.currentTimeMillis() + 5000
-    while !p && System.currentTimeMillis() < deadline do Thread.`yield`()
-    assert(p, s"timed out waiting for $what")
+    val deadline = System.nanoTime() + 60_000_000_000L
+    while !p && System.nanoTime() < deadline do Thread.sleep(1)
+    assert(p, s"waited 60s for $what — at that point it is hung, not slow")
 
   test("an attempt forked while the answer arrives leaves neither a running attempt nor an armed timer") {
     val timer = ManualTimer()

@@ -53,32 +53,45 @@ and Kiselyov's "Reflection without remorse" \[[van der Ploeg & Kiselyov
 Haskell adopted.
 
 Okay takes a third road, already visible in chapter 1: **normalize in
-the one interpreter**. `Free.fold` (`Free.scala:51–58`) is a `@tailrec`
-loop whose first two cases *are* the monad laws used as rewrite rules:
+the one interpreter**. `Free.resume` (`Free.scala:127`) is a
+`@tailrec` member of the enum — a member wins resolution, so every
+interpreter in the library reaches the one loop — whose first two
+cases *are* the monad laws used as rewrite rules:
 
 ```scala
 // associativity
-case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).fold(p)(h)
+case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
 // left identity
-case Bind(Pure(a), f)    => f(a).fold(p)(h)
+case Bind(Pure(a), f)    => f(a).resume
+// a deferred subprogram: forced here, continued AS IS
+case Delay(t)            => t().resume
+case Bind(Delay(t), g)   => Bind(t(), g).resume
 ```
 
 Every pass rotates left-nests right and discharges pure prefixes, so
-the interpreter only ever confronts three normal shapes — `Pure(a)`,
+an interpreter only ever confronts three normal shapes — `Pure(a)`,
 `Inject(e)`, `Bind(Inject(e), k)` — and handler code across the
-library matches exactly those (the comment at `Effects.scala:409–411`
-makes the normal form explicit). What it buys is measured in
-`docs/benchmarks.md` §1 against cats' `Free`, cats-effect IO, ZIO and
-kyo on the worst case (10 000 left-nested binds); what it costs — one
-`Bind` allocation per `flatMap`, as chapter 1 noted — is what chapter 6
-claws back where it matters.
+library is a three-case match over exactly those (`Free.fold`,
+`Free.scala:143`, is the model; the comment on `resume` states the
+invariant and why every such match is written `@unchecked`). The
+fourth case, `Delay`, is the trampoline: `!.tailcall` builds one, a
+capturing handler reifies the rest of the program into one, and the
+runner forces it without composing anything onto it — chapter 11
+explains why "defer, then wrap in `Pure`" was a tax on every bind that
+followed, and what replacing it measured. What the rotation buys is
+measured in `docs/benchmarks.md` §1 against cats' `Free`, cats-effect
+IO, ZIO and kyo on the worst case (10 000 left-nested binds); what it
+costs — one `Bind` allocation per `flatMap`, as chapter 1 noted — is
+what chapter 6 claws back where it matters.
 
-Chapter 2 showed the same two moves on `Cont` — defunctionalize, then
-normalize in the runner — plus a third (closure fusion under a budget)
-that `Free` deliberately lacks: effect programs are inspected by
-handlers, and a fused closure cannot be split on a row. The pair of
-types is one design at two points: `Cont` optimizes for *running*,
-`Free` for *being interpreted*.
+Chapter 2 showed the same two moves on `Cont`, and since 2026-09-15
+they are the *same* moves: `Cont` is this tree at the signature "a
+function of the continuation", with one refinement `Free` itself
+lacks — a fresh leaf absorbs its first bind — because effect programs
+are inspected by handlers, and a fused closure cannot be split on a
+row. The pair of types is one tree at two uses: `Cont` optimizes for
+*running*, `Free` for *being interpreted*, and chapter 11 is the
+account of how that became one enum rather than two.
 
 ## Does the third road actually hold? (the linearity measurement)
 

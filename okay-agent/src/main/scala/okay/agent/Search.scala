@@ -8,7 +8,7 @@ import okay.given
  * IS nondeterminism, so the strategies every agent framework
  * hand-rolls are one-liners over `Choose` and `Logic` here:
  *
- * - best-of-N   = choose among N completions, `once` to commit;
+ * - best-of-N   = choose among N completions, `cut` to commit;
  * - retry-until = `ifte` — the SOFT cut: use every answer that
  *   validates, and re-prompt ONLY when none did (a plain flatMap
  *   cannot say "no answer"; a hard cut would lose the good ones);
@@ -33,7 +33,7 @@ object Search {
   /** the first sample that passes the check; none pass = no answer */
   def bestOf[A, F[+_]](n: Int)(gen: A ! (Choose + F))
                                   (ok: A => Boolean): A ! (Choose + F) =
-    Logic.once(samples(n)(gen).flatMap(a =>
+    Logic.cut(samples(n)(gen).flatMap(a =>
       guard[[X] =>> X ! (Choose + F)](ok(a)).map(_ => a)))
 
   /** every sample that passes, in order (the fold-friendly form:

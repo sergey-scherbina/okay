@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, Stream}
+import okay.{!, +, Async, Chunk, Produce}
 import okay.given
 import okay.persist.{Ack, Policy, Record, Store, Topic}
 import okay.sql.{Sql, SqlValue}
@@ -102,14 +102,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
   private def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
   private def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async))
-  : Vector[Vector[SqlValue]] =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    def go(rest: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
-      S.uncons(rest).flatMap {
-        case None => okay.pure(Vector.empty)
-        case Some((c, more)) => go(more).map(c.toVector ++ _)
-      }
-    run(go(p))
+  : Vector[Vector[SqlValue]] = run(okay.Producer.concat[Vector[SqlValue], Async](p))
 
   private def all(sql: String, params: Vector[SqlValue] = Vector.empty): Vector[SqlValue] =
     drain(db.query(sql, params)).map(_.head)

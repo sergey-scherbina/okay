@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -31,6 +33,12 @@ fun Render(u: Ui, act: (Event) -> Unit, modifier: Modifier = Modifier) {
                 else -> if (u.style.dim) Color.Gray else Color.Unspecified
             },
             fontSize = when (u.style.size) { Size.Small -> 12.sp; Size.Normal -> 14.sp; Size.Large -> 20.sp },
+            // what the text IS (ui-text-intent): an identifier is read
+            // against something else, so it is monospaced; a number is
+            // compared down a column, so it sits where the column ends.
+            // Compose has no tabular-figures switch, which is not drawn
+            fontFamily = if (u.style.kind == Kind.Ident) FontFamily.Monospace else null,
+            textAlign = if (u.style.align == Align.End) TextAlign.End else null,
         )
         is Ui.Row -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) { u.children.forEach { Render(it, act) } }
         is Ui.Column -> Column(modifier) { u.children.forEach { Render(it, act) } }
@@ -85,8 +93,22 @@ fun Render(u: Ui, act: (Event) -> Unit, modifier: Modifier = Modifier) {
         // level S never arrives: this client claims nothing, the server lowers
         is Ui.Items -> Column(modifier) { u.items.forEach { Render(it, act) } }
         is Ui.Table -> Column(modifier) {
-            Row { u.header.forEach { Text(it, Modifier.weight(1f), fontWeight = FontWeight.Bold) } }
-            u.rows.forEach { r -> Row { r.forEach { Render(it, act, Modifier.weight(1f)) } } }
+            // each COLUMN's share, and an even split when the server
+            // sent none or sent the wrong number of them — a tree
+            // arrives over a wire, so a mis-sized table draws evenly
+            // rather than throwing here (ui-table-weights). The floor
+            // of 1 is Compose's own rule, not the protocol's: it
+            // rejects a weight of zero, which CSS accepts
+            fun share(i: Int, n: Int) =
+                (if (u.weights.size == n) u.weights[i] else 1).coerceAtLeast(1).toFloat()
+            Row {
+                u.header.forEachIndexed { i, h ->
+                    Text(h, Modifier.weight(share(i, u.header.size)), fontWeight = FontWeight.Bold)
+                }
+            }
+            u.rows.forEach { r ->
+                Row { r.forEachIndexed { i, c -> Render(c, act, Modifier.weight(share(i, r.size))) } }
+            }
         }
         is Ui.Tabs -> Column(modifier) {
             Row { u.labels.forEachIndexed { i, l -> Render(Ui.Button(l, "${u.key}\$tab$i", if (i == u.selected) Role.Active else Role.Plain), act) } }

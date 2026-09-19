@@ -24,11 +24,22 @@ object Direct:
    * expansion; never executes — the macro rewrites every call.
    * Outside a direct block it throws at runtime by design. */
   extension [F[_], A](m: F[A])
-    def ? : A
-    def reflect: A   // the named spelling of the same mark
-  // ONE mark: .? serves monadic values AND raw operations — the
-  // macro dispatches by type (an F[T] reflects; an operation of the
-  // block's row is injected, then reflected)
+    def reflect: A   // the word
+    def !? : A       // the symbol
+    def ? : A        // the glyph (unwrap-glyph, 2026-09-17)
+    def unary_! : A  // the prefix, for rows: `!prog`
+  // ONE mark, four spellings: each serves monadic values AND raw
+  // operations — the macro dispatches by type (an F[T] reflects; an
+  // operation of the block's row is injected, then reflected)
+  //
+  // THIS BLOCK USED TO SHOW `.?` ALONE, AND WAS WRONG FOR A YEAR:
+  // Direct.scala retired that spelling (it collided with Throws' and
+  // with the row peek) while this section kept advertising it. The
+  // contradiction with the Decisions entry below cost an hour in the
+  // applicative-do lane — a block written with `.?` compiled, ran and
+  // answered correctly through auto-coloring while the glyph did
+  // nothing at all. specs/unwrap-glyph.md removed both collisions and
+  // gave the glyph back; the Decisions entry records the history.
 
   /** rewrite block: marks become Monadic binds, the result is F[A].
    * direct[F] names only the monad (partial type application via
@@ -94,6 +105,11 @@ stays for expression positions.
   and a `var` bound from a mark can be reassigned — both were
   compile errors ("used outside the scope where it was defined",
   "Reassignment to val v") found by the audit
+- [x] an `import` is a statement a block may contain (cont-in-direct,
+  2026-09-17): it binds nothing and runs nothing, so it rides along
+  into the built tree. It used to be "an unsupported statement",
+  which made a scoped spelling — `import Cont.direct.*`, `import
+  State.modify` — unusable inside a block
 - [x] a mark outside any direct block: the phantom throws with a
   message naming the macro
 - [x] a block with NO marks still compiles: `direct[F] { 42 }` ==
@@ -108,6 +124,146 @@ stays for expression positions.
   nor a row operation is refused with both possibilities named.
   The separate `.?` was REFUTED as redundant: the type already
   says which case it is, so the user should not have to
+
+## Deep recursion (deep-recursive-direct, 2026-09-15)
+
+The operator asked whether "Deep recursion in Scala 3" (Kozak) — a
+macro `deepRecursive` that rewrites a self-recursive body into
+`TailRec`'s `tailcall`/`flatMap`/`done` — can be had here, and then
+that it be `direct` itself rather than a second entry. It is, and her
+`TailRec` is this library's `Free`: `tailcall` is `Delay`, `flatMap`
+is `Bind`, `done` is `Pure`, `.result` is `!.run`.
+
+```scala
+import okay.Direct.{*, given}
+import scala.language.implicitConversions
+
+def fib(n: Int): Long ! Pure = direct:
+  if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+
+def sum(n: Int): Long ! Pure = direct:          // 1 + sum(n - 1): not tail
+  if n == 0 then 0L else 1L + sum(n - 1)
+```
+
+The rules: inside a `direct` block a call to the ENCLOSING def, at the
+block's own program type, is deferred wherever it is marked or
+auto-coloured; and a call to ANOTHER def at that type is deferred in
+the block's TAIL position (direct-tail-defer, 2026-09-16), which is
+what makes mutual recursion need no word — `fib(n - 1)` under `.reflect`, or under `selfColor`
+when `Direct.given` is imported, becomes `Free.delay(() => fib(n -
+1))` under the same mark. The DEFERRAL is the whole trick: a
+self-call evaluated at construction is the native recursion the
+block was written to avoid (on master before this lane, the coloured
+`sum(1_000_000)` overflowed a 512 KB stack at construction; with the
+rule it answers). The lowering of `a + b` with two calls, `if`,
+`match` and blocks is `direct`'s own. Never under a lambda (v1 does
+not look there): a self-call used as a value is left alone. Mutual
+recursion needs no word at all in tail position, and
+`!.tailcall(other(n))` where a mutual call stands anywhere else —
+which the article's macro cannot do either way.
+
+Behavior (TestDirectDeep):
+- [x] fib(25) = 75025 with two bare self-calls in one expression;
+      `1 + sum(n - 1)` at 1 000 000 on the suite's default stack; a
+      self-call inside `match` with two parameters; a real row whose
+      tells interleave with the recursion, in order.
+- [x] the marked spelling defers the same way; mutual recursion
+      through `!.tailcall`; a self-call under a lambda untouched.
+
+Decisions on the tail rule (direct-tail-defer, 2026-09-16):
+- **Why the position, and not the callee.** The enclosing def's symbol
+  is knowable at expansion; a mutual cycle is not — it spans files and
+  the other def may not be typed yet. The tail position is the one
+  piece of evidence the macro has, and it is the position where a node
+  costs one allocation and saves a frame. Before the rule, `else
+  isOdd(n - 1)` compiled, answered at small `n` and overflowed the
+  stack at depth; the failing test was written first and watched.
+- **Only a call, never a value.** A tail-position program VALUE (`else
+  p`) is left alone: naming a program builds nothing.
+- **Never twice.** A term that already defers — `!.tailcall`,
+  `Free.delay`, `Free.defer` — is skipped. Getting this wrong was not
+  theoretical: the first cut read no callee name through the
+  `Inlined`-with-bindings node `!.tailcall` expands into and wrapped
+  the node twice, which the `-Xprint:inlining` dump caught.
+- **The cost, measured.** `compare/DirectBenchmark`, two alternating
+  rounds: allocation IDENTICAL TO THE BYTE on `okayDirect`,
+  `okayDirectRec` and the `okayFlatMap` control, so the rule added no
+  node to any of them; time inside the lane's own noise (master's two
+  rounds swung 127.0 → 106.5 µs while the control moved 4% the other
+  way).
+- **"Defer every program-typed call" is the DEFAULT, with an import to
+  opt out** (direct-defer-default, 2026-09-16, the operator's call
+  after seeing the price; rows `da-*` measured it, `dd-*` are the
+  shipped pair). It is the only rule that also covers a mutual call
+  OUTSIDE tail position — a cycle the macro cannot see may be closed
+  from any position — and the operator chose safety by default:
+  a recursive block that compiles, answers small and overflows deep is
+  the failure a library must not hand its users, and the price is
+  visible and recoverable where it matters. One run, `okayFlatMap` as
+  the control (101.2 µs):
+
+  | lane | time | allocation |
+  |---|---|---|
+  | `okayDirect` (default) | 179.3 µs | 2 238 113 B |
+  | `okayDirectEager` (`import Direct.eagerCalls.given`) | 113.6 µs | 1 598 113 B |
+
+  +640 000 B is exactly 64 bytes — a `Delay` plus its thunk — for each
+  of the 10 000 marked calls that lane makes, and the opt-out gives
+  back the allocation to the digit. Both lanes are published so the
+  trade is in the numbers rather than in a sentence.
+- **The knob is a `using` parameter, not a summoned marker.** An
+  import whose only reader is a macro is an "unused import" to the
+  compiler, and that warning would land in every user's build; passed
+  as `using d: Deferral` the typer uses it, so the import counts. Two
+  ways to spell the default were wrong and both were caught by
+  compiling: a default ARGUMENT (`d: Deferral = All`) makes
+  `apply$default$N` take the inline block again, duplicating the whole
+  body — with a nested `direct` block inside it, `TreePickler` crashes
+  with `assertion failed: method $anonfun`; and declaring the givens at
+  type `Deferral` rather than at their singleton types hands the macro
+  a type that says nothing, so the import resolved and changed nothing
+  (the expansion dump showed both modes deferring).
+- **Two shapes are never deferred, in either mode.** A call already
+  wrapped in `!.tailcall`/`Free.delay`/`Free.defer` (else it pays for
+  two nodes), and a call that CARRIES DEFINITIONS — a lambda, a local
+  val or def, a nested block's context function — because moving such
+  a tree under a thunk moves symbols that are owned where they stand.
+  The thunk is also built under the owner at the rewrite site rather
+  than the splice owner, which is invisible while the rule only fires
+  at the top of a block and fatal once it fires inside one.
+
+Decisions:
+- **`direct`, not a second entry.** A first cut added
+  `Direct.deepRecursive` for a def with a PLAIN result type (the
+  article's signature: `def fib(n: Int): Long`), generating a
+  `loop$deep: Long ! Pure` and `!.run`ning it — 58 tests green — and
+  the operator asked for the recursion to work with `direct` at the
+  program type instead. It does, once the block's own values colour:
+  `selfColor` already applies to `A ! Row` (it looked as if it did not
+  — three probes refused `val x: Long = f(n - 1)` — until the
+  imports the auto-colouring tests carry were noticed: `Direct.given`
+  and `scala.language.implicitConversions`; a wildcard import does
+  not bring givens). A `rowColor` given written for the supposed gap
+  was removed the same hour. What `deepRecursive` offered on top was
+  a value-typed signature, and that is the article's constraint
+  (a macro runs after the typer), not a need of this library.
+- **The deferral is a mark, not a new node.** `Direct.reflect(Free
+  .delay(...))` and `selfColor.apply(Free.delay(...))` are shapes the
+  pipeline already lowers; nothing learned a new case. The self-call
+  detector runs once over the block before `compile`, keyed on the
+  enclosing def's symbol (`Symbol.spliceOwner` walked up to the first
+  `isDefDef`).
+- **`.?` was not a mark, and is one again** (unwrap-glyph,
+  2026-09-17). It was retired because two other things answered `?` on
+  a program: `Throws.?`, which through the `into` conversion answered
+  it on ANY value and did nothing at all, and the row peek `!.?`. Both
+  are gone — the Throws glyphs moved into their type's companion,
+  where a converted receiver cannot reach them, and the peek took the
+  word `peek`, which is what a method that RUNS operations through a
+  Handler should have been called. The Interface block above showed
+  `.?` throughout the retirement, and that contradiction is what made
+  the incident in specs/unwrap-glyph.md possible. All four spellings
+  now work: `.reflect`, `.!?`, `.?`, prefix `!p`.
 
 ## Out of scope (v2 roads, recorded not promised)
 
@@ -184,6 +340,75 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **A lambda whose body ends at the block's program type is compiled,
+  not refused** (direct-program-lambda, 2026-09-16). The general
+  lambda refusal stands; this is the same narrow exception `try` and a
+  nested `def` already have, and it is sound for the same reason — the
+  body ALREADY answers at the program type, so binding the marks
+  inside it changes neither the lambda's type nor where it is
+  evaluated. The body compiles through the ordinary `compile` (it
+  reads the block's own locals) and is flattened by one `flatMap`,
+  since an expression answering a program compiles to `F[F[T]]`. Only
+  the block's OWN row: another row would need its `Monad` summoned and
+  its type carried into the pipeline, and the shape that wants this —
+  a `Delim` continuation handler — answers at the row it was written
+  in. What it buys: `Delim.shift(p) { k => "x".tell; k(n) }` with no
+  inner `direct` block (`TestDelim`).
+
+- **A call whose ARGUMENTS carry marks is not deferred**
+  (direct-marked-args, 2026-09-16). `!f(!f(5))` was refused as "a mark
+  under a lambda", and the lambda was the macro's own: the
+  defer-every-call rule wraps a call in `Free.delay(() => …)` before
+  anything is compiled, so a mark in an argument landed under that
+  thunk and the general lambda refusal fired, naming a lambda the user
+  never wrote. The arguments bind first and the call is built inside
+  the continuation, where there is nothing left to defer; deep
+  recursion through such a call is `!.tailcall`'s job, as it is under
+  `eagerCalls`. Found writing `Delim.shift(p)(k => direct { !k(!k(5)) })`,
+  the natural spelling of a continuation invoked twice — with it,
+  `shift` and `reset` are written inside a `direct` block, handler and
+  all (`TestDelim`).
+
+- **A nested parameterless `def` at the block's program type is
+  compiled, not refused** (direct-nested-def, 2026-09-16). The general
+  refusal stands — a mark inside a nested definition would need the
+  definition's signature rewritten — but this shape needs no rewrite:
+  the def already ENDS at the program type, so binding the marks
+  inside its body leaves its meaning alone, and `def` keeps being by
+  name (a bind per use). The body compiles in the same pass, since it
+  reads the block's own locals, and is flattened the way
+  `colourlessVal` flattens a val's: a body ending in a program is bound
+  and its answer marked. A fresh symbol carries it, because inference
+  gives `def plan = effect(...)` the precise `Free.Inject[R, A]` while
+  the compiled body is a `Free[R, A]`; the uses are rewritten onto it,
+  a coloured use as a mark and a bare use as the program. Defs with
+  parameters keep the refusal. This is what makes the three words
+  comparable on one function: `val` 3 calls per request, `def` 0/1/3/8,
+  `lazy val` 0/1/2/3 (docs/direct-style.md).
+
+- **`lazy val` with a mark is the `Once` effect, not a cell in the
+  tree** (direct-once, 2026-09-16; the operator's design). The first
+  cut was `Free.once(p)`: a `Delay` whose thunk checks a mutable
+  cell. Refused before it compiled, for three reasons the effect
+  answers at once: a mutable field makes the same program answer
+  differently on its second run (a replaying handler, a persisted
+  journal, replays a stale value); "once" under a multi-shot handler
+  needs a policy the macro cannot check, so an import flag would
+  have been a promise nobody verifies; and a concurrent or abandoned
+  first run is undetectable from inside the thunk. As an effect the
+  cells are `Once.run`'s threaded state, the tree stays data, and
+  the multi-shot policy is handler order — `runChoice(Once.run(p))`
+  backtracks the cells, `Once.run(runChoice(p))` shares one store —
+  which the compiler checks. The handle carries no program so that
+  `Once`'s type does not name its row; the program stays with
+  `!.once`, which is `Once.at` (the row-generic form the macro emits,
+  the two operations injected by the caller) at `Once + F`. A lazy
+  val with a mark and no `Once` in the row is refused with the effect
+  named; a self-referring one is refused (a knot at run time, a
+  dangling symbol after the rewrite); a demand while the program is
+  running throws. `Logic.once` (the cut) first kept its name, and a
+  file importing both `!.*` and `Logic.*` found the two ambiguous
+  within the hour; it is `Logic.cut` (logic-cut, the same day).
 - **Tail fusion for loop bodies** (direct-tail-fusion, 2026-09-02;
   the road direct-flatmap-emission recorded): a loop BODY compiles
   against an explicit tail term — `compileTail(t, tail)` returns an

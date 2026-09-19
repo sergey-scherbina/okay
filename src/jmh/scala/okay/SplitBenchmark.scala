@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
-import okay.!.{Effect, Bind, resume}
+import okay.!.{Inject, Bind}
 import okay.RowLift.at
 
 /**
@@ -61,10 +61,10 @@ class SplitBenchmark {
   def writerEither(): Int =
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => <|>[Writer % String, Produce](e) match
+      case Inject(e) => <|>[Writer % String, Produce](e) match
         case Left(Writer.Say(v)) => (s :+ v, ())
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => <|>[Writer % String, Produce](e) match
+      case Bind(Inject(e), k) => <|>[Writer % String, Produce](e) match
         case Left(Writer.Say(v)) => loop(s :+ v)(k(()))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
     loop(Vector.empty)(wp)._2
@@ -76,17 +76,18 @@ class SplitBenchmark {
   def writerExtract(): Int =
     val T = summon[TypeableK[Writer % String]]
     def old[A](e: (Writer % String)[A] | Produce[A]): Either[(Writer % String)[A], Produce[A]] = e match
-      // the extractor's Option, called as a method so the shape is the
+      // the extractor's Option, rebuilt here from `test` since
+      // `TypeableK.unapply` is gone (core-cleanup), so the shape is the
       // pre-stage-A kernel's and nothing else
-      case x => T.unapply[A](x) match
+      case x => Option.when(T.test(x))(x.asInstanceOf[(Writer % String)[A]]) match
         case Some(w) => Left(w)
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => old(e) match
+      case Inject(e) => old(e) match
         case Left(Writer.Say(v)) => (s :+ v, ())
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => old(e) match
+      case Bind(Inject(e), k) => old(e) match
         case Left(Writer.Say(v)) => loop(s :+ v)(k(()))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
     loop(Vector.empty)(wp)._2
@@ -136,13 +137,13 @@ class SplitBenchmark {
     def _loop(x: A ! Writer % String + F): (Seq[String], A) ! F = loop(x)
     @tailrec def loop(x: A ! Writer % String + F): (Seq[String], A) ! F = (x.resume: @unchecked) match
       case Free.Pure(a) => Free.Pure((buf.toList, a))
-      case Effect(e) => split[Writer % String, F](e) {
+      case Inject(e) => split[Writer % String, F](e) {
           case Writer.Say(v) => buf += v; Free.Pure((buf.toList, ())): (Seq[String], A) ! F
-        } { e => Effect(e).map(x => (buf.toList, x)) }
-      case Bind(Effect(e), k) => split[Writer % String, F](e) { w0 =>
+        } { e => Inject(e).map(x => (buf.toList, x)) }
+      case Bind(Inject(e), k) => split[Writer % String, F](e) { w0 =>
           (w0: @unchecked) match
             case Writer.Say(v) => buf += v; loop(k(()))
-        } { e => Effect(e).flatMap(x => _loop(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(k(x))) }
     loop(a)
 
   @Benchmark
@@ -160,11 +161,11 @@ class SplitBenchmark {
   def stateEither(): Int =
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => <|>[State % Int, Produce](e) match
+      case Inject(e) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => (s, s)
         case Left(State.Set(s2)) => (s2, s2)
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => <|>[State % Int, Produce](e) match
+      case Bind(Inject(e), k) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => loop(s)(k(s))
         case Left(State.Set(s2)) => loop(s2)(k(s2))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
@@ -174,18 +175,19 @@ class SplitBenchmark {
   def stateExtract(): Int =
     val T = summon[TypeableK[State % Int]]
     def old[A](e: (State % Int)[A] | Produce[A]): Either[(State % Int)[A], Produce[A]] = e match
-      // the extractor's Option, called as a method so the shape is the
+      // the extractor's Option, rebuilt here from `test` since
+      // `TypeableK.unapply` is gone (core-cleanup), so the shape is the
       // pre-stage-A kernel's and nothing else
-      case x => T.unapply[A](x) match
+      case x => Option.when(T.test(x))(x.asInstanceOf[(State % Int)[A]]) match
         case Some(w) => Left(w)
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match
       case Free.Pure(a) => (s, a)
-      case Effect(e) => old(e) match
+      case Inject(e) => old(e) match
         case Left(State.Get()) => (s, s)
         case Left(State.Set(s2)) => (s2, s2)
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
-      case Bind(Effect(e), k) => old(e) match
+      case Bind(Inject(e), k) => old(e) match
         case Left(State.Get()) => loop(s)(k(s))
         case Left(State.Set(s2)) => loop(s2)(k(s2))
         case Right(_) => throw new IllegalStateException("no Produce is performed here")

@@ -1,6 +1,7 @@
 package okay.deploy
 
-import okay.{Fact, Module, Monoid}
+import okay.{Fact, Handler, Module, Monoid, Static, moduleAs}
+import okay.given
 import scala.quoted.*
 
 /**
@@ -51,6 +52,31 @@ object Needs:
 
   /** everything the composed application declared, in acquisition order */
   def declared[F[_]](m: Module[F]): Vector[Need] = m.facts.get(Declared)
+
+  /**
+   * THE NEEDS READ OFF THE PROGRAM, not declared beside it
+   * (di-needs-from-static, ROADMAP P13 item 4). The acquisition is a
+   * `Static` spine over `Provision`: what it opens, it opens with the
+   * ANSWER the place gave — a volume's mounted path, a database's
+   * URL, a port — so the need and the use cannot drift apart, and
+   * `Static.leaves` names every need before anything runs. The facts
+   * are the same `Declared` a hand-written `.needs(…)` writes, so
+   * `declared`, the deployment and every renderer are unchanged.
+   *
+   * {{{
+   *   Needs.provisioned[Store, FileStore](
+   *     Static.op(Provision.Volume(dir)).map(d => FileStore.open(d.resolve("board.log"))))(_.close())
+   * }}}
+   *
+   * The handler is the place: `Provision.local` by default (the
+   * process runs where the volume is mounted), or whatever a test
+   * brings. It runs at ACQUISITION, inside the scope, exactly where
+   * `moduleAs`'s by-name argument runs; the leaves are read now.
+   */
+  def provisioned[A, R <: A](spine: Static[Provision, R])(release: R => Unit)
+                            (using place: Handler[Provision]): Module[[X] =>> A ?=> X] =
+    moduleAs[A, R](spine.toFree.runWith(using place))(release)
+      .needs(spine.leaves.map(_.need)*)
 
   /** the usual declaration: this capability is the place's business */
   def apply[A](need: Need): Needs[A] = Place(need)

@@ -35,12 +35,27 @@ rules scoped operations out, and how a program becomes its meaning by
 lowering into Cont.
 *Plotkin & Power 2003 · Plotkin & Pretnar 2009 · Kiselyov, Sabry & Swords 2013 · Filinski 1994 · Kammar, Lindley & Oury 2013 · Forster et al. 2017 · Wu, Schrijvers & Hinze 2014*
 
+**[11 · One tree: `Cont` as a facade over `Free`](11-one-tree.md)**
+A shift is a leaf; the answer types live on the facade and cannot live
+on the nodes (the compiler said so, twice); one rotation, one normal
+form, one trampoline — and what each step of the 2026-09-14/16 arc
+measured, JIT included.
+*Kiselyov & Ishii 2015 · Danvy & Filinski 1990 · Filinski 1994 · Atkey 2009 · Bjarnason 2012*
+
 ### Part III · Making it fast, making it search
 
 **[6 · Final tagless and staging](06-tagless-staging.md)**
 Two classical answers to interpretive overhead, and Okay's three
 staging rungs.
 *Carette, Kiselyov & Shan 2009 · Taha & Sheard 1997/2000*
+
+**[12 · Applicative, Selective, Monad](12-applicative-static.md)**
+How much a program says about itself: the ladder as a ladder of
+visibility, the function applicative that IS S/K/I, leaves that run at
+once, effects listed before the run, N requests collapsed into one —
+and the line where staging stops, which is the line where flatMap
+starts.
+*McBride & Paterson 2008 · Lindley, Wadler & Yallop 2011 · Capriotti & Kaposi 2014 · Mokhov et al. 2019 · Marlow et al. 2014/2016 · Turner 1979/1986*
 
 **[7 · Logic, streams and sketches](07-logic-streams.md)**
 One primitive for fair search; streams as codata; approximation with
@@ -66,7 +81,8 @@ Why composition is the problem; the constraint as a type parameter and
 the meet as an intersection; Tambara modules and the Yoneda
 isomorphism; the traversal whose applicative slot is the effect row —
 and the line where a type-changing lens turns out to BE chapter 3's
-parameterised state.
+parameterised state — an INSTANCE, which is also how far it goes: a
+prism cannot zoom a typestate program, by parametricity.
 *Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Riley 2018 · Pastro & Street 2008 · Atkey 2009*
 
 ---

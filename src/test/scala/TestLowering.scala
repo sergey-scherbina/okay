@@ -97,7 +97,6 @@ class TestLowering extends munit.FunSuite {
     test(s"runWith is foldCont / identity — ${s.name}") {
       agree[Free]("Free", s)
       agree[Eager]("Eager", s)
-      agree[Eff]("Eff", s)
     }
 
   test("the encodings agree with the definition, not only with each other") {
@@ -105,8 +104,6 @@ class TestLowering extends munit.FunSuite {
     for s <- shapes do
       val viaFree = observe(byDefinition(s[Free]))
       val viaEager = observe(byDefinition(s[Eager]))
-      val viaEff = observe(byDefinition(s[Eff]))
       assertEquals(viaEager, viaFree, s"Eager lowering differs on ${s.name}")
-      assertEquals(viaEff, viaFree, s"Eff lowering differs on ${s.name}")
   }
 }

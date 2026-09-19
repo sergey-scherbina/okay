@@ -60,7 +60,7 @@ object Direct:
 
 Use sites need `import Direct.{*, given}` (a bare `*` does not bring
 givens in Scala 3) and `import scala.language.implicitConversions`.
-Naming note: `Direct.Effect` shadows `!.Effect` if both are imported
+Naming note: `Direct.Effect` shadowed `!.Effect` when both were imported (that alias of `Inject` is gone since inject-not-effect, 2026-09-15)
 unqualified — rare, and the qualified names disambiguate.
 
 ## Behavior
@@ -180,3 +180,40 @@ capabilities.md rule.)
 - The v1 machinery was reused whole: the entire v2 delta is the
   capability + two phantom givens + conversion-call detection folded
   into asMark + the discard guard traversal.
+
+## No ceremony (direct-no-ceremony, 2026-09-15)
+
+The operator asked for `direct` to colour without `import
+scala.language.implicitConversions`, and whether `into` would do it.
+
+- **Not `into`.** `into` lifts the feature warning in PARAMETER
+  positions of methods declared with it (`throws` uses it that way).
+  A block colours at ascriptions (`val x: Long = f(n - 1)`), at
+  receivers (`f(n - 1) + f(n - 2)`) and at foreign arguments
+  (`1L + f(n - 1)`, `Long.+`), none of which `into` reaches.
+- **The missing import is a feature WARNING**, measured with scalac
+  3.9.9 on a probe (`Feature Warning ... by adding the import clause
+  'import scala.language.implicitConversions' or by setting the
+  compiler option -language:implicitConversions`), and warnings are
+  red here — which is why nine files carried the import and why a
+  probe without it read as a type-system limit for an hour. The flag
+  is now in `ThisBuild / scalacOptions`, once, with the reason beside
+  it; the nine imports are gone. Downstream users need the flag or the
+  import in their own build, as before.
+- **`import Direct.given` is not needed for programs either.**
+  `Free.directColor[R, A](using DirectCtx[[X] =>> Free[R, X]]):
+  Conversion[Free[R, A], A]` lives in `Free`'s companion — the implicit
+  scope of the conversion's SOURCE type — so a `direct` block over
+  `A ! Row` colours its own values with nothing imported but `direct`
+  itself. `selfColor` stays in `Direct` for other monads (`direct
+  [Option]` still imports `Direct.given`, as its tests do), and the two
+  coexist: the companion one is strictly more specific, so no
+  ambiguity (TestDirectAuto green with both in scope). `opColor` is
+  unchanged and stays opt-in per signature.
+- **TestDirectDeep is the proof**: `import okay.Direct.*` only, and
+  `def fib(n: Int): Long ! Pure = direct: if n < 2 then n.toLong else
+  fib(n - 1) + fib(n - 2)` compiles, colours and trampolines.
+- **What the flag weakens:** TestThrows said "deleting the import is
+  the test" for `throws`'s `into` declaration; with the flag on for the
+  whole build that absence proves nothing any more. The declaration
+  stands (Throws.scala), the note in the test says so.

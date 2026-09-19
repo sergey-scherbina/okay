@@ -7,21 +7,42 @@ same material with the measurements attached.
 ## Control (Cont.scala)
 
 - **`Cont[A, S, R]`** — the parameterised continuation monad,
-  `(A => S) => R` defunctionalized (Pure/Shift/Bind); running is
-  tail-recursive with left-nested binds rebalanced; flatMap fuses
-  closures up to a depth budget. The foundation everything stands on.
+  `(A => S) => R` defunctionalized — as the freer tree itself: an
+  opaque `Free[Shift, A]` inside `object Cont`, a shift being a leaf
+  whose payload is a function of the continuation, `S` and `R`
+  phantom to the tree and carried by the facade's signatures
+  (theory ch. 11). Running is `Cont.step`, tail-recursive with
+  left-nested binds rebalanced and `Delay` forced; a fresh leaf
+  absorbs its first `flatMap` (`Leaf.Absorbed`/`Mapped`), exactly
+  once. The erased leaf type is written once, behind `Shift.of`
+  (forget, an upcast) and `Shift.at` (remember, THE cast).
+  `Cont.delay` is the tail call. The foundation everything stands on.
 - **`Control[M[_,_,_]]`** — final-tagless delimited control (`shift`,
   `reset`, `/`); instances `Cont` and `Func`. `transparent inline def
   Control[M]` is the staging entry: resolved statically, the ops
   inline away.
 - **`A /> S`** — `Cont[A, S, S]`, the diagonal. **`Loop[A, R]`**
   (alias `<<`) — `Cont[A, R, A => R]`: open recursion; `take` is the
-  loop's input, `loop` ties the knot.
+  loop's input, `loop` ties the knot. Its `seed(body)` spelling is an
+  `apply` extension on EVERY type, and it carries
+  `NotGiven[A <:< NamedTuple.AnyNamedTuple]` for a measured reason: a
+  named tuple's field access desugars to an apply BY INDEX, so without
+  the guard `import okay.*` turned `t.route` into "Found: (0 : Int)"
+  and disabled named tuples for anyone importing the package
+  (named-tuple-unblock, BUGS.md). Guarding on `Tuple` does not work —
+  a named tuple is not `<:<` one. The general lesson is in the entry:
+  a universal `extension [A](a: A)` competes with whatever the
+  compiler desugars into an apply on an arbitrary type.
 
 ## Effects (Effects.scala, Free.scala)
 
 - **`A ! F`** — a computation of `A` over the signature `F` (a freer
-  tree). **`%`** fixes a binary signature's parameter (`State % Int`);
+  tree: `Pure | Inject | Bind | Delay`, the node an operation sits in
+  being `Inject` — there is no `Effect` alias any more, that word is
+  the `derives` marker). `Free.resume` is the one rotation, a member;
+  `Delay` is the trampoline (`!.tailcall`, a capturing handler, the
+  codecs past `NativeThreshold`); `Free.defer(t)(f)` is
+  `Bind(Delay(t), f)`. **`%`** fixes a binary signature's parameter (`State % Int`);
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
   signature — in scopes importing `!.*` write `okay.Pure` (the
   Free.Pure case shadows it).
@@ -77,19 +98,23 @@ same material with the measurements attached.
   `runWith` runs with it. **`Handler.union`** composes one handler
   per effect into a row handler (an explicit combinator, not a given:
   a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
-  splits unions (`<|>`, `split`): `unapply` for pattern positions,
-  `test` — a plain boolean, no Option — for the split itself;
+  splits unions (`split`, and `<|>` as its `Either` form): `test`, a
+  plain boolean, is its whole interface (the extractor form went with
+  core-cleanup — nobody matched with it);
   identity-style signatures are split by the runtime class of their
   values, so keep them class-distinct.
-- **the direct marks: `.reflect` / `.!?` / `!prog`** — one mark,
-  three spellings, one dispatch-by-type inside `direct { }` blocks
-  (docs/direct-style.md): an `F[T]` of the block reflects, a row
-  operation injects then reflects. `.reflect` never collides; `.!?`
-  is the postfix symbol for chains; prefix `!` is the one-glyph
-  gesture (`unary_!` under the hood — shadows nothing). Gotcha: the
-  RETIRED `.?` belongs to the Throws machinery, not to direct — if
-  you see `Ambiguous extension methods` on a `?`, you are on an old
-  branch. Distinct from Monadic's `reflect`/`reify` pair below and
+- **the direct marks: `.reflect` / `.!?` / `.?` / `!prog`** — one
+  mark, four spellings, one dispatch-by-type inside `direct { }`
+  blocks (docs/direct-style.md): an `F[T]` of the block reflects, a
+  row operation injects then reflects. `.reflect` is the word, `.!?`
+  the postfix symbol, prefix `!` the one-glyph gesture (`unary_!`
+  under the hood), and `.?` came BACK in unwrap-glyph (2026-09-17):
+  it had been retired because `Throws.?` answered it on any value at
+  all through the `into` conversion, silently doing nothing, and
+  because the row peek held it too. The Throws glyphs now live in
+  their type's companion where a converted receiver cannot reach
+  them, and the peek is spelled `peek` — a word, for a method that
+  RUNS operations through a Handler. Distinct from Monadic's `reflect`/`reify` pair below and
   from the Effects encoding pair below THAT — three uses of one
   word, each namespaced.
 - **`reify` / `reflect` / `convert`** — one function at two ends. An
@@ -102,8 +127,8 @@ same material with the measurements attached.
   and `convert` crosses between any two without passing through a
   tree. A round trip in both directions, asserted for every encoding.
   Gotcha: `reflect` shadows `scala.reflect` inside package `okay`.
-- **`Effects[M]`** — the interface; instances **`Free`** (initial),
-  **`Eff`** (final/Church) and **`Eager`** (opt-in, companion-scoped
+- **`Effects[M]`** — the interface; instances **`Free`** (initial)
+  and **`Eager`** (opt-in, companion-scoped
   given: pure binds run at construction; the type is opaque so the
   encoding cannot leak into inference).
 - **`!.relay`** — tail-resumptive handling; **`Effects.handle`** —
@@ -112,7 +137,30 @@ same material with the measurements attached.
 
 ## The standard effects
 
-- **`Reader % R`** — `Ask`, handled at relay speed.
+- **`Reader % R`** — `Ask`, handled at relay speed. **Reading by the
+  TYPE read** is `Reader.read[E, T]` (reader-read): `ask` with a
+  projection through `Reader.Has[E, T]`, the accessor as a typeclass,
+  derived for a tuple, for a product's fields and for the environment
+  itself. The row still holds ONE Reader, `Reader.run` still handles
+  it, nothing casts, and a type the environment does not hold does not
+  compile. A component then declares exactly what it reads —
+  `def banner[E](using Reader.Has[E, Users]): String ! Reader % E` runs
+  in any environment holding `Users`. **Inside a `direct` block
+  `!Reader.ask` needs no type argument at all** (reader-env): the
+  environment comes from the block's ROW, so a block names it once and
+  never again — `val (users, feeds) = !Reader.ask`. It is an overload,
+  not a second name; `ask[R]` keeps working everywhere. Two witnesses
+  make it work, both resolved at typer time while the row is still the
+  alias the user wrote (`RowOf[F]` recovers the row from the block's
+  program type, `EnvOf[R]` finds the Reader inside it), and `ask` is
+  `inline` because the `DirectCtx` that pins the row is a value
+  parameter of a lambda the macro strips. Four routes to the same need,
+  and they answer different questions: one record (simplest), `read[E,
+  T]` (by type), `HMap` (by key, so two values of one type), and
+  `wire`/`providing` (context functions, not an effect). What does NOT
+  work is two Readers in one row — `Reader % A + Reader % B` misroutes,
+  `Distinct` says so, and `Tag.Of` is the answer when they must be
+  separate members.
 - **`Writer % W`** — opaque identity signature: telling w IS emitting
   w, zero allocation; `A ! Writer % W` keeps the element type apart
   from the answer; `Writer.uncons: Either[A, (W, rest)]`;
@@ -151,13 +199,37 @@ same material with the measurements attached.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
   the canonical `MonadPlus`. A `LazyList` of alternatives is an
   INFINITE choice point (Seq is the parameter, laziness crosses).
+- **`Once`** — call-by-need for programs: `!.once(p)` runs `p` at
+  the first demand and answers from a cell after, `Once.run` holds the
+  cells as threaded state. `lazy val x = !p` in a `direct` block is
+  this word. Multi-shot is handler order: `runChoice(Once.run(p))`
+  backtracks the cells, `Once.run(runChoice(p))` shares one store
+  (docs/direct-style.md, "Call-by-need").
 - **`Logic`** — backtracking search over Choose (LogicT): `msplit`
-  (first answer + the rest as a program — the one primitive), `once`
-  (cut), `ifte` (soft cut), `gnot` (negation as failure),
+  (first answer + the rest as a program — the one primitive), `cut`, `ifte` (soft cut), `gnot` (negation as failure),
   `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
   (first n of an infinite search). A library over the effect, not a
   new effect. See specs/backtracking.md.
-- **`Delim`** — delimited control AS AN EFFECT, multi-prompt
+- **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
+  (delim-prompted): evidence that a delimiter is installed, made only
+  by `Delim.delimited` (or `Delim.scope`, its nested half), so a
+  capture through the evidence-taking `shift` cannot name a prompt
+  that is not on the stack — of the machine that installed it: ONE
+  `Delim.run` per program, and the nested forms (`scope`,
+  `collecting`, `pausing`) put a delimiter on the machine already
+  running instead of starting a second one (delim-nesting). Inside a
+  `direct` block it is `shift[A]` with ONE type argument
+  (delim-one-type): the answer type comes from the evidence and the row
+  from the block, and `A` stays because a mark gives its argument no
+  expected type — `NoPrompt` moved to compile time
+  for that path. A portable function reads `Prompted[Int] ?=> Int !
+  (Delim + W)`: written apart, stored, passed, and callable only where
+  a `delimited` put the evidence in scope. The obligation is NOT a row
+  member: rows are unions and `Free` is invariant in them, so a body
+  that does not capture to the prompt being installed could not be
+  widened into the handler's row (measured; `push(inner) {
+  shift(outer)(…) }` is ordinary and is in `TestDelim`). What stays
+  runtime: evidence that escapes its own `delimited`.
   (Dybvig/Peyton Jones/Sabry): **`Prompt[R]`** is a first-class tag
   carrying the delimiter's answer type, `push` installs one (an
   OPERATION, not a handler — one machine must own the whole prompt
@@ -217,7 +289,192 @@ same material with the measurements attached.
   (Selective: the branch is DECLARED statically, run at most once),
   **`>>>`** (Kleisli composition).
 - `Selective`'s `ifS`/`branch`/`select` sit between Applicative and
-  Monad: both branches visible, at most one runs.
+  Monad: both branches visible, at most one runs. Their handlers are
+  BY NAME, and in Scala that is the whole point — "at most one runs"
+  is free in a lazy language, but here a branch is an ordinary
+  argument and by value it does its work whether or not it is chosen
+  (measured: a validator recorded the skipped check as having run).
+- **`Validated[E, A]`** (Validated.scala) — `Valid | Invalid`, whose
+  Applicative COMBINES two failures where `Either`'s keeps the first,
+  and whose `Selective` is a real one rather than `selectA`: a `Right`
+  scrutinee is already the answer so the handler is skipped, and a
+  FAILED scrutinee does not run it either (the reference reading —
+  which branch would have been taken is not known yet).
+  `E` is a `Semigroup`, not a fixed `Seq`, so the caller decides what
+  accumulation means (a vector for a form, a count for a sampler, a
+  map keyed by field for an API). There is deliberately NO
+  `Monad[Validated]`: the consistency law would force `app` to agree
+  with the `flatMap` derivation, which stops at the first error, so
+  the instance would quietly undo the collecting — `andThen` is that
+  step under a name that says the branch is deliberate, and a test
+  pins the absence as a compile error. First consumer: `okay-conf`'s
+  `fromEnv`, which used to report one bad environment variable per
+  run.
+- **`Semigroup[A]`** (Fold.scala) — `combine`, and nothing about an
+  empty. Split out of `Monoid` (which now extends it) for `Validated`:
+  a list of problems being built has no "no problem", and asking for
+  one turns `NonEmptyList` away for nothing. `Semigroup.fromMonoid`
+  bridges given search, because the instances live in `object Monoid`
+  and that is not in `Semigroup`'s implicit scope.
+- **`Par[A]`** (Par.scala) — `A ! Async` read as ONE LEAF of an
+  applicative spine: an opaque carrier inside `object Par`, whose
+  `app` joins two leaves with `Async.par`. Choosing this instance is
+  what makes generic applicative code concurrent — `Par.traverse` /
+  `Par.sequence` are the named doors, `Par.map2` joins two leaves of
+  different types, `Par(prog)` and `.seq` are the two ends. Do NOT
+  write `.map` on one: `given Comonad[Id]` is lexically visible and
+  beats an extension in `Par`'s own object, so it means the identity
+  comonad's map and the next `.app` stops compiling (pinned as a
+  compile error in TestPar). `fmap` deliberately does NOT fork (one leaf, nothing to run
+  beside it), and there is deliberately no `Monad`: a `flatMap` would
+  sequence the spine while the type still claimed independence.
+  Cancellation is inherited from `Async.par`, symmetric since
+  par-fail-fast (BUGS.md, `par-right-failure-waits` — found by this
+  carrier's own test). Not to be confused with
+  `parAll`/`parTraverse` (Parallel.scala): those are JVM/Native, flat,
+  one fiber per leaf, joined in order — cheaper for a flat sequence,
+  and measured so (theory ch. 12).
+- **`direct` at an applicative-only carrier** (Direct.scala,
+  specs/applicative-do.md) — the entry asks for `Applicative[F]`, not
+  `Monad[F]`, and the macro summons the monad only where it emits a
+  bind. A carrier that HAS one is unaffected, tree for tree. A carrier
+  that refuses one on purpose — `Validated`, whose `Monad` would undo
+  its collecting — can now be written in direct style, and a run of
+  independent binds becomes the idiom bracket
+  `fmap(m1, a => b => body).app(m2)`. Marks in the block's RESULT are
+  leaves too, so `direct[V](f(a.reflect, b.reflect))` works. Refused
+  by name, not by a missing-instance error at the call site: a
+  dependent bind, a statement that is not a marked val, a mark inside
+  a mark. THE SPELLINGS ARE ALL OPTIONAL: the type argument only where
+  there is no expected type, and an effect is said by a mark, by a
+  type annotation, or by nothing at all (a colourless val, whose
+  inferred type is a program of the carrier).
+- **`Direct.Binds`** / **`Direct.parallelBinds`** (Direct.scala) — a
+  `direct` block's bind mode, taken the way `Deferral` is (a `using`
+  parameter, default given in the companion, opt-in by importing an
+  object's given). Under `import Direct.parallelBinds.given` a maximal
+  run of two or more consecutive `val x = m.reflect` binds whose
+  right-hand sides mention no name bound earlier in the run is emitted
+  as N spawns then N joins — `parAll`'s FLAT shape, not `Par`'s
+  pairwise one, because a macro holds the whole group and so never has
+  to be pairwise. Needs a `Scheduler` at the call site (a clear macro
+  error otherwise). A leaf must be exactly `X ! Async`, read BEFORE
+  the mark narrows it into the row, so a block over a wider row
+  parallelises its Async leaves too and anything else ends the run
+  (it got nothing, quietly, until direct-parallel-wider-rows). What
+  you take on: the leaves interleave, and a failure is seen at its own
+  join rather than cancelling the siblings, which is `parAll`'s
+  bargain and not a new one.
+- **`Static[F, A]`** (Static.scala) — the FREE SELECTIVE: `Pure | Op |
+  Ap | Select`, a program with no `Bind` in it, so its structure can
+  be read before it runs. **`leaves`** lists every operation it MAY
+  perform (both sides of every `Select` — an upper bound, exact
+  without branches; an explicit stack, so a traverse-built spine of
+  50 000 walks), **`toFree`** converts to `A ! F` for the ordinary
+  runners (`Free.defer`, so no host stack at any depth) and makes the
+  approximation good at run time (a `Select` performs at most one
+  side), **`foldMap`** interprets the spine into any other
+  `Selective` — the batching door: N leaves, one round trip. All three
+  are stack-safe: `foldMap` walks a TYPE-ALIGNED `Args` in two
+  tail-recursive loops, which is the reassembly other libraries do
+  with an internal cast, done without one (50 000 leaves fold; it
+  overflowed at 10 000 until static-foldmap-stack-safe).
+
+## Optics (okay-optics: Optic.scala)
+
+- **`Optic[C[_[_, _]], S, T, A, B]`** — a path into a value, as a
+  value. It is a function polymorphic in a profunctor `P`, and its
+  CONSTRAINT on `P` is a type parameter: composition takes the
+  INTERSECTION of the two constraints, so `lens andThen prism` asks
+  for `Strong[P] & Choice[P]` and an interpretation satisfies the
+  meet by subtyping. Nobody writes a table of family pairs. Nominal
+  on purpose — a transparent alias for the polymorphic function
+  cannot have its constraint inferred by an extension method, which
+  the prototype found by failing.
+- The families, each one constraint: **`Iso`** (`Profunctor`),
+  **`Lens`** (`Strong`), **`Prism`** (`Choice`), **`Affine`** (both,
+  and usually not written — compose a lens with a prism and the type
+  appears), **`Traversal`** (`Traversing`), and the two that
+  AGGREGATE rather than iterate: **`Kaleidoscope`** (`Reflecting` —
+  lift through any Applicative, collapse many focuses into one) and
+  **`AlgebraicLens`** (`Classifying` — put by an algebra over all the
+  wholes, which is what "decide what this is, given everything seen"
+  needs).
+- The lattice: `Profunctor` → `Strong` (`first`) and `Choice`
+  (`right`); `Traversing` extends both and adds `wander` over a
+  `Walk` (Purescript's, applicative-polymorphic). Each class DERIVES
+  its operation from its structure map with the textbook formula as
+  the default — `Strong.lens` from `first`, `Choice.prism` from
+  `right`, `Traversing.eachVector` from `wander` — and an
+  interpretation may override with a direct road. TestOptics holds
+  every override to the default it replaces; that is the house rule,
+  not a courtesy.
+- The interpretations (they ride `import okay.given`):
+  **`Function1`** (`Traversing`: `modify`, `set`), **`Forget[R]`**
+  (the read side: `get`, and with a `Monoid` `preview`, `foldMap`,
+  `toVector`), **`Star[F]`** (`traverseOf` for any `Applicative` —
+  where `Validated`, `Par`, `Static` and an effect row all drop in
+  with no code in the optics), **`Aggregating`** (`Reflecting` AND
+  `Classifying` in one instance, because the intersection is
+  satisfied by one value), and the concrete pairs **`Shop`** (a
+  lens's) and **`Market`** (an affine's).
+- **Fusion, and the two roads.** `set`/`modify`/`get`/`preview`/
+  `foldMap`/`toVector`/`traverseOf` are inline and planned by `Fuse`:
+  where the optic's shape is readable at compile time — written
+  literally, named by an `inline def`, `Lens[S](_.f)`, chains of them
+  — the emitted code is what a person would write, allocation
+  identical to the byte. Where it is not — an optic behind a `val`,
+  chosen at run time, a traversal — it falls back to the
+  interpretation, which is an object per level. Both are correct;
+  only the price differs. Measured pairs are in docs/optics.md and
+  specs/optics.md.
+- **The two field constructors.** `Lens[S](_.f)` is a macro that
+  READS the selector and writes `Lens(get, set)` (the policy is "a
+  macro only reads; it never writes"), so the field is ordinary code
+  the IDE completes and renames. `Lens.field[S]("name")` is by name,
+  the label checked against the `Mirror` at compile time with no
+  macro at all — and it is the one constructor `Fuse` cannot read, so
+  it pays the interpretation.
+- **`Iso.non(d)`** — Kmett's: an absent value reads as `d`, and
+  writing `d` back makes it absent again. This is what turns
+  "create the missing parent" from an unlawful lens into a lawful
+  composition; it is an iso modulo one normalisation, and the test
+  names it (`Some(d)` and `None` are one point, so writing the
+  default PRUNES the spine).
+- **`PState.Zooming[X, R]`** (`[A, B] =>> Cont[X, B => R, A => R]`) —
+  a typestate transition read as a profunctor in its STATE, with
+  `opticZooming` its `Strong`. `PState.zoom` is `l[Zooming[X, R]](m)`
+  and has no body of its own, so every `Strong` optic zooms a
+  parameterised-state program: an iso, a `first` over a pair state, a
+  composed chain. **There is no `Choice` here and cannot be** — on
+  the absent case the zoomed program must still answer the inner
+  program's `X`, which is universally quantified, and the only source
+  of an `X` is the program that case says not to run. Parametricity,
+  not a type error. The door that exists prices itself in its type:
+  `PState.zoomCase(prism)(m)` answers `Option[X]`.
+- Gotchas, each one paid for:
+  - `.compiled` (the optic run at its own `Market` pair) is
+    MEASURED SLOWER than the optic — 8.0 ns against 3.0 for a
+    one-field set, because the `Either` a market carries costs more
+    than it saves and a `val`-held optic is a monomorphic call site
+    the JIT inlines through. It is kept for the PAIR (to hand across
+    a boundary, to store an optic as data), never for speed.
+  - a traversal cannot be `.compiled` at all, and the missing given
+    is the honest reason: a pair holds ONE focus, so there is no
+    `wander` for it.
+  - `Aggregating` is deliberately NOT `Strong`: `first` would have to
+    answer a `C` from a `Vector[C]` and there is no honest choice, so
+    an ordinary lens does not compose into that road — the
+    classifying lens stands in its place.
+  - `Optic.idApplicative` and `Optic.zipLazy` are NOT givens.
+    `Applicative[Id]` would be ambiguous with the package's
+    `Comonad[Id]`, and a lawful zip applicative on a finite sequence
+    does not exist (`pure` for zipping must be the infinite repeat),
+    which is why the zip one is a `LazyList`.
+  - a bottom-up rewrite is NOT a traversal — applying `f` to a
+    REBUILT node binds the effect, which is a monad, so that is a
+    catamorphism. `Ui.everywhere` is top-down and its test names an
+    `f` for which the two differ.
 
 ## Streams and consumption
 
@@ -468,17 +725,20 @@ and nothing else in the library casts for that reason:
 - **`okay.produced`** (Produce) — the same equation for the identity
   signature the streams are built on.
 - **`Chunks.bound`** — the element under a `Bind`, which is the BIND's
-  intermediate and genuinely existential. `case Effect(c)` needs
+  intermediate and genuinely existential. `case Inject(c)` needs
   nothing: GADT refinement gives the type back.
 - **`ChunkBuf.update` / `.chunk`** — the array assertion, once, with
   four measured alternatives recorded against it.
-- **`<|>`** and **`split`** — the union split, sound by the excluded
-  middle of `F[A] | G[A]`, documented as the trusted kernel. `<|>`
-  answers an `Either` (a value, for walks that pass it on); `split`
+- **`split`** and **`<|>`** — the union split, sound by the excluded
+  middle of `F[A] | G[A]`, documented as the trusted kernel. `split`
   takes the two branches as `inline` continuations and answers
   nothing but their result — no Either, no Option per operation —
-  and is what the hot loops use (`State.handle`, `Writer.foldWith`,
-  `relay`, `Effects.handle`, `Handler.union`; split-without-either,
+  and holds the union's two casts; `<|>` is `split` at
+  `Left`/`Right` (either-via-split), the `Either` form for drains and
+  tests. `split` is what every walker in this library uses (`State.handle`,
+  `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`,
+  `Resource.run` in the core, and the stream walkers in okay-stream;
+  split-without-either,
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the
@@ -555,14 +815,24 @@ and nothing else in the library casts for that reason:
     `Conversion[F[A], A]`: the target is a bare type variable, and
     `into` marks a declaration. There is nothing to write it on.
     Auto-coloring keeps asking the language for consent, and should.
-  - `Json` was REFUSED although it fits mechanically (`into enum`
-    compiles, and ~850 construction sites of `JStr`/`JNum`/`JBool`
-    would become bare literals). A `Conversion[String, Json]` turns an
-    already-serialized document into a JSON string LITERAL with no
-    error anywhere — double encoding, in the module whose job is
-    encoding. The feature's own advice is the same: restrict `into` to
-    the absolute minimum, and never write it in case someone might
-    want a conversion later.
+  - `Json` TAKES it, but only behind an import and only for literals
+    (json-literals, 2026-09-11 — the first reading of this entry
+    refused it outright, and the operator's shape is what resolved
+    it). The hazard was never `into`: it was an AMBIENT
+    `Conversion[String, Json]`, which would turn an already-serialized
+    document into a JSON string literal with no error anywhere, since
+    `Json.parse` answers a `Json` and a conversion cannot read intent
+    when both meanings are `String`. So the conversions live in
+    `Json.literals`, a file sees them only by importing them, and the
+    string one accepts CONSTANT types only:
+    `inline given [L <: String & Singleton]` whose body matches
+    `constValueOpt[L]` and calls `compiletime.error` for anything
+    else. A literal converts, a `String` value is a compile error
+    naming `JStr` and `Json.parse`. `Int`/`Double`/`Boolean` convert
+    plainly; `Long` is left out because `JNum` is a `Double` and the
+    loss past 2^53 would be silent. The singleton bound ALONE does not
+    work — every `val` has a singleton type — and that refuted step is
+    kept as a test.
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for

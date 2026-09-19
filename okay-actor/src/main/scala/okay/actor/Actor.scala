@@ -48,6 +48,47 @@ enum Supervise[+S]:
  * producer that outlives its actor is ordinary, not exceptional, and
  * that is the reading `Channel.send` already takes.
  */
+/**
+ * CHOOSING A MAILBOX, and why this is written here rather than left
+ * to the channel's own page (order-choice, 2026-09-18).
+ *
+ * A mailbox is an ordinary `Channel[M]`, and the default one —
+ * `Channel[M](256)`, which `spawnChild` hands you if you say nothing
+ * — is the library's `growing` buffer. It adopts the ring its
+ * producers were already pushing into when a second producer shows
+ * up, and THAT COSTS ONE DISPLACEMENT: a sender's messages can
+ * arrive out of its own order in at most one place, once, across
+ * that swap. `TestChannelLaws` states exactly that and no more.
+ *
+ * NOBODY READS A CHANNEL'S PAGE BEFORE SPAWNING AN ACTOR. "Messages
+ * from one sender arrive in the order that sender sent them" is what
+ * every reader of an actor model assumes without being told, so a
+ * weakening that lived only in the buffer's documentation would be a
+ * silent one. It is stated here instead, with the two spellings that
+ * take it back:
+ *
+ * {{{
+ * // the default: fine when order between messages does not decide
+ * // anything, or when one sender is the only sender
+ * Actor.spawn(init, Channel[M](256), supervise)(behavior)
+ *
+ * // MANY SENDERS AND ORDER MATTERS: `adaptive` never adopts a
+ * // buffer, so every sender's messages live in one part and its own
+ * // order is exact. 38x faster than a ring at sixteen senders, 19%
+ * // slower at one
+ * Actor.spawn(init, Queues.strong[M].adaptive.each(256).build, supervise)(behavior)
+ *
+ * // ONE SENDER, OR EXACT ORDER ACROSS ALL OF THEM: the plain ring
+ * // orders every push on one tail. The strongest and the simplest
+ * Actor.spawn(init, Queues.strong[M].fifo(256).build, supervise)(behavior)
+ * }}}
+ *
+ * The rule of thumb: a request/reply actor, a supervisor, anything
+ * whose senders are independent — the default. A protocol where one
+ * sender's messages mean something in sequence (open, write, close;
+ * a saga's steps; anything a state machine consumes) — `adaptive`.
+ * docs/queues.md carries the same table with the measurements.
+ */
 final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M],
                                        /** closed by the loop as it EXITS, which is
                                         * exactly when every accepted message has

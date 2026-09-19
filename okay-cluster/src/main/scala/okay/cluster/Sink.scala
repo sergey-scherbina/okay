@@ -155,6 +155,80 @@ abstract class Sink[A, R]:
    */
   def committed(epoch: Int): Unit = ()
 
+  /**
+   * CAN A FRESH PARTITION START MID-STREAM? (specs/dataflow.md, stage
+   * 11 box 2) — true when what this sink hands over each epoch is a
+   * DELTA and the partition keeps nothing across epochs that must be
+   * rebuilt from earlier elements.
+   *
+   * A fold and a keyed sink hand over their accumulators and clear
+   * (`peek` empties the map), so a session opened at epoch N-1's
+   * position with an empty map is exactly right: its deltas from N on
+   * merge into what the coordinator already holds. A WINDOWED sink is
+   * not: its open panes live inside the partition and are handed
+   * over only when they close, so a fresh session at a position has
+   * none of them and their contributions from before it reach
+   * nobody. That sink replays from zero, as every session did before
+   * this box — and the two roads that would let it seek (delta
+   * handovers, or a replay bounded by the window horizon) are written
+   * in the spec as box 2b rather than half-built here.
+   */
+  def seekable: Boolean = false
+
+  /**
+   * HOW FAR BACK OF THE WATERMARK THIS SINK'S STATE REACHES
+   * (specs/dataflow.md, stage 11 box 2b) — and it is the number that
+   * lets a NON-seekable sink seek after all.
+   *
+   * A windowed partition keeps its open panes inside itself, so a
+   * fresh session at a position has none of them and it replays from
+   * zero. But it does not have to replay from zero: no pane starting
+   * before `watermark - (size + lateness)` can still be open, so a
+   * session opened at the last epoch whose maximum event time is
+   * below that point rebuilds exactly the panes that are still open
+   * and nothing earlier. That is road B of box 2b, and the
+   * measurement that chose it over handing the open panes over every
+   * epoch is `MeasureWindowedSeek`: 16 KB once per resume against
+   * 3.3 KB every epoch for ever, and 6.4 MB per resume before either.
+   *
+   * ZERO means "this sink's state does not reach back at all" — a
+   * fold or a keyed sink, which hands over a delta and clears, and
+   * which therefore answers `seekable` instead. A sink with a horizon
+   * is not seekable and does not pretend to be: it replays, bounded.
+   */
+  def horizon: Long = 0L
+
+  /**
+   * DROP WHAT THIS STATE IS ABOUT TO HAVE REBUILT FOR IT
+   * (specs/dataflow.md, stage 13 box 2).
+   *
+   * A windowed rescale opens its new sessions at the horizon mark, so
+   * every pane still open is rebuilt IN FULL from the elements after
+   * that mark. The coordinator's own PARTIAL copies of those panes
+   * must go first, or a full contribution is merged into a partial
+   * one. The folded answer — everything already retired — stays.
+   *
+   * Identity for a sink with nothing open (a fold, a keyed sink):
+   * their state IS the answer, and there is nothing to rebuild.
+   */
+  def reopen(s: S): S = s
+
+  /**
+   * DROP CONTRIBUTIONS TO PANES THIS COORDINATOR HAS ALREADY RETIRED
+   * (specs/dataflow.md, stage 13 box 2).
+   *
+   * `below` is the watermark the retirement rule used, so a pane that
+   * ends at or before it has been presented and folded; a replayed
+   * element reaching it again would count twice. Everything ABOVE is
+   * a pane the coordinator no longer has, so merging it is right
+   * whatever the replaying worker's own watermark was doing — which
+   * is the point, because after a re-cut it is not the watermark the
+   * original decisions were made under.
+   *
+   * Identity where nothing is keyed by a window.
+   */
+  def sift(w: W, below: Long): W = { val _ = below; w }
+
   def recovered(epoch: Int): Unit = ()
 
   /** two sinks over one pass */
@@ -185,6 +259,10 @@ abstract class Sink[A, R]:
         { self.committed(epoch); that.committed(epoch) }
       override def recovered(epoch: Int): Unit =
         { self.recovered(epoch); that.recovered(epoch) }
+      override def seekable: Boolean = self.seekable && that.seekable
+      override def horizon: Long = math.max(self.horizon, that.horizon)
+      override def reopen(s: S): S = (self.reopen(s._1), that.reopen(s._2))
+      override def sift(w: W, below: Long): W = (self.sift(w._1, below), that.sift(w._2, below))
 
 object Sink {
 
@@ -213,6 +291,8 @@ object Sink {
       def slack: Long = 0L
       def drops(ws: Vector[W]): Long = 0L
       def merged(ws: Vector[W]): Long = ws.length.toLong
+      // hands its accumulator over and starts again: a delta
+      override def seekable: Boolean = true
 
   /** one accumulator per key, no window */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -256,6 +336,8 @@ object Sink {
         var t = 0L
         for m <- ws do t += m.length
         t
+      // `peek` empties the map: what leaves each epoch is a delta
+      override def seekable: Boolean = true
 
   /** an event-time windowed aggregation, keyed */
   def windowed[A, K, Acc, O, IAcc, R](size: Long, slide: Long, lateness: Long,
@@ -312,6 +394,20 @@ object Sink {
         s
       def emit(s: S): R = into.present(s.acc)
       def slack: Long = lateness
+      // NO pane starting before `watermark - (size + lateness)` can
+      // still be open, so that is exactly how far a fresh session has
+      // to go back to rebuild this partition's state — and not one
+      // element further (stage 11 box 2b, road B)
+      override def horizon: Long = size + lateness
+      // THE OPEN PANES GO AND THE ANSWER STAYS: a rescale's new
+      // sessions rebuild every open pane in full from the horizon
+      // mark, so a partial copy here would be added to a full one
+      override def reopen(s: S): S = Open(mutable.HashMap.empty[(Long, K), Acc], s.acc)
+      // a pane that ends at or below the watermark retirement used has
+      // been presented and folded; a replayed element reaching it
+      // again would count twice
+      override def sift(w: W, below: Long): W =
+        Handed(w.boundary.filter((start, _, _) => start + size > below), w.finished, w.late)
       def drops(ws: Vector[W]): Long =
         var d = 0L
         for w <- ws do d += w.late
@@ -470,6 +566,10 @@ object Sink {
       def drops(ws: Vector[W]): Long = base.drops(ws)
       def slack: Long = base.slack
       def merged(ws: Vector[W]): Long = base.merged(ws)
+      override def seekable: Boolean = base.seekable
+      override def horizon: Long = base.horizon
+      override def reopen(s: S): S = base.reopen(s)
+      override def sift(w: W, below: Long): W = base.sift(w, below)
       override def committed(epoch: Int): Unit =
         val batch = stage.synchronized { val b = stage.toVector; stage.clear(); b }
         if batch.nonEmpty then move(epoch, batch)

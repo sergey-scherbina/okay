@@ -13,7 +13,8 @@ atnos-eff 7.0.4, fs2 3.10.2, circe 0.14.10 — on **Scala 3.9.0 LTS**
 since 2026-09-08 (every table below §0 was re-measured on it; earlier
 tables on this page were 3.7.4).
 
-Run them yourself: `sbt 'Jmh/run .*Fib.*'` (core lanes),
+Run them yourself: `sbt "okayJVM/Jmh/run .*Fib.*"` (core lanes — the
+project prefix is required, a bare `Jmh/run` does not parse),
 `sbt 'compare/Jmh/run .*Compare.*'` (ecosystem lanes; the heavy
 dependencies live only in the compare module),
 `sbt 'compare/Jmh/run RagBenchmark'` (retrieval),
@@ -26,7 +27,32 @@ beside the microseconds it costs.
 
 ## The short version
 
-Every number is microseconds per operation, lower better, JMH, from
+**The headline first** (core scaling, wroclaw-table-refresh,
+2026-09-11): on a real streaming job across 1/2/4/8 cores, okay is the
+only in-process library that keeps climbing.
+
+Each cell: wall clock / events per second, lower/higher respectively better.
+
+| lane | 1 core | 2 cores | 4 cores | 8 cores | 1→8 |
+|---|---:|---:|---:|---:|---:|
+| **okay** (merge) | 563 ms / 4,287,955 | 317 ms / 7,615,517 | 189 ms / 12,773,116 | **107 ms / 22,561,859** | **5.3x** |
+| flink | 3,101 ms / 778,496 | 1,960 ms / 1,231,693 | 1,582 ms / 1,525,991 | 1,437 ms / 1,679,971 | 2.2x |
+| java.util.stream | 561 ms / 4,303,242 | 458 ms / 5,271,002 | 396 ms / 6,096,260 | 337 ms / 7,163,557 | 1.7x |
+| zio-streams | 583 ms / 4,140,855 | 417 ms / 5,789,254 | 357 ms / 6,762,238 | 347 ms / 6,957,115 | 1.7x |
+| kyo | 610 ms / 3,957,572 | 512 ms / 4,715,076 | 419 ms / 5,761,620 | 380 ms / 6,352,944 | 1.6x |
+| fs2 | 579 ms / 4,169,462 | 472 ms / 5,114,658 | 377 ms / 6,403,498 | 368 ms / 6,560,105 | 1.6x |
+| plain JVM, threads | 574 ms / 4,205,782 | 471 ms / 5,125,518 | 398 ms / 6,065,625 | 409 ms / 5,902,491 | 1.4x, and 8 is WORSE than 4 |
+
+ev/s, higher better. At one core every lane but Flink is within a
+few percent of the others — the measurement's own 9% noise floor,
+doubled in the same run (§20 has the twin rows that prove it). The
+finding is the SLOPE: okay fans the job across fibres joined by
+`merge`, where the others parallelize a single
+`Stream`/`foreachPar`/`parEvalMap` and hit its fan-in cost before
+they run out of cores. Full table, methodology and the mechanism
+in [§20](#20-streams-against-an-engine-and-against-every-library--wrocławs-timetable).
+
+Every other number below is microseconds per operation, lower better, JMH, from
 one session on a quiet 14-core box. Where a competitor appears, both
 sides were checked against the Lane rules below — same shape, same
 granularity, same source, same resources — because five lanes that
@@ -50,7 +76,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | look up a symbol in an index | **0.56** | — | [§11](#11-retrieval--indexing-re-indexing-chunking-query) |
 | 4 000 elements through an unbounded channel, chunked | **56.0** | ZIO 439.7 | [§16](#16-every-capacity-a-ring--the-table-that-closes-the-arc) |
 | 8 000 elements, 16 producers (okay's own buffers) | **128** | — | [queues.md](queues.md) |
-| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **8.9M** on four fibres, 2.7M on one | Flink 1.87M at parallelism 4 | [§20](#20-streams-against-an-engine--wrocławs-timetable-through-okay-and-apache-flink) |
+| an event-time job — windows, keyed state, ranking (ev/s, not µs) | **22.56M** on eight fibres, 4.29M on one | Flink 1.68M at parallelism 8 | [§20](#20-streams-against-an-engine-and-against-every-library--wrocławs-timetable) |
 
 **Where okay loses, and it is here rather than buried:** fork/join of
 100 fibers against kyo (24.0 against 18.5, §4), and the single-channel
@@ -249,11 +275,12 @@ program:
   remorse" problem solved with two lines of pattern match instead of
   a type-aligned queue (measured: stepping one-by-one costs only ~8%
   over bulk, so the queue is unneeded, with evidence).
-- `Cont` is the same discipline one level down: a defunctionalized
-  continuation monad whose runner is one tail-recursive loop, plus
-  closure FUSION up to a depth budget (flatMap/map merge into the
-  Shift closure while shallow, spill to Bind after — kept after
-  measuring −10..28% across generator lanes).
+- `Cont` is the same discipline one level down — and since 2026-09-15
+  the same TREE: an opaque `Free[Shift, A]` whose runner is one
+  tail-recursive loop, plus one step of closure absorption (a fresh
+  leaf takes its first flatMap/map into itself; a depth budget of 128
+  was re-measured and one step was the whole −12..25% win, rows
+  `fuse*`; theory ch. 11).
 - `Eager` is the kyo trick as an OPT-IN encoding (`import
   Eager.given`): pure binds apply at construction, so "running" the
   chain is running nothing. 12x under kyo on this lane — with kyo's
@@ -389,9 +416,53 @@ shape of effectful code.
 
 **Why Okay's numbers.** Reader runs at RELAY speed: a
 tail-resumptive handler must resume exactly once, so handling is one
-tail-recursive loop — no continuation capture, no allocation per ask
-(relay measured 1.45x over the general handler on forwarding-heavy
-work). Writer's `tell` is ZERO allocation: the operation is an
+tail-recursive loop — no continuation capture, no allocation per ask.
+
+**The general handler now costs the same (handle-forward-fast,
+2026-09-15), and the honest way to read this section is as the
+sequence it happened in.** It had been quoted at 1.45x for a long
+time. `handlePrebuilt` beside `relayPrebuilt` — the same pre-built
+10 000-node tree, nothing different but the handler — first made the
+comparison like for like and made it WORSE: 1.51x, because the older
+pair of numbers each carried 24.6 µs of tree construction that
+diluted the ratio. That measurement also said what the gap WAS:
+allocation, +112.7 bytes on every FORWARDED operation, the operation
+the handler never touches, because `Effects.handle` folded the whole
+program through `Cont` and spent a `shift` on it.
+
+Giving `handle` relay's forwarding arm closes it:
+
+| | before | after |
+|---|---|---|
+| `handlePrebuilt` | 223.3 µs | **154.2 µs** |
+| allocation | 2 869 306 B/op | **1 753 945 B/op** |
+| `relayPrebuilt` (control) | 148.1 µs | 149.9 µs |
+
+The second row is the result. **`handle` allocates exactly what
+`relay` allocates, to the digit** — 1 753 945 against 1 753 945 — and
+the build-on-every-call pair agrees at 2 154 017 on both sides. What
+remains is 3% of TIME with identical bytes, and that was chased and
+CLOSED the same day (`handle-loop-inlining`). `handle`'s loop is 388
+bytes against `FreqInlineSize` 325 and inlines nowhere, where
+`relay`'s 262-byte loop inlines hot — an exact diagnosis that bought
+nothing: bringing the loop to 318 flipped the verdicts to "inline
+(hot)" and moved no lane, the in-run ratio reading 1.039 / 1.030 /
+1.011 against 1.029 / 1.039 before. The 3% is the one extra test
+`handle` does per handled operation, and that test is what buys it
+abort and perform-G. A price, not an overhead.
+
+Two findings are worth more than the number. The `shift` was only a
+third of the gap. The other two thirds were introduced by the fix's
+own first version: trampolining EVERY handled operation through a
+`Defer` cost 59 µs of the 61, because a `Defer` whose continuation is
+`Pure` rotates into a LEFT-nested `Bind`, and left-nesting is the one
+shape this tree rewrites — so each handled operation taxed every
+operation after it. The shipped version keeps that node only for a
+handler that really captures the continuation; one that does not
+answers with `Cont.Pure`, and the loop simply goes on from the
+answer. Rows `hff-*`, and `hd-*` for the measurement that started it.
+
+Writer's `tell` is ZERO allocation: the operation is an
 opaque IDENTITY signature — telling w IS the value w, no wrapper
 node; the handler is a bespoke tail loop into a Vector.
 
@@ -1865,6 +1936,42 @@ Filed as `optic-law-rewrites` with these numbers attached, because
 the entry now has what the repository asks of one: a measured prize
 rather than an expectation.
 
+**THE CONTAINER HALF IS TAKEN — MEASURED 2026-09-18 (optic-law-rewrites).**
+`Fuse` rewrites `modify(g) . modify(f)` through ONE optic into
+`modify(f andThen g)`, and the prize is collected. Four lanes, 8
+iterations, 3 forks, 24 measurements each:
+
+| lane | ns/op |
+|---|---|
+| `fuseTwiceByLaw` — two nested `Fuse.modify`, rewritten | **1524 ± 116** |
+| `fuseTwiceHand` — the same fused by hand (the control) | 1421 ± 35 |
+| `traversalFusedByLaw` — one `modify`, extension form | 1535 ± 114 |
+| `traversalTwice` — two `modify`s, extension form | **4063 ± 142** |
+
+2.7x, and within 7% of the hand-written answer with the bars nearly
+touching. `traversalTwice` is the SAME WORK in the extension form and
+is unchanged at 4063 — which is the honest limit of this rewrite and
+the reason both pairs are in one table.
+
+**WHY THE EXTENSION FORM CANNOT HAVE IT.** `o.modify(f)(s)` parses as
+`(o.modify(f))(s)`: the macro answers a FUNCTION and the application
+happens outside it, so the outer call never receives the inner one.
+Only the form that takes the whole directly — `Fuse.modify(o)(f)(s)`
+— puts both in one macro's hands.
+
+**AND WHAT THE OUTER MACRO ACTUALLY SEES**, learned from a probe
+rather than guessed, because the first three theories were wrong. When
+the inner optic is one the planner cannot read — a traversal, which is
+exactly the case with the prize — the inner call has already emitted
+the INTERPRETATION by the time the outer runs:
+
+    o.apply[Function1](g)(using fn).apply(s0)
+
+So the rewrite matches an emitted interpretation, not a nested macro
+call. (A `report.info` probe said the outer macro never ran at all;
+writing to a file from the macro showed it running perfectly. A
+diagnostic can be swallowed, and then absence proves nothing.)
+
 ## 9c. The tax on the idiomatic lens, removed
 
 §9b said fusion already reaches hand-written for a single update. It
@@ -2067,11 +2174,37 @@ equal to the byte — which is what makes the numbers below trustworthy).
 | sort every element | 5 358 168 | 4111 |
 | guarded | **30 328** | **118** |
 
-**−99.4% of the allocation.** 536 bytes per record became 3. What is
-left is the accept path: an element that DOES make the cut still
-sorts k+1, and with a random corpus about `k · ln(n/k)` of them do —
-57 of the 10 000, which is where the 30 KB is. Filed, not done: the
-accept could insert into a sorted list instead.
+**−99.4% of the allocation.** 536 bytes per record became 3. What was
+left was the accept path: an element that DOES make the cut still
+sorted k+1, and with a random corpus about `k · ln(n/k)` of them do —
+57 of the 10 000, which is where the 30 KB was.
+
+**Insert instead of sort (topk-insert-instead-of-sort, landed).** The
+accumulator is already sorted, so an accepted element does not need
+`sorted`'s array-and-back round trip: `insert` walks it once, keeps
+every node up to the insertion point (a `List` cannot share past a
+point where its tail changes, so those get rebuilt regardless — the
+old code rebuilt them twice, once inside `sorted` and once in the
+`take` that followed it), and stops at exactly `k`. Re-measured on
+this box rather than trusted from the numbers above (`stale benchmark
+numbers in comments` is a standing rule here) — `compare/runMain
+okay.TopKProbe 10000 8`, same-box, same-run pair:
+
+| 10 000 records, k = 8 | bytes | µs |
+|---|---|---|
+| sort every element (unguarded) | 11 750 008 | 2188 |
+| guarded, `sorted`+`take` (pre-fix) | 60 568 | 95 |
+| guarded, `insert` (this fix) | **10 736** | **74** |
+
+**−82.3% of the guarded path's remaining allocation** (60 568 → 10
+736), on the unboxed `Row` case the accept path was written for. The
+boxed-`Double` case — the swing the JMH pair above uses — moves less
+(270 328 → 250 736, −7.3%): boxing dominates the accumulator itself,
+so the array-round-trip `sorted` was cutting away matters
+proportionally less there. Both sides agree with the old
+implementation to the element (`TopKProbe`'s own `require`), and
+`TestAggregate` pins the tie-refusal behaviour the insert must
+preserve.
 
 **Where a user meets it**, matched pair in one JMH run, 200 segments
 at provider dimension (1536), k = 8:
@@ -2093,6 +2226,101 @@ that only TIES the k-th is now refused, so among equal scores the
 first seen survives. The old code displaced it, because `sorted` is
 stable and the newcomer was consed at the head. Same scores either
 way; the new answer does not move when the corpus is re-ordered.
+
+## 9i. The rung below the monad — what an applicative spine costs
+
+Two new carriers (specs/applicative-static.md) trade power for
+visibility: `Par` reads `A ! Async` as one leaf of an applicative
+spine so the leaves may run at once, and `Static` is the free
+selective, a program whose operations can be listed before it runs.
+Both were measured against what they replace, and both tables below
+are matched pairs — this section was written twice because the first
+cut of each paired unlike things.
+
+**`Par` — eight trivial leaves, `-f 3 -prof gc`, three rounds:**
+
+| lane | µs/op | B/op |
+|---|---|---|
+| bracketPar8 — the idiom bracket at `Par`, 7 joins | 52.19–52.40 | 11 401–11 510 |
+| handNested8 — 7 `Async.par` calls written out | 52.25–53.10 | 10 503–10 704 |
+| parApplicative8 — `Par.sequence` (generic `traverse`) | 59.12–61.93 | 14 355–14 594 |
+| parAllFlat8 — `parAll`, one fiber per leaf, flat | 9.50–11.75 | 4 195–4 200 |
+| sequential8 — `traverse`, no fibers | 0.35–0.42 | 3 840 |
+
+The first two lanes are THE pair: same seven joins, same leaves, same
+answer, differing only by the carrier. **1.003 and 0.983** across the
+rounds that have both — the carrier is inside the noise, and the
+prediction written before measuring (within 10%) holds with room. The
+honest residue is in the bytes, about 100–140 B per join for the two
+closures the instance adds.
+
+The other two lanes answer a different question and must not be read
+as a verdict on the first: both nested lanes cost about **5×**
+`parAll`, because `app` is pairwise — N leaves are N joins and 2N
+fibers, where `parAll` spawns N and joins them in order. The extra 13%
+from bracketPar8 to parApplicative8 is generic `traverse` building its
+Vector element by element. So: flat sequence of same-typed programs on
+the JVM → `parAll`; a spine with leaves of different types, or generic
+code that never heard of Async → `Par`, where the alternative is not
+`parAll` but running sequentially.
+
+**`Static` — a thousand leaves, prebuilt against prebuilt:**
+
+| lane | µs/op | B/op |
+|---|---|---|
+| staticLeaves — READ the spine, do not run it | 14.45 | 101 048 |
+| monadicPrebuilt — run the ordinary monadic program | 46.76 | 475 088 |
+| staticToFree — convert the spine and run it | 80.66 | 843 049 |
+| monadicBuildAndRun — build and run (context) | 57.98 | 641 158 |
+
+Asking what a program will do costs a third of doing it. Running one
+through `Static` costs **1.72×**, against a prediction of 1.3× — 
+**refuted**, and the bytes agree at 1.77×. The prediction's error is
+the instructive part: it said "each `Ap` becomes a right-nested
+`Bind`, the shape `resume` is fastest on" and treated the conversion
+as free. `toFree` materialises a SECOND TREE, and the residue is that
+tree's nodes and closures, ~368 B per leaf.
+
+Reading the bytes did find one unearned node: the first `toFree`
+wrapped both sides of an `Ap` in a `Delay`, and the right side is a
+leaf in every spine a fold builds. Earning it took 899 105 → 843 049
+B/op, exactly 56 B per leaf — one `Delay` and its thunk — and 84.25 →
+80.66 µs. The 10 000-deep right-nested spine the fallback exists for
+is now a test.
+
+**The macro is the third road, and it is the cheap one.** Stage 3
+(`import Direct.parallelBinds.given`) groups a run of independent
+binds in a `direct` block. Eight trivial leaves:
+
+| lane | µs/op | B/op |
+|---|---|---|
+| parallel8 — the block, with the import | 11.161 ± 2.459 | 6 712 |
+| parAllFlat8 — the same leaves through `parAll` | 11.669 ± 3.763 | 4 848 |
+| sequential8 — the same block, no import | (see below) | 1 344.002 |
+| handChain8 — the flatMap chain by hand | 0.083 ± 0.004 | 856 |
+
+0.956 against the hand door, inside both error bars, against a
+predicted 20%: the macro emits the FLAT shape, N spawns then N joins,
+and not the pairwise spine `Par.app` would have built. That is the
+whole design argument for stage 3 — a macro holds the group, so it is
+the one position that never has to be pairwise.
+
+"Nothing changes without the import" needed a real A/B and the first
+attempt was the wrong pair (sequential8 against handChain8 prices the
+direct macro against hand-written code, which was never equal and has
+nothing to do with the lane). The right pair is sequential8 here
+against sequential8 on MASTER, run in a master worktree with the same
+file: **1 344.002 B/op against 1 344.001**, identical to the digit.
+The times were not readable — those rounds fell at load 13-56 and the
+lane's sequential8 came back 0.194 ± 0.071 and 0.266 ± 0.187 while the
+control handChain8 held at 0.083 ± 0.004 on both sides — so the bytes
+are the verdict, which is this page's standing rule for exactly that
+situation.
+
+**The conclusion both tables point at**: neither carrier is a faster
+way to do the same thing. `Par` buys concurrency where the code is
+generic, `Static` buys a list of effects and a batch where the program
+must be read. Priced honestly, each costs something for what it buys.
 
 ## 10. The text stack — lex, parse, reparse, codecs
 
@@ -3823,6 +4051,28 @@ The shared half — the feed, the job's definition, okay's own lanes and
 the measurement — lives in `compare/src/main/scala/okay/wroclaw/`,
 which is also where a new engine's lane would start.
 
+**Source, so a claim in this section is one click from the code that
+made it.** `scripts/wroclaw-bench.sh` invokes the Bench class in each
+row; Lane is where that class's lane logic actually lives.
+
+| lane | Bench (what the script runs) | Lane (the logic) |
+|---|---|---|
+| the job itself | [Job.scala](../compare/src/main/scala/okay/wroclaw/Job.scala), [Gtfs.scala](../compare/src/main/scala/okay/wroclaw/Gtfs.scala) | [Bench.scala](../compare/src/main/scala/okay/wroclaw/Bench.scala) (shared harness) |
+| okay (merge) | [OkayBench.scala](../compare/src/main/scala/okay/wroclaw/OkayBench.scala) | [OkayLane.scala](../compare/src/main/scala/okay/wroclaw/OkayLane.scala) |
+| plain JVM | [JvmBench.scala](../compare/src/main/scala/okay/wroclaw/JvmBench.scala) | [JvmLane.scala](../compare/src/main/scala/okay/wroclaw/JvmLane.scala) |
+| java.util.stream | [JavaBench.scala](../okay-java/src/test/scala/okay/java/wroclaw/JavaBench.scala) | [JavaLane.scala](../okay-java/src/test/scala/okay/java/wroclaw/JavaLane.scala) |
+| fs2 | [Fs2Bench.scala](../okay-fs2/src/test/scala/okay/fs2/wroclaw/Fs2Bench.scala) | [Fs2Lane.scala](../okay-fs2/src/test/scala/okay/fs2/wroclaw/Fs2Lane.scala) |
+| zio-streams | [ZioBench.scala](../okay-zio/src/test/scala/okay/zio/wroclaw/ZioBench.scala) | [ZioLane.scala](../okay-zio/src/test/scala/okay/zio/wroclaw/ZioLane.scala) |
+| kyo | [KyoBench.scala](../okay-kyo/src/test/scala/okay/kyo/wroclaw/KyoBench.scala) | [KyoLane.scala](../okay-kyo/src/test/scala/okay/kyo/wroclaw/KyoLane.scala) |
+| flink | [FlinkBench.scala](../okay-flink/src/test/scala/okay/flink/wroclaw/FlinkBench.scala) | [FlinkLane.scala](../okay-flink/src/test/scala/okay/flink/wroclaw/FlinkLane.scala) |
+
+Driver: [scripts/wroclaw-bench.sh](../scripts/wroclaw-bench.sh) — one
+`sbt` invocation per lane, in its own forked JVM (point 1 above says
+why), printing the `ROW`/`SKIP` lines the table is built from. Spark's
+lanes (`SparkBench`, under `okay-spark/src/test/scala/okay/spark/wroclaw/`)
+and the distributed/native variants added since this table was taken
+are a different, later measurement and are not linked here.
+
 
 ### The table — everything on one machine, one run
 
@@ -3881,6 +4131,37 @@ or no table.
 | flink, parallelism 1 | 1 | 778 496 | 3 101 ms | 1 761 |
 | spark, local[4], batch RDD | 4 | 338 918 | 7 123 ms | 13 787 |
 | spark, local[4], structured streaming | 4 | 264 445 | 9 129 ms | 3 870 |
+
+### The scaling digest — same run, read by core count
+
+The table above is sorted by throughput; read instead by CORE COUNT,
+the shape of the story changes. Every number is the same row as
+above — this is a derived view of one run, not a second measurement —
+and the 9% noise floor below applies here exactly as it does there.
+
+Each cell: wall clock / events per second, lower/higher respectively better.
+
+| lane | 1 core | 2 cores | 4 cores | 8 cores | 1→8 |
+|---|---:|---:|---:|---:|---:|
+| **okay** (merge) | 563 ms / 4,287,955 | 317 ms / 7,615,517 | 189 ms / 12,773,116 | **107 ms / 22,561,859** | **5.3x** |
+| flink | 3,101 ms / 778,496 | 1,960 ms / 1,231,693 | 1,582 ms / 1,525,991 | 1,437 ms / 1,679,971 | 2.2x |
+| java.util.stream | 561 ms / 4,303,242 | 458 ms / 5,271,002 | 396 ms / 6,096,260 | 337 ms / 7,163,557 | 1.7x |
+| zio-streams | 583 ms / 4,140,855 | 417 ms / 5,789,254 | 357 ms / 6,762,238 | 347 ms / 6,957,115 | 1.7x |
+| kyo | 610 ms / 3,957,572 | 512 ms / 4,715,076 | 419 ms / 5,761,620 | 380 ms / 6,352,944 | 1.6x |
+| fs2 | 579 ms / 4,169,462 | 472 ms / 5,114,658 | 377 ms / 6,403,498 | 368 ms / 6,560,105 | 1.6x |
+| plain JVM, threads | 574 ms / 4,205,782 | 471 ms / 5,125,518 | 398 ms / 6,065,625 | 409 ms / 5,902,491 | 1.4x, and 8 is WORSE than 4 |
+
+ev/s, higher better. At one core every lane but Flink sits within a
+few percent of the others — inside the 9% floor below, so nothing
+there is a finding. What separates them is the SLOPE: okay keeps
+climbing through 8 cores while every other in-process library
+flattens around 1.6-1.7x, and the plain-JVM lane regresses past 4.
+The mechanism, stated once rather than per row: okay fans the job out
+over separate FIBRES joined by `merge`, where the others parallelize
+a single `Stream`/`foreachPar`/`parEvalMap` and hit its fan-in cost
+before they run out of cores. Flink and Spark are a different class
+(a distributed engine's own scheduling, not a library) and sit in the
+table above for that reason, not this one.
 
 **THE NOISE FLOOR IS IN THE TABLE, twice over, and it is 9%.** Rows 21
 and 28 — `okay, 1 thread (Chunks)` at 563 ms and `okay, 1 thread,

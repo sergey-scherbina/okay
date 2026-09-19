@@ -1,0 +1,3 @@
+- intent-live-provider — LANDED 2026-09-03, and it REFUTED the claim it
+  set out to quantify: the early stop saves 0.0% against a real model,
+  under a …

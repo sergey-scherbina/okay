@@ -40,7 +40,17 @@ enum Ui:
   // on the wire; lowered, its buttons round-trip as Pressed
   /** a keyed list of items — `List` is Scala's name, so `Items` */
   case Items(items: Vector[Ui], key: String)
-  case Table(header: Vector[String], rows: Vector[Vector[Ui]], key: String)
+  /** `weights` is each COLUMN's share of the width — `Box`'s own word
+   * for the same quantity. EMPTY means equal, which is what the
+   * lowering did unconditionally before ui-table-weights, so a table
+   * that does not ask for widths is untouched. How wide a column is,
+   * is a property of what is in it and only the author knows it: a
+   * case id is eight characters and an evidence sentence is sixty, and
+   * no stylesheet can correct an even split afterwards, because
+   * `React` writes these INLINE on each cell. A vector whose length is
+   * not the header's is ignored (see `Ui.lower`). */
+  case Table(header: Vector[String], rows: Vector[Vector[Ui]], key: String,
+             weights: Vector[Int] = Vector.empty)
   /** tab i's button is keyed `<key>$tab<i>`; only the selected page
    * is shown, so only its keys are capabilities */
   case Tabs(labels: Vector[String], selected: Int, pages: Vector[Ui], key: String)
@@ -48,6 +58,12 @@ enum Ui:
   /** a titled subtree shown when `open`; the title is its toggle,
    * keyed by the node's key */
   case Disclosure(title: String, open: Boolean, body: Ui, key: String)
+  /** NAVIGATION, which is not a capability: going somewhere is the
+   * client's own act, so a Link carries no key and `update` never
+   * hears of it. Its lowering says what it MEANS to a client that
+   * cannot navigate — the label and where it points — which is also
+   * the only useful thing a terminal can show (ui-link) */
+  case Link(label: String, href: String)
 
 enum Dir:
   case Horizontal, Vertical
@@ -67,8 +83,31 @@ enum Tone:
 enum Size:
   case Small, Normal, Large
 
+/**
+ * WHAT A TEXT IS, which decides how a host sets it (ui-text-intent,
+ * specs/ui-product.md stage 2). An identifier is read AGAINST
+ * something — an explorer, a published list — so it is monospaced and
+ * must arrive whole; a number is compared DOWN a column, so its
+ * figures are tabular; prose is read, so it wraps.
+ *
+ * It is a token like `Tone`, and it sits on the text rather than on
+ * the table because only the author knows what a cell says — "eight
+ * characters" is not a rule, and an IBAN is prose to a sorter and an
+ * identifier to a reader. okay-watch had been saying this with fifteen
+ * `nth-child` selectors, which do not survive a column being moved.
+ */
+enum Kind:
+  case Prose, Ident, Number
+
+/** where a text sits in the space its container gave it. ORTHOGONAL
+ * to `Kind` on purpose: a number in a sentence is not right-aligned,
+ * and a column of them is — so a column says both */
+enum Align:
+  case Start, End
+
 final case class Style(bold: Boolean = false, dim: Boolean = false,
-                       tone: Tone = Tone.Plain, size: Size = Size.Normal)
+                       tone: Tone = Tone.Plain, size: Size = Size.Normal,
+                       kind: Kind = Kind.Prose, align: Align = Align.Start)
 object Style:
   val none = Style()
 
@@ -136,7 +175,7 @@ object Ui {
     case Scroll(_, k) if k.nonEmpty => Some(k)
     case Form(_, _, k) if k.nonEmpty => Some(k)
     case Items(_, k) if k.nonEmpty => Some(k)
-    case Table(_, _, k) if k.nonEmpty => Some(k)
+    case Table(_, _, k, _) if k.nonEmpty => Some(k)
     case Tabs(_, _, _, k) if k.nonEmpty => Some(k)
     case Modal(_, _, k) if k.nonEmpty => Some(k)
     case Disclosure(_, _, _, k) if k.nonEmpty => Some(k)
@@ -223,18 +262,33 @@ object Ui {
    * representation, done to the value: the test that diff-then-apply
    * equals the next tree is what keeps the diff honest */
   def patch(ui: Ui, p: Patch): Ui =
+    // TOTAL, LIKE THE OPTIC BESIDE IT (ui-path-two-walks). The guards
+    // are not defensive programming: a Patch ARRIVES OVER A WIRE —
+    // `Wire.client` applies one straight onto the tree it holds — and a
+    // well-formed message naming a path that is not on that tree used
+    // to throw `IndexOutOfBoundsException` out of the receive loop and
+    // end the session. The protocol's rule everywhere else is that
+    // damage is dropped; this is that rule, here.
+    //
+    // Why this walk and `Ui.path`'s `childAt` are still two bodies:
+    // MEASURED (PathWalkProbe, 2026-09-18) at depths 4, 16 and 64, the
+    // affine costs 2.9-7.9x the time and a steady ~5.5x the allocation
+    // of this walk, because it is built from a RUNTIME `List[Int]` and
+    // pays the interpreter per step. They are held equal by the law in
+    // TestUiOptic instead, now including this totality.
     def at(u: Ui, path: List[Int], f: Ui => Ui): Ui = path match
       case Nil => f(u)
       case i :: rest => u match
-        case Row(c, k) => Row(c.updated(i, at(c(i), rest, f)), k)
-        case Column(c, k) => Column(c.updated(i, at(c(i), rest, f)), k)
-        case b: Box => b.copy(children = b.children.updated(i, at(b.children(i), rest, f)))
+        case Row(c, k) if c.isDefinedAt(i) => Row(c.updated(i, at(c(i), rest, f)), k)
+        case Column(c, k) if c.isDefinedAt(i) => Column(c.updated(i, at(c(i), rest, f)), k)
+        case b: Box if b.children.isDefinedAt(i) =>
+          b.copy(children = b.children.updated(i, at(b.children(i), rest, f)))
         case Scroll(c, k) if i == 0 => Scroll(at(c, rest, f), k)
-        case Form(c, s, k) => Form(c.updated(i, at(c(i), rest, f)), s, k)
-        case Items(c, k) => Items(c.updated(i, at(c(i), rest, f)), k)
+        case Form(c, s, k) if c.isDefinedAt(i) => Form(c.updated(i, at(c(i), rest, f)), s, k)
+        case Items(c, k) if c.isDefinedAt(i) => Items(c.updated(i, at(c(i), rest, f)), k)
         case Modal(t, c, k) if i == 1 => Modal(t, at(c, rest, f), k)
         case Disclosure(t, o, c, k) if i == 1 => Disclosure(t, o, at(c, rest, f), k)
-        case other => other   // a path into a leaf: the diff never makes one
+        case other => other   // a path into a leaf, or an index that names no child
     def kids(u: Ui, f: Vector[Ui] => Vector[Ui]): Ui = u match
       case Row(c, k) => Row(f(c), k)
       case Column(c, k) => Column(f(c), k)
@@ -249,7 +303,12 @@ object Ui {
       case Patch.SetChecked(path, on) => at(ui, path, { case Check(_, k, l) => Check(on, k, l); case u => u })
       case Patch.SetSelected(path, i) => at(ui, path, { case Select(o, _, k) => Select(o, i, k); case u => u })
       case Patch.Remove(path, i) => at(ui, path, kids(_, c => c.patch(i, Nil, 1)))
-      case Patch.Reorder(path, order) => at(ui, path, kids(_, c => order.map(c)))
+      // an order that names a child that is not there, or that does not
+      // name them all, is IGNORED rather than obeyed: the same wire
+      // reasoning as the guards above (a reorder is a permutation or it
+      // is damage)
+      case Patch.Reorder(path, order) => at(ui, path, kids(_, c =>
+        if order.length == c.length && order.forall(c.isDefinedAt) then order.map(c) else c))
       case Patch.Insert(path, i, b) => at(ui, path, kids(_, c => c.patch(i, Seq(b), 0)))
 
   /** every interactive widget, in tab order — focus is a position in
@@ -280,11 +339,13 @@ object Ui {
     case Select(_, _, k) => Set(k)
     case Form(fields, _, k) => fields.flatMap(keys).toSet + k
     case Items(items, _) => items.flatMap(keys).toSet
-    case Table(_, rows, _) => rows.flatten.flatMap(keys).toSet
+    case Table(_, rows, _, _) => rows.flatten.flatMap(keys).toSet
     case Tabs(labels, selected, pages, k) =>
       labels.indices.map(i => tabKey(k, i)).toSet ++ pages.lift(selected).map(keys).getOrElse(Set.empty)
     case Modal(_, body, _) => keys(body)
     case Disclosure(_, open, body, k) => (if open then keys(body) else Set.empty) + k
+    // navigation is not a capability: nothing may be posted about it
+    case _: Link => Set.empty
 
   def tabKey(key: String, i: Int): String = s"$key$$tab$i"
 
@@ -297,7 +358,7 @@ object Ui {
     case Scroll(c, _) => forms(c)
     case Form(fields, _, k) => fields.flatMap(forms).toMap + (k -> fields.flatMap(keys).toSet)
     case Items(items, _) => items.flatMap(forms).toMap
-    case Table(_, rows, _) => rows.flatten.flatMap(forms).toMap
+    case Table(_, rows, _, _) => rows.flatten.flatMap(forms).toMap
     case Tabs(_, selected, pages, _) => pages.lift(selected).map(forms).getOrElse(Map.empty)
     case Modal(_, body, _) => forms(body)
     case Disclosure(_, open, body, _) => if open then forms(body) else Map.empty
@@ -427,7 +488,7 @@ object Ui {
     case Scroll(c, _) => Vector(c)
     case Form(fs, _, _) => fs
     case Items(items, _) => items
-    case Table(_, rows, _) => rows.flatten
+    case Table(_, rows, _, _) => rows.flatten
     case Tabs(_, sel, pages, _) => if structural then pages else pages.lift(sel).toVector
     case Modal(_, body, _) => Vector(body)
     case Disclosure(_, open, body, _) => if structural || open then Vector(body) else Vector.empty
@@ -444,7 +505,7 @@ object Ui {
       case Scroll(_, k) => Scroll(cs.head, k)
       case Form(_, sub, k) => Form(cs, sub, k)
       case Items(_, k) => Items(cs, k)
-      case Table(h, rows, k) => Table(h, regroup(cs, rows.map(_.length)), k)
+      case Table(h, rows, k, w) => Table(h, regroup(cs, rows.map(_.length)), k, w)
       case Tabs(l, sel, pages, k) =>
         if structural then Tabs(l, sel, cs, k)
         else Tabs(l, sel, cs.headOption.fold(pages)(c => pages.updated(sel, c)), k)
@@ -473,7 +534,7 @@ object Ui {
       case Scroll(c, k) => Scroll(map(c, f), k)
       case Form(fields, s, k) => Form(fields.map(map(_, f)), s, k)
       case Items(items, k) => Items(items.map(map(_, f)), k)
-      case Table(h, rows, k) => Table(h, rows.map(_.map(map(_, f))), k)
+      case Table(h, rows, k, w) => Table(h, rows.map(_.map(map(_, f))), k, w)
       case Tabs(l, s, pages, k) => Tabs(l, s, pages.map(map(_, f)), k)
       case Modal(t, body, k) => Modal(t, map(body, f), k)
       case Disclosure(t, o, body, k) => Disclosure(t, o, map(body, f), k)
@@ -485,7 +546,8 @@ object Ui {
   object Vocab:
     val items = "items"; val table = "table"
     val tabs = "tabs"; val modal = "modal"; val disclosure = "disclosure"
-    val all: Set[String] = Set(items, table, tabs, modal, disclosure)
+    val link = "link"
+    val all: Set[String] = Set(items, table, tabs, modal, disclosure, link)
 
   /**
    * The LOWERING: every semantic node the vocabulary does not claim,
@@ -505,12 +567,27 @@ object Ui {
       case Items(items, k) =>
         if vocab(Vocab.items) then Items(items.map(go), k)
         else Box(items.map(go), Dir.Vertical, key = k)
-      case Table(header, rows, k) =>
-        if vocab(Vocab.table) then Table(header, rows.map(_.map(go)), k)
+      case Table(header, rows, k, weights) =>
+        if vocab(Vocab.table) then Table(header, rows.map(_.map(go)), k, weights)
         else
+          // the declared shares where there are as many as there are
+          // columns, and an even split otherwise. IGNORED rather than
+          // obeyed or fatal: a tree is data that may arrive over a
+          // wire from anywhere, and a mis-sized table should draw
+          // evenly rather than throw in a renderer
+          def shares(n: Int) = if weights.length == n then weights else Vector.fill(n)(1)
+          // ONE SPACE PER COLUMN BOUNDARY (ui-table-gap-and-proof): a
+          // lowered row pads each cell to its column's width and used
+          // to put nothing between them, so a terminal read
+          // `2023-11-14bread` — two values with no gap are one value
+          // to a reader. The gap belongs to the LOWERING and not to
+          // the terminal, because a table's columns are separated on
+          // every host that draws the lowering; each maps `gap` to its
+          // own unit (a character here, ~8px in GTK, nothing in Swing,
+          // which does not draw gap and says so)
           val head = Box(header.map(h => Text(h, Style(tone = Tone.Emphasis))), Dir.Horizontal,
-            weights = Vector.fill(header.length)(1))
-          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = Vector.fill(r.length)(1))),
+            weights = shares(header.length), gap = 1)
+          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = shares(r.length), gap = 1)),
             Dir.Vertical, key = k)
       case Tabs(labels, selected, pages, k) =>
         if vocab(Vocab.tabs) then Tabs(labels, selected, pages.map(go), k)
@@ -526,6 +603,11 @@ object Ui {
         if vocab(Vocab.disclosure) then Disclosure(title, open, go(body), k)
         else Box(Button(title, k, if open then Role.Active else Role.Plain) +: (if open then Vector(go(body)) else Vector.empty),
           Dir.Vertical, key = k)
+      case Link(label, href) =>
+        // what a link MEANS where nothing can be clicked: the label
+        // and where it points. A terminal analyst can then copy it,
+        // which a bare label would have taken away from them
+        if vocab(Vocab.link) then u else Text(if href.isEmpty then label else s"$label — $href")
     go(ui)
 
   /**

@@ -46,11 +46,57 @@ set -e
 # matrix will not page. The free figure counts inactive and
 # speculative pages: on Darwin those are reclaimable, and "Pages free"
 # alone reads near zero on a healthy machine.
+# WHAT "QUIET" MEANS, and both halves were measured wrong before
+# (gate-quiet-realistic, 2026-09-17, operator: "I need to work, not
+# wait"). Every gate this session waited the FULL 30 minutes and then
+# started anyway, which is the loop announcing that its condition is
+# unsatisfiable rather than that the box is busy.
+#
+# HEAVY is a JVM that is BURNING CPU, not one that is merely resident.
+# The old test counted any sbt with RSS > 1 GB, and an idle sbt server
+# is the normal state of this machine -- there is one in the main
+# checkout that has been up for two days, and on 2026-09-17 a 1.1 GB
+# sbt in another project sat at 0.0% CPU for 21 minutes and made the
+# box "busy" by itself. AGENTS.md already draws this distinction for
+# JMH forks ("a fork at 0% for minutes is asleep, not measuring"); it
+# just had not reached this line.
+#
+# FREE was 16 GB, which this box does not reach while anybody is
+# logged in: measured 14.6 GB free with nothing but an idle sbt and
+# the operator's VM. The replacement is DERIVED from the guard that
+# would kill the run, not guessed -- `io.scalascript.build-ram-guard`
+# is loaded and ticks every 20 s, and its own constants are:
+#
+#   REAP_FLOOR_MB=8192   below this (or any thrashing) it starts
+#                        reclaiming -- orphaned and idle servers
+#   SHED_FLOOR_MB=3072   below this AND thrashing it may kill LIVE
+#                        work: the heaviest build JVM, which during a
+#                        gate is the gate (AGENTS.md, THE 143)
+#
+# sbt here takes 6 GB (.jvmopts). Starting at 8 GB free would put the
+# host at ~2 GB once the heap is up -- UNDER the shed floor, with the
+# gate as the heaviest JVM, which is the 143 this project already
+# spent three days blaming on its own test suite. 10 GB is the first
+# number that keeps the host above the shed floor with the gate's own
+# footprint accounted for, and the machine reaches it: measured 12-16
+# GB available through this session's runs.
+#
+# (An earlier version of this comment said 8, and it was wrong for
+# exactly the reason written above; it was caught by reading the
+# guard's script rather than by a kill.)
+# KILL A PROCESS TREE BY PID, never by name (AGENTS.md is explicit,
+# and the incident it comes from cost a full matrix). Depth first, so
+# a child cannot be reparented away while its parent is still alive.
+kill_tree() {
+  for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done
+  kill "$1" 2>/dev/null
+}
+
 quiet() {
   L=$(sysctl -n vm.loadavg | awk '{print int($2)}')
-  H=$(ps -eo rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 1000000' | wc -l | tr -d ' ')
+  H=$(ps -eo pcpu,rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 20 && $2 > 1000000' | wc -l | tr -d ' ')
   F=$(vm_stat | awk '/Pages free|Pages inactive|Pages speculative/ {gsub("\\.","",$NF); s+=$NF} END {print int(s*16384/1073741824)}')
-  [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 16 ]
+  [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 10 ]
 }
 
 # What one attempt's log says. This is the whole safety property, so it
@@ -61,6 +107,7 @@ verdict() {
   if grep -q "gate: GREEN" "$1"; then echo green
   elif grep -q "gate: RED" "$1"; then echo red
   elif grep -q "gate: KILLED" "$1"; then echo killed
+  elif grep -q "gate: STALLED" "$1"; then echo stalled
   else echo none
   fi
 }
@@ -71,6 +118,7 @@ if [ "${1:-}" = "--read" ]; then
     green)  echo "$L: gate: GREEN — done, exit 0" ;;
     red)    echo "$L: gate: RED — done, the gate's exit code stands; NOT retried" ;;
     killed) echo "$L: gate: KILLED — a signal, not a verdict; retry" ;;
+    stalled) echo "$L: gate: STALLED — the watchdog killed a silent, idle run; retry, and READ the dump beside the log first" ;;
     none)   echo "$L: no verdict — the box took it; retry" ;;
   esac
   exit 0
@@ -78,13 +126,25 @@ fi
 
 if [ "${1:-}" = "--probe" ]; then
   if quiet; then v=quiet; else v=busy; fi
-  echo "box: $v  (heavy-jvm=$H load=$L freeGB=$F; wants heavy=0 load<15 free>=16)"
+  echo "box: $v  (busy-sbt=$H load=$L freeGB=$F; wants busy-sbt=0 load<15 free>=10)"
   exit 0
 fi
 
 WT="${1:?usage: gate-retry.sh <worktree> <log> [attempts]}"
 LOG="${2:?usage: gate-retry.sh <worktree> <log> [attempts]}"
 N="${3:-6}"
+# Minutes of SILENCE that mean a hang rather than a long compile.
+# Ten, because the longest legitimate quiet stretch here is one big
+# module's compile and the measured hang was 28 minutes and counting.
+# THE BACKSTOP, not the first line of defence any more (gate-watchdog,
+# 2026-09-18). `gate.sh` now watches itself at 8 minutes of silence
+# WITH an idle process tree, and takes a jcmd dump before it kills —
+# so in the ordinary case that one fires first and this never runs.
+# This stays for the case it still covers: gate.sh's own loop wedged,
+# or a stall in something gate.sh does not run under its watchdog.
+# Keep it ABOVE gate.sh's threshold or the diagnosing layer never gets
+# to look.
+STALL="${GATE_STALL_MIN:-10}"
 
 : > "$LOG"
 i=1
@@ -92,9 +152,16 @@ while [ "$i" -le "$N" ]; do
   # Wait up to 30 minutes for quiet, then go anyway: a box that stays
   # busy that long is the normal state of this machine, and a gate
   # that never starts is worse than one that may be killed.
+  # SAY SO WHILE WAITING. The log used to stay empty for up to half an
+  # hour, which from outside is indistinguishable from a hung gate --
+  # three watchers expired over an empty file on 2026-09-17 before
+  # anybody thought to look at the process list.
   w=0
   while [ "$w" -lt 60 ]; do
     quiet && break
+    if [ $((w % 4)) -eq 0 ]; then
+      echo "== waiting for a quiet box, $((w / 2)) min: busy-sbt=$H load=$L freeGB=$F" >> "$LOG"
+    fi
     sleep 30
     w=$((w + 1))
   done
@@ -106,10 +173,87 @@ while [ "$i" -le "$N" ]; do
   # failed projects against the known-lost ones, which is why it went
   # unseen — that branch runs exactly when a gate has already gone
   # wrong.
-  ( cd "$WT" && bash scripts/gate.sh ) >> "$LOG" 2>&1 && rc=0 || rc=$?
+  # THE STALL WATCHDOG (gate-stall-watchdog, 2026-09-17). A gate that
+  # HANGS is invisible to this loop as it was written: it reads the
+  # log only after gate.sh returns, and a hung gate never returns.
+  # Measured the same day: a run reached 80 of 81 modules and then sat
+  # for 28 minutes with sbt's main thread parked in
+  # ExecutorCompletionService.take and ~200 forked native/node runners
+  # at 0.0% CPU -- a runner handshake that never completed. Killing it
+  # by hand and rerunning took half an hour, twice.
+  #
+  # So: run it in the background, and watch the log GROW. A healthy
+  # gate writes something every few seconds; a compile of one big
+  # module is the longest legitimate silence, which is why the
+  # threshold is minutes and not seconds. A stall is killed by PID,
+  # tree first, and counted as "no verdict" -- which this loop already
+  # knows how to retry.
+  # A SENTINEL FILE, not `kill -0`: a finished background child is a
+  # ZOMBIE until the shell reaps it, and `kill -0` on a zombie
+  # SUCCEEDS. The first cut of this watchdog used it and never noticed
+  # a gate finishing -- caught by the test that a HEALTHY gate must
+  # not be killed, which is the test worth writing first.
+  rcfile="$LOG.rc"
+  rm -f "$rcfile"
+  # `set +e` INSIDE the subshell, and it is not decoration: this
+  # script runs under `set -e`, a subshell inherits it, and a RED gate
+  # exits non-zero -- so the first cut died ON gate.sh and never
+  # reached the sentinel. Every red gate then sat the full stall
+  # timeout before this loop noticed anything, which is the opposite
+  # of the bug the watchdog was written for. Caught in production the
+  # same afternoon: gate-drv.log has the verdict and, ten minutes
+  # later, "STALLED".
+  ( set +e; cd "$WT"; bash scripts/gate.sh; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
+  gpid=$!
+  stalled=0
+  quietmin=0
+  size=$(wc -c < "$LOG")
+  ticks=0
+  while [ ! -f "$rcfile" ]; do
+    sleep 10
+    ticks=$((ticks + 1))
+    [ $((ticks % 6)) -ne 0 ] && continue          # the growth check is per MINUTE
+    now=$(wc -c < "$LOG")
+    if [ "$now" -gt "$size" ]; then
+      size=$now
+      quietmin=0
+    else
+      quietmin=$((quietmin + 1))
+      if [ "$quietmin" -ge "$STALL" ]; then
+        echo "== attempt $i STALLED: nothing written for $STALL min; killing by pid" >> "$LOG"
+        kill_tree "$gpid"
+        stalled=1
+        break
+      fi
+    fi
+  done
+  # `|| true`, and the script is `set -e`: a killed child makes `wait`
+  # answer 143, which under `set -e` ENDS THIS SCRIPT — the retry loop
+  # would never run, the log would stop mid-sentence, and the exit
+  # code would be a signal. That is exactly what the first cut did,
+  # and the stall test is what showed it (the log ended at "killing by
+  # pid" and the script exited 143).
+  wait "$gpid" 2>/dev/null || true
+  if [ "$stalled" -eq 1 ]; then rc=99
+  elif [ -f "$rcfile" ]; then rc=$(cat "$rcfile")
+  else rc=99
+  fi
+  rm -f "$rcfile"
 
   case "$(verdict "$LOG")" in
-    green) echo "GATE EXIT=0"   >> "$LOG"; exit 0 ;;
+    green)
+      # A GREEN whose warning check was BLIND says so. gate.sh checks
+      # warnings only in a run that compiled something, and a worktree
+      # somebody already built by hand recompiles nothing -- measured
+      # 2026-09-17: delim-forward-not-throw landed two unused imports
+      # through a gate that said "no compile warnings", because the
+      # session had run testOnly in that worktree first. The tests
+      # still passed, so this stays exit 0; what it must not do is let
+      # silence read as cleanliness.
+      if grep -q "warnings NOT checked" "$LOG"; then
+        echo "gate: GREEN, but the WARNING CHECK WAS BLIND — this worktree was already built, so nothing recompiled. Compile it cold before trusting 'no warnings'." >> "$LOG"
+      fi
+      echo "GATE EXIT=0"   >> "$LOG"; exit 0 ;;
     red)   echo "GATE EXIT=$rc" >> "$LOG"; exit "$rc" ;;
   esac
 

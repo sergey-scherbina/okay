@@ -136,6 +136,17 @@ needs only the place can say (`Need.Port`, `Need.Dns`). An input
 with no `Needs` is a compile error naming it: a need the module has
 and the deployment does not know.
 
+**The needs a component reads off its own program** (`Provision`,
+`Needs.provisioned`; specs/di.md "Needs read off the program"). A
+module that opens a volume, a database or a port asks the place for
+it as an operation — `Static.op(Provision.Volume(dir))` — and opens
+the thing with the ANSWER, so the path it opens is the path the
+deployment mounts and nothing is declared beside the code. The
+default place (`Provision.local`) answers a volume with its path, a
+port with its number and a database with the `*_URL` setting every
+target here writes; `Needs.declared` reads the leaves off the spine
+before anything opens.
+
 ## What gets rendered
 
 `Deploy.files(d)` is the whole deployment as `(path, content)` pairs

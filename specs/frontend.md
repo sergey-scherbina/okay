@@ -358,6 +358,97 @@ Live pages' `live.js`: the same) and lowers level S at its entry
 the 69 existing okay-ui tests, okay-script's 166 and okay-demo's 54
 pass unchanged.
 
+`Link(label, href)` joined level S on 2026-09-17 (ui-link), asked for
+by okay-watch's analyst page: exports and a filing are places to GO,
+and the vocabulary had no way to say so. It is the one semantic node
+a BROWSER claims (`React.elem` draws an anchor, so `Html` does, and
+`live.js` says `vocab: ["link"]` in its hello) — every other client
+gets the lowering, `Text("<label> — <href>")`, which is what a link
+means where nothing can be clicked and leaves a terminal analyst able
+to copy the URL. It carries NO KEY on purpose: going somewhere is the
+client's own act, so `Wire.permitted` can never admit anything about
+it and `update` never hears of it. TestLink, 6.
+
+**A HOST LOWERS WITH ITS OWN VOCABULARY, NEVER WITH NOTHING**
+(react-host-vocab, 2026-09-18, found from okay-watch). The rule above
+— "every other client gets the lowering" — says what happens to a node
+the host does not claim. It says nothing about a node the host DOES
+claim that happens to sit inside one it does not, and that case was
+wrong: `React.elem` matched `Link` and rendered an anchor, then met a
+`Table` it does not claim and asked for the lowering with
+`Set.empty`. `Ui.lower` recurses, so the empty vocabulary reached the
+CELLS, and a `Link` in a table cell arrived as `Text("label — href")`
+one node away from where the same link was an `<a>`.
+
+**It made the two roads disagree on one tree**, which is the sharper
+statement of the defect and the reason it matters: `live.js` says
+`vocab: ["link"]` in its hello, so `Wire.serve` lowered with `link`
+and the socket sent the anchor, while `Html.render` — the scriptless
+road through `React.elem` — sent text. okay-watch serves both from one
+`Analyst.view`, and a page that renders differently depending on
+whether a script ran is not one page.
+
+So a host's catch-all lowers with the set it claims:
+`Ui.lower(semantic, React.Vocabulary)`, `React.Vocabulary =
+Set(Vocab.link)`. `Frame` and `Swing` claim NO semantic node, so their
+`Set.empty` is already their own vocabulary and is left alone — the
+bug is not "`Set.empty` is wrong", it is "a constant is not a host's
+vocabulary".
+
+- [x] a `Ui.Link` inside a `Ui.Table` cell renders as an `<a>`, and so
+      does one inside `Items`, `Tabs`, `Modal` and `Disclosure`
+- [x] the two roads agree: `Html.render(t)` and the tree `Wire` shows
+      a client whose hello said `["link"]` carry the same anchors
+- [x] a host that claims nothing is unchanged — the terminal still
+      draws `label — href`, which is what a link means where nothing
+      can be clicked
+
+**A TABLE SAYS HOW WIDE ITS COLUMNS ARE** (ui-table-weights,
+2026-09-18, asked for by the operator after okay-watch hit it twice).
+`Table` carried a header, rows and a key, and its lowering gave every
+column ONE share — `Box(..., weights = Vector.fill(n)(1))`. That is
+not a default a caller can override, it is the only thing the node can
+express, and it is wrong for most real tables: a case id is eight
+characters and an evidence sentence is sixty.
+
+**And no stylesheet can correct it.** `React` writes a `Box`'s weights
+INLINE on each child (`style="flex:1"`), and an inline style beats a
+rule in a stylesheet whatever the rule says. okay-watch discovered
+both halves the hard way: a nine-column list ellipsized the IBAN, the
+rail and the timestamp; the CSS written to widen the prose columns had
+never once applied; and the page ended up abandoning `Ui.Table` for a
+hand-lowered `Box` to get the widths back — a level-S node rewritten
+as level L by its caller is the node failing to mean anything.
+
+So `Table` gains `weights`, which is `Box`'s own word for the same
+quantity rather than a new one. **Empty means equal**, so every
+existing caller and every existing wire message is unchanged; a
+claiming client gets the vector and honours it; the lowering hands it
+to the head row and every body row. A vector whose length is not the
+header's is IGNORED rather than obeyed or fatal — a tree is data that
+may arrive over a wire from anywhere, and a mis-sized table should
+draw evenly, not throw.
+
+- [x] `Table(h, rows, k)` lowers exactly as before — equal shares — so
+      the change is invisible to every caller that does not use it
+- [x] `Table(h, rows, k, Vector(3, 1, 9))` lowers to a head `Box` and
+      body `Box`es all carrying those weights, and a client that
+      LOWERS gets them as `flex:3`, `flex:1`, `flex:9` on its cells.
+      (ui-browser-vocab, 2026-09-18, amends where a BROWSER gets them:
+      it claims `table` now, so the shares are a `<colgroup>` of
+      `<col style="width:N%">` — the element whose job a column width
+      is. The property this box was written for is unchanged and still
+      tested: the RENDERER says the shares and no stylesheet can
+      overrule them.)
+- [x] a weights vector of the wrong length is ignored, and the table
+      draws evenly
+- [x] `map`, `withChildren` and `keys` carry the weights through
+      unchanged — a diff of two tables differing only in weights is
+      a change, not a no-op
+- [x] the wire: a `Table` with weights round-trips through `Protocol`,
+      and one WITHOUT them encodes as it always did, so an old client
+      reads a new server
+
 ## Mobile
 
 The operator's next direction (2026-09-09): mobile frontends and

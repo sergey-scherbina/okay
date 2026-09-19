@@ -17,6 +17,11 @@ tense, and the outcome is at the end.
 
 ## The site
 
+(`Effect` in these snippets is the operation node, spelled `Inject`
+since inject-not-effect, 2026-09-15; the walkers themselves split with
+`split` since split-over-either. The snippets keep the names they had:
+the argument is about the existential, not the spelling.)
+
 ```scala
 case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
   case Left(Take.Await())  => effect(Take.Await()).flatMap(oi => pull(k(oi))(cont))   // no cast

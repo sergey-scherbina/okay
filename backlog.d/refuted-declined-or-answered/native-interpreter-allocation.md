@@ -1,0 +1,3 @@
+- native-interpreter-allocation — DONE 2026-09-06: the collector is not
+  it; the count is six objects per bind §18: `bindChain`, N nested
+  flatMaps with …

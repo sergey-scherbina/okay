@@ -25,4 +25,21 @@ class TestFs extends BlobContract("fs") {
     java.nio.file.Files.write(root.resolve("half.tmp"), Array[Byte](1, 2))
     assertEquals(drainList(b.list("")).map(_.key), Vector("real"))
   }
+
+  test("fs: a file goes in through putFile a chunk at a time, and comes back whole") {
+    import okay.Writer
+    val b = Fs(java.nio.file.Files.createTempDirectory("okay-blob-file"))
+    val f = java.nio.file.Files.createTempFile("okay-bytes", ".bin")
+    val data = Array.tabulate[Byte](200_001)(i => (i % 251).toByte)   // not a multiple of any chunk
+    java.nio.file.Files.write(f, data)
+
+    val _ = run(b.putFile("f/one", f, chunk = 8 * 1024))
+    assertEquals(run(b.getBytes("f/one")).map(_.toVector), Right(data.toVector))
+
+    // Bytes.file never holds more than one chunk, and loses nothing
+    val (told, _) = run(Writer.collect(Bytes.file(f, 8 * 1024)))
+    assert(told.forall(_.length <= 8 * 1024), told.map(_.length).toString)
+    assertEquals(told.map(_.length).sum, 200_001)
+    assertEquals(told.flatMap(_.toVector).toVector, data.toVector)
+  }
 }

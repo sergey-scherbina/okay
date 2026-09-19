@@ -1,7 +1,7 @@
 # Direct style: monads as plain code
 
 How Okay lets you write monadic and effectful programs as ordinary
-Scala — `val x = m.!?`, or no marks at all — and why every layer of it
+Scala — `val x = m.?`, or no marks at all — and why every layer of it
 is two one-liners of semantics plus a macro that only ever adds
 syntax. Four features, landed in dependency order on 2026-09-01:
 `Monadic` (the foundation, no macros), the `direct` block, the
@@ -71,7 +71,10 @@ object Monadic:
      * spellings: m.reflect and reflect(m) */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ: m.!? — Rust's postfix question, generalized */
+    /** the symbolic μ: m.!? and m.? — Rust's postfix question,
+     * generalized. The glyph was retired from 2025 to unwrap-glyph
+     * (2026-09-17) while Throws answered it on every value in the
+     * language, silently. */
     inline def ?[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
 
@@ -198,9 +201,21 @@ its position and its workaround in the message:
   function boundary the macro does not rewrite, and rewriting
   higher-order arguments generically is the expensive half of the
   general problem (the half dotty-cps-async solves and pays for).
-  Bind the value to a `val` before the lambda.
+  Bind the value to a `val` before the lambda. ONE lambda is
+  rewritten: one whose body already ENDS at the block's program type
+  (direct-program-lambda), which is the `try` body's treatment and the
+  nested def's, and sound for the same reason — binding the marks
+  inside changes neither the lambda's type nor where it is evaluated.
+  That is what lets a continuation handler read as ordinary code:
+  `Delim.shift(p) { k => "deciding".tell; if ok then k(n) else pure(-1) }`
+  with no inner block.
 - a mark **under a by-name argument** — hoisting it would change
   when (whether) it evaluates.
+- a mark **in a `lazy val`** of a block whose row does not name
+  `Once` — the same "when" question, answered: a lazy val with a
+  mark is call-by-need, which is an effect here (the section
+  "Call-by-need: `lazy val` is the `Once` effect" below). With `Once`
+  in the row it is not a refusal but the by-need word.
 - **`try` around marks** — a v2 road (reification into the Throws
   error channel), named, not promised. (`while` and the
   foreach/map loops below graduated out of this list.)
@@ -263,7 +278,8 @@ both open. This is the part of the design where the danger lives
 gates are the whole story:
 
 ```scala
-import Direct.{*, given}                    // givens need naming in Scala 3
+import Direct.{*, given}                    // givens need naming in Scala 3 — for ops;
+                                            // the block's own PROGRAMS colour without it
 import scala.language.implicitConversions   // the language demands consent
 
 given Effect[[X] =>> Reader[Int, X]] with {}    // gate 2: the marker
@@ -281,8 +297,27 @@ saying why, because `throws` lost its own import that way
 (throws-into): `into` marks the conversion's TARGET type, and
 auto-coloring's conversions are `Conversion[F[A], A]` — the target is
 the bare type variable `A`, and there is no declaration to write
-`into` on. The consent stays per call site here, which for the feature
-where "the danger lives" is the right answer anyway.
+`into` on. Nor by a build-wide `-language:implicitConversions`: that
+flag was in `build.sbt` for one day (2026-09-15) and came out again,
+because `TestThrows` proves `throws`'s `into` by the ABSENCE of this
+import, and a global flag makes the absence prove nothing. The consent
+stays per file here, which for the feature where "the danger lives" is
+the right answer anyway.
+
+What a file does NOT need any more is `Direct.given` for the block's
+own programs: `Free.directColor` lives in `Free`'s companion — the
+implicit scope of a `Conversion[Free[R, A], A]`'s source type — so an
+`A ! Row` value colours inside any `direct` block with
+`import okay.Direct.*` alone (the ops' `opColor` still comes from
+`Direct.given`, opt-in per signature as before).
+
+**Without implicit conversions at all: the prefix mark.** If a file
+would rather not enable the feature, the marks are the road and
+the shortest of them is one glyph: `!prog`. It is an ordinary method
+(`unary_!`), no `Conversion` is involved, no language import is
+needed, and it composes with everything below — including the
+recursion rule in the next section, where `!fib(n - 1) + !fib(n - 2)`
+is the annotation-light spelling of the annotation-free one.
 
 **Gate 1 — the capability.** The block is a context function
 `DirectCtx[F] ?=> A`, and both conversions require
@@ -329,6 +364,275 @@ and its cost is honest: the language import, and error messages
 inside a block that can point one conversion away from the real
 mistake.
 
+## Recursion in a block: deep, and with no annotation
+
+A block that calls its own def at the program type has a hazard the
+marks do not remove on their own: the self-call is a *program*, and
+building it eagerly is the native recursion the block exists to
+avoid. So inside a `direct` block a call to the ENCLOSING def, at the
+block's own program type, is deferred wherever it is marked or
+coloured — `fib(n - 1)` becomes `Free.delay(() => fib(n - 1))` under
+the same mark — and the recursion trampolines through the tree's
+`Delay` node ([theory ch. 11](theory/11-one-tree.md)) instead of the
+JVM stack:
+
+```scala
+import okay.Direct.*
+import scala.language.implicitConversions
+
+def fib(n: Int): Long ! Pure = direct:
+  if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)     // coloured, deferred
+
+def sum(n: Int): Long ! Pure = direct:                      // 1 + sum(n - 1): not tail
+  if n == 0 then 0L else 1L + sum(n - 1)
+
+def count(xs: List[Int], acc: Long): Long ! Pure = direct:
+  xs match
+    case Nil => acc
+    case h :: t => count(t, acc + h)
+
+!.run(sum(1_000_000))   // 1000000, on the default stack
+```
+
+**Mutual recursion needs nothing either.** By default a call at the
+block's program type is deferred wherever it stands, so two functions
+calling each other are safe in any position:
+
+```scala
+def isEven(n: Int): Boolean ! Pure = direct:
+  if n == 0 then true else isOdd(n - 1)      // deferred: tail position
+def isOdd(n: Int): Boolean ! Pure = direct:
+  if n == 0 then false else isEven(n - 1)
+
+!.run(isEven(1_000_001))   // false, on the default stack
+```
+
+The macro expanding `isEven` cannot know that `isOdd` calls back — a
+cycle spans files, and the other def may not be typed yet — so the
+enclosing-def rule cannot see it. The tail position can, and is exactly
+where the node costs one allocation and saves a frame. Before this rule
+(direct-tail-defer, 2026-09-16) the same code COMPILED, answered at
+small `n` and overflowed the stack at depth, which is the worst failure
+mode a library can have.
+
+```scala
+def sumEven(n: Int): Long ! Pure = direct:
+  if n == 0 then 0L else 1L + sumOdd(n - 1)     // NOT tail — deferred anyway
+def sumOdd(n: Int): Long ! Pure = direct:
+  if n == 0 then 0L else 1L + sumEven(n - 1)
+```
+
+**The default is safety, and it is not free — so it has a switch.**
+Deferring every call means one `Delay` and its thunk, 64 bytes, per
+call a block marks. Where a block is hot and provably not recursive,
+one import buys that back:
+
+```scala
+import okay.Direct.eagerCalls.given    // this scope builds calls where they stand
+```
+
+measured on `compare/DirectBenchmark`, one run, 10 000 marked calls per
+invocation, `okayFlatMap` as the control:
+
+| lane | time | allocation |
+|---|---|---|
+| `okayDirect` (default) | 179.3 µs | 2 238 113 B |
+| `okayDirectEager` (opted out) | 113.6 µs | 1 598 113 B |
+
+With the import in scope two rules stay on, both measured free: a call
+to the ENCLOSING def is still deferred anywhere in the block, and a
+call to another def is still deferred in TAIL position. What you take
+on is the rest: a mutual call outside tail position is then built where
+it stands, and needs the word `!.tailcall(other(n))`. `!`, `.reflect`
+and `.!?` are NOT substitutes — they are marks ("bind this program"),
+not deferrals ("do not build it yet"), so a marked call is still built
+when the block is. A call already wrapped in `!.tailcall` is left
+alone, so the explicit spelling never pays for two nodes, and a call
+that carries definitions of its own — a lambda, a nested `direct`
+block — is left where it stands whatever the mode, because moving it
+under a thunk would move its symbols with it.
+
+This is what Kozak's `deepRecursive` macro does for Scala 3 over
+`TailRec`, at the one place it matters (the deferral) — her `TailRec`
+is this library's `Free` node for node — and with the lowering the
+rest of the block already gets: two self-calls in one expression,
+branches, `match`, a real row whose tells interleave with the
+recursion in order. Without the language import the same thing is
+`!fib(n - 1) + !fib(n - 2)`. Mutual recursion needs no word either
+(direct-defer-default: every call at the block's program type is
+deferred, and `import Direct.eagerCalls.given` is the opt-out that
+hands `!.tailcall(other(n))` back to you). A self-call under a
+lambda is a value and is left alone (v1 does not look under lambdas).
+`TestDirectDeep` holds every one of these shapes.
+
+## Call-by-need: `lazy val` is the `Once` effect
+
+`Delay` is by-name: the loop forces its thunk every time it reaches
+the node, and a node shared between two places runs twice — Scala's
+by-name parameter, not its `lazy val`. Haskell's laziness is by-NEED:
+by-name plus a cell that remembers the answer. For a pure thunk the
+cell is an optimisation, unobservable. For a program it is a
+semantics — "run these effects at most once" can be seen in the log —
+and the library's rule for a semantics is that it is an effect in
+the row, not a mutable field in the tree. So it is one (direct-once,
+2026-09-16):
+
+```scala
+enum Once[+A] derives Effect:
+  case Force[A](h: Once.Handle[A]) extends Once[Option[A]]   // what the cell holds
+  case Store[A](h: Once.Handle[A], a: A) extends Once[A]     // fill it; answers what it holds after
+
+def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F)     // !.once
+def run[A, F[+_]](a: A ! (Once + F)): A ! F                  // Once.run
+```
+
+`!.once(p)` is a program value: its first demand runs `p` and stores
+the answer under a fresh handle; every later demand of *that value*
+answers from the store. The handle carries no program, which is what
+keeps `Once`'s type free of the row it lives in and lets it be
+written like any other effect. The cells are the handler's STATE,
+threaded through `Once.run`'s loop as `State.handle` threads `S`, so
+the tree holds no cell: the same program run twice replays the same
+trace.
+
+In a block the word is Scala's own:
+
+```scala
+val prog: Int ! (Once + Writer % String) = direct:
+  lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
+  val y = !told("de")            // runs here
+  x + x + y + !told("f")         // log: de, abc, f
+```
+
+Three words, three semantics, all visible in the source: `val` runs
+now, `lazy val` runs at first demand, a bare mark runs at every use.
+The macro emits `val x$once = Once.at[T, Row](handle)(force)(store)(rhs')`
+and turns every use of `x` into a mark on it, so a use is a bind in
+the position of the use. A `lazy val` never demanded never runs; one
+demanded in one `if` branch runs only there; one declared in a loop
+body is a fresh cell per iteration, exactly as a `lazy val` would be.
+A use under a lambda is the usual refusal; a use inside a for-loop
+the macro owns works, and runs the cell at the first element. The
+rule keys on the compiled right-hand side, not on the mark: `lazy val
+x = { Writer("x"): Unit; 3 }`, whose statement runs by do-notation,
+is by-need too, and a pure right-hand side stays a plain Scala `lazy
+val`.
+
+**What it is for.** One page handler that stamps its own duration,
+with a different word on each thing it needs — and every word chosen
+for CORRECTNESS, not for speed:
+
+```scala
+def page(token: String): Response ! Fetch + Once = direct:
+  val      started = Fetch.now           // by value: pin the start, once
+  val      user    = Fetch.user(token)   // by value: every branch needs it
+  lazy val feed    = Fetch.feed(user.id) // by need:  costly, and ONE list for both reads
+  def      now     = Fetch.now           // by name:  time moves, read it again
+
+  if user.banned then Response.Banned(user)
+  else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}", now - started)
+```
+
+`started` and `now` are the SAME operation under two words, and both
+are right: one pinned, one fresh. Swap any of the four and you have a
+bug, not a slowdown — `def started` would move with the end and the
+duration would always be 0, `lazy val now` the same; `def feed` would
+fetch twice and could report one list's size beside another's head.
+
+The test is another handler for the same effect: your data goes in
+through `Reader`, the calls come out through `Writer`, and the clock
+moves because each call costs time (`State`). No mocks, no doubles,
+and the harness is itself a `direct` block:
+
+```scala
+object Test:
+  type Row = Writer % String + Reader % Db + State % Long
+
+  def one[X](e: Fetch[X]): X ! Row = direct:
+    Fetch.show(e).tell                        // the call, into the log
+    val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
+    val db = !Reader.ask[Db]                  // your data, straight in
+    e match
+      case Fetch.Now() => clock
+      case Fetch.User(t) => db.users(t)
+      case Fetch.Feed(i) => db.feeds(i)
+```
+
+`State.modify` and `Reader.read` answer at their OWN rows, narrower
+than this block's. A mark coerces them into it, and so does plain
+colouring (direct-narrow-row, direct-narrow-colour), which is what
+keeps the body free of a hand-written `.plus[...]` per operation. The
+macro decides membership by SUBTYPING — `R2 <:< R`, which is what
+membership means for a union — because by the time it holds a row the
+row has been beta-reduced and no longer matches the `F + G` shape the
+`In` givens are written against; `RowLift.into` is that door, with the
+side condition named there.
+
+The one mark left in the harness is on a GADT branch whose value IS
+the match's answer: there the branch types at the abstract `X`, and a
+conversion cannot target it. Everywhere the target is a concrete type,
+colouring reaches.
+
+What that test prints (`TestDirectOnce` asserts exactly this):
+
+| request | answer | calls |
+|---|---|---|
+| a banned user | `Banned(Ada)` | `CLOCK`, `GET /user?token=b` |
+| the full page | `Page("3 picks for Cleo, top scala", 120)` | `CLOCK`, `GET /user?token=o`, `GET /feed/3`, `CLOCK` |
+
+`feed` is read twice in that one line and fetched once. The clock is
+read twice and answers twice, 120ms apart. The user is fetched on both
+requests, and never twice.
+
+**No marks, no ascriptions.** The three words hold with nothing
+written on them (direct-colourless-val, 2026-09-16):
+
+```scala
+def demo(use: Boolean): Int ! (Once + Fetch) = direct:
+  val      x = fetch("val")        // by value
+  lazy val y = fetch("lazy val")   // by need
+  def      z = fetch("def")        // by name
+  if use then x + x + y + y + z + z else 0
+
+// nothing used:      val
+// each used twice:   val, lazy val, def, def
+```
+
+This needed a rule, and the reason is worth knowing. Inference gives
+`val x = fetch("val")` the PROGRAM type, so the colouring conversion
+does not fire at the declaration — it fires at every USE, where an
+`Int` is finally demanded. Before the rule, `val` and `lazy val` both
+silently meant `def`: measured as `val, val, lazy val, lazy val, def,
+def`. Now the declaration decides, as the words do everywhere else in
+Scala. A val whose uses are coloured is a binding; a lazy val is the
+`Once` cell; a val held as a PROGRAM — marked at its uses, passed to
+`!.once`, stored — is a value and is untouched. A val read both ways
+in one block is a compile error naming both readings.
+
+**What "once" counts.** Once per handle, and a handle is made per
+`!.once(p)` evaluated — as a `lazy val` is per declaration, not per
+right-hand side. `!.once(p) + !.once(p)` runs `p` twice; a bare `!p`
+beside a `!.once(p)` runs every time and knows nothing of the cell;
+`!.once` inside a `def` makes a new handle per call. Share the VALUE
+to share the cell. The type does not say which values are once'd,
+any more than `State` in a row says what the state is.
+
+**Multi-shot is handler order, not a flag.** The cells are state, so
+under a search they behave exactly as `State` does:
+
+| order | cells | reading |
+|---|---|---|
+| `runChoice(Once.run(p))` | backtrack with the search | each branch its own once; nothing leaks — the default |
+| `Once.run(runChoice(p))` | one store for the whole search | the second branch sees what the first stored — deliberate, and the types show it |
+
+The macro could not check a flag for this — it does not know the
+handlers — and does not try. A handle demanded while its own program
+is still running (a knot, or an interleaved search with `Once.run`
+OUTSIDE it) is a loud `IllegalStateException`, not a second run and
+not a hang. The Prolog cut, once `Logic.once`, is `Logic.cut`
+(logic-cut), so `once` means one thing here. `TestDirectOnce` holds every shape above,
+including both handler orders.
+
 ## Layer 4 — do-notation statements: the statement is the mark
 
 The `tell` problem: a `Unit`-typed operation on its own line cannot
@@ -336,6 +640,17 @@ auto-color (above), and demanding `.?` on every log line is
 ceremony. The answer needs no conversion at all — the macro can see
 a bare statement's type directly, and there is exactly one thing a
 monadic statement in a direct block can mean:
+
+**`w.tell`** (direct-tell, 2026-09-16) is the statement form with the
+warning designed out: inside a block it is the mark on the Writer
+operation `Writer(w)`, typed `Unit`, so `"start".tell` on its own line
+runs and `-Wall` has nothing to flag (a bare `Writer("start")` runs
+too, by the do-notation rule below, but the typer sees an unused
+non-`Unit` value first — E176 — which the `: Unit` ascriptions in the
+tests answer). Outside a block the same name is the program
+`Writer.tell(w)`, `Unit ! Writer % W`: one `transparent inline`,
+decided per call site by whether the block's `DirectCtx` capability
+is in scope, the gate the colouring conversions stand behind.
 
 ```scala
 val prog: Int ! F = direct {

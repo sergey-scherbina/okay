@@ -38,6 +38,9 @@ object Gtk4 {
   def gtk_widget_set_margin_top(w: Widget, m: CInt): Unit = extern
   def gtk_widget_set_margin_bottom(w: Widget, m: CInt): Unit = extern
   def gtk_widget_add_css_class(w: Widget, cls: CString): Unit = extern
+  /** asked by TestGtk: the tokens ui-text-intent maps to GTK's own
+   * style classes are only a claim until something reads them back */
+  def gtk_widget_has_css_class(w: Widget, cls: CString): CInt = extern
   def gtk_widget_activate(w: Widget): CInt = extern
 
   // ---- box

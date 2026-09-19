@@ -1,0 +1,3 @@
+- actor-receive-offer-first — MEASURED AND DECLINED 2026-09-06: +19% in
+  the regime that matters Built: `receiveNow(): Poll[A]` on `Channel`
+  (default …

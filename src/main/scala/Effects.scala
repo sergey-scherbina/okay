@@ -13,16 +13,21 @@ import scala.annotation.tailrec
  * A computation A ! F is a freer-monad tree over the signature F; its
  * meaning is its image in Cont, given by foldCont, where a handler is
  * an interpretation F !> S = F ==> ([X] =>> X /> S) — that is,
- * handlers are continuations. The Effects interface is final tagless
- * with two encodings (Free — initial, Eff — final, Church), and the
- * object ! is the concrete toolkit over the Free encoding: stepping
- * (resume, next, ?), running, and the tail-resumptive relay.
+ * handlers are continuations. The Effects interface is final tagless;
+ * Free (the initial encoding) and Eager (Eager.scala, pure binds at
+ * construction) are its instances, and the object ! is the concrete
+ * toolkit over Free: stepping (resume, next, ?), running, and the
+ * tail-resumptive relay. reflect and reify move programs between the
+ * encodings.
  *
- * Choosing an encoding: the tree is for tools — stepping, staged
- * relay, stack safety on any bind shape; the function is for speed —
- * fused build-and-run pipelines with no tree at all; the interface is
- * for not choosing too early. fromFree and reify move programs
- * between the encodings.
+ * There WAS a third instance, Eff — the Church encoding, a program as
+ * the function of its handler (Kiselyov–Sabry–Swords 2013). It proved
+ * the interface honest ("Free and Eff agree") and it was measured: the
+ * no-tree road ran at 0.58–0.86x of the fused Free loop (handler-fusion
+ * stage B), stack safety cost it a Cont.defer per bind (eff-stack-
+ * safety, +11%), and nothing outside its own tests ever built one.
+ * Removed 2026-09-15 (defer-eff-removal); the history is in those two
+ * specs and in history.tsv rows `effSW*`.
  *
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
  * https://blog.higher-order.com/assets/trampolines.pdf
@@ -97,7 +102,11 @@ inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 extension [F[+_], A](op: F[A])
   inline def perform: A ! F = effect(op)
 
-/** an interpretation of F into any Control carrier C, with the answers S */
+/** an interpretation of F into any Control carrier C, with the answers
+ * S — the handler type of an inline handler-passing program (`Fused`,
+ * specs/staged-effects.md), which is what "staged effects" means here:
+ * a carrier-generic fold on the ENCODING (`foldIn`/`runIn`) was
+ * measured no faster than Cont and is gone (core-cleanup) */
 type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 
 /**
@@ -172,6 +181,7 @@ object Handler {
    * types at a call site are concrete.
    */
   def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
+                         (using Distinct[F + G])
   : Handler[F + G] = new Handler[F + G]:
     def handle[A](a: F[A] | G[A]): A =
       // the split is the kernel's (`split`), the one place the
@@ -189,24 +199,26 @@ object Handler {
 trait Effects[M[_[+_], _]]:
   def pure[F[+_], A](a: A): M[F, A]
   def perform[F[+_], A](e: F[A]): M[F, A]
+  /** a bind whose left side is deferred: the thunk is not forced at
+   * construction, only when the encoding's own interpreter reaches this
+   * node — Free's runners (fold/runFree/resume) force it one hop at a
+   * time in their own tailrec loop. This is what lets two
+   * mutually-recursive functions returning M[F, A] call each other in
+   * tail position without nesting a JVM stack frame per call. */
+  def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
+  /** mark a call to a mutually-recursive function as a tail call — the
+   * tagless counterpart of `!.tailcall` (object !, this file), for code
+   * written polymorphically over `M: Effects` rather than committed to
+   * one encoding. */
+  def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
 
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
     /** interpret the operations, i.e. reflect the computation into Cont */
     def foldCont[S](h: F !> S): A /> S
-    /** the same at any Control carrier (foldCont is its Cont fast path) */
-    def foldIn[C[_, _, _] : Control, S](h: Interpr[F, C, S]): C[A, S, S]
     /** run all the effects by a comonadic Handler (the foldCont definition; encodings may override with an equivalent fast path) */
     def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
-    /**
-     * run at a chosen Control carrier. Cont is the stack-safe default;
-     * Func composes closures at run time — measured no faster than
-     * Cont here (see specs/staged-effects.md): true staged effects are
-     * inline handler-passing programs over Control, not a carrier.
-     */
-    inline def runIn[C[_, _, _]](using Handler[F], Control[C]): A =
-      m.foldIn[C, A](interpr[C, F, A]) / identity
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
@@ -222,10 +234,15 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
 /** ∀X, the runtime test for F[X], by the erasure of F */
 @implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised one says the same: `enum YourOp[S, +A] derives Effect` abstracts the LAST\nparameter, and the test is then by class only (a row may hold one of it).\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
 trait TypeableK[F[_]]:
-  def unapply[A](x: Any): Option[x.type & F[A]]
-  /** the same question with no wrapper in the answer: `split` asks
-   * it on every operation of every runner (split-without-either) */
-  def test(x: Any): Boolean = unapply(x).isDefined
+  /** is `x` an operation of F — asked by `split` on every operation
+   * of every runner (split-without-either), and the WHOLE interface:
+   * there used to be an `unapply` beside it answering
+   * `Option[x.type & F[A]]`, and nothing in the repository ever
+   * matched with it — every runner refines through `split` and then
+   * matches the constructor. The extractor cost each instance a
+   * method and a cast for a question `test` answers with neither
+   * (core-cleanup, 2026-09-15). */
+  def test(x: Any): Boolean
 
 /**
  * A `TypeableK` by the runtime CLASS of a signature's values.
@@ -243,32 +260,25 @@ trait TypeableK[F[_]]:
  * wrong instance to reach for: see `TypeableK.byClassPartial`.
  */
 
-def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
-  def unapply[A](x: Any): Option[x.type & F[A]] =
-    if cls.isInstance(x) then Some(x.asInstanceOf[x.type & F[A]]) else None
-  override def test(x: Any): Boolean = cls.isInstance(x)
+def typeableK[F[_]](cls: Class[?]): TypeableK[F] = Effect.ByClass[F](cls)
 
 /**
- * A `TypeableK` for a signature whose PARAMETER leaves no runtime
- * trace — `Reader % R`, `State % S`, `Take % V`. The test is by class
- * and therefore says only "this is a Reader", not "this is a Reader
- * of Int".
- *
- * That is exactly as sound as what was there before, and no less: the
- * generic instance below tests the same erasure. What this one adds is
- * a NAME for the limitation and one place to read about it, instead of
- * "the type test cannot be checked at runtime" repeated at every use
- * site, where it is unactionable and drowns out the warnings that can
- * be acted on.
- *
- * The limitation, stated: a row may hold ONE instance of such a
- * signature. Two — `Reader % Int + Reader % String` — misroute, and
+ * The limitation of a class test, stated once — for a signature whose
+ * PARAMETER leaves no runtime trace (`Reader % R`, `State % S`,
+ * `Take % V`) the test says only "this is a Reader", not "this is a
+ * Reader of Int". So a row may hold ONE instance of such a signature,
+ * and `Distinct[R]`, which `Handler.union` requires, refuses the row
+ * at COMPILE time rather than leaving it to the first wrong answer. A
+ * test that is finer than the class says so in its declared type
+ * (`TypeableK.ByValue`) and is allowed to repeat; `writerK` is the one
+ * that does. Two — `Reader % Int + Reader % String` — misroute, and
  * `TestRowIdentity` demonstrates exactly how (the first handler
  * answers both asks and the second continuation gets a
- * ClassCastException, so it fails loudly at the first wrong answer
- * rather than returning a plausible wrong result).
+ * ClassCastException: loud, at the first wrong answer).
+ *
+ * (`typeableKByClass` used to be a second name for `typeableK` that
+ * carried this paragraph; nothing called it — core-cleanup.)
  */
-def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
 
 /**
  * There is NO generic instance any more, and that is the point.
@@ -293,6 +303,26 @@ def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
  * exclusion, so every tested signature is atomic.
  */
 object TypeableK:
+
+  /**
+   * A TEST THAT READS THE OPERATION'S VALUE, and so tells two
+   * instances of one signature apart.
+   *
+   * The default is the opposite: a test is the erasure, and a row may
+   * hold ONE member of a signature (see `typeableKByClass`). An
+   * instance that does better says so HERE, in its declared type,
+   * because nothing else can be read by a macro — and `Distinct[R]`
+   * reads exactly this to decide whether `Writer % String + Writer %
+   * Int` is the good row it is, or the misroute that the same shape
+   * over `Reader` would be.
+   *
+   * One instance in this tree carries it: `writerK`, whose test is
+   * `Typeable[W]` on the told value. Marking a test that is NOT finer
+   * than the class defeats the check for that signature, so mark it
+   * only after reading the `unapply`.
+   */
+  trait ByValue[F[_]] extends TypeableK[F]
+
   /**
    * `enum Users[+A] derives TypeableK` — the instance every effect
    * needs, written by the compiler.
@@ -306,6 +336,13 @@ object TypeableK:
    * for `State % S` and friends, which say so themselves).
    */
   inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): TypeableK[F] =
+    ${ derivedImpl[F]('ct) }
+
+  /** `Effect.derived`'s half of the same macro: the class is an
+   * `Effect` already, so `derives Effect` needs no wrapper around a
+   * `TypeableK` (it had one — `Effect.of(TypeableK.derived)` — which
+   * put two virtual calls under every `split`) */
+  inline def derivedEffect[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
     ${ derivedImpl[F]('ct) }
 
   /**
@@ -326,7 +363,7 @@ object TypeableK:
    * testing the parts.
    */
   def derivedImpl[F[_] : Type](ct: Expr[scala.reflect.ClassTag[F[Any]]])
-                              (using Quotes): Expr[TypeableK[F]] =
+                              (using Quotes): Expr[Effect[F]] =
     import quotes.reflect.*
     val body = TypeRepr.of[F].dealias match
       case tl: TypeLambda => tl.resType.dealias
@@ -339,15 +376,14 @@ object TypeableK:
           "split would send all of them left and say nothing.\n" +
           "A row needs no instance of its own: let each signature derive one, and the\n" +
           "row split will find them.")
-      case _ => '{ typeableK[F]($ct.runtimeClass) }
+      case _ => '{ Effect.ByClass[F]($ct.runtimeClass) }
 
 
   /** the empty signature is trivially splittable: nothing inhabits
    * it, so the test never matches — which lets row-generic code
    * (Logic, the effectful streams) instantiate at F = Pure */
   given TypeableK[Pure] = new:
-    def unapply[A](x: Any): Option[x.type & Nothing] = None
-    override def test(x: Any): Boolean = false
+    def test(x: Any): Boolean = false
 
 /**
  * WHAT A SIGNATURE SAYS ABOUT ITSELF: `enum Users[+A] derives Effect`.
@@ -387,49 +423,61 @@ object TypeableK:
 trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]
 
 object Effect:
-  /** delegates to `TypeableK.derived`, which is where the check lives
+  /** delegates to `TypeableK`'s macro, which is where the check lives
    * that refuses a row */
   inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
-    of(TypeableK.derived[F])
+    TypeableK.derivedEffect[F]
 
-  /** not inlined, deliberately: an anonymous class in an inline body
-   * is duplicated at every derivation site */
+  /**
+   * THE class test, as one class: what `derives Effect`, `derives
+   * TypeableK` and `typeableK(cls)` all build. Named rather than
+   * anonymous so the macro can name it, and so that a derived
+   * signature's `test` is one call to `Class.isInstance` under
+   * `split` — not a wrapper's call to a delegate's call.
+   */
+  final class ByClass[F[_]](cls: Class[?]) extends Effect[F]:
+    def test(x: Any): Boolean = cls.isInstance(x)
+
+  /** an `Effect` over a test that is NOT by class — `Instances.of`
+   * and `Tag.of` read a key or an inner operation. Not inlined,
+   * deliberately: an anonymous class in an inline body is duplicated
+   * at every derivation site */
   def of[F[_]](t: TypeableK[F]): Effect[F] = new Effect[F]:
-    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
-    override def test(x: Any): Boolean = t.test(x)
+    def test(x: Any): Boolean = t.test(x)
 
 /**
  * Split the union by testing only the F side (the erasure of F, by
  * TypeableK), taking G by exclusion: a type test on an abstract G
- * would erase to an always-true test.
+ * would erase to an always-true test. The `Either` form, for drains
+ * and tests, where `case Left(a) => ... case Right(Say(w)) => ...`
+ * reads better than two lambdas and the wrapper is scalar-replaced
+ * anyway (split-over-either measured it byte-identical on every such
+ * walker). It IS `split` at `Left` and `Right` — the operator's
+ * proposal (either-via-split, 2026-09-16) — so the union's two casts
+ * live in one function below, and these inline lambdas beta-reduce to
+ * the same bytes the hand-written test had.
  */
 inline def <|>[F[+_], G[+_]](using T: TypeableK[F])[A](e: F[A] | G[A]): Either[F[A], G[A]] =
-  // the trusted kernel, sound by the excluded middle of the union: a
-  // value of F[A] | G[A] that passes F's test is an F[A], and one that
-  // does not is a G[A]. `test` rather than the extractor
-  // (split-without-either, 2026-09-09): the extractor answered an
-  // Option per operation on top of this Either, and B/op showed both
-  // survive escape analysis. The left cast is what the extractor's
-  // `x.type & F[A]` said, made explicit; nothing outside this
-  // function, `split` and `over` casts on a row.
-  if T.test(e) then Left(e.asInstanceOf[F[A]]) else Right(e.asInstanceOf[G[A]])
+  split[F, G](e)(Left(_))(Right(_))
 
 /**
- * The same split with NO wrapper on the way out (split-without-either,
- * specs/handler-fusion.md stage A): `<|>` answers an `Either` per
- * operation and the extractor an `Option` per test, on the hottest
- * path of every runner. Here the two continuations are `inline`, so
- * they beta-reduce into the caller's match — no closure, no Either,
- * no Option — and the test is `TypeableK.test`, a plain class test for
- * a derived signature.
+ * THE trusted kernel: the union split with NO wrapper on the way out
+ * (split-without-either, specs/handler-fusion.md stage A), on the
+ * hottest path of every runner. The two continuations are `inline`,
+ * so they beta-reduce into the caller's match — no closure, no
+ * Either, no Option — and the test is `TypeableK.test`, a plain class
+ * test for a derived signature.
  *
- * Both casts live HERE — with `over`'s below, the reverse direction —
- * and nowhere else, licensed by the one test:
- * the left one is what the extractor's `x.type & F[A]` said, made
- * explicit; the right one is `<|>`'s excluded middle. A runner that
- * uses `split` still refines the answer type by matching the
- * constructor inside `onF` (`case Get() =>`), exactly as after
- * `case Left(...)` — so no cast reaches a runner.
+ * Sound by the excluded middle of the union: a value of `F[A] | G[A]`
+ * that passes F's test is an `F[A]`, and one that does not is a
+ * `G[A]`. Both casts live HERE — with `over`'s below, the reverse
+ * direction, which no split can express — and nowhere else, licensed
+ * by the one test: the left one is what the old extractor's `x.type &
+ * F[A]` said, made explicit; the right one is the excluded middle.
+ * `<|>` above is this at `Left`/`Right`. A runner that uses `split`
+ * still refines the answer type by matching the constructor inside
+ * `onF` (`case Get() =>`), exactly as after `case Left(...)` — so no
+ * cast reaches a runner.
  */
 inline def split[F[+_], G[+_]](using T: TypeableK[F])[A, R]
                               (e: F[A] | G[A])
@@ -461,77 +509,104 @@ inline def over[F[+_], R[+_]](using T: TypeableK[F])[A]
 given Effects[Free] with
   override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Pure(a)
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
+  override inline def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
+    Free.defer(thunk)(f)
+  /** the tree has a node for exactly this (delay-node) */
+  override def tailcall[F[+_], A](thunk: => Free[F, A]): Free[F, A] = Free.delay(() => thunk)
 
   extension [F[+_], A](m: Free[F, A])
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
     override def foldCont[S](h: F !> S): A /> S =
       m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
-    override def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using C: Control[C]): C[A, S, S] =
-      m.fold(C.pure)([X] => e => k => C.flatMap(h(e))(x => k(x).foldIn[C, S](h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
     override def runWith(using Handler[F]): A = runFree(m)
 
-  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A = m match
-    case Free.Pure(a) => a
-    case Free.Inject(e) => H.handle(e)
-    case Free.Bind(Free.Bind(a, f), g) => runFree(Free.Bind(a, f(_).flatMap(g)))
-    case Free.Bind(Free.Pure(a), f) => runFree(f(a))
-    case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
+  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A =
+    (m.resume: @unchecked) match
+      case Free.Pure(a) => a
+      case Free.Inject(e) => H.handle(e)
+      case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
-/**
- * Effects are continuation programs, literally: Eff is the final
- * (Church) encoding of the interface — a computation as the function
- * of its handler, where foldCont is the program itself. This is how
- * extensible effects were first defined (Kiselyov–Sabry–Swords 2013,
- * by continuations), before the freer tree of 2015 — so Eff and Free
- * reenact the history, and "Free and Eff agree" is the claim that the
- * two papers describe one thing. Choose Eff when the program is a
- * pipeline: built once and run, the handler fusing into the closures
- * with no tree materialized at all. (Unlike Free, Eff cannot be
- * stepped. It IS stack-safe on any bind shape since eff-stack-safety:
- * a bind defers the inner application into Cont's runner.)
- */
-type Eff[F[+_], A] = [S] => F !> S => A /> S
-
-/** every Eff[F, *] is a Monad, by its Effects instance (Free[F, *]
- * has the same, in Free.scala) — for-comprehensions on either encoding */
-given [F[+_]]: Monad[[A] =>> Eff[F, A]] with
-  override def pure[A](a: A): Eff[F, A] = summon[Effects[Eff]].pure(a)
-  extension [A](m: Eff[F, A])
-    override def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
-      summon[Effects[Eff]].flatMap(m)(f)
-
-given Effects[Eff] with
-  override inline def pure[F[+_], A](a: A): Eff[F, A] =
-    [S] => (_: F !> S) => Cont.Pure(a)
-  override inline def perform[F[+_], A](e: F[A]): Eff[F, A] =
-    [S] => (h: F !> S) => h(e)
-
-  extension [F[+_], A](m: Eff[F, A])
-    // the inner application is DEFERRED into the Cont runner's loop
-    // (specs/eff-stack-safety.md): applying a left-nested chain to its
-    // handler no longer calls inward once per bind before any Cont
-    // exists, which is where a million binds used to overflow
-    override inline def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
-      [S] => (h: F !> S) => Cont.defer(() => m[S](h))(a => f(a)[S](h))
-    override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
-    /** Eff is committed to Cont; changing the carrier reifies the tree first */
-    override inline def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using Control[C]): C[A, S, S] =
-      (m[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => Free.pure(a))).foldIn[C, S](h)
-
-/**
- * Free is initial: the tree interprets uniquely into every Effects
- * instance (fromFree). Eff is final: every instance observes into it
- * by its own foldCont (toEff). So all the encodings live between the
- * tree and its behavior, and reify closes the circle: any program
- * materializes back as syntax.
- */
-def fromFree[M[_[+_], _] : Effects as E, F[+_], A](m: A ! F): M[F, A] =
-  m.fold(E.pure)([X] => e => k => E.perform(e).flatMap(x => fromFree[M, F, A](k(x))))
-
-/** every Effects instance observes into Eff, by its own foldCont */
-inline def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
-  [S] => (h: F !> S) => m.foldCont(h)
+  /**
+   * The definition (Effects.handle) answers EVERY operation in `Cont`,
+   * including the ones the handler never claims: a forwarded operation
+   * costs `shift(k => perform(e).flatMap(k))`, a continuation capture
+   * spent on work that is pure copying. Measured at +112.7 bytes per
+   * forwarded operation and 1.51x overall against `relay` on the same
+   * pre-built tree (handle-decompose, docs/benchmarks.md §2, rows
+   * `hd-*`), and forwarding is the common case: in a row of four
+   * effects every handler forwards three quarters of what it sees.
+   *
+   * So the tree keeps what belongs to the tree. A forwarded operation
+   * is re-emitted on the G side exactly as `relay` does it, and `Cont`
+   * is entered ONLY for an operation the handler claims — where the
+   * capture is the point rather than an accident.
+   *
+   * WHY THIS IS THE SAME FUNCTION, and the argument is asymmetric on
+   * purpose: a forwarded operation is not the handler's business. It
+   * has already been committed to the G program, and a later abort
+   * cannot un-perform it — which is exactly what the definition does
+   * too, since `perform(e).flatMap(k)` puts `e` before `k` and an
+   * abort inside `k` cannot reach back past it. TestHandleForward is
+   * that claim as assertions rather than as this paragraph: what an
+   * ABORTING handler forwards, what a MULTI-SHOT handler forwards
+   * twice, and the order of both. Those tests were written against
+   * the definition, watched to FAIL against a deliberately wrong
+   * forwarding arm, and only then was this written.
+   *
+   * THE HANDLED ARM IS WHERE THE COST MOVED TO, and the measurement
+   * is worth more than the code. A handler that does not capture
+   * answers with `Cont.Pure`, and the loop simply CONTINUES on that
+   * answer — one tail call, nothing allocated. Only a handler that
+   * really captures needs the rest of the program reified, and it
+   * gets a `Delay` so that deep programs trampoline through the
+   * interpreter rather than the JVM stack (which is what `foldCont`'s
+   * `Cont` runner used to do for them).
+   *
+   * Taking that `Defer` on EVERY handled operation — the first version
+   * of this method — cost 59 µs and 730 328 B on the 10 000-operation
+   * lane, against a total gap of 61 µs: a `Defer` whose continuation
+   * is `Pure` rotates into a LEFT-nested `Bind`, left-nesting is the
+   * one shape `resume` rewrites, and every following operation pays
+   * for it. Measured, not reasoned: rows `hff-*`.
+   */
+  override def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: Free[F + G, A])
+                                                            (ret: A => Free[G, B])
+                                                            (h: F !> Free[G, B]): Free[G, B] =
+    // NOT @tailrec, and the reason is a limitation of the annotation
+    // rather than of the loop: the two arms that DEFER mention `loop`
+    // inside a closure, which @tailrec reads as a non-tail recursive
+    // call even though the closure is a separate method that the
+    // interpreter, not this loop, will enter. The answered arm below
+    // is a real tail call and is compiled as one; what guarantees the
+    // depth is TestHandleForward's three stack-safety tests, which is
+    // where a guarantee of this kind belongs anyway.
+    //
+    // The TERMINAL case and the CAPTURING fallback live in their own
+    // methods, as `relay.last` does, and the reason is `Free.resume`'s
+    // size: since defer-eff-removal it is 323 bytes, under HotSpot's
+    // FreqInlineSize of 325, so the JIT pastes it into every loop that
+    // calls it. Pasted into `relay`'s 244-byte loop that is worth -6%;
+    // pasted into this loop at 388 bytes it cost +15% on handlePrebuilt
+    // and handleCapture (rows `de-*`) — a loop inlined into a loop that
+    // is itself "hot method too big". handle-loop-inlining made this
+    // same extraction when `resume` was 495 bytes and never inlined,
+    // and measured nothing; the shape only matters once `resume` fits.
+    def last(e: F[A] | G[A]): Free[G, B] =
+      split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
+    def capture[X](c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
+      c / (x => Free.delay(() => loop(k(x))))
+    def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
+      case Free.Pure(a) => ret(a)
+      case Free.Inject(e) => last(e)
+      case Free.Bind(Free.Inject(e), k) =>
+        split[F, G](e)
+          // `h` is asked ONCE: the answered test and the fallback both
+          // read the same program, and a handler is not assumed pure
+          (e => { val c = h(e)
+                  Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k)) })
+          (e => Free.Inject(e).flatMap(x => loop(k(x))))
+    loop(m)
 
 /**
  * Any Effects program in ANY other Effects encoding.
@@ -555,18 +630,17 @@ inline def convert[M[_[+_], _] : Effects, N[_[+_], _] : Effects as N, F[+_], A]
  * the syntax is itself an interpretation !>, with the answers A ! F
  */
 inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
-  m.foldCont[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => pure(a))
+  convert[M, Free, F, A](m)
 
 /**
  * The other direction: a Free tree read INTO any encoding — the
- * Church one (`Eff`), the eager one, or another of your own.
+ * eager one, or another of your own.
  *
  * `reify` observes an abstract encoding as syntax, which is what a
  * debugger, a rewriter or `Pipeline`'s optimizer wants. `reflect`
  * spends syntax at an encoding, which is what running it fast wants:
  * a program built once as a tree can be reflected into `Eager` where
- * pure binds apply at construction, or into `Eff` where there is no
- * tree to walk.
+ * pure binds apply at construction.
  *
  * Together they are a round trip, and `TestReflect` asserts it is one
  * — the same answers, both ways, for every encoding this library has.
@@ -575,62 +649,75 @@ inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
  * `okay` it shadows `scala.reflect`, so a `Typeable` or `ClassTag`
  * referred to as `reflect.X` there must be spelled `scala.reflect.X`.
  */
-inline def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
-  m.foldCont[M[F, A]]([X] => e => shift(k => M.perform(e).flatMap(k))) / (a => M.pure(a))
+def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
+  // `convert[Free, M]` would say the same through Cont; a tree is
+  // already syntax, so it folds straight into the target with no
+  // continuation reified on the way (this was `fromFree`, the same
+  // function under a second name — core-cleanup)
+  m.fold(M.pure)([X] => e => k => M.perform(e).flatMap(x => reflect[M, F, A](k(x))))
 
 object ! {
   export Free.*
 
   import Free.*
 
-  /** the domain name of Inject: an operation node */
-  type Effect[F[+_], A] = Inject[F, A]
-  val Effect = Inject
+  // `Effect` used to be a second name for `Inject` here (type + val),
+  // kept by freer-base so the match sites would not move. It collided
+  // with `okay.Effect`, the `derives` marker — every file importing
+  // `!.*` had to write `derives Effect` — and went in
+  // inject-not-effect (2026-09-15): the node's name is `Inject`.
 
   extension [F[+_], A](self: A ! F) {
 
-    /** normalize to a head form: Pure, Effect, or Bind(Effect, k) */
-    @tailrec def resume: A ! F = self match
-      case Bind(Bind(a, h), k) => a.flatMap(h(_).flatMap(k)).resume
-      case Bind(Pure(a), k) => k(a).resume
-      case a => a
-
-    /**
-     * THE INVARIANT `resume` ESTABLISHES, and why every match over it
-     * is written `(x.resume: @unchecked) match`.
-     *
-     * By construction the result is one of exactly three shapes —
-     * `Pure(a)`, `Effect(e)`, `Bind(Effect(e), k)` — because the
-     * rotation above normalizes `Bind(Bind(…), k)` and
-     * `Bind(Pure(…), k)` away. The TYPE cannot say so: it is still
-     * `A ! F`, whose cases include the two that cannot occur, so a
-     * correct three-case match reads as inexhaustive to the compiler
-     * and did so at forty-two sites — enough to bury every warning it
-     * had that was worth reading.
-     *
-     * The alternatives all cost something real. A three-case view ADT
-     * would let the compiler check it, at one allocation per step on
-     * the hottest path in the library. Explicit impossible branches
-     * would too, at one more type test per step. `@unchecked` costs
-     * nothing at runtime and marks exactly the claim being made, at
-     * the place it is made — so that is what is used, and this is the
-     * one place that says what the claim is.
-     */
+    /** `resume` is a MEMBER of `Free` now (Free.scala), where the
+     * rotation and the invariant every `@unchecked` match relies on
+     * are documented together. A member wins resolution, so every
+     * `.resume` in the library reaches that one loop. */
 
     /** step through the next n operations by the Handler */
     @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = (self.resume: @unchecked) match
-      case Bind(Effect(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
+      case Bind(Inject(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
-    /** peek the nearest answer: the value, or the first operation handled */
-    @tailrec def ? : Handler[F] ?=> ? = self match
-      case Bind(a, _) => a.?
-      case Effect(e) => summon[Handler[F]].handle(e)
+    /**
+     * Peek the nearest answer: the value, or the first operation
+     * handled.
+     *
+     * A WORD, not a glyph, since unwrap-glyph: this method RUNS
+     * operations through the `Handler`, which is a great deal to hide
+     * behind one character — and the character was wanted by the
+     * thing users write far more often, the `direct` block's mark.
+     * It was `?` until 2026-09-17, and every call site it had was in
+     * the core's own tests and benchmarks, which is most of the
+     * argument for which spelling gave way (specs/unwrap-glyph.md).
+     */
+    @tailrec def peek: Handler[F] ?=> ? = self match
+      case Bind(a, _) => a.peek
+      case Inject(e) => summon[Handler[F]].handle(e)
       case Pure(a) => a
+      // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
+      // discards its own continuation without applying it
+      case Delay(t) => t().peek
   }
 
   /** run a closed computation */
   inline def run[A](e: A ! Nothing): A = e.runWith
+
+  /**
+   * mark a call to a mutually-recursive function returning `A ! F` as a
+   * tail call, so the interpreter (`fold`/`runFree`/`resume`) trampolines
+   * it instead of nesting a JVM stack frame per call. `Free.delay`, a
+   * node with no continuation — NOT `Free.defer` with `pure` as the
+   * continuation, which was the spelling until delay-node and cost a
+   * rotated `.flatMap(pure)` tail down every hop (see `Free.delay`).
+   * `Cont.delay` is the same door on the Cont side.
+   */
+  inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
+    Free.delay(() => thunk)
+
+  /** run p at most once under `Once.run`: the by-need word, an effect —
+   * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
+  inline def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) = Once.once(p)
 
   /** re-inject into a wider row: effect subsumption. Free is invariant
    * in its signature, so widening walks the tree — one re-injected
@@ -648,8 +735,8 @@ object ! {
    * at the type level is not free operationally. */
   def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = (p.resume: @unchecked) match
     case Pure(a) => Pure(a)
-    case Effect(e) => Effect(e)
-    case Bind(Effect(e), k) => Effect(e).flatMap(x => widen[A, F, G](k(x)))
+    case Inject(e) => Inject(e)
+    case Bind(Inject(e), k) => Inject(e).flatMap(x => widen[A, F, G](k(x)))
 
   /**
    * Interpret F into ANOTHER ROW rather than into a value.
@@ -730,20 +817,28 @@ object ! {
     // not a value), so the recursion lives in closures rather than on
     // the stack — the State.handle shape, and the reason no @tailrec
     // annotation belongs here
+    // `split`, not `<|>`: no Either per operation (core-cleanup); the
+    // recursion is not a loop, so the inlined arms cost no inlining
+    // budget the way they would inside `relay`
     (prog.resume: @unchecked) match
       case Pure(a) => Pure(a)
-      case Effect(e) => <|>[F, G](e) match
-        case Left(f) => h(f)
-        case Right(g) => Effect(g)
-      case Bind(Effect(e), k) =>
+      case Inject(e) => split[F, G](e)(f => h(f))(g => Inject(g))
+      case Bind(Inject(e), k) =>
         // the Bind node types e and k together
-        <|>[F, G](e) match
-          case Left(f) => h(f).flatMap(x => translate[A, F, G](k(x))(h))
-          case Right(g) => Effect(g).flatMap(x => translate[A, F, G](k(x))(h))
+        split[F, G](e)
+          (f => h(f).flatMap(x => translate[A, F, G](k(x))(h)))
+          (g => Inject(g).flatMap(x => translate[A, F, G](k(x))(h)))
 
   /**
-   * handle_relay (Kiselyov): tail-resumptive handling, measured 1.45x
-   * faster than Effects.handle on forwarding-heavy work. g is
+   * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x
+   * faster than `Effects.handle` on forwarding-heavy work; since
+   * handle-forward-fast (2026-09-15) it is **1.03x**, and the two
+   * allocate the SAME NUMBER OF BYTES to the digit, because `handle`
+   * was given this loop's forwarding arm. What is left of the reason
+   * to reach for `relay` is therefore not speed: it is that an
+   * answer-polymorphic `g` cannot abort or perform G, which is a
+   * CLAIM about the handler that the type makes and `handle` cannot.
+   * docs/benchmarks.md §2, rows `hd-*` and `hff-*`. g is
    * answer-polymorphic, so by parametricity it must resume the
    * continuation (exactly once), which keeps the loop tail-recursive,
    * i.e. stack-safe on any number of handled operations. For handlers
@@ -751,9 +846,30 @@ object ! {
    */
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
                                            (g: [X, Y] => F[X] => X /> Y): B ! G = {
+    /**
+     * The TERMINAL case — a bare operation with no continuation, which
+     * a program reaches at most once — in its own method, so that it
+     * does not occupy the hot loop's bytecode.
+     *
+     * `split` is an `inline def` taking `inline` branches, so both of
+     * its arms expand into whatever encloses them, and this loop is
+     * made of them. It compiles to 305 bytes against HotSpot's
+     * `FreqInlineSize` of 325 (read with -XX:+PrintInlining): twenty
+     * bytes from the cliff where it stops being inlined into `relay`
+     * and the lane loses over 10% at once. That is not a hypothetical
+     * — a sibling branch added 24 bytes here and paid exactly that,
+     * for five measurement sessions, while its allocation stayed
+     * identical to the digit and no data-structure theory fit.
+     * Extracting the cold arm leaves the loop at 244 bytes.
+     */
+    def last(e: F[A] | G[A]): B ! G =
+      split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
+
     @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
-      case Bind(Effect(e), k) => split[F, G](e)(e => loop(g(e)(k)))(e => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
-      case Effect(e) => split[F, G](e)(e => g(e)(f))(e => Effect(e).flatMap(f))
+      // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
+      // `/` since Cont became a facade over Free (specs/freer-base.md)
+      case Bind(Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(e => Inject(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
+      case Inject(e) => last(e)
       case Pure(a) => f(a)
 
     loop(a)

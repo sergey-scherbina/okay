@@ -232,24 +232,66 @@ object Netty {
   private def answer(ctx: ChannelHandlerContext, r: Request,
                      routes: PartialFunction[Request, Response ! Async])
                     (using CanBlock): Unit =
-    val (status, headers, bytes) =
-      if !routes.isDefinedAt(r) then (404, Seq.empty[(String, String)], "not found".getBytes(UTF_8))
-      else
-        try
-          val out = Async.run[Response, Pure](routes(r)).runWith
-          (out.status, out.headers,
-            Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray)
-        catch
-          // damage as data on the wire, as on every other server here
-          case e: Throwable =>
-            (500, Seq.empty[(String, String)],
-              Option(e.getMessage).getOrElse(e.getClass.getName).getBytes(UTF_8))
+    if !routes.isDefinedAt(r) then
+      full(ctx, 404, Seq.empty, "not found".getBytes(UTF_8))
+    else
+      try
+        val out = Async.run[Response, Pure](routes(r)).runWith
+        if Http.streams(out) then stream(ctx, out)
+        else full(ctx, out.status, out.headers,
+          Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray)
+      catch
+        // damage as data on the wire, as on every other server here
+        case e: Throwable =>
+          full(ctx, 500, Seq.empty,
+            Option(e.getMessage).getOrElse(e.getClass.getName).getBytes(UTF_8))
 
+  /** one length, one write — the REST case, and every failure */
+  private def full(ctx: ChannelHandlerContext, status: Int,
+                   headers: Seq[(String, String)], bytes: Array[Byte]): Unit =
     val res = DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
       HttpResponseStatus.valueOf(status), Unpooled.wrappedBuffer(bytes))
     headers.foreach((k, v) => res.headers.set(k, v))
     res.headers.set(HttpHeaderNames.CONTENT_LENGTH, bytes.length)
     ctx.writeAndFlush(res).addListener(ChannelFutureListener.CLOSE): Unit
+
+  /**
+   * Write the body chunk by chunk, delivered as it arrives rather than
+   * drained first (http-streaming-responses; Jetty's own `stream` next
+   * door does the same job on its transport). Unlike the JDK backend,
+   * this runs on a Netty EVENT LOOP thread, which every other
+   * connection in its group shares — a subscription push may hold the
+   * body's source open indefinitely, so the write goes on its own
+   * virtual thread rather than parking the loop. `ctx.writeAndFlush`
+   * is safe to call off it: Netty schedules the write back onto the
+   * channel's own loop.
+   */
+  private def stream(ctx: ChannelHandlerContext, out: Response)(using CanBlock): Unit =
+    val res = DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(out.status))
+    out.headers.foreach((k, v) => res.headers.set(k, v))
+    res.headers.set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED)
+    ctx.writeAndFlush(res)
+    Thread.startVirtualThread { () =>
+      try Async.run[Unit, Pure](writeChunks(out.body, ctx)).runWith
+      catch case _: Throwable => ()
+      ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT)
+        .addListener(ChannelFutureListener.CLOSE): Unit
+    }
+    ()
+
+  private def writeChunks(body: okay.Source[Chunk[Byte]],
+                          ctx: ChannelHandlerContext): Unit ! Async =
+    Writer.uncons[Chunk[Byte], Unit, Async](body).flatMap {
+      case Left(_) => pure(())
+      case Right((c, rest)) =>
+        Async.await[Unit] { k =>
+          ctx.writeAndFlush(DefaultHttpContent(Unpooled.wrappedBuffer(c.toArray)))
+            .addListener { (f: ChannelFuture) =>
+              if f.isSuccess then k(Right(())) else k(Left(f.cause))
+            }
+          () => ()
+        }.flatMap(_ => writeChunks(rest, ctx))
+    }
 
   private def upgrade(ctx: ChannelHandlerContext, req: FullHttpRequest,
                       stage: okay.Stage[Frame, Frame, Unit])

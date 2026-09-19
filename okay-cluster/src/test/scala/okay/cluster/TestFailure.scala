@@ -19,6 +19,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * a bug exists and teaches nothing about where.
  */
 class TestFailure extends munit.FunSuite {
+  // Live, out of `sbt test`: this suite binds a real ServerSocket and
+  // spawns worker JVMs (nio-port-scope's rule for every binding suite).
+  // It slipped the survey; on 2026-09-15 a gate reported its 30 s
+  // timeout at 315 s under a sibling's load — a paused JVM, not a
+  // wrong answer — and 4314 results where 4424 were due.
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   import Feeds.*
 
   TestJobs.install()

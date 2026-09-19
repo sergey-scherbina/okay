@@ -35,6 +35,164 @@
 #          the failure to happen again
 set -uo pipefail
 
+
+# ---------------------------------------------------------------- THE WATCHDOG
+#
+# A GATE THAT HANGS USED TO HANG FOR EVER. Measured 2026-09-18: a run
+# sat 57 minutes with its log frozen mid-sentence, and only a human
+# asking "how is the gate?" found it. The diagnosis, from a jcmd dump
+# kept at the time:
+#
+#   main                          parked in sbt.Execute.next
+#   sbt.ForkTests$Acceptor$1$.run blocked in Net.accept — NO TIMEOUT
+#   165 child processes           100 node + 65 Scala Native binaries,
+#                                 every one at 0.0% CPU, all spawned in
+#                                 the first 20 seconds, on 14 cores
+#   java forks among them         NONE
+#
+# `ForkTests` opens a socket, starts a forked JVM and waits for it to
+# connect back. The fork was not there, and `accept()` has no alarm —
+# so sbt waited for a task that could never finish. (Scala Native's
+# runner has a 40 s accept timeout, which is why THAT failure shows up
+# as exit 137 instead of silence: same family, opposite symptom.)
+#
+# WHAT THIS DETECTS, and why it is two signals and not one. Silence
+# alone is not a stall: a cold compile of one big module is silent for
+# minutes. Idleness alone is not a stall either: sbt is briefly idle
+# between tasks. A stall is SILENT **AND** IDLE — no new output for
+# GATE_STALL_SECS while the whole process tree burned less than
+# GATE_STALL_CPU seconds of CPU in that window. That is exactly what
+# the dump above showed and exactly what a slow compile is not.
+#
+# WHAT IT DOES: takes the evidence FIRST (a jcmd thread dump and a `ps`
+# of the tree, beside the log), then kills the run BY PID — never by
+# name, which AGENTS.md forbids and which would reach a sibling's
+# build — and prints `gate: STALLED`. That is deliberately not RED and
+# not KILLED: `scripts/gate-retry.sh` treats a run with no verdict as
+# retryable, and a stall says nothing about the tree.
+#
+# TESTING IT: `GATE_SBT` replaces the command, so the whole path is
+# exercised in seconds rather than in an hour —
+#   GATE_SBT=scripts/fake-sbt-stall.sh GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
+#     scripts/gate.sh test
+# is a run that goes silent on purpose, and `scripts/gate-selftest.sh`
+# is that plus the assertions.
+GATE_SBT="${GATE_SBT:-sbt}"
+# TWO LAYERS, AND THE INNER ONE MUST FIRE FIRST. `gate-retry.sh` has
+# had a stall watchdog since before this one: it polls the log's SIZE
+# once a minute and kills the tree after GATE_STALL_MIN (10) minutes
+# of no growth. That layer stays — it is the backstop for the case
+# where this script itself is wedged — but it takes no evidence, and
+# whichever fires first is the one that gets to look. So this default
+# sits BELOW it: 8 minutes here, 10 there.
+#
+# The CPU test is what makes 8 minutes safe. Silence alone at 8
+# minutes would kill honest cold compiles; silence with essentially no
+# CPU in the whole process tree is a build that has stopped being a
+# build.
+stall_secs="${GATE_STALL_SECS:-480}"     # 8 minutes of silence...
+stall_cpu="${GATE_STALL_CPU:-5}"         # ...with under 5s of CPU in it
+tick_secs="${GATE_TICK_SECS:-30}"
+
+# the log's mtime, on BSD (this box) and on GNU. Without the second
+# arm a Linux run would read 0 for ever, which reads as "never
+# changed" — a watchdog that kills every gate is worse than none.
+mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+
+# every descendant of a pid, deepest last; pgrep -P is one level, so
+# this walks it. Used for both the CPU sum and the kill.
+descendants() {
+  for c in $(pgrep -P "$1" 2>/dev/null); do
+    echo "$c"
+    descendants "$c"
+  done
+}
+
+# total CPU SECONDS of a tree. `ps -o pcpu` is the average over a
+# process's whole life and says nothing about now (it read 5.8% for a
+# JVM that had been idle for an hour), so this reads cumulative CPU
+# TIME and the caller differences two samples.
+cpu_secs() {
+  { echo "$1"; descendants "$1"; } | sort -u | while read -r p; do
+    ps -o time= -p "$p" 2>/dev/null
+  done | awk -F: '
+    { n=NF; s=0; m=1
+      for (i=n; i>=1; i--) { s += $i * m; m *= 60 }
+      total += s }
+    END { printf "%d\n", total+0 }'
+}
+
+stall_evidence() {
+  # the dump is the whole point: without it a stall is a shrug
+  local root="$1" out="$2" jv jc
+  ps -o pid,ppid,pcpu,etime,stat,command -p "$root" > "$out.ps" 2>/dev/null
+  descendants "$root" | while read -r p; do
+    ps -o pid,ppid,pcpu,etime,stat,command -p "$p" 2>/dev/null | tail -1
+  done >> "$out.ps"
+  # NO `case` HERE. Inside a command substitution that spans lines,
+  # `;; esac` on one line is a syntax error under /bin/sh — and this
+  # script is invoked as `sh scripts/gate.sh` everywhere in AGENTS.md,
+  # so a bash-only body would have broken the watchdog in exactly the
+  # invocation that matters. Caught by running the selftest both ways.
+  jv=$({ echo "$root"; descendants "$root"; } | while read -r p; do
+         if [ "$(ps -o comm= -p "$p" 2>/dev/null | sed 's#.*/##')" = "java" ]; then
+           echo "$p"
+         fi
+       done | head -1)
+  if [ -n "$jv" ]; then
+    jc="$(/usr/libexec/java_home 2>/dev/null)/bin/jcmd"
+    [ -x "$jc" ] || jc=jcmd
+    "$jc" "$jv" Thread.dump_to_file -format=json -overwrite "$out.json" >/dev/null 2>&1 \
+      && echo "gate: thread dump of the stalled JVM ($jv): $out.json"
+  fi
+  echo "gate: the process tree it was waiting on: $out.ps"
+}
+
+# run sbt with the watchdog watching its log. Sets nothing global but
+# the exit status it returns.
+# sbt_run <log> <sbt-command>...  — several commands run IN SEQUENCE
+# inside ONE sbt, and sbt stops at the first that fails, which is what
+# makes the JVM-first split below cost nothing when it is green
+sbt_run() {
+  local l="$1" pid quiet base now mt last
+  shift
+  : > "$l"
+  # shellcheck disable=SC2086
+  $GATE_SBT "$@" > "$l" 2>&1 &
+  pid=$!
+  last=$(mtime_of "$l")
+  quiet=0
+  base=$(cpu_secs "$pid")
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep "$tick_secs"
+    kill -0 "$pid" 2>/dev/null || break
+    mt=$(mtime_of "$l")
+    if [ "$mt" != "$last" ]; then
+      last="$mt"; quiet=0; base=$(cpu_secs "$pid"); continue
+    fi
+    quiet=$((quiet + tick_secs))
+    [ "$quiet" -lt "$stall_secs" ] && continue
+    now=$(cpu_secs "$pid")
+    if [ $((now - base)) -gt "$stall_cpu" ]; then
+      # silent but working: a long compile. Say it once per window and
+      # keep waiting, with the CPU baseline moved forward.
+      echo "gate: quiet for ${quiet}s but the tree burned $((now - base))s of CPU — still working"
+      quiet=0; base="$now"; continue
+    fi
+    echo "gate: STALLED — no output for ${quiet}s and $((now - base))s of CPU in that window"
+    stall_evidence "$pid" "$l.stall"
+    echo "gate: killing the run BY PID ($pid and its tree); this is NOT a verdict about the tree"
+    descendants "$pid" | while read -r p; do kill "$p" 2>/dev/null; done
+    kill "$pid" 2>/dev/null
+    sleep 5
+    descendants "$pid" | while read -r p; do kill -9 "$p" 2>/dev/null; done
+    kill -9 "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    return 124
+  done
+  wait "$pid"
+}
+
 replay=""
 if [ "${1:-}" = "--read" ]; then replay="${2:?--read needs a log}"; fi
 
@@ -49,8 +207,39 @@ if [ -n "$replay" ]; then
 else
   cmd="${1:-test}"
   log="${GATE_LOG:-$(mktemp -t okay-gate)}"
-  echo "gate: sbt $cmd  (log: $log)"
-  sbt "$cmd" > "$log" 2>&1
+
+  # JVM FIRST, AND THE OTHER PLATFORMS ONLY IF IT IS GREEN
+  # (gate-jvm-first, 2026-09-18). MEASURED: sampling one full gate's
+  # own descendants every 4 s, `node` is 684 of 944 samples — 72% of
+  # a matrix is Scala.js runners, and the Native binaries are most of
+  # the rest. The JVM arm is where a logic error shows; JS and Native
+  # mostly re-check that the same suites compile and run there.
+  #
+  # sbt runs the commands it is given IN SEQUENCE and stops at the
+  # first that fails, so a red JVM never pays for the other two. One
+  # sbt, one JVM start, one log — the phases are two commands inside
+  # it, not two invocations.
+  #
+  # ONLY for the `affected <ref>` form, which is what AGENTS.md tells
+  # every lane to run. Anything else (`test`, an explicit task, a
+  # `family` call) is passed through untouched: this is a faster road
+  # to the same verdict, not a new meaning for the argument.
+  phase2=""
+  case "$cmd" in
+    "affected "*)
+      ref="${cmd#affected }"
+      case "$ref" in
+        *" "*) : ;;                      # a task or platform was given: the caller means it
+        *) cmd="affected $ref test jvm"; phase2="affected $ref test rest" ;;
+      esac ;;
+  esac
+  if [ -n "$phase2" ]; then
+    echo "gate: sbt \"$cmd\" \"$phase2\"  (log: $log)"
+    sbt_run "$log" "$cmd" "$phase2"
+  else
+    echo "gate: sbt $cmd  (log: $log)"
+    sbt_run "$log" "$cmd"
+  fi
   status=$?
 fi
 # ONE stripped copy, then plain greps over the FILE. Not a pipeline:
@@ -103,6 +292,19 @@ fi
 if [ "$status" -eq 143 ] || [ "$status" -eq 137 ]; then
   echo "gate: KILLED — sbt took signal $((status - 128)) and no test failed"
   echo "gate: this is NOT a verdict about the tree; run it again on a quiet box"
+  exit "$status"
+fi
+
+# 2b. A STALL IS NOT A VERDICT EITHER, and for the same reason: the
+# watchdog above killed the run, so this log stops mid-sentence and
+# nothing may read it for an absence. 124 is the watchdog's own code
+# (`timeout`'s convention), and it is deliberately NOT spelled RED or
+# KILLED — `gate-retry.sh` keys on those two strings, and a stall is a
+# run that said nothing about the tree, which is exactly what its
+# retry loop exists for.
+if [ "$status" -eq 124 ]; then
+  echo "gate: the stall's evidence is beside the log ($log.stall.json, $log.stall.ps)"
+  echo "gate: read the dump before re-running; a second stall in the same place is a finding"
   exit "$status"
 fi
 

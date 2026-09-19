@@ -63,6 +63,10 @@ userPost.describe                                 // DESCRIBE "/users/{id}/posts
 | `of[C]` | the same route reading a case class; checks the field NAMES against the parameters |
 | `Routed` / `Route` / `Queried` | what a declared url can do; the path stage; the query stage, which has no `/` |
 | `Router.on` / `.at` / `.json[B]` / `.jsonAt[B]` / `.of` | a table: parameters only, parameters and request, a declared JSON body, a declared body with the request, a case class |
+| `Router.out[R]` / `.outAt` / `.jsonOut[B, R]` / `.jsonOutAt` | the handler answers a VALUE and the router encodes it with the same `Schema` the entry declares — so a document cannot promise what the service does not send |
+| `Router.html` / `.bytes(media)` / `.events` / `.media` | the same for content that has no schema: a page, a bundle, a server-sent-event stream, and the general form. The handler answers the content, the router writes the content-type, and the entry declares that media type |
+| `Router.Answer` | what an entry says it answers: status, optional schema, description, media type |
+| `Router.summarised(text)` | one sentence about what the operation just declared is FOR — the only part of an entry nothing else can derive; throws on an empty router |
 | `Router.routes` / `.describe` / `.markdown` / `.entries` | the `PartialFunction` every server here takes, the listing, the listing as a doc table, the rows |
 | `okay.http.syntax.*` | the terse form: `"id".as[Int]`, `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` |
 

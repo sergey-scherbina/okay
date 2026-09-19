@@ -60,19 +60,22 @@ class TestChatDemo extends munit.FunSuite {
     throw new AssertionError(s"offline test touched the wire: $url")
   val noSecrets: okay.conf.Secrets = okay.conf.Secrets.memory(Map.empty)
 
-  /** a board per server: a test that shared one file with every other
-   * test would inherit their tasks and prove nothing */
-  def memoryBoard: Board = Board(Board.topicOf(Board.store(":memory:")))
+  /** a board per server, backed by ITS OWN store: a test that shared
+   * one file with every other test would inherit their tasks and
+   * prove nothing. `routes` takes the store as a capability too
+   * (di-dogfood, ops routes read/write through it directly) — the
+   * board and the store given to `provide` must be the SAME memory
+   * store, or the ops routes report on an empty store no request
+   * ever touches. Before this the two were built by separate calls
+   * to `Board.store(":memory:")`, two unrelated `MemoryStore`
+   * instances that happened never to be told apart by an assertion. */
+  def freshBoard: (Board, okay.persist.Store) =
+    val store = Board.store(":memory:")
+    (Board(Board.topicOf(store)), store)
 
-  /** the store the ops routes report on. `routes` takes it as a
-   * capability now (di-dogfood), and a memory one per server is what
-   * the comment above `memoryBoard` already asks for: before this,
-   * every test that touched an ops route read the repository's real
-   * `okay-board.log` through a global. */
-  def memoryStore: okay.persist.Store = Board.store(":memory:")
-
-  def withServer[A](budget: Int, board: Board = memoryBoard)(f: Int => A): A =
-    provide(deadWire, noSecrets, board, memoryStore)(Resource.run[A, Pure](
+  def withServer[A](budget: Int, served: (Board, okay.persist.Store) = freshBoard)(f: Int => A): A =
+    val (board, store) = served
+    provide(deadWire, noSecrets, board, store)(Resource.run[A, Pure](
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, budget))()
         .map(s => f(Jetty.port(s)))).runWith)
 
@@ -140,7 +143,8 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
-    provide(okay.llm.Transports.http(), noSecrets, memoryBoard, memoryStore)(Resource.run[Unit, Pure](
+    val (board, store) = freshBoard
+    provide(okay.llm.Transports.http(), noSecrets, board, store)(Resource.run[Unit, Pure](
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
@@ -178,7 +182,8 @@ class TestChatDemo extends munit.FunSuite {
         .foldLeft(pure(()): Unit ! F)((acc, l) =>
           acc.flatMap(_ => effect[F, Unit](Writer(l))))
     def run(wire: okay.llm.Transport, secrets: okay.conf.Secrets): String =
-      provide(wire, secrets, memoryBoard, memoryStore)(
+      val (board, store) = freshBoard
+      provide(wire, secrets, board, store)(
         Resource.run[String, Pure](
           Jetty.serve(0)(ChatDemo.handler(512))().map { s =>
             new String(post(Jetty.port(s),
@@ -299,8 +304,8 @@ class TestChatDemo extends munit.FunSuite {
   }
 
   portTest("demo-sessions: a verified session is the identity of record — it overrides a DIFFERENT email typed in the message") {
-    val board = memoryBoard
-    withServer(512, board) { port =>
+    val (board, store) = freshBoard
+    withServer(512, (board, store)) { port =>
       val (_, b1) = postJson(port, "/login", """{"email":"real@example.com"}""")
       val code = Json.parse(b1) match
         case JObj(fs) => fs.collectFirst { case ("devCode", JStr(c)) => c }.get

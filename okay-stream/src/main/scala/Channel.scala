@@ -1,0 +1,1002 @@
+package okay
+
+import java.util.concurrent.atomic.AtomicInteger
+import scala.collection.immutable.Queue
+import okay.!.*
+import scala.util.Try
+
+/**
+ * A channel: a queue between fibers, the missing primitive of
+ * CONCURRENT streams — everything the pull-based observation cannot
+ * say (readiness, pacing) lives here. ONE implementation for every
+ * platform (specs/cross-platform-async.md, channel-callback):
+ * nobody waits in a thread. A receiver that finds the buffer empty
+ * leaves a callback; a sender that finds it full leaves the element
+ * and a callback; send, receive and close hand things straight to
+ * the first waiter. `receive` and `send` are therefore Async
+ * programs — the RUNTIME decides how to wait (runAsync: not at all;
+ * Async.run: one park at the boundary, under CanBlock), and the
+ * channel itself parks no thread and polls nothing. The state is
+ * ONE immutable value in a TRef (the STM's cell, specs/stm.md),
+ * every operation a pure transition installed by its single CAS
+ * (channel-cas, then stm): no lock, not even a short one; callbacks
+ * run after the CAS, outside any critical section.
+ *
+ * A channel is itself a Stream (in Async), but a LINEAR one: the
+ * observation consumes — a repeated uncons reads the NEXT element,
+ * not the same one. Bridge to LazyList (toLazyList memoizes) for a
+ * re-observable view.
+ */
+/**
+ * A channel: the INTERFACE, so the mechanism underneath can be chosen
+ * and compared rather than assumed.
+ *
+ * There is more than one good way to build a queue between fibers and
+ * they trade against each other, which channel-ring measured rather
+ * than argued: an immutable state rebuilt under one CAS composes with
+ * the STM (`Tx`, `orElse`, several cells in one transaction) and
+ * costs an allocation per operation; a mutable ring allocates nothing
+ * and cannot compose that way; a relaxed queue buys throughput under
+ * many producers at the price of exact FIFO. None of those is simply
+ * better, so the choice belongs at construction, and the operations
+ * belong to an interface every implementation answers.
+ *
+ * WHAT THE INTERFACE DELIBERATELY DOES NOT PROMISE: STM
+ * composability. `StmChannel` exposes its own cell, and `TestStm`
+ * reads it inside a transaction — a real property, and one a
+ * ring-backed channel cannot offer because it has no such cell. It
+ * stays on the implementation that has it rather than being promised
+ * here and thrown by everyone else.
+ *
+ * An implementation provides the callback primitives and the two
+ * cancellers; everything a caller usually touches — `send`,
+ * `receive`, the blocking pair, the batched read — is derived here
+ * once, so implementations cannot drift apart on them.
+ */
+trait Channel[A] {
+
+  private[okay] type End = Either[Throwable, Option[A]]
+
+  /** k(true) once the channel TOOK the element, k(false) if it is
+   * closed: the element is dropped, nothing thrown */
+  def sendAsync(a: A)(k: Accepted): Unit
+
+  /** now if an element (or the end) is ready, later when one arrives */
+  def receiveAsync(k: End => Unit): Unit
+
+  /** the non-suspending send: true if taken NOW, never waits */
+  def offer(a: A): Boolean
+
+  /**
+   * End the stream: buffered elements still drain.
+   *
+   * THE CONTRACT, and why it is written here rather than left to be
+   * rediscovered. This promise is strictly stronger than what a
+   * queue usually offers — `zio.Queue.shutdown`, for comparison,
+   * INTERRUPTS pending offers and takes and guarantees no drain at
+   * all — and it is where every defect in `ring-channel` lived. Two
+   * implementations were written against this method and each
+   * rediscovered the same invariants by failing a gate, because the
+   * interface named the operation and said nothing about what it
+   * must be true of. So:
+   *
+   *  - CLOSE IS TWO-PHASE, and only the second phase is observable.
+   *    First refuse new sends; then wait for sends already accepted
+   *    but not yet in the buffer; only THEN publish the state a
+   *    consumer terminates on. Publishing the flag first is the bug
+   *    that took three attempts to kill: a producer passes its
+   *    open-check, the consumer sees closed-and-empty and ends, and
+   *    the element lands afterwards — accepted by `k(true)` and
+   *    never delivered.
+   *
+   *  - THE END COMES AFTER THE BUFFER, never instead of it. A
+   *    receiver sees `None` only once every accepted element has
+   *    been handed over.
+   *
+   *  - ACCEPTANCE IS FINAL. If `send` answered true, that element
+   *    WILL be delivered to some receiver, close or no close. This
+   *    is the law the accounting test checks, and the one all four
+   *    bugs broke.
+   *
+   * `StmChannel` gets all three for free: it decides "is it open"
+   * and enqueues inside ONE atomic transition, so there is no window
+   * to lose an element in. That is not merely a faster design, it is
+   * the reason it is correct — and any implementation that moves the
+   * elements out of that state owes the atomicity back explicitly.
+   *
+   * `TestChannelLaws` checks these against every implementation.
+   */
+  def close(): Unit
+
+  /** record that a producer broke, WITHOUT closing */
+  def fail(e: Throwable): Unit
+
+  def failed: Option[Throwable]
+  def isClosed: Boolean
+
+  /**
+   * Is the channel closed AND finished — the single fact a consumer
+   * terminates on, and the one an implementation must not let it
+   * derive for itself.
+   *
+   * This exists because deriving it was the trap. A consumer that
+   * reads a raw "closed" flag and an "is it empty" check separately
+   * can see both true while a send that was already ACCEPTED has not
+   * yet reached the buffer, and then it ends the stream on an
+   * element that was promised delivery. Three of the four defects in
+   * `ring-channel` were versions of that, each fixed one step deeper
+   * than the last.
+   *
+   * So the interface asks for the conclusion, not the ingredients:
+   * answer true only once no further element can ever be delivered.
+   * `StmChannel` reads it off one atomic state; an implementation
+   * that keeps elements outside its state must do the two-phase
+   * close described on `close` and publish this only at the end of
+   * it.
+   */
+  private[okay] def finished: Boolean
+
+  /** un-register a waiter that gave up — what a cancelled `send` or
+   * `receive` must do, and the one part of waiting only the
+   * implementation can express */
+  private[okay] def cancelSend(cb: Accepted): Unit
+  private[okay] def cancelReceive(k: End => Unit): Unit
+
+  /** send as a program: suspends while the buffer is full, answers
+   * whether the channel took the element (false: closed, dropped) */
+  def send(a: A): Boolean ! Async =
+    Async.await { k =>
+      val cb: Accepted = b => k(Right(b))
+      sendAsync(a)(cb)
+      () => cancelSend(cb)
+    }
+
+  /** receive as a program: suspends while the channel is empty and
+   * open; None once closed and drained, the producer's failure
+   * (through the error channel) if one ended it */
+  def receive: Option[A] ! Async =
+    Async.await { k =>
+      receiveAsync(k)
+      () => cancelReceive(k)
+    }
+
+  /** the parking forms, only where parking is GRANTED (JVM/Native;
+   * a compile error on JS): the same programs, forced at this point */
+  def sendBlocking(a: A)(using cb: CanBlock): Boolean =
+    // OFFER FIRST. The handshake exists to wait, and on a channel
+    // with room there is nothing to wait for -- yet it ran anyway,
+    // allocating a slot, filling it and reading it back, once per
+    // element. That cost lands on the PRODUCER, and a producer that
+    // cannot run ahead leaves the consumer nothing to batch: measured
+    // against `zio.Queue` on the same load, their consumer averaged
+    // 137.9 elements per operation and ours 35.4.
+    //
+    // `offer` refuses when the channel is closed as well as when it
+    // is full, and the fallback answers both correctly: a closed
+    // channel's sendAsync answers false without waiting, a full one
+    // parks. It also refuses while a sender is parked, so the queue
+    // of waiting senders keeps its order.
+    //
+    // blockAccepted, not block[Boolean]: the generic wait boxes the
+    // answer twice over, once into its slot and once through
+    // Function1.apply(Object)
+    if offer(a) then true
+    else cb.blockAccepted(k => { sendAsync(a)(k); () => () })
+
+  /**
+   * The receive whose try is its own first scan. Answer true if an
+   * element was ready NOW and has been written into `h` with
+   * `Handoff.got`; otherwise register `h` as the callback — the end,
+   * a failure, or a later element all arrive through `h.apply` — and
+   * answer false. The default is correct before it is fast: it
+   * registers and answers false, and `receiveAsync`'s own synchronous
+   * path fills `h` before returning where it can. `SentinelChannel`
+   * overrides with the early return, and pays no second scan for it.
+   */
+  private[okay] def receiveInto(h: Handoff[A]): Boolean =
+    receiveAsync(h)
+    false
+
+  def receiveBlocking()(using cb: CanBlock): Option[A] =
+    // one handoff, which is the callback; a hit fills it on the way
+    // out of the first scan and never parks, allocating this and the
+    // Some below where five objects went before (§17); a miss parks
+    // on it exactly as the old slot parked
+    val h = cb.handoff[A]()
+    if !receiveInto(h) then cb.await(h)
+    h.answer
+
+  /**
+   * Put up to `n` elements, read from `src` by index, in ONE go, and
+   * answer how many were taken. Never waits: what does not fit is the
+   * caller's to retry, exactly as `offer` leaves it.
+   *
+   * The mirror of `receiveMany`, and it needs saying WHY it is not
+   * already covered by the chunked feed. `feedChunked` amortizes the
+   * send by REPRESENTATION: it fills a `ChunkBuffer` and puts whole
+   * chunks into a `Channel[Chunk[A]]`, so the channel already pays one
+   * transaction per chunk. This is for the other case -- a producer
+   * holding a batch of ELEMENTS for an element channel, which until
+   * now had to offer them one at a time and pay a tail CAS per
+   * element, the shape `popMany` removed on the receive side.
+   *
+   * BATCH BOTH ENDS OR NEITHER. Measured with a draining consumer
+   * this is 66.9us against 109.0 for the same work sent one element
+   * at a time -- and measured against an ELEMENTWISE consumer it is
+   * 280.4 against 196.7, a 1.4x loss. The reason is not the claim but
+   * the room: a consumer taking one element at a time keeps the ring
+   * full, every bulk attempt then fails its scan and falls back to a
+   * single send anyway, so the scan is pure overhead on top of the
+   * work that had to happen regardless.
+   *
+   * The default is the honest one-at-a-time answer, so a new
+   * implementation is correct before it is fast.
+   */
+  private[okay] def sendManyNow(n: Int)(src: Int => A): Int =
+    var i = 0
+    var go = true
+    while go && i < n do
+      if offer(src(i)) then i += 1 else go = false
+    i
+
+  /**
+   * Take up to `max` elements that are ALREADY buffered, in one go.
+   * The default is the honest one-at-a-time answer, so a new
+   * implementation is correct before it is fast; an implementation
+   * that can do better overrides it (see `StmChannel`).
+   */
+  private[okay] def receiveManyAsync(@annotation.unused max: Int)
+                                    (k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    // the default IGNORES max on purpose: one element, handed over as
+    // a chunk of one, is always a correct answer to "up to max", and
+    // an implementation that can do better says so by overriding
+    receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+
+  /** up to `max` buffered elements as a program; an empty answer is
+   * the end of the stream */
+  private[okay] def receiveMany(max: Int): Chunk[A] ! Async =
+    Async.await { k => receiveManyAsync(max)(k); () => () }
+}
+
+final class StmChannel[A](capacity: Int = Int.MaxValue,
+                          emptyBuf: () => Fifo[A] = () => Fifo.array[A]) extends Channel[A] {
+
+
+  /** the whole channel as ONE immutable value: persistent queues and
+   * a size counter (immutable.Queue's size is O(n)). Every operation
+   * is a pure State => (State, action); the action runs only after
+   * the CAS that installed the new state won — the Drive handshake's
+   * shape, so no thread ever holds a lock, not even for an instant */
+  private[okay] final case class State(
+    buf: Fifo[A], size: Int,
+    receivers: Queue[End => Unit],
+    senders: Queue[(A, Accepted)],
+    open: Boolean,
+    failure: Throwable | Null) extends TRef.Stamped[State]:
+    def value: State = this
+  // invariant: receivers waiting => buf empty and no sender waiting;
+  // senders waiting => buf full (or capacity 0) and no receiver waiting
+
+  /** the channel IS a one-cell STM structure (specs/stm.md): its
+   * state is a TRef, its transitions go through TRef.modify — the
+   * single-CAS path a one-op transaction takes — and the full
+   * transaction language works on the same cell */
+  private[okay] val cell = TRef.bare(State(emptyBuf(), 0, Queue.empty, Queue.empty, true, null))
+
+  private def transact[R](f: State => (State, () => R)): R = cell.modify(f)()
+
+  private def endOf(s: State): End =
+    if s.failure != null then Left(s.failure.nn) else Right(None)
+
+  /** the callback form of send: k(true) once the channel TOOK the
+   * element (handed to a receiver, or buffered — now, or later when
+   * room opens), k(false) if it is closed: the element is dropped,
+   * nothing thrown. A producer that outlives its stream is ordinary;
+   * its send is a fact to read, not a fault to unwind. */
+  def sendAsync(a: A)(k: Accepted): Unit = transact[Unit] { s =>
+    if !s.open then (s, () => k(false))
+    else if s.receivers.nonEmpty then
+      val (r, rest) = s.receivers.dequeue
+      (s.copy(receivers = rest), () => { r(Right(Some(a))); k(true) })
+    else if s.size < capacity then
+      (s.copy(buf = s.buf.enqueue(a), size = s.size + 1), () => k(true))
+    else (s.copy(senders = s.senders.enqueue((a, k))), () => ())
+  }
+
+  /** the callback form of receive: now if an element (or the end) is
+   * ready, later when one arrives. The end is Right(None), or Left of
+   * the producer's failure — buffered elements drain first, the
+   * failure is what the END of the stream is */
+  def receiveAsync(k: End => Unit): Unit = transact[Unit](receiveOne(_)(k))
+
+  /** send as a program: suspends while the buffer is full, answers
+   * whether the channel took the element (false: closed, dropped) */
+  private[okay] def cancelSend(cb: Accepted): Unit =
+    transact[Unit](s => (s.copy(senders = s.senders.filterNot(_._2 eq cb)), () => ()))
+
+  /** receive as a program: suspends while the channel is empty and
+   * open; None once closed and drained, the producer's failure
+   * (through the error channel) if one ended it */
+  private[okay] def cancelReceive(k: End => Unit): Unit =
+    transact[Unit](s => (s.copy(receivers = s.receivers.filterNot(_ eq k)), () => ()))
+
+  /**
+   * Take up to `max` elements that are ALREADY buffered, in ONE
+   * transaction — the receive side's answer to what chunking does on
+   * the send side, and without its price.
+   *
+   * Profiling put 71% of the per-element merge inside the channel
+   * transaction (CAS 33%, the immutable queues 19%, `resume`'s
+   * rotation 19%), and four lanes established that the transaction
+   * cannot be made cheaper — only rarer. Chunking makes it rarer by
+   * batching SENDS, which delays an element that could have gone now,
+   * which is why it is opt-in. Batching RECEIVES delays nothing: what
+   * is already in the buffer is already late, and taking ten of them
+   * under one CAS instead of ten hands the consumer exactly the same
+   * elements in exactly the same order. So this needs no flag.
+   *
+   * An empty buffer falls back to the single receive, parking as
+   * before: `max` is a ceiling on what may be taken, never a quota to
+   * wait for. Parked senders are admitted into the room this frees,
+   * as the single receive does, and their callbacks fire after the
+   * CAS like every other action here.
+   */
+  private[okay] override def receiveManyAsync(max: Int)(k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    transact[Unit] { s =>
+      if s.buf.isEmpty then
+        // nothing buffered: exactly the single receive, its one
+        // element handed over as a chunk of one
+        receiveOne(s)(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+      else
+        val take = math.min(max, s.size)
+        // THE TRANSITION IS CHEAP AND THE WORK IS NOT IN IT. What the
+        // transaction has to decide is only the FINAL state: which
+        // buffer remains and which parked senders are admitted. The
+        // O(take) part -- allocating the chunk and filling it -- goes
+        // into the action, which `transact` runs only after the CAS
+        // has won. A losing transaction now pays for nothing but this
+        // arithmetic, where before it rebuilt the whole queue.
+        var senders = s.senders
+        var admitted = List.empty[A]
+        var woken = List.empty[Accepted]
+        var m = 0
+        while m < take && senders.nonEmpty do
+          // a freed slot admits a parked sender, as the single
+          // receive does -- the size does not move for those
+          val ((sa, sk), more) = senders.dequeue
+          admitted = sa :: admitted
+          woken = sk :: woken
+          senders = more
+          m += 1
+        val rest = s.buf.drop(take, s.size)
+        val b2 = admitted.foldRight(rest)((a, q) => q.enqueue(a))
+        // the OLD buffer: immutable, and the CAS makes this take
+        // exclusive, so the action may read it after publication
+        val taken = s.buf
+        val size0 = s.size
+        val s2 = s.copy(buf = b2, size = size0 - take + m, senders = senders)
+        (s2, () =>
+          val out = ChunkBuf[A](take)
+          taken.fill(out, take, size0)
+          woken.foreach(_(true))
+          k(Right(out.take(take))))
+    }
+
+  /** the single receive's transition, shared with the batched one */
+  private def receiveOne(s: State)(k: End => Unit): (State, () => Unit) =
+    if s.buf.nonEmpty then
+      val (a, rest) = s.buf.dequeue
+      if s.senders.nonEmpty then
+        val ((b, sk), more) = s.senders.dequeue
+        (s.copy(buf = rest.enqueue(b), senders = more), () => { sk(true); k(Right(Some(a))) })
+      else (s.copy(buf = rest, size = s.size - 1), () => k(Right(Some(a))))
+    else if s.senders.nonEmpty then
+      val ((b, sk), more) = s.senders.dequeue
+      (s.copy(senders = more), () => { sk(true); k(Right(Some(b))) })
+    else if !s.open then
+      val e = endOf(s)
+      (s, () => k(e))
+    else (s.copy(receivers = s.receivers.enqueue(k)), () => ())
+
+  /** up to `max` buffered elements as a program; an empty answer is
+   * the end of the stream */
+
+  /** the non-suspending send: true if taken NOW (handed over or
+   * buffered), false if the channel is closed or full — never
+   * waits, never drops silently */
+  def offer(a: A): Boolean = transact[Boolean] { s =>
+    if !s.open then (s, () => false)
+    else if s.receivers.nonEmpty then
+      val (r, rest) = s.receivers.dequeue
+      (s.copy(receivers = rest), () => { r(Right(Some(a))); true })
+    else if s.size < capacity then
+      (s.copy(buf = s.buf.enqueue(a), size = s.size + 1), () => true)
+    else (s, () => false)
+  }
+
+  /** the parking forms, only where parking is GRANTED (JVM/Native;
+   * a compile error on JS): the same programs, forced at this point */
+
+  /** end the stream: the buffered elements still drain, parked
+   * senders' elements were accepted before the end and join the
+   * buffer, waiting receivers hear the end at once */
+  def close(): Unit = transact[Unit] { s =>
+    val admitted = s.senders
+    val buf = admitted.foldLeft(s.buf)((q, e) => q.enqueue(e._1))
+    val woken = if buf.isEmpty then s.receivers else Queue.empty
+    val s2 = s.copy(buf = buf, size = s.size + admitted.size, senders = Queue.empty,
+      receivers = if buf.isEmpty then Queue.empty else s.receivers, open = false)
+    val e = endOf(s2)
+    (s2, () => { admitted.foreach(_._2(true)); woken.foreach(_(e)) })
+  }
+
+  /**
+   * Record that a producer broke. It does NOT close: in a merge the
+   * other source is still feeding, and one side failing is no reason
+   * to cut the side that is fine. `close` still ends the stream, and
+   * the error is what the END then is — so a consumer receives
+   * everything that was actually produced and only then hears that
+   * something went wrong. Without this a producer that failed halfway
+   * was indistinguishable from one that finished.
+   */
+  def fail(e: Throwable): Unit = transact[Unit] { s =>
+    if s.failure == null then (s.copy(failure = e), () => ()) else (s, () => ())
+  }
+
+  /** what ended the stream, if anything did badly */
+  def failed: Option[Throwable] = Option(cell.get.failure)
+
+  def isClosed: Boolean = !cell.get.open
+
+  /** ONE read of ONE atomic state answers it: closed, with nothing
+   * left to hand over. No barrier, no in-flight counter, no ordering
+   * argument — which is exactly the property an implementation that
+   * moves elements out of this state has to reconstruct by hand */
+  private[okay] def finished: Boolean =
+    val s = cell.get
+    !s.open && s.buf.isEmpty && s.senders.isEmpty
+}
+
+/** a channel is an async stream of what it receives (linear: see
+ * above); the uncons is an Await, served by whoever sends */
+/**
+ * A channel read in BATCHES, one element at a time.
+ *
+ * The carrier is the channel plus whatever the last transaction took
+ * and how far the consumer has got through it, so `uncons` answers
+ * from memory until the batch runs out and only then touches the
+ * channel. The elements, and their order, are exactly the channel's;
+ * the only difference is how often the CAS is paid — which profiling
+ * made the whole cost of the per-element path (channel-drain).
+ *
+ * Nothing waits for a batch to fill: `receiveMany` takes what is
+ * ALREADY buffered and falls back to a single parking receive when
+ * nothing is. So this is not chunking's trade, and needs no flag.
+ */
+final case class Drain[A](c: Channel[A], held: Chunk[A], at: Int)
+
+object Drain:
+  /** how many elements one transaction may take. Large enough to
+   * amortise the CAS, small enough that a batch is cheap to build */
+  private[okay] inline val Batch = 64
+
+  def apply[A](c: Channel[A]): Drain[A] = Drain(c, Chunks.emptyChunk[A], 0)
+
+given Stream[Drain, Async] with
+  def uncons[A](d: Drain[A]): Option[(A, Drain[A])] ! Async =
+    if d.at < d.held.length then pure(Some((d.held(d.at), d.copy(at = d.at + 1))))
+    else d.c.receiveMany(Drain.Batch).map: got =>
+      if got.isEmpty then None else Some((got(0), Drain(d.c, got, 1)))
+
+extension [A](c: Channel[A])
+  /**
+   * The channel as a source that reads it in BATCHES.
+   *
+   * The plain `Stream[Channel, Async]` instance below cannot do this:
+   * its carrier IS the channel, so there is nowhere to hold a batch,
+   * and holding one inside the channel would be wrong the moment a
+   * second consumer read from it. `Drain` is that place, and this is
+   * the one-word way to get it — `Channel.buffer(n)(xs).drained` is a
+   * buffered producer read at one transaction per 64 elements rather
+   * than per element, which is what channel-drain measured at 30% on
+   * the merge.
+   *
+   * Nothing is delayed for a batch: `receiveMany` takes only what is
+   * already buffered and parks for a single element when nothing is.
+   */
+  def drained: Source[A] = Writer.of(Drain(c))
+
+  /**
+   * The channel as a source of CHUNKS: each `receiveMany` batch told
+   * as one `Chunk[A]`, exactly as it came out of the ring -- the door
+   * for a caller who wants to work on arrays from an element channel.
+   * `drained.chunked()` is the WRONG door for that: `Drain` already
+   * batches internally, and re-chunking on top of it adds a layer
+   * instead of removing one -- it measured 318.7us against 209
+   * elementwise (docs/benchmarks.md section 6c). This is the same
+   * batches with nothing re-done to them.
+   */
+  def drainedChunks: Source[Chunk[A]] =
+    def go: Source[Chunk[A]] =
+      okay.effect[Writer % Chunk[A] + Async, Chunk[A]](
+        Async.Await[Chunk[A]](k => { c.receiveManyAsync(Drain.Batch)(k); () => () })).flatMap: got =>
+        if got.isEmpty then okay.pure(())
+        else okay.effect[Writer % Chunk[A] + Async, Unit](Writer(got)).flatMap(_ => go)
+    okay.pure[Writer % Chunk[A] + Async, Unit](()).flatMap(_ => go)
+
+given Stream[Channel, Async] with
+  def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
+    c.receive.map(_.map((_, c)))
+
+object Channel {
+
+  /** the largest ring worth allocating up front: 2^20 slots is an
+   * 8MB array, and past that the persistent structure's growth on
+   * demand is the better trade */
+  private final val MaxRing = 1 << 20
+
+  /**
+   * The default channel, chosen by the capacity asked for. Both
+   * mechanisms keep the SAME contract — every law in
+   * `TestChannelLaws`, both tiers — so this is a performance
+   * decision made at construction and nothing a caller can observe
+   * except in the timing.
+   *
+   * A BOUNDED channel gets `SentinelChannel`: a mutable ring with
+   * termination travelling in it as a mark. Measured elementwise at
+   * 208.9us against `StmChannel`'s 300.1 and `zio.Queue` carrying the
+   * same contract at 320.1. At chunk granularity the two are level
+   * (175.3 against 172.3), so this is a win on one axis and a wash on
+   * the other, not a win everywhere.
+   *
+   * An UNBOUNDED one gets `SentinelChannel` over `Segments`: the same
+   * channel, its buffer a linked list of fixed arrays instead of one
+   * fixed array. `StmChannel` held this case while a ring could not
+   * be unbounded, and it was the last lane behind `zio.Queue` (130.6
+   * against 122.2 chunked, 40% of its samples in `List.reverse`).
+   *
+   * A capacity below two still goes to `StmChannel`: that is a
+   * rendezvous rather than a buffer, and the ring's stamp scheme
+   * cannot express it (see `Ring.capacity`).
+   *
+   * Ask for a mechanism by name when the trade matters — `StmChannel`
+   * is the one with STM composability, `AbruptChannel` the one that
+   * trades drain-on-close away for speed.
+   */
+  /** how many parts the default may grow into. Parts open LAZILY, so
+   * this is a ceiling on the producer count that gets its own buffer,
+   * not memory reserved up front. */
+  private final val Parts = 8
+
+  /**
+   * THE DEFAULT IS `growing` SINCE 2026-09-08 (growing-default): a
+   * plain ring while one producer pushes, and an `AdaptiveFifo` that
+   * ADOPTS that ring the moment a second producer appears.
+   *
+   * WHAT IT BUYS, measured with the ring as the in-run control, one
+   * consumer, chunked, 8 000 elements:
+   *
+   * {{{
+   * producers    ring   growing
+   *         1   156.0     171.1   1.10x worse
+   *         2   772.4     188.0   4.1x better
+   *         4  1258.2     159.0   7.9x better
+   *        16  2907.1     127.6  22.8x better
+   * }}}
+   *
+   * Ten percent at one producer for four to twenty-three times at
+   * two and above. The one-producer row is the whole reason the ring
+   * was the default, and it is the row that costs least here.
+   *
+   * WHAT IT COSTS, and it is not speed: EXACT FIFO ACROSS PRODUCERS.
+   * A ring orders every push by one CAS on one tail; once this has
+   * grown, each producer keeps its own order and nothing is promised
+   * between them. A caller who needs the strict order asks for it by
+   * name — `Queues.strong[A].fifo(capacity)` is the ring this default
+   * used to be.
+   *
+   * AND THE PER-PRODUCER HALF COSTS ONE DISPLACEMENT, decided by the
+   * operator on 2026-09-18 after the mechanism was finally named.
+   * The swap adopts the ring producers were already pushing into, so
+   * a producer whose elements straddle it can have its own order
+   * broken IN AT MOST ONE PLACE, ONCE. `TestChannelLaws` states that
+   * and no more ("EXCEPT once, across its one swap");
+   * `ProbeGrowingOrder` reproduces it and `AdaptiveFifo`'s
+   * `popManyAdoptedFirst` carries the window that leaves it open.
+   *
+   * IT IS A CHOICE, NOT A WART, and both alternatives already exist:
+   * `Queues.strong[A].adaptive.each(n).build` keeps each producer's
+   * order exactly (it never adopts a buffer, so there is no swap) and
+   * is 38x faster than a ring at sixteen producers;
+   * `Queues.strong[A].fifo(n).build` is the total order. docs/queues.md
+   * has the table, `TestMailboxChoice` compiles and runs all three,
+   * and `ActorRef`'s header repeats it where an actor author will
+   * meet it — a mailbox is one of these channels.
+   *
+   * The MASS reordering is still a defect and still tested: it was
+   * broken for a day when this became the default, the swap moving
+   * producers to new parts while their earlier elements were still in
+   * the adopted one (merge-chunked-order, 2026-09-09), and the law
+   * fails on more than one inversion.
+   *
+   * WHY NOT `adaptive`, which this comment argued for until the
+   * measurement came in: it splits its capacity across parts up
+   * front, so at an equal memory budget a lone producer gets a
+   * fraction of the buffer and reads **1 119 against the ring's
+   * 169**, 6.6x. That is exactly the hazard the paragraph below
+   * predicted — "a lone producer must not pay for parts it never
+   * opens" — and `growing` is the answer to it rather than a way
+   * round it: until a second producer appears it IS the ring.
+   *
+   * The case for adaptive: a single ring loses to `zio.Queue` the
+   * moment there is a second consumer -- 4964us against 3122 at
+   * 4 producers x 4 consumers -- and the same channel over
+   * `AdaptiveFifo` read 2341. The day it was first made the default,
+   * the P x C law that decision required found three defects, all
+   * now fixed and each under a law: the adaptive buffer opened parts
+   * at claim indices but scanned by count (`TestManyToMany`, elements
+   * of late producers lost); `seal` placed one end mark per CALLER
+   * rather than per part, then, once claimed, could leave a part
+   * unsealed for good when a refused push and a concurrent seal
+   * crossed (`TestChannelLaws`, a consumer parked on a closed empty
+   * channel); and the channel's waiter queue was woken from the live
+   * queue rather than a snapshot, so a receiver that re-parked was
+   * re-woken for ever (the 100% CPU "livelock"). None of those was
+   * the ring's; all three were in the day's changes or found by the
+   * day's laws. What remains before the default can change is the
+   * A/B of every single-producer path the default feeds -- buffer,
+   * bufferChunked, merge -- under the adaptive buffer, since its
+   * capacity is PER PART and a lone producer must not pay for parts
+   * it never opens.
+   */
+  /** which buffer `apply` builds, so a default can be A/B'd on the
+   * paths it actually feeds (buffer, bufferChunked, merge) without
+   * editing this file between arms. (`okay.cont.fuse` was the other
+   * switch of this kind; it is gone — the three lanes that A/B'd it
+   * ended the fusion budget itself, specs/freer-base.md.)
+   * `growing` is the shipped behaviour and the
+   * only value a released build should see; `ring` and `adaptive` are
+   * the two arms it was chosen BETWEEN, kept so the choice can be
+   * re-measured rather than re-argued.
+   * scripts/ab-defaults.sh drives them. */
+  private val BufferKind: String =
+    Try(System.getProperty("okay.channel.buffer", "growing")).getOrElse("growing")
+
+  /** parts for the adaptive arm; ignored under `growing` and `ring`
+   * (the growing default carries its own `Parts`) */
+  private val AdaptiveParts: Int =
+    Try(System.getProperty("okay.channel.parts", "16").toInt).getOrElse(16)
+
+  def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
+    if BufferKind == "adaptive" && capacity >= 2 then
+      Queues.strong[A].adaptive.parts(AdaptiveParts)
+        .each(if capacity > MaxRing then MaxRing else capacity).build
+    else if BufferKind == "ring" && capacity >= 2 && capacity <= MaxRing then
+      SentinelChannel[A](capacity)
+    else if capacity >= 2 && capacity <= MaxRing then
+      SentinelChannel[A](Queues.Mechanism.growing(capacity, Parts)[A | Mark](capacity))
+    else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
+    else StmChannel[A](capacity)
+
+
+  /** unfold a stream into the channel as an Async program; stops
+   * early if the channel refuses (closed under the producer) */
+  private def feed[A, U[_], H[+_]](c: Channel[A], u: U[A])
+                                  (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+    // the linear view, for the same reason as `feedBatched` above
+    val it = St.iterator(u)
+    // OFFER FIRST, as `sendBlocking` does, and for the same reason: the
+    // handshake exists to wait, and a ring with room has nothing to
+    // wait for. Counted per side on the elementwise channel lane, the
+    // consumer made 64 awaits for 4000 elements and this loop made
+    // 4000 -- one `send` per element, each an Async.Await with its
+    // slot, its acceptance callback, a Bind and the interpreter steps
+    // around them. So: offer in a plain loop while the ring takes, and
+    // park with ONE `send` only on the element it refused. That element
+    // is held in `a`, so a refusal loses nothing; and `offer` refuses
+    // on closed as well as on full, which `send` then answers
+    // correctly -- false without waiting, or a park. Per full ring:
+    // about `capacity` offers and one handshake.
+    //
+    // The loop lives INSIDE a program step, behind `pure(()).flatMap`,
+    // and not in the body of `go`. A `def go = ...` body runs when the
+    // program is BUILT, on whatever thread calls `feed`; the old
+    // one-send-per-element feed evaluated only its first `it.next()`
+    // there and every later one lazily under the driver, and a first
+    // draft of this loop evaluated all of them eagerly -- so a
+    // producer that throws on its fourth element threw out of
+    // `Channel.buffer(...)` into the caller, where a fork that runs
+    // its thunk on the caller's thread has no fiber to fail. Behind
+    // the step, the throw surfaces where it always did: in the
+    // producer's fiber, and from there as the consumer's failure
+    // (TestChannelFailureCross). One Bind per full ring, not per element.
+    def go: Unit ! Async =
+      pure(()).flatMap: _ =>
+        if !it.hasNext then pure(())
+        else
+          var a = it.next()
+          var taken = c.offer(a)
+          while taken && it.hasNext do
+            a = it.next()
+            taken = c.offer(a)
+          if taken then pure(())
+          else c.send(a).flatMap(ok => if ok then go else pure(()))
+    go
+
+  /**
+   * The chunking feed: accumulate up to `size` elements and send them
+   * as one chunk, so the channel runs one transaction per chunk
+   * rather than per element (source-merge-chunked: 71% of the
+   * elementwise merge's CPU is that transaction).
+   *
+   * The buffer is a `TRef` rather than a local, because a FLUSHER may
+   * take it concurrently — and that is the whole design constraint
+   * here. The obvious way to bound a partial chunk's wait is to race
+   * the pull against a timer, and it is wrong: `Async.timeout`
+   * cancels the loser, and cancelling an in-flight `uncons` on a live
+   * source can lose the element it was about to yield. So the timer
+   * never touches the pull. It runs beside it and takes whatever has
+   * accumulated, which is safe whatever the pull is doing.
+   */
+  /**
+   * The buffered producer's feed: accumulate into a LOCAL buffer and
+   * send whole chunks.
+   *
+   * Different from `feedChunked` below, which keeps its buffer in a
+   * `TRef` because a timer may flush it from another thread — and
+   * therefore pays a transaction per element. Nothing else touches
+   * this one, so an element costs an array store and a chunk costs
+   * one send.
+   *
+   * WHY IT MATTERS, measured. Reading a buffered channel one element
+   * at a time was the last row where `zio.Queue` led, and the cost was
+   * neither the queue (8% of the profile) nor `Drain`: both SIDES paid
+   * a program-as-values step per element, so the producer never ran
+   * ahead, the batch measured 1.67 elements, and chunking — worth
+   * 4-7x everywhere else here — had nothing to engage on. Their 137.9
+   * elements per queue operation come from an asymmetry: a cheap
+   * `offer` against a consumer paying an effect per element. This is
+   * that asymmetry, built.
+   */
+  private def feedBatched[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int)
+                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+    // THE LINEAR VIEW, not a recursion through uncons. Feeding a
+    // channel is a consume-once walk, and `Stream.iterator` is
+    // exactly that view -- its default IS `uncons(_).runWith`, so an
+    // effectful source behaves identically, while a pure collection
+    // hands back its own iterator and the walk stops building and
+    // interpreting a program per element.
+    //
+    // That was the largest cost left anywhere on this path: profiled,
+    // 54% of the fastest channel lane sat in `runFree`, against 5% in
+    // this feed and 12% in the chunk writes. Two interpreter passes
+    // per element, to take the head of a list.
+    val it = St.iterator(u)
+    def go(buf: ChunkBuf[A], n: Int): Unit ! Async =
+      if !it.hasNext then
+        if n == 0 then pure(()) else c.send(buf.take(n)).map(_ => ())
+      else
+        var i = n
+        while i < size && it.hasNext do
+          buf.update(i, it.next())
+          i += 1
+        if i < size then
+          // the source ended mid-chunk: whatever is left is a chunk,
+          // however short
+          c.send(buf.take(i)).map(_ => ())
+        else
+          c.send(buf.chunk).flatMap(ok => if ok then go(ChunkBuf[A](size), 0) else pure(()))
+    go(ChunkBuf[A](size), 0)
+
+  private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
+                                          buf: TRef[ChunkBuffer[A]])
+                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+    def take(full: Boolean): Option[Chunk[A]] = takeChunk(buf, size, full)
+    def go(x: U[A]): Unit ! Async =
+      async(St.uncons(x).runWith).flatMap:
+        case Some((a, r)) =>
+          buf.modify(b => (ChunkBuffer(b.pending :+ a), ()))
+          take(full = false) match
+            case Some(ch) => c.send(ch).flatMap(ok => if ok then go(r) else pure(()))
+            case None => go(r)
+        // the source ended: whatever is left is a chunk, however short
+        case None => take(full = true) match
+          case Some(ch) => c.send(ch).map(_ => ())
+          case None => pure(())
+    go(u)
+
+  /**
+   * The chunking feed for a source that marks its OWN boundaries. It
+   * walks the program instead of pulling through `Stream.uncons`,
+   * because `Flush` has to be interpreted where it occurs — at the
+   * exact point in the told sequence the producer put it.
+   *
+   * `relay` cannot serve: its handler answers an operation with a
+   * VALUE, while `Flush.Now` must become a channel send, an Async
+   * program that suspends. So this is the walk `Writer.widen` and
+   * `Generate.uncons` are written in — resume, split the row,
+   * rebuild — with the accumulation in between.
+   *
+   * It is a SECOND walk rather than the only one, and that was
+   * measured rather than assumed: routing the ordinary chunked merge
+   * through here too (widening every source into the flushing row,
+   * paying one more tree rebuild per source and one more row split
+   * per element) cost 11% on the common path — 244.3us +/-15.2
+   * against 219.6 +/-1.5 in the same window. `Flush` is opt-in and
+   * rare; plain chunking is not, so the duplication is the accumulation
+   * helpers shared and the walk written twice (flush-op, 2026-09-03).
+   */
+  private def feedFlushing[A](c: Channel[Chunk[A]], p: Flushing[A], size: Int,
+                              buf: TRef[ChunkBuffer[A]]): Unit ! Async =
+    def sendIf(o: Option[Chunk[A]])(rest: => Unit ! Async): Unit ! Async = o match
+      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest else okay.pure(()))
+      case None => rest
+    def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A]): Unit ! Async =
+      split[Flush, Writer % A + Async](e)
+        // the producer's own boundary: emit what is held, however short
+        { case Flush.Now => sendIf(takeChunk(buf, size, full = true))(go(k(()))) }
+        (rest => split[Async, Writer % A](rest)
+          (a => Inject(a).flatMap(x => go(k(x))))
+          { case Writer.Say(w) =>
+            buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
+            sendIf(takeChunk(buf, size, full = false))(go(k(()))) })
+    def go(p: Flushing[A]): Unit ! Async = (p.resume: @unchecked) match
+      case Pure(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
+      case Inject(e) => step(e, _ => okay.pure(()))
+      case Bind(Inject(e), k) => step(e, k)
+    go(p)
+
+  /** what both chunking feeds do to the buffer: take a chunk if one
+   * is due — `full` meaning "whatever is there, the input is over or
+   * the producer said so" */
+  private def takeChunk[A](buf: TRef[ChunkBuffer[A]], size: Int, full: Boolean)
+  : Option[Chunk[A]] = buf.modify: b =>
+    if b.pending.isEmpty || (!full && b.pending.length < size)
+    then (b, None)
+    else (ChunkBuffer(Vector.empty), Some(ChunkBuf.ofSpecialized(b.pending)))
+
+  /** the same merge, for sources that mark their own boundaries */
+  def mergeFlushing[A](s: Flushing[A], t: Flushing[A], capacity: Int, size: Int,
+                       within: Option[Long])
+                      (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
+    chunkedMerge(capacity, size, within)(
+      (c, buf) => feedFlushing(c, s, size, buf), (c, buf) => feedFlushing(c, t, size, buf))
+
+  /** the buffer a chunking feed accumulates into, in a cell of its
+   * own so a flusher can take it without racing the pull */
+  private[okay] final case class ChunkBuffer[A](pending: Vector[A])
+    extends TRef.Stamped[ChunkBuffer[A]]:
+    def value: ChunkBuffer[A] = this
+
+  /**
+   * Merge two streams as CHUNKS: the same readiness merge, one
+   * channel transaction per `size` elements. `within` bounds how long
+   * a partial chunk may wait — without it a chunk is emitted only
+   * when full or when its source ends, which on a slow or unending
+   * source means an element can wait indefinitely.
+   *
+   * The flusher is a fiber per source that sleeps and then TAKES what
+   * has accumulated; it never cancels or races the pull (see
+   * `feedChunked`). It stops when its source's feed completes.
+   */
+  private def chunkedMerge[A](capacity: Int, size: Int, within: Option[Long])
+                             (feedS: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async,
+                              feedT: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async)
+                             (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
+    val c = Channel[Chunk[A]](capacity)
+    val alive = AtomicInteger(2)
+    /**
+     * The flusher is RETURNED so it can be cancelled, and that is not
+     * tidiness (flush-premium, 2026-09-09).
+     *
+     * It used to be forked and dropped. `done.get` then stopped it
+     * only at its NEXT tick, so with `flushAfter = 1000` a merge that
+     * finishes in 380 microseconds left two fibers asleep for a
+     * further second, each holding a timer entry. At a few thousand
+     * merges a second that is thousands of live sleepers, and it
+     * measured **1.29x** the same merge without a window — while a
+     * ONE-millisecond window, which does strictly more work because
+     * its timer actually fires, measured only 1.14x. A shorter window
+     * costing less is the inversion that identified this.
+     */
+    def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Fiber[Unit] | Null =
+      within match
+        case None => null
+        case Some(ms) =>
+          def tick(): Unit ! Async =
+            Async.sleep(ms).flatMap: _ =>
+              if done.get > 0 then
+                takeChunk(buf, size, full = true) match
+                  case Some(ch) => c.send(ch).flatMap(_ => tick())
+                  case None => tick()
+              else pure(())
+          sch.fork(() => tick())
+    def watch(f: Fiber[Unit], mine: AtomicInteger, fl: => (Fiber[Unit] | Null)): Unit =
+      f.onComplete { r =>
+        mine.set(0)
+        r.left.foreach(e => c.fail(e))
+        // this source is finished and has already flushed its own
+        // tail, so its flusher has nothing left to do: stop it now
+        // rather than at its next tick
+        val t = fl
+        if t != null then t.nn.cancel()
+        if alive.decrementAndGet() == 0 then c.close()
+      }
+    val (bs, bt) = (TRef.bare(ChunkBuffer[A](Vector.empty)), TRef.bare(ChunkBuffer[A](Vector.empty)))
+    val (ds, dt) = (AtomicInteger(1), AtomicInteger(1))
+    // `flusher` is started BEFORE its `watch` is armed but referred to
+    // by name, so a feed that finishes instantly still cancels the
+    // flusher rather than racing past a `null`
+    lazy val fs: Fiber[Unit] | Null = flusher(bs, ds)
+    lazy val ft: Fiber[Unit] | Null = flusher(bt, dt)
+    watch(sch.fork(() => feedS(c, bs)), ds, fs); val _ = fs
+    watch(sch.fork(() => feedT(c, bt)), dt, ft); val _ = ft
+    c
+
+  /** the chunking merge for ordinary sources: the common path, fed
+   * through `feedChunked` rather than the flushing walk because that
+   * routing measured 11% dearer (see `feedFlushing`) */
+  def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
+                                                within: Option[Long])
+                                               (using Stream[S, F], Handler[F],
+                                                Stream[T, G], Handler[G])
+                                               (using Scheduler, Timer): Channel[Chunk[A]] =
+    chunkedMerge(capacity, size, within)(
+      (c, buf) => feedChunked(c, s, size, buf), (c, buf) => feedChunked(c, t, size, buf))
+
+  /**
+   * Merge two streams by READINESS, not by turns: a fiber per source
+   * feeds one channel, the loser of every race simply arrives later.
+   * This is the concurrency zip and ++ cannot express — they are
+   * strictly sequential. The channel closes when both sources end;
+   * a source that fails is recorded (fail) and the other still feeds.
+   */
+  def merge[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
+                                        (using Stream[S, F], Handler[F], Stream[T, G], Handler[G])
+                                        (using sch: Scheduler): Channel[A] =
+    val c = Channel[A](capacity)
+    val alive = AtomicInteger(2)
+    def watch(f: Fiber[Unit]): Unit = f.onComplete { r =>
+      r.left.foreach(c.fail)
+      if alive.decrementAndGet() == 0 then c.close()
+    }
+    watch(sch.fork(() => feed(c, s)))
+    watch(sch.fork(() => feed(c, t)))
+    c
+
+  /**
+   * Run the producer ahead of the consumer, at most capacity elements
+   * ahead: a fiber unfolds the stream into a bounded channel — send
+   * suspends the producer when the consumer lags by capacity.
+   */
+  /**
+   * The same as `buffer`, in CHUNKS: the producer fills an array and
+   * sends it whole, so the channel carries batches and the consumer
+   * amortises everything above it.
+   *
+   * `capacity` counts CHUNKS, not elements — the buffer holds up to
+   * `capacity * size` elements, which is worth knowing before copying
+   * a number across from `buffer`.
+   *
+   * Read it with `.drained` (a `Source[Chunk[A]]`) and fold the arrays,
+   * or `.drained.unchunked` for elements again at the far end.
+   */
+  def bufferChunked[A, S[_], F[+_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
+                                   (using Stream[S, F], Handler[F])
+                                   (using sch: Scheduler): Channel[Chunk[A]] =
+    val c = Channel[Chunk[A]](capacity)
+    sch.fork(() => feedBatched(c, s, size)).onComplete { r =>
+      r.left.foreach(c.fail)
+      c.close()
+    }
+    c
+
+  def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
+                            (using Stream[S, F], Handler[F])(using sch: Scheduler): Channel[A] =
+    val c = Channel[A](capacity)
+    sch.fork(() => feed(c, s)).onComplete { r =>
+      r.left.foreach(c.fail)
+      c.close()
+    }
+    c
+}

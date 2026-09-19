@@ -211,14 +211,14 @@ object Flows {
   /** one partition of a plan, as the chunks a worker will read.
    * Refuses the same way `fan` does when the plan already has a keyed
    * stage in it, since a partition of that is not a thing */
-  private[cluster] def partition[A](flow: Flow[A], i: Int): Chunks[A] =
+  private[cluster] def partition[A](flow: Flow[A], i: Int, from: Long = 0L): Chunks[A] =
     val sh = shape(flow)
-    val head = sh.source
+    val head = sh.sourceAt
     if head == null then
       throw IllegalArgumentException(
         "a distributed job reads ONE source: put the keyed stages in the sinks " +
           "(specs/dataflow.md, stage 3)")
-    head.nn(i)
+    head.nn(i, from)
 
   /** every column's extent, in ONE pass over the partition */
   private[cluster] def extent[A](c: Chunks[A], times: Vector[A => Long]): Vector[Extent] =
@@ -341,6 +341,8 @@ object Flows {
      * how a second keyed stage is refused by name rather than
      * answered wrongly */
     def source: (Int => Chunks[A]) | Null
+    /** the same, positioned: a partition opened `from` elements in */
+    def sourceAt: ((Int, Long) => Chunks[A]) | Null
     def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B]
     def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc]
 
@@ -380,10 +382,11 @@ object Flows {
      * assert it rather than a benchmark merely notice it */
     def merged(ps: Vector[P]): Long
 
-  private final class Pipe[A](val parts: Int, val at: Int => Chunks[A]) extends Shape[A]:
-    def source: (Int => Chunks[A]) | Null = at
+  private final class Pipe[A](val parts: Int, val at: (Int, Long) => Chunks[A]) extends Shape[A]:
+    def source: (Int => Chunks[A]) | Null = i => at(i, 0L)
+    def sourceAt: ((Int, Long) => Chunks[A]) | Null = at
     def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B] =
-      new Pipe(parts, i => f(at(i)))
+      new Pipe(parts, (i, s) => f(at(i, s)))
     def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc] =
       val self = this
       new Job[Acc]:
@@ -392,7 +395,7 @@ object Flows {
         def prepass: (Int => Extent) | Null = null
         def ordered: Boolean = true
         def work(i: Int, bounds: Bounds): Acc =
-          Chunks.foldLeft(self.at(i))(into.init)((acc, a) => into.add(acc, a))
+          Chunks.foldLeft(self.at(i, 0L))(into.init)((acc, a) => into.add(acc, a))
         def reducers(ps: Vector[Acc]): Int = 1
         def reduce(ps: Vector[Acc], r: Int, of: Int): Acc = ps.reduceLeft(into.merge)
         def drops(ps: Vector[Acc]): Long = 0L
@@ -418,6 +421,7 @@ object Flows {
     def merged(ps: Vector[P]): Long
 
     final def source: (Int => Chunks[A]) | Null = null
+    final def sourceAt: ((Int, Long) => Chunks[A]) | Null = null
 
     final def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B] =
       val self = this
@@ -452,7 +456,7 @@ object Flows {
   private def shape[A](flow: Flow[A]): Shape[A] = flow match
     case Flow.Src(ps) =>
       require(ps.nonEmpty, "a source has at least one partition")
-      new Pipe(ps.length, i => ps(i)())
+      new Pipe(ps.length, (i, s) => ps(i)(s))
     case Flow.Local(in, _, f) => shape(in).andThen(f)
     case Flow.Keyed(in, key, agg, finish) => keyed(shape(in), key, agg, finish)
     case Flow.Windowed(in, size, slide, lateness, key, at, agg, seeded, finish) =>

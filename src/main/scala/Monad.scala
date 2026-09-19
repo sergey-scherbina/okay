@@ -19,7 +19,19 @@ trait ParaMonad[M[_, _, _]] {
     m.flatMap(identity)
 
   extension [A, S, R](m: M[A, S, R])
-    inline def map[B](f: A => B): M[B, S, R] = m.flatMap(x => pure(f(x)))
+    /**
+     * NOT `inline`, and that is load-bearing: an inline method is
+     * final, so no carrier could replace this default — and the
+     * default is `flatMap` into a `pure`, which costs a node per
+     * element that a carrier able to absorb the function does not
+     * need. Measured 2026-09-15 (specs/freer-base.md Results): 96 B
+     * per `shift.map(f)` through this default against 40 B through
+     * `Shift.mapped`, and +24 B/op with 7-19% on every Fib lane,
+     * because the generator maps once per element. The `inline` was
+     * there for staging (specs/staged-tagless.md), which prices
+     * `pure`/`flatMap`/`shift` chains and not `map`.
+     */
+    def map[B](f: A => B): M[B, S, R] = m.flatMap(x => pure(f(x)))
     // composition: (S -> R) o (S2 -> S) = S2 -> R
     def flatMap[B, S2](f: A => M[B, S2, S]): M[B, S2, R]
 }
@@ -47,10 +59,28 @@ given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] =
   DiagonalMonad[M, R](P)
 
 /**
- * Kleisli composition, is the composition of effectful functions:
+ * KLEISLI COMPOSITION, and the glyph is `>=>` because that is what
+ * the literature calls it (`Control.Monad.>=>`). It was `>>>` until
+ * 2026-09-18 (`arrow-glyphs`), which is the ARROW's glyph in the same
+ * literature, and holding it here cost more than it looked:
+ *
+ *   - it had ZERO call sites. Every `>>>` in the tree was either a
+ *     `Long` bit shift (`Uid`, `Hlc`, `Sketch`) or a local one;
+ *   - TWO test files were hand-rolling their own `>>>` for `Proc`
+ *     because the arrow one could not be written while this held the
+ *     name;
+ *   - and an arrow `>>>` added BESIDE it does not coexist, it
+ *     COLLIDES: `A => M[B]` is also a `P[A, B]`, so the arrow
+ *     extension wins resolution and then fails to typecheck. The
+ *     first cut of `Optic.arrows` had exactly that bug, and
+ *     `TestArrowGlyphs` is where it showed.
+ *
+ * So each keeps the name its own literature gives it: `>=>` composes
+ * effectful functions, `>>>` composes arrows (`Optic.arrows`), and a
+ * plain function IS an arrow, so `f >>> g` works on one too.
  */
 extension [M[_] : Monad, A, B](f: A => M[B])
-  def >>>[C](g: B => M[C]): A => M[C] = f(_).flatMap(g)
+  infix def >=>[C](g: B => M[C]): A => M[C] = f(_).flatMap(g)
 
 /**
  * Natural transformation
@@ -80,14 +110,27 @@ trait Applicative[F[_]] extends Functor[F]:
  */
 trait Selective[F[_]] extends Applicative[F]:
   extension [A, B](fe: F[Either[A, B]])
-    def select(f: F[A => B]): F[B]
-    def branch[C](fa: F[A => C])(fb: F[B => C]): F[C] =
+    /**
+     * BY NAME, and in Scala that is the whole point of the class.
+     *
+     * "Runs at most one branch" is free in a lazy language; here a
+     * branch is an ordinary argument, so passing it by value does the
+     * work whether or not it is chosen. Measured the plain way, by a
+     * validator that records each check it performs: with a by-value
+     * handler the skipped branch still ran, and only its ERRORS were
+     * dropped. By name, it does not run at all.
+     *
+     * A handler is used at most once by every instance here, so the
+     * repeated-evaluation cost of a by-name parameter does not arise.
+     */
+    def select(f: => F[A => B]): F[B]
+    def branch[C](fa: => F[A => C])(fb: => F[B => C]): F[C] =
       fe.map(_.map(Left(_))).select(fa.map(_.andThen(Right(_)))).select(fb)
   extension (x: F[Boolean])
     // branch sends Left to its FIRST argument, so true must become
     // Left — Either.cond puts true on the Right and inverted the
     // whole conditional (caught the day ifS was first tested)
-    def ifS[A](t: F[A])(e: F[A]): F[A] =
+    def ifS[A](t: => F[A])(e: => F[A]): F[A] =
       x.map(b => if b then Left(()) else Right(()))
         .branch(t.map(Function.const))(e.map(Function.const))
 
@@ -105,7 +148,7 @@ trait Monad[F[_]] extends Selective[F]:
     // the derived app; the generic combinators are also the test bed.
     def app(a: F[A]): F[B] = f.flatMap(g => fmap(a, g))
   extension [A, B](e: F[Either[A, B]])
-    override def select(f: F[A => B]): F[B] =
+    override def select(f: => F[A => B]): F[B] =
       e.flatMap(_.fold(a => f.map(_(a)), pure))
 
 /** choice with a neutral element */

@@ -200,6 +200,24 @@ than trusting the author.
   partitions), 6b (a dying worker's partition is replayed on a
   survivor), 6c (exactly-once OUTCOME at a keyed sink, at-least-once
   execution underneath, and the offers counted rather than promised).
+- **11 — the log is the source.** A `Flow` whose partitions are
+  okay-persist topic partitions that SEEK by epoch (offset = begin +
+  epoch x take), so a resumed run reads from the last epoch instead
+  of replaying the source from the start — and a staging sink whose
+  output offset commits with the epoch, so the run is exactly-once
+  from log to log on the repository's own primitive. Verifiable on
+  one machine with `MemoryStore`.
+- **12 — the network.** The cross-process harness on machines that
+  are not this one, or containers with injected latency and loss.
+  BLOCKED on machines; the boxes are written so that the day they
+  exist the work is a run and not a design.
+- **13 — rescale at an epoch boundary.** LANDED (box 1 and box 3;
+  see Results). A stream stops at N running `parts` ways and resumes
+  at N+1 running `parts'` ways, and the answer is the batch answer —
+  for a STRIPED source (a clean global prefix to skip) into a KEYED
+  or FOLD sink (all state in the coordinator's fold). Box 2 — the
+  same for a WINDOWED sink, whose open panes are not in the journal —
+  is refused rather than faked, and named below.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -305,7 +323,7 @@ Stage 4a — what crosses (TestFlow):
       one with late elements
 - [x] what crosses is a SUMMARY plus the boundary panes, not the
       panes — asserted, not described
-- [ ] the worker protocol and four processes — stage 4b
+- [x] the worker protocol and four processes — stage 4b
 
 Stage 4b — across processes (TestDistributed):
 - [x] `Job[P, R]` is the registry entry: a worker is asked for a NAME
@@ -321,9 +339,16 @@ Stage 4b — across processes (TestDistributed):
       seeded its watermark from the coordinator's bounds
 - [x] a job the build does not know is an ANSWER naming what it does
       know, not a crash
-- [ ] a worker that dies mid-run — stage 5
+- [x] a worker that dies mid-run — stage 5
 
-Stage 5 — failure (TestFailure):
+Stage 5 — failure (TestFailure). THE TWO ROADMAP LINES ABOVE WERE
+TICKED ON 2026-09-18, LATE: every box of stage 4b and of stage 5 was
+already `[x]` and had been since they landed, but the one-line
+SUMMARY of each in the roadmap at the top of this file was never
+crossed off — so the spec reported its own finished work as open, and
+the sprint item repeated it ("next is stage 5") for a week. A summary
+line is a claim like any other and goes stale the same way
+(the-record-outlives-the-truth).
 - [x] a worker that throws is buried and its partition is computed on
       a survivor; the answer, the drops and the merged count do not
       move
@@ -392,6 +417,140 @@ Stage 6c — a row that LEAVES the engine (TestOnce):
 - [x] durable checkpointing, so a COORDINATOR restart can resume —
       stage 8
 
+Stage 11 — the log is the source (box 1 landed; TestSourceLog):
+- [x] a partition IS a topic partition: `Streams.chunks(topic, p,
+      from)` is a `Chunks[Record]` and `Flow.of` takes the thunk —
+      three lines, no dependency in either direction. A job over a
+      MemoryStore topic answers what the fan over the array answers at
+      1, 4 and 8 partitions, batch and streamed, `merged` included
+- [x] positioned by epoch — box 2, FOR THE SINKS THAT CAN: `Flow.Src`
+      thunks take a start, `Resp.Epoch` carries the position, the
+      journal carries one per partition, and a session opens AT it —
+      on a resume and on a replacement worker mid-run, which is one
+      road. `Sink.seekable` says who can: fold and keyed (they hand
+      over deltas and clear), never windowed. A keyed job resumed
+      after a coordinator death reads exactly `total - Σpositions`
+      records, asserted by a counting Topic; a windowed one reads the
+      whole topic again. Controlled: opening at zero fails both seek
+      tests
+- [x] box 2b — a WINDOWED sink that seeks. **MEASURED 2026-09-18
+      (`dataflow-windowed-seek`), and the measurement CHOSE: road B,
+      the horizon-bounded replay, by a factor nobody has to argue
+      about** — the numbers are in `MeasureWindowedSeek` and in the
+      Results below. **BUILT the same day (`dataflow-horizon-seek`):**
+      `Sink.horizon` is how far back a sink's state reaches (`size +
+      lateness` for a window, `0` for a sink that hands over deltas
+      and answers `seekable` instead), `Folded.marks` is the
+      `(epoch, positions, max event time per partition)` the journal
+      now carries, and `opening` picks, per PARTITION, the newest mark
+      whose own maximum is a horizon below where that partition stands
+      now. The seed the box asked for turned out not to be needed: the
+      catch-up reaches the same maximum before the requested epoch, so
+      the late-drop decisions of that epoch are made under the same
+      watermark either way — and the panes that DID lose a skipped
+      element are all closed during the catch-up, which discards them.
+      `TestSeek` asserts the answer first and the reads second: the
+      resumed windowed job answers identically and reads
+      `total - Σmark.positions` (15 904 of 20 000), and a mid-run
+      replacement re-reads exactly one epoch (512 elements) where the
+      replay from zero re-read 2 560
+- [x] a resumed coordinator's workers open at the journal's epoch and
+      read from there — TICKED LATE 2026-09-18: it is the same
+      assertion as box 2 above, which has been `[x]` since it landed
+      ("reads exactly `total - Σpositions` records, asserted by a
+      counting Topic", `TestSeek`). Two boxes for one property, and
+      the second kept the stage looking open
+- [~] `Sink.stagingTo(topic)` — the WRITER is built and tested
+      (`TestStagingTopic`), the METHOD is not, and the module boundary
+      is the reason rather than an omission: okay-cluster depends on
+      okay-persist in TEST SCOPE ONLY, deliberately (build.sbt says
+      why — `Checkpoint` is two methods over bytes and the STORE is
+      the caller's). A `stagingTo(topic)` in okay-cluster would drag a
+      store into a compile graph that stops at okay-codec. The seam
+      that exists is the right one: `Sink.staging(...)(move)` takes
+      the two moments, and the topic writer is forty lines in whatever
+      module owns the store — which is where a store belongs
+- [x] exactly-once from log to log: the coordinator dies between the
+      append and the journal commit, at four epochs, and the output
+      topic holds every pane once. THE DEDUP STATE IS THE OUTPUT — a
+      resumed process is built with no memory at all and learns what
+      landed by reading the tail, which is what `TestStaged` could not
+      show (its counter was a field that survived the simulated death)
+- [x] the same on `KafkaStore` when a broker is available (Live) —
+      RUN 2026-09-18 (`dataflow-kafka-eos`) against a single-node
+      `apache/kafka:3.9.0` on this machine, and it passes the same
+      four assertions the memory battery makes: a quiet run writes
+      every pane once (3.9 s), a coordinator dying between the append
+      and the journal commit at four epochs is succeeded by a process
+      with no memory that learns what landed from the output's tail
+      (16.1 s), a death after the commit appends nothing again
+      (14.6 s), and a fresh writer over a filled log knows the epoch
+      (6.0 s). It asserts nothing NEW on purpose: the battery is one
+      `StagingTopicSuite`, supplied a `MemoryStore` topic by
+      okay-cluster and a `KafkaStore` one by okay-kafka, so the two
+      runs cannot drift into asserting different things. The only
+      thing a real log can break that a memory one cannot is the
+      reading back — offsets, `TooEarly`, an eventually consistent
+      tail — and that is exactly what the dedup road depends on.
+      Skips in 16 ms with no broker, and the skip was checked by
+      pointing it at a dead port
+
+Stage 12 — the network (BLOCKED: needs machines that are not this one):
+- [ ] the three engines' cross-process harness over a real link, and
+      the fixed/marginal split re-measured — the first number this
+      repository will have about a wire that is not loopback
+- [ ] injected latency and loss (`tc netem`, or containers) against
+      the tolerance of `dataflow-reconnect`: at what loss rate does a
+      run stop finishing, and is three consecutive failures the right
+      count when a failure is a packet
+- [ ] a partition of the network between coordinator and a worker:
+      the worker is buried, the partition moves, and when the link
+      heals the worker's old session is NOT resumed into a run that
+      has moved on (the fence, from the worker's side)
+- [x] what can be done on ONE machine meanwhile: a `Serve` that loses
+      requests by a seeded schedule (TestNetem, in the default gate),
+      and the tolerance question answered without a network — see the
+      Results entry: on a lossy wire the loss never ends a run, the
+      burial policy does; `tolerance` is a parameter of `Cluster.run`
+      and `Cluster.stream` now
+
+Stage 13 — rescale at an epoch boundary (TestRescale):
+- [x] a stream running at `parts` stops at epoch N and resumes at N+1
+      with `parts'`; the answer equals the batch answer — for a
+      striped source (`Job.rescalable`, `Flow.striped`) into a keyed
+      or fold sink. Six width changes asserted (grow, shrink, 1->5,
+      6->1, unchanged), each equal to the batch answer.
+- [x] a worker added mid-stream takes partitions from the next epoch;
+      one removed hands its back — the same mechanism as death,
+      without the death: the workers vector is a resume argument, so
+      a longer or shorter one on resume re-maps partitions.
+- [x] box 2: the same for a WINDOWED sink. Its open panes live in the
+      worker, rebuilt by replay on a same-width resume; a re-cut does
+      not replay, so they must be JOURNALLED first. The engine refuses
+      a windowed rescale (a clear no over a lost pane) until they are.
+      A contiguous cut is refused too — it has no global prefix.
+      **THERE IS A SECOND ANSWER, AND IT IS THE CHEAPER ONE**
+      (`dataflow-windowed-rescale`, 2026-09-18). Box 2b's road B gave
+      a windowed sink a way to seek: replay from the last epoch whose
+      maximum is a horizon below where the partition stands. A re-cut
+      can use the same road — replay the open panes instead of
+      journalling them — and `MeasureWindowedSeek` already priced the
+      two: 16 KB once per resume against 3.3 KB every epoch for ever.
+      What it takes is in the Design section under "A re-cut cannot
+      discard by the local watermark" — the obvious version of it is
+      wrong in a way nothing would show, and the answer is that the
+      WORKER discards nothing and the coordinator decides.
+      **BUILT AND MEASURED BY ITS CONTROLS.** `TestRescale` rescales a
+      windowed job 4->6, 4->2, 6->3 and 2->8 and gets the batch answer
+      each time; both coordinator rules were then REMOVED one at a
+      time and each removal makes an assertion fail — `sift` on the
+      ordinary feed, `reopen` on a feed at the limit of its declared
+      lateness, which is the only one that leaves a pane HANDED but
+      not yet RETIRED (sixteen of them) for the coordinator to hold a
+      partial copy of. A run too young for a mark a horizon back still
+      refuses, and the message says the horizon and where the run
+      stands.
+
 Stage 10 — the election (TestElection, TestPersisted):
 - [x] `Lease`: `take(): Option[Long]` / `held(term)` / `release(term)`
       — three methods over a term, so the engine can be given a real
@@ -417,9 +576,25 @@ Stage 10 — the election (TestElection, TestPersisted):
       what a leader should do once an epoch anyway
 - [x] two nodes, one seat, on the real election: the second is told
       no while the lease is live and takes over when it lapses
-- [ ] a compare-and-set commit. The fence is a check before a write,
-      so a leader deposed between the two can land one commit; the
-      seam permits a conditional write and no store here offers one
+- [x] a compare-and-set commit — BUILT 2026-09-18
+      (`dataflow-cas-commit`), and the box's own last clause was
+      stale: `okay-docs` offers a conditional write (`Cond.IfVersion`)
+      and has since it landed. `Fencing` is the seam — "save this at
+      this epoch IF `term` is still the highest any writer has used" —
+      and `Checkpoint.fenced` takes that road when the journal offers
+      it and the old check-then-write when it does not. Over a
+      `Fencing` journal THE LEASE IS NOT ASKED AT ALL: asking twice
+      would only put the gap back, and the store's answer is the
+      authority. `DocsJournal` (test scope, the arrangement stage 10
+      used for `Election`) is forty lines over `Docs` and is what
+      makes the claim demonstrable rather than illustrative.
+      A LOG CANNOT DO THIS and the spec should not pretend otherwise:
+      read-the-tail-then-append is two operations with the same gap.
+      So the two defences stand side by side and the engine takes
+      whichever its store can give — a cell REFUSES the stale commit,
+      a log SHADOWS it (`Checkpoint.newest`, highest (term, epoch)
+      wins). The third test is the control: over `Checkpoint.Memory`
+      the same lying lease still lands the ghost's write
 
 Stage 9 — the commit window (TestStaged):
 - [x] `Sink.committed(epoch)` / `Sink.recovered(epoch)`, defaulting
@@ -442,9 +617,31 @@ Stage 9 — the commit window (TestStaged):
 - [x] both controlled: journalling before telling the writer loses
       panes, and makes the window test say it is not exercising
       anything
-- [ ] a writer whose stage is DURABLE, so the two-phase commit
-      survives the writer's own death as well as the coordinator's.
-      The seam is enough for one; nothing here has asked yet
+- [x] a writer whose stage is DURABLE, so the two-phase commit
+      survives the writer's own death as well as the coordinator's —
+      BUILT 2026-09-18 (`dataflow-durable-stage`), and the hole was
+      MEASURED before it was closed. `recover()` learns what landed
+      from the output by the HIGHEST EPOCH in it, which is only sound
+      if an epoch is there entirely or not at all — and the writer
+      appended one record per PANE while its own comment claimed "the
+      log's append is the atomicity a two-phase writer needs". True of
+      each record, false of the batch. A probe killed the writer three
+      panes into epoch 4: the successor read the epoch as complete,
+      dropped the re-move as a duplicate, and **93 panes of 3 204 were
+      never written while the run reported all 3 204** — a silent
+      short write, which is the failure mode this stage exists to
+      prevent.
+      ONE APPEND PER EPOCH removes the state rather than detecting it:
+      there is no third place for the writer to die, only before the
+      append or after it, and both are tested. The guard is structural
+      — `records == distinct epochs` — and it fails at "3 204 records
+      for 11 epochs" the moment anybody appends per pane again.
+      THE COST IS STATED: an epoch must fit in one record (the largest
+      here is ~64 KB, well under Kafka's 1 MB default). A job whose
+      epoch does not fit needs chunking with a per-epoch completion
+      marker, or a transactional writer — the Kafka interop has
+      transactions and `TestKafkaEos` exercises them. Neither is
+      built, because nothing here has an epoch that big
 
 Stage 8 — the coordinator survives (TestResume, TestPersisted):
 - [x] `Wire.state: Schema[S]` — the coordinator's fold is a value,
@@ -477,10 +674,24 @@ Stage 8 — the coordinator survives (TestResume, TestPersisted):
       stream journalled there answers the batch answer, a successor
       given nothing but the log finishes the job, and the log holds
       every epoch's state in order
-- [ ] a batch `Cluster.run` that resumes — it is a two-pass function
-      with nothing to resume from, and restarting it is the answer
-- [ ] a coordinator ELECTION, so a successor starts by itself.
-      okay-persist has `Election`; nothing here asks for it yet
+- [~] a batch `Cluster.run` that resumes — DECLINED, and the box's own
+      text is the reason: it is a two-pass function with nothing to
+      resume from, and restarting it is the answer. Left here as a
+      decision rather than deleted, so the question is not asked a
+      third time
+- [x] a coordinator ELECTION, so a successor starts by itself — DONE,
+      and in two halves that this box was reading as one. The engine's
+      half landed in STAGE 10: `Cluster.leading` takes a `Lease`,
+      `TestPersisted`'s `Elected` binds okay-persist's real `Election`
+      to it (`tryTakeover` is the term, `leader` is `held`), and the
+      two-nodes-one-seat test is ticked there. The other half — a loop
+      that WAITS to be elected — is declined on purpose and
+      `Cluster.leading`'s own Scaladoc argues it: a retry loop needs a
+      clock, a backoff and a decision about how long to keep trying,
+      all of which belong to whatever supervises the process, and one
+      attempt composes into any of them (the snippet is in the
+      Scaladoc). So "nothing here asks for it yet" was true of the
+      waiting and false of the election
 
 Stage 7 — the numbers (MeasureWroclawCluster in compare, `Live`):
 - [x] the Wrocław job as a `Job[Days, R]`: submitted by NAME, its
@@ -548,6 +759,76 @@ a way to start from a known mark rather than from nothing.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
+
+
+### A re-cut cannot discard by the local watermark
+
+(specs/dataflow.md stage 13 box 2, `dataflow-windowed-rescale`.)
+
+Road B's seek works on a SAME-WIDTH resume for a reason that is easy
+to miss: the session replays the very same elements in the very same
+epochs, so its watermark follows the very same trajectory, so it
+closes exactly the panes the original closed — and the catch-up
+DISCARDS exactly what the coordinator already folded. Correctness
+comes from the trajectories agreeing, not from the discarding.
+
+A RE-CUT BREAKS THAT AGREEMENT. New partition j reads every parts-th
+element of the global stripe, so its local maximum is a sample of the
+global one and its watermark is not the old partition's. Panes are
+closed locally on `start + size <= max - lateness`, so the replay
+closes a slightly different SET, and every misclassification is
+silent and unbounded in neither direction:
+
+  - a pane the original CLOSED and the replay keeps open is handed
+    again and merged into a coordinator that already has it — a
+    DOUBLE COUNT;
+  - a pane the original kept OPEN and the replay closes is discarded
+    with its early elements, and only its later ones are counted — an
+    UNDER COUNT.
+
+Seeding the new session with the mark's maximum (which box 2b
+originally asked for and the same-width road turned out not to need)
+narrows the band and does not close it: a stripe's maximum still
+trails the global one by whatever `parts` consecutive elements span in
+event time.
+
+**SO THE WORKER DISCARDS NOTHING.** That is the whole answer, and it
+was reached by refuting the obvious alternative twice. Replaying "to
+the stop position and discarding what closed on the way" only moves
+the misclassification from an epoch boundary to a position one: the
+worker still has to decide which panes the coordinator already holds,
+and after a re-cut its watermark is not the one those decisions were
+made under. A worker cannot decide this. The coordinator can, because
+retirement is ITS rule and it knows the number that rule used.
+
+Two changes, both at the coordinator, and each exact:
+
+1. **It EMPTIES its open panes** (`Sink.reopen`: drop the open map,
+   keep the folded answer). It can, because the horizon rule
+   guarantees every still-open pane starts above the mark's maximum —
+   so a session opened at the mark sees every element of every open
+   pane and rebuilds them IN FULL. A partial copy left at the
+   coordinator would be added to a full one.
+2. **It SIFTS out contributions to panes already RETIRED**
+   (`Sink.sift(w, below)`), where `below` is the stop watermark —
+   precisely the number retirement used. Everything the replay hands
+   that is not sifted belongs to a pane the coordinator no longer has,
+   so merging it is right whatever the worker's watermark was doing.
+
+The sessions then need no new protocol at all: they open at the mark's
+re-striped position, at the stop epoch, and the ordinary epoch loop
+re-reads the prefix and hands it over like any other work.
+
+WHAT IS ASSUMED, stated because it is the one thing left: a replayed
+element must not be dropped as LATE by the new session when it belongs
+to a pane the coordinator is waiting to have rebuilt. That holds when
+the feed's out-of-orderness is within the sink's own `lateness`, which
+is what the parameter means — the re-cut reads the same global order,
+striped. A feed that violates its own declared lateness was already
+outside the windowing's contract before any of this.
+
+The test is the one stage 13 already uses, and the only one that would
+catch either error: the rescaled answer must equal the BATCH answer.
 
 ## Results
 
@@ -873,6 +1154,82 @@ no recomputation yet, and a partition being a thunk is what will make
 that cheap in stage 5. One request is in flight per connection. The
 coordinator is a single point of failure. None of that is hidden
 behind a hopeful word.
+
+### Box 2b measured: the horizon replay wins, and not narrowly (2026-09-18)
+
+The box refused to be decided by taste and asked for a number. Here it
+is, from `MeasureWindowedSeek` over the cluster suites' own feed
+(200 000 events, sliding 1000/250, lateness 300), in bytes:
+
+| | batch 512 (391 epochs) | batch 4096 (49 epochs) |
+|---|---|---|
+| road A — open panes, EVERY epoch | 3 334 B | 3 291 B |
+| what an epoch costs today (closed panes) | 15 683 B | 125 148 B |
+| road B — horizon replay, per RESUME | 16 368 B | 130 612 B |
+| a resume TODAY | 6 400 000 B | 6 400 000 B |
+
+**Both roads are an enormous improvement on today**: a windowed resume
+currently replays the whole topic, 6.4 MB, against road B's 16 KB —
+390x at batch 512.
+
+**And between them it is not close.** Road A's traffic is paid EVERY
+epoch for the life of the run; road B's is paid only when a session
+actually resumes. Road A is cheaper only above **4.91 resumes per
+epoch** (39.69 at batch 4096), and a system resuming five times per
+epoch has a problem no sink design will fix.
+
+**Why road A is as cheap as it is, which is the honest caveat.** Only
+~69 panes are open at any moment on this feed, because its jitter is
+below the declared lateness and panes close almost as fast as they
+open. A feed with real disorder, or many more keys, keeps far more
+open — and every one of those makes road A WORSE while leaving road
+B's horizon roughly where it is. The measurement's error bar therefore
+points away from the road it already rejects, which is the direction
+that makes a verdict safe.
+
+**Why it is arithmetic rather than a run**: neither road exists, so
+there is nothing to run. What the numbers price is the SHAPE of the
+feed — how many panes are open when, and how far back the horizon sits
+— which is a property of the window and the event times, not of an
+implementation that has not been written.
+
+### Stage 11 — exactly-once from log to log (2026-09-18)
+
+`TestStagingTopic` (4), and the difference from stage 9 is one word:
+SURVIVES.
+
+`TestStaged` closed the commit window with a two-phase writer and
+proved the LOGIC — a successor asked to redo an epoch the writer had
+already applied drops it. What it could not prove is that the
+knowledge survives the death, because its `applied` counter is a field
+of an object in the test's own JVM and the simulated death never took
+it away. A real coordinator's death takes everything.
+
+So the writer's store is a TOPIC and **the dedup state is the
+output**. A resumed process is built with no memory at all — which is
+what a new process is — and `recover()` learns the high-water epoch by
+reading the tail. The writer's atomicity is the log's append, which is
+the one thing a log gives that a cell does not.
+
+**SEEN FAILING.** Making `recover()` read nothing reddens exactly the
+two tests that exist for it, one of them with the pane that appears
+twice. A dedup test that passes because nothing was ever repeated is
+worth nothing, so the suite also asserts that some successor WAS asked
+to redo a landed epoch.
+
+**THE METHOD THE BOX ASKED FOR IS NOT THERE, and the module boundary
+is why.** `Sink.stagingTo(topic)` would drag okay-persist into
+okay-cluster's compile graph, which stops at okay-codec on purpose —
+build.sbt says so, and okay-persist has the same arrangement with
+okay-tls. The seam that exists is the right one: `Sink.staging`
+already takes the two moments, and the topic writer is forty lines in
+whatever module owns the store.
+
+**AND ONE BOX WAS A DUPLICATE OF ANOTHER.** "A resumed coordinator's
+workers open at the journal's epoch" is the assertion box 2 has been
+making since it landed. Two boxes for one property, and the second one
+kept the stage looking open — the same shape as the roadmap summaries
+this spec had to have corrected a few hours earlier.
 
 ### Stage 5 — a worker dies and the job does not
 
@@ -1667,3 +2024,202 @@ the engine. The entry asked for a durable stage to survive the
 writer's own death; what survives it is atomicity at the writer, and
 saying so is the whole of the answer. No mechanism was invented to
 justify the lane.
+
+### Stage 11, box 1 — the partition is a topic partition
+
+The repository's thesis is one primitive, the durable log, and until
+this box the dataflow engine had never read from it: a worker DERIVED
+its partition from parameters, which was the honest choice for a
+benchmark and is not a source.
+
+**It cost three lines, and that is the finding.** `Streams.chunks` is
+a blocking, iterator-backed `Chunks[Record]` over a topic partition —
+okay-persist already sees `Chunks` — and `Flow.of` takes any thunk. No
+dependency runs in either direction, and the connector is the user's
+one line: `Flow.of(Vector.tabulate(parts)(p => () => chunks(t, p, 0)))`.
+Both halves fit because both were built to the same shape, and the
+assembly is what the log-as-stream claim was supposed to mean.
+
+**Blocking on purpose.** `Streams.stream` is the effectful producer
+for a consumer that composes; a dataflow partition runs on its own
+fibre and pulls until the source is dry, and an iterator is the whole
+of what it needs. And `TooEarly` is a `DroppedHistory` here rather
+than a resume: a partition that silently started later than it was
+asked to would answer a different question.
+
+**Asserted equal, not close.** Partition p of the topic holds the
+p-th contiguous slice — the cut `Flow.slices` makes — so the two plans
+run over the same partitions and `merged` is the same count, not only
+the answer. Batch and streamed, 1, 4 and 8 partitions.
+
+**What box 1 does not do, and box 2's design is in the claim so the
+next session starts rather than re-derives**: seek. A resumed session
+still catches up by replaying from offset zero. The session has to
+record the offset it reached beside its extent, and a fresh session
+asked for epoch N opens at N-1's — which means `Flow.Src` thunks take
+a start. One Long on the wire and one signature; the whole of box 2.
+
+### Stage 11, box 2 — a session opens at its position, and who can
+
+The claim written for this box predicted "one Long on the wire and
+one signature". Reading the code before writing it said that was
+wrong, and the correction is the finding.
+
+**A windowed operator cannot seek.** Its open panes live INSIDE the
+partition and are handed over only when they close. A fresh session
+opened at epoch N-1's position has none of them, and their
+contributions from before that position reach nobody — the answer
+would be silently short. That is why 6b replays from zero, and it was
+right to.
+
+**A fold and a keyed sink can**, because what they hand over each
+epoch is a DELTA: `peek` empties the map. A session opened at the
+position with an empty map is exactly right — its deltas from N on
+merge into what the coordinator already holds. So `Sink.seekable` is a
+property of the sink (fold, keyed: true; windowed: false; `and`:
+both), and the coordinator opens a seekable sink's sessions at the
+journalled position and epoch, and a windowed sink's at zero.
+
+**Positions, not offsets.** A position is elements consumed, which the
+session already counts; a source that can seek — `Flow.slices` over
+an array, `Streams.chunks` over a topic — positions itself, and one
+that cannot (`Flow.of` over any thunk) reads and drops, which is the
+replay a resumed run always paid, now in one place and named. For a
+topic that makes the contiguity of offsets load-bearing, and
+`Streams.chunks`'s `DroppedHistory` is what says so when it is not.
+
+**One road for two cases.** Where a session opens is the same
+question on a resume and on a replacement worker mid-run, so it is one
+function: a keyed job whose worker blips mid-stream has its partition
+reopened elsewhere at the position, not at zero — asserted by the
+same count.
+
+**Asserted by counting, not by trusting the flag.** A `Topic` that
+counts the records it hands out says a keyed job resumed after a
+coordinator death reads exactly `total - Σpositions`, and a windowed
+one on the same schedule reads at least the whole topic again. With
+the seek disabled, both seek assertions fail.
+
+**Box 2b — the windowed case — is designed and not built.** Two roads:
+delta handovers of open panes every epoch (a change to `okay.Windows`,
+and the merge traffic grows from panes-CLOSED to panes-OPEN per
+epoch), or a replay bounded by the window horizon (a (position,
+maximum event time) pair recorded per epoch; a fresh session seeks to
+the epoch whose maximum is below the oldest open pane's start, replays
+from there, and is SEEDED with that maximum so its late-drop decisions
+are the original's). The first costs every epoch, the second costs a
+horizon on resume; measure both before choosing.
+
+### dataflow-netem — the loss rate at which a run stops finishing, and why
+
+Stage 12 needs machines that are not this one. One of its boxes never
+did: `dataflow-reconnect` chose to bury a worker after three
+consecutive failures, called the number a judgement, and left the
+question that begs — at what LOSS RATE does a run stop finishing? —
+unanswered. A wire that loses requests by a seeded schedule answers it
+on one machine.
+
+**Four workers, eight partitions, forty schedules per rate, tolerance
+3:**
+
+```
+  loss rate | finished/40 | lost attempts per finished run | workers buried
+       0.00 |          40 |                            0.0 |             0
+       0.05 |          40 |                            0.8 |             0
+       0.10 |          40 |                            1.6 |             0
+       0.20 |          40 |                            3.6 |             2
+       0.30 |       36-37 |                            6.0 |          9-13
+       0.40 |          31 |                            8.6 |            20
+       0.50 |          20 |                           12.4 |            24
+       0.70 |           0 |                              — |             —
+```
+
+Twenty percent loss is carried with certainty; the knee is at thirty;
+half the runs die at fifty; none finish at seventy. And the column
+that explains it is the last one: the runs that die are the runs in
+which workers were BURIED.
+
+**So the same wire again, with the count as the second dimension**
+(finished of twenty):
+
+```
+  loss rate | tol 1 | tol 3 | tol 6 | tol 12 | tol 1000
+       0.10 |    19 |    20 |    20 |     20 |       20
+       0.30 |     1 |    17 |    20 |     20 |       20
+       0.50 |     0 |    10 |    20 |     20 |       20
+       0.70 |     0 |     0 |     7 |     20 |       20
+```
+
+**With burial off, a wire losing seventy percent of requests still
+finishes every run.** On a lossy wire the loss never ends a run — the
+burial policy does. Tolerance 3 reads three lost packets as a dead
+machine, and from thirty percent loss up it is what turns a cluster of
+live machines into "no workers left". Tolerance 12 carries seventy.
+
+**What that means for the count.** It couples two failures that are
+not the same: a machine that is gone, for which any number of retries
+is waste, and a link that drops, for which every retry has the same
+chance. Three is a good default for the first and a bad one for the
+second, and no single number serves both — which is why `tolerance`
+is a parameter of `Cluster.run` and `Cluster.stream` now rather than
+a constant, and why the honest sentence is that a deployment which
+knows its wire is lossy should say so. Stage 12 proper, with a real
+wire and real latency, is where the two failures can be told apart
+BY THE ENGINE (a lost packet answers late or not at all; a dead
+machine refuses the connection), and that is a design for machines
+that exist.
+
+**On the determinism.** The loss is seeded per worker, so the same
+seed drops a worker's i-th request every time; which worker a
+partition's i-th attempt reaches is the fibres' order. The counts
+therefore move by a run or two between runs, the assertions sit far
+from any edge, and the sweep lives in the default gate on that basis.
+
+### Stage 13 — rescale, and the two things it turned out to require
+
+The plan read "stop at N, re-cut the source, resume at N+1". Building
+it found the two conditions that make a re-cut sound, and the engine
+now enforces both rather than assume them.
+
+**The source must be STRIPED, not sliced.** A contiguous cut
+(`Flow.slices`) consumes a scattered set of global elements — a
+contiguous prefix of each slice, which is not a prefix of the whole —
+so there is no single offset a new cut can resume from. A STRIPED
+source (`Flow.striped`: global element `i` to partition `i % parts`)
+consumed in lockstep leaves exactly `[0, G)` where `G` is the sum of
+the per-partition positions, the same set whatever the partition
+count. Resuming is then: each new partition skips the count of its own
+elements in `[0, G)` — `ceil((G - j) / parts)` — and reads the rest.
+No replay; the skips are exact. The refutation is in the test: with
+the skip forced to zero the new cut re-reads the whole feed and the
+answer doubles.
+
+**The sink must keep its state in the FOLD, not in open panes.** This
+was the sharp one. A windowed operator keeps its OPEN panes in the
+WORKER, not in the coordinator's journal; a same-width resume rebuilds
+them by REPLAYING the source and discarding the already-committed
+epochs (stage 6b). A re-cut cannot replay — the elements are cut
+differently — so the panes open at the stop point would simply vanish,
+and a diagnostic showed exactly one window (the one straddling the
+watermark frontier at the stop) lost per rescale. A KEYED or FOLD sink
+has no open panes: everything it has seen is in the coordinator's
+fold, which is keyed by KEY and carries across a re-cut untouched. So
+box 1 lands for keyed and fold sinks, and a windowed rescale is
+REFUSED with a message naming box 2 — journalling the open panes — as
+the work that would lift it. A refusal over a lost pane is the honest
+answer, and it is the same shape as stage 11 box 2's "windowed cannot
+seek".
+
+**Box 3 fell out for free.** "A worker added or removed mid-stream" is
+just a resume with a different-length `workers` vector: partition `i`
+runs on worker `i % workers.length`, so the mapping redraws itself and
+the recovery road (open a session, catch up) does the rest — a death
+without the death. The test rescales the partition count and the
+worker count together and the answer does not move.
+
+**Fresh sessions on a rescale.** A same-width resume INHERITS the
+predecessor's session ids so it strands none (stage 8); a rescale must
+NOT — those sessions were reading the old cut's partitions, and
+reusing an id would read the wrong elements under the new cut. So a
+width change mints fresh ids, and the old sessions are abandoned the
+way a dead worker's are.

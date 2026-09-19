@@ -150,17 +150,78 @@ Stage 1 — responses — SHIPPED (openapi-responses):
 - [x] a handler that builds its own `Response` (`on`, `at`) still
       declares nothing, and the document says exactly that
 
-Stage 2 — the readers:
-- [ ] `routes` serves the document at `/openapi.json` and a page at
-      `/openapi` that renders it, self-contained enough to work with
-      no network (a CDN reference would make the page a liability in
-      an air-gapped deployment; decide it there, in the open)
-- [ ] okay-demo serves both, and its document is COMMITTED with a
-      drift test, the way `okay-demo/deploy` is
+Stage 2 — the readers — SHIPPED (openapi-serve):
+- [x] `OpenApi.routes(api, router)` serves the document at
+      `/openapi.json` and a page at `/openapi`
+- [x] the page is RENDERED ON THE SERVER: no JavaScript and no CDN,
+      decided in the open — this repository renders deployments for
+      machines with no network, and a page that cannot explain the API
+      there is not documentation there. The cost is no "try it"
+      button; the page carries the paths, parameters, bodies and
+      declared answers as HTML
+- [x] okay-demo serves both, from the same router that answers its
+      requests
+- [x] `okay-demo/openapi.json` is COMMITTED and a drift test refuses a
+      difference — `sbt "okayDemo/runMain okay.demo.DemoOpenApi"`
+      regenerates it, the way DemoDeploy does for the deployment
+- [x] and the stronger check the drift test alone would not make:
+      every path the document names is a path the service answers
 
-Stage 3 — the prose, last and smallest:
-- [ ] a route may carry a summary; the document renders it. Until
-      then an operation's id is derived from method and path
+Stage 2b — the media (openapi-media), which stage 2 exposed — SHIPPED:
+- [x] `Router.Answer` carries a MEDIA TYPE, bare (`text/html`, not
+      `text/html; charset=utf-8`): the key a document files an answer
+      under is a kind of content, and a charset is a detail of one
+      response
+- [x] `Router.html`/`bytes`/`events` — and `media`, which the three
+      are written in terms of and which is public, because the list of
+      media types is not ours to close — declare by construction the
+      same way `out` does: the handler answers the CONTENT and the
+      ROUTER writes the content-type, from the same value the entry
+      declares
+- [x] the charset is added only where the router did the encoding
+      (`html` takes a `String`); handed bytes, it says nothing it
+      cannot know
+- [x] each takes a `description`, so an answer has one true sentence
+      without waiting for stage 3
+- [x] the renderer keys `content` by the entry's media, and an answer
+      with no schema still gets a content block: `{}` says "this media
+      type, shape unstated", while no content at all says "no body"
+- [x] the page shows the media type beside the status
+- [x] okay-demo declares all six of its operations, and its committed
+      document contains the word `undeclared` zero times — a test
+      holds that, and a second one checks on the REAL service that
+      what the document files an operation under is the content-type
+      the service sends
+
+What stage 2b deliberately does NOT do: an answer whose STATUS is
+chosen per request. Every declaring combinator fixes the status where
+the route is declared, and okay-ops's `/healthz` answers 200 or 503 by
+what it finds. Two declared answers with a handler that picks, or an
+answer type carrying its status, are both real designs; neither has a
+consumer yet, and okay-ops is the one that will name it.
+
+Stage 3 — the prose, last and smallest — SHIPPED (openapi-prose):
+- [x] an entry may carry a SUMMARY, and it is the one part of a
+      declaration that cannot be derived: a path comes from the route,
+      a parameter's kind from its `Param`, an answer from the
+      handler's type. `Router.summarised(text)` attaches it to the
+      entry just declared — one builder method rather than a parameter
+      on each of twenty combinators
+- [x] summarising an empty router THROWS where the table is built: a
+      builder method that silently did nothing would put the sentence
+      on no operation at all
+- [x] the document renders `summary` when there is one and omits the
+      field when there is not — an empty string would promise prose
+      nobody wrote. The derived operation id stays either way
+- [x] the page shows it under the method and path
+- [x] `out`/`outAt`/`jsonOut`/`jsonOutAt` take the `description` the
+      media combinators already had, so an answer can stop reading
+      "the declared answer"
+- [x] okay-demo summarises all six operations, and a test refuses a
+      published operation with no summary (or one under ten characters)
+- [x] found on the way: `out` and its three siblings were reachable
+      only through `Router.empty`, since the companion mirrored only
+      `on`/`at`/`json`/`of`. Every declaring form can begin a table now
 
 ## Decisions
 

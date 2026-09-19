@@ -129,27 +129,34 @@ A ! (State % Int + Throws % String + Async)
 ```
 
 `+` is genuine union, not a coproduct functor — which is why `Pure`,
-the empty row, can be `Nothing` (`Effects.scala:34`): the union with
+the empty row, can be `Nothing` (`Effects.scala:43`): the union with
 nothing added is the row itself, and a pure program `A ! Pure`
-coerces into any row for free by covariance (`F[Nothing] <: F[X]`,
-noted at `Effects.scala:213`).
+widens into any row by `!.widen` or `RowLift.at` — `Free` is invariant in
+its signature by a measured choice (`Effects.scala:711`, the walk is
+also a normalization).
 
 A handler for `F` inside a row `F + G` must *split* the union: given an
-operation, is it mine or the residue's? That is `<|>`
-(`Effects.scala:231`), and it rests on `TypeableK[F]`
-(`Effects.scala:157`) — a runtime class test for "is this value an
-`F`-operation". The split's soundness argument is written where the one
-cast lives (`Effects.scala:234`): *the trusted kernel, sound by the
-excluded middle of the union* — a value of type `F[A] | G[A]` that the
-`F`-test rejects **is** a `G[A]`, provided the two signatures' erasures
-are distinguishable. That proviso is a real obligation, not a
+operation, is it mine or the residue's? That is `split`
+(`Effects.scala:482`) — two `inline` continuations that beta-reduce
+into the caller's match, no `Either` and no `Option` per operation —
+and its `Either`-valued form `<|>` (`Effects.scala:460`), which is
+`split` at `Left`/`Right` and is what drains and tests write, where a
+`match` reads better than two lambdas and the wrapper is
+scalar-replaced anyway. Both rest on `TypeableK[F]`
+(`Effects.scala:236`), a runtime class test for "is this value an
+`F`-operation" — `test` is its whole interface since core-cleanup
+removed the extractor form nobody matched with. The split's soundness
+argument is written where the two casts live, in `split`: *the trusted
+kernel, sound by the excluded middle of the union* — a value of type
+`F[A] | G[A]` that the `F`-test rejects **is** a `G[A]`, provided the
+two signatures' erasures are distinguishable. That proviso is a real obligation, not a
 formality: the Writer story below exists because an identity-encoded
 signature erased to *its element's* class and could collide with
 anything.
 
 ## Three shapes of handler, one line
 
-`Effects.scala:424–439` states the design in a comment worth quoting
+`Effects.scala:737–742` states the design in a comment worth quoting
 almost whole. With `F ==> H` meaning a natural transformation from the
 signature to a carrier:
 
@@ -218,40 +225,48 @@ continuations.
 
 ### What running it does
 
-`Cont`'s runner is five cases, and the split between them is the whole
-story:
+`Cont`'s runner (`Cont.step`, `Cont.scala:299`) is chapter 4's
+rotation with the handover interleaved — and since `Cont` *is* the
+freer tree (chapter 11), it walks the same nodes the program was made
+of:
 
 ```scala
-@tailrec final infix def /(k: A => S): R = this match
-  case Pure(a)              => k(a)
-  case Shift(f, _)          => f(k)
-  case Bind(Bind(a, f), g)  => Bind(a, f(_).flatMap(g)) / k   // rotate
-  case Bind(Pure(a), f)     => f(a) / k                       // discharge
-  case Bind(Shift(s, _), f) => s(f(_)(k))                     // hand over
+@tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
+  case Pure(a)             => pinned[S, R](k(a))
+  case Inject(s)           => s.at[S, R](k)                      // hand over
+  case Bind(Inject(s), f)  => s.at[Any, R](x => run(f(x))(k))    // hand over, then the rest
+  case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)   // rotate
+  case Bind(Pure(a), f)    => step(f(a))(k)                      // discharge
+  case Delay(t)            => step(t())(k)                       // force
+  case Bind(Delay(t), g)   => step(Bind(t(), g))(k)
 ```
 
-The middle three are a loop: they rebalance left-nests and discharge
-pure prefixes, tail-recursively, so the length of a `flatMap` chain
-costs no stack. The last line is the handover, where the handler's
-`s` finally receives the continuation of everything after it. Note what
-this means for stack safety honestly: the *spine* is safe by
-construction, and what happens inside a handler is the handler's own
-business — one that resumes deep inside its own work nests there, as it
-must.
+The rotation and the forcing are a loop: they rebalance left-nests,
+discharge pure prefixes and force deferred calls, tail-recursively, so
+the length of a `flatMap` chain costs no stack. The two `at` lines are
+the handover, where the leaf — a handler's shift, or a program's
+operation that a handler has replaced — finally receives the
+continuation of everything after it; `at` is the one place the
+facade's phantom answer types are trusted back onto a leaf (chapter
+11). Note what this means for stack safety honestly: the *spine* is
+safe by construction, and what happens inside a handler is the
+handler's own business — one that resumes deep inside its own work
+nests there, as it must.
 
-One detail from chapter 4 completes the picture: `Cont.flatMap` fuses
-into the `Shift` closure while a depth budget lasts and spills into
-`Bind` data past it. Short chains never allocate a node; long ones
-become data before the JVM stack could notice. The budget is the dial
-between the two encodings, set in one place.
+One detail from chapter 2 completes the picture: a fresh leaf absorbs
+its first `flatMap` into itself and takes the next as a `Bind` node.
+The rotation composes through `bind` rather than a raw `Bind` so a
+rotated continuation can still be absorbed by the leaf it lands on —
+measured to matter on `statePara`, and the reason this loop is not
+simply `resume` followed by a three-case match.
 
 ### Forwarding, in the same language
 
 The other half of `handle` shows what an *unhandled* operation looks
-like once lowered:
+like once lowered — this is the definition, in the `Effects` trait:
 
 ```scala
-case Right(e) => shift(k => perform(e).flatMap(k))
+split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))
 ```
 
 Read aloud: not mine, so perform it again in the residual row and
@@ -262,6 +277,22 @@ same program; a scoped node could not be forwarded this way, which is
 why the two of them are interpreted by runners that descend into their
 payloads instead.
 
+What `Free`'s instance ships (`Effects.scala:573`) is the same program
+by a cheaper road, and it is worth reading because it is where the
+one-tree story pays in practice. A forwarded operation is simply
+re-emitted on the tree — `Inject(e).flatMap(x => loop(k(x)))`, the way
+`relay` has always done — and `Cont` is entered only for an operation
+the handler *claims*. Then `Cont.onAnswer` asks whether the handler
+answered with a plain value (`Cont.Pure`, which every comonadic
+handler builds, and which is `Free.Pure`); if so the loop continues on
+the answer with a tail call and nothing is allocated; only a handler
+that really captures its continuation gets the rest of the program
+reified — into one `Delay` node, so deep programs trampoline through
+the interpreter rather than the JVM stack. Measured
+(handle-forward-fast, delay-node): the general handler allocates
+exactly what the tail-resumptive `relay` allocates, to the digit, and
+a capturing handler now costs what an answering one costs.
+
 ### Why the common case does not go this way
 
 `Free`'s `runWith` overrides the definition:
@@ -271,8 +302,9 @@ payloads instead.
 override def runWith(using Handler[F]): A = runFree(m)
 ```
 
-`runFree` is a five-case tail-recursive loop that walks the tree and
-answers each operation on the spot. It is allowed to exist because a
+`runFree` (`Effects.scala:524`) is a three-case tail-recursive loop
+over `resume`'s normal form that walks the tree and answers each
+operation on the spot. It is allowed to exist because a
 comonadic `Handler[F]` uses each continuation exactly once and
 immediately: there is nothing for a reified continuation to buy, so
 building one is pure overhead, and the tree can be consumed in one pass
@@ -285,20 +317,21 @@ the general construction, then override where a weaker handler shape
 provably suffices. The three-shapes table above is the same idea read
 from the other end.
 
-### And where lowering is the identity
+### The encoding where lowering was the identity, and why it went
 
-```scala
-type Eff[F[+_], A] = [S] => F !> S => A /> S
-override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
-```
-
-In the Church encoding a program *is* its own `foldCont`: it was never a
-tree, so there is nothing to walk, and lowering costs nothing because it
-already happened at construction. What that buys and what it costs are
-symmetric with `Free` — no tree means no stepping, no staged relay, and
-no stack safety on a left-nested `flatMap`. `fromFree` and `reify` move
-a program between the two, so the choice is not made once for the whole
-library.
+There used to be a third instance, `Eff`, the Church encoding
+\[[Kiselyov, Sabry & Swords 2013](#ref-kiselyov-2013)\]: `type Eff[F,
+A] = [S] => F !> S => A /> S`, a program as the function of its
+handler, whose `foldCont` was the program itself. It proved the
+interface honestly tagless ("Free and Eff agree" was a test) and it
+was measured: the no-tree road ran at 0.58–0.86x of the fused tree
+loop, stack safety on a left-nested `flatMap` cost it a deferred node
+per bind, and nothing outside its own tests ever built one. It was
+removed on 2026-09-15 (chapter 11); `Eager` — pure binds applied at
+construction, the kyo trick — remains as the second `Effects`
+instance, `reflect` and `reify` move a program between the two, and
+the fast road for a pipeline is not another encoding but an inline
+handler-passing program over `Control` (chapter 6).
 
 ## The worked example: Writer's six encodings
 

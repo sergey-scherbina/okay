@@ -46,8 +46,8 @@ object ProbeCurried:
       import okay.!.*
       (p.resume: @unchecked) match
         case Pure(a) => Free.Pure(a)
-        case Effect(e) => Free.inject(i.inj(e))
-        case Bind(Effect(e), k) =>
+        case Inject(e) => Free.inject(i.inj(e))
+        case Bind(Inject(e), k) =>
           Free.inject(i.inj(e)).flatMap(x => k(x).at[R])
 
   /** the operator's ergonomics point: partially applied as a type

@@ -297,6 +297,15 @@ object WireJson:   // hand-mapped, the MCP-dialect precedent —
       continuity itself is ui-durable's task)
 - [x] a damaged line is dropped, not a crash — totality at this wire
       like every other
+- [x] AND DAMAGE THAT PARSES is dropped too (ui-path-two-walks,
+      2026-09-18). The box above was true of a line that is not valid
+      `Protocol` and FALSE of a well-formed `Msg.Patch` whose path
+      names nothing on the tree the client holds: `Ui.patch` indexed
+      its Vectors directly, threw `IndexOutOfBoundsException`, and
+      ended the session from inside `Wire.client`'s receive loop. The
+      walk is guarded now — a path that names nothing changes nothing,
+      and a `Reorder` that is not a permutation of the children is
+      ignored — which is what the sentence above had always claimed.
 
 ### Low level, in the UI context (phase 3, designed now)
 - **codecs**: `Schema[Ui]`/`Schema[Event]`/`Schema[Patch]` are
@@ -464,6 +473,17 @@ own poster case. ADDITIVE: plain Nav programs never meet any of it.
       an absent key names nothing (total: the stack is unchanged)
 
 ## Decisions
+- **`Ui.patch`'s walk and `Ui.path`'s stay two bodies, and the number
+  is why** (ui-path-two-walks, 2026-09-18). They read one index
+  convention twice — a Scroll's child at 0, a Modal's and a
+  Disclosure's body at 1 — which `count-the-doors` says should be one
+  function. MEASURED (`PathWalkProbe`, depths 4/16/64): the affine
+  `Ui.path(p).modify(f)` costs 2.9-7.9x the time and a steady ~5.5x
+  the allocation of the hand walk, because it is built from a RUNTIME
+  `List[Int]` and pays the interpreter per step, where an optic named
+  in code is free. So the law in TestUiOptic holds them equal instead
+  — and that law now covers TOTALITY, which is the one thing they
+  really did disagree about.
 - **The primary seam hands over the WHOLE TREE (`Host`), patches are
   derived** — reversed from the first sketch by the React
   requirement: hosts that reconcile themselves want the tree, and a

@@ -32,6 +32,22 @@ class TestAsync extends munit.FunSuite {
     assertEquals(prog.runWith, (1, 2))
   }
 
+  test("par sees EITHER side fail, and does not wait out the healthy one") {
+    // BUGS.md par-right-failure-waits: the two completions used to be
+    // registered in a NEST, so nobody was listening to the right side
+    // while the left ran. The same failure in the two orders was
+    // 0.0007 s and 3.017 s.
+    val boom = RuntimeException("boom")
+    for (label, prog) <- Seq(
+      "left fails" -> Async.par(async[Int](throw boom), async { Thread.sleep(3000); 1 }),
+      "right fails" -> Async.par(async { Thread.sleep(3000); 1 }, async[Int](throw boom)))
+    do
+      val t0 = System.nanoTime()
+      assertEquals(intercept[RuntimeException](prog.runWith).getMessage, "boom", label)
+      val secs = (System.nanoTime() - t0) / 1e9
+      assert(secs < 2, s"$label: the pair waited $secs s for the healthy sibling")
+  }
+
   test("race answers with the faster side") {
     val prog = Async.race(
       async { Thread.sleep(200); "slow" },
@@ -76,6 +92,15 @@ class TestAsync extends munit.FunSuite {
     assertEquals(Async.spawn(async(7)).joinEither(), Right(7))
     val boom = RuntimeException("boom")
     assertEquals(Async.spawn(async[Int](throw boom)).joinEither(), Left(boom))
+  }
+
+  test("mutual tail recursion trampolines through Async's own driver loop") {
+    def isEven(n: Int): Boolean ! Async =
+      if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
+    def isOdd(n: Int): Boolean ! Async =
+      if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
+    assertEquals(Async.spawn(isEven(1000000)).join(), true)
+    assertEquals(Async.spawn(isOdd(1000000)).join(), false)
   }
 
   test("async composes with other effects: telling across suspensions") {

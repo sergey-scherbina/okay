@@ -60,6 +60,28 @@ class DelimBenchmark {
       go(0)
     })
 
+  // ---- ONE push, then ordinary work INSIDE the machine
+  //
+  // This is the shape a GUARD has (okay-llm's `Cut`, okay-ui's
+  // `Scope`): a boundary installed once, and a body that does its
+  // ordinary work under it and never captures. `delimPushOnly` above
+  // measures N pushes and `delimGenerator` measures N captures;
+  // neither measures this, which is the shape those consumers
+  // actually run — and `Cut`'s header claims the guard "costs the
+  // prompt push, not the capture price". The pair to read it against
+  // is `writerTell`: the SAME N tells, outside any machine.
+
+  @Benchmark
+  def writerTellUnderDelim(): Int =
+    type R = Writer % Int + Delim
+    def go(i: Int): Unit ! R =
+      if i >= N then pure(())
+      else effect[R, Unit](Writer(i)).flatMap(_ => go(i + 1))
+    !.run(Writer.run[Int, Unit, Pure](
+      Delim.run[Unit, Writer % Int](
+        push[Unit, Writer % Int](Delim.prompt[Unit])(
+          !.widen[Unit, Writer % Int + Delim, Pure](go(0))))))._1.length
+
   // ---- the floor
 
   @Benchmark

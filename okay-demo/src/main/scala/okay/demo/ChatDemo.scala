@@ -295,6 +295,130 @@ object ChatDemo {
 
   // ---- the routes ----------------------------------------------------
 
+  /**
+   * THE DECLARED SURFACE, as a value (openapi-serve).
+   *
+   * It was a local `val` inside `routes`, which meant the only way to
+   * see this service's paths was to answer a request with them. A
+   * document is rendered from it now, so it is a method with the same
+   * capabilities `routes` takes — and the two cannot disagree,
+   * because `routes` calls it.
+   */
+  def declaredRouter(withApp: Boolean = Chat.appJs.isDefined)
+                    (using Secrets, Board)
+  : okay.http.Router =
+    val board = summon[Board]
+    val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
+
+    val base = okay.http.Router
+          // `html`, not `on`: the handler answers the PAGE and the
+          // router writes the content-type, so the entry declares
+          // text/html and the document stops saying `undeclared`
+          // (openapi-media). Every operation below is the same move.
+          .html(okay.http.Method.Get, okay.http.Route.root,
+                description = "the chat page: the React bundle when one is packaged, " +
+                  "the server-rendered page otherwise") { _ =>
+            pure((if Chat.appJs.isDefined then reactPage else page)
+              .replace("MODE", Chat.modeName))
+          }
+          // `summarised` says what the operation is FOR, which no
+          // path, parameter or type can be asked (openapi-prose)
+          .summarised("open the chat: talk to the agent, which moves the board")
+          .html(okay.http.Method.Get, okay.http.Route / "board",
+                description = "the board as a page, rendered at load so it works without " +
+                  "JavaScript, then re-rendered from /board.json on every feed ping") { _ =>
+            // server-rendered at load (it works without JS), then re-rendered
+            // from /board.json on every feed ping
+            def rows = board.all.map(t =>
+              s"<li>${t.id}) ${t.text}" +
+                t.assignee.fold("")(a => s" <span style='color:#7a869c'>— $a</span>") +
+                (if t.done then " ✓" else "") + "</li>").mkString
+            pure(s"""<!doctype html><meta charset="utf-8"><title>board</title>
+                |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
+                |h2{color:#7a869c} li{margin:.2rem 0}
+                |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer}</style>
+                |<h2>the board</h2><ul id="tasks">$rows</ul>
+                |<p><a style="color:#6b9fff" href="/">← to the chat</a> · live</p>
+                |<button id="replay">rebuild from the log</button>
+                |<span style="color:#7a869c;font-size:.85em"> — drop the projection and derive it again from the durable log (needs an admin token)</span>
+                |<script>
+                |async function render() {
+                |  const d = await (await fetch('/board.json')).json();
+                |  document.getElementById('tasks').innerHTML = d.tasks.map(t =>
+                |    '<li>' + t.id + ') ' + t.text +
+                |    (t.assignee ? " <span style='color:#7a869c'>— " + t.assignee + '</span>' : '') +
+                |    (t.done ? ' ✓' : '') + '</li>').join('');
+                |}
+                |new EventSource('/events/board').addEventListener('board', render);
+                |document.getElementById('replay').onclick = async () => {
+                |  const t = prompt('admin token'); if (!t) return;
+                |  await fetch('/admin/replay', {method:'POST', headers:{authorization:'Bearer ' + t}});
+                |  render();
+                |};
+                |</script>""".stripMargin)
+
+          }
+          .summarised("read the board in a browser, without a JavaScript client")
+          // the one JSON answer: `out`, so the document carries the
+          // SCHEMA of what it sends. The object built by hand here
+          // named every field of `Task` again — the schema is derived
+          // from the type instead, and `None` encodes as `null`
+          // exactly as the hand-built object did
+          .out[EmptyTuple, BoardView](okay.http.Method.Get, okay.http.Route / "board.json",
+               description = "every task on the board, open and done alike") { _ =>
+            pure(BoardView(board.all))
+          }
+          .summarised("the board as data, for a client that renders its own view")
+          // the board-wide feed is declared BEFORE the per-email one, so
+          // "board" is never read as an address
+          .events(okay.http.Method.Get, okay.http.Route / "events" / "board",
+                  description = "the board feed: a `hello` event, then one `board` event " +
+                    "naming the kind of every change") { _ =>
+            // the board-wide feed — matched BEFORE the /events/<email>
+            // prefix route: "board" must not parse as an email
+            val src: Source[Chunk[Byte]] =
+              effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
+                .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
+                      Chat.sse("board", Json.print(JStr(kind)))))
+            pure(src)
+          }
+          .summarised("follow the board: stay subscribed and re-read it when it changes")
+          .events(okay.http.Method.Get, eventsFor,
+                  description = "one person's inbox, held open: a `hello`, then a `note` " +
+                    "event per assignment — a task assigned tomorrow becomes a frame then") { email =>
+            // the inbox as a LIVE stream: jetty holds it open, and a task
+            // assigned tomorrow becomes a frame then
+            val src: Source[Chunk[Byte]] =
+              effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
+                .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
+                      Chat.sse("note", Json.print(JStr(note)))))
+            pure(src)
+          }
+          .summarised("follow one person's assignments as they happen")
+    // /admin/replay is okay-admin's, and it belongs HERE rather than in
+    // an `orElse` beside the table. Served through `orElse` it was in
+    // NO DOCUMENT AT ALL — `grep -c admin okay-demo/openapi.json` was
+    // 0 — which is the one thing this arc's law forbids: a route
+    // cannot be served and undocumented (demo-admin-declared).
+    //
+    // It could not have been otherwise until a route could declare
+    // what it REQUIRES (specs/route-headers.md, stage B). Before that,
+    // putting it in the document would have rendered an open door
+    // where there is a lock, which is worse than the silence.
+    //
+    // This table is the DESCRIPTION; `routes` below installs the
+    // verifier. A secured entry with none fails closed, so the
+    // document's router answers 401 here and serves nobody — which is
+    // correct: describing is not serving.
+    val withAdmin = base ++ Admin.router()(
+      () => board.replay(), () => boardChanged("replay"))
+
+    if !withApp then withAdmin
+    else withAdmin.bytes(okay.http.Method.Get, okay.http.Route / "app.js", "text/javascript",
+                    description = "the packaged React bundle the chat page loads") { _ =>
+      pure(java.nio.file.Files.readAllBytes(Chat.appJs.get))
+    }.summarised("the client the chat page loads; present only in a packaged build")
+
   def routes(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
   : PartialFunction[Request, Response ! Async] =
     val board = summon[Board]
@@ -321,97 +445,27 @@ object ChatDemo {
     // goes at once — and the email now arrives percent-decoded by the
     // segment decoder rather than by URLDecoder, which used to turn
     // the `+` of a plus-addressed ann+tag@example.com into a space.
-    val eventsFor = okay.http.Route / "events" / okay.http.Route[String]("email")
     val mcpPath = okay.http.Route / "mcp"
-
-    val declared: okay.http.Router =
-      val base = okay.http.Router
-        .on(okay.http.Method.Get, okay.http.Route.root) { _ =>
-          val html = (if Chat.appJs.isDefined then reactPage else page)
-            .replace("MODE", Chat.modeName)
-          pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-            Http.one(html.getBytes(UTF_8))))
-
-        }
-        .on(okay.http.Method.Get, okay.http.Route / "board") { _ =>
-          // server-rendered at load (it works without JS), then re-rendered
-          // from /board.json on every feed ping
-          def rows = board.all.map(t =>
-            s"<li>${t.id}) ${t.text}" +
-              t.assignee.fold("")(a => s" <span style='color:#7a869c'>— $a</span>") +
-              (if t.done then " ✓" else "") + "</li>").mkString
-          pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-            Http.one(s"""<!doctype html><meta charset="utf-8"><title>board</title>
-              |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
-              |h2{color:#7a869c} li{margin:.2rem 0}
-              |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer}</style>
-              |<h2>the board</h2><ul id="tasks">$rows</ul>
-              |<p><a style="color:#6b9fff" href="/">← to the chat</a> · live</p>
-              |<button id="replay">rebuild from the log</button>
-              |<span style="color:#7a869c;font-size:.85em"> — drop the projection and derive it again from the durable log (needs an admin token)</span>
-              |<script>
-              |async function render() {
-              |  const d = await (await fetch('/board.json')).json();
-              |  document.getElementById('tasks').innerHTML = d.tasks.map(t =>
-              |    '<li>' + t.id + ') ' + t.text +
-              |    (t.assignee ? " <span style='color:#7a869c'>— " + t.assignee + '</span>' : '') +
-              |    (t.done ? ' ✓' : '') + '</li>').join('');
-              |}
-              |new EventSource('/events/board').addEventListener('board', render);
-              |document.getElementById('replay').onclick = async () => {
-              |  const t = prompt('admin token'); if (!t) return;
-              |  await fetch('/admin/replay', {method:'POST', headers:{authorization:'Bearer ' + t}});
-              |  render();
-              |};
-              |</script>""".stripMargin.getBytes(UTF_8))))
-
-        }
-        .on(okay.http.Method.Get, okay.http.Route / "board.json") { _ =>
-          pure(Response(200, Seq("content-type" -> "application/json"),
-            Http.one(Json.print(JObj(Vector("tasks" -> JArr(board.all.map(t => JObj(Vector(
-              "id" -> JNum(t.id.toDouble), "text" -> JStr(t.text), "owner" -> JStr(t.owner),
-              "assignee" -> t.assignee.map(JStr(_)).getOrElse(JNull),
-              "done" -> JBool(t.done)))))))).getBytes(UTF_8))))
-
-        }
-        // the board-wide feed is declared BEFORE the per-email one, so
-        // "board" is never read as an address
-        .on(okay.http.Method.Get, okay.http.Route / "events" / "board") { _ =>
-          // the board-wide feed — matched BEFORE the /events/<email>
-          // prefix route: "board" must not parse as an email
-          val src: Source[Chunk[Byte]] =
-            effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
-              .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
-                    Chat.sse("board", Json.print(JStr(kind)))))
-          pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
-
-        }
-        .on(okay.http.Method.Get, eventsFor) { email =>
-          // the inbox as a LIVE stream: jetty holds it open, and a task
-          // assigned tomorrow becomes a frame then
-          val src: Source[Chunk[Byte]] =
-            effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
-              .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
-                    Chat.sse("note", Json.print(JStr(note)))))
-          pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
-
-        }
-      if Chat.appJs.isEmpty then base
-      else base.on(okay.http.Method.Get, okay.http.Route / "app.js") { _ =>
-          pure(Response(200, Seq("content-type" -> "text/javascript"),
-            Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
-
-      }
+    val declared = declaredRouter()
 
     // `/mcp` answers ANY verb — McpHttp reads the method itself, GET
     // for the stream and POST for a message — which a Router entry
     // cannot say, so this one stays a guard. It matches on the ROUTE,
     // so it drops the query like the rest.
     val core: PartialFunction[Request, Response ! Async] =
-      declared.routes
+      // the verifier the DEPLOYMENT has, installed on the table that
+      // DECLARES what it needs — `enforcing` refuses exactly the
+      // entries whose security is non-empty, which is exactly what the
+      // document marks (specs/route-headers.md, stage B)
+      declared.enforcing(Secure.verifier(Admin.Issuer.verify)).routes
         .orElse { case r if mcpPath.unapply(r.url).isDefined => mcpR(r) }
         .orElse(ops)
         .orElse(loginRoutes.routes)
+        // the service describes itself: /openapi.json for a machine,
+        // /openapi for a person, both rendered from `declared` — the
+        // router above, so a path that answers is a path documented
+        // (specs/openapi.md stage 2)
+        .orElse(okay.openapi.OpenApi.routes(DemoOpenApi.api, declared).routes)
 
     // /chat itself is okay-chat (extracted 2026-09-02, specs/chat.md):
     // a "/board ..." turn rides the turnOverride seam rather than a
@@ -429,11 +483,11 @@ object ChatDemo {
             Writer(t + " ")).flatMap(_ => stream(rest))
         Chat.reply(_ => stream(answer.split(' ').toList), budget)(messages)
       }
-    // admin routes are okay-admin (extracted 2026-09-02, specs/admin.md):
-    // /admin/replay is not reachable without an admin token
+    // admin routes are okay-admin (extracted 2026-09-02, specs/admin.md).
+    // /admin/replay is DECLARED in `declaredRouter` and enforced in
+    // `core` above — it used to be mounted here, through `orElse`,
+    // which served it and documented nothing of it.
     core.orElse(Chat.chatRoute(m, budget, boardTurnOverride, contentPolicy))
-      .orElse(Admin.routes(Admin.Issuer.verify)(
-        () => board.replay(), () => boardChanged("replay")))
 
   /** the whole demo as ONE value awaiting its environment
    * (demo-ctx-wiring): `main` wires production, a test wires stubs —
@@ -530,17 +584,19 @@ object ChatDemo {
    */
   def wiring(using Timer): ChatConf ?=> Module[[X] =>>
       okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
-    import okay.deploy.{Need, Needs}
-    import Needs.needs
+    import okay.deploy.{Needs, Provision}
     val path = wire[ChatConf].db
     val store =
       if path == ":memory:" then Module.value[okay.persist.Store](okay.persist.MemoryStore())
       else
+        // the volume is ASKED FOR, and the log opens under the answer:
+        // the deployment reads the need off this program, and the
+        // path opened cannot be one the place did not mount
+        // (di-needs-from-static)
         val file = java.nio.file.Path.of(path)
         val dir = Option(file.getParent).map(_.toString).getOrElse(".")
-        moduleAs[okay.persist.Store, okay.persist.FileStore](
-          okay.persist.FileStore.open(file))(_.close())
-          .needs(Need.Volume(dir))
+        Needs.provisioned[okay.persist.Store, okay.persist.FileStore](
+          Static.op(Provision.Volume(dir)).map(d => okay.persist.FileStore.open(d.resolve(file.getFileName))))(_.close())
     val board: okay.persist.Store ?=> Module[[X] =>> Board ?=> X] =
       module[Board]({
         val b = Board(Board.topicOf(wire[okay.persist.Store]))

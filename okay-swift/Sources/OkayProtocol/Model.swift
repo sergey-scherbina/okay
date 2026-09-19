@@ -9,13 +9,24 @@ public enum InputKind: String, Equatable { case text, secret, multiline, number 
 public enum Tone: String, Equatable { case plain, emphasis, muted, danger }
 public enum Size: String, Equatable { case small, normal, large }
 
+/// what a text IS, which decides how this client sets it: an
+/// identifier is monospaced, a number's figures are tabular
+public enum Kind: String, Equatable { case prose, ident, number }
+
+/// where a text sits in the space its container gave it
+public enum Align: String, Equatable { case start, end }
+
 public struct Style: Equatable {
     public var bold: Bool
     public var dim: Bool
     public var tone: Tone
     public var size: Size
-    public init(bold: Bool = false, dim: Bool = false, tone: Tone = .plain, size: Size = .normal) {
+    public var kind: Kind
+    public var align: Align
+    public init(bold: Bool = false, dim: Bool = false, tone: Tone = .plain, size: Size = .normal,
+                kind: Kind = .prose, align: Align = .start) {
         self.bold = bold; self.dim = dim; self.tone = tone; self.size = size
+        self.kind = kind; self.align = align
     }
 }
 

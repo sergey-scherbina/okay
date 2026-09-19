@@ -188,6 +188,8 @@ the wire sees.
 | `Cbor.write` / `Cbor.read` | `A => Array[Byte]` / `Array[Byte] => Either[String, A]` | RFC 8949, same content as JSON |
 | `Compat.compare` | `(Schema[A], Schema[B]) => Report` | what changed, and whether each direction still decodes |
 | `Cbor.In.skipItem` | `() => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare |
+| `Validate.decode` / `Validate.errors` | `Schema[A] => Json => Either[Vector[(path, msg)], A]` | `Json.decode`'s applicative twin: EVERY refusal, each at its dotted path, the typed value when there is none — same rules, read off the same decoder; a fold on `Schema.Step` |
+| `Schema.fold` / `Schema.Algebra` / `Schema.Step` | the catamorphism, its algebra, the depth-aware value walk | how every algebra over `Schema` is written since schema-fold: no `match` on the GADT, no depth logic in the algebra |
 | `Codecs.NativeThreshold` | `Int` (24) | native recursion below this, `Cont.defer` trampoline at/above it — every recursive door; no depth cap (`Codecs.maxDepth` removed, remove-codecs-maxdepth) |
 | `Markdown.parse` | `String => Cst[Markdown.K]` | the reframing dialect (headings, paragraphs, `*`/`_` emphasis, code spans) |
 | `Markdown.scan` / `Markdown.instructions` | the dialect's Scan and its instruction fold | reuse or extend |

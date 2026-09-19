@@ -114,6 +114,44 @@ sealed trait Routed[A <: Tuple]:
   def described: Route.Described = Route.Described(describe, params, queries)
 
   /**
+   * A REQUEST HEADER, declared (specs/route-headers.md).
+   *
+   * `:@` because `@` reads as *at* — metadata carried AT the request
+   * rather than in the url — and because its first character is `:`,
+   * so it shares `:?`'s precedence and stays left-associative. The
+   * precedence reasoning is in `:?`'s own comment.
+   *
+   * The result is NOT a `Routed`. A header cannot join `A` without
+   * breaking `unapply(url(a)) == Some(a)`: `url` would have nowhere
+   * to put it, and the law would hold "mostly". `Routed[A]` is a
+   * prism on the URL and keeps its law; `Headed[A, H]` is the
+   * request-shaped declaration, and they are different types on
+   * purpose.
+   */
+  def :@[B <: Tuple](q: Query[B]): Headed[A, B] =
+    new Headed[A, B](this, q.declared.map(Route.headerOf), q.declared.map(_.name), q.decode)
+
+  /** one declared header: `:@ "last-event-id".as[String]` */
+  def :@[T](n: Route.Named[T]): Headed[A, T *: EmptyTuple] =
+    this :@ Query[T](n.name)(using n.param)
+
+  /**
+   * WHAT THIS ROUTE REQUIRES OF A CALLER (stage B).
+   *
+   * It lives on the request-shaped declaration for stage A's own
+   * reason: a credential is read from the REQUEST, not from the url,
+   * and `Routed[A]` is the url's prism. So `secured` produces a
+   * `Headed`, exactly as `:@` does.
+   */
+  def secured(scopes: String*): Headed[A, EmptyTuple] =
+    new Headed[A, EmptyTuple](this, Vector.empty, Vector.empty,
+      _ => Some(EmptyTuple), Vector(Route.Security(scopes = scopes.toSet)))
+
+  def securedBy(s: Route.Security): Headed[A, EmptyTuple] =
+    new Headed[A, EmptyTuple](this, Vector.empty, Vector.empty,
+      _ => Some(EmptyTuple), Vector(s))
+
+  /**
    * the bridge to `specs/optics.md`. A miss leaves the path unchanged,
    * which is exactly `Prism`'s `Either[T, A]`, and `review` is `url`.
    */
@@ -248,6 +286,68 @@ final class Queried[A <: Tuple] private[http] (
   def :?[T](n: Route.Named[T])(using c: Route.Split[A, T *: EmptyTuple]): Queried[c.Out] =
     this :? Query[T](n.name)(using n.param)
 
+/**
+ * The HEADER stage: a url declaration plus what it reads off the
+ * request (specs/route-headers.md).
+ *
+ * It WRAPS a `Routed[A]` rather than extending it, so nothing holding
+ * a `Routed` can be handed a value whose law is different. The url
+ * half is untouched — `route.unapply`, `route.url` and `route.prism`
+ * are the same prism they were — and the header half has a law of the
+ * same shape: `readHeaders(requestWith(h)) == Some(h)`.
+ */
+final class Headed[A <: Tuple, Hs <: Tuple] private[http] (
+    val route: Routed[A],
+    /** the description: the headers, with no request in hand */
+    val headers: Vector[Route.Hdr],
+    private[http] val names: Vector[String],
+    private[http] val decodeHeaders: Route.Params => Option[Hs],
+    /** what it requires of a caller (stage B); empty is "nothing" */
+    val security: Vector[Route.Security] = Vector.empty):
+
+  def :@[B <: Tuple](q: Query[B])(using c: Route.Split[Hs, B]): Headed[A, c.Out] =
+    new Headed[A, c.Out](route, headers ++ q.declared.map(Route.headerOf),
+      names ++ q.declared.map(_.name),
+      hs => decodeHeaders(hs).flatMap(a => q.decode(hs).map(b => c.join(a, b))),
+      security)
+
+  def :@[T](n: Route.Named[T])(using c: Route.Split[Hs, T *: EmptyTuple]): Headed[A, c.Out] =
+    this :@ Query[T](n.name)(using n.param)
+
+  /** see `Routed.secured` — a credential is read from the request */
+  def secured(scopes: String*): Headed[A, Hs] =
+    new Headed[A, Hs](route, headers, names, decodeHeaders,
+      security :+ Route.Security(scopes = scopes.toSet))
+
+  def securedBy(s: Route.Security): Headed[A, Hs] =
+    new Headed[A, Hs](route, headers, names, decodeHeaders, security :+ s)
+
+  /**
+   * The headers this route declares, read off a request.
+   *
+   * A HEADER BLOCK IS A `Map[String, Vector[String]]` — the very shape
+   * a query string is, which is why one builder (`Query`) serves both
+   * and there is no parallel set of header combinators to keep in
+   * step. The one difference is CASE: header names are
+   * case-insensitive on the wire, so the map is built under the names
+   * the DECLARATION used, each filled from whatever casing arrived.
+   */
+  def readHeaders(r: Request): Option[Hs] =
+    val lower = r.headers.map((k, v) => (k.toLowerCase, v))
+    val m: Route.Params = names.map { n =>
+      val ln = n.toLowerCase
+      n -> lower.collect { case (k, v) if k == ln => v }.toVector
+    }.toMap
+    decodeHeaders(m)
+
+  /** the whole match: the url's parameters and the request's headers */
+  def read(r: Request): Option[(A, Hs)] =
+    route.unapply(r.url).flatMap(a => readHeaders(r).map(h => (a, h)))
+
+  def describe: String = route.describe
+  def described: Route.Described =
+    route.described.copy(headers = headers, security = security)
+
 object Route:
 
   /** a segment of the description.
@@ -268,6 +368,45 @@ object Route:
                      schema: okay.codec.Json = Param.schemaOf("string"))
 
   /**
+   * a REQUEST HEADER of the description (specs/route-headers.md).
+   *
+   * `Q`'s shape exactly, because a header parameter and a query
+   * parameter differ only in where they are read — and they are
+   * separate TYPES rather than one, so a renderer cannot put `in:
+   * query` on a header by holding the wrong vector.
+   *
+   * `Hdr` and not `H`: `H` is the conventional name for the head of a
+   * tuple and `Split.cons[H, T, B]` below uses it, so a case class of
+   * that name shadows a type parameter three screens away. The
+   * compiler says so (E226), and a warning the gate now refuses is
+   * not a thing to argue with over one letter.
+   */
+  final case class Hdr(name: String, kind: String, required: Boolean, repeated: Boolean,
+                       schema: okay.codec.Json = Param.schemaOf("string"))
+
+  private[http] def headerOf(q: Q): Hdr = Hdr(q.name, q.kind, q.required, q.repeated, q.schema)
+
+  /**
+   * WHAT A PROTECTED ROUTE REQUIRES (specs/route-headers.md, stage B).
+   *
+   * Plain data, and deliberately vocabulary-free: okay-security
+   * depends on okay-http and not the other way round, so a `Policy`
+   * or a `Verified` cannot appear here and okay-http must not grow an
+   * identity model of its own. What it owns is the HTTP half — a
+   * scheme name, the scopes an operation asks for, and the realm a
+   * challenge names — which is also exactly what an OpenAPI
+   * `securityScheme` carries.
+   *
+   * A richer rule than "these scopes" stays with
+   * `okay.security.Secure.granted`: this is the declaration a document
+   * can render and a table can enforce, not a replacement for a
+   * policy language.
+   */
+  final case class Security(scheme: String = "bearer",
+                            scopes: Set[String] = Set.empty,
+                            realm: String = "okay")
+
+  /**
    * The description of one url, whole: the template AND what its
    * parameters are (openapi-parameters).
    *
@@ -281,7 +420,14 @@ object Route:
    * without its parts is the fix; two more fields would have been the
    * patch.
    */
-  final case class Described(path: String, params: Vector[Seg.Var], queries: Vector[Q])
+  final case class Described(path: String, params: Vector[Seg.Var], queries: Vector[Q],
+                            /** request headers the route declares; a header is
+                             * not part of the url, so it is beside the
+                             * template rather than in it */
+                            headers: Vector[Hdr] = Vector.empty,
+                            /** what the route requires of a caller; empty is
+                             * "nothing", which is what most routes require */
+                            security: Vector[Security] = Vector.empty)
 
   /**
    * A NAMED TYPED PARAMETER — the same thing in a path and in a query,
@@ -765,6 +911,59 @@ object Delete:
  */
 final class Router private (val entries: Vector[Router.Entry]):
 
+  /**
+   * What the operation just declared is FOR (openapi-prose).
+   *
+   * It attaches to the LAST entry, which is what a builder chain
+   * already reads as, and it is one method rather than a parameter on
+   * each of twenty combinators. Writing it second is deliberate: the
+   * declaration says what the operation IS — its path, its body, what
+   * it answers — and the sentence is about that, so it reads in the
+   * order it is written.
+   *
+   * {{{
+   *   Router.html(Get, Route.root)(_ => pure(page)).summarised("the chat page")
+   * }}}
+   *
+   * Summarising an empty router throws, HERE, when the table is
+   * built: a builder method that silently did nothing would put the
+   * sentence on no operation at all and report that nowhere.
+   */
+  /**
+   * The headers an answer carries, declared (stage C).
+   *
+   * It attaches to the entry just declared, as `summarised` does, and
+   * for the same reason: one method rather than a parameter on twenty
+   * combinators. A status this entry does not already answer gets an
+   * answer with no schema — "it sends this header" is a fact worth
+   * stating even when the body is undeclared.
+   *
+   * {{{
+   *   Router.out(Get, task)(byId).answering(200, "etag".as[String])
+   * }}}
+   *
+   * THIS IS DESCRIPTION, and the doc comment on `Answer.headers` says
+   * why it cannot be more: the handler builds its own `Response`, and
+   * refusing a request because a declared header was missing would
+   * turn a documentation slip into a 500. The headers the ROUTER
+   * itself writes — a secured route's `WWW-Authenticate` — are the
+   * other kind, and they are true by construction.
+   */
+  def answering(status: Int, headers: Route.Named[?]*): Router =
+    if entries.isEmpty then
+      throw IllegalStateException(
+        "answering: there is no operation to describe — it attaches to the entry just declared")
+    else
+      val hs = headers.toVector.map(n =>
+        Route.Hdr(n.name, n.param.kind, required = true, repeated = false, n.param.jsonSchema))
+      new Router(entries.init :+ entries.last.answeringWith(status, hs))
+
+  def summarised(text: String): Router =
+    if entries.isEmpty then
+      throw IllegalStateException(
+        "summarised: there is no operation to summarise — it attaches to the entry just declared")
+    else new Router(entries.init :+ entries.last.saying(text))
+
   /** a handler that needs only the path's parameters */
   def on[A <: Tuple](method: Method, route: Routed[A])(using ar: Route.Arity[A])
                     (h: ar.Out => Response ! Async): Router =
@@ -778,6 +977,159 @@ final class Router private (val entries: Vector[Router.Entry]):
     new Router(entries :+ new Router.Entry(method, route.described,
       r => r.method == method && route.unapply(r.url).isDefined,
       r => if r.method != method then None else route.unapply(r.url).map(a => h(ar(a), r))))
+
+  /**
+   * the same, for a route that also declares what it reads off the
+   * request's HEADERS (specs/route-headers.md).
+   *
+   * A declared header that is REQUIRED and absent is a MISS, exactly
+   * as a required query parameter is: the route does not match, and
+   * the caller's 404 stays the caller's. It is not a 400 — a router
+   * that answered 400 would be claiming no other route could have
+   * matched, which it cannot know.
+   */
+  def on[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out) => Response ! Async): Router =
+    at(method, route)((a, hs, _) => h(a, hs))
+
+  def at[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out, Request) => Response ! Async): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map((a, hs) => h(ar(a), hr(hs), r)),
+      None,
+      Router.securityAnswers(route.described)))
+
+  /**
+   * THE DECLARING COMBINATORS, for a route that declares a
+   * requirement or a header (specs/route-headers.md).
+   *
+   * Each is its `Routed` twin with one difference repeated: the match
+   * is `route.read(r)`, which answers the url's tuple AND the
+   * headers', the handler takes both, and the entry's answers begin
+   * with `Router.securityAnswers` — so a secured operation says 401
+   * and 403 beside whatever it declares itself.
+   *
+   * NONE OF THEM CARRY DEFAULT ARGUMENTS, and none can: Scala allows
+   * defaults on only one overload of a name, and the `Routed` forms
+   * have them. A call passes `status` and `description` POSITIONALLY,
+   * because a named argument narrows overload resolution before the
+   * argument types are read — which is a compile error rather than a
+   * wrong answer, but an obscure one, so it is written down here and
+   * in the guide.
+   */
+  def jsonAt[A <: Tuple, Hs <: Tuple, B](method: Method, route: Headed[A, Hs])
+                                        (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                        (h: (ar.Out, hr.Out, B, Request) => Response ! Async)
+                                        (using sc: okay.codec.Schema[B]): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map { (a, hs) =>
+          okay.codec.Codecs.json(sc).decode(
+            okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
+            case Right(b) => h(ar(a), hr(hs), b, r)
+            case Left(why) => pure(Router.badRequest(why))
+        },
+      Some(okay.codec.JsonSchema.of(sc)),
+      Router.securityAnswers(route.described)))
+
+  def json[A <: Tuple, Hs <: Tuple, B](method: Method, route: Headed[A, Hs])
+                                      (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                      (h: (ar.Out, hr.Out, B) => Response ! Async)
+                                      (using okay.codec.Schema[B]): Router =
+    jsonAt[A, Hs, B](method, route)((a, hs, b, _) => h(a, hs, b))
+
+  def outAt[A <: Tuple, Hs <: Tuple, R](method: Method, route: Headed[A, Hs],
+                                        status: Int, description: String)
+                                       (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                       (h: (ar.Out, hr.Out, Request) => R ! Async)
+                                       (using sr: okay.codec.Schema[R]): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map((a, hs) =>
+          h(ar(a), hr(hs), r).map(Router.encoded(status, _))),
+      None,
+      Router.securityAnswers(route.described) :+
+        Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description)))
+
+  def out[A <: Tuple, Hs <: Tuple, R](method: Method, route: Headed[A, Hs],
+                                      status: Int, description: String)
+                                     (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                     (h: (ar.Out, hr.Out) => R ! Async)
+                                     (using okay.codec.Schema[R]): Router =
+    outAt[A, Hs, R](method, route, status, description)((a, hs, _) => h(a, hs))
+
+  def jsonOutAt[A <: Tuple, Hs <: Tuple, B, R](method: Method, route: Headed[A, Hs],
+                                               status: Int, description: String)
+                                              (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                              (h: (ar.Out, hr.Out, B, Request) => R ! Async)
+                                              (using sb: okay.codec.Schema[B],
+                                               sr: okay.codec.Schema[R]): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map { (a, hs) =>
+          okay.codec.Codecs.json(sb).decode(
+            okay.codec.Json.parse(new String(r.body.bytes, java.nio.charset.StandardCharsets.UTF_8))) match
+            case Right(b) => h(ar(a), hr(hs), b, r).map(Router.encoded(status, _))
+            case Left(why) => pure(Router.badRequest(why))
+        },
+      Some(okay.codec.JsonSchema.of(sb)),
+      Router.securityAnswers(route.described) ++
+        Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description),
+               Router.badRequestAnswer)))
+
+  def jsonOut[A <: Tuple, Hs <: Tuple, B, R](method: Method, route: Headed[A, Hs],
+                                             status: Int, description: String)
+                                            (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                            (h: (ar.Out, hr.Out, B) => R ! Async)
+                                            (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    jsonOutAt[A, Hs, B, R](method, route, status, description)((a, hs, b, _) => h(a, hs, b))
+
+  /** an HTML page, with the request in hand */
+  def htmlAt[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                      description: String)
+                                     (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                     (h: (ar.Out, hr.Out, Request) => String ! Async): Router =
+    media[A, Hs](method, route, Router.textHtml, status, description,
+      Some(Router.textHtml + "; charset=utf-8"))(
+      (a, hs, r) => h(a, hs, r).map(t => Http.one(t.getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+
+  def bytes[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], media: String,
+                                     status: Int, description: String)
+                                    (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                    (h: (ar.Out, hr.Out) => Array[Byte] ! Async): Router =
+    bytesAt[A, Hs](method, route, media, status, description)((a, hs, _) => h(a, hs))
+
+  def bytesAt[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], media: String,
+                                       status: Int, description: String)
+                                      (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                      (h: (ar.Out, hr.Out, Request) => Array[Byte] ! Async): Router =
+    this.media[A, Hs](method, route, media, status, description, None)(
+      (a, hs, r) => h(a, hs, r).map(Http.one))
+
+  /** a server-sent-event stream from a route that declares — the shape
+   * `last-event-id` was declared FOR (specs/route-headers.md, stage A) */
+  def events[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                      description: String)
+                                     (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                     (h: (ar.Out, hr.Out) => Source[Chunk[Byte]] ! Async): Router =
+    eventsAt[A, Hs](method, route, status, description)((a, hs, _) => h(a, hs))
+
+  def eventsAt[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                        description: String)
+                                       (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                       (h: (ar.Out, hr.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    media[A, Hs](method, route, Router.eventStream, status, description, None)(h)
 
   /**
    * a handler whose request carries a declared JSON body
@@ -832,13 +1184,15 @@ final class Router private (val entries: Vector[Router.Entry]):
    * its own `Response` is still allowed (`on`, `at`) — it simply
    * declares nothing, and a renderer says so.
    */
-  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
+  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "the declared answer")
                         (using ar: Route.Arity[A])
                         (h: ar.Out => R ! Async)(using sr: okay.codec.Schema[R]): Router =
-    outAt[A, R](method, route, status)((a, _) => h(a))
+    outAt[A, R](method, route, status, description)((a, _) => h(a))
 
   /** the same, with the request in hand */
-  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200)
+  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "the declared answer")
                           (using ar: Route.Arity[A])
                           (h: (ar.Out, Request) => R ! Async)(using sr: okay.codec.Schema[R]): Router =
     new Router(entries :+ new Router.Entry(method, route.described,
@@ -847,17 +1201,19 @@ final class Router private (val entries: Vector[Router.Entry]):
         if r.method != method then None
         else route.unapply(r.url).map(a => h(ar(a), r).map(Router.encoded(status, _))),
       None,
-      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"))))
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description))))
 
   /** both sides declared: a body in, a value out */
-  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
+  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                description: String = "the declared answer")
                                (using ar: Route.Arity[A])
                                (h: (ar.Out, B) => R ! Async)
                                (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
-    jsonOutAt[A, B, R](method, route, status)((a, b, _) => h(a, b))
+    jsonOutAt[A, B, R](method, route, status, description)((a, b, _) => h(a, b))
 
   /** the same, with the request in hand */
-  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200)
+  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                  description: String = "the declared answer")
                                  (using ar: Route.Arity[A])
                                  (h: (ar.Out, B, Request) => R ! Async)
                                  (using sb: okay.codec.Schema[B], sr: okay.codec.Schema[R]): Router =
@@ -872,8 +1228,168 @@ final class Router private (val entries: Vector[Router.Entry]):
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sb)),
-      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), "the declared answer"),
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description),
              Router.badRequestAnswer)))
+
+  /**
+   * A DECLARED ANSWER THAT IS NOT JSON (openapi-media).
+   *
+   * `out` declares by construction because the router encodes: the
+   * entry carries `JsonSchema.of[R]` and the answer is written with
+   * the same `Schema[R]`, so a document cannot promise one thing
+   * while the service sends another. Nothing about that argument is
+   * specific to JSON — it needs only that the ROUTER, and not the
+   * handler, decides what goes on the wire.
+   *
+   * So these three take the same shape for the media that has no
+   * `Schema` at all. The handler answers the CONTENT — a page's text,
+   * a bundle's bytes, a stream's chunks — and the router writes the
+   * content-type from the same value the entry declares. A handler
+   * that builds its own `Response` is still allowed and still
+   * declares nothing; what changes is that it no longer has to.
+   *
+   * The demo's six operations were the argument for this: every one
+   * of them answered HTML, an event stream or a byte bundle, so its
+   * committed document said `undeclared` six times while the service
+   * answered perfectly well-defined content.
+   */
+  def html[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                       description: String = "an HTML page")
+                      (using ar: Route.Arity[A])
+                      (h: ar.Out => String ! Async): Router =
+    htmlAt[A](method, route, status, description)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def htmlAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "an HTML page")
+                        (using ar: Route.Arity[A])
+                        (h: (ar.Out, Request) => String ! Async): Router =
+    // the charset is declared because the ROUTER did the encoding: it
+    // took a `String` and wrote UTF-8 bytes, so it can say so. Where
+    // the handler hands over bytes, nobody here knows, and the header
+    // stays the bare media type
+    media[A](method, route, Router.textHtml, status, description,
+             contentType = Some(Router.textHtml + "; charset=utf-8"))(
+      (a, r) => h(a, r).map(t => Http.one(t.getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+
+  /**
+   * bytes under a media type the author names: a bundle, an image, a
+   * PDF — anything whose content-type is known and whose shape is not
+   * a schema's business
+   */
+  def bytes[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                        description: String = "a body of the declared media type")
+                       (using ar: Route.Arity[A])
+                       (h: ar.Out => Array[Byte] ! Async): Router =
+    bytesAt[A](method, route, media, status, description)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def bytesAt[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                          description: String = "a body of the declared media type")
+                         (using ar: Route.Arity[A])
+                         (h: (ar.Out, Request) => Array[Byte] ! Async): Router =
+    this.media[A](method, route, media, status, description)(
+      (a, r) => h(a, r).map(Http.one))
+
+  /**
+   * a server-sent-event stream.
+   *
+   * The handler answers the SOURCE and not a `Response`, so the one
+   * header that makes a stream a stream is written in one place. What
+   * OpenAPI can say about it is the media type; the event NAMES a
+   * client should listen for are not its vocabulary, so they belong
+   * in the description rather than in a schema that pretends.
+   */
+  def events[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "a server-sent-event stream, held open")
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => Source[Chunk[Byte]] ! Async): Router =
+    eventsAt[A](method, route, status, description)((a, _) => h(a))
+
+  /** the same, with the request in hand */
+  def eventsAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "a server-sent-event stream, held open")
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    media[A](method, route, Router.eventStream, status, description)(h)
+
+  /**
+   * what the three above are: the handler answers a BODY, the router
+   * writes the header and the entry declares the same media.
+   *
+   * Public because the list of media types is not ours to close — a
+   * service that answers `application/xml` or an image gets the same
+   * property without waiting for a combinator to be added here.
+   */
+  def media[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int, description: String,
+                        /** what goes on the wire, when that is more than the
+                         * media type: a charset the router itself applied.
+                         * The DECLARATION stays bare either way, which is
+                         * what `TestRouterMedia`'s law checks. `None` sends the
+                         * media type as it stands — the default cannot be
+                         * written as `= media`, since a default in the same
+                         * parameter list reads the enclosing METHOD of that
+                         * name, not the parameter. */
+                        contentType: Option[String] = None)
+                       (using ar: Route.Arity[A])
+                       (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.unapply(r.url).isDefined,
+      r =>
+        if r.method != method then None
+        else route.unapply(r.url).map(a =>
+          h(ar(a), r).map(src =>
+            Response(status, Seq("content-type" -> contentType.getOrElse(media)), src))),
+      None,
+      Vector(Router.Answer(status, None, description, media))))
+
+  /**
+   * the same, for a route that DECLARES what it requires or reads
+   * (specs/route-headers.md).
+   *
+   * It exists because the first real document asked for it. A secured
+   * route could only be declared with `on`/`at`, which say nothing
+   * about the answer — so okay-demo's `/admin/replay` rendered its
+   * 401 and 403 and no success case at all, and the demo's own guard
+   * ("no operation says `undeclared`") caught it. A declaration that
+   * can state a requirement but not an answer is half a declaration.
+   */
+  def media[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], media: String,
+                                     status: Int, description: String,
+                                     /** NO DEFAULT, and it cannot have one: Scala
+                                      * allows defaults on only one overload of a
+                                      * name, and `media(Routed)` already has them.
+                                      * `html` below passes it. */
+                                     contentType: Option[String])
+                                    (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                    (h: (ar.Out, hr.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    new Router(entries :+ new Router.Entry(method, route.described,
+      r => r.method == method && route.read(r).isDefined,
+      r =>
+        if r.method != method then None
+        else route.read(r).map((a, hs) =>
+          h(ar(a), hr(hs), r).map(src =>
+            Response(status, Seq("content-type" -> contentType.getOrElse(media)), src))),
+      None,
+      Router.securityAnswers(route.described) :+
+        Router.Answer(status, None, description, media)))
+
+  /**
+   * an HTML page from a route that declares a requirement or a header.
+   *
+   * `status` and `description` carry NO defaults, and cannot: Scala
+   * allows default arguments on only one overload of a name, and the
+   * `Routed` form above already has them. A declaring combinator is
+   * written for the sake of the description anyway, so passing one is
+   * no hardship.
+   */
+  def html[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                    description: String)
+                                   (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                   (h: (ar.Out, hr.Out) => String ! Async): Router =
+    media[A, Hs](method, route, Router.textHtml, status, description,
+      contentType = Some(Router.textHtml + "; charset=utf-8"))(
+      (a, hs, _) => h(a, hs).map(t => Http.one(t.getBytes(java.nio.charset.StandardCharsets.UTF_8))))
 
   /** the same, reading a case class */
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
@@ -885,16 +1401,92 @@ final class Router private (val entries: Vector[Router.Entry]):
       r => r.method == method && route.unapply(r.url).isDefined,
       r => if r.method != method then None else route.unapply(r.url).map(c => h(c, r))))
 
+  /**
+   * THE TABLE, ENFORCING WHAT IT DECLARES (specs/route-headers.md,
+   * stage B).
+   *
+   * `Secure.granted` wraps the finished `PartialFunction`, which is
+   * why a protected route could never be described: the requirement
+   * was applied AFTER the table was built and never reached an entry.
+   * Here the declaration is on the entry and this reads it, so the
+   * document and the behaviour come from one value. The law is set
+   * equality — `enforcing` refuses exactly the entries whose
+   * `security` is non-empty, which is exactly the set a renderer
+   * calls protected.
+   *
+   * **Protection does not change WHICH requests a route answers, only
+   * who gets through.** `matches` is untouched, so a secured route
+   * still MATCHES a request with no credential and answers 401 — the
+   * opposite of a declared required HEADER, which is a miss. A route
+   * that missed instead would answer 404 to everyone without a token:
+   * it leaks less and lies more, and it breaks the invariant
+   * `Secure.bearer` states in its own comment.
+   *
+   * The handler is NOT run for a refused request. Definedness is
+   * `matches`, never `run` — the distinction that cost a one-time
+   * login code its 401 in stage 7.
+   *
+   * `verify` is the DEPLOYMENT's, not the route's: a declaration says
+   * what is required, a table says what to check it with.
+   * `okay.security.Secure.verifier` adapts a `String => Verified`.
+   */
+  def enforcing(verify: Router.Verify): Router =
+    new Router(entries.map { e =>
+      if e.security.isEmpty then e
+      else
+        val realm = e.security.head.realm
+        val wanted = e.security.flatMap(_.scopes).toSet
+        e.guarded(
+          r =>
+            if !e.matches(r) then None
+            else Router.bearerToken(r) match
+              case None => Some(pure(Router.challenge(401, realm, "no token")))
+              case Some(t) => verify(t) match
+                case Left(_) =>
+                  // the WHY stays server-side: a uniform refusal tells
+                  // an attacker nothing about how close the token was
+                  Some(pure(Router.challenge(401, realm, "invalid_token")))
+                case Right(scopes) if !wanted.subsetOf(scopes) =>
+                  Some(pure(Router.challenge(403, realm, "insufficient_scope")))
+                case Right(_) => e.run(r))
+    })
+
+  /**
+   * TWO TABLES, IN ORDER — the operation `empty` has been the zero of
+   * since stage 1, finally written down.
+   *
+   * A module that contributes routes answers a `Router`; a service
+   * that mounts several had to fall back to `orElse` over the
+   * `PartialFunction`s, which serves them and DESCRIBES NONE OF THEM:
+   * a renderer reads `entries`, and `orElse` has none. okay-demo hit
+   * exactly that — `/admin/replay` was served through `orElse` and
+   * appeared in no document (demo-admin-declared).
+   *
+   * Order is kept, because dispatch is first-match and a diff of two
+   * documents should read as a diff of the code.
+   */
+  def ++(that: Router): Router = new Router(entries ++ that.entries)
+
   /** the existing convention, unchanged: a miss is simply undefined,
    * so the caller's 404 stays the caller's */
   def routes: PartialFunction[Request, Response ! Async] =
+    // FAIL CLOSED. A secured entry with no verifier installed does not
+    // serve: declaring a requirement and forgetting `enforcing` would
+    // open a hole the document swears is shut, and a route that
+    // suddenly 401s everywhere is a loud mistake rather than a silent
+    // one.
+    val answer: Router.Entry => Request => Option[Response ! Async] = e =>
+      if e.security.isEmpty || e.enforced then e.run
+      else r =>
+        if !e.matches(r) then None
+        else Some(pure(Router.challenge(401, e.security.head.realm, "no_verifier")))
     new PartialFunction[Request, Response ! Async]:
       def isDefinedAt(r: Request): Boolean = entries.exists(_.matches(r))
       def apply(r: Request): Response ! Async =
-        entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x }
+        entries.iterator.map(e => answer(e)(r)).collectFirst { case Some(x) => x }
           .getOrElse(throw MatchError(r))
       override def applyOrElse[R <: Request, B >: Response ! Async](r: R, other: R => B): B =
-        entries.iterator.map(_.run(r)).collectFirst { case Some(x) => x }.getOrElse(other(r))
+        entries.iterator.map(e => answer(e)(r)).collectFirst { case Some(x) => x }.getOrElse(other(r))
 
   /** every entry, from the same values that dispatch */
   def describe: Vector[(Method, String)] = entries.map(e => (e.method, e.path))
@@ -937,6 +1529,16 @@ object Router:
                     (h: (ar.Out, Request) => Response ! Async): Router =
     empty.at(method, route)(h)
 
+  def on[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out) => Response ! Async): Router =
+    empty.on(method, route)(h)
+
+  def at[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs])
+                                 (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                 (h: (ar.Out, hr.Out, Request) => Response ! Async): Router =
+    empty.at(method, route)(h)
+
   def json[A <: Tuple, B](method: Method, route: Routed[A])(using ar: Route.Arity[A])
                          (h: (ar.Out, B) => Response ! Async)
                          (using okay.codec.Schema[B]): Router =
@@ -949,6 +1551,155 @@ object Router:
 
   def of[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])(h: C => Response ! Async): Router =
     empty.of(method, route)(h)
+
+  /** the value-answering forms from the companion too, so every
+   * declaring shape can begin a table (openapi-prose found the gap:
+   * `out` was reachable only through `Router.empty`) */
+  def out[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "the declared answer")
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => R ! Async)(using okay.codec.Schema[R]): Router =
+    empty.out(method, route, status, description)(h)
+
+  def outAt[A <: Tuple, R](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "the declared answer")
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => R ! Async)(using okay.codec.Schema[R]): Router =
+    empty.outAt(method, route, status, description)(h)
+
+  def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                description: String = "the declared answer")
+                               (using ar: Route.Arity[A])
+                               (h: (ar.Out, B) => R ! Async)
+                               (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    empty.jsonOut(method, route, status, description)(h)
+
+  def jsonOutAt[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
+                                  description: String = "the declared answer")
+                                 (using ar: Route.Arity[A])
+                                 (h: (ar.Out, B, Request) => R ! Async)
+                                 (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    empty.jsonOutAt(method, route, status, description)(h)
+
+  /** a page, from the companion — `Router.html(Get, Route.root) { … }`
+   * is how a small service's whole table begins (openapi-media) */
+  def html[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                       description: String = "an HTML page")
+                      (using ar: Route.Arity[A])
+                      (h: ar.Out => String ! Async): Router =
+    empty.html(method, route, status, description)(h)
+
+  def htmlAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "an HTML page")
+                        (using ar: Route.Arity[A])
+                        (h: (ar.Out, Request) => String ! Async): Router =
+    empty.htmlAt(method, route, status, description)(h)
+
+  /** a page from a route that DECLARES a requirement or a header — no
+   * defaults, for the reason the instance form gives */
+  def html[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                    description: String)
+                                   (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                   (h: (ar.Out, hr.Out) => String ! Async): Router =
+    empty.html(method, route, status, description)(h)
+
+  // the rest of the declaring combinators for a route that DECLARES,
+  // from the companion — none with defaults, for the reason the
+  // instance forms give
+  def htmlAt[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                      description: String)
+                                     (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                     (h: (ar.Out, hr.Out, Request) => String ! Async): Router =
+    empty.htmlAt(method, route, status, description)(h)
+
+  def bytes[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], media: String,
+                                     status: Int, description: String)
+                                    (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                    (h: (ar.Out, hr.Out) => Array[Byte] ! Async): Router =
+    empty.bytes(method, route, media, status, description)(h)
+
+  def events[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                      description: String)
+                                     (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                     (h: (ar.Out, hr.Out) => Source[Chunk[Byte]] ! Async): Router =
+    empty.events(method, route, status, description)(h)
+
+  def eventsAt[A <: Tuple, Hs <: Tuple](method: Method, route: Headed[A, Hs], status: Int,
+                                        description: String)
+                                       (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                       (h: (ar.Out, hr.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    empty.eventsAt(method, route, status, description)(h)
+
+  def json[A <: Tuple, Hs <: Tuple, B](method: Method, route: Headed[A, Hs])
+                                      (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                      (h: (ar.Out, hr.Out, B) => Response ! Async)
+                                      (using okay.codec.Schema[B]): Router =
+    empty.json(method, route)(h)
+
+  def jsonAt[A <: Tuple, Hs <: Tuple, B](method: Method, route: Headed[A, Hs])
+                                        (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                        (h: (ar.Out, hr.Out, B, Request) => Response ! Async)
+                                        (using okay.codec.Schema[B]): Router =
+    empty.jsonAt(method, route)(h)
+
+  def out[A <: Tuple, Hs <: Tuple, R](method: Method, route: Headed[A, Hs],
+                                      status: Int, description: String)
+                                     (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                     (h: (ar.Out, hr.Out) => R ! Async)
+                                     (using okay.codec.Schema[R]): Router =
+    empty.out(method, route, status, description)(h)
+
+  def outAt[A <: Tuple, Hs <: Tuple, R](method: Method, route: Headed[A, Hs],
+                                        status: Int, description: String)
+                                       (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                       (h: (ar.Out, hr.Out, Request) => R ! Async)
+                                       (using okay.codec.Schema[R]): Router =
+    empty.outAt(method, route, status, description)(h)
+
+  def jsonOut[A <: Tuple, Hs <: Tuple, B, R](method: Method, route: Headed[A, Hs],
+                                             status: Int, description: String)
+                                            (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                            (h: (ar.Out, hr.Out, B) => R ! Async)
+                                            (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    empty.jsonOut(method, route, status, description)(h)
+
+  def jsonOutAt[A <: Tuple, Hs <: Tuple, B, R](method: Method, route: Headed[A, Hs],
+                                               status: Int, description: String)
+                                              (using ar: Route.Arity[A], hr: Route.Arity[Hs])
+                                              (h: (ar.Out, hr.Out, B, Request) => R ! Async)
+                                              (using okay.codec.Schema[B], okay.codec.Schema[R]): Router =
+    empty.jsonOutAt(method, route, status, description)(h)
+
+  def bytes[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                        description: String = "a body of the declared media type")
+                       (using ar: Route.Arity[A])
+                       (h: ar.Out => Array[Byte] ! Async): Router =
+    empty.bytes(method, route, media, status, description)(h)
+
+  def bytesAt[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int = 200,
+                          description: String = "a body of the declared media type")
+                         (using ar: Route.Arity[A])
+                         (h: (ar.Out, Request) => Array[Byte] ! Async): Router =
+    empty.bytesAt(method, route, media, status, description)(h)
+
+  def events[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                         description: String = "a server-sent-event stream, held open")
+                        (using ar: Route.Arity[A])
+                        (h: ar.Out => Source[Chunk[Byte]] ! Async): Router =
+    empty.events(method, route, status, description)(h)
+
+  def eventsAt[A <: Tuple](method: Method, route: Routed[A], status: Int = 200,
+                           description: String = "a server-sent-event stream, held open")
+                          (using ar: Route.Arity[A])
+                          (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    empty.eventsAt(method, route, status, description)(h)
+
+  def media[A <: Tuple](method: Method, route: Routed[A], media: String, status: Int, description: String,
+                        contentType: Option[String] = None)
+                       (using ar: Route.Arity[A])
+                       (h: (ar.Out, Request) => Source[Chunk[Byte]] ! Async): Router =
+    empty.media(method, route, media, status, description, contentType)(h)
+
 
   def ofAt[C <: Product, A <: Tuple](method: Method, route: Route.Of[C, A])
                                     (h: (C, Request) => Response ! Async): Router =
@@ -982,7 +1733,41 @@ object Router:
    * A handler that still builds its own `Response` declares nothing,
    * and a renderer says exactly that rather than inventing a 200.
    */
-  final case class Answer(status: Int, schema: Option[okay.codec.Json], description: String)
+  final case class Answer(status: Int, schema: Option[okay.codec.Json], description: String,
+                         /**
+                          * the media type it answers, BARE — `text/html`, not
+                          * `text/html; charset=utf-8` (openapi-media).
+                          *
+                          * Bare because this is the key a document files the
+                          * answer under, and a charset is a wire detail of one
+                          * response rather than a kind of content. The router
+                          * adds the charset when it writes the header, which is
+                          * also why the two cannot disagree: both come from
+                          * this one value.
+                          *
+                          * EMPTY means no body at all, which is a different
+                          * claim from "this media type, shape unstated": a
+                          * challenge answers with nothing, and a document
+                          * that offered an empty JSON object would be
+                          * describing a body nobody sends.
+                          */
+                         media: String = "application/json",
+                         /**
+                          * the headers this answer carries
+                          * (specs/route-headers.md, stage C).
+                          *
+                          * TWO KINDS, and blurring them would be the whole
+                          * mistake. What the ROUTER sends is true by
+                          * construction — the 401 a secured route answers
+                          * declares `www-authenticate`, and `challenge` is
+                          * what writes it, from this same value. What an
+                          * AUTHOR declares with `answering` is DESCRIPTION:
+                          * the handler builds its own `Response` and nothing
+                          * here checks the claim, because failing a request
+                          * over a documentation slip would be worse than the
+                          * slip.
+                          */
+                         headers: Vector[Route.Hdr] = Vector.empty)
 
   final class Entry private[http] (val method: Method,
                                    /** the url's whole description — template AND
@@ -995,7 +1780,49 @@ object Router:
                                     * what a renderer reads, as `Toolbox` already gives tools */
                                    val body: Option[okay.codec.Json] = None,
                                    /** what it answers, when the handler's type said so */
-                                   val answers: Vector[Answer] = Vector.empty):
+                                   val answers: Vector[Answer] = Vector.empty,
+                                   /**
+                                    * one sentence about what this operation is FOR
+                                    * (openapi-prose).
+                                    *
+                                    * The only part of an entry that cannot be derived
+                                    * from something already written: a path comes from
+                                    * the route, a parameter's kind from its `Param`, an
+                                    * answer from the handler's type. This is the
+                                    * author's, or it is absent — and absent is a fine
+                                    * answer, which is why it is an `Option` and not an
+                                    * empty string pretending to be prose.
+                                    */
+                                   val summary: Option[String] = None,
+                                   /**
+                                    * has a verifier been installed for what this
+                                    * entry REQUIRES (`Router.enforcing`)?
+                                    *
+                                    * A secured entry that has none FAILS CLOSED —
+                                    * it answers 401 rather than serving. Declaring
+                                    * a requirement and forgetting to enforce it
+                                    * would otherwise open a hole the document
+                                    * swears is shut, which is worse than having no
+                                    * declaration at all.
+                                    */
+                                   private[http] val enforced: Boolean = false):
+
+    /** the same entry, with headers declared on one of its answers —
+     * or a new answer, when the status had none */
+    private[http] def answeringWith(status: Int, hs: Vector[Route.Hdr]): Entry =
+      val updated =
+        if answers.exists(_.status == status) then
+          answers.map(a => if a.status == status then a.copy(headers = a.headers ++ hs) else a)
+        else answers :+ Answer(status, None, "declared", headers = hs)
+      new Entry(method, described, matches, run, body, updated, summary, enforced)
+
+    private[http] def saying(text: String): Entry =
+      new Entry(method, described, matches, run, body, answers, Some(text), enforced)
+
+    /** the same entry with its answer guarded — everything else kept,
+     * which is why this is a method and not five call sites */
+    private[http] def guarded(g: Request => Option[Response ! Async]): Entry =
+      new Entry(method, described, matches, g, body, answers, summary, enforced = true)
 
     /** the path template that dispatches — the query is not part of it */
     def path: String = described.path
@@ -1003,6 +1830,34 @@ object Router:
     def params: Vector[Route.Seg.Var] = described.params
     /** the query parameters this route declares */
     def queries: Vector[Route.Q] = described.queries
+    /** the request headers this route declares (specs/route-headers.md) */
+    def headers: Vector[Route.Hdr] = described.headers
+    /** what it requires of a caller (stage B); empty is "nothing" */
+    def security: Vector[Route.Security] = described.security
+
+  /**
+   * A DEPLOYMENT'S VERIFIER, as a function rather than a type.
+   *
+   * okay-security depends on okay-http, so `Verified` and `Policy`
+   * cannot be named here and okay-http must not grow an identity
+   * model of its own. This is the whole seam: a bearer token in, and
+   * either the scopes it grants or a refusal.
+   * `okay.security.Secure.verifier` adapts `String => Verified` to it.
+   */
+  type Verify = String => Either[String, Set[String]]
+
+  /** `Authorization: Bearer <token>`, case-insensitively, and nothing
+   * else — a scheme this table does not know is no credential */
+  private[http] def bearerToken(r: Request): Option[String] =
+    r.headers.collectFirst {
+      case (k, v) if k.equalsIgnoreCase("authorization")
+        && v.length > 7 && v.take(7).equalsIgnoreCase("bearer ") => v.drop(7)
+    }
+
+  private[http] def challenge(status: Int, realm: String, error: String): Response =
+    Response(status,
+      Seq(("www-authenticate", s"""Bearer realm="$realm", error="$error"""")),
+      Http.one(Array.emptyByteArray))
 
   /** the shape of the router's own error answer — declared, because
    * the router produces it whether or not the author thought about it */
@@ -1015,6 +1870,32 @@ object Router:
 
   private[http] val badRequestAnswer: Answer =
     Answer(400, Some(errorSchema), "the body did not parse; the answer names what was wrong")
+
+  /**
+   * What a SECURED route answers, without the author writing it —
+   * the same way `json[B]`'s 400 already appears.
+   *
+   * 401 and 403 are different facts and the ladder keeps them apart:
+   * 401 is "I do not know who you are", 403 is "I know, and no". The
+   * WHY of a 401 stays server-side — a uniform refusal tells an
+   * attacker nothing about how close a token was.
+   */
+  private[http] def securityAnswers(d: Route.Described): Vector[Answer] =
+    if d.security.isEmpty then Vector.empty
+    else Vector(
+      Answer(401, None, "no credential, or one that did not verify",
+        media = "", headers = Vector(challengeHeader)),
+      Answer(403, None, "verified, and not permitted",
+        media = "", headers = Vector(challengeHeader)))
+
+  /** declared because `challenge` writes it — the document and the
+   * wire read one value, not two that agree by care */
+  private[http] val challengeHeader: Route.Hdr =
+    Route.Hdr("www-authenticate", "string", required = true, repeated = false,
+      Route.Param.schemaOf("string"))
+
+  private[http] val textHtml: String = "text/html"
+  private[http] val eventStream: String = "text/event-stream"
 
   /** the declared answer, encoded by the schema the entry carries */
   private[http] def encoded[R](status: Int, r: R)(using okay.codec.Schema[R]): Response =

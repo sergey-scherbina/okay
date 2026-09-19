@@ -51,17 +51,26 @@ object Scope {
   // becomes ambient; nesting resolves `exit` to the NEAREST scope
   // (inner using-params shadow outer — E8-verified), and a BOUND
   // prompt still crosses boundaries: multi-prompt kept, opt-in.
+  //
+  // THE AMBIENT EVIDENCE IS `Delim.Prompted`, NOT `Prompt`
+  // (delim-doors-are-prompted, 2026-09-18). A `Prompt[R]` is one line
+  // to make — `Delim.prompt[R]` — so asking for one as a GIVEN proves
+  // nothing: a caller could summon a prompt that was never pushed and
+  // `exit` would compile and then fail at runtime with `NoPrompt`.
+  // `Prompted`'s constructor is private to `Delim`, so the only way to
+  // hold one is to be inside the scope that installed it, and the same
+  // mistake is now a compile error. The explicit forms above are
+  // unaffected: there the prompt is the one `push` handed you.
 
   /** install a scope whose prompt is ambient in the body */
-  def mark[A](body: okay.Prompt[A] ?=> A ! Row): A ! Row =
-    val p = Delim.prompt[A]
-    Delim.push(p)(body(using p))
+  def mark[A](body: Delim.Prompted[A] ?=> A ! Row): A ! Row =
+    Delim.scope[A, Dialog](body)
 
   /** exit the nearest enclosing scope — or a named one, by binding */
-  def exit[A, R](value: R)(using p: okay.Prompt[R]): A ! Row =
-    Delim.abort[R, A, Dialog](p)(value)
+  def exit[A, R](value: R)(using p: Delim.Prompted[R]): A ! Row =
+    Delim.abort[R, A, Dialog](p.prompt)(value)
 
   /** the one-scope capability form: mark + run */
-  def bounded[A](body: okay.Prompt[A] ?=> A ! Row): A ! Dialog =
+  def bounded[A](body: Delim.Prompted[A] ?=> A ! Row): A ! Dialog =
     run(mark(body))
 }

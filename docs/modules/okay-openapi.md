@@ -34,6 +34,19 @@ repository does not own, and nothing here reads the document as types
 → `getBoardById`), so they are stable: a document whose ids move when
 nothing moved is a document nobody diffs.
 
+**A protected operation says so.** A route that declares what it
+requires (`.secured("admin")`) renders a `security` requirement and a
+`securityScheme` in `components` — not an `Authorization` parameter,
+which would make a generated client put a literal string in a box
+instead of doing a bearer flow. The same vector is what
+`Router.enforcing` refuses on, and a test asserts the two sets are
+equal (specs/route-headers.md, stage B).
+
+**Parameters include headers.** A route that declares what it reads
+off the request (`:@ "last-event-id".opt[Long]`) renders it `in:
+header`, beside the template rather than inside it — a header is not
+part of a url (specs/route-headers.md).
+
 **Parameters carry their kind.** `Router.Entry` holds
 `Route.Described` — the path template AND its parameters — so
 `Route[Int]("id")` renders as `{"type": "integer"}` and a `Queried`
@@ -58,17 +71,63 @@ two cannot drift, and it adds the failures it produces itself —
 its own `Response` declares nothing, and the document says "undeclared"
 rather than inventing a 200.
 
+**And an answer that is not JSON declares too** (openapi-media).
+Nothing in that argument was ever about JSON: it needs only that the
+ROUTER, not the handler, decides what goes on the wire. So a page, a
+stream and a bundle declare the same way:
+
+```scala
+router.html(Method.Get, Route.root)(_ => pure(page))
+router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+router.media(Method.Get, Route / "report", "application/pdf", 200, "last night's run")(...)
+```
+
+The handler answers the CONTENT and the router writes the
+content-type, from the same value the entry declares, so an
+operation's `content` key in the document is the media type a client
+will actually receive. Each takes a `description`, which is the one
+sentence about an answer that does not have to wait for stage 3.
+
+The first consumer is the reason the shape exists: okay-demo answers
+HTML, two event streams and a JavaScript bundle, and its committed
+document said `undeclared` six times out of six while every one of
+those answers was perfectly well defined.
+
 ## What it cannot say, and why
 
-**Headers.** A route declares a path, its parameters, its query and
-its body; a handler that reads a header reads it off the `Request`
-with nothing declared anywhere. This renderer therefore says nothing
-about headers rather than guessing, and the fix — if one is wanted —
-is a declaration in okay-http, not a heuristic here.
+**A policy richer than scopes.** A route declares a scheme and its
+scopes, which is what OpenAPI models; a rule that reads the action or
+the resource lives in `okay.security.Secure.granted` and is
+deliberately not rendered, because a document that claimed to know it
+would be guessing.
 
-**Prose.** A route has no place to carry a sentence about itself, so
-summaries and tags are absent and operation ids are derived. That is
-stage 3 of specs/openapi.md.
+**Tags, and prose beyond one line.** An operation carries a `summary`
+now (`Router.summarised`, openapi-prose) and the page shows it; tags,
+a long CommonMark `description` and an operationId override are not
+declared anywhere, and each waits for a consumer that needs it.
+
+## Serving it
+
+```scala
+val all = app.routes orElse OpenApi.routes(api, app).routes
+```
+
+`/openapi.json` is the document; `/openapi` is a page for a person,
+RENDERED ON THE SERVER. No JavaScript and no CDN: this repository
+renders deployments for machines with no network, and a page that only
+works where the network does is not documentation there. The cost is
+that there is no "try it" button.
+
+The document describes the router you pass, so by default it describes
+the application and not the two routes that serve it. Pass the joined
+router if you want them in.
+
+okay-demo does this, and commits the result: `okay-demo/openapi.json`
+is the rendering, `sbt "okayDemo/runMain okay.demo.DemoOpenApi"`
+regenerates it, and a drift test refuses a difference — so an API
+change shows up in review as a changed file beside the code that
+changed it.
 
 ## Gotchas
 

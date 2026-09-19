@@ -1,0 +1,457 @@
+package okay.ui
+
+/**
+ * ui-terminal-keys: a terminal sends `ESC [ A` for an arrow and
+ * `ESC [ Z` for Shift-Tab, one BYTE per read, so naming what arrived
+ * has to happen before the tree can be asked about it. Both halves are
+ * values — a decoder and an interpretation — so both are tested with
+ * no tty anywhere, which is the whole point of `Frame`.
+ */
+class TestTerminalKeys extends munit.FunSuite {
+
+  import Ui.*
+  import Frame.{Key, KeyState}
+
+  /** every byte of a sequence, in order, as a host would read them */
+  private def decode(bytes: Int*): Vector[Key] =
+    bytes.foldLeft((KeyState.Plain: KeyState, Vector.empty[Key])) { case ((st, out), b) =>
+      val (next, keys) = Frame.feed(st, b)
+      (next, out ++ keys)
+    }._2
+
+  private val Esc = 27
+
+  test("the sequences a terminal really sends, one byte at a time") {
+    assertEquals(decode(Esc, '['.toInt, 'A'.toInt), Vector(Key.Up))
+    assertEquals(decode(Esc, '['.toInt, 'B'.toInt), Vector(Key.Down))
+    assertEquals(decode(Esc, '['.toInt, 'C'.toInt), Vector(Key.Right))
+    assertEquals(decode(Esc, '['.toInt, 'D'.toInt), Vector(Key.Left))
+    assertEquals(decode(Esc, '['.toInt, 'Z'.toInt), Vector(Key.BackTab))
+    assertEquals(decode(Esc, '['.toInt, 'H'.toInt), Vector(Key.Home))
+    assertEquals(decode(Esc, '['.toInt, 'F'.toInt), Vector(Key.End))
+    // the numbered forms other terminals send
+    assertEquals(decode(Esc, '['.toInt, '1'.toInt, '~'.toInt), Vector(Key.Home))
+    assertEquals(decode(Esc, '['.toInt, '4'.toInt, '~'.toInt), Vector(Key.End))
+    // an application-mode arrow (ESC O A) is the same key
+    assertEquals(decode(Esc, 'O'.toInt, 'A'.toInt), Vector(Key.Up))
+  }
+
+  test("a plain character is itself, and a sequence yields nothing until it ends") {
+    assertEquals(decode('a'.toInt), Vector(Key.Ch('a')))
+    assertEquals(Frame.feed(KeyState.Plain, Esc)._2, Vector.empty[Key])
+    assertEquals(Frame.feed(KeyState.Escaped, '['.toInt)._2, Vector.empty[Key])
+  }
+
+  test("a lone ESC is not swallowed: the key, then the byte that followed it") {
+    assertEquals(decode(Esc, 'a'.toInt), Vector(Key.Ch(''), Key.Ch('a')))
+    // and two ESCs in a row: the first is a key, the second still open
+    assertEquals(decode(Esc, Esc, 'a'.toInt),
+      Vector(Key.Ch(''), Key.Ch(''), Key.Ch('a')))
+  }
+
+  test("an unnamed sequence is Unknown, and the keys after it still arrive") {
+    assertEquals(decode(Esc, '['.toInt, 'Q'.toInt), Vector(Key.Unknown))
+    assertEquals(decode(Esc, '['.toInt, '9'.toInt, '~'.toInt), Vector(Key.Unknown))
+    // one strange sequence does not swallow what follows
+    assertEquals(decode(Esc, '['.toInt, 'Q'.toInt, 'x'.toInt), Vector(Key.Unknown, Key.Ch('x')))
+  }
+
+  private val tree = Column(Vector(
+    Button("one", "b1"), Input("v", "in", "In"),
+    Select(Vector("x", "y", "z"), 1, "sel"), Button("two", "b2")))
+
+  test("Up, Down and Shift-Tab move the focus, and they wrap") {
+    assertEquals(Frame.interpret(tree, 0, Key.Down)._1, 1)
+    assertEquals(Frame.interpret(tree, 3, Key.Down)._1, 0, "Down wraps at the end")
+    assertEquals(Frame.interpret(tree, 1, Key.Up)._1, 0)
+    assertEquals(Frame.interpret(tree, 0, Key.Up)._1, 3, "Up wraps at the start")
+    assertEquals(Frame.interpret(tree, 2, Key.BackTab)._1, 1)
+    // and they say nothing, exactly as Tab always has
+    assertEquals(Frame.interpret(tree, 0, Key.Down)._2, None)
+  }
+
+  test("Home and End go to the ends of the tab order") {
+    assertEquals(Frame.interpret(tree, 2, Key.Home)._1, 0)
+    assertEquals(Frame.interpret(tree, 1, Key.End)._1, 3)
+    // a tree with nothing focusable answers 0 rather than a negative index
+    assertEquals(Frame.interpret(Text("just words"), 0, Key.End)._1, 0)
+  }
+
+  test("Left and Right choose within a Select — and are LEFT ALONE in an Input") {
+    assertEquals(Frame.interpret(tree, 2, Key.Right)._2, Some(Event.Chosen("sel", 2)))
+    assertEquals(Frame.interpret(tree, 2, Key.Left)._2, Some(Event.Chosen("sel", 0)))
+    // at the ends, nothing
+    val atEnd = Column(Vector(Select(Vector("x"), 0, "one")))
+    assertEquals(Frame.interpret(atEnd, 0, Key.Right)._2, None)
+    assertEquals(Frame.interpret(atEnd, 0, Key.Left)._2, None)
+    // an Input keeps them for the caret this host does not have yet
+    assertEquals(Frame.interpret(tree, 1, Key.Right), (1, None))
+    assertEquals(Frame.interpret(tree, 1, Key.Left), (1, None))
+  }
+
+  /**
+   * ui-terminal-width: `Resized` existed as an event no host consumed,
+   * and a row divided its NATURAL width by weight — never the
+   * screen's. With a budget it divides the screen, and a value too
+   * long for its column WRAPS rather than running past the edge,
+   * which is the terminal's spelling of the rule the browser's
+   * stylesheet already states.
+   */
+  test("a width budget divides the SCREEN by weight, and the shares add up to it") {
+    val row = Box(Vector(Text("id"), Text("note")), Dir.Horizontal, weights = Vector(1, 3))
+    val lines = Frame.render(row, None, 40)
+    assertEquals(lines.length, 1)
+    assertEquals(Frame.width(lines.head), 40, lines.head)
+    // 1:3 of 40 is 10 and 30
+    assert(lines.head.startsWith("id" + " " * 8), s"[${lines.head}]")
+    // no budget is v1's layout, unchanged — this Box has gap 0, so
+    // its columns touch, exactly as they did before there was a budget
+    assertEquals(Frame.render(row, None), Vector("idnote"))
+    // and a Row, which separates by a space, is unchanged too
+    assertEquals(Frame.render(Row(Vector(Text("id"), Text("note"))), None), Vector("id note"))
+  }
+
+  test("a value too long for its column wraps — prose at a space, an identifier anywhere") {
+    val prose = Frame.render(Text("the quick brown fox jumps"), None, 10)
+    assertEquals(prose, Vector("the quick", "brown fox", "jumps"))
+    // an IBAN has no space to break at, so it breaks at the budget —
+    // and every character survives, which is the point
+    val iban = "DE89370400440532013000"
+    val wrapped = Frame.render(Text(iban), None, 10)
+    assertEquals(wrapped.mkString, iban)
+    assert(wrapped.forall(_.length <= 10), wrapped.toString)
+  }
+
+  test("the budget reaches through the containers a page is made of") {
+    val page = Column(Vector(
+      Box(Vector(Text("a b c d e f g h")), Dir.Vertical, pad = 2),
+      Scroll(Text("x y z w v u t s"), "sc")))
+    val lines = Frame.render(page, None, 10)
+    // pad takes 2 from each side, so the text inside wraps at 6
+    assert(lines.exists(l => l.startsWith("  ") && Frame.width(l) <= 10), lines.toString)
+    assert(lines.forall(l => Frame.width(l) <= 10), lines.toString)
+  }
+
+  test("the budget reaches through a lowering, which is where a table's columns are") {
+    // the compiler found this one: the semantic catch-all and `Form`
+    // both recursed WITHOUT the budget, so a table — the node the
+    // budget exists for — laid itself out naturally and ran past the
+    // screen
+    val t = Table(Vector("id", "note"),
+      Vector(Vector(Text("c-1"), Text("a sentence that is long"))), "t", Vector(1, 4))
+    val lines = Frame.render(t, None, 24)
+    assert(lines.forall(l => Frame.width(l) <= 24), lines.mkString("|"))
+    assert(lines.exists(_.contains("sentence")), lines.mkString("|"))
+    val form = Ui.Form(Vector(Text("a b c d e f g h i j k")), "Save", "f")
+    assert(Frame.render(form, None, 12).forall(l => Frame.width(l) <= 12))
+  }
+
+  /**
+   * ui-terminal-scroll: a frame taller than the screen. The view is
+   * the HOST's — the tree says nothing about it — so the pure half is
+   * three functions a host composes: which line the focus is on, the
+   * frame clipped to a screen, and the top that keeps a line visible.
+   */
+  test("PgUp and PgDn are decoded, and they move no focus and say nothing") {
+    assertEquals(decode(Esc, '['.toInt, '5'.toInt, '~'.toInt), Vector(Key.PageUp))
+    assertEquals(decode(Esc, '['.toInt, '6'.toInt, '~'.toInt), Vector(Key.PageDown))
+    assertEquals(Frame.interpret(tree, 1, Key.PageUp), (1, None))
+    assertEquals(Frame.interpret(tree, 1, Key.PageDown), (1, None))
+  }
+
+  test("focusLine finds the focused widget by the ONE thing focus changes") {
+    val order = Ui.focusable(tree)
+    assertEquals(Frame.focusLine(tree, order.lift(0)), Some(0))
+    // the Input is the second line of this column, the Select the third
+    assertEquals(Frame.focusLine(tree, order.lift(1)), Some(1))
+    assertEquals(Frame.focusLine(tree, order.lift(2)), Some(2))
+    assertEquals(Frame.focusLine(tree, None), None)
+  }
+
+  test("clip shows a screen of the frame, and pads a short one") {
+    val lines = (0 until 10).toVector.map(i => s"line $i")
+    assertEquals(Frame.clip(lines, 0, 3), Vector("line 0", "line 1", "line 2"))
+    assertEquals(Frame.clip(lines, 4, 3), Vector("line 4", "line 5", "line 6"))
+    // a top past the end is pulled back, never a gap of nothing
+    assertEquals(Frame.clip(lines, 99, 3), Vector("line 7", "line 8", "line 9"))
+    // a frame SHORTER than the screen is padded, so the last paint
+    // does not show through under it
+    assertEquals(Frame.clip(Vector("a"), 0, 3), Vector("a", "", ""))
+    // no screen is the frame itself
+    assertEquals(Frame.clip(lines, 5, 0), lines)
+  }
+
+  test("follow moves the view as little as it can, and only when it must") {
+    assertEquals(Frame.follow(0, 2, 5), 0, "already visible: do not move")
+    assertEquals(Frame.follow(0, 7, 5), 3, "off the bottom: just enough")
+    assertEquals(Frame.follow(6, 2, 5), 2, "off the top: to the line")
+    assertEquals(Frame.follow(3, 9, 0), 3, "no screen: nothing to follow")
+  }
+
+  /**
+   * ui-terminal-caret: v1 could only append and backspace, so a typo
+   * in the middle of a value meant deleting back to it. The caret is
+   * the HOST's state and the editing is a value: `Frame.edit`.
+   */
+  test("edit inserts and deletes AT the caret, and v1 is this with the caret at the end") {
+    assertEquals(Frame.edit("abc", 3, Key.Ch('d')), (4, Some("abcd")))
+    assertEquals(Frame.edit("abc", 1, Key.Ch('X')), (2, Some("aXbc")))
+    val del = Key.Ch(127.toChar)
+    assertEquals(Frame.edit("abc", 3, del), (2, Some("ab")))
+    assertEquals(Frame.edit("abc", 1, del), (0, Some("bc")))
+    // at the start there is nothing to delete, and it is not an error
+    assertEquals(Frame.edit("abc", 0, del), (0, None))
+  }
+
+  test("the caret moves without editing, and clamps at both ends") {
+    assertEquals(Frame.edit("abc", 1, Key.Left), (0, None))
+    assertEquals(Frame.edit("abc", 0, Key.Left), (0, None))
+    assertEquals(Frame.edit("abc", 2, Key.Right), (3, None))
+    assertEquals(Frame.edit("abc", 3, Key.Right), (3, None))
+    assertEquals(Frame.edit("abc", 1, Key.Home), (0, None))
+    assertEquals(Frame.edit("abc", 1, Key.End), (3, None))
+  }
+
+  test("while an Input has the focus the arrows are the CARET's; elsewhere they are the tree's") {
+    // tree: Button, Input("v"), Select, Button — index 1 is the Input
+    assertEquals(Frame.interpretAt(tree, 1, 1, Key.Left), (1, 0, None), "the caret moved, not the focus")
+    assertEquals(Frame.interpretAt(tree, 1, 0, Key.End), (1, 1, None))
+    // on the Select, Right still chooses
+    assertEquals(Frame.interpretAt(tree, 2, -1, Key.Right)._3, Some(Event.Chosen("sel", 2)))
+    // Tab still moves the focus from inside an Input, and the caret
+    // lands at the end of whatever it moved to
+    val (f, c, _) = Frame.interpretAt(tree, 1, 0, Key.Ch('\t'))
+    assertEquals(f, 2)
+    assertEquals(c, 0, "a Select has no caret")
+  }
+
+  test("a caret of -1 is a host without one: interpretAt is interpret") {
+    for key <- Vector(Key.Down, Key.Up, Key.Home, Key.End, Key.Ch('x'), Key.Ch('\t')) do
+      val (f, _, ev) = Frame.interpretAt(tree, 1, -1, key)
+      assertEquals((f, ev), Frame.interpret(tree, 1, key), s"$key")
+  }
+
+  test("the caret is drawn as reverse video, and costs no columns") {
+    val input = Column(Vector(Input("abc", "k", "")))
+    val focused = Ui.focusable(input).lift(0)
+    val withCaret = Frame.render(input, focused, 0, 1).head
+    val plain = Frame.render(input, focused, 0, -1).head
+    // the value is intact and the caret is on the 'b'
+    assert(withCaret.contains("a\u001b[7mb\u001b[27mc"), withCaret.replace("\u001b", "ESC"))
+    // v1's mark is what a host with no caret still gets
+    assertEquals(plain, "[abc*]")
+    // and the caret is FREE: a marked value is as wide as a bare one
+    assertEquals(Frame.width(withCaret), Frame.width("[abc]"))
+  }
+
+  test("a tree that arrives mid-edit keeps the caret where it was") {
+    // typing rebuilds the tree on every keystroke: a caret that jumped
+    // to the end each time would make editing the middle impossible
+    val t1 = Column(Vector(Input("abc", "k", "")))
+    assertEquals(Frame.clampCaret(t1, 0, 1), 1)
+    // clamped to the value it is now in
+    assertEquals(Frame.clampCaret(Column(Vector(Input("a", "k", ""))), 0, 3), 1)
+    // a widget that has just taken the focus starts at the end
+    assertEquals(Frame.clampCaret(t1, 0, -1), 3)
+  }
+
+  /**
+   * ui-terminal-mouse. The decoding is ordinary; the interesting half
+   * is HIT-TESTING, which the renderer answers by the trick that
+   * already found the focused line: marking is the one thing focus
+   * changes, so the cells that differ between the marked frame and
+   * the unmarked one are that widget's cells.
+   */
+  test("an SGR mouse report is decoded, and only a left press is a click") {
+    def sgr(s: String): Vector[Key] = decode((Esc +: ("[<" + s).map(_.toInt)).toSeq*)
+    assertEquals(sgr("0;5;3M"), Vector(Key.Click(2, 4)), "1-based on the wire, 0-based here")
+    // a release is not a second click
+    assertEquals(sgr("0;5;3m"), Vector.empty[Key])
+    // a wheel or any other button is dropped rather than guessed at
+    assertEquals(sgr("64;5;3M"), Vector(Key.Unknown))
+    assertEquals(sgr("0;x;3M"), Vector(Key.Unknown))
+  }
+
+  test("hit-testing finds the widget under a cell, and nothing where there is none") {
+    val page = Column(Vector(Text("a title"), Button("go", "go"), Input("abc", "in", "")))
+    // line 1 is the button, line 2 the input
+    assertEquals(Frame.hit(page, 1, 2), Some(0), Frame.render(page).mkString("|"))
+    assertEquals(Frame.hit(page, 2, 2), Some(1))
+    // the title carries no widget, and neither does a cell past the end
+    assertEquals(Frame.hit(page, 0, 2), None)
+    assertEquals(Frame.hit(page, 9, 9), None)
+  }
+
+  test("a click focuses what is under it and means what pressing it means") {
+    val page = Column(Vector(Text("a title"), Button("go", "go"), Check(false, "ok", "Ok")))
+    val (focus, ev) = Frame.interpret(page, 0, Key.Click(1, 2))
+    assertEquals(focus, 0)
+    assertEquals(ev, Some(Event.Pressed("go")))
+    // a check toggles, which is what Enter does there — one table of
+    // meanings, not two
+    val (f2, ev2) = Frame.interpret(page, 0, Key.Click(2, 2))
+    assertEquals(f2, 1)
+    assertEquals(ev2, Some(Event.Toggled("ok", true)))
+    // a click on nothing changes nothing
+    assertEquals(Frame.interpret(page, 1, Key.Click(0, 0)), (1, None))
+  }
+
+  /**
+   * ui-column-minimum: weights alone gave a column less than its own
+   * header word, and the word broke — `weigh/t`. A word is the
+   * smallest thing wrapping must not split, so a column that can hold
+   * its longest one does not break it.
+   */
+  test("a column is never narrower than its longest word, where the budget allows") {
+    val t = Table(Vector("case", "weight", "note"),
+      Vector(Vector(Text("c-1"), Text("30"),
+        Text("a sentence long enough that it has to come down onto another line"))),
+      "t", Vector(1, 1, 8))
+    val lines = Frame.render(t, None, 40)
+    // the header words arrive whole — none of them is split across two
+    // lines, which is what `weigh` + `t` looked like
+    assert(lines.head.contains("weight"), lines.mkString("|"))
+    assert(lines.head.contains("case") && lines.head.contains("note"), lines.mkString("|"))
+    // and the budget is still respected
+    assert(lines.forall(l => Frame.width(l) <= 40), lines.mkString("|"))
+    // the long cell still wraps: a minimum is a floor, not a width, and
+    // the sentence comes down onto more lines rather than running off
+    assert(lines.length > 2, lines.mkString("|"))
+    assert(lines.mkString(" ").contains("another"), lines.mkString("|"))
+  }
+
+  test("a screen too narrow for the words is where breaking is still the answer") {
+    val t = Table(Vector("transaction", "evidence"),
+      Vector(Vector(Text("0xabc"), Text("x"))), "t", Vector(1, 1))
+    // 8 columns cannot hold either word; the shares stand and the
+    // words break, rather than the layout throwing or overflowing
+    val lines = Frame.render(t, None, 8)
+    assert(lines.forall(l => Frame.width(l) <= 8), lines.mkString("|"))
+    assert(lines.mkString.contains("transaction".take(3)), lines.mkString("|"))
+  }
+
+  /**
+   * ui-terminal-layout-map: `render` answers WHERE it drew, so
+   * hit-testing is a lookup. These two cases are the limits the search
+   * road carried and could not fix.
+   */
+  test("a widget whose text WRAPS is found on every line of it, not just the first"):
+    val wide = Column(Vector(Input("a value long enough to come down onto two lines", "in", "")))
+    val places = Frame.laid(wide, None, 20)._2
+    assertEquals(places.length, 1)
+    assert(places.head.h > 1, places.toString)
+    // the last line of it is still the input
+    assertEquals(Frame.hit(wide, places.head.h - 1, 2, 20), Some(0))
+
+  test("two widgets that render IDENTICALLY are told apart by where they are"):
+    val twins = Column(Vector(Button("go", "a"), Button("go", "b")))
+    assertEquals(Frame.render(twins), Vector("[ go ]", "[ go ]"))
+    assertEquals(Frame.hit(twins, 0, 2), Some(0))
+    assertEquals(Frame.hit(twins, 1, 2), Some(1))
+    // and the keys are on the placements, so a caller need not count
+    assertEquals(Frame.laid(twins)._2.map(_.key), Vector("a", "b"))
+
+  test("a leaf fills its CELL: a click on the padding lands on the widget drawn there"):
+    val row = Box(Vector(Button("go", "go"), Text("a much longer label here")),
+      Dir.Horizontal, weights = Vector(1, 3))
+    val places = Frame.laid(row, None, 40)._2
+    assertEquals(places.length, 1, places.toString)
+    val b = places.head
+    assert(b.w > 6, s"the button's cell is only ${b.w} wide: $b")
+    // the button draws `[ go ]` and its cell is wider — a click past
+    // the text is still a click on the button
+    assertEquals(Frame.hit(row, 0, b.w - 1, 40), Some(0))
+
+  test("the placements come out in the order Ui.focusable walks"):
+    val page = Column(Vector(
+      Text("title"),
+      Row(Vector(Button("a", "a"), Button("b", "b"))),
+      Ui.Form(Vector(Input("", "f", "F")), "save", "form")))
+    val keys = Frame.laid(page)._2.map(_.key)
+    val order = Ui.focusable(page).map(u => Ui.keyOf(u).getOrElse(""))
+    assertEquals(keys, order)
+
+  test("the caret costs no columns when the line WRAPS either"):
+    // the caret is nine characters of escape that occupy no column, so
+    // measuring the raw string wrapped a field that fitted
+    val t = Column(Vector(Input("abcdefghij", "in", "")))
+    val f = Ui.focusable(t).lift(0)
+    val plain = Frame.render(t, None, 14)
+    val marked = Frame.render(t, f, 14, 3)
+    assertEquals(plain.length, 1)
+    assertEquals(marked.length, 1, marked.map(Frame.width).toString)
+    assertEquals(marked.map(Frame.width), plain.map(Frame.width))
+
+  /**
+   * ui-scroll-viewport: a `Ui.Scroll` clips its OWN child now, so a
+   * page can have a scrolling region and not only a scrolling screen.
+   * The rule for who gets the leftover vertical space is the one every
+   * browser and terminal application uses: everything that is not a
+   * Scroll takes its natural height, the Scrolls share what is left.
+   */
+  private def tall(n: Int): Ui = Column((0 until n).toVector.map(i => Text(s"line $i")))
+
+  test("a Scroll takes the leftover height; everything else takes its own"):
+    val page = Column(Vector(Text("title"), Scroll(tall(20), "body"), Button("ok", "ok")))
+    val lines = Frame.render(page, None, Frame.View(width = 20, height = 10))
+    assertEquals(lines.length, 10, lines.mkString("|"))
+    // the title and the button are there, and the body took the 8 rows
+    // between them
+    assertEquals(lines.head, "title")
+    assert(lines.last.contains("ok"), lines.mkString("|"))
+    assertEquals(lines.slice(1, 9), (0 until 8).toVector.map(i => s"line $i"))
+
+  test("the offset is per KEY, and it moves the window over the same layout"):
+    val page = Column(Vector(Text("title"), Scroll(tall(20), "body")))
+    val view = Frame.View(width = 20, height = 6, scroll = Map("body" -> 4))
+    val lines = Frame.render(page, None, view)
+    assertEquals(lines.head, "title")
+    assertEquals(lines.tail, (4 until 9).toVector.map(i => s"line $i"))
+    // past the end it stops at the end rather than showing nothing
+    val far = Frame.render(page, None, view.copy(scroll = Map("body" -> 99)))
+    assertEquals(far.tail, (15 until 20).toVector.map(i => s"line $i"))
+
+  test("two Scrolls share what is left, and each has its own offset"):
+    val page = Column(Vector(Scroll(tall(20), "a"), Scroll(tall(20), "b")))
+    val lines = Frame.render(page, None,
+      Frame.View(width = 20, height = 8, scroll = Map("a" -> 0, "b" -> 10)))
+    assertEquals(lines.length, 8)
+    assertEquals(lines.take(4), (0 until 4).toVector.map(i => s"line $i"))
+    assertEquals(lines.drop(4), (10 until 14).toVector.map(i => s"line $i"))
+
+  test("a click can only land on what a reader can SEE"):
+    val page = Column(Vector(Scroll(Column((0 until 10).toVector.map(i =>
+      Button(s"b$i", s"k$i"))), "list")))
+    val view = Frame.View(width = 12, height = 3, scroll = Map("list" -> 4))
+    val places = Frame.laid(page, None, view)._2
+    // three buttons are on screen, and they are the ones scrolled to
+    assertEquals(places.map(_.key), Vector("k4", "k5", "k6"))
+    assertEquals(places.head.row, 0, places.toString)
+    // and hit-testing answers the index among the SHOWN ones
+    assertEquals(Frame.laid(page, None, view)._2.indexWhere(_.holds(1, 2)), 1)
+
+  test("the host knows WHICH region the reader is in"):
+    val page = Column(Vector(
+      Button("top", "top"),
+      Scroll(Column(Vector(Button("a", "a"), Button("b", "b"))), "list"),
+      Button("foot", "foot")))
+    // index 0 is the top button, 1 and 2 are inside the list, 3 is the foot
+    assertEquals(Frame.scrollAt(page, 0), None)
+    assertEquals(Frame.scrollAt(page, 1), Some("list"))
+    assertEquals(Frame.scrollAt(page, 2), Some("list"))
+    assertEquals(Frame.scrollAt(page, 3), None)
+    // a page with no Scroll at all has no region to move
+    assertEquals(Frame.scrollAt(Column(Vector(Button("x", "x"))), 0), None)
+
+  test("no height is v1's layout: a Scroll draws its child whole"):
+    val page = Column(Vector(Scroll(tall(20), "body")))
+    assertEquals(Frame.render(page).length, 20)
+    assertEquals(Frame.render(page, None, 20).length, 20)
+
+  test("every key the v1 char road knew still means what it meant") {
+    assertEquals(Frame.interpret(tree, 0, '\t'), Frame.interpret(tree, 0, Key.Ch('\t')))
+    assertEquals(Frame.interpret(tree, 0, '\n')._2, Some(Event.Pressed("b1")))
+    assertEquals(Frame.interpret(tree, 1, 'x')._2, Some(Event.Edited("in", "vx")))
+    assertEquals(Frame.interpret(tree, 2, '>')._2, Some(Event.Chosen("sel", 2)))
+  }
+}

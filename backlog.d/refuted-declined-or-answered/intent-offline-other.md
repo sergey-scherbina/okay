@@ -1,0 +1,3 @@
+- intent-offline-other — MEASURED AND DECLINED 2026-09-07
+  (TestOfflineGate, offline, no network). The offline analogue of the
+  model path's binary gate: …

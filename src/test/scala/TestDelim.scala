@@ -205,4 +205,110 @@ class TestDelim extends munit.FunSuite {
         shift[Int, Int, okay.Pure](stray)(k => k(1))))
     }
   }
+
+  // ---- delimited control inside a `direct` block (direct-marked-args)
+
+  test("shift and reset inside a direct block, the handler too") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+
+    // the classic, with the continuation invoked twice inside the handler
+    def twice: Int ! okay.Pure = Delim.reset[Int, okay.Pure]: p =>
+      direct:
+        1 + !Delim.shift[Int, Int, okay.Pure](p)(k => direct { !k(!k(5)) })
+    assertEquals(!.run(twice), 7)
+
+    // reset itself written inside a block, and effects around the
+    // continuation on both of its invocations
+    def both(n: Int): Int ! W = direct:
+      val x = !Delim.reset[Int, W]: p =>
+        direct:
+          !Delim.shift[Int, Int, W](p): k =>
+            direct:
+              "before".tell
+              val a = !k(n)
+              "between".tell
+              val b = !k(n + 1)
+              "after".tell
+              a + b
+      s"used $x".tell
+      x
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](both(10))),
+      (Seq("before", "between", "after", "used 21"), 21))
+  }
+
+  test("a shift handler needs no inner block when its body ends in a program") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+    def guard(n: Int): Int ! W = Delim.reset[Int, W]: p =>
+      direct:
+        val x = !Delim.shift[Int, Int, W](p): k =>
+          "deciding".tell                       // a mark directly under the lambda
+          if n % 2 == 0 then k(n) else okay.pure(-1)
+        s"got $x".tell
+        x
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](guard(4))),
+      (Seq("deciding", "got 4"), 4))
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](guard(7))),
+      (Seq("deciding"), -1))
+  }
+
+  test("a mark inside a marked call's ARGUMENT compiles — the deferral steps aside") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    def h(n: Int): Int ! okay.Pure = okay.pure(n + 1)
+    val prog: Int ! okay.Pure = direct { !h(!h(5)) }
+    assertEquals(!.run(prog), 7)
+  }
+
+  // ---- the typed door: the evidence, not the prompt (delim-prompted)
+
+  test("Prompted: a function that captures is written apart, and runs only inside `delimited`") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+
+    // written on its own, with no prompt in sight
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shift[Int, Int, W](k => k(5))
+
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),
+      (Seq("hello"), 6))
+  }
+
+  test("Prompted: the evidence cannot be forged, so a capture cannot miss its delimiter") {
+    val e = compileErrors("new okay.Delim.Prompted[Int](okay.Delim.prompt[Int])")
+    assert(e.nonEmpty, "the evidence was constructible outside the package")
+    val e2 = compileErrors("okay.Delim.shift[Int, Int, okay.Pure](k => k(1))")
+    assert(e2.nonEmpty, "a capture compiled with no delimiter in scope")
+  }
+
+  test("shift: one type argument inside a direct block") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    type W = Writer % String
+    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+      "hello".tell
+      1 + !Delim.shift[Int](k => k(5))     // A alone: R and the row are known
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),
+      (Seq("hello"), 6))
+  }
+
+  test("Prompted: nested delimiters, the inner one in force") {
+    import okay.Direct.*
+    import scala.language.implicitConversions
+    // `scope`, not a second `delimited`: the nested form installs a
+    // delimiter on the machine already running, which is what lets a
+    // capture cross it (delim-nesting; TestDelimNesting has both
+    // directions, TestDelimLimits pins what the second machine does)
+    val prog: Int ! okay.Pure = Delim.delimited[Int, okay.Pure]:
+      direct:
+        10 + !Delim.scope[Int, okay.Pure]:
+          direct:
+            1 + !Delim.shift[Int, Int, okay.Pure](k => k(5))
+    assertEquals(!.run(prog), 16)
+  }
 }

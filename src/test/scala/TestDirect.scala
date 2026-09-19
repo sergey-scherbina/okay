@@ -212,6 +212,55 @@ class TestDirect extends munit.FunSuite {
     assertEquals(a, 42)
   }
 
+  test("w.tell is the mark on Writer(w): a statement, a literal, an ident, an expression") {
+    type W = Writer % String
+    def prog(s: String): Int ! W = direct {
+      "start".tell
+      s.tell
+      (s + "!").tell
+      3
+    }
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog("abc")))
+    assertEquals(ws, Seq("start", "abc", "abc!"))
+    assertEquals(a, 3)
+  }
+
+  test("marks inside a string interpolation: the varargs elements are slots") {
+    type W = Writer % String
+    val prog: String ! W = direct {
+      val n = 3
+      s"n=$n got ${pure[W, Int](7).reflect} and ${pure[W, String]("x").reflect}!"
+    }
+    assertEquals(!.run(Writer.run[String, String, okay.Pure](prog)), (Seq(), "n=3 got 7 and x!"))
+  }
+
+  test("w.tell outside a block is the program Writer.tell(w)") {
+    val p: Int ! Writer % String = "outside".tell.flatMap(_ => pure(4))
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](p)), (Seq("outside"), 4))
+  }
+
+  test("a mark on a program of a NARROWER row is coerced into the block's row") {
+    type R = Writer % String + Reader % Int + State % Long
+    val prog: Long ! R = direct {
+      val env = !Reader.ask[Int]           // a program at Reader % Int
+      "seen".tell                          // an operation of the row
+      !State.modify[Long](_ + env)         // a program at State % Long
+    }
+    val (log, out) = !.run(Reader.run(7)(Writer.run[String, (Long, Long), Reader % Int](
+      State.handle[Long](1L)(prog))))
+    assertEquals(log, Seq("seen"))
+    assertEquals(out, (8L, 8L))
+  }
+
+  test("a mark on a program of an UNRELATED row is still refused, with both readings named") {
+    val e = compileErrors("""
+      val p: Int ! (Writer % String) = okay.Direct.direct[[A] =>> A ! (Writer % String)] {
+        !Reader.ask[Int]
+      }
+    """)
+    assert(e.contains("neither this block's"), e)
+  }
+
   test("a mark under a lambda is a compile error") {
     val errors = compileErrors(
       "okay.Direct.direct[List] { List(1).filter(i => List(i > 0).reflect) }(using summon[Monad[List]]) ")

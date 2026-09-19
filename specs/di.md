@@ -167,6 +167,19 @@ Stage 3 — the join with deployment (specs/deployment.md), SHIPPED:
       say (`Need.Port`, `Need.Dns`, `Need.Tls`) stays beside them in
       the `Service`: the type says what the code needs, not where it
       runs
+- [x] a component's needs are READ OFF ITS PROGRAM, not declared
+      beside it (di-needs-from-static): `Needs.provisioned` over a
+      `Static[Provision, R]` spine declares `spine.leaves.map(_.need)`
+      as `Declared` at construction — before anything opens, through a
+      `Conf ?=> Module` chain — and opens the thing with the place's
+      ANSWER, so the path a store opens is the path the deployment
+      mounts (TestNeeds: the default place answers `/app/data`; a
+      test place answers a temp dir and the store's file is under it)
+- [x] two leaves in one spine — a port and a volume — are both read
+      off it, in program order; a database with no `*_URL` setting in
+      the place is an error naming the setting
+- [x] okay-demo's store is written this way and declares nothing by
+      hand; `TestDemoDeploy` reads the volume off it unchanged
 
 ## Interop: rendering, not emulation
 
@@ -241,6 +254,55 @@ deployment (its own settings), the key is `chatDb`, and the volume
 the store declares reaches every rendered target — a PVC in the
 chart, a volume in compose, `ReadWritePaths` and an `install -d` in
 the unit — from one line where the file is opened.
+
+## Needs read off the program (di-needs-from-static, 2026-09-18)
+
+ROADMAP P13 item 4, the operator's order: `Static.leaves` answers what
+a program MAY perform before it runs, and that is what module-facts
+asked an author to DECLARE. The declaration was a claim beside the
+code — `.needs(Need.Volume(dir))` next to `FileStore.open(file)` —
+and a claim can drift from the code it stands beside: a volume
+declared at one path and a log opened at another is a container
+writing to an unmounted directory, which is the incident module-facts
+itself found.
+
+**The model.** `Provision[+A]` (okay-deploy) is the deployment's
+vocabulary as an EFFECT SIGNATURE: `Volume(dir)` answers a `Path`,
+`Database(…)` answers a URL, `Port(n)` answers the number, and each
+case carries its `Need`. A module written with `Needs.provisioned`
+takes a `Static` spine over it — what the module opens, it opens with
+the place's ANSWER, because the spine gives it no other way to get a
+path — and `Static.leaves` reads the needs off the spine at
+construction, into the same `Declared` fact a hand-written `.needs`
+writes. `declared`, `DemoDeploy` and every renderer are unchanged.
+
+```scala
+Needs.provisioned[Store, FileStore](
+  Static.op(Provision.Volume(dir)).map(d => FileStore.open(d.resolve("board.log"))))(_.close())
+```
+
+The place is the handler: `Provision.local` answers a volume with the
+path it was asked for (the process runs where it is mounted), a port
+with its number, a database with the `*_URL` setting every target
+already writes — and NAMES the setting when it is absent. It runs at
+acquisition, inside the scope, where `moduleAs`'s by-name argument
+runs; a test brings its own place and reads the path the module
+opened under it.
+
+**Why `Static` and not a list of needs.** A list is a declaration
+again. The spine is the acquisition itself — `Ap` combines a port
+with a volume for a server that needs both, and a `Select` would
+name both arms of a choice the place decides — so the needs are
+derived from what runs, and a leaf that is not performed is one the
+program does not have. The two roads stay: `.needs` for a component
+that opens something no `Provision` case names; `Needs.of[Root]` for
+an input the place hands in by type.
+
+**What it found.** `okay.given` in scope makes a companion extension
+`map` on `Static` lose to the lexical `map` for `Id`, which typed the
+lambda's argument as the spine itself (lexical-extension-beats-
+companion, met a second time); `Static.map` is a member for that
+reason, and the comment on it says so.
 
 ## What using it taught (di-dogfood, 2026-09-09)
 

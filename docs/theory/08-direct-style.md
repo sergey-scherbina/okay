@@ -133,12 +133,29 @@ conversion problem, and the theory that keeps it sound is
 what may happen *here* is decided by what capabilities exist here.
 
 ```scala
-// Direct.scala:46–61
+// Direct.scala:73–88
 final class DirectCtx[F[_]] private[Direct] ()
 trait Effect[G[_]]
 given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A]
 given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A]
+// Free.scala:61 — the block's own programs, found through the source type's companion
+given directColor[R[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R, A], A]
 ```
+
+One consequence of Scala's rules deserves a sentence, because it
+decides what a file has to import. Applying any `Conversion` is a
+*feature* the language wants consent for — `import
+scala.language.implicitConversions`, per file — and that consent is
+not removable by `into` (which lifts it in parameter positions only,
+while a block colours at ascriptions and receivers) and was, for one
+day, replaced by a build-wide flag that the repository took out again:
+`TestThrows` proves `throws`'s `into` by the *absence* of that import,
+and a global flag makes the absence prove nothing. So the language
+import stays per colouring file; what a file no longer needs is
+`Direct.given`, because `directColor` lives in `Free`'s companion, the
+implicit scope of the conversion's source type. And for the reader
+who wants no implicit conversion at all, the marks are the answer:
+prefix `!` on a program is one glyph and involves no `Conversion`.
 
 The block is a context function `DirectCtx[F] ?=> A`, so the
 capability exists only inside it — outside, the conversions cannot
@@ -156,6 +173,45 @@ against an expected type, so un-ascribed `val`s keep the monadic
 value (a feature — that is how a program is *held*), and Unit
 ascription is value discard, which preempts conversion search
 entirely. The last fact is why the fourth layer exists.
+
+## Recursion in a block: the tree is the trampoline
+
+A direct block that calls its own def — `fib(n - 1) + fib(n - 2)` at
+the program type `Long ! Pure` — has a problem the marks alone do not
+solve: the self-call is a *program*, and evaluating it at construction
+is the native recursion the block was written to avoid. Kozak's
+`deepRecursive` macro for Scala 3 rewrites such a body into `TailRec`'s
+`tailcall`/`flatMap`/`done`; here the rewrite is one rule in front of
+the lowering, and the target is chapter 11's tree. Inside a block, a
+call to the enclosing def at the block's program type is deferred
+wherever it is marked or coloured — `fib(n - 1)` becomes `Free.delay(()
+=> fib(n - 1))` under the same mark (`Direct.scala:864`) — and the
+recursion then trampolines through `resume`'s `Delay` case instead of
+the JVM stack. A second rule covers the cycle the first cannot see: a
+call to ANOTHER def at the block's program type is deferred when it
+stands in the block's TAIL position, which is what makes mutual
+recursion need no word (direct-tail-defer). The asymmetry is not
+aesthetic — a macro expanding one def cannot know that the def it
+calls calls back, since the cycle spans compilation units, so the
+syntactic position is the only evidence available at expansion time.
+Covering the remaining case means deferring every program-typed call
+wherever it stands, and that is what the default now does — at a
+measured 64 bytes per marked call, which a block that is hot and
+provably not recursive buys back with one import
+(`Direct.eagerCalls.given`, direct-defer-default). The knob is a
+`using` parameter of the block rather than a summoned marker, because
+an import whose only reader is a macro is an unused import to the
+compiler and the warning would land in every user's build. `TailRec`'s `tailcall` is `Delay`, its `flatMap` is
+`Bind`, its `done` is `Pure`, its `.result` is `!.run`; what the macro
+of the article refuses — a self-call inside `match`, a real row
+interleaving effects with the recursion, mutual recursion — this
+lowering already handles, mutual recursion by one explicit
+`!.tailcall(other(n))` — needed only where a mutual call is NOT in
+tail position, since a mark is not a deferral. `TestDirectDeep` runs `1 + sum(n - 1)`
+a million deep on the suite's default stack. The zero-annotation form
+is possible only at the program type with colouring on, because a
+macro runs after the typer; with the prefix mark it is
+`!fib(n - 1) + !fib(n - 2)` and no conversion is involved.
 
 ## Statements run: the do-notation reading
 
@@ -177,6 +233,34 @@ refuses to compile. `val` binding, by contrast, holds the program
 un-run — binding is consent to have the value — which keeps
 program-as-value construction (chapter 4's whole point) available
 inside a direct block.
+
+## Call-by-need is an effect
+
+`Delay` is call-by-name — Plotkin's distinction \[[Plotkin 1975](#ref-plotkin-1975)\]:
+the thunk is re-run at every use, and two uses of one shared node are
+two runs. Call-by-need adds sharing: one cell remembers the first
+answer. In a pure language the two are observationally equivalent and
+the cell is the optimisation lazy evaluation is named after; for a
+computation with effects they differ in the log, which is why Haskell
+sequences `IO` with `>>=` and keeps laziness for values, and why
+`unsafeInterleaveIO` is a separate, marked word. Okay draws the same
+line and puts the cell where a semantics goes: in the row. `Once` is
+an effect with two operations (`Force` reads a handle's cell or marks
+it running, `Store` fills it and answers the first value stored), the
+handle is an identity with no program inside — so the effect's type
+does not mention the row it lives in — and `Once.run` is a handler
+whose state is the cells, threaded through its loop as `State.handle`
+threads `S` (direct-once, 2026-09-16). The consequence is that the
+tree stays data: no mutable field, so a program run twice replays the
+same trace, and multi-shot needs no flag because it is decided where
+every other stateful effect decides it, by handler order —
+`runChoice(Once.run(p))` backtracks the cells with the search,
+`Once.run(runChoice(p))` shares one store across the branches. In a
+block the word is `lazy val`: the macro compiles the right-hand side
+to a program under a fresh handle and turns every use into a mark on
+it, so the effects run in the position of the first demand, once;
+`val` runs now, a bare mark runs at every use. `TestDirectOnce` holds
+both handler orders.
 
 ## Multi-shot, and the road not taken
 
@@ -228,6 +312,9 @@ users today.
   continuations.* PLDI 1993.
 - <a id="ref-bjarnason-2012"></a>Rúnar Óli Bjarnason.
   *Stackless Scala with free monads.* Scala Days 2012.
+- <a id="ref-plotkin-1975"></a>Gordon Plotkin.
+  *Call-by-name, call-by-value and the λ-calculus.* Theoretical
+  Computer Science 1(2), 1975.
 - <a id="ref-kobori-2016"></a>Ikuo Kobori, Yukiyoshi Kameyama, Oleg
   Kiselyov. *Answer-type modification without tears: prompt-passing
   style translation for typed delimited-control operators.* WoC 2015

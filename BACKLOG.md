@@ -27,6 +27,26 @@ order they would matter.
       copy is the one used here — a liveness probe against the
       capability's own scopes, and the real decision per action.
 
+> **The backlog is [`backlog.d/`](backlog.d/), one file per item**
+> (boards-d, 2026-09-18) — a lane edits its own item instead of the
+> middle of everyone's file, so two lanes filing work in the same hour
+> no longer conflict.
+>
+> ```
+> scripts/board.sh backlog          # read it, assembled, by section
+> backlog.d/<section>/<slug>.md     # one item; the slug is the lane's name
+> ```
+>
+> Filing is a new file. Promoting is `git mv backlog.d/<section>/<x>.md
+> sprint.d/queue/<x>.md`. Landing is `git rm` plus
+> `changelog.d/<slug>.md`. `scripts/board.sh --check` guards the shape
+> and `TestBoardEntries` runs that check in the gate.
+>
+> Closed work is still in `BACKLOG-ARCHIVE.md`, untouched.
+>
+> This file stays because prose all over the repository says "filed in
+> BACKLOG.md", and a pointer is cheaper than editing fifteen specs to
+> say something they do not really care about.
 Open work only, grouped by the module that owns it. Everything closed —
 landed, refuted, declined or answered — moved VERBATIM to
 `BACKLOG-ARCHIVE.md` on 2026-09-10 (backlog-cleanup): 314 closed entries
@@ -64,21 +84,424 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       than a benchmark row.
 
 ## okay core
-- [ ] tag-distinct-keys — a row of `Tag.Of[K, F]` members is only as
-      good as the keys being different, and nothing checks it:
-      measured 2026-09-11, `Of["same", Reader % Int] + Of["same",
-      Reader % String]` misroutes into the ClassCastException the key
-      exists to prevent (pinned in `TestTag`). The check wants to be
-      a `Distinct[R]` given, derived by a macro that walks the row
-      type, collects the singleton keys of its `Tag.Of` members and
-      refuses duplicates with a message naming the two members and
-      pointing at docs/many-instances.md. WHERE to require it is the
-      design question: `Tag.one`/`Tag.tag` cannot see the whole row,
-      so the natural seam is `RowLift.at`/`plus`, which is where two
-      members first coexist in one type — and that is a very hot,
-      very general API. DISQUALIFYING: if requiring it there measures
-      as a compile-time cost on ordinary rows, or breaks inference at
-      `.at`, it dies there and the rule stays a documented one.
+- [ ] two-accumulating-validators — `okay-codec`'s `Validate.gather`
+      is `Validated.app` written by hand on `Either`, and its own
+      comment says so: "the applicative step: both sides' errors
+      survive". Two answers to one question now live in this
+      repository (found 2026-09-18 while checking whether okay-ui's
+      applicative traversals work with `Validated` — they do, freely,
+      and TestUiApplicative pins it). NOT a rewrite request:
+      `Validate` works, is tested, and sits in the schema hot path.
+      What is worth doing is a BRIDGE, so a form's errors can be read
+      either way, and a line in each file pointing at the other.
+      Trigger: the first consumer that wants a schema walk's errors
+      inside a `direct` block, or the second time someone asks which
+      of the two to use.
+- [ ] di-needs-from-static — `okay-di` asks a module's author to
+      DECLARE what it needs; `Static.leaves` answers what a program may
+      perform before it runs (specs/applicative-static.md), so the
+      needs can be derived from the program instead. P13 item 4. The
+      shape to settle first: a module's body is not a `Static` today,
+      so either the declaration stays and `leaves` CHECKS it (cheap,
+      catches drift) or the body is written as a spine (honest, and a
+      bigger change). Trigger: the next time a declared need and the
+      code disagree.
+- [ ] dataflow-ceiling — publish the honest number at which a cluster
+      becomes the right answer: throughput and state size past which
+      the embedded engine should not be used. Flink never publishes
+      one; we can measure ours, and the measurement IS the product
+      claim (ROADMAP P13 item 3). Needs: a sweep of key cardinality
+      and window count on the Wrocław job until the box is the
+      bottleneck, with the bottleneck NAMED (heap, GC, cores).
+- [ ] dataflow-flink-migration-path — `okay-flink` already proved an
+      `Aggregator` IS an `AggregateFunction` field for field, and that
+      the claim survives serialization into a job graph. Turn that
+      into a documented road: take a Flink job of this shape, run it
+      here, keep the arithmetic. P13 item 3; the engine work is done,
+      what is missing is the page and the worked example.
+- [ ] once-across-fibres — `Once.run`'s cells are threaded state, so a
+      fibre forked inside the program takes a snapshot and two fibres
+      demanding one handle run it twice, each in its own store. A
+      shared-cell variant (the store in an `Async` cell, a demand that
+      WAITS for a running program instead of throwing) is the
+      `Deferred`/`memoize` of the async libraries. Trigger: a consumer
+      that shares a `!.once` across fibres; none yet (direct-once,
+      2026-09-16).
+- [ ] dialogue-patch — DONE 2026-09-17 in core (dialogue-asks) and
+      through the log (wf-durable-journal, `Dialogue.workflow`). What
+      is left is only retirement tooling: something that says which
+      programs are still present in a topic, so a branch can be
+      deleted with evidence rather than hope.
+      Was: stage 2: `patch(id)` (Temporal's `getVersion`),
+      so a program that changed can carry its old runs to the end
+      instead of stopping them. Stage 0 made the change a loud stop;
+      this is how the stop goes away. Needs the `Patched` entry the
+      envelope already has room for.
+- [ ] dialogue-continue-as — stage 3: `continueAs(seed)` to bound
+      history (Temporal's continueAsNew) and a resume cache so a
+      process holding many dialogues replays each once. Chapters cut
+      the READING; nothing yet cuts the RUNNING.
+- [ ] workflow-operations — stage 4, one spec each when picked:
+      durable timers, retry policies on `perform`, signals distinct
+      from answers, cancellation, a visibility index, a worker pool
+      with leases, child workflows. Named so that nobody mistakes the
+      model for an engine.
+- [ ] gate-warm-warning-blindness — PARTLY ANSWERED 2026-09-17 by
+      gate-stall-watchdog: a GREEN whose warning check was blind now
+      SAYS SO in the log ("the WARNING CHECK WAS BLIND — this worktree
+      was already built"), so silence no longer reads as cleanliness.
+      What is still open is making it impossible rather than visible:
+      `gate.sh` reporting how many of its module compiles actually
+      compiled something, or the gate removing test-classes first.
+      The measured incident is in that lane's CHANGELOG entry.
+- [ ] delim-region-prompts — NARROWED 2026-09-17 by
+      delim-forward-not-throw: the NESTING case is solved (the nested
+      forms, the OneMachine guard, and `runNested` for a machine you
+      genuinely have), so this is now only about evidence that
+      ESCAPES its own `delimited`. Nothing has asked for it.
+      `Prompted[R]` proves a delimiter was
+      installed, not that the machine running the capture is the one
+      holding it, so an outer evidence used inside an inner
+      `delimited` is still a runtime `NoPrompt` (pinned in
+      TestDelimLimits). `scope`/`collecting`/`pausing` make the
+      RIGHT spelling available (delim-nesting), but the wrong one is
+      still only caught at run time. Closing it is the region trick
+      `runST` uses — a rank-2 scope parameter on the evidence — and it
+      would also close the "evidence escapes its delimited" case the
+      header already names. Trigger: someone actually hitting it
+      twice; the nested form is now the documented road.
+- [ ] collect-early-stop — `Delim.collect` has no way to stop: `exit`
+      inside the body does not resolve (collect hands out `Emitting`,
+      not `Prompted`), and aborting the collect's own prompt would
+      drop the cons frames of everything already emitted, so the
+      prefix cannot be answered with. The shape that wants it is
+      `take n` over a push producer; `Generate`/`Producer` already
+      covers it by making the producer lazy, and the practice doc now
+      points there. Revisit only if a consumer wants the eager form
+      with a stop (continuations-audit, 2026-09-17).
+- [ ] handlers-fused-walk — road 1 of specs/continuations-roadmap.md:
+      one walker over a whole row with a `Handlers[R]` vector, `O(ops)`
+      nodes where N nested handle/relay layers re-emit `O(N · ops)`.
+      LANE FIRST: a four-effect lane in HandlerBenchmark run as nested
+      handle, nested relay, and the fused walk. Ceiling known before
+      starting: handler-fusion measured nesting at 1.1–1.3x, so this is
+      allocation plus that, not a third; under 1.1x it is a refutation.
+- [ ] direct-staged — road 2: a `direct` block emitted as a `Func`
+      program over `Control` when the handlers are static at the call
+      site (`Fused.runCtrl[Func, …](s)(direct { … })`), no tree; parity to
+      the byte with the hand-written `rightCtrl[Func]` is the goal, the
+      tree version (13.7 µs / 122 641 B) the baseline. The macro's
+      pipeline gains a second emission target; the lowering is unchanged.
+- [ ] freer-base-stage2 — road 3: a `Prog[F, A, S, R]` facade over the
+      same tree, transitions sealed by smart constructors, `NoPrompt` a
+      compile error first (the 4af08745 probe), then one real module
+      protocol. Zero bytes, zero time on every core lane is the number
+      owed; the deliverable is the compile error.
+- [ ] continuations-as-data-spike — road 4, a SPIKE with a written
+      verdict: one effect, one program, defunctionalized `k` measured
+      against the closure version on the same lane. Not planned until
+      the verdict exists.
+- [x] deep-recursive-direct — LANDED 2026-09-15: inside `direct` at the
+      program type a self-call is deferred wherever it is marked or
+      auto-coloured, so `def fib(n: Int): Long ! Pure = direct: ... fib(n - 1)
+      + fib(n - 2)` needs no annotation (with `Direct.given` imported). A
+      separate `deepRecursive` was built first and removed at the operator's
+      ask. TestDirectDeep; specs/direct-macro.md "Deep recursion". The
+      `.?` finding filed beside it was withdrawn: `.?` is retired as a mark
+      on purpose (Direct.scala's own comment), `.reflect`/`.!?`/`!p` are the
+      spellings. The entry as written: the article's `deepRecursive` (Halotu Kozak,
+      "Deep recursion in Scala 3", a macro that rewrites a self-recursive
+      body into TailRec's tailcall/flatMap/done) as a `direct` rule. It
+      already works BY HAND on master, probed 2026-09-15 with scala-cli
+      against the built classes, native stack 512 KB: `def fib(n) = direct:
+      if n < 2 then n else !.tailcall(fib(n - 1)).reflect + !.tailcall(fib(n
+      - 2)).reflect` (75025 at 25), `sum(1_000_000)` non-tail in 65 ms,
+      `isEven(1_000_001)` through `isOdd` — mutual recursion, which the
+      article's macro refuses. Her TailRec IS our Free: tailcall = `Delay`,
+      flatMap = `Bind(Delay, k)`, done = `Pure`, `.result` = `!.run`. What is
+      missing is the zero-annotation form: a rule in Direct.scala that
+      colours a call to the ENCLOSING def as `!.tailcall(call).reflect` —
+      `asMark`/`opColor` colour by type today, this one colours by the
+      enclosing method's symbol. ~30 lines plus a test on fib/sum/isEven;
+      the lowering of if/match/blocks/`a + b` is Direct's already.
+- [x] delay-node — LANDED 2026-09-15 (tailcallChain 5.3x, handleCapture
+      1.35x, controls identical to the byte; specs/core-cleanup.md
+      "delay-node"). The entry as written, for the record: a `Delay(thunk)` case beside `Defer`, so that a
+      deferred call with NOTHING to do afterwards does not pay for a
+      continuation. Found by the Free/Cont/Effects review (2026-09-15,
+      specs/core-cleanup.md Decisions). The mechanism is the one
+      `hff-defer-cost` priced: `Defer(t, pure)` resumes to `Bind(t(),
+      pure)`, and when `t()` is itself a `Bind` the rotation pushes a
+      `.flatMap(pure)` tail down every bind of the deferred subprogram
+      — one closure and one `Bind` per bind, then a `Bind(Pure(a), g)`
+      chain of the same length at the end. `handle` stopped paying it
+      for handlers that ANSWER (handle-forward-fast); it still pays on
+      the capturing arm (Throws, Choice), and so do `!.tailcall`,
+      `Effects.tailcall`, `Eff.flatMap` (every bind of the Church
+      encoding is a `Cont.defer`) and the codecs' trampolines past
+      `NativeThreshold` (`Cont.defer(...)(Cont.Pure)`). With `Delay`:
+      `case Delay(t) => t().resume`, `case Bind(Delay(t), g) =>
+      Bind(t(), g).resume` — no composition, no tail.
+      WHY NOT JUST DONE: it is a fifth case in `Free.resume` and
+      `Cont.step`, the two loops whose bytecode shape has already cost
+      1.44x (shrinking `resume` under FreqInlineSize, 409c06e2) and 10%
+      (`relay` four bytes over it) — and the `mapnode` row (2026-08-29)
+      is a case added to this interpreter that lost 1.22x on fib100
+      "despite strictly less work per element". So: (1) a JMH lane
+      that HAS the shape — a `tailcall` chain of depth 10 000 and a
+      capturing handler over the 10k-op tree (`hff-defer-cost` read
+      210 vs 151 µs for it); (2) `Delay`, with `tailcall`, `handle`'s
+      capturing arm, `Eff.flatMap`/`defer` and `Cont.defer`-with-Pure
+      on it; (3) fib10/50/100/1000, relayPrebuilt, handlePrebuilt,
+      statePara as controls, `-f 3`, three rounds. Lands only if the
+      controls hold; a refutation with numbers is a fine outcome.
+      Typed route, no cast: a `Defer(t, null)` or an identity-compared
+      shared `pure` continuation were considered and refused.
+- [x] split-over-either — LANDED 2026-09-15 as mostly a refutation: the Either
+      was scalar-replaced on every walker but the Source/Pipe road (bytes
+      −2..−6% there, identical to the byte everywhere else, time neutral);
+      all fifteen converted for one idiom, Resource keeps `<|>` (its arms
+      `return`). specs/core-cleanup.md. The entry as written: sixteen walkers outside the three core files
+      still split their row with `<|>`, an `Either` per operation:
+      Pipe (10 sites), Writer (5), Source, Resource, Logic, Refs,
+      Generate, Condition, Channel, Delim. `split` replaced it in
+      State and Writer.tell (split-without-either) and in `translate`
+      (core-cleanup). Each of these is a `@tailrec` loop, so every
+      conversion is an inlining-budget question (`relay`'s 325-byte
+      cliff): one walker per lane, `-XX:+PrintInlining` before and
+      after, the lane's own benchmark or none. NOTE (defer-eff-removal,
+      2026-09-15): `Free.resume` is 323 bytes now and inlines into every
+      loop under 325 — a walker converted to `split` may also cross
+      that line; `relay` gained 6% from the paste, `handle` lost 15%
+      until its cold arms were extracted. Read that entry first.
+- [x] freer-base-stage0-verdict — DONE. The verdict the entry asked
+      for is "land", and stage 0 landed: nothing more than 2.4% slower
+      on any core lane, eight lanes faster, allocation at or below
+      master everywhere. What closed it after the entry was written:
+      `map` reaching the absorbing path, `relay`'s loop getting back
+      under the JIT inlining threshold (landed separately, 25102517),
+      and `Once` becoming an enum so the runner's call has one target
+      (the operator's proposal — worth 0.955-0.968 on the Fib lanes,
+      while making the same site merely bimorphic was worth nothing).
+      Four refuted theories and every number are in
+      specs/freer-base.md Results; rows `freer0*` and `once-*`.
+- [x] free-one-rotation — DONE. `Free.resume` is a member and the one
+      rotation; `Free.fold`, `runFree` and Async's loop are three-case
+      matches over it; `!.resume` is gone. Only `Cont.step` keeps a
+      copy, because it composes through `bind` for absorption. Seven
+      lanes faster (effCont24 0.862 at −1016 B/op, effFunc24 0.975 at
+      −1064), the `fusedSWr` floor held at 0.985 with B/op identical.
+      COST, recorded rather than netted away: relayPrebuilt 1.039,
+      relayForward 1.029 — those lanes end in `runWith` over a 9 900-op
+      residual, so `runFree` pays a `resume` call per operation, which
+      is where it was predicted. Rows `onerot-*`.
+- [x] handle-decompose — DONE (2026-09-15). `relay` and
+      `Effects.handle` were being compared by two numbers that each
+      included 24.6 µs of tree construction. `handlePrebuilt` is the
+      missing twin of `relayPrebuilt`: same pre-built 10 000-node tree,
+      nothing different but the handler. Like for like the gap is
+      **1.51x** (223.3 µs against 148.1), and it is ALLOCATION —
+      2 869 306 B/op against 1 753 945, identical to the digit across
+      two rounds in opposite lane order, which over 9 900 forwarded
+      operations is **+112.7 B per forwarded operation**. At ~12 GB/s
+      that megabyte is ~93 µs against a 75 µs time delta, so there is
+      nothing else to explain. Rows `hd-*`; the stale 1.45x is
+      corrected in docs/benchmarks.md §2 and in `relay`'s own comment.
+- [x] handle-forward-fast — DONE (2026-09-15), and BOTH of its
+      numbers were wrong in the entry that proposed it. `Effects.handle`
+      now re-emits a FORWARDED operation on the tree the way `relay`
+      does and enters `Cont` only for one the handler claims.
+      RESULT: `handlePrebuilt` 223.3 -> **154.2 us**, and the row that
+      matters, allocation 2 869 306 -> **1 753 945 B/op**, which is
+      `relay`'s number TO THE DIGIT (the build-on-every-call pair
+      agrees too: 2 154 017 on both sides). The 1.51x gap is 1.03x.
+      WRONG #1, the entry's mechanism: the `shift` per forwarded
+      operation was only a THIRD of the gap.
+      WRONG #2, and this is the keeper: the other two thirds were
+      introduced by this lane's own first version. Trampolining every
+      handled operation through `Free.defer` cost 59 us of the 61 —
+      a `Defer` whose continuation is `Pure` rotates into a LEFT-nested
+      `Bind`, left-nesting is the one shape `resume` rewrites, so each
+      handled operation taxes every operation after it. Found by
+      removing the node and measuring (row `hff-defer-cost`): 151.3 us,
+      and only the 100k-handled test fails, by StackOverflow. The
+      shipped version keeps the node ONLY for a handler that really
+      captures; one that does not answers with `Cont.Pure`, and the
+      loop goes on from the answer with a tail call
+      (`Cont.onAnswer`, inline, no `Option`, no closure).
+      The order of work was the entry's own condition and it held:
+      TestHandleForward's seven tests were written first, passed
+      against the definition, and four of them were watched to FAIL
+      against a deliberately wrong forwarding arm before the real one
+      was written. Disqualifier checked: `fusedSWr` 13.2 us /
+      122 640 B against the recorded floor's 13.7 / 122 641.
+      Rows `hff-*`.
+- [x] handle-loop-inlining — REFUTED (2026-09-15), and it is the THIRD
+      face of a rule this repository has now paid for three times.
+      The diagnosis was right and the fix bought nothing.
+      DIAGNOSIS, by -XX:+PrintInlining before touching anything, which
+      the entry demanded: `Effects.handle`'s loop compiles to 388 bytes
+      against `FreqInlineSize` 325 and is refused SIX times ("hot
+      method too big"), while `relay`'s loop is 262 bytes and inlined
+      hot four times. So the suspicion was exact.
+      THE FIX WORKED AND DID NOTHING. Extracting the terminal case and
+      the capturing fallback — the same move `relay.last` exists for —
+      brought the loop to 318 bytes and flipped the verdicts to
+      "inline (hot)" x3. The lane did not move: three rounds after
+      (157.3, 153.0, 153.2 µs) against two before (154.2, 156.2), with
+      `relay` drifting the same way in the same rounds, and the RATIO
+      measured in-run at 1.039 / 1.030 / 1.011 against 1.029 / 1.039.
+      The ranges overlap completely. Reverted; rows `hli-*`.
+      THE THREE FACES, so nobody re-derives them one at a time:
+      over the line COSTS when the body is straight-line (`relay`, 10%,
+      25102517); under the line COSTS when the method is a loop
+      inlined into other loops (`Free.resume`, up to 1.44x, 409c06e2);
+      and here, under the line is simply NEUTRAL — a loop whose caller
+      is a 10-byte wrapper gains nothing by being pasted into it. The
+      question to ask is not "is it over the line" but "who is the
+      caller, and is the body a loop".
+      WHAT THE 3% IS, then, by elimination and by reading the two
+      loops: allocation is identical to the digit, inlining is ruled
+      out, and `handle` does strictly one more test per handled
+      operation than `relay` (`Cont.onAnswer`, on top of the `split`
+      they share). That test is what buys `handle` the two things
+      `relay` cannot do — abort, and perform G. It is a price, not an
+      overhead, and this entry closes.
+- [ ] runfree-inlined-rotation — the FIRST attempt is REFUTED and the
+      refutation is the useful part. Diagnosing with
+      -XX:+PrintInlining found the real cost of free-one-rotation:
+      `Free.resume` is 352 bytes against FreqInlineSize 325 and
+      inlines into NO caller. Shrinking it (the two cold `Defer`
+      shapes into their own method, 352 -> 306, confirmed to go from
+      "hot method too big" x8 to "inline (hot)" x8) made every lane
+      WORSE — effCont24 1.435, fusedSWr 1.063, and relayPrebuilt
+      1.065, worse than the 1.039 it was meant to fix. Allocation
+      identical throughout. WHY, and do not retry it: `resume` is a
+      LOOP, and inlining a loop into callers that are themselves loops
+      (`fold`, `runFree`, relay's `loop`) nests loops and costs more
+      than the call. The threshold was protecting these lanes. Rows
+      `rfinline-*`.
+      STILL UNTRIED: the entry's original idea, `runFree` keeping its
+      own inlined rotation while `resume` stays as it is — which is a
+      third copy rather than a smaller shared one, and after the above
+      it must be measured before it is believed. Also worth knowing
+      before anyone starts: relay's 3-4% buys four rotation copies
+      folded into one, and that trade was already accepted once.
+- [ ] freer-base — specs/freer-base.md. STAGE 0 IS LANDED: `Cont` is
+      `Freer[Shift, …]`, one enum, one absorption rule, at parity or
+      better on every core lane. NEXT IS STAGE 1: `Free` on the same
+      base, `A ! F` an alias at a pinned `Unit` index, `object !`
+      exporting the cases so the 89 `(x.resume: @unchecked)` sites and
+      the 20 files outside the core compile unchanged, and the
+      rotation law (already written, `TestFreer`) extended to the Free
+      side. It is the bigger half and the one the design is for: the
+      rotation still exists FOUR times (`Free.fold`, `runFree`,
+      `!.resume`, Async's loop) and stage 1 is what makes it one.
+      Three findings from stage 0 apply to it directly and should be
+      used rather than rediscovered: a hot loop's BYTECODE SIZE can
+      matter more than its data (relay's 305-vs-325 cliff), a `map`
+      that misses its carrier's own path costs a node per element, and
+      one `apply` body beats two because the JIT counts call targets,
+      not receiver types. Stage 2 (the indexes as typestate, Delim
+      first) is independent and does not block it.
+      SUPERSEDED THE SAME DAY by cont-on-free: `Freer` deleted, `Free`
+      kept as the base untouched, `Cont` an opaque facade over
+      `Free[Shift, A]` with the indexes on the facade — every core lane
+      within 1% of master, allocation identical to the byte, two
+      trusted lines under one invariant. Stage 2 (typestate) is now one
+      more facade over `Free[F, A]` and cannot leak the way stage 1 did.
+      STAGE 2's LANGUAGE QUESTION IS ANSWERED — YES (2026-09-15,
+      stage2-probe), asked BEFORE claiming the lane because stage 1
+      died on this class of question after its implementation was
+      written. A prompt's IDENTITY does reach the type level, so
+      `NoPrompt` can become a compile error:
+      `scripts/stage2-prompt-identity-probe.scala` runs it — five
+      positives compile, three negatives are refused, including a
+      prompt that ESCAPES its reset, which is exactly today's throw.
+      Four compiler facts were paid for and are in specs/freer-base.md
+      so nobody re-buys them: a for-comprehension HEAD has no expected
+      type (so the stack must be a given, not an inferred parameter); a
+      CURRIED dependent context function is refused outright; a
+      non-curried one compiles but CRASHES dotty when it carries the
+      stack (`wildApprox failed to remove uninstantiated R`); and a
+      `using` clause after the continuation loses to the lambda's own
+      typing, so it goes before and the stack is a type MEMBER.
+      COST AT THE CALL SITE, measured by writing it: `reset { p => … }`
+      becomes `reset { s => import s.given; … }`, one line per reset.
+      STILL UNPRICED, and the lane must not assume them: `shift0` and
+      `control0` CONSUME the delimiter so their index is unbalanced and
+      the probe never exercised it; `abort` still drops a promised
+      transition (the spec's own caveat, already a required test); the
+      four files outside the core that name Delim (okay-ui `Scope`,
+      `Screen`, okay-agent `Stepper`, okay-llm `Cut`) pay the per-reset
+      line and none was read; and nothing is measured.
+      The refutation below is kept because it is why the facade is the
+      shape, not a step toward something else.
+      STAGE 1 IS REFUTED AS SPECIFIED (2026-09-15, branch
+      `feature/freer-base-stage1`, WIP commit kept and never to be
+      merged). `Bind` carries the LEFT side's answer index, so a match
+      on a `Free` hands back its continuation at an existential index
+      while all 89 sites want `A ! F`. An existential outer index
+      fixes elimination and breaks construction; a pinning `unapply`
+      is refuted by the compiler, which infers its free parameter as
+      `Nothing` instead of skolemizing, so the link between an
+      operation's answer type and its continuation is lost. The one
+      road that would work is a UNIFORM-INDEX bind case in the base
+      (`Seq[G, A, B, R]`), and it costs what stage 1 was for: `Cont`
+      still needs the non-uniform `Bind` for `PState`, so the base
+      carries both and `resume` rotates both. THAT IS A DECISION, not
+      a task — specs/freer-base.md Results has the full reasoning. ONE enum `Freer[G, A, S, R]` — Pure,
+      Op, Bind, Defer, one `resume` rotation — under `Cont`
+      (`Freer[Shift]`, index = answer type) and `Free` (`Freer[Lift[F]]`
+      at a pinned `Unit` index, later typestate). Three stages, each
+      its own lane with its own gate and disqualifying numbers in the
+      spec: 0 = enum + Cont (absorbs cont-fuse-one-step below: fusion
+      becomes the `Shift.Absorbed` class, no budget, 40 B/shift vs 48);
+      1 = Free on it, `object !` exports the cases so the 89 `resume:
+      @unchecked` sites and 20 outside files compile unchanged, a
+      rotation law lets eliminators inline; 2 = the index as typestate,
+      Delim first (`NoPrompt` → compile error). Start with stage 0.
+- [x] cont-fuse-one-step — DONE, absorbed by freer-base stage 0:
+      `Cont.Fuse` no longer exists. Absorption is one step, carried by
+      the leaf function's own class (`Shift.Once`), and the depth was
+      settled by a sweep of 1/4/16/128 rather than by lowering a
+      constant — the Fib lanes are flat across it with identical
+      allocation, `statePara` reads 0.861 at depth 1 against
+      1.19/1.15/1.17 deeper. Rows `fuse0-*`, `fuse1-*`,
+      `freer0b-absorb-sweep`.
+- [x] tag-distinct-keys — DONE (2026-09-11) as `Distinct[R]`, and
+      the entry's own plan did not survive the first measurement.
+      "Collect the singleton keys and refuse duplicates" would refuse
+      `Of["k", Ping] + Of["k", Peng]`, which tag-test-the-signature-too
+      had made legal that same morning. Comparing ERASURES instead
+      would refuse `Writer % String + Writer % Int`, which
+      `TestRowIdentity` runs and which routes correctly. Neither the
+      key nor the type decides it: the TEST does, so the instance
+      declares it — `TypeableK.ByValue`, carried by `writerK` alone,
+      with unmarked meaning "tests by erasure". That default is the
+      safe direction: an unmarked fine instance is refused and fixed
+      by one word, the reverse would pass a row that misroutes.
+      The check is therefore not Tag-specific at all. It catches the
+      UNTAGGED `Reader % Int + Reader % String` — the defect the whole
+      Tag/Refs/Delim machinery exists to work around — which is what
+      it was asked for and more.
+      WHERE: `Handler.union`, in a SECOND using clause (`(using
+      TypeableK, Handler, Handler)(using Distinct[F + G])`), not
+      `RowLift.at`/`plus`. That is where `split` claims the excluded
+      middle, it is 15 call sites against 147, and a second clause
+      leaves the sites that pass the first one explicitly alone.
+      MEASURED, both disqualifiers: zero breakage (whole tree
+      compiles, gate GREEN at 4247 results, all 10 okay-agent union
+      sites included) and no compile-time cost worth naming (full
+      Test/compile 44 s; cold core 70+105 sources 34 s, agent 16+22
+      6 s, zero warnings).
+      THREE TRAPS, all in `Distinct.scala`'s comments: `TypeRepr.of[R]`
+      for a higher-kinded parameter arrives as an HKTypeLambda, never
+      as the applied `+` the call site wrote; a `Tag.Of[K, F][A]`
+      member is an applied ALIAS, so `baseType(tagSym)` is the only
+      thing that sees it; and `F | F` is `F`, so a row CANNOT repeat a
+      member — the check only ever fires on two different types with
+      one runtime identity.
 - [x] tag-test-the-signature-too — DONE (2026-09-11), and the feared
       cost was ZERO. `Tag`'s `Effect` given now asks `TypeableK[F]`
       beside the key, so the test is key AND signature — what
@@ -273,6 +696,153 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       (was filed under "handler-fusion" — the reasoning
       that section carries is in BACKLOG-ARCHIVE.md)
 
+- [ ] growing-order-instrumented-repro — REPRODUCE IT WITH EVIDENCE,
+      which is not the same as reproducing it. Four sightings of the
+      same shape now exist and a fifth adds nothing: what is missing
+      is a break that SAYS WHICH ROAD IT TOOK. So the run is
+      instrumented first and long second.
+      WHAT TO INSTRUMENT, both named by the retraction in BUGS.md as
+      the candidates not yet examined:
+        1. the PARKING path — `sendersAt(route)` and the resumed
+           `pushDecidingAtOnBehalf`, which by design does NOT repair a
+           stale route the way `pushDecidingAt` does (`ours`). Count
+           resumes whose parked route is not the part the producer
+           would own now.
+        2. the STALENESS window around `Growing.inner` — `grow()`
+           sets `grown` by CAS, builds the `AdaptiveFifo`, and only
+           then assigns `inner`, so a reader seeing `grown == true`
+           can still get the ring. Safe for routing (a stale `inner`
+           is the ring, and pushing there is correct); not obviously
+           safe for everything else.
+           CORRECTED 2026-09-18: this said "a plain `var` ... has no
+           happens-before edge". `inner` is `@volatile` and has been
+           since the file was born (3f3adca1) — there is no
+           publication hole, only the window above. The counter is
+           shaped by the correction: a test cannot see `grown`, and
+           should not be given a back door to it, so the probe counts
+           the OBSERVABLE CONSEQUENCE instead — a push landing in
+           part 0 after some push had already landed in a part above
+           it. Part 0 is the adopted part and is drained first, so
+           that is precisely the damage.
+      THE PROBE EXISTS: `src/test/scala-jvm/ProbeGrowingOrder.scala`
+      (growing-order-probe, 2026-09-18), ignored by default, with a
+      `Traced` Buffer decorator injected into the SHIPPED construction
+      (`SentinelChannel(Growing(Ring(4), 8, () => Ring(4)))`) so the
+      production code carries no instrumentation at all. It prints,
+      on a break, the offending producer's every push with the part it
+      landed in, the route it asked for, whether it was resumed on
+      another thread, and both counters. Its header states what it
+      COSTS: one map lookup and one atomic per push, which can mask a
+      race this narrow — so a quiet run with tracing on is evidence
+      about the traced build, not about the bug. RUN IT under
+      `OKAY_PROBE_ROUNDS=40000 OKAY_PROBE_BURNERS=20` — environment, not
+      `-D`, because this module forks its tests and the property never
+      reached the test JVM.
+      RUN, AND THE MECHANISM IS NAMED — 2026-09-18. It is NEITHER
+      candidate (BUGS.md, "THE MECHANISM, NAMED"). The parking path
+      fired 0 times on every break, nothing went back into the adopted
+      part, and no route was stale. A producer's elements are SPLIT
+      across the swap — 1/3/5 in part 0, 7 onward in part 1 — and the
+      CONSUMER passed part 0 before 5 landed there, drained part 1,
+      then came back for 5. "Part 0 is read first" holds per SCAN, not
+      globally. Closed as a question; reopened as a design one,
+      `growing-order-drain-guarantee` below.
+      TWO METHOD FINDINGS worth as much as the answer: the full trace
+      MASKS the race (off, the break came at round 1959 of 2000; on,
+      6000 rounds found nothing), so the instrument is one byte per
+      element written once by its pusher; and the probe counts the
+      rounds in which the buffer actually GREW, because "no break in N
+      rounds" says nothing until the swap happened (40 000 of 40 000).
+- [ ] growing-order-drain-guarantee — WHAT THE PROBE LEFT, with the
+      window NAMED (2026-09-18, adopted-window). The first cut of this
+      entry said "two candidate fixes, both hot path" and left it
+      there; that was a hand-wave, and reading `AdaptiveFifo` replaced
+      it with something exact.
+      THE WINDOW, NAMED. The fix this needs is already THERE and is
+      already a rule rather than a phase: `popManyAdoptedFirst` reads
+      the adopted part 0 first whenever it has anything in it, and its
+      comment claimed the rule "has no window at all". It has one, and
+      the code shows it in three lines:
+
+          if took > 0 then ...
+          else if open.get == 1 then 0
+          else popManyScanning(max)(sink)   // part 0 was EMPTY
+
+      THE RULE HOLDS PER CALL AND THE CALL IS NOT ATOMIC. Part 0 comes
+      up empty, the consumer goes to scan other parts, and a straggler
+      whose route was read before the swap lands in part 0 during that
+      scan. Its element is then delivered behind its own successors —
+      the very shape the rule was written to fix. The comment is
+      corrected in place rather than deleted: the rule is the
+      improvement it claims to be, only its last clause was false.
+      THE CANDIDATE, and why it is not taken here: SEAL part 0 to
+      pushes at the moment of adoption. A straggler is then refused
+      and reroutes to its own part, landing AFTER its predecessors
+      instead of before them, and the refusal path already exists
+      (`push` false -> `refused()` -> a part of its own). Two other
+      candidates are REFUTED by the trace and should not be re-tried:
+      merging `grown` and `inner` into one atomic does NOT fix it (the
+      straggler's push into the ring is legitimate until the swap, so
+      atomicity changes nothing), and "drain part 0 to empty before
+      reading others" does NOT fix it either (the consumer DID see it
+      empty — that is the window).
+      WHAT IT COSTS is the open question: sealing puts a check on the
+      ring's push path, in a class whose header carries four benchmark
+      tables. `ChannelGuaranteeBenchmark`, `ManyProducersBenchmark`
+      and `ChannelGranularityBenchmark` are the three lanes that would
+      price it, and a matched pair is the bar.
+      THE THIRD OPTION, and it belongs to the operator rather than to
+      an agent: weaken the promise. `Growing` says per-producer FIFO;
+      it could say "per-producer FIFO except across the one-shot
+      swap", and `TestGrowing`'s law would then assert what is true.
+      Cheaper than any fix, and it gives something up.
+      WHO STANDS ON THE PROMISE, surveyed 2026-09-18 so the choice is
+      made with the consumers in hand rather than in the abstract:
+        - `TestChannelLaws` states it as a LAW — "one producer's
+          elements arrive in the order it sent them".
+        - `Channel.scala` already gave up EXACT FIFO ACROSS producers
+          deliberately, and names the escape hatch
+          (`Queues.strong[A].fifo(capacity)`); per-producer is the
+          half it kept.
+        - `Source.merge` RESTATES the promise in its own words to its
+          own callers ("each source keeps its own order"), so
+          weakening the law means editing that too — and the whole
+          streaming stack goes through it. `merge-chunked-order` is
+          where the defect showed as `1..16, 49, 50, 17..48`.
+        - THE ACTOR MAILBOX IS THE UNGUARDED ONE. A mailbox is a
+          `Channel[M]` (default 256) and `Actor.scala` promises
+          nothing about order — but "messages from one sender arrive
+          in send order" is what every reader of an actor model
+          assumes. Weakening the channel law weakens that silently,
+          which is the worst shape a weakening can take.
+        - NOT AFFECTED: okay-persist. The durable journal writes
+          through a JDK `FileChannel`, not this one, so durability is
+          not in this decision.
+        - The rest (okay-cluster `Remote`, the HTTP transports and
+          SSE, `ChatDemo`) are multi-producer but either do not need
+          the order or recover it from sequence numbers.
+      AND THE SHAPE OF THE DEFECT ARGUES AGAINST WEAKENING: it is ONE
+      element displaced across a ONE-SHOT swap, rare enough to need
+      thousands of rounds under load. A user cannot reproduce that,
+      will not connect it to this, and will look in their own code. A
+      promise broken once in thousands, and only while the buffer
+      grows, is worse than no promise: people lean on it precisely
+      because it is almost always true. `docs/queues.md` already warns
+      about the defect with its sightings — weakening would turn "rare
+      bug, being fixed" into "by design", which is a different message.
+      Reproducer and evidence: `ProbeGrowingOrder`, BUGS.md.
+      HOW TO RUN IT: load, not repetition — that is what distinguished
+      the green runs from the red ones, and 2 000 rounds on a quiet box
+      reproduced nothing. Burners to a load of ~20, the round-based law
+      in a loop, every break printed with both counters beside it.
+      WHAT WOULD CLOSE IT: a break whose counters are non-zero names
+      the road; a break whose counters are both zero refutes both
+      candidates and is worth as much.
+      RULED OUT ALREADY, so nobody walks it again: a stale route
+      surviving into `pushDecidingAt`. Measured 12 crossings of that
+      window in 156 578 sends, all in the harmful direction, and
+      `Growing.ours` repairs every one (BUGS.md, the retraction).
+
 - [ ] growing-channel-order-under-load — SEEN ONCE, NOT REPRODUCED,
       and recorded because the alternative is forgetting it. A full
       matrix on 2026-09-10 failed `okay.TestGrowing`'s "each
@@ -291,6 +861,72 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       only place this guarantee is stated. Reproduce with load, not
       with repetition — that is what distinguished the two runs. The
       gate log is okay-gate.ySVIJbPIg1 (the diff is in it).
+      **SEEN A SECOND TIME, 2026-09-11 13:12** (route-headers gate, a
+      lane that touches only okay-http and okay-openapi), and the
+      SIGNATURE MATCHES, which is what makes this more than a flake:
+
+          round 27: producer 1 came back out of its own order
+             5, +13, 7, 11, -13, 15
+
+      Both occurrences are PRODUCER 1, and both are ONE element
+      hoisted forward past its own predecessors across a part swap —
+      2026-09-10 was 49, **57**, 51, 55, 59 at round 34. Two
+      independent trees, two days, the same shape and the same
+      producer index. That is the first of the two hypotheses above
+      (a real race in the adoption/swap path that needs contention to
+      show), not the second.
+      Load at the failure: `{ 11.75 20.87 24.93 }` — a box coming down
+      off a long busy stretch, which again is contention rather than
+      repetition. The run was afterwards SIGTERM-killed at 3089 test
+      results; `gate.sh` reported RED rather than KILLED, correctly,
+      because a suite that failed and was then killed is red (the
+      ordering that branch was given on 2026-09-11 exists for exactly
+      this case).
+      Still NOT tagged and NOT retried into green by the gate. The
+      lane that met it re-ran its matrix after filing this, which is a
+      person deciding on an unrelated module — not the script hiding a
+      defect. The gate log is okay-gate.dHgXx2UyXr.
+      **SEEN AGAIN 2026-09-17 — AND THIS ONE IS AFTER THE FIX, which
+      the first framing of this note got wrong.** The two occurrences
+      above are 2026-09-10 and 2026-09-11; `growing-stale-route`
+      landed 2026-09-14 (3ba1d825) and closed the mechanism they
+      share. Calling this one "the third of the same" reads as three
+      sightings of one open bug. It is not: it is the FIRST
+      RECURRENCE AFTER A FIX, which is a different and worse fact.
+      See BUGS.md, where the entry is reopened with the analysis.
+      (delim-diagnostics-position, a lane touching only okay-persist
+      and prose), round 36:
+
+          round 36: producer 1 came back out of its own order
+             29, +37, 31, 35, -37, 39
+
+      PRODUCER 1 again, one element hoisted forward again — and the
+      third occurrence is what makes the three MEASURABLE rather than
+      merely similar. Each producer emits an arithmetic sequence, so
+      the hoist can be counted:
+
+          2026-09-10   49 -> 57   +8   = 4 of its own elements
+          2026-09-11    5 -> 13   +8   = 4 of its own elements
+          2026-09-17   29 -> 37   +8   = 4 of its own elements
+
+      THE HOISTED ELEMENT IS EXACTLY FOUR OF ITS OWN AHEAD, three
+      times out of three — and the test deliberately uses the shipped
+      `Channel(4)`. Four is the CAPACITY. That turns "a race in the
+      adoption/swap path" into something falsifiable: a producer's
+      element one full part ahead becomes readable before the part
+      holding its three predecessors is drained. It also gives the
+      experiment that was missing — run the same suite at capacity 8
+      and see whether the hoist becomes +16. If it does, the bug is
+      indexed by capacity and the swap is reading the new part early;
+      if it stays +8, the number is a coincidence of three and the
+      lead is dead.
+      Load at the failure: `{ 8.6 6.6 6.3 }` — NOT a busy box this
+      time, which weakens "needs contention to show" as a necessary
+      condition, though all three runs were full matrices.
+      Still NOT tagged and NOT retried into green by the gate. The
+      lane that met it re-gated afterwards, having filed this first —
+      a person deciding about an unrelated module, not the script
+      hiding a defect. The gate log is okay-gate.UR07J2fMsW.
 
 - [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
       Conversion each way; GATED: no consumer named
@@ -312,6 +948,24 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       workload.
 
 ## Build
+- [x] ci-affected — DONE 2026-09-16. The numbers: every Actions run in
+      the visible history cancelled by the next push, two at the
+      six-hour limit, while the same `sbt test` is two minutes warm on
+      the box. `affected <ref|a..b> [task]` and `family <platform>` as
+      sbt commands in project/ (Scala, no plugin): a file belongs to a
+      project by its source and resource directories, dependents are
+      closed over the classpath graph, the root aggregate is the
+      bound. ci.yml runs `affected` per push with a `target/` cache
+      restored from the nearest previous key, and the family nightly,
+      one job per platform. Measured: see CHANGELOG.
+- [ ] ci-affected-tests-only — a lane that changed only a module's
+      TESTS re-tests its dependents too, which is conservative and
+      wrong; the closure should skip dependents when nothing under
+      `src/main` moved. Cheap once the numbers say it matters.
+- [ ] ci-native-flake — the nightly Native job is where the
+      native-runner-error recurrences will now show up; wire
+      `scripts/gate.sh`'s rerun-alone logic into it rather than
+      re-teaching a workflow the same lesson.
 - [ ] jdk-internal-bad-symbolic-reference — a COLD `okayJVM/compile`
       can fail with no source position and one error:
 
@@ -346,6 +1000,37 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       Occurrences: 2026-09-11, src/test/scala/TestInstances.scala.
 
 ## okay-codec
+
+- ANSWERED, and it was not the question it looked like
+  (form-errors-on-validate, 2026-09-18). The entry read the difference
+  between `Form.errors` and `Validate.errors` as WORDING, and proposed
+  a `Wording` parameter on Validate. Running the two side by side on
+  one schema (`FormErrorsProbe`) found two places where the form was
+  simply WRONG and the accumulating decoder right, and both are fixed
+  in the form: a field the SCHEMA DEFAULTS was reported "required", so
+  the form held a submit that `Form.decode` accepts; and an error
+  inside a present `Option` landed at the option's own key, which is
+  not a key the form renders under, so the one thing the user needed
+  to read rendered NOWHERE. The wording question is withdrawn — the
+  form's "required" is the right word for a person and the switch was
+  never worth its cost. `SIso` still hands its refinement whole to the
+  decoder, which is correct (the refinement is the wrapper's, not a
+  field's) and now says so in the code.
+- [ ] schema-typed-paths — `Schema.path[A].field("address").field("city")`
+      → a checked `Lens[A, String]`: the field NAME verified at compile
+      time against the Mirror, the focus typed. The operator's third
+      ask in the schema-fold conversation (2026-09-11); `JsonOptic.path`
+      is most of it over `Json`, over `A` it is a macro over the
+      Mirror's labels. Filed by specs/schema-fold.md (Out of scope),
+      to be taken after stage 3; a different risk (macro) from the fold.
+      STALE BY TWO DAYS when written (found 2026-09-18): one level of
+      this exists — `Lens.field[S]("name")`, by name, the name checked
+      against the Mirror at compile time, the focus typed, no macro —
+      since optics-core on 2026-09-09 (c2ff5cfe). What is still asked
+      for is the CHAIN with the intermediate type inferred, and its
+      cost question is `optics-field-fuse` (the planner cannot read
+      the by-name constructor, so it pays the interpreter today).
+
 - [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
       closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
       binary's connection ends and it exits 0 while sbt still has a
@@ -358,7 +1043,63 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       of that module alone (optics-outside-routes-query). Second
       module to show it, which is consistent with the settled cause
       being the runner rather than any one suite.
-
+      2026-09-15, okayLexNative, same shape, GREEN on the rerun of that
+      module alone (handle-decompose, a benchmark-and-prose lane that
+      changed no Native source at all). Third module, and the first
+      occurrence on a lane that could not have caused it.
+      2026-09-16, okayActorNative, same shape, GREEN on the rerun of
+      that module alone (producer-drains, which touched no Actor
+      source and no Native platform). Fourth module.
+      2026-09-17, okayActorNative AND okayConfNative in ONE gate, same
+      shape, GREEN on the rerun of both alone (wf-durable-journal,
+      which touched okay-persist and okay core only). First time TWO
+      modules lost a process in the same run, which fits the settled
+      cause — the runner, under a box that was also carrying a
+      1-minute load of 12-14 when the gate started.
+      2026-09-17, okayCodecNative AND okayObsNative, again two in one
+      run, GREEN on the rerun of both (workflow-docs, a documentation
+      lane plus one Worker method). SIXTH occurrence, and the second
+      PAIR in a single day of heavy gating — which is the first
+      evidence that the rate rises with how many gates run per hour
+      rather than with what any lane changed. Worth measuring before
+      anyone tries to fix it: a gate every ten minutes is the new
+      condition, and it arrived with gate-quiet-realistic.
+      2026-09-17, okayPersistNative, ONE module, GREEN on the rerun of
+      that module alone (dialogue-continue-as). SEVENTH occurrence,
+      and two things in it cut against yesterday's hypothesis rather
+      than for it: a single module on the heaviest gating day so far
+      (the pair, not the rate, may be the coincidence), and the FIRST
+      time the module that lost its process is one the lane actually
+      changed — okay-persist. With seven occurrences across six
+      modules one such coincidence is unremarkable, and it is recorded
+      because the ledger is worth nothing if only the fitting
+      observations go in it.
+      2026-09-17, okayNative, ONE module, GREEN on the rerun (a book
+      lane whose diff is markdown only). NINTH occurrence, load
+      `{ 13.16 26.00 28.81 }` — a busy box this time, where the eighth
+      was quiet. Across nine there is no pattern in the load and none
+      in what the lane changed; the only constant is the full matrix,
+      which is what the settled cause already says.
+      2026-09-17, okayCodecNative, ONE module, GREEN on the rerun of
+      that module alone (worker-oracle-attempt). EIGHTH occurrence,
+      load `{ 5.95 10.43 11.04 }`. Second single-module sighting in a
+      row on a quiet-ish box, which continues to weaken the
+      "gates-per-hour" hypothesis filed on the sixth: two of the last
+      three were singles, not pairs, and neither box was busy. The
+      only thing that has held across all eight is the settled cause
+      itself — the runner, not any suite.
+      2026-09-18, okayCodecNative, ONE module, GREEN on the rerun of
+      that module alone (script-storefront-look, whose diff is a
+      markdown fixture, a stylesheet and a browser test — no Scala on
+      any Native path). TENTH occurrence, load `{ 4.12 6.86 8.90 }`, a
+      quiet box. Nothing new: a module the lane could not have
+      touched, on a box under no pressure, which is the tenth reading
+      that the full matrix itself is the condition.
+      2026-09-18, okayCodecNative, same shape, GREEN on the rerun of
+      that module alone (proc-notation-branches, whose diff is a core
+      macro, its tests and prose — no Native source and no codec
+      source). ELEVENTH occurrence, hours after the tenth and on the
+      same module, again on a lane that could not have caused it.
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
       avoid the lossless road's cost, and 131cedc2 + b4172242 removed
@@ -640,6 +1381,61 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       that section carries is in BACKLOG-ARCHIVE.md)
 
 ## okay-rag
+- [ ] named-pairs-rest — the SURVEY behind named-pairs-security, kept
+      whole because the operator asked for everything found. Seven
+      functions in main sources return a SAME-TYPED pair, so a
+      positional swap compiles and no test can catch it by type. Two
+      landed (`OAuth2.pkce` -> `(verifier, challenge)`,
+      `ApiKey.issue` -> `(key, digest)`), where a swap is a security
+      defect. These five remain, each with what a swap would do:
+
+      | where | returns | a swap gives you |
+      |---|---|---|
+      | `Secrets.scheme` (okay-conf) | `(String, String)` | the scheme and the rest of the reference exchanged, so a `vault:` ref reads as a literal |
+      | `KafkaStore.range` (okay-kafka) | `(Long, Long)` | begin and end offsets exchanged, an empty or backwards range |
+      | `Smtp.stamp` (okay-mail) | `(String, String)` | the Date header holding a Message-ID and the reverse |
+      | ~~`Site.splitUrl` (okay-script)~~ | DONE 2026-09-12 | it was PUBLIC, see the correction below |
+      | `FileStore.readHeader` (okay-persist) | a pair read off a buffer | (unread — check before taking) |
+
+      "All are private or module-local, so the blast radius is small
+      and so is the value" — THAT SENTENCE WAS WRONG, and it is left
+      standing rather than edited away because it is the reason the
+      row above was not taken with the security two. `Site.splitUrl`
+      carries no modifier at all: it is public API, its caller may not
+      be in this repository, and a swap hands them the query string as
+      the path. Corrected and done by `split-url-named` (2026-09-12)
+      when the operator asked "so nothing needs doing?" and the
+      question sent me back to check the claim instead of repeating
+      it. The remaining FOUR really are private or module-local
+      (`private[conf]`, `private[KafkaStore]`, `private`, `private`),
+      checked one at a time this time. Naming them costs nothing at runtime — a named
+      tuple IS the plain tuple, measured in named-tuples-stage0 — and
+      the call sites need no change, since a positional destructure
+      still works. Take them when touching those files for another
+      reason rather than as a sweep.
+
+      METHOD NOTE, which is the reusable part: `val (a, b) = named()`
+      still binds BY POSITION, so naming a return does not by itself
+      stop a caller swapping. The protection is at the call site,
+      through `p.verifier` or a named destructure
+      (`val (challenge = c, verifier = v) = pkce()`, which binds by
+      name whatever order it is written in). named-pairs-security
+      moved its call sites for exactly that reason.
+
+- [ ] wroclaw-pipeline-named — `Gtfs.departures` in okay-spark's
+      TestWroclawAlgebra still writes the shape of every join step in
+      a trailing comment (`// trip -> (time, (route, service))`),
+      because its tuples cannot. `GtfsNamed.departures` beside it is
+      the same pipeline with the payloads named and those comments
+      deleted, proven equal on the real feed (4 593 288 departures,
+      identical summary) — it exists as the measurement from
+      named-tuples-stage0 and as the regression test for
+      named-tuple-unblock. Merging the two into one named pipeline is
+      the obvious follow-on and was deliberately NOT done in either
+      lane: both had a rule that nothing migrates. Whoever takes it
+      keeps the equality test by comparing against a recorded summary
+      rather than against a twin that no longer exists.
+
 - [ ] twonode-fixed-ports — `okay.demo.TestTwoNode` spawns two REAL
       JVMs on HARDCODED ports 18091/18092 and is not `Live`-tagged, so
       two agents gating at once collide on them. Seen 2026-09-11 in
@@ -773,6 +1569,218 @@ or not at all).
       one module and missed in the other. Also fixed `TestSignals`,
       which used a spin budget as a timeout and failed 2 of 3 runs on
       untouched master.
+## optics-arrows-effects — the questions the closed arc leaves (specs/optics.md stage 12, operator's ask 2026-09-18)
+
+The operator asked what optics, profunctors and arrows can do together
+with the monads, applicatives, effects and continuations already here,
+and what is missing for that to be convenient. Stage 12 of the spec
+records what the tree ALREADY answers (one traversal runs at
+`Validated`, `Par`, `Static` and an effect row with no code in the
+optics; `PState.zoom` is the lens-meets-continuation seam; `Arrow` has
+one instance, `Mealy`), and leaves these. Each is one lane with one
+test; none is promoted until its spec item is read first.
+
+- [x] gate-bound-test-fanout — DONE 2026-09-18, one line and a
+      measurement: `ThisBuild / Test / parallelExecution := false`.
+      MEASURED rather than guessed: `show concurrentRestrictions` says
+      `Limit all to 14` (TASKS) and `Limit forked-test-group to 1`,
+      but `Test / parallelExecution` was TRUE on all three platforms —
+      and on JS/Native a test CLASS is an OS PROCESS. One task fans
+      out into all of its classes; 14 x ~10 is the 145-165 both dumps
+      caught.
+      THE PROOF IS THE CONDITION, not the clock: the same `affected
+      master` scope that STALLED TWICE (module 77, then 78) ran to
+      completion — 92 modules, 303 s — while a sibling's unbounded
+      gate held 152 node processes at load 76. Peak children 104.
+      NOT CLAIMED: 104 is not the ~14 one-task-per-core predicts, and
+      the remainder is unmeasured (`gate-fanout-what-is-left`); and
+      303 s is not comparable to the 179 s baseline, which was a quiet
+      box. Only failure: `hedge-start-timing-flake`, 4th sighting,
+      3 of 3 green alone.
+- [x] gate-fanout-what-is-left — ANSWERED 2026-09-18, and the answer
+      is `node`. Sampled every 4 s over one full `affected master`
+      gate, counting ONLY the descendants of that gate's own sbt (the
+      first attempt matched `^node$` box-wide and reported a sibling's
+      build):
+        node (Scala.js runners)   684 of 944 samples — 72%
+        Native test binaries      ~170 together
+        java (forked JVM tests)   24
+      So after the per-module bound, the weight of a full matrix is
+      almost entirely the Scala.js runners. WHAT FOLLOWS, and it is
+      the cheap one: a core change makes every module affected on
+      THREE platforms, and the JVM run is the one that tests the
+      logic — JS and Native mostly re-check that the same suites
+      compile and run cross-platform. A gate that ran JVM FIRST and
+      only paid for the other two once it was green would fail fast
+      on the common case (a logic error) and cost a third as much to
+      find it. Filed as `gate-jvm-first`; it needs a measurement of
+      how often a lane's first failure is JVM-only before it lands.
+- [ ] gate-jvm-first — order the gate by platform, JVM first, and pay
+      for JS/Native only after it is green. The measurement that
+      decides it: over the gate logs already kept, how many red gates
+      failed FIRST on the JVM? If it is most of them, this turns the
+      common failure from a full matrix into a third of one. If lanes
+      mostly fail on Native (the lost-process shape has its own
+      ledger), it buys nothing and should not land. `gate-fanout-what-
+      is-left` is where the 72% comes from.
+- [ ] gate-fanout-what-is-left (superseded, kept for the method) — the bound took the peak from 165 to
+      104, not to the ~14 one task per core would predict. What the
+      rest IS, is unmeasured: link steps, the gtk test, whatever else
+      spawns beside the runners. Sample the tree BY COMMAND during one
+      quiet full gate and name what makes up the 104. Key the sampler
+      on the descendants of ONE pid — the first cut matched `^node$`
+      and reported a peak that was mostly a sibling's build.
+- [ ] gate-bound-test-fanout (superseded; kept for its measurement) — THE OTHER HALF OF THE 57-MINUTE STALL
+      (gate-watchdog, 2026-09-18). The watchdog now catches a hung
+      gate; nothing yet stops it happening. MEASURED at the stall: 165
+      test-runner processes alive at once — 100 `node` (Scala.js) and
+      65 Scala Native binaries — all spawned inside the first 20
+      seconds, on a 14-core box, with `Tags`/`concurrentRestrictions`
+      set NOWHERE in build.sbt or project/. sbt's own default limits
+      TASKS, not the processes a single test task spawns, which is why
+      the fan-out is what it is. WHAT TO DO, in order: (1) `show
+      concurrentRestrictions` and record what the default actually is
+      here — do not guess it; (2) count the fan-out per platform on a
+      quiet box; (3) bound it with `Tags.limit`, and measure the wall
+      clock before and after, because the whole point of the fan-out
+      is speed. TRIGGER TO DO IT NOW: a second stall whose dump shows
+      the same shape. The dump that opened this is the one named in
+      the CHANGELOG entry.
+- [x] optics-typepedia — DONE 2026-09-18. The reference nobody could
+      grep: `docs/typepedia.md` is 911 lines of "every core type and
+      typeclass" and contained neither `Lens` nor `Optic`. It has an
+      Optics section now — the constraint lattice, the seven families,
+      the five interpretations, the two roads through `Fuse`, the two
+      field constructors, and the gotchas that were only in source
+      comments (`.compiled` is slower and why; a traversal cannot be
+      compiled at all; `Aggregating` is deliberately not `Strong`;
+      `idApplicative`/`zipLazy` are not givens; a bottom-up rewrite is
+      a catamorphism, not a traversal). Also: docs/optics.md gained
+      the program-zooming section, the tutorial's "where to go next"
+      links the page, and both theory indexes carry the sharper
+      chapter-10 result instead of the old one-line summary.
+- [x] optic-law-rewrites — THE CONTAINER HALF IS DONE, 2026-09-18,
+      2.7x collected and measured (`fuseTwiceByLaw` 1524 ns against
+      `traversalTwice` 4063, within 7% of the hand-written control at
+      1421; 3 forks, 24 measurements a lane). `Fuse` rewrites
+      `modify(g) . modify(f)` through one optic into
+      `modify(f andThen g)`.
+      THE SHAPE CAME FROM A PROBE: the outer macro does NOT see a
+      nested macro call, it sees the interpretation the inner already
+      emitted (`o.apply[Function1](g)(fn).apply(s0)`), because the
+      planner cannot read a traversal. Three theories died first, and
+      one probe LIED — `report.info` did not print for the outer
+      expansion while a file written from the same macro showed it
+      running.
+      WHERE IT CANNOT REACH, so nobody re-tries: the extension form.
+      `o.modify(f)(s)` is `(o.modify(f))(s)` — the application is
+      outside the macro, and `traversalTwice` stays at 4063.
+      STILL OPEN, the product half: `set . set` into one `copy` is
+      ~2.5 ns and NOTHING in bytes on the JVM (escape analysis already
+      scalar-replaces the intermediate). Native and JS have no such
+      analysis and were never measured, which is the only reason left
+      to take it. The entry as originally filed:
+- [ ] optic-law-rewrites (the product half) — CITED AS FILED IN TWO PLACES AND FILED IN
+      NEITHER (found 2026-09-18 by optics-guide-page, which wanted to
+      link it): docs/benchmarks.md §9b ends "Filed as
+      `optic-law-rewrites` with these numbers attached" and the
+      CHANGELOG entry says the same, and no board ever got the entry.
+      The work: teach `Fuse` the two rewrites its own measurement
+      priced. `map(f) . map(g) == map(f . g)` on a container is the
+      big one — one pass is 1570 ns / 19 672 B against two at 4006 /
+      38 320, and the JIT cannot do it because it does not know the
+      law. `set ∘ set` into one `copy` on a product is the small one:
+      1.48 ns against 3.94 for two fused sets, with allocation equal
+      at 24 B because escape analysis already scalar-replaces the
+      intermediate — so the prize there is ~2.5 ns of field traffic
+      and nothing in bytes, ON THE JVM. Native and JS have no escape
+      analysis of that quality, so the allocation half is unmeasured
+      there and a lane should measure before claiming it.
+- [x] optics-guide-page — DONE 2026-09-18. `docs/optics.md` with five
+      pairs, each RUN by `TestOpticsGuide` (src/test/scala-cross), the
+      price table from the verdict, the two roads named, and the pair
+      where a `copy` still wins (with benchmarks §9b's numbers, which
+      correct the obvious guess: the allocation is equal, the cost is
+      field traffic). Linked from docs/README.md and guide.md §10.
+      It also found `optic-law-rewrites` unfiled, above. The entry as
+      written: `docs/guide.md` does not mention `Lens`, `Prism` or
+- [ ] optics-guide-page — the convenience item, and the first to
+      pick: `docs/guide.md` does not mention `Lens`, `Prism` or
+      `Traversal`; tutorial §23 and theory ch. 10 are all the prose.
+      A page of PAIRS — nested `copy`, an `Option.map` chain, a
+      hand-written walk, each beside the optic that replaces it and
+      the verdict table's price for both — and the two roads named:
+      a path written in code is free, an optic chosen at run time
+      pays the interpreter. Docs-only; the guide's index guard is the
+      gate.
+- [ ] optics-arrow-instances — `Arrow[Function1]` and
+      `Arrow[[A, B] =>> A => B ! R]`, so `split`/`fanout` exist on
+      plain and effectful functions and the "one Profunctor" sentence
+      in Optic.scala is a fact. Deliverable is the laws' tests
+      (`TestMealy` states them over an input), not a capability: with
+      a monad in hand `fanout` adds little over a for-comprehension,
+      and the entry says so before anyone measures it.
+      RE-CHECKED 2026-09-18: specs/static-workflow.md stage 1 wants
+      the same category/arrow/choice laws as a property at `Proc`.
+      ONE law suite parameterised by the carrier and an observation
+      (`TestMealy` observes over an input) serves both; whichever
+      lane lands first writes it reusable, the other reuses it.
+      Neither lane adds the other's instance (that spec's Design).
+- [x] optics-cont-profunctor — DONE 2026-09-18, HALF LANDED AND HALF
+      REFUTED, which is the useful shape. `Strong` exists
+      (`PState.Zooming` + top-level `opticZooming`), `PState.zoom` is
+      now `l[Zooming[X, R]](m)` with TestZoom's six passing unchanged,
+      and the instance bought three roads the hand-written shift never
+      had: an iso zooms, `first` zooms a pair state, a composed optic
+      zooms. `Choice` CANNOT EXIST: on the absent case the zoomed
+      program must still answer the inner program's `X`, and `X` is
+      universally quantified — parametricity, not a type error, and
+      the spec's predicted mechanism ("the indices will not line up")
+      was wrong. The door that does exist prices itself in its type:
+      `PState.zoomCase` answers `Option[X]`. TestContProfunctor pins
+      the absence with the `Strong` summon beside it as the control.
+      Not measured and not claimed: `zoom` now summons a fieldless
+      instance per call; its four callers are all tests and no JMH
+      lane covers it, so a lane that gives it a production caller
+      prices that first.
+- [ ] optics-prism-selective — a second `Star` interpretation over
+      `Selective[F]` whose `right` lifts the preview into `F` and
+      `branch`es, so `Static` through a prism reports BOTH arms where
+      the applicative road reports the one taken. One test with the
+      matched control beside it.
+      WAITS on static-workflow stage 3 (2026-09-18): for an arrow
+      that is a TERM the question is already answered — `Proc.leaves`
+      reports both sides of a `Left`, and stage 3 runs a prism's step
+      on the matching variant. What is left is the `Star[F]` road
+      alone; take it only if a consumer wants the applicative `Static`
+      through a sum rather than `Proc`. Close it when stage 3 lands
+      and nobody has.
+- [ ] optics-field-fuse — `Lens.field[S]("name")` is the one
+      constructor the planner cannot read (verdict, 2026-09-10), so it
+      pays the interpreter while `Lens[S](_.f)` is free. Measure it
+      first (it has no benchmark row), then either teach `Fuse` the
+      `FieldOf.apply` shape or say the price on the guide page.
+- ANSWERED, not a lane (ui-path-two-walks, 2026-09-18): the two walks
+  STAY two, and the measurement is why — `PathWalkProbe` at depths 4,
+  16 and 64 puts the affine at 2.9-7.9x the time and a steady ~5.5x
+  the allocation of the hand walk, because it is built from a runtime
+  `List[Int]` and pays the interpreter per step. What the question
+  found instead was worth more than the tidy-up would have been: the
+  two walks DISAGREED about totality. `Ui.path` answers an Option;
+  `Ui.patch` indexed its Vectors and threw on a path naming nothing —
+  and a Patch arrives over a WIRE, so a well-formed message with a path
+  that is not on the client's tree killed the session inside
+  `Wire.client`'s receive loop. Guarded now, with the law in
+  TestUiOptic extended to cover it.
+- NOT a lane, a record (indexed optics, re-checked 2026-09-18): the
+  spec's "nobody has asked" was wrong. Three walks carry an index by
+  hand — `Validate`'s `At` path through `Schema.Step`, `Ui.diff`'s
+  `path: List[Int]` through `go`, and ui-direct-example's field key
+  IN the error for `Ui.key(k)` to aim at. None is handed to a second
+  interpreter, so the family stays out. TRIGGER, restated with the
+  seats named: a fourth path-carrying walk, or two of these wanting
+  one walk.
+
 ## openapi — the document as a rendering (specs/openapi.md, operator's ask 2026-09-11)
 
 The spec is written and names the consumer first, as
@@ -796,11 +1804,42 @@ its owner can price it:
       `Param` may override it (`format: uuid`) — tested.
 - [x] openapi-render — DONE (`okay-openapi`, the law included); box
       corrected 2026-09-11 alongside openapi-responses.
-- [ ] openapi-serve — stage 2: `/openapi.json` and a page that renders
-      it with no network, plus okay-demo's committed document and its
-      drift test — the shape okay-demo/deploy already has.
-- [ ] openapi-prose — stage 3: a summary per route; operation ids are
-      derived until then.
+- [x] openapi-serve — DONE 2026-09-11 (4758e8f7). `/openapi.json` and
+      a page rendered on the server with no network, plus okay-demo's
+      committed document and its drift test — the shape
+      okay-demo/deploy already has. The drift test earned its keep on
+      its first run: `/app.js` is served only where the linked bundle
+      exists, so the document describes the PACKAGED surface.
+      What it exposed for the next lane: all six demo operations still
+      render `undeclared`, because HTML, server-sent events and a byte
+      bundle have no `Schema` to declare them. `out`/`jsonOut` cover
+      JSON only, so the answer is an `Answer` that carries a MEDIA
+      TYPE and combinators that encode it — same declaration-by-
+      construction, wider than JSON.
+- [x] openapi-media — DONE 2026-09-11. `Router.Answer` carries a media
+      type; `html`/`bytes`/`events`/`media` declare content that has
+      no schema the same way `out` declares a value — the router
+      writes the content-type, so the declaration cannot drift. The
+      demo declares all six operations and its document says
+      `undeclared` zero times.
+- [x] openapi-prose — DONE 2026-09-11. `Router.summarised(text)` on
+      the entry just declared; the document renders `summary` and the
+      page shows it; `out`/`jsonOut` took the answer `description`
+      too. okay-demo summarises all six, with a test that refuses a
+      published operation without one. Tags, a long description and an
+      operationId override stay undeclared — each wants a consumer.
+- [ ] openapi-ops — okay-ops builds all four of its responses by hand,
+      so its operations are the `undeclared` ones left in the
+      repository. `/stats` is a straight `out` over `Store.Stats`,
+      whose `Schema` it already summons to encode. `/metrics` is
+      `media` with Prometheus's own content-type. `/healthz` and
+      `/readyz` are the interesting pair and the shape of the next
+      decision: their STATUS is chosen per request (200 or 503), and
+      every declaring combinator fixes the status at declaration
+      time — so they need either two declared answers and a handler
+      that picks between them, or an answer type that carries its
+      status. Worth deciding on that case rather than widening the
+      whole surface for it.
 
 - [x] optics-outside-describe — CLOSED 2026-09-11. The consumer
       arrived and was not built by this arc: a sibling wrote
@@ -897,15 +1936,31 @@ its owner can price it:
       Wants `ArrowChoice` or branches fall out of the static picture.
       okay-flink / okay-kafka / okay-reactive, and dataflow's own plan
       value is the incumbent to compare against.
-      MEASURED 2026-09-11: nothing here meets the condition, and why
-      is the useful part. `Stage[I, O, A] = A ! (Take % I + Writer %
-      O)` is a PROGRAM, not a graph — a value before it runs, but
-      everything past the first effect lives in a continuation, so it
-      cannot be walked, drawn, fused or shipped without running it.
-      That is not an oversight: a monadic pipeline's shape legitimately
-      depends on its values. okay-flink is one file of interop with no
-      plan value of our own to compare against. TRIGGER: a second
-      consumer that needs the graph BEFORE it runs.
+      MEASURED 2026-09-11, then CORRECTED the same day. The first
+      measurement said "nothing here meets the condition" and was
+      about `Stage`, not about the tree: `Stage[I, O, A] = A ! (Take %
+      I + Writer % O)` is a PROGRAM, everything past the first effect
+      lives in a continuation, and a monadic pipeline's shape
+      legitimately depends on its values. All true, and not an answer
+      to the question asked.
+      THE CONDITION IS MET, by `okay.Tables.Plan[A]` — a GADT of the
+      plan, whose own comment says why it is not a `Free`: "its
+      continuations are functions; the tree can". It has the three
+      interpreters an `Arrow` would have been reached for: `show`
+      draws it (okay-spark's TestWroclawAlgebra collects rendered
+      plans), `optimize` rewrites it — a projection into its `Read`,
+      the small join side to the right — under the law "the turned
+      join answers exactly what the written one does", and
+      `compile(B)` runs it over any `Bulk[D]`, local `Chunks` and
+      Spark alike. Drawn, fused, shipped to a cluster: all three.
+      SO THE CANDIDATE IS ANSWERED RATHER THAN WAITING. What it asked
+      for exists, and it got there with an ordinary GADT and no
+      profunctor — which is the same verdict `optics-outside-conf`
+      reached by a different road, and the reason this arc keeps
+      asking for a consumer before an abstraction. What an `Arrow`
+      would add over `Plan` is `ArrowChoice`-shaped branching and
+      composition laws nothing has asked for; reopen it if a plan
+      needs to branch on a value and still be drawn.
 - [x] optics-outside-conf — CLOSED 2026-09-11, with one test and no
       new abstraction. The PATH half is refused by a decision already
       in the tree: `Serve.Config` is "flat and scalar on purpose" and
@@ -922,7 +1977,166 @@ its owner can price it:
       the config FILE; `OKAY_STAGING` is okay-staging's switch), so
       "every OKAY_ in the guide is a setting" is false.
 
+## okay-blob — from a consumer (2026-09-16, okay-watch)
+
+These four come from OUTSIDE: okay-watch backs its case log off the
+volume through `Blob`, and hit one real defect doing it. Each entry
+carries what produced it rather than a wish.
+
+The defect, because all four point at it. `Blob.put` takes
+`Chunk[Byte] ! (Produce + Async)`. `Produce` is the identity
+signature, so the element type sits in the ANSWER position, and
+`pure(chunk)` therefore type-checks — and emits nothing, because
+`Stream[Producer, Pure]` reads `Free.Pure(_)` as the END of the stream
+and discards its value. The result was a zero-byte object under the
+right key. Two symptoms from one cause: the caller's size test never
+matched so every backup pass re-copied, and the restore answered
+`refused: no header`. Neither compiler nor runtime said a word; a
+round-trip test found both. Nothing here is a bug report — the
+algebra does exactly what it documents — but the wrong thing was the
+one that type-checked, which is a shape worth removing.
+
+- [x] producer-drains — DONE 2026-09-16: `Producer.fold` and
+      `Producer.concat` in core; the ten drains are one call each, and
+      tail-recursive across chunks where they recursed through `map`.
+      Was: the survey behind blob-source-road counted
+      TEN hand-rolled `uncons` loops draining a
+      `Chunk[X] ! (Produce + Async)` into a `Vector[X]` — Backup and
+      Offload `drainList`, S3 `drainBytes`, Fs `sink`, jdbc `Poll`,
+      `SqlStore`, `Migrate`, `Writes`, outbox `Rows`, rag `PgVector`
+      — each summoning the same `Stream` instance and writing the
+      same `go`. One `Producer.toVector` (or `each` folded into an
+      accumulator) beside `Producer.each` retires all of them, and
+      each is covered by its module's own suite. Six modules, so a
+      full gate.
+- [x] offload-getbytes — DONE 2026-09-16 (producer-drains). Was:
+      `Offload.fetchBytes` is `Blob.getBytes` with
+      a throw on the Left: a fourth copy of the walk `Producer.each`
+      replaced in Backup, twenty lines that are now one call. Lands
+      with producer-drains.
+- [x] emptychunk-public — DONE 2026-09-16 (producer-drains): public,
+      with its doc saying what it is for. Was: `Chunks.emptyChunk` is `private[okay]`, so
+      a consumer writing a byte producer's terminator by hand, or
+      passing `Source.toProducer`'s `end` for chunks, spells
+      `ArraySeq.empty[Byte]` and hopes it is the same thing (it is —
+      an empty `ArraySeq` is what `emptyChunk` casts to). Either make
+      it public or give `Bytes` an `empty`; `putSource` already hides
+      it for the common case.
+- [x] blob-byte-source — DONE 2026-09-16 (blob-source-road):
+      `Bytes.file`, `Bytes.stream`, `Bytes.fileSource` and `putFile`
+      on the jvm; `Backup.stream` is now one line. Was: a byte stream from a `Path` or an
+      `InputStream`, in the library. The 64 KB read loop that
+      `Backup.stream` has (private, `okay-blob/.../Backup.scala:65`)
+      now exists a SECOND time, copied verbatim into okay-watch,
+      because there was nothing public to call. Anyone else putting a
+      file into a Blob writes it a third. Cheapest of the four, no
+      breakage, and it removes the hand-written `effect` from every
+      caller — which is where the defect above lives.
+- [x] blob-put-bytes — DONE 2026-09-16 (blob-source-road):
+      `putBytes`, `putChunk`, `getBytes`, concrete on the trait, and
+      `Producer.each` in core for the walk that keeps the answer. Was: `put` over what callers actually hold: an
+      `Array[Byte]`, a `Chunk[Byte]`, a `Path`. Today storing a file
+      requires learning the Produce algebra first, and the streaming
+      form is the only form. Independent of the above and smaller;
+      together they would have made the defect unwritable without
+      touching the trait.
+- [x] produce-at-a-wider-row — DONE 2026-09-16 (blob-source-road): the
+      answer was already in RowLift — `produce(a).plus[Async]` is a
+      zero-cost coerce, not the walk `!.widen` makes — so `produce`'s
+      doc says so and names the trap beside it. Was: `produce(a)` is the named injector and
+      is typed `A ! Produce` precisely, so a program in
+      `Produce + Async` cannot call it. `!.widen` does lift it (that
+      is what `Source.of` uses), at the price of a tree-rewriting
+      pass a multi-chunk stream should not pay per element, so the
+      idiom in practice is the wide `effect[Produce + Async, A](a)` —
+      okay's own benchmark spells it that way too
+      (`effect[Ask + Produce, Int]`). The point is that at the wide
+      row the named safe call is unavailable and `pure` is not:
+      reaching for `pure` is exactly the mistake above. A
+      `produce[F[+_], A](a): A ! (Produce + F)` would close it; one
+      sentence at `produce`'s doc pointing at `!.widen` and at this
+      trap would close most of it for nothing.
+- [x] blob-source-seam — DONE 2026-09-16 (blob-source-road), ADDITIVELY:
+      `Source.fromProducer`/`ofProducer`/`toProducer` in core,
+      `putSource`/`getSource` concrete on the trait, the primitives
+      untouched, no engine changed. A test asserts the asymmetry that
+      justified it: `pure(x)` a silent nothing at Produce, a type error
+      at Source. Re-typing the primitives themselves stays declined
+      until something needs `Flush.now` at the engine. Was: the real fix, and the expensive one: re-type
+      the seam on `Source[Chunk[Byte]]` (`Unit ! (Writer % W +
+      Async)`) instead of `Chunk[Byte] ! (Produce + Async)`. The
+      answer becomes `Unit` and the element type moves into the
+      SIGNATURE, so `pure(x)` can no longer be mistaken for an emit —
+      the defect stops being expressible rather than being documented.
+      It also buys `Source.of`, `Source.unfold` and `Source.apply` as
+      ready constructors, every Writer/Stream combinator, `merge`, and
+      `Flush.now` — an explicit chunk boundary, which is precisely
+      what `S3.put`'s own comment wants when streaming bodies and
+      multipart arrive. COST, stated: `Blob.put`, `Blob.get`,
+      `Blob.list`, `Blob.Counted`, `Fs`, `S3` and `Backup` all move,
+      and `get`'s `Either[String, Unit] ! (Produce + Async)` needs a
+      shape that carries an outcome beside a Source. Worth pricing
+      before taking, and worth taking only if the seam is going to be
+      touched for streaming puts anyway.
+
 ## okay-http
+- [x] route-headers-a — DONE 2026-09-11. A request header is a
+      `Named[T]` in a third place: `:@`, the same spellings
+      (`as`/`opt`/`all`), rendered `in: header`. The design fact worth
+      keeping: a header CANNOT join the route's `A` without breaking
+      `unapply(url(a)) == Some(a)`, so `Routed[A]` stays a prism on the
+      url and `Headed[A, H]` is the request-shaped declaration. One
+      builder serves both query and header because a header block IS a
+      `Map[String, Vector[String]]`.
+- [x] route-headers-b — DONE 2026-09-11. `.secured(scopes*)` on the
+      request-shaped declaration, `Router.enforcing(verify)` on the
+      table, 401/403 in `answers` without the author writing them, and
+      `securitySchemes` + a per-operation `security` in the document.
+      okay-admin converted: its seven existing ladder tests pass
+      through the new road unchanged, which is the evidence the
+      conversion preserved behaviour.
+      Two decisions worth keeping. The module boundary shaped the
+      interface — okay-security depends on okay-http, so a route
+      declares DATA (scheme, scopes, realm) and `Router.Verify` is
+      `String => Either[String, Set[String]]`, with `Secure.verifier`
+      adapting; a `Policy` that reads the action or resource stays
+      with `Secure.granted`. And FAIL CLOSED: a secured entry whose
+      table never got a verifier answers 401 `no_verifier`, because
+      declaring a requirement and forgetting to enforce it would open
+      a hole the document swears is shut.
+      The law is asserted twice, as set equalities: `enforcing`
+      refuses exactly the secured entries, and the document marks
+      exactly those operations.
+- [x] route-headers-c — DONE 2026-09-11. `Answer.headers` and
+      `Router.answering(status, names*)`, rendered as
+      `responses[*].headers`. The distinction the stage exists to
+      state: a secured route's `www-authenticate` is declared AND
+      written from one value, so it is true by construction; an
+      author's declaration is DESCRIPTION, and enforcing it would turn
+      a documentation slip into a 500. Saying which half is
+      load-bearing beats pretending both are.
+- [x] route-secured-with-a-value — DONE 2026-09-11, in two steps the
+      same day. `media`/`html` came first, because okay-demo's document
+      rendered `/admin/replay` with a 401, a 403 and NO SUCCESS CASE
+      and the demo's own guard caught it; the rest — `htmlAt`,
+      `bytes`, `bytesAt`, `events`, `eventsAt`, `json`, `jsonAt`,
+      `out`, `outAt`, `jsonOut`, `jsonOutAt`, on the class and the
+      companion — came when the operator asked. Each carries
+      `securityAnswers` beside whatever it declares itself.
+      The wrinkle a caller meets: the `Headed` forms carry NO default
+      arguments (Scala allows them on one overload of a name), and
+      `status`/`description` must be passed POSITIONALLY, because a
+      named argument narrows overload resolution before the argument
+      types are read.
+- [ ] route-headers-adopt — REDUCED 2026-09-11 after looking properly.
+      `McpHttp.route` is a TOTAL `Request => Response` by design —
+      `McpAuth` depends on that totality, and its comment says so — and
+      it answers any verb on one path, which a `Router` entry cannot
+      say. okay-script's header reads are all inside `Site`, a page
+      server rather than a table. So there is no clean seat for stage
+      A beyond the tests; the stage-B half found its consumer instead
+      (okay-admin, then okay-demo). Left open in case McpHttp ever
+      becomes a table, not as work waiting to be done.
 - [x] route-arity-one-tuple — DONE 2026-09-11. The entry asked for a
       second sighting; there were four, three by authors other than
       the one who wrote the entry: the sibling who wrote `TestOpenApi`
@@ -985,7 +2199,67 @@ its owner can price it:
       Netty backends (Jetty has it); unblocks MCP push there
 
 ## okay-ui
-- [ ] ui-windows-terminal — raw mode beyond stty
+- [ ] ui-terminal-v2 — what is LEFT after ui-terminal-keys read the
+      escape sequences and ui-terminal-width gave the layout a budget
+      (both 2026-09-18): an `Input` edits by append and backspace with
+      no CURSOR, `Scroll` renders its child whole and clips nothing,
+      and there is no mouse.
+      WHAT EACH NEEDS NOW, since the size question is answered:
+      a CARET is host state (Left/Right are reserved for it already,
+      and Home/End would have to mean line-start/line-end while
+      focused on an `Input` rather than the ends of the tab order — a
+      conflict to decide, not just code); SCROLL needs the HEIGHT
+      budget and an offset per keyed Scroll, which is the same shape
+      the width took and is the cheapest of the three now; the MOUSE
+      needs SGR reporting (`ESC [ < b ; x ; y M`, which `Frame.feed`
+      would decode) AND hit-testing a rendered frame back to a widget,
+      which no part of this host does — a rendered line does not
+      remember which node made it. TRIGGER unchanged: a product that
+      runs on the terminal host for a PERSON.
+- [ ] ui-native-hosts-unread — Swing, GTK, Compose, SwiftUI and the
+      Android APK have each drawn the conformance script and a
+      counter; none has drawn a product page. NARROWED 2026-09-18
+      (native-tokens-tested): the tokens ui-text-intent gave them are
+      no longer a claim — TestSwing asserts a monospaced identifier, a
+      right-aligned `Align.End` label and the ABSENCE of tabular
+      figures Swing cannot draw; TestGtk asserts the `monospace` and
+      `numeric` style classes against real GTK widgets (a
+      `gtk_widget_has_css_class` binding was added to read them back).
+      What is still unread is a SCREEN: layout under a product's
+      density, not a token. The recorded gaps
+      (Swing: gap not drawn, weights as natural sizes; GTK: no
+      weights, multiline as a plain entry, images as labels,
+      `Gtk.window` never run with an app; Compose claims nothing;
+      the iOS app bundle and the emulator run are still `[ ]` in
+      specs/frontend.md) are honest and unranked, because nothing
+      with a reader has ranked them. okay-watch found four things in
+      two days on the browser; a native client will find its own. Not
+      a lane — a record with a TRIGGER: the first product screen on a
+      native host, which becomes that host's ui-product.
+- [ ] ui-windows-terminal — raw mode beyond stty. WRITTEN OUT
+      2026-09-18, because a one-line stub told the next reader
+      nothing, and because ui-terminal-keys made the remaining job
+      smaller than it looks.
+      WHAT BREAKS: `Terminal.raw` shells out to `stty raw -echo`, and
+      Windows has no stty outside a POSIX shell. Nothing else in the
+      host is POSIX — painting is ANSI, which Windows 10+ draws once
+      `ENABLE_VIRTUAL_TERMINAL_PROCESSING` is on.
+      WHAT NO LONGER NEEDS DOING: the KEYS. With
+      `ENABLE_VIRTUAL_TERMINAL_INPUT` set, a Windows console sends the
+      same `ESC [ A` sequences a POSIX terminal does, and
+      `Frame.feed` already decodes those — so this is now only about
+      the MODE, not about a second input vocabulary.
+      THE SHAPE, dependency-free (okay-ui takes none): the same trick
+      `stty` is — a CHILD PROCESS configuring the console its parent
+      shares. `powershell -c` with an `Add-Type` P/Invoke of
+      `GetStdHandle`/`GetConsoleMode`/`SetConsoleMode` does it without
+      JNA and without a native image step; the bracket shape of
+      `Terminal.raw` (on, run, off) is unchanged.
+      TRIGGER, and it is a hard one: a Windows box to VERIFY on. This
+      is platform code whose whole content is a side effect on a
+      terminal nobody here has — landing it unverified would put a
+      claim in the repository that no test and no person has ever
+      seen hold, which is worse than the honest gap.
 
 ## okay-script
 - [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy — still the
@@ -1029,6 +2303,79 @@ its owner can price it:
       generates the same code the implicit discard did.
 
 ## okay-cluster / dataflow
+
+- [ ] **shipped-terms — a lambda on the cluster, without shipping a
+      closure** (operator, 2026-09-18). `specs/dataflow.md` Claim 3
+      says "nothing ships a closure" and states its price honestly:
+      *you cannot type a lambda into a REPL and have it run on the
+      cluster*; a plan whose leaves are anonymous functions runs
+      locally and is refused at submission. The registry is the reason
+      the whole class of `Task not serializable` failures does not
+      exist here, and that is worth keeping.
+
+      THE PROPOSAL IS TO LIFT THE PRICE WITHOUT LOSING THE CLAIM:
+      ship the leaf as **TASTy** (Scala 3's typed AST) plus its
+      captured environment as **CBOR** under a `Schema`. That is not
+      Java serialization of a JVM lambda — no Kryo, no registration
+      list, no synthetic `$anonfun$foo$1` to go stale — so the failure
+      class Claim 3 eliminates stays eliminated. It is the Spark
+      CAPABILITY without the Spark MECHANISM.
+
+      WHY THE OBJECTIONS THAT KILL THIS ELSEWHERE DO NOT APPLY HERE.
+      The book's Appendix A rejects TASTy+CBOR for durable workflows
+      on four grounds, and a cluster inverts every one of them:
+      a compiler at restore is AMORTISED (compile once per stage, run
+      over millions of rows — seconds against minutes, where the
+      workflow case spent seconds to save microseconds); symbols
+      resolving against a classpath COSTS NOTHING because "every
+      worker runs the same artifact" is already this engine's stated
+      bargain; an executable payload is a different threat model on an
+      authenticated internal control plane than in a persisted
+      journal; and pinned code is a FEATURE — version skew inside one
+      job is a bug.
+
+      WHAT IS ACTUALLY HARD, and it is one thing: getting the term.
+      TASTy is emitted for definitions at compile time, so a macro at
+      the submission site must reify `'{ ... }` and marshal the free
+      variables. That is bounded here in a way it is not for
+      workflows — only the LEAVES need terms (`map`, `filter`, the
+      fold), not a continuation across pauses — and `okay-staging`
+      already runs `scala.quoted.staging` in production with the
+      compiler isolated in its own module and an off switch.
+
+      KNOWN CONSTRAINTS to design against: `staging.run` refuses a
+      second thread, so a worker compiling several stages concurrently
+      serialises on it; TASTy is forward- but not backward-compatible,
+      which a single-artifact cluster satisfies anyway; and a leaf
+      whose captured value is not `Schema`-able must still be refused
+      at submission, with the stage named, exactly as today.
+
+      ADDITIVE, NOT A REPLACEMENT. Jobs by name stay the production
+      road — no compiler on the worker, fastest start, and the
+      operational story the spec already tells. Shipped terms are the
+      exploratory road: a REPL, a notebook, a one-off. Two roads, and
+      the spec's Claim 3 gains a second sentence rather than losing
+      its first.
+
+      DECIDING TEST, before any of this is built: a lambda typed at a
+      REPL, submitted, and run on a worker that never had that code —
+      answering the same checksum as the registered job that does the
+      same thing. If that cannot be made to work in a spike, the entry
+      is closed with the reason.
+
+- [x] cluster-testfailure-untagged — DONE 2026-09-16 (operator-followups): the
+      suite is `Live`-tagged, out of `sbt test`, in `integrationTest`. As
+      found: `okay.cluster.TestFailure` binds a
+      real `ServerSocket(0)` ("A CONNECTION THAT BREAKS EVERY TIME") and
+      spawns worker JVMs, and it is NOT `Live`-tagged, against the
+      nio-port-scope rule that every binding suite tags itself. Seen
+      2026-09-15 in split-over-either's first gate: `test timed out after
+      30 seconds` reported at 315.018 s — a JVM that stood still for five
+      minutes, not a slow test — and the matrix came back with 4314 results
+      instead of 4424. Alone on the same tree: 9/9 green. The gate does not
+      distinguish "the box paused" from "the test is wrong", so either the
+      suite carries the tag or the gate learns the 30 s-vs-300 s signature.
+      Not fixed in that lane: its claim did not hold okay-cluster.
 - [x] dataflow-reconnect — LANDED, both halves, and the measurement
       the entry asked for says both are needed. TOLERANCE: a worker is
       buried after three CONSECUTIVE failures and any answer clears
@@ -1258,7 +2605,138 @@ its owner can price it:
       (was filed under "deploy-everywhere" — the reasoning
       that section carries is in BACKLOG-ARCHIVE.md)
 
+## dataflow — direction (2026-09-11; specs/dataflow.md stages 11-13, specs/federation.md)
+- [ ] dataflow-source-log — stage 11: `Flow.topic` over okay-persist
+      partitions that SEEK by epoch, and `Sink.stagingTo(topic)` whose
+      append is the commit. Exactly-once from log to log on the
+      repository's own primitive; verifiable on one machine. FIRST.
+- [x] dataflow-netem — LANDED (TestNetem, default gate). Tolerance 3
+      carries 20% loss with certainty, the knee is at 30%, half the
+      runs die at 50%. And the finding: with burial OFF a 70% wire
+      still finishes every run — on a lossy wire the loss never ends
+      a run, the burial policy does, because three lost packets are
+      read as a dead machine. `tolerance` is a parameter of
+      `Cluster.run`/`stream` now; telling the two failures apart BY
+      THE ENGINE needs a real wire (stage 12).
+- [x] dataflow-rescale — stage 13: change the partition count between
+      two epochs. LANDED (box 1 + box 3, TestRescale): a striped source
+      (`Flow.striped`, `Job.rescalable`) into a keyed/fold sink resumes
+      at a new width with the batch answer; the workers vector may
+      change too. Two conditions the build now ENFORCES: the source
+      must be striped (a contiguous cut has no global prefix) and the
+      sink must keep its state in the fold (a windowed sink's open
+      panes are not journalled). Both refuse rather than fake it.
+- [ ] dataflow-rescale-windowed — stage 13 box 2: journal a windowed
+      operator's OPEN panes so a re-cut can rescale it, rather than
+      relying on replay (which a re-cut cannot do). Found by
+      dataflow-rescale: today a windowed rescale is refused, naming
+      this. The boundary panes would be re-bucketed under the new
+      extents on resume.
+- [x] federation-two-parties — specs/federation.md stage 1: two logs,
+      two processes, one job, the answer equal to the union's and the
+      bytes shown to be accumulators. LANDED: `TestFederation`,
+      `Cluster.Refused` (a refusal is a `Resp.Failed` in process too —
+      it was already one over a socket, and the split was the
+      finding); 0.17% of the records' bytes crossed.
+- [ ] federation-refusal — specs/federation.md stage 2: a worker with
+      an allow-list of jobs, and a coordinator identity checked before
+      the pre-pass; `okay-security` connected. `Cluster.Refused` is
+      the answer's shape already.
+- [x] one-binary-story — the small-business path, as ONE worked
+      example rather than a module: events into a log, a windowed
+      report over them, a page that shows it, a backup that leaves the
+      machine — all in one process, run end to end in a test. The
+      thing the repository is FOR, told once. LANDED: `okay.demo.Ledger`
+      + `TestLedger`; every piece existed, the work was the seam and
+      the honest sentence about it (a backup is the books up to the
+      last roll). Two findings filed below.
+- [ ] backup-active-segment — `Backup.copy` leaves the active segment
+      home, so a backup is bounded by `segmentBytes` of unsaved books.
+      A shop wants "everything up to now": copy the active segment
+      under a distinct key (it changes, so it is not incremental) or
+      roll on demand before a backup. Found by one-binary-story.
+- [ ] dataflow-machines — stage 12 proper. BLOCKED: needs machines
+      that are not this one. Not to be pretended at.
+
 ## okay-resilience
+
+- [ ] **resilience-timed-tests-measure-the-box** — THE MODULE-LEVEL
+      TASK the two entries below have been asking for one sighting at
+      a time. It is one disease, not two flakes: this module's timed
+      suites run in the DEFAULT gate and assert on wall-clock
+      deadlines and exact counters, so under a full matrix they
+      measure how busy the machine is and report it as a behaviour.
+      THE EVIDENCE IS COMPLETE. Five failures across two suites, and
+      EVERY ONE of them from a lane that cannot have caused it —
+      dataflow numbers, an optics lane, continuations-audit,
+      workflow-suspended-driver, and finally a lane whose entire diff
+      is five markdown files with no executable code at all. Each
+      passed in isolation on the same tree minutes later, 3-of-3 or
+      better. One theory was tested and REFUTED (a yield-spin starving
+      the fibre it waits for: 12 CPU burners at load 22 did not
+      reproduce it), which is recorded below so nobody spends that
+      hour again.
+      WHAT IS ACTUALLY WRONG: `TestHedgeStart` waits five seconds by
+      wall clock for a fibre to answer, and `TestResilienceTimed`
+      needs three attempts to start 10 ms apart with the third winning
+      at +5 ms and then asserts `starts == 3, cancelled == 2` exactly.
+      Beside ninety other module runs, neither bound is defensible —
+      not because the code is wrong but because the assertion is about
+      the scheduler, not about hedging.
+      TWO WAYS TO CLOSE IT, and the owner picks:
+        (a) assert on a CONDITION rather than a deadline, and on
+            BOUNDS rather than exact counters — `starts <= 3` and
+            "eventually no attempt is running" say what hedging
+            promises, and say it on any machine. `Live` exists for
+            the parts that genuinely need real time.
+        (b) move both suites to `integrationTest`, where a timed test
+            is allowed to want a quiet box. Cheaper, and it takes the
+            guarantee out of the gate that protects it.
+      (a) is better and (b) is honest; what is not acceptable is a
+      third year of ledger entries.
+      TAKEN 2026-09-18 (hedge-bounds), option (a):
+        - `TestHedgeStart.until` keeps the CONDITION as its assertion
+          and turns the clock into a TRIPWIRE — 60 s, the line past
+          which "slow" is "hung" — and SLEEPS instead of spinning on
+          `Thread.yield()`, which on a loaded box can hand the core
+          back to the one thread with nothing to do.
+        - `TestResilienceTimed`'s hedge counters become the promise:
+          a hedge happened (`starts >= 2`) and EVERY LOSER IS
+          CANCELLED (`cancelled == starts - 1`), which is the only
+          claim there that is about hedging rather than about time.
+      ONE CORRECTION TO THIS ENTRY, found by running it: it names both
+      suites as if both reached the gate. `TestResilienceTimed` is
+      ALREADY `Live`-tagged and excluded from `sbt test` — so all four
+      sightings are `TestHedgeStart` alone, and the timed suite's
+      change is an improvement rather than a fix.
+      SECOND REFUTATION OF THE BURNER THEORY, and it cost an hour
+      because this entry already said it: 16 burners at load 93 did
+      not reproduce the failure with the OLD code either (0 of 4,
+      against 0 of 4 new, detector verified on a known-good run
+      first). CPU pressure is not the condition. Every sighting was
+      inside a FULL MATRIX — hundreds of processes, four sbt JVMs, GC
+      pressure and paging — which is why DONE below says matrix and
+      not burners. Do not spend a third hour on burners.
+      ACCEPTED 2026-09-18: three full `affected master` matrices back
+      to back, all GREEN, with `TestHedgeStart` in every one. WHAT
+      THAT DOES AND DOES NOT SHOW, said plainly because the criterion
+      above asks for "under load": those three ran while a docker
+      image build held the VM and siblings were landing — ordinary
+      traffic, not the four-matrix crush every sighting came from —
+      and the OLD code also passed 4 of 4 at load 93, so no run of
+      this size discriminates. What carries the change is that the
+      assertions no longer name the scheduler: a condition with a
+      hang tripwire, and `cancelled == starts - 1`. Three green
+      matrices say it did not regress. The ledger stops growing or it
+      does not, and the next sighting decides — if one comes, it is
+      now a claim about hedging that failed, which is worth reading.
+      DONE MEANS: a full matrix under load with both suites in it,
+      three times, no failure — and the assertions readable as claims
+      about hedging rather than about timing.
+      COST SO FAR: five gate cycles, each roughly ten minutes, plus
+      the investigation hour. Paid by five different lanes, none of
+      which owned this module.
+
 - [ ] resilience-timed-under-load — `TestResilienceTimed."hedge: max
       bounds the attempts in flight"` failed once in a full gate
       (2026-09-11 00:0x, optics-outside-ops-routes) and did NOT
@@ -1284,6 +2762,50 @@ its owner can price it:
       needs to be a condition rather than a deadline, or the test
       belongs in `integrationTest`. Seen 2026-09-10 by the
       dataflow-numbers gate, which does not touch okay-resilience.
+      SECOND SIGHTING 2026-09-17, continuations-audit's gate: same
+      test, same message, in a run of 4498 results whose only other
+      failure was none — and the lane touches `Delim` and docs, while
+      okay-resilience never names `Delim`. 3 of 3 green in isolation
+      on the lane's own tree minutes later. Two sightings from two
+      lanes that cannot have caused it is no longer one ledger entry:
+      the owner's choice between `Live` and bound-based assertions is
+      now overdue.
+      THIRD SIGHTING 2026-09-17, workflow-suspended-driver's gate —
+      same test, same message, another lane that cannot have caused
+      it (okay core and okay-persist).
+      FOURTH SIGHTING 2026-09-18, gate-bound-test-fanout's gate — same
+      test, same message, and the lane changes ONE LINE of build.sbt
+      and nothing else. Box at load 76 under a sibling's gate; 3 of 3
+      green in isolation on the same tree minutes later. Four lanes,
+      none of which can have caused it, is the whole argument: the
+      assertion is about the scheduler, not about hedging. Option (a)
+      above is the one to take.
+      ONE THEORY TESTED AND NOT CONFIRMED, recorded so nobody spends
+      the same hour twice: the suite's `until` helper waits by
+      spinning on `Thread.yield()` for up to five seconds, and a
+      yield-spin BURNS a core rather than waiting — plausibly the core
+      the fibre it waits for needs. Changing it to `Thread.sleep(1)`
+      is obviously no worse, but the repro DID NOT REPRODUCE: with 12
+      CPU burners and a 1-minute load of 22, the ORIGINAL `yield`
+      version passed. So the starvation theory is unproven and the
+      change was reverted rather than landed on a guess. Whoever picks
+      this up: synthetic CPU load is not the shape that breaks it —
+      the failures all happened under a full matrix, which is many
+      JVMs with many threads and a lot of I/O, not a busy loop.
+      FOURTH SIGHTING 2026-09-17, a book lane whose ENTIRE DIFF IS
+      PROSE — five markdown files under docs/continuations and not one
+      line of executable code. That settles the remaining doubt: no
+      lane's code perturbs this, because this lane has no code. What
+      the four have in common is only the full matrix, which means the
+      test is measuring the box and calling it a behaviour.
+      THE DECISION IS OVERDUE AND THE EVIDENCE IS NOW COMPLETE: a
+      five-second wall-clock deadline inside a suite that runs beside
+      ninety other module runs is not a bound anybody can defend. Move
+      it to `integrationTest`, or assert on a CONDITION rather than a
+      deadline (`Live` exists for this). Not done here on purpose: a
+      documentation lane must not carry a fix to okay-resilience, and
+      the owner's choice between the two shapes is a design decision,
+      not a patch. Four gates have now paid for it.
 - [ ] microservices-next — the audit's remaining gaps, each its own
       spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
       shutdown and RED metrics, both in okay-ops. DONE 2026-09-09

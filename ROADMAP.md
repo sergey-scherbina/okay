@@ -126,6 +126,19 @@ law tests (ScalaCheck), scaladoc, releases. Optimization strictly by
 the measured protocol; history and refuted experiments stay in
 src/jmh/history.tsv.
 
+## Continuations — the four roads (specs/continuations-roadmap.md)
+With `Cont` a facade over `Free` (theory ch. 11), the plan for the
+continuation machinery is one spec with four ranked roads, each owing
+a number: a fused walk over a whole row (`handlers-fused-walk`, capped
+by handler-fusion's measured 1.1–1.3x), staged `direct` blocks with no
+tree when the handlers are static (`direct-staged`, ceiling 1.9x
+measured for the hand-written shape), typestate on a facade
+(`freer-base-stage2`, a compile error as the deliverable), and
+continuations as data as a spike before anything is planned. The
+bounding fact is written there too: a freer tree is a coroutine, not a
+syntax tree, so compilation lives at construction, in the interpreter,
+and in the first-order DSLs — never on a built tree.
+
 ## P9 — okay-agent: the agentic layer
 
 Agents as programs (specs/llm-agentic.md): a tool call is an effect
@@ -193,3 +206,71 @@ React-shaped hosts, the diff, forms from Schema, and MCP elicitation
 closed end to end. Above v1, designed and backlogged: scenarios as
 programs (Dialog), screens as a stack, server-driven UI over the wire
 ("the tree is the capability list"), event-sourced sessions.
+
+## P13 — where the effort goes next (the operator's order, 2026-09-18)
+
+Asked directly: what else do the applicative-shaped classes buy, can
+we compete with Spark and Flink, and what is missing where. The answer
+below is argued from measurements this repository keeps, and the ORDER
+is the operator's.
+
+**1. `Validated` — every error, not the first (specs/validated.md).**
+The classic applicative payoff Okay does not have. `Throws` is
+monadic, so it stops at the first error; an applicative cannot bind
+one leaf's answer into another's body, so it has no way to stop and
+therefore collects. Three consumers are worse today for the lack:
+`okay-conf` reports one missing key per run, schema validation has
+`form-errors-on-validate` waiting in BACKLOG for exactly this type,
+and `okay-openapi` rejects a body at its first bad field. Small, and
+useful the day it lands.
+
+**2. Durable workflows as the flagship, ahead of dataflow.** The
+market is younger, the moat is smaller, and the differentiation is
+sharper: Temporal and its kin need determinism BY CONVENTION, while a
+captured continuation makes replay typed. `Wf`, `Replayable`, the
+dialogue journal, the worker and coordinator recovery are already
+built (specs/durable-workflow.md), and "a continuation journal is
+event sourcing" is the idea the rest of the field does not have. This
+is the bet with the best ratio of what is built to what is left.
+
+**3. Dataflow: the EMBEDDED tier with a published ceiling, not a race
+for nodes.** Measured on one machine, the Wrocław job, 2.4 million
+events (docs/benchmarks.md §20): okay 22 561 859 ev/s at 8 cores,
+Flink 1.20 at 1 679 971, Spark 4.0 batch RDD at 338 918 — with three
+of the five stages being literally the same code in both lanes, so
+what differs is the engine and not the arithmetic.
+
+That is not a licence to claim a win. Flink pays for its own
+scheduling, checkpointing and serialization, and stage 12 of
+specs/dataflow.md is BLOCKED for want of machines that are not this
+one, so "distributed" is a claim and not yet a result. And the moat is
+not the engine at all: it is a hundred connectors, SQL, a catalog and
+the operational tooling. Chasing that head-on is years for no
+advantage.
+
+What the numbers DO say: 107 ms for 2.4 million events on one machine
+means the job people run on a twenty-node cluster fits in one server.
+Most streaming work sits far below the size that justifies a cluster
+and pays for one anyway. So the position is **Flink's semantics as an
+embeddable library with no cluster to run** — event time, watermarks,
+keyed state, exactly-once, and no daemon. It is what DuckDB did to
+Spark for analytics, and `okay-delta` already uses DuckDB as its read
+road. Three things follow, and they are backlogged rather than
+promised: publish the honest CEILING (the throughput and state size
+past which a cluster is the right answer — Flink never publishes one
+and we can measure ours); make the migration seam a documented path,
+since `okay-flink` already proved `Aggregator` is an
+`AggregateFunction` field for field and that it survives
+serialization into a job graph; and finish stage 12 at the scale of a
+few machines rather than a thousand.
+
+**4. Capability lists from `Static`.** `Static.leaves`
+(specs/applicative-static.md) answers what a program MAY perform
+before it runs, which is what `okay-di` currently asks authors to
+declare by hand. Deriving needs from the program is the honest
+version of "needs declared where the thing opens".
+DONE 2026-09-18 (di-needs-from-static): `Provision` is the
+deployment's vocabulary as an effect signature, `Needs.provisioned`
+takes a `Static` spine over it and reads the needs off its leaves,
+and the thing opens with the place's answer — the demo's store is
+written this way and declares nothing by hand.

@@ -69,6 +69,28 @@ class TestAdmin extends munit.FunSuite {
     assert(!route.isDefinedAt(Request(Method.Get, "/other", Nil)))
   }
 
+  test("the route DECLARES what it requires — so a document can say so") {
+    val e = Admin.router()(() => 0L, () => ()).entries.head
+    assertEquals(e.security.map(_.scopes), Vector(Set("admin")))
+    assertEquals(e.security.map(_.realm), Vector("okay-admin"))
+    // the answers it produces without the author writing them, beside
+    // the one it declares itself — a secured route that could not
+    // state its SUCCESS case rendered as an operation that only fails
+    // (demo-admin-declared)
+    assertEquals(e.answers.map(_.status).sorted, Vector(200, 401, 403))
+    assertEquals(e.answers.find(_.status == 200).map(_.media), Some("text/html"))
+    assert(e.summary.isDefined, "a declared operation says what it is for")
+  }
+
+  test("FAIL CLOSED: the declared table with no verifier serves nobody") {
+    // forgetting `enforcing` must be a loud mistake, not a silent hole
+    val bare = Admin.router()(() => 0L, () => ()).routes
+    val r = run(bare(Request(Method.Post, "/admin/replay",
+      Seq("authorization" -> s"Bearer ${Admin.Issuer.issue()}"))))
+    assertEquals(r.status, 401)
+    assert(r.header("www-authenticate").exists(_.contains("no_verifier")), r.headers.toString)
+  }
+
   test("a query string does not hide /admin/replay (optics-outside-routes-adopt)") {
     // the route compared the WHOLE request target, so a cache-buster
     // or a tracking parameter turned an authorised replay into a 404.

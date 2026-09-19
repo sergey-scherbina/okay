@@ -45,7 +45,7 @@ client draws:
 
 | Node | What it is |
 |---|---|
-| `Text(s, style)` | text with TOKENS: `Style(bold, dim, tone, size)`; a host maps `Tone.Danger` to its own red |
+| `Text(s, style)` | text with TOKENS: `Style(bold, dim, tone, size, kind, align)`; a host maps `Tone.Danger` to its own red, `Kind.Ident` to a monospaced face, `Kind.Number` to tabular figures and `Align.End` to the end of its column |
 | `Row`, `Column` | children beside / below each other |
 | `Box(children, dir, weights, gap, pad, key)` | the general container: weights divide the main axis, gap and pad in character units |
 | `Image(src, alt)` | a picture, or its alt where a host has no loader |
@@ -56,12 +56,24 @@ client draws:
 | `Form(fields, submit, key)` | fields and a submit button keyed like the form — the hybrid rule of §5 lives on it |
 
 **Level S** — the open semantic vocabulary: `Items`, `Table`, `Tabs`,
-`Modal`, `Disclosure`. Each is DEFINED by its lowering to level L
-(`Ui.lower`). A client that claims a semantic node draws it natively
-(a real table); one that does not receives the lowering, and the
-server cannot tell the difference — `Ui.keys(node) ==
+`Modal`, `Disclosure`, `Link`. Each is DEFINED by its lowering to
+level L (`Ui.lower`). A client that claims a semantic node draws it
+natively; one that does not receives the lowering, and the server
+cannot tell the difference — `Ui.keys(node) ==
 Ui.keys(Ui.lower(node))` is a tested law. Write semantics; drop to
 `Box` where you want a non-standard look.
+
+Where a client does NOT claim `Table`, its lowering is rows of boxes
+with one space per column boundary — a gap the LOWERING carries, so a
+terminal reads `2023-11-14 bread` rather than running two values into
+one, and every host maps that space to its own unit.
+
+A browser claims `link` and `table` (`React.Vocabulary`, which
+`live.js` says in its hello and the scriptless `Html` renders by):
+an anchor is an `<a>`, and a table is a real `<table>` whose column
+shares are a `<colgroup>` rather than an inline `flex` on every cell.
+The other semantic nodes reach it as their lowering — each for a
+stated reason in `specs/ui-product.md`, not by omission.
 
 Pixels never enter the tree. Style is tokens, layout is weights and
 character units: a terminal stays a terminal, a phone looks like a
@@ -77,10 +89,18 @@ is no `Cmd` type; subscriptions are `merge`). Hosts:
 |---|---|---|
 | `Terminal.host()` | JVM, Native | ANSI, raw mode by `stty`; `Frame.render` is the pure half, testable as lines |
 | `ReactJs.host(react, root)` | Scala.js | `React.elem` is pure and JVM-tested; five lines of glue |
-| `Ui.diffing(Dom.backend(document, root))` | Scala.js | raw DOM, zero dependencies, driven by the core diff |
+| `Dom.host(document, root)` | Scala.js | raw DOM, zero dependencies, driven by the core diff; it lowers with the browser's own vocabulary, so a `Table` reaches the document as a `<table>` |
 | `Swing.host(panel)`, `Swing.window(title)(app)` | JVM | zero dependencies, headless-tested |
 | `okay.ui.gtk.Gtk.host(box)`, `Gtk.window(title)(app)` | Scala Native | GTK 4; present only where `pkg-config --exists gtk4` answers (`brew install gtk4 pkg-config`) |
 | the test host | tests | renders to a value, feeds scripted events — the whole loop with no screen |
+
+`Html.css` is the level-L stylesheet for the browser roads: the
+containers, the text tokens, a button's role, the table. A product
+themes it by setting six custom properties (`--okay-fg`,
+`--okay-muted`, `--okay-accent`, `--okay-danger`, `--okay-line`,
+`--okay-base`) and writes no token rules of its own; okay-script
+serves it at `/__okay/okay.css`, and `installable`'s `/__okay/app.css`
+is that file plus what a phone adds.
 
 A `Host` takes the whole tree; a `Backend` takes patches, and
 `Ui.diffing` turns one into the other with the core diff (keyed
@@ -91,6 +111,27 @@ Scenarios — a wizard, a dialog — are PROGRAMS, not folds:
 `Dialog.show(ui)` awaits one event; `Form.ask[A]` renders a form from
 a `Schema[A]` and answers the typed value; `Nav` is a stack of
 screens. See `specs/ui.md`.
+
+**A form starts from `Form.blank[A]`, never from an empty object.** A
+`Select` always SHOWS an option and a `Check` always shows a state, so
+the value behind them has to hold what the screen already says, or a
+submit that changed nothing decodes nothing. `Form.blank` is that
+value — every Check false, every Select on its first option (a sum's
+case knob included), every list an empty array, every `Option` absent —
+and it is DERIVED from the rendered form rather than from the Schema a
+second time, so it cannot drift from what is drawn. On the scriptless
+road this is not a nicety: an unchanged field posts nothing, so a form
+that starts from `{}` refuses a submit for a field the user can see is
+answered.
+
+Errors are data, per field: `Form.errors[A](value)` answers
+`(path, message)` pairs and the form renders each under the field its
+path names. Two rules that follow from that and are easy to get wrong
+— both were, until 2026-09-18: a field the SCHEMA defaults is not
+"required" (the decoder applies the default, so refusing it holds a
+submit the wire would accept), and an error inside a present `Option`
+belongs at the FIELD's key (`address.zip`), not at the option's, or it
+renders under nothing at all.
 
 ## 4. Over the wire: a server-driven frontend
 
@@ -114,6 +155,16 @@ either            Close
 else is lowered by the server before it is sent. `Wire.client(host,
 vocab)` is the Scala client over any host. Sessions are event-sourced
 (`Sessions`: journal, refold, snapshot), so a reconnect resumes.
+
+**Damage is dropped, never a crash — including damage that parses.**
+A line that is not valid `Protocol` is ignored, and so is a
+well-FORMED `Patch` whose path names nothing on the tree the client
+holds: `Ui.patch` answers the tree unchanged rather than throwing, and
+a `Reorder` that is not a permutation of the children is ignored the
+same way. A patch arrives from the network like any other input, and
+`Wire.client` applies it straight onto its kept tree, so this is the
+same rule the capability list is: what arrives cannot be trusted to
+name something real.
 
 The contract for a client in another language is RENDERED from the
 schemas — `docs/protocol/frontend.md` — with a shape language on one
@@ -159,6 +210,14 @@ ${mount("counter", counter)}
 JavaScript) and opens the page's own WebSocket; `live.js` (~160 lines,
 dependency-free, served by the container) is a level-L client of the
 protocol. `Live.form[A]` is a typed form as a Live app.
+
+`mountPlain` is the same app on the oldest client there is: the tree
+as one `<form method="post">`, no script, every press an HTTP POST
+diffed against the tree it was rendered from (`Live.step`) — a
+`Submitted` for a `Form`'s own button, `Pressed`/`Edited`/`Toggled`/
+`Chosen` otherwise, each checked against the shown tree before
+`update` sees it. Scala.js is one host among the others, not a
+requirement.
 
 `installable(name)` (§7) is the mobile web: viewport, a mobile-first
 stylesheet for level L, a web manifest, a service worker.

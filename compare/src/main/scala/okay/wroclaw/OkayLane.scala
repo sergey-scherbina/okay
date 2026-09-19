@@ -1,6 +1,6 @@
 package okay.wroclaw
 
-import okay.*
+import okay.{Feed as _, *}
 import okay.given
 import scala.collection.mutable
 

@@ -110,7 +110,9 @@ final class Site(
   /** a secure page's socket is checked the way its request is, from
    * the socket's own headers and cookie; refused is simply undefined */
   private def socketPermitted(r: Request): Boolean =
-    val (path, query) = splitUrl(r.url)
+    val split = splitUrl(r.url)
+    val path = split.path
+    val query = split.query
     resolve(path) match
       case Some(Hit.PageFile(f, params)) =>
         val web = webOf(r, path, query, params)
@@ -121,7 +123,9 @@ final class Site(
       case _ => true
 
   private def liveHit(r: Request): Option[(api.Live[?], String)] =
-    val (path, query) = splitUrl(r.url)
+    val split = splitUrl(r.url)
+    val path = split.path
+    val query = split.query
     parseQuery(query).get("__live").flatMap { id =>
       resolve(path) match
         case Some(Hit.PageFile(base, params)) =>
@@ -184,14 +188,20 @@ final class Site(
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse = counted {
-    val (path, query) = splitUrl(r.url)
+    val split = splitUrl(r.url)
+    val path = split.path
+    val query = split.query
     if httpsOnly && !secureFor(webOf(r, path, query, Map.empty)) then toHttps(r)
     else if path == api.Live.JsPath then
-      HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
+      HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(okay.ui.LiveJs.source.getBytes(UTF_8)))
     // the mobile web leg (Mobile.scala): the stylesheet, the service
     // worker, the manifest and the icon, all from the container
     else if path == Mobile.CssPath then
       HttpResponse(200, Vector("Content-Type" -> "text/css; charset=utf-8"), Http.one(Mobile.css.getBytes(UTF_8)))
+    // the level-L stylesheet alone, for a page that draws the tree
+    // without being a phone application (ui-html-css)
+    else if path == Mobile.BaseCssPath then
+      HttpResponse(200, Vector("Content-Type" -> "text/css; charset=utf-8"), Http.one(okay.ui.Html.css.getBytes(UTF_8)))
     else if path == Mobile.SwPath then
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8", "Service-Worker-Allowed" -> "/"),
         Http.one(Mobile.serviceWorker.getBytes(UTF_8)))
@@ -214,6 +224,7 @@ final class Site(
   def close(): Unit =
     pages.values.forEach(_.close())
     pages.clear()
+    loader.close()
 
   // ---- warm and stats (okay-script-warm)
 
@@ -309,6 +320,11 @@ final class Site(
     segments(path).flatMap { segs =>
       val trailingSlash = path.endsWith("/") || segs.isEmpty
       literal(segs, trailingSlash).orElse(parametric(segs))
+    }.filter {
+      // a library says `route: false` and answers no URL, while every
+      // page that imports it still renders (specs/site-framework.md)
+      case Hit.PageFile(f, _) => Modules.routed(Files.readString(f))
+      case _ => true
     }
 
   private def segments(path: String): Option[Vector[String]] =
@@ -380,8 +396,12 @@ final class Site(
 
   // ---- serving a page
 
+  /** the site's ONE module loader: a module imported by three pages
+   * is compiled once (specs/site-framework.md stage 1) */
+  private val loader = Modules.Loader(root, classpath, tempRoot)
+
   private def pageFor(f: Path): Page =
-    pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot))
+    pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot, Some(loader)))
 
 
   /** a page's front-matter; a language VARIANT inherits its base
@@ -415,44 +435,30 @@ final class Site(
     val sess = sessions.handle(web.cookies.get(SessionCookie))
     val lang = langOf(web)
     val f = localized(base, lang)
-    api.Lang.setCurrent(lang)
-    api.Container.setTranslator(Some(translator(lang)))
     // every cookie this request sets -- the container's own and the
     // page's -- carries Secure iff this request was secure
     val secure = secureFor(web)
-    api.Response.setSecureByDefault(secure)
-    // a `?lang=` choice is remembered by cookie for the requests after
-    if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
-      resp.cookie(api.Lang.Cookie, lang)
-    api.Web.setCurrent(web)
-    api.Response.setCurrent(resp)
-    api.Session.setCurrent(sess)
-    api.Error.setCurrent(None)
-    api.Container.setIncluder(Some(includer))
-    api.Container.setLiveRegistrar(Some((id, app) =>
-      lives.put((including.get().headOption.getOrElse(f), id), app): Unit))
-    api.Container.setIssuer(issue)
-    api.Application.setCurrent(application)
-    try
+    api.Content.clearProblems()
+    api.Requested.run(
+      web = web, resp = resp, sess = sess, lang = lang,
+      translator = Some(translator(lang)),
+      includer = Some(includer),
+      liveRegistrar = Some((id, app) =>
+        lives.put((including.get().headOption.getOrElse(f), id), app): Unit),
+      issuer = issue, secure = secure, application = application,
+      // where a page's content files live (specs/site-framework.md
+      // stage 2): the site's own root, and nothing above it
+      contentRoot = Some(rootAbs),
+    ):
+      // a `?lang=` choice is remembered by cookie for the requests after
+      if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
+        resp.cookie(api.Lang.Cookie, lang)
       val body = dispatch(f, web, resp, 0)
       if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
       else if sess.created then resp.cookie(SessionCookie, sess.id, httpOnly = true)
       val bytes = if resp.redirected.isDefined then Array.empty[Byte] else body.getBytes(UTF_8)
       hstsHeader(secure).foreach((k, v) => resp.header(k, v))
       cached(r, web, base, resp, bytes)
-    finally
-      api.Response.setSecureByDefault(false)
-      api.Container.setIncluder(None)
-      api.Container.setLiveRegistrar(None)
-      api.Container.setIssuer(None)
-      api.Container.setTranslator(None)
-      api.Lang.setCurrent(languages.head)
-      api.Application.setCurrent(api.Application.detached)
-      api.Principal.setCurrent(None)
-      api.Web.setCurrent(api.Web.empty)
-      api.Response.setCurrent(new api.Response)
-      api.Session.setCurrent(api.Session.detached)
-      api.Error.setCurrent(None)
 
   /** The rendered page as a response, with the validators and the
    * directive its `cache:` earns (okay-script-cache). Opt-in per
@@ -487,8 +493,8 @@ final class Site(
     access(f, web, api.Session.current) match
       case Access.Open => render(f, web, resp, forwards)
       case Access.Granted(p) =>
-        api.Principal.setCurrent(Some(p))
-        render(f, web, resp, forwards)
+        api.Principal.scoped.where(Some(p)):
+          render(f, web, resp, forwards)
       case Access.Login(to) =>
         resp.redirect(to + "?next=" + java.net.URLEncoder.encode(web.path, UTF_8))
         ""
@@ -568,10 +574,10 @@ final class Site(
       s"${rootAbs.relativize(f)}: $message$extra"
     findErrorPage(f) match
       case Some(ep) =>
-        api.Error.setCurrent(Some(err))
         resp.contentType(HtmlUtf8)
         frontMatter(ep).get("contentType").foreach(resp.contentType)
-        val r2 = rendering(ep)(pageFor(ep).render(web))
+        val r2 = api.Error.scoped.where(Some(err)):
+          rendering(ep)(pageFor(ep).render(web))
         if r2.ok then r2.stdout
         else
           val second =
@@ -797,11 +803,22 @@ object Site:
   private val HtmlUtf8 = "text/html; charset=utf-8"
   private val TextUtf8 = "text/plain; charset=utf-8"
 
-  def splitUrl(url: String): (String, String) =
+  /**
+   * A url split at the '?', as a NAMED pair (split-url-named,
+   * 2026-09-12). Both halves are `String`, so while they were
+   * positional a caller could take them the wrong way round and get
+   * the query string as the path, compiling. This is public API, so
+   * the caller who could do that is not necessarily in this
+   * repository. A positional `val (a, b) = splitUrl(u)` still works
+   * and still binds by position; reading `.path` and `.query` is what
+   * makes the mistake impossible.
+   */
+  def splitUrl(url: String): (path: String, query: String) =
     val i = url.indexOf('?')
-    if i < 0 then (url, "") else (url.substring(0, i), url.substring(i + 1))
+    if i < 0 then (path = url, query = "")
+    else (path = url.substring(0, i), query = url.substring(i + 1))
 
-  def pathOf(url: String): String = splitUrl(url)._1
+  def pathOf(url: String): String = splitUrl(url).path
 
   def parseQuery(q: String): Map[String, String] =
     q.split("&").toVector.filter(_.nonEmpty).flatMap { kv =>

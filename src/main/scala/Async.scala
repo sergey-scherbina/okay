@@ -204,14 +204,15 @@ object Async {
       try
         while looping do
           looping = false
-          cur match
+          // the rotation is `Free.resume`'s, so this loop is three
+          // cases and turns once per OPERATION rather than once per
+          // node. The `stopped` check therefore no longer falls
+          // between two rotation steps — which changes nothing a
+          // canceller can observe: rotating reassociates nodes and
+          // runs no user code, and the check that matters, the one
+          // before the next operation, is exactly where it was.
+          (cur.resume: @unchecked) match
             case Free.Pure(a) => succeed(a)
-            case Free.Bind(Free.Bind(a, f), g) =>
-              cur = Free.Bind(a, f(_).flatMap(g))
-              looping = !stopped
-            case Free.Bind(Free.Pure(a), f) =>
-              cur = f(a)
-              looping = !stopped
             case Free.Bind(Free.Inject(e), f) =>
               val next = op(e, f)
               if next != null then
@@ -261,9 +262,115 @@ object Async {
   def spawn[A](prog: => A ! Async)(using S: Scheduler): Fiber[A] =
     S.fork(() => prog)
 
-  /** both, each on its own fiber — by completion callbacks, no
-   * parking, every platform; a child failure fails the pair and
-   * cancels the sibling */
+  /**
+   * AN OPEN SUPERVISED SCOPE (Ox's `supervised`, as an effect).
+   *
+   * `par` supervises exactly two, and `Par.traverse` supervises none
+   * -- it spawns a flat sequence and joins in order, which its own
+   * header says does not cancel the siblings of a leaf that failed.
+   * Measured 2026-09-18: nine siblings sleeping 3 s were all waited
+   * for. That is honest for a traverse and wrong for a scope.
+   *
+   * This is the scope: fork as many children as you like, wherever
+   * you like, and the SCOPE owns them.
+   *
+   *   supervised: n ?=>
+   *     val a = n.fork(fetchUser)
+   *     val b = n.fork(fetchOrders)
+   *     direct { !a.joinAsync + !b.joinAsync }
+   *
+   * THE GUARANTEE, and it is the same one Ox sells:
+   *   - the scope does not finish while a child is still running;
+   *   - the FIRST failure -- a child's or the body's -- cancels every
+   *     other child and leaves the scope with that error;
+   *   - cancellation is best effort, as everywhere else here: a child
+   *     must be interruptible, or between operations, to notice.
+   *
+   * Callbacks, not parking, so it runs on every platform -- the same
+   * reason `par` is written this way.
+   */
+  final class Nursery private[okay] (S: Scheduler):
+    private val live = AtomicInteger(0)
+    private val kids = AtomicReference(List.empty[Fiber[?]])
+    private val failed = AtomicBoolean(false)
+    private val idle = AtomicReference[(() => Unit) | Null](null)
+    private[okay] var onFirstFailure: Throwable => Unit = _ => ()
+
+    /** fork a child into this scope */
+    def fork[B](p: => B ! Async): Fiber[B] =
+      val _ = live.incrementAndGet()
+      val f = Async.spawn(p)(using S)
+      val _ = kids.updateAndGet(f :: _)
+      f.onComplete:
+        case Left(e) =>
+          if !failed.getAndSet(true) then onFirstFailure(e)
+          settle()
+        case Right(_) => settle()
+      f
+
+    private def settle(): Unit =
+      if live.decrementAndGet() == 0 then fireIdle()
+
+    private def fireIdle(): Unit =
+      val cb = idle.getAndSet(null)
+      if cb != null then cb()
+
+    /** run cb once no child is running (at once if none ever was) */
+    private[okay] def whenIdle(cb: () => Unit): Unit =
+      if live.get() == 0 then cb()
+      else
+        idle.set(cb)
+        // a child may have finished between the check and the set
+        if live.get() == 0 then fireIdle()
+
+    private[okay] def cancelAll(): Unit = kids.get().foreach(_.cancel())
+
+  /** @see [[Nursery]] */
+  def supervised[A](body: Nursery ?=> A ! Async)(using S: Scheduler): A ! Async =
+    await: k =>
+      val n = Nursery(S)
+      val settled = AtomicBoolean(false)
+      def done(r: Either[Throwable, A]): Unit =
+        if !settled.getAndSet(true) then k(r)
+
+      n.onFirstFailure = e =>
+        n.cancelAll()
+        done(Left(e))
+
+      val main = spawn(body(using n))
+      main.onComplete:
+        case Left(e) =>
+          n.cancelAll()
+          done(Left(e))
+        case Right(a) => n.whenIdle(() => done(Right(a)))
+      () =>
+        n.cancelAll()
+        main.cancel()
+
+  /**
+   * Both, each on its own fiber — by completion callbacks, no
+   * parking, every platform. EITHER side's failure fails the pair at
+   * once and cancels the sibling.
+   *
+   * THE WORD "EITHER" IS THE FIX (par-right-failure-waits, BUGS.md).
+   * The two completions used to be registered in a NEST: `fb`'s
+   * callback was installed inside `fa`'s Right branch, so while the
+   * left side ran, nobody was listening to the right one. The answer
+   * was still correct, only late, which is why it rode through every
+   * test — measured 2026-09-17, the same failure in the two orders
+   * came back after 0.0007 s and 3.017 s, and the healthy sibling ran
+   * to completion instead of being cancelled.
+   *
+   * The failure watch is now registered on BOTH sides up front, and
+   * the pairing stays nested for the success road, where it costs
+   * nothing and needs no cell to hold the first answer. A fiber takes
+   * several subscribers on every platform (a waiter list on the JVM's
+   * DriveTask, `whenComplete` on a CompletableFuture, `subscribe` on
+   * Native's cell, a Future callback on JS), and a callback
+   * registered on an ALREADY finished fiber fires at once — both
+   * checked before relying on them. `done` keeps the first answer, so
+   * a side that fails after the other already did is ignored.
+   */
   def par[A, B](a: => A ! Async, b: => B ! Async)(using Scheduler): (A, B) ! Async =
     await: k =>
       val (fa, fb) = (spawn(a), spawn(b))
@@ -272,6 +379,11 @@ object Async {
         if !done.getAndSet(true) then
           other.cancel()
           k(Left(e))
+      // the right side's FAILURE, watched from the start rather than
+      // from whenever the left side happens to finish
+      fb.onComplete:
+        case Left(e) => fail(fa)(e)
+        case Right(_) => ()
       fa.onComplete:
         case Right(x) => fb.onComplete:
           case Right(y) => if !done.getAndSet(true) then k(Right((x, y)))

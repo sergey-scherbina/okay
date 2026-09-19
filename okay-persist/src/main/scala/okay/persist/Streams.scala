@@ -41,6 +41,44 @@ object Streams:
       }
     go(from)
 
+  /**
+   * THE PARTITION AS A RECIPE (specs/dataflow.md, stage 11): a
+   * `Chunks[Record]` that reads the topic partition from `from` in
+   * blocking chunks and ends when a read returns nothing.
+   *
+   * This is what the dataflow engine's `Flow.Src` holds a thunk to —
+   * `Flow.of(Vector.tabulate(t.partitions)(p => () => chunks(t, p, from)))`
+   * is a plan over a log — and it is three lines because both halves
+   * already fit: okay-persist sees `Chunks`, and `Flow.of` takes any
+   * thunk. No dependency runs in either direction.
+   *
+   * BLOCKING on purpose. `stream` above is the effectful producer for
+   * a consumer that composes; a dataflow PARTITION runs on its own
+   * fibre and pulls until the source is dry, and a plain iterator is
+   * the whole of what it needs. A read that returns `TooEarly` — the
+   * history before `from` was dropped — is a `DroppedHistory` here,
+   * not a resume: a partition that silently started later than it
+   * was asked to would answer a different question.
+   */
+  def chunks(t: Topic, partition: Int, from: Long, chunk: Int = 256): Chunks[Record] =
+    // captured before the class: inside an `Iterator`, `partition`
+    // is the method that splits one in two
+    val part = partition
+    val it = new Iterator[Record]:
+      private var at = from
+      private var buf: Iterator[Record] = Iterator.empty
+      private var dry = false
+      private def fill(): Unit =
+        while !buf.hasNext && !dry do
+          t.read(part, at, chunk) match
+            case Topic.Read.TooEarly(b) => throw DroppedHistory(at, b)
+            case Topic.Read.Records(rs) =>
+              if rs.isEmpty then dry = true
+              else { at = rs.last.offset + 1; buf = rs.iterator }
+      def hasNext: Boolean = { fill(); buf.hasNext }
+      def next(): Record = { fill(); buf.next() }
+    Chunks.fromIterator(it, chunk)
+
   /** the tailing read: like `stream`, but a caught-up reader parks
    * `pollMillis` on the platform timer and reads again — it never
    * ends, the consumer decides when to stop pulling */

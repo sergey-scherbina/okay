@@ -1,5 +1,6 @@
 package okay.conf
 
+import okay.Validated
 import okay.codec.{Json, Schema}
 
 /**
@@ -100,14 +101,24 @@ object Conf:
   def fromEnv[A](prefix: String, env: String => Option[String])(using s: Schema[A]): Either[String, Json] =
     s match
       case p: Schema.SProduct[A] =>
-        val parts = p.fields.map { (field, under) =>
-          val name = envName(prefix, field)
-          env(name).filter(_.nonEmpty) match
-            case None => Right(None)
-            case Some(text) => scalar(under(), text, name, field).map(j => Some(field -> j))
-        }
-        parts.collectFirst { case Left(m) => Left(m) }
-          .getOrElse(Right(Json.JObj(parts.collect { case Right(Some(kv)) => kv })))
+        // EVERY bad variable, not the first (specs/validated.md): the
+        // walk is a `traverse` at `Validated`, whose `app` combines
+        // two failures instead of keeping one. A deployment with four
+        // mistyped variables is fixed in one run rather than four.
+        type Collecting[X] = Validated[Vector[String], X]
+        val parts: Collecting[Seq[Option[(String, Json)]]] =
+          okay.traverse(p.fields) { (field, under) =>
+            val name = envName(prefix, field)
+            env(name).filter(_.nonEmpty) match
+              case None => Validated.Valid(None): Collecting[Option[(String, Json)]]
+              case Some(text) =>
+                Validated.fromEither(
+                  scalar(under(), text, name, field).map(j => Some(field -> j))
+                    .left.map(Vector(_)))
+          }
+        parts.toEither
+          .map(kvs => Json.JObj(kvs.collect { case Some(kv) => kv }.toVector))
+          .left.map(_.mkString("; "))
       case other =>
         Left(s"a config read from the environment must be a case class; this one is ${nameOf(other)}")
 

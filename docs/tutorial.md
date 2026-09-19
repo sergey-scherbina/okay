@@ -111,6 +111,30 @@ f.cancel()          // stops the drive AND unregisters the parked timer
 f.joinAsync         // the effect-world join: an Await, good anywhere
 ```
 
+When the programs are INDEPENDENT, say so in the instance instead of
+in the plumbing. `Par` reads `A ! Async` as one leaf of an applicative
+spine, so its `app` joins two leaves with `par` — and every generic
+combinator written against `Applicative` runs them at once:
+
+```scala
+traverse(keys)(fetch)        // sequential, as ever
+Par.traverse(keys)(fetch)    // the same program, leaves at once
+
+// leaves of DIFFERENT types, joined by a plain function:
+Par.map2(Par(user(id)), Par(orders(id)))(Profile.apply).seq
+```
+
+`Par` has no `flatMap`, on purpose: a bind would sequence the spine
+while the type still claimed independence. Use `map2` (or the
+instance's own `fmap`/`app`) rather than `.map` — `Monad.scala`'s
+`given Comonad[Id]` puts a `map` on every type in scope and wins the
+lexical race, so `Par(p).map(f)` quietly means the identity comonad's
+map. TestPar pins that as a compile error so the day it changes, it
+says so. For a flat sequence of same-typed programs on the JVM,
+`parAll` is cheaper still (one fiber per leaf, no nesting) — chapter
+12 of the [theory book](theory/12-applicative-static.md) has the
+numbers and the reason.
+
 Callbacks carry an error channel — `Async.await(k => ...)` can answer
 `k(Left(e))` and the program fails at that operation, which is what
 lets `par` propagate a child failure (cancelling the sibling) without
@@ -207,7 +231,20 @@ def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong))
 Logic.observe(6)(Logic.interleave(evens, odds))   // 0,1,2,3,4,5 — fair turns
 Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
                                          // finds 4 where flatMap diverges
-Logic.once(m)                            // the cut: first answer only
+Logic.cut(m)                             // the cut: first answer only
+```
+
+`!.once(p)` is call-by-need: `p` runs at its
+first demand and answers from a cell after, under `Once.run`. In a
+`direct` block it is `lazy val`:
+
+```scala
+val prog: Int ! (Once + Writer % String) = direct:
+  lazy val x = !told("abc")              // runs at the first use, once
+  val y = !told("de")                    // runs here
+  x + x + y + !told("f")                 // log: de, abc, f
+Once.run(prog)
+// runChoice(Once.run(p)): a cell per branch; Once.run(runChoice(p)): one cell for all
 Logic.ifte(cond)(th)(el)                 // soft cut: el ONLY on no answer
 ```
 
@@ -236,7 +273,7 @@ This is the map/filter/take/sum lane as ONE fused while-loop: 1.6us
 against Iterator's 19.3 and the interpreted tree's 15.9. The rule:
 the `Pipeline` tree is for tools (optimize, inspect, ship), the
 inline shape is for speed — same choice the effects layer offers with
-Free and Eff.
+the `Free` tree and `Fused`'s inline handler-passing programs.
 
 ## 12. Chunks across machines
 
@@ -452,11 +489,41 @@ No `for`, no `yield`, no `<-`: the `direct` block rewrites plain
 statements into the binds you would have written, and marks (`m.reflect`, `m.!?`, prefix `!m`)
 or opt-in auto-coloring let monadic values stand in plain positions.
 Multi-shot survives — a bare `List(1, 2, 3)` statement re-runs the
-rest of the block per element. The block composes with chapter 19:
+rest of the block per element. And a block may call its own def:
+
+```scala
+def fib(n: Int): Long ! Pure = direct:
+  if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)
+```
+
+runs a million deep on the default stack, because a self-call inside
+a block is deferred into the tree and trampolined by the interpreter
+rather than the JVM (the coloured spelling wants
+`import scala.language.implicitConversions`; the `!` one wants nothing). The block composes with chapter 19:
 the door outside answers *what is available*, the block inside
 answers *how it reads* (`TestDirectDoors`). The layers, the gates
 and the graveyard of rejected designs are in
 [direct style](direct-style.md).
+
+### Independent binds, run together
+
+A `direct` block reads one line after another, and one line after
+another is what it emits — unless you say the binds are independent:
+
+```scala
+import okay.Direct.parallelBinds.given
+val profile: Profile ! Async = direct:
+  val u = fetchUser(id).reflect     // neither mentions the other,
+  val o = fetchOrders(id).reflect   // so both run at once
+  Profile(u, o)
+```
+
+The macro takes a maximal run of consecutive binds whose right-hand
+sides do not mention a name bound earlier in the run, and emits N
+spawns then N joins — the flat shape, which is `parAll`'s and measures
+the same. Without the import nothing changes, to the byte. A bind that
+needs an earlier answer ends the run and stays sequential, and so does
+anything that is not a plain `X ! Async` leaf.
 
 ## 21. Errors you can repair: conditions
 
@@ -487,12 +554,177 @@ the tutorial has been practicing. `Throws` and damage-as-data stay
 what they are; a program that never signals never pays
 (specs/condition.md, `TestCondition`).
 
-## 22. Where to go next
+## 22. Every error, not the first
+
+A check that stops at the first problem makes a person fix their
+configuration one line per run. The rung below the monad cannot stop,
+so it collects:
+
+```scala
+// the same traverse, two carriers
+traverse(fields)(checkEither)      // Left(first problem)
+traverse(fields)(checkValidated)   // Invalid(all of them)
+```
+
+`Validated[E, A]` needs a `Semigroup[E]`, which is the one thing the
+caller supplies: a vector for a form, a count for a sampler, a map
+keyed by field for an API. It has no `flatMap` on purpose — a Monad
+instance would be forced by law to stop at the first error, which is
+the behaviour the type exists to refuse. When a later step really does
+need an earlier answer, `andThen` says so where it happens.
+
+`okay-conf` is the first consumer: three mistyped environment
+variables come back in one message instead of three runs.
+
+And it reads in direct style, which is the part that used to be
+impossible: a `direct` block asks its carrier only for what the block
+uses, so a run of independent binds needs an `Applicative` and no
+more.
+
+```scala
+val checked: Checked[Form] = direct:
+  val name  = nonEmpty(raw.name)
+  val email = looksLikeEmail(raw.email)
+  val age   = inRange(raw.age)
+  Form(name, email, age)          // three problems, or a Form
+```
+
+The carrier comes from the expected type, and a val whose type is a
+program of it binds without a mark. An `if` whose CONDITION is an
+effect becomes `ifS`, so a branch that is not taken does not run:
+
+```scala
+val order: Validated[Errors, Order] = direct:
+  val item = checkItem(raw.item)
+  val ship = if wantsDelivery(raw.delivery) then checkAddress(raw.address)
+             else pickup
+  Order(item, ship)
+```
+
+A bad address is not reported on an order that was never going to be
+shipped, and the checks around the conditional still accumulate. `.reflect` and a type annotation
+are the two louder ways to say the same thing, and all three mix.
+
+A bind that needs an earlier answer is refused by name, because that
+one really does need a monad.
+
+## 23. One optic, three effects
+
+A traversal's signature asks for an `Applicative` and nothing more:
+
+```scala
+def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]
+```
+
+So the applicative slot is where the effect goes, and every carrier
+drops into it with no code in the optics for any of them. One optic —
+every line of an order:
+
+```scala
+val eachLine = Lens[Order](_.lines).andThen(Traversal.each[Line, Line])
+```
+
+**Report every bad line, not the first.** At `Validated` the walk
+collects; at `Either` it stops.
+
+```scala
+eachLine.traverseOf(check)(order)
+// Invalid(["ink: qty must be > 0", "pad: qty must be > 0"])
+```
+
+**Visit the foci at once.** At `Par` each focus runs on its own fiber
+and the structure is rebuilt from the answers.
+
+```scala
+eachLine.traverseOf[Par](line => Par(price(line)))(order).seq
+```
+
+**Ask what the walk WOULD do.** At `Static` the operations are a value
+before anything runs, so you can audit them, dry-run them, or answer
+them all in one round trip.
+
+```scala
+val plan = eachLine.traverseOf(priceLine)(order)
+plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
+plan.toFree.runWith  // and the same value, run the ordinary way
+plan.foldMap(toBatch)  // or answered in ONE call
+```
+
+One caution that catches everyone once: write `fmap` through the
+instance rather than `.map` on these carriers. The package's
+`given Comonad[Id]` puts a `map` on every type in lexical scope and
+wins the race, so `Static.op(x).map(f)` hands `f` the program instead
+of its answer.
+
+The worked versions of all three are `TestOpticCarriers`, which is
+where the outputs above come from.
+
+### The three on one screen
+
+A form is a value, `Validated` collects every problem, and an optic
+puts each message next to the field it names. The validation is a
+`direct` block, which needs no monad because the checks do not depend
+on each other:
+
+```scala
+type Errors = Vector[(String, String)]          // field key -> message
+
+def validate(in: Map[String, String]): Validated[Errors, Signup] = direct:
+  val name  = nonEmpty("name", in)
+  val email = hasAt("email", in)
+  val age   = number("age", in)
+  Signup(name, email, age)
+
+def withErrors(tree: Ui, errs: Errors): Ui =
+  errs.foldLeft(tree) { case (t, (k, msg)) =>
+    Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
+  }
+```
+
+Carrying the field key in the error is what makes the write-back
+possible: `Ui.key(k)` is the traversal that finds a node by key, so
+each message lands under its own field and the user's edits stay where
+they were. `TestUiFormValidation` is the worked version.
+
+One boundary the same test pins: the per-focus function is an ordinary
+method, not a nested block. A mark under a lambda is what `direct`'s
+v1 refuses, so an optic and a direct block meet at the call, not
+inside it.
+
+## 24. What the program will do, before it does it
+
+A `flatMap` hides the rest of the program behind a function, so the
+only way to learn what it does is to run it. When the program does not
+need that power — a fetch of twenty keys, a module's declared needs, a
+rule pack explained before it is applied — write it as a `Static` and
+the structure stays readable:
+
+```scala
+val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
+
+plan.leaves                 // every operation it MAY perform, before running
+plan.toFree.runWith         // the ordinary program, run the ordinary way
+plan.foldMap(toBatch)       // N leaves, ONE round trip
+```
+
+`Static` is the free selective: `Ap` for application, `Select` for a
+conditional whose both sides are written down, so `leaves` is an upper
+bound that is exact when there is no branch. `toFree` makes the
+difference good at run time — a program that DECLARES three operations
+performs two, because a `Select` runs at most one side.
+
+The batching carrier is the payoff: an `app` that accumulates its
+leaves' requests turns fifty fetches into one call, with the program
+unchanged. [Chapter 12](theory/12-applicative-static.md) builds it.
+
+## 25. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference;
 [capabilities](capabilities.md) and [direct style](direct-style.md)
-tell the wiring and syntax stories end to end; the
+tell the wiring and syntax stories end to end; [optics](optics.md)
+puts the nested `copy` and the `Option.map` chain beside the optic
+that replaces each, with what both cost; the
 [benchmark explainer](benchmarks.md) walks every measured case; each
 module page under [modules/](modules) is that module's full
 documentation — guide, tutorial, API reference, gotchas. The specs

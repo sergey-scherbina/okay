@@ -143,10 +143,10 @@ object Sim {
       (t.prog().resume: @unchecked) match
         case Pure(_) =>
           steps += s"${t.fiber}:done"
-        case Effect(e) =>
+        case Inject(e) =>
           // a terminal operation: perform it, nothing continues
           perform(t.fiber, e, _ => okay.pure(()))
-        case Bind(Effect(e), k) =>
+        case Bind(Inject(e), k) =>
           // the freer tree's own k IS the captured delimited
           // continuation; the Bind node types it by the operation
           perform(t.fiber, e, k)

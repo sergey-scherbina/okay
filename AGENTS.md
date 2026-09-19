@@ -1,8 +1,8 @@
 # Working in this repository (agents)
 
-SPRINT: SPRINT.md
-BACKLOG: BACKLOG.md
-CHANGELOG: CHANGELOG.md
+SPRINT: sprint.d/ (one file per item; `scripts/board.sh sprint` reads it)
+BACKLOG: backlog.d/ (one file per item, by section; `scripts/board.sh backlog`)
+CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
 
 ## Skills
 - Skills live in the `.agents/plugins` submodule (fresh clone:
@@ -54,17 +54,32 @@ force, all already practiced, none previously written down:
   (`.agents/plugins/multi-agent/commands/multi-agent.md`); this file
   only fixes the repo-specific facts. The branch is `master` (not `main`).
   Claims and merges are LOCAL — no lane needs the network to land, and
-  none should wait for it. Pushing is a SEPARATE, deliberate act by
-  whoever the operator asks; it is not part of landing a lane and not
-  part of the claim procedure. (2026-09-08: `origin` was 60 commits
-  behind and was fast-forwarded to `eca8877e` on the operator's
-  instruction. Before that nothing had pushed for days.)
+  none should wait for it.
+- **PUSH WHAT YOU LAND, IMMEDIATELY, WITHOUT ASKING** (operator,
+  2026-09-18). `git push origin master` is the last step of landing a
+  lane, after the release-claim commit — not a separate errand and not
+  a permission to wait for. The rule it replaces said pushing was "a
+  deliberate act by whoever the operator asks", and what that bought
+  was `origin` sitting 60 commits behind (2026-09-08), then 16
+  (2026-09-18), with every submodule consumer blocked: okay-watch's own
+  rule is that its pointer must name a commit that EXISTS on GitHub, so
+  an unpushed okay is a product that cannot bump. Asking each time cost
+  the operator an interruption per lane and bought nothing.
+  WHAT DOES NOT CHANGE: the gate still runs before the merge, and the
+  merge is still its own command whose exit code you read. You push
+  what is already landed and green — never a branch, never a lane that
+  has not merged.
+  A push that is REJECTED means a sibling pushed first: `git fetch`,
+  see whether origin is genuinely ahead (the bullet below), and land
+  that before pushing again. Never force.
 - **NEVER `reset` or `merge` to `origin/*`.** Not because origin is
   always stale — since 2026-09-08 it is sometimes current — but
   because it is current only in the moments just after somebody
-  pushes, and NOTHING in the landing procedure pushes. So at any
-  instant `origin/master` is master-minus-every-lane-landed-since-the-
-  last-push, and that number is usually not zero. `git log --oneline
+  pushes. Since push-on-landing (above) that window is SECONDS rather
+  than days — the gap between a sibling's `merge --ff-only` and their
+  `push` — but a window that small still discards a whole lane if you
+  `merge --ff-only origin/master` inside it, and the loss looks like
+  nothing happened. `git log --oneline
   origin/master..master` tells you what it is; do not guess, and do
   not assume a fresh `git fetch` made it zero. The
   skill's claim procedure literally says `git fetch origin` and
@@ -155,13 +170,42 @@ force, all already practiced, none previously written down:
   branch**, and the boards cite landed work BY sha, so hexes written
   during a lane are wrong the moment the branch moves again. The
   window is exactly the gap between gating and merging.
-- Before merging: rebase the branch on `master`, run `sbt test`, then
-  `git merge --ff-only` — and READ the merge output; git refuses a
+- Before merging: rebase the branch on `master`, run the gate, then
+  `git merge --ff-only`. The gate is `scripts/gate.sh "affected master"`
+  since ci-affected (2026-09-16): the projects the lane's diff touches,
+  closed over their dependents (project/Affected.scala) — which is the
+  whole family when the build files or the core changed, and a
+  module and its dependents when a module did. `scripts/gate.sh`
+  alone is still the whole family, and the nightly runs it split by
+  platform, so a lane that could not have broken a module no longer
+  pays for it and a module nobody's lane touched is still tested
+  every night — and READ the merge output; git refuses a
   fast-forward over a sibling's uncommitted files, and the refusal
-  scrolls past a `tail -1`. HARDENED after three incidents: the merge
+  scrolls past a `tail -1`.
+- **A GATE THAT HANGS NOW SAYS SO (gate-watchdog, 2026-09-18).**
+  `gate.sh` watches its own log: 8 minutes with no new output AND an
+  idle process tree is a STALL, and it takes a `jcmd` thread dump plus
+  a `ps` of the tree beside the log, kills the run BY PID, and prints
+  `gate: STALLED` with exit 124. That is NOT a verdict — like
+  `KILLED`, it says nothing about the tree, and `gate-retry.sh`
+  retries it. Two signals and not one, because silence alone is a cold
+  compile: the run has to be silent AND burning no CPU.
+  WHY IT EXISTS: measured the same day, a gate sat **57 minutes** with
+  its log frozen and was found only because a human asked how it was
+  going. The dump named the cause — `sbt.ForkTests$Acceptor` blocked
+  in `Net.accept` with no timeout, waiting for a forked JVM that was
+  not among the 165 live children (100 `node` + 65 Scala Native
+  binaries, all spawned in the first 20 seconds, all at 0.0% CPU, on
+  14 cores). `scripts/gate-selftest.sh` exercises both directions in
+  seconds — a silent idle build must die, a silent BUSY one must
+  live — and runs itself under `/bin/sh` as well as bash, because the
+  first cut of the watchdog was bash-only and this file invokes the
+  gate as `sh scripts/gate.sh`. HARDENED after three incidents: the merge
   runs ALONE (its own command, from the main checkout, exit code
   printed), and only after reading exit 0 do worktree removal, branch
-  deletion, boards and the claim release run. A `;` after a failed
+  deletion, boards and the claim release run — and then
+  `git push origin master`, which is the last step and needs nobody's
+  permission (see Coordination). A `;` after a failed
   merge has twice deleted an unmerged branch and pushed a release
   entry for work that had not landed.
 - Coordination room: rozum (etiquette: the `rozum` skill). Announce
@@ -171,11 +215,51 @@ force, all already practiced, none previously written down:
 
 ## Boards
 - The protocol is the `scrumban` skill: write the plan into the board
-  BEFORE executing. `SPRINT.md` is what agents pick from (claim before working);
-  `BACKLOG.md` is where found-but-deferred work goes THE MOMENT it is
-  found; `CHANGELOG.md` is append-only, newest first, one entry per
-  landed task naming the commits. Lifecycle: promote backlog -> sprint
-  -> claim -> land -> DELETE from sprint, prepend to changelog.
+  BEFORE executing. **THE BOARDS ARE DIRECTORIES** (boards-d,
+  2026-09-18), one file per item, for the reason changelog.d is one:
+  a lane edits its own item instead of the middle of everyone's file.
+  `sprint.d/queue/<slug>.md` is what agents pick from (claim before
+  working) and `sprint.d/doing/<slug>.md` is what somebody is on;
+  `backlog.d/<section>/<slug>.md` is where found-but-deferred work
+  goes THE MOMENT it is found. Read a board with
+  `scripts/board.sh sprint|backlog` — never by catting the pointer
+  files, which say only where the real thing is. PICKING is
+  `git mv sprint.d/queue/<x>.md sprint.d/doing/<x>.md`, PROMOTING is
+  `git mv backlog.d/<section>/<x>.md sprint.d/queue/<x>.md`, and the
+  history records both for free. `scripts/board.sh --check` guards the
+  shape and `TestBoardEntries` runs it in the gate — including the one
+  a directory cannot enforce by itself, that the same slug is not
+  filed in two places (a promotion done by copy instead of `git mv`
+  lets two agents pick one task). `_order` is the only line two lanes
+  can both want, and only when a SECTION is added; a landed task writes `changelog.d/<slug>.md` — ONE FILE, named
+  after the lane, beginning with a `## ` title and naming the commits.
+  It is never the head of `CHANGELOG.md`: that file is the archive of
+  everything before 2026-09-18 and is not edited again. Read the log
+  with `scripts/changelog.sh` (new entries, newest first, ordered by
+  the commit that ADDED each one) or `--all` for the archive too.
+  `--check` guards the naming and shape, and `TestChangelogEntries`
+  runs that guard in the gate. The reason is measured rather than
+  stylistic: four rebases of one docs-only lane in an hour, every one
+  a conflict on the same three lines, every resolution identical.
+  Lifecycle: promote backlog -> sprint -> claim -> land -> DELETE from
+  sprint, WRITE the changelog entry as its own file.
+- **WHEN A LANE LANDS, CHECK THE ENTRIES IT MADE FALSE — not only its
+  own** (2026-09-18, after FOUR sightings in one day). Finishing work
+  makes NEIGHBOURING records wrong, and the agent who finished it is
+  the only one who knows: `ui-terminal-v2` still demanded a fix that
+  had landed an hour earlier; the dataflow SPRINT entry named five
+  groups of open work of which four were finished; `dataflow-source-log`
+  said FIRST about a stage another lane had built that morning under a
+  different name; `optic-law-rewrites` was cited as filed in two places
+  and filed in neither. Each was found by a reader who then had to stop
+  and audit instead of working.
+  THE CHECK IS ONE GREP, and it takes a minute: after landing, grep the
+  boards for the AREA you touched — not your slug, which is the one
+  name that is certainly current — and read every entry that names a
+  file, a type or a spec box your lane moved. An entry that asks for
+  what you just built is worse than no entry: it sends the next agent
+  looking for work that is done, and this repository has now paid that
+  four times in a day.
 
 ## Specs
 - The `spec-dev` skill
@@ -209,6 +293,24 @@ force, all already practiced, none previously written down:
   lock; a `ps`/`ls` would have shown it in a second. If you think
   "X is probably the reason", run the one command that would show
   X, and only then believe it (operator directive, 2026-09-02).
+- **AN OBLIGATION OVER A ROW IS CARRIED, NEVER SEARCHED FOR AT AN
+  ABSTRACT ROW** (row-membership-crash, 2026-09-17). `RowLift.In`'s
+  inductive given asks the compiler to solve `?G + ?H` for its target,
+  and when the target is an abstract type constructor dotty 3.9 does
+  not fail — it CRASHES: `java.lang.AssertionError: Failure to join
+  alternatives F and G`, in `TypeOps.orDominator`. It has decided
+  three designs here in one day (delim-safety's guard, `Replayable`'s
+  encoding, the workflow driver's row), so it is written down once:
+  - take the witness as a PARAMETER and pass it along, the way
+    `Delim.answer`/`replay`/`drive` take their `OneMachine`. A
+    parameter is never searched for.
+  - where a witness must be summoned, use SUBTYPING rather than
+    membership: `RowLift.Sub[F, G]` (`F[Any] <:< G[Any]`), or
+    `NotGiven[X[Any] <:< F[Any]]` for the negative. A union on the
+    right of a `<:<` needs no join, so it resolves on a concrete row
+    and fails cleanly on an abstract one.
+  - `src/test/scala/ProbeRowCrash.scala` pins the reproducer, so a
+    future Scala can be re-tested by uncommenting two lines.
 - A DISCARDED PROGRAM is a compile ERROR (build.sbt, -Wconf): an
   `A ! F` value in statement position, as a Unit def's body, or
   eta-expanded into a Unit function builds a program and drops it —
@@ -279,7 +381,13 @@ force, all already practiced, none previously written down:
   survey rather than one flake at a time — the survey is
   `grep -E '\.(serve|listen)\(0\)|ServerSocketChannel\.open|new ServerSocket'`
   over the test tree, and a new binding suite is expected to tag
-  itself. And tagging is not a substitute for understanding: the same
+  itself. RE-RUN 2026-09-18 (test-hygiene-tails): 36 hits, 32 tagged,
+  and of the four that were not, ONE was real — `TestPeerAddress`,
+  which had flaked in a full matrix that morning and is tagged now.
+  The other three are FALSE POSITIVES worth knowing before anybody
+  chases them again: okay-ui's `Wire.serve(0)` takes an initial STATE,
+  not a port, so `\.serve\(0\)` matches a pure stage. The grep is
+  still the right first pass; check what the `0` is before tagging. And tagging is not a substitute for understanding: the same
   lane found that suite's assertion was testing something unassertable
   on a shared machine (a released ephemeral port is immediately
   re-bindable by a neighbour) and fixed the assertion too.
@@ -400,3 +508,14 @@ force, all already practiced, none previously written down:
   7.6 µs thread handoff (§0 of docs/benchmarks.md) and no okay lane
   does — quote it where a cats number is close.
 - `organization` is `dev.okay` (build.sbt is the decision in force).
+- **There is no single JDK the project targets — 21 is the floor,
+  23 the ceiling, and `.sdkmanrc` pins the one version inside both**
+  (specs/jdk-compatibility.md, jdk-compatibility-matrix). The floor
+  is JDK 21 because `Platform.scala`'s DEFAULT scheduler is Loom
+  (virtual threads, JEP 444, non-preview since 21) — not an opt-in
+  a few modules made, the JVM runtime's own execution model. The
+  ceiling is okay-spark: Hadoop's `UserGroupInformation` reaches
+  the Security Manager, removed outright in JDK 24 (JEP 486), no
+  flag reaches past it (`TestSparkInterop` skips itself on 24+
+  rather than fail opaquely). Read the doc before proposing either
+  direction on "bump the JDK".

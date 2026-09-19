@@ -9,7 +9,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[User guide](guide.md)** — the concepts, layer by layer: control
   → effects → streams → chunks → coroutines → concurrency → the text
   stack → the laziness contract that holds it together.
-- **[Tutorial](tutorial.md)** — the same layers by use, twenty-two
+- **[Tutorial](tutorial.md)** — the same layers by use, twenty-five
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
 - **[Your own effect](your-own-effect.md)** — one worked effect from
@@ -39,7 +39,9 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   React, DOM, Swing, GTK), the server-driven wire and its rendered
   contract, the hybrid rule (no round trip per keystroke), Live pages,
   the mobile web (installable, offline) and the native thin clients
-  (Compose today; a Swift package is the road for iOS).
+  (Compose and SwiftUI). A browser draws a real `<table>`; a text says
+  what it IS (an identifier, a number) and a host sets it accordingly;
+  the token stylesheet ships with the tree.
 - **[A site out of markdown](okay-script-guide.md)** — from an empty
   directory to a running shop whose pages ARE markdown files compiled
   at runtime: routing by directory, sessions and typed forms, a live
@@ -48,15 +50,49 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
-  Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard), and why each
+  Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard, McBride &
+  Paterson, Mokhov et al., Turner), and why each
   design decision — argued from the papers and the repository's own
-  measurements. Nine chapters, Okay as the running example.
+  measurements. Twelve chapters, Okay as the running example.
 - **[Direct style](direct-style.md)** — monads as plain code:
   the reflection foundation (two one-liners, no macros), the
   `direct` block (one mark, `.?`), auto-coloring behind two explicit
   gates, do-notation statements — with the rationale for every
   boundary and the graveyard of refuted alternatives. The theory
   chapter with the literature is [theory/08](theory/08-direct-style.md).
+- **[Continuations: a working book](continuations/index.md)** — the
+  long form, written to be read straight through: why a team should
+  care (answerable to a manager), the four shapes as recipes, how the
+  machine works, how to build new effects on it, what it costs with
+  numbers, what it must not be asked to do, and the production systems
+  in this repository that are built from nothing else. Self-contained;
+  it repeats what it needs.
+- **[Continuations in practice](continuations-in-practice.md)** — the
+  four shapes that earn a capture in ordinary code (`exit`, `collect`
+  / `emit`, `resumable` / `pause`, `onReturn`), each beside the way it
+  is usually written, the rule for when to reach for an effect
+  instead, and the cases where a capture makes code worse. The theory
+  is [theory/2](theory/02-continuations.md).
+- **[Durable workflows](durable-workflows.md)** — a program that WAITS
+  (for a person, a service, a date), written as straight-line code and
+  able to outlive the process running it: the journal that is the only
+  state, the four rules, and the engine over it —
+  `sleep`/`awaitSignal`/`patch`, cancellation you can replay, bounded
+  history (`continueAs`), child runs, retirement (which code is still
+  reachable from a live journal), an advisory lease, and a resume cache
+  that replays a dialogue once instead of once per call. It ends with
+  an honest list of what a workflow ENGINE has that this does not. Its
+  code is compiled by `TestWorkflowGuide`, so the page cannot drift
+  from the library.
+- **[Static workflows](static-workflows.md)** — the same workflow as a
+  TERM rather than a monadic program: `Proc`, the free arrow over the
+  questions the engine already journals, written in the same
+  straight-line block (`Proc.direct`). What the shape buys is what a
+  closure cannot give — `leaves` before the run, a deploy check that
+  asks live journals whether they still fit the new code, a position
+  that is a path and can be drawn, and an `Iter` node so a loop's trip
+  count may still be an answer. One journal format underneath: a run
+  started monadically is carried on by a term.
 - **[okay-actor](modules/okay-actor.md)** — actors as composition: the
   mailbox is a `Channel`, one-at-a-time is one consumer, and the only
   new thing is supervision. With the four decisions it makes, and the
@@ -80,6 +116,15 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   counters in one row: why a bare row holds one of each signature, and
   the three routes that lift it (a key with `Tag`, a cell with `Refs`,
   a fresh `Delim` prompt), with what each costs.
+- **[Arrows](arrows.md)** — a computation you can see before you run
+  it: the glyphs (`>>>`, `&&&`, `+++`, and why Kleisli's is `>=>`),
+  two scanners over one input in a single pass, where optics and
+  arrows meet, and where optics and streams deliberately do not.
+- **[Optics](optics.md)** — naming a path once: the nested `copy`, the
+  `Option.map` chain, the `case s => s` in a rewrite, each beside the
+  optic that replaces it; what each costs, measured; and the one pair
+  where the `copy` is still the right code. Every block on the page is
+  run by a test.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[Dependency injection](di.md)** — the module vocabulary: a
@@ -102,6 +147,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   table, WHY the Okay number is what it is, why the competitors'
   numbers differ, and where the honest limits are. Raw history with
   protocols and refuted experiments: [history.tsv](../src/jmh/history.tsv).
+- **[The Wrocław streams benchmark](wroclaw-streams-benchmark.md)** —
+  okay against Flink, Spark, java.util.stream, fs2, zio-streams and
+  kyo on one real streaming job: event time, watermarks, keyed
+  windows, keyed state. The core-scaling headline, the full table,
+  five supporting findings each with its own table, and links to
+  every lane's source. Curated from [benchmarks.md](benchmarks.md)
+  §20, which carries the full derivation.
 
 ## The modules
 
@@ -110,7 +162,12 @@ API reference, gotchas.
 
 | module | what it is |
 |---|---|
-| `okay` (core) | effects, streams, chunks, the algebra — covered by the guide/tutorial/typepedia above |
+| `okay` (core) | effects, continuations, the algebra — covered by the guide/tutorial/typepedia above |
+| [`okay-stream`](modules/okay-stream.md) | streams, channels, chunks and the buffers under them; it left the core because nothing in the effect system referred to it, and the core kept only the `Stream` typeclass and `Handoff` |
+| [`okay-workflow`](modules/okay-workflow.md) | the static workflow: `Wf`'s questions, `Proc`'s free arrow over them, and the macro that builds one — a leaf of the core, so it became a module |
+| [`okay-data`](modules/okay-data.md) | data structures that are not the effect system: the approximate aggregators (`Sketch`), and the coordination-free pair `Uid` and `Hlc`. `Aggregator` itself stayed in the core |
+| [`okay-optics`](modules/okay-optics.md) | profunctor optics and the `Fuse` planner: Iso/Lens/Prism/Traversal and friends, the interpretations, and the optic spelling of zooming |
+| [`okay-stm`](modules/okay-stm.md) | software transactional memory: the `Tx` language and the runtimes that commit several cells together. The single cell, `TRef`, stayed in the core |
 | [`okay-cats`](modules/okay-cats.md) | cats instances (law-tested), IO and free-monad bridges, their runtime as our Scheduler |
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
 | [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |
@@ -125,6 +182,7 @@ API reference, gotchas.
 | [`okay-jdbc`](modules/okay-jdbc.md) | JDBC as chunked streams under the Resource region |
 | [`okay-r2dbc`](modules/okay-r2dbc.md) | the R2DBC hatch behind the same Sql seam: driver availability on the JVM, honestly framed as not a speed unlock |
 | [`okay-delta`](modules/okay-delta.md) | Delta Lake without Spark: Delta Kernel create/append/snapshot/rows over SqlValue rows; DuckDB reads the same table through the JDBC seam |
+| [`okay-js`](modules/okay-js.md) | JavaScript as a value: a typed tree, a printer, a compile-time constant, and `js { }` |
 | [`okay-lex`](modules/okay-lex.md) | total streaming tokenization: chunked, snapshottable, incremental |
 | [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
@@ -171,11 +229,11 @@ API reference, gotchas.
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
-| [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo; and the leads ledger that decorates its turn seam (category, budget and date from cues, the message itself never stored) |
+| [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |
 | [`okay-live`](modules/okay-live.md) | broadcast (Hub) and per-key channels (Registry) over the core's own Channel |
-| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); `ChatDemo`, the chat that runs the stack (streamed replies cut by a guard, a durable task board the model drives through tools, assignments ringing live pages — works with no model); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
+| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); `ChatDemo`, the chat that runs the stack (streamed replies cut by a guard, a durable task board the model drives through tools, assignments ringing live pages — works with no model); and the worked examples — `Ledger`, the one-binary story (a log, a windowed report over it, a page, a backup that leaves the directory — one process, end to end), and `Combine`, two live telemetry streams joined twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
 
 ## How the claims are checked
 
@@ -208,9 +266,10 @@ Start with [the roadmap](../ROADMAP.md) for the shape of the whole.
 
 - Oleg Kiselyov, Hiromi Ishii —
   [Freer Monads, More Extensible Effects](https://okmij.org/ftp/Haskell/extensible/more.pdf).
-  The freer monad and extensible-effects design the effect layer
-  reenacts (with `Free` and `Eff` literally replaying the 2015-tree
-  vs 2013-continuation history).
+  The freer monad and extensible-effects design the effect layer is
+  built on — and, since 2026-09-15, the ONE tree under both effect
+  programs and `Cont` itself: a shift is a freer leaf whose payload
+  is a function of the continuation ([theory ch. 11](theory/11-one-tree.md)).
 - Robert Atkey —
   [Parameterised notions of computation](https://bentnib.org/paramnotions-jfp.html).
   The parameterised (answer-type-changing) monad `Cont[A, S, R]` is
@@ -218,8 +277,9 @@ Start with [the roadmap](../ROADMAP.md) for the shape of the whole.
 - Rúnar Óli Bjarnason —
   [Stackless Scala With Free Monads](https://blog.higher-order.com/assets/trampolines.pdf).
   Why stack safety on the JVM means trampolining through data — the
-  reason `Cont` and `Free` are defunctionalized enums with
-  tail-recursive runners rather than raw closures.
+  reason `Free` is a defunctionalized enum with a tail-recursive
+  runner rather than raw closures, `Cont` a facade over it, and a
+  tail call one `Delay` node.
 - Oleg Kiselyov et al. — the delimited-control lineage (`shift`/
   `reset`) that makes handlers literally continuations (`F !> S`).
 

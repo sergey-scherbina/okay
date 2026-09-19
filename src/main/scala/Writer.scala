@@ -107,20 +107,20 @@ object Writer {
     // `split`, not `<|>` (split-without-either): no Either per tell.
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S2, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((finish(s), a))
-      case Effect(e) => split[Writer % W, F](e) {
+      case Inject(e) => split[Writer % W, F](e) {
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
           // the ascription is where the refined value meets the loop
           case Say(v) => Pure((finish(step(s, v)), ())): (S2, A) ! F
-        } { e => Effect(e).map((finish(s), _)) }
-      case Bind(Effect(e), k) => split[Writer % W, F](e) { w0 =>
+        } { e => Inject(e).map((finish(s), _)) }
+      case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
           // ordinary call and not an assertion; the checker cannot see
           // that `Say` is the only constructor under an existential
           // answer type — the same claim `resume`'s @unchecked makes
           (w0: @unchecked) match
             case Say(v) => loop(step(s, v))(k(()))
-        } { e => Effect(e).flatMap(x => _loop(s)(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(z)(a)
   }
@@ -134,6 +134,38 @@ object Writer {
     // all costing NOTHING on this loop — the whole price was `:+`
     // (~150 B per append). A cons is 24 B, the reverse is one pass.
     loopWith[W, List[W], Seq[W], A, F](a)(Nil)((s, w) => w :: s)(_.reverse)
+
+  /**
+   * `run`, split the OTHER way: on G, which is concrete, rather than
+   * on `Writer % W`, whose derived test at a parameterised W — a
+   * `Writer % Chunk[Byte]`, say — is an unchecked one (E092, the
+   * TypeableK caveat). `Source.runCollect` makes the same choice for
+   * the same reason; this is that loop with the answer KEPT, which a
+   * `Blob.getSource` needs because its answer is the outcome.
+   *
+   * For a row holding ONE Writer, which is every row a Source is. A
+   * row with two Writers of different W needs `run`'s finer test and
+   * pays for it there.
+   */
+  def collect[W, A, G[+_] : TypeableK](a: A ! Writer % W + G): (Vector[W], A) ! G =
+    import !.*
+    import scala.annotation.tailrec
+    def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
+    @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
+      (x.resume: @unchecked) match
+        case Free.Pure(v) => okay.pure((acc, v))
+        case Inject(e) => split[G, Writer % W](e)
+          (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
+          // a terminal Say answers Unit, which is then the program's
+          // own answer — the GADT the enum's shape gives (`fold`'s
+          // terminal case reads the same way)
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(w) => okay.pure((acc :+ w, ())) }
+        case Bind(Inject(e), k) => split[G, Writer % W](e)
+          (g => Inject(g).flatMap(v => again(acc)(k(v))))
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(w) => loop(acc :+ w)(k(())) }
+    loop(Vector.empty)(a)
 
   /**
    * Map the told values, keeping the PROGRAM.
@@ -156,14 +188,15 @@ object Writer {
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
     case Free.Pure(x) => Free.Pure(x)
-    case Effect(e) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g)
+    case Inject(e) => split[G, Writer % W](e)
+      (g => Inject(g): A ! (Writer % V + G))
       // the constructor refines the answer type to Unit on both
       // sides, so the re-told operation types with nothing asserted
-      case Right(Say(w)) => Effect(Writer(f(w)))
-    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).flatMap(x => map[W, V, A, G](k(x))(f))
-      case Right(Say(w)) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f))
+      { case Say(w) => Inject(Writer(f(w))) }
+    case Bind(Inject(e), k) => split[G, Writer % W](e)
+      (g => Inject(g).flatMap(x => map[W, V, A, G](k(x))(f)))
+      { w0 => (w0: @unchecked) match
+          case Say(w) => Inject(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f)) }
 
   /**
    * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
@@ -193,17 +226,17 @@ object Writer {
   : A ! (Writer % V + G) =
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer % V + G) =
       if i >= vs.length then Free.Pure(())
-      else Effect(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
+      else Inject(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
 
     (a.resume: @unchecked) match
       case Free.Pure(x) => Free.Pure(x)
-      case Effect(e) => <|>[G, Writer % W](e) match
-        case Left(g) => Effect(g)
-        case Right(Say(w)) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)]
-      case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-        case Left(g) => Effect(g).flatMap(x => expand[W, V, A, G](k(x))(f))
-        case Right(Say(w)) =>
-          tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f))
+      case Inject(e) => split[G, Writer % W](e)
+        (g => Inject(g): A ! (Writer % V + G))
+        { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)] }
+      case Bind(Inject(e), k) => split[G, Writer % W](e)
+        (g => Inject(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
+        { w0 => (w0: @unchecked) match
+            case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f)) }
 
   /**
    * Re-tell at a WIDER element type with NO transform — `map`'s
@@ -218,17 +251,17 @@ object Writer {
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
     case Free.Pure(x) => Free.Pure(x)
-    case Effect(e) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g)
+    case Inject(e) => split[G, Writer % W](e)
+      (g => Inject(g): A ! (Writer % V + G))
       // Say is Writer's ONLY constructor, so a value that reaches
       // here IS one — sound by the enum's shape, same as map's
       // Say(w) destructure; @unchecked because BINDING the whole
       // instance (not just its field) needs W's erased type
       // argument to verify, which map's plain destructure does not
-      case Right(sw @ (_: Say[W, Unit] @unchecked)) => Effect(sw: Writer[V, Unit])
-    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).flatMap(x => widen[W, V, A, G](k(x)))
-      case Right(sw @ (_: Say[W, Unit] @unchecked)) => Effect(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(())))
+      { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]) }
+    case Bind(Inject(e), k) => split[G, Writer % W](e)
+      (g => Inject(g).flatMap(x => widen[W, V, A, G](k(x))))
+      { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
 
   /**
    * ANY stream as a writer program: its elements told one by one, its
@@ -274,8 +307,8 @@ object Writer {
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Pure(a) => Left(a)
-    case Effect(Say(w)) => Right((w, Free.Pure(())))
-    case Bind(Effect(Say(w)), k) => Right((w, k(())))
+    case Inject(Say(w)) => Right((w, Free.Pure(())))
+    case Bind(Inject(Say(w)), k) => Right((w, k(())))
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -290,28 +323,96 @@ object Writer {
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
     case Free.Pure(a) => okay.pure(Left(a))
-    case Effect(e) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).map(Left(_))
-      case Right(Say(w)) => okay.pure(Right((w, Free.Pure(()))))
-    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
-      case Left(g) => Effect(g).flatMap(x => uncons[W, A, G](k(x)))
-      case Right(Say(w)) => okay.pure(Right((w, k(()))))
+    case Inject(e) => split[G, Writer % W](e)
+      (g => Inject(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
+      { case Say(w) => okay.pure(Right((w, Free.Pure(())))) }
+    case Bind(Inject(e), k) => split[G, Writer % W](e)
+      (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
+      { w0 => (w0: @unchecked) match
+          case Say(w) => okay.pure(Right((w, k(())))) }
+
+  /**
+   * Writer's split is COMPLETE, and now unconditionally so.
+   *
+   * Two tests, in order: is this a writer operation at all (its own
+   * class, distinct from every other value in the row), and if so, is it
+   * THIS writer's (the told value's class, which separates
+   * `Writer % String + Writer % Int` — `TestRowIdentity` asserts they
+   * route correctly).
+   *
+   * The first test is what the identity encoding could not make. There
+   * an operation WAS its element, so a told String and a bare String
+   * from any other effect were the same runtime value, and the split
+   * came with a caveat: forward only effects whose operations are
+   * class-distinct from W. A `Say` is class-distinct from everything,
+   * and the caveat is gone.
+   *
+   * IN Writer'S OWN COMPANION, not a bare top-level given (moved
+   * 2026-09-19, writerk-companion-scope): a `given` here is in the
+   * IMPLICIT SCOPE of every `TypeableK[Writer % W]` query, from any
+   * package, with no import — the top-level placement was why every
+   * `Writer.fold`/`.collect`/`.run` call site outside package `okay`
+   * needed an explicit `import okay.writerK` (or `okay.given`) just to
+   * satisfy this `using` clause, found the hard way across okay-blob's
+   * migration (producer-to-writer-carrier, stage 2).
+   */
+  given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
+    // `Typeable.unapply` still answers an Option for the told value's
+    // own test (the JDK's Typeable has no boolean form); the Say wrapper
+    // and the outer Option are gone
+    def test(x: Any): Boolean = x match
+      case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
+      case _ => false
 }
 
-/** the diagonal writer: it tells its own answers, like Producer but
- * with the element type visible in the signature */
-type Teller[A] = A ! Writer % A
+/**
+ * The fourth carrier, named: the pure (no other effect) writer
+ * stream — one unfold, four carriers (LazyList by pure laziness,
+ * Producer by identity operations, Feed by typed telling, Source by
+ * the same telling plus Async). Every existing instance already
+ * covers it — `Stream[[W] =>> A ! Writer % W, Pure]` below resolves
+ * at `A = Unit`, and the elementwise extensions in Stream.scala match
+ * its shape directly — so naming it adds nothing to the type system,
+ * only to signatures and docs (producer-to-writer-carrier, stage 1:
+ * a new streaming seam names its element in the type, `Feed[W]` when
+ * it performs no other effect, `Source[W]` when it performs Async).
+ *
+ * THE TRAP `Produce` HAS IS MADE INSPECTABLE HERE, not closed by a
+ * type error — verified directly (`sbt okayStreamJVM/compile` on
+ * `val f: Feed[Int] = pure(5)` prints `[E190] ... Discarded non-Unit
+ * value of type Int`), not assumed: `compileErrors` cannot see this,
+ * since it reports hard errors only and munit's own macro drops
+ * warnings entirely, so `TestGenerate` documents the fact rather than
+ * asserting it through that tool. `Producer[A] = A ! Produce` makes
+ * the element type the ANSWER type, so `pure(a): Producer[A]`
+ * type-checks as an ORDINARY well-typed answer — nothing distinguishes
+ * it from the honest `Producer[A]` that ends with `a`, and no warning
+ * fires either — and it emits nothing: the note lives on `produce`'s
+ * scaladoc, a comment, not a type (bit okay-watch, blob-source-seam).
+ * `Feed[W]`'s answer is always `Unit`, so `pure(w): Feed[W]` for an
+ * element `w` of any other type needs Scala's own value-discard
+ * adaptation to compile at all, which — unlike Producer's identical-
+ * looking mistake — a real compile FLAGS, and this repo's gate then
+ * refuses as any other warning.
+ */
+type Feed[W] = Unit ! Writer % W
 
 /**
- * The third corner of the triangle: generate materializes into the
- * diagonal writer too — one unfold, three carriers (LazyList by pure
- * laziness, Producer by identity operations, Teller by typed ones).
- * put is tell as a delimited-control operation: shift captures the
- * continuation and binds it after the emission.
+ * `generate`/`put` materialize into `Feed` too — one unfold, four
+ * carriers. `put` is tell as a delimited-control operation: shift
+ * captures the continuation and resumes it with `()`, not the told
+ * value.
+ *
+ * This replaces the diagonal `Teller[A] = A ! Writer % A`
+ * (put-de-diagonal, 2026-09-19): its answer tied the program's own
+ * result to the element type for no reason a real seam ever used —
+ * nothing outside this file ever took a `Teller`, and `Put`'s answer
+ * is `Unit` now, so the diagonal bought nothing the row's own
+ * element didn't already carry.
  */
-given Put[Teller] with
-  final override inline def put[A](a: A): A /> Teller[A] =
-    shift(k => Writer.tell(a).flatMap(_ => k(a)))
+given Put[Feed] with
+  final override inline def put[W](w: W): Unit /> Feed[W] =
+    shift(k => Writer.tell(w).flatMap(_ => k(())))
 
 /**
  * A writer program is a stream of its told values: the same
@@ -332,32 +433,4 @@ given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
 given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G] = new:
   def uncons[W](s: A ! Writer % W + G): Option[(W, A ! Writer % W + G)] ! G =
     Writer.uncons[W, A, G](s).map(_.toOption)
-
-/**
- * Writer's split is COMPLETE, and now unconditionally so.
- *
- * Two tests, in order: is this a writer operation at all (its own
- * class, distinct from every other value in the row), and if so, is it
- * THIS writer's (the told value's class, which separates
- * `Writer % String + Writer % Int` — `TestRowIdentity` asserts they
- * route correctly).
- *
- * The first test is what the identity encoding could not make. There
- * an operation WAS its element, so a told String and a bare String
- * from any other effect were the same runtime value, and the split
- * came with a caveat: forward only effects whose operations are
- * class-distinct from W. A `Say` is class-distinct from everything,
- * and the caveat is gone.
- */
-given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = new:
-  def unapply[A](x: Any): Option[x.type & Writer[W, A]] = x match
-    case s: Writer.Say[?, ?] =>
-      t.unapply(s.w).map(_ => x.asInstanceOf[x.type & Writer[W, A]])
-    case _ => None
-  // `Typeable.unapply` still answers an Option for the told value's
-  // own test (the JDK's Typeable has no boolean form); the Say wrapper
-  // and the outer Option are gone
-  override def test(x: Any): Boolean = x match
-    case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
-    case _ => false
 

@@ -428,12 +428,27 @@ object Aggregator {
    * SCORES is the same either way; which equal-scoring record you get
    * is not, and "the first one seen" is the answer that does not
    * depend on the corpus's order changing under you.
+   *
+   * An element that DOES make the cut used to pay `sorted` on all of
+   * `a :: s`: a copy out to an `Array`, a sort, and a copy back —
+   * TWICE the list allocated (the sorted k+1, then `take(k)` rebuilds
+   * again, since a `List` cannot share a prefix once its tail is cut
+   * short) for no reason but that `s` was already sorted. `insert`
+   * walks `s` once, keeps every node up to the insertion point that
+   * ends up unused anyway (a `List` cannot share past a point its
+   * tail changes), and stops at exactly `k` — one array-free pass
+   * instead of a sort and two list rebuilds (docs/benchmarks.md §9h).
    */
   def topK[A](k: Int)(using O: Ordering[A]): Aggregator[A, List[A], List[A]] =
+    def insert(a: A, xs: List[A], remaining: Int): List[A] =
+      if remaining <= 0 then Nil
+      else xs match
+        case Nil => a :: Nil
+        case h :: t => if O.gt(h, a) then h :: insert(a, t, remaining - 1) else a :: xs.take(remaining - 1)
     def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
     apply(List.empty[A]) { (s, a: A) =>
       val kth = s.drop(k - 1)
-      if kth.isEmpty || O.gt(a, kth.head) then keep(a :: s) else s
+      if kth.isEmpty || O.gt(a, kth.head) then insert(a, s, k) else s
     }((a, b) => keep(a ++ b))(identity)
 
   /** the distinct elements, exactly (bounded data; sketches for the rest) */

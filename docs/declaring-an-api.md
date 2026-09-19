@@ -116,6 +116,19 @@ answers a `Queried[A]`, which has no `/` at all. `Routed[A]` is what
 both stages share — `unapply`, `url`, `describe`, `params`, `queries`,
 `prism`, `of` — and what `Router` takes.
 
+## Two tables
+
+```scala
+val declared = mine ++ Admin.router()(replay, onReplayed)
+```
+
+`++` is the operation `Router.empty` has been the zero of all along. It
+matters more than tidiness: a service that mounted another module's
+routes with `orElse` over the `PartialFunction`s served them and
+**described none of them**, because a renderer reads `entries` and
+`orElse` has none. okay-demo served `/admin/replay` that way and it
+appeared in no document at all.
+
 ## A table
 
 ```scala
@@ -154,6 +167,54 @@ type saying what the parameter IS and leaving the router to cast into
 it. It was `t => t.head` for four stages, and four sightings — three
 by authors other than the one who wrote the wart down — are what
 settled that the wart cost more than the cure.
+
+## What it answers
+
+`on` and `at` hand back a `Response` the handler built, which is the
+widest thing a handler can do and the least it can say: the table
+knows the path, the method and the body, and nothing at all about
+what comes back. Two shapes close that, and both work the same way —
+the ROUTER encodes, so the declaration cannot drift from the wire.
+
+```scala
+// a value, encoded by the schema the entry declares
+router.out[Int *: EmptyTuple, Task](Method.Get, byId)(id => pure(load(id)))
+router.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(store(t)))
+
+// content that has no schema: a page, a stream, a bundle
+router.html(Method.Get, Route.root)(_ => pure(page))
+router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+router.media(Method.Get, Route / "report", "application/pdf", 200, "last night's run")(...)
+```
+
+`out` answers a value and the entry carries `JsonSchema.of[R]`, so a
+document promises exactly what the service sends; `jsonOut` declares
+both sides, and the 400 it answers for a body that does not parse is
+declared too, because the ROUTER produces it whether or not the
+author thought about it.
+
+The three media combinators are the same argument without a schema.
+The handler answers the CONTENT — a page's text, a stream's chunks, a
+bundle's bytes — and the router writes the content-type from the same
+value the entry declares. `media` is what the three are written in
+terms of, and it is public because the list of media types is not
+ours to close.
+
+**The charset is declared only where the router did the encoding.**
+`html` takes a `String` and writes UTF-8 bytes, so it sends
+`text/html; charset=utf-8`; `bytes` and `events` are handed bytes by
+the handler, and nobody in the router knows what encoded them, so the
+header stays the bare media type. The DECLARATION is bare either
+way — a charset is a detail of one response, not a kind of content —
+and `TestRouterMedia` holds that as a law: for every entry, the media
+it declares is the media its own answer's content-type names.
+
+A handler that still builds its own `Response` is allowed and
+declares nothing; what changed is that it no longer has to. okay-demo
+is the worked example, and it is the reason the shape exists: six
+operations answering HTML, two event streams and a JavaScript bundle,
+whose committed document said `undeclared` six times out of six.
 
 `routes` is deliberately **not** a new protocol: it is the same
 `PartialFunction` every server in this stack already takes, so
@@ -201,6 +262,111 @@ a description that cannot be passed without its parts is why the next
 path and nothing else. This matters for any handler that does work
 outside the program it returns — a counter, a log line, a one-time
 code — and it was not true of the first cut; see "What it found".
+
+## A header
+
+A url is a path and a query; a header is neither, and that is the
+whole design.
+
+```scala
+val resume = Route / "events" :@ "last-event-id".opt[Long]
+
+Router.on(Method.Get, resume)((_, from) => stream(from))
+```
+
+Same unit, same spellings: `"name".as[T]` is required, `.opt[T]`
+tolerates absence, `.all[T]` collects repeats. The OPERATOR says where
+it goes — `/` into the path, `:?` into the query, `:@` into the
+headers — which is what `Route.Named`'s own comment has said since
+stage 1. A header block IS a `Map[String, Vector[String]]`, the very
+shape a query string is, so one builder serves both and there is no
+second set of combinators to keep in step.
+
+**`:@` produces a different type, and that is not a detail.** The law
+the url rests on is `unapply(url(a)) == Some(a)`, and a header cannot
+join `A` without breaking it — `url` would have nowhere to put it. So
+`Routed[A]` stays a prism on the URL and `Headed[A, H]` is the
+request-shaped declaration:
+
+```scala
+resume.route.unapply("/events")   // the url prism, untouched
+resume.readHeaders(request)       // Some(Tuple1(Some(41L)))
+resume.read(request)              // both halves: Option[(A, H)]
+```
+
+The header half has a law of the same shape —
+`readHeaders(requestWith(h)) == Some(h)` — and a test holds it.
+
+**A required header that is absent is a MISS, not a 400.** The route
+simply does not match and the caller's 404 stays the caller's: a
+router that answered 400 would be claiming no other route could have
+matched, which it cannot know. Present-and-unparseable is also a miss,
+for the reason `Query.opt` already gives — `?page=abc` meant something
+and got it wrong.
+
+**Names are case-insensitive**, whichever casing the declaration used,
+because that is what they are on the wire.
+
+A declared header is rendered `in: header` in the OpenAPI document,
+beside the template rather than inside it.
+
+## A lock
+
+A route can say what it requires of a caller, and then the TABLE
+refuses — which is the whole point, because a requirement nobody
+executes is a comment with a type.
+
+```scala
+val replay = (Route / "admin" / "replay").secured("admin")
+
+Router.on(Method.Post, replay)((_, _) => doReplay())
+      .enforcing(Secure.verifier(verify))
+```
+
+`secured` produces a `Headed` for the same reason `:@` does: a
+credential is read from the REQUEST, and `Routed[A]` is the url's
+prism. The declaration is plain data — a scheme, the scopes, a realm —
+because okay-security depends on okay-http and not the other way
+round, so a `Policy` cannot appear in a route. A rule that reads the
+ACTION or the RESOURCE stays with `Secure.granted`; both roads exist.
+
+**Protection does not change WHICH requests a route answers, only who
+gets through.** A secured route still MATCHES a request with no
+credential, and answers 401. That is the opposite of a declared
+required header, which is a miss — and deliberately so: a route that
+missed would answer 404 to everyone without a token, which leaks less
+and lies more.
+
+**The handler never runs for a refused request**, and the entry gains
+401 and 403 in its `answers` without the author writing them — so the
+document says them too, beside a `security` requirement and a
+`securityScheme`.
+
+**FAIL CLOSED.** A secured entry whose table never got a verifier does
+not serve: it answers 401 `no_verifier`. Forgetting `.enforcing(...)`
+is a route that 401s everywhere — a loud mistake — rather than a hole
+the document swears is shut.
+
+The law is asserted twice: `enforcing` refuses exactly the entries
+whose `security` is non-empty, and the document marks exactly those
+operations.
+
+## What an answer carries
+
+```scala
+Router.out(Method.Get, task)(byId).answering(200, "etag".as[String])
+```
+
+`answering` attaches to the entry just declared, as `summarised` does,
+and the document gains `responses[200].headers`.
+
+**Two kinds, and the difference is stated rather than blurred.** What
+the ROUTER sends is true by construction: a secured route's 401
+declares `www-authenticate`, and the router writes it from that same
+value, so the document and the wire cannot disagree. What an AUTHOR
+declares here is DESCRIPTION — the handler builds its own `Response`,
+and nothing checks the claim, because refusing a request over a
+documentation slip would be worse than the slip.
 
 ## A body
 
@@ -382,14 +548,43 @@ and the document was deliberately not generated, is out of date; what
 survives it is the rule that produced it, which is that the consumer
 came first.
 
-**Headers are still not declared.** A route declares a path, its
-parameters, its query and its body; a handler that wants a header
-reads it off the `Request`, and no renderer can say anything about it.
-That is the one structural gap left in the description.
+**A declaring route declares its answer too.** Every combinator has a
+`Headed` form — `html`, `htmlAt`, `bytes`, `bytesAt`, `events`,
+`eventsAt`, `media`, `json`, `jsonAt`, `out`, `outAt`, `jsonOut`,
+`jsonOutAt` — and each carries the 401/403 beside whatever it says
+itself:
 
-**Prose is not declared either** — a route has no place to carry a
-sentence about itself, so an OpenAPI summary is absent and operation
-ids are derived from method and path.
+```scala
+Router.out(Method.Get, (Route / "t" / "id".as[Int]).secured("admin"),
+           200, "the task")((id, _) => fetch(id))
+```
+
+One wrinkle worth knowing: **the `Headed` forms carry no default
+arguments, and `status`/`description` must be passed POSITIONALLY.**
+Scala allows defaults on only one overload of a name and the `Routed`
+forms have them; and a named argument narrows overload resolution
+before the argument types are read, so `description = "…"` picks the
+`Routed` overload and fails to typecheck. It is a compile error rather
+than a wrong answer, but an obscure one.
+
+**Prose is declared where it cannot be derived.** An operation may
+carry one sentence saying what it is FOR:
+
+```scala
+Router.html(Method.Get, Route.root)(_ => pure(page))
+  .summarised("open the chat: talk to the agent, which moves the board")
+```
+
+`summarised` attaches to the entry just declared, which is what a
+builder chain already reads as, and it is one method rather than a
+parameter on each of twenty combinators. Everything else in an entry
+is derived from something already written — the path from the route,
+a parameter's kind from its `Param`, the answer from the handler's
+type — and a sentence about purpose is not, which is the whole reason
+it is the author's to write. Summarising an empty router throws where
+the table is built, because a builder method that silently did nothing
+would put the sentence on no operation at all. An operation nobody
+summarised carries no `summary` field and keeps its derived id.
 
 `Toolbox` handlers are pure `A => String`, because that is the seam
 `Mcp.Server`, `Handlers.tools` and `Stepper` already take; widening it

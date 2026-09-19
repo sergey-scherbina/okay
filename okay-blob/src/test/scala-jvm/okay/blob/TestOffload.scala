@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Produce}
+import okay.{!, Async, Writer}
 import okay.given
 import okay.persist.{Ack, FileStore, Policy, Segments}
 import java.nio.file.{Files, Path}
@@ -99,10 +99,10 @@ class TestOffload extends munit.FunSuite:
     seeded(root, n = 10)
     run(Backup.copy(root, bl)): Unit
     val key = run {
-      val S = summon[okay.Stream[[X] =>> X ! (Produce + Async), Async]]
-      def first(p: okay.Chunk[Meta] ! (Produce + Async)): Option[Meta] ! Async =
-        S.uncons(p).map(_.flatMap(_._1.headOption))
-      first(bl.list("persist/"))
+      Writer.uncons[okay.Chunk[Meta], Unit, Async](bl.list("persist/")).map {
+        case Left(_) => None
+        case Right((c, _)) => c.headOption
+      }
     }.getOrElse(fail("no copies")).key
     val parsed = Segments.parse(run(Offload.fetchBytes(bl, key)))
     assert(parsed.sound, "a verified copy parsed unsound")

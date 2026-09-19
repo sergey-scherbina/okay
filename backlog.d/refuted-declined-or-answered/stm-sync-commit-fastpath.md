@@ -1,0 +1,3 @@
+- stm-sync-commit-fastpath — MEASURED AND DECLINED 2026-09-07 (§18e).
+  Built as filed, with the first attempt inside a `Run` so nothing runs
+  at …

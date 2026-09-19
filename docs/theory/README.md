@@ -28,11 +28,13 @@ turned out wrong are worked examples of the method, not embarrassments.
 | [3. Parameterised monads](03-parameterised.md) | answer-type modification, typestate, `M[A, S, R]` | Atkey 2009 · Asai & Kameyama 2007 |
 | [4. Free and freer](04-free-freer.md) | programs as data, the left-nested-bind problem, and whether it is real here | Swierstra 2008 · Kiselyov & Ishii 2015 · Voigtländer 2008 |
 | [5. Algebraic effects and handlers](05-effects-handlers.md) | operations, rows as unions, three shapes of handler | Plotkin & Power 2003 · Plotkin & Pretnar 2009 · Kiselyov, Sabry & Swords 2013 |
+| [11. One tree: `Cont` as a facade over `Free`](11-one-tree.md) | a shift is a leaf; why the answer types are phantom; one rotation, one trampoline, and what the arc measured | Kiselyov & Ishii 2015 · Danvy & Filinski 1990 · Filinski 1994 · Bjarnason 2012 |
 | [6. Final tagless and staging](06-tagless-staging.md) | two ways to make abstraction free | Carette, Kiselyov & Shan 2009 · Taha & Sheard 1997/2000 |
+| [12. Applicative, Selective, Monad](12-applicative-static.md) | what a program says about itself: parallel leaves, effects listed before the run, batching — and the boundary of staging | McBride & Paterson 2008 · Lindley, Wadler & Yallop 2011 · Capriotti & Kaposi 2014 · Mokhov et al. 2019 · Marlow et al. 2014 · Turner 1979/1986 |
 | [7. Logic, streams and sketches](07-logic-streams.md) | msplit, codata, the fold algebra, approximation with stated error | Kiselyov, Shan, Friedman & Sabry 2005 · Wadler 1985 · Flajolet et al. 2007 |
 | [8. Direct style](08-direct-style.md) | reflection, elaboration, capabilities — and why multi-shot survives here | Filinski 1994/1999 · Kameyama & Hasegawa 2003 · Brachthäuser et al. 2020 |
 | [9. Conditions: resumable exceptions](09-conditions.md) | signal without unwinding, restarts as prompts, the policy at the boundary | Steele 1990 · Pitman 2001 · Plotkin & Pretnar 2009/2013 · Zhang, Salvaneschi & Myers 2020 |
-| [10. Optics on profunctors](10-optics.md) | the constraint as a type parameter, the meet as an intersection, Tambara and Yoneda — and the type-changing lens that IS parameterised state | Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Atkey 2009 |
+| [10. Optics on profunctors](10-optics.md) | the constraint as a type parameter, the meet as an intersection, Tambara and Yoneda — and the type-changing lens that IS parameterised state, as an instance — with the prism that cannot be one, by parametricity | Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Atkey 2009 |
 
 ## The notation, once
 

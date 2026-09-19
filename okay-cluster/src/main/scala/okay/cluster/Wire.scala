@@ -82,6 +82,10 @@ abstract class Wire[A, R] extends Sink[A, R]:
         { self.committed(epoch); that.committed(epoch) }
       override def recovered(epoch: Int): Unit =
         { self.recovered(epoch); that.recovered(epoch) }
+      override def seekable: Boolean = self.seekable && that.seekable
+      override def horizon: Long = math.max(self.horizon, that.horizon)
+      override def reopen(st: S): S = (self.reopen(st._1), that.reopen(st._2))
+      override def sift(w: W, below: Long): W = (self.sift(w._1, below), that.sift(w._2, below))
 
 object Wire {
 
@@ -111,6 +115,10 @@ object Wire {
       // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   /** one accumulator per key: the partial is the key/accumulator pairs */
   def keyed[A, K, Acc, O, IAcc, R](key: A => K, agg: Aggregator[A, Acc, O])
@@ -138,6 +146,10 @@ object Wire {
       // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   /**
    * An event-time windowed aggregation.
@@ -175,6 +187,10 @@ object Wire {
       // sink behind a Wire must hear them (specs/dataflow.md, stage 9)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   def tumbling[A, K, Acc, O, IAcc, R](size: Long, lateness: Long,
                                       key: A => K, at: A => Long,
@@ -267,6 +283,10 @@ object Wire {
       def merged(ws: Vector[W]): Long = local.merged(ws)
       override def committed(epoch: Int): Unit = local.committed(epoch)
       override def recovered(epoch: Int): Unit = local.recovered(epoch)
+      override def seekable: Boolean = local.seekable
+      override def horizon: Long = local.horizon
+      override def reopen(st: S): S = local.reopen(st)
+      override def sift(w: W, below: Long): W = local.sift(w, below)
 
   def tumblingStaged[A, K, Acc, O](size: Long, lateness: Long,
                                    key: A => K, at: A => Long,

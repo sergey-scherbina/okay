@@ -37,14 +37,14 @@ object Memory {
 
     @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
-      case Effect(e) => okay.<|>[Context, F](e) match
+      case Inject(e) => okay.<|>[Context, F](e) match
         case Left(c) => Pure(answer(s, c))
-        case Right(g) => Effect(g).map((s, _))
-      case Bind(Effect(e), k) => okay.<|>[Context, F](e) match
+        case Right(g) => Inject(g).map((s, _))
+      case Bind(Inject(e), k) => okay.<|>[Context, F](e) match
         case Left(c) =>
           val (s2, x2) = answer(s, c)
           loop(s2)(k(x2))
-        case Right(g) => Effect(g).flatMap(x => _loop(s)(k(x)))
+        case Right(g) => Inject(g).flatMap(x => _loop(s)(k(x)))
 
     loop(init)(prog)
   }

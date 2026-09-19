@@ -18,7 +18,7 @@ nothing, or its first answer *plus a program producing the rest*.
 
 `Logic.scala` announces itself as exactly this, "LogicT … rebuilt on
 Choose", and its header is the paper's table of contents restated:
-`once` (the cut), `ifte` (the soft cut — negation-as-failure in one
+`cut`, `ifte` (the soft cut — negation-as-failure in one
 line), `interleave` (the fair or), `>>-` (the fair bind — a productive
 branch cannot starve its siblings), `observe` (first *n* answers of a
 possibly infinite search), every one derived from `msplit`
@@ -154,7 +154,7 @@ where that property was established.
 
 ---
 
-← [6 · Final tagless and staging](06-tagless-staging.md) · [Contents](index.md)
+← [12 · Applicative, Selective, Monad](12-applicative-static.md) · [Contents](index.md)
 
 **A fourth engineering note: a batched API over an unbatched
 primitive.** The third note said amortization is a property of the

@@ -10,11 +10,20 @@ enum class InputKind { Text, Secret, Multiline, Number }
 enum class Tone { Plain, Emphasis, Muted, Danger }
 enum class Size { Small, Normal, Large }
 
+/** what a text IS, which decides how this client sets it: an
+ * identifier is monospaced, a number's figures are tabular */
+enum class Kind { Prose, Ident, Number }
+
+/** where a text sits in the space its container gave it */
+enum class Align { Start, End }
+
 data class Style(
     val bold: Boolean = false,
     val dim: Boolean = false,
     val tone: Tone = Tone.Plain,
     val size: Size = Size.Normal,
+    val kind: Kind = Kind.Prose,
+    val align: Align = Align.Start,
 )
 
 /** the tree: level L (every client draws it) and level S (claimed, or lowered by the server) */
@@ -39,7 +48,11 @@ sealed interface Ui {
     data class Form(val fields: List<Ui>, val submit: String, val key: String) : Ui
     // level S — this client claims none of them; they arrive lowered
     data class Items(val items: List<Ui>, val key: String) : Ui
-    data class Table(val header: List<String>, val rows: List<List<Ui>>, val key: String) : Ui
+    /** `weights` is each COLUMN's share of the width, empty meaning
+     * equal — the server may omit it and an older server always does
+     * (ui-table-weights) */
+    data class Table(val header: List<String>, val rows: List<List<Ui>>, val key: String,
+                     val weights: List<Int> = emptyList()) : Ui
     data class Tabs(val labels: List<String>, val selected: Int, val pages: List<Ui>, val key: String) : Ui
     data class Modal(val title: String, val body: Ui, val key: String) : Ui
     data class Disclosure(val title: String, val open: Boolean, val body: Ui, val key: String) : Ui

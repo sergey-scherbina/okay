@@ -1,0 +1,3 @@
+- chunked-lexer-bookkeeping — REFUTED 2026-09-09, nothing landed. The
+  per-chunk bookkeeping was rewritten away (one traversal into a
+  growable array) …

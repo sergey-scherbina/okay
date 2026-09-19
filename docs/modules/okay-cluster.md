@@ -163,7 +163,14 @@ with a real worker process killed mid-run.
 **A failure is not yet a death.** A worker is buried after three
 CONSECUTIVE failures and any answer clears its count, so a machine
 that hiccups stays in the rotation and a run survives a blip on EVERY
-worker — which it could not before `dataflow-reconnect`. The partition
+worker — which it could not before `dataflow-reconnect`. Three is a
+default for a wire that is not known to be lossy: measured on one
+(`TestNetem`), it carries 20% loss with certainty and turns 50% loss
+into "no workers left" for half the runs — not because the loss stops
+progress, but because three lost packets are read as a dead machine.
+With burial off the same wire finishes every run at 70% loss. So
+`Cluster.run` and `Cluster.stream` take `tolerance` as a parameter,
+and a deployment that knows its wire is lossy should say so. The partition
 still moves to a survivor on every failure; the count changes who is
 asked next time, not who answers now. `Run.retried` counts workers
 BURIED and `Run.failed` counts attempts LOST, and they are different
@@ -520,6 +527,20 @@ val wire: Cluster.Worker[Double, Double] = c =>
 
 ## Gotchas
 
+- A stream can change its partition count between epochs (`stage 13`,
+  `Job.rescalable`) only over a STRIPED source (`Flow.striped`) into a
+  KEYED or FOLD sink. A striped source leaves a clean global prefix to
+  skip on resume; a keyed/fold sink keeps all its state in the
+  coordinator's fold. A contiguous cut, or a WINDOWED sink (its open
+  panes live in the worker, not the journal), is refused with a reason
+  — a re-cut of either would silently lose data.
+- A job that must NOT compute a partition — it is another party's
+  (specs/federation.md) — throws `Cluster.Refused`, and the
+  coordinator gets a `Resp.Failed` it does not retry elsewhere. Any
+  OTHER throwable from a partition is a death in process (retried on
+  the next worker) and a `Resp.Failed` over a socket; only `Refused`
+  means the same on both roads. Refuse BEFORE reading: an empty
+  answer for a foreign partition is a silent wrong share.
 - `distribute` demands a REPLAYABLE source by type (pure `Chunks`);
   a live effectful stream does not fit the signature — deliberately.
 - Wire workers hold their connection lazily; a `PrintWriter` swallows
@@ -570,8 +591,10 @@ val wire: Cluster.Worker[Double, Double] = c =>
   producing that merge rather than to parallelise it. See
   `dataflow-complete-panes`.
 
-Every stage of specs/dataflow.md is landed. What is left is the
-backlog: `dataflow-run-complete-panes`, `dataflow-fan-overhead` (about
+Every stage of specs/dataflow.md up to 10 is landed. Stages 11-13
+(the log as the source, the network, rescale) and specs/federation.md
+are the direction, with boxes that say which can be checked on one
+machine and which wait for machines. What is left besides: `dataflow-run-complete-panes`, `dataflow-fan-overhead` (about
 a third of a fan's time is in none of its sinks), and
 `dataflow-coordinator`, which is what a journalled coordinator would
 need for exactly-once ACROSS runs — and a real CLUSTER, which §20's

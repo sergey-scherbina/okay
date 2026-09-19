@@ -50,6 +50,31 @@ class TestSwing extends munit.FunSuite {
     while counter.get < n && System.currentTimeMillis() < deadline do Thread.`yield`()
     assert(counter.get >= n, s"timed out after 10 s waiting for $what; saw ${counter.get} of $n")
 
+  /**
+   * The tokens ui-text-intent gave every host (specs/ui-product.md
+   * stage 2). Swing's half shipped with no test of its own — this is
+   * that debt: an identifier is monospaced because it is read against
+   * something else, and an `Align.End` label sits at the end of the
+   * space its container gave it. `Kind.Number`'s tabular figures have
+   * no Swing spelling and are NOT drawn, which is asserted here too,
+   * so the gap is a fact rather than a silence.
+   */
+  test("the text tokens reach Swing: an identifier is monospaced, an End label sits right") {
+    import javax.swing.SwingConstants
+    def label(st: Style): javax.swing.JLabel =
+      val (root, b) = mount()
+      now(b.apply(Patch.Replace(Nil, Text("x", st))))
+      root.getComponent(0).asInstanceOf[javax.swing.JLabel]
+    val plain = label(Style())
+    assertEquals(label(Style(kind = Kind.Ident)).getFont.getFamily, java.awt.Font.MONOSPACED)
+    assertEquals(label(Style(kind = Kind.Ident)).getHorizontalAlignment, plain.getHorizontalAlignment)
+    assertEquals(label(Style(align = Align.End)).getHorizontalAlignment, SwingConstants.RIGHT)
+    // a defaulted style is what it always was
+    assertEquals(plain.getFont.getFamily, new javax.swing.JLabel().getFont.getFamily)
+    // Kind.Number is not drawn here, and that is the recorded gap
+    assertEquals(label(Style(kind = Kind.Number)).getFont.getFamily, plain.getFont.getFamily)
+  }
+
   test("the law at Swing: patching frame by frame equals building the last frame") {
     val frames = Vector(
       Column(Vector(Text("hello"), Button("go", "go"), Input("", "name", "Name")), "app"),

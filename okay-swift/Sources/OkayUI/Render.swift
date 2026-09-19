@@ -10,13 +10,31 @@ public struct Render: View {
     let act: (Event) -> Void
     public init(_ u: Ui, act: @escaping (Event) -> Void) { self.u = u; self.act = act }
 
+    /// the size token, and then what the text IS: an identifier is
+    /// monospaced because it is read against something else, a number
+    /// gets tabular figures because it is compared down a column
+    static func font(_ st: Style) -> Font {
+        let ts: Font.TextStyle = st.size == .small ? .caption : st.size == .large ? .title2 : .body
+        switch st.kind {
+        case .prose: return .system(ts)
+        case .ident: return .system(ts, design: .monospaced)
+        case .number: return Font.system(ts).monospacedDigit()
+        }
+    }
+
     public var body: some View {
         switch u {
         case let .text(s, st):
+            // `kind` and `align` are what the text IS and where it sits
+            // (ui-text-intent): an identifier is monospaced because it is
+            // read against something else, a number's figures are tabular
+            // because it is compared down a column
             Text(s)
                 .fontWeight(st.bold || st.tone == .emphasis ? .bold : .regular)
-                .font(st.size == .small ? .caption : st.size == .large ? .title2 : .body)
+                .font(Render.font(st))
                 .foregroundColor(st.tone == .danger ? .red : (st.dim || st.tone == .muted) ? .secondary : .primary)
+                .frame(maxWidth: st.align == .end ? .infinity : nil,
+                       alignment: st.align == .end ? .trailing : .leading)
         case let .row(c, _):
             HStack(alignment: .center, spacing: 4) { ForEach(Array(c.enumerated()), id: \.offset) { Render($0.element, act: act) } }
         case let .column(c, _):

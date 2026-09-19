@@ -1,7 +1,9 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, Stream, effect, pure}
+import okay.{!, +, %, Async, Chunk, Fold, Source, Writer}
+import okay.RowLift.plus
 import okay.given
+import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -13,54 +15,32 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
 
   def make(): Blob
 
-  private type F = Produce + Async
-
   def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
 
-  /** a producer of `total` deterministic bytes in `piece`-sized chunks */
-  def bytes(total: Int, piece: Int = 8 * 1024): Chunk[Byte] ! F =
-    def go(off: Int): Chunk[Byte] ! F =
-      if off >= total then pure(okay.Chunks.emptyChunk)
+  /** a Source of `total` deterministic bytes in `piece`-sized chunks */
+  def bytes(total: Int, piece: Int = 8 * 1024): Source[Chunk[Byte]] =
+    def go(off: Int): Source[Chunk[Byte]] =
+      if off >= total then okay.pure(())
       else
         val n = math.min(piece, total - off)
         val a = Array.tabulate[Byte](n)(i => ((off + i) % 251).toByte)
-        effect[F, Chunk[Byte]](ArraySeq.unsafeWrapArray(a)).flatMap(_ => go(off + n))
+        Writer.tell(ArraySeq.unsafeWrapArray(a)).plus[Async].flatMap(_ => go(off + n))
     go(0)
 
   /** drain a get: the collected bytes, the outcome, and the LARGEST
    * chunk seen — the constant-memory witness */
-  /** uncons would lose the program's final value at its None, and
-   * get's OUTCOME is that value — so this walks the tree itself */
-  def drainGet(p: Either[String, Unit] ! F): (Array[Byte], Either[String, Unit], Int) =
+  // Writer % Chunk[Byte]'s split test is unchecked under erasure —
+  // sound by construction, the TypeableK caveat Writer.scala documents
+  @nowarn("msg=cannot be checked at runtime")
+  def drainGet(p: Either[String, Unit] ! (Writer % Chunk[Byte] + Async)): (Array[Byte], Either[String, Unit], Int) =
     val out = java.io.ByteArrayOutputStream()
     var biggest = 0
-    val outcome = run(walk(p, c => { out.write(c.toArray); biggest = math.max(biggest, c.length) }))
+    val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => { out.write(c.toArray); biggest = math.max(biggest, c.length) })
+    val (_, outcome) = run(Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](p)(using summon, sink))
     (out.toByteArray, outcome, biggest)
 
-  private def walk[A](p: A ! F, each: Chunk[Byte] => Unit): A ! Async =
-    import okay.!.*
-    (p.resume: @unchecked) match
-      case Pure(a) => okay.pure(a)
-      case Effect(e) => okay.<|>[Async, Produce](e) match
-        case Left(a) => effect[Async, A](a.asInstanceOf[Async[A]])
-        case Right(c) =>
-          each(c.asInstanceOf[Chunk[Byte]])
-          okay.pure(c.asInstanceOf[A])   // a terminal produce answers its value
-      case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
-        case Left(a) =>
-          effect[Async, Any](a.asInstanceOf[Async[Any]]).flatMap(x => walk(k(x.asInstanceOf), each))
-        case Right(c) =>
-          each(c.asInstanceOf[Chunk[Byte]])
-          walk(k(c.asInstanceOf), each)
-
-  def drainList(p: Chunk[Meta] ! F): Vector[Meta] =
-    val S = summon[Stream[[X] =>> X ! F, Async]]
-    def go(rest: Chunk[Meta] ! F): Vector[Meta] ! Async =
-      S.uncons(rest).flatMap {
-        case None => pure(Vector.empty)
-        case Some((c, more)) => go(more).map(c.toVector ++ _)
-      }
-    run(go(p))
+  def drainList(p: Source[Chunk[Meta]]): Vector[Meta] =
+    run(Writer.collect(p))._1.flatMap(_.toVector)
 
   test(s"$engine: put then get round-trips at constant memory") {
     val b = make()
@@ -121,5 +101,23 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
     val s = b.stats
     assertEquals((s.engine, s.puts, s.gets, s.misses, s.heads, s.deletes, s.failures), (engine, 1L, 2L, 1L, 1L, 1L, 0L))
     assert(okay.codec.Json.write(s).contains("\"misses\":1"))
+  }
+
+  test(s"$engine: the plain road — putBytes, putChunk, getBytes, and a range") {
+    val b = make()
+    val data = Array.tabulate[Byte](10_000)(i => (i % 251).toByte)
+    val etag = run(b.putBytes("plain/one", data))
+    assertEquals(run(b.getBytes("plain/one")).map(_.toVector), Right(data.toVector))
+    assertEquals(run(b.getBytes("plain/one", Some((10L, 20L)))).map(_.toVector),
+      Right(data.slice(10, 20).toVector))
+    assertEquals(run(b.head("plain/one")).map(m => (m.size, m.etag)), Some((10_000L, etag)))
+    assert(run(b.getBytes("plain/none")).left.exists(_.contains("plain/none")))
+    val _ = run(b.putChunk("plain/two", ArraySeq.unsafeWrapArray(data)))
+    assertEquals(run(b.getBytes("plain/two")).map(_.length), Right(10_000))
+    // the program is a VALUE: running getBytes twice answers the same
+    // bytes twice, not the bytes twice over
+    val twice = b.getBytes("plain/one")
+    assertEquals(run(twice).map(_.length), Right(10_000))
+    assertEquals(run(twice).map(_.length), Right(10_000))
   }
 }

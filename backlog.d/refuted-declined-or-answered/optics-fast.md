@@ -1,0 +1,3 @@
+- optics-fast — BUILT, MEASURED, DECLINED 2026-09-10 (operator's call;
+  specs/optics.md "optics-fast"). The premise was refuted: compiling an
+  optic to …

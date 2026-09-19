@@ -38,6 +38,7 @@ object RowLift:
   trait InLow:
     given self[F[+_]]: In[F, F] = ()
 
+
   object In extends InLow:
     given left[F[+_], G[+_]]: In[F, F + G] = ()
     given deeper[F[+_], G[+_], H[+_]](using In[F, G]): In[F, G + H] = ()
@@ -45,6 +46,33 @@ object RowLift:
   /** partially applied, the witness reads as a context bound —
    * `[R[+_] : Has[State % Int]]` rather than a using clause */
   type Has[F[+_]] = [R[+_]] =>> In[F, R]
+
+  /**
+   * MEMBERSHIP AS SUBTYPING, for the places `In` cannot go
+   * (row-membership-crash, 2026-09-17).
+   *
+   * `In`'s inductive given asks the compiler to solve `?G + ?H` for
+   * the target, and when the target is an ABSTRACT row dotty 3.9 does
+   * not fail — it CRASHES, in `orDominator`, with "Failure to join
+   * alternatives F and G". That crash has decided three designs in
+   * this repository (delim-safety's guard, `Replayable`'s encoding,
+   * and the workflow driver's row), and `ProbeRowCrash` keeps it
+   * pinned so a future Scala can be re-tested against it.
+   *
+   * `Sub` is the shape that does not crash: a union on the RIGHT of a
+   * `<:<` needs no join, so a concrete row resolves and an abstract
+   * one simply FAILS — which is what an implicit should do. It also
+   * says the useful thing about `Pure`: `Nothing <:< anything`, so a
+   * program with no operations rides into any row at all.
+   *
+   * WHAT IT IS NOT, and the difference is the whole of its honesty:
+   * true membership is `∀X. F[X] <: G[X]`, and this tests it at `Any`
+   * only. For the rows this library builds — unions of effect
+   * signatures applied pointwise — the two coincide, and the cast it
+   * licenses is exactly the one `In` licenses. It is an
+   * approximation, said out loud rather than hidden behind a name.
+   */
+  type Sub[F[+_], G[+_]] = F[Any] <:< G[Any]
 
   /**
    * THE ONLY CAST. Sound by the erasure argument above; each caller
@@ -56,6 +84,20 @@ object RowLift:
    */
   private inline def coerce[A, F[+_], R[+_]](p: A ! F): A ! R =
     p.asInstanceOf[A ! R]
+
+  /**
+   * The same cast for the `direct` macro, whose side condition is
+   * checked a different way (direct-narrow-colour, 2026-09-16): the
+   * macro compares the two rows by SUBTYPING — `F <:< R`, which dotty
+   * decides pointwise and which is exactly membership when R is a
+   * union — because by the time it holds a row it has been beta-reduced
+   * to `[A] =>> X[A] | Y[A]` and no longer matches the `F + G` shape
+   * the `In` givens are written against. `summon[In[F, R]]` succeeds on
+   * the ALIAS and fails on the reduced form; measured, and the reason
+   * this door exists rather than the macro fabricating a witness for an
+   * opaque type it cannot see.
+   */
+  private[okay] inline def into[A, F[+_], R[+_]](p: A ! F): A ! R = coerce(p)
 
   /**
    * NEITHER SPELLING CAN LOSE AN EFFECT, which is worth saying because
@@ -87,6 +129,11 @@ object RowLift:
   extension [A, F[+_]](p: A ! F)
     /** land in row R, which must CONTAIN this program's row */
     inline def at[R[+_]](using In[F, R]): A ! R = coerce(p)
+
+    /** the same widening, licensed by `Sub` instead of `In` — for a
+     * TARGET ROW THAT IS ABSTRACT, where `In` crashes the compiler
+     * rather than resolving (row-membership-crash) */
+    inline def up[R[+_]](using Sub[F, R]): A ! R = coerce(p)
 
     /**
      * add R to whatever row this program already has: `A ! F` becomes

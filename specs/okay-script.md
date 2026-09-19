@@ -561,8 +561,11 @@ one place concurrency actually matters: two threads calling
 `page.render(webA)` and `page.render(webB)` concurrently on the SAME
 `Page` must never let one thread's script read the OTHER thread's
 `Web`. Because `Page.render` is `synchronized` end to end (was already
-true for the cache/compile logic; `setCurrent` now happens inside that
-same block, before `invoke()`), this holds. `ScalaScript.render` gets
+true for the cache/compile logic; the `Web.scoped.where` binding now
+happens inside that same block, before `invoke()`), this holds. Since
+script-scoped-state (2026-09-19) that binding also restores whatever
+`Web` was current before `render` was called, once `invoke()` returns
+-- see specs/script-scoped-state.md. `ScalaScript.render` gets
 the same optional `web` parameter for API symmetry, but is NOT
 synchronized (a one-shot call was never meant to serialize) — a caller
 mixing concurrent one-shot `render` calls WITH real per-request `Web`
@@ -851,12 +854,12 @@ runtime.
 package okay.script.api            // DELEGATED — the host's classes
 
 final case class Web(method, path, query, headers, form, cookies, body, params)
-object Web:  current / setCurrent   // ThreadLocal — one request per thread
+object Web:  current   // ThreadLocal at the time; Scoped since script-scoped-state, 2026-09-19
 final class Response:               // mutable, per request
   status / header / contentType / redirect / cookie
-object Response: current / setCurrent
+object Response: current
 trait Session: id / get / set / remove / invalidate
-object Session: current / setCurrent
+object Session: current
 def include(page: String): Unit     // renders another page INTO this output
 def forward(path: String): Nothing  // abandons this page, dispatches to another
 final case class Forwarded(path) extends RuntimeException  // what forward throws
@@ -893,6 +896,24 @@ compile — many requests render the same compiled page at once, each
 with its own `Web`. (Holding it across `invoke` would also have let
 two pages that include each other deadlock two threads; that cycle
 is now caught by the include depth cap instead.)
+
+**Superseded (script-scoped-state, 2026-09-19):** the raw `ThreadLocal`
+above had a public `setCurrent`/`setX` on every one of these objects
+-- readable and writable by anything holding a reference, with cleanup
+left to a hand-matched `finally` in `Site.servePage` that had already
+drifted (`Content`'s root/problems were never in its reset list, and
+`Principal` was reset to `None` only there, never bound at the top --
+one dropped line away from leaking a previous request's principal into
+the next on a reused thread). `Scoped[A]` (`okay.Scoped` since
+scoped-to-core, 2026-09-19 -- `okay.script.api.Scoped` at first
+landing) replaces the raw `ThreadLocal`: no public `set`, `where(value)(body)`
+binds for `body`'s extent only and restores whatever was bound before
+on every exit, exception included. Every `current` above still reads
+the same way; every `setCurrent`/`setX` is gone. See
+specs/script-scoped-state.md for the full design, including why this
+is not `java.lang.ScopedValue` (still preview on JDK 21) or context
+functions (measured and rejected for this exact subsystem already, in
+"Metadata as context" above).
 
 ### Routing — `Site`
 
@@ -1456,6 +1477,128 @@ sees a `Json`.
       good submit calls `submit` once with the typed value and shows
       its message.
 - [x] the example store's checkout: an `Order` form on the plain road.
+
+### The plain road of a Live app — classic HTML, no script (script-live-plain, 2026-09-17)
+
+Operator question: is Scala.js mandatory for okay-ui, and can a page
+be a plain HTML backend for it? The answer was already mostly in the
+tree — Scala.js is one optional host (`okay-ui/src/main/scala-js`,
+two files, nobody outside okay-ui depends on it), the browser's
+Live client is hand-written JavaScript (`LiveJs`), `Live.html` is
+the SSR of any tree, and `Forms.html`/`Forms.read` is a
+`<form method="post">` road for one node, `Form`. What was missing
+is the same road for an ARBITRARY Live app: the whole tree as one
+form, every press an HTTP POST, the state held where `Live.durable`
+already holds it. This section is that: no change to okay-ui, ~100
+lines beside `Forms`.
+
+```scala
+package okay.script.api
+object Live:
+  /** the plain road's step, PURE: the fields a browser posted back
+   * from the tree `view(s)` rendered, folded into `s` */
+  def step[S](app: Live[S], s: S, fields: Map[String, String]): S
+  /** the tree as one `<form method="post">`: `Live.html(named = true)`
+   * plus the hidden field that names this mount */
+  def plain(id: String, ui: Ui, action: String): String
+  val PlainField = "__okay_plain"
+final class Live[S]:
+  /** the plain road's session: the state this key holds (in memory,
+   * and under `okay.live.<name>` with a Schema, as `session` does),
+   * `step`ped through `fields` when they name this mount, kept */
+  def post(key: Option[String], id: String, fields: Map[String, String],
+           attrs: Option[Session] = None, name: String = ""): S
+def mountPlain(id: String, app: Live[?], action: String = Web.current.path): String
+```
+
+**The step is the hybrid rule read backwards.** A browser posts
+every field of the form at once, so the step DIFFS the post against
+the tree it was rendered from: an `Input` whose posted value differs
+from the shown one is an `Edited`, a `Check` whose presence differs
+from `on` a `Toggled` (an unposted checkbox is `false`, as HTML has
+it), a `Select` whose posted option differs a `Chosen`; an unchanged
+field is nothing, because nothing happened to it. Then the press:
+`__press=<key>` (what `Live.html(named = true)` gives every keyed
+button) is a `Pressed(key)` — unless `key` is a `Form` node's own
+key, in which case that form's edits travel INSIDE one
+`Submitted(key, edits)`, exactly what the hybrid client sends, and
+`Live.form`'s update needs no second branch. Edits outside any form,
+and inside a form whose button was NOT the one pressed (a list's
+`+`), go as plain `Edited`/`Toggled`/`Chosen` before the press. Every
+event is checked with `Wire.permitted` against the shown tree before
+`update` sees it — the same capability rule as the socket: a
+`__press` naming a key the tree did not show is dropped, and so is a
+`Submitted` whose form is not shown.
+
+**State lives where the socket's does.** `post` reads and writes the
+same two places `session` does — the in-memory table by session key
+(script-live-resume) and the session attribute with a Schema
+(script-live-durable) — through helpers both now share. So a
+`Live.durable` app mounted with `mountPlain` on one page and `mount`
+on another is ONE state; "deployment is a flag" (specs/frontend.md)
+gains the flag with the fewest moving parts: none.
+
+**A mount names itself.** `Live.plain` puts `<input type="hidden"
+name="__okay_plain" value="<id>">` in the form, and `post` steps only
+when the post carries this mount's id — two plain apps on one page
+each fold their own POST, and a GET folds nothing. `mountPlain` is
+`mount` without the script: opens the session (the cookie is the
+key, as for the socket), reads `Web.current`, `post`s on a POST,
+renders the state reached.
+
+What the plain road does NOT have, structurally and stated: `push`
+(a server has no way to a page that is not listening), `Key`/
+`Resized` (no keyboard, no window), per-keystroke `Edited` (a POST
+is a submit), and the browser reloads the page on every press. It
+is level L on the oldest client there is, and a page that wants
+more mounts the same app with `mount`.
+
+- [x] `Live.step` on the counter: a `__press=inc` post from the
+      shown tree steps once; a `__press` naming a key not shown
+      steps nothing; a GET (no fields) steps nothing
+- [x] `Live.step` diffs: an Input posted with its shown value fires
+      no event, a changed one fires `Edited`; a checkbox absent from
+      the post is `Toggled(false)` only when it was shown on; a
+      Select fires `Chosen` by option text
+- [x] `Live.step` on a `Form` node: the form's button posts its
+      fields as ONE `Submitted` (`Live.form` validates and submits,
+      asserted through `submit` being called once with the typed
+      value); the list's `+` inside the form is a `Pressed` after
+      the fields' edits, and submits nothing
+- [x] a multiline Input (`textarea`) carries `name=` under
+      `named = true` — found by this lane: `Live.html` named only
+      `input` and `select`, so a textarea posted nothing
+- [x] `post` through a `Site`: GET renders the counter as a form
+      with the hidden mount field and no `<script>`; two POSTs with
+      the session cookie reach `count: 2`; a POST without the
+      cookie starts at 0; a `Live.durable` app's state after a plain
+      POST is readable by the socket road's `session` (one state)
+
+Results (TestLivePlain, 6 tests, 2026-09-17): `Live.scala` grew 60
+lines and `mountPlain`; okay-ui is untouched. The textarea gap was
+real: `Live.html(named = true)` named `input` and `select` only, so a
+multiline field on the plain road posted nothing until this lane.
+The socket suites (TestLive, TestForms, TestLiveResume) pass
+unchanged over the shared `load`/`store`.
+
+Decisions:
+- **Diff, not replay.** `Forms.read` folds every posted field
+  because `Form.edit` is idempotent; an arbitrary `update` is not
+  (`Live.form` clears its message on any edit), so the plain step
+  must send only what changed, which is also what the socket sends.
+- **No redirect-after-post.** A browser refresh re-posts the last
+  press; the classic answer is a 303 to the same path, and a page
+  can do it (`Response.current`), but doing it inside `mountPlain`
+  would hide a status decision in a prose helper. Recorded, not
+  built.
+- **The step lives in okay-script, not okay-ui.** It reads HTML
+  field names (`__press`, `value="on"`), which `Live.html` invented;
+  okay-ui has no notion of a name attribute and should not gain one.
+  REVISED the same evening by specs/ui-html.md: a host knows its
+  medium as the terminal knows ANSI, and okay-watch needs these three
+  functions without okay-script's compiler on its classpath. The pure
+  half moves to `okay.ui.Html`; `Live.html`/`plain`/`step` become
+  delegates; `mountPlain` and the session stay here.
 
 ### Application scope, and the admin example (okay-script-application, 2026-09-07)
 
@@ -2162,8 +2305,7 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient):
 final case class Web(method: String, path: String, query: Map[String, String] = Map.empty, headers: Map[String, String] = Map.empty)
 object Web:
   val empty: Web
-  def current: Web
-  def setCurrent(w: Web): Unit
+  def current: Web   // bound via Scoped.where, not a public setter -- see script-scoped-state
 
 /** Front-matter + heading-scoped ```yaml metadata, as a typed AST and
  * as a current-position Context -- see "Metadata as context" above.

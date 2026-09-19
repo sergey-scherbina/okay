@@ -21,13 +21,15 @@ object Forms:
 
   private val indexed = """\[(\d+)\]""".r
 
-  /** the value a form starts from: every check the Schema shows is
-   * `false` rather than absent -- an untouched checkbox is a `false`,
-   * not a "required" (what the plain road gets from HTML for free,
-   * the live road needs said) */
-  def defaults[A](using Schema[A]): Json =
-    Ui.focusable(Form.of[A](Json.JObj(Vector.empty))).collect { case Ui.Check(_, k, _) => Event.Toggled(k, false) }
-      .foldLeft(Json.JObj(Vector.empty): Json)(Form.edit[A])
+  /** the value a form starts from -- `okay.ui.Form.blank`, which is
+   * where it belongs and where it is total (form-blank, 2026-09-18).
+   * This one set every Check false and stopped there, so a `Select`
+   * the form SHOWS on its first option -- a sum's case knob most of
+   * all -- was still absent from the value, and a submit that touched
+   * nothing was refused for a field the user could see was answered.
+   * okay-watch had written the same function again, with the Selects,
+   * for exactly that reason. Kept as a name because pages use it. */
+  def defaults[A](using Schema[A]): Json = Form.blank[A]
 
   /** the Schema's form as HTML that posts to `action`: the element
    * structure `Live.html` gives, plus `name=` on every field (its

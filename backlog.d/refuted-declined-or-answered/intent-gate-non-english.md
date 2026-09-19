@@ -1,0 +1,3 @@
+- intent-gate-non-english — LANDED 2026-09-04, and it REFUTED its own
+  premise. Re-measured on domain-bearing names, the gate does not pay in
+  any of six …

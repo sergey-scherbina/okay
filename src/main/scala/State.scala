@@ -23,7 +23,7 @@ import okay.!.*
  * under a key), `Refs` makes them at run time when a type cannot list
  * them, and a fresh `Delim` prompt separates them dynamically.
  */
-enum State[S, +A] derives okay.Effect {
+enum State[S, +A] derives Effect {
   /** read the current state */
   case Get() extends State[S, S]
 
@@ -118,36 +118,45 @@ object State {
     // where the constructor has refined the answer type to S.
     @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
-      case Effect(e) => split[State[S, *], F](e) {
+      case Inject(e) => split[State[S, *], F](e) {
           case Get() => Pure((s, s)): (S, A) ! F
           case Set(s) => Pure((s, s)): (S, A) ! F
-        } { e => Effect(e).map((s, _)) }
-      case Bind(Effect(e), k) => split[State[S, *], F](e) {
+        } { e => Inject(e).map((s, _)) }
+      case Bind(Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
           case Set(s) => loop(s)(k(s))
-        } { e => Effect(e).flatMap(x => _loop(s)(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(s)(a)
   }
 
   /**
    * A program written against a PART of the state, run against the
-   * whole (specs/optics.md stage 3): the lens says which part, and
-   * nothing else about the state is touched.
+   * whole (specs/optics.md stage 3): the two functions say which
+   * part, and nothing else about the state is touched.
    *
    * Not a handler — an INTERPRETATION of one effect into another, the
    * shape `docs/your-own-effect.md` names: every `Get` on the part
-   * becomes a `Get` on the whole read through the lens, every `Set`
-   * becomes a read, a `set` through the lens and a write. The
-   * forwarded arm carries the rest of the row untouched, as `handle`'s
-   * does.
+   * becomes a `Get` on the whole read through `look`, every `Set`
+   * becomes a read, a `put` and a write. The forwarded arm carries
+   * the rest of the row untouched, as `handle`'s does.
+   *
+   * WHY TWO FUNCTIONS AND NOT A LENS (core-modules stage 4). This was
+   * `zoom(l: Lens[S, S, A, A])`, and it was the CORE's only reference
+   * to optics — the one edge that kept `Optic.scala` from becoming a
+   * module. Reading it settled what to do: of the whole lens it used
+   * exactly `l.get` and `l.set`, so the interpretation was never
+   * about optics at all. It says so now, and okay-optics gives back
+   * the lens SPELLING as an extension, so `State.zoom(lens)(prog)`
+   * still compiles character for character wherever that module is on
+   * the classpath.
    */
-  def zoom[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F): X ! State % S + F = {
-    // the part, read and written through the lens, as a program over
-    // the whole — the two operations this interpretation is made of
-    def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => l.get(a)))
+  def zoomWith[S, A, X, F[+_]](look: S => A, put: A => S => S)(p: X ! State % A + F): X ! State % S + F = {
+    // the part, read and written through the two functions, as a
+    // program over the whole — what this interpretation is made of
+    def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => look(a)))
     def writePart(a: A): A ! State % S + F =
-      !.widen[A, State % S, F](get[S].flatMap(s => set(l.set(a)(s))).map(_ => a))
+      !.widen[A, State % S, F](get[S].flatMap(s => set(put(a)(s))).map(_ => a))
 
     def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
     def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
@@ -157,11 +166,11 @@ object State {
       // need `A ! row <: X ! row` from the GADT refinement — Free is
       // invariant in its answer, so that is a cast, and this costs one
       // node instead of one.
-      case Effect(e) => loop(Effect(e).flatMap(x => Pure(x)))
-      case Bind(Effect(e), k) => split[State[A, *], F](e) {
+      case Inject(e) => loop(Inject(e).flatMap(x => Pure(x)))
+      case Bind(Inject(e), k) => split[State[A, *], F](e) {
           case Get() => readPart.flatMap(a => _loop(k(a)))
           case Set(a) => writePart(a).flatMap(x => _loop(k(x)))
-        } { e => Effect(e).flatMap(x => _loop(k(x))) }
+        } { e => Inject(e).flatMap(x => _loop(k(x))) }
 
     loop(p)
   }
@@ -180,8 +189,10 @@ object State {
  * flatMap already composes the transitions S -> S2 -> S3 (typestate:
  * the compiler enforces the protocol order). Unlike the State effect
  * above, whose handler loop is tail-recursive, running costs a stack
- * frame per operation, and it measures ~1.7x slower on the same
- * workload (HandlerBenchmark) — the typed protocol is what you buy.
+ * frame per operation, and it measures 1.29x slower on the same
+ * workload (HandlerBenchmark: 21.23 vs 27.42 us/op, 3 forks,
+ * re-measured 2026-09-17; this comment said ~1.7x, which no longer
+ * held) — the typed protocol is what you buy.
  */
 object PState {
   /** read the state, leaving its type unchanged */
@@ -195,20 +206,21 @@ object PState {
     (m / (a => s2 => (s2, a)))(s)
 
   /**
-   * A typestate program over a PART, run over the whole — and this is
-   * the stage's whole argument (specs/optics.md stage 3, theory ch. 3).
+   * THE CARRIER: a typestate transition, seen as a profunctor in its
+   * state (specs/optics.md stage 12, `optics-cont-profunctor`).
    *
-   * A four-parameter lens `Lens[S1, S2, A1, A2]` is a type-changing
-   * update: the whole goes S1 -> S2 exactly when the part goes
-   * A1 -> A2. `PState` is Atkey's parameterised state: a transition
-   * that carries the state's TYPE in the answer type. Zooming one by
-   * the other is one `shift` — read the part out of the whole to start
-   * the inner program, and put the part back to finish it — and the
-   * types line up on their own, which is the sense in which the
-   * type-changing lens and parameterised state are the same picture.
+   * `Cont[X, B => R, A => R]` computes an `X` and takes the state from
+   * `A` to `B`. Read as `P[A, B]`, that is a profunctor — and an optic
+   * IS a function `P[A1, A2] => P[S1, S2]` for every `P` with the
+   * right structure, which is why `PState.zoom` is one line: the
+   * optic run at this carrier.
+   *
+   * THE ALIAS IS ALL THAT IS LEFT HERE (core-modules stage 4). It
+   * names a `Cont` and nothing else, so it stays in the core; the
+   * `Optic.Strong` instance for it, and the `zoom` and `zoomCase`
+   * spellings that need one, moved to okay-optics (`Zoom.scala`).
+   * Callers write the same thing they always did.
    */
-  inline def zoom[S1, S2, A1, A2, X, R](l: Lens[S1, S2, A1, A2])
-                                       (m: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
-    shift(k => (s1: S1) => (m / (x => (a2: A2) => k(x)(l.set(a2)(s1))))(l.get(s1)))
-}
+  type Zooming[X, R] = [A, B] =>> Cont[X, B => R, A => R]
 
+}

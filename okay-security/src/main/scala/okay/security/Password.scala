@@ -46,10 +46,18 @@ object ApiKey {
 
   private val enc = java.util.Base64.getUrlEncoder.withoutPadding
 
-  /** (the key to hand out once, the digest to store) */
-  def issue()(using c: Crypto): (String, String) =
+  /**
+   * The key to hand out ONCE, and the digest to STORE.
+   *
+   * Named for the same reason as `OAuth2.pkce`
+   * (named-pairs-security, 2026-09-12): both are `String`, and a
+   * swapped pair hands out the digest and stores the key itself —
+   * a plaintext secret at rest, compiling silently. Read them by
+   * name.
+   */
+  def issue()(using c: Crypto): (key: String, digest: String) =
     val key = "ok_" + enc.encodeToString(c.randomBytes(24))
-    (key, digest(key))
+    (key = key, digest = digest(key))
 
   def digest(key: String)(using c: Crypto): String =
     enc.encodeToString(c.sha256(key.getBytes("UTF-8")))

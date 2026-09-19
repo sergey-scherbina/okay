@@ -958,17 +958,36 @@ tasks with an optic that must be reifiable AND survive serialisation.
 **Trigger:** a document large enough that re-fetching it on every
 change is the measured cost — with the measurement, not the intuition.
 
-**topology — the staticness condition is met by nothing here, and WHY
-is the useful part.** `Stage[I, O, A] = A ! (Take % I + Writer % O)`
-is a program, not a graph. It is a value before it runs, but
-everything past the first effect lives inside a continuation, so it
-cannot be walked, drawn, fused or shipped without running it. That is
-not an oversight: a monadic pipeline's shape legitimately depends on
-its values, and an `Arrow` is exactly the trade — a static shape, at
-the price of needing `ArrowChoice` before a branch can exist at all.
-okay-flink is one file of interop with no plan value of our own to
-compare against. **Trigger:** a second consumer that needs the graph
-BEFORE it runs — a renderer, a fuser, or a cluster shipper.
+**topology — CORRECTED the same day. The condition is met, and an
+`Arrow` is not what met it.** What stood here said "nothing meets it"
+and then described `Stage[I, O, A] = A ! (Take % I + Writer % O)`: a
+program rather than a graph, whose shape past the first effect lives
+in a continuation, because a monadic pipeline's shape legitimately
+depends on its values. Every word true of `Stage`, and not an answer
+about the tree — I measured the streaming algebra and wrote a sentence
+about the repository.
+
+`okay.Tables.Plan[A]` is the static graph this candidate asks for, and
+its own comment says why it is a GADT and not a `Free`: *"A `Free`
+program could not offer this (its continuations are functions); the
+tree can."* It already carries the three interpreters an `Arrow` would
+have been reached for — `show` DRAWS it (okay-spark's
+`TestWroclawAlgebra` collects rendered plans), `optimize` FUSES it, a
+projection into its `Read` and the small join side to the right, under
+the law *"the turned join answers exactly what the written one does"*,
+and `compile(B)` RUNS it over any `Bulk[D]`, local `Chunks` and Spark
+alike. Drawn, fused, shipped to a cluster: the three things this spec
+named as the reason to want staticness.
+
+So the candidate is ANSWERED rather than open, and answered the way
+`conf` was — what it asked for exists, built from an ordinary datatype
+with no profunctor in it. **Reopen it** if a plan must branch on a
+VALUE and still be drawable: that is the `ArrowChoice` shape, and it
+is the one thing `Plan` cannot do.
+
+The lesson is the arc's own, turned on its author: a measurement names
+what it measured. "Nothing in the tree does X" is a claim about the
+tree, and it costs one more grep than the claim I was entitled to.
 
 **tools-effectful — the premise re-verified rather than recalled.**
 `Persist.append(partition, key, value, ack): Long` returns a value

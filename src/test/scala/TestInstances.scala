@@ -9,7 +9,7 @@ import okay.RowLift.{at, plus}
 class TestInstances extends munit.FunSuite:
 
   /** an effect that carries nothing to compare — the hard case */
-  enum Store[+A] derives okay.Effect:
+  enum Store[+A] derives Effect:
     case Get() extends Store[String]
 
   test("two instances of one signature, told apart by a run-time handle") {

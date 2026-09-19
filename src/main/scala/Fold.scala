@@ -199,12 +199,34 @@ object Fold:
   /** the last element, if any */
   def last[A]: Fold[A, Option[A]] = Fold(Option.empty[A])((_, a) => Some(a))
 
-/** combine with a neutral element */
-trait Monoid[A]:
-  def empty: A
+/**
+ * Combine two, associatively — and NOTHING about an empty one.
+ *
+ * Split out of `Monoid` for `Validated` (specs/validated.md), which
+ * accumulates errors and has no use for an empty error: there is no
+ * such thing as "no problem" in a list of problems being built, and a
+ * type that asks for one turns `NonEmptyList` away for nothing.
+ * `Monoid` extends it, so every instance that existed still answers
+ * both.
+ */
+trait Semigroup[A]:
   def combine(x: A, y: A): A
   extension (x: A)
     inline def |+|(y: A): A = combine(x, y)
+
+object Semigroup:
+  /**
+   * Every `Monoid` is one, for GIVEN SEARCH and not just by
+   * subtyping. The instances that existed live in `object Monoid`,
+   * which is in the implicit scope of `Monoid` and not of
+   * `Semigroup`, so without this bridge `Validated` would refuse the
+   * vector monoid sitting right below it.
+   */
+  given fromMonoid[A](using M: Monoid[A]): Semigroup[A] = M
+
+/** combine with a neutral element */
+trait Monoid[A] extends Semigroup[A]:
+  def empty: A
 
 object Monoid:
   /** a monoid from its two parts, for a rule the givens do not have

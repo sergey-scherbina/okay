@@ -18,34 +18,40 @@ package okay.script
  *   SVG icon — what "Add to Home Screen" reads.
  */
 object Mobile:
-  def paths(p: String): Boolean = p == CssPath || p == SwPath || p == ManifestPath || p == IconPath
+  def paths(p: String): Boolean =
+    p == CssPath || p == BaseCssPath || p == SwPath || p == ManifestPath || p == IconPath
   val CssPath = "/__okay/app.css"
+  /** the level-L stylesheet alone (`okay.ui.Html.css`), for a page
+   * that is not a phone application but still draws the tree */
+  val BaseCssPath = "/__okay/okay.css"
   val SwPath = "/__okay/sw.js"
   val ManifestPath = "/__okay/manifest.webmanifest"
   val IconPath = "/__okay/icon.svg"
 
+  /**
+   * The base first, then WHAT A PHONE ADDS — one file, one request.
+   *
+   * Everything about what a node MEANS (the containers, the text
+   * tokens, a button's role, a table) is `okay.ui.Html.css`, beside
+   * the tree whose classes it names (ui-html-css). What is left here
+   * is the part that is about a PHONE and not about the tree: tap
+   * targets at 44px (Apple's and Google's floor), 16px inputs (below
+   * that iOS zooms the page on focus), a row that wraps because a
+   * phone is narrow, and a reading measure on a wide screen.
+   */
   val css: String =
-    """:root { color-scheme: light dark; --okay-gap: 8px; --okay-tap: 44px; }
-      |body { margin: 0; padding: 12px; font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-      |.okay-col, .okay-box.okay-v, .okay-form { display: flex; flex-direction: column; gap: var(--okay-gap); }
-      |.okay-row, .okay-box.okay-h { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--okay-gap); align-items: center; }
-      |.okay-scroll { overflow: auto; -webkit-overflow-scrolling: touch; max-height: 70vh; }
+    okay.ui.Html.css +
+    """:root { --okay-tap: 44px; }
+      |body { margin: 0; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.4; }
+      |.okay-row, .okay-box.okay-h { flex-wrap: wrap; align-items: center; }
+      |.okay-scroll { -webkit-overflow-scrolling: touch; max-height: 70vh; }
       |button, input, select, textarea { min-height: var(--okay-tap); font-size: 16px; border-radius: 8px; border: 1px solid #8884; padding: 0 12px; box-sizing: border-box; }
       |button { background: #eee; color: inherit; }
-      |button.okay-primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-      |button.okay-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
-      |button.okay-active { font-weight: bold; text-decoration: underline; }
       |input, select, textarea { width: 100%; }
       |label { display: flex; flex-direction: column; gap: 4px; }
       |label:has(input[type=checkbox]) { flex-direction: row; align-items: center; }
       |input[type=checkbox] { width: var(--okay-tap); height: var(--okay-tap); min-height: 0; }
       |textarea { min-height: calc(var(--okay-tap) * 2); padding: 8px 12px; }
-      |img { max-width: 100%; height: auto; }
-      |.okay-bold, .okay-tone-emphasis { font-weight: bold; }
-      |.okay-dim, .okay-tone-muted { opacity: 0.6; }
-      |.okay-tone-danger { color: #dc2626; }
-      |.okay-size-small { font-size: 0.85em; }
-      |.okay-size-large { font-size: 1.4em; }
       |@media (min-width: 720px) { body { max-width: 680px; margin: 0 auto; } }
       |""".stripMargin
 

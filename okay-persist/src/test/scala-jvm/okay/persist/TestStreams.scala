@@ -24,10 +24,10 @@ class TestStreams extends munit.FunSuite {
     while going && acc.length < n do
       (cur.resume: @unchecked) match
         case Pure(_) => going = false
-        case Effect(e) => okay.<|>[Async, Produce](e) match
+        case Inject(e) => okay.<|>[Async, Produce](e) match
           case Left(a) => (summon[Handler[Async]].handle(a): Unit); going = false
           case Right(c) => acc ::= c.asInstanceOf[Chunk[A]]; going = false
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
           case Left(a) => cur = k(summon[Handler[Async]].handle(a))
           case Right(c) => acc ::= c.asInstanceOf[Chunk[A]]; cur = k(c)
     acc.reverse

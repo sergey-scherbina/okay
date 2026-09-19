@@ -26,10 +26,23 @@ object OAuth2 {
 
   private val enc = java.util.Base64.getUrlEncoder.withoutPadding
 
-  /** a PKCE pair: the verifier stays, the S256 challenge travels */
-  def pkce()(using c: Crypto): (String, String) =
+  /**
+   * A PKCE pair: the verifier STAYS, the S256 challenge TRAVELS.
+   *
+   * The names are in the type rather than in this sentence
+   * (named-pairs-security, 2026-09-12), because the two are both
+   * `String` and swapping them compiles: send the verifier and keep
+   * the challenge, and PKCE protects nothing while every test still
+   * passes. Read them by name — `p.verifier`, `p.challenge` — or
+   * destructure by name, which binds by name whatever order it is
+   * written in. A plain `val (a, b) = pkce()` still works and still
+   * binds by POSITION, so it carries the old risk; the call sites in
+   * this repository do not use it.
+   */
+  def pkce()(using c: Crypto): (verifier: String, challenge: String) =
     val verifier = enc.encodeToString(c.randomBytes(32))
-    (verifier, enc.encodeToString(c.sha256(verifier.getBytes("US-ASCII"))))
+    (verifier = verifier,
+     challenge = enc.encodeToString(c.sha256(verifier.getBytes("US-ASCII"))))
 
   /** where to send the browser */
   def authorizationUrl(c: Client, state: String, challenge: String): String =

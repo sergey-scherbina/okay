@@ -50,8 +50,8 @@ object KyoInterop {
   def toKyoEnv[R, A](p: A ! Reader % R)(using Tag[R], Frame): A < Env[R] =
     (p.resume: @unchecked) match
       case Pure(a) => a
-      case Effect(Reader.Ask()) => Env.get[R]
-      case Bind(Effect(Reader.Ask()), k) =>
+      case Inject(Reader.Ask()) => Env.get[R]
+      case Bind(Inject(Reader.Ask()), k) =>
         Env.get[R].flatMap((r: R) => toKyoEnv(k(r)))
 
   /** Env → Reader: one ask, then their computation runs with it */
@@ -64,8 +64,8 @@ object KyoInterop {
       case Pure(a) => a
       // matching the constructor gives both halves without a cast: the
       // told value, and the fact that the answer type is Unit
-      case Effect(Writer.Say(w)) => Emit.valueWith(w)(())
-      case Bind(Effect(Writer.Say(w)), k) =>
+      case Inject(Writer.Say(w)) => Emit.valueWith(w)(())
+      case Bind(Inject(Writer.Say(w)), k) =>
         Emit.valueWith(w)(toKyoEmit(k(())))
 
   /** Emit → Writer: their continuation, repacked as our operation */
@@ -81,8 +81,8 @@ object KyoInterop {
     (p.resume: @unchecked) match
       case Pure(a) => a
       // the tree types the operation at its E: Throws[E, A], so `e` IS an E
-      case Effect(t) => Abort.fail(t.e)
-      case Bind(Effect(t), _) => Abort.fail(t.e)
+      case Inject(t) => Abort.fail(t.e)
+      case Bind(Inject(t), _) => Abort.fail(t.e)
 
   /** Abort → Throws */
   def fromKyoAbort[E, A: Flat](v: A < Abort[E])(using _root_.kyo.SafeClassTag[E], Tag[E], Frame): A ! Throws % E =
@@ -93,8 +93,8 @@ object KyoInterop {
   def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice =
     (p.resume: @unchecked) match
       case Pure(a) => a
-      case Effect(Choose(as)) => Choice.get(as)
-      case Bind(Effect(Choose(as)), k) =>
+      case Inject(Choose(as)) => Choice.get(as)
+      case Bind(Inject(Choose(as)), k) =>
         Choice.get(as).flatMap(x => toKyoChoice(k(x)))
 
   /** Choice → Choose: their continuation as our multi-shot operation */

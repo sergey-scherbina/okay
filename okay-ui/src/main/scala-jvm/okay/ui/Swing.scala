@@ -99,7 +99,13 @@ object Swing {
           case Size.Small => base.getSize2D * 0.85f
           case Size.Normal => base.getSize2D
           case Size.Large => base.getSize2D * 1.4f
-        l.setFont(base.deriveFont(if bold then Font.BOLD else Font.PLAIN, size))
+        // an identifier is read against something else, so it is
+        // monospaced here as in every other host; `Kind.Number`'s
+        // tabular figures have no Swing spelling and are not drawn
+        // (recorded, not hidden)
+        val face = if style.kind == Kind.Ident then Font(Font.MONOSPACED, Font.PLAIN, base.getSize) else base
+        l.setFont(face.deriveFont(if bold then Font.BOLD else Font.PLAIN, size))
+        if style.align == Align.End then l.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT)
         if style.dim || style.tone == Tone.Muted then l.setForeground(Color.GRAY)
         if style.tone == Tone.Danger then l.setForeground(Color.RED)
         l

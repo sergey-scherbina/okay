@@ -104,10 +104,10 @@ class TestSqlPure extends munit.FunSuite {
     def go(rest: Chunk[Either[Bad, A]] ! (Produce + Async), acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
       (rest.resume: @unchecked) match
         case Pure(_) => acc
-        case Effect(e) => okay.<|>[Async, Produce](e) match
+        case Inject(e) => okay.<|>[Async, Produce](e) match
           case Right(c) => acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]]
           case Left(_) => fail("Async where none was expected")
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
           case Right(c) => go(k(c), acc ++ c.asInstanceOf[Chunk[Either[Bad, A]]])
           case Left(_) => fail("Async where none was expected")
     go(Typed.rows[A](db, "q"), Vector.empty)

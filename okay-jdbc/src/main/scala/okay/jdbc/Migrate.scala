@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, Stream}
+import okay.{!, +, Async, Chunk, Produce}
 import okay.given
 import okay.sql.{Isolation, Sql, SqlValue}
 
@@ -113,10 +113,5 @@ object Migrate {
       })
 
   private def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async))
-  : Vector[Vector[SqlValue]] ! Async =
-    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
-    S.uncons(p).flatMap {
-      case None => okay.pure(Vector.empty)
-      case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
-    }
+  : Vector[Vector[SqlValue]] ! Async = okay.Producer.concat[Vector[SqlValue], Async](p)
 }

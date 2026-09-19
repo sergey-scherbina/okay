@@ -8,7 +8,7 @@ import okay.!.*
  *
  * A row's continuation-aware handlers run ONE AT A TIME today —
  * `State.handle(s)(Writer.run(p))` walks the program twice, and on
- * the first walk every State operation is rebuilt (`Effect(e)
+ * the first walk every State operation is rebuilt (`Inject(e)
  * .flatMap(k)`: a Bind and a closure) for the second walk to find.
  * These two loops walk ONCE, with a product accumulator, and are the
  * measurement gate the spec puts before any generic `Fused.run`: if a
@@ -47,11 +47,11 @@ object Fused {
         // the constructor refines A (to S, to Unit) in there, and the
         // ascription is where the refined value meets the loop's type —
         // otherwise R is inferred from the branches as `S | Unit`
-        case Effect(e) => split[State % S, Writer % W](e) {
+        case Inject(e) => split[State % S, Writer % W](e) {
             case State.Get() => ((s, w), s): ((S, Vector[W]), A)
             case State.Set(s2) => ((s2, w), s2): ((S, Vector[W]), A)
           } { case Writer.Say(v) => ((s, w :+ v), ()): ((S, Vector[W]), A) }
-        case Bind(Effect(e), k) => split[State % S, Writer % W](e) {
+        case Bind(Inject(e), k) => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
             case State.Set(s2) => loop(s2, w)(k(s2))
           } { w0 =>
@@ -82,13 +82,13 @@ object Fused {
         case Pure(a) => Right(((s, w), a))
         // the split tests ONE signature and takes the rest by exclusion,
         // so a three-effect row is split twice, single effect first
-        case Effect(e) => split[Throws % E, State % S + Writer % W](e) {
+        case Inject(e) => split[Throws % E, State % S + Writer % W](e) {
             case Throws(err) => Left(err): Either[E, ((S, Vector[W]), A)]
           } { e => split[State % S, Writer % W](e) {
             case State.Get() => Right(((s, w), s)): Either[E, ((S, Vector[W]), A)]
             case State.Set(s2) => Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)]
           } { case Writer.Say(v) => Right(((s, w :+ v), ())): Either[E, ((S, Vector[W]), A)] } }
-        case Bind(Effect(e), k) => split[Throws % E, State % S + Writer % W](e) {
+        case Bind(Inject(e), k) => split[Throws % E, State % S + Writer % W](e) {
             case Throws(err) => Left(err)
           } { e => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
@@ -124,8 +124,9 @@ object Fused {
    * Control carrier, assembled `inline`: one `split` (stage A), each
    * branch a `shift` whose captured continuation is called with the
    * new accumulator. The row's meaning is the row's order, as in the
-   * Free loops. No tree exists between an `Eff` program and this: the
-   * program IS the function of its handler.
+   * Free loops. No tree exists between an inline handler-passing
+   * program (`runCtrl`) and this: the program IS the function of its
+   * handler.
    */
   inline def stateWriterInterp[C[_, _, _], S, W, A](using TypeableK[State % S])
   : Interpr[State % S + Writer % W, C, Answer[S, W, A]] =
@@ -137,12 +138,6 @@ object Fused {
         case State.Get() => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(acc._1)(acc))
         case State.Set(s2) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(s2)((s2, acc._2)))
       } { case Writer.Say(v) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(())((acc._1, acc._2 :+ v))) }
-
-  /** an `Eff` program over the row, run ONCE with the composite: the
-   * answer of `stateWriter` (`((S, Vector[W]), A)`), no Free tree */
-  inline def runEff[S, W, A](s: S)(m: Eff[State % S + Writer % W, A])
-                            (using TypeableK[State % S]): ((S, Vector[W]), A) =
-    (m[Answer[S, W, A]](stateWriterInterp[Cont, S, W, A]) / (a => acc => (acc, a)))((s, Vector.empty))
 
   /** the same for a program written directly against a Control
    * carrier (`def prog[C](h: Interpr[Row, C, R]): C[A, R, R]`), at Func

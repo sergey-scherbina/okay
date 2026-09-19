@@ -1,7 +1,6 @@
 package okay.llm
 
 import okay.{!, %, +, Async, Stage, Writer, effect, pure}
-import okay.given
 import okay.codec.{Json, Schema}
 
 /**
@@ -190,11 +189,11 @@ object Anthropic {
       import okay.!.*
       (rest.resume: @unchecked) match
         case Pure(_) => flushEvent(buf)
-        case Effect(e) => okay.<|>[Async, Writer % String](e) match
-          case Left(a) => Effect(a).flatMap(_ => flushEvent(buf))
+        case Inject(e) => okay.<|>[Async, Writer % String](e) match
+          case Left(a) => Inject(a).flatMap(_ => flushEvent(buf))
           case Right(Writer.Say(line)) => emitFrom(line, buf)(b => flushEvent(b))
-        case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
-          case Left(a) => Effect(a).flatMap(x => go(k(x), buf))
+        case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+          case Left(a) => Inject(a).flatMap(x => go(k(x), buf))
           case Right(Writer.Say(line)) =>
             // the constructor gives the told line AND refines the
             // continuation's domain to Unit — no cast on either half

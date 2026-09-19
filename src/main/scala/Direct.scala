@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import scala.language.implicitConversions
 import scala.annotation.implicitNotFound
 
 /**
@@ -35,12 +36,40 @@ object Direct:
      */
     def reflect: A = throw new IllegalStateException(
       "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
-    /** the symbolic spelling of the same mark — the survivor of the
-     * three-strikes history: .! shadowed object !, .? was ambiguous
-     * with the Throws row-?, and .!? — once retired as redundant
-     * beside .? — is the one symbol that collides with nothing */
+    /**
+     * THE SYMBOLIC SPELLING of the same mark, and since unwrap-glyph
+     * it is the one the glyph itself points at.
+     *
+     * The history is three strikes and a return. `.!` shadowed the
+     * object `!` for every file importing Direct.*, and went. `.?`
+     * was retired because two other things answered it on a program
+     * — `Throws.?`, which through the `into` conversion answered it
+     * on ANY value and did nothing, and the row peek. `.!?` survived
+     * as the symbol that collided with nothing.
+     *
+     * Both collisions are now gone: the Throws glyphs moved into
+     * their type's companion, where a converted receiver cannot
+     * reach them, and the peek took the word `peek`, which is what a
+     * method that RUNS operations through a Handler should have been
+     * called. So `.?` is below, and this stays — it is written in
+     * the repository and in its docs, and a mark with two spellings
+     * costs nothing (specs/unwrap-glyph.md).
+     */
     def !? : A = throw new IllegalStateException(
       "Direct.!? outside a direct block — wrap the code in direct[F] { ... }")
+
+    /**
+     * The glyph, back where it was meant to be: `val x = m.?` inside
+     * a `direct` block binds the program, exactly as `.reflect` and
+     * `.!?` do — one mark, three spellings, one meaning, and the
+     * meaning is the one `.?` already had on `A throws E`: give me
+     * the value, the context deals with what was around it.
+     *
+     * Outside a block it throws like every other mark, and the
+     * message says where it belongs.
+     */
+    def ? : A = throw new IllegalStateException(
+      "Direct.? outside a direct block — wrap the code in direct[F] { ... }")
 
     /**
      * The one-glyph mark for the rows, PREFIX: `!prog` — a program
@@ -54,6 +83,30 @@ object Direct:
      * nothing, and reads as "perform": `val name = !Form.ask[Name]("who?")`.
      */
     def unary_! : A = m.reflect
+
+  /**
+   * `w.tell`: inside a direct block, the mark on the Writer operation
+   * `Writer(w)`, typed Unit so it reads as a STATEMENT; outside one,
+   * the program `Writer.tell(w)`, `Unit ! Writer % W` (direct-tell,
+   * 2026-09-16). One name, decided at the call site by whether the
+   * block's capability `DirectCtx` is in scope — the same gate the
+   * auto-colouring conversions stand behind — and `transparent`, so
+   * each site gets its own type.
+   *
+   * Why a mark inside rather than the operation: a bare `Writer(w)`
+   * on its own line runs too, by do-notation, but under `-Wall` the
+   * typer flags it before the macro sees it (E176, an unused non-Unit
+   * value), which is what the `: Unit` ascriptions in the tests were
+   * for. This is that mark with the ascription built in. Inline, so
+   * the macro sees the mark through the call; for an argument the
+   * inliner cannot substitute it arrives under `Inlined` with a proxy
+   * binding, which `compile` reads as a block.
+   */
+  extension [W](w: W)
+    transparent inline def tell: Any =
+      scala.compiletime.summonFrom:
+        case _: DirectCtx[?] => Writer(w).reflect
+        case _ => Writer.tell(w)
 
   // ONE mark, three spellings, all one dispatch-by-TYPE: .reflect
   // (the name, every scope), .!? (postfix symbol — resurrected once
@@ -71,6 +124,123 @@ object Direct:
    */
   @implicitNotFound("no DirectCtx[${F}]: auto-coloring works only INSIDE a direct block.\nWrap the code in direct[F] { ... } — or use the explicit marks (.reflect / .!? / !prog),\nwhich need no capability.")
   final class DirectCtx[F[_]] private[Direct] ()
+
+  /**
+   * How a `direct` block treats a call at its own program type. It
+   * reaches the macro as an ordinary `using` argument with a DEFAULT,
+   * not as a summoned marker, and that is deliberate: an import whose
+   * only reader is a macro is an "unused import" to the compiler, and
+   * the warning would land in every user's build. As a parameter the
+   * typer passes it, so the import that provides it counts as used.
+   */
+  sealed trait Deferral
+  object Deferral:
+    /** the default: defer every call at the block's program type */
+    case object All extends Deferral
+    /** `import Direct.eagerCalls.given`: build the call where it stands */
+    case object Eager extends Deferral
+    /** the default lives in the COMPANION, i.e. in implicit scope, and
+     * the opt-out in an object you import, i.e. in lexical scope, which
+     * wins without ambiguity (verified by running both, 2026-09-16).
+     * A default ARGUMENT would have been the obvious spelling and is
+     * wrong: on an `inline def` whose earlier parameter is the inline
+     * block, `apply$default$N` takes that block again, so the whole
+     * body is duplicated into the default's call — and a nested
+     * `direct` block inside it then crashes `TreePickler`.
+     *
+     * Both givens are declared at their SINGLETON type, not at
+     * `Deferral`: the macro reads the mode off the argument's TYPE,
+     * and a given declared `given Deferral = Eager` hands it the type
+     * `Deferral`, which says nothing. Written the wrong way first, and
+     * caught by dumping the expansion: the import compiled, resolved,
+     * and changed nothing. */
+    given All.type = All
+
+  /**
+   * OPT OUT of deferring calls, by an import:
+   *
+   *     import okay.Direct.eagerCalls.given
+   *
+   * By DEFAULT a `direct` block defers every call at its own program
+   * type — `f(x)` becomes `Free.delay(() => f(x))` — so that recursion
+   * of any shape, self or mutual, in any position, trampolines through
+   * the tree instead of the JVM stack. That default is safety: without
+   * it a recursive block COMPILES, answers at small inputs and
+   * overflows the stack at depth, which is the one failure mode a type
+   * system cannot catch and a small test does not reach.
+   *
+   * It is not free, and the number is published rather than hidden:
+   * one `Delay` and its thunk, 64 bytes, per call the block marks —
+   * `compare/DirectBenchmark`'s `okayDirect` marks ten thousand of
+   * them per invocation and pays 106.8 → 167.2 µs and 1 598 113 →
+   * 2 238 113 B for a call (`step`) that never recurses. Where a block
+   * is hot and provably not recursive, this import buys that back.
+   *
+   * What stays on with it: a call to the ENCLOSING def is still
+   * deferred anywhere in the block, and a call to another def is still
+   * deferred in TAIL position — both were measured free (allocation
+   * identical to the byte). What you take on: a mutual call OUTSIDE
+   * tail position is then built where it stands, and needs the word —
+   * `!.tailcall(other(n))`, which is a deferral. `!`, `.reflect` and
+   * `.!?` are NOT substitutes: they are marks ("bind this program"),
+   * and a marked call is still built when the block is built.
+   */
+  object eagerCalls:
+    given Deferral.Eager.type = Deferral.Eager
+
+  /**
+   * Whether a `direct` block may run INDEPENDENT binds together
+   * (specs/applicative-static.md, stage 3).
+   *
+   * The same shape as `Deferral` above, for the same reasons: a
+   * `using` parameter with the default given in this companion and
+   * the opt-in in an object you import, both declared at their
+   * SINGLETON type so the macro can read the mode off the argument's
+   * type. A default argument would duplicate the block.
+   */
+  sealed trait Binds
+  object Binds:
+    /** the default: one bind after another, in the order written */
+    case object Sequential extends Binds
+    /** `import Direct.parallelBinds.given`: a run of independent
+     * Async binds is spawned together and joined in order */
+    case object Parallel extends Binds
+    given Sequential.type = Sequential
+
+  /**
+   * OPT IN to running a block's INDEPENDENT binds at once:
+   *
+   *     import okay.Direct.parallelBinds.given
+   *
+   * Under it, a maximal run of two or more consecutive
+   * `val x = m.?` statements whose right-hand sides do not mention a
+   * name bound earlier in the same run is emitted as spawn-all-then-
+   * join-all: N fibers started, then N joins in the order written.
+   * A leaf qualifies when its OWN type is `X ! Async` — exactly
+   * Async, read BEFORE the mark narrows it into this block's row — so
+   * a block over `Async + Throws` parallelises its Async leaves too,
+   * and anything else simply ends the run. (v1 could not: it decided
+   * on the COMPILED leaf, by which time `RowLift.into` had lifted it,
+   * and the import quietly did nothing in a wider row.
+   * direct-parallel-wider-rows fixed that.)
+   *
+   * WHY THE FLAT SHAPE AND NOT THE APPLICATIVE ONE. `Par`
+   * (specs/applicative-static.md, stage 1) joins leaves PAIRWISE, and
+   * that was measured at about 5x a flat `parAll` at eight leaves: N
+   * leaves become N joins and 2N fibers. A macro holds the whole
+   * group at once, so it is the one position that never has to be
+   * pairwise. Emitting `Par.app` chains would have taught the
+   * compiler to write the expensive form.
+   *
+   * WHAT YOU TAKE ON, which is `parAll`'s bargain and not a new one:
+   * the leaves interleave, so an effect one of them performs may now
+   * be observed beside another's; and a failure surfaces where its
+   * JOIN is reached, with the healthy siblings left to finish rather
+   * than cancelled. A block whose binds must not interleave simply
+   * does not import this.
+   */
+  object parallelBinds:
+    given Binds.Parallel.type = Binds.Parallel
 
   /** marker: G's operations may auto-color inside direct blocks */
   @implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .!? / !prog), which need no marker.")
@@ -97,8 +267,10 @@ object Direct:
   inline def direct[F[_]]: DirectApply[F] = DirectApply[F]()
 
   final class DirectApply[F[_]](private val unit: Unit = ()) extends AnyVal:
-    inline def apply[A](inline block: DirectCtx[F] ?=> A)(using inline M: Monad[F]): F[A] =
-      ${ directImpl[F, A]('block, 'M) }
+    inline def apply[A](inline block: DirectCtx[F] ?=> A)
+                       (using inline M: Applicative[F], inline d: Deferral,
+                        inline b: Binds): F[A] =
+      ${ directImpl[F, A]('block, 'M, 'd, 'b) }
 
   /** a term with its inlining and ascription wrappers taken off */
   private def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
@@ -110,7 +282,9 @@ object Direct:
 
   @scala.annotation.publicInBinary
   private[okay] def directImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A],
-                                               M: Expr[Monad[F]])
+                                               M: Expr[Applicative[F]],
+                                               d: Expr[Deferral],
+                                               b: Expr[Binds])
                                               (using Quotes): Expr[F[A]] =
     import quotes.reflect.*
     // the block arrives as a context lambda; take its body — the
@@ -122,7 +296,316 @@ object Direct:
       case other => report.errorAndAbort(
         "a Direct mark as a non-literal block (a stored context-function value) " +
           "cannot be rewritten by direct's v1", other.pos)
-    pipeline[F, A](topBody, M)
+    Expr.summon[Monad[F]] match
+      // a monad: the road every existing block takes, unchanged
+      case Some(m) =>
+        pipeline[F, A](topBody, m,
+          d.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Deferral.Eager.type],
+          b.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Binds.Parallel.type])
+      // no monad: the idiom bracket, for the carriers that refuse one
+      case None => applicativeOnly[F, A](topBody, M)
+
+  /**
+   * THE IDIOM BRACKET, for a carrier that has no monad
+   * (specs/applicative-do.md).
+   *
+   * `Validated` refuses a `Monad` on purpose — the consistency law
+   * would force `app` to agree with the `flatMap` derivation, which
+   * stops at the first error and undoes the collecting the type
+   * exists for. So the carriers where direct style reads best were
+   * exactly the ones it turned away, with a `no Monad[V]` at the call
+   * site before the macro ever ran.
+   *
+   * What a block needs is decided by the block, not by the carrier: a
+   * run of INDEPENDENT binds needs only `Applicative`. This road
+   * emits precisely that and nothing else —
+   *
+   *     val a = m1.reflect          fmap(m1, a => b => body)
+   *     val b = m2.reflect    ==>     .app(m2)
+   *     body
+   *
+   * — and refuses every other shape by NAME rather than by a type
+   * error about a class the author never mentioned. That refusal is
+   * the same stance `direct`'s v1 took generally: refuse the hard
+   * corner instead of half-solving it. A loop, a conditional, a
+   * statement between the binds, or a right-hand side that mentions
+   * an earlier bind all need `flatMap`, and there is none.
+   */
+  private def applicativeOnly[F[_] : Type, A: Type](using q: Quotes)(
+      body: q.reflect.Term, AP: Expr[Applicative[F]]): Expr[F[A]] =
+    import q.reflect.*
+
+    val directSym = TypeRepr.of[Direct.type].typeSymbol
+    val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
+      ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
+    val colorSyms = (directSym.methodMember("selfColor") ++
+      directSym.methodMember("opColor") ++
+      Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet
+
+    def calleeRoot(t: Term): Symbol = t match
+      case Apply(f, _) => calleeRoot(f)
+      case TypeApply(f, _) => calleeRoot(f)
+      case Inlined(_, Nil, inner) => calleeRoot(inner)
+      case _ => t.symbol
+
+    def strip(t: Term): Term = t match
+      case Inlined(_, Nil, inner) => strip(inner)
+      case Typed(inner, _) => strip(inner)
+      case _ => t
+
+    def asMark(t: Term): Option[Term] = t match
+      case Apply(TypeApply(fun, _), List(m)) if markSyms(fun.symbol) => Some(m)
+      case Apply(Select(conv, "apply"), List(x)) if colorSyms(calleeRoot(conv)) => Some(x)
+      case _ => None
+
+    def hasMark(t: Tree): Boolean =
+      var found = false
+      val tr = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+          if !found then tree match
+            case term: Term if asMark(term).isDefined => found = true
+            case _ => super.traverseTree(tree)(owner)
+      tr.traverseTree(t)(Symbol.spliceOwner)
+      found
+
+    /** the marked program a val binds, with the inliner's proxy
+     * bindings kept around it (direct-parallel-wider-rows found that
+     * shape and this is the same walk) */
+    def leafOf(rhs: Term): Option[Term] =
+      def go(t: Term): Option[Term] = strip(t) match
+        case Inlined(_, bs, inner) if bs.nonEmpty => go(Block(bs, inner))
+        case Block(stats, expr) =>
+          go(expr).map(m => if stats.isEmpty then m else Block(stats, m))
+        case other => asMark(other).map(strip)
+      go(rhs)
+
+    /**
+     * `if` WITH AN EFFECTFUL CONDITION is the Selective rung, and it
+     * is the one shape an applicative cannot express: `<*>` runs both
+     * of its arguments, so a branch would happen whether or not it
+     * was taken. `ifS` runs the scrutinee and then AT MOST ONE side
+     * (Mokhov et al. 2019), which for a validator is the difference
+     * between reporting a bad shipping address on an order that was
+     * never going to be shipped and not reporting it.
+     *
+     * The shape reaching the macro is `If(mark(cond), then, else)`:
+     * the condition must typecheck as a Boolean, so a program in that
+     * position has already been marked or auto-coloured.
+     */
+    def isSelectiveIf(t: Term): Boolean = strip(t) match
+      case If(c, _, _) => asMark(strip(c)).isDefined
+      case _ => false
+
+    def selectiveIf(t: Term): Term = strip(t) match
+      case If(c, th, el) =>
+        val ce = asMark(strip(c)).getOrElse(
+          report.errorAndAbort("direct: selectiveIf on a pure condition (macro bug)", t.pos))
+        val sel = Expr.summon[Selective[F]].getOrElse(report.errorAndAbort(
+          "direct: an `if` whose CONDITION is an effect needs a Selective for this " +
+            "block's carrier — an Applicative alone would have to run BOTH branches, " +
+            "which is what `ifS` exists to avoid. Give the carrier a Selective, or " +
+            "bind the condition to a val first.", t.pos))
+        ifSOf(strip(ce), strip(th), strip(el), sel, t.tpe.widen)
+      case other => other
+
+    /** the carrier's element, when this type is the carrier applied */
+    def carrierElem(tpe: TypeRepr): Option[TypeRepr] = tpe.widen.dealias match
+      case AppliedType(_, args) if args.nonEmpty &&
+        TypeRepr.of[F].appliedTo(args.last) =:= tpe.widen.dealias => Some(args.last)
+      case _ => None
+
+    def ifSOf(cond: Term, th: Term, el: Term, sel: Expr[Selective[F]], res: TypeRepr): Term =
+      val elem = res.dealias match
+        case AppliedType(_, args) if args.nonEmpty => args.last
+        case other => report.errorAndAbort(s"direct: expected the carrier applied, got ${other.show}")
+      tpe2A[F, A](elem) { [X] => (tX: Type[X]) ?=>
+        // the type parameter of an extension comes AFTER the receiver
+        // (generalized method syntax), so it is left to inference here
+        '{ $sel.ifS(${ cond.asExprOf[F[Boolean]] })(
+             ${ th.asExprOf[F[X]] })(${ el.asExprOf[F[X]] }) }.asTerm
+      }
+
+    def refuse(at: Position, what: String): Nothing =
+      report.errorAndAbort(
+        s"direct: this block's carrier has an Applicative but no Monad, so it can run " +
+          s"INDEPENDENT binds and nothing else — $what needs flatMap. " +
+          "Reorder the block, or give the carrier a Monad.", at)
+
+    def mentions(t: Tree, syms: Set[Symbol]): Boolean =
+      if syms.isEmpty then false
+      else
+        var found = false
+        val tr = new TreeTraverser:
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            if !found then tree match
+              case id: Ident if syms.contains(id.symbol) => found = true
+              case _ => super.traverseTree(tree)(owner)
+        tr.traverseTree(t)(Symbol.spliceOwner)
+        found
+
+    // the block, taken apart: a run of marked vals and a markless tail
+    val (stats, result) = strip(body) match
+      case Block(ss, e) => (ss, e)
+      case e => (Nil, e)
+
+    /** one leaf of the bracket: a name to bind, its type, and the
+     * program that fills it */
+    final case class Leaf(sym: Symbol, name: String, tpe: TypeRepr, prog: Term)
+
+    /**
+     * A COLOURLESS VAL: `val n = nonEmpty(raw.name)`, with no mark and
+     * no annotation. Its inferred type IS a program of this carrier,
+     * and the monadic road has bound such a val since
+     * direct-colourless-val — the applicative road refused it, which
+     * was an inconsistency of mine and not a limit of the language.
+     *
+     * The val's own type decides, exactly as it does there: if it is
+     * `F[X]`, the right-hand side is the leaf and the name binds at
+     * `X`. A rhs that carries marks of its own is not a plain leaf and
+     * still takes the other road.
+     */
+    def colourless(vd: ValDef, rhs: Term): Option[TypeRepr] =
+      if hasMark(rhs) then None
+      else vd.tpt.tpe.widen.dealias match
+        case AppliedType(_, args) if args.nonEmpty &&
+          TypeRepr.of[F].appliedTo(args.last) =:= vd.tpt.tpe.widen.dealias => Some(args.last)
+        case _ => None
+
+    val fromVals: List[Leaf] =
+      stats.map {
+        // the Selective rung FIRST: an `if` with an effectful condition
+        // is marked (the condition is), so it would otherwise be taken
+        // for a mark whose argument the walk cannot find
+        case vd @ ValDef(_, _, Some(rhs)) if isSelectiveIf(rhs) =>
+          val elem = carrierElem(vd.tpt.tpe).getOrElse(vd.tpt.tpe.widen)
+          Leaf(vd.symbol, vd.name, elem, selectiveIf(rhs))
+        case vd @ ValDef(_, _, Some(rhs)) if hasMark(rhs) =>
+          leafOf(rhs) match
+            case Some(m) => Leaf(vd.symbol, vd.name, vd.tpt.tpe.widen, m)
+            case None => refuse(vd.pos, s"`${vd.name}`'s right-hand side")
+        case vd @ ValDef(_, _, Some(rhs)) if colourless(vd, rhs).isDefined =>
+          Leaf(vd.symbol, vd.name, colourless(vd, rhs).get, rhs)
+        case other => refuse(other.pos, "a statement that is not a marked val")
+      }
+
+    val _ = fromVals.foldLeft(Set.empty[Symbol]) { (seen, leaf) =>
+      if mentions(leaf.prog, seen) then
+        refuse(leaf.sym.pos.getOrElse(Position.ofMacroExpansion),
+          s"`${leaf.name}`, whose right-hand side uses a name this block binds,")
+      seen + leaf.sym
+    }
+
+    /**
+     * MARKS IN THE RESULT ARE LEAVES TOO — `f(a.reflect, b.reflect)`
+     * is the bracket's most natural spelling and refusing it would
+     * have left the feature usable only in its long form. Each mark
+     * is replaced by a reference to a fresh name, in evaluation
+     * order, and the names join the run. They are independent by
+     * construction: separate subexpressions of one expression cannot
+     * mention each other's answers.
+     */
+    var hoisted: List[Leaf] = Nil
+    // a COLOURED USE of a val this block binds is not a leaf: the
+    // conversion wraps the NAME, and the name is bound by the curried
+    // lambda below. Hoisting it lifted a reference to `n` out of the
+    // scope that defines it, which is exactly what the compiler said.
+    val ownNames: Set[Symbol] = fromVals.map(_.sym).toSet
+    def ownUse(m: Term): Boolean = strip(m) match
+      case id: Ident => ownNames.contains(id.symbol)
+      case _ => false
+    val body2 =
+      if !hasMark(result) then result
+      else
+        val tm = new TreeMap:
+          override def transformTerm(t: Term)(o: Symbol): Term = asMark(t) match
+            case Some(m) if ownUse(m) => super.transformTerm(t)(o)
+            case Some(m) if !hasMark(m) =>
+              val sym = Symbol.newVal(Symbol.spliceOwner, s"ap$$${hoisted.length}",
+                t.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)
+              hoisted = hoisted :+ Leaf(sym, sym.name, t.tpe.widen, strip(m))
+              Ref(sym)
+            case Some(_) => refuse(t.pos, "a mark inside another mark")
+            case None => super.transformTerm(t)(o)
+        tm.transformTerm(result)(Symbol.spliceOwner)
+
+    val leaves: List[Leaf] = fromVals ++ hoisted
+
+    /** `a1 => a2 => … => result`, with each val's uses re-pointed at
+     * its parameter */
+    /** `X1 => X2 => … => R`, so the lambda below is BUILT at the type
+     * `fmap` will be asked for. The first cut left the result at
+     * `Any`, and the splice refused it: "Expected Int => Int => Any,
+     * Actual Int => Any" — a function type is not inferred from a
+     * nested lambda's body after the fact. */
+    def curriedType(ls: List[Leaf], result: TypeRepr): TypeRepr =
+      ls.foldRight(result) { (leaf, acc) =>
+        defn.FunctionClass(1).typeRef.appliedTo(List(leaf.tpe, acc))
+      }
+
+    def curry(ls: List[Leaf], result: Term, owner: Symbol): Term =
+      ls match
+        case Nil => result
+        case leaf :: tail =>
+          Lambda(owner,
+            MethodType(List(leaf.name))(_ => List(leaf.tpe),
+              _ => curriedType(tail, result.tpe.widen)),
+            (lam, params) =>
+              val ref = params.head.asInstanceOf[Term]
+              val m = new TreeMap:
+                override def transformTerm(t: Term)(o: Symbol): Term = t match
+                  case Apply(Select(conv, "apply"), List(id: Ident))
+                    if colorSyms(calleeRoot(conv)) && id.symbol == leaf.sym => ref
+                  case id: Ident if id.symbol == leaf.sym => ref
+                  case _ => super.transformTerm(t)(o)
+              val rest = curry(tail, m.transformTerm(result)(lam), lam)
+              rest.changeOwner(lam))
+
+    /** `fmap[X, R]` where `f : X => R` — R is the function's RESULT,
+     * not the function. Passing the whole type was off by one and the
+     * splice said so exactly: "Expected Int => Int => Int => Int,
+     * Actual Int => Int => Int". */
+    def fmapOf(fa: Term, elem: TypeRepr, f: Term, ap: Expr[Applicative[F]]): Term =
+      val res = f.tpe.widen.dealias match
+        case AppliedType(_, List(_, r)) => r
+        case other => report.errorAndAbort(s"direct: expected a function, got ${other.show}")
+      tpe2A[F, A](elem) { [X] => (tX: Type[X]) ?=>
+        tpe2A[F, A](res) { [R] => (tR: Type[R]) ?=>
+          '{ $ap.fmap[X, R](${ fa.asExprOf[F[X]] }, ${ f.asExprOf[X => R] }) }.asTerm
+        }
+      }
+
+    def appOf(ff: Term, fa: Term, elem: TypeRepr, ap: Expr[Applicative[F]]): Term =
+      // the carrier's ELEMENT is its LAST type argument: `Validated[E, A]`
+      // has two, and reading the only one refused every two-parameter
+      // carrier with "expected the carrier applied"
+      val fn = ff.tpe.widen.dealias match
+        case AppliedType(_, args) if args.nonEmpty => args.last.dealias
+        case other => report.errorAndAbort(s"direct: expected the carrier applied, got ${other.show}")
+      val res = fn match
+        case AppliedType(_, List(_, r)) => r
+        case other => report.errorAndAbort(s"direct: expected a function under the carrier, got ${other.show}")
+      tpe2A[F, A](elem) { [X] => (tX: Type[X]) ?=>
+        tpe2A[F, A](res) { [R] => (tR: Type[R]) ?=>
+          '{ $ap.app[X, R](${ ff.asExprOf[F[X => R]] })(${ fa.asExprOf[F[X]] }) }.asTerm
+        }
+      }
+
+    leaves match
+      case Nil => '{ $AP.pure[A](${ body2.asExprOf[A] }) }
+      case head :: rest =>
+        // fmap the FIRST leaf with the curried rest of the block, then
+        // app the others in order — the bracket, left to right
+        val curried = curry(leaves, body2, Symbol.spliceOwner)
+        val start = fmapOf(head.prog, head.tpe, curried, AP)
+        rest.foldLeft(start) { (acc, leaf) =>
+          appOf(acc, leaf.prog, leaf.tpe, AP)
+        }.asExprOf[F[A]]
+
+  /** run f with the TypeRepr as a Type given (the applicative road's
+   * own copy — the monadic pipeline has one in its own scope) */
+  private def tpe2A[F[_], A](using q: Quotes)(tpe: q.reflect.TypeRepr)[R](f: [T] => Type[T] ?=> R): R =
+    tpe.asType match
+      case '[t] => f[t]
 
   /** the compilation pipeline at ONE monad — recursive for try
    * bodies (direct-try): a try's body is its own sub-block, compiled
@@ -140,7 +623,9 @@ object Direct:
       q.reflect.report.errorAndAbort(s"direct: ${Type.show[V]} is not a ${Type.show[T]} (macro bug)"))
 
   private def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
-                                             M0: Expr[Monad[F]]): Expr[F[A]] =
+                                             M0: Expr[Monad[F]],
+                                             eager: Boolean,
+                                             parallel: Boolean): Expr[F[A]] =
     import q.reflect.*
     // ONE instance for the whole block: the summoned Monad
     // expression is hoisted to a val, so every emitted bind shares
@@ -150,19 +635,22 @@ object Direct:
     val mmSym = Symbol.newVal(Symbol.spliceOwner, "mm$direct",
       TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
     val mmVal = ValDef(mmSym, Some(M0.asTerm.changeOwner(mmSym)))
-    val body = compileAll[F, A](topLevelBody, Ref(mmSym).asExprOf[Monad[F]])
+    val body = compileAll[F, A](topLevelBody, Ref(mmSym).asExprOf[Monad[F]], eager, parallel)
     Block(List(mmVal), body.asTerm).asExprOf[F[A]]
 
   private def compileAll[F[_] : Type, A: Type](using q: Quotes)(topLevelBody0: q.reflect.Term,
-                                               M: Expr[Monad[F]]): Expr[F[A]] =
+                                               M: Expr[Monad[F]],
+                                               eager: Boolean,
+                                               parallel: Boolean): Expr[F[A]] =
     import q.reflect.*
     val topLevelBody = topLevelBody0.changeOwner(Symbol.spliceOwner)
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
     val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
-      ++ directSym.methodMember("unary_!")).toSet
+      ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
-      directSym.methodMember("opColor")).toSet
+      directSym.methodMember("opColor") ++
+      Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet
 
     def calleeRoot(t: Term): Symbol = t match
       case Apply(f, _) => calleeRoot(f)
@@ -245,10 +733,41 @@ object Direct:
       else rowOf match
         case Some(row) if m.tpe <:< row.appliedTo(elem.widen) =>
           injectTerm(m, elem, row)
+        // a program of a NARROWER row: `!Reader.ask[Db]` inside a block at
+        // `Writer % String + Reader % Db + State % Long` (direct-narrow-row,
+        // 2026-09-16). The row's own combinators — `State.modify`,
+        // `Reader.ask`, `Writer.tell` — all answer at their OWN row, so
+        // without this every one of them needs a hand-written `.plus[...]`
+        // naming the other members, which is what made the test harness
+        // in docs/direct-style.md unreadable. The coercion is RowLift's,
+        // and its side condition is RowLift's too: an `In[F2, row]`
+        // summoned HERE, so the compiler proves the membership and the
+        // macro emits no cast of its own.
+        case Some(row) => narrowRow(m, elem, row, at)
         case _ =>
           report.errorAndAbort(
             s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
               rowOf.fold("")(r => s" nor an operation of its row ${r.show}"), at)
+
+    /** `m.at[row]`, when m is a program of a row this block's row CONTAINS */
+    def narrowRow(m: Term, elem: TypeRepr, row: TypeRepr, at: Position): Term =
+      def refuse: Nothing = report.errorAndAbort(
+        s"the marked value has type ${m.tpe.show} — neither this block's " +
+          s"${TypeRepr.of[F].appliedTo(elem.widen).show} nor an operation of its row ${row.show}", at)
+      val narrow: Option[TypeRepr] = m.tpe.widen.dealias.baseType(freeClass) match
+        case AppliedType(_, List(r, e)) if e.widen =:= elem.widen => Some(r)
+        case _ => None
+      narrow match
+        case None => refuse
+        // membership by SUBTYPING, which is what it means for a union:
+        // `Reader % E <:< (Writer % W + Reader % E + State % S)` holds
+        // pointwise, while an `In` search on the reduced row does not
+        // (see RowLift.into)
+        case Some(r) if r <:< row =>
+          val intoSym = TypeRepr.of[RowLift.type].typeSymbol.methodMember("into").head
+          Apply(TypeApply(Ref(intoSym),
+            List(Inferred(elem.widen), Inferred(r), Inferred(row))), List(m))
+        case _ => refuse
 
     /** fa.flatMap(v => body(v)) — body built from a reference to v,
      * returning an F[resTpe] term */
@@ -350,16 +869,36 @@ object Direct:
       stats match
         case Nil => tail()
         case (vd @ ValDef(_, _, Some(rhs))) :: rest =>
-          if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) then refuse(vd, "in a lazy val")
-          compile(rhs) match
-            case Out.Pure(p) =>
-              Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
-                stmtsTail(rest, tail, tailElem))
-            case Out.Eff(c, e) =>
-              bind(c, e, tailElem) { v =>
-                Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))),
+          val out0 = compile(rhs)
+          val colourless = colourlessVal(vd, out0, rest, Literal(UnitConstant())) { (elem, out) =>
+            if vd.symbol.flags.is(Flags.Lazy) then
+              val (defs, use) = lazyOnce(vd, rhs, out, elem)
+              val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
+              Out.Pure(Block(defs, stmtsTail(rest2, tail, tailElem)))
+            else
+              val sym = Symbol.newVal(Symbol.spliceOwner, vd.name, elem.widen,
+                Flags.EmptyFlags, Symbol.noSymbol)
+              val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, () => Ref(sym))
+              Out.Pure(bind(asF(out), elem, tailElem) { v =>
+                Block(List(ValDef(sym, Some(v))), stmtsTail(rest2, tail, tailElem))
+              })
+          }
+          colourless match
+            case Some(Out.Pure(t)) => t
+            case Some(Out.Eff(t, _)) => t
+            case None => out0 match
+              case Out.Pure(p) =>
+                Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
                   stmtsTail(rest, tail, tailElem))
-              }
+              case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
+                val (defs, use) = lazyOnce(vd, rhs, out)
+                val (rest2, _) = substUses(rest, Literal(UnitConstant()), vd.symbol, use)
+                Block(defs, stmtsTail(rest2, tail, tailElem))
+              case Out.Eff(c, e) =>
+                bind(c, e, tailElem) { v =>
+                  Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))),
+                    stmtsTail(rest, tail, tailElem))
+                }
         case (a @ Assign(lhs, rhs)) :: rest if hasMark(rhs) =>
           compile(rhs) match
             case Out.Pure(p) =>
@@ -368,6 +907,20 @@ object Direct:
               bind(c, e, tailElem) { v =>
                 Block(List(Assign.copy(a)(lhs, v)), stmtsTail(rest, tail, tailElem))
               }
+        case (dd: DefDef) :: rest if hasMark(dd) &&
+          nestedProgramDef(dd, rest, Literal(UnitConstant()))((_, _, _) =>
+            Out.Pure(Literal(UnitConstant()))).isDefined =>
+          nestedProgramDef(dd, rest, Literal(UnitConstant())) { (defn, rest2, _) =>
+            Out.Pure(Block(List(defn), stmtsTail(rest2, tail, tailElem)))
+          }.get match
+            case Out.Pure(t) => t
+            case Out.Eff(t, _) => t
+        // an `import` binds nothing and runs nothing: it rides along
+        // (direct-import, 2026-09-17 — it used to be "an unsupported
+        // statement", which made a scoped spelling like
+        // `import Cont.direct.*` unusable inside a block)
+        case (im: Import) :: rest =>
+          Block(List(im), stmtsTail(rest, tail, tailElem))
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           Block(List(dd), stmtsTail(rest, tail, tailElem))
@@ -457,9 +1010,230 @@ object Direct:
           case _ => super.transformTerm(tree)(owner)
       m.transformTerm(t)(Symbol.spliceOwner)
 
+    /** the block's row names Once — the by-need cells have a handler */
+    lazy val onceInRow: Boolean =
+      rowOf.exists(r => TypeRepr.of[Once[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
+
+    lazy val reflectMark: Symbol = directSym.methodMember("reflect").head
+
+    /**
+     * `lazy val x: T = rhs` with a mark in rhs (direct-once,
+     * specs/direct-macro.md): the by-need word. The rhs compiles to a
+     * program, built at the first demand and never again — a cell
+     * under a fresh `Once.Handle` — and every use of `x` becomes a mark
+     * on that program, so its effects run in the POSITION of the first
+     * demand, once. Three words, three semantics, all visible: `val`
+     * runs here, `lazy val` runs at first use, a bare mark runs at
+     * every use.
+     *
+     * The cell is the `Once` effect's, so the row has to name it: the
+     * macro cannot decide what "once" means under a multi-shot handler
+     * (that is handler order, `Once.run` inside or outside the search)
+     * and does not try. What it emits, for the block's row R:
+     *
+     *     val x$handle = new Once.Handle[T]
+     *     val x$once: F[T] = Once.at[T, R](x$handle)(h => Inject(Force(h)))((h, a) => Inject(Store(h, a)))(rhs')
+     *     ... x$once.reflect ...             // at each use
+     *
+     * Returns the two definitions and a fresh mark per use.
+     *
+     * The rule keys on the COMPILED rhs, not on `hasMark`: a rhs that
+     * runs an operation by do-notation (`lazy val x = { Writer("x"); 3 }`)
+     * carries no mark syntactically and is by-need all the same
+     * (direct-once-bare, 2026-09-16 — it bound eagerly for an hour). A
+     * pure rhs stays a plain Scala lazy val.
+     */
+    def lazyOnce(vd: ValDef, rhs: Term, compiled: Out, elem0: TypeRepr = TypeRepr.of[Nothing]): (List[Statement], () => Term) =
+      val row = rowOf.getOrElse(
+        refuse(vd, "in a lazy val (the block's monad is not a program, so no row can hold the Once cell)"))
+      if !onceInRow then report.errorAndAbort(
+        "a lazy val with a Direct mark is call-by-need, which is the Once effect here: add it to the " +
+          s"block's row — `A ! (Once + ${row.show})` — and run the program with Once.run; " +
+          "or write `val` (run now) or a bare mark at each use (run every time)", vd.pos)
+      // a lazy val naming itself is a knot at run time and a dangling symbol after the rewrite
+      var selfRef = false
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case id: Ident if id.symbol == vd.symbol => selfRef = true
+          case _ => super.traverseTree(tree)(owner)
+      probe.traverseTree(rhs)(Symbol.spliceOwner)
+      if selfRef then refuse(vd, "in a lazy val that refers to itself")
+      val elem = if elem0 =:= TypeRepr.of[Nothing] then vd.tpt.tpe.widen else elem0.widen
+      val prog: Term = asFAt(compiled, elem)
+      val handleT = TypeRepr.of[Once.Handle].appliedTo(elem)
+      val hSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$handle", handleT,
+        Flags.EmptyFlags, Symbol.noSymbol)
+      val hVal = ValDef(hSym, Some(tpe2(elem) { [T] => (tT: Type[T]) ?=> '{ new Once.Handle[T]() }.asTerm }))
+      val forceApply = Symbol.requiredModule("okay.Once.Force").methodMember("apply").head
+      val storeApply = Symbol.requiredModule("okay.Once.Store").methodMember("apply").head
+      val atSym = Symbol.requiredModule("okay.Once").methodMember("at").head
+      def forceOp(h: Term): Term =
+        injectTerm(Apply(TypeApply(Ref(forceApply), List(Inferred(elem))), List(h)),
+          TypeRepr.of[Option].appliedTo(elem), row)
+      def storeOp(h: Term, a: Term): Term =
+        injectTerm(Apply(TypeApply(Ref(storeApply), List(Inferred(elem))), List(h, a)), elem, row)
+      val (forceFn, storeFn) = tpe2(elem) { [T] => (tT: Type[T]) ?=>
+        ('{ (h: Once.Handle[T]) => ${ forceOp('h.asTerm).asExprOf[F[Option[T]]] } }.asTerm,
+         '{ (h: Once.Handle[T], a: T) => ${ storeOp('h.asTerm, 'a.asTerm).asExprOf[F[T]] } }.asTerm)
+      }
+      // the thunk, built under the owner it is placed under (see Once.at)
+      val progThunk = Lambda(Symbol.spliceOwner,
+        MethodType(Nil)(_ => Nil, _ => TypeRepr.of[F].appliedTo(elem.widen)),
+        (owner, _) => prog.changeOwner(owner))
+      val onceT = Apply(Apply(Apply(Apply(
+        TypeApply(Ref(atSym), List(Inferred(elem), Inferred(row))),
+        List(Ref(hSym))), List(forceFn)), List(storeFn)), List(progThunk))
+      val oSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$once",
+        TypeRepr.of[F].appliedTo(elem), Flags.EmptyFlags, Symbol.noSymbol)
+      val oVal = ValDef(oSym, Some(onceT))
+      (List(hVal, oVal),
+        () => Apply(TypeApply(Ref(reflectMark), List(Inferred(TypeRepr.of[F]), Inferred(elem))), List(Ref(oSym))))
+
+    /** replace every use of `sym` in the statements and the result with a
+     * fresh `ref()` — INCLUDING a use wrapped in a colouring conversion,
+     * which is how a colourless val of the block's program type is read
+     * (direct-colourless-val): the conversion goes with the reference,
+     * since `ref()` already stands at the element type */
+    def substUses(stats: List[Statement], expr: Term, sym: Symbol, ref: () => Term): (List[Statement], Term) =
+      substUsesBy(stats, expr, sym, ref, ref)
+
+    /** the same, with the COLOURED use and the BARE use replaced by
+     * different terms — a nested program def needs that: read as a value
+     * it becomes a mark, read as a program it becomes the program */
+    def substUsesBy(stats: List[Statement], expr: Term, sym: Symbol,
+                    refColoured: () => Term, refBare: () => Term): (List[Statement], Term) =
+      val m = new TreeMap:
+        override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
+          case Apply(Select(conv, "apply"), List(id: Ident))
+            if colorSyms(calleeRoot(conv)) && id.symbol == sym => refColoured()
+          case id: Ident if id.symbol == sym => refBare()
+          case _ => super.transformTerm(tree)(owner)
+      (stats.map(st => m.transformStatement(st)(Symbol.spliceOwner)), m.transformTerm(expr)(Symbol.spliceOwner))
+
+    /**
+     * How a local of the block's PROGRAM type is read in what follows:
+     * COLOURED (the conversion applied to the bare reference — read as a
+     * value, `x + 1`) or BARE (read as a program — marked, passed on,
+     * `!.once(p)`).
+     */
+    def useKinds(stats: List[Statement], expr: Term, sym: Symbol): (Int, Int) =
+      var coloured = 0
+      var bare = 0
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case Apply(Select(conv, "apply"), List(id: Ident))
+            if colorSyms(calleeRoot(conv)) && id.symbol == sym => coloured += 1
+          case id: Ident if id.symbol == sym => bare += 1
+          case _ => super.traverseTree(tree)(owner)
+      (stats :+ expr).foreach(t => probe.traverseTree(t)(Symbol.spliceOwner))
+      (coloured, bare)
+
+    /**
+     * A COLOURLESS val of the block's program type (direct-colourless-val,
+     * 2026-09-16): `val x = fetch(k)`, no mark and no ascription.
+     *
+     * Inference gives such a val the PROGRAM type, so the colouring
+     * conversion does not fire at the declaration — it fires at every USE,
+     * where an `Int` is finally demanded. The val then means what `def`
+     * means, and so does `lazy val`: measured as `val, val, lazy val,
+     * lazy val, def, def` where the ascribed spelling gives `val, lazy
+     * val, def, def`. Three words, one meaning, silently — the opposite of
+     * what the block promises.
+     *
+     * So the DECLARATION decides, as the words do everywhere else in
+     * Scala: a val read as a value is a BINDING (by value, run here — the
+     * do-notation reading of a bare statement, extended to a val), and a
+     * lazy val is the `Once` cell (by need). A val held as a PROGRAM —
+     * marked at its uses, passed to `!.once`, stored — is a value and
+     * stays untouched; nothing colours it. A val read BOTH ways in one
+     * block is refused with both readings named, since binding it would
+     * leave its program uses holding an answer.
+     *
+     * None when the rule does not apply: the ordinary pure-val path takes
+     * over.
+     */
+    def colourlessVal(vd: ValDef, out0: Out, rest: List[Statement], expr: Term)
+                     (emit: (TypeRepr, Out) => Out): Option[Out] =
+      // the VAL'S OWN TYPE is what decides, not the rhs's: a rhs that uses
+      // an earlier colourless val compiles to an Out.Eff, and its element
+      // type is then the PROGRAM, not the answer (found on a handler with
+      // three dependent lookups, direct-colourless-val)
+      runnableElemT(vd.tpt.tpe).flatMap { elem =>
+        val (coloured, bare) = useKinds(rest, expr, vd.symbol)
+        if bare > 0 && coloured > 0 then
+          report.errorAndAbort(
+            s"`${vd.name}` holds a program of this block, and the block reads it BOTH ways: " +
+              s"as a value ($coloured use(s) — its effects would run once, here) and as a " +
+              s"program ($bare use(s) — its effects run at each mark). Pick one: ascribe the " +
+              s"answer type (`val ${vd.name}: ${elem.widen.show} = ...`) to run it here, or " +
+              "keep it a program and mark every use.", vd.pos)
+        else if bare > 0 then None
+        else
+          // the rhs as a PROGRAM of this block: a pure one is the program
+          // itself (marked), an effectful one is bound first and its answer
+          // marked — the shape `compile` gives a mark whose value carries marks
+          val prog: Out = out0 match
+            case Out.Pure(p) => Out.Eff(markTerm(p, elem, vd.pos), elem)
+            case Out.Eff(c, e) =>
+              Out.Eff(bind(c, e, elem)(v => markTerm(v, elem, vd.pos)), elem)
+          Some(emit(elem, prog))
+      }
+
+    /**
+     * A nested PARAMETERLESS `def` at the block's program type whose body
+     * carries marks (direct-nested-def, 2026-09-16): `def plan =
+     * effect(GetPlan(user.planId))` beside a `lazy val user`.
+     *
+     * Such a body is its own program — it ends at the block's program
+     * type, so binding the marks inside it changes nothing about what the
+     * def means — and it compiles through the same `pipeline` a `try`
+     * body does. The def then behaves as `def` always has: by name, a
+     * bind (and a run) per use.
+     *
+     * A fresh symbol, because inference gives `def plan = effect(...)`
+     * the PRECISE constructor type `Free.Inject[R, A]` and the compiled
+     * body is a `Free[R, A]`; the uses are rewritten with it, so the
+     * spelling `z` the reader wrote is what the reader keeps. A def with
+     * PARAMETERS, or one whose type is not this block's program, keeps
+     * the refusal: v1 does not rewrite a signature.
+     */
+    def nestedProgramDef(dd: DefDef, rest: List[Statement], expr: Term)
+                        (emit: (Statement, List[Statement], Term) => Out): Option[Out] =
+      if dd.paramss.nonEmpty then None
+      else dd.rhs.flatMap { body =>
+        if !hasMark(body) then None
+        else runnableElemT(dd.returnTpt.tpe).map { elem =>
+          val fT = TypeRepr.of[F].appliedTo(elem.widen)
+          val sym = Symbol.newMethod(Symbol.spliceOwner, dd.name + "$prog",
+            MethodType(Nil)(_ => Nil, _ => fT))
+          // the body is the PROGRAM, not an expression yielding its answer:
+          // compile it in this same pass (it reads the block's own locals)
+          // and flatten — a body that ends in a program is bound and its
+          // answer marked, the shape `colourlessVal` gives a val
+          val compiled: Term = compile(body.changeOwner(Symbol.spliceOwner)) match
+            case Out.Pure(q) => markTerm(q, elem, dd.pos)
+            case Out.Eff(c, e) =>
+              if e.widen =:= elem.widen then c
+              else bind(c, e, elem)(v => markTerm(v, elem, dd.pos))
+          val defn = DefDef(sym, _ => Some(compiled.changeOwner(sym)))
+          def prog(): Term = Apply(Ref(sym), Nil)
+          def marked(): Term =
+            Apply(TypeApply(Ref(reflectMark), List(Inferred(TypeRepr.of[F]), Inferred(elem.widen))),
+              List(prog()))
+          val (rest2, expr2) = substUsesBy(rest, expr, dd.symbol, marked, prog)
+          emit(defn, rest2, expr2)
+        }
+      }
+
     /** compile an expression */
     def compile(t0: Term): Out =
       val t = stripped(t0)
+      t match
+        // the inliner's proxy bindings (`(s + "!").tell`): a block, and
+        // `stripped` only takes off an Inlined with none
+        case Inlined(_, bindings, inner) if bindings.nonEmpty =>
+          return compile(Block(bindings, inner))
+        case _ => ()
       asMark(t) match
         case Some(m) =>
           compile(m) match
@@ -486,6 +1260,40 @@ object Direct:
               compileMarked(t)
             case _ => Out.Pure(t)
 
+    /**
+     * A lambda whose body is a PROGRAM OF THIS BLOCK'S ROW: compile
+     * that body through the pipeline and keep the lambda. The `try`
+     * body's treatment, and the nested def's, and sound for the same
+     * reason: the body already ENDS at the block's program type, so
+     * binding the marks inside it changes neither the lambda's type
+     * nor where it is evaluated.
+     *
+     * The block's OWN row, not any row: a lambda answering at another
+     * row would need that row's `Monad` summoned and its type carried
+     * into the pipeline, and the shape that wants this — a `Delim`
+     * continuation handler — answers at the row it was written in.
+     */
+    def programLambda(params: List[ValDef], body: Term): Option[Out] =
+      body.tpe.widen.dealias.baseType(freeClass) match
+        case AppliedType(_, List(_, e))
+          if body.tpe.widen <:< TypeRepr.of[F].appliedTo(e.widen) =>
+          // the body is an expression ANSWERING a program, so compiling
+          // it gives `F[F[T]]` — one flatMap brings it back to the
+          // lambda's own result type
+          val compiled: Term = compile(body) match
+            case Out.Pure(q) => q
+            case Out.Eff(c, ce) => bind(c, ce, e.widen)(v => v)
+          Some(Out.Pure(Lambda(Symbol.spliceOwner,
+            MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => body.tpe.widen),
+            (owner, args) =>
+              val m = new TreeMap:
+                override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+                  case id: Ident if params.exists(_.symbol == id.symbol) =>
+                    args(params.indexWhere(_.symbol == id.symbol)).asInstanceOf[Term]
+                  case _ => super.transformTerm(tree)(o)
+              m.transformTerm(compiled)(owner).changeOwner(owner))))
+        case _ => None
+
     /** t contains marks below the root — dispatch on shape */
     def compileMarked(t: Term): Out = t match
       // whitelisted combinators FIRST — for-do and for-yield desugar
@@ -496,7 +1304,21 @@ object Direct:
 
       // BEFORE Block: a Lambda IS Block(DefDef :: Nil, Closure), and
       // the block case would claim it with a vaguer message
-      case l @ Lambda(_, _) => refuse(l, "under a lambda")
+      case l @ Lambda(params, body) =>
+        // A lambda whose RESULT IS A PROGRAM is compiled as its own
+        // sub-block (direct-program-lambda, 2026-09-16) — the `try`
+        // body's treatment, and the nested def's. It is sound for the
+        // same reason both of those are: the body already ENDS at a
+        // program type, so binding the marks inside it changes neither
+        // the lambda's type nor where it is evaluated; the macro only
+        // rewrites what is already there. This is what lets a
+        // continuation handler read as ordinary code —
+        // `Delim.shift(p)(k => { "x".tell; !k(n) })` with no inner
+        // block. Every other lambda keeps the refusal: rewriting a
+        // higher-order argument generically is the expensive half of
+        // the problem, and the refusal is the whole difference between
+        // these few hundred lines and a CPS transformer.
+        programLambda(params, body).getOrElse(refuse(l, "under a lambda"))
       case Block(stats, expr) => compileBlock(stats, expr)
 
       case If(c, th, el) =>
@@ -587,7 +1409,7 @@ object Direct:
         tpe2(bT) { [T] => (tT: Type[T]) ?=>
           val bodyT = joinUnions(b.tpe.widen)
           val subF: Term = tpe2(bodyT) { [B] => (tB: Type[B]) ?=>
-            val raw = pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M)
+            val raw = pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M, eager, parallel)
             // a body ending in throw types Nothing <: T: upcast
             // through the monad (F need not be covariant)
             if bodyT =:= TypeRepr.of[T] then raw.asTerm
@@ -605,7 +1427,7 @@ object Direct:
             c.guard.foreach(g => if hasMark(g) then refuse(g, "in a catch guard"))
             if hasMark(c.rhs) then
               tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (tH: Type[H]) ?=>
-                val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M)
+                val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M, eager, parallel)
                 if TypeRepr.of[H] =:= TypeRepr.of[T] then hp.asTerm
                 else
                   val ev = upcast[H, T]
@@ -667,9 +1489,30 @@ object Direct:
             refuse(t, "under a by-name argument")
           case _ => ()
         spineSlots(fun).map { (fs, fr) =>
-          (fs ++ args, vs => {
-            val (fvs, avs) = vs.splitAt(fs.length)
-            Apply.copy(t)(fr(fvs), avs)
+          // a VARARGS argument — `s"..${x}.."` is StringContext.s(args*) —
+          // arrives as Typed(Repeated(elems)); its ELEMENTS are the slots,
+          // and the Repeated is rebuilt around their replacements
+          // (direct-tell, 2026-09-16: a mark inside an interpolation was
+          // "unsupported position (SeqLiteral)" before)
+          val argSlots: List[(List[Term], List[Term] => Term)] = args.map {
+            case ty @ Typed(rep @ Repeated(elems, et), tpt) =>
+              (elems, es => Typed.copy(ty)(Repeated.copy(rep)(es, et), tpt))
+            case rep @ Repeated(elems, et) =>
+              (elems, es => Repeated.copy(rep)(es, et))
+            case a => (List(a), {
+              case x :: Nil => x
+              case other => report.errorAndAbort(s"direct: one slot expected, got ${other.length} (macro bug)")
+            })
+          }
+          (fs ++ argSlots.flatMap(_._1), vs => {
+            val (fvs, rest0) = vs.splitAt(fs.length)
+            var rest = rest0
+            val newArgs = argSlots.map { (ss, rb) =>
+              val (mine, r) = rest.splitAt(ss.length)
+              rest = r
+              rb(mine)
+            }
+            Apply.copy(t)(fr(fvs), newArgs)
           })
         }
       case TypeApply(fun, targs) =>
@@ -714,23 +1557,219 @@ object Direct:
                 }
       Out.Eff(loop(children, 0, Nil), resTpe.widen)
 
+    // ------------------------------------------------------------
+    // INDEPENDENT BINDS, RUN TOGETHER (specs/applicative-static.md,
+    // stage 3; off unless `import Direct.parallelBinds.given`).
+    //
+    // The analysis is bracket abstraction's own question, and Turner
+    // answered it in 1979 for the same syntax: `[x](a b)` needs `S`
+    // when x occurs free on both sides and `K` when it does not. Here
+    // a val's right-hand side either mentions a name bound earlier in
+    // the run or it does not; if it does, the run ends there.
+
+    /**
+     * A leaf this block may SPAWN — decided on the COMPILED leaf, not
+     * on the syntax.
+     *
+     * The first cut matched the mark itself and found nothing: by the
+     * time the macro sees `async(1).?` the inline expansion has
+     * wrapped it in `Inlined` nodes carrying `$proxy` bindings, which
+     * `stripped` does not go through, so `asMark` answered None on
+     * every leaf and the whole feature was silently off (caught by a
+     * fork COUNT of 0, which is why that assertion exists).
+     *
+     * `compile` already knows how to get through all of it, and what
+     * it hands back is the program this block will bind. If that
+     * program's type is `X ! Async` then it can be spawned, and
+     * asking the type is both simpler and more honest than asking the
+     * syntax.
+     *
+     * THE LIMIT THAT PUT ON v1 IS GONE (direct-parallel-wider-rows):
+     * for a block over a WIDER row the compiled leaf has already been
+     * lifted by `RowLift.into`, so its type is `X ! (Async + …)` and
+     * it is not spawnable — the import used to do nothing there,
+     * quietly. `markedProgram` below reads the mark's own argument
+     * first, which is the program the author wrote, and only falls
+     * back to the compiled leaf. The compiled leaf remains the road
+     * for a mark shape the walk cannot take apart.
+     */
+    def spawnableLeaf(rhs: Term): Option[(Term, TypeRepr)] =
+      if !hasMark(rhs) then None
+      else
+        // the mark's OWN argument first (a wider row still has Async
+        // leaves), and the compiled leaf as the fallback
+        markedProgram(rhs).orElse(
+          compile(rhs) match
+            case Out.Eff(c, e) => Some((c, e.widen))
+            case Out.Pure(_) => None
+        ).filter((c, e) => isAsyncProgram(c, e))
+
+    /** is this term a program of EXACTLY the Async row? */
+    def isAsyncProgram(c: Term, e: TypeRepr): Boolean =
+      tpe2(e.widen) { [X] => (tX: Type[X]) ?=> c.tpe.widen <:< TypeRepr.of[X ! Async] }
+
+    /**
+     * THE MARK'S OWN ARGUMENT, before `markTerm` narrows it into this
+     * block's row (direct-parallel-wider-rows).
+     *
+     * `compile` hands back a leaf already lifted by `RowLift.into`,
+     * so in a block over `Async + Throws` its type is
+     * `X ! (Async + Throws)` and `Async.spawn` will not take it — the
+     * import did nothing there, quietly, and v1 said so. The program
+     * the author WROTE is still `X ! Async`, and it is reachable: the
+     * obstacle was never the narrowing, it was that inline expansion
+     * wraps a leaf in `Inlined` nodes carrying `$proxy` bindings,
+     * which `stripped` does not remove.
+     *
+     * `compile` already goes through them, by turning such an
+     * `Inlined` into a `Block`. The same walk here KEEPS the bindings
+     * around the mark's argument — `Block(bindings, program)` is a
+     * term of the program's own type — so the extracted leaf is
+     * self-contained and can be spawned where it stands.
+     */
+    def markedProgram(rhs: Term): Option[(Term, TypeRepr)] =
+      def go(t: Term): Option[Term] = stripped(t) match
+        case Inlined(_, bindings, inner) if bindings.nonEmpty =>
+          go(Block(bindings, inner))
+        case Block(stats, expr) =>
+          go(expr).map(m => if stats.isEmpty then m else Block(stats, m))
+        case other => asMark(other).map(stripped)
+      go(rhs).flatMap { m =>
+        m.tpe.widen.dealias.baseType(freeClass) match
+          case AppliedType(_, List(_, e)) => Some((m, e.widen))
+          case _ => None
+      }
+
+    /** does this tree mention any of these symbols? */
+    def mentionsAny(t: Tree, syms: Set[Symbol]): Boolean =
+      if syms.isEmpty then false
+      else
+        var found = false
+        val tr = new TreeTraverser:
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            if !found then tree match
+              case id: Ident if syms.contains(id.symbol) => found = true
+              case _ => super.traverseTree(tree)(owner)
+        tr.traverseTree(t)(Symbol.spliceOwner)
+        found
+
+    /** the maximal leading run of vals that may be spawned together */
+    def independentRun(stats: List[Statement]): List[(ValDef, Term, TypeRepr)] =
+      def go(rest: List[Statement], bound: Set[Symbol],
+             acc: List[(ValDef, Term, TypeRepr)]): List[(ValDef, Term, TypeRepr)] =
+        rest match
+          case (vd @ ValDef(_, _, Some(rhs))) :: tail
+            if !vd.symbol.flags.is(Flags.Lazy) && !vd.symbol.flags.is(Flags.Mutable) =>
+            spawnableLeaf(rhs) match
+              case Some((m, e)) if !mentionsAny(rhs, bound) =>
+                go(tail, bound + vd.symbol, (vd, m, e) :: acc)
+              case _ => acc.reverse
+          case _ => acc.reverse
+      go(stats, Set.empty, Nil)
+
+    /** `async(Async.spawn(m))`, with its Fiber element type */
+    def spawnOf(m: Term, e: TypeRepr, sched: Expr[Scheduler]): (Term, TypeRepr) =
+      tpe2(e) { [X] => (tX: Type[X]) ?=>
+        ('{ okay.async(okay.Async.spawn[X](${ m.asExprOf[X ! Async] })(using $sched)) }.asTerm,
+          TypeRepr.of[Fiber[X]])
+      }
+
+    /** `fiber.joinAsync` */
+    def joinOf(f: Term, e: TypeRepr): Term =
+      tpe2(e) { [X] => (tX: Type[X]) ?=>
+        '{ ${ f.asExprOf[Fiber[X]] }.joinAsync }.asTerm
+      }
+
+    /**
+     * N spawns, then N joins in the order written — the FLAT shape,
+     * which is `parAll`'s and not `Par`'s. The applicative spine was
+     * measured at ~5x this at eight leaves because `app` is pairwise;
+     * a macro holds the whole group, so it never has to be.
+     *
+     * Each fiber keeps its own element type, so nothing here casts.
+     * The val keeps its symbol, re-bound to the join's value, exactly
+     * as the sequential road does — a later def or assignment still
+     * refers to it.
+     */
+    def parallelGroup(run: List[(ValDef, Term, TypeRepr)],
+                      rest: List[Statement], expr: Term): Out =
+      val sched = Expr.summon[Scheduler].getOrElse(report.errorAndAbort(
+        "direct: `import Direct.parallelBinds.given` needs a Scheduler in scope — " +
+          "it starts a fiber per independent bind (an `Async.spawn`), and there is no " +
+          "given Scheduler here", run.head._1.pos))
+      val resTpe = expr.tpe
+
+      def joins(pairs: List[((ValDef, Term, TypeRepr), Term)]): Term =
+        pairs match
+          case Nil => asFAt(compileBlock(rest, expr), resTpe)
+          case ((vd, _, e), fib) :: tail =>
+            bind(markTerm(joinOf(fib, e), e, vd.pos), e, resTpe) { v =>
+              Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))), joins(tail))
+            }
+
+      def spawns(todo: List[(ValDef, Term, TypeRepr)],
+                 done: List[((ValDef, Term, TypeRepr), Term)]): Term =
+        todo match
+          case Nil => joins(done.reverse)
+          case (leaf @ (vd, m, e)) :: tail =>
+            val (sp, fibTpe) = spawnOf(m, e, sched)
+            bind(markTerm(sp, fibTpe, vd.pos), fibTpe, resTpe) { f =>
+              spawns(tail, (leaf, f) :: done)
+            }
+
+      Out.Eff(spawns(run, Nil), resTpe.widen)
+
     /** a Block with statements: fold vals/exprs into binds */
     def compileBlock(stats: List[Statement], expr: Term): Out =
+      val run = if parallel then independentRun(stats) else Nil
+      if run.length >= 2 then parallelGroup(run, stats.drop(run.length), expr)
+      else compileBlockSeq(stats, expr)
+
+    /** the one-after-another road, which is all there was before
+     * stage 3 and is still what runs without the import */
+    def compileBlockSeq(stats: List[Statement], expr: Term): Out =
       stats match
         case Nil => compile(expr)
         case (vd @ ValDef(name, tpt, Some(rhs))) :: rest =>
-          if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) then refuse(vd, "in a lazy val")
-          compile(rhs) match
+          val out0 = compile(rhs)
+          val colourless = colourlessVal(vd, out0, rest, expr) { (elem, out) =>
+            if vd.symbol.flags.is(Flags.Lazy) then
+              val (defs, use) = lazyOnce(vd, rhs, out, elem)
+              val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
+              compileBlock(rest2, expr2) match
+                case Out.Pure(q) => Out.Pure(Block(defs, q))
+                case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
+            else
+              val sym = Symbol.newVal(Symbol.spliceOwner, vd.name, elem.widen,
+                Flags.EmptyFlags, Symbol.noSymbol)
+              val (rest2, expr2) = substUses(rest, expr, vd.symbol, () => Ref(sym))
+              Out.Eff(bind(asF(out), elem, expr.tpe) { v =>
+                Block(List(ValDef(sym, Some(v))), asF(compileBlock(rest2, expr2)))
+              }, expr.tpe.widen)
+          }
+          colourless.getOrElse(out0 match
             case Out.Pure(p) =>
               wrapPure(vd, p, rest, expr)
+            case out @ Out.Eff(_, _) if vd.symbol.flags.is(Flags.Lazy) =>
+              val (defs, use) = lazyOnce(vd, rhs, out)
+              val (rest2, expr2) = substUses(rest, expr, vd.symbol, use)
+              compileBlock(rest2, expr2) match
+                case Out.Pure(q) => Out.Pure(Block(defs, q))
+                case Out.Eff(c, e) => Out.Eff(Block(defs, c), e)
             case Out.Eff(c, e) =>
               // the val KEEPS its symbol, re-bound to the continuation's
               // parameter: a later def or an assignment (for a var)
               // still refers to it — substitution would strand them
               Out.Eff(bind(c, e, expr.tpe) { v =>
                 val vd2 = ValDef.copy(vd)(vd.name, vd.tpt, Some(v))
-                asF(wrapStat(vd2, rest, expr))
-              }, expr.tpe.widen)
+                // AT the result type, not at the continuation's own: an
+                // inline call's proxy block ends in a program value whose
+                // type is the PRECISE constructor (`Free.Inject[R, A]`),
+                // and a `pure` emitted there does not match the bind's
+                // `F[B]` (direct-colourless-val, caught by a handler whose
+                // second lookup takes the first's answer)
+                asFAt(wrapStat(vd2, rest, expr), expr.tpe)
+              }, expr.tpe.widen))
         // an assignment in STATEMENT position binds straight into the
         // assignment (direct-flatmap-emission fusion #2) — the
         // expression-position Assign in compileMarked would bind into
@@ -742,6 +1781,13 @@ object Direct:
               Out.Eff(bind(c, e, expr.tpe) { v =>
                 asF(wrapStat(Assign.copy(a)(lhs, v), rest, expr))
               }, expr.tpe.widen)
+        case (dd: DefDef) :: rest if hasMark(dd) &&
+          nestedProgramDef(dd, rest, expr)((_, _, _) => Out.Pure(Literal(UnitConstant()))).isDefined =>
+          nestedProgramDef(dd, rest, expr) { (defn, rest2, expr2) =>
+            wrapStat(defn, rest2, expr2)
+          }.get
+        // an `import` rides along, see stmtsTail
+        case (im: Import) :: rest => wrapStat(im, rest, expr)
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           wrapStat(dd, rest, expr)
@@ -830,4 +1876,230 @@ object Direct:
     def wrapPure(vd: ValDef, rhs: Term, rest: List[Statement], expr: Term): Out =
       wrapStat(ValDef.copy(vd)(vd.name, vd.tpt, Some(rhs)), rest, expr)
 
-    asFAt(compile(topLevelBody), TypeRepr.of[A]).asExprOf[F[A]]
+    /**
+     * DEEP RECURSION (deep-recursive-direct, specs/direct-macro.md): a
+     * call to the def this block is the body of, at this block's own
+     * program type, is deferred wherever it is marked or auto-coloured
+     * — `fib(n - 1)` under `.reflect` or under `selfColor` becomes
+     * `Free.delay(() => fib(n - 1))` under the same mark — so a direct
+     * block may recurse a million deep and the recursion trampolines
+     * through the tree instead of the JVM stack. With `import
+     * Direct.given` and `scala.language.implicitConversions` in scope
+     * the self-call needs no annotation at all:
+     *
+     *     def fib(n: Int): Long ! Pure = direct:
+     *       if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
+     *
+     * which is the rewrite the deepRecursive macro of "Deep recursion
+     * in Scala 3" (Kozak) performs on `TailRec`, at the one place it
+     * matters: the DEFERRAL, since a self-call evaluated at
+     * construction is the native recursion the block was written to
+     * avoid. The rest — binds for `a + b`, branches, blocks — is the
+     * lowering below, and her `TailRec` is this tree (tailcall =
+     * `Delay`, flatMap = `Bind`, done = `Pure`, `.result` = `!.run`).
+     *
+     * Only a call to the ENCLOSING def, only at the block's program
+     * type, only under a mark or a colouring conversion, and never
+     * under a lambda (v1 does not look there): a self-call used as a
+     * VALUE — passed along, stored — is left as it is.
+     *
+     * MUTUAL recursion needs no word either, by a second rule: a call
+     * in the block's TAIL POSITION at the block's program type is
+     * deferred whoever it calls (direct-tail-defer, 2026-09-16). The
+     * macro expanding `isEven` cannot know that `isOdd` calls back —
+     * a cycle spans files and the other def may not be typed yet — so
+     * the enclosing-symbol test cannot see it; the tail position can,
+     * and is exactly where a node costs one allocation and saves a
+     * frame. Without it `else isOdd(n - 1)` COMPILED, answered at
+     * small n and overflowed the stack at depth, which is the worst
+     * failure mode there is.
+     *
+     * Two restrictions keep it honest. A call already wrapped in
+     * `!.tailcall`/`Free.delay`/`Free.defer` is left alone, so the
+     * explicit spelling does not pay for two nodes. And the rule is
+     * only for a call (an `Apply`): a tail-position program VALUE is
+     * not deferred, since nothing is built by naming it.
+     */
+    def deferSelfCalls(t: Term): Term =
+      val self: Symbol =
+        var o = Symbol.spliceOwner
+        while o != Symbol.noSymbol && !o.isDefDef do o = o.owner
+        o
+      /** the block's lazy vals: a use of one whose rhs is effectful
+       * becomes a MARK at compile time (direct-once), and a mark cannot
+       * live under the thunk a deferral would build — so a call whose
+       * arguments mention one is built where it stands (direct-tell,
+       * 2026-09-16: `lazy val plan = !loadPlan(user.planId)` with `user`
+       * lazy was "a mark under a lambda", the thunk's) */
+      val lazySyms: Set[Symbol] =
+        var acc = Set.empty[Symbol]
+        val probe = new TreeTraverser:
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            tree match
+              case vd: ValDef if vd.symbol.flags.is(Flags.Lazy) => acc += vd.symbol
+              case _ => ()
+            super.traverseTree(tree)(owner)
+        probe.traverseTree(t)(Symbol.spliceOwner)
+        acc
+      def mentionsLazy(app: Term): Boolean =
+        lazySyms.nonEmpty && {
+          var found = false
+          val probe = new TreeTraverser:
+            override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+              if !found then tree match
+                case id: Ident if lazySyms(id.symbol) => found = true
+                case _ => super.traverseTree(tree)(owner)
+          probe.traverseTree(app)(Symbol.spliceOwner)
+          found
+        }
+      rowOf match
+        case Some(row) if self != Symbol.noSymbol =>
+          /** the element type of a self-call at this block's program type */
+          def selfProgram(app: Term): Option[TypeRepr] =
+            if calleeRoot(app) != self || mentionsLazy(app) || hasMark(app) then None
+            else app.tpe.widen.dealias match
+              case AppliedType(f, List(r, elem)) if f.typeSymbol == freeClass && r =:= row => Some(elem)
+              case _ => None
+          lazy val delayApply = Symbol.requiredModule("okay.Free").methodMember("delay").head
+          lazy val reflectSym = directSym.methodMember("reflect").head
+          /**
+           * `Free.delay[row, elem](() => app)`, the thunk built as a term
+           * under the owner it is being placed under — `at`, not
+           * `Symbol.spliceOwner`. The difference is invisible while the
+           * rewrite only fires at the top of a block, and fatal once it
+           * fires inside one: a lambda owned by the splice while it sits
+           * under a local definition pickles to `assertion failed: method
+           * $anonfun`, reproducibly (direct-defer-default, 2026-09-16).
+           */
+          def delayed(app: Term, elem: TypeRepr, at: Symbol): Term =
+            val thunk = Lambda(at, MethodType(Nil)(_ => Nil, _ => app.tpe.widen),
+              (owner, _) => app.changeOwner(owner))
+            Apply(TypeApply(Ref(delayApply), List(Inferred(row), Inferred(elem.widen))), List(thunk))
+          /** Direct.reflect[F, elem](m) — a mark the pipeline recognises */
+          def marked(m: Term, elem: TypeRepr): Term =
+            Apply(TypeApply(Ref(reflectSym), List(Inferred(TypeRepr.of[F]), Inferred(elem.widen))), List(m))
+          /**
+           * Does this term ALREADY build a deferring node? `!.tailcall(p)`
+           * is inline and reaches the macro as `Free.delay(…)` wrapped in
+           * an `Inlined` WITH BINDINGS (the thunk proxy), which `stripped`
+           * and `calleeRoot` both leave alone — so the first cut of this
+           * check read no name and wrapped the node twice, measured in the
+           * expansion. This peels whatever stands between, bindings and
+           * all, and asks the name at the bottom.
+           */
+          def alreadyDefers(t: Term): Boolean =
+            def root(x: Term): String = x match
+              case Inlined(_, _, inner) => root(inner)
+              case Typed(inner, _) => root(inner)
+              case Block(_, expr) => root(expr)
+              case Apply(f, _) => root(f)
+              case TypeApply(f, _) => root(f)
+              case other => if other.symbol == Symbol.noSymbol then "" else other.symbol.name
+            val n = root(t)
+            n == "delay" || n == "defer" || n == "tailcall"
+
+          /** a program-typed call, whoever it calls — the tail rule's test */
+          /** a CALL, under whatever the typer wrapped it in — a program
+           * VALUE is not deferred, since naming one builds nothing */
+          def isCall(t: Term): Boolean = t match
+            case Inlined(_, _, inner) => isCall(inner)
+            case Typed(inner, _) => isCall(inner)
+            case Block(_, expr) => isCall(expr)
+            case _: Apply => true
+            case _ => false
+
+          /**
+           * Does the term carry definitions of its own — a lambda, a
+           * local val or def, a nested `direct` block's context
+           * function? Such a tree cannot simply be moved under a new
+           * thunk: its symbols are owned where they stand, and the
+           * owner surgery that would move them is not what this rule
+           * is for. Measured rather than guessed: without this test,
+           * `TestConditionDirect`'s `Condition.frame("skip")(ctx ?=>
+           * …)` — a call whose argument is a nested block — crashed
+           * the compiler in `TreePickler` with `assertion failed:
+           * method $anonfun`, reproducibly. Such a call is left where
+           * it stands; if it also recurses, `!.tailcall` is the word.
+           */
+          def carriesDefinitions(t: Term): Boolean =
+            var found = false
+            val probe = new TreeTraverser:
+              override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+                if !found then tree match
+                  case _: DefDef | _: ValDef | _: ClassDef => found = true
+                  case Lambda(_, _) => found = true
+                  case _ => super.traverseTree(tree)(owner)
+            probe.traverseTree(t)(Symbol.spliceOwner)
+            found
+
+          /**
+           * A call whose ARGUMENTS carry marks is not deferred
+           * (direct-marked-args, 2026-09-16). The deferral wraps the
+           * call in `Free.delay(() => …)`, a thunk this pass builds
+           * before anything is compiled — so a mark in an argument
+           * would land under a LAMBDA, and the general refusal fired
+           * with a message naming a lambda the user never wrote
+           * (`!k(!k(5))`, the natural spelling of a continuation
+           * invoked twice). The arguments bind first and the call is
+           * built inside the continuation, where there is nothing left
+           * to defer; deep recursion through such a call is
+           * `!.tailcall`'s job, as it is under `eagerCalls`.
+           */
+          def anyProgram(app: Term): Option[TypeRepr] =
+            if !isCall(app) || carriesDefinitions(app) || mentionsLazy(app) || hasMark(app) then None
+            else app.tpe.widen.dealias match
+              case AppliedType(f, List(r, elem))
+                if f.typeSymbol == freeClass && r =:= row && !alreadyDefers(app) => Some(elem)
+              case _ => None
+
+          /** the block's tail positions: what it finally hands back. A
+           * call there is the last thing the block does, so deferring
+           * it costs one node and spares the frame. */
+          def tails(t: Term): Term = t match
+            case Inlined(c, b, inner) => Inlined(c, b, tails(inner))
+            case Typed(inner, tpt) => Typed(tails(inner), tpt)
+            case Block(stats, expr) => Block(stats, tails(expr))
+            case If(c, th, el) => If(c, tails(th), tails(el))
+            case Match(sel, cases) =>
+              Match(sel, cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, tails(cd.rhs))))
+            case Apply(TypeApply(fun, targs), List(m)) if markSyms(fun.symbol) =>
+              anyProgram(stripped(m)) match
+                case Some(elem) => Apply(TypeApply(fun, targs), List(delayed(stripped(m), elem, Symbol.spliceOwner)))
+                case None => t
+            case Apply(sel @ Select(conv, "apply"), List(m)) if colorSyms(calleeRoot(conv)) =>
+              anyProgram(stripped(m)) match
+                case Some(elem) => Apply(sel, List(delayed(stripped(m), elem, Symbol.spliceOwner)))
+                case None => t
+            case _ => t
+
+          val walk = new TreeMap:
+            override def transformTerm(tree: Term)(owner: Symbol): Term = tree match
+              // v1 does not look under lambdas: a self-call there is a value —
+              // and a thunk the tail rule already built is one, so this is
+              // also what stops the two rules deferring the same call twice
+              case Lambda(_, _) => tree
+              // already marked: defer the call, keep the one mark
+              case Apply(TypeApply(fun, targs), List(m)) if markSyms(fun.symbol) =>
+                (if eager then selfProgram(stripped(m)) else anyProgram(stripped(m))) match
+                  case Some(elem) =>
+                    val inner = super.transformTerm(stripped(m))(owner)
+                    Apply(TypeApply(fun, targs), List(delayed(inner, elem, owner)))
+                  case None => super.transformTerm(tree)(owner)
+              // auto-coloured (`val x: Long = fib(n - 1)`): the same, under the conversion
+              case Apply(sel @ Select(conv, "apply"), List(m)) if colorSyms(calleeRoot(conv)) =>
+                (if eager then selfProgram(stripped(m)) else anyProgram(stripped(m))) match
+                  case Some(elem) =>
+                    val inner = super.transformTerm(stripped(m))(owner)
+                    Apply(sel, List(delayed(inner, elem, owner)))
+                  case None => super.transformTerm(tree)(owner)
+              case app: Apply =>
+                selfProgram(app) match
+                  case Some(elem) =>
+                    val inner = super.transformTerm(app)(owner)   // arguments first
+                    marked(delayed(inner, elem, owner), elem)
+                  case None => super.transformTerm(tree)(owner)
+              case _ => super.transformTerm(tree)(owner)
+          walk.transformTerm(tails(t))(Symbol.spliceOwner)
+        case _ => t
+
+    asFAt(compile(deferSelfCalls(topLevelBody)), TypeRepr.of[A]).asExprOf[F[A]]

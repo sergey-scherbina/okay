@@ -169,6 +169,67 @@ Behavior:
       in the milliseconds `Cbor.write` already did (not the tens of
       seconds a quadratic first draft needed)
 
+## Where a form STARTS (form-blank, form-ask-blank, 2026-09-18)
+
+`Form.blank[A]` is the value a form starts from: every `Check` false,
+every `Select` on its first option (a sum's case knob included), every
+list an empty array, every `Option` absent. It is DERIVED from the
+rendered form — the shown widgets folded through the same `edit` a
+user's event takes — so it cannot disagree with what is drawn, which a
+second walk of the Schema could.
+
+It exists because a form SHOWS those answers before anybody touches
+them, and the value behind them did not hold them. On the scriptless
+road that is fatal rather than untidy: `Html.events` sends an event
+only for a field whose post DIFFERS from what was shown, so a submit
+that changed nothing said nothing about the `Select` the screen was
+showing, and the decode refused a field the user could see was
+answered.
+
+THREE DOORS, and the third was counted by writing this down.
+`Forms.defaults` (okay-script) set Checks only; okay-watch had written
+its own with the Selects; and `Form.ask`/`Form.askWith` started their
+dialog loop from `{}`. All three are `Form.blank` now. The dynamic
+`askSchema` road is NOT one of them and stays as it is: `ofSchema`
+renders an unanswered enum with `selectedIndex = -1`, so its screen
+shows no answer either and the two agree.
+
+## What a form BELIEVES about a value (form-errors-on-validate, 2026-09-18)
+
+BACKLOG asked whether `Form.errors` should become `Validate.errors`
+with the form's wording, reading the difference between the two walks
+as how they SAY things. Run side by side over one schema
+(`FormErrorsProbe`), they differed in what they BELIEVE, twice, and the
+form was wrong both times. Fixed here, not by switching walks:
+
+- **A field the SCHEMA DEFAULTS is not "required".** A case class with
+  `note: String = ""` decodes from a value that never mentions `note`,
+  because the decoder applies the default exactly as the wire's does.
+  `Form.errors` called it required, so `Live.form` refused the submit
+  and showed a message under a field the user cannot see is empty —
+  and nothing they type makes an untouched defaulted field stop being
+  refused.
+- **An error inside a PRESENT `Option` belongs at the field's key.**
+  The option was handed whole to the decoder, so an `Option[Address]`
+  with the zip missing reported at `address` — and a form renders an
+  error under the key of a FIELD (`address.city`, `address.zip`). The
+  message existed, held the submit, and rendered NOWHERE. A present
+  option is walked now; an absent one is still fine and silent.
+
+WHAT DID NOT CHANGE, and why. The wording: "required" is the right
+word for a person and "missing field 'zip' in Address" is the right
+word for a wire, so `Validate` keeps the wire's voice and no `Wording`
+parameter exists. `SIso` still hands its refinement whole to the
+decoder, which is correct — a refinement belongs to the wrapper, not
+to a field beneath it.
+
+- [x] a value whose only filled field is a chosen sum case, with
+      everything else defaulted, has NO errors and decodes
+- [x] an error inside a present Option lands on a key the form
+      actually renders under, asserted against the form's own keys
+- [x] what was already right stays: a genuinely missing required
+      field, and a damaged list element at `tags[1]`
+
 ## Out of scope
 - Layout/styling beyond bold/dim (specs/ui.md owns Style).
 - Async validation (a validator that needs IO is a scenario's job).

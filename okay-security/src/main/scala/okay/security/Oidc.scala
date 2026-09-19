@@ -43,7 +43,12 @@ object Oidc {
   /** the login URL: OAuth2's code+PKCE with `openid` and a nonce */
   def login(p: Provider, clientId: String, redirectUri: String,
             scopes: Seq[String] = Seq("openid"))(using c: Crypto): Attempt =
-    val (verifier, challenge) = OAuth2.pkce()
+    // by name, not by position: the two are both String, and the
+    // whole point of naming pkce's result is that this line cannot
+    // silently swap them (named-pairs-security)
+    val pair = OAuth2.pkce()
+    val verifier = pair.verifier
+    val challenge = pair.challenge
     val state = java.util.Base64.getUrlEncoder.withoutPadding
       .encodeToString(c.randomBytes(16))
     val nonce = java.util.Base64.getUrlEncoder.withoutPadding

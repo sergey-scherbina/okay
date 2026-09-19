@@ -27,7 +27,10 @@ A computation of `A` performing operations of the signature `F` is
 (`A ! Pure` is a pure computation; `F + Pure = F`).
 
 A handler interprets operations into continuations — `F !> S` is
-literally a natural transformation into `Cont`. Three ways to run:
+literally a natural transformation into `Cont`, and `Cont` is this
+same freer tree at the signature "a function of the continuation"
+([theory ch. 11](theory/11-one-tree.md)): a program and its meaning
+are made of the same nodes. Three ways to run:
 
 - `runWith` — a per-operation `Handler[F]` (comonadic: each operation
   answers with a value);
@@ -37,12 +40,14 @@ literally a natural transformation into `Cont`. Three ways to run:
 - `Effects.handle` — the general form: abortive handlers (Throws),
   multi-shot handlers (Choice explores every branch), forwarding.
 
-Three ENCODINGS, one interface (`Effects[M]`): `Free` (the tree — for
-stepping, relaying, stack safety on any bind shape), `Eff` (the Church
-function — for fused build-and-run speed), and the opt-in `Eager`
-(`import Eager.given` — the kyo trick: pure binds apply at
+Two ENCODINGS, one interface (`Effects[M]`): `Free` (the tree — for
+stepping, relaying, stack safety on any bind shape) and the opt-in
+`Eager` (`import Eager.given` — the kyo trick: pure binds apply at
 construction, 10x under kyo on pure chains, with kyo's hazards stated:
-construction evaluates, so self-referential programs diverge).
+construction evaluates, so self-referential programs diverge). Fused
+build-and-run speed is an inline handler-passing program over
+`Control` (`Fused`), not a third encoding: the Church one was measured
+slower than the fused tree loop and removed.
 
 The standard effects: `Reader` (environment), `Writer` (telling IS
 streaming — see below), `State` (+ the type-changing `PState`),
@@ -62,14 +67,24 @@ prompt plus a shift, with no signature and no handler added.
 
 Over `Choice` sits BACKTRACKING as a library (`Logic`, LogicT-style):
 `msplit` splits a search into its first answer and a program for the
-rest, and everything derives — `once` (cut), `ifte` (soft cut /
+rest, and everything derives — `cut`, `ifte` (soft cut /
 negation-as-failure), `interleave` and `fairBind` (fair search: two
 infinite branches take turns, so a witness is found where the plain
 bind diverges), `observe(n)`. A `LazyList` of alternatives is an
 infinite choice point. And the typeclass hierarchy earns its keep in
 the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
-`whenS`/`unlessS` — written once, running over any instance.
+`whenS`/`unlessS` — written once, running over any instance. The rung
+below the monad is where two of them earn their keep. `Validated[E, A]`
+collects EVERY error instead of stopping at the first, because an
+applicative has no way to stop (it needs a `Semigroup[E]`, has no
+`flatMap` by design, and `okay-conf` uses it to report every bad
+environment variable in one run). The
+rung below the monad is worth reaching for on purpose: a program
+written as a `Static` (the free selective — `Pure | Op | Ap | Select`,
+no `Bind`) can be READ before it runs — `leaves` lists the operations
+it may perform, `toFree` runs it the ordinary way, and `foldMap` into
+an accumulating carrier turns N leaves into one round trip.
 
 ### Your own effect
 
@@ -225,6 +240,20 @@ observed by `Writer.uncons: Either[A, (W, rest)]`. `Producer` is the
 diagonal cousin. Effect handlers forward the telling, so State,
 Reader and Throws handlers ARE stream transformers.
 
+The diagonal has one trap, and it is worth one paragraph because a
+seam typed on it (`Blob.put`) caught a consumer with it. `Produce` is
+the identity signature — an operation IS its element — so a
+producer's element type sits in the ANSWER position, and `pure(a)`
+type-checks wherever `produce(a)` does. It emits nothing: a
+producer's `Pure` is its END, read as `None`. `produce(a)` is the
+emit; in a wider row, `produce(a).plus[Async]` (RowLift's zero-cost
+coerce). And a producer's answer is phantom, so `uncons` drops it at
+its `None` — `Producer.each(p)(f)` runs every element through `f` and
+KEEPS the answer, which is what `Blob.get`'s outcome needs. The two
+carriers convert in one walk each: `Source.ofProducer` /
+`fromProducer` (element type named apart from the answer, since the
+identity signature cannot) and `Source.toProducer(s)(end)`.
+
 The bridge goes both ways: a writer program IS a `Stream` (in `Pure`,
 or in whatever effects it also performs), and `Writer.of(s)` turns any
 stream — a List, a LazyList, a Producer, a Channel — back into the
@@ -239,7 +268,38 @@ or `Source.of(stream)` — and is an ordinary `Stream` in `Async`.
 (`ZStream.unfold`'s shape — 3x ahead of it, measured, since `unfold`
 pays a chunk-of-one tax any array-native representation does);
 `Source.range` is that specialised to `Long` and costs one fewer
-tuple allocation per step. Two terminals read the whole thing while
+tuple allocation per step.
+
+One unfold, four carriers: `generate(a)(f)(g): F[B]` runs a loop from
+seed `a`, telling `f(a)` each round and continuing from `g(a)`, into
+whichever `F` has a `Put` instance — `nats`/`fibs` are the two
+examples. `Put[S[_]] { def put[W](w: W): Unit /> S[W] }` answers
+`Unit`, not the element: the obvious diagonal signature
+(`put[A](a: A): A /> F[A]`) forces the carrier to answer with what it
+was just told, which is why the instances are `LazyList` (laziness:
+`put` captures the continuation in the lazy tail), `Producer` (the
+identity signature, `put` an ordinary emit), `Feed[W] = Unit ! Writer
+% W` (`put` an ordinary tell) and `Source` (the same tell, widened
+onto the row that also admits `Async`) — a live, asynchronous
+generator for free, which a diagonal `Put` could never have given
+`Source`: its own answer is always `Unit`, never the element.
+
+Which carrier for a NEW seam (producer-to-writer-carrier, stage 1):
+name the element in the type, not the answer. `Feed[W]` when the
+stream performs no other effect, `Source[W]` when it performs `Async`
+— both make the `pure(a)` trap VISIBLE rather than closing it by a
+type error: their answer is always `Unit`, so `pure(w)` for an
+element `w` needs Scala's own value-discard adaptation to compile at
+all, and `-Wall`'s `[E190]` lint flags exactly that (verified by a
+real compile, not `compileErrors` — munit's macro reports hard errors
+only and drops warnings entirely), which this repo's gate then
+refuses as any other warning. `Producer`'s identity signature has no
+such tell — `pure(a)` type-checks as an ordinary, unflagged answer and
+emits nothing (the paragraph above) — which is why it is the PURE
+SPECIAL CASE for code already written against it, not the default for
+code being written now.
+
+Two terminals read the whole thing while
 staying IN the program — `runCollect: Vector[A] ! Async` and
 `runForeach(f: A => Unit ! Async): Unit ! Async`, this library's own
 `run`-prefix (`Writer.run`, `Async.run`) at the shape `ZStream`'s and
@@ -381,6 +441,19 @@ timer or I/O completion it was parked on. The simple top-level
 `await(k => ...)` keeps the success-only shape; `Async.await` is the
 full form.
 
+When the programs are independent, the instance can say so instead of
+the plumbing: `Par` reads `A ! Async` as one leaf of an applicative
+spine, so `Par.traverse`/`Par.sequence` — and any generic code over
+`Applicative` — run their leaves at once, while `traverse` at the
+program's own instance still sequences. `Par.map2` joins two leaves of
+different types. It has no `flatMap` by design, and `.map` on it is
+the identity comonad's (the package footgun `Monad.scala` names) —
+use `map2` or the instance. For a FLAT sequence of same-typed programs on the JVM,
+`parAll`/`parTraverse` (one fiber per leaf, joined in order) are
+measurably cheaper; `Par` is for spines with leaves of different
+types and for code that never heard of `Async`
+(theory ch. 12, specs/applicative-static.md).
+
 Blocking is evidence-gated (`CanBlock`, given on JVM/Native only): on
 JS the SAME programs run through the event loop by
 `Async.runAsync(prog): Future[A]`, and a blocking join is a compile
@@ -394,8 +467,9 @@ per fiber on Native; the cats-effect and ZIO runtimes plug in as
 Scheduler instances from the interop modules).
 
 The combinators are cross-platform: `spawn`, `par` (pairs by
-completion callbacks; a child failure fails the pair and cancels the
-sibling), `race` (first SUCCESS wins and cancels both; two failures
+completion callbacks; EITHER side's failure fails the pair at once and
+cancels the sibling — it watched only the left until par-fail-fast,
+BUGS.md), `race` (first SUCCESS wins and cancels both; two failures
 fail the race instead of hanging), `timeout`, `sleep` (an Await on
 the platform `Timer` — a sleeping virtual thread, setTimeout, a
 thread), `bracket`. One shared-source Await suite runs on the JVM,
@@ -549,6 +623,20 @@ retry a lineage recompute, and the whole lex/parse stack incremental
 — and it is exactly where eager runtimes crash (see
 compare/TestLaziness).
 
+A `direct` block asks its carrier only for what the block uses: a run
+of independent binds needs an `Applicative`, and only a bind that
+mentions an earlier name needs a `Monad`. So `Validated` — which
+refuses a monad on purpose — can be written in direct style and still
+collect every error (specs/applicative-do.md).
+
+A `direct` block emits one bind after another. `import
+Direct.parallelBinds.given` changes that for INDEPENDENT ones: a
+maximal run of consecutive `val x = m.reflect` binds whose right-hand
+sides mention no earlier name in the run becomes N spawns then N
+joins, the flat shape `parAll` uses and measurably the same. Without
+the import the emission is unchanged to the byte
+(specs/applicative-static.md, stage 3).
+
 ## 9. Capabilities: context functions
 
 The stack's implicit evidence (`CanBlock`, `Scheduler`) generalizes:
@@ -617,6 +705,32 @@ linear-context patterns and the experimental base in
 specs/context-functions.md; the whole story, told in one place with
 its theory and boundaries, is [capabilities](capabilities.md).
 
+## 10. Optics: naming a path once
+
+A nested `copy` names the path three times; a read chain and a write
+chain of one path are two different expressions; and `case s => s` is
+a promise re-made at every call site. An optic is that path written
+down once, as a value you compose:
+
+```scala
+val city = Lens[Person](_.address).andThen(Prism.some).andThen(Lens[Address](_.city))
+city.preview(p)                  // the read
+city.modify(_.capitalize)(p)     // the write, same path, absent is a no-op
+```
+
+Composition takes the INTERSECTION of what each part needs — a lens
+asks for `Strong`, a prism for `Choice`, and their composition is an
+affine without anyone declaring it. The effects come in through one
+slot: `traverseOf` asks for an `Applicative` and nothing more, so the
+same optic walks at `Validated` (every error), `Par` (at once) and
+`Static` (what it WOULD do).
+
+Price, in one line: name the path in code and the compiler emits the
+update a person would write, allocation identical to the byte; choose
+the optic at run time and you are paying a small interpreter. The
+pairs, the numbers and the case where a `copy` still wins are in
+[optics.md](optics.md); the theory is [ch. 10](theory/10-optics.md).
+
 ## Direct style, in one paragraph
 
 Any monad in this library can be written as plain code:
@@ -625,8 +739,10 @@ reflect/reify chain of `Monadic` (Filinski's construction over the
 `Cont` of chapter one), so short-circuit, multi-shot and handlers
 all behave exactly as in the monadic spelling. Effects are
 first-class (`Writer("a")` on its own line tells; loops and `while`
-work; `!prog` performs a program in one glyph), auto-coloring can
-remove marks entirely behind explicit gates, and every refusal is a
+work; `!prog` performs a program in one glyph and involves no implicit
+conversion), auto-coloring can remove marks entirely behind explicit
+gates, a block may recurse on its own def a million deep because a
+self-call is deferred into the tree, and every refusal is a
 positioned compile error naming the workaround. The whole story,
 with the reasoning and the graveyard of refuted alternatives:
 [direct-style.md](direct-style.md); the theory with the literature:

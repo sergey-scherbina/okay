@@ -1,6 +1,7 @@
 package okay.deploy
 
-import okay.{Module, module, moduleAs, wire}
+import okay.{Handler, Module, Static, module, moduleAs, wire}
+import okay.given
 import Needs.needs
 
 /** the capabilities an application's root still waits for, each saying what it is to a deployment */
@@ -75,3 +76,63 @@ class TestNeeds extends munit.FunSuite:
       else store
     assertEquals(Needs.declared(Module.value[Conf](Conf(":memory:")) and mem), Vector.empty)
   }
+
+  /**
+   * di-needs-from-static (P13 item 4): the declaration beside the
+   * code was a claim that could drift from it. A module that ASKS the
+   * place for what it opens cannot: the path it opens is the answer.
+   */
+  test("a provisioned module's needs are its program's leaves, read before anything opens") {
+    final case class Conf(log: String)
+    trait Store; final class FileStore(val path: String) extends Store { var closed = false }
+    var opened = 0
+    val conf = Module.value[Conf](Conf("/app/data/board.log"))
+    // installed under the concrete type here, so the test reads the
+    // path with no cast; an application installs under `Store`
+    val store: Conf ?=> Module[[X] =>> FileStore ?=> X] =
+      val file = java.nio.file.Path.of(wire[Conf].log)
+      Needs.provisioned[FileStore, FileStore](
+        Static.op(Provision.Volume(file.getParent.toString))
+          .map(dir => { opened += 1; FileStore(dir.resolve(file.getFileName).toString) }))(_.closed = true)
+    val app = conf and store
+    // nothing declared by hand, and the deployment reads the volume off the program
+    assertEquals(Needs.declared(app), Vector(Need.Volume("/app/data")))
+    assertEquals(opened, 0)
+    // the default place mounts the volume where it was asked for
+    val got = okay.!.run(okay.Resource.run[String, okay.Pure](app { wire[FileStore].path }))
+    assertEquals(got, "/app/data/board.log")
+    assertEquals(opened, 1)
+  }
+
+  test("the path a provisioned module opens is the path the PLACE answered — the drift the declaration allowed is gone") {
+    trait Store; final class FileStore(val path: String) extends Store
+    val store = Needs.provisioned[FileStore, FileStore](
+      Static.op(Provision.Volume("/app/data")).map(d => FileStore(d.resolve("board.log").toString)))(_ => ())(
+      // a test's place: the volume lives in a temporary directory
+      using new Handler[Provision]:
+        def handle[A](p: Provision[A]): A = p match
+          case Provision.Volume(path, _, _) => java.nio.file.Path.of("/tmp/vol-test").resolve(path.stripPrefix("/"))
+          case other => Provision.local.handle(other))
+    assertEquals(Needs.declared(store), Vector(Need.Volume("/app/data")))   // what the deployment mounts
+    val got = okay.!.run(okay.Resource.run[String, okay.Pure](store { wire[FileStore].path }))
+    assertEquals(got, "/tmp/vol-test/app/data/board.log")                   // where the process wrote
+  }
+
+  test("two leaves, one spine: a server needs its port and its volume, and both are read off it") {
+    trait Srv; final class Server(val port: Int, val dir: java.nio.file.Path) extends Srv
+    val S = summon[okay.Selective[[A] =>> Static[Provision, A]]]
+    val srv = Needs.provisioned[Server, Server](
+      S.fmap(Static.op(Provision.Port(8090)), (p: Int) => (d: java.nio.file.Path) => Server(p, d))
+        .app(Static.op(Provision.Volume("/app/data"))))(_ => ())
+    assertEquals(Needs.declared(srv), Vector(Need.Port(8090), Need.Volume("/app/data")))
+    val got = okay.!.run(okay.Resource.run[(Int, String), okay.Pure](srv { val s = wire[Server]; (s.port, s.dir.toString) }))
+    assertEquals(got, (8090, "/app/data"))
+  }
+
+  test("a database the place did not set a URL for is an error naming the setting, not an empty string") {
+    val err = intercept[IllegalStateException](
+      Provision.local.handle(Provision.Database(Engine.Postgres, "16", "shop", as = "books")))
+    assert(err.getMessage.contains("BOOKS_URL"), err.getMessage)
+    assertEquals(Provision.urlSetting("db"), "DB_URL")
+  }
+

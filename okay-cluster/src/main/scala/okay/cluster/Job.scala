@@ -39,6 +39,24 @@ abstract class Job[P, R]:
   /** the plan, for these parameters, cut into `parts` partitions */
   def flow(p: P, parts: Int): Flow[A]
 
+  /**
+   * CAN THIS JOB CHANGE ITS PARTITION COUNT MID-STREAM?
+   * (specs/dataflow.md, stage 13.)
+   *
+   * True only when `flow` STRIPES its source — assigns global element
+   * `i` to partition `i % parts`, reading in order — so that after a
+   * lockstep epoch the consumed elements are a clean global PREFIX,
+   * the same set whatever the partition count. A re-cut then skips
+   * that prefix and re-stripes the rest, and the coordinator's fold
+   * (keyed by window, not by partition) carries across untouched.
+   *
+   * A contiguous cut (`Flow.slices`) cannot: its per-partition
+   * positions are offsets into slices a re-cut redraws, so there is
+   * no prefix to skip. Such a job leaves this false and the engine
+   * refuses a width change rather than compute a wrong answer.
+   */
+  def rescalable: Boolean = false
+
   /** what the plan computes, and how its partials travel */
   def sink(p: P): Wire[A, R]
 
@@ -47,6 +65,18 @@ abstract class Job[P, R]:
   // lets the registry hold `Job[?, ?]` and a worker serve a job whose
   // parameter and answer types it cannot name.
   // ---------------------------------------------------------------
+
+  /**
+   * THIS JOB'S OWN PARTIAL SCHEMA, DECODED FOR THESE PARAMETERS
+   * (specs/federation.md, stage 3 — "schema at the door").
+   *
+   * A `Wire#wire` can depend on the parameters (a window's size, a
+   * key's own type), so the check needs `p` decoded first. Used at
+   * the door: a party compares this against the coordinator's own
+   * `okay.codec.Digest` of the same job before running a byte of it.
+   */
+  final def wireSchema(bytes: Array[Byte]): Either[String, Schema[?]] =
+    Codecs.cbor(params).decode(bytes).map(p => sink(p).wire)
 
   /** the pre-pass over one partition: three longs per event-time
    * column, which is everything the coordinator needs before any
@@ -68,15 +98,21 @@ abstract class Job[P, R]:
    * state `P`. Neither ever leaves the worker — what leaves each
    * epoch is a `W`, the same value a batch run hands over.
    */
-  final def openAt(bytes: Array[Byte], part: Int, of: Int): Either[String, Session] =
+  final def openAt(bytes: Array[Byte], part: Int, of: Int,
+                   from: Long = 0L, epoch: Int = 0): Either[String, Session] =
     Codecs.cbor(params).decode(bytes).map { p =>
       val s = sink(p)
       new Session:
-        private var rest: Chunks[A] = Flows.partition(flow(p, of), part)
+        // OPENED AT A POSITION (stage 11 box 2): `from` elements in,
+        // already at `epoch`, so the first `advance` asks for the next
+        // one and nothing is replayed. Only a seekable sink's
+        // coordinator asks for this; a windowed one opens at zero.
+        private var rest: Chunks[A] = Flows.partition(flow(p, of), part, from)
         private var state: s.P | Null = null
         private var extent: Vector[Flows.Extent] = Vector.empty
+        private var consumed: Long = from
 
-        private var at: Int = 0
+        private var at: Int = epoch
 
         /**
          * Catch up to `epoch`, then answer for it.
@@ -117,16 +153,17 @@ abstract class Job[P, R]:
                 while i < c.length do { s.step(st, c(i)); i += 1 }
                 extent = grow(extent, Flows.extent(Chunks.fromIterator(c.iterator), s.times))
                 read += c.length
+                consumed += c.length
                 rest = r
               case None => drained = true
           // an epoch hands over what the operator has closed SO FAR;
           // `finish` is the same call the batch driver makes, and the
           // panes still open stay in the operator for the next epoch
-          Resp.Epoch(Codecs.cbor(s.wire).encode(s.peek(st)), extent, drained)
+          Resp.Epoch(Codecs.cbor(s.wire).encode(s.peek(st)), extent, drained, consumed)
 
         def finish(): Resp =
           val st = if state == null then s.start(Vector.empty) else state.nn
-          Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true)
+          Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true, consumed)
     }
 
   private def grow(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =

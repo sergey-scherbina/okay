@@ -78,6 +78,32 @@ class TestUiOptic extends munit.FunSuite {
     assertEquals(path(Nil).preview(t), Some(t))
   }
 
+  /**
+   * THE TWO WALKS ARE TOTAL, BOTH OF THEM (ui-path-two-walks).
+   *
+   * `Ui.path` is total by construction — `childAt` answers an Option.
+   * `Ui.patch` indexed its Vectors directly, so a path naming nothing
+   * threw `IndexOutOfBoundsException`, and A PATCH IS SOMETHING THAT
+   * ARRIVES OVER A WIRE: `Wire.client` applies one straight onto the
+   * tree it holds, and a well-FORMED message with a path that is not
+   * on the client's tree parses fine and then killed the session. The
+   * protocol's rule is that damage is dropped, never a crash.
+   */
+  test("a path that names nothing changes nothing — in both walks, and a forged patch cannot crash a client") {
+    val t = tree(0)
+    val nowhere = Vector(List(99), List(0, 0), List(1, 2, 3), List(5, 1, 7))
+    for p <- nowhere do
+      assertEquals(Ui.patch(t, Patch.SetText(p, "X")), t, s"a SetText at $p changed the tree")
+      assertEquals(Ui.patch(t, Patch.SetValue(p, "X")), t)
+      assertEquals(Ui.patch(t, Patch.Remove(p, 3)), t)
+      assertEquals(Ui.patch(t, Patch.Insert(p, 2, Text("x"))), t)
+      // and the optic agrees about each of them: nothing to focus
+      assertEquals(path(p).preview(t), None, s"the optic focused $p")
+    // a Reorder whose order names a child that is not there
+    assertEquals(Ui.patch(t, Patch.Reorder(Nil, Vector(0, 99))), t)
+    assertEquals(Ui.patch(t, Patch.Reorder(Nil, Vector(0))), t, "a short order drops children")
+  }
+
   test("shown skips what is not on screen; everywhere does not — and that is why a hidden form cannot be submitted") {
     val t = tree(0, tab = 0, open = false)
     def keysOf(o: Traversal[Ui, Ui, Ui, Ui]) = o.toVector(t).flatMap(Ui.keyOf).toSet

@@ -153,10 +153,10 @@ class TestProvider extends munit.FunSuite {
     def go(rest: Unit ! (Writer % String + Async), acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Pure(_) => acc.reverse
-        case Effect(e) => okay.<|>[Async, Writer % String](e) match
+        case Inject(e) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => summon[Handler[Async]].handle(a); acc.reverse
           case Right(Writer.Say(w)) => (w :: acc).reverse
-        case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
           // a tell answers nothing — the continuation gets unit, not the line
           case Right(Writer.Say(w)) => go(k(()), w :: acc)

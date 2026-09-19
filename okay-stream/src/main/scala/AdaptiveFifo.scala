@@ -1,0 +1,502 @@
+package okay
+
+import java.util.concurrent.atomic.AtomicInteger
+
+/** A small fixed array of counters, one per part.
+ *
+ * `AtomicIntegerArray` would be the obvious type and CANNOT be used:
+ * Scala Native's JDK subset does not implement it, and this class
+ * became reachable from `Channel.apply`'s default on 2026-09-08
+ * (growing-default), so the Native link began to fail on
+ * `AtomicIntegerArray.get`. One `AtomicInteger` per part costs `cap`
+ * small objects — eight under the default — allocated once, which is
+ * nothing beside the parts themselves, and every operation used here
+ * (get, set, compareAndSet) is identical. */
+private final class Cells(n: Int):
+  private val a: Array[AtomicInteger] = Array.fill(n)(AtomicInteger(0))
+  def get(i: Int): Int = a(i).get
+  def set(i: Int, v: Int): Unit = a(i).set(v)
+  def compareAndSet(i: Int, expect: Int, update: Int): Boolean =
+    a(i).compareAndSet(expect, update)
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenceArray}
+
+/**
+ * A buffer that grows PARTS as producers appear.
+ *
+ * WHY. Today's measurements say the right buffer depends on how many
+ * producers there are: one ring wins at one producer, a relaxed one is
+ * 19.6x faster at sixteen. The caller usually does not know that
+ * number when the channel is made — it depends on how the program is
+ * wired, sometimes on load. So this decides it by watching.
+ *
+ * WHAT MAY BE DECIDED AUTOMATICALLY, and what may not. Contract
+ * (drain-on-close, STM composability) and boundedness are SEMANTICS:
+ * a caller can see them in what their program does, and guessing them
+ * would change behaviour behind the author's back. The part count is
+ * not: the contract promises each producer's own order, no loss and
+ * no duplication, and says nothing about the order BETWEEN producers.
+ * That silence is what makes this legal, and it is stated here rather
+ * than assumed.
+ *
+ * NOTHING EVER MIGRATES, which is the whole design. The obvious
+ * version — notice contention, move to a partitioned buffer — has to
+ * relocate the elements already buffered, and that is a
+ * stop-the-world moment inside a lock-free structure. Here a new
+ * producer simply gets a NEW part, empty, and every element stays
+ * where it was written. One producer sees one part and pays a
+ * one-part scan; sixteen producers grow sixteen parts between them.
+ *
+ * THE WINDOW THIS HAS TO CLOSE. Termination is a mark placed in every
+ * part, so a part that appears AFTER close begins would never be
+ * sealed and the stream would never end. Parts therefore stop being
+ * created once closing has been seen, and a producer that arrives
+ * then shares the last part rather than opening one. It is the same
+ * shape as four earlier defects in this design — a question about one
+ * part asked of the whole — so it is a law, not an argument.
+ */
+final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = false,
+                           first: Buffer[A] | Null = null)
+    extends Buffer[A] {
+
+  private val cap = if limit < 1 then 1 else limit
+
+  /**
+   * Parts in use: index 0 exists from the start, the rest appear.
+   *
+   * A pre-sized array with nulls for the parts not opened yet, NOT a
+   * `Vector` behind an `AtomicReference`. The vector was read and
+   * indexed on every push and every pop — a trie walk where a plain
+   * ring reads a field — and that showed up exactly where it should:
+   * 143.9us against a ring's 114.5 at ONE producer, which is the
+   * width at which an adaptive buffer must be indistinguishable from
+   * the thing it adapts away from. Here an index is an array read.
+   */
+  private val slots = AtomicReferenceArray[Buffer[A] | Null](cap)
+  // EAGER opens every part at once, which is the fixed relaxed buffer
+  // this file used to have as a separate class: the difference between
+  // "k parts from the start" and "parts as producers arrive" is one
+  // flag, not one type, and two nearly-identical lock-free structures
+  // is two places for the same defect to hide.
+  if eager then { var i = 0; while i < cap do { slots.set(i, make()); i += 1 } }
+  // `first` is an EXISTING buffer adopted as part 0, which is how a
+  // channel becomes partitioned without moving an element: whatever is
+  // already in it stays where it is and is read from where it is
+  else slots.set(0, if first != null then first.nn else make())
+
+  /** how many are open; grown only by the thread that opened one, so
+   * a reader never has to walk the array to count */
+  private val open = AtomicInteger(if eager then cap else 1)
+
+  /**
+   * READ THE ADOPTED PART FIRST, whenever it has anything in it.
+   *
+   * An adopted part 0 is a ring PRODUCERS WERE ALREADY PUSHING INTO,
+   * and every one of them is about to be handed a part of its own.
+   * Their earlier elements stay in part 0, their later ones go to the
+   * new parts, and parts drain independently -- so without this a
+   * producer's own later elements can be read before its earlier
+   * ones. Measured with two plain threads (which never migrate, so
+   * this is the swap and not a thread-keyed route): 73 rounds in 300.
+   * It reached the gate as a merge whose source came back
+   * 1..16, 49, 50, 17..48 (merge-chunked-order, 2026-09-09).
+   *
+   * The fix orders the READ, not the producers: everything in part 0
+   * was pushed before anything in a part opened after it, so taking
+   * part 0 first puts each producer's own elements back in order and
+   * nobody waits.
+   *
+   * A RULE, NOT A PHASE, and that is the second correction. The first
+   * cut made this a one-shot barrier that lifted the first time part
+   * 0 came up empty -- and a send whose route was read from the ring
+   * BEFORE the swap can still arrive at part 0 after that, so one
+   * element landed behind its own successors: 1 run in 400, as
+   * `... 27 29 31 33 23 35 37`, where the mass reordering it replaced
+   * was 73 in 300. Standing on the rule costs one `pop` on an empty
+   * ring per read once part 0 is drained.
+   *
+   * "AND HAS NO WINDOW AT ALL" — REFUTED 2026-09-18 by
+   * `ProbeGrowingOrder`, and the sentence is corrected here rather
+   * than deleted, because the rule IS the improvement it claims to be
+   * and only its last clause was wrong. THE RULE HOLDS PER CALL, AND
+   * THE CALL IS NOT ATOMIC: `popManyAdoptedFirst` finds part 0 empty,
+   * falls through to `popManyScanning`, and a straggler whose route
+   * was read before the swap can land in part 0 while that scan is
+   * reading another part. Its elements are then delivered behind
+   * their own successors, which is the same shape the rule fixed:
+   * measured `1, 3, 7, 9, 11, 13, 15, 5, 17, ...` at round 6303 of
+   * 40 000 under 20 burners, with the parking path firing 0 times and
+   * nothing going back into the adopted part. The window is the two
+   * reads inside one call, not a phase and not a route.
+   *
+   * WHAT WOULD CLOSE IT is a design question with a cost, so it is
+   * filed (`growing-order-drain-guarantee`) rather than taken here:
+   * the candidate is to SEAL part 0 to pushes at the moment of
+   * adoption, so a straggler is refused and reroutes to its own part
+   * — where it lands after its predecessors instead of before them.
+   * That is a hot-path change in a class whose header carries four
+   * benchmark tables, and this repository prices those first.
+   *
+   * Only a buffer that ADOPTED one has a part 0 like this; the
+   * others open every part themselves and no producer ever moves.
+   */
+  private val adopted: Boolean = first != null
+
+  /** set once the channel is closing: no part may be opened after
+   * that, or its end mark would never be placed */
+  private val frozen = AtomicBoolean(false)
+
+  /** the next part to hand out, and the route each thread keeps */
+  // an ADOPTED part 0 is never handed out: it is read to the end
+  // before anything opened after it, and until then nobody's home is
+  // there. It used to be handed to the producer whose ring it was --
+  // which is what a `firstOwner` parameter named, and that parameter
+  // is gone with the reason for it (merge-chunked-order).
+  private val nextPart = AtomicInteger(if first != null then 1 else 0)
+  /** a producer's own part: the index the channel routes its parked
+   * senders by, and the BUFFER itself, so the hot push is one
+   * thread-local read and the ring's own push — no `open` read, no
+   * slot read, no unboxing. Caching the buffer rather than the index
+   * also keeps a producer's own order by construction: it pushes to
+   * the same object for its whole life, whatever else opens. */
+  private final class Home(val idx: Int, val buf: Buffer[A])
+
+  private val mine = new ThreadLocal[Home]:
+    override def initialValue(): Home =
+      // AN ADOPTED PART 0 IS DRAIN-ONLY, its former owner included.
+      // Part 0 used to be kept for the producer that filled the ring
+      // — its elements were in there, so it had to stay — and that
+      // producer then REFILLED it as fast as the consumer emptied it.
+      // Harmless while nothing waited on part 0; not harmless now
+      // that the read order does. The rule above keeps that
+      // producer's order without pinning it, which was the only
+      // reason to pin it, so nobody is pinned.
+      val i = claimPart()
+      Home(i.intValue, slotAt(i.intValue))
+
+  /**
+   * The slot for an index the COUNT already covers.
+   *
+   * `claimPart` publishes the count (`open.getAndIncrement()`) before
+   * the slot (`slots.set`), so a producer that SHARES an existing
+   * part — more producers than parts, or a frozen buffer — can arrive
+   * between the two and read a null. Every other reader here expects
+   * that and comes back: `partAt` falls back to part 0, the pop and
+   * seal scans skip the null. A producer's HOME cannot fall back —
+   * its whole order lives in the part it takes, and part 0 belongs to
+   * someone else — so it waits, and what it waits for is the opener's
+   * very next statement (the same reasoning `seal` states for its own
+   * spin, and no `onSpinWait` here for the same portability reason).
+   *
+   * MEASURED (channel-lost-part, 2026-09-09): without the wait, a
+   * first send threw `NullPointerException` within three rounds of 16
+   * producers over 2 parts, and at 16x16 through a channel it killed
+   * the producer thread outright — which the many-to-many law then
+   * reported as "the channel lost one producer's 1000 elements",
+   * because nothing had ever asked whether a producer finished.
+   */
+  private def slotAt(i: Int): Buffer[A] =
+    var b = slots.get(i)
+    while b == null do b = slots.get(i)
+    b.nn
+
+  /**
+   * ONE CONSUMER AT A TIME PER PART (consumer-claim, 2026-09-07, the
+   * operator's design). A producer has a part of its own; a consumer
+   * takes a WHOLE DRAIN out of one part under an exclusive claim and
+   * releases it before it processes anything, so two consumers never
+   * work the same part's head and nobody is held up by what someone
+   * else took. Measured before: adding consumers cost 2.3x (four
+   * producers, elementwise, 510 -> 1 039 us).
+   *
+   * The claim is a plain CAS on a flag per part. It is held for a
+   * drain and nothing else — never across a callback, never across a
+   * park — so a consumer that stops between drains blocks no one.
+   */
+  private val claimed = Cells(cap)
+
+  /** where THIS consumer starts looking, so consumers do not convoy
+   * onto part 0 the way a single shared cursor made them */
+  private val startAt = new ThreadLocal[Integer]:
+    // `Thread.threadId()` is Java 19+ and Scala Native's JDK subset
+    // does not have it; `System.identityHashCode` is everywhere and
+    // answers the same question this asks -- give each consumer a
+    // different starting part, cheaply and without coordination. The
+    // value need not be stable across runs or unique, only spread
+    // (growing-default, 2026-09-08: this class became reachable from
+    // the default and the Native link began to fail here).
+    override def initialValue(): Integer =
+      val id = System.identityHashCode(Thread.currentThread())
+      Integer.valueOf(Math.floorMod(id, if cap < 1 then 1 else cap))
+
+  /**
+   * The part THIS THREAD last took an element from — what the channel
+   * wakes senders on. A shared scan cursor could not answer that: it
+   * is one cell, so with several consumers rotating over the parts it
+   * named whatever part was scanned LAST BY ANYONE, and the channel
+   * then woke the senders of a part that had not freed a slot while
+   * the sender on the part that had slept on
+   * (`adaptive-p-x-c-deadlock`, reproduced at round 5 363 of the P x C
+   * probe: four consumers parked on empty, one producer parked on
+   * full). A thread's own last route is exact, because every
+   * `wakeSender()` runs on the thread that just popped.
+   */
+  // not `ThreadLocal.withInitial`: Scala Native's JDK subset has no
+  // such static (growing-default, 2026-09-08). The anonymous subclass
+  // is what it desugars to anyway.
+  private val myRoute = new ThreadLocal[Integer]:
+    override def initialValue(): Integer = Integer.valueOf(0)
+
+  /**
+   * A fresh part for a producer that has not sent here before, unless
+   * the buffer is frozen or the cap is reached, in which case it shares
+   * an existing one.
+   *
+   * THE INDEX IS THE COUNT (adversarial-lanes, 2026-09-06). The first
+   * cut opened slot `want` -- the producer's claim number -- and every
+   * scan walked indices `0 until open`, a COUNT. Those agree only while
+   * producers open their parts in claim order. One producer delayed
+   * between claiming and opening, and the ones after it opened slots
+   * 6..11 with `open` at 11: slot 11 held a producer's whole output
+   * and no scan ever reached it. Measured at 16 x 16: the late
+   * producers' elements lost entirely, and, once their part filled,
+   * a producer parked on a full part with every consumer parked on
+   * "empty" -- a deadlock the many-to-many law reproduces. Now the
+   * slot a producer opens IS the value `open` had before it, so the
+   * scanned range is dense by construction; a scanner that sees the
+   * count before the slot is set skips the null and comes back.
+   */
+  private def claimPart(): Integer =
+    val want = nextPart.getAndIncrement()
+    if want == 0 then Integer.valueOf(0)
+    else if frozen.get then share(want, opened)
+    else
+      val idx = open.getAndIncrement()
+      if idx < cap then
+        slots.set(idx, make())
+        Integer.valueOf(idx)
+      else
+        // the cap is reached: give the count back and share
+        open.decrementAndGet(): Unit
+        share(want, cap)
+
+  /**
+   * More producers than parts: they SHARE, and on an adopted buffer
+   * they share everything except part 0.
+   *
+   * Part 0 is read before the parts opened after it, so a producer
+   * given it as a home would refill the very part the others wait
+   * behind and starve them — the wrap-around used to hand it out
+   * freely, which turned an ordering rule into a fairness bug the
+   * moment the parts ran out (merge-chunked-order, 2026-09-09).
+   * Sharing a part costs nothing in order: a part is a FIFO, so each
+   * of its producers still reads back in the order it pushed.
+   *
+   * With one part and nothing else to share, part 0 is all there is,
+   * and reading "part 0 first" is then just reading the buffer.
+   */
+  private def share(want: Int, n: Int): Integer =
+    if !adopted || n <= 1 then Integer.valueOf(Math.floorMod(want, n))
+    else Integer.valueOf(1 + Math.floorMod(want, n - 1))
+
+  /** the open count, never past the cap: a claimer may have taken the
+   * count one past it for the instant before it gives it back */
+  private def opened: Int =
+    val n = open.get
+    if n > cap then cap else if n < 1 then 1 else n
+
+  private def part(i: Int): Buffer[A] =
+    if open.get == 1 then slots.get(0).nn
+    else partAt(i)
+
+  private def partAt(i: Int): Buffer[A] =
+    val n = opened
+    val at = if i >= n then i % n else i
+    val b = slots.get(at)
+    if b != null then b.nn else slots.get(0).nn
+
+  override def parts: Int = opened
+
+  /** the cap, which is what a channel must size its own arrays by:
+   * `parts` grows after construction and anything sized once from it
+   * would be sized for a single part */
+  override def maxParts: Int = cap
+  override def route(): Int = mine.get.idx
+
+  private def eachOpen(f: Buffer[A] => Unit): Unit =
+    var i = 0
+    val n = opened
+    while i < n do
+      val b = slots.get(i)
+      if b != null then f(b.nn)
+      i += 1
+
+  override def capacity: Int =
+    var c = 0L
+    eachOpen(b => c += b.capacity.toLong)
+    if c > Int.MaxValue then Int.MaxValue else c.toInt
+
+  override def push(a: A): Boolean = mine.get.buf.push(a)
+  override def pushAt(r: Int, a: A): Boolean = part(r).push(a)
+
+  override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =
+    mine.get.buf.pushDeciding(a, unless, orElse)
+
+  override def pushDecidingAt(r: Int, a: A, unless: AtomicBoolean, orElse: A): A | Null =
+    part(r).pushDeciding(a, unless, orElse)
+
+  override def pushMany(n: Int)(src: Int => A): Int = mine.get.buf.pushMany(n)(src)
+
+  override def hasRoom: Boolean = mine.get.buf.hasRoom
+  override def hasRoomAt(r: Int): Boolean = part(r).hasRoom
+
+  /** freeze first, THEN seal: a part opened between the two would
+   * never get its mark, and the stream would never end */
+  /**
+   * ONE MARK PER PART, under concurrent callers (adversarial-lanes,
+   * 2026-09-06). `seal` is called by the channel after EVERY pop once
+   * closing has begun, from every consumer thread at once. The first
+   * cut checked `sealedAt` and then pushed -- a check-then-act -- so
+   * two consumers could both see 0 and both push, and a part ended
+   * up with several end marks. Receivers count marks met against the
+   * part count, so the extra marks satisfied "all parts ended" while
+   * parts still held thousands of elements: measured at 16x16, 83
+   * seals placed for 16 parts and 11 019 elements left unread when
+   * every consumer had already been told the stream was over. The
+   * claim is now a CAS BEFORE the push; a push a full part refuses
+   * gives the claim back so a later call retries it.
+   */
+  override def seal(mark: A): Int =
+    frozen.set(true)
+    var placed = 0
+    var i = 0
+    val n = opened
+    while i < n do
+      val b = slots.get(i)
+      if b != null then
+        // Three states, not two: 0 unsealed, 1 a caller is mid-push, 2
+        // the mark is IN. The two-state version (claim, push, give the
+        // claim back on refusal) had a window the channel laws found
+        // (adversarial-lanes, 2026-09-06): the closer claims part 0 and
+        // its push is refused because the part is full; meanwhile the
+        // consumer pops the last element and ITS seal, finding the
+        // claim taken, places nothing; the closer gives the claim back
+        // -- and nobody is left to try again, since seal runs only from
+        // pops and the ring is now empty. The consumer parks for good
+        // on a closed, empty, unsealed channel. Now a caller that meets
+        // a mid-push claim waits for its verdict -- the holder's push is
+        // a few CASes, never a park -- and retries on a refusal.
+        var done = false
+        while !done do
+          val st = sealedAt.get(i)
+          if st == 2 then done = true
+          else if st == 0 && sealedAt.compareAndSet(i, 0, 1) then
+            if b.nn.push(mark) then { sealedAt.set(i, 2); placed += 1 }
+            else sealedAt.set(i, 0)
+            done = true
+          // no `Thread.onSpinWait()`: it is a CPU hint with no
+          // Scala Native equivalent, and this class became reachable
+          // from `Channel.apply`'s default on 2026-09-08 so it must
+          // link on every platform. The spin is correct without it —
+          // what it waits for is another thread finishing a mark,
+          // which is a handful of instructions away. If it ever shows
+          // up in a profile, the hint belongs behind a Platform call
+          // rather than here.
+      i += 1
+    placed
+
+  private val sealedAt = Cells(cap)
+
+  override def pop(): A | Null =
+    // ONE PART is the common case and deserves the straight line: no
+    // cursor, no loop, no scan. Measured at a single producer, a
+    // partitioned buffer costs 30% over a plain ring (145.8 against
+    // 112.4) -- and the hand-tuned relaxed lane costs the same, so
+    // that price is partitioning itself rather than adapting. This
+    // shaves what can be shaved off it.
+    if adopted then popAdoptedFirst()
+    else if open.get == 1 then { myRoute.set(0); slots.get(0).nn.pop() }
+    else popScanning()
+
+  /** part 0 before anything opened after it; empty, and this is the
+   * ordinary read with one spent `pop` in front of it */
+  private def popAdoptedFirst(): A | Null =
+    val out = slots.get(0).nn.pop()
+    if out != null then { myRoute.set(0); out }
+    else if open.get == 1 then null
+    else popScanning()
+
+  private def popScanning(): A | Null =
+    val n = opened
+    var out: A | Null = null
+    var tried = 0
+    var i = startAt.get.intValue
+    while out == null && tried < n do
+      val at = if i >= n then Math.floorMod(i, n) else i
+      val b = slots.get(at)
+      if b != null then out = b.nn.pop()
+      if out == null then i += 1 else { startAt.set(at); myRoute.set(at) }
+      tried += 1
+    out
+
+  override def popMany(max: Int)(sink: A => Unit): Int =
+    if adopted then popManyAdoptedFirst(max)(sink)
+    else if open.get == 1 then { myRoute.set(0); slots.get(0).nn.popMany(max)(sink) }
+    else popManyScanning(max)(sink)
+
+  private def popManyAdoptedFirst(max: Int)(sink: A => Unit): Int =
+    // the claim, for the same reason `popManyScanning` takes it: two
+    // consumers must not drain one part's head at once. A consumer
+    // that cannot have it moves on rather than waits — the holder is
+    // draining part 0, which is the thing this wanted done
+    var took = 0
+    if claimed.compareAndSet(0, 0, 1) then
+      try took = slots.get(0).nn.popMany(max)(sink) finally claimed.set(0, 0)
+    if took > 0 then { myRoute.set(0); took }
+    else if open.get == 1 then 0
+    else popManyScanning(max)(sink)
+
+  private def popManyScanning(max: Int)(sink: A => Unit): Int =
+    val n = opened
+    var took = 0
+    var tried = 0
+    var i = startAt.get.intValue
+    while took == 0 && tried < n do
+      val at = if i >= n then Math.floorMod(i, n) else i
+      val b = slots.get(at)
+      // the claim: one consumer drains a part at a time, and a part
+      // someone else holds is skipped rather than waited for
+      if b != null && claimed.compareAndSet(at, 0, 1) then
+        try took = b.nn.popMany(max)(sink)
+        finally claimed.set(at, 0)
+      if took == 0 then i += 1 else myRoute.set(at)
+      tried += 1
+    took
+
+  override def lastRoute: Int = myRoute.get.intValue
+
+  override def size: Int =
+    var s = 0L
+    eachOpen(b => s += b.size.toLong)
+    if s > Int.MaxValue then Int.MaxValue else s.toInt
+
+  override def isEmpty: Boolean =
+    if open.get == 1 then slots.get(0).nn.isEmpty
+    else isEmptyScanning
+
+  private def isEmptyScanning: Boolean =
+    var empty = true
+    eachOpen(b => if !b.isEmpty then empty = false)
+    empty
+
+  // no adopted case here, and that is the point of a rule over a
+  // phase: every part stays readable, part 0 is merely read FIRST, so
+  // what is ready is what it always was
+  override def hasReady: Boolean =
+    if open.get == 1 then slots.get(0).nn.hasReady
+    else hasReadyScanning
+
+  private def hasReadyScanning: Boolean =
+    var ready = false
+    eachOpen(b => if b.hasReady then ready = true)
+    ready
+}

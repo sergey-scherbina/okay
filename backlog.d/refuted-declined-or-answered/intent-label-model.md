@@ -1,0 +1,3 @@
+- intent-label-model — MEASURED AND DECLINED 2026-09-07
+  (MeasureLabelModel, offline). Six offline labelers combined by
+  agreement-estimated weights …

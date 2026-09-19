@@ -42,7 +42,7 @@ object Wire {
         is Ui.Scroll -> case("Scroll", "child" to ui(u.child), "key" to str(u.key))
         is Ui.Form -> case("Form", "fields" to uis(u.fields), "submit" to str(u.submit), "key" to str(u.key))
         is Ui.Items -> case("Items", "items" to uis(u.items), "key" to str(u.key))
-        is Ui.Table -> case("Table", "header" to arr(u.header.map { str(it) }), "rows" to arr(u.rows.map { uis(it) }), "key" to str(u.key))
+        is Ui.Table -> case("Table", "header" to arr(u.header.map { str(it) }), "rows" to arr(u.rows.map { uis(it) }), "key" to str(u.key), "weights" to ints(u.weights))
         is Ui.Tabs -> case("Tabs", "labels" to arr(u.labels.map { str(it) }), "selected" to JsonPrimitive(u.selected), "pages" to uis(u.pages), "key" to str(u.key))
         is Ui.Modal -> case("Modal", "title" to str(u.title), "body" to ui(u.body), "key" to str(u.key))
         is Ui.Disclosure -> case("Disclosure", "title" to str(u.title), "open" to JsonPrimitive(u.open), "body" to ui(u.body), "key" to str(u.key))
@@ -74,6 +74,7 @@ object Wire {
         mapOf(
             "bold" to JsonPrimitive(s.bold), "dim" to JsonPrimitive(s.dim),
             "tone" to str(s.tone.name.lowercase()), "size" to str(s.size.name.lowercase()),
+            "kind" to str(s.kind.name.lowercase()), "align" to str(s.align.name.lowercase()),
         ),
     )
 
@@ -131,6 +132,8 @@ object Wire {
                 f.strings("header") ?: return null,
                 (f["rows"] as? JsonArray)?.map { row -> (row as? JsonArray)?.map { readUi(it) ?: return null } ?: return null } ?: return null,
                 f.str("key") ?: "",
+                // absent on an older server, and absent means equal
+                f.ints("weights") ?: emptyList(),
             )
             "Tabs" -> Ui.Tabs(f.strings("labels") ?: return null, f.int("selected") ?: 0, kids("pages") ?: return null, f.str("key") ?: "")
             "Modal" -> Ui.Modal(f.str("title") ?: return null, readUi(f["body"] ?: return null) ?: return null, f.str("key") ?: "")
@@ -181,6 +184,9 @@ object Wire {
         return Style(
             f.bool("bold") ?: false, f.bool("dim") ?: false,
             enum<Tone>(f.str("tone")) ?: Tone.Plain, enum<Size>(f.str("size")) ?: Size.Normal,
+            // absent is the default: a server older than ui-text-intent
+            // says nothing about either, and this client still draws it
+            enum<Kind>(f.str("kind")) ?: Kind.Prose, enum<Align>(f.str("align")) ?: Align.Start,
         )
     }
 

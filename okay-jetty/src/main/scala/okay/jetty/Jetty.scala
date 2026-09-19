@@ -132,7 +132,7 @@ object Jetty {
               val out = Async.run[Response, Pure](routes(r)).runWith
               res.setStatus(out.status)
               out.headers.foreach((k, v) => res.getHeaders.add(k, v))
-              if streams(out) then stream(out, res, cb) else
+              if Http.streams(out) then stream(out, res, cb) else
                 val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray
                 res.write(true, ByteBuffer.wrap(bytes), cb)
             catch
@@ -216,21 +216,6 @@ object Jetty {
    * picks callbacks by reflection and refuses a class declaring both
    * text forms, which is exactly what Scala's mixin forwarders produce.
    */
-  /**
-   * Does this response mean a STREAM?
-   *
-   * `Response.body` is a `Source[Chunk[Byte]]` and always was, so the
-   * shape allowed streaming from the start; what buffering decided was
-   * that nobody could use it. Draining first is right for REST — one
-   * length, one write — and fatal for server-sent events, where the
-   * whole point is that the caller sees an event before the source
-   * ends. So the content type decides, because it is exactly the
-   * place a caller says which one they meant.
-   */
-  private def streams(r: Response): Boolean =
-    r.headers.exists((k, v) =>
-      k.equalsIgnoreCase("content-type") && v.contains("text/event-stream"))
-
   /**
    * Write the body chunk by chunk, on a virtual thread: each pull of
    * the source may park (a channel with nothing in it yet), and the

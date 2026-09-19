@@ -1,0 +1,3 @@
+- lexer-buf-without-concat — REFUTED 2026-09-09, nothing landed. The one
+  candidate that needs no input (a doubling char array in the state) is
+  WORSE by …

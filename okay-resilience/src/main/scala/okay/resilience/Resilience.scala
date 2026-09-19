@@ -1,7 +1,7 @@
 package okay.resilience
 
 import okay.{Async, !, +, TypeableK}
-import okay.!.{Effect, resume}
+import okay.!.Inject
 import okay.Free.{Bind, Pure}
 
 /**
@@ -64,8 +64,8 @@ object Attempt:
       case Left(t) => Pure(Left(t))
       case Right(h) => (h: @unchecked) match
         case Pure(a) => Pure(Right(a))
-        case Effect(e) => step(e, (x: A) => Pure(x))
-        case Bind(Effect(e), k) => step(e, k)
+        case Inject(e) => step(e, (x: A) => Pure(x))
+        case Bind(Inject(e), k) => step(e, k)
 
   /** the continuation applied, its own throw made an answer */
   private def continue[X, A](k: X => A ! Async, x: X): Either[Throwable, A] ! Async =
@@ -92,8 +92,8 @@ object Attempt:
       case Left(t) => Pure(Left(t))
       case Right(h) => (h: @unchecked) match
         case Pure(a) => Pure(Right(a))
-        case Effect(e) => split(e, (x: A) => Pure(x))
-        case Bind(Effect(e), k) => split(e, k)
+        case Inject(e) => split(e, (x: A) => Pure(x))
+        case Bind(Inject(e), k) => split(e, k)
 
   /** one operation of the row: ours to guard, or someone else's to relay */
   private def split[X, A, F[+_]](e: Async[X] | F[X], k: X => A ! (F + Async))

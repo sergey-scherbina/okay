@@ -26,7 +26,7 @@ import okay.RowLift.at
  * second continuation gets a ClassCastException, rather than a
  * plausible wrong answer.
  */
-case class Throws[E, +A](e: E) derives okay.Effect
+case class Throws[E, +A](e: E) derives Effect
 
 /** perform the failure */
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
@@ -157,6 +157,61 @@ object throws {
   // used explicitly 38 times in this repository. Eliminating is an
   // ACT here, not a coercion: `a.wrap` or `a.??`.
 
+  /**
+   * THE ONE-GLYPH ELIMINATORS, and they live HERE for the same reason
+   * `map` and `flatMap` do, one paragraph up: at package level they
+   * capture foreign receivers through the Conversion givens above.
+   *
+   * WHAT MOVING THEM BUYS, and it is better than the import this
+   * comment first claimed. `object throws` is the COMPANION of the
+   * opaque type, so these extensions are in the implicit scope of
+   * `A throws E` itself — a genuine receiver finds them with nothing
+   * imported, exactly as before. A receiver whose actual type is
+   * `Int` does not, because the implicit scope is the RECEIVER's, not
+   * the conversion target's. Measured: zero call sites in this
+   * repository had to change, and `42.?` stopped compiling.
+   *
+   * For `map` that capture was a contest it could lose. For this one
+   * it was SILENT. `throws` is `into`, so every value in the language
+   * is an `A throws E`, `42.?` type-checked, and the glyph answered
+   * it unchanged. It cost an hour: a `direct` block written with `.?`
+   * — because specs/direct-macro.md's Interface still documented that
+   * as the block's mark — compiled, ran and answered correctly
+   * through auto-coloring while the glyph did nothing at all
+   * (specs/unwrap-glyph.md carries the incident and the plan; the
+   * marks are `.reflect`, `.!?` and prefix `!p`).
+   *
+   * A TYPE-LEVEL GUARD WAS TRIED FIRST AND REFUTED, which is why this
+   * is a move and not a side condition. `NotGiven[E =:= Nothing]`
+   * reads plausibly — a value that cannot throw has nothing to unwrap
+   * — but `throws` is COVARIANT in `E`, so the typer solves `E` to
+   * its upper bound. The refusal message for a GENUINE receiver said
+   * it outright: `okay.?[A, okay.Unsafe](y)` for a `String throws
+   * Safe`. `E` is `Unsafe` for a converted receiver too, so no
+   * condition on `E` can tell the two apart.
+   *
+   * The SCOPE can, and it costs nobody anything: absorbing a value
+   * stays a coercion (that is what `into` is for), while eliminating
+   * one is reached through the type that was actually written.
+   */
+  extension [A, E <: Unsafe](a: A throws E)
+    /** the value, or the error thrown */
+    inline def ? : A = a.unwrap
+
+    /**
+     * The value, mending an error by f.
+     *
+     * It moves WITH the no-arg form, and the reason was measured
+     * rather than assumed: with only the no-arg one gone, `x.?`
+     * stopped being a no-op and started eta-expanding to THIS —
+     * `(Throwable => Int) => Int`, a function nobody asked for,
+     * reported by munit as "can't compare these two types". One
+     * silent shape replaced by another is not a fix. Both glyphs
+     * live behind the import; `handle` is the same thing with a name
+     * and stays outside it.
+     */
+    inline def ?(f: E | Unsafe => A): A = a.handle(f)
+
   extension [A, E <: Unsafe](a: A throws E)
     // The type ARGUMENTS of Either and Try are erased, so these tests
     // are by class only — and complete anyway, because the union `A
@@ -189,15 +244,11 @@ extension [A, E <: Unsafe](a: A throws E)
     case x: (A @unchecked) => Right(x)
   }
 
-  /** the value, mending an error by f */
-  inline def ?(f: E | Unsafe => A): A = handle(f)
   inline def handle(f: E | Unsafe => A): A = wrap match {
     case Left(e) => f(e)
     case Right(x) => x
   }
 
-  /** the value, or the error thrown */
-  inline def ? : A = unwrap
   @scala.throws[Unsafe]("unwrap unsafe")
   def unwrap: A = a match {
     // by class, and complete by the union's construction — see flatMap
@@ -229,7 +280,7 @@ extension [A, E <: Unsafe](a: A throws E)
  * so, and a strict monad of your own declares itself in one line:
  * `given CanTry[M] = CanTry.strict`.
  */
-@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try), Free rows, and context functions (E ?=> X)\nhave instances; for a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a\nCont-shaped LAZY monad (Eff) has no honest instance: its body runs after the try, catch in the run instead.")
+@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try), Free rows, and context functions (E ?=> X)\nhave instances; for a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a\nCont-shaped LAZY monad has no honest instance: its body runs after the try, catch in the run instead.")
 trait CanTry[F[_]]:
   def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A]
 
@@ -264,6 +315,6 @@ object CanTry:
           // the stack's convention: resume answers one of three shapes
           case Right(head) => (head: @unchecked) match
             case Pure(a) => Free.Pure(a)
-            case Effect(op) => Free.Inject(op)
-            case Bind(Effect(op), k) => Free.Bind(Free.Inject(op), x => step(() => k(x)))
+            case Inject(op) => Free.Inject(op)
+            case Bind(Inject(op), k) => Free.Bind(Free.Inject(op), x => step(() => k(x)))
       step(() => fa)

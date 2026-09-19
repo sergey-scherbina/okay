@@ -1,8 +1,9 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, Stream, async, effect, pure}
-import okay.given
+import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect, pure}
+import okay.RowLift.plus
 import java.nio.file.{Files, Path, StandardCopyOption}
+import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -19,7 +20,7 @@ import scala.collection.immutable.ArraySeq
  */
 final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
 
-  private type F = Produce + Async
+  private type FB = Writer % Chunk[Byte] + Async
 
   private def resolve(key: String): Either[String, Path] =
     val p = root.resolve(key).normalize()
@@ -33,7 +34,11 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
     val mtime = Files.getLastModifiedTime(p).toMillis
     Meta(key, size, Etag(s"$size-$mtime"), mtime)
 
-  def put(key: String, bytes: Chunk[Byte] ! F): Etag ! Async =
+  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
+  // by construction (Say is Writer's ONLY constructor), the TypeableK
+  // caveat Writer.scala documents on Writer.run
+  @nowarn("msg=cannot be checked at runtime")
+  def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async =
     resolve(key) match
       case Left(why) => throw IllegalArgumentException(why)   // a broken caller, not hostile data
       case Right(path) =>
@@ -42,14 +47,8 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           Files.createDirectories(path.getParent)
           Files.newOutputStream(tmp)
         }.flatMap { out =>
-          val S = summon[Stream[[X] =>> X ! F, Async]]
-          def sink(rest: Chunk[Byte] ! F): Unit ! Async =
-            S.uncons(rest).flatMap {
-              case None => pure(())
-              case Some((c, more)) =>
-                async(out.write(c.toArray)).flatMap(_ => sink(more))
-            }
-          sink(bytes).flatMap { _ =>
+          val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
+          Writer.fold[Chunk[Byte], Unit, Unit, Async](bytes)(using summon, sink).flatMap { _ =>
             async {
               out.close()
               Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING,
@@ -60,15 +59,15 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
         }
 
   def get(key: String, range: Option[(Long, Long)] = None)
-  : Either[String, Unit] ! F =
+  : Either[String, Unit] ! FB =
     resolve(key) match
       case Left(why) => pure(Left(why))
       case Right(path) =>
-        effect[F, Boolean](Async.Run(() => Files.isRegularFile(path))).flatMap {
+        effect[FB, Boolean](Async.Run(() => Files.isRegularFile(path))).flatMap {
           case false => pure(Left(s"no such key '$key'"))
           case true =>
             val (from, until) = range.getOrElse((0L, Long.MaxValue))
-            effect[F, java.io.InputStream](Async.Run { () =>
+            effect[FB, java.io.InputStream](Async.Run { () =>
               val in = Files.newInputStream(path)
               var toSkip = from
               while toSkip > 0 do
@@ -78,12 +77,12 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
             }).flatMap(in => stream(in, until - from))
         }
 
-  /** produce chunks until `remaining` runs out or the stream ends */
+  /** tell chunks until `remaining` runs out or the stream ends */
   private def stream(in: java.io.InputStream, remaining: Long)
-  : Either[String, Unit] ! F =
-    if remaining <= 0 then effect[F, Unit](Async.Run(() => in.close())).map(_ => Right(()))
+  : Either[String, Unit] ! FB =
+    if remaining <= 0 then effect[FB, Unit](Async.Run(() => in.close())).map(_ => Right(()))
     else
-      effect[F, Chunk[Byte] | Null](Async.Run { () =>
+      effect[FB, Chunk[Byte] | Null](Async.Run { () =>
         val want = math.min(chunkSize.toLong, remaining).toInt
         val buf = new Array[Byte](want)
         val n = in.read(buf)
@@ -92,7 +91,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
       }).flatMap {
         case null => pure(Right(()))
         case c =>
-          effect[F, Chunk[Byte]](c).flatMap(_ => stream(in, remaining - c.length))
+          Writer.tell(c).plus[Async].flatMap(_ => stream(in, remaining - c.length))
       }
 
   def head(key: String): Option[Meta] ! Async =
@@ -102,8 +101,9 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
         if Files.isRegularFile(path) then Some(metaOf(key, path)) else None
       }
 
-  def list(prefix: String): Chunk[Meta] ! F =
-    effect[F, Vector[Meta]](Async.Run { () =>
+  def list(prefix: String): Source[Chunk[Meta]] =
+    type FM = Writer % Chunk[Meta] + Async
+    effect[FM, Vector[Meta]](Async.Run { () =>
       if !Files.isDirectory(root) then Vector.empty
       else
         val all = scala.jdk.CollectionConverters.IteratorHasAsScala(
@@ -115,13 +115,13 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           .toVector.sorted
         all.map(k => metaOf(k, root.resolve(k)))
     }).flatMap { metas =>
-      // page the answer: 512 keys per produced chunk, like a real
+      // page the answer: 512 keys per told chunk, like a real
       // engine's ListObjectsV2 page
-      def page(rest: Vector[Meta]): Chunk[Meta] ! F =
-        if rest.isEmpty then pure(okay.Chunks.emptyChunk)
+      def page(rest: Vector[Meta]): Source[Chunk[Meta]] =
+        if rest.isEmpty then pure(())
         else
           val (c, more) = rest.splitAt(512)
-          effect[F, Chunk[Meta]](ArraySeq.unsafeWrapArray(c.toArray[Meta]))
+          Writer.tell(ArraySeq.unsafeWrapArray(c.toArray[Meta])).plus[Async]
             .flatMap(_ => page(more))
       page(metas)
     }

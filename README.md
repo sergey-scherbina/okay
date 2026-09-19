@@ -24,7 +24,7 @@ What actually makes this different:
 
 4. Zero dependencies in the core. Nothing comes along for the ride.
 
-5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours.
+5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours. On a real streaming job across 1/2/4/8 cores, okay scales 5.3x while every other in-process stream library (zio-streams, fs2, kyo, java.util.stream) plateaus around 1.6-1.7x — the full write-up, with source links, is [docs/wroclaw-streams-benchmark.md](docs/wroclaw-streams-benchmark.md) (raw derivation in [docs/benchmarks.md](docs/benchmarks.md), §20).
 
 What that buys you in practice: you don't choose between readable and fast, you don't choose between type-safe and ceremony-free, and you don't need anyone's permission to add an effect of your own. And only you control what every effect (even not yours) actually does in any particular case.
 
@@ -62,6 +62,7 @@ Start here:
 | | |
 |---|---|
 | [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
+| [Continuations: a working book](docs/continuations/index.md) | the long form on the one idea the rest is built from: why a team should care, the four shapes as recipes, the machine, building new effects on it, the costs with numbers, and what it must not be asked to do |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Building a chat application](docs/building-a-chat-app.md) | an empty directory to a running streaming chat, outside this repo: depending on an unpublished library, backend, frontend, tests, run |
 | [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
@@ -72,6 +73,8 @@ Going deeper:
 
 | | |
 |---|---|
+| [Arrows](docs/arrows.md) | a computation you can see before you run it: the glyphs, two scanners over one input in one pass, and why optics and streams do not meet |
+| [Optics](docs/optics.md) | naming a path once: the nested `copy`, the `Option.map` chain and the `case s => s`, each beside the optic that replaces it — with what both cost, and the one pair where the `copy` still wins |
 | [Benchmarks](docs/benchmarks.md) | every measured case, why each number is what it is, and where the honest limits are |
 | [The cast that could not go](docs/existentials.md) | six encodings tried against one assertion; the five failures are the useful part |
 | [Specs](specs/) | the living design documents, one per feature, refutations kept |
@@ -87,8 +90,10 @@ index above lists them all with one-line summaries.
 ## Architecture
 
 - `Cont[A, S, R]` (Cont.scala) — the parameterised continuation monad
-  (answer-type modification, shift/reset), defunctionalized like Free,
-  so running a flatMap chain is stack-safe.
+  (answer-type modification, shift/reset), defunctionalized AS `Free`:
+  an opaque `Free[Shift, A]` whose leaf is a function of the
+  continuation, so a program and its meaning are one tree, and running
+  a flatMap chain is stack-safe ([theory ch. 11](docs/theory/11-one-tree.md)).
 - `Control[M[_, _, _]]` (Cont.scala) — final tagless interface of
   delimited control; instances: `Cont` (stack-safe data) and `Func`
   (the function encoding, the reference).
@@ -97,11 +102,11 @@ index above lists them all with one-line summaries.
   is `F !> S = F ==> ([X] =>> X /> S)`, an interpretation of the
   operations in Cont, and the meaning of a computation is its `foldCont`;
   `runWith` and `handle` derive from it. Instances: `Free` (initial,
-  defunctionalized) and `Eff` (final, Church). Choosing: the tree is
-  for tools (stepping, staged relay, stack safety on any bind shape),
-  the function is for speed (fused build-and-run pipelines), and the
-  interface is for not choosing too early — `fromFree` and `reify`
-  move programs between the encodings.
+  defunctionalized) and the opt-in `Eager` (pure binds apply at
+  construction); `reflect` and `reify` move programs between them.
+  For fused build-and-run speed the answer is not another encoding
+  but an inline handler-passing program over `Control` (`Fused`,
+  specs/staged-effects.md).
 - `!.relay` (Effects.scala) — tail-resumptive handling: the answer-polymorphic
   handler must resume exactly once, which keeps the loop tail-recursive.
   `Effects.handle` — general handlers (abort, forwarding), via foldCont.
@@ -303,6 +308,27 @@ chunked lane here.)
 quoting that against a chunked lane is the kind of number this page
 stopped printing.)
 
+**Core scaling** — Wrocław's timetable, 2.4M events, event-time
+windows and keyed state, one JVM per lane, 1/2/4/8 cores. Full
+write-up: [docs/wroclaw-streams-benchmark.md](docs/wroclaw-streams-benchmark.md).
+Raw derivation: docs/benchmarks.md §20.
+
+| lane | 1 core | 2 | 4 | 8 | 1→8 |
+|---|---|---|---|---|---|
+| **Okay** (merge) | 563ms/4.29M | 317ms/7.62M | 189ms/12.77M | **107ms/22.56M** | **5.3x** |
+| java.util.stream | 561ms/4.30M | 458ms/5.27M | 396ms/6.10M | 337ms/7.16M | 1.7x |
+| zio-streams | 583ms/4.14M | 417ms/5.79M | 357ms/6.76M | 347ms/6.96M | 1.7x |
+| kyo | 610ms/3.96M | 512ms/4.72M | 419ms/5.76M | 380ms/6.35M | 1.6x |
+| fs2 | 579ms/4.17M | 472ms/5.11M | 377ms/6.40M | 368ms/6.56M | 1.6x |
+
+(wall clock / ev/s. At one core every library is within a few percent — the
+measurement's own noise floor, doubled in the same run. What
+separates them is the SLOPE: Okay fans the job across fibres joined
+by `merge`; the others parallelize one `Stream`/`foreachPar` and hit
+its fan-in cost before they run out of cores. Flink sits in the full
+table too, at a different scale — a distributed engine's scheduling,
+not a library.)
+
 **Resource** — 1000 bracketed acquire/use/release:
 
 | shape | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
@@ -345,9 +371,14 @@ module with its own page under docs/modules:
   protocol's reference server.
 - **ui** (`okay-ui`) — the view as a value, the loop as a fold over
   merged sources, the renderer as a seam: one application on a
-  terminal, under React, on a test host; forms derived from the same
-  `Schema` that decodes them — which is what lets an MCP server ask
-  the human (elicitation) and get a typed answer.
+  terminal, under React, on the raw DOM, in Swing or GTK, over the
+  wire to a browser or a native phone client, and on a test host;
+  forms derived from the same `Schema` that decodes them — which is
+  what lets an MCP server ask the human (elicitation) and get a typed
+  answer. A tree carries what its text IS (an identifier is read
+  against an explorer, a number is compared down a column) so each
+  host sets it in its own idiom, and a client claims the nodes it
+  draws natively — a browser draws a real table.
 - **security** (`okay-security`) — authorization once: claims as
   values, JWT over a crypto seam, policies as an algebra, protection
   as a route wrapper the type system enforces, OAuth2 client flows —
@@ -355,8 +386,20 @@ module with its own page under docs/modules:
 - **wires** — REST and WebSocket as programs (`okay-http`), served by
   the JDK, Jetty or Netty behind one seam (`okay-jetty`,
   `okay-netty`); the distributed runtime (`okay-cluster`).
+- **data** — the durable log as one primitive (`okay-persist`): a
+  topic of records, compacted snapshots, and on top of them
+  **[durable workflows](docs/durable-workflows.md)** — a program that
+  waits for a person, a service or a date, written as straight-line
+  code and able to outlive the process running it. A paused program is
+  a continuation, and a continuation is a closure, so nothing tries to
+  write one down: what is journalled is THE ANSWERS, and where the
+  program stands is re-derived by running it again over them. That is
+  event sourcing with the fold you would otherwise hand-write
+  replaced by the program itself. The relational seam (`okay-sql`),
+  the lake (`okay-delta`) and the distributed engine (`okay-dataflow`)
+  sit beside it.
 
-Building: `sbt test` runs everything — 3024 tests across 84 module
+Building: `sbt test` runs everything — 4736 tests across 93 module
 runs, on the JVM, under Node and as a linked native binary (the
 live suites — a local model, an npx-spawned MCP server — skip where
 their endpoint is absent). Scala 3.9.0 — the LTS line — with 3.6 as
@@ -369,6 +412,9 @@ zinc, the compiler and every module at once, and has run out mid-
 compile. If you also build in IntelliJ, its Scala compile server has
 its own separate 4g cap worth raising for the same reason.
 
-Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
+Benchmarks: `sbt "okayJVM/Jmh/run .*FibBenchmark.*"` — the JMH plugin
+is on `okay.jvm`, so the project prefix is required (a bare `Jmh/run`
+fails to parse, while `Jmh/compile` does not, which is how this line
+stayed wrong); comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.

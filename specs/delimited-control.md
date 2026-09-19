@@ -95,6 +95,15 @@ bit separately.
       from a prompt and `shift` alone — no signature, no handler, no
       library change — which is the payoff of having delimited
       control as an effect at all
+- [x] ONE MACHINE, MANY DELIMITERS (delim-nesting, 2026-09-17): a
+      `pause` crosses an intervening `collecting`, and the resumed
+      program's further emits land in the same list; the same
+      dialogue replays from its journal with the producer inside it
+- [x] the wrong spelling is pinned beside it: `collect` (which runs
+      its own machine) inside `resumable` is a runtime `NoPrompt`
+- [x] the interaction table (delim-limits, 2026-09-17): what a
+      capture does to `Resource`, `bracket`, `Throws`, `try/finally`,
+      `try/catch`, `State`, depth, a lambda, and an async row
 
 ## Adoption doctrine (operator, 2026-09-01)
 
@@ -149,6 +158,28 @@ suspends under a closure, the shape `State.handle` uses. Fixing it
 also took 20% off the delimiter lane (33.8 to 25.4).
 
 ## Decisions
+- **ONE `Delim.run` PER PROGRAM, and every pattern has a half that
+  does not run (delim-nesting, 2026-09-17).** `delimited`, `collect`
+  and `resumable` were each written to run their own machine, which
+  made them individually correct and jointly unusable: a machine owns
+  one prompt stack, so a capture from inside an inner machine to an
+  outer prompt dies with `NoPrompt`. The shape that found it is
+  ordinary — a producer that pauses for an answer is `resumable`
+  around `collect` — and the type system does not refuse it, because
+  `collect[A, Delim + F]` merely puts a SECOND `Delim` in the row and
+  rows misroute a duplicate rather than rejecting it. So `scope`,
+  `collecting` and `pausing` install a delimiter and leave the
+  machine alone; the outermost combinator is the only one that runs,
+  and under it the delimiters compose the way multi-prompt promises.
+  `delimited = run(scope)` and so on, so nothing that worked changed.
+- **The evidence proves a delimiter, not a machine.** `Prompted[R]`
+  makes a capture without a delimiter a compile error, and that stays
+  true; what it cannot see is which machine will run the capture, so
+  an outer `Prompted` used inside an inner `delimited` is still a
+  runtime `NoPrompt` (pinned in TestDelimLimits). Closing that needs
+  the region trick `runST` uses, as the header already says for the
+  escaping case — the nested-run case is the one people will actually
+  hit, and the fix for it is `scope`, not a type.
 - **A separate signature from `Control[M]`,** the tagless interface —
   hence the name `Delim`. The floor stays the floor; this is the
   user-facing door to it.
@@ -182,3 +213,32 @@ row's other half F is not the operation's to name — re-typed at
 their two lines. One frame more per push (the K that carries the
 prompt's answer up to the op's), measured on DelimBenchmark (see the
 changelog). The suite is the spec: TestDelim unchanged.
+
+## What a capture does to everything else (2026-09-17, delim-limits)
+
+Measured, in `TestDelimLimits`, because every one of these was a
+question the tree could not answer by reading:
+
+- **`Resource` survives a capture.** Its handler is outside the
+  machine, so an `exit` that drops the continuation still releases,
+  and a multi-shot capture acquires once per branch and releases them
+  all, LIFO, at the END of the program — n branches hold n handles at
+  once. Cleanup written as a line of ordinary Scala after the capture
+  point does NOT run: it was in the continuation that was dropped.
+- **`bracket` cannot be written in a `Delim` row at all** — it needs
+  `Handler[F]` and there is none for `Delim`. The dangerous mix (a
+  body run to completion inside one suspension, under a machine that
+  may re-enter it) is a compile error rather than a caveat.
+- **`try/finally` around a mark is a compile error** (direct's own
+  message); **`try/catch` around a mark compiles and catches
+  nothing** — the catch guards the building of the program and the
+  throw happens when it runs. Failure belongs in the row (`Throws`),
+  which does compose with a capture in both directions.
+- **`State` around a multi-shot capture is one timeline**, not a
+  fork: the second invocation of `k` sees the first one's writes.
+  Backtracking is `Choice`/`Logic`, and the difference is which
+  handler is outside.
+- **Depth is a loop, not the stack**: 10 000 emits, 3 000 pauses and
+  a 3 000-answer replay all run.
+- `exit` works from inside a lambda the block does not own, and a
+  dialogue pauses on either side of an async operation.

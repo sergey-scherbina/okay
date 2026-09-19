@@ -12,9 +12,37 @@ import okay.*
  * The Scope precedent (okay-ui), applied to the model's own mouth.
  *
  * ADDITIVE per the adoption doctrine: `guarded` wraps a streaming
- * generation; the unguarded path is untouched. A passing stream
- * never captures — the guard costs the prompt push, not the capture
- * price.
+ * generation; the unguarded path is untouched — and `TestCut` pins
+ * that a passing stream gives the same answer as the unguarded run.
+ *
+ * ── WHAT THE GUARD COSTS, MEASURED (delim-guard-per-op, 2026-09-17),
+ * because the sentence that stood here was wrong. It said the guard
+ * "costs the prompt push, not the capture price". Half of that is
+ * right and the half that matters is not.
+ *
+ * A passing stream really never captures, and the push really is
+ * nothing — a thousand of them cost 28.4 µs, so one is about 0.03 µs.
+ * But entering `Delim + Async` puts EVERY operation of the body
+ * through the delimited-control machine, and that is per token:
+ *
+ *     writerTell            15.098 / 18.012 µs   N tells, no machine
+ *     writerTellUnderDelim  30.376 / 40.847 µs   one push, same N,
+ *                                                under the machine
+ *                                    ratio 2.01x then 2.27x
+ *
+ * Two rounds at load 9–10; the absolutes moved 20–35% between them
+ * and the ratio held. `DelimBenchmark.writerTellUnderDelim` is the
+ * benchmark, added by that lane because neither of the two that
+ * already existed measures this shape — `delimPushOnly` counts N
+ * pushes and `delimGenerator` counts N captures, so the claim read
+ * as measured while the numbers beside it answered other questions.
+ *
+ * SO THE DECISION IT INFORMS: a guard roughly DOUBLES the cost of
+ * whatever runs inside it. For token streams that is usually far
+ * below the model's own latency and worth paying; for a hot inner
+ * loop it is not, and the boundary belongs around the smallest span
+ * that needs it rather than the whole generation. The same applies
+ * to any guard of this shape, `okay.ui.Scope` included.
  */
 object Cut {
 
@@ -65,30 +93,42 @@ object Cut {
   // ADDITIVE: guarded/cut/checked stay. The prompt becomes ambient;
   // a validator holds no name, and nesting cuts to the NEAREST guard.
 
-  /** the boundary with an ambient prompt */
-  def guard[A](gen: Prompt[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
+  /**
+   * The boundary with an ambient prompt — and the evidence is
+   * `Delim.Prompted`, not `Prompt` (delim-doors-are-prompted,
+   * 2026-09-18). A `Prompt` is one line to make, so asking for one as
+   * a GIVEN proves nothing: a `violation` outside any guard compiled
+   * and then failed at runtime with `NoPrompt`. `Prompted`'s
+   * constructor is private to `Delim`, so holding one means being
+   * inside the guard that installed it. The explicit forms
+   * (`guarded`, `cut`, `checked(p, …)`) are unaffected.
+   */
+  def guard[A](gen: Delim.Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
   : Either[Violation, A] ! (Writer % String + Async) =
-    guarded[A](p => gen(using p))
+    // `Delim.scope` is the only door that hands out the evidence —
+    // its constructor is private to `Delim`, which is exactly what
+    // makes the evidence worth asking for
+    Delim.run(Delim.scope[Either[Violation, A], Writer % String + Async](gen.map(Right(_))))
 
   /** `checked` against the NEAREST guard — the prompt is ambient
    * (the ctx-prompts door; the explicit form stays) */
   def checked[A](tokens: Unit ! (Writer % String + Async))
                 (check: (Int, String) => Option[Violation])
-                (using p: Prompt[Either[Violation, A]])
+                (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
-    checked(p, tokens)(check)
+    checked(p.prompt, tokens)(check)
 
   /** abort to the nearest guard — no prompt in hand */
-  def violation[A, X](v: Violation)(using p: Prompt[Either[Violation, A]])
+  def violation[A, X](v: Violation)(using p: Delim.Prompted[Either[Violation, A]])
   : X ! (Writer % String + (Delim + Async)) =
-    cut[A, X](p)(v)
+    cut[A, X](p.prompt)(v)
 
   /** `checked`, prompt ambient */
   def watched[A](tokens: Unit ! (Writer % String + Async))
                 (check: (Int, String) => Option[Violation])
-                (using p: Prompt[Either[Violation, A]])
+                (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
-    checked[A](p, tokens)(check)
+    checked[A](p.prompt, tokens)(check)
 
   // ── the repair door (specs/condition.md): between passing a token
   // and cutting the stream there is REPAIRING it. ADDITIVE:
@@ -109,7 +149,7 @@ object Cut {
    */
   def screened[A](tokens: Unit ! (Writer % String + Async))
                  (check: (Int, String) => Option[Violation])
-                 (using p: Prompt[Either[Violation, A]])
+                 (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! Screened =
     type R = Writer % String + (Delim + Async)
     def emit(t: String): Unit ! Screened =

@@ -69,7 +69,14 @@ enum Flow[A]:
 
   /** a PARTITIONED source, in the input's own order — which is what
    * lets a `Sequential` finish merge its slices in that order */
-  case Src[A](parts: Vector[() => Chunks[A]]) extends Flow[A]
+  /**
+   * A partition is a recipe that takes a START (specs/dataflow.md,
+   * stage 11 box 2): how many elements to skip before the first one
+   * it yields. A source that can seek — an indexed collection, a log
+   * — positions itself; one that cannot reads and drops, which is the
+   * replay a resumed run always paid, now named as what it is.
+   */
+  case Src[A](parts: Vector[Long => Chunks[A]]) extends Flow[A]
 
   /** anything per-partition: map, filter, take — held as a chunk
    * transformer, so the local plan owns this level */
@@ -125,10 +132,40 @@ enum Flow[A]:
 object Flow {
 
   /** a source already cut into partitions */
-  def of[A](parts: Vector[() => Chunks[A]]): Flow[A] = Src(parts)
+  def of[A](parts: Vector[() => Chunks[A]]): Flow[A] =
+    Src(parts.map(p => (start: Long) => skip(p(), start)))
+
+  /** partitions that can position themselves: the thunk is given how
+   * many elements to skip and is expected to seek rather than read */
+  def seekable[A](parts: Vector[Long => Chunks[A]]): Flow[A] = Src(parts)
+
+  /**
+   * Skip `n` elements of a source that cannot seek, by reading them.
+   * That is the whole of what a non-seekable partition costs a
+   * resumed run, and it is here rather than hidden in the session so
+   * a `Flow.of` over a live source is honest about it.
+   */
+  private def skip[A](c: Chunks[A], n: Long): Chunks[A] =
+    if n <= 0L then c
+    else
+      val it = new Iterator[A]:
+        private var rest = c
+        private var cur: Iterator[A] = Iterator.empty
+        private var toSkip = n
+        private def fill(): Boolean =
+          while !cur.hasNext do
+            Chunks.pull(rest) match
+              case None => return false
+              case Some((ch, r)) => rest = r; cur = ch.iterator
+          true
+        def hasNext: Boolean =
+          while toSkip > 0L && fill() do { cur.next(): Unit; toSkip -= 1 }
+          fill()
+        def next(): A = { hasNext: Unit; cur.next() }
+      Chunks.fromIterator(it)
 
   /** one partition */
-  def one[A](chunks: => Chunks[A]): Flow[A] = Src(Vector(() => chunks))
+  def one[A](chunks: => Chunks[A]): Flow[A] = Src(Vector(start => skip(chunks, start)))
 
   /**
    * Cut an indexed collection into `parts` CONTIGUOUS slices of its
@@ -145,6 +182,35 @@ object Flow {
       // `view.slice`, not `iterator.slice`: an Iterator's slice reaches
       // its start by DROPPING, which for the last of eight partitions
       // is seven eighths of the input stepped through and thrown away
-      () => Chunks.fromIterator(xs.view.slice(from, until).iterator, chunk)
+      // and a START seeks the same way: an indexed collection positions
+      // itself, so a resumed run over an array pays nothing to resume
+      (start: Long) =>
+        Chunks.fromIterator(xs.view.slice(from + math.min(start, (until - from).toLong).toInt, until).iterator, chunk)
+    })
+
+  /**
+   * Cut an indexed collection by STRIPING: global element `i` goes to
+   * partition `i % parts`, each partition reading its own in order.
+   * The trade against `slices` is deliberate — a striped cut is NOT
+   * contiguous, so it is wrong under a `Sequential` summary that
+   * merges neighbours — and it buys the one thing `slices` cannot:
+   * RESCALE (specs/dataflow.md, stage 13).
+   *
+   * The thunk's `start` is a PER-PARTITION skip, the same meaning a
+   * seekable resume gives it everywhere: partition `j` skips its first
+   * `start` elements and reads from `j + start*parts`. A rescale sets
+   * each new partition's skip to the count of ITS elements that fall
+   * in the consumed global prefix, so the re-striped partitions read
+   * exactly `xs[G..]` between them and the fold carries `xs[..G)`. (In
+   * a fresh run `start` is 0 and this is an ordinary striped source.)
+   */
+  def striped[A](xs: IndexedSeq[A], parts: Int, chunk: Int = 256): Flow[A] =
+    require(parts > 0, "a source has at least one partition")
+    val n = xs.length
+    Src((0 until parts).toVector.map { j =>
+      (start: Long) =>
+        val first = j + start.toInt * parts
+        Chunks.fromIterator(
+          Iterator.iterate(first)(_ + parts).takeWhile(_ < n).map(xs), chunk)
     })
 }

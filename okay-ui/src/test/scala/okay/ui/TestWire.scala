@@ -117,4 +117,54 @@ class TestWire extends munit.FunSuite {
 
     assertEquals(frames.toList, List(view(0), view(1), view(2), view(1)))
   }
+
+  test("end to end, SERVER-initiated: the client gets no frame after the close, and stops hearing") {
+    def closingUpdate(n: Int, e: Event): (Int, Boolean) = e match
+      case Event.Pressed("inc") => (n + 1, false)
+      case Event.Pressed("logout") => (n, true)
+      case _ => (n, false)
+
+    val up = Channel[String]()
+    val down = Channel[String]()
+
+    Async.spawn {
+      val src: Source[String] = Writer.of(up)
+      def drain(p: Int ! (Writer % String + Async)): Unit ! Async =
+        Writer.uncons[String, Int, Async](p).flatMap {
+          case Left(_) => async(down.close())
+          case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
+        }
+      drain(through[String, String, Async, Unit, Int](src)(
+        !.widen[Int, okay.Take % String + Writer % String, Async](
+          Wire.serveClosing(0)(view)(closingUpdate))))
+    }: Unit
+
+    val frames = scala.collection.mutable.Buffer[Ui]()
+    val feed = Channel[Event]()
+    val host = new Host:
+      def render(ui: Ui): Unit ! Async = async { frames += ui; () }
+      def events: Source[Event] = Writer.of(feed)
+
+    val fiber = Async.spawn(Wire.client(host)(Writer.of(down), l => up.send(l).map(_ => ())))
+    // "logout" is the LAST press this client makes; the point is what
+    // happens to a session the SERVER decided to end, not a race
+    // against more presses arriving after it (up and down are two
+    // independently scheduled fibers, so an event sent after "logout"
+    // has no ordering guarantee against when the server actually
+    // acts on it — asserting across that race would test the
+    // scheduler, not `serveClosing`). The CLIENT's own `forward` loop
+    // is a separate thing that only ever stops on its OWN Closed
+    // (`Wire.client`'s hybrid rule) — `feed.close()` alone does not
+    // end it, and `fiber.join()` hung forever on that
+    // (wire-close-test-hang, okay-ui/BUGS.md: this exact line wedged
+    // a real gate).
+    Seq(Event.Pressed("inc"), Event.Pressed("logout"), Event.Closed).foreach(feed.offer)
+    fiber.join()
+
+    // one frame for "inc" (0 -> 1); "logout" changed no text of its
+    // own, so its only wire effect is the Close line, which the
+    // SCALA client (unlike `live.js`) has no special reaction to
+    // beyond stopping — no third frame either way
+    assertEquals(frames.toList, List(view(0), view(1)))
+  }
 }

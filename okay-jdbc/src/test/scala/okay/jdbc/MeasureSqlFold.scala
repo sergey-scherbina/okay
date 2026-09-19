@@ -99,10 +99,10 @@ class MeasureSqlFold extends munit.FunSuite:
     def go(rest: Chunk[A] ! (Produce + Async), seen: Int): Int =
       (rest.resume: @unchecked) match
         case Pure(_) => seen
-        case Effect(e) => okay.<|>[Async, Produce](e) match
+        case Inject(e) => okay.<|>[Async, Produce](e) match
           case Left(a) => (summon[Handler[Async]].handle(a): Unit); seen
           case Right(c) => seen + c.asInstanceOf[Chunk[A]].length
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+        case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
           case Left(a) => go(k(summon[Handler[Async]].handle(a)), seen)
           case Right(c) => go(k(c), seen + c.asInstanceOf[Chunk[A]].length)
     go(s, 0)
@@ -147,10 +147,10 @@ class MeasureSqlFold extends munit.FunSuite:
       def go(rest: Chunk[Vector[SqlValue]] ! (Produce + Async)): Unit =
         (rest.resume: @unchecked) match
           case Pure(_) => ()
-          case Effect(e) => okay.<|>[Async, Produce](e) match
+          case Inject(e) => okay.<|>[Async, Produce](e) match
             case Left(a) => (summon[Handler[Async]].handle(a): Unit)
             case Right(c) => fs ++= c.asInstanceOf[Chunk[Vector[SqlValue]]]
-          case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+          case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
             case Left(a) => go(k(summon[Handler[Async]].handle(a)))
             case Right(c) => fs ++= c.asInstanceOf[Chunk[Vector[SqlValue]]]; go(k(c))
       go(db.query(select))
@@ -196,10 +196,10 @@ class MeasureSqlFold extends munit.FunSuite:
       def go(rest: Chunk[Either[Bad, Row]] ! (Produce + Async)): Unit =
         (rest.resume: @unchecked) match
           case Pure(_) => ()
-          case Effect(e) => okay.<|>[Async, Produce](e) match
+          case Inject(e) => okay.<|>[Async, Produce](e) match
             case Left(a) => (summon[Handler[Async]].handle(a): Unit)
             case Right(c) => got ++= c.asInstanceOf[Chunk[Either[Bad, Row]]]
-          case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
+          case Bind(Inject(e), k) => okay.<|>[Async, Produce](e) match
             case Left(a) => go(k(summon[Handler[Async]].handle(a)))
             case Right(c) => got ++= c.asInstanceOf[Chunk[Either[Bad, Row]]]; go(k(c))
       go(Typed.rows[Row](db, select))

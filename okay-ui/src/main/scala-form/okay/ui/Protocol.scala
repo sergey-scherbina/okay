@@ -37,6 +37,8 @@ object Protocol {
   given Schema[InputKind] = Schema.enumeration(InputKind.values.toVector, _.toString.toLowerCase)
   given Schema[Tone] = Schema.enumeration(Tone.values.toVector, _.toString.toLowerCase)
   given Schema[Size] = Schema.enumeration(Size.values.toVector, _.toString.toLowerCase)
+  given Schema[Kind] = Schema.enumeration(Kind.values.toVector, _.toString.toLowerCase)
+  given Schema[Align] = Schema.enumeration(Align.values.toVector, _.toString.toLowerCase)
   given Schema[Style] = Schema.derived
   given Schema[Ui] = Schema.derived
   given Schema[Event] = Schema.derived

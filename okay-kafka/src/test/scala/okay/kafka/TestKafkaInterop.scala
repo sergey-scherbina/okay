@@ -36,8 +36,8 @@ class TestKafkaInterop extends munit.FunSuite {
   : Chunk1 ! (okay.Produce + okay.Async) =
     import okay.!.*
     (s.resume: @unchecked) match
-      case Bind(Effect(e), k) => okay.<|>[okay.Async, okay.Produce](e) match
-        case Left(a) => Effect(a).flatMap(x => firstChunk(k(x)))
+      case Bind(Inject(e), k) => okay.<|>[okay.Async, okay.Produce](e) match
+        case Left(a) => Inject(a).flatMap(x => firstChunk(k(x)))
         case Right(c) => okay.pure(c.asInstanceOf[Chunk1])
       case _ => fail("no chunk")
 

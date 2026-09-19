@@ -30,7 +30,8 @@ class TestChatBrowser extends munit.FunSuite {
   val noSecrets: okay.conf.Secrets = okay.conf.Secrets.memory(Map.empty)
 
   def withServer[A](f: Int => A): A =
-    provide(deadWire, noSecrets, okay.demo.Board(okay.demo.Board.topicOf(okay.demo.Board.store(":memory:"))))(
+    val store = okay.demo.Board.store(":memory:")
+    provide(deadWire, noSecrets, okay.demo.Board(okay.demo.Board.topicOf(store)), store)(
       Resource.run[A, Pure](
         Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, 512))()
           .map(s => f(Jetty.port(s)))).runWith)

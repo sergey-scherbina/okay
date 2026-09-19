@@ -6,7 +6,7 @@ import okay.!.*
  * Backtracking search over the nondeterminism effect — LogicT
  * (Kiselyov, Shan, Friedman, Sabry 2005) rebuilt on Choose. The one
  * primitive is msplit: the FIRST answer and a program producing the
- * rest. Everything else derives: once (the cut that keeps one
+ * rest. Everything else derives: cut (the one that keeps one
  * answer), ifte (the soft cut — else runs only when there is NO
  * answer, negation-as-failure in one line), interleave (the FAIR or
  * — two infinite branches take turns), >>- (the fair bind — a
@@ -45,18 +45,20 @@ object Logic {
         case LazyList() => pure(None)
         case p #:: rest => (p.resume: @unchecked) match
           case Pure(a) => pure(Some((a, alts(rest))))
-          case Effect(e) => <|>[Choose, F](e) match
-            case Left(c) => go(c.as.to(LazyList).map(a => Pure(a): A ! (Choose + F)) #::: rest)
-            case Right(g) => Effect(g).flatMap(a => go(Pure(a) #:: rest))
-          case Bind(Effect(e), k) => <|>[Choose, F](e) match
-            case Left(c) => go(c.as.to(LazyList).map(x => k(x)) #::: rest)
-            case Right(g) => Effect(g).flatMap(x => go(k(x) #:: rest))
+          case Inject(e) => split[Choose, F](e)
+            (c => go(c.as.to(LazyList).map(a => Pure(a): A ! (Choose + F)) #::: rest))
+            (g => Inject(g).flatMap(a => go(Pure(a) #:: rest)))
+          case Bind(Inject(e), k) => split[Choose, F](e)
+            (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
+            (g => Inject(g).flatMap(x => go(k(x) #:: rest)))
 
     go(LazyList(m))
 
   /** at most one answer: the cut — commits to the first success and
-   * throws the rest of the search away */
-  def once[A, F[+_]](m: A ! (Choose + F)): A ! (Choose + F) =
+   * throws the rest of the search away. `once` until logic-cut
+   * (2026-09-16): that word is `!.once` now, the by-need effect, and
+   * a file importing both `!.*` and `Logic.*` had the two collide. */
+  def cut[A, F[+_]](m: A ! (Choose + F)): A ! (Choose + F) =
     !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(m)).flatMap:
       case Some((a, _)) => pure(a)
       case None => effect(Choose(Seq.empty))

@@ -8,26 +8,42 @@ import org.apache.spark.sql.{Encoders, SparkSession}
 class TestSparkInterop extends munit.FunSuite {
 
   /**
-   * Spark 4.0.0 supports Java 17 and 21. On JDK 24+ the Security
-   * Manager is gone (JEP 486), and with it
+   * On JDK 24 the Security Manager is gone (JEP 486), and with it
    * `Subject.getSubject(AccessControlContext)`, which Hadoop's
    * `UserGroupInformation.getCurrentUser` calls on every job:
    *
    *   UnsupportedOperationException: getSubject is not supported
    *
-   * There is no flag for it. `-Djava.security.manager=allow` is the
+   * There is no flag for it — `-Djava.security.manager=allow` is the
    * remedy for 18..23 and makes a JDK 26 refuse to start at all
-   * ("Enabling a Security Manager is not supported"), so the suite is
-   * skipped rather than left to fail with a stack trace that names
-   * Hadoop and explains nothing. `.sdkmanrc` pins the JDK that works.
+   * ("Enabling a Security Manager is not supported") — so 24
+   * specifically is skipped rather than left to fail with a stack
+   * trace that names Hadoop and explains nothing.
+   *
+   * 25 is NOT skipped (spark-jdk25-guard-fix, 2026-09-19): Spark
+   * 4.2.0 fixed JDK 25 support upstream (SPARK-51167) and this
+   * session verified it directly, not just by the JIRA — ran this
+   * suite's own SparkSession-creation-and-aggregation path (parallelize,
+   * aggregate, compare against the local `Chunks` answer) as a
+   * standalone `java -cp <this project's test classpath>` process
+   * under `~/.sdkman/candidates/java/25.0.4.1-tem`, bypassing sbt's
+   * own test fork entirely: `local=8333333.25 onSpark=8333333.25
+   * diff=0.0`, a real distributed job (8 partitions, DAGScheduler,
+   * task log) on that JVM. Before this fix the guard read `>= 24`
+   * and skipped 25 right along with the genuinely broken 24 — the
+   * PREVIOUS session's "sbt's test-fork discovers zero tests under
+   * JDK 25, looks like a tooling bug" was this guard doing exactly
+   * what it was told, misread as something else. 22 and 23 stay
+   * untested — Spark's own 4.2.0 release notes list 17/21/25, not
+   * those two, so they stay unknown rather than assumed either way.
    */
   val javaFeature: Int = Runtime.version().feature()
-  override def munitIgnore: Boolean = javaFeature >= 24
+  override def munitIgnore: Boolean = javaFeature == 24
 
   override def beforeAll(): Unit =
     if munitIgnore then
-      println(s"  okay-spark: skipped on Java $javaFeature — Spark 4.0.0 " +
-        "needs 17 or 21 (JEP 486 removed what Hadoop's UGI calls). " +
+      println(s"  okay-spark: skipped on Java $javaFeature — JEP 486 removed " +
+        "what Hadoop's UGI calls, no workaround exists. " +
         "`sdk env` uses the pinned 21.")
 
   lazy val spark = SparkSession.builder()

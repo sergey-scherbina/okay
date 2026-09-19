@@ -98,4 +98,4 @@ than dogmatically.
 
 ---
 
-← [5 · Algebraic effects and handlers](05-effects-handlers.md) · [Contents](index.md) · [7 · Logic, streams and sketches](07-logic-streams.md) →
+← [5 · Algebraic effects and handlers](05-effects-handlers.md) · [Contents](index.md) · [12 · Applicative, Selective, Monad](12-applicative-static.md) →
