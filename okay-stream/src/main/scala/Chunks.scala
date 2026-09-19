@@ -410,36 +410,37 @@ object Chunks {
    * inlining decisions — Scala-level refactoring cannot out-maneuver
    * that on its own.
    *
-   * FIXED (2026-09-19, MOSTLY), by doing exactly what the paragraph
-   * above this one used to say was blocked: `writerStreamIn`'s
-   * `.iterator` (its DEFAULT implementation, `Iterator.unfold(s)
-   * (uncons(_).runWith)` — no override needed) walks the tree through
-   * repeated small `uncons` calls instead of `Writer.foldWith`'s fused
-   * resume/split/Bind trampoline, so the per-chunk consuming loop
-   * below sits in its own small compiled unit — and escape analysis
-   * eliminates the ELEMENT box there, the ~10,000-boxed-`Long`s
-   * problem this doc used to describe. MEASURED, 3 rounds, N=10000/64:
-   * 18.14 -> 6.29 us/op median (2.9x faster), 249,584 -> 32,952 B/op
-   * (7.6x less garbage).
+   * FIXED (2026-09-19), by doing exactly what the paragraph above this
+   * one used to say was blocked: `writerStreamIn`'s `.iterator` walks
+   * the tree through repeated small `uncons` calls instead of
+   * `Writer.foldWith`'s fused resume/split/Bind trampoline, so the
+   * per-chunk consuming loop below sits in its own small compiled
+   * unit — and escape analysis eliminates the ELEMENT box there, the
+   * ~10,000-boxed-`Long`s problem this doc used to describe. First cut
+   * (producer-writer-carrier-foldwriter-eager, using `.iterator`'s
+   * DEFAULT `Iterator.unfold` implementation): 18.14 -> 6.29 us/op,
+   * 249,584 -> 32,952 B/op. Second cut, same day
+   * (writer-stream-specialized-iterator): `writerStreamIn` grew its
+   * OWN hand-specialized, mutable-state `iterator` override — mirroring
+   * `Stream[Producer, Pure]`'s own override in Generate.scala, using
+   * `Handler[G].handle` (comonadic, one value per forwarded operation)
+   * instead of building and running a program per step — closing the
+   * `Option`+`Either`+`Free`-node-per-chunk tax the default walk still
+   * paid. MEASURED, 3 rounds, N=10000/64: 6.29 -> 5.43 us/op, 32,952 ->
+   * 12,688 B/op — now matching `foldLeftWriter`'s own direct-call
+   * baseline (12,656 B/op, 5.0us) almost exactly; `-prof jfr` confirms
+   * `Right`/`Some` samples are gone entirely. Total from the original
+   * dispatched form: 18.14 -> 5.43 us/op (3.3x faster), 249,584 ->
+   * 12,688 B/op (19.7x less garbage).
    *
-   * NOT full parity with `Chunks.fold`'s 2.55us, and the remaining gap
-   * is understood, not mysterious: `Iterator.unfold`'s DEFAULT walk
-   * allocates an `Option`+`Either` wrapper (via `Writer.uncons`) and a
-   * `Free` node per CHUNK (157 times, not 10000) — confirmed via
-   * `-prof jfr`, dominated by `Free$Bind`/`Free$Inject`/`Right`/`Some`
-   * samples, `java.lang.Long` down to background noise. `Chunks.fold`
-   * pays none of this because `Chunks[A]` is `Producer[Chunk[A]]`
-   * (PURE, no G), so it walks through `Stream[Producer, Pure]`'s OWN
-   * hand-specialized, allocation-free `iterator` override
-   * (Generate.scala) — but Producer's OWN G-EFFECTFUL Stream instance
-   * (`given [G[+_]: TypeableK]: Stream[[A] =>> A ! Produce + G, G]`,
-   * also in Generate.scala) has NO such override either, so this
-   * per-chunk tax is not specific to Writer — it is what ANY
-   * G-effectful producer in this library already pays, Writer or
-   * Produce. Closing it needs a hand-specialized, mutable-state
-   * `iterator` override for the G-effectful case (the same shape
-   * `Stream[Producer, Pure]`'s pure-only override already has), which
-   * would benefit BOTH carriers — not written here, its own lane.
+   * The remaining ~2x against `Chunks.fold`'s 2.55us is NOT a Writer
+   * defect: it is the SAME gap `foldLeftWriter`'s own direct call
+   * already has and was accepted as "at parity" for (its own doc,
+   * above) — the cost of walking a `Free`-tree program at all
+   * (`resume`, `Bind` chains) versus `Chunks.foldLeft`'s specialized,
+   * non-program iterator. Closing THAT is a different, larger question
+   * than this combinator's own dispatch tax, which is what this doc
+   * originally set out to fix.
    *
    * The "API contract" obstacle the earlier draft worried about is
    * real but not a blocker: `.iterator` needs a `Handler[G]` and runs

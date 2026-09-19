@@ -51,14 +51,19 @@ import RowLift.plus
  * `Chunks.foldLeft` call sites use) reaches parity — 5.00 vs
  * `chunksFoldLeftProducerDirect`'s 4.76 us/op. The `Fold`-instance-
  * dispatched form (`foldWriter`, what `Chunks.fold`/`agg.fold` need)
- * did NOT (17.30 us/op) until fixed 2026-09-19 by routing it through
- * `writerStreamIn`'s `.iterator` (small per-step `uncons` calls)
- * instead of `Writer.foldWith`'s fused trampoline, wrapped in
- * `async{}` to keep it a suspended program — now 6.29 us/op median (3
- * rounds), 2.9x faster, still short of `chunksFoldProducer`'s 2.55 us
- * for a reason that's understood, not mysterious (Chunks.scala's own
- * doc on `foldWriter`). The signature narrowed from an arbitrary `G`
- * to `Async`+`CanBlock` as part of the fix.
+ * did NOT (17.30 us/op) until fixed 2026-09-19 in two steps: routing
+ * it through `writerStreamIn`'s `.iterator` instead of
+ * `Writer.foldWith`'s fused trampoline (wrapped in `async{}` to keep
+ * it a suspended program, signature narrowed to `Async`+`CanBlock`)
+ * got to 6.29 us/op; giving `writerStreamIn` its OWN hand-specialized
+ * `.iterator` override (mirroring `Stream[Producer, Pure]`'s own, in
+ * Generate.scala) — instead of `.iterator`'s default `Iterator.unfold`,
+ * which still paid an `Option`+`Either`+`Free`-node per chunk — got to
+ * 5.43 us/op median (3 rounds), now matching `chunksFoldLeftWriterDirect`'s
+ * own 5.0us almost exactly. See Chunks.scala's own doc on `foldWriter`
+ * for why the remaining ~2x against `chunksFoldProducer`'s 2.55us is a
+ * different, larger question (walking a `Free`-tree program at all)
+ * than this combinator's own dispatch tax.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))

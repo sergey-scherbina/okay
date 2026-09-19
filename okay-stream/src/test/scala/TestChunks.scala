@@ -3,6 +3,7 @@ package okay
 import !.*
 import Chunks.*
 import RowLift.plus
+import RowLift.at
 import scala.annotation.nowarn
 
 /** Chunked streams: batch amortization over the ordinary stream layer. */
@@ -187,5 +188,40 @@ class TestChunks extends munit.FunSuite {
 
   test("foldWriter/foldLeftWriter agree with fold/foldLeft on the same chunks, told instead of produced") {
     checkFoldWriterAgreesWithFold()
+  }
+
+  // writerStreamIn's specialized `.iterator` (writer-stream-specialized-
+  // iterator, 2026-09-19) has a branch the benchmark's own data never
+  // exercises: a FORWARDED G-operation actually running mid-walk
+  // (`writerChunksAsync`'s `.plus[Async]` only widens the row, no real
+  // Async op ever occurs). This test builds a program with REAL
+  // interleaved `async` calls between tells, and checks the specialized
+  // iterator's result against `Writer.run` — built on the unrelated
+  // `Writer.foldWith` trampoline — as an independent oracle.
+  test("the specialized writer iterator agrees with Writer.run when real G-ops are interleaved") {
+    def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+
+    def prog: Unit ! (Writer % Int + Async) =
+      for
+        _ <- Writer.tell(1).at[Writer % Int + Async]
+        x <- async(2 + 3).at[Writer % Int + Async]
+        _ <- Writer.tell(x).at[Writer % Int + Async]
+        y <- async(x * 10).at[Writer % Int + Async]
+        _ <- Writer.tell(y).at[Writer % Int + Async]
+        _ <- Writer.tell(999).at[Writer % Int + Async]
+      yield ()
+
+    val (expected, _) = run(Writer.run[Int, Unit, Async](prog))
+    val told = run(async(writerStreamIn[Unit, Async].iterator(prog).toVector))
+    assertEquals(told, expected.toVector)
+
+    // and the empty/no-G-op cases still agree too
+    def onlyTells: Unit ! (Writer % Int + Async) =
+      Writer.tell(1).plus[Async].flatMap(_ => Writer.tell(2).plus[Async])
+    val (expectedTells, _) = run(Writer.run[Int, Unit, Async](onlyTells))
+    assertEquals(run(async(writerStreamIn[Unit, Async].iterator(onlyTells).toVector)), expectedTells.toVector)
+
+    def empty: Unit ! (Writer % Int + Async) = pure(())
+    assertEquals(run(async(writerStreamIn[Unit, Async].iterator(empty).toVector)), Vector.empty)
   }
 }

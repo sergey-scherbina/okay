@@ -490,3 +490,53 @@ matching the narrowed signature) — not yet done, since each is embedded
 in a `Chunks[A]`-typed surrounding context of its own (the same
 "leaves first" caution `Flows.scala`'s `Shape[A]` triggered), not a
 same-session follow-on to this fix.
+
+### The remaining gap, also closed (2026-09-19, third follow-up)
+
+The "its own lane" from the paragraph above turned out to be small: a
+hand-specialized, mutable-state `iterator` override for
+`writerStreamIn`, mirroring `Stream[Producer, Pure]`'s own override in
+Generate.scala byte for byte in shape (a `var cur`/`ready`/`ended`/`elem`
+state machine, `@tailrec advance()`). The one real difference is how a
+forwarded `G`-operation is answered: not by building and running
+another program, but by `Handler[G].handle(g)` — the COMONADIC,
+single-operation interpretation every `Handler` already provides
+(`Handler[Async]`'s own `case Run(f) => f()` / `case Await(reg) =>
+cb.block(reg)...`). This eliminates the `Option`+`Either`+`Free`-node
+allocation the DEFAULT `Iterator.unfold(s)(uncons(_).runWith)` still
+paid once per chunk.
+
+Correctness: a new test builds a writer program with REAL interleaved
+`async` calls between tells (the benchmark's own data never exercises
+that branch — `.plus[Async]` only widens the row) and checks the
+specialized iterator's result against `Writer.run` — built on the
+unrelated `Writer.foldWith` trampoline — as an independent oracle.
+
+Measured, 3 rounds, N=10000/64, JDK 21.0.12 pinned, host load
+5.02/3.94/3.56, then 2.07/2.82/3.16, then 2.23/2.74/3.11:
+
+| round | time | gc.alloc.rate.norm |
+|---|---|---|
+| 1 | 5.428 us/op | 12,688 B/op |
+| 2 | 5.291 us/op | 12,688 B/op |
+| 3 | 5.448 us/op | 12,688 B/op |
+
+**6.29 -> ~5.43 us/op, 32,952 -> 12,688 B/op** — now matching
+`foldLeftWriter`'s own direct-call baseline (12,656 B/op, ~5.0us)
+almost exactly. `-prof jfr` on the new implementation: no `Right`/`Some`
+samples at all (was the dominant allocation before); what remains
+(`Free$Bind`, `Writer$Say`, the benchmark's own tree-construction
+lambdas) is the cost of BUILDING the 157-node program fresh each call —
+paid identically by the direct-call baseline too, not something this
+fix could or should touch.
+
+**Total, from the original dispatched form: 18.14 -> 5.43 us/op (3.3x
+faster), 249,584 -> 12,688 B/op (19.7x less garbage).** The remaining
+~2x against `Chunks.fold`'s 2.55us is the SAME gap `foldLeftWriter`'s
+own direct call already has and was accepted as "at parity" for — the
+cost of walking a `Free`-tree program (`resume`, `Bind` chains) at all,
+versus `Chunks.foldLeft`'s specialized, non-program iterator. That is a
+different, larger question (closing it would mean Producer's own
+G-effectful walk needs the same treatment `Chunks.foldLeft`'s PURE walk
+already has) than this combinator's own dispatch tax, which is now
+closed.

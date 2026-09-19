@@ -434,3 +434,54 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
   def uncons[W](s: A ! Writer % W + G): Option[(W, A ! Writer % W + G)] ! G =
     Writer.uncons[W, A, G](s).map(_.toOption)
 
+  /**
+   * The specialized linear view, mirroring `Stream[Producer, Pure]`'s
+   * own override in Generate.scala: no `Option`, no `Either`, no
+   * per-step program construction — the DEFAULT `Iterator.unfold(s)
+   * (uncons(_).runWith)` pays exactly those, once per CHUNK, which is
+   * what was left over after `producer-writer-carrier-foldwriter-eager`
+   * fixed the per-ELEMENT boxing (see Chunks.scala's `foldWriter` doc
+   * and [[escape-analysis-box-elimination-boundary]]). A forwarded
+   * `G`-operation is answered directly by `Handler[G].handle` — a
+   * COMONADIC, single-operation interpretation (`Handler[Async]`'s own
+   * `case Run(f) => f()` / `case Await(reg) => cb.block(reg)...`),
+   * not a program built and run.
+   */
+  override def iterator[W](s: A ! Writer % W + G)(using H: Handler[G]): Iterator[W] =
+    import !.*
+    import scala.annotation.tailrec
+    new Iterator[W]:
+      private var cur: A ! Writer % W + G = s
+      private var ready = false
+      private var ended = false
+      private var elem: W = scala.compiletime.uninitialized
+
+      @tailrec private def advance(): Unit = cur match
+        case Free.Pure(_) => ended = true
+        case Inject(e) =>
+          split[G, Writer % W](e)(
+            g => { val _ = H.handle(g); ended = true }
+          )(
+            w0 => (w0: @unchecked) match
+              case Writer.Say(w) => { elem = w; ready = true; ended = true }
+          )
+        case Bind(Inject(e), k) =>
+          split[G, Writer % W](e)(
+            g => { cur = k(H.handle(g)); advance() }
+          )(
+            w0 => (w0: @unchecked) match
+              case Writer.Say(w) => { elem = w; ready = true; cur = k(()) }
+          )
+        case _ =>
+          cur = cur.resume
+          advance()
+
+      def hasNext: Boolean =
+        if !ready && !ended then advance()
+        ready
+
+      def next(): W =
+        if !hasNext then throw java.util.NoSuchElementException("empty writer stream")
+        ready = false
+        elem
+

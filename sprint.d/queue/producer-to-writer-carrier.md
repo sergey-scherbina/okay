@@ -55,17 +55,25 @@
       analysis eliminates that box in `Chunks.foldLeft`'s small
       compiled loop but not in `Writer.foldWith`'s bigger one — the
       `.iterator`-based walk gives the per-chunk loop its own small
-      compiled unit again. NOT full parity with `Chunks.fold`'s 2.55us
-      — the remaining ~3.7us is `Iterator.unfold`'s generic
-      Option+Either+Free-node allocation, once per CHUNK (157, not
-      10000) — and this is NOT writer-specific: Producer's OWN
-      G-effectful `Stream` instance has no specialized `iterator`
-      override either, so any G-effectful stream in this library pays
-      it today. Closing THAT is its own lane (a mutable-state iterator
-      override mirroring `Stream[Producer, Pure]`'s pure-only one,
-      benefiting both carriers). `foldWriter`'s signature narrowed from
-      an arbitrary `G[+_]` to `Async`+`CanBlock` as part of the fix —
-      safe because it had ZERO production callers at the time.
+      compiled unit again. FURTHER CLOSED same day
+      (writer-stream-specialized-iterator): `writerStreamIn` gained
+      its OWN hand-specialized, mutable-state `.iterator` override
+      (mirroring `Stream[Producer, Pure]`'s own in Generate.scala,
+      using `Handler[G].handle` for a forwarded G-op — one value per
+      operation, no program built and run) instead of the DEFAULT
+      `Iterator.unfold`, which still paid an Option+Either+Free-node
+      per CHUNK. 6.29 -> 5.43 us/op median (3 rounds), 32,952 -> 12,688
+      B/op — now matching `foldLeftWriter`'s own direct-call baseline
+      (12,656 B/op, ~5.0us) almost exactly; `-prof jfr` confirms
+      Right/Some samples gone entirely. TOTAL from the original
+      dispatched form: 18.14 -> 5.43 us/op (3.3x), 249,584 -> 12,688
+      B/op (19.7x less garbage). The remaining ~2x against
+      `Chunks.fold`'s 2.55us is the SAME gap `foldLeftWriter` itself
+      was already accepted as "at parity" with — walking a `Free`-tree
+      program at all, not this combinator's own dispatch tax, which is
+      now closed. `foldWriter`'s signature narrowed from an arbitrary
+      `G[+_]` to `Async`+`CanBlock` as part of the fix — safe because
+      it had ZERO production callers at the time.
       `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala` are now
       UNBLOCKED to migrate onto it (their `G` is already `Async`-shaped)
       but not yet migrated — each sits inside its own `Chunks[A]`-typed
