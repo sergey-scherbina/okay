@@ -1,0 +1,6 @@
+feature/pwc-deletions-minimal 2026-09-19T20:43:31Z
+agent: claude-code
+heartbeat: 2026-09-19T20:43:31Z
+status: in-progress
+done-so-far: operator chose minimal deletions, bridges kept; worktree created
+next: delete Producer.fold/each/concat (+ their callers in tests/jmh/docs), amend spec deletion bullets
