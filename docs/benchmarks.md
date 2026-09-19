@@ -2174,11 +2174,37 @@ equal to the byte — which is what makes the numbers below trustworthy).
 | sort every element | 5 358 168 | 4111 |
 | guarded | **30 328** | **118** |
 
-**−99.4% of the allocation.** 536 bytes per record became 3. What is
-left is the accept path: an element that DOES make the cut still
-sorts k+1, and with a random corpus about `k · ln(n/k)` of them do —
-57 of the 10 000, which is where the 30 KB is. Filed, not done: the
-accept could insert into a sorted list instead.
+**−99.4% of the allocation.** 536 bytes per record became 3. What was
+left was the accept path: an element that DOES make the cut still
+sorted k+1, and with a random corpus about `k · ln(n/k)` of them do —
+57 of the 10 000, which is where the 30 KB was.
+
+**Insert instead of sort (topk-insert-instead-of-sort, landed).** The
+accumulator is already sorted, so an accepted element does not need
+`sorted`'s array-and-back round trip: `insert` walks it once, keeps
+every node up to the insertion point (a `List` cannot share past a
+point where its tail changes, so those get rebuilt regardless — the
+old code rebuilt them twice, once inside `sorted` and once in the
+`take` that followed it), and stops at exactly `k`. Re-measured on
+this box rather than trusted from the numbers above (`stale benchmark
+numbers in comments` is a standing rule here) — `compare/runMain
+okay.TopKProbe 10000 8`, same-box, same-run pair:
+
+| 10 000 records, k = 8 | bytes | µs |
+|---|---|---|
+| sort every element (unguarded) | 11 750 008 | 2188 |
+| guarded, `sorted`+`take` (pre-fix) | 60 568 | 95 |
+| guarded, `insert` (this fix) | **10 736** | **74** |
+
+**−82.3% of the guarded path's remaining allocation** (60 568 → 10
+736), on the unboxed `Row` case the accept path was written for. The
+boxed-`Double` case — the swing the JMH pair above uses — moves less
+(270 328 → 250 736, −7.3%): boxing dominates the accumulator itself,
+so the array-round-trip `sorted` was cutting away matters
+proportionally less there. Both sides agree with the old
+implementation to the element (`TopKProbe`'s own `require`), and
+`TestAggregate` pins the tie-refusal behaviour the insert must
+preserve.
 
 **Where a user meets it**, matched pair in one JMH run, 200 segments
 at provider dimension (1536), k = 8:
