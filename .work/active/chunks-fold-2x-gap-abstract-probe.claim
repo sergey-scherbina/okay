@@ -1,0 +1,6 @@
+feature/chunks-fold-2x-gap-abstract-probe 2026-09-19T21:43:09Z
+agent: claude-code
+heartbeat: 2026-09-19T21:43:09Z
+status: in-progress
+done-so-far: worktree created
+next: the next probe the 2x-gap entry names (own method in compare with A abstract), measured
