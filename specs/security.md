@@ -427,28 +427,46 @@ object OAuth2:                           // the client flows, over trait Http
   "nothing issued before T" is a comparison when a cheap check is
   wanted.
 
+  **WHICH OF THE TWO NARROWS THE HANDSHAKE.** `only` narrows the
+  SERVER, so a caller built one gets an honest `initialize`: a
+  Serving with no tools declares no tools capability and `tools/list`
+  is `MethodNotFound`. The gate narrows the CONVERSATION, and the
+  handshake is per session and already sent — so a caller the policy
+  allows nothing answers `{"tools": []}` under a handshake that
+  advertised tools. Both are truthful about what can be CALLED, which
+  is the property that matters; when the handshake must match too,
+  build the Serving per caller with `only` (a stdio server, or one
+  connection one server) and keep the gate for the shared HTTP door.
+
   Behavior:
-  - [ ] `Serving.only` narrows `tools` and `call` together; a name in
-        one and not the other cannot survive it
-  - [ ] a Serving narrowed to nothing declares NO tools capability —
-        the handshake is honest about a caller who has none
-  - [ ] a caller whose policy permits two of three tools sees exactly
+  - [x] `Serving.only` narrows `tools` and `call` together; a name in
+        one and not the other cannot survive it, and the Serving it
+        came from is untouched
+  - [x] a Serving narrowed to nothing declares NO tools capability —
+        `tools/list` AND `tools/call` are `MethodNotFound`
+  - [x] a caller whose policy permits two of three tools sees exactly
         two in `tools/list`
-  - [ ] calling the third by name answers `no such tool`, `isError`,
+  - [x] calling the third by name answers `no such tool`, `isError`,
         and the table never runs — asserted by a tool that records
         having been called
-  - [ ] the gate is per request: two calls on ONE session, the
+  - [x] a refused tool is byte-for-byte what a MISSPELLED one
+        answers: absent is absent
+  - [x] the gate is per request: two calls on ONE session, the
         principal's permission withdrawn between them, and the second
         is refused
-  - [ ] `tools/list` before `initialize` is still `InvalidRequest`
-        through the gate, and a server with no tools still answers
+  - [x] `tools/list` before `initialize` is still `InvalidRequest`
+        through the gate, and a tool-less server still answers
         `MethodNotFound` — the guard answers neither itself
-  - [ ] the SSE GET passes through untouched
-  - [ ] a capability attenuated to one tool calls that one and sees
+  - [x] a request with no bearer is the challenge that teaches:
+        401 carrying `resource_metadata`
+  - [x] the SSE GET passes through untouched
+  - [x] a capability attenuated to one tool calls that one and sees
         only it; an unattenuated root capability sees them all
-  - [ ] an expired capability (`until=`) is refused for every tool,
-        and a capability with a caveat REMOVED fails the chain
-  - [ ] hostile input answers rather than throws: a damaged body, a
+  - [x] an expired capability (`until=`) is refused for every tool, a
+        capability with a caveat REMOVED fails the chain, and a
+        caveat kind this verifier cannot enforce refuses rather than
+        being ignored
+  - [x] hostile input answers rather than throws: a damaged body, a
         `tools/call` with no name, a bearer that is not a capability
         at all
 
@@ -501,6 +519,35 @@ loop test: the SAME agent tool call that works on an open server
 works on the protected one, with nothing above the link changed.
 Discovered is a VALUE the caller sees before any secret travels —
 the trust boundary held by making them look. 4 tests.
+
+## Results (stage 7)
+Shipped 2026-09-19. `Serving.only`, `McpAuth.tools`, `McpAuth.capabilities`
+and the per-request gate behind both; 16 tests, no port bound — a
+route is a function, so the whole door is driven by calling it with a
+Request, which is why this suite is in the default gate while
+TestMcpAuth (which binds) is not.
+
+TWO DEFECTS FELL OUT OF WRITING IT, both older than the lane and
+neither in okay-security:
+
+- okay-mcp's tools capability guard sat BELOW its own handlers, so
+  the branch was dead and a tool-less server answered `tools/list`
+  with an empty list — the "polite empty list" the file's own comment
+  refuses. Invisible while a tool-less server was a curiosity;
+  `Serving.only` makes it ordinary. Moved above, with the reason.
+- okay-http's `McpHttp` decided whether to await a reply by asking
+  whether the inbound message was a `Request`, while the stage also
+  answers a `Failed`. So a malformed body's error was left in the
+  session's channel and handed to the NEXT call — measured here, a
+  `tools/call` answering `-32600` for the POST before it. One
+  malformed body shifted every later reply on that session by one.
+  `owed` now asks what the STAGE answers
+  (okay-http/BUGS.md mcp-unowed-answer-crosses-requests).
+
+The lane was opened by a stranger's question about exactly this
+boundary — whether a caller, once authenticated, can use every tool.
+It could, and the honest answer was that we had the hole we would
+have pointed at.
 
 ## See also
 `Secure.granted` — the capability form of the route wrapper

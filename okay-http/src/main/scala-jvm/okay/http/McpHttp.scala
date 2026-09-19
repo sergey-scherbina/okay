@@ -347,8 +347,18 @@ object McpHttp {
   /** one posted message in, its one answer out (or 202: nothing owed) */
   private def answer(wire: Wire, body: String, message: Rpc,
                      extra: Seq[(String, String)]): Response ! Async =
+    // WHAT THE STAGE ANSWERS, not what the protocol calls a request.
+    // A line that did not decode arrives here as the `Failed` that
+    // decoding it made, and the server TELLS it back — JSON-RPC owes
+    // an error with a null id for a parse error. Reading only
+    // `Request` left that answer sitting in `outbound`, so the damage
+    // was not the dropped error: the NEXT owed call on the session
+    // received it instead of its own reply (measured 2026-09-19 — a
+    // `tools/call` answered -32600 for the previous POST's garbage).
+    // okay-http/BUGS.md mcp-unowed-answer-crosses-requests.
     val owed = message match
       case _: Rpc.Request => true
+      case _: Rpc.Failed => true
       case _ => false
     wire.inbound.send(body).flatMap { _ =>
       if !owed then pure(Response(202, extra, Http.one(Array.empty)))

@@ -3,6 +3,35 @@
 Defects owned by this module. Status lives in the machine-readable
 header, never in prose.
 
+## mcp-unowed-answer-crosses-requests — a POST the transport thought it owed nothing for left its answer for the NEXT call
+<!-- status: fixed
+     lane: jvm
+     area: okay-http/src/main/scala-jvm/okay/http/McpHttp.scala
+     gate: okay-security/src/test/scala-jvm/okay/security/TestMcpTools.scala "a damaged body and a nameless call are ANSWERS"
+     fixed-in: this lane
+     confirmed: no -->
+
+`McpHttp.answer` decided whether to await a reply by asking whether
+the inbound message was an `Rpc.Request`. A line that does not decode
+arrives as the `Rpc.Failed` that decoding it made, and okay-mcp's
+server TELLS that back — JSON-RPC owes an error with a null id for a
+parse error. So the transport answered `202` with an empty body and
+left the real answer in `outbound`.
+
+The dropped error was the small half. The large half is that the
+channel is per SESSION: the next POST that DID await a reply received
+the previous request's stranded answer. Measured 2026-09-19 while
+writing the tool-authorization gate's hostile-input test — a
+`tools/call` with no name came back `-32600 not a JSON-RPC message:
+{{{not json at all`, which is the answer to the POST before it. One
+malformed body silently shifts every subsequent reply on that session
+by one.
+
+Fixed by asking the right question: `owed` is what the STAGE answers,
+which is a Request or a Failed. A notification still answers 202 with
+no body (okay-http's own `a posted NOTIFICATION answers 202` still
+passes), because the stage tells nothing for one.
+
 ## nio-serve-stall — a write completion that never fires under channel churn
 <!-- status: fixed
      lane: nio

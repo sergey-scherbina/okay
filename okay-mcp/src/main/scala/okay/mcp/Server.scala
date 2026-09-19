@@ -52,7 +52,27 @@ object Server {
                              (_, _) => None,
                            subscriptions: Subscriptions = Subscriptions(),
                            complete: Option[Mcp.Complete => Vector[String]] = None,
-                           templates: Seq[Mcp.Template] = Nil)
+                           templates: Seq[Mcp.Template] = Nil):
+
+    /**
+     * The same server with only the tools this caller may use.
+     *
+     * ABSENT, NOT REFUSED. `tools` and `call` are narrowed TOGETHER,
+     * so the list and the table cannot disagree by construction: a
+     * name this caller may not use is one this server does not have
+     * for them, and asking for it by name answers the same
+     * "no such tool" a misspelling answers. The other design is a
+     * check inside each handler, which has to be written once per
+     * tool and remembered forever — and the one nobody wrote is the
+     * hole (specs/security.md stage 7).
+     *
+     * Narrowed to nothing, the server declares no tools at all:
+     * `serve` computes its capabilities from what is actually there,
+     * so the handshake stays honest about a caller who has none.
+     */
+    def only(allowed: String => Boolean): Serving =
+      copy(tools = tools.filter(t => allowed(t.name)),
+        call = call.filter((n, _) => allowed(n)))
 
   /** the tools-only server, which is what most are */
   def serve(info: Mcp.Info, tools: Seq[ToolSpec],
@@ -99,6 +119,20 @@ object Server {
           fail(id, Rpc.InvalidRequest,
             s"'$m' before initialize").map(_ => ready)
 
+        // BEFORE the two handlers below, and that order is the rule this
+        // file states: "a method of a capability it does not have is
+        // MethodNotFound, not a polite empty list". Written after them
+        // it was DEAD — a tool-less server answered `tools/list` with
+        // an empty list and `tools/call` with "no such tool", which is
+        // the polite empty list the comment refuses, and the branch
+        // could not be reached to say otherwise. Found 2026-09-19 by
+        // the first caller for which a tool-less server is ORDINARY
+        // rather than a curiosity: `Serving.only`, narrowing a server
+        // to what one caller may use (specs/security.md stage 7).
+        case Rpc.Request(id, m, _)
+          if (m == Mcp.ToolsList || m == Mcp.ToolsCall) && !hasTools =>
+          fail(id, Rpc.MethodNotFound, m).map(_ => ready)
+
         case Rpc.Request(id, Mcp.ToolsList, _) =>
           answer(id, Mcp.toolsResult(s.tools)).map(_ => ready)
 
@@ -115,10 +149,6 @@ object Server {
 
         case Rpc.Request(id, m, _)
           if (m == Mcp.PromptsList || m == Mcp.PromptsGet) && !hasPrompts =>
-          fail(id, Rpc.MethodNotFound, m).map(_ => ready)
-
-        case Rpc.Request(id, m, _)
-          if (m == Mcp.ToolsList || m == Mcp.ToolsCall) && !hasTools =>
           fail(id, Rpc.MethodNotFound, m).map(_ => ready)
 
         case Rpc.Request(id, Mcp.CompletionComplete, params) => s.complete match

@@ -2,7 +2,8 @@ package okay.security
 
 import okay.{!, Async, pure}
 import okay.codec.Json
-import okay.http.{Http, McpHttp, Request, Response}
+import okay.http.{Body, Http, McpHttp, Method, Request, Response}
+import okay.mcp.{Mcp, Rpc}
 
 /**
  * MCP authorization (specs/security.md stage 1; MCP's own auth spec):
@@ -56,21 +57,171 @@ object McpAuth {
              (route: Principal ?=> Request => Response ! Async): Request => Response ! Async =
     guard(verify, metadataUrl, policy)((p, r) => route(using p)(r))
 
-  /** the one ladder both forms share */
+  /**
+   * The MCP route with the policy asked per TOOL rather than per URL
+   * (specs/security.md stage 7).
+   *
+   * `protect` above can only say "this caller may POST /mcp": its
+   * question is `(principal, method, url)` and every tool on the
+   * server sits behind that one answer. Here the question is
+   * `policy(p, Mcp.ToolsCall, <tool name>)`, asked once per tool, and
+   * a tool a caller may not use is ABSENT — missing from
+   * `tools/list`, and answering "no such tool" when named, which is
+   * what a misspelling answers. Compose the two when a caller needs
+   * both doors; neither implies the other.
+   */
+  def tools(verify: String => Verified, metadataUrl: String,
+            policy: Policy = Policy.allowAll)
+           (route: Request => Response ! Async): Request => Response ! Async =
+    authenticated(verify, metadataUrl) { (p, r) =>
+      gate(name => policy(p, Mcp.ToolsCall, name) match
+        case Decision.Permit => true
+        case Decision.Deny(_) => false)(route)(r)
+    }
+
+  /**
+   * The same door, where the credential is a CAPABILITY and the
+   * question is the capability's OWN.
+   *
+   * A `Policy` is the SERVER's table; a `Capability` is the HOLDER's.
+   * `Capability.checking` with the tool as the scope is the module's
+   * existing question — so whoever holds a capability narrows the
+   * tool set for the agent it hands it to, with no issuer, no
+   * registry and no round trip, and the authorization it was itself
+   * granted is untouched because the root capability never moved.
+   * Nothing new is spelled here: `Caveat.Scope` already says a tool.
+   *
+   * THE LIVENESS CHECK, and why it is shaped like that. A door must
+   * tell "not yours" (401, which is also how a client DISCOVERS where
+   * to authenticate) from "not for this tool" (absent). Asking for
+   * the signature alone would do it and `Capability.verify` does not
+   * offer that, on purpose. So the probe verifies the capability
+   * against the scopes IT ITSELF names: that asks the chain and the
+   * clock, refuses a caveat kind this verifier cannot enforce, and
+   * is never the authorization decision — which stays per tool,
+   * below.
+   */
+  def capabilities(rootKey: Array[Byte], metadataUrl: String,
+                   now: () => Long = () => System.currentTimeMillis(),
+                   scopeOf: String => String = (n: String) => "tool:" + n)
+                  (route: Request => Response ! Async)
+                  (using Crypto): Request => Response ! Async =
+    r =>
+      Secure.bearerToken(r).flatMap(Capability.decode) match
+        case None => challenge(metadataUrl, 401, "no token")
+        case Some(cap) if !alive(cap, rootKey, now()) =>
+          challenge(metadataUrl, 401, "invalid_token")
+        case Some(cap) =>
+          gate(name => cap.verify(rootKey,
+            Capability.checking(now(), Set(scopeOf(name)))))(route)(r)
+
+  /** well-formed, unexpired and ours: the capability against its own
+   * scopes, so an unknown caveat kind refuses here rather than
+   * silently emptying the tool set */
+  private def alive(cap: Capability, rootKey: Array[Byte], now: Long)
+                   (using Crypto): Boolean =
+    cap.verify(rootKey, Capability.checking(now,
+      cap.caveats.flatMap(Caveat.parse).collect { case Caveat.Scope(n) => n }.toSet))
+
+  /**
+   * The narrowing itself, per REQUEST — a bearer arrives on every
+   * request, so a permission withdrawn between two calls is refused
+   * on the NEXT CALL rather than whenever the client reconnects. It
+   * holds no state, which is the other half of that: a route cached
+   * per caller would key on the allowed SET, and a holder can
+   * attenuate into arbitrarily many distinct subsets, each minting a
+   * session table, a channel and a fan-out fiber.
+   *
+   * IT FILTERS THE ANSWER TO `tools/list` AND DOES NOT COMPOSE ONE.
+   * The stage owns the protocol: a `tools/list` before `initialize`
+   * is `InvalidRequest`, a server with no tools answers
+   * `MethodNotFound`. A guard that serves its own list re-implements
+   * those branches and drifts from them.
+   */
+  private def gate(allowed: String => Boolean)
+                  (route: Request => Response ! Async): Request => Response ! Async =
+    r =>
+      // the SSE stream is never read and never rewritten: reading a
+      // body to filter it would consume the very thing being streamed
+      if r.method == Method.Get then route(r)
+      else Rpc.decode(bodyOf(r)) match
+        case Rpc.Request(id, Mcp.ToolsCall, params) =>
+          Mcp.callOf(params, Json.print(id)) match
+            // stopped BEFORE the table runs, and answering exactly
+            // what an unknown name answers
+            case Some(c) if !allowed(c.name) =>
+              pure(jsonRpc(200, Nil, Rpc.Answer(id,
+                Mcp.contentResult(s"no such tool '${c.name}'", isError = true))))
+            case _ => route(r)
+        case Rpc.Request(_, Mcp.ToolsList, _) =>
+          route(r).flatMap(withoutForbidden(allowed))
+        case _ => route(r)
+
+  /**
+   * The tools this caller may not use, out of a `tools/list` answer.
+   *
+   * FAIL CLOSED: an entry whose name cannot be read is dropped, not
+   * kept — this is an authorization boundary, and the shape we did
+   * not understand is the one we cannot judge. Anything that is not
+   * a tools answer at all (a session error, a `Failed`) travels
+   * unchanged.
+   */
+  private def withoutForbidden(allowed: String => Boolean)(resp: Response)
+  : Response ! Async =
+    Http.text(resp).map { body =>
+      val filtered = Rpc.decode(body) match
+        case Rpc.Answer(id, result) => Rpc.encode(Rpc.Answer(id, result match
+          case Json.JObj(fs) => Json.JObj(fs.map {
+            case ("tools", Json.JArr(items)) => "tools" -> Json.JArr(items.filter {
+              case Json.JObj(t) =>
+                t.collectFirst { case ("name", Json.JStr(n)) => n }.exists(allowed)
+              case _ => false
+            })
+            case kept => kept
+          })
+          case other => other))
+        case _ => body
+      Response(resp.status, resp.headers,
+        Http.one(filtered.getBytes("UTF-8")))
+    }
+
+  private def bodyOf(r: Request): String = r.body match
+    case Body.Text(s) => s
+    case Body.Bytes(b) => String(b.toArray, java.nio.charset.StandardCharsets.UTF_8)
+    case Body.Empty => ""
+
+  private def jsonRpc(status: Int, extra: Seq[(String, String)], m: Rpc): Response =
+    Response(status, extra :+ ("content-type", "application/json"),
+      Http.one(Rpc.encode(m).getBytes("UTF-8")))
+
+  /** the 401/403 that is the first step of the dance rather than a
+   * dead end: `resource_metadata` says where to learn to authenticate */
+  private def challenge(metadataUrl: String, status: Int, error: String)
+  : Response ! Async =
+    pure(Response(status, Seq(("www-authenticate",
+      s"""Bearer resource_metadata="$metadataUrl", error="$error"""")),
+      okay.http.Http.one(Array.emptyByteArray)))
+
+  /** the bearer, verified — the half both `guard` and the tool doors
+   * share, with no policy question of its own */
+  private def authenticated(verify: String => Verified, metadataUrl: String)
+                           (k: (Principal, Request) => Response ! Async)
+  : Request => Response ! Async =
+    r =>
+      Secure.bearerToken(r) match
+        case None => challenge(metadataUrl, 401, "no token")
+        case Some(t) => verify(t) match
+          case Verified.No(_) => challenge(metadataUrl, 401, "invalid_token")
+          case Verified.Ok(p) => k(p, r)
+
+  /** the one ladder `protect` and `granted` share */
   private def guard(verify: String => Verified, metadataUrl: String, policy: Policy)
                    (k: (Principal, Request) => Response ! Async): Request => Response ! Async =
-    r =>
-      def challenge(status: Int, error: String): Response ! Async =
-        pure(Response(status, Seq(("www-authenticate",
-          s"""Bearer resource_metadata="$metadataUrl", error="$error"""")),
-          okay.http.Http.one(Array.emptyByteArray)))
-      Secure.bearerToken(r) match
-        case None => challenge(401, "no token")
-        case Some(t) => verify(t) match
-          case Verified.No(_) => challenge(401, "invalid_token")
-          case Verified.Ok(p) => policy(p, r.method.name, r.url) match
-            case Decision.Deny(_) => challenge(403, "insufficient_scope")
-            case Decision.Permit => k(p, r)
+    authenticated(verify, metadataUrl) { (p, r) =>
+      policy(p, r.method.name, r.url) match
+        case Decision.Deny(_) => challenge(metadataUrl, 403, "insufficient_scope")
+        case Decision.Permit => k(p, r)
+    }
 
   // ---------------------------------------------------------------- client
 
