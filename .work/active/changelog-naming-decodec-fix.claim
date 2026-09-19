@@ -1,6 +1,0 @@
-feature/changelog-naming-decodec-fix 2026-09-19T16:15:00Z
-agent: claude-code
-heartbeat: 2026-09-19T16:20:00Z
-status: in-progress
-done-so-far: sibling landed the rename itself as 208ab934 (decode-c-ssum-defer.md) while this claim was in flight; own duplicate rename attempt discarded
-next: fix okay-codec/BUGS.md's stale reference to the old filename, the one thing the sibling's fix missed
