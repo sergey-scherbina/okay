@@ -1,0 +1,10 @@
+feature/json-raw-nesting-jmh-pending 2026-09-19T15:50:00Z
+agent: claude-code
+heartbeat: 2026-09-19T15:50:00Z
+status: in-progress
+done-so-far: worktree created; box is quiet right now (load 2.7-3.9
+  on 14 cores) — exactly the condition the entry asks to wait for
+next: compare/Jmh/run -i 5 -wi 3 -f 5 on .*parseOnly.*|.*parseValueOnly.*,
+  confirm the two identical-body benchmarks now agree, update
+  specs/iterative-recursive-decode.md's "Targets 1+2 done" entry with
+  the real delta
