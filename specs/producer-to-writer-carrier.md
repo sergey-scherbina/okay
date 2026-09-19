@@ -52,13 +52,14 @@ type Feed[W] = Unit ! Writer % W                      // src/main/scala/Writer.s
 // an outcome travels beside the elements, typed:
 def get(key: String): Either[String, Unit] ! (Writer % Chunk[Byte] + Async)
 
-// stage 2: what disappears, module by module
-//   produced[A](e: Any): A                          — the cast
-//   Producer.fold / each / concat                   — Writer's do the job
-//   Stream[Producer, Pure], Stream[A ! Produce + G, G] — Writer's instances remain
-//   Source.fromProducer / ofProducer / toProducer   — no second carrier to bridge
-//   Producer itself: an alias of the writer stream, or the documented pure
-//   special case if stage 0 shows the chunked hot path needs it
+// stage 2: what was going to disappear — and DID NOT (operator,
+// 2026-09-19, pwc-arc-close): `Producer` is the GENERATOR carrier
+// (`produce` is yield, `Put[Producer]` is what `generate`/`nats`/`fibs`
+// materialize into) and stays WHOLE: `produced`, `Producer.fold/each/
+// concat/log`, both Stream instances, `Foldable[Producer]`, and the
+// three Source bridges, so either carrier converts into the other.
+// Nothing named here was deleted. What the arc changed is WHO uses
+// it: no module's streaming seam is typed on `Produce` any more.
 ```
 
 ## Behavior
@@ -167,11 +168,12 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       is gone — the `Say` match refines the type. ParallelChunks, Lex,
       Fs2Interop and java Streams changed one `produce` → `Writer.tell`
       per emit; okay-cluster, persist Streams, wroclaw: NO change
-- [ ] deletions land with the last module: `produced`, `Producer.fold/each/
-      concat`, the Produce Stream instances, the three Source bridges
-- [ ] `Put[Producer]` (landed in put-de-diagonal, c9a3f561) follows
-      Producer: an alias keeps it for free, a deletion removes it with
-      the type
+- [x] deletions — DECLINED by the operator (2026-09-19, pwc-arc-close):
+      `Producer` is the generator carrier and stays whole, its drains
+      included; a minimal-deletion branch (fold/each/concat, zero
+      callers) was built, measured nothing, and was dropped unmerged.
+      The bullet is closed as a decision, not as work
+- [x] `Put[Producer]` stays with `Producer`
 
 ## Out of scope
 
@@ -269,6 +271,19 @@ the same thing.
   chunked hot carrier, stage 1's RULE still applies to new seams, and
   the loss is recorded here with its numbers so nobody re-measures it
   from memory.
+- **Keep `Producer` whole** — the operator's call (2026-09-19) once
+  every module had moved: `Producer` is the GENERATOR carrier, not a
+  second stream carrier to retire — `produce` is yield, `Put[Producer]`
+  is what `generate`/`nats`/`fibs` unfold into, `fold/each/concat/log`
+  are its own walks, and the bridges keep either carrier convertible
+  into the other. Rejected: deleting `Producer.fold/each/concat` (zero
+  callers, ~60 lines, duplicates of `Writer.fold/collect`/
+  `Source.concat`) — harmless, tested, and part of the generator's own
+  vocabulary; and rejected before it, deleting `Producer` outright.
+  The performance picture behind the call: Producer is ~5% faster only
+  on the pure chunked fold; elementwise the writer carrier is 14-24%
+  faster; the G-effectful Producer walk is the slowest road of all (no
+  specialized iterator) — none of which is why it stays.
 - **The name of the pure writer stream is `Feed[W]`** — settled
   2026-09-19, the operator's call over no-alias and `Told[W]`
   (candidates were `type Feed[W] = Unit ! Writer % W`, a short alias
@@ -748,3 +763,19 @@ rounding. What the cost buys is the spec's Overview: no `pure(c)`
 emitting nothing, no `produced` cast on the chunked path, one carrier
 for `Chunks`, `Feed` and `Source`, and `Chunks.merge`/`Flow`/`Lex`/the
 interops all on it with no bridge.
+
+### Arc closed (2026-09-19, pwc-arc-close)
+
+Every module lane landed the same evening — persist (543da10b), sql
+(14bd60e2), docs (74fa7605), kafka (23b01f6e) — after the `Chunks`
+retype (76408290) and the pure iterator (bf15904c): no module outside
+the core builds a `Produce` stream. The deletion bullet closed as a
+DECISION: the operator keeps `Producer` whole — the generator carrier,
+`produce` as yield, with its own `fold/each/concat/log`, both Stream
+instances and the three bridges — so nothing in Generate.scala or
+Source.scala was removed. DONE-WHEN, as it stands after that call: no
+module's streaming seam typed on `Produce` — met; `Blob.get` on the
+writer carrier — met; the benchmark shapes that changed measured
+before/after in the `Chunks` retype (4-8% on the tightest chunked
+folds, noise elsewhere), and docs/guide.md §4's quoted figures (10.2,
+13.3) sit inside that drift, so no quoted number moved.
