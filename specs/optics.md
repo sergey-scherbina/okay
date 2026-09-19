@@ -404,6 +404,18 @@ correctness never depends on the fusion; a test asserts the fused and
 the unfused answers agree on every shape, including the ones that
 fall back.
 
+**The plan is typed on the term (fuse-plan-typed-term, 2026-09-20).**
+What the macro understood was held as `Plan.L(get: Any, put: Any)`
+and read back through ten `asInstanceOf[Term]` in the emitters — an
+`Any` where a type parameter would do, which is the shape the
+operator's no-cast rule names outright. The reason was real but not
+binding: `Plan` is declared outside any `Quotes` and cannot name the
+path-dependent `q.reflect.Term`, so it takes the term type as a
+parameter instead — `enum Plan[+T]`, `plan` answering
+`Plan[q.reflect.Term]`, `Some_` a `Plan[Nothing]` — and every emitter
+reads a `Term`. No behaviour change; the byte-for-byte parity table
+above is the check that nothing moved, and the suite runs it.
+
 ## Results
 
 Stage 3 (optics-state) landed 2026-09-09: `State.zoom` and
