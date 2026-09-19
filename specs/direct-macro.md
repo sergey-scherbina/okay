@@ -344,7 +344,9 @@ The pipeline was one method — `compileAll`, 1460 lines of nested defs
 sharing a closure over the Quotes, the monad and the two mode flags —
 which meant no phase had a name a test could call. It is now a class,
 `DirectCompiler[F]`, mixed from one trait per phase, each in its own
-file with its dependencies stated by what it extends:
+file under `src/main/scala/macros/` (`package okay.macros`; the facade
+`okay.Direct` stays where it was) with its dependencies stated by what
+it extends:
 
 | phase | file | decides | reaches the knot |
 |---|---|---|---|
@@ -406,13 +408,24 @@ data, before any bind is emitted and without running anything:
   the program's behaviour. The closure became `DirectCompiler[F]` and
   the defs became members of one trait per phase (the Structure
   section above), so a test-side macro can instantiate the class and
-  call one phase. Two shapes were refused. A subpackage
-  (`okay.direct`) would have shadowed `Direct.direct` for every file
-  in `package okay` that imports `Direct.*` — a package is a term
-  name too. And `using` parameters on the class would have put two
-  `Quotes` givens in the class body (the parameter and the phases'
-  inherited alias), so the class takes plain `val`s and the base trait
-  owns the one given, at `q.type`.
+  call one phase. `using` parameters on the class were refused: they
+  would have put two `Quotes` givens in the class body (the parameter
+  and the phases' inherited alias), so the class takes plain `val`s
+  and the base trait owns the one given, at `q.type`.
+- **The phases live in `okay.macros`, and not in `okay.direct`**
+  (direct-phases-package, 2026-09-20). The facade stays `okay.Direct`;
+  the nine phase files are machinery every file in `package okay`
+  would otherwise see, so they moved to a subpackage. The natural
+  name was measured and refused: a package is a term name too, and a
+  probe compile of the three import shapes the repository uses showed
+  `okay.direct` breaking exactly one of them — `import okay.*` beside
+  `import okay.Direct.*`, which seven files here write and any user
+  would — with E049 "Reference to direct is ambiguous: imported by
+  okay._ and by okay.Direct._". (`package okay` with `import
+  Direct.*`, and `import okay.Direct.*` alone, both compiled: the
+  first draft of this entry said "shadowing", and that was the wrong
+  mechanism.) `macros` names what the package holds, compile-time
+  machinery, and collides with no term of the API.
 
 - **A lambda whose body ends at the block's program type is compiled,
   not refused** (direct-program-lambda, 2026-09-16). The general
