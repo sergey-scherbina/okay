@@ -1,0 +1,6 @@
+feature/writer-collect-loops-unify 2026-09-19T22:40:20Z
+agent: claude-code
+heartbeat: 2026-09-19T22:40:20Z
+status: in-progress
+done-so-far: review findings written; worktree created
+next: spec, then unify Writer.collect/Source.runCollect/Source.concat on loopWith
