@@ -169,6 +169,23 @@ object Http {
   def framing: Stage[Chunk[Byte], String, Unit] = Lines.stage
 
   /**
+   * Does this response mean a STREAM, rather than one buffered body?
+   *
+   * `Response.body` is a `Source[Chunk[Byte]]` and always was, so the
+   * shape allowed streaming from the start; what a server backend
+   * decides is whether to drain it before writing (right for REST —
+   * one length, one write) or to write it as it arrives (necessary for
+   * server-sent events, where the whole point is that the caller sees
+   * an event before the source ends). Content type is exactly the
+   * place a caller says which one they meant (http-streaming-responses;
+   * every server backend shares this one answer rather than each
+   * naming `text/event-stream` itself).
+   */
+  def streams(r: Response): Boolean =
+    r.headers.exists((k, v) =>
+      k.equalsIgnoreCase("content-type") && v.contains("text/event-stream"))
+
+  /**
    * The body, decoded by its schema.
    *
    * Total, and inherited rather than re-invented: a truncated body

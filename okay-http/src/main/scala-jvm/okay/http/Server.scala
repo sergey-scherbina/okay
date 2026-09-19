@@ -64,11 +64,17 @@ object Server {
       // the route is a program; running it here parks a virtual thread,
       // which is what the executor above is for
       val res = Async.run[Response, Pure](route(req)).runWith
-      val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(res)).runWith.toArray
-
       res.headers.foreach((k, v) => x.getResponseHeaders.add(k, v))
-      x.sendResponseHeaders(res.status, if bytes.isEmpty then -1 else bytes.length.toLong)
-      if bytes.nonEmpty then x.getResponseBody.write(bytes)
+      if Http.streams(res) then
+        // length 0 asks the JDK server for chunked transfer encoding —
+        // an arbitrary number of writes, delivered as they are made,
+        // rather than one length computed up front (http-streaming-responses)
+        x.sendResponseHeaders(res.status, 0)
+        Async.run[Unit, Pure](write(res.body, x.getResponseBody)).runWith
+      else
+        val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(res)).runWith.toArray
+        x.sendResponseHeaders(res.status, if bytes.isEmpty then -1 else bytes.length.toLong)
+        if bytes.nonEmpty then x.getResponseBody.write(bytes)
     catch
       // a route that throws is a 500 with the message as the body —
       // damage as data, on the wire too
@@ -77,6 +83,22 @@ object Server {
         x.sendResponseHeaders(500, m.length.toLong)
         x.getResponseBody.write(m)
     finally x.close()
+
+  /**
+   * Write the body chunk by chunk, flushing after each — the same
+   * job Jetty's own `write` does, at this backend's level: on the
+   * OutputStream a chunked exchange gives, a flush is what turns a
+   * buffered write into a delivered one. Already on a virtual thread
+   * (the executor `serve` installs), so a source that never ends —
+   * server-sent events, a subscription push — parks this fiber and
+   * nothing else, the way `handle`'s other blocking calls already do.
+   */
+  private def write(body: okay.Source[Chunk[Byte]], os: java.io.OutputStream): Unit ! Async =
+    Writer.uncons[Chunk[Byte], Unit, Async](body).flatMap {
+      case Left(_) => pure(())
+      case Right((c, rest)) =>
+        async { os.write(c.toArray); os.flush() }.flatMap(_ => write(rest, os))
+    }
 
   // ---- the smallest routing that is not a framework
 

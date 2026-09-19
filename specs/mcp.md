@@ -477,8 +477,13 @@ Three pieces:
   body (`Http.bytes`) before sending the head, which is right for
   REST and fatal for SSE. It now writes chunk by chunk when the
   response says `text/event-stream`, which is exactly when a caller
-  meant a stream. The other backends keep buffering until someone
-  needs otherwise.
+  meant a stream. The other backends kept buffering until someone
+  needed otherwise; `http-streaming-responses` (BACKLOG,
+  2026-09-19) was that someone — `okay.http.Server` (the JDK
+  backend) and `okay-netty` now write the same way, behind the same
+  one-line answer (`Http.streams`, moved out of okay-jetty so all
+  three backends share it rather than each naming
+  `text/event-stream` itself).
 - **the GET stream in the route** — a session's pushes as an SSE body:
   a `Channel[Rpc]` becomes a `Source[Chunk[Byte]]`, which is what a
   `Response` body already is.
