@@ -1,6 +1,0 @@
-feature/fuse-plan-typed-term 2026-09-19T23:25:06Z
-agent: claude-code
-heartbeat: 2026-09-19T23:25:06Z
-status: in-progress
-done-so-far: worktree created
-next: Plan[T] in okay-optics Fuse.scala, the ten Term casts gone; compile + optics suite; gate; land
