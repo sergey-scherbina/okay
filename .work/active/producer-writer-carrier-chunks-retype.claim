@@ -1,0 +1,6 @@
+feature/producer-writer-carrier-chunks-retype 2026-09-19T19:02:20Z
+agent: claude-code
+heartbeat: 2026-09-19T19:02:20Z
+status: in-progress
+done-so-far: operator confirmed Chunks-first (2026-09-19); worktree created
+next: retype Chunks.scala, then repo-wide Test/compile JVM, then JS/Native
