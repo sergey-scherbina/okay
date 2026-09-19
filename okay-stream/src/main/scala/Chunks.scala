@@ -297,56 +297,16 @@ object Chunks {
       s
 
   /**
-   * The writer carrier's own chunk-aware fold — the analogue of
-   * `foldLeft` above, for a `Feed[Chunk[A]]` (or `Source[Chunk[A]]`
-   * under G) instead of a `Chunks[A]` (producer-to-writer-carrier,
-   * the chunk-aware fold stage 0 found missing).
-   *
-   * PARITY, MEASURED, when called directly with a literal step: a
-   * fresh `Chunks.foldLeftWriter(feed)(z)(literal step)` call site
-   * measures WITHIN NOISE of `Chunks.foldLeft` — three rounds,
-   * medians 5.00 vs 4.76 us/op (N=10000/64) — this is the shape
-   * `okay-cluster`'s own call sites (`Flows.scala`, `Job.scala`)
-   * already use, calling `Chunks.foldLeft` with a literal step, never
-   * through a `Fold` instance. Built on `Writer.foldWith`: it steps
-   * once per TOLD CHUNK, exactly like the bare `Writer.fold` below;
-   * the per-element `while` runs INSIDE that one step, in the SAME
-   * non-recursive scope where `f` is written, so the `inline`
-   * parameter substitutes cleanly (a first, hand-rolled walker put
-   * the per-element loop inside a recursive local `loop` instead and
-   * measured 17.6us — `inline` does not follow a call through a
-   * nested recursive def's own boundary).
-   *
-   * `foldWriter` BELOW — the `Fold`-INSTANCE-dispatched form, what
-   * `Chunks.fold`/`agg.fold` need (`Bulk.scala`, `Pipeline.scala`,
-   * `Acceptance.scala`) — does NOT reach this parity, and the gap is
-   * real, not measurement noise: three rounds, median 17.30 us/op,
-   * across three shapes tried (a hand-rolled walker, this `foldWith`-
-   * based one, and this one with `foldWriter` ALSO marked `inline`) —
-   * 3.5x `foldLeftWriter` called directly (5.00, SAME carrier, SAME
-   * per-element arithmetic, no dispatch — isolates the dispatch tax
-   * specifically) and 6.8x `Chunks.fold`'s own Fold-dispatched 2.54.
-   * The one isolating fact in hand: the ONLY difference between the
-   * fast direct call and the slow dispatched one is that the
-   * dispatched step captures the MATCHED `Fold.OfLong` instance and
-   * calls a method ON it (`l.addLong(s,a)`) rather than being a fully
-   * literal expression (`s + a`) — so the cost is a virtual dispatch
-   * that fails to devirtualize somewhere in the three layers of
-   * `inline` this shape asks the compiler to flatten, not (as first
-   * suspected) the recursive-def boundary, which the `foldWith`-based
-   * rewrite already fixed for the direct case. `Chunks.fold` has the
-   * identical `l.addLong` call and does NOT pay this cost, so the
-   * difference is specific to going through THIS combinator's extra
-   * inlined layers, not to virtual dispatch on a matched `Fold` in
-   * general — diagnosing further needs a profiler this environment
-   * does not have (JITWatch or `-prof perfasm`); see specs/producer-
-   * to-writer-carrier.md's Results and the sprint entry before
-   * retrying, so a second attempt does not repeat the same three.
-   *
-   * SHIP THE HALF THAT WORKS: `foldLeftWriter` is safe to use now, at
-   * parity. `foldWriter` stays, correct and tested, for call sites
-   * that need `Fold`-instance dispatch — Producer stays the faster
-   * choice for THOSE until this gap closes.
+   * `foldLeft` for a G-EFFECTFUL chunked writer stream — a
+   * `Source[Chunk[A]]`, or any `Unit ! (Writer % Chunk[A] + G)` — with
+   * the step inlined into a per-chunk `while`, on `Writer.foldWith`.
+   * A `Chunks[A]` is pure and folds with `foldLeft` above; this is for
+   * the row that also performs G. The per-element loop sits in the
+   * same non-recursive scope as `f`, which is what lets `inline`
+   * substitute the step (a recursive local def would box it into a
+   * `Function2` per element — measured, 3.5x). Parity with `foldLeft`
+   * at a literal step; the investigation that built it, with every
+   * number, is specs/producer-to-writer-carrier.md (Results).
    */
   inline def foldLeftWriter[A, S, G[+_]](p: Unit ! (Writer % Chunk[A] + G))(z: S)
                                         (inline f: (S, A) => S)
@@ -360,115 +320,21 @@ object Chunks {
       acc
 
   /**
-   * `foldLeftWriter`, dispatched on a `Fold` instance the way
-   * `Chunks.fold` dispatches on one — CORRECT (tested against
-   * `Chunks.fold` on the same data) but NOT at parity with it; see
-   * `foldLeftWriter`'s own doc for the measured gap. Kept non-`inline`:
-   * marking it `inline` was one of several shapes tried and measured
-   * no faster, and non-`inline` at least keeps a literal
-   * `G=Nothing`/`Pure` compiling at a fresh call site (an unrelated
-   * inliner limitation `foldLeftWriter`, `inline`, cannot avoid: use
-   * `G=Async` there instead).
-   *
-   * ROOT CAUSE, FOUND (2026-09-19, `-prof gc`/`-prof jfr`/`javap` — all
-   * in-JDK, no external profiler needed; an earlier draft of this
-   * comment said the diagnosis needed one, which was wrong). `-prof gc`
-   * on a fresh call: 249,584 B/op dispatched vs 12,656 for
-   * `foldLeftWriter` called directly — ~10,000 boxed `java.lang.Long`,
-   * one per element (N=10000). `-prof jfr`'s allocation stack traces
-   * name it exactly: `ArraySeq$ofLong.apply` -> `boxToLong` ->
-   * `Fold$OfLong.addLong`, present in the dispatched path's profile and
-   * absent from the direct call's. The box itself is NOT the defect —
-   * `Fold.OfLong[A]`'s own `addLong(s: Long, a: A): Long` takes its
-   * element generically by design (a fold over `A`, not over `Long`),
-   * so a synthetic bridge boxes on every call; `Chunks.fold` makes the
-   * IDENTICAL call (confirmed via `javap`: same `ArraySeq.apply` ->
-   * `boxToLong` -> `addLong` bytecode sequence) and pays nothing,
-   * because the JIT's escape analysis proves the box never escapes
-   * `Chunks.foldLeft`'s small, standalone compiled loop and eliminates
-   * it. The SAME analysis fails inside `Writer.foldWith`'s bigger
-   * resume/split/Bind tailrec trampoline, so the box becomes a real
-   * allocation there.
-   *
-   * RULED OUT, with evidence: raising `-XX:MaxInlineLevel` and
-   * `-XX:FreqInlineSize` well past their defaults changed nothing
-   * (still exactly 249,584 B/op) — not a simple inlining-budget
-   * problem. Pulling the per-chunk consuming loop into its own small,
-   * standalone method (`private def foldChunkLong(c, z, l): Long`,
-   * tried and reverted) ALSO changed nothing: `javap` confirms the JIT
-   * re-inlines it straight back into the trampoline (it is a small,
-   * hot, `invokespecial` callee — exactly what C2 inlines by default),
-   * reproducing the same combined compiled unit either way. Escape
-   * analysis is not gated by SOURCE-level method boundaries, only by
-   * what actually ends up in one compiled unit after the JIT's own
-   * inlining decisions — Scala-level refactoring cannot out-maneuver
-   * that on its own.
-   *
-   * FIXED (2026-09-19), by doing exactly what the paragraph above this
-   * one used to say was blocked: `writerStreamIn`'s `.iterator` walks
-   * the tree through repeated small `uncons` calls instead of
-   * `Writer.foldWith`'s fused resume/split/Bind trampoline, so the
-   * per-chunk consuming loop below sits in its own small compiled
-   * unit — and escape analysis eliminates the ELEMENT box there, the
-   * ~10,000-boxed-`Long`s problem this doc used to describe. First cut
-   * (producer-writer-carrier-foldwriter-eager, using `.iterator`'s
-   * DEFAULT `Iterator.unfold` implementation): 18.14 -> 6.29 us/op,
-   * 249,584 -> 32,952 B/op. Second cut, same day
-   * (writer-stream-specialized-iterator): `writerStreamIn` grew its
-   * OWN hand-specialized, mutable-state `iterator` override — mirroring
-   * `Stream[Producer, Pure]`'s own override in Generate.scala, using
-   * `Handler[G].handle` (comonadic, one value per forwarded operation)
-   * instead of building and running a program per step — closing the
-   * `Option`+`Either`+`Free`-node-per-chunk tax the default walk still
-   * paid. MEASURED, 3 rounds, N=10000/64: 6.29 -> 5.43 us/op, 32,952 ->
-   * 12,688 B/op — now matching `foldLeftWriter`'s own direct-call
-   * baseline (12,656 B/op, 5.0us) almost exactly; `-prof jfr` confirms
-   * `Right`/`Some` samples are gone entirely. Total from the original
-   * dispatched form: 18.14 -> 5.43 us/op (3.3x faster), 249,584 ->
-   * 12,688 B/op (19.7x less garbage).
-   *
-   * The remaining ~2x against `Chunks.fold`'s 2.55us is NOT a Writer
-   * defect: it is the SAME gap `foldLeftWriter`'s own direct call
-   * already has and was accepted as "at parity" for (its own doc,
-   * above) — the cost of walking a `Free`-tree program at all
-   * (`resume`, `Bind` chains) versus `Chunks.foldLeft`'s specialized,
-   * non-program iterator. Closing THAT is a different, larger question
-   * than this combinator's own dispatch tax, which is what this doc
-   * originally set out to fix.
-   * CORRECTED (producer-writer-carrier-pure-iterator, 2026-09-19): the
-   * paragraph above is wrong about the cause. Both numbers it compares
-   * (5.0 and 5.43) are loops written INSIDE a JMH benchmark method;
-   * the same loop in an ordinary method measures 2.63 over the PURE
-   * writer stream's `iterator` (Writer.scala) against `Chunks.fold`'s
-   * 2.53 — parity, `Say` node included. `Chunks[A]` is Pure, so THAT
-   * is the walk a retyped `Chunks.fold` takes; this combinator and
-   * `foldLeftWriter` serve a genuinely G-effectful `Source[Chunk[A]]`
-   * only. Spec Results has the table.
-   *
-   * The "API contract" obstacle the earlier draft worried about is
-   * real but not a blocker: `.iterator` needs a `Handler[G]` and runs
-   * eagerly, so this signature is narrowed from an arbitrary `G[+_]`
-   * to `Async` specifically, gated on `CanBlock` (the same capability
-   * every other blocking door in this library already requires) —
-   * `async { ... }` wraps that eager walk back into a SUSPENDED
-   * program (`Async.Run`, not run until `.runWith`), so the RETURN
-   * value is still composable, only the row it accepts is narrower.
-   * This was safe to do because `foldWriter` had ZERO production call
-   * sites when this landed, so no caller's contract broke.
-   *
-   * IT DOES NOT ACTUALLY UNBLOCK `Bulk.scala`/`Pipeline.scala`/
-   * `Acceptance.scala` (2026-09-19, corrected) — an earlier version of
-   * this comment claimed it did, because their `G` is `Async`-shaped;
-   * that missed that `CanBlock` is ALSO required, and all three live
-   * in cross-platform shared source that also builds for JS, where
-   * there is no `CanBlock` and no `Handler[Async]` at all
-   * (`src/main/scala-js/Platform.scala`: JS drives `Async` through a
-   * callback-based `Scheduler`/`Fiber`, not blocking). A future caller
-   * needing a truly arbitrary `G` — or specifically a JS-compatible
-   * walk, driven by callbacks/the event loop rather than an eager
-   * blocking `Iterator` — would need its own overload and its own
-   * design pass; not written here. See
-   * backlog.d/okay-core/foldwriter-js-incompatible.md.
+   * `fold` for a G-effectful chunked writer stream, dispatched on a
+   * `Fold` instance the way `Chunks.fold` is — JVM and Native only:
+   * it walks `writerStreamIn`'s eager `iterator` under `Handler[Async]`
+   * (needs `CanBlock`, which JS does not have) and wraps the walk in
+   * `async { ... }`, so the answer is still a suspended program. The
+   * eager walk is the point: it gives the per-chunk loop its own small
+   * compiled unit, where escape analysis removes the element box that
+   * `Fold.OfLong.addLong`'s generic signature makes — inside
+   * `Writer.foldWith`'s fused trampoline that box was real, one per
+   * element, 3.3x slower and 20x the garbage. A `Chunks[A]` is pure
+   * and folds with `fold` above; a JS caller of a G-effectful chunk
+   * fold has no combinator yet and none has asked. The whole
+   * investigation — three shapes tried, `-prof gc`/`jfr`, `javap`,
+   * the two fixes that did nothing and the one that did — is
+   * specs/producer-to-writer-carrier.md (Results).
    */
   def foldWriter[A, S](p: Unit ! (Writer % Chunk[A] + Async))(using fo: Fold[A, S])
                        (using CanBlock): (S, Unit) ! Async =
