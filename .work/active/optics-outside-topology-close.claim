@@ -1,0 +1,11 @@
+feature/optics-outside-topology-close 2026-09-19T18:10:00Z
+agent: claude-code
+heartbeat: 2026-09-19T18:10:00Z
+status: in-progress
+done-so-far: worktree created
+next: backlog.d/optics-outside/optics-outside-topology.md already
+  concludes "SO THE CANDIDATE IS ANSWERED RATHER THAN WAITING" (the
+  condition Arrow needs is met, by okay.Tables.Plan) but is still
+  sitting under an open [ ] checkbox — move to
+  refuted-declined-or-answered as a one-liner pointing at itself, no
+  code change
