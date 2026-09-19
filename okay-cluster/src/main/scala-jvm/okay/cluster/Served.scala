@@ -47,7 +47,7 @@ object Served {
     try
       while !server.isClosed do
         val sock = server.accept()
-        val _ = Thread.ofVirtual().start(() => handle(sock, serve))
+        okay.Threads.spawn("okay-cluster-served")(() => handle(sock, serve))
     catch case _: java.net.SocketException => ()   // closed while accepting
 
   /**

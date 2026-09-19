@@ -86,7 +86,7 @@ object Sessions:
     private val own = ConcurrentHashMap.newKeySet[Long]()
     @volatile private var closed = false
     rebuild()
-    tail.foreach(ms => Thread.ofVirtual().name("okay-script-sessions-tail").start(() => tailLoop(ms)): Unit)
+    tail.foreach(ms => okay.Threads.spawn("okay-script-sessions-tail")(() => tailLoop(ms)))
 
     private def apply(r: okay.persist.Record): Unit =
       val id = new String(r.key, "UTF-8")

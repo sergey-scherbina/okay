@@ -179,7 +179,7 @@ class TestFailure extends munit.FunSuite {
    * here is that it does not.
    */
   def hangingUp(server: java.net.ServerSocket): Thread =
-    Thread.ofVirtual().start { () =>
+    okay.Threads.spawnThread("okay-cluster-test-hangingup") { () =>
       try
         while !server.isClosed do
           val sock = server.accept()

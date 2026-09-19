@@ -271,13 +271,12 @@ object Netty {
     out.headers.foreach((k, v) => res.headers.set(k, v))
     res.headers.set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED)
     ctx.writeAndFlush(res)
-    Thread.startVirtualThread { () =>
+    okay.Threads.spawn("okay-netty-stream") { () =>
       try Async.run[Unit, Pure](writeChunks(out.body, ctx)).runWith
       catch case _: Throwable => ()
       ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT)
         .addListener(ChannelFutureListener.CLOSE): Unit
     }
-    ()
 
   private def writeChunks(body: okay.Source[Chunk[Byte]],
                           ctx: ChannelHandlerContext): Unit ! Async =

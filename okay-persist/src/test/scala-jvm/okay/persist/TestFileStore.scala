@@ -340,7 +340,7 @@ class TestFileStoreRace extends munit.FunSuite {
     val failures = java.util.concurrent.ConcurrentLinkedQueue[Throwable]()
     val stores = java.util.concurrent.ConcurrentLinkedQueue[FileStore]()
     for _ <- 0 until n do
-      Thread.startVirtualThread { () =>
+      okay.Threads.spawn("okay-persist-test-filestore") { () =>
         try
           start.await()
           val s = FileStore.open(root)
@@ -349,7 +349,7 @@ class TestFileStoreRace extends munit.FunSuite {
           s.topic("shared", 1, Policy.default).end(0): Unit
         catch case t: Throwable => failures.add(t): Unit
         finally done.countDown()
-      }: Unit
+      }
     start.countDown()
     done.await()
     stores.forEach(_.close())

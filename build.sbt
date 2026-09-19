@@ -1837,6 +1837,14 @@ lazy val okayJetty = project
   .dependsOn(okayHttp.jvm)
   .settings(
     name := "okay-jetty",
+    // dotc's classfile target is JDK17 (major 61) regardless of the
+    // host JDK compiling it; javac's is NOT -- it defaults to the
+    // launching JVM's own version, so this module's one Java source
+    // (Listen.java) silently outran the rest of the project's floor
+    // whenever sbt itself ran on 21+ (jdk17-adaptive-runtime,
+    // UnsupportedClassVersionError on Listen$Sink, class file version
+    // 65 vs the 61 every Scala-compiled class here already emits).
+    javacOptions ++= Seq("--release", "17"),
     // the acceptance run: okay-http's JS transports, linked as a Node
     // program, driven against a Jetty server that serves both halves.
     // Hung off Test/compile rather than Test/test for the reason

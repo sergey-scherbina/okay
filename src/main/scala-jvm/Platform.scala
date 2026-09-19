@@ -720,6 +720,28 @@ object Schedulers {
       fiberOf(f, () => t.interrupt())
 }
 
+/** Fire-and-forget daemon threads, adaptive the same way `Schedulers`
+ * is (jdk17-adaptive-runtime): virtual where this JVM has them, an
+ * ordinary daemon `Thread` otherwise. For the handful of call sites
+ * across the codebase that just want "run this in the background,
+ * named" and don't need a `Fiber`/`Scheduler` at all — an accept
+ * loop, a tail loop, a chunked response writer. */
+object Threads:
+  def spawn(name: String)(body: () => Unit): Unit =
+    val _ = spawnThread(name)(body)
+
+  /** the same adaptive pick, handed back as a `Thread` for the callers
+   * that need to `.join()` it (mostly test harnesses standing up a
+   * throwaway socket server) rather than firing and forgetting. */
+  def spawnThread(name: String)(body: () => Unit): Thread =
+    if Schedulers.hasVirtualThreads then
+      Thread.ofVirtual().name(name).start(() => body())
+    else
+      val t = Thread(() => body(), name)
+      t.setDaemon(true)
+      t.start()
+      t
+
 /** The default scheduler is Loom — a fiber IS a virtual thread, which
  * is the design and stays it, on a JVM that HAS Loom (JDK 21+).
  * `okay.scheduler` selects another for the A/B that prices that choice

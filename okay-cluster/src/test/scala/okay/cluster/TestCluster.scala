@@ -35,7 +35,7 @@ class TestCluster extends munit.FunSuite {
     // the remote end: reads a JSON chunk per line, answers the SUM —
     // and drops the connection after two chunks (the kill)
     val server = ServerSocket(0)
-    val remote = Thread.ofVirtual().start { () =>
+    val remote = okay.Threads.spawnThread("okay-cluster-test-remote") { () =>
       val sock = server.accept()
       val in = BufferedReader(InputStreamReader(sock.getInputStream))
       val out = PrintWriter(sock.getOutputStream, true)
