@@ -362,16 +362,23 @@ With that fixed: both roads answer correctly at 100 000 levels with
 the fix, and A/B (`Codecs.NativeThreshold` disabled, `Codecs.maxDepth`
 scratch-raised) throws at the same depth without it.
 
-**The JMH gate is DEFERRED, not skipped.** System load climbed from
-~20 to 88 while measuring (unrelated to this session; flagged in the
-room) — `parseOnly` and `parseValueOnly`, two benchmarks with
-IDENTICAL bodies (`Json.parse(text)`), read 282±26 vs 600±237 ns/op in
-the SAME run, which is proof by itself that no number taken under this
-load means anything, regardless of fork count
-(`jmh-load-not-just-forks`). Correctness is fully proven (184 tests,
-three platforms, the A/B above); the perf number is BACKLOG's
-`json-raw-nesting-jmh-pending` — measure once the box is quiet, before
-trusting either direction.
+**The JMH gate, done right (2026-09-19).** The first attempt was
+DEFERRED, not skipped: system load climbed from ~20 to 88 while
+measuring (unrelated to this session; flagged in the room) —
+`parseOnly` and `parseValueOnly`, two benchmarks with IDENTICAL bodies
+(`Json.parse(text)`), read 282±26 vs 600±237 ns/op in the SAME run,
+proof by itself that no number taken under this load means anything,
+regardless of fork count (`jmh-load-not-just-forks`).
+
+`uptime` checked first this time (load 2.7-4.8 across the run, quiet
+on a 14-core box) — `compare/Jmh/run -i 5 -wi 3 -f 5`,
+`.*parseOnly.*|.*parseValueOnly.*`: **`parseOnly` 250.562 ± 9.074,
+`parseValueOnly` 244.897 ± 3.788 ns/op**. The two identical-body
+benchmarks now agree (overlapping error bars, ~2% apart — measurement
+noise, not signal), which is what the quiet box was for: the earlier
+282-vs-600 split was purely the machine, not the code. Correctness
+was already fully proven (184 tests, three platforms, the A/B above);
+this closes `json-raw-nesting-jmh-pending` with no regression found.
 
 ### Target 3 done, and the arc closed: `JsonStrict.Reader.get` (jsonstrict-threshold-trampoline, 2026-09-10)
 
