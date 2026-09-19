@@ -1,6 +1,0 @@
-feature/jdk17-compat-check 2026-09-19T13:18:32Z
-agent: claude-code
-heartbeat: 2026-09-19T13:18:32Z
-status: in-progress
-done-so-far: sprint item written
-next: worktree, add verifyJdk17 command alias, run it, record real findings
