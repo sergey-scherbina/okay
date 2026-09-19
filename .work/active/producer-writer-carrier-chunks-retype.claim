@@ -1,6 +1,6 @@
 feature/producer-writer-carrier-chunks-retype 2026-09-19T19:02:20Z
 agent: claude-code
-heartbeat: 2026-09-19T19:02:20Z
+heartbeat: 2026-09-19T19:08:27Z
 status: in-progress
-done-so-far: operator confirmed Chunks-first (2026-09-19); worktree created
-next: retype Chunks.scala, then repo-wide Test/compile JVM, then JS/Native
+done-so-far: Chunks retyped; repo-wide Test/compile green (all platforms), okay-stream 347/347; docs+spec updated
+next: JMH compile + measure Chunks.fold on the new carrier, changelog, gate
