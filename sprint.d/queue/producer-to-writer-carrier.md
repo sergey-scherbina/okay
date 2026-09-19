@@ -38,39 +38,41 @@
       Until it exists, `Chunks` stays on `Producer` — a legitimate,
       narrow, documented exception, not a reason to stop the rest.
 
-      THE CHUNK-AWARE FOLD PREREQUISITE, HALF DONE (2026-09-19). Built
-      `Chunks.foldLeftWriter`/`foldWriter` (okay-stream/src/main/scala/
-      Chunks.scala, on `Writer.foldWith`). MIXED, 3-round-measured, full
-      writeup in the spec's `## Results`: `foldLeftWriter` (literal
-      step) reaches PARITY with `Chunks.foldLeft` (5.00 vs 4.76 us/op)
-      — this is the shape okay-cluster's `Flows.scala`/`Job.scala` call
-      sites already use, so THOSE can migrate now. `foldWriter` (the
+      THE CHUNK-AWARE FOLD PREREQUISITE, DONE (2026-09-19, fixed in a
+      third follow-up lane). Built `Chunks.foldLeftWriter`/`foldWriter`
+      (okay-stream/src/main/scala/Chunks.scala). `foldLeftWriter`
+      (literal step) reaches PARITY with `Chunks.foldLeft` (5.00 vs
+      4.76 us/op) — this is the shape okay-cluster's `Flows.scala`/
+      `Job.scala` call sites already use. `foldWriter` (the
       `Fold`-instance-dispatched form `Chunks.fold`/`agg.fold` need —
       `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala`, the only 3 call
-      sites) does NOT reach parity — 17.30 us/op, 3.5x the direct call,
-      6.8x `Chunks.fold` itself, stable across three tried
-      implementations. ROOT CAUSE FOUND 2026-09-19 (a follow-up lane,
-      producer-writer-carrier-foldwriter-fix, using `-prof gc`/`-prof
-      jfr`/`javap` — all in-JDK, no external profiler needed, unlike
-      the earlier "would need one" claim): `Fold.OfLong[A].addLong`
-      takes its element generically by design, so every call boxes it
-      via a synthetic bridge; `Chunks.fold` makes the IDENTICAL call
-      and pays nothing because escape analysis eliminates the box
-      inside `Chunks.foldLeft`'s small compiled loop, but the SAME
-      analysis fails inside `Writer.foldWith`'s bigger resume/split/
-      Bind trampoline. Ruled out with evidence: raising
-      `-XX:MaxInlineLevel`/`-XX:FreqInlineSize` (no change); extracting
-      the per-chunk loop into its own small standalone method (no
-      change either — the JIT re-inlines it straight back in, `javap`
-      confirmed, so this attempt was reverted rather than kept as dead
-      weight). Still OPEN: the real fix needs `Writer`'s `Stream`
-      instance to grow its own `.iterator` (decoupling the tree walk
-      from consumption, matching how Producer's `Chunks.foldLeft` stays
-      small) — blocked on an API-contract question (`.iterator` runs
-      eagerly with a `Handler[G]`, `foldWriter` currently returns a
-      suspended program), not a quick patch. Full diagnosis in
-      Chunks.scala's `foldWriter` doc comment and the spec's `## Results`
-      follow-up section — read them before a retry. `writerk-
+      sites) went 17.30 -> 6.29 us/op median (2.9x faster, 3 rounds),
+      249,584 -> 32,952 B/op (7.6x less garbage): rebuilt to walk via
+      `writerStreamIn`'s DEFAULT `.iterator` instead of
+      `Writer.foldWith`'s fused trampoline, wrapped in `async{}` to
+      stay a suspended program. Root cause (found first, fixed second):
+      `Fold.OfLong[A].addLong` boxes its element by design, and escape
+      analysis eliminates that box in `Chunks.foldLeft`'s small
+      compiled loop but not in `Writer.foldWith`'s bigger one — the
+      `.iterator`-based walk gives the per-chunk loop its own small
+      compiled unit again. NOT full parity with `Chunks.fold`'s 2.55us
+      — the remaining ~3.7us is `Iterator.unfold`'s generic
+      Option+Either+Free-node allocation, once per CHUNK (157, not
+      10000) — and this is NOT writer-specific: Producer's OWN
+      G-effectful `Stream` instance has no specialized `iterator`
+      override either, so any G-effectful stream in this library pays
+      it today. Closing THAT is its own lane (a mutable-state iterator
+      override mirroring `Stream[Producer, Pure]`'s pure-only one,
+      benefiting both carriers). `foldWriter`'s signature narrowed from
+      an arbitrary `G[+_]` to `Async`+`CanBlock` as part of the fix —
+      safe because it had ZERO production callers at the time.
+      `Bulk.scala`/`Pipeline.scala`/`Acceptance.scala` are now
+      UNBLOCKED to migrate onto it (their `G` is already `Async`-shaped)
+      but not yet migrated — each sits inside its own `Chunks[A]`-typed
+      surrounding context, the same "leaves first" caution
+      `Flows.scala`'s `Shape[A]` triggered below. Full story in
+      Chunks.scala's `foldWriter` doc and the spec's `## Results`.
+      `writerk-
       companion-scope` landed alongside this (found while writing this
       combinator's tests): `given writerK` moved into `object Writer`'s
       own body so it resolves from any package with no import — a bare
@@ -143,9 +145,10 @@
       trait), not a same-session follow-on to the fold combinator.
       Then okay-persist Streams/Wire, okay-sql/okay-jdbc,
       okay-docs and its backends, the kafka/fs2/zio/java interops —
-      leaves first, `Chunks` last and gated on `foldWriter` closing its
-      remaining dispatch-tax gap (above); each lane `sbt Test/compile`
-      repo-wide before its gate;
+      leaves first, `Chunks` last; the `foldWriter` gate above is
+      CLEARED (2.9x faster, not full Producer parity but close enough
+      to unblock, see above) — each lane `sbt Test/compile` repo-wide
+      before its gate;
       deletions (`produced`, `Producer.fold/each/concat`, the Produce
       Stream instances, the three Source bridges) land with the last
       module. `writerK` (or `okay.given`) must be in scope at every

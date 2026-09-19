@@ -164,7 +164,7 @@ class TestChunks extends munit.FunSuite {
     val chunks = Chunks.range(0, 10000, 64)
     val feed = feedOf(chunks)
 
-    val (sum, _) = run(Chunks.foldWriter[Long, Long, Async](feed)(using Fold.sumLong))
+    val (sum, _) = run(Chunks.foldWriter[Long, Long](feed)(using Fold.sumLong))
     assertEquals(sum, Chunks.fold(chunks)(using Fold.sumLong))
 
     val (count, _) = run(Chunks.foldLeftWriter[Long, Long, Async](feedOf(chunks))(0L)((s, _) => s + 1))
@@ -173,16 +173,16 @@ class TestChunks extends munit.FunSuite {
     // the generic (non-specialized) branch too — a String accumulator
     // has no Fold.OfX to dispatch to
     given Fold[Long, String] = Fold("")((s, a) => s + a.toString)
-    val (joined, _) = run(Chunks.foldWriter[Long, String, Async](feedOf(chunks)))
+    val (joined, _) = run(Chunks.foldWriter[Long, String](feedOf(chunks)))
     assertEquals(joined, Chunks.fold(Chunks.range(0, 10000, 64)))
 
     // odd chunk boundaries and an empty stream, same as fold/foldLeft's
     // own coverage
     val odd = Chunks.range(0, 37, 5)
-    assertEquals(run(Chunks.foldWriter[Long, Long, Async](feedOf(odd))(using Fold.sumLong))._1,
+    assertEquals(run(Chunks.foldWriter[Long, Long](feedOf(odd))(using Fold.sumLong))._1,
       Chunks.fold(odd)(using Fold.sumLong))
     val empty = Chunks.range(0, 0)
-    assertEquals(run(Chunks.foldWriter[Long, Long, Async](feedOf(empty))(using Fold.sumLong))._1, 0L)
+    assertEquals(run(Chunks.foldWriter[Long, Long](feedOf(empty))(using Fold.sumLong))._1, 0L)
   }
 
   test("foldWriter/foldLeftWriter agree with fold/foldLeft on the same chunks, told instead of produced") {

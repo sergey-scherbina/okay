@@ -437,3 +437,56 @@ composable with `flatMap` before anything runs. Making `foldWriter`
 eager would be a real, visible API change, not a drop-in performance
 fix, and deserves its own design pass rather than a rushed patch riding
 this one.
+
+### FIXED, mostly (2026-09-19, second follow-up)
+
+Did exactly what the paragraph above said was blocked, once it turned
+out nothing was actually blocking it: `foldWriter` had ZERO production
+call sites (`Bulk.scala`/`Pipeline.scala`/`Acceptance.scala` all still
+call `Chunks.fold` on `Producer` directly), so narrowing its signature
+broke no caller. New `foldWriter[A, S](p: Unit ! (Writer % Chunk[A] +
+Async))(using Fold[A, S], CanBlock): (S, Unit) ! Async` walks via
+`writerStreamIn`'s DEFAULT `.iterator` (no override needed —
+`Iterator.unfold(s)(uncons(_).runWith)` was already small enough) and
+wraps the eager walk in `async { ... }` (`Async.Run`, existing
+primitive) so the returned value is still a suspended program, just
+over a narrower row.
+
+Measured, 3 rounds, N=10000/64, JDK 21.0.12 pinned. Host load recorded
+for rounds 2-3 only (round 1 ran before this discipline was re-applied
+mid-lane — noted rather than invented):
+
+| round | time | gc.alloc.rate.norm | host load |
+|---|---|---|---|
+| 1 | 6.290 us/op | 32,952 B/op | not recorded |
+| 2 | 5.864 us/op | 32,952 B/op | 2.26/5.61/12.93 |
+| 3 | 6.326 us/op | 32,952 B/op | 2.23/4.95/12.07 |
+
+**2.9x faster (18.14 -> ~6.3 us/op median), 7.6x less garbage (249,584
+-> 32,952 B/op).** `-prof jfr` on the new implementation: `java.lang.Long`
+samples down from 867 to 16 (background noise) — the element-boxing
+problem this whole investigation started from is gone. The dominant
+allocations now are `Free$Bind`/`Free$Inject`/`Right`/`Some`/`Free$Pure`
+— one `Option`+`Either` wrapper and one `Free` node per CHUNK (157
+times), from `Iterator.unfold`'s generic walk, not per element (10000
+times).
+
+**Not full parity with `Chunks.fold`'s 2.55us, and the reason is not
+Writer-specific.** `Chunks[A]` is `Producer[Chunk[A]]` — PURE, no G —
+so `Chunks.fold` walks through `Stream[Producer, Pure]`'s own
+hand-specialized, allocation-free `iterator` override (Generate.scala).
+Producer's OWN G-effectful Stream instance (`given [G[+_]: TypeableK]:
+Stream[[A] =>> A ! Produce + G, G]`) has NO such override either — it
+pays the identical `Iterator.unfold` tax for a G-effectful `Producer`.
+So the remaining gap is "no G-effectful stream in this library has a
+specialized iterator yet," not something particular to the writer
+carrier. Closing it — a mutable-state `iterator` override mirroring
+`Stream[Producer, Pure]`'s shape, but handling a forwarded G-effect —
+would benefit both carriers equally. Not written here; its own lane.
+
+**Consequence:** `Bulk.scala`, `Pipeline.scala`, and `Acceptance.scala`
+can migrate onto `foldWriter` now (their `G` is `Async`-shaped already,
+matching the narrowed signature) — not yet done, since each is embedded
+in a `Chunks[A]`-typed surrounding context of its own (the same
+"leaves first" caution `Flows.scala`'s `Shape[A]` triggered), not a
+same-session follow-on to this fix.
