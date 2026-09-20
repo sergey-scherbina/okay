@@ -1,0 +1,6 @@
+feature/jdk17-table-current 2026-09-20T00:37:32Z
+agent: claude-code
+heartbeat: 2026-09-20T00:37:32Z
+status: in-progress
+done-so-far: measured okayHttpJVM 38/38, okayJetty 19/19, okayNetty 16/16 on real JDK17 with Live after own-lost-wakeup
+next: docs-only — specs/jdk-compatibility.md rows still say no; docs/schedulers.md sentence on a JVM without virtual threads
