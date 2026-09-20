@@ -1,6 +1,0 @@
-feature/merge-knows-its-producers 2026-09-20T00:05:00Z
-agent: claude-code
-heartbeat: 2026-09-20T00:17:33Z
-status: in-progress
-done-so-far: spec committed; forProducers + 4 seams + TestMergeOrder written, 171 stream tests green; A/B (sized vs growing, 2 rounds) running in background
-next: results into spec, docs/queues.md row, changelog, history, gate, land
