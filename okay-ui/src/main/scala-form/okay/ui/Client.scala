@@ -420,7 +420,18 @@ object Client:
             Vector(call(Name("apply"), Field(Field(Name("j"), "Patch"), "patch"))),
             Vector(Stmt.If(Bin("===", Name("t"), Str("Close")),
               Vector(call(Field(ws, "close")))))))))))) ++
-      listeners
+      Vector(
+        // The socket is transport, not page state. Reconnect with the same
+        // DOM and event queue; `onopen` sends the normal Hello again.
+        Stmt.Var("opened", Field(ws, "onopen")),
+        Stmt.Var("received", Field(ws, "onmessage")),
+        Stmt.Var("closed", Fun(Vector.empty, Vector(
+          Stmt.Var("next", New(Name("WebSocket"), Vector(Field(ws, "url")))),
+          set(Name("ws"), Name("next")),
+          set(Field(ws, "onopen"), Name("opened")),
+          set(Field(ws, "onmessage"), Name("received")),
+          set(Field(ws, "onclose"), Name("closed")))))
+      ) ++ listeners
 
   /** TYPING: inside a form the DOM keeps the value and only an input
    * marked live speaks, because a keystroke per character up a socket
