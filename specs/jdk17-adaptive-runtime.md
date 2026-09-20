@@ -230,6 +230,17 @@ and say so plainly wherever JDK 17 is offered as an option. None of the
 three is attempted here; this spec's own scope (per-call-site API swaps)
 does not reach it.
 
+**RESOLVED 2026-09-20 (own-lost-wakeup), and the diagnosis above was
+wrong in one word: not exhaustion, a lost wakeup.** The thread dump of
+the hung `TestNio` fork showed fourteen `own` workers with ONE blocked
+in `accept()` and thirteen parked; the client fiber sat in the
+submission queue because a worker inside a task counts as awake, so an
+outside fork woke nobody. The fix is none of (a)–(c): `Schedulers.auto`
+now picks `Schedulers.platform` — `own` with its stuck-check on — where
+there is no Loom, and the stuck-check unparks a sleeper before it
+grows. `TestNio` 6/6 and `TestResumable` 4/4 on real JDK 17; BUGS.md
+`own-lost-wakeup` has the dump and the laws.
+
 ## Order and independence
 
 Each module's fix is independently landable and independently gated — none

@@ -229,6 +229,9 @@ platform-thread worker can starve a sibling fiber waiting on the same bounded po
 exact hazard the source article this session started from was about. This is a genuine,
 expected trade-off of the adaptive fallback, not a bug in it: code written against
 `Async`'s own primitives (not raw `java.util.concurrent` blocking calls) does not hit it.
+(own-lost-wakeup, 2026-09-20: the trade-off was worse than timing — a fiber blocked for
+good hid every later fork, a hang — and `auto` picks `Schedulers.platform`, a watched
+`own`, on such a JVM now; BUGS.md has the dump.)
 
 **What this measurement does NOT do: fix the six broken modules.** Each would need the
 same treatment `Schedulers`/`Timer` already got (`hasVirtualThreads`-gated branch, a

@@ -183,6 +183,61 @@ class TestSchedulerLaws extends SchedulerFamily {
     assertEquals(f.join(), 42)             // a park that swallowed the wake would hang here
   }
 
+  /** own-lost-wakeup (2026-09-20): the JDK 17 hang of okay-http's
+   * TestNio and okay-jetty's TestResumable, read from a thread dump
+   * as fourteen `own` workers — ONE blocked in `accept()`, thirteen
+   * PARKED — and a client fiber sitting in the submission queue that
+   * nobody was going to look at. Not pool exhaustion: a lost wakeup.
+   * `awake` counts a worker that is inside a task, so a worker whose
+   * task never returns keeps every outside fork from waking a
+   * sleeper, and a child it forked before blocking sits on its own
+   * deque with no signal at all. `own` says so in its doc and is
+   * right to — it is the short-CPU-fiber scheduler — but `auto` was
+   * handing plain `own` to every program on a JVM without Loom. The
+   * non-Loom pick is `Schedulers.platform` now, and it is watched. */
+  test("platform: a fiber blocked for good in a raw call does not hide a later fork from outside") {
+    val sch = Schedulers.platform
+    given Scheduler = sch
+    val gate = CountDownLatch(1)
+    val blocker = Async.spawn(async { gate.await(); 0 })   // holds one worker until the end
+    Thread.sleep(50)                                       // the rest give up and park
+    val done = CountDownLatch(1)
+    Async.spawn(async(1)).onComplete(_ => done.countDown())
+    assert(done.await(3, TimeUnit.SECONDS), "a fork from outside was never run: the blocked worker counted as awake, so no sleeper was woken")
+    gate.countDown(); val _ = blocker.join(); sch.close()
+  }
+
+  test("platform: a child forked by a fiber that then blocks for good still runs") {
+    val sch = Schedulers.platform
+    given Scheduler = sch
+    val gate = CountDownLatch(1)
+    val done = CountDownLatch(1)
+    Thread.sleep(50)                                       // every worker parked before the parent lands
+    val parent = Async.spawn {
+      val _ = Async.spawn(async(done.countDown()))         // onto the parent's own deque, no signal
+      async { gate.await(); 0 }                            // and the parent never comes back for it
+    }
+    assert(done.await(3, TimeUnit.SECONDS), "a child on a blocked worker's deque was never stolen")
+    gate.countDown(); val _ = parent.join(); sch.close()
+  }
+
+  test("stuck-check: a parked worker is woken before a new one is started") {
+    // one worker, one overflow slot: the first stall may start the
+    // overflow worker, but the second must WAKE it — the first cut
+    // only ever grew, so once overflow was spent the next stall hung
+    val sch = Schedulers.adaptive.workers(1).watched(scala.concurrent.duration.Duration(20, "ms"), overflow = 1).build
+    given Scheduler = sch
+    val gate = CountDownLatch(1)
+    val blocker = Async.spawn(async { gate.await(); 0 })   // the only worker, for good
+    def answered(): Boolean =
+      val done = CountDownLatch(1)
+      Async.spawn(async(1)).onComplete(_ => done.countDown())
+      done.await(3, TimeUnit.SECONDS)
+    assert(answered(), "the overflow worker was never started")
+    assert(answered(), "the overflow worker parked and was never woken: the stuck-check grew instead of unparking, and had nothing left to grow")
+    gate.countDown(); val _ = blocker.join(); sch.close()
+  }
+
   test("fairness — a submitter is answered while a worker runs a burst") {
     given Scheduler = Schedulers.own.workers(4).build
     val started = CountDownLatch(1)

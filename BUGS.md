@@ -10,6 +10,68 @@ belongs in that module.
 Newest first. Status lives in the machine-readable header, never in
 the prose.
 
+## own-lost-wakeup — a fiber blocked for good in a raw call on `Schedulers.own` hides every later fork
+<!-- status: fixed
+     lane: jvm (Platform.scala, core)
+     area: scheduler
+     found-by: jdk17-adaptive-runtime (2026-09-20) as "TestNio and TestResumable
+       hang on JDK 17", read there as pool exhaustion; the thread dump says
+       otherwise (repro below)
+     fixed-in: own-lost-wakeup (2026-09-20)
+     gate: TestSchedulerLaws "platform: a fiber blocked for good in a raw call
+       does not hide a later fork from outside", "platform: a child forked by
+       a fiber that then blocks for good still runs", "stuck-check: a parked
+       worker is woken before a new one is started" — all three red on the
+       old line, for the reason each names
+     repro: measured 2026-09-20, real JDK 17.0.19
+       okayHttpJVM/testOnly okay.http.TestNio (Live) — hangs before the first
+       test reports; jcmd Thread.print on the fork: 14 `okay-own-1-*` workers,
+       worker 0 RUNNABLE in ServerSocketChannel.accept (Nio.scala:98), 1-13
+       WAITING (parking) in Worker.run, the munit thread parked in
+       CanBlock.block waiting for a client fiber nobody was going to run -->
+
+`Schedulers.auto` handed plain `own.build` to every program on a JVM
+without Loom, and `own` keeps one counter, `awake`, that decides
+whether an outside `fork` wakes a sleeper: a worker inside a task is
+awake, since it will look at the submission queue when the task ends.
+A task that never ends — `Nio.listen`'s accept loop, parked in
+`accept()` for the life of the listener — is the case that breaks the
+count: one such worker keeps `awake` at 1, every other worker parks,
+and each fork from outside lands in a queue with nobody to see it.
+The child that worker forked before it blocked has it worse: a
+worker-local fork goes onto the owner's deque with no signal at all,
+on the theory that the owner drains it next, and a thief steals only
+while it is awake.
+
+This was first recorded as "`own`'s bounded pool is exhausted under
+concurrently-blocked accept/read fibers" (backlog.d/okay-http/
+schedulers-own-hangs-under-blocking-nio.md, retired by this entry).
+Fourteen workers and ONE of them blocked is not exhaustion; the dump
+above is what settled it, and the first `TestNio` test — one
+connection, three fibers — had been hanging the same way.
+
+**THE FIX, in the scheduler, not in `Nio`.** Two lines and a name:
+
+- `Schedulers.platform` is the non-Loom pick — `own` with the
+  stuck-check on, every 5 ms — and `auto` returns it where there are
+  no virtual threads. The check is the mechanism `adaptive` already
+  had for exactly this ("what lets `own` be chosen by someone who is
+  not certain their fibers never block"); a library default is that
+  someone. A stall now costs a tick, not the program.
+- The stuck-check WAKES A PARKED WORKER before it starts a new one.
+  The first cut only ever grew, so a lost wakeup spent an overflow
+  slot on a fresh thread while thirteen slept, and once the slots were
+  gone the next stall was the hang again — the third law above is the
+  one that fails on that line, on its second assertion.
+
+`own.build` itself is unchanged: it is the short-CPU-fiber scheduler,
+its doc says a blocking call holds a worker, and `-Dokay.scheduler=own`
+still means exactly that.
+
+Measured after, real JDK 17: `TestNio` 6/6 (the 500-connection churn
+in 7.0 s — two ticks a round, as the mechanism predicts), `TestResumable`
+4/4 (it hung); `okayJVM` scheduler laws 52/52 on JDK 26.
+
 ## par-right-failure-waits — `Async.par` notices a right-side failure only after the left finishes
 <!-- status: fixed
      lane: cross-platform (Async.scala, core)
