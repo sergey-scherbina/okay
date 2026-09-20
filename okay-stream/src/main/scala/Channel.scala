@@ -678,6 +678,38 @@ object Channel {
     else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
     else StmChannel[A](capacity)
 
+  /** the A/B switch for the seams below: `growing` restores the
+   * default channel they used to build (channel-known-producers).
+   * Read from the environment too, because this module forks its
+   * tests and passes no `-D` through. */
+  private val KnownKind: String =
+    Try(Option(System.getProperty("okay.channel.known"))
+      .orElse(Option(System.getenv("OKAY_CHANNEL_KNOWN"))).getOrElse("sized")).getOrElse("sized")
+
+  /**
+   * THE CHANNEL A SEAM BUILDS WHEN IT KNOWS ITS PRODUCERS
+   * (channel-known-producers, 2026-09-20).
+   *
+   * `Channel.apply` is the `growing` buffer because the producer count
+   * is not known where a channel is made: it starts as one ring and,
+   * on seeing a second producer, adopts the ring as part 0 and opens a
+   * part per producer — the one-shot swap across which a producer's
+   * own order may break once (BUGS.md `growing-stale-route`, a
+   * documented trade). `merge` has exactly two producers and `buffer`
+   * exactly one, so neither needs to guess: two parts from the start
+   * for the merge (`relaxed`, no adoption, no swap, each producer on
+   * one ring for its whole life — order exact by construction), a
+   * plain ring for the buffer. `capacity` is PER PART, which is what
+   * the growing buffer already held once it had grown
+   * (growing-part-sizing). Below two it is the rendezvous either way.
+   */
+  private[okay] def forProducers[A](n: Int, capacity: Int): Channel[A] =
+    if KnownKind == "growing" || capacity < 2 then Channel[A](capacity)
+    else if n <= 1 then
+      if capacity <= MaxRing then SentinelChannel[A](capacity) else Channel[A](capacity)
+    else if capacity <= MaxRing then Queues.strong[A].relaxed.parts(n).each(capacity).build
+    else Queues.strong[A].relaxed.parts(n).unbounded.build
+
 
   /** unfold a stream into the channel as an Async program; stops
    * early if the channel refuses (closed under the producer) */
@@ -883,7 +915,7 @@ object Channel {
                              (feedS: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async,
                               feedT: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async)
                              (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
-    val c = Channel[Chunk[A]](capacity)
+    val c = forProducers[Chunk[A]](2, capacity)
     val alive = AtomicInteger(2)
     /**
      * The flusher is RETURNED so it can be cancelled, and that is not
@@ -954,7 +986,7 @@ object Channel {
   def merge[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
                                         (using Stream[S, F], Handler[F], Stream[T, G], Handler[G])
                                         (using sch: Scheduler): Channel[A] =
-    val c = Channel[A](capacity)
+    val c = forProducers[A](2, capacity)
     val alive = AtomicInteger(2)
     def watch(f: Fiber[Unit]): Unit = f.onComplete { r =>
       r.left.foreach(c.fail)
@@ -984,7 +1016,7 @@ object Channel {
   def bufferChunked[A, S[_], F[+_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
                                    (using Stream[S, F], Handler[F])
                                    (using sch: Scheduler): Channel[Chunk[A]] =
-    val c = Channel[Chunk[A]](capacity)
+    val c = forProducers[Chunk[A]](1, capacity)
     sch.fork(() => feedBatched(c, s, size)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()
@@ -993,7 +1025,7 @@ object Channel {
 
   def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
                             (using Stream[S, F], Handler[F])(using sch: Scheduler): Channel[A] =
-    val c = Channel[A](capacity)
+    val c = forProducers[A](1, capacity)
     sch.fork(() => feed(c, s)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()

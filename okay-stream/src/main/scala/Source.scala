@@ -307,6 +307,12 @@ extension [A](s: Source[A])
    * source came back 1..16, 49, 50, 17..48 (merge-chunked-order,
    * 2026-09-09). The defect was in the channel's buffer rather than
    * here, but the promise belongs where a caller reads it.
+   * EXACT since channel-known-producers (2026-09-20): a merge knows it
+   * has two producers, so its channel opens two parts from the start
+   * (`Channel.forProducers`) and never adopts a ring — no swap, and
+   * each side pushes to one part for its whole life. `TestMergeOrder`
+   * states the law; the default channel's "except once, across its
+   * swap" (TestChannelLaws) is not this seam's claim any more.
    *
    * Lazy at the seam: the fibers start at the FIRST PULL, not when
    * this is called — a source nobody consumes drains nothing.

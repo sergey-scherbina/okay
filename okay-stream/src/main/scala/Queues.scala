@@ -125,10 +125,11 @@ object Queues {
      * "exact order".
      *
      * It was added while `growing` was being tried as the default
-     * (growing-default, 2026-09-08). That switch did NOT happen — the
-     * A/B found `Source.merge` 3.5x slower under it — but the name is
-     * worth having either way, and it is what a caller will want the
-     * day the default does change.
+     * (growing-default, 2026-09-08); the first A/B found `Source.merge`
+     * 3.5x slower under it, growing-part-sizing named the cause (parts
+     * after the first got `cap / n`), and the switch then happened
+     * (default-retable, the same day) — so this is the name to ask
+     * for when the default's relaxed order is not enough.
      *
      * Ask for this when the ORDER between producers is part of your
      * correctness: a log whose lines must interleave as they were
