@@ -147,7 +147,7 @@ class TestSchedulerLaws extends SchedulerFamily {
         if !out.add(t) then { val _ = dup.incrementAndGet() }
 
       val ts = (0 until thieves).map { _ =>
-        val th = Thread.ofPlatform().unstarted(() => {
+        val th = Thread(() => {   // a plain platform thread: Thread.ofPlatform is JDK 21 (jdk17-core-loom-tests)
           go.await()
           var idle = 0
           while idle < 2000 do

@@ -207,7 +207,7 @@ suite is Live-tagged, since that is where the unconditional call sites actually 
 
 | module | JDK 17, for real | evidence |
 |---|---|---|
-| `okayJVM` (core) | **yes**, with one caveat below | 736/746 — all 10 failures name `Schedulers.loom` or a JDK21+ `Thread` API by identifier, in the test's own source, by design |
+| `okayJVM` (core) | **yes** (jdk17-core-loom-tests, 2026-09-20) | 754/762, 0 failed, 8 skipped — every skip is a test that IS about Loom (`SchedulerFamily`'s `loom` member, `TestAsync`'s "spawn runs on a virtual thread"), an `assume` on `hasVirtualThreads`; the tests that merely USED a JDK 21 `Thread` API to carry fibers (`TestDirectParallel`'s counting scheduler, `TestTDict`'s racers, the deque law's thieves) carry them on `Schedulers.threads` / `okay.Threads.spawnThread` / `new Thread` now, and `TestAdaptiveScheduler` asserts the branch the JVM it runs on takes. Was 736/746 with all 10 failures naming `Schedulers.loom` or a JDK21+ `Thread` API by identifier |
 | `okaySpark` | **yes** | 4/4, unaffected — ceiling is JDK 24+, 17 is far under it |
 | `okayDelta` | **yes** | 4/4, same ceiling story |
 | `okayScript` | **yes** (jdk17-adaptive-runtime) | 208/208 — `Sessions.scala:89` now `okay.Threads.spawn` |
@@ -231,7 +231,9 @@ expected trade-off of the adaptive fallback, not a bug in it: code written again
 `Async`'s own primitives (not raw `java.util.concurrent` blocking calls) does not hit it.
 (own-lost-wakeup, 2026-09-20: the trade-off was worse than timing — a fiber blocked for
 good hid every later fork, a hang — and `auto` picks `Schedulers.platform`, a watched
-`own`, on such a JVM now; BUGS.md has the dump.)
+`own`, on such a JVM now; BUGS.md has the dump. And with it the caveat is gone: `TestPar`
+and `TestDirectParallel` pass on real 17 — the stuck-check is what "tolerates" a raw
+blocking call, at a tick of latency.)
 
 **What this measurement does NOT do: fix the six broken modules.** Each would need the
 same treatment `Schedulers`/`Timer` already got (`hasVirtualThreads`-gated branch, a

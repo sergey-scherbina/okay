@@ -12,6 +12,7 @@ class TestAsync extends munit.FunSuite {
   }
 
   test("spawn runs on a virtual thread; blocking parks it") {
+    assume(Schedulers.hasVirtualThreads, "this JVM has no virtual threads; auto is Schedulers.platform there")
     val f = Async.spawn:
       async(Thread.currentThread().isVirtual).flatMap: v =>
         async { Thread.sleep(10); v }
