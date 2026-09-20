@@ -420,6 +420,9 @@ object Client:
             Vector(call(Name("apply"), Field(Field(Name("j"), "Patch"), "patch"))),
             Vector(Stmt.If(Bin("===", Name("t"), Str("Close")),
               Vector(call(Field(ws, "close")))))))))))) ++
+      Vector(set(Field(ws, "onclose"), Fun(Vector.empty, Vector(
+        call(Name("setTimeout"), Fun(Vector.empty, Vector(
+          call(Field(Name("location"), "reload")))), Num(1000)))))) ++
       listeners
 
   /** TYPING: inside a form the DOM keeps the value and only an input
