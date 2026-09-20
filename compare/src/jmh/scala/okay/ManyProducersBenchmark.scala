@@ -175,6 +175,17 @@ class ManyProducersBenchmark {
   @Benchmark def growing_chunk(): Long =
     runChunked(Queues.strong[Long].growing(Cap, parts = 16).build)
 
+  // channel-default-adaptive (2026-09-20): every lane above names its
+  // mechanism, so none of them measures what `Channel[A](n)` actually
+  // builds. These two do — the bounded DEFAULT, whichever arm
+  // `-Dokay.channel.buffer` selects (growing today; `adaptive` with
+  // `-Dokay.channel.parts=8` is the arm that differs in adoption only).
+  @Benchmark def default_chunk(): Long =
+    runChunked(Channel[Long](Cap))
+
+  @Benchmark def default_elem(): Long =
+    run(Channel[Long](Cap))
+
   /** CAPACITY-MATCHED (lane-fairness, 2026-09-08). This used to be
    * `parts(16).each(Cap)` — sixteen parts of 1024, so 16 384 slots
    * against `oneRing_chunk`'s 1024 and `growing_chunk`'s 1 984. Every
