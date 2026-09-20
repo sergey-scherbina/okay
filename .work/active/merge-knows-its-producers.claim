@@ -1,6 +1,6 @@
-feature/merge-knows-its-producers 2026-09-20T00:13:13Z
+feature/merge-knows-its-producers 2026-09-20T00:05:00Z
 agent: claude-code
-heartbeat: 2026-09-20T00:13:13Z
+heartbeat: 2026-09-20T00:17:33Z
 status: in-progress
-done-so-far: worktree created; reading Channel.merge/AdaptiveFifo/Queues
-next: spec (merge knows its producer count: fixed parts, exact per-source order as a law), A/B lane, tests
+done-so-far: spec committed; forProducers + 4 seams + TestMergeOrder written, 171 stream tests green; A/B (sized vs growing, 2 rounds) running in background
+next: results into spec, docs/queues.md row, changelog, history, gate, land
