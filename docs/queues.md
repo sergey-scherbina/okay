@@ -297,6 +297,7 @@ the order it sent them".
 > | what you have | what to write | what you get |
 > |---|---|---|
 > | one producer, or order between senders does not decide anything | `Channel[A](n)` | the default; fastest at one producer, one displacement across the swap |
+> | a merge of two sources, or a buffered single source | `Source.merge` / `Channel.merge`, `Channel.buffer` | the seam KNOWS its producers, so it never guesses: two parts from the start for a merge, one ring for a buffer — no adoption, no swap, each source's order exact (channel-known-producers, 2026-09-20) |
 > | many producers AND one producer's own order means something | `Queues.strong[A].adaptive.each(n).build` | exact per-producer order — it never adopts a buffer, so there is no swap. 38x faster than a ring at sixteen producers, 19% slower at one |
 > | you need the exact order across ALL producers | `Queues.strong[A].fifo(n).build` | one tail, one CAS, total FIFO — and no partitioning to gain from |
 >
