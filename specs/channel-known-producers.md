@@ -70,17 +70,17 @@ changes the seams that do know.
 
 ## Behavior
 
-- [ ] `Channel.merge` and `Source.merge` deliver each side's elements
+- [x] `Channel.merge` and `Source.merge` deliver each side's elements
       in exactly the order that side told them — a LAW, rounds with a
       fresh consumer thread each (the shape `TestChannelLaws`' two-
       producer law uses, since one consumer's starting part hides a
       reorder), `TestMergeOrder`.
-- [ ] `Channel.buffer` delivers in order (trivially: one ring).
-- [ ] nothing lost, nothing invented, close after both sides end, a
+- [x] `Channel.buffer` delivers in order (trivially: one ring).
+- [x] nothing lost, nothing invented, close after both sides end, a
       failing side fails the channel — the existing `TestChannel`,
       `TestStreamSource`, `TestChunkEdges` and `TestChannelLaws`
       suites, unchanged.
-- [ ] the numbers: `MergeBenchmark` (channel, source and chunks
+- [x] the numbers: `MergeBenchmark` (channel, source and chunks
       merge), `MergeCapBenchmark` (64/256/1024), `ChunkFlushBenchmark`'s
       `okayChunked`, and the `Channel.buffer` rows of
       `IdiomaticApiBenchmark`, each arm in its own JVM, alternating.
@@ -135,4 +135,56 @@ changes the seams that do know.
 
 ## Results
 
-(filled by the lane.)
+**The A/B, 2026-09-20.** Both arms in one invocation, alternating
+sized / growing / sized / growing, each arm its own JVM
+(`-jvmArgsAppend -Dokay.channel.known=growing` for the old), `-f 1
+-wi 3 -i 5`, load 3.7–5.6 throughout. The control lane
+`okaySourceSingleDrain` — one source, no channel, untouchable by the
+change — read 47.9 / 49.1 / 48.5 / 50.2 across the four arms, so the
+box held still and the pairs may be read. Rows `ckp-*` in history.tsv.
+
+| lane | sized r1 | growing r1 | sized r2 | growing r2 | verdict |
+|---|---|---|---|---|---|
+| `Channel.merge` 2×500 (LazyList in) | 68.0 ±1.2 | 71.3 ±2.9 | 67.8 ±1.1 | 70.6 ±1.9 | sized −4%, same sign, bars separate |
+| `Chunks.merge` 2×500 (~31 chunks a side) | 11.57 ±0.59 | 11.28 ±0.47 | 11.93 ±0.35 | 11.09 ±0.21 | **sized +3–8%: the one loss** |
+| `Source.merge` 2×500 elementwise | 106.9 ±3.9 | 88.2 ±2.7 | 100.5 ±2.5 | 111.8 ±3.7 | opposite signs in the two rounds: no verdict (merge-lane-variance) |
+| `Source.merge` at capacity 64 / 256 / 1024 | 85.3 / 80.2 / 74.6 | 91.2 / 74.8 / 73.8 | 110.3 / 73.5 / 78.1 | 90.4 / 78.5 / 70.8 | 64 swings both ways; 256 and 1024 inside the ~15% band contended lanes carry |
+| `Source.merge(chunked)` 2×2000, k 16 / 256 / 1024 | 224.6 / 226.1 / 226.0 | 231.3 / 232.6 / 228.7 | 226.4 / 248.7 / 225.0 | 231.9 / 228.5 / 227.1 | parity (one outlier at k=256 r2) |
+| `Channel.buffer`, elementwise / chunk-native (one producer) | 189.5 / 18.55 | 187.5 / 19.97 | 196.0 / 19.54 | 191.7 / 19.85 | parity |
+
+**What the numbers say.**
+
+- **Matched pairs everywhere but one, and that one is explained.**
+  `Chunks.merge` over 2×500 pushes ~62 chunks in all, and the growing
+  buffer samples the pushing thread every 64th push — so on this lane
+  it NEVER sees two producers and stays the single ring it started
+  as, while two fixed parts pay one part scan per pop. The 3–8% is
+  the price of exact order on a merge too short to contend, and it is
+  named here rather than hidden: the §6 headline row (13.3 us against
+  ZIO's 51.5) moves by under a microsecond.
+- **The elementwise merge is the noisy lane it always was.** Two
+  rounds read opposite signs; `merge-lane-variance` (backlog) records
+  4x swings on unchanged code for this shape. Nothing is claimed for
+  it in either direction.
+- **The buffer at one producer is a wash**, as it should be: `growing`
+  at one producer IS a ring plus a sample every 64th push, and the
+  sample does not show.
+- **The order law is exact and green** (`TestMergeOrder`, 20 rounds
+  each of `Channel.merge`, `Source.merge` elementwise and chunked, and
+  `Channel.buffer`, a fresh consumer thread per round).
+- **AND IT FAILS ON THE OLD SHAPE, watched.** The same law under
+  `OKAY_CHANNEL_KNOWN=growing`, 1 500 rounds, 20 CPU burners on 14
+  cores (load 7 rising to 21 — the condition every earlier sighting
+  needed): `Channel.merge: each side arrives in exactly the order it
+  sent` — **round 540: the odd side came back out of order**. That is
+  the three-sightings defect (BUGS.md `growing-stale-route`) reproduced
+  on the merge seam by a test in the gate, for the first time with a
+  law rather than a probe. The sized arm under the identical run:
+  1 500 rounds of all three tests, load 17 rising to 23, **Passed 3,
+  Failed 0** — no window to enter, because nothing is ever adopted.
+
+So the change costs nothing measurable on the lanes that matter and
+buys the exact per-source order as a law instead of an exception.
+The question this leaves for `Channel.apply` (out of scope) is the
+mirror image: growing's whole advantage is a producer count it does
+not know, and the actor mailbox is where that is real.
