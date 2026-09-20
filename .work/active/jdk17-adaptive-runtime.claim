@@ -1,6 +1,0 @@
-feature/jdk17-adaptive-runtime 2026-09-19T16:11:41Z
-agent: claude-code
-heartbeat: 2026-09-19T16:11:41Z
-status: in-progress
-done-so-far: spec written (jdk17-adaptive-runtime.md)
-next: shared okay.Threads.spawn helper + okay-script fix first

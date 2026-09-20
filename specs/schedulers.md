@@ -148,7 +148,13 @@ own ground, and 3 327 against 25 419 when each fiber does real work.
 - **`own` is not the default** until the adaptive member has its laws:
   a blocking call inside a fiber on `own` holds a worker, and the
   default must be the one that cannot deadlock a program that was
-  correct on `loom`.
+  correct on `loom`. HELD TO on 2026-09-20 (own-lost-wakeup): `auto`
+  had been handing plain `own` to every program on a JVM without
+  Loom, and okay-http's `Nio` — correct on `loom` — hung there with
+  one worker in `accept()` and thirteen parked. The non-Loom pick is
+  `Schedulers.platform`, `own` watched every 5 ms, and the stuck-check
+  wakes a parked worker before it grows; three laws in
+  `TestSchedulerLaws` say so. BUGS.md `own-lost-wakeup`.
 - **Threads are platform threads, not virtual**: a worker is a place
   to run continuations; making it a virtual thread would put a
   scheduler on a scheduler (kyo virtualises for a different reason —

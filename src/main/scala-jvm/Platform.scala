@@ -200,13 +200,27 @@ object Schedulers {
   val hasVirtualThreads: Boolean = Runtime.version().feature() >= 21
 
   /** the right default for THIS JVM, with no property and no `given`
-   * needed to get it: `loom` where virtual threads exist, `own`
-   * (the fastest platform-thread scheduler measured here — see its
-   * own doc below) where they don't. `given Scheduler` below is
-   * exactly this, plus `-Dokay.scheduler` as an override; call `auto`
-   * directly from code that wants the adaptive pick without going
-   * through either. */
-  def auto: Scheduler = if hasVirtualThreads then loom else own.build
+   * needed to get it: `loom` where virtual threads exist, `platform`
+   * where they don't. `given Scheduler` below is exactly this, plus
+   * `-Dokay.scheduler` as an override; call `auto` directly from code
+   * that wants the adaptive pick without going through either. */
+  def auto: Scheduler = if hasVirtualThreads then loom else platform
+
+  /** the pick for a JVM WITHOUT Loom: `own` — the fastest
+   * platform-thread scheduler measured here, see its doc below — with
+   * the stuck-check on and quick. A default is handed to programs
+   * that were written for Loom, where a fiber may sit in a raw
+   * blocking call for its whole life (okay-http's `Nio` parks its
+   * accept loop in `accept()`), and plain `own` is honest about not
+   * surviving that: a worker inside a task counts as awake, so an
+   * outside fork wakes nobody and a child the worker forked before
+   * it blocked sits on its deque unsignalled. Read from a thread
+   * dump on JDK 17 (own-lost-wakeup, 2026-09-20): fourteen workers,
+   * one in `accept()`, thirteen parked, the test's client fiber in
+   * the submission queue for good. Watched every 5 ms, that stall
+   * costs a tick, not the program; the timer is one task on the
+   * wheel and the check is a handful of volatile reads. */
+  def platform: Running = own.watched(scala.concurrent.duration.Duration(5, "ms")).build
 
   /** a scheduler that owns threads, so it can be stopped. `close()`
    * lets the workers finish what they hold and then exit; a fiber
@@ -302,7 +316,8 @@ object Schedulers {
    * A BLOCKING call inside a fiber holds one of the `workers`
    * threads. `Schedulers.own` is for short CPU-bound fibers;
    * `Schedulers.adaptive` adds the worker that makes blocking safe,
-   * and `Schedulers.loom` makes it free.
+   * and `Schedulers.loom` makes it free. `own` is never the default:
+   * `auto` picks `platform` (a watched `own`) where there is no Loom.
    */
   val own: Own = Own()
 
@@ -500,7 +515,7 @@ object Schedulers {
               // every burst look expensive (measured: it made the
               // decision flip between iterations).
               if now - streakStart > helpAfterNanos && (now - windowStart) / windowRan > spreadAboveNanos then
-                activateNext()
+                val _ = activateNext()
               windowStart = now
               windowRan = 0
           else if spins < spin then
@@ -526,22 +541,32 @@ object Schedulers {
     var w0 = 0
     while w0 < n do { startWorker(w0); w0 += 1 }
 
-    /** THE STUCK-CHECK (`Schedulers.adaptive`). A fiber that blocks
-     * inside a worker holds that thread; with every worker blocked the
-     * program stops, and no policy over queues can see it — the queues
-     * are not empty, they are unattended. So: every `stuckAfterMillis`,
-     * if work is pending and NOTHING has completed since the last
-     * look, start one more worker. Blocking then costs latency rather
-     * than the program, which is what lets `own` be chosen by someone
-     * who is not certain their fibers never block. Off by default: it
-     * is a thread and a timer, and `Schedulers.loom` is the answer
-     * when blocking is the norm rather than the exception. */
+    /** THE STUCK-CHECK (`Schedulers.adaptive`, `Schedulers.platform`).
+     * A fiber that blocks inside a worker holds that thread; with every
+     * worker blocked the program stops, and no policy over queues can
+     * see it — the queues are not empty, they are unattended. So: every
+     * `stuckAfterMillis`, if work is pending and NOTHING has completed
+     * since the last look, wake a parked worker, and only when none is
+     * parked start one more (up to `overflow`). Blocking then costs
+     * latency rather than the program, which is what lets `own` be
+     * chosen by someone who is not certain their fibers never block.
+     * Off by default: it is a thread and a timer, and `Schedulers.loom`
+     * is the answer when blocking is the norm rather than the exception.
+     *
+     * A parked worker FIRST (own-lost-wakeup, 2026-09-20). The first
+     * cut only ever grew, and a stall is more often a lost wakeup than
+     * a full house: a worker blocked inside a task counts as awake, so
+     * an outside fork wakes nobody while the other workers sleep. Each
+     * such stall then spent an overflow slot on a NEW thread while the
+     * old ones slept, and once the slots were gone the next stall was
+     * a hang — one blocked accept loop and a few connections were
+     * enough. */
     if stuckAfterMillis > 0L && overflow > 0 then
       val check: Runnable = () =>
         val pending = submissionsSize.get > 0 || { var any = false; var i = 0; val alive = live.get
           while i < alive do { if workers(i).size > 0 then any = true; i += 1 }; any }
         val done = completed.get
-        if pending && done == lastCompleted then
+        if pending && done == lastCompleted && !activateNext() then
           val next = live.get
           if next < n + overflow && live.compareAndSet(next, next + 1) then
             val _ = activations.incrementAndGet()
@@ -559,7 +584,7 @@ object Schedulers {
         submissions.offer(t)
         // a signal only when nobody would see it, or when the queue
         // has grown past what one worker should be left with
-        if awake.get == 0 || submissionsSize.get > wakeAbove then activateNext()
+        if awake.get == 0 || submissionsSize.get > wakeAbove then { val _ = activateNext() }
       t
 
     private[okay] def fromSubmissions(): DriveTask[?] | Null =
@@ -572,8 +597,9 @@ object Schedulers {
      * first cut grew an "active prefix" and unparked only the worker
      * at its edge; a worker that had parked earlier then slept for
      * ever, and the probe found exactly that: one activation, two
-     * workers running, 10 000 tasks.) */
-    private def activateNext(): Unit =
+     * workers running, 10 000 tasks.) False when nobody was parked —
+     * what tells the stuck-check to grow instead. */
+    private def activateNext(): Boolean =
       val alive = live.get
       var i = 0
       while i < alive do
@@ -581,8 +607,9 @@ object Schedulers {
         if w.parked then
           val _ = activations.incrementAndGet()
           java.util.concurrent.locks.LockSupport.unpark(w.thread)
-          return
+          return true
         i += 1
+      false
   }
 
   /** Hoisted out of `Owned` (it captures nothing from it) so the
@@ -719,6 +746,28 @@ object Schedulers {
       t.start()
       fiberOf(f, () => t.interrupt())
 }
+
+/** Fire-and-forget daemon threads, adaptive the same way `Schedulers`
+ * is (jdk17-adaptive-runtime): virtual where this JVM has them, an
+ * ordinary daemon `Thread` otherwise. For the handful of call sites
+ * across the codebase that just want "run this in the background,
+ * named" and don't need a `Fiber`/`Scheduler` at all — an accept
+ * loop, a tail loop, a chunked response writer. */
+object Threads:
+  def spawn(name: String)(body: () => Unit): Unit =
+    val _ = spawnThread(name)(body)
+
+  /** the same adaptive pick, handed back as a `Thread` for the callers
+   * that need to `.join()` it (mostly test harnesses standing up a
+   * throwaway socket server) rather than firing and forgetting. */
+  def spawnThread(name: String)(body: () => Unit): Thread =
+    if Schedulers.hasVirtualThreads then
+      Thread.ofVirtual().name(name).start(() => body())
+    else
+      val t = Thread(() => body(), name)
+      t.setDaemon(true)
+      t.start()
+      t
 
 /** The default scheduler is Loom — a fiber IS a virtual thread, which
  * is the design and stays it, on a JVM that HAS Loom (JDK 21+).

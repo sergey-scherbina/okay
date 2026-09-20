@@ -137,9 +137,6 @@ class ProducerWriterCarrierBenchmark {
   def chunksFoldChunks(): Long =
     Chunks.fold(writerChunks)(using Fold.sumLong)
 
-  // Writer % Chunk[X]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), same caveat
-  // Writer.scala documents on Writer.run (E092, the TypeableK caveat)
   @Benchmark
   def chunksFoldWriter(): Long =
     Writer.fold[Chunk[Long], Long, Unit, Nothing](writerChunks).runWith._1
@@ -282,9 +279,6 @@ class ProducerWriterCarrierBenchmark {
   def chunksMapChunks(): Long =
     Chunks.fold(Chunks.map(writerChunks)(_ * 2L))(using Fold.sumLong)
 
-  // Writer % Chunk[X]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), same caveat
-  // Writer.scala documents on Writer.run (E092, the TypeableK caveat)
   @Benchmark
   def chunksMapWriter(): Long =
     Writer.fold[Chunk[Long], Long, Unit, Nothing](Writer.map(writerChunks)(doubleChunk)).runWith._1
@@ -379,9 +373,6 @@ class ProducerWriterCarrierBenchmark {
     val _ = Producer.each[Chunk[Byte], Chunk[Byte], Async](byteProducer)(c => out.write(c.toArray)).runWith
     out.toByteArray
 
-  // Writer % Chunk[X]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), same caveat
-  // Writer.scala documents on Writer.run (E092, the TypeableK caveat)
   @Benchmark
   def blobBytesWriter(): Array[Byte] =
     given CanBlock = cb
@@ -389,6 +380,97 @@ class ProducerWriterCarrierBenchmark {
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => out.write(c.toArray))
     val _ = Writer.fold[Chunk[Byte], Unit, Unit, Async](byteSource)(using summon, sink).runWith
     out.toByteArray
+
+  // ---------------------------------------------------------- 5
+  // writer-collect-loops: the three collect drains as calls to
+  // `Writer.loopWith` (cons per element, one reverse, the finisher
+  // INSIDE the loop) against the shape they replaced, written out
+  // verbatim as the control rows so each pair alternates in one run:
+  // `Source.concat` was `Writer.collect(s).map(_._1.flatten)` — a
+  // `Vector :+` per chunk and a `.map` over a program that still
+  // forwards Async — and `runCollect` was its own copy of the loop
+  // with a `Vector :+` per element. Two source shapes for `concat`:
+  // the byte chunks above told plainly, and the same with ONE `async`
+  // step between chunks, which is the shape a page-fetching driver
+  // (okay-jdbc's drains) actually has and the one where the mapped
+  // residual costs a rotation per forwarded operation.
+
+  private def byteSourceAsync: Unit ! (Writer % Chunk[Byte] + Async) =
+    def go(i: Int): Unit ! (Writer % Chunk[Byte] + Async) =
+      if i >= byteChunks.length then okay.pure(())
+      else async(()).plus[Writer % Chunk[Byte]].flatMap(_ =>
+        Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1)))
+    go(0)
+
+  /** the old `Writer.collect`, verbatim: its own loop split on G, a
+   * `Vector :+` per told value */
+  private def collectControl[W, A, G[+_] : TypeableK](a: A ! Writer % W + G): (Vector[W], A) ! G =
+    import !.*
+    import scala.annotation.tailrec
+    def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
+    @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
+      (x.resume: @unchecked) match
+        case Free.Pure(v) => okay.pure((acc, v))
+        case Inject(e) => split[G, Writer % W](e)
+          (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(w) => okay.pure((acc :+ w, ())) }
+        case Bind(Inject(e), k) => split[G, Writer % W](e)
+          (g => Inject(g).flatMap(v => again(acc)(k(v))))
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(w) => loop(acc :+ w)(k(())) }
+    loop(Vector.empty)(a)
+
+  /** the old `Source.concat`, verbatim */
+  private def concatControl[X](s: Source[Chunk[X]]): Vector[X] ! Async =
+    collectControl[Chunk[X], Unit, Async](s).map(_._1.flatten)
+
+  /** the old `Source.runCollect`, verbatim */
+  private def runCollectControl[A](s: Source[A]): Vector[A] ! Async =
+    import !.*
+    import scala.annotation.tailrec
+    def again(acc: Vector[A])(x: Source[A]): Vector[A] ! Async = loop(acc)(x)
+    @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
+      (x.resume: @unchecked) match
+        case Free.Pure(_) => okay.pure(acc)
+        case Inject(e) => split[Async, Writer % A](e)
+          (g => Inject(g).map(_ => acc): Vector[A] ! Async)
+          { case Writer.Say(a) => okay.pure(acc :+ a) }
+        case Bind(Inject(e), k) => split[Async, Writer % A](e)
+          (g => Inject(g).flatMap(v => again(acc)(k(v))))
+          { w0 => (w0: @unchecked) match
+              case Writer.Say(a) => loop(acc :+ a)(k(())) }
+    loop(Vector.empty)(s)
+
+  @Benchmark
+  def concatBytes(): Int =
+    given CanBlock = cb
+    Source.concat(byteSource).runWith.length
+
+  @Benchmark
+  def concatBytesControl(): Int =
+    given CanBlock = cb
+    concatControl(byteSource).runWith.length
+
+  @Benchmark
+  def concatBytesAsync(): Int =
+    given CanBlock = cb
+    Source.concat(byteSourceAsync).runWith.length
+
+  @Benchmark
+  def concatBytesAsyncControl(): Int =
+    given CanBlock = cb
+    concatControl(byteSourceAsync).runWith.length
+
+  @Benchmark
+  def runCollectLongs(): Int =
+    given CanBlock = cb
+    writerLongs.runCollect.runWith.length
+
+  @Benchmark
+  def runCollectLongsControl(): Int =
+    given CanBlock = cb
+    runCollectControl(writerLongs).runWith.length
 }
 
 /** the four chunked-fold loops as ordinary (non-inline, non-benchmark)

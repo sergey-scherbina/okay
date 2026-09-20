@@ -31,7 +31,12 @@ object Server {
            (using CanBlock): JdkServer ! Resource =
     Resource.acquire {
       val s = JdkServer.create(InetSocketAddress(port), 0)
-      s.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
+      // one thread per request; virtual where this JVM has them
+      // (jdk17-adaptive-runtime), an unbounded cached pool otherwise
+      // -- the pre-JDK21 idiom for the same "don't queue" contract.
+      s.setExecutor(
+        if okay.Schedulers.hasVirtualThreads then java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()
+        else java.util.concurrent.Executors.newCachedThreadPool())
       s.createContext("/", (x: HttpExchange) => handle(x, route))
       s.start()
       s

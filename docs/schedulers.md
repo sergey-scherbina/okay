@@ -185,8 +185,12 @@ and expect everything to run on it.
 given Scheduler = Schedulers.drive(containerPool)
 ```
 
-**A JVM without virtual threads.** `Schedulers.forkJoin()` behaves,
-and `Schedulers.threads` always works.
+**A JVM without virtual threads.** Nothing to choose: the default
+`given` is `Schedulers.auto`, which is `loom` where there are virtual
+threads and `Schedulers.platform` where there are none — `own` with
+its stuck-check on, so a fiber that sits in a raw blocking call costs
+a tick of latency rather than the program. `Schedulers.forkJoin()`
+behaves too, and `Schedulers.threads` always works.
 
 **Bounding the damage of a runaway stage.** `workers(2)` is a
 concurrency limit that needs no semaphore: two threads, and the deque

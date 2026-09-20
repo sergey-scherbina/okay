@@ -17,7 +17,7 @@ class TestAcceptance extends munit.FunSuite {
 
     val server = ServerSocket(0)
     var chunks = 0
-    val fold = Thread.ofVirtual().start { () =>
+    val fold = okay.Threads.spawnThread("okay-cluster-test-fold") { () =>
       val sock = server.accept()
       val in = BufferedReader(InputStreamReader(sock.getInputStream))
       var acc = Acceptance.agg.init

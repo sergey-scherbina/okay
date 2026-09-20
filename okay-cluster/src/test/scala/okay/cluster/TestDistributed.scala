@@ -113,7 +113,7 @@ class TestDistributed extends munit.FunSuite {
 
   test("over sockets, in this JVM: real framing, real bytes") {
     val server = ServerSocket(0)
-    val serving = Thread.ofVirtual().start(() => Served.serve(server, Cluster.local))
+    val serving = okay.Threads.spawnThread("okay-cluster-test-serving")(() => Served.serve(server, Cluster.local))
     try
       val wire = Vector.fill(3)(Served.connect("127.0.0.1", server.getLocalPort))
       for parts <- Vector(1, 4, 8) do

@@ -68,7 +68,7 @@ class TestDirectParallel extends munit.FunSuite {
 
   test("a statement that is not a spawnable leaf ends the run") {
     val forks = AtomicInteger(0)
-    val under: Scheduler = Schedulers.loom
+    val under: Scheduler = Schedulers.threads   // the count is the test; any member will carry the fibers
     given counting: Scheduler = new:
       def fork[A](prog: () => A ! Async): Fiber[A] =
         forks.incrementAndGet()
@@ -94,7 +94,7 @@ class TestDirectParallel extends munit.FunSuite {
     // did nothing here, quietly. The leaf is read BEFORE the
     // narrowing now — the program the author wrote is still X ! Async.
     val forks = AtomicInteger(0)
-    val under: Scheduler = Schedulers.loom
+    val under: Scheduler = Schedulers.threads   // the count is the test; any member will carry the fibers
     given counting: Scheduler = new:
       def fork[A](prog: () => A ! Async): Fiber[A] =
         forks.incrementAndGet()
@@ -115,7 +115,7 @@ class TestDirectParallel extends munit.FunSuite {
 
   test("a run of three forks exactly three fibers, and a dependent block forks none") {
     val forks = AtomicInteger(0)
-    val under: Scheduler = Schedulers.loom
+    val under: Scheduler = Schedulers.threads   // the count is the test; any member will carry the fibers
     given counting: Scheduler = new:
       def fork[A](prog: () => A ! Async): Fiber[A] =
         forks.incrementAndGet()

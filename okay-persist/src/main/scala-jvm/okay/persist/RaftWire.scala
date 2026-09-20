@@ -147,14 +147,14 @@ object RaftWire:
     private val listener = ServerSocket(port)
     @volatile private var closed = false
 
-    Thread.ofVirtual().start(() => acceptLoop()): Unit
-    Thread.ofVirtual().start(() => tickLoop()): Unit
+    okay.Threads.spawn("okay-persist-raft-accept")(() => acceptLoop())
+    okay.Threads.spawn("okay-persist-raft-tick")(() => tickLoop())
 
     private def acceptLoop(): Unit =
       while !closed do
         try
           val sock = listener.accept()
-          Thread.ofVirtual().start(() => handleConn(sock)): Unit
+          okay.Threads.spawn("okay-persist-raft-conn")(() => handleConn(sock))
         catch case _: Throwable => ()   // closed, or a doomed accept
 
     private def handleConn(sock: Socket): Unit =

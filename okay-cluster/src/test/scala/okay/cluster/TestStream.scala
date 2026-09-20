@@ -156,7 +156,7 @@ class TestStream extends munit.FunSuite {
 
   test("over sockets: the same, with the state living in another party's memory") {
     val server = java.net.ServerSocket(0)
-    val serving = Thread.ofVirtual().start(() => Served.serve(server, Cluster.local))
+    val serving = okay.Threads.spawnThread("okay-cluster-test-serving")(() => Served.serve(server, Cluster.local))
     try
       val wire = Vector.fill(2)(Served.connect("127.0.0.1", server.getLocalPort))
       val here = batch(FanJob, feed, 8)

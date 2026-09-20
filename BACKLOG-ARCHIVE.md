@@ -7456,3 +7456,26 @@ one that type-checked, which is a shape worth removing.
       the hand-written 22.
       ARCHIVED 2026-09-18 (backlog-recheck): SUPERSEDED in its own first line, kept for the reasoning — which is what the archive is for. `dataflow-run-complete-panes` landed the rule (3.6x, `Run.merged` asserted equal at 2, 4 and 8 partitions).
 
+
+- [x] direct-compileall-split — `Direct.compileAll` (Direct.scala
+      line 641 to the end of the file, ~1460 lines) is ONE method of
+      nested defs: marks and colouring, statement/bind lowering, the
+      `foreach`/`map` loops, the `lazyOnce` lowering, `substUses`,
+      `colourlessVal`, `deferSelfCalls`. Nothing is broken and nothing
+      here is measured slow; the cost is that no phase can be unit-
+      tested on its own and every edit re-reads the whole macro. Split
+      by phase into private objects/methods taking `(using Quotes)`
+      — the file's own `applicativeOnly` (line 334) already shows the
+      shape. NOT a lane of its own: do it the next time the macro is
+      touched for a real reason, as the first commit of that lane, so
+      the behaviour change and the move are separable in the diff.
+      Found in the 2026-09-20 review.
+      DONE 2026-09-20 as direct-compiler-phases, landed as 01993eb4
+      (spec b2ff4fe7): the operator asked for it as a lane of its own,
+      with nothing else in the diff, so the move is the whole change.
+      Shape differs from the one proposed here — a class of phase
+      traits over one Quotes instance, not objects taking `(using
+      Quotes)` — because `q.reflect.Term` is a type of one `q` and the
+      phases recurse through `compile`; specs/direct-macro.md
+      "Structure" and its Decisions entry say why. Phase probes:
+      src/test/scala/DirectProbe.scala, TestDirectPhases.

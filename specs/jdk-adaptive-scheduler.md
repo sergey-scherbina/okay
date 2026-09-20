@@ -44,7 +44,10 @@ not exist. The actual problem was two call sites, not a class file.
 — checked once. `Runtime.version()` is JDK 9+, so this line itself
 never fails on anything this library could plausibly run on.
 
-`Schedulers.auto: Scheduler = if hasVirtualThreads then loom else own.build`
+`Schedulers.auto: Scheduler = if hasVirtualThreads then loom else platform`
+(`platform` was `own.build` until own-lost-wakeup, 2026-09-20: it is
+`own` with the stuck-check on now, because plain `own` hangs a program
+whose fiber sits in a raw blocking call for good — BUGS.md)
 — a named, public method, callable directly from code (not only
 reachable through the ambient `given` or the `-Dokay.scheduler`
 property) — the operator asked for this explicitly: switching should

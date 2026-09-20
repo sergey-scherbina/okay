@@ -24,6 +24,15 @@ trait SchedulerFamily extends munit.FunSuite:
 
   override def afterAll(): Unit = owned.foreach(_._2.close())
 
-  /** one law, run against every member, each as its own test */
+  /** one law, run against every member, each as its own test. The
+   * `loom` member is skipped, not failed, on a JVM without virtual
+   * threads (jdk17-core-loom-tests): its first fork is a
+   * NoSuchMethodError there, which munit treats as fatal and skips
+   * the REST of the suite for — the other five members included. */
   protected def each(name: String)(law: Scheduler => Unit): Unit =
-    members.foreach { case (member, sch) => test(s"$name — $member") { law(sch) } }
+    members.foreach { case (member, sch) =>
+      test(s"$name — $member") {
+        if member == "loom" then assume(Schedulers.hasVirtualThreads, "loom: this JVM has no virtual threads")
+        law(sch)
+      }
+    }

@@ -60,4 +60,30 @@ class FoldConsumersBenchmark {
 
   @Benchmark
   def streamSpecialized: Long = Stream.fold(producer)(using specialized)
+
+  // ---- stream-fold-via-iterator: `Stream.fold` walks `iterator` now;
+  // the walk it replaced — `uncons(_).runWith` per element, an Option,
+  // a tuple and a program built and run each time — written out here
+  // verbatim as the control rows, so each pair alternates in one run.
+
+  private def foldControl[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B = {
+    @annotation.tailrec def loop(b: B, x: S[A]): B = St.uncons(x).runWith match
+      case None => b
+      case Some((a, t)) => loop(f.add(b, a), t)
+    loop(f.init, s)
+  }
+
+  @Benchmark
+  def streamGenericControl: Long = foldControl(producer)(using generic)
+
+  @Benchmark
+  def streamSpecializedControl: Long = foldControl(producer)(using specialized)
+
+  // the postfix consumers: `toLazyList` (the old road, a memoised cell
+  // and a synchronised lazy state per element) against `iterator`
+  @Benchmark
+  def foldLeftIterator: Long = producer.foldLeft(0L)(_ + _)
+
+  @Benchmark
+  def foldLeftLazyListControl: Long = producer.toLazyList.foldLeft(0L)(_ + _)
 }

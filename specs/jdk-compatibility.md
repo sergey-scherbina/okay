@@ -207,15 +207,15 @@ suite is Live-tagged, since that is where the unconditional call sites actually 
 
 | module | JDK 17, for real | evidence |
 |---|---|---|
-| `okayJVM` (core) | **yes**, with one caveat below | 736/746 — all 10 failures name `Schedulers.loom` or a JDK21+ `Thread` API by identifier, in the test's own source, by design |
+| `okayJVM` (core) | **yes** (jdk17-core-loom-tests, 2026-09-20) | 754/762, 0 failed, 8 skipped — every skip is a test that IS about Loom (`SchedulerFamily`'s `loom` member, `TestAsync`'s "spawn runs on a virtual thread"), an `assume` on `hasVirtualThreads`; the tests that merely USED a JDK 21 `Thread` API to carry fibers (`TestDirectParallel`'s counting scheduler, `TestTDict`'s racers, the deque law's thieves) carry them on `Schedulers.threads` / `okay.Threads.spawnThread` / `new Thread` now, and `TestAdaptiveScheduler` asserts the branch the JVM it runs on takes. Was 736/746 with all 10 failures naming `Schedulers.loom` or a JDK21+ `Thread` API by identifier |
 | `okaySpark` | **yes** | 4/4, unaffected — ceiling is JDK 24+, 17 is far under it |
 | `okayDelta` | **yes** | 4/4, same ceiling story |
-| `okayScript` | no | `Sessions.scala:89`, `PersistedBackend`'s constructor: `Thread.ofVirtual()`, unconditional, in the live-reload tail loop |
-| `okayHttpJVM` | no | `Server.scala:34`: `Executors.newVirtualThreadPerTaskExecutor()`, unconditional — first surfaced only once fork was forced (see trap above) |
-| `okayClusterJVM` | no | socket-accept loop: `Thread.ofVirtual()`, unconditional |
-| `okayPersistJVM` | no | `RaftWire.scala:150`, `Node`'s constructor: `Thread.ofVirtual()`, unconditional — every wire-backed Raft test fails at construction |
-| `okayJetty` | no | `VirtualThreadPool.<init>` throws `IllegalStateException: Virtual Threads not supported` directly (jetty-virtual-threads' own guard, not even a linkage error) — the `Server(VirtualThreadPool())` change this session made |
-| `okayNetty` | no | fails through its `okayHttp.jvm` dependency the moment a test builds a real server — same call site as `okayHttpJVM`, one hop away |
+| `okayScript` | **yes** (jdk17-adaptive-runtime) | 208/208 — `Sessions.scala:89` now `okay.Threads.spawn` |
+| `okayClusterJVM` | **yes** (jdk17-adaptive-runtime) | 136/136 — `Served.scala:50` now `okay.Threads.spawn` |
+| `okayPersistJVM` | **yes** (jdk17-adaptive-runtime) | 242/242 default + 13/13 `Live` — five call sites across `RaftWire.scala`/`Wire.scala` now `okay.Threads.spawn` |
+| `okayNetty` | **yes** (jdk17-adaptive-runtime) | 16/16 `Live` — was only ever broken by `okayJetty`'s stale classfile, transitively (below) |
+| `okayHttpJVM` | **yes** (own-lost-wakeup, 2026-09-20) | 38/38 with `Live`. `Server.scala:34`'s crash was fixed by jdk17-adaptive-runtime (`Executors.newCachedThreadPool()` fallback); `TestNio` then HUNG on real 17, first read as `Schedulers.own`'s pool starving under blocking accept/read fibers — the thread dump said one worker blocked and thirteen PARKED, a lost wakeup, and `auto` picks a watched `own` (`Schedulers.platform`) there now. BUGS.md `own-lost-wakeup` |
+| `okayJetty` | **yes** (own-lost-wakeup, 2026-09-20) | 19/19 with `Live`. `VirtualThreadPool.<init>`'s crash fixed (conditional `QueuedThreadPool` fallback) and `Listen.java`'s classfile 65 fixed (`--release 17`) by jdk17-adaptive-runtime; `TestResumable`'s hang was the same lost wakeup as `okayHttpJVM`'s and went with it |
 
 **`okayJVM`'s own caveat, found by measurement, not assumed away:** two of the ten
 "expected" failures are not API-absence at all. `TestPar`'s fail-fast timing assertion
@@ -229,11 +229,24 @@ platform-thread worker can starve a sibling fiber waiting on the same bounded po
 exact hazard the source article this session started from was about. This is a genuine,
 expected trade-off of the adaptive fallback, not a bug in it: code written against
 `Async`'s own primitives (not raw `java.util.concurrent` blocking calls) does not hit it.
+(own-lost-wakeup, 2026-09-20: the trade-off was worse than timing — a fiber blocked for
+good hid every later fork, a hang — and `auto` picks `Schedulers.platform`, a watched
+`own`, on such a JVM now; BUGS.md has the dump. And with it the caveat is gone: `TestPar`
+and `TestDirectParallel` pass on real 17 — the stuck-check is what "tolerates" a raw
+blocking call, at a tick of latency.)
 
 **What this measurement does NOT do: fix the six broken modules.** Each would need the
 same treatment `Schedulers`/`Timer` already got (`hasVirtualThreads`-gated branch, a
 portable fallback) at its own unconditional call site — real, separate work, one module
 at a time, not attempted here.
+
+**Update (jdk17-adaptive-runtime, 2026-09-20): four of the six now genuinely done.**
+`okay-script`, `okay-cluster`, `okay-persist`, `okay-netty` are green on real JDK 17,
+verified the same way this table was built. `okay-http` and `okay-jetty` are NOT —
+fixing their unconditional API calls uncovered the SAME `Schedulers.own`/blocking-call
+trade-off named above, except there it causes a genuine HANG (not a wrong answer) in
+`okay-http`'s `Nio.scala` and, on the same evidence pattern, `okay-jetty`'s
+`TestResumable`. Full writeup: specs/jdk17-adaptive-runtime.md.
 
 ## Related
 

@@ -338,7 +338,94 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 5. Guards run before rewriting: any mark under a Lambda/by-name node
    → positioned compile error; while/try with marks → the v2 error.
 
+## Structure (direct-compiler-phases, 2026-09-20)
+
+The pipeline was one method — `compileAll`, 1460 lines of nested defs
+sharing a closure over the Quotes, the monad and the two mode flags —
+which meant no phase had a name a test could call. It is now a class,
+`DirectCompiler[F]`, mixed from one trait per phase, each in its own
+file under `src/main/scala/macros/` (`package okay.macros`; the facade
+`okay.Direct` stays where it was) with its dependencies stated by what
+it extends:
+
+| phase | file | decides | reaches the knot |
+|---|---|---|---|
+| marks | DirectMarks | what the reader wrote: mark spellings, colouring conversions, symbol uses | no |
+| row | DirectRow | what F is: the row, runnable values, silent drops, the lifts | no |
+| emit | DirectEmit | the monad's words: `pure`, `flatMap`, `fmap`, the upcast | no |
+| defer | DirectDefer | the pre-pass: `Free.delay` around calls that would recurse on the stack | no |
+| vals | DirectVals | `val` runs here, `lazy val` is the Once cell, `def` is by name | nested def |
+| loops | DirectLoops | for-do, for-yield, the fused statement tail | body |
+| parallel | DirectParallel | which leading vals spawn together; spawn-all-then-join-all | leaf fallback |
+| core | DirectCompiler | `compile`, `compileMarked`, ANF over spines, the block fold | is the knot |
+
+The knot — `compile`/`compileBlock` — is abstract in `DirectPhase`, the
+base every phase extends, so a phase that calls back into the compiler
+does so through those two names and a reader sees it in the column
+above. Emission is unchanged by construction: the split moved code and
+renamed nothing that emits; every TestDirect* suite is the check.
+
+The seam is the `Expr`: `q.reflect.Term` belongs to one Quotes path, so
+what enters the class (the block, a try body's sub-pipeline, a probe)
+enters as an `Expr[Any]` and is `asTerm`ed under the instance's own `q`.
+Inside, the given is declared at `q.type` — not `Quotes` — so a
+dependent method a phase calls (`Direct.stripped`,
+`DirectCompiler.pipeline`) binds to this `q` and its Term is ours.
+
+A phase is asserted ON ITS OWN through `src/test/scala/DirectProbe.scala`,
+test-side macros that run one phase over a block and answer with plain
+data, before any bind is emitted and without running anything:
+
+- [x] `DirectProbe.deferred` — the block after the defer pre-pass,
+  shown: a marked call at the program type carries `Free.delay` by
+  default and not under `eagerCalls`; a tail call carries it under
+  both; a call already under `!.tailcall` is wrapped once, not twice;
+  and a block with no enclosing def (one in a class body) is left as
+  written — the pass finds the def a self-call would name by walking
+  up from the splice owner, and stops when there is none
+- [x] `DirectProbe.marks` — how many marks the mark analysis finds,
+  counting an auto-colouring conversion as the mark it is
+- [x] `DirectProbe.runnable` — the element type a value could RUN at
+  as a bare statement of a block over F: `Some(Unit)` for an operation
+  of the row and for a program of it, `None` for a foreign monad
+- [x] `DirectProbe.dropped` — whether a statement of that type would
+  be a silent drop (the error's own predicate); and that the predicate
+  asks for `Direct.Effect`, the auto-colouring marker — the one name
+  that resolved differently outside `object Direct` (`okay.Effect` is
+  the narrower type, and the compiler said nothing); red with the bare
+  name, green qualified
+- [x] `DirectProbe.independentRun` — the names of the leading vals the
+  parallel analysis would spawn together; a dependent leaf ends the run
+- [x] `DirectProbe.slots` — the value slots an application spine
+  hoists: receiver and arguments, the elements of a varargs
+
 ## Decisions
+
+- **The compiler is a class of phase traits, not a closure of nested
+  defs** (direct-compiler-phases, 2026-09-20). `compileAll` had grown
+  to 1460 lines of ~70 nested defs, all correct and all unnameable: a
+  phase could be tested only by running the whole macro and reading
+  the program's behaviour. The closure became `DirectCompiler[F]` and
+  the defs became members of one trait per phase (the Structure
+  section above), so a test-side macro can instantiate the class and
+  call one phase. `using` parameters on the class were refused: they
+  would have put two `Quotes` givens in the class body (the parameter
+  and the phases' inherited alias), so the class takes plain `val`s
+  and the base trait owns the one given, at `q.type`.
+- **The phases live in `okay.macros`, and not in `okay.direct`**
+  (direct-phases-package, 2026-09-20). The facade stays `okay.Direct`;
+  the nine phase files are machinery every file in `package okay`
+  would otherwise see, so they moved to a subpackage. The natural
+  name was measured and refused: a package is a term name too, and a
+  probe compile of the three import shapes the repository uses showed
+  `okay.direct` breaking exactly one of them — `import okay.*` beside
+  `import okay.Direct.*`, which seven files here write and any user
+  would — with E049 "Reference to direct is ambiguous: imported by
+  okay._ and by okay.Direct._". (`package okay` with `import
+  Direct.*`, and `import okay.Direct.*` alone, both compiled: the
+  first draft of this entry said "shadowing", and that was the wrong
+  mechanism.) `macros` names what the package holds, compile-time
+  machinery, and collides with no term of the API.
 
 - **A lambda whose body ends at the block's program type is compiled,
   not refused** (direct-program-lambda, 2026-09-16). The general

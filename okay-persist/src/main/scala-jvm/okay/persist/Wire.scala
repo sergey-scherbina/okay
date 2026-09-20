@@ -72,14 +72,13 @@ object Wire:
 
     val port: Int = listener.getLocalPort
 
-    locally { val _ = Thread.ofVirtual().start(() => acceptLoop()) }
+    okay.Threads.spawn("okay-persist-wire-accept")(() => acceptLoop())
 
     private def acceptLoop(): Unit =
       while !closed do
         try
           val sock = listener.accept()
-          Thread.ofVirtual().start(() => serve(sock))
-          ()
+          okay.Threads.spawn("okay-persist-wire-conn")(() => serve(sock))
         catch case _: Throwable => () // closed, or a doomed accept
 
     private def serve(sock: Socket): Unit =
