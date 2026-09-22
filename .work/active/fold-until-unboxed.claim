@@ -1,6 +1,6 @@
 feature/fold-until-unboxed 2026-09-22T21:03:45Z
 agent: claude-code
-heartbeat: 2026-09-22T21:03:45Z
+heartbeat: 2026-09-22T21:26:44Z
 status: in-progress
-done-so-far: sprint entry
-next: worktree; benchmark lanes; measure; decide; record; land
+done-so-far: benchmark lanes written; rounds 1-2 recorded (box is the whole cost, 25x on the loop); OfLong/OfInt/OfDouble/OfBoolean + dispatch in Chunks/Stream/Foldable implemented, suites green
+next: round 3 on a quiet box (JMH lock held by a sibling at 23:26); Results, changelog; full gate; land
