@@ -1,0 +1,6 @@
+feature/scala2-docs 2026-09-22T22:33:04Z
+agent: claude-code
+heartbeat: 2026-09-22T22:33:04Z
+status: in-progress
+done-so-far: survey of doc places
+next: docs/scala2.md guide + probe TestScala2Guide, README, typepedia, theory ch, tutorial, your-own-effect
