@@ -387,3 +387,74 @@ focus and root. `up.up` from two lenses is typed `Top[Order]` and
 one asserting them. `compileErrors` pins that a misspelt field name
 is refused. Not built, each with its reason in Decisions: a
 type-changing `set`, a lens back from the cursor, `left`/`right`.
+
+## Stage 3 — completion (typed-zipper-completion, 2026-09-22)
+
+Stage 2's Decisions listed three things not built. The operator asked
+for them ("делать то что еще не построено"); two are built here, the
+third is refused again with its reason restated.
+
+### Interface (stage 3)
+
+```scala
+sealed trait TypedZipper[S, A, Self]:
+  /** the path from the root to this focus, as an optic on the TREE —
+   *  the typed twin of stage 1's `Zipper.at`; affine because a prism
+   *  or an index frame may not be there */
+  def asAffine: Affine[S, S, A, A]
+
+object TypedZipper:
+  final case class Below[S, P, A, Z](parent: Z, look: P => Either[P, A], put: (P, A) => P, focus: A, dirty: Boolean)
+
+  /** the type-changing cursor: a focus and the plug — put a `B` back
+   *  and the whole is a `T`. McBride's derivative APPLIED: no frames,
+   *  no `up`, because once the focus changes type there is no parent
+   *  of the old type to return to; the way up is `set`, which IS the
+   *  new whole, and a new cursor into it */
+  final case class Poly[A, B, T](focus: A, put: B => T):
+    def set(b: B): T
+    def modify(f: A => B): T
+    def down[C, D](l: Lens[A, B, C, D]): Poly[C, D, T]
+    def downPartial[C, D](o: Affine[A, B, C, D]): Option[Poly[C, D, T]]
+    def downCase[C, D](p: Prism[A, B, C, D]): Option[Poly[C, D, T]]
+  object Poly:
+    /** the root: focus `S`, and the whole becomes `T` when set */
+    def of[S, T](s: S): Poly[S, T, T]
+```
+
+### Behavior (stage 3, `TestTypedZipper`)
+
+- [ ] `asAffine.preview(root)` is `Some(focus)` for a cursor with no
+      edits, through lens, index and case frames; `None` through an
+      index or case frame that is not there on another tree.
+- [ ] `asAffine.set(v)(root)` equals `set(v).root`, at every depth of
+      the test walk.
+- [ ] `Poly.of[Box[String], Box[Int]](b).down(item).modify(_.length)`
+      is `Box(5, tag)`: the whole changed type with the focus.
+- [ ] a type-changing walk of two lenses and a prism: `set` answers
+      the new whole; `downCase` on the wrong case answers `None` and
+      nothing is built.
+- [ ] `Poly` shares a prefix as `TypedZipper` does: two `down`s from
+      one cursor, each `set` a whole with only its own edit.
+
+### Decisions (stage 3)
+
+- **`asAffine`, not a lens** — a prism frame and an index frame have
+  no total `get`; the composed path is exactly as partial as its
+  most partial frame, and `Affine` says so. Rejected: a lens for
+  lens-only chains (a second type to carry the same frames).
+- **`Poly` has no frames and no `up`** — with type-changing frames
+  `up` needs a `B` where the focus is still an `A`, so an unset cursor
+  cannot go up at all, and a set one has already produced the new
+  whole. Rejected: the six-parameter F-bounded frame chain (written
+  out on paper: every `up` needs `A =:= B` evidence, and the `dirty`
+  shortcut is ill-typed because the parent's type changed).
+- **`left`/`right`: still not** — a field is not a sibling of another
+  field in any order the type gives; a `Vector` focus goes `at(i)`,
+  and sideways among elements is stage 1's `Zipper`, which `at(i)`
+  hands the element to if one wants it. Rejected on the same ground
+  as stage 2, restated because it was asked twice.
+
+### Results (stage 3)
+
+(after implementation)
