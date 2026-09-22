@@ -1,6 +1,0 @@
-feature/typed-zipper-elem-siblings 2026-09-22T23:21:39Z
-agent: claude-code
-heartbeat: 2026-09-22T23:21:39Z
-status: in-progress
-done-so-far: nothing yet
-next: specs/zipper.md stage 4 (left/right on Vector-element frames); TypedZipper.Elem; tests; docs; changelog
