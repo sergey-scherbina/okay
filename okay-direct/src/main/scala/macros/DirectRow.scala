@@ -37,6 +37,39 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   /** the row an operation must belong to, whichever carrier holds it */
   lazy val anyRow: Option[TypeRepr] = rowOf.orElse(stagedRow)
 
+  /** a GENERATOR block (specs/generators.md): the row names `Stop`,
+   * `Gen`'s own effect — and then a for-yield in statement or final
+   * position emits each value instead of collecting them */
+  lazy val genRow: Boolean =
+    rowOf.exists(r => TypeRepr.of[Stop[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
+
+  /** the generator's element type: the `Writer % W` member's W */
+  lazy val genW: Option[TypeRepr] =
+    def members(t: TypeRepr): List[TypeRepr] = t.dealias match
+      case OrType(l, r) => members(l) ++ members(r)
+      case m => List(m)
+    rowOf.flatMap { r =>
+      members(r.appliedTo(TypeRepr.of[Any])).collectFirst {
+        case AppliedType(w, List(wt, _)) if w.typeSymbol == Symbol.requiredClass("okay.Writer") => wt
+      }
+    }
+
+  lazy val genType: Symbol = Symbol.requiredClass("okay.Gen")
+
+  /** `Gen[W]`'s W, when the type is the generator (a value class over the program) */
+  def genOf(tpe: TypeRepr): Option[TypeRepr] = tpe.widen.dealias match
+    case AppliedType(g, List(w)) if g.typeSymbol == genType => Some(w)
+    case _ => None
+
+  /** in a generator block, a `Gen[W]` value — a marked `Gen.emit(w)`,
+   * a recursive call's answer, a bare `Gen.stop` — is the program it
+   * is: `Gen.program(v)`, and then the block's own F[Unit] */
+  def unwrapGen(m: Term): Term =
+    if !genRow then m
+    else genOf(m.tpe) match
+      case Some(_) => Select.unique(m, "program")
+      case None => m
+
   /** the block's row names Once — the by-need cells have a handler */
   lazy val onceInRow: Boolean =
     rowOf.exists(r => TypeRepr.of[Once[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
@@ -196,7 +229,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * injected into the row program first. Anything else is refused
    * with both possibilities named.
    */
-  def markTerm(m: Term, elem: TypeRepr, at: Position): Term =
+  def markTerm(m0: Term, elem: TypeRepr, at: Position): Term =
+    val m = unwrapGen(m0)
     val fT = TypeRepr.of[F].appliedTo(elem.widen)
     if m.tpe <:< fT then m
     else anyRow match
@@ -278,6 +312,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   def runnableElem(p: Term): Option[TypeRepr] = runnableElemT(p.tpe)
 
   def runnableElemT(tpe0: TypeRepr): Option[TypeRepr] =
+    // a bare `Gen[W]` statement in a generator block runs (it is Unit ! Row[W])
+    if genRow && genOf(tpe0).isDefined then return Some(TypeRepr.of[Unit])
     val w = tpe0.widen.dealias
     val fromFree = w.baseType(freeClass) match
       case AppliedType(_, List(_, t)) => List(t)

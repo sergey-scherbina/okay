@@ -83,8 +83,17 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
   /** the whole pipeline at one monad: the defer pre-pass, then the
    * block, delivered at exactly `F[A]` */
   def compileAll[A: Type](body: Expr[Any]): Expr[F[A]] =
-    val topLevelBody = body.asTerm.changeOwner(Symbol.spliceOwner)
-    asFAt(compile(deferSelfCalls(topLevelBody)), TypeRepr.of[A]).asExprOf[F[A]]
+    val topLevelBody = deferSelfCalls(body.asTerm.changeOwner(Symbol.spliceOwner))
+    // a generator block whose WHOLE body is a for-yield: emitted, the
+    // block answers () (specs/generators.md)
+    // …decided HERE, before any statement is compiled: a bind emitted
+    // for an earlier statement carries the block's result type, and a
+    // result type that changes under it is a cast exception
+    val body1 = stripped(topLevelBody) match
+      case t if yieldLoop(t).isDefined => Block(List(t), Literal(UnitConstant()))
+      case Block(stats, expr) if yieldLoop(expr).isDefined => Block(stats :+ expr, Literal(UnitConstant()))
+      case _ => topLevelBody
+    asFAt(compile(body1), TypeRepr.of[A]).asExprOf[F[A]]
 
   /** compile an expression */
   def compile(t0: Term): Out =
@@ -525,6 +534,12 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
       case (dd: Definition) :: rest =>
         if hasMark(dd) then refuse(dd, "inside a nested definition")
         wrapStat(dd, rest, expr)
+      // a generator block's for-yield in statement position emits
+      case (st: Term) :: rest if yieldLoop(st).isDefined =>
+        val (xs, param, body) = yieldLoop(st).get
+        hofLoop(st, xs, "foreach", param, body) match
+          case Out.Eff(c, e) => Out.Eff(bind(c, e, expr.tpe)(_ => asF(compileBlock(rest, expr))), expr.tpe.widen)
+          case Out.Pure(p) => wrapStat(p, rest, expr)
       case (st: Term) :: rest =>
         compile(st) match
           case Out.Pure(p) =>

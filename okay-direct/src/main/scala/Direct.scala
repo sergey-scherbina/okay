@@ -277,6 +277,37 @@ object Direct:
       ${ directImpl[F, A]('block, 'M, 'd, 'b) }
 
   /**
+   * The marks on a GENERATOR value (specs/generators.md): `Gen[W]` is
+   * a value class over `Unit ! Gen.Row[W]`, so the generic mark would
+   * unify it as `F[A]` with `A = W` and answer a `W` that never was —
+   * these say what running a generator answers: `Unit`. More specific
+   * than the generic extension, so they win; the macro reads them as
+   * marks (their symbols carry the same names) and takes `.program`.
+   */
+  extension [W](g: Gen[W])
+    def reflect: Unit = throw new IllegalStateException(
+      "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
+    def !? : Unit = g.reflect
+    def unary_! : Unit = g.reflect
+
+  /**
+   * A GENERATOR block (specs/generators.md): the row is `Gen[W]`'s —
+   * `Writer % W + Stop` — so `Gen.emit(w).!?`, a bare `Writer(w)`
+   * statement and `Gen.stop.!?` are its words, `while`/`if`/recursion
+   * work as in any block, and `for x <- xs yield e` in statement or
+   * final position EMITS each `e` (the only place `yield` means that:
+   * the block says it is a generator). The block's own value is
+   * dropped; what it produces is read lazily through `Gen`'s readers.
+   */
+  inline def generator[W](inline block: DirectCtx[[A] =>> A ! Gen.Row[W]] ?=> Any): Gen[W] =
+    // DELAYED: a block's program is built when the block is evaluated,
+    // and building it runs every statement before the first yield and
+    // initialises every block-local `var` — once. Python runs nothing
+    // before `next()`, and a second read starts fresh; the thunk gives
+    // both (a generator is re-runnable BECAUSE its vars are re-made)
+    Gen.fromProgram(Free.delay(() => direct[[A] =>> A ! Gen.Row[W]](block).map(_ => ())))
+
+  /**
    * The block with its handler known at the call site
    * (specs/direct-staged.md): over `Handled[Row, R, *]`, every marked
    * operation of the row — and every marked LEAF program, which is

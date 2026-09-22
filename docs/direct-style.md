@@ -835,6 +835,91 @@ specs' Decisions so the next person does not pay twice.
   JVM-only; would genuinely forfeit multi-shot (Logic, sim,
   Stepper). The closure-based roads forfeit nothing.
 
+## Generators: `yield`, pulled by the reader
+
+A Python generator is a body that runs until its next `yield`, hands
+the value over, and does not run again until asked again. In this
+library that is not a new thing: **a generator is a program that
+tells**. `Writer.tell(w)` suspends the body at a `Bind(Inject(Say(w)),
+k)`; nothing past it exists until a reader calls `k`. `Gen[W]` is the
+name for that program with one more member in its row, `Stop`, so the
+body can end itself from inside a loop:
+
+```scala
+final class Gen[W](val program: Unit ! (Writer % W + Stop)) extends AnyVal
+// a value class over the program (no allocation): `.program` is the
+// program back, `Gen.fromProgram` the name onto one, `Gen.of` a plain
+// Writer program widened
+```
+
+Three ways to write one, and they compose:
+
+```scala
+// 1. with no macro at all — a plain for-comprehension over Gen is a
+//    generator, lazy, nested, guarded
+val evens: Gen[Int] =
+  for x <- Gen.unfold(1)(i => Some((i, i + 1))) if x % 2 == 0 yield x * x
+evens.take(3).toList                          // List(4, 16, 36) — the body ran to its sixth yield
+
+// 2. as a generator block — while/if/recursion, `yield` inside `for` emits
+val fib: Gen[Long] = generator[Long] {
+  var (a, b) = (0L, 1L)
+  while true do
+    Gen.emit(a).!?
+    val t = a; a = b; b = t + b
+}
+fib.drop(10).first                            // Some(55)
+
+def countdown(n: Int): Gen[Int] = generator[Int] {
+  if n > 0 then
+    Gen.emit(n).!?
+    countdown(n - 1).!?                       // a recursive generator, flat on the stack
+}
+
+// 3. any Writer program you already have, or two generators in sequence
+Gen.of(Writer.tell(1).flatMap(_ => Writer.tell(2))).toList   // List(1, 2)
+(Gen(1) ++ Gen(2, 3)).toList                                   // List(1, 2, 3); flatMap is `yield from`
+```
+
+**When the body runs.** `g.iterator` is the Python semantics made
+literal: `next()` runs the body to its next tell and holds the
+continuation; the code between two yields runs when the *second*
+value is asked for. Every reader that stops — `first`, `find`,
+`exists`, `take(n).toList`, a `foreach` that throws — stops the body
+where it has read enough: this is `FoldUntil` (specs/fold-until.md),
+whose law is that the continuation is not called once the fold is
+done. A `Gen` is a value: reading it twice runs the body twice (a
+Python generator is one-shot; `toLazyList` gives you that, memoised).
+
+**How a generation ends** — three ways, each tested:
+
+```scala
+Gen(1, 2, 3).iterator.toList                   // the body ended: exhausted
+generator[Int] {                               // Gen.stop from inside a loop:
+  var i = 0                                    //   nothing after it runs
+  while true do { i += 1; if i > 3 then Gen.stop[Int].!?; Gen.emit(i).!? }
+}.toList                                       // List(1, 2, 3)
+infinite.take(5)                               // the reader stopped: the rest never runs
+```
+
+**Consuming one in an ordinary block.** `for x <- gen do body` reads
+the generator through its `iterator`, as far as the loop drives — a
+`take(3)` upstream means the body ran to its third yield and no
+further — and the loop's memoised `LazyList` keeps multi-shot re-entry
+sound. Inside a `generator` block, `for x <- xs yield e` as the
+block's value emits each `e`; that is the one place `yield` means
+emit, because the block has said what it is. Mid-block, spell the
+emitting loop `for x <- xs do Gen.emit(e)` — a for-yield whose value
+is dropped is something Scala itself warns about before any macro
+runs. Everywhere else `yield` collects, as Scala means it (the
+section below).
+
+What is not here, on purpose: sending values INTO a generator
+(Python's `send`) is a coroutine pairing, and it exists as `Take` +
+`Writer` + `pipe` (Pipe.scala — Kiselyov's iteratee); an async
+generator is a `Source`; a body that must release a resource on an
+early stop is a lane of its own (specs/generators.md, Out of scope).
+
 ## Loops and comprehensions, in full (direct-loops v2)
 
 The one thing a for-comprehension is — Wadler's *Comprehending
@@ -901,6 +986,18 @@ reads.
 
 ## References
 
+- Oleg Kiselyov, Simon Peyton Jones, Amr Sabry, *Lazy v. Yield:
+  Incremental, Linear Pretty-printing*, APLAS 2012 — `yield` as a
+  delimited-control effect and the argument that it is the honest
+  form of laziness; `Gen` is that effect (it is `Writer.tell`), read
+  by a fold that can stop.
+- Roshan P. James, Amr Sabry, *Yield: Mainstream Delimited
+  Continuations*, TPDC 2011 — generators are the delimited
+  continuation programmers already use; the reason a `Gen` needs no
+  machinery of its own here, where every program is one.
+- PEP 255, *Simple Generators* (Python, 2001) — the semantics
+  `TestGen` asserts: the body runs to its next `yield` when asked,
+  `return` ends it, the consumer may stop.
 - Philip Wadler, *Comprehending Monads*, Mathematical Structures in
   Computer Science 2(4), 1992 — a comprehension IS a `flatMap` chain
   with guards as filters; the desugaring the `direct` macro reads is

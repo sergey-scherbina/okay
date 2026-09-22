@@ -70,6 +70,26 @@ val digits: Int ! Writer % Int = !.loop(2024) { n =>
 !.run(Writer.run(digits))   // (Seq(4, 2, 0, 2), 1) — the digits told, the answer 1
 ```
 
+`countdown` IS a generator, in Python's sense — the body runs to its
+next tell when asked and no further — and `Gen[W]` is its name with
+the words a for-comprehension uses and a `stop`:
+
+```scala
+val squares: Gen[Long] = for n <- Gen.unfold(1L)(i => Some((i, i + 1))) yield n * n
+squares.take(3).toList                        // List(1, 4, 9); the body ran three steps
+
+val fib: Gen[Long] = generator[Long] {        // or a block: while/if/recursion, emit, stop
+  var (a, b) = (0L, 1L)
+  while true do { Gen.emit(a).!?; val t = a; a = b; b = t + b }
+}
+fib.iterator.drop(10).next()                  // 55 — and the body has run exactly 11 steps
+```
+
+`take`, `first`, `find` and every other reader stop the body where
+they have read enough (fold-until); `Gen.stop` ends it from inside a
+loop; the details, the three endings and the papers are in
+[direct style](direct-style.md#generators-yield-pulled-by-the-reader).
+
 ## 3. Chunks make it fast
 
 ```scala

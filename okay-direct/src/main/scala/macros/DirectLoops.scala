@@ -26,10 +26,46 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
   /** xs.iterator, built by name so ArrayOps and IterableOnce both
    * serve; refuses receivers with no iterator */
   def iteratorOf(xs: Term): Term =
+    // a generator as the receiver (specs/generators.md) has an
+    // `iterator` member — the stepping reader — so it takes this road
+    // as any collection does: the loop's LazyList over it is pulled as
+    // the loop drives and memoised, so the body runs as far as it is
+    // read and multi-shot re-entry is sound
     if xs.tpe.typeSymbol.methodMember("iterator").isEmpty
       && xs.tpe.baseClasses.forall(_.methodMember("iterator").isEmpty)
     then refuse(xs, "as a loop receiver with no .iterator")
     Select.unique(xs, "iterator")
+
+  /** in a GENERATOR block, a for-yield in statement or final position:
+   * `xs.map(x => body)` — with or without marks — or, for several
+   * generators, `xs.flatMap(x => inner)` whose inner is itself one.
+   * Answers the FOREACH body to emit with: `Writer(body)` for a map,
+   * the inner comprehension as a statement for a flatMap (so this
+   * hook fires again on it, one level down) */
+  def yieldLoop(st: Term): Option[(Term, ValDef, Term)] =
+    if !genRow then None
+    else stripped(st) match
+      case HofCall(xs, "map", param, lbody) => Some((xs, param, tellOf(lbody)))
+      case HofCall(xs, "flatMap", param, lbody) if yieldLoop(lbody).isDefined =>
+        Some((xs, param, Block(List(lbody), Literal(UnitConstant()))))
+      case _ => None
+
+  /** `Writer[W](body)` — the yield as the OPERATION it is (`Say`), a
+   * bare statement of the block's row, which runs by do-notation; a
+   * `Writer.tell` program would be a program of a narrower row, and
+   * those do not run bare */
+  def tellOf(lbody: Term): Term =
+    val w = genW.getOrElse(report.errorAndAbort("a generator block with no Writer in its row (macro bug)"))
+    def say(v: Term): Term =
+      Apply(TypeApply(Ref(Symbol.requiredModule("okay.Writer").methodMember("apply").head), List(Inferred(w))), List(v))
+    // a yielded value with marks in it is bound to a val FIRST, and the
+    // op is built from the val: a mark hoisted out of the op's argument
+    // would leave the op as a bound VALUE, and a bound value is not a
+    // bare statement — it does not run
+    if hasMark(lbody) then
+      val sym = Symbol.newVal(Symbol.spliceOwner, "y$gen", lbody.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)
+      Block(List(ValDef(sym, Some(lbody))), say(Ref(sym)))
+    else say(lbody)
 
   /** a term in STATEMENT position: marks compile, and a markless
    * value of the block's own effectful type RUNS — the do-notation
@@ -129,6 +165,14 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
       case (dd: Definition) :: rest =>
         if hasMark(dd) then refuse(dd, "inside a nested definition")
         Block(List(dd), stmtsTail(rest, tail, tailElem))
+      // a generator block's `for x <- xs yield e` as a statement: emit
+      // each e (specs/generators.md) — the loop with `Writer.tell(e)`
+      // as its body, which is a bare runnable op and RUNS
+      case (st: Term) :: rest if yieldLoop(st).isDefined =>
+        val (xs, param, body) = yieldLoop(st).get
+        hofLoop(st, xs, "foreach", param, body) match
+          case Out.Eff(c, e) => bind(c, e, tailElem)(_ => stmtsTail(rest, tail, tailElem))
+          case Out.Pure(p) => Block(List(p), stmtsTail(rest, tail, tailElem))
       case (st: Term) :: rest =>
         val t = stripped(st)
         if hasMark(t) then

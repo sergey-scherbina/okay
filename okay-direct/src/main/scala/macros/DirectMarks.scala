@@ -20,7 +20,10 @@ private[okay] trait DirectMarks[F[_]] extends DirectPhase[F]:
     directSym.methodMember("opColor") ++
     Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet
 
-  lazy val reflectMark: Symbol = directSym.methodMember("reflect").head
+  /** the GENERIC mark `reflect[F[_], A]` — by arity, since `reflect[W]`
+   * on a generator value (specs/generators.md) shares the name */
+  lazy val reflectMark: Symbol =
+    directSym.methodMember("reflect").find(_.paramSymss.headOption.exists(_.sizeIs == 2)).get
 
   def calleeRoot(t: Term): Symbol = t match
     case Apply(f, _) => calleeRoot(f)
