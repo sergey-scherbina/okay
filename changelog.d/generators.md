@@ -40,6 +40,9 @@ user sees in every type). The first `iterator` applied the held
 continuation eagerly and was one yield ahead of Python — the counter
 caught it. `yield twice(x).!?` emitted nothing: ANF hoisted the mark
 out of the `Say` op's argument and the op became a bound value, not a
-statement — a marked yield is bound to a val first, the op built from it. Docs: direct-style.md "Generators" with the three ways to
+statement — a marked yield is bound to a val first, the op built from it. A new top-level name in package `okay` shadows every
+nested `Gen` in the package: `Uid.Gen`'s constructor-proxy calls became
+E177 and now say `new` (okay-stream's `Pipeline.Gen` is an enum case,
+okay-staging's is abstract — no proxy, no clash). Docs: direct-style.md "Generators" with the three ways to
 write one and the three endings; tutorial ch. 2; references
 (Kiselyov–Peyton Jones–Sabry 2012, James–Sabry 2011, PEP 255).
