@@ -70,37 +70,29 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * name; a continuation arrives as `val f$proxy = (s => …)`. A proxy
    * whose right-hand side is PURE BY CONSTRUCTION — a lambda literal, a
    * literal, a name, a program node (`Inject`/`Pure`/`Bind`), an
-   * operation of the row — goes back where its name stands; any other
-   * only when it is used exactly once and not under a lambda (moving an
-   * evaluation into a continuation would change when it runs). What
-   * remains stays a binding, hoisted in front by `unwrap`.
+   * operation of the row — goes back where its name stands. Any other
+   * STAYS a binding, hoisted in front by `unwrap`: substituting even a
+   * single-use `val s$proxy = i + 2` into `Set(s$proxy)` made the
+   * inline match's scrutinee an expression, the inliner bound it to a
+   * val, and the operation was allocated at run time — 1 600 B per run
+   * on StagedBenchmark, found by the floor lane.
    */
   private def proxyFree(t: Term, row: TypeRepr): Term =
-    def pureRhs(r: Term): Boolean = stripped(r) match
-      case Lambda(_, _) | Literal(_) | Ident(_) => true
-      case Apply(TypeApply(f, _), _) if Set(injectApply, pureApply, bindApply)(f.symbol) => true
-      case x => x.tpe.widen <:< row.appliedTo(TypeRepr.of[Any])
-    /** uses of sym in the trees: (total, under a lambda) */
-    def uses(sym: Symbol, trees: List[Tree]): (Int, Int) =
-      var total = 0; var under = 0
-      val probe = new TreeTraverser:
-        var depth = 0
-        override def traverseTree(tree: Tree)(o: Symbol): Unit = tree match
-          case id: Ident if id.symbol == sym => total += 1; if depth > 0 then under += 1
-          case Lambda(_, _) | (_: DefDef) => depth += 1; super.traverseTree(tree)(o); depth -= 1
-          case _ => super.traverseTree(tree)(o)
-      trees.foreach(probe.traverseTree(_)(Symbol.spliceOwner))
-      (total, under)
-    def substitutable(v: ValDef, rest: List[Tree]): Boolean =
-      v.rhs.exists { r =>
-        val (total, under) = uses(v.symbol, rest)
-        pureRhs(r) || (total == 1 && under == 0)
-      }
+    // classified by the rhs's CORE (its own inlining wrappers off — a
+    // combinator's proxy is `Inlined(call, [its proxies], Inject(…))`)
+    def pureRhs(r: Term): Boolean =
+      val (_, core) = unwrap(r)
+      core match
+        case Lambda(_, _) | Literal(_) | Ident(_) | This(_) => true
+        case sel: Select if sel.symbol.flags.is(Flags.Module) => true
+        case Apply(TypeApply(f, _), _) if Set(injectApply, pureApply, bindApply)(f.symbol) => true
+        case x => x.tpe.widen <:< row.appliedTo(TypeRepr.of[Any])
+    def substitutable(v: ValDef): Boolean = v.rhs.exists(pureRhs)
     /** bindings split into (kept, substituted-into-the-rest) */
     def rewrite(stats: List[Statement], expr: Term): (List[Statement], Term) =
       stats match
         case Nil => (Nil, expr)
-        case (v: ValDef) :: rest if substitutable(v, rest :+ expr) =>
+        case (v: ValDef) :: rest if substitutable(v) =>
           val (rest2, expr2) = rewrite(rest, expr)
           val rhs = v.rhs.get
           val sub = new TreeMap:

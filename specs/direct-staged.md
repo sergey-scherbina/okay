@@ -132,7 +132,12 @@ compiler did not see.
       program built at run time — a def call, a program held in a
       val, `Free.delay`, a continuation that is a value.
 - [x] The leaf road is unchanged: `StagedBenchmark.stagedDirect` at
-      85 368 B/op (see Results).
+      85 368 B/op, byte for byte (rows `ds2-*`). The first cut of the
+      proxy pass also substituted a single-use `val s$proxy = i + 2`
+      into `Set(s$proxy)`; that made the inline match's scrutinee an
+      expression the inliner bound to a val, and the operation was
+      allocated at run time — 86 968 B, +16 per block. The floor lane
+      caught it; only pure right-hand sides are substituted now.
 
 What the walk had to learn, in order: the inliner's proxies are
 substituted in one pass first (`proxyFree`) — a pure right-hand side
