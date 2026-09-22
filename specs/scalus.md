@@ -226,6 +226,28 @@ FROM outputs WHERE datum.json IS NOT NULL
   `{"bytes": hex}`, `{"list": [...]}`, `{"map": [{"k","v"}...]}`) so a
   path someone copies from an explorer works.
 
+**Where the bytes are kept, and where not** (operator, 2026-09-23:
+"keep the bytes where they are needed for exactness"). The rule is
+whether something on chain is a hash OVER these exact bytes, or
+whether the value cannot be reconstructed from its decoded form:
+
+| value | `cbor` kept | why |
+|---|---|---|
+| datum (inline and witness) | yes | datum hash = Blake2b-256 of these bytes; `DatumOption.Hash` outputs are joined to witness datums by it |
+| redeemer `Data` | yes | covered by `scriptDataHash` together with datums and cost models |
+| script (Plutus, native `Timelock`) | yes | script hash = hash of tag + these bytes; it is the policy id and the script address |
+| auxiliary data / tx metadata | yes | `auxiliaryDataHash` in the body is over these bytes |
+| transaction body | yes | tx hash = Blake2b-256 of the body bytes |
+| block header | no column, hashed at ingest | the block hash (§1); `hash` is the column |
+| the whole block | only with `raw=true` | everything in it is already one of the above |
+| every other derived struct | no | nothing hashes it; the struct is the value |
+
+Beside every kept `cbor`, a `hash: binary` column computed AT INGEST
+from those bytes, so a join or a lookup never recomputes it in Spark.
+And the variant is not always lossless: Spark's variant decimal holds
+38 digits, `Data.I` is unbounded — an integer beyond that is written
+into the variant as a string, and the bytes stay the exact form.
+
 Detection is not a list of type names: `Schema.fold` already calls
 `Algebra.ref(name)` exactly when a strict algebra meets the back edge
 of a recursive type (Schema.scala, `inProgress`). The Spark algebra
@@ -407,6 +429,12 @@ until Spark stage 2 has run on mainnet.
   okay-spark**, not a Cardano-specific encoder, and not Spark's
   `ExpressionEncoder` reflection (Scala 2 `TypeTag`-based, sees no
   Scala 3 enum).
+
+- 2026-09-23 — **`cbor` is kept exactly where a hash is defined over
+  the bytes** (datums, redeemers, scripts, metadata, tx bodies), with
+  the hash precomputed beside it; nowhere else. Operator asked why the
+  bytes at all; the answer is the hash, and the operator chose
+  exactness over the storage it costs (§4.3 table).
 
 ## Results
 

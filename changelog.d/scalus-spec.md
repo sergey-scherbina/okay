@@ -11,3 +11,9 @@ own `ref` back edge rather than a list of names. Found while reading scalus:
 1.2.0 streams no whole blocks from a real chain, and `Block.hash` is the
 body hash. Queued: schema-bigint, okay-scalus-chain, okay-scalus-spark;
 backlog: scalus-events-mode, scalus-flink.
+
+Follow-up (scalus-spec-bytes, 2026-09-23): §4.3 now says WHERE the
+exact bytes are kept — only where a chain hash is defined over them
+(datums, redeemers, scripts, metadata, tx bodies), each with its hash
+precomputed at ingest — and that the variant loses integers beyond 38
+digits, which the bytes keep.
