@@ -1,6 +1,0 @@
-feature/scalus-spec 2026-09-22T21:52:43Z
-agent: claude-code
-heartbeat: 2026-09-22T21:52:43Z
-status: in-progress
-done-so-far: research (scalus 1.2.0 sources, okay-codec Schema.fold)
-next: specs/scalus.md + sprint queue items for okay-scalus / okay-scalus-spark
