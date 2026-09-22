@@ -53,6 +53,32 @@ class TestFoldUntil extends munit.FunSuite:
     assertEquals(seen, 0)
   }
 
+  // ------------------------------------------------------ Foldable (stage 4)
+
+  test("foldUntilTo on a List, a Vector, an Iterator and a Producer answers the List method") {
+    val xs = List(3, 1, 4, 1, 5, 9, 2, 6)
+    val prod: Producer[Int] = xs.foldRight(pure[Produce, Int](-1))((i, rest) => produce(i).flatMap(_ => rest))
+    def check[S, X](fo: FoldUntil[Int, S, X], expected: X, name: String): Unit =
+      assertEquals(xs.foldUntilTo(using fo), expected, s"List $name")
+      assertEquals(xs.toVector.foldUntilTo(using fo), expected, s"Vector $name")
+      assertEquals(xs.iterator.foldUntilTo(using fo), expected, s"Iterator $name")
+      assertEquals(prod.foldUntilTo(using fo), expected, s"Producer $name")
+    check(FoldUntil.find[Int](_ > 4), xs.find(_ > 4), "find")
+    check(FoldUntil.take(3), xs.take(3).toVector, "take(3)")
+    check(FoldUntil.take(0), Vector.empty[Int], "take(0)")
+    check(FoldUntil.exists[Int](_ == 9), xs.exists(_ == 9), "exists")
+    check(FoldUntil.forall[Int](_ < 9), xs.forall(_ < 9), "forall")
+    check(FoldUntil.headOption, xs.headOption, "headOption")
+  }
+
+  test("an Iterator is left positioned after the satisfying element") {
+    val it = Iterator.from(1)
+    assertEquals(it.foldUntilTo(using FoldUntil.find[Int](_ == 3)), Some(3))
+    assertEquals(it.next(), 4)
+    assertEquals(it.foldUntilTo(using FoldUntil.take[Int](2)), Vector(5, 6))
+    assertEquals(it.next(), 7)
+  }
+
   // ---------------------------------------------------- Producer.foldUntil
 
   /** 1, tell "after 1", 2, tell "after 2", ... — a G operation after every production */

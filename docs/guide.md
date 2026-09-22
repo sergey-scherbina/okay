@@ -370,10 +370,13 @@ performed — and `take(0)` pulls nothing at all. `find`, `headOption`,
 (finish)`, with `step: (S, A) => Either[S, R]`, is the shape a caller
 usually has in hand, kept as an adapter rather than the primitive so
 that no consumer pays a `Left` per element. One instance runs on every
-carrier: `Stream.foldUntil` (any `Stream`), `program.foldUntil` (a
-writer program — pure, or effectful with its `Handler` in scope),
-`Chunks.foldUntil`, and `Writer.foldUntil`, `Producer.foldUntil`,
-`Source.runFoldUntil` (the effectful ones, answering `R ! F`):
+carrier: `Stream.foldUntil` (any `Stream`), `xs.foldUntilTo` (any
+`Foldable` — a `List`, an `Iterator` left positioned after the stop, a
+`Producer`), `program.foldUntil` (a writer program — pure, or
+effectful with its `Handler` in scope), `Chunks.foldUntil`,
+`Take.foldUntil` (the fold as an iteratee, §5), and `Writer.foldUntil`,
+`Producer.foldUntil`, `Source.runFoldUntil` (the effectful ones,
+answering `R ! F`):
 
 ```scala
 Source.range(0, 1000000).runFoldUntil(using FoldUntil.take[Long](3))   // Vector(0, 1, 2) ! Async
@@ -485,6 +488,33 @@ for people who arrive with the name — and it is the special case, not
 the primitive, because of the five stages written here NONE are
 one-output-per-input: conditional emission has to say "nothing here"
 with an `Option` that `transduce` never allocates.
+
+A stage whose STEP may end it is `Stage.transduceUntil(z)(step, end)`
+(specs/fold-until.md, stage 3): the step answers `Left(next)` to go on
+or `Right(r)` to stop, the stage ends there — so `through` pulls
+nothing more from upstream — and `end` is the answer when the input
+ends first. A header parser is the shape: read `k: v` lines, stop at
+the blank one, and the body after it is never pulled:
+
+```scala
+val header: Stage[String, (String, String), Either[Int, Int]] =
+  Stage.transduceUntil[String, (String, String), Int, Either[Int, Int]](0)((n, line) =>
+    if line.isEmpty then pure(Right(Right(n)))          // the blank line: stop, n fields read
+    else
+      val Array(k, v) = line.split(": ", 2)
+      Stage.tell[String, (String, String)]((k, v)).map(_ => Left(n + 1)),
+    n => Left(n))                                         // the input ended first
+
+Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((host,a), (port,1)), Right(2))
+Writer.run(through(lines("host: a"))(header))                          // (Seq((host,a)), Left(1))
+```
+
+`transduce` is this with a step that never answers `Right`. And the
+consumer end of `pipe` has the same door: `Take.foldUntil(using fo)`
+is a `FoldUntil` as a consumer PROGRAM — an iteratee, written over
+`!.loop` — so `pipe(producer)(Take.foldUntil(using fo))` is
+`Writer.foldUntil(producer)(using fo)` by the coroutine road, pulling
+exactly the same elements.
 
 Stages may be EFFECTFUL: a row `Take % I + (Writer % O + G)` carries
 arbitrary operations G (Async above all) between awaits and tells,

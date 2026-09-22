@@ -27,6 +27,23 @@ object Take:
   /** the next element, or None at the end of the input */
   inline def await[V]: Option[V] ! Take % V = effect(Await())
 
+  /**
+   * The iteratee a `FoldUntil` is (specs/fold-until.md, stage 3;
+   * theory ch. 7): a consumer program that asks for an element only
+   * while its state has not seen enough, and answers `end(s)` when it
+   * has or when the input ends. Written over `!.loop` — the state is
+   * the loop's, the `await` is the only effect — so `pipe(p)(Take.
+   * foldUntil)` is `Writer.foldUntil(p)` by the coroutine road.
+   */
+  def foldUntil[W, S, R](using fo: FoldUntil[W, S, R]): R ! Take % W =
+    !.loop[S, R, Take % W](fo.init) { s =>
+      if fo.done(s) then pure(Right(fo.end(s)))
+      else await[W].map {
+        case Some(w) => Left(fo.add(s, w))
+        case None => Right(fo.end(s))
+      }
+    }
+
 /**
  * Connect a producer to a consumer: each await meets the next told
  * value, control bouncing between the two programs one element at a
@@ -109,6 +126,28 @@ object Stage {
     def go(s: S): Stage[I, O, S] = await[I, O].flatMap {
       case Some(i) => step(s, i).flatMap(go)
       case None => end(s)
+    }
+
+    go(z)
+
+  /**
+   * `transduce` whose STEP may end the stage (specs/fold-until.md,
+   * stage 3): `Left(s)` carries on, `Right(r)` answers and the stage
+   * ends there, so `through` pulls nothing more from upstream — a
+   * prefix parser, a `takeWhile` with state, "the first n matches".
+   * `end` is the answer when the input ends first, from the last
+   * `Left` state. `transduce(z)(step, end)` is this with a step that
+   * never answers `Right`; the two share one parameter list for the
+   * inference reason `transduce` states.
+   */
+  def transduceUntil[I, O, S, R](z: S)(step: (S, I) => Stage[I, O, Either[S, R]],
+                                       end: S => R): Stage[I, O, R] =
+    def go(s: S): Stage[I, O, R] = await[I, O].flatMap {
+      case Some(i) => step(s, i).flatMap {
+        case Left(next) => go(next)
+        case Right(r) => pure(r)
+      }
+      case None => pure(end(s))
     }
 
     go(z)

@@ -372,11 +372,35 @@ given [W](using M: Monoid[W]): Fold[W, W] = Fold(M.empty)(M.combine)
 trait Foldable[F[_]]:
   def fold[A, S](fa: F[A])(using f: Fold[A, S]): S
 
-/** every IterableOnce container runs a Fold by foldLeft */
+  /** the fold that stops (specs/fold-until.md, stage 4): elements are
+   * read only while `done` is false, and none after */
+  def foldUntil[A, S, R](fa: F[A])(using fo: FoldUntil[A, S, R]): R
+
+/** every IterableOnce container runs a Fold by foldLeft, and a
+ * FoldUntil by its iterator — which is left positioned after the
+ * satisfying element, so an `Iterator` can be folded on in pieces */
 given [F[X] <: IterableOnce[X]]: Foldable[F] = new:
   def fold[A, S](fa: F[A])(using f: Fold[A, S]): S =
     fa.iterator.foldLeft(f.init)(f.add)
 
+  def foldUntil[A, S, R](fa: F[A])(using fo: FoldUntil[A, S, R]): R =
+    val it = fa.iterator
+    var s = fo.init
+    while !fo.done(s) && it.hasNext do s = fo.add(s, it.next())
+    fo.end(s)
+
 extension [F[_], A](fa: F[A])(using F: Foldable[F])
   /** run any Fold over the elements */
   def foldTo[S](using Fold[A, S]): S = F.fold(fa)
+
+/**
+ * In a block of its own, as `Stream.scala`'s effectful `foldUntil` is
+ * and for the same reason: an explicit `(using fo)` at a call site is
+ * matched against the EXTENSION's using clause when the extension has
+ * one, so `xs.foldUntilTo(using FoldUntil.take(3))` would have been
+ * handed a fold where a `Foldable` was expected. The evidence sits in
+ * the method's own clause, after the fold.
+ */
+extension [F[_], A](fa: F[A])
+  /** run a FoldUntil over the elements, reading none past its stop */
+  def foldUntilTo[S, R](using fo: FoldUntil[A, S, R])(using F: Foldable[F]): R = F.foldUntil(fa)

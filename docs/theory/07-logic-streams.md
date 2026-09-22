@@ -116,7 +116,9 @@ program that awaits on one side and tells on the other; `through`
 composes stages demand-driven, and `Stage.transduce(z)(step, end)` is
 the state-step-flush skeleton that every stage in the library — the
 lexer's scanner, SSE framing, `chunked`, the demo's stream join —
-turned out to be an instance of.
+turned out to be an instance of; `Stage.transduceUntil` is the
+enumeratee that may finish on its own (`Right`), the iteratee's early
+`Done` at the stage level.
 
 What the encoding buys is visible in the pair below. By hand, the
 consumer owns the source, so it can be run against an `Iterator` and

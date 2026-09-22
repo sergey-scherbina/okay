@@ -38,3 +38,26 @@ class TestDocExamplesFoldUntil extends munit.FunSuite:
       FoldUntil.until[Int, Int, Int](0)((s, a) => if s + a > 100 then Right(s) else Left(s + a))(identity))
     assertEquals(sum, 91)
   }
+
+  test("tutorial §2: the same fold as an iteratee, and on a plain List") {
+    assertEquals(pipe(countdown(1000000))(Take.foldUntil(using FoldUntil.find[Int](_ % 7 == 0))), Some(999999))
+    assertEquals(List(3, 1, 4, 1, 5).foldUntilTo(using FoldUntil.find[Int](_ > 3)), Some(4))
+  }
+
+  test("guide §5: a header parser that stops the upstream at the blank line") {
+    val header: Stage[String, (String, String), Either[Int, Int]] =
+      Stage.transduceUntil[String, (String, String), Int, Either[Int, Int]](0)((n, line) =>
+        if line.isEmpty then pure(Right(Right(n)))          // the blank line: stop, n fields read
+        else
+          val Array(k, v) = line.split(": ", 2)
+          Stage.tell[String, (String, String)]((k, v)).map(_ => Left(n + 1)),
+        n => Left(n))                                         // the input ended first
+
+    def lines(xs: String*): Unit ! Writer % String =
+      xs.foldRight(pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => rest))
+
+    assertEquals(!.run(Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))),
+      (Seq(("host", "a"), ("port", "1")), Right(2)))
+    assertEquals(!.run(Writer.run(through(lines("host: a"))(header))),
+      (Seq(("host", "a")), Left(1)))
+  }

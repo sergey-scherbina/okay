@@ -79,6 +79,82 @@ class TestFoldUntilStreams extends munit.FunSuite:
     assertEquals(counted(5, () => performed += 1).foldUntil(using FoldUntil.find[Int](_ > 9)), None)
   }
 
+  // ------------------------------------------------------- stage 3
+
+  /** lines, counting how many were PULLED: `Writer.uncons` applies the
+   * continuation as it hands the element over, so the count after a
+   * tell is the count of elements a consumer has taken */
+  private def lines(xs: List[String], told: () => Unit): Unit ! Writer % String =
+    xs.foldRight(okay.pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => { told(); rest }))
+
+  /** a header parser: tell each `k: v` as (k, v), answer the count at the first blank line */
+  private val header: Stage[String, (String, String), Either[Int, Int]] =
+    Stage.transduceUntil[String, (String, String), Int, Either[Int, Int]](0)((n, line) =>
+      if line.isEmpty then okay.pure(Right(Right(n)))
+      else
+        val Array(k, v) = line.split(": ", 2)
+        Stage.tell[String, (String, String)]((k.trim, v.trim)).map(_ => Left(n + 1)),
+      n => Left(n))   // Left: the input ended before a blank line
+
+  test("transduceUntil stops the upstream: pulled up to the blank line, not one tell more") {
+    var told = 0
+    val doc = List("host: a", "port: 1", "", "body 1", "body 2", "body 3")
+    val (out, answer) = !.run(Writer.run(through(lines(doc, () => told += 1))(header)))
+    assertEquals(out, Seq(("host", "a"), ("port", "1")))
+    assertEquals(answer, Right(2))
+    assertEquals(told, 3, "host, port and the blank line were pulled; body 1 never was")
+    // the instrument's control: a stage that never stops pulls all six
+    told = 0
+    val all = !.run(Writer.run(through(lines(doc, () => told += 1))(Stage.id[String])))
+    assertEquals(all._1.size, 6)
+    assertEquals(told, 6)
+  }
+
+  test("transduceUntil ends honestly when the input ends first") {
+    val (out, answer) = !.run(Writer.run(through(lines(List("host: a"), () => ()))(header)))
+    assertEquals(out, Seq(("host", "a")))
+    assertEquals(answer, Left(1))
+  }
+
+  test("transduceUntil composes under through on both sides") {
+    val upper: Stage[String, String, Unit] = Stage.transduce(())((_, l) => Stage.tell[String, String](l.toUpperCase), okay.pure)
+    val keys: Stage[(String, String), String, Unit] = Stage.transduce(())((_, kv) => Stage.tell[(String, String), String](kv._1), okay.pure)
+    val doc = List("host: a", "port: 1", "", "body")
+    val (out, answer) = !.run(Writer.run(through(through(through(lines(doc, () => ()))(upper))(header))(keys)))
+    assertEquals(out, Seq("HOST", "PORT"))
+    assertEquals(answer, ())
+  }
+
+  test("transduce is transduceUntil with a step that never answers Right") {
+    val step = (sum: Int, i: Int) => Stage.tell[Int, Int](sum + i).map(_ => sum + i)
+    def told: Unit ! Writer % Int =
+      (1 to 5).foldRight(okay.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => r))
+    val a = !.run(Writer.run(through(told)(Stage.transduce(0)(step, okay.pure))))
+    val b = !.run(Writer.run(through(told)(
+      Stage.transduceUntil[Int, Int, Int, Int](0)((s, i) => step(s, i).map(Left(_)), identity))))
+    assertEquals(a, b)
+    assertEquals(a, (Seq(1, 3, 6, 10, 15), 15))
+  }
+
+  test("pipe(producer)(Take.foldUntil) is Writer.foldUntil by the coroutine road, and stops the producer") {
+    var told = 0
+    def nums(n: Int): Unit ! Writer % Int =
+      (1 to n).foldRight(okay.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => { told += 1; r }))
+    def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit =
+      told = 0
+      val viaPipe = pipe(nums(50))(Take.foldUntil[Int, S, X](using fo))
+      val pulled = told
+      assertEquals(viaPipe, nums(50).foldUntil(using fo), name)
+      told = 0
+      val _ = nums(50).foldUntil(using fo)
+      assertEquals(pulled, told, s"$name: both roads pull the same number of elements")
+    check(FoldUntil.take(3), "take(3)")
+    check(FoldUntil.take(0), "take(0)")
+    check(FoldUntil.find[Int](_ == 7), "find")
+    check(FoldUntil.exists[Int](_ > 100), "exists-none")
+    check(FoldUntil.headOption, "headOption")
+  }
+
   test("Writer.foldUntil is tail-recursive across tells: 100 000 elements, the stop never firing") {
     val n = 100_000
     assertEquals(Source.range(0, n).runFoldUntil(using FoldUntil.exists[Long](_ < 0)).runWith, false)

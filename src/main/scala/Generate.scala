@@ -284,6 +284,7 @@ given Stream[Producer, okay.Pure] with
 /** a producer folds as a stream without a result (push consumption) */
 given Foldable[Producer] with
   def fold[A, S](p: Producer[A])(using f: Fold[A, S]): S = Stream.fold(p)
+  def foldUntil[A, S, R](p: Producer[A])(using fo: FoldUntil[A, S, R]): R = Stream.foldUntil(p)
 
 /**
  * An EFFECTFUL producer is a stream in the effect G: the program

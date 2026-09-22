@@ -533,10 +533,16 @@ same material with the measurements attached.
   silently. Consumers: `Stream.foldUntil`, `Chunks.foldUntil`,
   `Writer.foldUntil` (answers `R` alone — an early stop never sees the
   program's answer), `Source.runFoldUntil`, `Producer.foldUntil` (the
-  `Produce + G` road, same early `pure`), and `.foldUntil(using fo)` on
-  a writer program — pure, or effectful with the `Handler[G]` in scope. Two laws consumers rely on, pinned by
-  `TestFoldUntilStreams`: `take(0)` pulls nothing; the continuation
-  after the satisfying tell is never called.
+  `Produce + G` road, same early `pure`), `.foldUntil(using fo)` on
+  a writer program — pure, or effectful with the `Handler[G]` in scope —
+  `xs.foldUntilTo` on any `Foldable` (`Foldable.foldUntil` is on the
+  trait; an `Iterator` is left after the satisfying element), and
+  `Take.foldUntil(using fo): R ! Take % W`, the fold as an iteratee
+  (over `!.loop`). The explicit `(using fo)` forms sit in extension
+  blocks of their own: a call's explicit `using` binds to the
+  EXTENSION's clause when the extension has one. Two laws consumers
+  rely on, pinned by `TestFoldUntilStreams`: `take(0)` pulls nothing;
+  the continuation after the satisfying tell is never called.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.
@@ -600,7 +606,10 @@ same material with the measurements attached.
   `Stage.transduce(z)(step, end)` — the state-step-flush skeleton
   every stage here shares (the two functions share ONE parameter list
   so the types infer; a third list commits `I` to `Any` before the
-  lambda is typed); `Stage.mapAccumulate` — the 1:1 special case.
+  lambda is typed); `Stage.transduceUntil(z)(step: (S, I) => Stage[I,
+  O, Either[S, R]], end: S => R)` — the same with a step that may END
+  the stage on `Right`, so `through` stops pulling upstream (a prefix
+  parser); `Stage.mapAccumulate` — the 1:1 special case.
   **`Source[W]`** = `Unit ! Writer % W + Async` — the asynchronous
   stream as a program; `Source(a, b, c)`, `Source.of(stream)`,
   `Writer.of` (any stream, effects kept), `Writer.map` (re-tell at

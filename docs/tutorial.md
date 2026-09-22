@@ -54,9 +54,15 @@ countdown(1000000).foldUntil(using FoldUntil.find[Int](_ % 7 == 0))
 `find`, `headOption`, `exists`, `forall`, `take(n)` are the built-in
 ones; `FoldUntil.until(z)(step)(finish)` is the general shape, a
 `step` answering `Left(next)` to go on or `Right(result)` to stop.
-The same fold runs over chunks (`Chunks.foldUntil`) and over an
-asynchronous source (`Source.runFoldUntil`) — one instance, every
-carrier.
+The same fold runs over chunks (`Chunks.foldUntil`), over an
+asynchronous source (`Source.runFoldUntil`), over a plain collection,
+and as an iteratee — a consumer program `pipe` pairs with any
+producer — one instance, every carrier:
+
+```scala
+pipe(countdown(1000000))(Take.foldUntil(using FoldUntil.find[Int](_ % 7 == 0)))   // Some(999999)
+List(3, 1, 4, 1, 5).foldUntilTo(using FoldUntil.find[Int](_ > 3))                 // Some(4)
+```
 
 The dual — a LOOP whose state decides when to stop — is `!.loop`, the
 `tailRecM` of programs: continue from a `Left`, answer a `Right`, and

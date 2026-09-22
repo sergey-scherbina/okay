@@ -139,21 +139,21 @@ Stage 1:
 
 Stages 3–4 — `Stage.transduceUntil`, `Take.foldUntil`, `Foldable.foldUntil`:
 
-- [ ] `transduceUntil` stops the UPSTREAM: a header parser that
+- [x] `transduceUntil` stops the UPSTREAM: a header parser that
       answers `Right` at the first blank line, fed by a producer that
       counts its tells, is pulled exactly up to that line — not one
       tell more — and its outputs before the stop are all told.
-- [ ] `transduceUntil` ends honestly when the input ends first: `end`
+- [x] `transduceUntil` ends honestly when the input ends first: `end`
       sees the last `Left` state, and the answer says so.
-- [ ] `transduceUntil` composes under `through` on both sides (a stage
+- [x] `transduceUntil` composes under `through` on both sides (a stage
       before it, a stage after it), and the stage after sees exactly
       the outputs told before the stop.
-- [ ] `transduce(z)(step, end)` is `transduceUntil` with a step that
+- [x] `transduce(z)(step, end)` is `transduceUntil` with a step that
       never answers `Right` — asserted on a shared step.
-- [ ] `pipe(producer)(Take.foldUntil(using fo))` equals
+- [x] `pipe(producer)(Take.foldUntil(using fo))` equals
       `Writer.foldUntil(producer)(using fo)` on every instance, and the
       producer is not pulled past the satisfying element.
-- [ ] `xs.foldUntilTo(using fo)` on a `List`, a `Vector`, an `Iterator`
+- [x] `xs.foldUntilTo(using fo)` on a `List`, a `Vector`, an `Iterator`
       and a `Producer` equals the `List` method of the instance's name,
       and an `Iterator` is left positioned after the satisfying element.
 
@@ -179,7 +179,8 @@ Stage 2 — `!.loop(s)(f)`:
 - Replacing `Fold.exists`/`forall`: they stay, they are `Fold`s and a
   `Fold` consumer cannot stop; their doc line is corrected to name
   `FoldUntil.exists` instead of the phantom.
-- Stages 3–4, each behind its trigger above.
+- (stages 3–4 were behind triggers until the operator removed them;
+  both landed with fold-until-stages-3-4.)
 
 ## Design
 
@@ -278,6 +279,19 @@ carries `(using TypeableK[G], Handler[G])` the call failed to type —
 and `TypeableK[G]` was unused by the new method besides (E198). The
 block with no extension-level clause and `Handler[G]` in the method's
 own clause after the fold is the shape that reads as the pure one.
+
+Stages 3–4 (2026-09-22, fold-until-stages-3-4): `Stage.transduceUntil`
+and `Take.foldUntil` (Pipe.scala), `Foldable.foldUntil` +
+`foldUntilTo` (Fold.scala, the Producer instance in Generate.scala).
+`TestFoldUntilStreams` +5, `TestFoldUntil` +2, doc examples +2. The
+first law's instrument was wrong before it was right: a counter in
+the producer's continuation counts elements PULLED, because
+`Writer.uncons` applies the continuation as it hands the element over
+— so "not one tell more" reads 3 (host, port, the blank line), not 2,
+and the control (a stage that never stops) reads 6. `foldUntilTo`
+needed the same separate-extension-block shape as the effectful
+`.foldUntil`: `xs.foldUntilTo(using fo)` on the `foldTo` block was
+handed a fold where a `Foldable` was expected.
 
 Stage 2 (2026-09-22, loop-on-bang): `!.loop` in `object !`,
 `TestBangLoop` (3): 1 000 000 iterations at the Pure row on the
