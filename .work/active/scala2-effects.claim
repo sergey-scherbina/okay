@@ -1,0 +1,6 @@
+feature/scala2-effects 2026-09-22T22:13:16Z
+agent: claude-code
+heartbeat: 2026-09-22T22:13:16Z
+status: in-progress
+done-so-far: prototype in scratch: Op/Effect/Handler, Console resumptive + Choose multi-shot from 2.13
+next: spec stage 3, module code, probe suites
