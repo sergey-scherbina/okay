@@ -58,9 +58,10 @@ starts.
 *McBride & Paterson 2008 · Lindley, Wadler & Yallop 2011 · Capriotti & Kaposi 2014 · Mokhov et al. 2019 · Marlow et al. 2014/2016 · Turner 1979/1986*
 
 **[7 · Logic, streams and sketches](07-logic-streams.md)**
-One primitive for fair search; streams as codata; approximation with
+One primitive for fair search; streams as codata; the iteratee as a
+program (`Take`, `pipe`, `Stage`, `FoldUntil`); approximation with
 stated error.
-*Kiselyov, Shan, Friedman & Sabry 2005 · Wadler 1985 · Flajolet et al. 2007 · Cormode & Muthukrishnan 2005 · Dunning & Ertl 2019*
+*Kiselyov, Shan, Friedman & Sabry 2005 · Wadler 1985 · Kiselyov 2012 · Kiselyov, Peyton Jones & Sabry 2012 · Flajolet et al. 2007 · Cormode & Muthukrishnan 2005 · Dunning & Ertl 2019*
 
 ### Part IV · The surface
 

@@ -58,21 +58,6 @@ at the sink (`Chunks.fold`) — and the `Pipeline` optimizer of chapter
 law, filter fusion and take-pushdown are the fold-fusion family, each
 property-tested rather than assumed.
 
-The tradition has names worth knowing. The recursion-schemes paper
-gave the schemes their birds-and-bananas notation — a fold is a
-**catamorphism**, an unfold an **anamorphism**, their composition a
-hylomorphism — and Jeremy Gibbons' "origami programming" \[[Gibbons
-2003](#ref-gibbons-2003)\] made the discipline explicit: write no explicit recursion;
-express every traversal as a fold or an unfold, and the program's
-structure becomes a theorem about it (fusion laws, deforestation). Okay
-is origami in that sense wherever it streams: a `Chunks` pipeline is a
-hylomorphism — an unfold at the source (`Chunks.generate`, `range`,
-`fromIterator`), chunk-to-chunk arrows in the middle, a catamorphism
-at the sink (`Chunks.fold`) — and the `Pipeline` optimizer of chapter
-6 is the fusion laws applied as rewrites: map fusion IS the functor
-law, filter fusion and take-pushdown are the fold-fusion family, each
-property-tested rather than assumed.
-
 Two engineering notes the theory predicts and the benchmarks confirm.
 Chunking (`Chunks[A] = Feed[Chunk[A]]`) amortizes the tree step of
 chapter 4 over a batch, which is the whole arithmetic of the streaming
@@ -101,6 +86,99 @@ not of any one representation; a system with only the batched
 representation has nowhere to go when the batch collapses to one,
 which is the concrete, measured reason this library keeps two
 representations of a stream rather than one.
+
+## Iteratees: the consumer as a program
+
+The fold above is an algebra: a start and a step, and something else
+walks the input and feeds it. Oleg Kiselyov's **iteratee**
+\[[Kiselyov 2012](#ref-kiselyov-2012)\] turns the consumer inside out: it
+is a *program* that asks for its next element, suspended until one
+arrives, and the producer — his *enumerator* — is whatever answers the
+ask. His motivation was lazy I/O's three failures (a handle held open
+by a thunk nobody forced, an exception raised far from the read that
+caused it, no way to stop reading early); the design that fixes them is
+a consumer that owns its own control flow and knows nothing about
+where elements come from. A transformer of iteratees, an
+*enumeratee*, is then a consumer on one side and a producer on the
+other, and the whole pipeline is composed from those three parts.
+
+Okay has all three, under the names of chapter 5. `Take.Await`
+(`Pipe.scala:22–28`) is the ask: a consumer is a program `B ! Take % W`.
+The producer is chapter 5's stream-with-result, `A ! Writer % W` — a
+`tell` is the dual of an `await`. `pipe(producer)(consumer)`
+(`Pipe.scala:39–48`) is the pairing, and it is chapter 2's delimited
+control doing the work: each `await` transfers control to the producer
+for exactly one element, no queue and no buffer in between, the
+consumer drives, and a finite consumer therefore ends an infinite
+producer with only the asked elements ever computed. The enumeratee is
+`Stage[I, O, A] = A ! (Take % I + Writer % O)` (`Pipe.scala:58`), a
+program that awaits on one side and tells on the other; `through`
+composes stages demand-driven, and `Stage.transduce(z)(step, end)` is
+the state-step-flush skeleton that every stage in the library — the
+lexer's scanner, SSE framing, `chunked`, the demo's stream join —
+turned out to be an instance of.
+
+What the encoding buys is visible in the pair below. By hand, the
+consumer owns the source, so it can be run against an `Iterator` and
+nothing else; as an iteratee it owns only its questions, so the same
+program runs against a file, a socket, or a test's list:
+
+```scala
+// by hand: the loop holds the source, and only an Iterator will do
+def firstBlank(it: Iterator[String]): Int =
+  var n = 0
+  while it.hasNext do
+    if it.next().isEmpty then return n
+    n += 1
+  n
+
+// as an iteratee: a program that only knows how to ask
+val firstBlank: Int ! Take % String =
+  !.loop[Int, Int, Take % String](0) { n =>
+    Take.await[String].map {
+      case Some(s) if s.nonEmpty => Left(n + 1)
+      case _                     => Right(n)
+    }
+  }
+
+pipe(lines)(firstBlank)   // lines: Unit ! Writer % String — a file, a socket, a List
+```
+
+Two things differ from Kiselyov's Haskell. His iteratee is a monad
+*transformer* over a base monad `m`, and every effect the consumer
+performs — a log line, an async read — is lifted through it. Here
+`Take` is one entry in an effect row, so a consumer that also logs and
+sleeps is `B ! Take % W + Writer % String + Async` and lifts nothing;
+`Writer.uncons`'s forwarding arm (`Writer.scala:340`) hands the other
+effects out unchanged while it steps the tells. The law that pins the
+interaction is stated in `TestFoldUntilStreams`: an effect the
+producer performs *before* the element that satisfies the consumer is
+performed, and one *after* it is not — counted, not read off the code.
+
+The second difference is a specialisation the theory predicts. When
+the consumer is a left fold with a stop — `find`, `take(n)`, "read
+until the header has parsed" — the continuation is redundant: the
+state already says what to do next. `FoldUntil[A, S, R]`
+(`Fold.scala:222`) is that iteratee as *data*, `add`/`done`/`end` with
+no `Bind` per element, and the same instance runs over every carrier
+— `Stream.foldUntil`, `Chunks.foldUntil`, `Writer.foldUntil`,
+`Source.runFoldUntil` — with `done` asked before the first element so
+that `take(0)` pulls nothing. It is to the iteratee what `Fold` is to
+a hand-written loop: the same consumer, with the recursion taken away
+because it carried no information.
+
+The generator on the other side of `pipe` is the same coin. Kiselyov,
+Peyton Jones and Sabry \[[Kiselyov, Peyton Jones & Sabry 2012](#ref-kiselyov-2012-yield)\]
+showed `yield` — a producer that suspends after each element — to be
+the dual of the iteratee's `await`, and that a lazy stream, a
+generator and an iteratee are three surfaces of one control transfer.
+Here that is literal: `Writer.tell` is `yield`, `Take.await` is the
+iteratee's ask, `pipe` is the transfer, and chapter 8's direct blocks
+let a generator be written as a loop that tells. What is still
+hand-written is a *consumer* loop in direct style over an effectful
+source — `for x <- gen do …` where `gen` is a program rather than a
+`List` — which is why the iteratee side of a direct block is spelled
+`!.loop` today.
 
 ## Sketches: approximation with stated error
 
@@ -133,6 +211,10 @@ where that property was established.
 - <a id="ref-kiselyov-2005"></a>Oleg Kiselyov, Chung-chieh Shan, Daniel P. Friedman, Amr Sabry.
   *[Backtracking, interleaving, and terminating monad transformers
   (functional pearl).](https://okmij.org/ftp/papers/LogicT.pdf)* ICFP 2005.
+- <a id="ref-kiselyov-2012"></a>Oleg Kiselyov. *[Iteratees.](https://doi.org/10.1007/978-3-642-29822-6_15)*
+  FLOPS 2012, LNCS 7294.
+- <a id="ref-kiselyov-2012-yield"></a>Oleg Kiselyov, Simon Peyton Jones, Amr Sabry. *[Lazy v. Yield:
+  incremental, linear pretty-printing.](https://doi.org/10.1007/978-3-642-35182-2_14)* APLAS 2012, LNCS 7705.
 - <a id="ref-meijer-1991"></a>Erik Meijer, Maarten Fokkinga, Ross Paterson. *[Functional
   programming with bananas, lenses, envelopes and barbed wire.](https://maartenfokkinga.github.io/utwente/mmf91m.pdf)*
   FPCA 1991.

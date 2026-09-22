@@ -406,7 +406,11 @@ pairs them one element at a time — the consumer drives, a finite
 consumer ends an infinite producer. `Stage[I, O, A]` is a transducer
 as a program (awaits I, tells O); `through` composes stages
 demand-driven. Tokenizers and parsers are stages (okay-lex,
-okay-parse).
+okay-parse). If you know these as Kiselyov's **iteratees**: `Take`
+is the iteratee, a `Writer` program the enumerator, `Stage` the
+enumeratee, and `FoldUntil` the iteratee that is a fold with a stop
+— [theory ch. 7](theory/07-logic-streams.md#iteratees-the-consumer-as-a-program)
+has the paper and the side-by-side example.
 
 `Stage.transduce(z)(step)(flush)` is the skeleton they all share —
 carry a state, step it per input telling whatever that input is
