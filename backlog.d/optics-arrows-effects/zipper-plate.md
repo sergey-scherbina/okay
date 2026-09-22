@@ -33,8 +33,21 @@
       == Some(z)` on every node with an i-th child; `at(p).preview ==
       Ui.path(p).preview` on the TestUiOptic trees; `root` after any
       sequence of moves without `modify` is the input. TRIGGER: a
-      consumer that MOVES — the terminal host's focus navigation
-      (Tab/Shift-Tab is `right`/`left` over siblings, specs/ui-product.md),
-      a caret, a tree-walking tokenizer. `Ui.patch` by path is not one;
-      it stays an optic. Not before the trigger: the record above says
-      the two walks stay two, and a third walk with no mover is a third.
+      consumer that MOVES THROUGH A TREE — a structural editor (an
+      outline, a `Ui`/`Json`/`Schema` tree edited in place with
+      into/out/next/previous), or a SECOND hand-written
+      `(child, put-back)` frame beside `Ui.childAt` (Ui.scala:472 —
+      the grep `Option\[(.*, .* => .*)\]` over the main trees finds
+      exactly that one, 2026-09-22). NOT the terminal's Tab/Shift-Tab,
+      which this entry first named and which was checked the next day
+      and is wrong: the host's focus is an `Int` into
+      `Ui.focusable(ui)`, a FLATTENED vector of leaves in tab order
+      recomputed per key (Frame.scala:654-663), and tab order crosses
+      subtrees where a zipper's `right` stays among one node's
+      children — a cursor over the tree cannot give that order, so
+      that mover is served and stays served by the flat index. A caret
+      inside `Input` is a cursor over a STRING, not this either.
+      `Ui.patch` by path is not one; it stays an optic. Not before the
+      trigger: the record above says the two walks stay two, and a
+      third walk with no mover is a third. As of 2026-09-22 nothing in
+      this repository moves through a tree: no editor, one frame.
