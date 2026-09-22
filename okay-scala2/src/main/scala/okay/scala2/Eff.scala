@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.Free
+import okay.{!, Free}
 import okay.given
 import scala.util.control.NonFatal
 
@@ -132,4 +132,28 @@ object Async {
   def attempt[A](a: => A): Eff[Async & Throws[Throwable], A] =
     delay(try Right(a) catch { case NonFatal(e) => Left(e) })
       .flatMap((r: Either[Throwable, A]) => r.fold(Throws.raise[Throwable, A], Eff.pure))
+
+  // ---- concurrency (stage 5), over the platform's own Scheduler and
+  // Timer: a virtual thread per fiber on the JVM
+
+  private[scala2] def core[A](e: Eff[Async, A]): A ! okay.Async = coerce(e.program)
+  private[scala2] def lift[A](p: A ! okay.Async): Eff[Async, A] = Eff.of(coerce(p))
+
+  /** start `e` on its own fiber; the answer is the running fiber */
+  def fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]] =
+    delay(new Fiber(okay.Async.spawn(core(e))))
+
+  /** both at once, both answers */
+  def par[A, B](a: Eff[Async, A], b: Eff[Async, B]): Eff[Async, (A, B)] =
+    lift(okay.Async.par(core(a), core(b)))
+
+  /** both at once, the first answer; the other is cancelled */
+  def race[A](a: Eff[Async, A], b: Eff[Async, A]): Eff[Async, A] =
+    lift(okay.Async.race(core(a), core(b)))
+
+  def sleep(millis: Long): Eff[Async, Unit] = lift(okay.Async.sleep(millis))
+
+  /** `e`'s answer, or None if it takes longer than `millis` (it is cancelled) */
+  def timeout[A](millis: Long)(e: Eff[Async, A]): Eff[Async, Option[A]] =
+    lift(okay.Async.timeout(millis)(core(e)))
 }

@@ -228,20 +228,20 @@ wrapped, and every operation that can wait is an `Eff[Async, _]`.
   the channel as a `Source[A]` that ends when it is closed.
 
 ## Behavior (stage 5), all from Scala 2.13
-- [ ] a forked fiber runs concurrently and `join` answers its result;
+- [x] a forked fiber runs concurrently and `join` answers its result;
       a failed fiber fails `join` and answers `Left` to `joinEither`
-- [ ] `par` answers both results; `race` answers the faster one;
+- [x] `par` answers both results; `race` answers the faster one;
       `timeout` answers None past its deadline
-- [ ] producer/consumer over a bounded channel: every element arrives
+- [x] producer/consumer over a bounded channel: every element arrives
       once and in order, and the producer suspends when the channel
       is full rather than failing
-- [ ] `source` drains a channel into a `Source` that ends on `close`
+- [x] `source` drains a channel into a `Source` that ends on `close`
 
-## Later stages (not in stage 2)
-- Streams: a 2.13 `Source` facade over okay-stream.
-- Fibers and channels.
-- A 2.13 user's OWN effect: okay declares one with `derives Effect`,
-  which is Scala 3; the facade needs a Scala 2 door for it.
+## Later stages
+- Nothing is queued. The operator's list (effects, continuations, a
+  user's own effects, streams, fibers, channels) is covered by stages
+  1–5. Direct style is NOT planned: it is built from Scala 3 macros,
+  and the operator agreed it is not needed for now (2026-09-23).
 
 ## Decisions
 - FACADE over cross-build (operator choice, 2026-09-22, after the
@@ -325,3 +325,13 @@ wrapped, and every operation that can wait is an `Eff[Async, _]`.
   The stages (`take`, `takeWhile`, `drop`, `zipWithIndex`) carry
   `Async` in their own row, so `through` passes the source's Async
   operations along.
+- STAGE 5 (2026-09-23). `Fiber`, `Channel`, and `Async.fork/par/race/
+  sleep/timeout` over the core's `Async.spawn`, `Channel` and the
+  platform's Scheduler and Timer. The 2.13 probe has 34 tests, all
+  green on their first run under `-Xlint -Werror`. They cover a
+  producer and a consumer over a channel of capacity 4 moving 1 000
+  elements in order, cancelling a fiber that is sleeping, and `race`
+  and `timeout` against a 5-second sleep. A fiber and a channel are
+  held directly, not through a `Body`: their constructors name the
+  core's `Fiber`/`Channel` traits, which contain no union, and scalac
+  2.13 reads them fine.

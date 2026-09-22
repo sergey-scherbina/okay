@@ -11,6 +11,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
+| `Fiber[A]`, `Channel[A]` | concurrency: `Async.fork`, `par`, `race`, `sleep`, `timeout`; a fiber's `join`/`joinEither`/`cancel`; a bounded channel's `send`/`receive` (programs that wait), `offer`, `close`, `source` |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -228,13 +229,44 @@ operation (`runCollect`, `runForeach`, `runFold`) is an
 - `merge` runs both sources at once, one fiber each, feeding one
   channel. Elements come out in the order they arrive, not in turns.
 
-## What is not here yet
+## Fibers and channels
 
-- **Fibers and channels as their own types.** They are queued in the
-  sprint as `scala2-fibers-channels`. `merge` already uses both
-  internally.
-- **Direct style.** It is built from Scala 3 macros, so from Scala 2
-  it will never be available; write for-comprehensions instead.
+`Async.fork(e)` starts `e` on its own fiber, which is a virtual thread
+on the JVM. Anything that waits (`join`, `send` on a full channel,
+`receive` on an empty one, `sleep`) is an `Eff[Async, _]`, so it
+composes like the rest. The code below is copied from
+`okay-scala2/probe/src/test/scala/TestFibersChannelsFromScala2.scala`:
+
+```scala
+val ch = Channel[Int](4)
+def produce(i: Int): Eff[Async, Unit] =
+  if (i > 1000) Async.delay(ch.close())
+  else ch.send(i).flatMap(_ => produce(i + 1))
+def consume(acc: Vector[Int]): Eff[Async, Vector[Int]] =
+  ch.receive.flatMap {
+    case Some(n) => consume(acc :+ n)
+    case None => Eff.pure(acc)
+  }
+val prog = for {
+  p <- Async.fork(produce(1))
+  got <- consume(Vector.empty)
+  _ <- p.join
+} yield got
+assertEquals(Eff.runAsync(prog), (1 to 1000).toVector)
+```
+
+- `join` fails the same way the fiber failed. `joinEither` returns
+  the failure as a `Left` instead.
+- `race` returns the first answer and cancels the other fiber.
+  `timeout` returns `None` if the deadline passes, and cancels the
+  fiber.
+- `channel.source` reads the channel as a `Source` that ends when the
+  channel is closed.
+
+## Not planned
+
+- **Direct style** is built from Scala 3 macros, so Scala 2 cannot use
+  it. Write for-comprehensions instead.
 
 ## Why a facade and not a cross-build
 

@@ -893,7 +893,9 @@ handler receives each operation and the continuation, and can resume
 it once, never, or several times. Streams are `okay.scala2.Source`: the core's own `Source`, with the
 usual vocabulary (`map`, `filter`, `take`, `merge`, `runCollect`). A
 source can also be written as a for-comprehension of `Writer.tell` and
-`Async.delay` and wrapped with `Source.fromEff`. All of it is in the one package `okay.scala2`, under the library's own
+`Async.delay` and wrapped with `Source.fromEff`. Concurrency is `Async.fork`, `par`, `race` and `timeout`, together with
+a bounded `Channel` whose `send` and `receive` are programs that wait.
+All of it is in the one package `okay.scala2`, under the library's own
 names. The build needs both standard libraries, 2.13's first and 3.9's
 behind it. The module page
 gives the exact sbt settings, the same ones a gated 2.13 suite in this
