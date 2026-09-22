@@ -127,23 +127,23 @@ object TypeableK:
    * `enum Users[+A] derives TypeableK` — the instance every effect
    * needs, written by the compiler.
    *
-   * No macro: a `ClassTag[F[Any]]` IS the erasure of F, which is what
-   * `typeableK` wants, and the compiler synthesizes it for any
-   * concrete signature. So this is the hand-written
-   * `typeableK(classOf[Users[?]])` with the class no longer spelled
-   * out — same instance, same totality (see `typeableK`: complete
-   * when the answer type is the signature's only parameter, partial
-   * for `State % S` and friends, which say so themselves).
+   * The erasure of F is what the test is, and the macro reads it off
+   * the type — so this is the hand-written `typeableK(classOf[Users[?]])`
+   * with the class no longer spelled out AND compiled to a constant
+   * `instanceof` rather than read from a field (see `derivedImpl`) —
+   * same totality (see `typeableK`: complete when the answer type is
+   * the signature's only parameter, partial for `State % S` and
+   * friends, which say so themselves).
    */
-  inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): TypeableK[F] =
-    ${ derivedImpl[F]('ct) }
+  inline def derived[F[_]]: TypeableK[F] =
+    ${ derivedImpl[F] }
 
   /** `Effect.derived`'s half of the same macro: the class is an
    * `Effect` already, so `derives Effect` needs no wrapper around a
    * `TypeableK` (it had one — `Effect.of(TypeableK.derived)` — which
    * put two virtual calls under every `split`) */
-  inline def derivedEffect[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
-    ${ derivedImpl[F]('ct) }
+  inline def derivedEffect[F[_]]: Effect[F] =
+    ${ derivedImpl[F] }
 
   /**
    * The check is the reason this is a macro and not one line.
@@ -162,8 +162,7 @@ object TypeableK:
    * generic instance below handles a composite row correctly, by
    * testing the parts.
    */
-  def derivedImpl[F[_] : Type](ct: Expr[scala.reflect.ClassTag[F[Any]]])
-                              (using Quotes): Expr[Effect[F]] =
+  def derivedImpl[F[_] : Type](using Quotes): Expr[Effect[F]] =
     import quotes.reflect.*
     val body = TypeRepr.of[F].dealias match
       case tl: TypeLambda => tl.resType.dealias
@@ -172,11 +171,27 @@ object TypeableK:
       case OrType(_, _) =>
         report.errorAndAbort(
           "TypeableK.derived is for ONE signature, and this is a row.\n" +
-          "A ClassTag of a union is its LUB, a class every operation matches, so the\n" +
+          "The erasure of a union is its LUB, a class every operation matches, so the\n" +
           "split would send all of them left and say nothing.\n" +
           "A row needs no instance of its own: let each signature derive one, and the\n" +
           "row split will find them.")
-      case _ => '{ Effect.ByClass[F]($ct.runtimeClass) }
+      case _ =>
+        // the signature's class with every argument a wildcard — what
+        // `x.isInstanceOf[Users[?]]` tests. Emitted as a class of its
+        // own per `derives` site (one per signature) so that the test
+        // is a CONSTANT-class `instanceof` in the bytecode, where
+        // `ByClass` reads its class from a field and calls
+        // `Class.isInstance` (typeablek-instanceof: the residual of
+        // handler-fusion-flat, 5.6% on a lane that is nothing but
+        // dispatch). `ByClass` stays for `typeableK(cls)`, whose class
+        // is a run-time value.
+        val erased = body match
+          case AppliedType(tycon, args) => AppliedType(tycon, args.map(_ => TypeBounds.empty))
+          case other => other
+        if !erased.typeSymbol.isClassDef then
+          report.errorAndAbort(s"TypeableK.derived needs a class to test for, and ${erased.show} is not one")
+        erased.asType match
+          case '[t] => '{ new Effect[F] { def test(x: Any): Boolean = x.isInstanceOf[t] } }
 
 
   /** the empty signature is trivially splittable: nothing inhabits
@@ -226,15 +241,15 @@ trait Effect[F[_]] extends TypeableK[F], DirectEffect[F]
 object Effect:
   /** delegates to `TypeableK`'s macro, which is where the check lives
    * that refuses a row */
-  inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
+  inline def derived[F[_]]: Effect[F] =
     TypeableK.derivedEffect[F]
 
   /**
-   * THE class test, as one class: what `derives Effect`, `derives
-   * TypeableK` and `typeableK(cls)` all build. Named rather than
-   * anonymous so the macro can name it, and so that a derived
-   * signature's `test` is one call to `Class.isInstance` under
-   * `split` — not a wrapper's call to a delegate's call.
+   * THE class test over a RUN-TIME class: what `typeableK(cls)`
+   * builds. A derived signature (`derives Effect`/`TypeableK`) no
+   * longer uses it — its test is a constant-class `instanceof` in a
+   * class of its own (typeablek-instanceof), which this cannot be:
+   * `cls` is a field.
    */
   final class ByClass[F[_]](cls: Class[?]) extends Effect[F]:
     def test(x: Any): Boolean = cls.isInstance(x)

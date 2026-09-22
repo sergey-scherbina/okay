@@ -217,6 +217,22 @@ of the reordered arc (see "After stage 0").
       constant-class `instanceof` the hand-written match compiles to
       — filed as BACKLOG `typeablek-instanceof`, because that test is
       under every `split` in the library, not only this one.
+      BUILT 2026-09-23 (typeablek-instanceof): `derivedImpl` now emits,
+      per `derives` site, a class of its own whose `test` is
+      `x.isInstanceOf[F[?, …]]` — a constant-class `instanceof` —
+      and `ByClass` stays for `typeableK(cls)` alone. Bytes identical
+      on every lane (the `fusedSWr` floor 122 624 did not move).
+      Time, per-lane minima over five alternated rounds (before ×2,
+      after ×3; the box never gave a fully quiet before-round, loads
+      3–44 — history rows `tki-*`): `nestedSWr` 15.98 → 13.25
+      (**0.83**), `relayForward` 175.1 → 161.4 (0.92), `fusedSWr`
+      12.99 → 11.99 (0.92), `inline4` 103.1 → 103.6 (1.00). The
+      residual was named on `inline4` and `inline4` did not move:
+      what moved is every walker whose test runs under `split` twice
+      per operation (`State.run(Writer.run(_))`, `relay`) — the field
+      read and the `Class.isInstance` call were the cost there, and
+      the flat macro's chain of tests was already one virtual call
+      the JIT devirtualised. TKI_CLEAN_ROUND
 
 ## Out of scope
 
