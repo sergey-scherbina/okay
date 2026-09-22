@@ -84,6 +84,23 @@ IO, ZIO and kyo on the worst case (10 000 left-nested binds); what it
 costs — one `Bind` allocation per `flatMap`, as chapter 1 noted — is
 what chapter 6 claws back where it matters.
 
+The same laziness is what makes a LOOP a program without a trampoline
+of its own. `!.loop(s)(f: S => Either[S, A] ! F): A ! F` is
+`tailRecM` — the operation Freeman showed every stack-safe monad can
+be given \[[Freeman 2015](#ref-freeman-2015)\], and PureScript and cats
+made part of `Monad` — spelled as the two-line recursion `f(s).flatMap
+{ case Left(next) => loop(next)(f); case Right(a) => Pure(a) }`. The
+recursive call is inside the `flatMap`'s continuation, so building
+the program allocates one `Bind` and returns; the call is made when
+the interpreter resumes that node, in the runner's loop rather than
+on the caller's stack — Bjarnason's trampoline again, but paid by the
+tree every program already is instead of by a `Delay` per round. A
+million rounds at the `Pure` row run on the default stack
+(`TestBangLoop`). The "state decides when to stop" form recurs at
+two other seams: `FoldUntil` over an input (chapter 7) and
+`Proc.Iter` over a free arrow (`okay-workflow`, the one constructor
+the literature's selective functor lacks).
+
 Chapter 2 showed the same two moves on `Cont`, and since 2026-09-15
 they are the *same* moves: `Cont` is this tree at the signature "a
 function of the continuation", with one refinement `Free` itself
@@ -214,6 +231,7 @@ and twelve casts plus a row-splitting caveat disappeared.
 - <a id="ref-ploeg-2014"></a>Atze van der Ploeg, Oleg Kiselyov. *[Reflection without remorse.](https://okmij.org/ftp/Haskell/zseq.pdf)*
   Haskell Symposium 2014.
 - <a id="ref-bjarnason-2012"></a>Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.
+- <a id="ref-freeman-2015"></a>Phil Freeman. *[Stack safety for free.](https://functorial.com/stack-safety-for-free/index.pdf)* 2015.
 
 ---
 

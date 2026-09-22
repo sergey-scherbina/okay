@@ -41,6 +41,35 @@ values. `Writer.uncons` gives you the elements one by one with the
 answer at the end; `Writer.fold` collects them into any `Fold`
 algebra.
 
+A `Fold` reads to the end. When the CONSUMER knows when it has seen
+enough, use a `FoldUntil` — a fold with a `done` that is asked before
+every pull, so the producer is never resumed past the element that
+satisfied it:
+
+```scala
+countdown(1000000).foldUntil(using FoldUntil.find[Int](_ % 7 == 0))
+// Some(999999) — two steps of the million; the rest is never built
+```
+
+`find`, `headOption`, `exists`, `forall`, `take(n)` are the built-in
+ones; `FoldUntil.until(z)(step)(finish)` is the general shape, a
+`step` answering `Left(next)` to go on or `Right(result)` to stop.
+The same fold runs over chunks (`Chunks.foldUntil`) and over an
+asynchronous source (`Source.runFoldUntil`) — one instance, every
+carrier.
+
+The dual — a LOOP whose state decides when to stop — is `!.loop`, the
+`tailRecM` of programs: continue from a `Left`, answer a `Right`, and
+the recursion lives in the tree rather than on the stack, so a
+million rounds are fine:
+
+```scala
+val digits: Int ! Writer % Int = !.loop(2024) { n =>
+  Writer.tell(n % 10).map(_ => if n < 10 then Right(1) else Left(n / 10))
+}
+!.run(Writer.run(digits))   // (Seq(4, 2, 0, 2), 1) — the digits told, the answer 1
+```
+
 ## 3. Chunks make it fast
 
 ```scala

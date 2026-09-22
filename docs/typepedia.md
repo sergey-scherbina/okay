@@ -46,6 +46,13 @@ same material with the measurements attached.
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
   signature — in scopes importing `!.*` write `okay.Pure` (the
   Free.Pure case shadows it).
+- **`!.loop(s)(f: S => Either[S, A] ! F): A ! F`** — `tailRecM` for
+  programs (specs/fold-until.md, stage 2): continue from a `Left`,
+  answer a `Right`; stack-safe because the recursive call sits inside
+  the `flatMap`'s continuation and is made when the interpreter
+  resumes that `Bind`. In `object !` beside `tailcall`, not top-level:
+  Generate.scala's Cont fixpoint is called as `loop(f)(a)`, the same
+  two-list shape. okay-ui's `Toolkit` dialogs are its first callers.
 - **`Module[F]`** (specs/di.md, [the guide](di.md)) — a description of
   what to build, not a built thing: `module[Db](open)(close)` acquires
   in a `Resource` region, `Module.value` needs no building,
@@ -514,6 +521,21 @@ same material with the measurements attached.
   cost (29.4us against 2.8 for boxing the element read instead).
   `Chunks.fold` dispatches on the four shapes, and GADT refinement
   hands `S` back from the type test, so the dispatch needs no cast.
+- **`FoldUntil[-A, S, R]`** — the fold that can STOP
+  (specs/fold-until.md): `init`/`add` as `Fold`, plus `done(s)` (asked
+  before the first element and after every one; a consumer pulls
+  nothing once it answers) and `end(s)` (the result from wherever the
+  walk stopped). Instances `find`, `headOption`, `exists`, `forall`,
+  `take(n)`; `FoldUntil.until(z)(step)(finish)` adapts a step
+  answering `Either[S, R]` — an adapter, not the primitive, so that
+  no consumer allocates a `Left` per element. Deliberately NOT a
+  `Fold`: a `Fold` consumer walks to the end and would lose the stop
+  silently. Consumers: `Stream.foldUntil`, `Chunks.foldUntil`,
+  `Writer.foldUntil` (answers `R` alone — an early stop never sees the
+  program's answer), `Source.runFoldUntil`, and `.foldUntil` on a pure
+  writer program. Two laws consumers rely on, pinned by
+  `TestFoldUntilStreams`: `take(0)` pulls nothing; the continuation
+  after the satisfying tell is never called.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.

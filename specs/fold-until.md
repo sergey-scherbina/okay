@@ -63,6 +63,7 @@ Stream.foldUntil[S[_], F[+_], A, B, R](s: S[A])(using FoldUntil[A, B, R])(using 
 Chunks.foldUntil[A, S, R](p: Chunks[A])(using FoldUntil[A, S, R]): R
 Writer.foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F
 extension [A](s: Source[A]) def runFoldUntil[S, R](using FoldUntil[A, S, R]): R ! Async
+extension [W, A](a: A ! Writer % W) def foldUntil[S, R](using FoldUntil[W, S, R]): R   // fold-until-docs
 ```
 
 `Writer.foldUntil` answers `R` alone, not `(R, A)`: a fold that stops
@@ -215,6 +216,18 @@ them and `take(0)` none. 100 000 tells with the stop never firing
 fold on the default stack on both the writer and the chunk road.
 Not measured: the per-element cost of `done` against `foldLeft` on
 the unboxed shape — Out of scope until a caller has that fold.
+
+Docs (2026-09-22, fold-until-docs): the tutorial (§2), the guide (§2,
+§3), the typepedia and theory chapters 4 and 7 (iteratees, Moore
+machines, `foldl`, the under-appreciated unfold, Freeman's
+`tailRecM`) — every code example VERBATIM in
+`TestDocExamplesFoldUntil` (okay-stream, 4), because a snippet that
+is not compiled drifts. Writing the tutorial's example found the gap:
+`Stream.foldUntil(writerProgram)` does not infer (the type-lambda
+instance, the reason `uncons`/`toLazyList` are first-order overloads
+on the shape), and `Writer.foldUntil` takes two `using`s of which the
+first is evidence a tutorial reader should not see — so the pure
+writer program gained `.foldUntil(using fo)` beside those overloads.
 
 Stage 2 (2026-09-22, loop-on-bang): `!.loop` in `object !`,
 `TestBangLoop` (3): 1 000 000 iterations at the Pure row on the

@@ -167,6 +167,22 @@ that `take(0)` pulls nothing. It is to the iteratee what `Fold` is to
 a hand-written loop: the same consumer, with the recursion taken away
 because it carried no information.
 
+Its presentation has names too. Read as an automaton, `FoldUntil` is a
+**Moore machine** \[[Moore 1956](#ref-moore-1956)\]: a state `S`, a
+transition `add`, and outputs read OFF the state — `done: S =>
+Boolean` and `end: S => R` — rather than a `Done` constructor answered
+per element, which is exactly why it allocates nothing where the
+iteratee's per-element answer is an object. Its `init`/`add`/`end`
+triple is the "fold as a value" of the `foldl` tradition
+\[[Gonzalez 2013](#ref-gonzalez-2013)\] with the halting predicate
+added; the caller's own shape, a step answering `Either[S, R]`, is
+`FoldUntil.until` over it. And its dual on the producing side is
+`Source.unfold`, the anamorphism whose case for being a first-class
+combinator Gibbons and Jones made in "The under-appreciated unfold"
+\[[Gibbons & Jones 1998](#ref-gibbons-1998)\] — the same "state
+decides when to stop" form that `!.loop` (chapter 4) gives a program
+and `Proc.Iter` gives a free arrow.
+
 The generator on the other side of `pipe` is the same coin. Kiselyov,
 Peyton Jones and Sabry \[[Kiselyov, Peyton Jones & Sabry 2012](#ref-kiselyov-2012-yield)\]
 showed `yield` — a producer that suspends after each element — to be
@@ -220,6 +236,12 @@ where that property was established.
   FPCA 1991.
 - <a id="ref-gibbons-2003"></a>Jeremy Gibbons. *[Origami programming.](https://www.cs.ox.ac.uk/jeremy.gibbons/publications/origami.pdf)* In The Fun of Programming,
   Palgrave, 2003.
+- <a id="ref-gibbons-1998"></a>Jeremy Gibbons, Geraint Jones. *[The under-appreciated unfold.](https://www.cs.ox.ac.uk/jeremy.gibbons/publications/unfold.ps.gz)*
+  ICFP 1998.
+- <a id="ref-moore-1956"></a>Edward F. Moore. *[Gedanken-experiments on sequential machines.](https://doi.org/10.1515/9781400882618-006)*
+  In Automata Studies, Princeton, 1956.
+- <a id="ref-gonzalez-2013"></a>Gabriel Gonzalez. *[Composable, streaming, and efficient left folds.](https://www.haskellforall.com/2013/08/composable-streaming-and-efficient-left.html)*
+  2013 (the `foldl` library).
 - <a id="ref-flajolet-2007"></a>Philippe Flajolet, Éric Fusy, Olivier Gandouet, Frédéric Meunier.
   *[HyperLogLog: the analysis of a near-optimal cardinality estimation
   algorithm.](https://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf)* AofA 2007.

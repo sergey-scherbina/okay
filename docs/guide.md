@@ -50,6 +50,29 @@ build-and-run speed is an inline handler-passing program over
 third encoding: the Church one was measured slower than the fused
 tree loop and removed.
 
+A loop is a program too. `!.loop(s)(f: S => Either[S, A] ! F): A ! F`
+runs `f` from `s`, continues from a `Left` and answers a `Right` — the
+`tailRecM` of cats and PureScript, at this library's row. It needs no
+trampoline of its own: the recursive call sits inside the `flatMap`'s
+continuation, so it is made when the interpreter resumes that `Bind`,
+never on the caller's stack — a million rounds at the `Pure` row run
+on the default stack, and every iteration may perform `F`:
+
+```scala
+val steps: Int ! Nothing = !.loop[(Int, Int), Int, Nothing]((27, 0)) { (n, k) =>
+  pure(if n == 1 then Right(k) else Left((if n % 2 == 0 then n / 2 else 3 * n + 1, k + 1)))
+}
+!.run(steps)   // 111 — the Collatz steps from 27, the count carried in the state
+```
+
+The state is what the loop remembers between rounds; a dialog that
+re-shows itself until the user answers (`Toolkit.prompt` in okay-ui),
+a receive loop, a retry with a budget are all this shape, and writing
+them over `!.loop` is what makes the "when do I stop" decision a
+VALUE (`Right`) rather than a branch that forgets to recurse. The
+same form over an input is `FoldUntil` (§3), and over a free arrow
+`Proc.Iter` (durable-workflows.md).
+
 The standard effects: `Reader` (environment), `Writer` (telling IS
 streaming — see below), `State` (+ the type-changing `PState`),
 `Throws` (typed errors, `runEither`), `Choice` (nondeterminism,
@@ -333,6 +356,41 @@ values: an action forces a table's whole lineage as one `Tables.Plan`
 tree, rewritten first — a `columns(...)` projection pushed into the
 read so the platform prunes at the parser, the smaller side of a join
 turned to the right — and measured to pay on both platforms.
+
+A `Fold` reads its whole input by construction — `Fold.exists` keeps
+scanning after the first hit, and says so. Where the consumer knows
+when it has seen enough there is `FoldUntil[A, S, R]`
+(specs/fold-until.md): the same start-and-step plus `done(s)`, asked
+before the first element and after every one, and `end(s)`, the
+result from wherever the walk stopped. A consumer pulls NOTHING once
+`done` answers — the chunk after the satisfying one is never
+produced, the Async operation after the satisfying tell is never
+performed — and `take(0)` pulls nothing at all. `find`, `headOption`,
+`exists`, `forall`, `take(n)` are instances; `FoldUntil.until(z)(step)
+(finish)`, with `step: (S, A) => Either[S, R]`, is the shape a caller
+usually has in hand, kept as an adapter rather than the primitive so
+that no consumer pays a `Left` per element. One instance runs on every
+carrier: `Stream.foldUntil` (any `Stream`), `program.foldUntil` (a
+pure writer program), `Chunks.foldUntil`, `Writer.foldUntil` and
+`Source.runFoldUntil` (the effectful ones, answering `R ! F`):
+
+```scala
+Source.range(0, 1000000).runFoldUntil(using FoldUntil.take[Long](3))   // Vector(0, 1, 2) ! Async
+
+Chunks.foldUntil(Chunks.nats[Int]())(using
+  FoldUntil.until[Int, Int, Int](0)((s, a) => if s + a > 100 then Right(s) else Left(s + a))(identity))
+// 91 — the running sum stopped itself before 105; one chunk of the infinite stream was ever filled
+```
+
+Why `done` and not a step that answers `Either` at the bottom: a
+`Left` per element is an allocation in every consumer, and this
+library has measured that price out of every walk it has (`split`
+not `<|>` in `Writer`, no `Option` per element in the specialised
+iterators, the boxed accumulator as the whole cost of a fold);
+`done` is one branch. The theory chapter on streams places the
+stopping fold in the literature — Kiselyov's iteratee as data, a
+Moore machine, the `foldl` triple with a halt
+([theory ch. 7](theory/07-logic-streams.md#iteratees-the-consumer-as-a-program)).
 
 An aggregation over an event STREAM needs one thing the algebra does
 not carry: when a window is COMPLETE. `Windows`
