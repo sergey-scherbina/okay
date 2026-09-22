@@ -430,8 +430,8 @@ given Control[Cont] with
 /**
  * The function encoding is the reference implementation of Control.
  * It is not stack-safe: flatMap nests closures (Cont is the safe one).
- * The choice mirrors Free vs `Fused` one level up: data for tools and
- * safety, functions for speed.
+ * The choice mirrors Free vs an inline handler-passing program one
+ * level up: data for tools and safety, functions for speed.
  */
 type Func[A, S, R] = (A => S) => R
 

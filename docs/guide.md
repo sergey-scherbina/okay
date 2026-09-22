@@ -46,8 +46,9 @@ stepping, relaying, stack safety on any bind shape) and the opt-in
 construction, 10x under kyo on pure chains, with kyo's hazards stated:
 construction evaluates, so self-referential programs diverge). Fused
 build-and-run speed is an inline handler-passing program over
-`Control` (`Fused`), not a third encoding: the Church one was measured
-slower than the fused tree loop and removed.
+`Control` (`Interpr`, for a program static at its call site), not a
+third encoding: the Church one was measured slower than the fused
+tree loop and removed.
 
 The standard effects: `Reader` (environment), `Writer` (telling IS
 streaming — see below), `State` (+ the type-changing `PState`),

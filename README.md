@@ -105,8 +105,10 @@ index above lists them all with one-line summaries.
   defunctionalized) and the opt-in `Eager` (pure binds apply at
   construction); `reflect` and `reify` move programs between them.
   For fused build-and-run speed the answer is not another encoding
-  but an inline handler-passing program over `Control` (`Fused`,
-  specs/staged-effects.md).
+  but an inline handler-passing program over `Control` (`Interpr`,
+  specs/staged-effects.md) — and only when the program is static at
+  the call site: on a loop-shaped program the fused `Free` walk wins
+  (specs/handler-fusion.md, stage B).
 - `!.relay` (Effects.scala) — tail-resumptive handling: the answer-polymorphic
   handler must resume exactly once, which keeps the loop tail-recursive.
   `Effects.handle` — general handlers (abort, forwarding), via foldCont.

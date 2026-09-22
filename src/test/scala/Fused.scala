@@ -6,14 +6,24 @@ import okay.!.*
 /**
  * STAGE 0 of specs/handler-fusion.md: the hand-written fused loops.
  *
- * A row's continuation-aware handlers run ONE AT A TIME today —
+ * A MEASUREMENT FIXTURE, not a library road — which is why it lives in
+ * the test sources (fused-out-of-core, 2026-09-22): nothing in any
+ * module calls it, and nothing will, because the arc it gated is
+ * closed. `TestFused` keeps its agreement laws green and
+ * `FusionBenchmark` (the Jmh configuration extends Test) keeps
+ * `fusedSWr` as THE FLOOR — 122 640 B/op, the disqualifying control
+ * every runner change since (onerot, hff, rfinline, cof) was held to.
+ * That control is the reason the file is kept at all.
+ *
+ * A row's continuation-aware handlers run ONE AT A TIME —
  * `State.handle(s)(Writer.run(p))` walks the program twice, and on
  * the first walk every State operation is rebuilt (`Inject(e)
  * .flatMap(k)`: a Bind and a closure) for the second walk to find.
- * These two loops walk ONCE, with a product accumulator, and are the
- * measurement gate the spec puts before any generic `Fused.run`: if a
+ * These two loops walk ONCE, with a product accumulator, and were the
+ * measurement gate the spec put before any generic `Fused.run`: if a
  * loop written by hand does not clear 1.3x over the nested runners,
- * no generic machinery is worth building on top of it.
+ * no generic machinery is worth building on top of it. It did not
+ * (1.13–1.29x), and no generic `Fused.run` exists.
  *
  * Nothing here is generic on purpose. The shape is `Writer.foldWith`'s
  * and `State.handle`'s — one `@tailrec` match over the three head

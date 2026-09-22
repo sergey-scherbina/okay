@@ -502,6 +502,13 @@ continuation-aware class; staging it buys nothing unless the program
 is static at the call site. The `direct → Eff` follow-up is dropped
 for the same reason and is not filed.
 
+2026-09-22 (fused-out-of-core): `Fused.scala` moved from the core
+sources to `src/test/scala`. A grep of every module's main sources
+found no file that stacks two continuation-aware runners at all — the
+shape this arc optimises does not occur in production code — and
+nothing called `Fused` but `TestFused` and `FusionBenchmark`. It stays
+for the `fusedSWr` floor those two hold, as a fixture, not an API.
+
 ### either-scalarised — resolved, 2026-09-09 (runner-floor item 3)
 
 Per-runner lanes (`SplitBenchmark`), each runner alone over 1 000 of

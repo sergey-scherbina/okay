@@ -302,8 +302,9 @@ inline def over[F[+_], R[+_]](using T: TypeableK[F])[A]
   if T.test(e) then f(e.asInstanceOf[F[A]]).asInstanceOf[R[A]] else e
 
 /** an interpretation of F into any Control carrier C, with the answers
- * S — the handler type of an inline handler-passing program (`Fused`,
- * specs/staged-effects.md), which is what "staged effects" means here:
+ * S — the handler type of an inline handler-passing program
+ * (specs/staged-effects.md; the measured probes are `Fused` in the
+ * test sources), which is what "staged effects" means here:
  * a carrier-generic fold on the ENCODING (`foldIn`/`runIn`) was
  * measured no faster than Cont and is gone (core-cleanup) */
 type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]

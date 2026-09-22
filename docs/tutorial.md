@@ -273,7 +273,7 @@ This is the map/filter/take/sum lane as ONE fused while-loop: 1.6us
 against Iterator's 19.3 and the interpreted tree's 15.9. The rule:
 the `Pipeline` tree is for tools (optimize, inspect, ship), the
 inline shape is for speed — same choice the effects layer offers with
-the `Free` tree and `Fused`'s inline handler-passing programs.
+the `Free` tree and an inline handler-passing program over `Control`.
 
 ## 12. Chunks across machines
 
