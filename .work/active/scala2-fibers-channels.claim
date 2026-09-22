@@ -1,6 +1,0 @@
-feature/scala2-fibers-channels 2026-09-22T22:26:50Z
-agent: claude-code
-heartbeat: 2026-09-22T22:26:50Z
-status: in-progress
-done-so-far: picked from queue
-next: spec stage 5, okay.scala2.Fiber/Channel, probe suites
