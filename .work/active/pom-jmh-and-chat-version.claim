@@ -1,0 +1,6 @@
+feature/pom-jmh-and-chat-version 2026-09-22T22:50:53Z
+agent: claude-code
+heartbeat: 2026-09-22T22:50:53Z
+status: in-progress
+done-so-far: both found by scala2-docs
+next: find where sbt-jmh adds its deps; publishLocal + pom check; re-run chat guide §1
