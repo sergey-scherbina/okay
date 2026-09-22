@@ -176,9 +176,29 @@ object Stream:
    */
   def foldUntil[S[_], F[+_], A, B, R](s: S[A])(using fo: FoldUntil[A, B, R])(using St: Stream[S, F], H: Handler[F]): R =
     val it = St.iterator(s)
-    var b = fo.init
-    while !fo.done(b) && it.hasNext do b = fo.add(b, it.next())
-    fo.end(b)
+    // dispatched on the accumulator as `fold` above is, for the same
+    // measured reason (fold-until-unboxed: the box is 25x on the loop)
+    fo match
+      case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
+        var b = l.initLong
+        while !l.doneLong(b) && it.hasNext do b = l.addLong(b, it.next())
+        l.endLong(b)
+      case i: FoldUntil.OfInt[A @unchecked, R @unchecked] =>
+        var b = i.initInt
+        while !i.doneInt(b) && it.hasNext do b = i.addInt(b, it.next())
+        i.endInt(b)
+      case d: FoldUntil.OfDouble[A @unchecked, R @unchecked] =>
+        var b = d.initDouble
+        while !d.doneDouble(b) && it.hasNext do b = d.addDouble(b, it.next())
+        d.endDouble(b)
+      case bo: FoldUntil.OfBoolean[A @unchecked, R @unchecked] =>
+        var b = bo.initBoolean
+        while !bo.doneBoolean(b) && it.hasNext do b = bo.addBoolean(b, it.next())
+        bo.endBoolean(b)
+      case _ =>
+        var b = fo.init
+        while !fo.done(b) && it.hasNext do b = fo.add(b, it.next())
+        fo.end(b)
 
 extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
   /** keep the elements satisfying p */

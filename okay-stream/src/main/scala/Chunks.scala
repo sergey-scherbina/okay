@@ -303,16 +303,59 @@ object Chunks {
    * production, since the iterator's `hasNext` is what steps the
    * tree.
    */
-  def foldUntil[A, S, R](p: Chunks[A])(using fo: FoldUntil[A, S, R]): R =
-    var s = fo.init
-    val it = feedStream[Unit].iterator(p)
-    while !fo.done(s) && it.hasNext do
-      val c = it.next()
-      var i = 0
-      while i < c.length && !fo.done(s) do
-        s = fo.add(s, c(i))
-        i += 1
-    fo.end(s)
+  def foldUntil[A, S, R](p: Chunks[A])(using fo: FoldUntil[A, S, R]): R = fo match
+    // dispatched on the accumulator as `fold` is (fold-until-unboxed:
+    // 27.9 us boxed against 1.0 for the same loop at `long`)
+    case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
+      var s = l.initLong
+      val it = feedStream[Unit].iterator(p)
+      while !l.doneLong(s) && it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length && !l.doneLong(s) do
+          s = l.addLong(s, c(i))
+          i += 1
+      l.endLong(s)
+    case n: FoldUntil.OfInt[A @unchecked, R @unchecked] =>
+      var s = n.initInt
+      val it = feedStream[Unit].iterator(p)
+      while !n.doneInt(s) && it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length && !n.doneInt(s) do
+          s = n.addInt(s, c(i))
+          i += 1
+      n.endInt(s)
+    case d: FoldUntil.OfDouble[A @unchecked, R @unchecked] =>
+      var s = d.initDouble
+      val it = feedStream[Unit].iterator(p)
+      while !d.doneDouble(s) && it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length && !d.doneDouble(s) do
+          s = d.addDouble(s, c(i))
+          i += 1
+      d.endDouble(s)
+    case b: FoldUntil.OfBoolean[A @unchecked, R @unchecked] =>
+      var s = b.initBoolean
+      val it = feedStream[Unit].iterator(p)
+      while !b.doneBoolean(s) && it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length && !b.doneBoolean(s) do
+          s = b.addBoolean(s, c(i))
+          i += 1
+      b.endBoolean(s)
+    case _ =>
+      var s = fo.init
+      val it = feedStream[Unit].iterator(p)
+      while !fo.done(s) && it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length && !fo.done(s) do
+          s = fo.add(s, c(i))
+          i += 1
+      fo.end(s)
 
   /**
    * `foldLeft` for a G-EFFECTFUL chunked writer stream — a

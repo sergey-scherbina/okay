@@ -46,6 +46,20 @@ class TestFoldUntilStreams extends munit.FunSuite:
     check(FoldUntil.until[Int, Int, Int](0)((s, a) => if s + a > 30 then Right(s) else Left(s + a))(identity), "until")
   }
 
+  test("Chunks.foldUntil's unboxed arms agree with the generic one and stop at the chunk") {
+    var pulls = 0
+    val chunked = Chunks.generateWith(0) { i => pulls += 1; (ArraySeq.range(i, i + 4), i + 4) }
+    val sumL = FoldUntil.long[Int, Long](0L)((s, a) => s + a)(_ > 50)(identity)   // 0+..+10 = 55, in the 3rd chunk
+    assertEquals(Chunks.foldUntil(chunked)(using sumL), 55L)
+    assertEquals(pulls, 3)
+    pulls = 0
+    assertEquals(Chunks.foldUntil(chunked)(using FoldUntil[Int, Long, Long](0L)((s, a) => s + a)(_ > 50)(identity)), 55L)
+    assertEquals(pulls, 3)
+    assertEquals(Chunks.foldUntil(chunked)(using FoldUntil.int[Int, Int](0)((s, a) => s + a)(_ > 50)(identity)), 55)
+    assertEquals(Chunks.foldUntil(chunked)(using FoldUntil.double[Int, Double](0.0)((s, a) => s + a)(_ > 50)(identity)), 55.0)
+    assertEquals(Chunks.foldUntil(chunked)(using FoldUntil.exists[Int](_ == 9)), true)
+  }
+
   test("Chunks.foldUntil pulls no chunk after the one that satisfied it") {
     var pulls = 0
     val chunked = Chunks.generateWith(0) { i => pulls += 1; (ArraySeq.range(i, i + 4), i + 4) }

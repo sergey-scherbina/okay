@@ -54,7 +54,15 @@ object FoldUntil:
   def exists[A](p: A => Boolean): FoldUntil[A, Boolean, Boolean]
   def forall[A](p: A => Boolean): FoldUntil[A, Boolean, Boolean]
   def take[A](n: Int): FoldUntil[A, Vector[A], Vector[A]]
+  // fold-until-unboxed: the four unboxed shapes, as Fold has them
+  trait OfLong[-A, R] extends FoldUntil[A, Long, R]      // initLong/addLong/doneLong/endLong
+  trait OfInt[-A, R]; trait OfDouble[-A, R]; trait OfBoolean[-A, R]
+  inline def long[A, R](z: Long)(inline f: (Long, A) => Long)(inline stop: Long => Boolean)(inline finish: Long => R): OfLong[A, R]   // int/double/boolean alike
 ```
+
+`Chunks.foldUntil`, `Stream.foldUntil` and `Foldable.foldUntil`
+dispatch on the four shapes as `Chunks.fold` does; `exists`/`forall`
+are `OfBoolean`.
 
 One consumer per carrier, each beside the `fold` it mirrors:
 
@@ -170,12 +178,8 @@ Stage 2 — `!.loop(s)(f)`:
 
 ## Out of scope
 
-- An unboxed `FoldUntil` (`OfLong` and friends). `Fold`'s
-  specialisations exist because a fold over 10k longs measured the
-  boxed accumulator as the whole cost; nothing has measured a
-  stopping fold on that shape, and a `Boolean`-returning `done` on a
-  boxed `S` is one branch per element, not an allocation. Measure
-  before adding — the rule that built `Fold.OfLong`.
+- (An unboxed `FoldUntil` was out of scope until measured; measured
+  and built — fold-until-unboxed, Results.)
 - Replacing `Fold.exists`/`forall`: they stay, they are `Fold`s and a
   `Fold` consumer cannot stop; their doc line is corrected to name
   `FoldUntil.exists` instead of the phantom.
@@ -292,6 +296,35 @@ and the control (a stage that never stops) reads 6. `foldUntilTo`
 needed the same separate-extension-block shape as the effectful
 `.foldUntil`: `xs.foldUntilTo(using fo)` on the `foldTo` block was
 handed a fold where a `Foldable` was expected.
+
+Unboxed (2026-09-22, fold-until-unboxed; `compare/FoldUntilBoxBenchmark`,
+10k Longs in chunks of 64, summing into a Long, the fold as DATA, the
+stop never firing; three rounds, the third on a quiet box — sbt=0,
+forks=0, load 2.85 → 4.16; src/jmh/history.tsv `fuu-*`):
+
+| lane | round 1 | round 3 (quiet) |
+|---|---|---|
+| `Chunks.fold`, generic `Fold` (boxed) | 25.3 ± 3.4 | 26.7 ± 4.7 |
+| `Chunks.foldUntil`, generic `FoldUntil` (boxed) | 27.9 ± 1.5 | 20.7 ± 1.1 |
+| `Chunks.fold`, `Fold.sumLong` | 7.3 ± 0.2 | 7.4 ± 0.3 |
+| `Chunks.foldUntil`, `FoldUntil.long` (AFTER) | — | **7.5 ± 1.0** |
+| bare loop, generic `FoldUntil` | 25.0 ± 0.4 | 26.4 ± 1.8 |
+| bare loop, `OfLong` prototype | 1.0 ± 0.02 | 0.99 ± 0.03 |
+
+Two findings. The box is the whole cost, as it was for `Fold`: the
+same loop with the state declared `long` is 25–27x faster, and on the
+shipped path `FoldUntil.long` reaches parity with `Fold.sumLong`
+(7.5 vs 7.4) from 20.7 — 0.36x. The `done` branch is NOT measurable:
++11% in round 1, −22% in round 3, both inside the boxed `Fold`'s own
+bars (±3.4, ±4.7). Round 2 is recorded and discounted: a sibling's
+sbt started mid-run (load 2.9 → 15.7) and the loop lane read
+64 ± 30. So the four shapes exist (`OfLong`/`OfInt`/`OfDouble`/
+`OfBoolean`, built by `FoldUntil.long` and siblings, inline for the
+reason `Fold.long` is), `exists`/`forall` are `OfBoolean`, and the
+three iterator/chunk walks dispatch. `Writer.foldUntil` and
+`Producer.foldUntil` do NOT dispatch: their per-element cost is the
+tree step, not the box — unmeasured, and the trigger for measuring
+it is a caller folding a hot writer stream into a primitive.
 
 Stage 2 (2026-09-22, loop-on-bang): `!.loop` in `object !`,
 `TestBangLoop` (3): 1 000 000 iterations at the Pure row on the

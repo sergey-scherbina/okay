@@ -268,18 +268,101 @@ object FoldUntil:
   def headOption[A]: FoldUntil[A, Option[A], Option[A]] = find(_ => true)
 
   /** does any element satisfy the predicate — stopping at the first that does */
-  def exists[A](p: A => Boolean): FoldUntil[A, Boolean, Boolean] = new:
-    def init: Boolean = false
-    def add(s: Boolean, a: A): Boolean = s || p(a)
-    def done(s: Boolean): Boolean = s
-    def end(s: Boolean): Boolean = s
+  def exists[A](p: A => Boolean): OfBoolean[A, Boolean] = new:
+    def initBoolean: Boolean = false
+    def addBoolean(s: Boolean, a: A): Boolean = s || p(a)
+    def doneBoolean(s: Boolean): Boolean = s
+    def endBoolean(s: Boolean): Boolean = s
 
   /** do all of them — stopping at the first that does not */
-  def forall[A](p: A => Boolean): FoldUntil[A, Boolean, Boolean] = new:
-    def init: Boolean = true
-    def add(s: Boolean, a: A): Boolean = s && p(a)
-    def done(s: Boolean): Boolean = !s
-    def end(s: Boolean): Boolean = s
+  def forall[A](p: A => Boolean): OfBoolean[A, Boolean] = new:
+    def initBoolean: Boolean = true
+    def addBoolean(s: Boolean, a: A): Boolean = s && p(a)
+    def doneBoolean(s: Boolean): Boolean = !s
+    def endBoolean(s: Boolean): Boolean = s
+
+  // ------------------------------------------- unboxed accumulators
+  //
+  // The same move `Fold` makes, for the same measured reason
+  // (fold-until-unboxed, compare/FoldUntilBoxBenchmark, 10k Longs in
+  // chunks of 64): a generic `FoldUntil` summing into a `Long` reads
+  // 27.9 us on the shipped path and 25.0 on a bare loop, the SAME loop
+  // with the accumulator declared `long` reads 1.0 — the box is the
+  // whole cost, and the one `done` branch per element is within the
+  // error bars of the boxed `Fold` (25.3 ± 3.4). `doneX` and `endX`
+  // are declared at the primitive too, or the state would box on its
+  // way into the predicate.
+
+  /** a stopping fold whose state is a `long` that never leaves the register */
+  trait OfLong[-A, R] extends FoldUntil[A, Long, R]:
+    def initLong: Long
+    def addLong(s: Long, a: A): Long
+    def doneLong(s: Long): Boolean
+    def endLong(s: Long): R
+    final def init: Long = initLong
+    final def add(s: Long, a: A): Long = addLong(s, a)
+    final def done(s: Long): Boolean = doneLong(s)
+    final def end(s: Long): R = endLong(s)
+
+  trait OfInt[-A, R] extends FoldUntil[A, Int, R]:
+    def initInt: Int
+    def addInt(s: Int, a: A): Int
+    def doneInt(s: Int): Boolean
+    def endInt(s: Int): R
+    final def init: Int = initInt
+    final def add(s: Int, a: A): Int = addInt(s, a)
+    final def done(s: Int): Boolean = doneInt(s)
+    final def end(s: Int): R = endInt(s)
+
+  trait OfDouble[-A, R] extends FoldUntil[A, Double, R]:
+    def initDouble: Double
+    def addDouble(s: Double, a: A): Double
+    def doneDouble(s: Double): Boolean
+    def endDouble(s: Double): R
+    final def init: Double = initDouble
+    final def add(s: Double, a: A): Double = addDouble(s, a)
+    final def done(s: Double): Boolean = doneDouble(s)
+    final def end(s: Double): R = endDouble(s)
+
+  trait OfBoolean[-A, R] extends FoldUntil[A, Boolean, R]:
+    def initBoolean: Boolean
+    def addBoolean(s: Boolean, a: A): Boolean
+    def doneBoolean(s: Boolean): Boolean
+    def endBoolean(s: Boolean): R
+    final def init: Boolean = initBoolean
+    final def add(s: Boolean, a: A): Boolean = addBoolean(s, a)
+    final def done(s: Boolean): Boolean = doneBoolean(s)
+    final def end(s: Boolean): R = endBoolean(s)
+
+  /** build one — `inline`, for the reason `Fold.long` is: a stored
+   * `Function2` would put the box straight back */
+  @annotation.nowarn("id=E197")
+  inline def long[A, R](z: Long)(inline f: (Long, A) => Long)(inline stop: Long => Boolean)(inline finish: Long => R): OfLong[A, R] = new:
+    def initLong: Long = z
+    def addLong(s: Long, a: A): Long = f(s, a)
+    def doneLong(s: Long): Boolean = stop(s)
+    def endLong(s: Long): R = finish(s)
+
+  @annotation.nowarn("id=E197")
+  inline def int[A, R](z: Int)(inline f: (Int, A) => Int)(inline stop: Int => Boolean)(inline finish: Int => R): OfInt[A, R] = new:
+    def initInt: Int = z
+    def addInt(s: Int, a: A): Int = f(s, a)
+    def doneInt(s: Int): Boolean = stop(s)
+    def endInt(s: Int): R = finish(s)
+
+  @annotation.nowarn("id=E197")
+  inline def double[A, R](z: Double)(inline f: (Double, A) => Double)(inline stop: Double => Boolean)(inline finish: Double => R): OfDouble[A, R] = new:
+    def initDouble: Double = z
+    def addDouble(s: Double, a: A): Double = f(s, a)
+    def doneDouble(s: Double): Boolean = stop(s)
+    def endDouble(s: Double): R = finish(s)
+
+  @annotation.nowarn("id=E197")
+  inline def boolean[A, R](z: Boolean)(inline f: (Boolean, A) => Boolean)(inline stop: Boolean => Boolean)(inline finish: Boolean => R): OfBoolean[A, R] = new:
+    def initBoolean: Boolean = z
+    def addBoolean(s: Boolean, a: A): Boolean = f(s, a)
+    def doneBoolean(s: Boolean): Boolean = stop(s)
+    def endBoolean(s: Boolean): R = finish(s)
 
   /** the first n elements, in order, and no pull after the nth */
   def take[A](n: Int): FoldUntil[A, Vector[A], Vector[A]] = new:
@@ -385,9 +468,29 @@ given [F[X] <: IterableOnce[X]]: Foldable[F] = new:
 
   def foldUntil[A, S, R](fa: F[A])(using fo: FoldUntil[A, S, R]): R =
     val it = fa.iterator
-    var s = fo.init
-    while !fo.done(s) && it.hasNext do s = fo.add(s, it.next())
-    fo.end(s)
+    // the element type is erased, so these tests see only the shape —
+    // the same unavoidable `@unchecked` `Chunks.fold` carries
+    fo match
+      case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
+        var s = l.initLong
+        while !l.doneLong(s) && it.hasNext do s = l.addLong(s, it.next())
+        l.endLong(s)
+      case i: FoldUntil.OfInt[A @unchecked, R @unchecked] =>
+        var s = i.initInt
+        while !i.doneInt(s) && it.hasNext do s = i.addInt(s, it.next())
+        i.endInt(s)
+      case d: FoldUntil.OfDouble[A @unchecked, R @unchecked] =>
+        var s = d.initDouble
+        while !d.doneDouble(s) && it.hasNext do s = d.addDouble(s, it.next())
+        d.endDouble(s)
+      case b: FoldUntil.OfBoolean[A @unchecked, R @unchecked] =>
+        var s = b.initBoolean
+        while !b.doneBoolean(s) && it.hasNext do s = b.addBoolean(s, it.next())
+        b.endBoolean(s)
+      case _ =>
+        var s = fo.init
+        while !fo.done(s) && it.hasNext do s = fo.add(s, it.next())
+        fo.end(s)
 
 extension [F[_], A](fa: F[A])(using F: Foldable[F])
   /** run any Fold over the elements */

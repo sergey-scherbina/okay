@@ -391,7 +391,13 @@ Why `done` and not a step that answers `Either` at the bottom: a
 library has measured that price out of every walk it has (`split`
 not `<|>` in `Writer`, no `Option` per element in the specialised
 iterators, the boxed accumulator as the whole cost of a fold);
-`done` is one branch. The theory chapter on streams places the
+`done` is one branch — measured at most ~10% over the boxed `Fold`
+on 10k Longs, inside the error bars. And the box IS the cost here as
+it was for `Fold`: the same loop with the state declared `long` runs
+25x faster, so `FoldUntil.OfLong`/`OfInt`/`OfDouble`/`OfBoolean` exist
+(`FoldUntil.long(z)(f)(stop)(finish)` builds one; `exists`/`forall`
+are `OfBoolean`) and the chunk, stream and `Foldable` walks dispatch
+on them. The theory chapter on streams places the
 stopping fold in the literature — Kiselyov's iteratee as data, a
 Moore machine, the `foldl` triple with a halt
 ([theory ch. 7](theory/07-logic-streams.md#iteratees-the-consumer-as-a-program)).

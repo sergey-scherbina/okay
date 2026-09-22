@@ -53,6 +53,31 @@ class TestFoldUntil extends munit.FunSuite:
     assertEquals(seen, 0)
   }
 
+  // ------------------------------------------------------ unboxed shapes
+
+  test("the four unboxed shapes agree with the generic fold on every walk, and stop") {
+    val xs = (1 to 100).toList
+    // a running sum that stops past 50: 1+..+10 = 55
+    val sumL = FoldUntil.long[Int, Long](0L)((s, a) => s + a)(_ > 50)(identity)
+    val sumI = FoldUntil.int[Int, Int](0)((s, a) => s + a)(_ > 50)(identity)
+    val sumD = FoldUntil.double[Int, Double](0.0)((s, a) => s + a)(_ > 50)(identity)
+    val anyB = FoldUntil.boolean[Int, Boolean](false)((s, a) => s || a == 7)(identity)(identity)
+    val generic = FoldUntil[Int, Long, Long](0L)((s, a) => s + a)(_ > 50)(identity)
+    for (name, fo, expected) <- List(("long", sumL, 55L), ("generic", generic, 55L)) do
+      assertEquals(xs.foldUntilTo(using fo), expected, s"List $name")
+      assertEquals(Stream.foldUntil(xs)(using fo), expected, s"Stream $name")
+    assertEquals(xs.foldUntilTo(using sumI), 55)
+    assertEquals(xs.foldUntilTo(using sumD), 55.0)
+    assertEquals(xs.foldUntilTo(using anyB), true)
+    assertEquals(List(1, 2, 3).foldUntilTo(using anyB), false)
+    // the stop holds on the specialised arm: an infinite iterator ends
+    assertEquals(Iterator.from(1).foldUntilTo(using sumL), 55L)
+    assertEquals(Stream.foldUntil(LazyList.from(1))(using sumI), 55)
+    // exists/forall are OfBoolean now and still answer what List does
+    assertEquals(xs.foldUntilTo(using FoldUntil.exists[Int](_ == 42)), true)
+    assertEquals(xs.foldUntilTo(using FoldUntil.forall[Int](_ < 42)), false)
+  }
+
   // ------------------------------------------------------ Foldable (stage 4)
 
   test("foldUntilTo on a List, a Vector, an Iterator and a Producer answers the List method") {

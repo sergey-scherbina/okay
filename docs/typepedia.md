@@ -543,6 +543,14 @@ same material with the measurements attached.
   EXTENSION's clause when the extension has one. Two laws consumers
   rely on, pinned by `TestFoldUntilStreams`: `take(0)` pulls nothing;
   the continuation after the satisfying tell is never called.
+  **`FoldUntil.OfLong` / `OfInt` / `OfDouble` / `OfBoolean`** — the
+  same four unboxed shapes `Fold` has, for the same measured reason
+  (fold-until-unboxed: the accumulator box is the whole cost, 25x on
+  the bare loop); `FoldUntil.long(z)(f)(stop)(finish)` and siblings
+  build one, `exists`/`forall` are `OfBoolean`, and `Chunks.foldUntil`,
+  `Stream.foldUntil` and `Foldable.foldUntil` dispatch on the shape.
+  `Writer.foldUntil`/`Producer.foldUntil` do not: their per-element
+  cost is the tree step, not the box (unmeasured — a trigger).
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.
