@@ -1,0 +1,6 @@
+feature/handler-fusion-flat 2026-09-22T17:57:17Z
+agent: claude-code
+heartbeat: 2026-09-22T17:57:17Z
+status: in-progress
+done-so-far: worktree created
+next: Handler.flat[R] (one expression per call site), laws at four positions, inline4/inline1 lanes within 10% of flat4/flat1
