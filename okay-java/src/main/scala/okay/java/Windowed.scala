@@ -2,7 +2,7 @@ package okay.java
 
 import okay.{Aggregator, Pane, Windows}
 import java.util.function.{BiConsumer, BinaryOperator, Function as JFunction, Supplier}
-import java.util.stream.Collector
+import java.util.stream.{Collector, Gatherer}
 
 /**
  * AN EVENT-TIME WINDOW AS A `Collector`.
@@ -93,6 +93,30 @@ object Windowed {
       into.present(box.folded)
 
     Collector.of(supplier, accumulator, combiner, finisher)
+
+  /**
+   * The window as a GATHERER (JDK 24+, java-gatherers): each pane is
+   * pushed downstream THE MOMENT the watermark closes it, and the
+   * remainder by the finisher. The collector above can only hand its
+   * panes to a fold and answer at the end; this is an intermediate
+   * operation, so the panes are a stream again —
+   * `events.gather(Windowed.gatherer(…)).forEach(sink)` sends each
+   * window out while the input is still arriving, and what the stream
+   * holds between two elements is the live panes only.
+   *
+   * No second implementation: it is `Windows.stage` (okay-stream), the
+   * same operator as a pipeline stage, run through `Gather.gatherer`.
+   * Sequential for the collector's reason, but where the collector's
+   * combiner has to THROW on a parallel stream, a gatherer has none —
+   * and JEP 485 then evaluates it in encounter order, so a
+   * `.parallel()` stream gets the right panes instead of an exception.
+   * Pane order within one watermark sweep is unspecified, as above.
+   */
+  def gatherer[A, K, Acc, O](size: Long, slide: Long, lateness: Long)
+                            (key: A => K)(at: A => Long)
+                            (agg: Aggregator[A, Acc, O])
+  : Gatherer[A, ?, Pane[K, O]] =
+    Gather.gatherer(Windows.stage(size, slide, lateness)(key)(at)(agg))
 
   /** the same, tumbling */
   def tumbling[A, K, Acc, O, S, R](size: Long, lateness: Long)
