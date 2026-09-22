@@ -399,6 +399,20 @@ force, all already practiced, none previously written down:
   way. `scripts/gate.sh --read <log>` says what it would have done
   with a gate log you already have. The evidence, and what is ruled
   out, is in BACKLOG's `native-runner-error`.
+- **`scripts/gate.sh [sbt-command]` is the ONLY way to invoke sbt in
+  this repo — one test, a compile check, a single module, or the full
+  matrix, never bare `sbt`** (single-path-verification, 2026-09-22).
+  It takes any command in place of the default `test`
+  (`scripts/gate.sh "Test/compile"`, `scripts/gate.sh
+  "okayOpticsNative/test"`), so there is no check too small to route
+  through it. A bare `sbt <cmd>` silently skips everything above: the
+  warning check ("no warnings, ever"), the stall watchdog, and the
+  native lost-process rerun — which is exactly how a real,
+  already-known flake got manually rediscovered and manually re-run
+  instead of the gate quietly clearing it on its own. Two paths — a
+  "quick" raw-sbt one and a "proper" gate.sh one — is what causes
+  that: there is only one path, and it is this one, for a solo
+  sanity check exactly as much as for a landing.
 - **The gate now reads two more things, both added 2026-09-11 after
   they cost something the same day.** A SIGNAL is not a verdict: sbt
   exiting 143/137 with no `==> X` prints `gate: KILLED`, because it
