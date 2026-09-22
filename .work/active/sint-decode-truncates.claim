@@ -1,0 +1,6 @@
+feature/sint-decode-truncates 2026-09-22T22:47:14Z
+agent: claude-code
+heartbeat: 2026-09-22T22:47:14Z
+status: in-progress
+done-so-far: picked (operator: fix now)
+next: survey SInt decode sites incl. staged
