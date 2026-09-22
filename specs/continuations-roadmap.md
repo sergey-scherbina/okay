@@ -265,8 +265,11 @@ Recorded so that nobody mistakes "possible" for "planned".
       of delay-node).
 - [ ] Road 1: `!.runAll` over a `Handlers[R]` vector, TestHandleForward's
       abort/multi-shot/order assertions passing through it unchanged.
-- [ ] Road 2 lane: the `direct` block beside the hand-written `Func`
-      program in FusionBenchmark, parity to the byte.
+- [x] Road 2 lane: the `direct` block beside the hand-written `Func`
+      program, parity to the byte — BUILT as `Direct.staged`
+      (specs/direct-staged.md, 5a3af433): 7.50 µs / 85 368 B against
+      the hand-written 7.69 / 84 568, 2.24x over the same block as a
+      Free block on the shipping runners.
 - [ ] Road 3: `NoPrompt` is a compile error on a `Prog` facade; one
       module protocol typed.
 - [ ] Road 4: a spike with a verdict, not an implementation.

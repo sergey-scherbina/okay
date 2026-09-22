@@ -270,6 +270,46 @@ with it: in boolean-heavy code `!x` is negation on a `Boolean` and
 a mark on an `F[Boolean]` — mechanically unambiguous (members beat
 extensions), but readers parse by type; prefer `.reflect` there.
 
+## Layer 2½ — the staged block: the handler known at the call site
+
+A `direct` block lowers to a `Free` tree, and handlers walk it
+afterwards: every operation is dispatched at run time, and the tree
+is re-materialised by every continuation. When the handlers are
+known where the block is written, there is a faster road — the same
+block text, run as a function of its continuation with each
+operation compiled to its handler's arm:
+
+```scala
+val sw = Stage.StateWriter[Int, String, Int]()   // the row's staged interpreter
+
+def step(i: Int, acc: Int): Staged[sw.Row, sw.R, Int] =
+  if i >= 100 then Staged.pure(acc)
+  else Direct.staged(sw) {
+    val a = State.get[Int].!?
+    val _ = State.set[Int](i).!?
+    Writer.tell("w").!?
+    step(i + 1, acc + a).!?
+  }
+
+val ((state, log), answer) = sw.run(0)(step(0, 0))
+```
+
+Measured on a thousand operations (specs/direct-staged.md): 7.5 µs and
+85 KB against 16.8 µs and 165 KB for the identical block as a Free
+block run by `State.run(Writer.run(_))` — 2.24x, and to within 1% of
+the same program written by hand against the stage. The reason is
+one line: `sw.stage` is an `inline match` over the row's
+constructors, applied by the macro to the operation as you wrote it,
+so the compiler picks the arm — no `split`, no test, no tree.
+
+What the road costs, stated: a `Stage` object per row and answer
+layout — `Stage.StateWriter` ships, a user's row is a five-line object
+of the same shape; a marked program must be a leaf (`State.get`,
+`Writer.tell`, a raw operation) — `State.modify(f)` is refused with
+the fix in the message; and a staged block is `Func`, fast and NOT
+stack-safe on a left-nested chain — a loop of thousands of operations
+is fine, a loop of millions is a Free block under `Cont`.
+
 ## Layer 3 — auto-coloring: no marks, behind two gates
 
 The marks can disappear entirely — but only where two explicit gates

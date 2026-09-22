@@ -79,34 +79,37 @@ laws apply to it unchanged.
 
 ## Behavior
 
-- [ ] A `Direct.staged(SW) { … }` block over `State % Int + Writer %
+- [x] A `Direct.staged(sw) { … }` block over `State % Int + Writer %
       String`, spelled with the row's own combinators (`State.get[Int]
-      .!?`, `State.set(i).!?`, `Writer.tell("w").!?`) and with raw
-      operations (`State.Get().!?`), answers what `Fused.stateWriter`
-      answers on the same program — value, state and log — on a
-      scalacheck-generated interleaving (≥ 300 cases).
-- [ ] `if`/`match` with marks, marks in subexpressions (hoisted in
-      order), and a `for x <- xs do` loop over marks work in a staged
-      block exactly as in a Free block: the emission is the same
-      macro, only the lift differs.
-- [ ] A marked program of the row that is NOT a leaf (`State.modify(f)
-      .!?`, a `def` returning `A ! Row`) is a compile error naming
-      the program and the fix (perform its operations in the block).
-      v1 refuses; the runtime fallback (interpret the program through
-      the same stage) is v2 and is not built until asked for.
-- [ ] A marked value of a FOREIGN monad, or an operation outside the
-      row, is refused as in a Free block (the same error).
-- [ ] MEASURED: the `direct`-emitted block on the benchmark's 1 000-op
-      shape (`FusionBenchmark.directStagedR`) matches the hand-written
-      `blockFuncInlineMatchR` — 84 568 B/op to the byte, µs within
-      5% — and stays ≥ 1.4x over `blockFreeR`.
-- [ ] The stack limit is STATED and TESTED: a staged block is `Func`,
-      not stack-safe on a left-nested chain; a loop of 10 000
-      operations passes on the default stack, and the docs say what
-      to do past it (run under `Cont`, i.e. a Free block).
-- [ ] Every existing `direct` suite is unchanged: the seam adds a
-      second case to `rowOf` and a second lift; a Free block takes
-      the same path it took.
+      .!?`, `State.set[Int](s + x).!?`, `Writer.tell(s"…").!?`) and
+      with a raw operation (`(State.Get(): State[Int, Int]).!?`),
+      answers what the SAME block text lowered to a Free program and
+      run by `State.run(Writer.run(_))` answers — state, log and
+      answer — on 300 generated data sets (`TestStaged`; the block's
+      SHAPE is static by construction, the data is generated).
+- [x] `if` with marks in both branches and a `for x <- xs do` loop
+      over marks work in a staged block as in a Free block: the same
+      macro, only the lift differs (the agreement law above runs both).
+- [x] A marked program of the row that is NOT a leaf (`State.modify(f)
+      .!?`) is a compile error naming the fix. v1 refuses; the
+      runtime fallback is v2 and is not built until asked for.
+- [x] A marked value of a FOREIGN monad is refused with the same
+      "neither … nor" error a Free block gives.
+- [x] MEASURED (`okay-direct` `StagedBenchmark`, two rounds × two
+      forks, minima): the `direct`-emitted block `stagedDirect` is
+      7.50 µs / 85 368 B against the hand-written `stagedHand` 7.69 /
+      84 568 — parity within 1%, +800 B per run (the two hoisted
+      vals) — and **2.24x** over `freeDirectNested`, the same block
+      text as a Free `direct` block run by the shipping runners
+      (16.8 µs / 164 928 B).
+- [x] The stack limit is STATED and TESTED: a loop of 2 500
+      iterations × 4 operations passes on the default stack
+      (`TestStaged`), and docs/direct-style.md says what to do past
+      it (a Free block under `Cont`).
+- [x] Every existing `direct` suite is unchanged — 326 green — and a
+      Free block emits byte for byte what it emitted before, except
+      one thing it gains: `val _ = m.!?` binds straight into the rest
+      (−38 KB on the benchmark's Free block; see Results).
 
 ## Out of scope
 
@@ -164,4 +167,50 @@ monad's `flatMap`/`pure`, now `Staged`'s.
 
 ## Results
 
-(after the lane)
+**2026-09-22, 5a3af433** (history rows `ds-*`):
+
+| lane (okay-direct `StagedBenchmark`, 1 000 ops, minima) | µs | B/op |
+|---|---|---|
+| `freeDirectNested` — the same text as a Free `direct` block, shipping runners | 16.8 | 164 928 |
+| `stagedDirect` — `Direct.staged(sw) { … }` | **7.50** | **85 368** |
+| `stagedHand` — `sw.stage(op)` at every operation, by hand | 7.69 | 84 568 |
+
+Parity to within 1% and 800 B; 2.24x over what the user has today.
+
+**What it took, in the order it was found — four gaps between "the
+mechanism works" and the number, each one a macro-output shape:**
+
+1. *The proxy.* `effect(Get())` inlines with a proxy val for its
+   argument — `val a$proxy = Get(); Inject(a$proxy)` — and an inline
+   match cannot reduce on a name. The op is taken from the marked
+   term BEFORE `compile` flattens its `Inlined` wrappers into block
+   statements, and the proxy's right-hand side is put back where the
+   op stands (`DirectRow.injectedOp`; the name arrives as
+   `Inlined(None, Nil, Ident)`, stripped first).
+2. *`val _ = m.!?`.* It desugars to `m.!? match { case _ => () }`, and
+   the general road bound the mark, matched into a `pure(())`, and
+   bound THAT: five objects per statement. Now a discard binds
+   straight into the rest — for every block: the Free lane went
+   203 328 → 164 928 B, the staged 176 568 → 152 568.
+3. *The bind itself.* 152 568 against 84 568 with an identical tree
+   before inlining: the hand program's `val M = summon[…]` has the
+   GIVEN'S CLASS type (`summon` answers `x.type`), so `M.flatMap` is
+   the `override inline` member and reduces; the macro hoisted
+   `mm$direct: Monad[F]`, the trait, a virtual call with its closures.
+   For a staged block the val keeps the precise type and the calls
+   are built by `Select` on it; the lambdas stay quoted (a reflected
+   `Lambda` left LambdaLift a `$anonfun` it could not own).
+4. *Not for every carrier.* The precise type tried on all blocks broke
+   two: `ctxMonad[E]`'s declared result `E ?=> A` is a type the typer
+   auto-applies (Erasure "bad adapt", TestDirectTryCtx), and a Free
+   block that REBUILDS a lambda (`programLambda`, a nested block under
+   `Delim.shift`, TestBookInTheSystem) stranded the inlined binds'
+   proxies. So every non-staged block keeps its road; the Free gain
+   is filed (`direct-inline-bind-free`) with those two as its laws.
+
+The decisive lanes before the design (core `FusionBenchmark`): the
+inline interpreter applied per operation (`split` + `match` on a fresh
+op) is **1.0x** — C2 removes the allocation and nothing else; the
+`inline match` on the operation term is 8.15 µs / 84 568 B, 1.45x —
+and does not reduce through a polymorphic lambda (`[X] => e =>
+stage(e)`), which is why the macro applies the stage to the term.
