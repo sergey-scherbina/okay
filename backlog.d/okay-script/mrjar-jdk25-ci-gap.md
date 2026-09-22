@@ -18,3 +18,11 @@
       drift on the JDK25 side, so a broken variant fails silently
       rather than breaking anyone's build -- it just quietly stops
       giving JDK25 users the ScopedValue benefit.
+
+      UPDATE 2026-09-23 (java-gatherers): half of (a) is done by
+      accident. sbt compiles on JDK 25 now and every forked Test runs
+      on 26, so the gate HAS a 25+ runner; what is still missing is
+      the probe itself (and `okay-script/jdk25/Scoped.scala` could
+      become an ordinary source compiled by sbt with `jdkFloor(0)`,
+      guarded like okay-platform's Loom, instead of an out-of-sbt
+      script — see specs/jdk-compatibility.md "Compiling on 25").
