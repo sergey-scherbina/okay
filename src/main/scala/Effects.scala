@@ -361,6 +361,27 @@ object Effects {
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
     Free.delay(() => thunk)
 
+  /**
+   * `tailRecM` for programs (specs/fold-until.md, stage 2): run `f`
+   * from `s`, continue from a `Left`, answer a `Right`. The state
+   * decides when the iteration ends — the same form as `FoldUntil`
+   * over an input and `Proc.Iter` over an arrow, here over a program
+   * whose every iteration may perform `F`.
+   *
+   * Stack-safe without a trampoline of its own: the recursive call
+   * sits INSIDE the `flatMap`'s continuation, so it is made when the
+   * interpreter resumes that Bind, never on the caller's stack — the
+   * discipline direct-loops' `while` relies on for the same reason.
+   * Here rather than top-level because Generate.scala's `loop(f)(a)`
+   * (the Cont fixpoint) has the same two-list shape, and the overload
+   * would be ambiguous at every one of its calls.
+   */
+  def loop[S, A, F[+_]](s: S)(f: S => Either[S, A] ! F): A ! F =
+    f(s).flatMap {
+      case Left(next) => loop(next)(f)
+      case Right(a) => Pure(a)
+    }
+
   /** run p at most once under `Once.run`: the by-need word, an effect —
    * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
   inline def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) = Once.once(p)

@@ -69,7 +69,7 @@ extension [A](s: Source[A]) def runFoldUntil[S, R](using FoldUntil[A, S, R]): R 
 early never sees the program's answer, and a signature that promised
 it would have to invent one.
 
-Stages 2–4, specified here so the form is written down once, opened
+Stages 2–4, specified here so the form is written down once (stage 2 landed with loop-on-bang), opened
 by their triggers (Decisions):
 
 - Stage 2 (loop-on-bang) — `!.loop[S, A, F[+_]](s: S)(f: S =>
@@ -82,9 +82,10 @@ by their triggers (Decisions):
   (Actor.scala:287, Toolkit.scala:14–47, Dialog.scala:60,
   Ui.scala:693, Form.scala, Conversation.scala:278, Nio.scala:97,
   chatweb Main.scala:30) and finding them shorter.
-- Stage 3 — a stopping `Stage.transduce`: `step: (S, I) => Stage[I,
-  O, Either[S, R]]`, a stage that stops PULLING when its state says
-  so (a prefix parser, a stateful `takeWhile`, "the first n matches").
+- Stage 3 — `Stage.transduceUntil(z)(step: (S, I) => Stage[I, O,
+  Either[S, R]], end: S => R)`, a stage that stops PULLING when its
+  state says so (named 2026-09-22 so okay-direct's `Gen.takeWhile`
+  with state can route to it) (a prefix parser, a stateful `takeWhile`, "the first n matches").
   Trigger: a consumer that needs it — `Chunks.takeWhile` is
   predicate-only today and nobody has asked for state.
 - Stage 4 — the `Foldable` side: `foldUntilTo[S, R](using FoldUntil)`
@@ -120,13 +121,13 @@ Stage 1:
 
 Stage 2 — `!.loop(s)(f)`:
 
-- [ ] `!.loop(s)(f)` continues on `Left`, answers on `Right`, and runs
+- [x] `!.loop(s)(f)` continues on `Left`, answers on `Right`, and runs
       `f` once per iteration: a counter to 1 000 000 on the default
       stack, at the `Pure` row.
-- [ ] the effects of every iteration are performed in order and each
+- [x] the effects of every iteration are performed in order and each
       iteration sees the state the previous one answered: a loop over
       `State` whose steps read and write the cell.
-- [ ] the `Toolkit` dialogs — `confirm`, `alert`, `prompt`, `choice` —
+- [x] the `Toolkit` dialogs — `confirm`, `alert`, `prompt`, `choice` —
       are `!.loop` programs, and `TestToolkit` is unchanged and green.
 
 ## Out of scope
@@ -140,7 +141,7 @@ Stage 2 — `!.loop(s)(f)`:
 - Replacing `Fold.exists`/`forall`: they stay, they are `Fold`s and a
   `Fold` consumer cannot stop; their doc line is corrected to name
   `FoldUntil.exists` instead of the phantom.
-- Stages 2–4, each behind its trigger above.
+- Stages 3–4, each behind its trigger above.
 
 ## Design
 
@@ -190,7 +191,14 @@ The walks:
   has.
 - **`Writer.foldUntil` answers `R`, not `(R, A)`** — the answer does
   not exist when the fold stopped early; see Interface.
-- **Stages 2–4 stay `- [ ]` behind triggers** — the repository's rule
+- **Actor's receive loop and `Dialog.run` stay hand-written** — both
+  already fold an `Either` per step (`Async.attempt`'s, `Writer.
+  uncons`'s), and inside `!.loop` that `Either` would sit under the
+  loop's own with `Right` meaning "continue" on one and "stop" on the
+  other. The two-`Either` form was written out and rejected on
+  reading, not on length. Rejected: rewriting them anyway to make the
+  trigger's count.
+- **Stages 3–4 stay `- [ ]` behind triggers** — the repository's rule
   is a consumer first; the form is written down here so the next lane
   does not re-derive it.
 
@@ -207,3 +215,22 @@ them and `take(0)` none. 100 000 tells with the stop never firing
 fold on the default stack on both the writer and the chunk road.
 Not measured: the per-element cost of `done` against `foldLeft` on
 the unboxed shape — Out of scope until a caller has that fold.
+
+Stage 2 (2026-09-22, loop-on-bang): `!.loop` in `object !`,
+`TestBangLoop` (3): 1 000 000 iterations at the Pure row on the
+default stack, `f` called once per iteration, a loop over `State`
+carrying both the round and the cell. The trigger's honest reading:
+`Toolkit`'s four dialogs over `!.loop` are NOT shorter in lines (the
+`def loop` and trailing `loop(z)` each became `!.loop(z) { s =>` and
+a closing brace — 41 non-comment lines before, 40 after); what is shorter
+is what is written by hand — no recursive call, no seed call, and
+`map` where `flatMap` was, because a case now answers a VALUE
+(`Right(true)`, `Left(v)`) rather than a program. `TestToolkit`
+unchanged, green. Actor.scala:287 and `Dialog.run` were looked at and
+left alone (Decisions).
+
+okay-direct's generator lane (direct-staged-v2, same day) builds
+`Gen[W]` as a view over `Unit ! Writer % W` with `take/first/exists`
+through `Writer.foldUntil`, relying on the two laws
+`TestFoldUntilStreams` pins: `done(init)` before the first pull, and
+the continuation not called after `done`.
