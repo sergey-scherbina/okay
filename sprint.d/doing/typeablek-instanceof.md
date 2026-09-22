@@ -1,4 +1,4 @@
-- [ ] typeablek-instanceof — a derived signature's test is
+- [~] typeablek-instanceof — a derived signature's test is
       `Effect.ByClass(cls).test(x) = cls.isInstance(x)`: a
       `Class.isInstance` on a class loaded from a FIELD, where the
       hand-written match the JIT sees compiles to a constant-class
