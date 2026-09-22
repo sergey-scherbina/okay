@@ -1,6 +1,0 @@
-feature/direct-stagers 2026-09-22T21:16:17Z
-agent: claude-code
-heartbeat: 2026-09-22T21:16:17Z
-status: in-progress
-done-so-far: survey (2026-09-22): Direct.staged has one Stager; the lever is breadth
-next: specs/direct-stagers.md; Stager.Std over Reader+State+Writer+Throws and four singles; StagedBenchmark lanes (Std vs StateWriter on the same block; Reader+Throws vs hand-written Func); docs; gate; land
