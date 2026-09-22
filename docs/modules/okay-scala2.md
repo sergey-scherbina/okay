@@ -54,7 +54,7 @@ Why two standard libraries, and why in that order (all three measured
 
 ## Writing it
 
-This code is copied from `okay-scala2-probe/src/test/scala/TestFromScala2.scala`,
+This code is copied from `okay-scala2/probe/src/test/scala/TestFromScala2.scala`,
 which the gate compiles with scalac 2.13.18 under `-Xlint -Werror`:
 
 ```scala

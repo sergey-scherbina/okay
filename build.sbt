@@ -797,7 +797,7 @@ lazy val Scala3Stdlib = config("scala3Stdlib").hide
  * `-Werror` because the gate's warning check reads Scala 3's
  * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
  */
-lazy val okayScala2Probe = (project in file("okay-scala2-probe"))
+lazy val okayScala2Probe = (project in file("okay-scala2/probe"))
   .dependsOn(okayScala2)
   .settings(
     name := "okay-scala2-probe",
