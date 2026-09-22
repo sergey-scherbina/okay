@@ -1,0 +1,6 @@
+feature/scala2-facade 2026-09-22T21:37:51Z
+agent: claude-code
+heartbeat: 2026-09-22T21:37:51Z
+status: in-progress
+done-so-far: feasibility probe (2.13.18 -Ytasty-reader reads 3.9, refuses inline flatMap)
+next: spec, worktree, probe project compiled by 2.13 in the gate
