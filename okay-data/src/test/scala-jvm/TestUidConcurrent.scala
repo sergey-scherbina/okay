@@ -16,10 +16,17 @@ class TestUidConcurrent extends munit.FunSuite {
   private val Epoch = 1_700_000_000_000L
   private def frozen: () => Long = () => Epoch
 
+  // a plain platform thread, started: `Thread.ofPlatform()` is JDK 21
+  // API, and this module's floor is 17 (-java-output-version, build.sbt)
+  private def started(body: Runnable): Thread =
+    val t = Thread(body)
+    t.start()
+    t
+
   test("no duplicate ids when several threads share one generator") {
     val gen = Uid.at(frozen)
     val out = java.util.concurrent.ConcurrentHashMap[Uid, Boolean]()
-    val threads = (0 until 8).map(_ => Thread.ofPlatform().start { () =>
+    val threads = (0 until 8).map(_ => started { () =>
       var i = 0
       while i < 2000 do { out.put(gen.next(), true); i += 1 }
     })
@@ -31,7 +38,7 @@ class TestUidConcurrent extends munit.FunSuite {
   test("no duplicate stamps when several threads share one clock") {
     val c = Hlc.at(frozen)
     val seen = java.util.concurrent.ConcurrentHashMap[Long, Boolean]()
-    val threads = (0 until 8).map(_ => Thread.ofPlatform().start { () =>
+    val threads = (0 until 8).map(_ => started { () =>
       var i = 0
       while i < 2000 do { seen.put(c.next().toLong, true); i += 1 }
     })

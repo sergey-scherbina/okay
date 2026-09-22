@@ -1,27 +1,29 @@
-# Java 21 — the AMBIENT JVM: what launches sbt, and so what compiles
-# everything (in-process dotc). This is not a preference, and it is
-# not the whole story any more (jdk26-default-runtime, 2026-09-19) —
-# see below for what actually RUNS on.
+# Java 25 — the AMBIENT JVM: what launches sbt, and so what compiles
+# everything (in-process dotc). Moved from 21 by java-gatherers
+# (2026-09-23, operator): okay-java bridges `java.util.stream.Gatherer`
+# (JDK 24+), and dotc sees only the class library of the JVM it runs
+# in — no `-release` can grant a newer API to an older compiler.
+#
+# What compiling on 21 guaranteed by accident is now asked for by
+# flag: every Scala 3 module carries `-java-output-version` 17 or 21
+# (build.sbt, `jdkFloor`), so the compiler still refuses an API newer
+# than the module's floor; bytecode stays major 61 on 17-floor modules,
+# as it always was. See specs/java-gatherers.md.
 #
 # On JDK 24+ the Security Manager is gone (JEP 486) and with it
 # Subject.getSubject, which Hadoop's UserGroupInformation calls on
-# every job Spark runs. The failure is
-#
-#   UnsupportedOperationException: getSubject is not supported
-#
-# and there is no flag for it: -Djava.security.manager=allow, the
-# remedy for 18..23, makes a JDK 26 refuse to start at all. Spark
-# 4.2.0's own confirmed range is 17/21/25 (spark-jdk25-guard-fix) —
-# nothing here changes that, and okaySpark's own build.sbt settings
-# pin its Test/run to 25 regardless of what this file says.
+# every job Spark runs. That is a RUNTIME matter and does not touch
+# compiling: Spark 4.2.0's own confirmed range is 17/21/25
+# (spark-jdk25-guard-fix), and okaySpark's build.sbt settings pin its
+# Test/run to 25 regardless of what this file says.
 #
 # `sdk env install` here, or `sdk env` in a shell that already has it.
-java=21.0.7-tem
+java=25.0.4.1-tem
 
 # TEST/RUN — a SEPARATE knob (jdk26-default-runtime, 2026-09-19):
 # build.sbt defaults every module's forked Test/run to the newest GA
 # JDK this project has actually verified end to end
 # (~/.sdkman/candidates/java/26.0.2.1-tem — 27 is not GA at this date),
-# not the ambient one above. Compiling never moves off 21; a released
+# not the ambient one above. Compiling is the ambient 25; a released
 # service, a `sbt run`, and every test suite but okaySpark's now
 # execute on 26 by default. See specs/jdk-compatibility.md.

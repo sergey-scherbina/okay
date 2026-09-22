@@ -120,7 +120,28 @@ ThisBuild / scalacOptions ++= Seq(
   // message this specific: another file hitting these exact words is
   // this same shape, not a different bug borrowing them.
   "-Wconf:msg=conversion from Unit to Int:s",
+  // THE JDK FLOOR, CHECKED BY THE COMPILER (java-gatherers,
+  // 2026-09-23). sbt runs on JDK 25 now (.sdkmanrc), and dotc sees the
+  // class library of the JVM it runs in — so without this flag any
+  // module could call a 22..25 API and no gate would notice (tests run
+  // on 26). `-java-output-version 17` refuses an API past 17 AND emits
+  // bytecode major 61, which is what every module already emitted
+  // when sbt ran on 21 (dotc's default target; measured). The two
+  // cannot be separated — the `-Xunchecked-` variant is overridden by
+  // this one — so a module that really calls a 21 API says so with
+  // `jdkFloor(21)`, and okay-java, which bridges JDK 24's Gatherer,
+  // with `jdkFloor(0)` (no flag). TEST code carries no floor at all
+  // (project/JdkFloor.scala says why). specs/java-gatherers.md.
+  "-java-output-version", "17",
 )
+
+/** a module's JDK floor, replacing the build's 17 (see above):
+ * 21 where the module calls a JDK 21 API outside any adaptive guard,
+ * 0 for no check at all (okay-java: JDK 24+ API, loaded lazily) */
+def jdkFloor(n: Int) = scalacOptions ~= { opts =>
+  val rest = JdkFloor.unflagged(opts)
+  if (n == 0) rest else rest ++ Seq("-java-output-version", n.toString)
+}
 
 ThisBuild / organization := "dev.okay"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
@@ -447,6 +468,13 @@ lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    // Loom is used ON PURPOSE past the 17 floor, behind
+    // `Schedulers.hasVirtualThreads` (jdk-adaptive-scheduler): the
+    // guard works because call sites link lazily AND the bytecode is
+    // 61 so the class loads on 17 at all. `jdkFloor(21)` would make it
+    // 65 and break every module above this one on 17; so no API check
+    // here — the guard is this module's own (java-gatherers)
+    jdkFloor(0),
   )
   .jsSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
@@ -752,6 +780,11 @@ lazy val okayJava = (project in file("okay-java"))
   .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
   .settings(
     name := "okay-java",
+    // `Gather` names java.util.stream.Gatherer (JDK 24, JEP 485): no
+    // API floor here, bytecode stays dotc's default 61, and the class
+    // links lazily — okay-java still loads on 17/21 and only a call
+    // into Gather needs 24+ (specs/java-gatherers.md)
+    jdkFloor(0),
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
@@ -2213,6 +2246,9 @@ lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    // Server's executor is Loom behind `Schedulers.hasVirtualThreads`,
+    // the okay-platform pattern: bytecode 61 is what lets it load on 17
+    jdkFloor(0),
   )
   .jsSettings(
     Compile / unmanagedSourceDirectories +=
@@ -2521,6 +2557,9 @@ lazy val compare = (project in file("compare"))
                                     // benchmark added after it
   .enablePlugins(JmhPlugin)
   .settings(
+    // the benchmark harness calls JDK 21 API unconditionally (Loom
+    // samplers, Thread.threadId) and never runs below 21 (java-gatherers)
+    jdkFloor(21),
     name := "okay-compare",
     publish / skip := true,
     // §20's SHARED HALF lives in this project's `src/main`: the Wrocław
