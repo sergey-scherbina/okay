@@ -192,11 +192,14 @@ the dual of the iteratee's `await`, and that a lazy stream, a
 generator and an iteratee are three surfaces of one control transfer.
 Here that is literal: `Writer.tell` is `yield`, `Take.await` is the
 iteratee's ask, `pipe` is the transfer, and chapter 8's direct blocks
-let a generator be written as a loop that tells. What is still
-hand-written is a *consumer* loop in direct style over an effectful
-source — `for x <- gen do …` where `gen` is a program rather than a
-`List` — which is why the iteratee side of a direct block is spelled
-`!.loop` today.
+let a generator be written as a loop that tells — and, since
+direct-loops v3, a *consumer* as a loop that reads: `for x <-
+Take.each[I] do tell(f(x)).!?` inside a block is a `Stage` written
+straight, and `for x <- Pull.of(s) do …` reads any `Stream` carrier
+the same way, one `step` bound per element (docs/direct-style.md,
+"A loop over a source"). The iteratee side of a direct block is no
+longer spelled `!.loop`; `Pull.loop(f)` is that program by name for
+the places a block is not.
 
 ## Sketches: approximation with stated error
 

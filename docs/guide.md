@@ -471,7 +471,10 @@ stay separate on purpose.
 
 `Take.await` is the dual of `Writer.tell`; `pipe(producer)(consumer)`
 pairs them one element at a time — the consumer drives, a finite
-consumer ends an infinite producer. `Stage[I, O, A]` is a transducer
+consumer ends an infinite producer. `Take.each[I]` is the input as a
+`Pull` — a source a direct block reads with `for i <- Take.each[I] do
+…` (direct-loops v3), and `Pull.of(stream)` does the same for any
+`Stream` carrier. `Stage[I, O, A]` is a transducer
 as a program (awaits I, tells O); `through` composes stages
 demand-driven. Tokenizers and parsers are stages (okay-lex,
 okay-parse). If you know these as Kiselyov's **iteratees**: `Take`

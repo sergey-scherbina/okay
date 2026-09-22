@@ -196,11 +196,11 @@ Core, `Pull.scala`:
 
 ```scala
 /** a source a program reads one step at a time */
-trait Pull[+A, G[+_]]:
+trait Pull[A, G[+_]]:                       // invariant: Free is invariant in its answer
   def step: Option[(A, Pull[A, G])] ! G
-  /** the loop with a pure body AS A PROGRAM — what `for x <- src do
-   *  f(x)` means outside a direct block */
-  def foreach(f: A => Unit): Unit ! G
+  def withFilter(p: A => Boolean): Pull[A, G] // what a guard desugars to
+  /** the loop with a pure body AS A PROGRAM — outside a block, by name */
+  def loop(f: A => Unit): Unit ! G
 object Pull:
   def of[S[_], A, G[+_]](s: S[A])(using Stream[S, G]): Pull[A, G]
   def told[W, A](a: A ! Writer % W): Pull[W, Pure]                       // first-order, as Stream.scala's overloads
@@ -210,9 +210,12 @@ object Pull:
 okay-stream, `Pipe.scala`: `Take.each[I]: Pull[I, Take % I]` — the
 consumer side of an iteratee as a source.
 
-okay-direct: inside a `direct` block, `for x <- src do body` where
-`src: Pull[A, G]` — with or without marks in `body` — is emitted as a
-program: `loop(p) = bind(p.step) { case Some((h, tl)) => body(h);
+okay-direct, `Direct`: `extension [A, G[+_]](src: Pull[A, G]) def
+foreach[F[_]](f: A => Unit)(using DirectCtx[F]): Unit` — the `for`'s
+`foreach`, typed Unit and present ONLY where a block's ambient
+`DirectCtx` is (Decisions: the lint). Inside a `direct` block, `for x
+<- src do body` where `src: Pull[A, G]` — with or without marks in
+`body` — is emitted as a program: `loop(p) = bind(p.step) { case Some((h, tl)) => body(h);
 loop(tl); case None => pure(()) }`, the step bound through the same
 row lift a mark takes (`G` must be in the block's row, and the
 refusal is the mark's), the body compiled against the recursive call
@@ -220,31 +223,31 @@ as its tail like every v2 loop, guards honoured.
 
 ### Behavior (`TestDirectSource`, okay-direct)
 
-- [ ] `Pull.of(LazyList(1, 2, 3)).foreach(f)` is a program: nothing
+- [x] `Pull.of(LazyList(1, 2, 3)).loop(f)` is a program: nothing
       runs until `!.run`, then `f` sees 1, 2, 3 in order.
-- [ ] `direct[State % Int] { for x <- Pull.of(xs) do State.modify(_ +
-      x).!? }` sums; the loop reads the source AS the loop drives — an
-      infinite `LazyList` with `take`-less reading stops when the body
-      stops it through a marked `Stop`-like effect? NO: it does not
-      stop; the law is the FINITE one plus laziness by a step counter
-      on a `Pull.of` over a counted `Stream`.
-- [ ] a source with effects of its own: `Pull.toldIn(producer)` whose
+- [x] `for x <- Pull.of(xs) do say(x).!?` in a block: the body's
+      effects once per element, in order.
+- [x] a source with effects of its own: `Pull.toldIn(producer)` whose
       producer performs `Async` between tells, read in a
       `direct[Async + State % Int]` block whose body performs `State` —
       the producer's effects and the body's interleave per element.
-- [ ] `Take.each`: `direct[Take % Int + Writer % Int] { for i <-
-      Take.each[Int] do Writer(i * 2) }` is a `Stage` and, `through` a
-      producer of three, tells 2, 4, 6 — the iteratee written as a
-      loop.
-- [ ] a guard: `for x <- src if x % 2 == 0 do …` skips without
+- [x] `Take.each`: `Take.each[Int].loop(f)` piped to a producer of
+      three sees 2, 4, 6 and the end; its `step` reads three of an
+      infinite producer and no more. (The direct-block form over
+      `Take` is the same macro road as over `Pull.of`, tested in
+      okay-direct; okay-direct and okay-stream do not depend on each
+      other, so the block-over-`Take` spelling is asserted by type in
+      `TestTakeEach`'s step test and by the macro tests, not by one
+      test holding both.)
+- [x] a guard: `for x <- src if x % 2 == 0 do …` skips without
       consuming a bind.
-- [ ] no marks in the body: the loop still runs as a program (a
+- [x] no marks in the body: the loop still runs as a program (a
       `Unit ! G` bare statement of a NARROWER row would not run by
       itself, so the source road fires on the receiver's type, not on
       marks).
-- [ ] `for x <- src yield …` over a `Pull` does not typecheck (`Pull`
+- [x] `for x <- src yield …` over a `Pull` does not typecheck (`Pull`
       has no `map`), and the message is the compiler's.
-- [ ] a `Pull` whose `G` is not in the block's row is refused with the
+- [x] a `Pull` whose `G` is not in the block's row is refused with the
       row-lift message, at the loop.
 
 ### Decisions (v3)
@@ -269,4 +272,20 @@ as its tail like every v2 loop, guards honoured.
 
 ### Results (v3)
 
-(after implementation)
+2026-09-23, one lane. `TestDirectSource` (okay-direct, 7) and
+`TestTakeEach` (okay-stream, 2), green through `scripts/gate.sh`, no
+warnings. THE DESIGN CHANGED ONCE AGAINST THE CODE, and the code was
+right: `Pull.foreach: Unit ! G` as a member made `for x <- src do …`
+in statement position a discarded PROGRAM, which build.sbt's lint
+escalates to an error at typer — before any macro runs — exactly as
+it refuses a bare `Writer.tell`. The loop's `foreach` is therefore
+`Direct`'s extension needing the ambient `DirectCtx`: typed Unit
+inside a block, absent outside, and the program form is `loop(f)` by
+name. `HofCall` learned the extension-call shape (receiver, lambda,
+then the using clause). The type pattern `'[type g[+x]; Pull[t, g]]`
+did not match a pure source (`G = Pure = Nothing` is not a
+higher-kinded argument); the loop takes the receiver's type whole and
+selects `step` by name. `Pull` is invariant because `Free` is. The
+interleaving law reads the producer's `State` cell inside the body:
+"got 1 after 0 steps, got 2 after 1, got 3 after 2" — a step runs the
+producer up to its next tell and no further.

@@ -1029,6 +1029,38 @@ strict traverse would force a lazy target; the generator road
 `ClassTag` in a second argument list and is not the shape the macro
 reads.
 
+## A loop over a source (direct-loops v3)
+
+Everything above iterates something with an `iterator`. A source
+whose next element is a PROGRAM — a `Stream[S, G]` carrier, a writer
+program's told values under another effect, the `Take` side of a
+`Stage` — has none, and until v3 its consumer loop was `!.loop` over
+`uncons`/`await`, written by hand. `Pull[A, G]` (core) is that source
+as a value: one `step` as a program in `G`, built by `Pull.of(s)` from
+any `Stream` carrier, `Pull.told(p)`/`toldIn(p)` from a writer
+program, `Take.each[I]` from the input of a stage. Inside a block:
+
+```scala
+direct[[A] =>> A ! State % Int + Writer % String] {
+  for x <- Pull.toldIn(producer) do            // the producer performs State between tells
+    say(s"got $x after ${State.get[Int].!?} steps").!?
+}
+```
+
+The loop is emitted as a program — one `step` bound per element,
+through the same row lift a mark takes, the body compiled against
+the recursive call as its tail like every loop above, guards
+honoured — and it fires on the RECEIVER'S TYPE, marks in the body or
+not: an unmarked source loop would otherwise be a `Unit ! G` in
+statement position, which build.sbt's discarded-program lint rightly
+refuses. That lint is also why `for x <- src do body` exists ONLY
+inside a block: `Pull` has no `foreach` of its own — `Direct`'s
+extension provides it where the block's ambient `DirectCtx` is in
+scope, typed `Unit`, never called — and outside a block the loop is
+`src.loop(f)`, a program by name. `yield` over a source is not a
+loop (a `Pull` has no `map`); the stream combinators are for that.
+Theory: ch. 7, the iteratee's consumer side.
+
 ## References
 
 - Oleg Kiselyov, Simon Peyton Jones, Amr Sabry, *Lazy v. Yield:
