@@ -134,6 +134,50 @@ the Scala 3 ones they stand for.
 - [x] `Eff`: Async + Throws run with `runAsync`
 - [x] `Prog` ↔ `Eff` round trip
 
+## Stage 3 — a Scala 2 user's own effect
+Operator (2026-09-23): "свои эффекты в скала 2 нужно будет подумать
+как сделать". okay declares an effect with `derives Effect`, a Scala 3
+derivation, but all a row split needs from it is
+`TypeableK.test(x: Any): Boolean` (Handler.scala). The facade can
+build that test itself, from a `ClassTag` that scalac 2 supplies.
+
+```scala
+sealed trait Console[A] extends Op[A]
+final case class PrintLn(s: String) extends Console[Unit]
+case object ReadLn extends Console[String]
+object Console extends Effect[Console]
+```
+
+- `Op[+A]` — ONE Scala 3 signature that every Scala 2 effect's
+  operations extend, so the stored program's row stays `Top`.
+- `Effect[F[_]](implicit ClassTag[F[Any]])` — `send(op)` performs an
+  operation as `Eff[this.type, A]`: the capability is the effect
+  object's SINGLETON type, so two effects are two capabilities with no
+  declaration beyond the object. `handle(e)(ret)(h)` removes it.
+- `Handler[F, R, B]` — `apply[X](op: F[X], k: X => Eff[R, B])`: the
+  operation AND its continuation. Resuming once is an ordinary effect;
+  resuming never is abort; resuming twice is nondeterminism.
+- A SECOND CAST, `narrow`, from `Op[X]` to `F[X]`. It is right because
+  the class test has just passed; it lives in one function next to
+  the test that proves it.
+
+Prototype measured from 2.13 by hand (2026-09-23): Console
+(resumptive, beside `State`) answered `(3,ada)` and logged `hi ada`;
+Choose (multi-shot) answered all four `(Boolean, Boolean)` pairs.
+scalac 2.13 types the GADT match (`case PrintLn(s) => k(())`).
+OPEN, to be settled by the probe under `-Werror`: at the LAST handler
+scalac inferred `R = Any` and `-Xlint` warned "a type was inferred to
+be `Any`". Plain `State.run` at the last position did not warn, so the
+likely cause is `R` also being inferred through the handler's type.
+
+## Behavior (stage 3), all from Scala 2.13
+- [ ] a resumptive effect beside `State`, handled in the same program
+- [ ] a multi-shot handler: every answer of two flips
+- [ ] an aborting handler: the continuation dropped, the rest never runs
+- [ ] two user effects in one row, each handled by its own object
+- [ ] an effect left unhandled does not compile
+- [ ] the probe stays at `-Xlint -Werror`, whatever that costs the API
+
 ## Later stages (not in stage 2)
 - Streams: a 2.13 `Source` facade over okay-stream.
 - Fibers and channels.
