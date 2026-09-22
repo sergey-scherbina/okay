@@ -1,6 +1,0 @@
-feature/scala2-streams 2026-09-22T22:18:41Z
-agent: claude-code
-heartbeat: 2026-09-22T22:18:41Z
-status: in-progress
-done-so-far: picked from queue
-next: spec stage 4, okay.scala2.Source, probe suites
