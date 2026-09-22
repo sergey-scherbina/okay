@@ -2526,6 +2526,15 @@ lazy val root = (project in file("."))
     // okay-acme's network suites are Live-tagged, so the default gate
     // runs none of them.
     okayJs.jvm, okayJs.js, okayJs.native, okayAcme,
+    // five more that were simply never listed (root-aggregate-unlisted,
+    // 2026-09-23), and it had cost two of them already: okay-spring no
+    // longer COMPILED (Async left the core on 2026-09-18 and nothing
+    // rebuilt it), and okay-ops' JS tests did not LINK (a shared test
+    // read a file through java.nio). Their network suites are
+    // Live-tagged. The other two unlisted modules, okay-docs-dynamo and
+    // okay-docs-cassandra, no longer exist: docs-adapters-merge moved
+    // them into okay-docs.
+    okayOps.jvm, okayOps.js, okaySpring, okayGuice, okayCdi, okayOpenapi,
     compare)
   .settings(
     name := "okay-root",
@@ -2634,7 +2643,10 @@ lazy val compare = (project in file("compare"))
  * auto-configuration. JVM; the Boot test scope runs the
  * auto-configuration under ApplicationContextRunner. */
 lazy val okaySpring = (project in file("okay-spring"))
-  .dependsOn(okay.jvm)
+  // okayAsync/okayPlatform: `A ! Async` and its JVM runner. Async left
+  // the core in core-modules (2026-09-18) and this module, outside the
+  // root aggregate, was never recompiled to notice (root-aggregate-unlisted)
+  .dependsOn(okay.jvm, okayAsync.jvm, okayPlatform.jvm)
   .settings(
     name := "okay-spring",
     libraryDependencies ++= Seq(
