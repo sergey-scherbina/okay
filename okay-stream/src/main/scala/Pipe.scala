@@ -27,6 +27,12 @@ object Take:
   /** the next element, or None at the end of the input */
   inline def await[V]: Option[V] ! Take % V = effect(Await())
 
+  /** the input as a SOURCE (specs/direct-loops.md v3): `for i <-
+   * Take.each[I] do …` in a direct block is the iteratee written as
+   * a loop — each step is one `await`, and the rest is this again */
+  def each[V]: Pull[V, Take % V] = new:
+    def step: Option[(V, Pull[V, Take % V])] ! Take % V = await[V].map(_.map(v => (v, this)))
+
   /**
    * The iteratee a `FoldUntil` is (specs/fold-until.md, stage 3;
    * theory ch. 7): a consumer program that asks for an element only

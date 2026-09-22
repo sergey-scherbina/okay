@@ -21,7 +21,22 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
         Some((xs, nm, p, b))
       case Apply(Select(xs, nm), List(Lambda(List(p), b))) =>
         Some((xs, nm, p, b))
+      // `Direct`'s `foreach` EXTENSION on a `Pull` (v3): the receiver
+      // is the extension's first argument, the lambda the second, and
+      // the block's `DirectCtx` rides in a using clause after both
+      case Apply(inner, List(_)) => inner match
+        case Apply(TypeApply(recv, _), List(Lambda(List(p), b))) => sourceOf(recv).map(xs => (xs, "foreach", p, b))
+        case Apply(recv, List(Lambda(List(p), b))) => sourceOf(recv).map(xs => (xs, "foreach", p, b))
+        case _ => None
       case _ => None
+
+    /** the receiver of `Direct.foreach(src)`, however the method is named at the call */
+    private def sourceOf(recv: Term): Option[Term] = recv match
+      case Apply(TypeApply(fn, _), List(xs)) if isSourceForeach(fn) => Some(xs)
+      case Apply(fn, List(xs)) if isSourceForeach(fn) => Some(xs)
+      case _ => None
+    private def isSourceForeach(fn: Term): Boolean =
+      fn.symbol.name == "foreach" && fn.symbol.owner == directSym
 
   /** xs.iterator, built by name so ArrayOps and IterableOnce both
    * serve; refuses receivers with no iterator */
@@ -175,8 +190,8 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
           case Out.Pure(p) => Block(List(p), stmtsTail(rest, tail, tailElem))
       case (st: Term) :: rest =>
         val t = stripped(st)
-        if hasMark(t) then
-          compile(t) match // marked if/match/nested-loop/mark: one bind, value dropped
+        if hasMark(t) || isPullForeach(t) then
+          compile(t) match // marked if/match/nested-loop/mark, or a source loop: one bind, value dropped
             case Out.Eff(c, e) => bind(c, e, tailElem)(_ => stmtsTail(rest, tail, tailElem))
             case Out.Pure(p) => Block(List(p), stmtsTail(rest, tail, tailElem))
         else
@@ -281,6 +296,53 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
   /** the compiled body at elem, with the loop variable in place of the lambda's parameter */
   private def bodyAt(lbody: Term, param: ValDef, h: Term, elem: TypeRepr): Term =
     asFAt(compile(subst(lbody, param.symbol, h)), elem).changeOwner(Symbol.spliceOwner)
+
+  /** the receiver is a `Pull[A, G]` — a source read by a program
+   * (specs/direct-loops.md v3), which takes `pullLoop` below */
+  def isPull(xs: Term): Boolean =
+    xs.tpe.widen.dealias.derivesFrom(Symbol.requiredClass("okay.Pull"))
+
+  /** `src.foreach(x => body)` over a `Pull`, marks or not — the road
+   * fires on the receiver's type, because an unmarked source loop is
+   * a `Unit ! G` in statement position that would not run bare */
+  def isPullForeach(t: Term): Boolean = stripped(t) match
+    case HofCall(xs, "foreach", _, _) => isPull(peelGuards(xs)._1)
+    case _ => false
+
+  /**
+   * for x <- src do body over a `Pull[t, g]`: the loop is a PROGRAM —
+   * one `step` bound per element through the same row lift a mark
+   * takes (so a `g` outside the block's row is refused as a mark
+   * would be), the body compiled against the recursive call as its
+   * tail exactly as `foreachLoop` does, guards honoured.
+   */
+  def pullLoop(xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
+    // the receiver's type as a whole, not `Pull[t, g]` taken apart: a
+    // pure source has `G = Pure = Nothing`, which no higher-kinded
+    // type pattern matches, and the loop needs the type only to name
+    // its parameter — `step` is selected on it by name
+    (param.tpt.tpe.widen.asType, xs.tpe.widen.dealias.asType) match
+      case ('[t], '[src]) => '{
+        def loop(p: src): F[Unit] = ${
+          val stepped = TypeRepr.of[Option[(t, src)]]
+          val stepTerm = Select.unique('p.asTerm, "step")
+          bind(markTerm(stepTerm, stepped, xs.pos), stepped, TypeRepr.of[Unit]) { o =>
+            '{
+              ${ o.asExprOf[Option[(t, src)]] } match
+                case Some((h, tl)) =>
+                  ${
+                    guarded('h.asTerm, guards, TypeRepr.of[Unit])(
+                      compileTail(subst(lbody, param.symbol, 'h.asTerm), () => '{ loop(tl) }.asTerm, TypeRepr.of[Unit]))(
+                      () => '{ loop(tl) }.asTerm)
+                      .changeOwner(Symbol.spliceOwner).asExprOf[F[Unit]]
+                  }
+                case None => $M.pure(())
+            }.asTerm
+          }.changeOwner(Symbol.spliceOwner).asExprOf[F[Unit]]
+        }
+        loop(${ xs.asExprOf[src] })
+      }.asTerm
+      case _ => refuse(xs, "over a source whose type the macro could not name (macro bug)")
 
   /** for x <- xs do body — with guards */
   def foreachLoop(xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
@@ -448,6 +510,7 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
     val (xs, guards) = peelGuards(xs0)
     val loopElem = if nm == "foreach" then TypeRepr.of[Unit] else t.tpe.widen
     def emit(xsPure: Term): Term = nm match
+      case "foreach" if isPull(xsPure) => pullLoop(xsPure, guards, param, lbody)
       case "foreach" => foreachLoop(xsPure, guards, param, lbody)
       case "map" => mapLoop(t, xsPure, guards, param, lbody)
       case "flatMap" => flatMapLoop(t, xsPure, guards, param, lbody)

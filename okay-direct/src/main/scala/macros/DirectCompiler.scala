@@ -120,7 +120,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
           case Out.Eff(cm, ce) => // marks inside the marked value: bind, then mark
             Out.Eff(bind(cm, ce, t.tpe)(v => markTerm(v, t.tpe, t.pos)), t.tpe.widen)
       case None =>
-        if hasMark(t) then compileMarked(t)
+        if hasMark(t) || isPullForeach(t) then compileMarked(t)
         else t match
           // a markless Block still goes through compileBlock: a
           // bare statement of the block's own effectful type RUNS
@@ -182,6 +182,11 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
       foldLoop(t, xs, z, accP, elemP, body)
     case HofCall(xs, nm, param, lbody) if loopNames(nm) && loopHasMark(xs, lbody) =>
       hofLoop(t, xs, nm, param, lbody)
+    // a source's loop fires on the RECEIVER'S TYPE, marks or not: an
+    // unmarked `Pull` loop is a `Unit ! G` in statement position,
+    // which does not run bare unless G is the whole row (v3)
+    case HofCall(xs, "foreach", param, lbody) if isPull(peelGuards(xs)._1) =>
+      hofLoop(t, xs, "foreach", param, lbody)
 
     // BEFORE Block: a Lambda IS Block(DefDef :: Nil, Closure), and
     // the block case would claim it with a vaguer message

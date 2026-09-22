@@ -284,6 +284,21 @@ object Direct:
    * than the generic extension, so they win; the macro reads them as
    * marks (their symbols carry the same names) and takes `.program`.
    */
+  /**
+   * `for x <- src do body` over a SOURCE, inside a block only
+   * (specs/direct-loops.md v3): a `Pull[A, G]` has no `foreach` of its
+   * own, because the loop is a PROGRAM and a program in statement
+   * position is the discarded-program error build.sbt escalates —
+   * rightly, since outside a block nothing would run it. This
+   * extension needs the block's ambient `DirectCtx`, so it exists
+   * only where the macro will rewrite it, is typed Unit there, and
+   * is never called: the macro replaces it with the loop as a
+   * program. Outside a block write `src.loop(f)`, the program by name.
+   */
+  extension [A, G[+_]](src: Pull[A, G])
+    def foreach[F[_]](f: A => Unit)(using DirectCtx[F]): Unit = throw new IllegalStateException(
+      "a source loop is rewritten by the direct macro and never called; outside a block use src.loop(f)")
+
   extension [W](g: Gen[W])
     def reflect: Unit = throw new IllegalStateException(
       "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
