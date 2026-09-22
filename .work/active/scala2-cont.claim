@@ -1,6 +1,0 @@
-feature/scala2-cont 2026-09-22T22:01:24Z
-agent: claude-code
-heartbeat: 2026-09-22T22:01:24Z
-status: in-progress
-done-so-far: shift/reset/answer-type change verified from 2.13 by hand (scratch Cont2)
-next: okay.scala2.Cont in the facade, 2.13 probe suites; land after scala2-facade

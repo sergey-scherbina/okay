@@ -1,6 +1,0 @@
-feature/scala2-facade 2026-09-22T21:37:51Z
-agent: claude-code
-heartbeat: 2026-09-22T21:54:06Z
-status: in-progress
-done-so-far: stage 1 committed on the branch (okay-scala2 Prog + 2.13 probe green, docs, spec, changelog)
-next: full-matrix gate running, then land
