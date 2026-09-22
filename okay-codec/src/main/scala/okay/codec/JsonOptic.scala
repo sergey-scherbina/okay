@@ -179,4 +179,40 @@ object JsonOptic {
     case Schema.SList(of) => Some(of())
     case Schema.SVector(of) => Some(of())
     case _ => None
+
+  // ------------------------------------------------------------ the zipper's plate (specs/zipper.md)
+
+  /**
+   * `Json` as a tree for `Zipper`: an array's children are its values,
+   * an object's its field VALUES — the keys stay in the node — and a
+   * scalar has none. `withChildren` on an object re-pairs the keys
+   * positionally, and when the arity differs it keeps the node
+   * unchanged: a key cannot be invented, so a structural edit goes
+   * through the parent (`removeChild`/`insertChild` below), never
+   * through the plate. Arity-preserving, as the trait's contract asks.
+   */
+  given plate: Plate[Json] with
+    def children(t: Json): Vector[Json] = t match
+      case Json.JArr(vs) => vs
+      case Json.JObj(fs) => fs.map(_._2)
+      case _ => Vector.empty
+    def withChildren(t: Json, cs: Vector[Json]): Json = t match
+      case Json.JArr(_) => Json.JArr(cs)
+      case Json.JObj(fs) if fs.length == cs.length => Json.JObj(fs.lazyZip(cs).map((f, c) => (f._1, c)))
+      case other => other
+
+  /** the i-th child gone — from an array or an object; the identity
+   * on a scalar and on an index that is not there */
+  def removeChild(j: Json, i: Int): Json = j match
+    case Json.JArr(vs) if vs.isDefinedAt(i) => Json.JArr(vs.patch(i, Nil, 1))
+    case Json.JObj(fs) if fs.isDefinedAt(i) => Json.JObj(fs.patch(i, Nil, 1))
+    case other => other
+
+  /** `v` inserted at position `i` (0 to the arity, inclusive — at the
+   * arity it appends); an object uses `key`, an array ignores it; the
+   * identity on a scalar and on a position out of that range */
+  def insertChild(j: Json, i: Int, key: String, v: Json): Json = j match
+    case Json.JArr(vs) if i >= 0 && i <= vs.length => Json.JArr(vs.patch(i, Seq(v), 0))
+    case Json.JObj(fs) if i >= 0 && i <= fs.length => Json.JObj(fs.patch(i, Seq(key -> v), 0))
+    case other => other
 }
