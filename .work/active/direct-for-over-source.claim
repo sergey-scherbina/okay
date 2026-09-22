@@ -1,6 +1,0 @@
-feature/direct-for-over-source 2026-09-22T22:30:18Z
-agent: claude-code
-heartbeat: 2026-09-22T22:30:18Z
-status: in-progress
-done-so-far: reading DirectLoops/DirectEmit before the spec
-next: specs/direct-loops.md v3 (sources); DirectLoops.sourceLoop over Stream[S, G] instances and Take; tests; docs (direct-style.md, ch.7 closing paragraph); changelog; backlog entry removed
