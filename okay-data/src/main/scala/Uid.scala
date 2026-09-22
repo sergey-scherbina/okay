@@ -100,12 +100,12 @@ object Uid:
 
   /** a generator over a millisecond source and an entropy source */
   def at(source: () => Long, random: () => Long = () => scala.util.Random.nextLong()): Gen =
-    Gen(Hlc.at(source, counterBits = 12), random)
+    new Gen(Hlc.at(source, counterBits = 12), random)
 
   /** the ambient generator: the system clock, `scala.util.Random`.
    * NOT a cryptographic source — a UUIDv7 is unique, not unguessable,
    * and a secret should be made by okay-security instead. */
-  val system: Gen = Gen(Hlc.at(() => System.currentTimeMillis(), counterBits = 12),
+  val system: Gen = new Gen(Hlc.at(() => System.currentTimeMillis(), counterBits = 12),
                         () => scala.util.Random.nextLong())
 
   /** the next id from the ambient generator */
