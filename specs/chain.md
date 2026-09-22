@@ -90,7 +90,7 @@ enum Observed[B]:
 
 enum Event[B]:
   case Confirmed(block: B)      // final under the Finality policy
-  case RolledBack(to: Point)    // blocks after `to` that were Confirmed are void
+  case RolledBack(to: Point, from: Point)  // blocks after `to`, up to `from`, were Confirmed and are void
 ```
 
 - `Tracker[B]` consumes `Observed[B]`, holds unconfirmed blocks, and
@@ -135,7 +135,8 @@ final case class Movement(asset: Asset, amount: Amount,
                           from: Option[Account], to: Option[Account],
                           complete: Boolean)
 final case class OutRef(tx: TxId, index: Int)
-final case class UtxoView(spent: Vector[OutRef], created: Vector[(OutRef, Account, Vector[(Asset, Amount)])])
+final case class Output(ref: OutRef, owner: Account, holds: Vector[(Asset, Amount)])
+final case class UtxoView(spent: Vector[OutRef], created: Vector[Output])
 ```
 
 - `from`/`to` are `Option`: a mint has no `from`, a burn no `to`.
