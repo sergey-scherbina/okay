@@ -23,6 +23,7 @@ because subscriptions are `merge`.
 | `okay.ui.gtk.Gtk` (okay-ui-gtk, Scala Native) | GTK 4 over the same seam, present only where `pkg-config --exists gtk4` answers (`brew install gtk4 pkg-config`); TestGtk against real widgets (ui-gtk) |
 | `React.elem` / `ReactJs.host` | pure `Ui => Elem` (JVM-tested), five lines of js glue over any `createElement`-shaped global — React, Preact, likes |
 | `Form` | the fifth algebra over `Schema`: a form rendered from the same schema that decodes it; plus the dynamic (JSON Schema) side elicitation needs |
+| `Form.drill` / `drillValue` / `renderAt` | a deep record one level at a time: composites as `<key>$into` buttons, `out` back up, the cursor the dotted path every key already is; `Form.askFrom`/`askAt` — the form of a value, or of a `TypedZipper`'s focus (specs/form-drill.md) |
 
 ## The circle it closes
 

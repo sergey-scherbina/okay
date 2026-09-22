@@ -69,34 +69,34 @@ object Form:
 address: Address(city, zip)), lines: Vector[Line], shape: Shape)`
 with `Line(sku, qty)` and `Shape = Circle(r) | Square(side)`:
 
-- [ ] `renderAt` at the root shows `id` as an `Input` and `customer`,
+- [x] `renderAt` at the root shows `id` as an `Input` and `customer`,
       `lines`, `shape` as `into` buttons keyed `customer$into`,
       `lines$into`, `shape$into`; no nested widget is rendered.
-- [ ] `renderAt` at `customer` shows `name` keyed `customer.name` and
+- [x] `renderAt` at `customer` shows `name` keyed `customer.name` and
       `address` as `customer.address$into`; at `customer.address` the
       two scalars keyed `customer.address.city`/`.zip`.
-- [ ] `renderAt` at `lines` shows each item as `lines[i]$into` with its
+- [x] `renderAt` at `lines` shows each item as `lines[i]$into` with its
       `$del`, and the list's `$add`; at `lines[1]` the item's scalars
       keyed `lines[1].sku`/`.qty`.
-- [ ] `renderAt` at `shape` shows the case `Select` keyed `shape.$case`
+- [x] `renderAt` at `shape` shows the case `Select` keyed `shape.$case`
       and the chosen case's scalars; choosing the other case through
       `edit` re-renders with its scalars.
-- [ ] `renderAt` at a path that is not on the schema, or past a list's
+- [x] `renderAt` at a path that is not on the schema, or past a list's
       end, renders the root (total, like `edit`).
-- [ ] THE LAW: a script of edits typed through the drill screen — with
+- [x] THE LAW: a script of edits typed through the drill screen — with
       `into`/`out` moves between them — leaves the same `Json` as the
       same `Edited`/`Chosen`/`Pressed` events folded through
       `Form.submitted` on the flat form, for every script over the
       generated schema shapes; the moves are invisible to the value.
-- [ ] `drill`: `into` pushes the path and the view shows the sub-form,
+- [x] `drill`: `into` pushes the path and the view shows the sub-form,
       `out` pops, `out` at the root is a no-op; `done` with a field
       error shows the error under its field at the focus and stays;
       `done` with none answers `Some(value)`; `cancel` answers `None`.
-- [ ] `drillValue`: an `Order` in, an edited `Order` out through the
+- [x] `drillValue`: an `Order` in, an edited `Order` out through the
       codec, or `None`.
-- [ ] `askFrom` shows the initial value's fields filled; `ok` without
+- [x] `askFrom` shows the initial value's fields filled; `ok` without
       edits answers `Some(initial)`.
-- [ ] `askAt`: `TypedZipper(order).down(customer)` asked, name edited,
+- [x] `askAt`: `TypedZipper(order).down(customer)` asked, name edited,
       `ok` — the answer is `Some(cursor)` whose `.up.root` is the order
       with the new name and nothing else changed; `cancel` is `None`.
 
@@ -162,4 +162,18 @@ through `z.set`. Nothing in `ask` changes.
 
 ## Results
 
-(after implementation)
+2026-09-23, one lane. `TestFormDrill` 11, green through
+`scripts/gate.sh`, no warnings; `okayUiJVM/Test/compile` clean on the
+first cut of the algebra-as-a-class. The render algebra became
+`RenderAlgebra(drill: Boolean)` with two `Folded` instances; the flat
+form's output is untouched (every existing okay-ui suite green in the
+`affected` gate). Two things the tests corrected: a missing
+sub-record is an error AT its key, which no field inside it can show
+— the drill view now shows the focus's own errors above the sub-form,
+and the root shows errors BELOW a way-in under its button, named by
+the rest of the path (`! address.zip: …`); and an empty string is a
+valid `String`, so the nested-error scenario had to use a number.
+The law held on four scripts across product, list (`$add`/`$del`
+at a focus) and sum (`$case` at a focus) with `into`/`out` between
+edits. `askAt` is one line over `askFrom`, which is `ask` with a
+seed — the extraction touched nothing in `ask`'s loop.

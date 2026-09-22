@@ -411,7 +411,13 @@ predicted: the plate zipper walks "the children" of one node type and
 is what an editor loops over; the typed zipper cannot loop — every
 frame is a distinct type — and is what a program written against a
 PART uses to run at that part while holding the whole: the last line
-above is the consumer that named it.
+above is the consumer that named it. And where a FORM navigates a
+record (specs/form-drill.md) the cursor is neither: it is the dotted
+path every widget's key already is, because a form makes one move
+per many edits and its router recomputes from the root per edit
+anyway — the optic road, at the ratio the optic road is for. The
+typed cursor enters a form only where the code chooses the part:
+`Form.askAt(TypedZipper(order).down(customer), …)`.
 
 ## Where the theory said no
 

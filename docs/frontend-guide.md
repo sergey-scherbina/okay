@@ -124,6 +124,23 @@ road this is not a nicety: an unchanged field posts nothing, so a form
 that starts from `{}` refuses a submit for a field the user can see is
 answered.
 
+**A deep record is shown one level at a time.** The flat form draws a
+nested product as a section inside a section; `Form.drill[A](value)
+(done)` is the screen that draws the focus's scalars and turns each
+composite field, list item and sum into a `<key>$into` button,
+`out` goes back up, and `Form.drillValue[A](a)(done)` does the same
+over an existing value through the codec. The cursor is the dotted
+PATH every widget's key already is — `customer.address.city` — so an
+edit typed two levels down folds through the same `Form.edit` a flat
+form's does, and the law `TestFormDrill` pins is exactly that: a
+script with `into`/`out` moves between its edits leaves the value the
+flat fold leaves. When the code, not the user, chooses the part —
+"edit this order's customer" — `Form.askAt(TypedZipper(order)
+.down(customer), "customer")` asks the form of the focus's type,
+seeded from it, and answers the cursor with the focus replaced
+(`Form.askFrom` is the seeded `ask` underneath). Design and the
+reasons in `specs/form-drill.md`.
+
 Errors are data, per field: `Form.errors[A](value)` answers
 `(path, message)` pairs and the form renders each under the field its
 path names. Two rules that follow from that and are easy to get wrong
