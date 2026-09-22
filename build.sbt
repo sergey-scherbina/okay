@@ -2449,7 +2449,17 @@ lazy val root = (project in file("."))
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,
-    okayCluster.jvm, okayCluster.js, compare)
+    okayCluster.jvm, okayCluster.js,
+    // okay-js and okay-acme are COMPILE dependencies of published
+    // modules (okay-ui on every platform, okay-script), and they were
+    // missing from this list, so `publishLocal` never published them
+    // and a consumer of okay-ui or okay-script failed to resolve
+    // (pom-jmh-and-chat-version, 2026-09-23: the chat guide's own
+    // build stopped at "Error downloading dev.okay:okay-js_3:0.1.1").
+    // okay-acme's network suites are Live-tagged, so the default gate
+    // runs none of them.
+    okayJs.jvm, okayJs.js, okayJs.native, okayAcme,
+    compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

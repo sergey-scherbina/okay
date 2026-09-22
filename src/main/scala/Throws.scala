@@ -300,7 +300,7 @@ object CanTry:
    * (a closure, not run until applied), so the try must defer to
    * APPLICATION time, not construction — the honest counterpart to
    * `rows`' per-step guard. Also sidesteps the dotty 3.7.4 erasure
-   * crash ("bad adapt for M$proxy2.pure(a)") the STRICT shape hit
+   * crash ("bad adapt for M\$proxy2.pure(a)") the STRICT shape hit
    * when tried here during the 2026-09-02 audit — a different
    * generated-code shape, not a version bump */
   given ctxFn: [E] => CanTry[[X] =>> E ?=> X] = new:

@@ -67,7 +67,7 @@ object Reader {
    * a component may declare exactly what it reads and nothing more:
    *
    *     def banner[E](using Has[E, User]): String ! Reader % E = direct:
-   *       s"hello ${(!read[E, User]).name}"
+   *       s"hello \${(!read[E, User]).name}"
    *
    * An application names its environment once and the call site keeps
    * one type argument:

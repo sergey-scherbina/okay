@@ -190,7 +190,7 @@ object Proc:
    *     Proc.direct[Sig, Unit, String]: _ =>
    *       val city = !Question.Ask("city?")
    *       val t    = !Question.Now()
-   *       s"$city/$t"
+   *       s"\$city/\$t"
    *
    * Every `!` marks an OPERATION of the signature, never a `Proc`:
    * a step chosen by a value the block binds is `ArrowApply`, which
