@@ -95,9 +95,13 @@ same material with the measurements attached.
   rest of the row forwarded. `Free.run(f: F ==> M)` is the same idea
   when the row is handled entirely.
 - **`Handler[F]`** — the comonadic (per-operation) handler;
-  `runWith` runs with it. **`Handler.union`** composes one handler
-  per effect into a row handler (an explicit combinator, not a given:
-  a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
+  `runWith` runs with it. **`Handler.flat[R]`** composes one handler
+  per effect into a row handler as ONE dispatch expression (a macro
+  over the row's members; 1.24x over the nested form at position 4 of
+  a four-row, handler-fusion-flat); **`Handler.union[F, G]`** is the
+  two-member combinator it generalises, kept for a row built one
+  member at a time. Both are explicit, not givens: a given over a
+  union type lambda crashes the 3.7.1 type comparer. **`TypeableK[F]`** — the runtime test that
   splits unions (`split`, and `<|>` as its `Either` form): `test`, a
   plain boolean, is its whole interface (the extractor form went with
   core-cleanup — nobody matched with it);

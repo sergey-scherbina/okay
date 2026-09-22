@@ -11,8 +11,7 @@ class TestStepper extends munit.FunSuite {
   def runRest[A](prog: A ! Rest)(model: Handler[Model], ctx: Handler[Context]): A =
     given Handler[Model] = model
     given Handler[Context] = ctx
-    given rowMA: Handler[Model + Async] = Handler.union[Model, Async]
-    given rowAll: Handler[Rest] = Handler.union[Context, Model + Async]
+    given rowAll: Handler[Rest] = Handler.flat[Rest]
     prog.runWith
 
   def freshCtx: Handler[Context] = Handlers.context(Compact.all)._2
@@ -39,9 +38,7 @@ class TestStepper extends munit.FunSuite {
       given Handler[Model] = model
       given Handler[Tool] = Handlers.tools(table)
       given Handler[Context] = freshCtx
-      given r1: Handler[Model + Async] = Handler.union[Model, Async]
-      given r2: Handler[Context + (Model + Async)] = Handler.union[Context, Model + Async]
-      given r3: Handler[Agent] = Handler.union[Tool, Context + (Model + Async)]
+      given r: Handler[Agent] = Handler.flat[Agent]
       agent.runWith
 
     // stepped: collect what paused, answer from the same table
@@ -92,9 +89,7 @@ class TestStepper extends munit.FunSuite {
       given Handler[Model] = model
       given Handler[Tool] = Handlers.tools(table)
       given Handler[Context] = freshCtx
-      given r1: Handler[Model + Async] = Handler.union[Model, Async]
-      given r2: Handler[Context + (Model + Async)] = Handler.union[Context, Model + Async]
-      given r3: Handler[Agent] = Handler.union[Tool, Context + (Model + Async)]
+      given r: Handler[Agent] = Handler.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparent(stepped(agent))(table))(model, freshCtx), direct)
   }

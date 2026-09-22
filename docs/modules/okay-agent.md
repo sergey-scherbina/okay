@@ -193,9 +193,12 @@ reason).
 
 ## Gotchas
 
-- `Handler.union` (core) assembles one handler per effect into a row
-  handler; it is an explicit combinator, not a given, because a given
-  over a union type lambda crashes the 3.7.1 type comparer.
+- `Handler.flat[Agent]` (core) assembles one handler per effect into
+  the row handler in one expression — the four-row is exactly the
+  shape where the nested `Handler.union` chain paid 24% at the last
+  position (handler-fusion-flat). Both are explicit combinators, not
+  givens, because a given over a union type lambda crashes the 3.7.1
+  type comparer.
 - Effect-row ORDER matters for the shapes handlers expect; unions are
   ACI, so an ascription with explicit type arguments re-associates.
 - With the v1 `Handlers.context` (a mutable cell) multi-shot search

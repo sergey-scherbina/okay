@@ -24,6 +24,13 @@ case class E4[+A](a: A) derives Effect
  * is at its cheapest and dispatch is the largest share it can be);
  * position 4 is the number, position 1 the control that the flat
  * form is not slower where the chain answers first.
+ *
+ * Four forms, because the first ceiling lied by omission: `flat`
+ * inlines the handlers' BODIES as well as flattening the dispatch,
+ * and a macro over opaque `Handler` givens can only do the second.
+ * `flatCalls` is the reachable ceiling; `inlined` is the macro
+ * (handler-fusion-flat). Position 4, minima: union 108.4, inlined
+ * 100.2, flatCalls 94.9, flat 88.2 µs — bytes identical on all.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -62,6 +69,23 @@ class FlatDispatchBenchmark {
       case E3(x) => x
       case E4(x) => x
 
+  /** the same flat match, but CALLING the four handlers (captured once
+   * as fields) instead of inlining their bodies — the ceiling the macro
+   * can actually reach: `flat` above also inlines the handlers, which
+   * no macro over opaque `Handler` givens can do */
+  val flatCalls: Handler[Row] =
+    val (ha, hb, hc, hd) = (summon[Handler[E1]], summon[Handler[E2]], summon[Handler[E3]], summon[Handler[E4]])
+    new Handler[Row]:
+      def handle[A](a: Row[A]): A = a match
+        case e: E1[A] => ha.handle(e)
+        case e: E2[A] => hb.handle(e)
+        case e: E3[A] => hc.handle(e)
+        case e: E4[A] => hd.handle(e)
+
+  /** the shipped form: the macro's one expression over the row —
+   * held to within 10% of `flatCalls` */
+  val inlined: Handler[Row] = Handler.flat[Row]
+
   def prog4(i: Int, acc: Int): Int ! Row =
     if i >= N then pure(acc) else effect[Row, Int](E4(i)).flatMap(x => prog4(i + 1, acc + x))
 
@@ -87,4 +111,16 @@ class FlatDispatchBenchmark {
 
   @Benchmark
   def flat1(): Int = built1.runWith(using flat)
+
+  @Benchmark
+  def flatCalls4(): Int = built4.runWith(using flatCalls)
+
+  @Benchmark
+  def flatCalls1(): Int = built1.runWith(using flatCalls)
+
+  @Benchmark
+  def inline4(): Int = built4.runWith(using inlined)
+
+  @Benchmark
+  def inline1(): Int = built1.runWith(using inlined)
 }
