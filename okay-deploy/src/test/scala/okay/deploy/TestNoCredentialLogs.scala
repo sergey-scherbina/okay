@@ -14,8 +14,7 @@ import scala.jdk.CollectionConverters.*
 class TestNoCredentialLogs extends munit.FunSuite:
   private val root: Path = Deploy.repoRoot()
 
-  private val adapters = Vector("okay-jdbc", "okay-pg", "okay-r2dbc", "okay-docs", "okay-docs-mongo",
-    "okay-docs-dynamo", "okay-docs-cassandra", "okay-blob", "okay-kafka", "okay-cache", "okay-delta", "okay-sql")
+  private val adapters = Vector("okay-jdbc", "okay-pg", "okay-r2dbc", "okay-docs", "okay-blob", "okay-kafka", "okay-cache", "okay-delta", "okay-sql")
 
   private val sink = "(println|print\\(|System\\.(out|err)|log(ger)?\\.(info|warn|debug|error|trace)|journal)".r
   private val credential = "(?i)(password|passwd|secret|accesskey|access_key|credential|creds|token|apikey|api_key)".r

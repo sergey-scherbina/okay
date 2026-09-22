@@ -416,6 +416,18 @@ list in its spec or spec section)
   reliability story, refold as the universal rebuild; engines join
   as views, so adopting or dropping one never moves the truth.
   Rejected: engine-per-class as the primary store in own mode.
+- **The Docs engines live in `okay-docs`, not in satellites**
+  (docs-adapters-merge, 2026-09-23, operator). Mongo, DynamoDB and
+  Cassandra were three JVM satellite modules (the argon2 precedent:
+  a vendor driver pays for its own artifact); they are now
+  `okay.docs.{mongo,dynamo,cassandra}` under `okay-docs/src/*/scala-jvm`.
+  The price, accepted: `okay-docs` on the JVM carries
+  mongodb-driver-sync, the Cassandra java-driver-core, `okay-blob`
+  and `okay-http`; JS and Native are unchanged. What it bought
+  besides one place to look: two of the three satellites
+  (dynamo, cassandra) had never been in the root aggregate, so the
+  gate never compiled them — and an unused import in
+  `TestPersistenceE2E` had been sitting there since it was written.
 
 ## Results
 

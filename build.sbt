@@ -1375,21 +1375,28 @@ lazy val okayDocs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-docs"))
   .dependsOn(okay, okayCodec, okayPersist)
+  // the foreign engines live here too, JVM-only (src/*/scala-jvm):
+  // Mongo (mongodb-driver-sync), DynamoDB (the JSON protocol over the
+  // one http client, signed by okay-blob's SigV4 — no AWS SDK) and
+  // Cassandra (the Apache java driver, LWT as the CAS). They were
+  // three satellites until docs-adapters-merge (2026-09-23); the
+  // price of one module is that okay-docs on the JVM carries both
+  // vendor drivers. okayPg/okaySql in Test: the end-to-end suite
+  // (persistence-e2e) runs a Pool over the pg wire and a Saga over
+  // DynamoDocs side by side. Their DocsSuite contracts are Live.
+  .jvmConfigure(_.dependsOn(okayBlob.jvm, okayHttp.jvm, okaySql.jvm % Test, okayPg.jvm % Test))
   .settings(
     name := "okay-docs",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
-
-/** the Mongo adapter of the Docs seam — a satellite that pays the
- * driver dependency (the argon2 precedent); live suite against the
- * dockerized Mongo, skips where absent */
-lazy val okayDocsMongo = (project in file("okay-docs-mongo"))
-  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test")
-  .settings(
-    name := "okay-docs-mongo",
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     libraryDependencies ++= Seq(
       "org.mongodb" % "mongodb-driver-sync" % "5.2.1",
-      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "org.apache.cassandra" % "java-driver-core" % "4.18.1",
     ),
     Test / fork := true,
   )
@@ -2438,7 +2445,7 @@ lazy val root = (project in file("."))
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
     okayCrypto.jvm, okayCrypto.js, okayMail,
     okayCache.jvm, okayCache.js, okayCache.native,
-    okayDocs.jvm, okayDocs.js, okayDocs.native, okayDocsMongo,
+    okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayR,
@@ -2557,21 +2564,6 @@ lazy val compare = (project in file("compare"))
     ),
   )
 
-/** The DynamoDB adapter of the Docs seam (docs-dynamo, specs/data.md):
- * the JSON protocol over the one http client, signed by okay-blob's
- * SigV4 with service "dynamodb" — no AWS SDK. JVM, like the Mongo
- * adapter; the DocsSuite contract runs Live against dynamodb-local. */
-lazy val okayDocsDynamo = (project in file("okay-docs-dynamo"))
-  // okayPg/okaySql in Test: the end-to-end suite (persistence-e2e) runs
-  // a Pool over the pg wire and a Saga over this adapter side by side
-  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm,
-    okaySql.jvm % Test, okayPg.jvm % Test)
-  .settings(
-    name := "okay-docs-dynamo",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
-    Test / fork := true,
-  )
-
 /** The Spring Boot bridge of specs/di.md (stage 2): a Module's
  * installed values as singletons in a Spring context, closed with it;
  * a Spring bean as a module; a controller returning `A ! Async` served
@@ -2609,22 +2601,6 @@ lazy val okayGuice = (project in file("okay-guice"))
       "com.google.inject" % "guice" % "7.0.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
-  )
-
-/** The Cassandra adapter of the Docs seam (docs-cassandra, specs/data.md):
- * CQL through the Apache java driver (the Mongo precedent: the vendor
- * driver lives in its satellite), lightweight transactions as the CAS,
- * the engine where a Quorum request means a quorum. JVM; the DocsSuite
- * contract runs Live against a dockerized cassandra:5. */
-lazy val okayDocsCassandra = (project in file("okay-docs-cassandra"))
-  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test")
-  .settings(
-    name := "okay-docs-cassandra",
-    libraryDependencies ++= Seq(
-      "org.apache.cassandra" % "java-driver-core" % "4.18.1",
-      "org.scalameta" %% "munit" % "1.1.1" % Test,
-    ),
-    Test / fork := true,
   )
 
 /** The CDI bridge of specs/di.md (stage 2, the documented shape built

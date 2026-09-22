@@ -1,6 +1,6 @@
 package okay.docs.dynamo
 
-import okay.{!, +, Async, Chunk, Resource, Source}
+import okay.{!, Async, Chunk, Resource, Source}
 import okay.given
 import okay.crypto.given
 import okay.blob.SigV4

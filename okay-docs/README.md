@@ -2,7 +2,7 @@
 
 The document seam: get/put/delete by key with compare-and-set as DATA, bounded queries over declared secondary indexes, per-item atomicity — the one new seam specs/data.md allows itself.
 
-**Depends on:** the core, `okay-codec`, `okay-persist`. Cross-built.
+**Depends on:** the core, `okay-codec`, `okay-persist`. Cross-built; on the JVM also the foreign engines `MongoDocs`, `DynamoDocs`, `CassandraDocs` (mongodb-driver-sync, the Cassandra java driver, `okay-blob`, `okay-http`).
 
 This page is a pointer, not a guide: the module's own doc
 below carries the pieces, the decisions and the measurements.
