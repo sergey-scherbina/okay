@@ -1,0 +1,1 @@
+- [ ] scalus-flink — stage 4 of specs/scalus.md: the okay-scalus follower as a FLIP-27 Flink `Source` (split = block range), the same `Schema` folded into Flink `RowType`; no variant type there, recursive fallback is cbor + JSON string. Trigger: Spark stage 2 has run on mainnet.
