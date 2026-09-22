@@ -1,0 +1,6 @@
+feature/staged-block-lanes 2026-09-22T17:39:32Z
+agent: claude-code
+heartbeat: 2026-09-22T17:39:32Z
+status: in-progress
+done-so-far: worktree created
+next: JMH lanes — static block inside a loop (Free prebuilt / Free build+run / Func / Cont) and hand-flat vs Handler.union on a comonadic 4-row; thresholds in specs before running
