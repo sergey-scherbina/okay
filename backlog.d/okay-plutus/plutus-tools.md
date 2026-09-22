@@ -1,0 +1,1 @@
+- [ ] plutus-tools — stage 2 of specs/plutus.md, the module's actual reason: save/resume a mid-run `Machine` (Schema round-trip), stepper with back-step through the answer journal and breakpoints (builtin, budget, Constr tag), fork with substituted builtin answers, cost attribution by TERM compared against scalus `ProfilingData` on the same script. Trigger: plutus-machine landed.

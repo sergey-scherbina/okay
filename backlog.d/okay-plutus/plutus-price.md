@@ -1,0 +1,1 @@
+- [ ] plutus-price — stage 1 of specs/plutus.md: JMH lane scalus `CekMachine` vs okay-plutus strict run (conformance programs + a few mainnet scripts), under the lane rules of docs/benchmarks.md. Decides one thing: whether strict validation delegates to scalus's machine (expected) and ours stays for the debugging modes. Trigger: plutus-machine landed.

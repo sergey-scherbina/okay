@@ -1,0 +1,1 @@
+- [ ] plutus-chain-oracle — stage 3 of specs/plutus.md: ScriptContext built from okay-scalus-spark's `outputs` ⋈ `inputs`, scripts/datums/redeemers from the exact `cbor` columns; replay an epoch's scripts and table (script, our verdict + budget, declared ExUnits, isValid). Trigger: okay-scalus-spark landed and plutus-machine green on conformance.
