@@ -132,11 +132,10 @@ confirmed here, not just upstream-claimed.
   the running JVM per JEP 238 with no runtime branch in this
   library's own code. Nothing else here does this yet, and nothing
   requires it to.
-- **`.sdkmanrc`'s `21.0.7-tem` is the AMBIENT/compile pin, not the
-  whole story any more (jdk26-default-runtime, below).** What sbt
-  itself launches on, and so what compiles everything, stays 21 —
-  inside every module's compile-time needs, no `-Djava.security.manager`
-  flag required for the compiler itself.
+- **`.sdkmanrc` is the AMBIENT/compile pin, not the whole story any
+  more (jdk26-default-runtime, below).** It was `21.0.7-tem`; since
+  java-gatherers (2026-09-23) it is `25.0.4.1-tem` — see "Compiling
+  on 25" below for what that moved and what it did not.
 
 ## Runtime defaults to JDK 26, floor stays 21 (jdk26-default-runtime, 2026-09-19)
 
@@ -150,7 +149,8 @@ script-scoped-state already made once, for a whole JDK this time).
 This only takes effect where `Test / fork` / `run / fork` is already
 `true`, the existing convention across most test-bearing modules —
 checked directly (`show okayJVM/Test/javaHome`), not assumed.
-Compiling (sbt's own JVM, in-process dotc) is untouched, still 21.
+Compiling (sbt's own JVM, in-process dotc) was untouched, still 21 —
+until java-gatherers moved it to 25 (below).
 
 **First full-matrix run on 26 found exactly one new problem**, not the
 handful feared: `okay-delta`'s `TestDelta`, 4 failures, all the same
@@ -182,7 +182,7 @@ and unaffected).
 **"Can we optionally build the library for JVM 17?" has a one-line answer: it already
 does, for every module, with no separate build step.** dotc's classfile target is major
 version 61 (JDK 17) by default regardless of the host JDK compiling it — the whole
-`.jvmSettings` tree here is compiled once, on the ambient JDK 21, and every `.jar` it
+`.jvmSettings` tree here is compiled once, on the ambient JDK (21 then, 25 since java-gatherers — the target is still 61, `-java-output-version 17`), and every `.jar` it
 produces already loads on a JDK 17 JVM. There is nothing to opt into at build time. The
 real question this session measured is the one the by-inspection table above could only
 guess at: **which modules, once loaded, actually run correctly on JDK 17**, given that
@@ -247,6 +247,37 @@ fixing their unconditional API calls uncovered the SAME `Schedulers.own`/blockin
 trade-off named above, except there it causes a genuine HANG (not a wrong answer) in
 `okay-http`'s `Nio.scala` and, on the same evidence pattern, `okay-jetty`'s
 `TestResumable`. Full writeup: specs/jdk17-adaptive-runtime.md.
+
+## Compiling on 25, the floor as a flag (java-gatherers, 2026-09-23)
+
+okay-java bridges `java.util.stream.Gatherer`, final in JDK 24, and
+dotc sees only the class library of the JVM it runs in: on 21 the
+import is E008, `-release 25` is "not a valid choice", and Scala 3 has
+no `-system`. So sbt runs on 25 (`.sdkmanrc`). What that must NOT
+move, and did not (measured with `javap` on the built classes):
+
+- **bytecode**: dotc's default target is 61 on 25 exactly as on 21, and
+  `-java-output-version 17` — now on every Scala 3 module — pins it.
+- **the API floor**: compiling on 21 refused any 22+ API by accident;
+  on 25 nothing would, and tests run on 26. `-java-output-version N`
+  restores the refusal, but it sets the API check and the bytecode
+  TOGETHER (the `-Xunchecked-` variant is overridden by it), so N is
+  per module, via `jdkFloor(n)` in build.sbt:
+  - **17**, the default: the API AND the bytecode every module had.
+  - **21**: `compare` only — the benchmark harness, JDK 21 API
+    unconditionally, never run below 21.
+  - **0**, no flag: modules that reach PAST their floor on purpose,
+    behind a guard of their own, and need bytecode 61 so the class
+    loads on 17 at all — `okay-platform` and `okay-http` (Loom behind
+    `Schedulers.hasVirtualThreads`), `okay-java` (Gatherer, linked
+    lazily: a JDK 17/21 user of okay-java loads it fine and fails only
+    by CALLING `Gather`).
+  The compiler made that list, not a survey: a full `Test/compile`
+  with 17 everywhere named exactly those three main-code modules.
+- **tests carry no floor** (project/JdkFloor.scala): forty-odd test
+  files call JDK 21 API unconditionally, and floor 21 would make every
+  test class of their modules major 65, so `verifyJdk17` could not
+  load the suites that pass on 17 today. Test bytecode stays 61.
 
 ## Related
 

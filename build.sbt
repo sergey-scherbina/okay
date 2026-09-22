@@ -252,13 +252,14 @@ addCommandAlias("verifyJdk17",
 
 /**
  * jdk26-default-runtime (2026-09-19): the ambient JVM that launches
- * sbt itself — and so compiles everything, `.sdkmanrc` pins it —
- * stays JDK 21. This is a SEPARATE knob: the JVM a forked `Test` or
+ * sbt itself — and so compiles everything, `.sdkmanrc` pins it — is
+ * JDK 25 since java-gatherers (2026-09-23; the API floor it used to
+ * imply is `-java-output-version` now, see `jdkFloor`). This is a SEPARATE knob: the JVM a forked `Test` or
  * `run` actually EXECUTES on, which only a module that already sets
  * `Test / fork := true` / `run / fork := true` (most test-bearing
  * ones already do, for reasons of their own — a real classpath, a
- * real -Xmx, isolation) ever reads. Compiling stays where it always
- * was; running now defaults to the newest GA JDK this project has
+ * real -Xmx, isolation) ever reads. Compiling is the ambient JDK;
+ * running now defaults to the newest GA JDK this project has
  * actually checked works, not the oldest one it still supports.
  *
  * Why 26 and not the true latest: 27 is not GA at this date (Adoptium
@@ -275,6 +276,9 @@ addCommandAlias("verifyJdk17",
  * full run under it found.
  */
 val jdk26Home = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "26.0.2.1-tem"
+// the JDK 21 a Hadoop-bound suite (okay-delta) is pinned to, now that
+// the ambient compile JDK is 25 (java-gatherers, 2026-09-23)
+val jdk21Home = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "21.0.7-tem"
 // a machine that never installed it keeps the ambient JDK for
 // Test/run too — ADDITIVE, exactly like the JDK25 MRJar script, never
 // a hard new dependency to build or test this project at all
@@ -1208,10 +1212,13 @@ lazy val okayDelta = (project in file("okay-delta"))
     // 24+): "KernelEngineException: ... getSubject is not supported".
     // A different library than okaySpark's, the same root cause and
     // the same shadow-back-down fix; unlike Spark, delta-kernel 4.4.0
-    // has no similar upstream JDK25 fix found, so this pins to the
-    // ambient/compile JDK (21) rather than assuming 25 also works.
-    Test / javaHome := None,
-    run / javaHome := None,
+    // has no similar upstream JDK25 fix found, so this pins to 21
+    // rather than assuming 25 also works. It pinned to the AMBIENT JDK
+    // (None) while that was 21; java-gatherers (2026-09-23) moved the
+    // ambient to 25 and TestDelta failed on it at once (getSubject), so
+    // the 21 is named now instead of inherited.
+    Test / javaHome := (if (jdk21Home.exists) Some(jdk21Home) else None),
+    run / javaHome := (Test / javaHome).value,
   )
 
 /** the R2DBC hatch of the Sql seam (sql-r2dbc, specs/sql.md): any

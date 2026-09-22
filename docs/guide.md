@@ -525,6 +525,38 @@ is a `FoldUntil` as a consumer PROGRAM — an iteratee, written over
 `Writer.foldUntil(producer)(using fo)` by the coroutine road, pulling
 exactly the same elements.
 
+A stage is also a JDK **Gatherer** (JDK 24, [JEP 485](https://openjdk.org/jeps/485)) —
+`stream.gather(g)`, the user-defined intermediate operation, whose
+integrator may push any number of elements and answer `false` to end
+the stream. That is a stage's `tell` and its answer, so okay-java's
+`Gather` translates, both ways: `Gather.gatherer(stage)` runs a stage
+inside a `java.util.stream` pipeline — a stage that answers stops
+even an infinite stream — and `Gather.stage(g)` runs any JDK gatherer
+(`Gatherers.windowFixed`, `scan`, `mapConcurrent`, a library's own)
+inside an okay one:
+
+```scala
+// a stage that answers after three: the JDK's integrator returns false
+val firstThree: Stage[Int, Int, Unit] =
+  Stage.transduceUntil[Int, Int, Int, Unit](0)(
+    (n, i) => Stage.tell[Int, Int](i * 10).map(_ => if n + 1 >= 3 then Right(()) else Left(n + 1)),
+    _ => ())
+
+val out = Stream.iterate(1, _ + 1).gather(Gather.gatherer(firstThree)).toList   // [10, 20, 30]
+
+val windows = through(lines("a", "b", "c"))(Gather.stage(Gatherers.windowFixed[String](2)))
+// Writer.run(windows) — (Seq([a, b], [c]), ()); a built pipeline runs ONCE
+```
+
+No combiner, deliberately: a suspended stage is a position in the
+stream and two cannot be merged, and a combiner-less gatherer is
+evaluated in encounter order even in a `.parallel()` stream. A JDK
+gatherer's state is an opaque mutable object, so a pipeline BUILT with
+`through` over `Gather.stage` runs once and refuses a second run by
+name — call `through` again instead. `docs/modules/okay-java.md` has
+`Windowed.gatherer`, the event-time window that hands each pane on
+the moment the watermark closes it.
+
 Stages may be EFFECTFUL: a row `Take % I + (Writer % O + G)` carries
 arbitrary operations G (Async above all) between awaits and tells,
 and the `through` overloads forward them through composition in the

@@ -201,6 +201,27 @@ the same way, one `step` bound per element (docs/direct-style.md,
 longer spelled `!.loop`; `Pull.loop(f)` is that program by name for
 the places a block is not.
 
+The enumeratee now has a JDK name. Java 24's stream **gatherers**
+\[[Klang 2024](#ref-klang-2024)\] are user-defined intermediate
+operations of four parts — an initializer, an integrator
+`(state, element, downstream) → boolean`, an optional combiner, a
+finisher — and they are the enumeratee written the other way round:
+*pushed* one element at a time by the stream, where an iteratee
+*asks*. That push form is the one Hickey's Clojure **transducers**
+\[[Hickey 2014](#ref-hickey-2014)\] made popular — a transformation
+of the reducing step, with early termination (`reduced`) and a
+completion arity for the flush — and a gatherer's `false` and its
+finisher are exactly those two. Because okay's `Stage` is a program,
+the two forms translate by pure mechanics: the gatherer's state is
+the stage *suspended at its next* `await`, the integrator resumes it
+with the element and pushes whatever it `tell`s on the way to the next
+`await`, and a stage that answers is an integrator returning `false`
+(okay-java's `Gather`, both directions, law-tested against each
+other). What neither side can give the other is a combiner: a
+suspended program is a position in the stream, and positions do not
+merge — which JEP 485 accommodates by running a combiner-less gatherer
+sequentially even inside a parallel stream.
+
 ## Sketches: approximation with stated error
 
 Some aggregations are impossible exactly in bounded space — distinct
@@ -236,6 +257,10 @@ where that property was established.
   FLOPS 2012, LNCS 7294.
 - <a id="ref-kiselyov-2012-yield"></a>Oleg Kiselyov, Simon Peyton Jones, Amr Sabry. *[Lazy v. Yield:
   incremental, linear pretty-printing.](https://doi.org/10.1007/978-3-642-35182-2_14)* APLAS 2012, LNCS 7705.
+- <a id="ref-klang-2024"></a>Viktor Klang. *[JEP 485: Stream Gatherers.](https://openjdk.org/jeps/485)*
+  OpenJDK, final in JDK 24 (2024; previews JEP 461, 473).
+- <a id="ref-hickey-2014"></a>Rich Hickey. *[Transducers are coming.](https://clojure.org/news/2014/08/06/transducers-are-coming)*
+  Clojure news, 2014; and the talk *Transducers*, Strange Loop 2014.
 - <a id="ref-meijer-1991"></a>Erik Meijer, Maarten Fokkinga, Ross Paterson. *[Functional
   programming with bananas, lenses, envelopes and barbed wire.](https://maartenfokkinga.github.io/utwente/mmf91m.pdf)*
   FPCA 1991.

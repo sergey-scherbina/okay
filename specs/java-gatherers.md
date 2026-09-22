@@ -44,38 +44,43 @@ BY ACCIDENT is now asked for by flag:
 
 ## Behavior
 
-- [ ] `.sdkmanrc` pins 25; `gate.sh` picks it up (it exports
+- [x] `.sdkmanrc` pins 25; `gate.sh` picks it up (it exports
       `JAVA_HOME` from `.sdkmanrc`); the full matrix is green on it
-- [ ] every Scala 3 module carries `-java-output-version` 17 or 21;
+- [x] every Scala 3 module carries `-java-output-version` 17 or 21;
       okay-java carries none; a module on 17 that reaches a 21 API
       fails to COMPILE (that is how the 21 list is made, not by hand)
-- [ ] `Gather.gatherer(stage)`: a `Stage[I, O, ?]` as a
+- [x] `Gather.gatherer(stage)`: a `Stage[I, O, ?]` as a
       `Gatherer[I, ?, O]` — each element resumes the stage with
       `Some(i)`, each tell is a `downstream.push`, the finisher resumes
       with `None` until the stage answers
-- [ ] a stage that ANSWERS (transduceUntil's `Right`, a take-n)
+- [x] a stage that ANSWERS (transduceUntil's `Right`, a take-n)
       short-circuits: the integrator returns `false` and the upstream
-      is not pulled again — observable on an infinite `Stream.iterate`
-- [ ] a downstream that rejects (`limit`, `findFirst`) stops the stage:
-      the integrator returns `false` after a refused push
-- [ ] sequential by construction: no combiner, so a `.parallel()`
+      is not pulled again — 3 elements pulled of a 1000-element stream
+      (bounded on purpose: see Results, "Mutants")
+- [x] a downstream that rejects (`limit`, `findFirst`) stops the stage:
+      the integrator returns `false` after a refused push — and the
+      stage's continuation past the refused tell is never run
+      (1000 tells per element under `limit(3)`: at most 4 made)
+- [x] a pipeline BUILT by `through` over `Gather.stage` runs once and
+      refuses a second run by name (found by the doc test, below)
+- [x] sequential by construction: no combiner, so a `.parallel()`
       stream evaluates the gatherer in encounter order (JEP 485's
       rule for a combiner-less gatherer), never on a split
-- [ ] a stage's output before its first await (a header) is emitted
+- [x] a stage's output before its first await (a header) is emitted
       at the first element, or by the finisher on an empty stream
-- [ ] `Gather.stage(gatherer)`: a JDK `Gatherer` as a `Stage` — the
+- [x] `Gather.stage(gatherer)`: a JDK `Gatherer` as a `Stage` — the
       JDK's own `Gatherers.windowFixed/windowSliding/scan/fold` run
       inside okay pipelines; an integrator's `false` stops the stage
       awaiting; the finisher's pushes are told
-- [ ] law, both directions: over the same input,
+- [x] law, both directions: over the same input,
       `stream.gather(gatherer(s))` and okay's own run of `s` agree —
       `id`, `chunked`, `mapAccumulate`, a `transduceUntil` take-n, a
       stage that emits before awaiting
-- [ ] `Windowed.gatherer`: an event-time window as a Gatherer that
+- [x] `Windowed.gatherer`: an event-time window as a Gatherer that
       EMITS each pane the moment the watermark closes it (the
       `Collector` can only hand them over at the end); the remainder
       is flushed by the finisher; its state is the live panes only
-- [ ] docs: docs/modules/okay-java.md, the guide paragraph with
+- [x] docs: docs/modules/okay-java.md, the guide paragraph with
       examples and the literature; every snippet in a gated test
 
 ## Decisions
@@ -100,3 +105,50 @@ BY ACCIDENT is now asked for by flag:
   in sync by hand).
 
 ## Results
+
+Landed 2026-09-23 (java-gatherers).
+
+**The build.** sbt on 25; `-java-output-version 17` on every Scala 3
+module; the compiler, not a survey, named the exceptions — one full
+`Test/compile` with 17 everywhere failed in exactly three main-code
+modules: `okay-platform` and `okay-http` (Loom behind
+`Schedulers.hasVirtualThreads`; bytecode 61 is what lets the guard
+work, so `jdkFloor(0)`), `compare` (21 API unconditionally,
+`jdkFloor(21)`). Test code failed in forty-odd files (virtual
+threads, `Thread.ofPlatform`); it is unflagged by an AutoPlugin
+(project/JdkFloor.scala) rather than floored at 21, because floor 21
+would make test classes major 65 and blind `verifyJdk17`. One test
+(`TestUidConcurrent`) used `ofPlatform` for no reason of its own and
+was made 17-clean instead. `javap` on the built classes: 61 everywhere
+(`Free`, `Schedulers`, `Docs`, `Gather`, a test class), 65 in
+`compare` only — the bytecode did not move.
+
+**What the move broke, at once:** `okay-delta` pinned its tests to the
+AMBIENT JDK (`Test / javaHome := None`) because delta-kernel's Hadoop
+fails on 24+; the ambient became 25 and `TestDelta` failed 4/4 with
+`getSubject is not supported`. Pinned to a named JDK 21 now
+(`jdk21Home`), green.
+
+**Mutants.** Four, each failing exactly its own test: the integrator
+never answering `false` (short-circuit), a refused push ignored,
+`Gather.stage` ignoring the integrator's `false`, and the re-run
+check removed. The first cut of the short-circuit test used an
+INFINITE stream, and its mutant HUNG the suite instead of failing it
+— bounded to 1000 elements, it fails with `pulled = 1000`.
+
+**Found by the doc test: a built pipeline is one-shot.**
+`through(p)(stage)` drives the stage eagerly to its first output, so
+the program it answers already holds that run's state. Running the
+same built value twice fed the JDK's `windowFixed` its spent state —
+an NPE inside the JDK (its finisher nulls the array). A JDK gatherer's
+state cannot be snapshotted, so the second run is refused by name.
+Counting the doors: `Stage.chunked` survives the same re-run (its
+state resets after each emission); okay-stream's `Windows.stage`
+SILENTLY DROPS A PANE on it — filed, backlog
+`okay-core/windows-stage-rerun-loses-pane`. `Windowed.gatherer` is
+not affected: the JDK path starts the stage program per evaluation.
+
+**Refuted alternative, measured:** `-Xunchecked-java-output-version`
+to keep bytecode 61 under an API floor of 21 — dotc overrides it with
+`-java-output-version` when both are given ("The value of
+-Xunchecked-java-output-version was overridden").
