@@ -73,6 +73,11 @@ scalus models Shelley onwards. A backfill starts at a Shelley+ point.
 
 ### 2. The follower: confirmation depth + parent continuity
 
+**Superseded in part by specs/chain.md (2026-09-23)**: the follower is
+okay-chain's `Tracker`, not a Cardano-only one — chain-sync is a push
+source producing `Observed.Forward`/`Backward`, and the rules below
+(depth, continuity, shallow vs deep rollback) are the `Tracker`'s.
+
 The okay-watch `Follower` (d485b22 there) already settled the shape,
 re-derived here on N2N:
 
