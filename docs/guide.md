@@ -890,7 +890,10 @@ handler at a time (`State.run`, `Writer.run`, ...). Continuations are
 A 2.13 user's own effect is plain Scala 2: its operations extend
 `Op`, and `object Console extends Effect[Console]` declares it. Its
 handler receives each operation and the continuation, and can resume
-it once, never, or several times. All of it is in the one package `okay.scala2`, under the library's own
+it once, never, or several times. Streams are `okay.scala2.Source`: the core's own `Source`, with the
+usual vocabulary (`map`, `filter`, `take`, `merge`, `runCollect`). A
+source can also be written as a for-comprehension of `Writer.tell` and
+`Async.delay` and wrapped with `Source.fromEff`. All of it is in the one package `okay.scala2`, under the library's own
 names. The build needs both standard libraries, 2.13's first and 3.9's
 behind it. The module page
 gives the exact sbt settings, the same ones a gated 2.13 suite in this

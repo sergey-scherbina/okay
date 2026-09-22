@@ -190,7 +190,7 @@ a source can also be WRITTEN as an Eff that tells.
   `unfold`, `empty`, and `fromEff(e: Eff[Writer[A] with Async, Unit])`
   so that a source is an ordinary for-comprehension of `Writer.tell`
   and `Async.delay`; `toEff` goes back.
-- Transformations: `map` (`Writer.map`), `filter` and `flatMapIterable`
+- Transformations: `map` (`Writer.map`), `filter` and `mapConcat`
   (`Writer.expand`), `take`/`takeWhile`/`drop` (a `Stage` driven by
   `through`, which STOPS PULLING the source once the stage ends, so
   infinite sources are fine), `++`, `zipWithIndex`.
@@ -200,15 +200,15 @@ a source can also be WRITTEN as an Eff that tells.
   `Eff[Async, _]`, run with `Eff.runAsync`.
 
 ## Behavior (stage 4), all from Scala 2.13
-- [ ] constructors, map/filter/take/takeWhile/drop/zipWithIndex/++
+- [x] constructors, map/filter/take/takeWhile/drop/zipWithIndex/++
       give the expected vectors
-- [ ] `take` on an infinite `unfold` terminates
-- [ ] a source written as an Eff for-comprehension (tell + delay):
+- [x] `take` on an infinite `unfold` terminates
+- [x] a source written as an Eff for-comprehension (tell + delay):
       nothing runs until the source is run
-- [ ] `runForeach` and `runFold` see every element in order
-- [ ] `merge` of two sources delivers the union of both, whatever the
+- [x] `runForeach` and `runFold` see every element in order
+- [x] `merge` of two sources delivers the union of both, whatever the
       interleaving
-- [ ] 100 000 elements through map/filter/runFold without a stack
+- [x] 100 000 elements through map/filter/runFold without a stack
       overflow
 
 ## Later stages (not in stage 2)
@@ -289,3 +289,13 @@ a source can also be WRITTEN as an Eff that tells.
   no `R` at all. `Effect[Console]` stayed as the capability anyway: it
   reads as the declaration does and does not depend on how the object
   is imported.
+- STAGE 4 (2026-09-23). `okay.scala2.Source` over the core's
+  `okay.Source`; okay-scala2 now also depends on okay-stream. The 2.13
+  probe has 28 tests, green on their first run under `-Xlint -Werror`,
+  including `take` on an infinite `unfold`, a source written as an Eff
+  (it re-runs from the start each time it is run: the second run read
+  3 and 4), `merge` of two ranges (compared sorted, since the order is
+  the arrival order), and 100 000 elements through map/filter/runFold.
+  The stages (`take`, `takeWhile`, `drop`, `zipWithIndex`) carry
+  `Async` in their own row, so `through` passes the source's Async
+  operations along.

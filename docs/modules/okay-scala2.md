@@ -10,6 +10,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Eff[-R, A]` | a program over an OPEN row of effects, spelled as an intersection: `Eff[State[Int] with Writer[String], A]`. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
 | `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
+| `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -194,10 +195,44 @@ assertEquals(Eff.run(State.run(0)(handled)), (3, "ada"))
   in Scala 2, because matching on the case class tells scalac what `X`
   is in that branch.
 
+## Streams: `Source`
+
+okay's core `Source[A]` is a program that tells its elements and may
+perform `Async` between them. In Scala 2 terms that is
+`Eff[Writer[A] with Async, Unit]`. So there are two ways to get a
+`Source`: build it from the constructors, or write it as an ordinary
+for-comprehension and wrap it with `Source.fromEff`. The code below is
+copied from `okay-scala2/probe/src/test/scala/TestSourceFromScala2.scala`:
+
+```scala
+val nats = Source.unfold(0)(n => Some((n, n + 1)))
+assertEquals(collect(nats.map(_ * 2).take(4)), Vector(0, 2, 4, 6))
+```
+
+```scala
+val lines: Eff[Writer[String] with Async, Unit] = for {
+  a <- read()
+  _ <- Writer.tell("line " + a)
+  b <- read()
+  _ <- Writer.tell("line " + b)
+} yield ()
+val src = Source.fromEff(lines).map(_.toUpperCase)
+```
+
+Here `collect(s)` is `Eff.runAsync(s.runCollect)`. Each terminal
+operation (`runCollect`, `runForeach`, `runFold`) is an
+`Eff[Async, _]`, so it composes with other programs until you run it.
+
+- Once `take` or `takeWhile` has what it needs, it stops pulling from
+  the source, so they work on infinite sources.
+- `merge` runs both sources at once, one fiber each, feeding one
+  channel. Elements come out in the order they arrive, not in turns.
+
 ## What is not here yet
 
-- **Streams, fibers and channels.** They are queued in the sprint as
-  `scala2-streams` and `scala2-fibers-channels`.
+- **Fibers and channels as their own types.** They are queued in the
+  sprint as `scala2-fibers-channels`. `merge` already uses both
+  internally.
 - **Direct style.** It is built from Scala 3 macros, so from Scala 2
   it will never be available; write for-comprehensions instead.
 

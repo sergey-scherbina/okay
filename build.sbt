@@ -761,7 +761,7 @@ lazy val okayJava = (project in file("okay-java"))
  * `-Ytasty-reader` — no inline, no union row, no opaque type.
  */
 lazy val okayScala2 = (project in file("okay-scala2"))
-  .dependsOn(okay.jvm, okayAsync.jvm, okayPlatform.jvm)
+  .dependsOn(okay.jvm, okayAsync.jvm, okayPlatform.jvm, okayStream.jvm)
   .settings(
     name := "okay-scala2",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
