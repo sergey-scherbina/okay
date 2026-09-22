@@ -90,9 +90,9 @@ laws apply to it unchanged.
 - [x] `if` with marks in both branches and a `for x <- xs do` loop
       over marks work in a staged block as in a Free block: the same
       macro, only the lift differs (the agreement law above runs both).
-- [x] A marked program of the row that is NOT a leaf (`State.modify(f)
-      .!?`) is a compile error naming the fix. v1 refuses; the
-      runtime fallback is v2 and is not built until asked for.
+- [x] (v1, superseded the same day by v2 below) A marked program of
+      the row that is NOT a leaf (`State.modify(f).!?`) was a compile
+      error naming the fix; v2 walks it.
 - [x] A marked value of a FOREIGN monad is refused with the same
       "neither … nor" error a Free block gives.
 - [x] MEASURED (`okay-direct` `StagedBenchmark`, two rounds × two
