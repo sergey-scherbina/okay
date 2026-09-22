@@ -184,6 +184,16 @@ of the reordered arc (see "After stage 0").
       check and the nested `handle` calls are monomorphic, so under
       5% at position 4 and parity at position 1. Threshold: build
       `Handler.flat` only if the ceiling reads ≥ 1.1x at position 4.
+      MEASURED (7e228aa1, two rounds × two forks, minima, `-prof gc`,
+      rows `sbl-flat*`): position 4 — `union4` 108.6 µs, `flat4`
+      87.9, **1.24x**; position 1 — `union1` 95.7, `flat1` 88.4,
+      **1.08x**; B/op identical to the byte (957 904) on all four, so
+      the difference is dispatch and nothing else. The prediction
+      ("under 5%") is refuted; the threshold is cleared and
+      `Handler.flat` is worth building — promoted to the sprint queue
+      as `handler-fusion-flat`, with the hand-written `flat` in
+      `FlatDispatchBenchmark` as the ceiling it is held to (within
+      10%, the stage-1 rule).
 
 ## Out of scope
 

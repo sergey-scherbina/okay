@@ -192,6 +192,35 @@ form. Thresholds, before the run: ceiling under 1.2x over
 more — the emission target is worth building; between — the number
 is filed and nothing is built.
 
+**Measured (7e228aa1, two rounds × two forks, per-lane minima, load
+2.9–3.5, `-prof gc`; history.tsv rows `sbl-*`):**
+
+| lane | µs | B/op | vs `blockFreeR` |
+|---|---|---|---|
+| `blockFreeR` — tree prebuilt, fused fixture | 11.67 | 123 712 | 1.00 |
+| `blockFreeBuildR` — tree built and run | 11.70 | 123 792 | 1.00 |
+| `nestedBlockR` — the shipping runners | 14.96 | 154 448 | 0.78 |
+| `blockFuncR` — Func, handler as a value | 13.13 | 125 392 | **0.89** |
+| `blockContR` — Cont, handler as a value | 17.26 | 172 648 | 0.68 |
+| `blockFuncStagedR` — the CEILING | **7.53** | **82 968** | **1.55** (1.99 over shipping) |
+
+The prediction (~1.25x) is refuted upward: the ceiling clears the
+1.5x build threshold against the fixture and is 2x over the runners
+a user actually has. And the lane beside it says WHERE the win is:
+with the handler passed as a value, static binds buy nothing — 0.89x,
+the same bytes as the tree. The whole 1.55x is the handler being
+known at the call site, so that each operation compiles to its shift
+arm and no `split` runs. So the emission target that is worth
+building is not "`direct` over Control with an opaque `h`" — that is
+the refuted form — but "`direct` over Control with the handler
+INLINED per operation", which needs the handler to be a compile-time
+value the macro can read (an `inline` `Interpr`, or a per-effect
+inline arm the macro selects by the operation's class). That is a
+design of its own, filed as `direct-staged` with these numbers; the
+prebuilt-vs-built row is a free finding on the side — a Free program
+is re-materialised by every `k(x)`, so prebuilding it saves nothing
+on a loop-shaped program.
+
 ### 3. Typestate on the facade — freer-base stage 2
 
 **Today.** `PState` moves a state type through `S`/`R`; `Delim`'s
