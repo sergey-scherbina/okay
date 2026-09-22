@@ -1,6 +1,0 @@
-feature/direct-loops-v2 2026-09-22T20:06:26Z
-agent: claude-code
-heartbeat: 2026-09-22T20:06:26Z
-status: in-progress
-done-so-far: worktree created
-next: direct-loops v2 — multi-generator for (flatMap/withFilter), HOFs (exists/forall/find/filter/foldLeft) with marks, yield into Vector/Set/Map; spec boxes first
