@@ -276,6 +276,40 @@ object Direct:
                         inline b: Binds): F[A] =
       ${ directImpl[F, A]('block, 'M, 'd, 'b) }
 
+  /**
+   * The block with its handler known at the call site
+   * (specs/direct-staged.md): over `Staged[Row, R, *]`, every marked
+   * operation of the row — and every marked LEAF program, which is
+   * what `State.get`, `Writer.tell`, `Reader.ask` inline to — is
+   * emitted as `st.stage(op)`, whose inline match the compiler
+   * reduces on the operation as written. No `split`, no tree: the
+   * block is a function of its continuation. `st` is an INLINE
+   * parameter so that its own type — the object's, where `stage` is
+   * a concrete inline member — is what the macro sees; the macro
+   * hoists it to one val for the block. Calls are never deferred
+   * (`Func` has no `delay`): a staged block is not stack-safe on a
+   * left-nested chain, and says so in its spec.
+   */
+  inline def staged[Row[+_], R](inline st: Stage[Row, R])[A]
+                               (inline block: DirectCtx[Staged[Row, R, *]] ?=> A)
+                               (using inline b: Binds): Staged[Row, R, A] =
+    ${ stagedImpl[Row, R, A]('st, 'block, 'b) }
+
+  @scala.annotation.publicInBinary
+  private[okay] def stagedImpl[Row[+_] : Type, R: Type, A: Type](st: Expr[Stage[Row, R]],
+                                                                 block: Expr[DirectCtx[Staged[Row, R, *]] ?=> A],
+                                                                 b: Expr[Binds])
+                                                                (using Quotes): Expr[Staged[Row, R, A]] =
+    import quotes.reflect.*
+    type F[X] = Staged[Row, R, X]
+    val topBody: Term = blockBody[F, A](block).asTerm
+    val m = Expr.summon[Monad[F]].getOrElse(
+      report.errorAndAbort("direct.staged: no Monad[Staged[Row, R, *]] (macro bug)"))
+    macros.DirectCompiler.pipeline[F, A](topBody, m,
+      eager = true,
+      parallel = b.asTerm.tpe <:< TypeRepr.of[Binds.Parallel.type],
+      stage0 = Some(st.asTerm))
+
   /** a term with its inlining and ascription wrappers taken off */
   private[okay] def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
     import q.reflect.*

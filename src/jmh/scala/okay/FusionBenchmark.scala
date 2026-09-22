@@ -106,7 +106,10 @@ class FusionBenchmark {
    * flatMap reduces), the operation is still dispatched at run time by
    * `split` inside `h` — what a `direct` block emitted over Control
    * with an opaque handler would be */
-  inline def block10[C[_, _, _]](h: Interpr[SW, C, R], C: Control[C])(i: Int, acc: Int)
+  // `inline h`: a caller that passes a runtime value passes its name
+  // through unchanged; a caller that passes the inline interpreter
+  // itself gets the lambda literal at every operation, beta-reduced
+  inline def block10[C[_, _, _]](inline h: Interpr[SW, C, R], C: Control[C])(i: Int, acc: Int)
                                 (inline next: Int => C[Int, R, R]): C[Int, R, R] =
     C.flatMap(h(State.Get()))(a =>
     C.flatMap(h(State.Set(i)))(_ =>
@@ -150,6 +153,64 @@ class FusionBenchmark {
       C.flatMap(set(i + 2))(_ =>
       C.flatMap(say)(_ =>
       C.flatMap(get)(d => blockFuncStaged(i + 1, acc + a + b + c + d)))))))))))
+
+  /** direct-staged's decisive lane: the SAME block10 as blockFunc, but
+   * the handler is the inline interpreter applied at each operation —
+   * `split` and the constructor match run on a `State.Get()` built two
+   * lines up, in one method body. What a `direct` block over a Func
+   * carrier with an INLINE handler given would compile to, with no
+   * change to how operations are spelled. The question is whether C2
+   * folds the test and the match on a fresh, non-escaping operation:
+   * at `blockFuncStagedR` it does the whole job; at `blockFuncR` the
+   * spelling of operations must change. */
+  def blockFuncInlineH(i: Int, acc: Int): Func[Int, R, R] =
+    if i >= Iters then Control[Func].pure(acc)
+    else block10[Func](Fused.stateWriterInterp[Func, Int, String, Int], Control[Func])(i, acc)(
+      acc2 => blockFuncInlineH(i + 1, acc2))
+
+  @Benchmark
+  def blockFuncInlineHR(): Int =
+    val C = Control[Func]
+    (C./(blockFuncInlineH(0, 0))(a => st => (st, a)))((0, Vector.empty))._2
+
+  /** the row's staged interpreter as an INLINE MATCH on the operation:
+   * the scrutinee at every use is a constructor application written
+   * two lines up (`State.Get()`), so the compiler — not the JIT —
+   * picks the arm; no `split`, no test, no match survives to
+   * bytecode if the reduction happens. This is the shape a `direct`
+   * block could target with the operations spelled exactly as today. */
+  inline def stageSW[X](inline e: SW[X]): Func[X, R, R] =
+    val C = Control[Func]
+    inline e match
+      case State.Get() => C.shift[X, R, R](k => st => k(st._1)(st))
+      case State.Set(s2) => C.shift[X, R, R](k => st => k(s2)((s2, st._2)))
+      case Writer.Say(v) => C.shift[X, R, R](k => st => k(())((st._1, st._2 :+ v)))
+
+  // `stageSW` applied to the operation TERM at each mark — what the
+  // macro would emit. Not through block10's `h`: a polymorphic lambda
+  // `[X] => e => stageSW(e)` is not beta-reduced before the inline
+  // match is tried, and the match then fails to reduce on `e`
+  // ("cannot reduce inline match with scrutinee: e") — the compiler
+  // says so, which is the useful part
+  def blockFuncInlineMatch(i: Int, acc: Int): Func[Int, R, R] =
+    if i >= Iters then Control[Func].pure(acc)
+    else
+      val C = Control[Func]
+      C.flatMap(stageSW(State.Get()))(a =>
+      C.flatMap(stageSW(State.Set(i)))(_ =>
+      C.flatMap(stageSW(Writer.Say("w")))(_ =>
+      C.flatMap(stageSW(State.Get()))(b =>
+      C.flatMap(stageSW(State.Set(i + 1)))(_ =>
+      C.flatMap(stageSW(Writer.Say("w")))(_ =>
+      C.flatMap(stageSW(State.Get()))(c =>
+      C.flatMap(stageSW(State.Set(i + 2)))(_ =>
+      C.flatMap(stageSW(Writer.Say("w")))(_ =>
+      C.flatMap(stageSW(State.Get()))(d => blockFuncInlineMatch(i + 1, acc + a + b + c + d)))))))))))
+
+  @Benchmark
+  def blockFuncInlineMatchR(): Int =
+    val C = Control[Func]
+    (C./(blockFuncInlineMatch(0, 0))(a => st => (st, a)))((0, Vector.empty))._2
 
   /** the tree, prebuilt: the walk alone (the fused fixture's floor on this shape) */
   @Benchmark

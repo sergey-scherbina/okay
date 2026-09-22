@@ -35,24 +35,48 @@ private[okay] object DirectCompiler:
   def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
                                      M0: Expr[Monad[F]],
                                      eager: Boolean,
-                                     parallel: Boolean): Expr[F[A]] =
+                                     parallel: Boolean,
+                                     stage0: Option[q.reflect.Term] = None): Expr[F[A]] =
     import q.reflect.*
     // ONE instance for the whole block: the summoned Monad
     // expression is hoisted to a val, so every emitted bind shares
     // it — the given for Free is a parameterized class the splice
     // would otherwise re-evaluate per bind. Built by hand (Symbol/
     // Block, not a quote) so the term stays in THIS Quotes context.
+    // For a STAGED block, at the summoned instance's PRECISE type, not
+    // `Monad[F]`: the emission then selects `flatMap`/`pure`/`fmap` on
+    // this val by name (DirectEmit) and names the given's `override
+    // inline` members, which the inliner reduces — measured as the
+    // difference between 152 568 and 84 568 B/op on the same block.
+    // Every other block keeps `Monad[F]` and the quote road, byte for
+    // byte what it emitted before: tried on all carriers, the precise
+    // type broke two — `ctxMonad[E]`'s declared `E ?=> A` result is a
+    // type the typer auto-applies ("bad adapt", TestDirectTryCtx), and
+    // a Free block that REBUILDS a lambda (programLambda, a nested
+    // block under `Delim.shift`) left the inlined binds' proxies with
+    // an owner LambdaLift could not find (TestBookInTheSystem). The
+    // Free gain is a lane of its own, with those two as its first laws
     val mmSym = Symbol.newVal(Symbol.spliceOwner, "mm$direct",
-      TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
+      if stage0.isDefined then M0.asTerm.tpe.widen else TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
     val mmVal = ValDef(mmSym, Some(M0.asTerm.changeOwner(mmSym)))
-    val compiler = new DirectCompiler[F](q, Type.of[F], Ref(mmSym).asExprOf[Monad[F]], eager, parallel)
+    // the Stage object the same way (direct-staged): an inline
+    // argument is substituted at every use, and a `new` there would
+    // be one instance per operation; the val keeps the object's own
+    // type, which is what its inline `stage` resolves on
+    val stVal = stage0.map { st =>
+      val sym = Symbol.newVal(Symbol.spliceOwner, "st$direct", st.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)
+      ValDef(sym, Some(st.changeOwner(sym)))
+    }
+    val compiler = new DirectCompiler[F](q, Type.of[F], Ref(mmSym).asExprOf[Monad[F]], eager, parallel,
+      stVal.map(v => Ref(v.symbol)))
     val body = compiler.compileAll[A](topLevelBody.asExpr)
-    Block(List(mmVal), body.asTerm).asExprOf[F[A]]
+    Block(List(mmVal) ++ stVal, body.asTerm).asExprOf[F[A]]
 
 private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
                                                val M: Expr[Monad[F]],
                                                val eager: Boolean,
-                                               val parallel: Boolean)
+                                               val parallel: Boolean,
+                                               val stage: Option[q.reflect.Term] = None)
   extends DirectDefer[F] with DirectLoops[F] with DirectParallel[F]:
   import q.reflect.*
 
@@ -72,6 +96,15 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
         return compile(Block(bindings, inner))
       case _ => ()
     asMark(t) match
+      // a staged block's LEAF program (`State.get[Int]`): staged from
+      // the term as written, BEFORE compile flattens its inlining
+      // wrappers — the inliner's proxy for the operation (`val a$proxy
+      // = Get(); Inject(a$proxy)`) would otherwise become a statement
+      // of the block, and the op an identifier no inline match can
+      // reduce on. A leaf with marks in its argument takes the road
+      // below, and is then refused by markTerm's staged case
+      case Some(m) if stage.isDefined && !hasMark(m) && injectedOp(m).isDefined =>
+        Out.Eff(markTerm(m, t.tpe, t.pos), t.tpe.widen)
       case Some(m) =>
         compile(m) match
           case Out.Pure(pm) => Out.Eff(markTerm(pm, t.tpe, t.pos), t.tpe.widen)
@@ -246,7 +279,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
       tpe2(bT) { [T] => (tT: Type[T]) ?=>
         val bodyT = joinUnions(b.tpe.widen)
         val subF: Term = tpe2(bodyT) { [B] => (tB: Type[B]) ?=>
-          val raw = DirectCompiler.pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M, eager, parallel)
+          val raw = DirectCompiler.pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M, eager, parallel, stage)
           // a body ending in throw types Nothing <: T: upcast
           // through the monad (F need not be covariant)
           if bodyT =:= TypeRepr.of[T] then raw.asTerm
@@ -264,7 +297,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
           c.guard.foreach(g => if hasMark(g) then refuse(g, "in a catch guard"))
           if hasMark(c.rhs) then
             tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (tH: Type[H]) ?=>
-              val hp = DirectCompiler.pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M, eager, parallel)
+              val hp = DirectCompiler.pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M, eager, parallel, stage)
               if TypeRepr.of[H] =:= TypeRepr.of[T] then hp.asTerm
               else
                 val ev = upcast[H, T]
@@ -471,6 +504,20 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
         nestedProgramDef(dd, rest, expr) { (defn, rest2, expr2) =>
           wrapStat(defn, rest2, expr2)
         }.get
+      // `val _ = m.!?` desugars to `m.!? match { case _ => () }` — a
+      // DISCARD. The general road below bound the mark, matched its
+      // value into a `pure(())`, and bound THAT again: a match lambda,
+      // a pure closure and a second flatMap per statement. Bind the
+      // mark straight into the rest instead. Found on the staged
+      // carrier (direct-staged), where those five objects were most of
+      // the gap to the hand-written program; a Free block pays the
+      // same three nodes fewer
+      case (m @ Match(scrut, List(CaseDef(Wildcard(), None, body)))) :: rest
+        if hasMark(scrut) && (stripped(body) match { case Literal(UnitConstant()) => true; case _ => false }) =>
+        compile(scrut) match
+          case Out.Eff(c, e) =>
+            Out.Eff(bind(c, e, expr.tpe)(_ => asF(compileBlock(rest, expr))), expr.tpe.widen)
+          case Out.Pure(p) => wrapStat(Match.copy(m)(p, m.cases), rest, expr)
       // an `import` rides along, see stmtsTail
       case (im: Import) :: rest => wrapStat(im, rest, expr)
       case (dd: Definition) :: rest =>

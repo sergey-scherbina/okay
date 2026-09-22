@@ -23,6 +23,20 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       case AppliedType(f, List(row, _)) if f.typeSymbol == freeClass => Some(row)
       case _ => None
 
+  lazy val stagedType: Symbol = Symbol.requiredModule("okay.Staged").typeMember("Staged")
+
+  /** the block's row when its F is `Staged[Row, R, *]` (specs/direct-
+   * staged.md) — opaque, so it does not dealias to the function it is.
+   * Kept apart from `rowOf`: the defer pre-pass and the Once cells are
+   * Free's, and a staged block has neither */
+  lazy val stagedRow: Option[TypeRepr] =
+    TypeRepr.of[F].appliedTo(TypeRepr.of[scala.Unit]).dealias match
+      case AppliedType(f, List(row, _, _)) if f.typeSymbol == stagedType => Some(row)
+      case _ => None
+
+  /** the row an operation must belong to, whichever carrier holds it */
+  lazy val anyRow: Option[TypeRepr] = rowOf.orElse(stagedRow)
+
   /** the block's row names Once — the by-need cells have a handler */
   lazy val onceInRow: Boolean =
     rowOf.exists(r => TypeRepr.of[Once[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
@@ -34,6 +48,43 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   def injectTerm(op: Term, elem: TypeRepr, row: TypeRepr): Term =
     Apply(TypeApply(Ref(injectApply), List(Inferred(row), Inferred(elem.widen))), List(op))
 
+  /** the op lifted into THIS block's carrier: `Free.Inject(op)` for a
+   * program row, `stage.stage[elem](op)` for a staged one — the
+   * inline match inside `stage` sees the operation term and picks
+   * the arm at compile time */
+  def liftOp(op: Term, elem: TypeRepr, row: TypeRepr): Term = stage match
+    // `stripped`: an ascribed operation (`State.Get(): State[Int, Int]`)
+    // reaches the inline match as the constructor, not the ascription
+    case Some(st) => Apply(TypeApply(Select.unique(st, "stage"), List(Inferred(elem.widen))), List(stripped(op)))
+    case None => injectTerm(op, elem, row)
+
+  /**
+   * `Free.Inject(op)` under its inlining wrappers — what `State.get`,
+   * `Writer.tell`, `Reader.ask` ARE after inlining (`effect(Get())`).
+   * The wrappers' bindings (an argument the inliner proxied to a val)
+   * come back with the op, so the caller can keep them in front of it.
+   */
+  def injectedOp(t: Term): Option[(List[Statement], Term)] =
+    def walk(t: Term): Option[(List[Statement], Term)] = t match
+      case Inlined(_, bs, inner) => walk(inner).map((bs2, op) => (bs ++ bs2, op))
+      case Typed(inner, _) => walk(inner)
+      case Block(bs, inner) => walk(inner).map((bs2, op) => (bs ++ bs2, op))
+      case Apply(TypeApply(f, _), List(op)) if f.symbol == injectApply => Some((Nil, op))
+      case Apply(f, List(op)) if f.symbol == injectApply => Some((Nil, op))
+      case _ => None
+    /** the inliner proxies a by-value argument to a val (`val a$proxy
+     * = Get(); Inject(a$proxy)`), and an inline match cannot reduce on
+     * a name: put the constructor back where the op stands. The proxy
+     * has exactly one use — the op — so its binding goes with it. */
+    def resolve(bs: List[Statement], op: Term): (List[Statement], Term) = stripped(op) match
+      // the name arrives as `Inlined(None, Nil, Ident(a$proxy))` — stripped first
+      case id: Ident =>
+        bs.collectFirst { case v: ValDef if v.symbol == id.symbol && v.rhs.isDefined => v } match
+          case Some(v) => resolve(bs.filterNot(_ eq v), v.rhs.get)
+          case None => (bs, op)
+      case _ => (bs, op)
+    walk(t).map(resolve)
+
   /**
    * ONE mark, dispatched by type: an F[elem] of this block IS
    * already the term to bind; an operation of this block's row is
@@ -43,9 +94,22 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   def markTerm(m: Term, elem: TypeRepr, at: Position): Term =
     val fT = TypeRepr.of[F].appliedTo(elem.widen)
     if m.tpe <:< fT then m
-    else rowOf match
+    else anyRow match
       case Some(row) if m.tpe <:< row.appliedTo(elem.widen) =>
-        injectTerm(m, elem, row)
+        liftOp(m, elem, row)
+      // a staged block: a LEAF program of the row (`State.get[S]`) is
+      // its one operation, staged; anything compound is refused — a
+      // staged block's cost is one arm per mark, no interpreter inside
+      case Some(row) if stage.isDefined && m.tpe.widen.dealias.derivesFrom(freeClass) =>
+        injectedOp(m) match
+          case Some((bs, op)) if op.tpe <:< row.appliedTo(elem.widen) =>
+            val lifted = liftOp(op, elem, row)
+            if bs.isEmpty then lifted else Block(bs, lifted)
+          case _ =>
+            report.errorAndAbort(
+              s"a staged block stages OPERATIONS: the marked value ${m.tpe.show} is a program of the " +
+                "row, not one operation of it — perform its operations in the block instead " +
+                "(`State.modify(f)` is `val s = State.get.!?; State.set(f(s)).!?`)", at)
       // a program of a NARROWER row: `!Reader.ask[Db]` inside a block at
       // `Writer % String + Reader % Db + State % Long` (direct-narrow-row,
       // 2026-09-16). The row's own combinators — `State.modify`,
@@ -60,7 +124,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       case _ =>
         report.errorAndAbort(
           s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
-            rowOf.fold("")(r => s" nor an operation of its row ${r.show}"), at)
+            anyRow.fold("")(r => s" nor an operation of its row ${r.show}"), at)
 
   /** `m.at[row]`, when m is a program of a row this block's row CONTAINS */
   def narrowRow(m: Term, elem: TypeRepr, row: TypeRepr, at: Position): Term =
@@ -128,5 +192,5 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       else Nil
     (fromFree ++ fromArgs ++ fromFBase).find { t =>
       tpe0 <:< TypeRepr.of[F].appliedTo(t.widen) ||
-        rowOf.exists(r => tpe0 <:< r.appliedTo(t.widen))
+        anyRow.exists(r => tpe0 <:< r.appliedTo(t.widen))
     }

@@ -36,6 +36,10 @@ private[okay] trait DirectPhase[F[_]]:
   def eager: Boolean
   /** `import Direct.parallelBinds.given` — spawn independent binds together */
   def parallel: Boolean
+  /** the block's `Stage` object, hoisted to a val, when the block is a
+   * staged one (specs/direct-staged.md): every operation under a mark
+   * is emitted as `stage.stage(op)` instead of `Free.Inject(op)` */
+  def stage: Option[q.reflect.Term]
 
   /** the recursion knot — the core's, implemented in DirectCompiler */
   def compile(t: Term): Out
