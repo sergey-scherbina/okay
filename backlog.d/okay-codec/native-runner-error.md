@@ -95,3 +95,19 @@
       box was carrying sibling builds as usual. Nothing here changes
       the settled cause, and the third shape is filed so whoever
       teaches the script has the text.
+      2026-09-22, okayOpticsNative, THIRTEENTH occurrence and the
+      FIRST on okay-optics — a lane that touched no Native source at
+      all (core-modules split fixes: build.sbt dependency wiring,
+      three test files moved between okay-async and okay-platform,
+      docs). Same third shape as the twelfth: `RPCCore$ClosedException`
+      wrapping `NativeRunnerRPC$RunTerminatedException`, but this one
+      names its own cause —
+      `java.net.SocketTimeoutException: Accept timed out` in
+      `ComRunner.awaitConnection`, i.e. the 40s the Native runner
+      waits for the forked binary to connect back ran out. Ran plain
+      `sbt test`, not `scripts/gate.sh`, so no load sample was
+      captured; GREEN on `sbt okayOpticsNative/test` alone immediately
+      after, 112/112, in 1s. Nothing here changes the settled cause —
+      the runner, not the suite — and it is the first sighting that
+      pins WHICH wait times out (the accept, not some downstream RPC
+      call), which the twelfth occurrence's account did not have.
