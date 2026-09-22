@@ -373,6 +373,41 @@ object Cont:
                        (f: (A => a.R) => a.R): F[A] =
       a(okay.shift[A, a.R, a.R](f))
 
+  /**
+   * Monadic reflection (Filinski, "Representing Monads", POPL 1994):
+   * with delimited control, ANY monad runs in direct style — `reflect`
+   * delivers the A of an F[A] as a plain value, `reify` delimits a
+   * block back into F. Answer-type modification types the construction
+   * precisely: a reflected F[A] is Cont[A, F[B], F[B]] — "A now, F[B]
+   * eventually" — and multi-shot comes for free, because the captured
+   * continuation is a pure closure that F's own flatMap may call once
+   * (Option), many times (List, Logic), or not at all (None is an
+   * abort).
+   *
+   * The names are Filinski's, and they live in a NESTED object for the
+   * same reason `direct` above does: the package-level `reflect`/
+   * `reify` (Effects.scala) already name the encoding round-trip — a
+   * different construction that happens to deserve the same words —
+   * and `Direct.scala` already has its own `.reflect`/`.!?` marks over
+   * a different receiver. Nesting under `Cont`, not flattening into
+   * it, is what keeps all three apart: each needs its own import.
+   */
+  object Monadic:
+
+    extension [F[_] : Monad, A](m: F[A])
+      /** μ: the monadic value as a direct value — one definition, both
+       * spellings: `m.reflect` and `reflect(m)` (an extension is a
+       * method; the prefix form is its desugared call) */
+      inline def reflect[B]: Cont[A, F[B], F[B]] =
+        shift(k => m.flatMap(k))
+      /** the symbolic μ — the collision-free survivor (see
+       * specs/direct-macro.md Decisions for the three-strikes story) */
+      inline def !?[B]: Cont[A, F[B], F[B]] = reflect[B]
+
+    /** the delimiter: a direct-style block back into its monad */
+    inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
+      p / (a => M.pure(a))
+
 
 /** the stack-safe data instance: the default carrier */
 given Control[Cont] with

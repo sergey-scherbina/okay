@@ -1,6 +1,6 @@
 package okay
 
-import okay.Monadic.*
+import okay.Cont.Monadic.*
 
 /** Filinski's monadic reflection over Cont: specs/monadic-reflection.md */
 class TestMonadic extends munit.FunSuite {
