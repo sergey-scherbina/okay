@@ -406,6 +406,12 @@ val item = Lens[Box[String], Box[Int], String, Int](_.item, (b, i) => Box(i, b.t
 TypedZipper.Poly.of[Box[String], Box[Int]](Box("hello", "t")).down(item).modify(_.length)   // Box(5, "t")
 ```
 
+And the one sideways move the types allow: `at(i)` on a `Vector`
+focus is an element frame whose siblings share its type, so
+`c.down(lines).at(0).flatMap(_.right)` is typed — where the field
+beside `customer` is not another `Customer`, and no `right` exists
+across fields.
+
 The two cursors divide the work the way the entry that recorded them
 predicted: the plate zipper walks "the children" of one node type and
 is what an editor loops over; the typed zipper cannot loop — every
