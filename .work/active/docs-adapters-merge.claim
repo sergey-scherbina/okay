@@ -1,6 +1,0 @@
-feature/docs-adapters-merge 2026-09-22T22:36:01Z
-agent: claude-code
-heartbeat: 2026-09-22T22:36:01Z
-status: in-progress
-done-so-far: survey
-next: move okay-docs-{mongo,dynamo,cassandra} into okay-docs (jvm-only sources)
