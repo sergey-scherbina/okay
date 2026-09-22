@@ -532,8 +532,9 @@ same material with the measurements attached.
   `Fold`: a `Fold` consumer walks to the end and would lose the stop
   silently. Consumers: `Stream.foldUntil`, `Chunks.foldUntil`,
   `Writer.foldUntil` (answers `R` alone — an early stop never sees the
-  program's answer), `Source.runFoldUntil`, and `.foldUntil` on a pure
-  writer program. Two laws consumers rely on, pinned by
+  program's answer), `Source.runFoldUntil`, `Producer.foldUntil` (the
+  `Produce + G` road, same early `pure`), and `.foldUntil(using fo)` on
+  a writer program — pure, or effectful with the `Handler[G]` in scope. Two laws consumers rely on, pinned by
   `TestFoldUntilStreams`: `take(0)` pulls nothing; the continuation
   after the satisfying tell is never called.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the

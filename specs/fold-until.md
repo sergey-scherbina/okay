@@ -121,12 +121,12 @@ Stage 1:
 - [x] `Writer.foldUntil` is tail-recursive across tells: a source of
       100 000 elements with the stop never firing folds on the
       default stack.
-- [ ] `Producer.foldUntil` agrees with `Producer.fold` over the
+- [x] `Producer.foldUntil` agrees with `Producer.fold` over the
       prefix on the pure road, performs a forwarded `G` operation
       before the stop and not one after it, pulls nothing for
       `take(0)`, and folds 100 000 productions on the default stack
       (producer-fold-until).
-- [ ] the effectful writer program's `.foldUntil(using fo)` is
+- [x] the effectful writer program's `.foldUntil(using fo)` is
       `Writer.foldUntil` run by the `Handler[G]` in scope, so a
       `Source` under a `Handler[Async]` folds with one `using` like
       the pure one (producer-fold-until).
@@ -239,6 +239,19 @@ instance, the reason `uncons`/`toLazyList` are first-order overloads
 on the shape), and `Writer.foldUntil` takes two `using`s of which the
 first is evidence a tutorial reader should not see — so the pure
 writer program gained `.foldUntil(using fo)` beside those overloads.
+
+producer-fold-until (2026-09-22): `Producer.foldUntil` (Generate.scala,
+`Producer.fold`'s split walk with the early `pure`; `TestFoldUntil`
++3: agreement on eight instances, the G op after the satisfying
+production not performed, 100 000 productions on the default stack)
+and the effectful writer program's `.foldUntil(using fo)`
+(`TestFoldUntilStreams` +1). The latter needed a SEPARATE extension
+block: an explicit `(using fo)` at a call site is matched against the
+extension's own using clause when it has one, so on the block that
+carries `(using TypeableK[G], Handler[G])` the call failed to type —
+and `TypeableK[G]` was unused by the new method besides (E198). The
+block with no extension-level clause and `Handler[G]` in the method's
+own clause after the fold is the shape that reads as the pure one.
 
 Stage 2 (2026-09-22, loop-on-bang): `!.loop` in `object !`,
 `TestBangLoop` (3): 1 000 000 iterations at the Pure row on the

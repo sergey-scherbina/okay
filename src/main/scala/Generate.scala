@@ -178,6 +178,31 @@ object Producer {
     loop(z)(p)
 
   /**
+   * `fold` with a stop (specs/fold-until.md): the same split walk with
+   * an early `pure(end(s))` the moment the state is done — the
+   * `Bind(Inject(e), k)` arm does not call `k` then, so nothing past
+   * the satisfying production is built and a `G` operation that would
+   * have followed it is never performed. Answers `R` alone: a fold that
+   * stopped early never saw the producer's answer (`Writer.foldUntil`
+   * makes the same choice for the same reason).
+   */
+  def foldUntil[W, S, R, A, G[+_] : TypeableK](p: A ! Produce + G)(using K: FoldUntil[W, S, R]): R ! G =
+    import !.*
+    import scala.annotation.tailrec
+    def again(s: S)(x: A ! Produce + G): R ! G = loop(s)(x)
+    @tailrec def loop(s: S)(x: A ! Produce + G): R ! G =
+      if K.done(s) then pure(K.end(s))
+      else (x.resume: @unchecked) match
+        case Free.Pure(_) => pure(K.end(s))
+        case Inject(e) => split[G, Produce](e)
+          (g => Inject(g).map(_ => K.end(s)): R ! G)
+          (w => pure(K.end(K.add(s, produced[W](w)))))
+        case Bind(Inject(e), k) => split[G, Produce](e)
+          (g => Inject(g).flatMap(x => again(s)(k(x))))
+          (w => loop(K.add(s, produced[W](w)))(k(w)))
+    loop(K.init)(p)
+
+  /**
    * A producer of CHUNKS as one Vector of their elements — the drain
    * that six modules had each written by hand (producer-drains),
    * every one summoning the same `Stream` instance and spelling the

@@ -52,3 +52,44 @@ class TestFoldUntil extends munit.FunSuite:
     assertEquals(Stream.foldUntil(ll)(using FoldUntil.take[Int](0)), Vector.empty[Int])
     assertEquals(seen, 0)
   }
+
+  // ---------------------------------------------------- Producer.foldUntil
+
+  /** 1, tell "after 1", 2, tell "after 2", ... — a G operation after every production */
+  type P = Produce + Writer % String
+  private def counted(n: Int): Int ! P =
+    def go(i: Int): Int ! P =
+      if i > n then pure(-1)
+      else effect[P, Int](i).flatMap(_ => effect[P, Unit](Writer(s"after $i"))).flatMap(_ => go(i + 1))
+    go(1)
+
+  private def runP[R](p: R ! Writer % String): (Seq[String], R) = !.run(Writer.run(p))
+
+  test("Producer.foldUntil agrees with Producer.fold over the prefix, on every instance") {
+    val xs = (1 to 20).toList
+    def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit =
+      val expected = Stream.foldUntil(xs)(using fo)
+      assertEquals(runP(Producer.foldUntil[Int, S, X, Int, Writer % String](counted(20))(using summon, fo))._2, expected, name)
+    check(FoldUntil.take(3), "take(3)")
+    check(FoldUntil.take(0), "take(0)")
+    check(FoldUntil.take(100), "take(100)")
+    check(FoldUntil.find[Int](_ > 7), "find")
+    check(FoldUntil.find[Int](_ > 70), "find-none")
+    check(FoldUntil.exists[Int](_ == 11), "exists")
+    check(FoldUntil.forall[Int](_ < 5), "forall")
+    check(FoldUntil.headOption, "headOption")
+  }
+
+  test("Producer.foldUntil performs the G op before the stop and not the one after it") {
+    val (told, got) = runP(Producer.foldUntil[Int, Vector[Int], Vector[Int], Int, Writer % String](counted(1000))(using summon, FoldUntil.take[Int](3)))
+    assertEquals(got, Vector(1, 2, 3))
+    assertEquals(told, Seq("after 1", "after 2"))
+    val (told0, got0) = runP(Producer.foldUntil[Int, Vector[Int], Vector[Int], Int, Writer % String](counted(1000))(using summon, FoldUntil.take[Int](0)))
+    assertEquals(got0, Vector.empty[Int])
+    assertEquals(told0, Seq.empty[String])
+  }
+
+  test("Producer.foldUntil is tail-recursive across productions: 100 000, the stop never firing") {
+    val (_, got) = runP(Producer.foldUntil[Int, Boolean, Boolean, Int, Writer % String](counted(100_000))(using summon, FoldUntil.exists[Int](_ < 0)))
+    assertEquals(got, false)
+  }

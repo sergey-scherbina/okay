@@ -72,6 +72,13 @@ class TestFoldUntilStreams extends munit.FunSuite:
     assertEquals(performed, 5)
   }
 
+  test("the effectful writer program's .foldUntil: one using, the Handler[Async] in scope runs the rest") {
+    var performed = 0
+    assertEquals(counted(1000, () => performed += 1).foldUntil(using FoldUntil.take[Int](3)), Vector(1, 2, 3))
+    assertEquals(performed, 2)
+    assertEquals(counted(5, () => performed += 1).foldUntil(using FoldUntil.find[Int](_ > 9)), None)
+  }
+
   test("Writer.foldUntil is tail-recursive across tells: 100 000 elements, the stop never firing") {
     val n = 100_000
     assertEquals(Source.range(0, n).runFoldUntil(using FoldUntil.exists[Long](_ < 0)).runWith, false)

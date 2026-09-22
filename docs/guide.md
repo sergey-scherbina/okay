@@ -371,7 +371,8 @@ performed — and `take(0)` pulls nothing at all. `find`, `headOption`,
 usually has in hand, kept as an adapter rather than the primitive so
 that no consumer pays a `Left` per element. One instance runs on every
 carrier: `Stream.foldUntil` (any `Stream`), `program.foldUntil` (a
-pure writer program), `Chunks.foldUntil`, `Writer.foldUntil` and
+writer program — pure, or effectful with its `Handler` in scope),
+`Chunks.foldUntil`, and `Writer.foldUntil`, `Producer.foldUntil`,
 `Source.runFoldUntil` (the effectful ones, answering `R ! F`):
 
 ```scala

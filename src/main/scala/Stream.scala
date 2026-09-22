@@ -270,3 +270,18 @@ extension [W, A, G[+_]](a: A ! Writer % W + G)(using TypeableK[G], Handler[G])
 
   /** unfold the told values into the final coalgebra; each pull runs its G */
   def toLazyList: LazyList[W] = LazyList.unfold(a)(Writer.uncons(_).runWith.toOption)
+
+/**
+ * The effectful program's stopping fold, in a block of its own: an
+ * explicit `(using fo)` at the call site is matched against the
+ * EXTENSION's using clause when the extension has one, so the block
+ * above cannot carry it — here the `Handler[G]` sits in the method's
+ * own clause, after the fold, and `a.foldUntil(using fo)` reads as the
+ * pure program's does.
+ */
+extension [W, A, G[+_]](a: A ! Writer % W + G)
+  /** a fold that stops (specs/fold-until.md): `Writer.foldUntil`, its
+   * forwarded G run by the Handler in scope — the effectful twin of
+   * the pure program's `foldUntil` above, one `using` for the caller */
+  def foldUntil[S, R](using fo: FoldUntil[W, S, R])(using Handler[G]): R =
+    Writer.foldUntil[W, S, A, R, G](a)(using summon, fo).runWith
