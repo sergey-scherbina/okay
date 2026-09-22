@@ -311,13 +311,13 @@ which is the only place the answer exists.
   allowed, keys, `Instances`, an abstract member, `Pure`
 
 - `src/main/scala/Instances.scala` — the run-time handle: `at`,
-  `route`, `handler`, `only`, `exhausted`
+  `route`, `handler`, `only`, `exhausted`; and, in the same file
+  (its sibling corner of the table above), `Tag`: the case class, the
+  key-testing `Effect` instance, `one`, `tag`, `untag`, `handler`
 - `src/test/scala/TestInstances.scala` — two instances of a signature
   that carries nothing, instances made IN A LOOP, an already-written
   program routed to one, `only` handing one instance to `State.handle`
   at its own state, and two signatures as an ordinary row
-- `src/main/scala/Tag.scala` — 84 lines: the case class, the
-  key-testing `Effect` instance, `one`, `tag`, `untag`, `handler`
 - `src/main/scala/Refs.scala` — the cells, the heap, the one cast and
   why it is sound
 - `src/test/scala/TestTag.scala` — one function at two states, a key

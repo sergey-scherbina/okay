@@ -107,7 +107,7 @@ Every claim below was compiled, not assumed:
   VALUES (build once, reuse across tests); composition is
   heterogeneous (the type grows with each `and`, no homogeneous
   fold) but uncapped — 25 layers tested past ContextFunction22.
-  Core: Providing.scala (`providing[A](a)`, `and`, `apply`),
+  Core: Provide.scala (`providing[A](a)`, `and`, `apply`),
   suite TestProviding (5 tests, incl. the DI compile-error claim).
 - **The consumer is one line too** (E17, 2026-09-01, SHIPPED as
   ctx-wire): `inline def wire[A]: A ?=> A = summon[A]` — Reader's
@@ -143,7 +143,7 @@ Every claim below was compiled, not assumed:
   needs no instance — but the GENERIC combinators written once over
   any F (traverse, sequence, replicateA) DO, and juxtaposition
   cannot replace them. Core now carries `given ctxMonad[E]:
-  Monad[[X] =>> E ?=> X]` (Providing.scala): pure is the value,
+  Monad[[X] =>> E ?=> X]` (Provide.scala): pure is the value,
   flatMap is literally `f(fa)`. `sequence(Seq[Env ?=> Int])` works
   with F INFERRED (higher-kinded unification finds the type
   lambda); traverse and replicateA take it explicitly. Method

@@ -4,6 +4,24 @@ import okay.!.*
 import scala.annotation.tailrec
 
 /**
+ * How a forwarded operation reports its failure to the scope that
+ * forwarded it. Concrete failure semantics belong to the effect that
+ * can fail — `okay-async` supplies the `Async` implementation — and
+ * `Resource.run` below is its one consumer in the core: when a
+ * forwarded operation fails out past the scope, its finalizers must
+ * still run, which is what `guard` hooks into.
+ */
+trait Failing[F[+_]]:
+  def guard[X](e: F[X], onFailure: () => Unit): F[X]
+
+object Failing:
+  /** Pure has no failure channel to decorate. `okay.Pure` because this
+   * file's own `import okay.!.*` shadows it with the Free.Pure case
+   * (see Effects.scala's note on the same trap). */
+  given pure: Failing[okay.Pure] with
+    def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e
+
+/**
  * The resource effect, tied to no other effect: acquire inside a
  * scope, and the release is the SCOPE's obligation — it runs when the
  * scope ends, in reverse acquisition order, whatever else the program

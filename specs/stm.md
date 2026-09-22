@@ -307,7 +307,7 @@ Behavior:
   `eq` needed. TRef provides its Keyed in its companion.
   Then (same-typeclass, 2026-09-02, the operator's request) the
   proof became a typeclass of its own, `okay.Same[K[_]]` in
-  Same.scala — `same(a: K[A], b: K[B]): Option[A =:= B]`,
+  TRef.scala — `same(a: K[A], b: K[B]): Option[A =:= B]`,
   `Same.byIdentity` for reference tokens (the one witness cast in
   the stack), `a.sameAs(b)` — and TMap uses it. Scala 3's own
   equality, `CanEqual[L, R]` under `strictEquality`, is the

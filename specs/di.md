@@ -75,7 +75,7 @@ pool — stays an explicit argument, as before.
 
 ## Behavior
 
-Stage 0 (core, `Providing.scala`, TestModule):
+Stage 0 (core, `Provide.scala`, TestModule):
 - [x] modules acquire left to right and release in reverse at the end
       of the scope, through `Resource.run`
 - [x] a module's acquisition reads the module before it (`wire[Db]`

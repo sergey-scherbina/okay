@@ -111,3 +111,12 @@
       the runner, not the suite — and it is the first sighting that
       pins WHICH wait times out (the accept, not some downstream RPC
       call), which the twelfth occurrence's account did not have.
+      2026-09-22, okayActorNative AND okayOpticsNative in ONE gate,
+      GREEN on the rerun of both alone. FOURTEENTH occurrence, second
+      PAIR (the first was the sixth, 2026-09-17), on a lane that
+      touched no Native source at all (Cont/Effects file reorganising:
+      Monadic folded into Cont, TypeableK/Effect/DirectSupport split
+      out of Effects.scala, Failing merged into Resource.scala, Provide
+      merged into Provide.scala). Nothing here changes the settled
+      cause; recorded per the ledger's own point — only the fitting
+      readings would make it worth nothing.

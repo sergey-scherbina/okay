@@ -31,7 +31,7 @@ continuation.
   machine owning the prompt stack so a capture may cross intervening
   delimiters, and a prompt carrying its own answer type so several
   answer types share one row. Foreign operations suspend the machine.
-- **Handlers as continuations** (Effects.scala): `F !> S = F ==> ([X]
+- **Handlers as continuations** (Handler.scala): `F !> S = F ==> ([X]
   =>> X /> S)`. Three shapes on one line — comonadic (`runWith`, each
   continuation used exactly once and at once: `runFree`), translating
   (`translate`, answers with a program), Cont-valued (`handle`: abort

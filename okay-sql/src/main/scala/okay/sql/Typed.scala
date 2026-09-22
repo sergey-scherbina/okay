@@ -243,6 +243,12 @@ object Typed:
           case Right(sh) => encode(sh, x)
           case Left(e) => throw IllegalArgumentException(s"params: field $name: $e")))
 
+  /** one column's own encoding, by its Schema — the primitive `Row`
+   * (this file's typed-row builder) walks a `Col[A]`/`A` pair at a
+   * time with */
+  private[sql] def encodeOne[A](s: Schema[A], v: A): Either[String, SqlValue] =
+    shapeOf(s).map(encode(_, v))
+
   /** parameter encoding by Schema, positionally (used by Params) */
   private[sql] def encodeParams[P](s: Schema[P], p: P): Vector[SqlValue] = shapeOf(s) match
     case Right(row: Shape.Row[?]) =>

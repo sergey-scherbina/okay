@@ -978,7 +978,7 @@ The pair is `provide` (core: expression-scoped installation,
 nearest-wins nesting) and DOORS — and together they are the
 dependency-injection story: compile-time resolution, given-scopes
 as the object graph, zero framework. The composable form
-(`providing[A](a) and providing[B](b)`, core Providing.scala)
+(`providing[A](a) and providing[B](b)`, core Provide.scala)
 builds installers as reusable values with no nesting and no arity
 cap; the right operand of `and` is the inner layer, so it is the
 override story as data. One trap: a conditional LAYER does not

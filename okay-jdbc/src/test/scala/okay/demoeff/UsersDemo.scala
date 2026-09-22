@@ -69,7 +69,7 @@ object UsersDemo:
    * STOP. `case Some(old) <-` desugars to `withFilter`, `withFilter`
    * needs somewhere for the dropped step to go, and `Abort` — failure
    * carrying no information, which is all a missing row has to say —
-   * is that somewhere (Fail.scala). `save` cannot run for a missing id
+   * is that somewhere (Throws.scala). `save` cannot run for a missing id
    * because it is NOT REACHABLE, not because a branch remembered to
    * skip it, and the SQLite handler below would happily have created
    * the row if it had been asked.

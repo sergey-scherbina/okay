@@ -130,7 +130,7 @@ index above lists them all with one-line summaries.
   names them in the row, for ANY signature; `tag` puts a finished
   program's operations under a key (so a function written against a
   plain `State % Int` runs twice at two states), and `untag` hands the
-  plain signature back to its own handler (Tag.scala). Where the
+  plain signature back to its own handler (Instances.scala). Where the
   instances are made rather than named, `Refs` keeps a heap: cells
   created at run time, one row member however many, one stated cast
   (Refs.scala).
@@ -145,7 +145,7 @@ index above lists them all with one-line summaries.
   a refutable pattern and an `if` guard work in a for-comprehension
   (`case Some(old) <- find(id).plus[Abort]`), so a step that must not run
   is not reachable rather than skipped by hand; `h.tracing(log)`
-  makes any handler a recording one (Fail.scala, RowLift.scala,
+  makes any handler a recording one (Throws.scala, RowLift.scala,
   docs/guide.md §2, and the worked example in
   `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`).
 - `Choice` — nondeterminism with a genuinely multi-shot handler; the

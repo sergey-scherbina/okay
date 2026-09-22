@@ -217,7 +217,7 @@ functions. But the *generic combinators* — `traverse`, `sequence`,
 juxtaposition cannot replace them (E19). Core therefore carries:
 
 ```scala
-given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Providing.scala
+given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scala
 ```
 
 and one import unlocks the combinators over readers:

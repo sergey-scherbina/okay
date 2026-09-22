@@ -116,7 +116,7 @@ object RowLift:
    *
    * `at` is REQUIRED only where the complement cannot be named at
    * all: an abstract row known only by membership, as in
-   * `Fail.scala`'s `abort[A].at[F]`. Everywhere else both compile
+   * Throws.scala's `abort[A].at[F]`. Everywhere else both compile
    * (checked — including inside an interpreter, where the complement
    * mentions an abstract residual row and is still nameable).
    *

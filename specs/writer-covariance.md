@@ -369,7 +369,7 @@ the addition, `at` names the target. One effect added: `plus`. Several
 operations landing in one row: `at`, since there each operation's
 complement differs while the target does not. `at` is REQUIRED only
 where the complement cannot be named at all — an abstract row known
-only by membership (`Fail.scala`'s `abort[A].at[F]`). An earlier
+only by membership (Throws.scala's `abort[A].at[F]`). An earlier
 version of this section said an interpreter's `Tracked + F` was such a
 row; it is not, and both spellings compile there.
 
