@@ -192,7 +192,18 @@ eff(x).!?` runs per element in order and short-circuits mid-loop;
 `for x <- xs yield eff(x).!?` is the traverse shape; `while cond.!?
 do body` re-evaluates its condition each turn; loops recurse over an
 immutable materialized List, so multi-shot re-entry into a loop body
-is sound. Other higher-order arguments keep the refusal below.
+is sound. Since direct-loops v2 (2026-09-22) the whole
+for-comprehension is in: guards (`for x <- xs if p(x).!? …`, the
+guard may itself be marked), several generators (`for x <- xs; y <-
+ys(x).!? yield …`, results in the comprehension's order, a
+short-circuit in the inner generator ending the whole thing), and a
+`yield` that answers the node's own collection — `List`/`Seq`,
+`Vector`, `Set`, `Map` of pairs. So are the HOFs a marked lambda most
+often lands in: `exists`/`forall`/`find` stop at the element that
+decides, `filter` keeps the matches, `foldLeft(z)(f)` threads the
+accumulator (a marked `z` binds first). Everything else higher-order
+(`collect` with a partial function, `sortBy`, `count`, `zip`…) keeps
+the refusal below until a consumer names it.
 
 **Why scoped, precisely.** Four things are compile errors, each with
 its position and its workaround in the message:

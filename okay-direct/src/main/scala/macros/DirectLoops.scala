@@ -147,62 +147,277 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
               Block(List(p), stmtsTail(rest, tail, tailElem))
       case other :: _ => refuse(other, "in an unsupported statement")
 
-  /** for x <- xs do body — run per element, in order; the loop
-   * recurses over an immutable, LAZY LazyList so multi-shot re-entry
-   * is sound and an unbounded receiver is only forced as far as the
-   * monad drives it; the body compiles against `loop(tl)` as its
-   * tail, so each element pays only the body's own binds */
-  def foreachLoop(xs: Term, param: ValDef, lbody: Term): Term =
-    tpe2(param.tpt.tpe.widen) { [T] => (tT: Type[T]) ?=>
-      '{
-        val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
-        def loop(rest: LazyList[T]): F[Unit] = rest match
+  // ---- direct-loops v2 (2026-09-22): guards, the other combinators,
+  // the other collections. Every loop below has the shape foreachLoop
+  // has — an immutable LazyList, a recursive def, the body compiled
+  // per element — and adds one thing each.
+
+  /** a guard peeled off the receiver: `xs.withFilter(x => cond)`, which
+   * is what `for x <- xs if cond` desugars to, chained for several */
+  object Filtered:
+    def unapply(t: Term): Option[(Term, ValDef, Term)] = t match
+      case Apply(TypeApply(Select(xs, "withFilter"), _), List(Lambda(List(p), c))) => Some((xs, p, c))
+      case Apply(Select(xs, "withFilter"), List(Lambda(List(p), c))) => Some((xs, p, c))
+      case _ => None
+
+  /** the receiver with every guard peeled: (xs0, guards in source order) */
+  def peelGuards(xs: Term): (Term, List[(ValDef, Term)]) = stripped(xs) match
+    case Filtered(inner, p, c) =>
+      val (xs0, gs) = peelGuards(inner)
+      (xs0, gs :+ (p, c))
+    case other => (other, Nil)
+
+  /** `xs.foldLeft(z)((acc, x) => body)` */
+  object FoldCall:
+    def unapply(t: Term): Option[(Term, Term, ValDef, ValDef, Term)] = t match
+      case Apply(Apply(TypeApply(Select(xs, "foldLeft"), _), List(z)), List(Lambda(List(a, x), body))) => Some((xs, z, a, x, body))
+      case Apply(Apply(Select(xs, "foldLeft"), List(z)), List(Lambda(List(a, x), body))) => Some((xs, z, a, x, body))
+      case _ => None
+
+  /** the element through the guards, then `body`: a guard with marks
+   * binds first, a false guard continues with `skip` — an `if` per
+   * guard, in source order, and the body once */
+  def guarded(h: Term, guards: List[(ValDef, Term)], elem: TypeRepr)(body: Term)(skip: () => Term): Term =
+    guards match
+      case Nil => body
+      case (p, c) :: rest =>
+        // `body` is a VALUE, not by-name: a quote built inside a by-name
+        // closure left the pickler "unresolved symbols: parameter tU"
+        val inner = guarded(h, rest, elem)(body)(skip)
+        compile(subst(c, p.symbol, h)) match
+          case Out.Pure(pc) => If(pc, inner, skip())
+          case Out.Eff(cf, _) => bind(cf, TypeRepr.of[Boolean], elem)(b => If(b, inner, skip()))
+
+  /** the traverse's List[U] as the node's own collection type W:
+   * List/Seq/Iterable as is, Vector/IndexedSeq, Set, Map (of pairs) —
+   * anything else refused with the workaround */
+  def collected[U: Type, W: Type](acc: Expr[List[U]], at: Term): Expr[W] =
+    val w = TypeRepr.of[W]
+    def as[C: Type](e: Expr[C]): Expr[W] = '{ ${ upcast[C, W] }($e) }
+    if TypeRepr.of[List[U]] <:< w then as[List[U]](acc)
+    else if TypeRepr.of[Vector[U]] <:< w then as[Vector[U]]('{ $acc.toVector })
+    else if TypeRepr.of[Set[U]] <:< w then as[Set[U]]('{ $acc.toSet })
+    else w.baseType(Symbol.requiredClass("scala.collection.immutable.Map")) match
+      case AppliedType(_, List(k, v)) =>
+        tpe2(k) { [K] => (tK: Type[K]) ?=>
+          tpe2(v) { [V] => (tV: Type[V]) ?=>
+            val ev = Expr.summon[U <:< (K, V)].getOrElse(
+              refuse(at, s"in a for-yield into a Map whose yield type ${Type.show[U]} is not a pair"))
+            as[Map[K, V]]('{ $acc.toMap(using $ev) })
+          }
+        }
+      case _ =>
+        refuse(at, s"in a for-yield whose collection type ${w.show} is not List/Seq/Vector/Set/Map " +
+          "(.toList the receiver or collect explicitly)")
+
+  // THE RULE THESE LOOPS OBEY (found the hard way, three pickler
+  // crashes): a quote nested inside a splice may name the OUTER
+  // quote's symbols — `loop`, `tl`, `acc`, `h` — but may not carry a
+  // TYPE TREE of the pattern-bound element type (`(b: u) => …`,
+  // `x :: acc`, `Some(h)`): the pickler reports "unresolved symbols:
+  // given instance u$given". So each per-element step is built by
+  // reflection — `bind` (DirectEmit's own quote, its own level),
+  // `consTo`, `Apply(loopFn, …)` — and the only nested quote is a
+  // harmless `loop(tl, acc)` the parts are taken from.
+
+  /** the function reference and argument refs of a `loop(…)` call */
+  private def parts(call: Term): (Term, List[Term]) = call match
+    case Apply(fn, args) => (fn, args)
+    case Inlined(_, _, inner) => parts(inner)
+    case other => report.errorAndAbort(s"direct loops (macro bug): not a call: ${other.show}")
+
+  /** `x :: acc` */
+  private def consTo(acc: Term, elem: TypeRepr)(x: Term): Term =
+    Apply(TypeApply(Select.unique(acc, "::"), List(Inferred(elem))), List(x))
+
+  /** every element of xs prepended to acc — the flatMap step */
+  def prependAll[U: Type](xs: Expr[IterableOnce[U]], acc: Expr[List[U]]): Expr[List[U]] =
+    '{ $xs.iterator.foldLeft($acc)((a, x) => x :: a) }
+
+  /** the compiled body at elem, with the loop variable in place of the lambda's parameter */
+  private def bodyAt(lbody: Term, param: ValDef, h: Term, elem: TypeRepr): Term =
+    asFAt(compile(subst(lbody, param.symbol, h)), elem).changeOwner(Symbol.spliceOwner)
+
+  /** for x <- xs do body — with guards */
+  def foreachLoop(xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
+    param.tpt.tpe.widen.asType match
+      case '[t] => '{
+        val items: LazyList[t] = ${ iteratorOf(xs).asExprOf[Iterator[t]] }.to(LazyList)
+        def loop(rest: LazyList[t]): F[Unit] = rest match
           case h #:: tl =>
             ${
-              compileTail(subst(lbody, param.symbol, 'h.asTerm),
-                  () => '{ loop(tl) }.asTerm, TypeRepr.of[Unit])
+              guarded('h.asTerm, guards, TypeRepr.of[Unit])(
+                compileTail(subst(lbody, param.symbol, 'h.asTerm), () => '{ loop(tl) }.asTerm, TypeRepr.of[Unit]))(
+                () => '{ loop(tl) }.asTerm)
                 .changeOwner(Symbol.spliceOwner).asExprOf[F[Unit]]
             }
           case _ => $M.pure(())
         loop(items)
       }.asTerm
-    }
 
-  /** for x <- xs yield body — the traverse shape; results come out
-   * as a List, accepted where the node's type allows it (the loop
-   * is emitted AT the node's type, so an invariant F needs no
-   * widening after the fact) */
-  def mapLoop(t: Term, xs: Term, param: ValDef, lbody: Term): Term =
-    tpe2(param.tpt.tpe.widen) { [T] => (tT: Type[T]) ?=>
-      tpe2(lbody.tpe.widen) { [U] => (tU: Type[U]) ?=>
-        if !(TypeRepr.of[List[U]] <:< t.tpe.widen) then
-          refuse(t, s"in a for-yield whose collection type ${t.tpe.widen.show} cannot hold a List " +
-            "(v1 yields a List; .toList the receiver or collect explicitly)")
-        val uRepr = lbody.tpe.widen
-        tpe2(t.tpe.widen) { [W] => (tW: Type[W]) ?=>
-          '{
-            val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
-            def loop(rest: LazyList[T], acc: List[U]): F[W] = rest match
-              case h #:: tl =>
-                $M.flatMap[U](${
-                  asFAt(compile(subst(lbody, param.symbol, 'h.asTerm)), uRepr)
-                    .changeOwner(Symbol.spliceOwner).asExprOf[F[U]]
-                })[W]((b: U) => loop(tl, b :: acc))
-              case _ => $M.pure[W](${ upcast[List[U], W] }(acc.reverse)) // List[U] <:< W checked above
-            loop(items, Nil)
+  /** for x <- xs yield body — the traverse shape, with guards, into
+   * the node's own collection type */
+  def mapLoop(t: Term, xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
+    val uRepr = lbody.tpe.widen
+    val wRepr = t.tpe.widen
+    ((param.tpt.tpe.widen.asType, uRepr.asType, wRepr.asType): @unchecked) match
+      case ('[tt], '[u], '[w]) => '{
+        val items: LazyList[tt] = ${ iteratorOf(xs).asExprOf[Iterator[tt]] }.to(LazyList)
+        def loop(rest: LazyList[tt], acc: List[u]): F[w] = rest match
+          case h #:: tl =>
+            ${
+              val (loopFn, List(tlRef, accRef)) = parts('{ loop(tl, acc) }.asTerm): @unchecked
+              val step = bind(bodyAt(lbody, param, 'h.asTerm, uRepr), uRepr, wRepr)(b =>
+                Apply(loopFn, List(tlRef, consTo(accRef, uRepr)(b))))
+              guarded('h.asTerm, guards, wRepr)(step)(() => Apply(loopFn, List(tlRef, accRef)))
+                .changeOwner(Symbol.spliceOwner).asExprOf[F[w]]
+            }
+          case _ => $M.pure[w](${ collected[u, w]('{ acc.reverse }, t) })
+        loop(items, Nil)
+      }.asTerm
+
+  /** for x <- xs; y <- ys yield … — `xs.flatMap(x => inner)`: the
+   * body's value is a collection of U, appended */
+  def flatMapLoop(t: Term, xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
+    val wRepr = t.tpe.widen
+    val uRepr = wRepr.baseType(Symbol.requiredClass("scala.collection.IterableOnce")) match
+      case AppliedType(_, List(u)) => u
+      case _ => refuse(t, s"in a for-comprehension whose result ${wRepr.show} is not a collection")
+    val bRepr = lbody.tpe.widen
+    ((param.tpt.tpe.widen.asType, uRepr.asType, bRepr.asType, wRepr.asType): @unchecked) match
+      case ('[tt], '[u], '[b], '[w]) =>
+        val ev = Expr.summon[b <:< IterableOnce[u]].getOrElse(
+          refuse(t, s"in a for-comprehension whose inner result ${bRepr.show} is not a collection of ${uRepr.show}"))
+        '{
+          val items: LazyList[tt] = ${ iteratorOf(xs).asExprOf[Iterator[tt]] }.to(LazyList)
+          def loop(rest: LazyList[tt], acc: List[u]): F[w] = rest match
+            case h #:: tl =>
+              ${
+                val (loopFn, List(tlRef, accRef)) = parts('{ loop(tl, acc) }.asTerm): @unchecked
+                val step = bind(bodyAt(lbody, param, 'h.asTerm, bRepr), bRepr, wRepr) { bb =>
+                  val asOnce = Apply(Select.unique(ev.asTerm, "apply"), List(bb))
+                  Apply(loopFn, List(tlRef,
+                    prependAll[u](asOnce.asExprOf[IterableOnce[u]], accRef.asExprOf[List[u]]).asTerm))
+                }
+                guarded('h.asTerm, guards, wRepr)(step)(() => Apply(loopFn, List(tlRef, accRef)))
+                  .changeOwner(Symbol.spliceOwner).asExprOf[F[w]]
+              }
+            case _ => $M.pure[w](${ collected[u, w]('{ acc.reverse }, t) })
+          loop(items, Nil)
+        }.asTerm
+
+  /** xs.filter(x => body) — kept where the body answers true */
+  def filterLoop(t: Term, xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
+    val tRepr = param.tpt.tpe.widen
+    val wRepr = t.tpe.widen
+    ((tRepr.asType, wRepr.asType): @unchecked) match
+      case ('[tt], '[w]) => '{
+        val items: LazyList[tt] = ${ iteratorOf(xs).asExprOf[Iterator[tt]] }.to(LazyList)
+        def loop(rest: LazyList[tt], acc: List[tt]): F[w] = rest match
+          case h #:: tl =>
+            ${
+              val (loopFn, List(tlRef, accRef)) = parts('{ loop(tl, acc) }.asTerm): @unchecked
+              val step = bind(bodyAt(lbody, param, 'h.asTerm, TypeRepr.of[Boolean]), TypeRepr.of[Boolean], wRepr)(b =>
+                Apply(loopFn, List(tlRef, If(b, consTo(accRef, tRepr)('h.asTerm), accRef))))
+              guarded('h.asTerm, guards, wRepr)(step)(() => Apply(loopFn, List(tlRef, accRef)))
+                .changeOwner(Symbol.spliceOwner).asExprOf[F[w]]
+            }
+          case _ => $M.pure[w](${ collected[tt, w]('{ acc.reverse }, t) })
+        loop(items, Nil)
+      }.asTerm
+
+  /** xs.exists / forall / find (x => body) — stops at the first
+   * element that decides */
+  def scanLoop(nm: String, t: Term, xs: Term, guards: List[(ValDef, Term)], param: ValDef, lbody: Term): Term =
+    val tRepr = param.tpt.tpe.widen
+    val rRepr = t.tpe.widen
+    val bool = TypeRepr.of[Boolean]
+    tRepr.asType match
+      case '[tt] =>
+        /** decide(b, h, next): what the loop answers once the body answered b */
+        def stepOf(h: Term, next: Term, decide: (Term, Term) => Term): Term =
+          bind(bodyAt(lbody, param, h, bool), bool, rRepr)(b => decide(b, next))
+        def pureAt(v: Term): Term = pureF(Typed(v, Inferred(rRepr)))
+        val someApply = Symbol.requiredModule("scala.Some").methodMember("apply").head
+        rRepr.asType match
+          case '[r] => '{
+            val items: LazyList[tt] = ${ iteratorOf(xs).asExprOf[Iterator[tt]] }.to(LazyList)
+            def loop(rest: LazyList[tt]): F[r] = rest match
+              case h #:: tl => ${
+                val (loopFn, List(tlRef)) = parts('{ loop(tl) }.asTerm): @unchecked
+                val next = Apply(loopFn, List(tlRef))
+                val h0 = 'h.asTerm
+                val step = nm match
+                  case "exists" => stepOf(h0, next, (b, nx) => If(b, pureAt(Literal(BooleanConstant(true))), nx))
+                  case "forall" => stepOf(h0, next, (b, nx) => If(b, nx, pureAt(Literal(BooleanConstant(false)))))
+                  case _ => stepOf(h0, next, (b, nx) =>
+                    If(b, pureAt(Apply(TypeApply(Ref(someApply), List(Inferred(tRepr))), List(h0))), nx))
+                guarded(h0, guards, rRepr)(step)(() => Apply(loopFn, List(tlRef)))
+                  .changeOwner(Symbol.spliceOwner).asExprOf[F[r]]
+              }
+              case _ => ${
+                val end = nm match
+                  case "exists" => Literal(BooleanConstant(false))
+                  case "forall" => Literal(BooleanConstant(true))
+                  case _ => Ref(Symbol.requiredModule("scala.None"))
+                pureAt(end).asExprOf[F[r]]
+              }
+            loop(items)
           }.asTerm
-        }
-      }
-    }
 
-  /** the loop shapes, receiver hoisted first if it is marked */
-  def hofLoop(t: Term, xs: Term, nm: String, param: ValDef, lbody: Term): Out =
+  /** xs.foldLeft(z)((acc, x) => body) — the accumulator threads
+   * through the loop; a marked `z` binds first */
+  def foldLoop(t: Term, xs0: Term, z: Term, accP: ValDef, elemP: ValDef, body: Term): Out =
+    val (xs, guards) = peelGuards(xs0)
+    val bRepr = t.tpe.widen
+    def emit(xsPure: Term, zPure: Term): Term =
+      ((elemP.tpt.tpe.widen.asType, bRepr.asType): @unchecked) match
+        case ('[tt], '[b]) => '{
+          val items: LazyList[tt] = ${ iteratorOf(xsPure).asExprOf[Iterator[tt]] }.to(LazyList)
+          def loop(rest: LazyList[tt], acc: b): F[b] = rest match
+            case h #:: tl => ${
+              val (loopFn, List(tlRef, accRef)) = parts('{ loop(tl, acc) }.asTerm): @unchecked
+              val stepBody = asFAt(compile(subst(subst(body, accP.symbol, accRef), elemP.symbol, 'h.asTerm)), bRepr)
+                .changeOwner(Symbol.spliceOwner)
+              val step = bind(stepBody, bRepr, bRepr)(bb => Apply(loopFn, List(tlRef, bb)))
+              guarded('h.asTerm, guards, bRepr)(step)(() => Apply(loopFn, List(tlRef, accRef)))
+                .changeOwner(Symbol.spliceOwner).asExprOf[F[b]]
+            }
+            case _ => $M.pure[b](acc)
+          loop(items, ${ zPure.asExprOf[b] })
+        }.asTerm
+    def withZ(xsPure: Term): Term =
+      if hasMark(z) then
+        compile(z) match
+          case Out.Eff(c, e) => bind(c, e, bRepr)(v => emit(xsPure, v))
+          case Out.Pure(p) => emit(xsPure, p)
+      else emit(xsPure, z)
+    if hasMark(xs) then
+      compile(xs) match
+        case Out.Eff(c, e) => Out.Eff(bind(c, e, bRepr)(v => withZ(v)), bRepr)
+        case Out.Pure(p) => Out.Eff(withZ(p), bRepr)
+    else Out.Eff(withZ(xs), bRepr)
+
+  /** the loop shapes: guards peeled off the receiver, the receiver
+   * hoisted first if it is marked */
+  def hofLoop(t: Term, xs0: Term, nm: String, param: ValDef, lbody: Term): Out =
+    val (xs, guards) = peelGuards(xs0)
     val loopElem = if nm == "foreach" then TypeRepr.of[Unit] else t.tpe.widen
     def emit(xsPure: Term): Term = nm match
-      case "foreach" => foreachLoop(xsPure, param, lbody)
-      case "map" => mapLoop(t, xsPure, param, lbody)
+      case "foreach" => foreachLoop(xsPure, guards, param, lbody)
+      case "map" => mapLoop(t, xsPure, guards, param, lbody)
+      case "flatMap" => flatMapLoop(t, xsPure, guards, param, lbody)
+      case "filter" => filterLoop(t, xsPure, guards, param, lbody)
+      case _ => scanLoop(nm, t, xsPure, guards, param, lbody)
     if hasMark(xs) then
       compile(xs) match
         case Out.Eff(c, e) => Out.Eff(bind(c, e, loopElem)(v => emit(v)), loopElem)
         case Out.Pure(p) => Out.Eff(emit(p), loopElem)
     else Out.Eff(emit(xs), loopElem)
+
+  /** the combinator names a marked lambda argument is rewritten under */
+  val loopNames: Set[String] = Set("foreach", "map", "flatMap", "filter", "exists", "forall", "find")
+
+  /** marks anywhere a loop reads: the body, a guard, the receiver */
+  def loopHasMark(xs: Term, lbody: Term): Boolean =
+    hasMark(lbody) || peelGuards(xs)._2.exists((_, c) => hasMark(c))

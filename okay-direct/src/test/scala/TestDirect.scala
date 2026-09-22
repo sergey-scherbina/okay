@@ -262,8 +262,10 @@ class TestDirect extends munit.FunSuite {
   }
 
   test("a mark under a lambda is a compile error") {
+    // `filter` graduated in direct-loops v2; sortBy has not (its
+    // Ordering argument is a second list — not a loop shape)
     val errors = compileErrors(
-      "okay.Direct.direct[List] { List(1).filter(i => List(i > 0).reflect) }(using summon[Monad[List]]) ")
+      "okay.Direct.direct[List] { List(1).sortBy(i => List(i).reflect) }(using summon[Monad[List]]) ")
     assert(errors.contains("lambda"), errors)
   }
 
@@ -404,8 +406,9 @@ class TestDirect extends munit.FunSuite {
   }
 
   test("a non-whitelisted HOF with a mark keeps the refusal") {
+    // `exists` graduated in direct-loops v2; `count` has not
     val e = compileErrors(
-      "okay.Direct.direct[Option] { List(1).exists(i => Option(i > 0).reflect) }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { List(1).count(i => Option(i > 0).reflect) }(using summon[Monad[Option]]) ")
     assert(e.contains("lambda"), e)
   }
 

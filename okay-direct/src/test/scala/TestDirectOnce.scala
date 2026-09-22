@@ -265,11 +265,22 @@ class TestDirectOnce extends munit.FunSuite {
     assert(e.contains("Once"), e)
   }
 
-  test("lazy val with a mark: a demand under a lambda stays refused") {
+  test("lazy val with a mark: a demand inside a filter body forces the cell once (direct-loops v2)") {
+    // `filter` used to be the canonical refused lambda; it is a loop
+    // now, and the loop body is a statement of the block — so the
+    // demand reaches the cell and forces it exactly once
+    val prog: Int ! R = direct {
+      lazy val x: Int = { Writer("x").reflect; 1 }
+      List(1, 2, 3).filter(i => i > x).sum
+    }
+    assertEquals(logged(prog), (Seq("x"), 5))
+  }
+
+  test("lazy val with a mark: a demand under a lambda that is NOT a loop stays refused") {
     val e = compileErrors("""
       val p: Int ! R = direct {
         lazy val x: Int = { Writer("x").reflect; 1 }
-        List(1, 2).filter(i => i > x).sum
+        List(1, 2).sortBy(i => i - x).sum
       }
     """)
     assert(e.contains("lambda"), e)

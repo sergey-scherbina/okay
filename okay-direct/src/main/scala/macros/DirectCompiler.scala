@@ -169,7 +169,9 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
     // whitelisted combinators FIRST — for-do and for-yield desugar
     // to foreach/map with a lambda, and the general lambda refusal
     // below must not claim them
-    case HofCall(xs, nm @ ("foreach" | "map"), param, lbody) if hasMark(lbody) =>
+    case FoldCall(xs, z, accP, elemP, body) if hasMark(body) || hasMark(z) || loopHasMark(xs, body) =>
+      foldLoop(t, xs, z, accP, elemP, body)
+    case HofCall(xs, nm, param, lbody) if loopNames(nm) && loopHasMark(xs, lbody) =>
       hofLoop(t, xs, nm, param, lbody)
 
     // BEFORE Block: a Lambda IS Block(DefDef :: Nil, Closure), and

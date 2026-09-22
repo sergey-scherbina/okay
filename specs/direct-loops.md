@@ -50,16 +50,48 @@ while retry.!? do backoff()                        // while: effectful cond
 - [x] a lambda that is NOT a whitelisted combinator argument keeps
   the v1 refusal, message unchanged
 
+## v2 — guards, several generators, the other combinators, the other collections (direct-loops-v2, 2026-09-22)
+
+The consumer named the shapes (operator, 2026-09-22): "многогенераторные,
+HOF и yield". Every loop keeps v1's shape — an immutable LazyList, a
+recursive def, the body compiled per element against the loop's own
+tail — and gains one thing each:
+
+- [x] GUARDS: `for x <- xs if p(x) do/yield …` (`xs.withFilter(x => p)`,
+      peeled off the receiver, chained for several) — the guard runs
+      per element in source order, with marks allowed in it (a marked
+      guard binds before the body), and the body runs only when every
+      guard holds.
+- [x] SEVERAL GENERATORS: `for x <- xs; y <- ys yield f` (the outer
+      `flatMap`, the inner `map`) — results in the comprehension's own
+      order, a guard between generators honoured, and a short-circuit
+      inside the inner generator ends the whole comprehension (the
+      Option law: nothing after the `None` runs).
+- [x] HOFs with a marked lambda: `exists`/`forall` stop at the first
+      element that decides; `find` answers the first match and stops;
+      `filter` keeps the matches; `foldLeft(z)(f)` threads the
+      accumulator, a marked `z` binding first. Each is a loop of the
+      same family; the log proves where the walk stopped.
+- [x] YIELD SHAPES: a for-yield answers the node's own collection type
+      — List/Seq/Iterable as is, Vector/IndexedSeq, Set, Map (of
+      pairs) — and anything else is refused naming the workaround.
+- [x] A marked RECEIVER under guards hoists first, as in v1.
+- [x] v1's suite unchanged in what it asserts, except the four tests
+      that used `filter`/`exists` as the canonical refused lambda:
+      they assert the refusal on `sortBy`/`count` now, and the `lazy
+      val` demand under `filter` is a positive test (the cell forced
+      once). okay-direct: 340 green (`TestDirectLoops2`, 12).
+
 ## Out of scope
 
-- `flatMap`/`withFilter` in multi-generator for-comprehensions over
-  collections — nested single-generator loops express the same
-  programs; add shapes when a consumer names them.
-- `exists`/`find`/`fold` and other HOFs — same rule: a consumer
-  first.
-- Non-Seq-convertible yield results (Vector-typed, Map-typed) —
-  refused with the workaround (`.toList` the receiver or collect
-  manually) until a consumer names the shape.
+- `collect` with a partial function, `zip`/`zipWithIndex`, `groupBy`,
+  `sortBy` and every other HOF — a consumer first, as before.
+- Lazy yield targets (`LazyList`, `Iterator`, a stream): a strict
+  traverse would force them; the generator lane (specs/generators.md)
+  is the lazy road.
+- Guards on `while`, and pattern generators that are refutable
+  (`for Some(x) <- xs` is a `withFilter` on a partial function and
+  keeps v1's refusal).
 
 ## Design
 
@@ -104,7 +136,18 @@ while retry.!? do backoff()                        // while: effectful cond
   unavoidable one test in.
 - **for-yield emits List** — accepted where the node's type can hold
   it (List/Seq); Vector/Map-typed comprehensions are refused with
-  the workaround named, until a consumer names the shape.
+  the workaround named, until a consumer names the shape. (v2: the
+  consumer named it; the List is still what the loop accumulates,
+  converted once at the end to the node's Vector/Set/Map.)
+- **v2: every step is built by reflection, not by a nested quote** —
+  chosen because a quote nested in a splice may name the outer
+  quote's symbols but not carry a type tree of the pattern-bound
+  element type (`(b: u) => …`, `x :: acc`, `Some(h)`): the pickler
+  reports "unresolved symbols: given instance u$given", three times
+  in one lane. `bind` (DirectEmit's own quote), `consTo`,
+  `Apply(loopFn, …)` from the parts of a harmless `loop(tl, acc)`
+  quote — and the rule is written at the top of the v2 section of
+  DirectLoops.scala.
 
 - [x] loop and while BODIES carry statement semantics (fixed
   2026-09-01, found by the ChatDemo migration): a bare op as the
