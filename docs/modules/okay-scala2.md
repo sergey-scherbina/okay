@@ -7,8 +7,10 @@ lambdas, pattern matches) and the real library runs underneath.
 
 | | |
 |---|---|
+| `Eff[-R, A]` | a program over an OPEN row of effects, spelled as an intersection: `Eff[State[Int] with Writer[String], A]`. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
+| `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
-| `Bridge` | the Scala 3 side: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
+| `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
 ## Setting up a 2.13 build
 
@@ -72,6 +74,81 @@ becomes the program's failure, the same failure as `Prog.fail`, so
 `attempt`, `recover` and `runEither()` all see it. A throw from a
 function passed to `map` or `flatMap` is not caught by anything, and
 `run()` rethrows it.
+
+## Several effects in one program: `Eff`
+
+Everything a 2.13 program needs is in one package: `import okay.scala2._`.
+The types there have the same names as the Scala 3 types they wrap.
+Scala 2 cannot spell a union type, so the effect row is written as an
+intersection of capabilities. This is the same shape as the
+environment `R` in ZIO 1. The code below is copied from
+`okay-scala2/probe/src/test/scala/TestEffFromScala2.scala`:
+
+```scala
+val prog: Eff[State[Int] with Writer[String], Int] = for {
+  n <- State.get[Int]
+  _ <- Writer.tell("saw " + n)
+  _ <- State.put(n + 1)
+  m <- State.get[Int]
+  _ <- Writer.tell("now " + m)
+} yield m * 10
+
+assertEquals(Eff.run(Writer.run(State.run(1)(prog))), (Vector("saw 1", "now 2"), (2, 20)))
+assertEquals(Eff.run(State.run(1)(Writer.run(prog))), (2, (Vector("saw 1", "now 2"), 20)))
+```
+
+- Each handler removes one capability from the row: `State.run(1)`
+  turns `Eff[State[Int] with R, A]` into `Eff[R, (Int, A)]`. scalac
+  2.13 infers `R` by itself.
+- The handler order decides the shape of the answer, exactly as in
+  okay's Scala 3 API.
+- `Eff.run` accepts only `Eff[Any, A]`, so a program with an unhandled
+  effect does not compile. The probe checks this with `compileErrors`.
+  The message says `type mismatch` and does not name the missing
+  handler.
+- `Eff.runAsync` runs a program whose only remaining effect is `Async`.
+  `Async.attempt` turns a throw into a `Throws[Throwable]` failure.
+- `Eff.fromProg` and `Eff.toProg` convert between `Prog` and
+  `Eff[Async with Throws[Throwable], A]`; they are the same program.
+
+Underneath are okay's own `Free` and okay's own handlers. On the Scala 2
+side the row is only a phantom type, so the facade needs ONE cast: it
+stores the program at a single top row, and each handler re-types it
+at the concrete row it handles. The reason is written beside that one
+function (`Rows.coerce`).
+
+## Continuations: `Cont`
+
+`Cont[A, S, R]` is okay's continuation paramonad, and it is
+stack-safe. `shift` captures the continuation up to the nearest
+`reset` and may change the answer type (Danvy & Filinski, *Abstracting
+Control*, LFP 1990, doi:10.1145/91556.91622; answer-type modification
+and its typing: Asai, *On typing delimited continuations: three new
+solutions to the printf problem*, HOSC 2009,
+doi:10.1007/s10990-009-9049-5). The code below is copied from
+`okay-scala2/probe/src/test/scala/TestContFromScala2.scala`:
+
+```scala
+val c: Cont[Int, Int, Int] = for {
+  a <- Cont.shift[Int, Int, Int](k => k(k(10)))
+  b <- Cont.pure[Int, Int](1)
+} yield a + b
+assertEquals(Cont.reset(c), 12)
+
+val s: String = Cont.reset(Cont.shift[Int, Int, String](k => "k(5)=" + k(5)).map(_ * 2))
+assertEquals(s, "k(5)=10")
+```
+
+Scala 2 cannot infer the type arguments of `shift` and `pure` from
+where they are used, so write them out.
+
+## What is not here yet
+
+- **Your own effects.** okay declares an effect with `derives Effect`,
+  which is Scala 3, and there is no Scala 2 way to do it yet.
+- **Streams, fibers and channels.**
+- **Direct style.** It is built from Scala 3 macros, so from Scala 2
+  it will never be available; write for-comprehensions instead.
 
 ## Why a facade and not a cross-build
 

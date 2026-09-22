@@ -882,8 +882,14 @@ combinators are `inline`, which Scala 2's TASTy reader refuses to call.
 `Async + Throws % Throwable` with plain `map`/`flatMap`, so a 2.13
 for-comprehension works over it. A throw inside `Prog.delay` is a
 failure that `attempt`, `recover` and `runEither()` see, and `run()`
-executes the program on the calling thread. The build needs both
-standard libraries, 2.13's first and 3.9's behind it. The module page
+executes the program on the calling thread. For several effects in one program there is `Eff[-R, A]`. Its row is
+an intersection that Scala 2 can write,
+`Eff[State[Int] with Writer[String], A]`, and it is taken apart one
+handler at a time (`State.run`, `Writer.run`, ...). Continuations are
+`okay.scala2.Cont`, with `shift`, `reset` and answer-type modification.
+All of it is in the one package `okay.scala2`, under the library's own
+names. The build needs both standard libraries, 2.13's first and 3.9's
+behind it. The module page
 gives the exact sbt settings, the same ones a gated 2.13 suite in this
 repository compiles with:
 [modules/okay-scala2.md](modules/okay-scala2.md).

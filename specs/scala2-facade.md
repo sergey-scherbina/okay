@@ -121,18 +121,18 @@ the Scala 3 ones they stand for.
   carry. The cast lives in one function with this reason beside it
   (operator rule, no cast without necessity).
 - `Prog` stays — `Eff[Async with Throws[Throwable], A]` is the same
-  program, and `Prog.toEff` / `Eff.toProg` cross between them.
+  program, and `Eff.fromProg` / `Eff.toProg` cross between them.
 
 ## Behavior (stage 2), all from Scala 2.13
-- [ ] `Cont`: shift/reset, a continuation called twice, answer-type
+- [x] `Cont`: shift/reset, a continuation called twice, answer-type
       change (Int → String), 100 000 binds without a stack overflow
-- [ ] `Eff`: State + Writer in one for-comprehension, handled in
+- [x] `Eff`: State + Writer in one for-comprehension, handled in
       both orders with the documented answers
-- [ ] `Eff`: Reader + State + Throws; a raise stops the program and
+- [x] `Eff`: Reader + State + Throws; a raise stops the program and
       `Throws.run` answers Left, state handled outside it still
       answers
-- [ ] `Eff`: Async + Throws run with `runAsync`
-- [ ] `Prog` ↔ `Eff` round trip
+- [x] `Eff`: Async + Throws run with `runAsync`
+- [x] `Prog` ↔ `Eff` round trip
 
 ## Later stages (not in stage 2)
 - Streams: a 2.13 `Source` facade over okay-stream.
@@ -183,3 +183,14 @@ the Scala 3 ones they stand for.
   a version tied to each 2.13 release. So when this build's Scala is
   bumped, the probe is the first thing to break, and that is the probe
   doing its job.
+- STAGE 2 (2026-09-23). `okay.scala2` now holds `Cont`, `Eff` and the
+  capabilities `State`/`Reader`/`Writer`/`Throws`/`Async` beside
+  `Prog`. The 2.13 probe has 17 suites, all green on their first run
+  under `-Xlint -Werror` against a cold target. Every public method is
+  called, and a `compileErrors` check pins that an unhandled effect is
+  a type error. Two traps, both avoided by construction: (1) the phantom
+  capabilities are TRAITS with companions, so the same name is the
+  type in a row and the object holding the operations, as in Scala 3
+  okay; (2) the Scala 3 source spells the rows with `&`, because
+  `with` as a type operator warns in 3.9, and scalac 2.13 reads `&`
+  as its own `with`.
