@@ -1,4 +1,4 @@
-- [ ] **generators-jmh** — price the Gen pipeline: `map`/`filter`/`take`/
+- [~] **generators-jmh** — price the Gen pipeline: `map`/`filter`/`take`/
       `toList` over `unfold` vs hand-written `Writer.loopWith` +
       `Writer.foldUntil`, and vs `Source.runCollect` on the same 10 000
       elements; B/op under `-prof gc`. Expected parity with the hand-written

@@ -1,0 +1,6 @@
+feature/generators-jmh 2026-09-22T21:42:35Z
+agent: claude-code
+heartbeat: 2026-09-22T21:42:35Z
+status: in-progress
+done-so-far: picked from the queue
+next: worktree; GenBenchmark lanes in compare/src/jmh; measure (3 rounds, quiet box, -prof gc); record; docs; land
