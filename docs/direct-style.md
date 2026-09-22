@@ -835,10 +835,96 @@ specs' Decisions so the next person does not pay twice.
   JVM-only; would genuinely forfeit multi-shot (Logic, sim,
   Stepper). The closure-based roads forfeit nothing.
 
+## Loops and comprehensions, in full (direct-loops v2)
+
+The one thing a for-comprehension is — Wadler's *Comprehending
+Monads* (1992) — is a `flatMap` chain ending in a `map`, with guards as
+`withFilter`; Scala's compiler desugars it exactly so before the
+`direct` macro sees it. So the macro does not "support `for`": it
+recognises the four combinators the desugaring produces (`foreach`,
+`map`, `flatMap`, `withFilter`) and three more a marked lambda most
+often lands in, and rewrites each into a loop of one shape — an
+immutable `LazyList` of the elements, a recursive `def`, the body
+compiled per element against the loop's own tail. Everything below is
+that one loop, worn seven ways.
+
+```scala
+type W = Writer % String
+def look(i: Int): Int ! W = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
+
+// a guard — `xs.withFilter(x => p)` — runs per element, in source
+// order; a MARKED guard binds before the body runs
+for x <- xs if isEven(x).!? do say(s"body $x").!?
+
+// two generators — `xs.flatMap(x => ys.map(y => …))` — results in
+// the comprehension's order; a guard between them is honoured
+val r: List[Int] ! W = direct {
+  for
+    x <- List(1, 2)
+    y <- List(10, 20) if y > 10
+  yield look(x + y).!?
+}                                    // List(210, 220); log: look 21, look 22
+
+// the yield answers the node's own collection: Vector, Set, Map of pairs
+val m: Option[Map[String, Int]] = direct[Option] {
+  for (k, n) <- Map("a" -> 1, "b" -> 2) yield (k * 2, Some(n * 10).!?)
+}                                    // Some(Map("aa" -> 10, "bb" -> 20))
+
+// the HOFs: exists/forall/find STOP at the element that decides
+val (log, e) = run(direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) })
+// e == true, log == Seq("look 1", "look 2") — 3 and 4 never looked at
+
+// filter keeps the matches; foldLeft threads the accumulator
+direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }   // 60
+```
+
+**What runs when.** A short-circuiting monad ends the whole
+comprehension at the first short-circuit, wherever it sits — in the
+inner generator of a two-generator `for`, in a guard, in a `foldLeft`
+step: the loop is a `flatMap` chain, and a `None` has no continuation
+to call. The Writer log is the honest witness: `exists` over four
+elements that decides at the second writes two lines. Multi-shot is
+sound for the same reason as in v1 — a `List` reflect inside a body
+re-runs the REST of the loop per element over an immutable
+materialised `LazyList`, never a live iterator.
+
+**What is refused, and why.** `collect` with a partial function,
+`sortBy`, `count`, `zip` and every other higher-order argument keep
+the "under a lambda" refusal: each shape is a loop of its own to
+write, and the rule since v1 is that a consumer names it first. A
+`yield` into `LazyList`, `Iterator` or a stream is refused too — a
+strict traverse would force a lazy target; the generator road
+(specs/generators.md) is the lazy one. `Array` receivers work for
+`for … do` (as in v1) but not for `yield`: `ArrayOps.map` takes a
+`ClassTag` in a second argument list and is not the shape the macro
+reads.
+
 ## References
 
+- Philip Wadler, *Comprehending Monads*, Mathematical Structures in
+  Computer Science 2(4), 1992 — a comprehension IS a `flatMap` chain
+  with guards as filters; the desugaring the `direct` macro reads is
+  this paper's translation, which is why "supporting `for`" is
+  recognising four combinators.
 - Andrzej Filinski, *Representing Monads*, POPL 1994 — reflection
   and reification; layered monads in the follow-up work.
+- Ningning Xie, Jonathan Brachthäuser, Daniel Hillerström, Philipp
+  Schuster, Daan Leijen, *Effect Handlers, Evidently*, ICFP 2020, and
+  Xie & Leijen, *Generalized Evidence Passing*, ICFP 2021 — the
+  handler travels with the program and a tail-resumptive operation is
+  a direct call; Layer 2½ is this idea taken to its limit, the
+  handler's arm chosen by the COMPILER per operation (specs/direct-
+  staged.md measured the difference: 1.0x with the handler applied at
+  run time, 1.55x with the arm selected at compile time).
+- Philipp Schuster, Jonathan Brachthäuser, Klaus Ostermann, *Compiling
+  Effect Handlers in Capability-Passing Style*, ICFP 2020 — effect
+  handlers compiled to plain code when the capability is known
+  statically; the staged block is the same bargain, stated as "a
+  `Stager` object per row".
+- Nicolas Wu, Tom Schrijvers, *Fusion for Free*, MPC 2015 — handlers
+  are folds and folds fuse; specs/handler-fusion.md is the record of
+  what that buys on THIS tree (10–30% between passes, the arm
+  selection being where the rest was).
 - Robert Atkey, *Parameterised notions of computation* — the
   answer-type-modified `Cont[A, S, R]` that types `reflect`
   precisely (see [theory](theory/index.md)).

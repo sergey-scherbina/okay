@@ -275,6 +275,40 @@ the `Pipeline` tree is for tools (optimize, inspect, ship), the
 inline shape is for speed — same choice the effects layer offers with
 the `Free` tree and an inline handler-passing program over `Control`.
 
+The same rule reaches a `direct` block (direct-staged, 2026-09-22):
+when the handlers are known where the block is written, the block
+compiles to a function of its continuation with each operation
+already replaced by its handler's arm — no dispatch, no tree:
+
+```scala
+val sw = Stager.StateWriter[Int, String, Int]()      // the row's staged interpreter
+
+def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
+  if i >= 100 then Handled.pure(acc)
+  else Direct.staged(sw) {
+    val a = State.get[Int].!?
+    State.modify[Int](_ + i).!?          // compound programs are walked too
+    Writer.tell("w").!?
+    step(i + 1, acc + a).!?
+  }
+
+sw.run(0)(step(0, 0))                    // ((state, log), answer)
+```
+
+Measured on a thousand operations: 7.5 µs and 85 KB against 16.8 µs
+and 165 KB for the identical block as a plain `direct` block run by
+`State.run(Writer.run(_))` — 2.24x, to within 1% of the same program
+written by hand. What made the difference was found by measuring the
+alternatives: a handler passed as a value is 0.89x of the tree; only
+the arm chosen by the COMPILER, `Stager.stage`'s `inline match` on the
+operation as written, pays. The price is stated where it is paid: a
+`Stager` object per row and answer layout, and a staged block is
+`Func` — fast, and not stack-safe on a left-nested chain of
+millions. The lineage is Xie & Leijen's evidence passing and Schuster
+et al.'s capability-passing compilation (references in
+[direct style](direct-style.md)); the numbers are in
+specs/direct-staged.md.
+
 ## 12. Chunks across machines
 
 ```scala
@@ -504,6 +538,40 @@ the door outside answers *what is available*, the block inside
 answers *how it reads* (`TestDirectDoors`). The layers, the gates
 and the graveyard of rejected designs are in
 [direct style](direct-style.md).
+
+### The whole `for`, and the HOFs a mark lands in
+
+Since direct-loops v2 a block takes the entire for-comprehension —
+guards, several generators, a `yield` into whatever collection the
+line is typed as — and the higher-order methods an effect most often
+sits inside. Each is the same loop underneath (an immutable
+`LazyList`, a recursive `def`, the body compiled per element):
+
+```scala
+def look(i: Int): Int ! (Writer % String) = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
+
+val prog: List[Int] ! (Writer % String) = direct {
+  for
+    x <- List(1, 2)
+    y <- List(10, 20) if y > 10        // a guard between generators
+  yield look(x + y).!?                 // List(210, 220); log: look 21, look 22
+}
+
+direct[Option] { for (k, n) <- Map("a" -> 1) yield (k, Some(n * 10).!?) }   // Some(Map(a -> 10))
+direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) }   // true, and the log stops at "look 2"
+direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }          // 60
+```
+
+`exists`/`forall`/`find` stop at the element that decides, `filter`
+keeps the matches, `foldLeft` threads its accumulator; a `None`
+anywhere — an inner generator, a guard, a step — ends the whole
+comprehension. What is not on that list (`collect`, `sortBy`,
+`count`, `zip`…) keeps the "under a lambda" refusal until someone
+needs it, and a `yield` into a lazy target is refused because a
+strict traverse would force it — generators are their own road.
+The desugaring the macro reads is Wadler's *Comprehending Monads*
+(1992), which is why "the whole `for`" is four combinators; the
+details and the refusals are in [direct style](direct-style.md).
 
 ### Independent binds, run together
 
