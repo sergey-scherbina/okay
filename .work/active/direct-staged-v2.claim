@@ -1,0 +1,6 @@
+feature/direct-staged-v2 2026-09-22T19:34:25Z
+agent: claude-code
+heartbeat: 2026-09-22T19:34:25Z
+status: in-progress
+done-so-far: worktree created
+next: v2 — stage a COMPOUND marked program by walking its inline-expanded Free term (Inject/Pure/flatMap/map with literal lambdas, RowLift coercions); State.modify, for-comprehensions over the row, hand-written chains; refusal stays for what cannot be walked
