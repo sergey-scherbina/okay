@@ -1,0 +1,6 @@
+feature/okay-chain 2026-09-22T23:16:58Z
+agent: claude-code
+heartbeat: 2026-09-22T23:16:58Z
+status: in-progress
+done-so-far: read okay-watch Chain/Follower, x402 v2 spec
+next: specs/chain.md + specs/x402.md, then okay-chain module (abstractions only)
