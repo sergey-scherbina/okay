@@ -1,6 +1,0 @@
-feature/form-drill 2026-09-22T22:02:49Z
-agent: claude-code
-heartbeat: 2026-09-22T22:02:49Z
-status: in-progress
-done-so-far: reading Form.scala renderer/router before the spec
-next: specs/form-drill.md; drill-down form screen in okay-ui (scala-form); Form.askIn over a TypedZipper focus; tests; docs
