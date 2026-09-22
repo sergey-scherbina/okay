@@ -211,6 +211,32 @@ a source can also be WRITTEN as an Eff that tells.
 - [x] 100 000 elements through map/filter/runFold without a stack
       overflow
 
+## Stage 5 — fibers and channels
+The same operator message as stage 4. The core's `Fiber` and `Channel`
+are traits with plain methods, but everything useful on them answers
+`A ! Async`, which a Scala 2 caller cannot compose. So both are
+wrapped, and every operation that can wait is an `Eff[Async, _]`.
+
+- `Async.fork(e): Eff[Async, Fiber[A]]` (the core's `Async.spawn`),
+  and alongside it `Async.par`, `Async.race`, `Async.sleep` and
+  `Async.timeout`, all over the platform's own Scheduler and Timer.
+- `Fiber[A]`: `join` (fails if the fiber failed), `joinEither`,
+  `cancel`.
+- `Channel[A]`: `Channel[A](capacity)`, `send`/`receive` as
+  `Eff[Async, _]` (a full channel suspends the sender, an empty one the
+  receiver), `offer`, `close`, `isClosed`, and `source`, which drains
+  the channel as a `Source[A]` that ends when it is closed.
+
+## Behavior (stage 5), all from Scala 2.13
+- [ ] a forked fiber runs concurrently and `join` answers its result;
+      a failed fiber fails `join` and answers `Left` to `joinEither`
+- [ ] `par` answers both results; `race` answers the faster one;
+      `timeout` answers None past its deadline
+- [ ] producer/consumer over a bounded channel: every element arrives
+      once and in order, and the producer suspends when the channel
+      is full rather than failing
+- [ ] `source` drains a channel into a `Source` that ends on `close`
+
 ## Later stages (not in stage 2)
 - Streams: a 2.13 `Source` facade over okay-stream.
 - Fibers and channels.
