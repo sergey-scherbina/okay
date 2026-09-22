@@ -73,8 +73,112 @@ class FusionBenchmark {
   @Benchmark
   def ctrlFuncSWr(): Int = Fused.runCtrl[Func, Int, String, Int](0)(h => rightCtrl[Func](h)(0, 0))._2
 
+  // ---- staged-block-lanes (2026-09-22): a STATIC 10-op block inside a
+  // recursive loop — road 2's real shape (continuations-roadmap.md).
+  // The same 1 000 operations as rightSW, ten per iteration: inside an
+  // iteration nothing is dynamic, so a program over Func can
+  // beta-reduce the ten binds at compile time; the recursion between
+  // iterations is the one bind no staging removes. The block is spelled
+  // as explicit flatMaps, not a for-comprehension, so the tree and the
+  // carrier versions have the SAME bind structure to the node.
+
+  final val Iters = N / 10
+
+  def blockFree(i: Int, acc: Int): Int ! SW =
+    if i >= Iters then pure(acc)
+    else
+      State.get[Int].at[SW].flatMap(a =>
+      State.set[Int](i).at[SW].flatMap(_ =>
+      Writer.tell("w").at[SW].flatMap(_ =>
+      State.get[Int].at[SW].flatMap(b =>
+      State.set[Int](i + 1).at[SW].flatMap(_ =>
+      Writer.tell("w").at[SW].flatMap(_ =>
+      State.get[Int].at[SW].flatMap(c =>
+      State.set[Int](i + 2).at[SW].flatMap(_ =>
+      Writer.tell("w").at[SW].flatMap(_ =>
+      State.get[Int].at[SW].flatMap(d =>
+        blockFree(i + 1, acc + a + b + c + d)))))))))))
+
+  var blockR: Int ! SW = scala.compiletime.uninitialized
+
+  /** the block with the handler passed as a VALUE: the binds are static
+   * (C is concrete at each caller below, so Control[Func]'s inline
+   * flatMap reduces), the operation is still dispatched at run time by
+   * `split` inside `h` — what a `direct` block emitted over Control
+   * with an opaque handler would be */
+  inline def block10[C[_, _, _]](h: Interpr[SW, C, R], C: Control[C])(i: Int, acc: Int)
+                                (inline next: Int => C[Int, R, R]): C[Int, R, R] =
+    C.flatMap(h(State.Get()))(a =>
+    C.flatMap(h(State.Set(i)))(_ =>
+    C.flatMap(h(Writer.Say("w")))(_ =>
+    C.flatMap(h(State.Get()))(b =>
+    C.flatMap(h(State.Set(i + 1)))(_ =>
+    C.flatMap(h(Writer.Say("w")))(_ =>
+    C.flatMap(h(State.Get()))(c =>
+    C.flatMap(h(State.Set(i + 2)))(_ =>
+    C.flatMap(h(Writer.Say("w")))(_ =>
+    C.flatMap(h(State.Get()))(d => next(acc + a + b + c + d)))))))))))
+
+  def blockFunc(h: Interpr[SW, Func, R])(i: Int, acc: Int): Func[Int, R, R] =
+    if i >= Iters then Control[Func].pure(acc)
+    else block10[Func](h, Control[Func])(i, acc)(acc2 => blockFunc(h)(i + 1, acc2))
+
+  def blockCont(h: Interpr[SW, Cont, R])(i: Int, acc: Int): Cont[Int, R, R] =
+    if i >= Iters then Control[Cont].pure(acc)
+    else block10[Cont](h, Control[Cont])(i, acc)(acc2 => blockCont(h)(i + 1, acc2))
+
+  /** the CEILING: binds AND handler static — each operation written as
+   * its shift directly (the arms of `Fused.stateWriterInterp`, chosen
+   * at compile time instead of by `split` at run time), which is what a
+   * macro could emit only when it sees the handler at the call site.
+   * Nothing is dispatched; if this does not clear the bar, no emission
+   * target can. */
+  def blockFuncStaged(i: Int, acc: Int): Func[Int, R, R] =
+    if i >= Iters then Control[Func].pure(acc)
+    else
+      val C = Control[Func]
+      inline def get: Func[Int, R, R] = C.shift[Int, R, R](k => st => k(st._1)(st))
+      inline def set(s2: Int): Func[Int, R, R] = C.shift[Int, R, R](k => st => k(s2)((s2, st._2)))
+      inline def say: Func[Unit, R, R] = C.shift[Unit, R, R](k => st => k(())((st._1, st._2 :+ "w")))
+      C.flatMap(get)(a =>
+      C.flatMap(set(i))(_ =>
+      C.flatMap(say)(_ =>
+      C.flatMap(get)(b =>
+      C.flatMap(set(i + 1))(_ =>
+      C.flatMap(say)(_ =>
+      C.flatMap(get)(c =>
+      C.flatMap(set(i + 2))(_ =>
+      C.flatMap(say)(_ =>
+      C.flatMap(get)(d => blockFuncStaged(i + 1, acc + a + b + c + d)))))))))))
+
+  /** the tree, prebuilt: the walk alone (the fused fixture's floor on this shape) */
+  @Benchmark
+  def blockFreeR(): Int = Fused.stateWriter(0)(blockR)._2
+
+  /** the tree built and run: what a user pays for a `direct` block today */
+  @Benchmark
+  def blockFreeBuildR(): Int = Fused.stateWriter(0)(blockFree(0, 0))._2
+
+  /** the SHIPPING runners on the prebuilt tree — the baseline that is
+   * actually in the library, not the fixture */
+  @Benchmark
+  def nestedBlockR(): Int =
+    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](blockR))._2._2
+
+  @Benchmark
+  def blockFuncR(): Int = Fused.runCtrl[Func, Int, String, Int](0)(h => blockFunc(h)(0, 0))._2
+
+  @Benchmark
+  def blockContR(): Int = Fused.runCtrl[Cont, Int, String, Int](0)(h => blockCont(h)(0, 0))._2
+
+  @Benchmark
+  def blockFuncStagedR(): Int =
+    val C = Control[Func]
+    (C./(blockFuncStaged(0, 0))(a => st => (st, a)))((0, Vector.empty))._2
+
   @Setup
   def up(): Unit =
+    blockR = blockFree(0, 0)
     swR = rightSW(0, 0)
     sw = (0 until N).foldLeft(pure[SW, Int](0)): (m, i) =>
       m.flatMap: acc =>

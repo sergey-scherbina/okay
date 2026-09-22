@@ -172,6 +172,18 @@ of the reordered arc (see "After stage 0").
       MEASURED: `Handler.flat` on the four-effect agent row is not
       slower than `Handler.union` at any position, and faster at the
       last (the position that pays four tests today).
+      CEILING LANE FIRST (staged-block-lanes, 2026-09-22):
+      `FlatDispatchBenchmark` — a hand-written one-`match` handler
+      over a four-effect row (what `Handler.flat` would unroll to)
+      against the nested `Handler.union` chain, 10 000 right-nested
+      operations all at position 4 and all at position 1. This is the
+      README's row shape (`Handler.union[Model, Tool + (Context +
+      Async)]` in okay-security's TestReadmes, TestStepper), not a
+      production hot path — no main source in any module builds a
+      union of four. Prediction: after stage A a test is a bare class
+      check and the nested `handle` calls are monomorphic, so under
+      5% at position 4 and parity at position 1. Threshold: build
+      `Handler.flat` only if the ceiling reads ≥ 1.1x at position 4.
 
 ## Out of scope
 

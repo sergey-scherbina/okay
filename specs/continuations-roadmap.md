@@ -169,6 +169,29 @@ of the same block is the baseline (13.7 µs / 122 641 B). Scope: the
 macro's `pipeline` gains a second emission target; the lowering is
 unchanged.
 
+**Measured before building — staged-block-lanes, 2026-09-22.** The
+lane above prices the wrong shape: `rightSW` is one operation per
+recursive step, and stage B already showed that shape loses to the
+tree (0.86x). What a `direct` block inside a loop actually is: a
+STATIC block of k operations, then one recursive bind. So
+`FusionBenchmark` gains the same 1 000 operations grouped 10 per
+iteration, six ways — the tree prebuilt (`blockFreeR`), the tree built
+and run (`blockFreeBuildR`, the user's price), the shipping nested
+runners on the tree (`nestedBlockR`), the block over `Func` and `Cont`
+with the handler passed as a value (`blockFuncR`/`blockContR`: binds
+static, dispatch at run time — what the macro emits with an opaque
+`h`), and the CEILING `blockFuncStagedR`, every operation written as
+its shift directly (binds AND handler static — what the macro could
+emit only when it sees the handler at the call site). Prediction,
+stated so it can be refuted: staged-effects' 1.9x was measured
+against `runIn[Cont]` at ~18 ns/op, and the fused tree walk is
+13.7 ns/op, so the same shape against the real baseline predicts
+about 1.25x for the ceiling and under 1.1x for the opaque-handler
+form. Thresholds, before the run: ceiling under 1.2x over
+`blockFreeR` — road 2 is refuted and the box below closes; 1.5x or
+more — the emission target is worth building; between — the number
+is filed and nothing is built.
+
 ### 3. Typestate on the facade — freer-base stage 2
 
 **Today.** `PState` moves a state type through `S`/`R`; `Delim`'s
