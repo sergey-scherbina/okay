@@ -58,32 +58,145 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     case Some(st) => Apply(TypeApply(Select.unique(st, "stage"), List(Inferred(elem.widen))), List(stripped(op)))
     case None => injectTerm(op, elem, row)
 
+  lazy val pureApply: Symbol =
+    Symbol.requiredModule("okay.Free.Pure").methodMember("apply").head
+  lazy val bindApply: Symbol =
+    Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
+
   /**
-   * `Free.Inject(op)` under its inlining wrappers — what `State.get`,
-   * `Writer.tell`, `Reader.ask` ARE after inlining (`effect(Get())`).
-   * The wrappers' bindings (an argument the inliner proxied to a val)
-   * come back with the op, so the caller can keep them in front of it.
+   * THE INLINER'S PROXIES, SUBSTITUTED. An inline method's by-value
+   * argument becomes `val x$proxy = arg` in the `Inlined` bindings and
+   * a name where it was used, and an inline match cannot reduce on a
+   * name; a continuation arrives as `val f$proxy = (s => …)`. A proxy
+   * whose right-hand side is PURE BY CONSTRUCTION — a lambda literal, a
+   * literal, a name, a program node (`Inject`/`Pure`/`Bind`), an
+   * operation of the row — goes back where its name stands; any other
+   * only when it is used exactly once and not under a lambda (moving an
+   * evaluation into a continuation would change when it runs). What
+   * remains stays a binding, hoisted in front by `unwrap`.
    */
-  def injectedOp(t: Term): Option[(List[Statement], Term)] =
-    def walk(t: Term): Option[(List[Statement], Term)] = t match
-      case Inlined(_, bs, inner) => walk(inner).map((bs2, op) => (bs ++ bs2, op))
-      case Typed(inner, _) => walk(inner)
-      case Block(bs, inner) => walk(inner).map((bs2, op) => (bs ++ bs2, op))
-      case Apply(TypeApply(f, _), List(op)) if f.symbol == injectApply => Some((Nil, op))
-      case Apply(f, List(op)) if f.symbol == injectApply => Some((Nil, op))
-      case _ => None
-    /** the inliner proxies a by-value argument to a val (`val a$proxy
-     * = Get(); Inject(a$proxy)`), and an inline match cannot reduce on
-     * a name: put the constructor back where the op stands. The proxy
-     * has exactly one use — the op — so its binding goes with it. */
-    def resolve(bs: List[Statement], op: Term): (List[Statement], Term) = stripped(op) match
-      // the name arrives as `Inlined(None, Nil, Ident(a$proxy))` — stripped first
-      case id: Ident =>
-        bs.collectFirst { case v: ValDef if v.symbol == id.symbol && v.rhs.isDefined => v } match
-          case Some(v) => resolve(bs.filterNot(_ eq v), v.rhs.get)
-          case None => (bs, op)
-      case _ => (bs, op)
-    walk(t).map(resolve)
+  private def proxyFree(t: Term, row: TypeRepr): Term =
+    def pureRhs(r: Term): Boolean = stripped(r) match
+      case Lambda(_, _) | Literal(_) | Ident(_) => true
+      case Apply(TypeApply(f, _), _) if Set(injectApply, pureApply, bindApply)(f.symbol) => true
+      case x => x.tpe.widen <:< row.appliedTo(TypeRepr.of[Any])
+    /** uses of sym in the trees: (total, under a lambda) */
+    def uses(sym: Symbol, trees: List[Tree]): (Int, Int) =
+      var total = 0; var under = 0
+      val probe = new TreeTraverser:
+        var depth = 0
+        override def traverseTree(tree: Tree)(o: Symbol): Unit = tree match
+          case id: Ident if id.symbol == sym => total += 1; if depth > 0 then under += 1
+          case Lambda(_, _) | (_: DefDef) => depth += 1; super.traverseTree(tree)(o); depth -= 1
+          case _ => super.traverseTree(tree)(o)
+      trees.foreach(probe.traverseTree(_)(Symbol.spliceOwner))
+      (total, under)
+    def substitutable(v: ValDef, rest: List[Tree]): Boolean =
+      v.rhs.exists { r =>
+        val (total, under) = uses(v.symbol, rest)
+        pureRhs(r) || (total == 1 && under == 0)
+      }
+    /** bindings split into (kept, substituted-into-the-rest) */
+    def rewrite(stats: List[Statement], expr: Term): (List[Statement], Term) =
+      stats match
+        case Nil => (Nil, expr)
+        case (v: ValDef) :: rest if substitutable(v, rest :+ expr) =>
+          val (rest2, expr2) = rewrite(rest, expr)
+          val rhs = v.rhs.get
+          val sub = new TreeMap:
+            override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+              case id: Ident if id.symbol == v.symbol => rhs
+              case _ => super.transformTerm(tree)(o)
+          (rest2.map(s => sub.transformTree(s)(Symbol.spliceOwner).asInstanceOf[Statement]),
+            sub.transformTerm(expr2)(Symbol.spliceOwner))
+        case s :: rest =>
+          val (rest2, expr2) = rewrite(rest, expr)
+          (s :: rest2, expr2)
+    val m = new TreeMap:
+      override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+        case Lambda(_, _) => super.transformTerm(tree)(o)
+        case Inlined(call, bs, body) =>
+          val (bs2, body2) = rewrite(bs.map(transformTree(_)(o).asInstanceOf[Statement]), transformTerm(body)(o))
+          Inlined.copy(tree)(call, bs2.map(_.asInstanceOf[Definition]), body2)
+        case Block(stats, expr) =>
+          val (stats2, expr2) = rewrite(stats.map(transformTree(_)(o).asInstanceOf[Statement]), transformTerm(expr)(o))
+          Block.copy(tree)(stats2, expr2)
+        case _ => super.transformTerm(tree)(o)
+    m.transformTerm(t)(Symbol.spliceOwner)
+
+  /** a term with its wrappers off — inlining, ascription, the block
+   * the inliner leaves its remaining proxies in, and RowLift's
+   * coercions, which are casts (`p.asInstanceOf[A ! R]`): the program
+   * inside a `.at[Row]` is the program. A lambda is left whole. The
+   * bindings come out in front. */
+  private def unwrap(t: Term): (List[Statement], Term) = t match
+    case Lambda(_, _) => (Nil, t)
+    case Inlined(_, bs, inner) => val (bs2, x) = unwrap(inner); (bs ++ bs2, x)
+    case Typed(inner, _) => unwrap(inner)
+    case Block(bs, inner) => val (bs2, x) = unwrap(inner); (bs ++ bs2, x)
+    case TypeApply(Select(inner, "asInstanceOf"), _) => unwrap(inner)
+    case _ => (Nil, t)
+
+  /**
+   * A PROGRAM of the row, staged (specs/direct-staged.md v2): after
+   * inlining, `State.modify(f)`, a for-comprehension over the row and
+   * a hand-written chain are all one tree — `Free.Inject(op)`,
+   * `Free.Pure(a)`, `Free.Bind(m, x => body)` with the continuation a
+   * lambda literal — and that tree is walked here into the same binds
+   * a block of marks would emit: an operation becomes `stage(op)`, a
+   * `Pure` the carrier's `pure`, a `Bind` a `bind` whose continuation
+   * walks the lambda's body with its parameter re-bound. `None` where
+   * a node is not one of those — a def call, `Free.delay`, a
+   * continuation that is a value — and the caller refuses, naming it.
+   */
+  def stageProgram(t: Term, row: TypeRepr): Option[Term] =
+    def wrap(bs: List[Statement], x: Term): Term = if bs.isEmpty then x else Block(bs, x)
+    def walk(t: Term): Option[Term] =
+      val (bs, core) = unwrap(t)
+      core match
+        case Apply(TypeApply(f, targs), List(op)) if f.symbol == injectApply =>
+          val elem = targs.last.tpe.widen
+          if stripped(op).tpe.widen <:< row.appliedTo(elem) then Some(wrap(bs, liftOp(op, elem, row))) else None
+        case Apply(TypeApply(f, targs), List(a)) if f.symbol == pureApply =>
+          Some(wrap(bs, pureF(Typed(a, Inferred(targs.last.tpe.widen)))))
+        case Apply(TypeApply(f, targs), List(m, k)) if f.symbol == bindApply =>
+          val aT = targs(1).tpe.widen
+          val bT = targs(2).tpe.widen
+          stripped(k) match
+            case Lambda(List(param), body) =>
+              // the body is walked FIRST, against a fresh name for the
+              // parameter, and the bind is emitted only if it walks —
+              // a failed walk inside the bind's quote would be a cast
+              // exception, not a refusal
+              val fresh = Symbol.newVal(Symbol.spliceOwner, param.name, aT, Flags.EmptyFlags, Symbol.noSymbol)
+              def renamed(t: Term, from: Symbol, to: Term): Term =
+                val r = new TreeMap:
+                  override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+                    case id: Ident if id.symbol == from => to
+                    case _ => super.transformTerm(tree)(o)
+                r.transformTerm(t)(Symbol.spliceOwner)
+              for
+                ms <- walk(m)
+                bodyStaged <- walk(renamed(body, param.symbol, Ref(fresh)))
+              yield wrap(bs, bind(ms, aT, bT)(v => renamed(bodyStaged, fresh, v)))
+            case _ => None
+        // `_ <- m` in a for-comprehension lands as `() match { case () =>
+        // rest }`, and a `case x =>` is a rename: a match with ONE
+        // irrefutable case is its right-hand side
+        case Match(scrut, List(CaseDef(pat, None, rhs))) =>
+          pat match
+            case Wildcard() => walk(rhs)
+            case Literal(UnitConstant()) if scrut.tpe.widen =:= TypeRepr.of[Unit] => walk(rhs)
+            case Bind(_, Wildcard()) =>
+              val sym = pat.symbol
+              val r = new TreeMap:
+                override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+                  case id: Ident if id.symbol == sym => scrut
+                  case _ => super.transformTerm(tree)(o)
+              walk(r.transformTerm(rhs)(Symbol.spliceOwner))
+            case _ => None
+        case _ => None
+    walk(proxyFree(t, row))
 
   /**
    * ONE mark, dispatched by type: an F[elem] of this block IS
@@ -97,19 +210,17 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     else anyRow match
       case Some(row) if m.tpe <:< row.appliedTo(elem.widen) =>
         liftOp(m, elem, row)
-      // a staged block: a LEAF program of the row (`State.get[S]`) is
-      // its one operation, staged; anything compound is refused — a
-      // staged block's cost is one arm per mark, no interpreter inside
+      // a staged block: a program of the row is walked into binds
+      // (stageProgram, v2) — a leaf is one `stage(op)`, a compound one
+      // its binds; what cannot be walked is a program built at run
+      // time, and a staged block's cost is one arm per operation with
+      // no interpreter inside, so it is refused, naming the shape
       case Some(row) if stage.isDefined && m.tpe.widen.dealias.derivesFrom(freeClass) =>
-        injectedOp(m) match
-          case Some((bs, op)) if op.tpe <:< row.appliedTo(elem.widen) =>
-            val lifted = liftOp(op, elem, row)
-            if bs.isEmpty then lifted else Block(bs, lifted)
-          case _ =>
-            report.errorAndAbort(
-              s"a staged block stages OPERATIONS: the marked value ${m.tpe.show} is a program of the " +
-                "row, not one operation of it — perform its operations in the block instead " +
-                "(`State.modify(f)` is `val s = State.get.!?; State.set(f(s)).!?`)", at)
+        stageProgram(m, row).getOrElse(
+          report.errorAndAbort(
+            s"a staged block stages programs it can READ: the marked value ${m.tpe.show} is built at " +
+              "run time (a def call, `Free.delay`, a continuation that is not a lambda literal, a " +
+              "program held in a val) — inline it, or perform its operations in the block", at))
       // a program of a NARROWER row: `!Reader.ask[Db]` inside a block at
       // `Writer % String + Reader % Db + State % Long` (direct-narrow-row,
       // 2026-09-16). The row's own combinators — `State.modify`,

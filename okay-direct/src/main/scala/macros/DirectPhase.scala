@@ -45,6 +45,12 @@ private[okay] trait DirectPhase[F[_]]:
   def compile(t: Term): Out
   def compileBlock(stats: List[Statement], expr: Term): Out
 
+  /** the monad's words — DirectEmit's; declared here so a phase
+   * below it (DirectRow's program walker, direct-staged v2) can
+   * emit a bind or a pure without extending emission */
+  def bind(fa: Term, vTpe: TypeRepr, resTpe: TypeRepr)(body: Term => Term): Term
+  def pureF(t: Term): Term
+
   /** a term with its inlining and ascription wrappers taken off */
   def stripped(t: Term): Term = Direct.stripped(t)
 

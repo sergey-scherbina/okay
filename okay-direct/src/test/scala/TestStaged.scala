@@ -83,13 +83,54 @@ class TestStaged extends munit.FunSuite:
     assertEquals(a, (1 to 2500).sum)
   }
 
-  test("a compound program of the row under a mark is refused, naming the fix") {
+  // ---- v2: compound programs are walked into binds
+
+  import okay.RowLift.at
+
+  def freeCompound(xs: List[Int], k: Int): Int ! Row = direct[[A] =>> A ! Row] {
+    val s1 = State.modify[Int](_ + k).!?                                  // an inline combinator
+    val s2 = State.get[Int].flatMap(s => State.set[Int](s * 2)).!?         // a hand-written chain
+    val s3 = (for                                                           // a for-comprehension over the row
+        s <- State.get[Int].at[Row]
+        _ <- Writer.tell(s"saw $s").at[Row]
+        t <- State.set[Int](s + 1).at[Row]
+      yield t - s).!?
+    for x <- xs do State.modify[Int](_ + x).!?
+    val s4 = State.get[Int].map(_ * 10).!?                                  // map: Bind into Pure
+    s1 + s2 + s3 + s4
+  }
+
+  def stagedCompound(xs: List[Int], k: Int): Handled[Row, R, Int] = Direct.staged(sw) {
+    val s1 = State.modify[Int](_ + k).!?
+    val s2 = State.get[Int].flatMap(s => State.set[Int](s * 2)).!?
+    val s3 = (for
+        s <- State.get[Int].at[Row]
+        _ <- Writer.tell(s"saw $s").at[Row]
+        t <- State.set[Int](s + 1).at[Row]
+      yield t - s).!?
+    for x <- xs do State.modify[Int](_ + x).!?
+    val s4 = State.get[Int].map(_ * 10).!?
+    s1 + s2 + s3 + s4
+  }
+
+  test("v2: compound programs — modify, a flatMap chain, a for-comprehension, map — agree with the Free block") {
+    val rnd = new scala.util.Random(20260923)
+    for _ <- 1 to 300 do
+      val xs = List.fill(rnd.nextInt(8))(rnd.nextInt(50))
+      val k = rnd.nextInt(100)
+      val s0 = rnd.nextInt(100)
+      val (s, (log, a)) = State.run[Int, (Seq[String], Int)](s0)(Writer.run[String, Int, State % Int](freeCompound(xs, k)))
+      val ((s2, log2), a2) = sw.run(s0)(stagedCompound(xs, k))
+      assertEquals((s2, log2, a2), (s, log.toVector, a), s"xs=$xs k=$k s0=$s0")
+  }
+
+  test("v2: a program built at run time under a mark is refused, naming the shape") {
     val e = compileErrors("""
       val sw = Stager.StateWriter[Int, String, Int]()
-      Direct.staged(sw) { State.modify[Int](_ + 1).!? }
+      def opaque: Int ! (State % Int + Writer % String) = State.get[Int].at[State % Int + Writer % String]
+      Direct.staged(sw) { opaque.!? }
     """)
-    assert(e.contains("staged"), e)
-    assert(e.contains("modify") || e.contains("operation"), e)
+    assert(e.contains("run time"), e)
   }
 
   test("a foreign monad under a mark is refused as in a Free block") {

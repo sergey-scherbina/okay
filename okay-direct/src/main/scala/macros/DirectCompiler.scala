@@ -103,7 +103,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
       // of the block, and the op an identifier no inline match can
       // reduce on. A leaf with marks in its argument takes the road
       // below, and is then refused by markTerm's staged case
-      case Some(m) if stage.isDefined && !hasMark(m) && injectedOp(m).isDefined =>
+      case Some(m) if stage.isDefined && !hasMark(m) && m.tpe.widen.dealias.derivesFrom(freeClass) =>
         Out.Eff(markTerm(m, t.tpe, t.pos), t.tpe.widen)
       case Some(m) =>
         compile(m) match

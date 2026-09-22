@@ -111,6 +111,41 @@ laws apply to it unchanged.
       one thing it gains: `val _ = m.!?` binds straight into the rest
       (−38 KB on the benchmark's Free block; see Results).
 
+## v2 — compound programs (direct-staged-v2, 2026-09-22)
+
+v1 staged a mark only when the marked term was one operation, and
+refused `State.modify(f)`. After inlining, a compound program IS a
+tree the macro can read: `Free.Inject(op)`, `Free.Pure(a)`,
+`Free.Bind(m, x => body)` with the continuation a lambda literal — the
+combinators are `inline def`s, `Free.flatMap` is `Bind(this, f)`,
+`map` is `flatMap(a => Pure(f(a)))`, and RowLift's `.at`/`.plus` are
+casts. `DirectRow.stageProgram` walks that tree into the binds a block
+of marks would emit, so nothing runs inside a staged block that the
+compiler did not see.
+
+- [x] Under a mark in a staged block, `State.modify(f)`, a hand-written
+      `get.flatMap(s => set(…))`, a for-comprehension over the row
+      (`.at[Row]` on each generator, a `_ <-` among them) and
+      `State.get.map(f)` agree with the same text as a Free block on
+      300 generated data sets — state, log, answer (`TestStaged`).
+- [x] What the walker cannot read is refused naming the shape: a
+      program built at run time — a def call, a program held in a
+      val, `Free.delay`, a continuation that is a value.
+- [x] The leaf road is unchanged: `StagedBenchmark.stagedDirect` at
+      85 368 B/op (see Results).
+
+What the walk had to learn, in order: the inliner's proxies are
+substituted in one pass first (`proxyFree`) — a pure right-hand side
+(a lambda literal, a literal, a name, a program node, an operation)
+always, any other only when used once and not under a lambda — so
+that `Inject(a$proxy)` and `Bind(Free_this, f$proxy)` read as the
+constructors they name; a lambda's `Block(DefDef, Closure)` is left
+whole by `unwrap`; a continuation's body is walked BEFORE its bind is
+emitted, against a fresh name for the parameter (a failed walk inside
+the bind's quote would be a cast exception, not a refusal); and `_ <-
+m` in a for-comprehension lands as `() match { case () => rest }`, a
+match with one irrefutable case, which is its right-hand side.
+
 ## Out of scope
 
 - Any other row than the ones a `Stager` object is written for. The
