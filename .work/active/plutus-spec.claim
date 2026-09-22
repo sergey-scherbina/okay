@@ -1,6 +1,0 @@
-feature/plutus-spec 2026-09-22T22:12:05Z
-agent: claude-code
-heartbeat: 2026-09-22T22:12:05Z
-status: in-progress
-done-so-far: read scalus CekMachine (params, spender, logger, builtin runtime)
-next: specs/plutus.md + backlog section okay-plutus
