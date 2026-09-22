@@ -73,7 +73,7 @@ class TestTypedZipper extends munit.FunSuite {
     assertEquals(edited.lines(1), Line.Discount(20))
     assertEquals(edited.lines(0), order.lines(0))
     // and up from the case is the Vector element, typed as the sum
-    val back: TypedZipper.Below[Order, Vector[Line], Line, ?] = d.up
+    val back: TypedZipper.Elem[Order, Line, ?] = d.up
     assertEquals(back.focus, Line.Discount(10))
   }
 
@@ -157,5 +157,29 @@ class TestTypedZipper extends munit.FunSuite {
     val c = TypedZipper.Poly.of[Pair, Pair](Pair("a", "b"))
     assertEquals(c.down(pa).set("A"), Pair("A", "b"))
     assertEquals(c.down(pb).set("B"), Pair("a", "B"))
+  }
+
+  // ---- stage 4: left/right among the elements of a Vector focus
+
+  test("left/right on an element frame: typed siblings, None at the ends, identity both ways") {
+    val e1 = TypedZipper(order).down(lines).at(1).get
+    assertEquals(e1.right.map(_.focus), Some(order.lines(2)))
+    assertEquals(e1.left.map(_.focus), Some(order.lines(0)))
+    assertEquals(e1.left.flatMap(_.left), None)
+    assertEquals(e1.right.flatMap(_.right), None)
+    assertEquals(e1.right.flatMap(_.left).map(z => (z.focus, z.index)), Some((order.lines(1), 1)))
+    assertEquals(e1.left.flatMap(_.right).map(_.index), Some(1))
+    assert(e1.right.get.root eq order, "a sideways move without edits rebuilt the whole")
+  }
+
+  test("an edit survives a sideways move, and up after it carries both edits; the affine still points at the element") {
+    val z = TypedZipper(order).down(lines).at(0).get.set(Line.Item("A", 1)).right.get.set(Line.Discount(50))
+    assertEquals(z.root.lines, Vector(Line.Item("A", 1), Line.Discount(50), Line.Item("b", 1)))
+    assertEquals(z.up.focus, Vector(Line.Item("A", 1), Line.Discount(50), Line.Item("b", 1)))
+    assertEquals(z.asAffine.preview(order), Some(order.lines(1)))
+    assertEquals(z.asAffine.set(Line.Discount(1))(order).lines(1), Line.Discount(1))
+    // the sibling walk from a fresh cursor agrees with at(i)
+    val walked = TypedZipper(order).down(lines).at(0).get.right.flatMap(_.right).map(_.focus)
+    assertEquals(walked, TypedZipper(order).down(lines).at(2).map(_.focus))
   }
 }

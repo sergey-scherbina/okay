@@ -94,6 +94,32 @@ object TypedZipper:
     def asAffine: Affine[S, S, A, A] = parent.asAffine.andThen(Affine(look, put))
     protected def self: Below[S, P, A, Z] = this
 
+  /**
+   * An ELEMENT frame: the i-th of a `Vector` focus (specs/zipper.md,
+   * stage 4). The one frame whose siblings have the focus's own type,
+   * so `left`/`right` are typed here — and nowhere else: a case
+   * class's fields are not a sequence, and the field beside
+   * `customer` is a `Vector[Line]`, not another `Customer`. A sideways
+   * move commits the focus to the parent first (`up`), so an edit
+   * survives it, and the new frame reads its element off that parent.
+   */
+  final case class Elem[S, B, Z <: TypedZipper[S, Vector[B], Z]](parent: Z, i: Int, focus: B, dirty: Boolean = false)
+    extends TypedZipper[S, B, Elem[S, B, Z]]:
+    def set(b: B): Elem[S, B, Z] = copy(focus = b, dirty = true)
+    def up: Z = if dirty then parent.set(parent.focus.updated(i, focus)) else parent
+    def root: S = up.root
+    def depth: Int = parent.depth + 1
+    def index: Int = i
+    def left: Option[Elem[S, B, Z]] = sibling(i - 1)
+    def right: Option[Elem[S, B, Z]] = sibling(i + 1)
+    private def sibling(j: Int): Option[Elem[S, B, Z]] =
+      val p = up
+      p.focus.lift(j).map(b => Elem(p, j, b))
+    def asAffine: Affine[S, S, B, B] = parent.asAffine.andThen(Affine(
+      v => v.lift(i).toRight(v),
+      (v, b) => if v.isDefinedAt(i) then v.updated(i, b) else v))
+    protected def self: Elem[S, B, Z] = this
+
   def apply[S](s: S): Top[S] = Top(s)
 
   /**
@@ -135,9 +161,8 @@ extension [S, A <: Product, Z <: TypedZipper[S, A, Z]](z: TypedZipper[S, A, Z])
     : TypedZipper.Below[S, A, Tuple.Elem[m.MirroredElemTypes, Optic.IndexOf[m.MirroredElemLabels, L, 0]], Z] =
     z.down(Lens.field[A](name))
 
-extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: TypedZipper[S, Vector[B], Z])
-  /** the i-th element of a `Vector` focus, or None past the end */
-  def at(i: Int): Option[TypedZipper.Below[S, Vector[B], B, Z]] =
-    z.downPartial(Affine[Vector[B], Vector[B], B, B](
-      v => v.lift(i).toRight(v),
-      (v, b) => if v.isDefinedAt(i) then v.updated(i, b) else v))
+extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: Z)
+  /** the i-th element of a `Vector` focus, or None past the end — an
+   * element frame, with `left`/`right` among its siblings */
+  def at(i: Int): Option[TypedZipper.Elem[S, B, Z]] =
+    z.focus.lift(i).map(b => TypedZipper.Elem(z, i, b))

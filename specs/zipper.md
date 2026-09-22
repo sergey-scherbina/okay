@@ -469,3 +469,58 @@ the index or the case is missing, and `set` through it equals
 two-lens-and-`Prism.some` walk changes `Option[String]` to
 `Option[Int]` inside two boxes, and the wrong case builds nothing.
 `left`/`right` refused a second time, reason in Decisions.
+
+## Stage 4 — `left`/`right` among a Vector's elements (typed-zipper-elem-siblings, 2026-09-23)
+
+Stages 2 and 3 refused `left`/`right` on FIELDS, and still do: the
+field beside `customer` is a `Vector[Line]`, not another `Customer`,
+so a typed sibling move would have a result type that depends on
+where it stands. The operator asked for the one place it does type
+("может сделаешь уже эти десять строк"): the elements of a `Vector`
+focus, all of one type `B`.
+
+### Interface (stage 4)
+
+```scala
+object TypedZipper:
+  /** the i-th element of a Vector focus — the frame remembers i */
+  final case class Elem[S, B, Z <: TypedZipper[S, Vector[B], Z]](parent: Z, i: Int, focus: B, dirty: Boolean = false)
+    extends TypedZipper[S, B, Elem[S, B, Z]]:
+    def up: Z
+    def index: Int
+    def left: Option[Elem[S, B, Z]]     // the previous element; the focus committed to the parent first
+    def right: Option[Elem[S, B, Z]]
+extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: Z)
+  def at(i: Int): Option[TypedZipper.Elem[S, B, Z]]   // was a Below; now the element frame
+```
+
+### Behavior (stage 4, `TestTypedZipper`)
+
+- [x] `left`/`right` answer the neighbouring element, `None` at either
+      end; `right.left` and `left.right` are the identity (focus and
+      index); a sideways walk without edits keeps `root eq` the input.
+- [x] an edit survives a sideways move: `at(0).set(a).right.set(b)`
+      has both in `root` and in `up.focus`; `asAffine` on the moved
+      frame points at its element; the sibling walk agrees with
+      `at(i)` from a fresh cursor.
+
+### Decisions (stage 4)
+
+- **A frame of its own, `Elem`, not an index bolted onto `Below`** —
+  `Below`'s frame is an optic pair and knows no position; the element
+  frame's whole point is the position. `at(i)` now answers it, and
+  `downCase` from it goes `up` into an `Elem`, typed (the test's
+  ascription changed from `Below[…, Vector[Line], Line, ?]` to
+  `Elem[Order, Line, ?]`).
+- **Sideways commits first** — `left`/`right` call `up`, so the
+  parent carries the edit and the new frame is clean; the alternative
+  (carrying a dirty focus across) would have needed the parent to be
+  rebuilt twice. Stage 1's plate zipper does the same.
+- **Fields: still refused** — reason unchanged since stage 2.
+
+### Results (stage 4)
+
+2026-09-23, minutes. Eleven lines of frame, one extension changed,
+`TestTypedZipper` 13 (11 + 2), green through `scripts/gate.sh`, no
+warnings, first run. The extension takes `z: Z` and the compiler
+infers `S` and `B` from `Z`'s bound — no `=:=` evidence, no cast.
