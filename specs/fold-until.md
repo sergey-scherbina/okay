@@ -64,13 +64,15 @@ Chunks.foldUntil[A, S, R](p: Chunks[A])(using FoldUntil[A, S, R]): R
 Writer.foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F
 extension [A](s: Source[A]) def runFoldUntil[S, R](using FoldUntil[A, S, R]): R ! Async
 extension [W, A](a: A ! Writer % W) def foldUntil[S, R](using FoldUntil[W, S, R]): R   // fold-until-docs
+extension [W, A, G[+_]](a: A ! Writer % W + G)(using TypeableK[G], Handler[G]) def foldUntil[S, R](using FoldUntil[W, S, R]): R   // producer-fold-until
+Producer.foldUntil[W, S, R, A, G[+_] : TypeableK](p: A ! Produce + G)(using FoldUntil[W, S, R]): R ! G   // producer-fold-until
 ```
 
 `Writer.foldUntil` answers `R` alone, not `(R, A)`: a fold that stops
 early never sees the program's answer, and a signature that promised
 it would have to invent one.
 
-Stages 2–4, specified here so the form is written down once (stage 2 landed with loop-on-bang), opened
+Stages 2–4, specified here so the form is written down once (stage 2 landed with loop-on-bang; the triggers on 3 and 4 were REMOVED by the operator on 2026-09-22 — "все нужно" — so they are built rather than waited for), opened
 by their triggers (Decisions):
 
 - Stage 2 (loop-on-bang) — `!.loop[S, A, F[+_]](s: S)(f: S =>
@@ -119,6 +121,15 @@ Stage 1:
 - [x] `Writer.foldUntil` is tail-recursive across tells: a source of
       100 000 elements with the stop never firing folds on the
       default stack.
+- [ ] `Producer.foldUntil` agrees with `Producer.fold` over the
+      prefix on the pure road, performs a forwarded `G` operation
+      before the stop and not one after it, pulls nothing for
+      `take(0)`, and folds 100 000 productions on the default stack
+      (producer-fold-until).
+- [ ] the effectful writer program's `.foldUntil(using fo)` is
+      `Writer.foldUntil` run by the `Handler[G]` in scope, so a
+      `Source` under a `Handler[Async]` folds with one `using` like
+      the pure one (producer-fold-until).
 
 Stage 2 — `!.loop(s)(f)`:
 
