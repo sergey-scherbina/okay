@@ -1,6 +1,6 @@
 package okay.staging
 
-import okay.codec.{Cbor, CborCodec, Codecs, Json, JsonCodec, JsonStrict, Schema, Staged, StrictJsonCodec}
+import okay.codec.{Cbor, CborCodec, Codecs, Json, JsonCodec, JsonStrict, Numbers, Schema, Staged, StrictJsonCodec}
 
 import scala.quoted.*
 import scala.quoted.staging.{Compiler, run}
@@ -343,10 +343,10 @@ object RuntimeStaged {
       if seen.exists(_ eq s) then '{ Unsafe.decodeAny(${ node(s) }, $j) }
       else s match
         case Schema.SInt => '{ $j match
-          case Json.JNum(n) => Right(n.toInt)
+          case Json.JNum(n) => Numbers.int(n)
           case got => Json.decode(Schema.SInt)(got) }
         case Schema.SLong => '{ $j match
-          case Json.JNum(n) => Right(n.toLong)
+          case Json.JNum(n) => Numbers.long(n)
           case got => Json.decode(Schema.SLong)(got) }
         case Schema.SDouble => '{ $j match
           case Json.JNum(n) => Right(n)
@@ -486,7 +486,7 @@ object RuntimeStaged {
     def read(s: Schema[?], in: Expr[Cbor.In], seen: List[Schema[?]]): Expr[Either[String, Any]] =
       if seen.exists(_ eq s) then '{ Unsafe.decodeItemAny($in, ${ node(s) }) }
       else s match
-        case Schema.SInt => '{ $in.intItem().map(_.toInt) }
+        case Schema.SInt => '{ $in.intItem().flatMap(Numbers.int) }
         case Schema.SLong => '{ $in.intItem() }
         case Schema.SDouble => '{ $in.doubleItem() }
         case Schema.SBool => '{ $in.boolItem() }
@@ -554,8 +554,8 @@ object RuntimeStaged {
     def read(s: Schema[?], r: Expr[JsonStrict.Reader], seen: List[Schema[?]]): Expr[Either[String, Any]] =
       if seen.exists(_ eq s) then '{ Unsafe.getAny($r, ${ node(s) }) }
       else s match
-        case Schema.SInt => '{ $r.number().map(_.toInt) }
-        case Schema.SLong => '{ $r.number().map(_.toLong) }
+        case Schema.SInt => '{ $r.number().flatMap(Numbers.int) }
+        case Schema.SLong => '{ $r.number().flatMap(Numbers.long) }
         case Schema.SDouble => '{ $r.number() }
         case Schema.SBool => '{ $r.bool() }
         case Schema.SString => '{ $r.string() }

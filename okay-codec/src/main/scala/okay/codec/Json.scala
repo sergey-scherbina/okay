@@ -601,8 +601,8 @@ object Json {
     case _: Schema.SIso[?, ?] => "SIso"
 
   private def decodeNative[A](s: Schema[A], j: Json, depth: Int): Either[String, A] = (s, j) match
-    case (Schema.SInt, JNum(n)) => Right(n.toInt)
-    case (Schema.SLong, JNum(n)) => Right(n.toLong)
+    case (Schema.SInt, JNum(n)) => Numbers.int(n)
+    case (Schema.SLong, JNum(n)) => Numbers.long(n)
     case (Schema.SDouble, JNum(n)) => Right(n)
     case (Schema.SBool, JBool(b)) => Right(b)
     case (Schema.SString, JStr(x)) => Right(x)
@@ -688,8 +688,8 @@ object Json {
     decodeC(sc, v).map(e => e: Either[String, Any])
 
   private def decodeC[A, R](s: Schema[A], j: Json): Either[String, A] /> R = (s, j) match
-    case (Schema.SInt, JNum(n)) => Cont.Pure(Right(n.toInt))
-    case (Schema.SLong, JNum(n)) => Cont.Pure(Right(n.toLong))
+    case (Schema.SInt, JNum(n)) => Cont.Pure(Numbers.int(n))
+    case (Schema.SLong, JNum(n)) => Cont.Pure(Numbers.long(n))
     case (Schema.SDouble, JNum(n)) => Cont.Pure(Right(n))
     case (Schema.SBool, JBool(b)) => Cont.Pure(Right(b))
     case (Schema.SString, JStr(x)) => Cont.Pure(Right(x))

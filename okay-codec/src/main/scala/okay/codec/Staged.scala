@@ -480,10 +480,10 @@ object Staged {
     def read[T: Type](j: Expr[Json], seen: List[TypeRepr]): Expr[Either[String, T]] =
       Type.of[T] match
         case '[Int] => '{ $j match
-          case Json.JNum(n) => Right(n.toInt)
+          case Json.JNum(n) => Numbers.int(n)
           case got => Json.decode(Schema.SInt)(got) }.asExprOf[Either[String, T]]
         case '[Long] => '{ $j match
-          case Json.JNum(n) => Right(n.toLong)
+          case Json.JNum(n) => Numbers.long(n)
           case got => Json.decode(Schema.SLong)(got) }.asExprOf[Either[String, T]]
         case '[Double] => '{ $j match
           case Json.JNum(n) => Right(n)
@@ -632,7 +632,7 @@ object Staged {
 
     def read[T: Type](in: Expr[Cbor.In], seen: List[TypeRepr]): Expr[Either[String, T]] =
       Type.of[T] match
-        case '[Int] => '{ $in.intItem().map(_.toInt) }.asExprOf[Either[String, T]]
+        case '[Int] => '{ $in.intItem().flatMap(Numbers.int) }.asExprOf[Either[String, T]]
         case '[Long] => '{ $in.intItem() }.asExprOf[Either[String, T]]
         case '[Double] => '{ $in.doubleItem() }.asExprOf[Either[String, T]]
         case '[Boolean] => '{ $in.boolItem() }.asExprOf[Either[String, T]]
@@ -714,8 +714,8 @@ object Staged {
 
     def read[T: Type](r: Expr[JsonStrict.Reader], seen: List[TypeRepr]): Expr[Either[String, T]] =
       Type.of[T] match
-        case '[Int] => '{ $r.number().map(_.toInt) }.asExprOf[Either[String, T]]
-        case '[Long] => '{ $r.number().map(_.toLong) }.asExprOf[Either[String, T]]
+        case '[Int] => '{ $r.number().flatMap(Numbers.int) }.asExprOf[Either[String, T]]
+        case '[Long] => '{ $r.number().flatMap(Numbers.long) }.asExprOf[Either[String, T]]
         case '[Double] => '{ $r.number() }.asExprOf[Either[String, T]]
         case '[Boolean] => '{ $r.bool() }.asExprOf[Either[String, T]]
         case '[String] => '{ $r.string() }.asExprOf[Either[String, T]]

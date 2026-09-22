@@ -355,7 +355,7 @@ object Cbor {
 
   private def getNative[A](in: In, s: Schema[A]): Either[String, A] = s match
     case Schema.SIso(u, to, _) => get(in, u()).flatMap(to)
-    case Schema.SInt => in.intItem().map(_.toInt)
+    case Schema.SInt => in.intItem().flatMap(Numbers.int)
     case Schema.SLong => in.intItem()
     case Schema.SDouble => in.doubleItem()
     case Schema.SBool => in.boolItem()
@@ -480,7 +480,7 @@ object Cbor {
   private def getC[X, R](in: In, s: Schema[X]): Either[String, X] /> R = s match
     case Schema.SIso(u, to, _) =>
       Cont.defer(() => getC(in, u()))(r => Cont.Pure(r.flatMap(to)))
-    case Schema.SInt => Cont.Pure(in.intItem().map(_.toInt))
+    case Schema.SInt => Cont.Pure(in.intItem().flatMap(Numbers.int))
     case Schema.SLong => Cont.Pure(in.intItem())
     case Schema.SDouble => Cont.Pure(in.doubleItem())
     case Schema.SBool => Cont.Pure(in.boolItem())

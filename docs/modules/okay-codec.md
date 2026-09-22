@@ -250,6 +250,13 @@ the wire sees.
 - CBOR `SLong` REFUSES an integer outside `Long` (a uint64 past 2⁶³,
   a negative past −2⁶³) — it used to wrap it silently, so
   `18446744073709551615` read as `-1`. Decode into `BigInt` instead.
+- A number that does not fit its field is a `Left`, never a nearby
+  value: an `Int` field refuses `3000000000` (it used to read
+  `2147483647`), CBOR 2³² (it read `0`) and `1.5` (it read `1`); a
+  `Long` field refuses `2.5`. The staged codecs refuse exactly what the
+  fold refuses (`okay.codec.Numbers` is the one place that decides).
+  Not checked: a JSON number past 2⁵³ into a `Long` — the parser has
+  already rounded it; send such values as `BigInt`.
 - `Json.write` of a `String` field escapes `"\n\t\r\\` only — exotic
   control characters pass through (the scanner keeps them lossless).
 

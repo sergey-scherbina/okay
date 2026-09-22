@@ -104,8 +104,8 @@ object JsonStrict {
 
     private def getNative[A](sc: Schema[A]): Either[String, A] = sc match
       case Schema.SIso(u, to, _) => get(u()).flatMap(to)
-      case Schema.SInt => number().map(_.toInt)
-      case Schema.SLong => number().map(_.toLong)
+      case Schema.SInt => number().flatMap(Numbers.int)
+      case Schema.SLong => number().flatMap(Numbers.long)
       case Schema.SDouble => number()
       case Schema.SBool => bool()
       case Schema.SString => string()
@@ -354,8 +354,8 @@ object JsonStrict {
     private def getC[A, R](sc: Schema[A]): Either[String, A] /> R = sc match
       case Schema.SIso(u, to, _) =>
         Cont.defer(() => getC(u()))(r => Cont.Pure(r.flatMap(to)))
-      case Schema.SInt => Cont.Pure(number().map(_.toInt))
-      case Schema.SLong => Cont.Pure(number().map(_.toLong))
+      case Schema.SInt => Cont.Pure(number().flatMap(Numbers.int))
+      case Schema.SLong => Cont.Pure(number().flatMap(Numbers.long))
       case Schema.SDouble => Cont.Pure(number())
       case Schema.SBool => Cont.Pure(bool())
       case Schema.SString => Cont.Pure(string())

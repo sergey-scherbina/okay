@@ -76,8 +76,14 @@ object Validate:
         case JErr(m) => one(k, m)
         case _ if f.isDefinedAt(j) => f(j)
         case got => one(k, s"expected $want, got $got"))
-    def int = leaf("SInt") { case JNum(n) => Right(n.toInt) }
-    def long = leaf("SLong") { case JNum(n) => Right(n.toLong) }
+    def int = Step.leaf[At, Json, Out]((k, j) => j match
+      case JNum(n) => Numbers.int(n).left.map(m => Vector(dotted(k) -> m))
+      case JErr(m) => one(k, m)
+      case got => one(k, s"expected SInt, got $got"))
+    def long = Step.leaf[At, Json, Out]((k, j) => j match
+      case JNum(n) => Numbers.long(n).left.map(m => Vector(dotted(k) -> m))
+      case JErr(m) => one(k, m)
+      case got => one(k, s"expected SLong, got $got"))
     def double = leaf("SDouble") { case JNum(n) => Right(n) }
     def bool = leaf("SBool") { case JBool(b) => Right(b) }
     def string = leaf("SString") { case JStr(x) => Right(x) }

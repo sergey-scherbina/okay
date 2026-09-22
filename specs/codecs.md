@@ -1757,9 +1757,9 @@ it `TEXT`, a Spark encoder cannot choose `decimal`. So a primitive.
   reason. Accepting small numbers on read keeps a hand-written `5`
   working.
 - `SInt` truncating through `.toInt` (CBOR and JSON alike) is the
-  same class of defect as the SLong wrap but a separate decision
-  (JSON's truncation is documented at `JsonStrict.number`); filed as
-  `sint-decode-truncates`, not fixed here.
+  same class of defect as the SLong wrap but a separate decision;
+  filed as `sint-decode-truncates` and fixed the same day by that lane
+  (section below).
 
 ### Results
 
@@ -1775,3 +1775,44 @@ it `TEXT`, a Spark encoder cannot choose `decimal`. So a primitive.
 - The sweep: `clean; Test/compile` over the whole build (237 module
   compiles) and `compare/Jmh/compile`, zero warnings — the abstract
   `Algebra.bigInt` and `-Wall` exhaustivity found every site.
+
+## Integers that do not fit (2026-09-23, sint-decode-truncates)
+
+Operator: fix it now. Every door decoded an `Int` field with `.toInt`
+and a `Long` field from JSON with `.toLong`, so a value the field could
+not hold came back as a DIFFERENT value in a `Right`: JSON 3000000000
+as 2147483647 (a Double saturates), CBOR 2^32 as 0 (a Long wraps), 1.5
+as 1. Fifteen sites: the fold decoders (`Cbor`, `Json`, `JsonStrict`,
+two paths each), `Validate`, and the generated code of the staged
+codecs, compile-time (`Staged`) and run-time (`RuntimeStaged`).
+
+### Behavior
+
+- [x] an `Int` field refuses a JSON number that is not integral or not
+      within Int, at every JSON door (decode, strict, Validate, staged,
+      staged strict, run-time staged json and strict)
+- [x] an `Int` field refuses a CBOR integer outside Int, fold and both
+      staged CBOR codecs
+- [x] a `Long` field refuses a JSON fraction at every JSON door
+- [x] the extremes still decode (`Int.MinValue`/`MaxValue`, 0)
+- [x] one function per conversion, `okay.codec.Numbers` — PUBLIC,
+      because staged code is generated into the caller's package
+
+### Decisions
+
+- A `Long` from JSON is NOT range-checked. Past 2^53 the number was
+  rounded by the parser before any decoder saw it, and `Long.MaxValue`
+  round-trips today only because the Double saturates back to it;
+  refusing either would break Longs already written as numbers. The
+  exact road for all 64 bits is `BigInt` (a digit string).
+- Refusal over clamping: a clamped value is still a wrong value, and a
+  `Left` names the field (`Validate` puts it at the field's path).
+
+### Results
+
+- `TestIntRange` (okay-codec, cross-built, 5 tests) and
+  `TestRuntimeStagedIntRange` (okay-staging, 2 tests), both RUN RED
+  first against the old code: `Right(2147483647)`, `Right(1)`,
+  `Right(Box(0))`, `Right(LBox(2))`.
+- Found beside it and filed, not fixed: CBOR byte/text lengths narrow
+  through `n.toInt` too (`cbor-length-wraps`).
