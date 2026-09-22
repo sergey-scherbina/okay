@@ -533,6 +533,9 @@ object Json {
     // literals are not something anyone reads, and one opaque token
     // says "binary payload" without burying the fields that matter.
     def bytes = Step.leaf((sb, a: Array[Byte]) => sb.append('"').append(Base64.encode(a)).append('"'): Unit)
+    // a STRING of digits: `JNum` is a Double, exact only to 2^53, so a
+    // uint64 written as a number would come back rounded (BigInts)
+    def bigInt = Step.leaf((sb, a: BigInt) => sb.append('"').append(a.toString).append('"'): Unit)
     def option[A](o: Schema.SOption[A], of: () => Enc[A]) = Step.option(sb => sb.append("null"): Unit, of)
     def list[A](l: Schema.SList[A], of: () => Enc[A]) = Step.elems[StringBuilder, List[A], A, Unit, Unit](
       (sb, _) => sb.append('['): Unit, identity, of,
@@ -589,6 +592,7 @@ object Json {
     case Schema.SString => "SString"
     case Schema.SChar => "SChar"
     case Schema.SBytes => "SBytes"
+    case Schema.SBigInt => "SBigInt"
     case _: Schema.SOption[?] => "SOption"
     case _: Schema.SList[?] => "SList"
     case _: Schema.SVector[?] => "SVector"
@@ -605,6 +609,8 @@ object Json {
     case (Schema.SChar, JStr(x)) if x.length == 1 => Right(x.head)
     case (Schema.SChar, JStr(x)) => Left(s"expected one character, got ${x.length}")
     case (Schema.SBytes, JStr(x)) => Base64.decode(x)
+    case (Schema.SBigInt, JStr(x)) => BigInts.fromDigits(x)
+    case (Schema.SBigInt, JNum(n)) => BigInts.fromNumber(n)
     case (Schema.SOption(of), JNull) => Right(None)
     case (Schema.SOption(of), v) => decodeAt(of(), v, depth + 1).map(Some(_))
     case (l: Schema.SList[a], JArr(vs)) =>
@@ -690,6 +696,8 @@ object Json {
     case (Schema.SChar, JStr(x)) if x.length == 1 => Cont.Pure(Right(x.head))
     case (Schema.SChar, JStr(x)) => Cont.Pure(Left(s"expected one character, got ${x.length}"))
     case (Schema.SBytes, JStr(x)) => Cont.Pure(Base64.decode(x))
+    case (Schema.SBigInt, JStr(x)) => Cont.Pure(BigInts.fromDigits(x))
+    case (Schema.SBigInt, JNum(n)) => Cont.Pure(BigInts.fromNumber(n))
     case (Schema.SOption(of), JNull) => Cont.Pure(Right(None))
     case (Schema.SOption(of), v) =>
       Cont.defer(() => decodeC(of(), v))(r => Cont.Pure(r.map(Some(_))))

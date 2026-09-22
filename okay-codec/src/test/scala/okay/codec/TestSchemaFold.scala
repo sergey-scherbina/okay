@@ -31,6 +31,8 @@ class TestSchemaFold extends munit.FunSuite:
       "minLength" -> Json.JNum(1), "maxLength" -> Json.JNum(1))
     case Schema.SBytes => obj("type" -> Json.JStr("string"),
       "contentEncoding" -> Json.JStr("base64"))
+    case Schema.SBigInt => obj("type" -> Json.JStr("string"),
+      "pattern" -> Json.JStr("^-?[0-9]+$"))
     case Schema.SOption(inner) => legacy(inner(), vocabularies)
     case Schema.SList(inner) => obj("type" -> Json.JStr("array"), "items" -> legacy(inner(), vocabularies))
     case Schema.SVector(inner) => obj("type" -> Json.JStr("array"), "items" -> legacy(inner(), vocabularies))
@@ -83,7 +85,7 @@ class TestSchemaFold extends munit.FunSuite:
     check(summon[Schema[Address]])
     check(summon[Schema[Option[List[Vector[Email]]]]])
     check(Schema.SInt); check(Schema.SLong); check(Schema.SDouble); check(Schema.SBool)
-    check(Schema.SString); check(Schema.SChar); check(Schema.SBytes)
+    check(Schema.SString); check(Schema.SChar); check(Schema.SBytes); check(Schema.SBigInt)
   }
 
   // ---- (2) a recursive schema
@@ -155,6 +157,7 @@ class TestSchemaFold extends munit.FunSuite:
     type K[A] = Unit
     val counting = new Schema.Algebra[K]:
       def int = (); def long = (); def double = (); def bool = (); def string = (); def char = (); def bytes = ()
+      def bigInt = ()
       def option[A](o: Schema.SOption[A], of: () => Unit) = of()
       def list[A](l: Schema.SList[A], of: () => Unit) = of()
       def vector[A](v: Schema.SVector[A], of: () => Unit) = of()
@@ -176,7 +179,7 @@ class TestSchemaFold extends munit.FunSuite:
     type K[A] = A => Unit
     val alg = new Schema.Algebra[K]:
       def int = _ => (); def long = _ => (); def double = _ => (); def bool = _ => ()
-      def string = _ => (); def char = _ => (); def bytes = _ => ()
+      def string = _ => (); def char = _ => (); def bytes = _ => (); def bigInt = _ => ()
       def option[A](o: Schema.SOption[A], of: () => K[A]) = _.foreach(of())
       def list[A](l: Schema.SList[A], of: () => K[A]) = _.foreach(of())
       def vector[A](v: Schema.SVector[A], of: () => K[A]) = _.foreach(of())

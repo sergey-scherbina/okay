@@ -60,6 +60,10 @@ object JsonSchema {
     // the model exactly how to send it
     def bytes = obj("type" -> Json.JStr("string"),
       "contentEncoding" -> Json.JStr("base64"))
+    // what the wire carries (schema-bigint): digits in a string, so a
+    // tool is told to send a uint64 the way it cannot be rounded
+    def bigInt = obj("type" -> Json.JStr("string"),
+      "pattern" -> Json.JStr("^-?[0-9]+$"))
     def option[A](o: Schema.SOption[A], of: () => Json) = of()   // optionality is in `required`
     def list[A](l: Schema.SList[A], of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())
     def vector[A](v: Schema.SVector[A], of: () => Json) = obj("type" -> Json.JStr("array"), "items" -> of())

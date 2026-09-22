@@ -61,6 +61,7 @@ object Digest:
     case Schema.SString => Prim("String")
     case Schema.SChar => Prim("Char")
     case Schema.SBytes => Prim("Bytes")
+    case Schema.SBigInt => Prim("BigInt")
     case Schema.SOption(of0) => Opt(of(of0(), seen))
     case Schema.SList(of0) => Lst(of(of0(), seen))
     case Schema.SVector(of0) => Vec(of(of0(), seen))
@@ -103,6 +104,7 @@ object Digest:
       case Prim("String") => Schema.SString
       case Prim("Char") => Schema.SChar
       case Prim("Bytes") => Schema.SBytes
+      case Prim("BigInt") => Schema.SBigInt
       case Prim(other) => throw IllegalArgumentException(s"not a primitive digest: $other")
       case Opt(of0) => Schema.SOption(() => toSchema(of0))
       case Lst(of0) => Schema.SList(() => toSchema(of0))

@@ -166,6 +166,12 @@ object Form {
       else Ui.Input(v.collect { case Json.JStr(x) => x }.getOrElse(""), key = e.key, label = e.name))
     def char = Step.leaf((e, _: Option[Json]) => unsupported(e, "SChar"))
     def bytes = Step.leaf((e, _: Option[Json]) => unsupported(e, "SBytes"))
+    // a TEXT input, not a number one (schema-bigint): what comes back
+    // must be the digits as a string, the one form a uint64 survives
+    def bigInt = Step.leaf((e, v: Option[Json]) =>
+      if e.root then unsupported(e, "SBigInt")
+      else Ui.Input(v.collect { case Json.JStr(x) => x; case Json.JNum(n) => Json.print(Json.JNum(n)) }.getOrElse(""),
+        key = e.key, label = e.name))
 
     /** "(optional)" on the label, the same key, the same depth */
     def option[A](o: Schema.SOption[A], of: () => Render[A]) = Step.adapt[RenderEnv, Option[Json], Ui](
@@ -539,7 +545,7 @@ object Form {
     case Schema.SIso(u, _, _) => leafEmpty(u())
     case Schema.SString => Json.JStr("")
     case Schema.SBool => Json.JBool(false)
-    case Schema.SInt | Schema.SLong | Schema.SDouble => Json.JStr("")
+    case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBigInt => Json.JStr("")
     case other => empty(other)
 
   // ---- errors as data ----------------------------------------------
@@ -574,6 +580,7 @@ object Form {
     def string = whole(Schema.SString)
     def char = whole(Schema.SChar)
     def bytes = whole(Schema.SBytes)
+    def bigInt = whole(Schema.SBigInt)
     /**
      * An ABSENT option is fine and says nothing; a PRESENT one is
      * WALKED, not handed whole to the decoder.

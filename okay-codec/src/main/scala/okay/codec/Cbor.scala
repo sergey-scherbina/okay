@@ -28,14 +28,18 @@ object Cbor {
   final class Out:
     private val buf = ArrayBuffer[Byte]()
 
+    /** `n` is the argument read UNSIGNED: a uint64 past 2^63 arrives
+     * here as a negative Long (schema-bigint), and a signed `n < 24`
+     * would have written it as a one-byte head */
     def header(major: Int, n: Long): Unit =
       val m = major << 5
-      if n < 24 then buf += (m | n.toInt).toByte
-      else if n < 256 then { buf += (m | 24).toByte; buf += n.toByte }
-      else if n < 65536 then
+      def below(x: Long) = java.lang.Long.compareUnsigned(n, x) < 0
+      if below(24) then buf += (m | n.toInt).toByte
+      else if below(256) then { buf += (m | 24).toByte; buf += n.toByte }
+      else if below(65536) then
         buf += (m | 25).toByte
         buf += (n >> 8).toByte; buf += n.toByte
-      else if n < (1L << 32) then
+      else if below(1L << 32) then
         buf += (m | 26).toByte
         var i = 24
         while i >= 0 do { buf += (n >> i).toByte; i -= 8 }
@@ -46,6 +50,19 @@ object Cbor {
 
     def integer(n: Long): Unit =
       if n >= 0 then header(0, n) else header(1, -1 - n)
+
+    /** RFC 8949 §3.4.3 preferred serialization: a plain integer
+     * across the whole 64-bit unsigned range (major 0, or major 1 for
+     * −1−v), a tag 2/3 bignum over the big-endian magnitude past it —
+     * how Plutus Data and the Cardano ledger write integers, so the
+     * bytes hash the same as a node's */
+    def bigInt(v: BigInt): Unit =
+      val (major, arg) = if v.signum >= 0 then (0, v) else (1, -v - 1)
+      if arg.bitLength <= 64 then header(major, arg.longValue)
+      else
+        header(6, if major == 0 then 2L else 3L)
+        val bs = arg.toByteArray
+        byteString(if bs.length > 1 && bs(0) == 0 then bs.drop(1) else bs)
 
     def text(s: String): Unit =
       val bs = s.getBytes("UTF-8")
@@ -90,6 +107,7 @@ object Cbor {
     def char = Step.leaf((o, a: Char) => o.text(a.toString))
     // major type 2: a byte string, which is what CBOR is for
     def bytes = Step.leaf((o, a: Array[Byte]) => o.byteString(a))
+    def bigInt = Step.leaf((o, a: BigInt) => o.bigInt(a))
     def option[A](o: Schema.SOption[A], of: () => Put[A]) = Step.option(out => out.nul(), of)
     def list[A](l: Schema.SList[A], of: () => Put[A]) = Step.elems[Out, List[A], A, Unit, Unit](
       (o, a) => o.arrayHeader(a.length.toLong), identity, of, (_, _) => (), (_, _) => (), (_, _, _) => ())
@@ -166,10 +184,28 @@ object Cbor {
           case x => Left(s"unsupported additional info $x")
       }
 
+    /** `head()`'s argument is the raw 64 bits: past 2^63 it reads
+     * negative, and a Long cannot hold it — refused, where it used to
+     * decode uint64 18446744073709551615 as -1 (schema-bigint) */
     def intItem(): Either[String, Long] =
       head().flatMap {
-        case (0, n) => Right(n)
-        case (1, n) => Right(-1 - n)
+        case (0, n) if n >= 0 => Right(n)
+        case (1, n) if n >= 0 => Right(-1 - n)
+        case (0 | 1, _) => Left("integer out of range for a Long")
+        case (m, _) => Left(s"expected an integer, got major $m")
+      }
+
+    /** every form `Out.bigInt` writes, and the non-preferred ones a
+     * conforming encoder may still send (a tagged bignum for a small
+     * value): major 0/1 read unsigned, tag 2/3 over a byte string */
+    def bigIntItem(): Either[String, BigInt] =
+      def unsigned(n: Long) = if n >= 0 then BigInt(n) else BigInt(n) + (BigInt(1) << 64)
+      head().flatMap {
+        case (0, n) => Right(unsigned(n))
+        case (1, n) => Right(-1 - unsigned(n))
+        case (6, 2) => byteStringItem().map(bs => BigInt(1, bs))
+        case (6, 3) => byteStringItem().map(bs => -1 - BigInt(1, bs))
+        case (6, t) => Left(s"expected a bignum (tag 2 or 3), got tag $t")
         case (m, _) => Left(s"expected an integer, got major $m")
       }
 
@@ -327,6 +363,7 @@ object Cbor {
     case Schema.SChar => in.textItem().flatMap(x =>
       if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}"))
     case Schema.SBytes => in.byteStringItem()
+    case Schema.SBigInt => in.bigIntItem()
     case Schema.SOption(of) =>
       if in.isNull then { in.skipNull(); Right(None) }
       else get(in, of()).map(Some(_))
@@ -451,6 +488,7 @@ object Cbor {
     case Schema.SChar => Cont.Pure(in.textItem().flatMap(x =>
       if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}")))
     case Schema.SBytes => Cont.Pure(in.byteStringItem())
+    case Schema.SBigInt => Cont.Pure(in.bigIntItem())
     case Schema.SOption(of) =>
       if in.isNull then { in.skipNull(); Cont.Pure(Right(None)) }
       else Cont.defer(() => getC(in, of()))(r => Cont.Pure(r.map(Some(_))))

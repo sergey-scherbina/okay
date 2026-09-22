@@ -90,6 +90,12 @@ object Validate:
       case JStr(x) => Base64.decode(x).left.map(m => Vector(dotted(k) -> m))
       case JErr(m) => one(k, m)
       case got => one(k, s"expected SBytes, got $got"))
+    // the set Json.decode accepts, from the one place that says it
+    def bigInt = Step.leaf[At, Json, Out]((k, j) => j match
+      case JStr(x) => BigInts.fromDigits(x).left.map(m => Vector(dotted(k) -> m))
+      case JNum(n) => BigInts.fromNumber(n).left.map(m => Vector(dotted(k) -> m))
+      case JErr(m) => one(k, m)
+      case got => one(k, s"expected SBigInt, got $got"))
 
     def option[A](o: Schema.SOption[A], of: () => Val[A]) =
       Step.node[At, Json, Out, Out](

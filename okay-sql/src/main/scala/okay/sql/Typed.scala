@@ -78,6 +78,15 @@ object Typed:
       case SqlValue.Time(us) => Temporal.renderTime(us)
       case SqlValue.Uuid(u) => u.toString
       case SqlValue.Json(j) => j }, SqlValue.Text(_))
+  /** schema-bigint: a numeric column, read exactly — a Num must be
+   * whole (a fraction is refused, not truncated), an integer column
+   * widens; bound as its digits, as `decimalSchema` binds a
+   * BigDecimal, which every driver casts into a numeric column */
+  private val bigInt = Shape.prim[BigInt](SqlType.Num,
+    { case SqlValue.Num(x) if x.isWhole => x.toBigInt
+      case SqlValue.I64(x) => BigInt(x); case SqlValue.I32(x) => BigInt(x)
+      case SqlValue.Text(x) if x.nonEmpty && x.stripPrefix("-").nonEmpty && x.stripPrefix("-").forall(_.isDigit) => BigInt(x) },
+    x => SqlValue.Text(x.toString))
   private val uuid = Shape.prim[java.util.UUID](SqlType.Uuid, { case SqlValue.Uuid(u) => u }, SqlValue.Uuid(_))
 
   /** a typed field known by the IDENTITY of its Schema given: the
@@ -103,6 +112,7 @@ object Typed:
     case Schema.SBool => Right(bool)
     case Schema.SString => Right(text)
     case Schema.SBytes => Right(bytes)
+    case Schema.SBigInt => Right(bigInt)
     case o: Schema.SOption[?] => shapeOf(o.of()).map(Shape.Opt(_))
     case Schema.SIso(u, to, from) => shapeOf(u()).map(Shape.Iso(_, to, from))
     case v: Schema.SVector[a] => shapeOf(v.of()).map(Shape.Arr[a, Vector[a]](_, identity, identity))
@@ -147,6 +157,8 @@ object Typed:
     // (pg-scalar-types, bind-don't-model)
     case (SqlType.F64, SqlType.Num) => true
     case (SqlType.Text, SqlType.Num) => true
+    // a BigInt field (Num) holds any integer column exactly (schema-bigint)
+    case (SqlType.Num, SqlType.I64 | SqlType.I32) => true
     case (SqlType.Text, SqlType.Other(_)) => true
     // the ISO text of a temporal/uuid/json column (sql-temporal-types)
     case (SqlType.Text, SqlType.Timestamp | SqlType.Date | SqlType.Time | SqlType.Uuid | SqlType.Json) => true

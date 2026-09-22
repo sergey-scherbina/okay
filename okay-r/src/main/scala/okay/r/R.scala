@@ -116,6 +116,10 @@ object RFrame:
     case (Schema.SBool, RValue.Bool(x)) => Right(x)
     case (Schema.SString, RValue.Str(x)) => Right(x)
     case (Schema.SBytes, RValue.Bytes(x)) => Right(x)
+    // R has no integer past 32 bits: a BigInt travels as its digits (schema-bigint)
+    case (Schema.SBigInt, RValue.Str(x)) =>
+      scala.util.Try(BigInt(x)).toOption.toRight(s"not an integer: \"$x\"")
+    case (Schema.SBigInt, RValue.I32(x)) => Right(BigInt(x))
     case (Schema.SIso(under, to, _), other) =>
       decode(under(), other).flatMap(u => to(u.asInstanceOf) match
         case Right(a) => Right(a)
@@ -131,6 +135,7 @@ object RFrame:
     case (Schema.SBool, x: Boolean) => RValue.Bool(x)
     case (Schema.SString, x: String) => RValue.Str(x)
     case (Schema.SBytes, x: Array[Byte]) => RValue.Bytes(x)
+    case (Schema.SBigInt, x: BigInt) => RValue.Str(x.toString)
     case (Schema.SIso(under, _, from), x) => encode(under(), from.asInstanceOf[Any => Any](x))
     case (_, other) => RValue.Str(String.valueOf(other))
 

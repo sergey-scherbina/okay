@@ -158,6 +158,9 @@ object Conf:
         .toRight(s"$name is not a whole number: '$text' (the `$field` setting)")
       case Schema.SLong => text.toLongOption.map(l => Json.JNum(l.toDouble))
         .toRight(s"$name is not a whole number: '$text' (the `$field` setting)")
+      // the codec's own wire for it (schema-bigint): digits in a string
+      case Schema.SBigInt => scala.util.Try(BigInt(text.trim)).toOption.map(b => Json.JStr(b.toString))
+        .toRight(s"$name is not a whole number: '$text' (the `$field` setting)")
       case Schema.SDouble => text.toDoubleOption.map(Json.JNum(_))
         .toRight(s"$name is not a number: '$text' (the `$field` setting)")
       case Schema.SBool => text.trim.toLowerCase match

@@ -164,6 +164,24 @@ class TestSqlPure extends munit.FunSuite {
     assertEquals(d.map(_.column), Vector("balance"))
   }
 
+  // ── schema-bigint: a uint64 in a numeric column ──────────────────
+
+  final case class Holding(id: Int, quantity: BigInt)
+  given Schema[Holding] = Schema.derived
+  val holdCols = Vector(Col("id", SqlType.I32, false), Col("quantity", SqlType.Num, false))
+  val u64max = (BigInt(1) << 64) - 1
+
+  test("a BigInt reads a whole Num exactly, widens an integer column, refuses a fraction; binds as its digits") {
+    def one(v: SqlValue) = decoded[Holding](OneFrame(holdCols, Vector(Vector(SqlValue.I32(1), v))))
+    assertEquals(one(SqlValue.Num(BigDecimal(u64max))), Vector(Right(Holding(1, u64max))))
+    assertEquals(one(SqlValue.I64(-5L)), Vector(Right(Holding(1, BigInt(-5)))))
+    assert(one(SqlValue.Num(BigDecimal("1.5"))).head.isLeft)
+    assertEquals(Params.bind(Holding(1, u64max))(1), SqlValue.Text("18446744073709551615"))
+    assertEquals(pureOf(Typed.verify[Holding](OneFrame(holdCols, Vector.empty), "q")), Vector.empty)
+    val i64Col = Vector(Col("id", SqlType.I32, false), Col("quantity", SqlType.I64, false))
+    assertEquals(pureOf(Typed.verify[Holding](OneFrame(i64Col, Vector.empty), "q")), Vector.empty)
+  }
+
   test("Granted names a downgrade so the caller can refuse it") {
     assert(!Granted(Isolation.Serializable, Isolation.Serializable).downgraded)
     assert(Granted(Isolation.Serializable, Isolation.ReadCommitted).downgraded)

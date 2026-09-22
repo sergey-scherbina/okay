@@ -37,6 +37,47 @@ words rendered into the prompt's schema cost a 4B model 1.7 macro-F1
 points, deterministically, beside the prose rule that already states
 them.
 
+**Big integers.** `Schema.SBigInt` (`Schema[BigInt]`) is a primitive,
+not a wrapper over a string, so every algebra sees a NUMBER: a JSON
+Schema, an SQL column (`SqlType.Num`), a Spark `decimal`. It exists
+because some integers do not fit a `Long` — a Cardano asset quantity is
+a uint64, a Plutus datum integer has no bound — and the two wires treat
+it the way their standards do:
+
+```scala
+final case class Holding(policy: String, quantity: BigInt)
+given Schema[Holding] = Schema.derived
+
+val h = Holding("ada", (BigInt(1) << 64) - 1)
+
+val text  = Json.write(h)                      // {"policy":"ada","quantity":"18446744073709551615"}
+val back  = Cbor.read[Holding](Cbor.write(h))  // Right(h): 1b ffffffffffffffff on the wire
+val bare  = Json.read[Holding]("""{"policy":"ada","quantity":18446744073709551615}""")
+                                               // Left(...send it as a string of digits)
+```
+
+- **CBOR** writes RFC 8949's *preferred serialization* (§3.4.3): a
+  plain integer across the whole unsigned 64-bit range, and a tag 2
+  (positive) or tag 3 (negative) *bignum* over the big-endian
+  magnitude past it. It is the encoding the Cardano ledger's CDDL
+  names `big_int`, so the bytes are the ones a node would hash. Reading
+  also accepts a bignum for a small value, which a conforming encoder
+  may send.
+- **JSON** carries it as a STRING of digits. A JSON number is only
+  interoperable up to 2⁵³ (RFC 8259 §6), and our `Json.JNum` is a
+  `Double`: `18446744073709551615` would already be `…616` by the time
+  anything saw it. Protocol Buffers' JSON mapping sends its 64-bit
+  integers as strings for the same reason. Both JSON doors accept a
+  bare number too, but only an exact one (integral, within ±2⁵³); a
+  larger one is refused with the reason rather than returned rounded.
+
+References: C. Bormann, P. Hoffman, *Concise Binary Object
+Representation (CBOR)*, RFC 8949 (2020), §3.4.3 "Bignums",
+doi:10.17487/RFC8949; T. Bray, *The JavaScript Object Notation (JSON)
+Data Interchange Format*, RFC 8259 (2017), §6 "Numbers",
+doi:10.17487/RFC8259; the Cardano ledger's Conway CDDL (`big_int`,
+`big_uint = #6.2(bounded_bytes)`), IntersectMBO/cardano-ledger.
+
 **Totality underneath.** `Json.parse` rides the okay-parse pipeline,
 so a damaged document projects `JErr` values and a truncated one
 still decodes the fields it carries — the LLM structured-output case.
@@ -176,8 +217,9 @@ the wire sees.
 
 | member | signature | meaning |
 |---|---|---|
-| `Schema[A]` | `SInt/SLong/SDouble/SBool/SString/SBytes/SOption/SList/SProduct/SSum` | the reified shape; fields/cases are thunked for recursion |
+| `Schema[A]` | `SInt/SLong/SDouble/SBool/SString/SBytes/SBigInt/SOption/SList/SProduct/SSum` | the reified shape; fields/cases are thunked for recursion |
 | `Schema.SBytes` | `Schema[Array[Byte]]` | raw bytes: a CBOR byte string, base64 in JSON, `contentEncoding` in a tool schema |
+| `Schema.SBigInt` | `Schema[BigInt]` | an unbounded integer: a CBOR integer to 2⁶⁴−1 then a tag 2/3 bignum, a digit string in JSON, `SqlType.Num` in SQL |
 | `Base64` | `encode(Array[Byte]): String`, `decode(String): Either[String, Array[Byte]]` | RFC 4648 §4, hand-rolled and total; decoding reports rather than throws |
 | `Schema.derived` | `inline given derived[A](using Mirror.Of[A]): Schema[A]` | Mirrors derivation; write `given Schema[T] = Schema.derived` |
 | `Json` (data) | `JNull/JBool/JNum/JStr/JArr/JObj/JErr` | the semantic projection, damage as `JErr` |
@@ -203,6 +245,11 @@ the wire sees.
   looks them up at the use site.
 - The JSON number is a `Double` in the projection — `SLong` decode
   goes through it (53-bit exactness); CBOR carries integers natively.
+  A value that needs more than 53 bits in JSON wants `BigInt`, which
+  travels as a digit string.
+- CBOR `SLong` REFUSES an integer outside `Long` (a uint64 past 2⁶³,
+  a negative past −2⁶³) — it used to wrap it silently, so
+  `18446744073709551615` read as `-1`. Decode into `BigInt` instead.
 - `Json.write` of a `String` field escapes `"\n\t\r\\` only — exotic
   control characters pass through (the scanner keeps them lossless).
 

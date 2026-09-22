@@ -678,6 +678,15 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`Schema.SBigInt`** (okay-codec) — an unbounded integer as a
+  PRIMITIVE of the algebra, so a schema, a SQL column and a Spark
+  column all see a number rather than the text it travels as. CBOR
+  writes RFC 8949's preferred serialization (a plain integer through
+  2⁶⁴−1, a tag 2/3 bignum past it — the Cardano ledger's `big_int`,
+  byte for byte); JSON writes a digit string, because a JSON number is
+  exact only to 2⁵³ and ours is a `Double`. Found on the way: CBOR's
+  `SLong` decoded a uint64 past 2⁶³ as a negative number; it now
+  refuses.
 - **`Structured.cut`** (okay-llm) — validate a structured answer as
   it streams and STOP when it is complete: each token is an append,
   which is an edit, so the incremental parser costs the token; not

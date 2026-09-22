@@ -375,7 +375,7 @@ until Spark stage 2 has run on mainnet.
 ## Stages
 
 - **Stage 0 — groundwork**
-  - [ ] `schema-bigint`: `SBigInt` in okay-codec, every algebra
+  - [x] `schema-bigint`: `SBigInt` in okay-codec, every algebra
         (Json, Cbor, Yaml, Xml, JsonSchema, Form, ToolSpec, Typed,
         Compat) — its own lane, its own spec entry in codecs.md
   - [ ] okay-scalus module in build.sbt (JVM), scalus-cardano-ledger

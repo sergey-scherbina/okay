@@ -1709,35 +1709,35 @@ it `TEXT`, a Spark encoder cannot choose `decimal`. So a primitive.
 
 ### Behavior
 
-- [ ] **CBOR, RFC 8949 §3.4.3 preferred serialization**: a value in
+- [x] **CBOR, RFC 8949 §3.4.3 preferred serialization**: a value in
       [−2⁶⁴, 2⁶⁴−1] is a plain integer (major 0/1, the FULL unsigned
       64-bit argument); outside it, tag 2 (positive) / tag 3
       (negative, magnitude −1−v) over a big-endian byte string without
       leading zeros. This is exactly how Plutus `Data` and the Cardano
       ledger encode integers, so bytes written here hash the same as
       bytes written by a node. Decode accepts all four forms.
-- [ ] **the SLong decode refuses what does not fit**: a major-0
+- [x] **the SLong decode refuses what does not fit**: a major-0
       argument ≥ 2⁶³ (or a major-1 whose −1−n overflows) is a decode
       error, not a wrapped negative. Found writing this: `In.head()`
       reads the 8-byte argument into a signed `Long` and `intItem`
       passed it through, so uint64 18446744073709551615 decoded as −1.
-- [ ] **the CBOR writer's header is unsigned**: `Out.header` compared
+- [x] **the CBOR writer's header is unsigned**: `Out.header` compared
       its argument signed, so an argument ≥ 2⁶³ (only reachable now,
       through a uint64) would have been written as a 1-byte head.
-- [ ] **JSON: a string of decimal digits** (`"18446744073709551615"`).
+- [x] **JSON: a string of decimal digits** (`"18446744073709551615"`).
       `Json.JNum` holds a `Double`, which is exact only to 2⁵³; a
       number there would silently round. Both decoders (`Json.decode`
       over the tree, `JsonStrict` over the text) accept the SAME set:
       a string of `-?[0-9]+`, or a JSON number that is integral and
       within ±2⁵³ (exact, so nothing was lost before we saw it);
       anything else is refused with the reason.
-- [ ] JSON Schema: `{"type": "string", "pattern": "^-?[0-9]+$"}` —
+- [x] JSON Schema: `{"type": "string", "pattern": "^-?[0-9]+$"}` —
       what the wire actually carries.
-- [ ] every other algebra (Validate, Compat, Digest, Typed/SQL, Form,
+- [x] every other algebra (Validate, Compat, Digest, Typed/SQL, Form,
       Protocol, R, Classify, ToolSpec, staging, the legacy JMH
       encoder) handles the case; `-Wall`'s exhaustivity check is the
       sweep and `clean; Test/compile` its proof.
-- [ ] round-trip laws, JSON and CBOR, at 0, ±1, ±2⁶³, 2⁶⁴−1, −2⁶⁴,
+- [x] round-trip laws, JSON and CBOR, at 0, ±1, ±2⁶³, 2⁶⁴−1, −2⁶⁴,
       ±2⁶⁴ (the first tagged values) and a 300-bit value; the CBOR
       bytes of the boundary values checked against RFC 8949 Appendix A
       (`18446744073709551615` → `1bffffffffffffffff`,
@@ -1746,6 +1746,11 @@ it `TEXT`, a Spark encoder cannot choose `decimal`. So a primitive.
 
 ### Decisions
 
+- SQL binds a BigInt as its DIGITS (`SqlValue.Text`), as `decimalSchema`
+  already binds a BigDecimal — every driver casts text into a numeric
+  column, while `SqlValue.Num` binding is not implemented by every
+  driver. Reading takes a whole `Num`, an integer column, or digit
+  text; a fractional `Num` is refused, not truncated.
 - A JSON string, not a number: `Json` would need a lossless number
   case (`JBig`), and `Json` is matched in hundreds of places; the
   string is what protobuf's JSON mapping does for int64 for the same
@@ -1755,3 +1760,18 @@ it `TEXT`, a Spark encoder cannot choose `decimal`. So a primitive.
   same class of defect as the SLong wrap but a separate decision
   (JSON's truncation is documented at `JsonStrict.number`); filed as
   `sint-decode-truncates`, not fixed here.
+
+### Results
+
+- `TestBigInt` (12 tests, cross-built): RFC 8949 Appendix A vectors in
+  both directions, the non-preferred small bignum, a foreign tag
+  refused, round trips of CBOR / lossless JSON / strict JSON at 13
+  boundary values up to 2³⁰⁰, both JSON doors refusing the same
+  inputs, a derived product through Validate, Compat's `Long → BigInt`
+  type change, a digest round trip. The two SLong tests were run RED
+  first: uint64 max decoded as `Right(-1)`.
+- `TestSqlPure`: whole `Num`, `I64` widening, fraction refused, bind as
+  digits, `verify` fitting `Num` and `I64` columns.
+- The sweep: `clean; Test/compile` over the whole build (237 module
+  compiles) and `compare/Jmh/compile`, zero warnings — the abstract
+  `Algebra.bigInt` and `-Wall` exhaustivity found every site.

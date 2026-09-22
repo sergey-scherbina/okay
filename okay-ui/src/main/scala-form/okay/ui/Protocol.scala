@@ -165,6 +165,7 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
       case Schema.SBool => "bool"
       case Schema.SString | Schema.SChar => "string"
       case Schema.SBytes => "bytes"
+      case Schema.SBigInt => "\"digits\""   // a string of digits: past 2^53 a number rounds
       case Schema.SOption(of) => nameOf(of()) + "?"
       case Schema.SList(of) => "[" + nameOf(of()) + "]"
       case Schema.SVector(of) => "[" + nameOf(of()) + "]"

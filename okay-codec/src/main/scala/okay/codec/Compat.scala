@@ -129,6 +129,7 @@ object Compat:
     case Schema.SString => "String"
     case Schema.SChar => "Char"
     case Schema.SBytes => "Bytes"
+    case Schema.SBigInt => "BigInt"
     case Schema.SOption(of) => s"Option[${shape(of())}]"
     case Schema.SList(of) => s"List[${shape(of())}]"
     case Schema.SVector(of) => s"Vector[${shape(of())}]"
@@ -210,5 +211,5 @@ object Compat:
 
   private def primitive(s: Schema[?]): Boolean = s match
     case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool
-       | Schema.SString | Schema.SChar | Schema.SBytes => true
+       | Schema.SString | Schema.SChar | Schema.SBytes | Schema.SBigInt => true
     case _ => false

@@ -32,6 +32,16 @@ enum Schema[A]:
    * is not a value for `==`. That is the honest cost of not copying.
    */
   case SBytes extends Schema[Array[Byte]]
+  /**
+   * An unbounded integer (schema-bigint, specs/codecs.md "Big
+   * integers"). Cardano's asset quantities are uint64, past `Long`,
+   * and a Plutus `Data.I` has no bound at all; an `SIso` over a string
+   * would have made every algebra see text where the value is a
+   * number. CBOR writes it as a plain integer across the whole 64-bit
+   * unsigned range and as a tag 2/3 bignum past it; JSON as a string
+   * of digits, because `JNum` is a Double.
+   */
+  case SBigInt extends Schema[BigInt]
   case SOption[A](of: () => Schema[A]) extends Schema[Option[A]]
   case SList[A](of: () => Schema[A]) extends Schema[List[A]]
   /** the OTHER sequence this stack actually uses — Ui children,
@@ -108,6 +118,7 @@ object Schema {
     def string: F[String]
     def char: F[Char]
     def bytes: F[Array[Byte]]
+    def bigInt: F[BigInt]
     def option[A](o: SOption[A], of: () => F[A]): F[Option[A]]
     def list[A](l: SList[A], of: () => F[A]): F[List[A]]
     def vector[A](v: SVector[A], of: () => F[A]): F[Vector[A]]
@@ -186,6 +197,7 @@ object Schema {
             case SString => alg.string
             case SChar => alg.char
             case SBytes => alg.bytes
+            case SBigInt => alg.bigInt
             case o: SOption[a] => alg.option(o, edge(o.of))
             case l: SList[a] => alg.list(l, edge(l.of))
             case v: SVector[a] => alg.vector(v, edge(v.of))
@@ -399,6 +411,7 @@ object Schema {
   given Schema[String] = Schema.SString
   given Schema[Char] = Schema.SChar
   given Schema[Array[Byte]] = Schema.SBytes
+  given Schema[BigInt] = Schema.SBigInt
 
   /**
    * A thunk that answers the SAME instance every time (schema-thunks-

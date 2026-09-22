@@ -112,6 +112,7 @@ object JsonStrict {
       case Schema.SChar => string().flatMap(x =>
         if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}"))
       case Schema.SBytes => string().flatMap(Base64.decode)
+      case Schema.SBigInt => bigInt()
       case Schema.SOption(of) =>
         if lit("null") then Right(None) else get(of()).map(Some(_))
       case l: Schema.SList[a] => array[a](l.of()).map(_.toList)
@@ -281,6 +282,12 @@ object JsonStrict {
      * as one UTF-16 code unit, any other escaped character is itself;
      * a raw control character is not ours.
      */
+    /** the same set `Json.decode` accepts (BigInts): digits in a
+     * string, or an exact (±2^53) integral number */
+    def bigInt(): Either[String, BigInt] =
+      if peek == '"' then string().flatMap(BigInts.fromDigits)
+      else number().flatMap(BigInts.fromNumber)
+
     def string(): Either[String, String] =
       if at >= n || s.charAt(at) != '"' then fail("expected a string")
       else
@@ -355,6 +362,7 @@ object JsonStrict {
       case Schema.SChar => Cont.Pure(string().flatMap(x =>
         if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}")))
       case Schema.SBytes => Cont.Pure(string().flatMap(Base64.decode))
+      case Schema.SBigInt => Cont.Pure(bigInt())
       case Schema.SOption(of) =>
         if lit("null") then Cont.Pure(Right(None))
         else Cont.defer(() => getC(of()))(r => Cont.Pure(r.map(Some(_))))

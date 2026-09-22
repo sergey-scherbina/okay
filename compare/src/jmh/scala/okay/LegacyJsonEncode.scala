@@ -29,6 +29,7 @@ object LegacyJsonEncode:
     case Schema.SString => sb.append('"').append(Json.escape(a)).append('"'): Unit
     case Schema.SChar => sb.append('"').append(Json.escape(a.toString)).append('"'): Unit
     case Schema.SBytes => sb.append('"').append(Base64.encode(a)).append('"'): Unit
+    case Schema.SBigInt => sb.append('"').append(a.toString).append('"'): Unit
     case Schema.SOption(of) =>
       a match
         case Some(x) => encodeInto(of(), x, sb, open + 1)
@@ -70,6 +71,7 @@ object LegacyJsonEncode:
     case Schema.SString => val _ = sb.append('"').append(Json.escape(a)).append('"'); Cont.Pure(())
     case Schema.SChar => val _ = sb.append('"').append(Json.escape(a.toString)).append('"'); Cont.Pure(())
     case Schema.SBytes => val _ = sb.append('"').append(Base64.encode(a)).append('"'); Cont.Pure(())
+    case Schema.SBigInt => val _ = sb.append('"').append(a.toString).append('"'); Cont.Pure(())
     case Schema.SOption(of) => a match
       case Some(x) => Cont.defer(() => encodeIntoC(of(), x, sb, open + 1))(_ => Cont.Pure(()))
       case None => sb.append("null"); Cont.Pure(())
@@ -127,6 +129,7 @@ object LegacyCborPut:
     case Schema.SString => out.text(a)
     case Schema.SChar => out.text(a.toString)
     case Schema.SBytes => out.byteString(a)
+    case Schema.SBigInt => out.bigInt(a)
     case Schema.SOption(of) => a match
       case None => out.nul()
       case Some(x) => putAt(out, of(), x, open + 1)
@@ -181,3 +184,4 @@ object LegacyCborPut:
     case Schema.SString => out.text(a); Cont.Pure(())
     case Schema.SChar => out.text(a.toString); Cont.Pure(())
     case Schema.SBytes => out.byteString(a); Cont.Pure(())
+    case Schema.SBigInt => out.bigInt(a); Cont.Pure(())

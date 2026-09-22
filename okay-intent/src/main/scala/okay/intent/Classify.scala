@@ -185,6 +185,7 @@ object Classify {
   private def skeleton(s: Schema[?]): Json = s match
     case Schema.SString | Schema.SChar => Json.JStr("...")
     case Schema.SBytes => Json.JStr("")
+    case Schema.SBigInt => Json.JStr("0")    // what the codec reads: digits in a string
     case Schema.SInt | Schema.SLong | Schema.SDouble => Json.JNum(0)
     case Schema.SBool => Json.JBool(true)
     case Schema.SOption(of) => skeleton(of())
