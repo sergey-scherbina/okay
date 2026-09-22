@@ -100,6 +100,26 @@ ThisBuild / scalacOptions ++= Seq(
   // might one day find. If a future hit looks like a real bug, delete
   // this line and read them all again — that is a half-hour, not a day.
   "-Wconf:msg=A type argument was inferred to be union type:s",
+  // SplitBenchmark's mixedListNoRev/mixedVecInline instantiate
+  // Writer.foldWith/loopWith at A=Int, whose `Say(v) =>
+  // Pure(finish(step(s, v), ()))` arm (Writer.scala:118) passes `()`
+  // for a program that ends bare in a tell — correct there (a tell's
+  // own answer IS Unit) and unreachable for `mixed`, which always
+  // continues past a tell with `.flatMap`. Inlining at a concrete A
+  // surfaces the arm's generic Unit as a "conversion... will always
+  // fail at runtime" diagnostic at the CALL site, past the inliner.
+  // Found by single-path-verification's bench.sh smoke test,
+  // 2026-09-22, and two narrower suppressions tried and refused
+  // first: a plain `@nowarn` on the method and `@nowarn("msg=...")`,
+  // neither reaching a diagnostic reported past the inliner; then a
+  // `src=`-scoped `-Wconf` entry aimed at this one file, which also
+  // did nothing — inlined code seems to report its ORIGIN's source
+  // (Writer.scala) to `-Wconf`'s `src` filter, not the expansion site
+  // the warning prints at. Only a plain `msg=` works, so this is
+  // repo-wide rather than file-scoped — an acceptable trade for a
+  // message this specific: another file hitting these exact words is
+  // this same shape, not a different bug borrowing them.
+  "-Wconf:msg=conversion from Unit to Int:s",
 )
 
 ThisBuild / organization := "dev.okay"
@@ -386,8 +406,19 @@ lazy val okayDirect = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-direct",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
+  // jmh->compile is JVM-only: js/native never enable JmhPlugin, so a
+  // `jmh` configuration doesn't exist there to depend into — putting
+  // this on the base .dependsOn (as one string alongside test->compile)
+  // broke ivy resolution for okay-direct_sjs1_3 with "Cannot add
+  // dependency ... to configuration 'jmh' ... because this
+  // configuration doesn't exist!" (single-path-verification's own
+  // ./build.sh test smoke test caught it, 2026-09-22). Scoped here
+  // for the same reason as the test dependency above: a benchmark
+  // that actually RUNS a direct block needs okay-platform's CanBlock.
+  .jvmConfigure(_.enablePlugins(JmhPlugin).dependsOn(okayPlatform.jvm % "jmh->compile"))
   .jvmSettings(
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
   .nativeSettings(
@@ -408,11 +439,13 @@ lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay-platform",
   )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
   .jsSettings(

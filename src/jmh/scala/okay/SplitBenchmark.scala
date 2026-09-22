@@ -116,11 +116,22 @@ class SplitBenchmark {
   def mixedVec(): Int = State.run[Int, (Seq[String], Int)](0)(Writer.fold[String, Seq[String], Int, State % Int](mixed))._2._2
 
   /** the List road WITHOUT the final reverse+map: is the loss the reverse? */
+  // Writer.loopWith's own `Say(v) => Pure(finish(step(s, v), ()))` arm
+  // (Writer.scala:118) passes `()` for `finish`'s answer parameter —
+  // correct where a program ends in a bare tell (a tell's own answer
+  // IS Unit), which `mixed` never does: `mixedProg` always continues
+  // past a tell with `.flatMap`. Inlining at A=Int surfaces that arm's
+  // generic Unit as a warning at THIS call site rather than at
+  // Writer.scala's, where A is still abstract. `@nowarn` does not
+  // reach it — it is reported past the inliner, not through the
+  // normal lint pipeline — so it is silenced by source+message in
+  // build.sbt's -Wconf instead (see there for the full account).
   @Benchmark
   def mixedListNoRev(): Int =
     State.run[Int, (List[String], Int)](0)(Writer.foldWith[String, List[String], Int, State % Int](mixed)(Nil)((s, w) => w :: s))._2._2
 
   /** Vector through `foldWith` with the step inline (no `Fold` virtual call): is the difference `K.add`? */
+  // same unreachable arm as mixedListNoRev above, same -Wconf entry.
   @Benchmark
   def mixedVecInline(): Int =
     State.run[Int, (Vector[String], Int)](0)(Writer.foldWith[String, Vector[String], Int, State % Int](mixed)(Vector.empty)((s, w) => s :+ w))._2._2

@@ -372,7 +372,19 @@ fi
 lost=$(printf '%s\n%s\n' "$lost_a" "$lost_b" | grep -v '^$' | sort -u)
 failed_projects=$(grep -E "^\[error\] \([^)]*Test / (test|executeTests)\)" "$clean" \
       | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ (test|executeTests)\).*/\1/' | sort -u)
-unknown=$(comm -23 <(printf '%s\n' "$failed_projects" | grep -v '^$') <(printf '%s\n' "$lost" | grep -v '^$'))
+# comm needs two FILES, and `<(...)` process substitution is a
+# bashism — this script is invoked as both `scripts/gate.sh` (its own
+# bash shebang) and `sh scripts/gate.sh` (plain POSIX sh) around this
+# repo, and the second broke here (single-path-verification's own
+# bench.sh smoke test, 2026-09-22): "syntax error near unexpected
+# token `('" instead of a verdict, on the very first RED this line
+# ever had to handle. Temp files work under both.
+failed_f="${log}.failed_projects"
+lost_f="${log}.lost_projects"
+printf '%s\n' "$failed_projects" | grep -v '^$' > "$failed_f"
+printf '%s\n' "$lost" | grep -v '^$' > "$lost_f"
+unknown=$(comm -23 "$failed_f" "$lost_f")
+rm -f "$failed_f" "$lost_f"
 if [ -z "$lost" ] || [ -n "$unknown" ]; then
   echo "gate: RED — a failure this script does not recognise; read $log"
   [ -n "$unknown" ] && { echo "gate: these failed in no known shape:"; echo "$unknown" | sed 's/^/  /'; }
