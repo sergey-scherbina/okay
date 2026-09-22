@@ -85,15 +85,21 @@ by their triggers (Decisions):
   (Actor.scala:287, Toolkit.scala:14–47, Dialog.scala:60,
   Ui.scala:693, Form.scala, Conversation.scala:278, Nio.scala:97,
   chatweb Main.scala:30) and finding them shorter.
-- Stage 3 — `Stage.transduceUntil(z)(step: (S, I) => Stage[I, O,
-  Either[S, R]], end: S => R)`, a stage that stops PULLING when its
-  state says so (named 2026-09-22 so okay-direct's `Gen.takeWhile`
-  with state can route to it) (a prefix parser, a stateful `takeWhile`, "the first n matches").
-  Trigger: a consumer that needs it — `Chunks.takeWhile` is
-  predicate-only today and nobody has asked for state.
-- Stage 4 — the `Foldable` side: `foldUntilTo[S, R](using FoldUntil)`
-  beside `foldTo`, so a `List`, a `Producer` and a `Source` share one
-  instance. Trigger: a second collection caller beyond `Stream`.
+- Stage 3 (fold-until-stages-3-4) — `Stage.transduceUntil(z)(step:
+  (S, I) => Stage[I, O, Either[S, R]], end: S => R): Stage[I, O, R]`,
+  a stage that stops PULLING when its step answers `Right` (a prefix
+  parser, a stateful `takeWhile`, "the first n matches"); the stage
+  ENDS there, so `through` stops pulling upstream and the answer is
+  `R` whether the step stopped or the input ended (`end`). Beside it
+  `Take.foldUntil[W, S, R](using FoldUntil[W, S, R]): R ! Take % W` —
+  the iteratee a `FoldUntil` is (theory ch. 7), written over `!.loop`,
+  so `pipe(producer)(Take.foldUntil)` is `Writer.foldUntil` by
+  another road. Trigger REMOVED by the operator 2026-09-22.
+- Stage 4 (fold-until-stages-3-4) — `Foldable.foldUntil[A, S, R](fa)
+  (using FoldUntil[A, S, R]): R` on the trait, implemented by the
+  `IterableOnce` instance (an iterator walk) and the `Producer` one
+  (`Stream.foldUntil`), with `foldUntilTo` beside `foldTo`. Trigger
+  REMOVED by the operator 2026-09-22.
 
 ## Behavior
 
@@ -130,6 +136,26 @@ Stage 1:
       `Writer.foldUntil` run by the `Handler[G]` in scope, so a
       `Source` under a `Handler[Async]` folds with one `using` like
       the pure one (producer-fold-until).
+
+Stages 3–4 — `Stage.transduceUntil`, `Take.foldUntil`, `Foldable.foldUntil`:
+
+- [ ] `transduceUntil` stops the UPSTREAM: a header parser that
+      answers `Right` at the first blank line, fed by a producer that
+      counts its tells, is pulled exactly up to that line — not one
+      tell more — and its outputs before the stop are all told.
+- [ ] `transduceUntil` ends honestly when the input ends first: `end`
+      sees the last `Left` state, and the answer says so.
+- [ ] `transduceUntil` composes under `through` on both sides (a stage
+      before it, a stage after it), and the stage after sees exactly
+      the outputs told before the stop.
+- [ ] `transduce(z)(step, end)` is `transduceUntil` with a step that
+      never answers `Right` — asserted on a shared step.
+- [ ] `pipe(producer)(Take.foldUntil(using fo))` equals
+      `Writer.foldUntil(producer)(using fo)` on every instance, and the
+      producer is not pulled past the satisfying element.
+- [ ] `xs.foldUntilTo(using fo)` on a `List`, a `Vector`, an `Iterator`
+      and a `Producer` equals the `List` method of the instance's name,
+      and an `Iterator` is left positioned after the satisfying element.
 
 Stage 2 — `!.loop(s)(f)`:
 
