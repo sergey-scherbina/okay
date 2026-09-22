@@ -42,8 +42,9 @@ standard; adopting it means an x402 `network` field IS a `Network`.
   `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`, `bip122:000000000019d6689c085ae165831e93`
   (Bitcoin: the genesis hash prefix). Cardano: CIP-34's
   `{networkId}-{networkMagic}` under the `cip34` namespace (`cip34:1-764824073`);
-  whether the CAIP namespaces registry has adopted that exact form is
-  checked in stage 0, not assumed.
+  the CAIP namespaces registry has NOT adopted it (checked 2026-09-23,
+  ChainAgnostic/namespaces at 463bae5: no `cardano`, no `cip34`); the
+  form is CIP-34's own, which CAIP-2's syntax admits.
 - `Account(network, address)` — CAIP-10. `address` is the chain's
   canonical rendering (bech32, EIP-55 hex, base58).
 - `Asset(network, namespace, reference)` — CAIP-19: `eip155:8453/erc20:0x8335…2913`,
@@ -69,8 +70,9 @@ enum Finality:
   case Finalized                // the chain says so: Ethereum `finalized`, Solana, Tron
 ```
 
-A tip is `Tip(point, finalized: Option[Long])`: the height the chain
-itself declares final, when it declares one.
+A tip is `Tip(point, finalized: Option[Point])`: the block the chain
+itself declares final, when it declares one — a point, not a height
+(Decisions, 2026-09-23).
 
 ### 3. Two source shapes, one follower
 
@@ -182,20 +184,20 @@ specs/x402.md. It depends on this module for `Network`, `Account`,
 ## Stages
 
 - **Stage 0 — the module and the identifiers**
-  - [ ] okay-chain, cross-built (JVM/JS/Native), on okay-codec so every
+  - [x] okay-chain, cross-built (JVM/JS/Native), on okay-codec so every
         type has a `Schema`
-  - [ ] `Network`/`Account`/`Asset` parse and render CAIP-2/10/19;
+  - [x] `Network`/`Account`/`Asset` parse and render CAIP-2/10/19;
         round-trip laws; the x402 examples parse
-  - [ ] the Cardano CAIP-2 form checked against the namespaces registry
+  - [x] the Cardano CAIP-2 form checked against the namespaces registry
         and recorded in Decisions
 - **Stage 1 — the follower**
-  - [ ] `Tracker`: Depth and Finalized policies; shallow `Backward`
+  - [x] `Tracker`: Depth and Finalized policies; shallow `Backward`
         absorbed, deep `Backward` → `RolledBack`; parent break fails;
         each a scripted test
-  - [ ] `Poller`: requests/answers, rewind by the kept ring, gaps
-  - [ ] `TestWatchShape`: okay-watch's shapes and expectations
+  - [x] `Poller`: requests/answers, rewind by the kept ring, gaps
+  - [x] `TestWatchShape`: okay-watch's shapes and expectations
 - **Stage 2 — the ledger view**
-  - [ ] `Ledger`, `Movement`, `UtxoView`; a toy UTXO chain and a toy
+  - [x] `Ledger`, `Movement`, `UtxoView`; a toy UTXO chain and a toy
         account chain in tests, both projecting
 - **Stage 3 — adopters** (other lanes): okay-scalus implements
   `BlockOf`/`Ledger` for scalus's `Block`/`Transaction`; okay-watch
@@ -213,7 +215,28 @@ specs/x402.md. It depends on this module for `Network`, `Account`,
   push sources, blocking and async drivers, and deterministic tests of
   every rollback case.
 - 2026-09-23 — **ids are canonical strings, not bytes** (§1).
+- 2026-09-23 — **Depth counts the chain followed, not the source's
+  head; `Finalized` confirms a POINT.** Found by `TestWatchShape`
+  replaying okay-watch's "depth hides a shallow reorg": the first cut
+  confirmed up to `head - depth`, and after a reorg the head is on the
+  new fork while the pending blocks are the old one's — the dead `a8`
+  was Confirmed and RolledBack in one step, where okay-watch (which
+  fetches only what it is about to emit) said nothing. The same hole
+  exists for a finalized HEIGHT: the block held there may be on the
+  dead fork. So `Tip.finalized` is a `Point` and only that block, by
+  id, is confirmed.
+- 2026-09-23 — **two stated differences from okay-watch's follower**:
+  a gap is not a block (okay-watch confirms an empty one), and a reorg
+  below every kept block is `Broken` (okay-watch restarted from its
+  first height). An adopter that wants either keeps it in its adapter.
 
 ## Results
 
-(none yet)
+- okay-chain landed with stages 0–2: 24 tests on JVM, JS and Native —
+  `TestIds` (CAIP-2/10/19 from the registry's and x402's examples, the
+  JSON wire shape), `TestTracker` (Depth, Finalized, a head or a
+  finalized point on an unseen fork confirming nothing, shallow vs deep
+  rollback, parent break, checkpoint resume), `TestWatchShape` (all six
+  okay-watch `TestFollower` cases through `Follow`, plus the ring
+  bound), `TestLedger` (a toy UTXO and a toy account ledger),
+  `TestDocExamplesChain` (the docs' snippets verbatim).

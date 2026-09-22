@@ -678,6 +678,13 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`Tracker`** (okay-chain) — a blockchain follower as a PURE state
+  machine: what a source observed (`Forward`, `Backward`, `AtTip`) in,
+  what a consumer may act on (`Confirmed`, `RolledBack`) out, no I/O
+  and no clock. Depth is counted over blocks linked to the chain
+  followed — never off the source's head, which after a reorg sits on
+  a fork the follower has not seen yet (the defect its first cut had).
+  `Poller` turns `head`/`block(n)` APIs into the same observations.
 - **`Schema.SBigInt`** (okay-codec) — an unbounded integer as a
   PRIMITIVE of the algebra, so a schema, a SQL column and a Spark
   column all see a number rather than the text it travels as. CBOR
