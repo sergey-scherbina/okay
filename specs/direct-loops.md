@@ -174,3 +174,99 @@ tail — and gains one thing each:
 - Two v1 tests were retired BY the feature: the lambda-refusal
   example had used `map` (now a feature — moved to `filter`), and
   the while-refusal test asserted an error that no longer exists.
+
+## v3 — a loop over a SOURCE (direct-for-over-source, 2026-09-23)
+
+### Overview
+
+v1 and v2 iterate COLLECTIONS: the receiver has an `iterator`, the
+loop is a recursive def over an immutable `LazyList` of it, and a
+generator (specs/generators.md) rides the same road through its
+stepping reader. What none of them can read is a source with no
+iterator — one whose next element is a PROGRAM: a `Stream[S, G]`
+carrier (`uncons` answers in `G`), a writer program's told values
+under another effect, or the `Take` side of a `Stage` (`await` is an
+operation). Today such a loop is written by hand as `!.loop` over
+`uncons`/`await` — theory ch. 7 says so in its last paragraph — and
+this stage is the `for` that replaces it.
+
+### Interface
+
+Core, `Pull.scala`:
+
+```scala
+/** a source a program reads one step at a time */
+trait Pull[+A, G[+_]]:
+  def step: Option[(A, Pull[A, G])] ! G
+  /** the loop with a pure body AS A PROGRAM — what `for x <- src do
+   *  f(x)` means outside a direct block */
+  def foreach(f: A => Unit): Unit ! G
+object Pull:
+  def of[S[_], A, G[+_]](s: S[A])(using Stream[S, G]): Pull[A, G]
+  def told[W, A](a: A ! Writer % W): Pull[W, Pure]                       // first-order, as Stream.scala's overloads
+  def toldIn[W, G[+_]: TypeableK, A](a: A ! Writer % W + G): Pull[W, G]
+```
+
+okay-stream, `Pipe.scala`: `Take.each[I]: Pull[I, Take % I]` — the
+consumer side of an iteratee as a source.
+
+okay-direct: inside a `direct` block, `for x <- src do body` where
+`src: Pull[A, G]` — with or without marks in `body` — is emitted as a
+program: `loop(p) = bind(p.step) { case Some((h, tl)) => body(h);
+loop(tl); case None => pure(()) }`, the step bound through the same
+row lift a mark takes (`G` must be in the block's row, and the
+refusal is the mark's), the body compiled against the recursive call
+as its tail like every v2 loop, guards honoured.
+
+### Behavior (`TestDirectSource`, okay-direct)
+
+- [ ] `Pull.of(LazyList(1, 2, 3)).foreach(f)` is a program: nothing
+      runs until `!.run`, then `f` sees 1, 2, 3 in order.
+- [ ] `direct[State % Int] { for x <- Pull.of(xs) do State.modify(_ +
+      x).!? }` sums; the loop reads the source AS the loop drives — an
+      infinite `LazyList` with `take`-less reading stops when the body
+      stops it through a marked `Stop`-like effect? NO: it does not
+      stop; the law is the FINITE one plus laziness by a step counter
+      on a `Pull.of` over a counted `Stream`.
+- [ ] a source with effects of its own: `Pull.toldIn(producer)` whose
+      producer performs `Async` between tells, read in a
+      `direct[Async + State % Int]` block whose body performs `State` —
+      the producer's effects and the body's interleave per element.
+- [ ] `Take.each`: `direct[Take % Int + Writer % Int] { for i <-
+      Take.each[Int] do Writer(i * 2) }` is a `Stage` and, `through` a
+      producer of three, tells 2, 4, 6 — the iteratee written as a
+      loop.
+- [ ] a guard: `for x <- src if x % 2 == 0 do …` skips without
+      consuming a bind.
+- [ ] no marks in the body: the loop still runs as a program (a
+      `Unit ! G` bare statement of a NARROWER row would not run by
+      itself, so the source road fires on the receiver's type, not on
+      marks).
+- [ ] `for x <- src yield …` over a `Pull` does not typecheck (`Pull`
+      has no `map`), and the message is the compiler's.
+- [ ] a `Pull` whose `G` is not in the block's row is refused with the
+      row-lift message, at the loop.
+
+### Decisions (v3)
+
+- **An explicit `Pull`, not a silent road for every Stream carrier** —
+  `s.foreach(f)` on a `Stream` carrier already MEANS "run through the
+  Handler here" (Stream.scala:241); changing what it means inside a
+  block would fork one spelling into two semantics. `Pull.of(s)` says
+  "read this as a program", and outside a block it IS one. Rejected:
+  summoning `Stream[S, G]` from the receiver in the macro (also
+  impossible for the writer carriers — their instance is a type
+  lambda inference does not reach, which is why `told`/`toldIn` are
+  first-order overloads).
+- **The road fires on the receiver's TYPE, not on marks** — the v2
+  loops fire only when something is marked, because an unmarked
+  collection loop is plain Scala and correct as written; an unmarked
+  `Pull` loop is a `Unit ! G` in statement position, which does not
+  run bare unless `G` is the whole row. Rejected: marks-only.
+- **`do` only** — `map`/`flatMap` over a source is a transformation
+  of the stream, which `Stream`'s combinators are for; a `Pull` has
+  no `map`, so the comprehension does not parse to one.
+
+### Results (v3)
+
+(after implementation)
