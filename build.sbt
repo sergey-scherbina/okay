@@ -755,6 +755,68 @@ lazy val okayJava = (project in file("okay-java"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * okay from SCALA 2.13 (specs/scala2-facade.md): a facade written in
+ * Scala 3 whose public signatures a Scala 2 compiler can read through
+ * `-Ytasty-reader` — no inline, no union row, no opaque type.
+ */
+lazy val okayScala2 = (project in file("okay-scala2"))
+  .dependsOn(okay.jvm, okayAsync.jvm, okayPlatform.jvm)
+  .settings(
+    name := "okay-scala2",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
+/** Scala 3's stdlib for a Scala 2.13 project: resolved here and
+ * placed BEHIND 2.13's by hand — see okay-scala2-probe */
+lazy val Scala3Stdlib = config("scala3Stdlib").hide
+
+/**
+ * THE PROOF that okay-scala2 stays readable from Scala 2: suites
+ * written in Scala 2.13 and compiled by scalac 2.13 in the ordinary
+ * gate. Not published — it is a test, and the arrangement below is
+ * the one the module's docs give a 2.13 user.
+ *
+ * Two standard libraries, and the ORDER is the finding (stage 0,
+ * measured by hand 2026-09-22). Scala 3.9's stdlib is
+ * `scala-library:3.9.0` and carries TASTy, not Scala 2 pickles, so
+ * scalac 2.13 must read ITS OWN stdlib first — with 3.9's first it
+ * stops at "Unsupported Scala 3 union in bounds of type T; found in
+ * method wrapRefArray in class scala.LowPriorityImplicits". At RUN
+ * time 3.9's is required (`scala.reflect.Enum` and the rest of the
+ * Scala-3-only classes live nowhere else) and the order no longer
+ * matters. The dependency on okay-scala2 would
+ * bring `scala-library:3.9.0` along AHEAD of nothing in particular,
+ * so it is EXCLUDED there and appended at the END of the classpath
+ * instead — compile needs it too, behind 2.13.18 (without it: "could
+ * not find package scala.annotation.internal whilst reading
+ * annotation of package scala2"). The settings are EXACTLY what
+ * docs/modules/okay-scala2.md tells a 2.13 user to write, so the page's
+ * snippet is gated here.
+ *
+ * `-Werror` because the gate's warning check reads Scala 3's
+ * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
+ */
+lazy val okayScala2Probe = (project in file("okay-scala2-probe"))
+  .dependsOn(okayScala2)
+  .settings(
+    name := "okay-scala2-probe",
+    publish / skip := true,
+    scalaVersion := "2.13.18",
+    // okay-scala2 brings scala-library 3.9.0 transitively; sbt refuses
+    // a 2.13 compiler below the stdlib on its classpath (SIP-51) and
+    // `allowUnsafeScalaLibUpgrade` only makes the 3.9 jar the COMPILE
+    // stdlib, which is the failure above. Excluding it keeps 2.13.18.
+    projectDependencies ~= (_.map(_.exclude("org.scala-lang", "scala-library"))),
+    scalacOptions := Seq("-Ytasty-reader", "-deprecation", "-feature", "-Xlint", "-Werror"),
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ivyConfigurations += Scala3Stdlib,
+    libraryDependencies += "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib,
+    Seq(Compile, Runtime, Test).map(c =>
+      c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)),
+    Test / fork := true,
+  )
+
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
   .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
@@ -2363,7 +2425,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
-    okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
+    okayJava, okayScala2, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,

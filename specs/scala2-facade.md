@@ -39,9 +39,9 @@ A 9-line Scala 3 class wrapping `A ! State % Int` behind non-inline
 `map`/`flatMap`/`run`, compiled by 3.9.0 against the core; a 2.13
 `for`-comprehension over it, compiled by scalac 2.13.18
 `-Ytasty-reader`; run on the JVM. Printed `(42,84)`, the right answer.
-- A `private val` of a union-row type inside the facade class does
-  NOT stop the TASTy reader; only what 2.13 code touches must be
-  readable.
+- A `private val` of the row `State % Int` inside the facade class
+  did NOT stop the TASTy reader. That row has no `+`; stage 1 found
+  that a constructor naming `+` does (Results).
 - COMPILE classpath: the 2.13 stdlib must stand AHEAD of the 3.9 one.
   3.9's first → `Unsupported Scala 3 union in bounds of type T;
   found in method wrapRefArray in class scala.LowPriorityImplicits`
@@ -64,26 +64,28 @@ runnable — the IO-shaped subset of the library.
 - `okay-scala2` (JVM, Scala 3.9): `Prog[A]` with `map`, `flatMap`,
   `recover`, `attempt`, `run()`, `runEither()`; `Prog.pure`,
   `Prog.delay`, `Prog.fail`, `Prog.fromEither`, `Prog.sequence`;
-  and for Scala 3 callers the bridges `Prog.lift(A ! Async)` and
-  `.program`. Nothing in its public API is inline, a union, opaque,
+  and for Scala 3 callers `Bridge.lift(A ! Async)` and
+  `Bridge.program(prog)`, in their own object so 2.13 code never
+  loads them. Nothing in its public API is inline, a union, opaque,
   a match type or an extension method.
 - `okay-scala2-probe` (JVM, Scala 2.13.18, `-Ytasty-reader`,
   `-Werror`): munit suites written in Scala 2 against `okay-scala2`,
   compiled by the Scala 2 compiler in the ordinary gate. This is the
-  test that the facade stays readable from 2.13 — a new method with
-  a union in its signature breaks THIS project's compile, not a
-  user's.
+  test that the facade stays readable from 2.13. A class the reader
+  refuses breaks THIS project's compile, not a user's. The reader
+  reads a method only when something calls it, so the probe calls
+  EVERY public method of the facade.
 - The stdlib arrangement the probe needs is the one a user needs,
   and the docs give it verbatim.
 
 ## Behavior
-- [ ] a 2.13 for-comprehension over `Prog` compiles and runs
-- [ ] `Prog.delay` suspends: nothing runs until `run()`
-- [ ] a thrown exception inside `delay` and a `Prog.fail` both reach
+- [x] a 2.13 for-comprehension over `Prog` compiles and runs
+- [x] `Prog.delay` suspends: nothing runs until `run()`
+- [x] a thrown exception inside `delay` and a `Prog.fail` both reach
       `recover`/`attempt`/`runEither` as the same Throwable
-- [ ] `sequence` over 10 000 progs is stack-safe from 2.13
-- [ ] Scala 3 code can `lift` an `A ! Async` and read `.program` back
-- [ ] the probe project compiles with `-Werror` under 2.13.18
+- [x] `sequence` over 10 000 progs is stack-safe from 2.13
+- [x] Scala 3 code can `lift` an `A ! Async` and read `.program` back
+- [x] the probe project compiles with `-Werror` under 2.13.18
 
 ## Later stages (not in stage 1)
 - State / Reader / Writer carriers with a FIXED state type per
@@ -98,3 +100,39 @@ runnable — the IO-shaped subset of the library.
   methods and name rows, which only a Scala 3 compiler can.
 
 ## Results
+- STAGE 1 LANDED (2026-09-22). `okay-scala2` (`Prog`, `Bridge`) and
+  `okay-scala2-probe`: 6 suites written in Scala 2 and compiled by
+  scalac 2.13.18 with `-Ytasty-reader -Xlint -Werror`, plus 1 Scala 3
+  bridge suite, all green, from a cold probe target.
+- A CONSTRUCTOR MAY NOT NAME THE ROW. scalac 2.13 reads a class's
+  primary-constructor parameter types when it first loads the class.
+  If one of them names `okay.+`, the class is refused: "Unsupported
+  Scala 3 union in bounds of type +; found in object
+  okay.Effects$package", reported at the user's `package` line.
+  Bisected by hand: a public val, a private val, and a plain parameter
+  kept in a def or in a val all failed. METHODS are read lazily, so a
+  public method returning the row compiled against the cold probe (tried
+  and reverted). Stage 0 never hit this because its row, `State % Int`,
+  has no `+`. The fix is `Body`, a value class holding the program:
+  `Prog`'s constructor names a class, and naming a class does not read
+  its constructor. It costs no allocation.
+- REFUTED along the way, and recorded because each one looked
+  plausible: (1) "the facade must not live under package `okay`".
+  Moving it to `dev.okay.scala2` changed nothing, and 2.13 code in a
+  package `okay.userland` compiles and runs. (2) "`private` hides a
+  member from the reader". It does not, for constructor parameters.
+- sbt ADDS A FOURTH CONSTRAINT to stage 0's three. For a 2.13 project
+  whose dependencies bring `scala-library:3.9.0`, sbt stops: "Expected
+  scalaVersion to be 3.9.0 or later" (SIP-51). `allowUnsafeScalaLibUpgrade`
+  makes 3.9's jar the COMPILE stdlib, which is exactly stage 0's
+  failure. What works is to exclude the transitive jar, resolve it in
+  a hidden configuration, and APPEND it to Compile/Runtime/Test
+  `dependencyClasspath`. The probe uses exactly the settings
+  docs/modules/okay-scala2.md gives users, so the page's snippet is
+  gated. The one difference: the probe excludes through
+  `projectDependencies`, the page through the library dependency.
+- The TASTy reader in 2.13.18 accepts 3.9.0 TASTy. That is not
+  guaranteed across releases: the reader supports Scala 3 only up to
+  a version tied to each 2.13 release. So when this build's Scala is
+  bumped, the probe is the first thing to break, and that is the probe
+  doing its job.

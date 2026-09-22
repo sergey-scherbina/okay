@@ -872,3 +872,18 @@ positioned compile error naming the workaround. The whole story,
 with the reasoning and the graveyard of refuted alternatives:
 [direct-style.md](direct-style.md); the theory with the literature:
 [theory ch. 8](theory/08-direct-style.md).
+
+## From Scala 2.13, in one paragraph
+
+A Scala 2.13 build cannot use `A ! F` directly. Two things stand in
+the way. The row is a union type, which Scala 2 cannot spell. And the
+combinators are `inline`, which Scala 2's TASTy reader refuses to call.
+`okay-scala2` gives such a build `Prog[A]`: a program over
+`Async + Throws % Throwable` with plain `map`/`flatMap`, so a 2.13
+for-comprehension works over it. A throw inside `Prog.delay` is a
+failure that `attempt`, `recover` and `runEither()` see, and `run()`
+executes the program on the calling thread. The build needs both
+standard libraries, 2.13's first and 3.9's behind it. The module page
+gives the exact sbt settings, the same ones a gated 2.13 suite in this
+repository compiles with:
+[modules/okay-scala2.md](modules/okay-scala2.md).
