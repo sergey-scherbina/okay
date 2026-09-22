@@ -103,4 +103,59 @@ class TestTypedZipper extends munit.FunSuite {
     assertEquals(moved.customer, Customer("ada", Address("Gdańsk", 50001)))
     assertEquals(c.root, order)
   }
+
+  // ---- stage 3: the path back as an optic, and the type-changing cursor
+
+  test("asAffine: preview is the focus on the cursor's own tree, None where an index or case frame is missing; set is set.root") {
+    val z = TypedZipper(order)
+    val c = z.down(customer).down(address).down(city)
+    assertEquals(c.asAffine.preview(order), Some("Wrocław"))
+    assertEquals(c.asAffine.set("Łódź")(order), c.set("Łódź").root)
+    val d = z.down(lines).at(1).get.downCase[Line.Discount].get
+    assertEquals(d.asAffine.preview(order), Some(Line.Discount(10)): Option[Line.Discount])
+    assertEquals(d.asAffine.set(Line.Discount(5))(order), d.set(Line.Discount(5)).root)
+    // another tree: the index is not there, or the case is not
+    val short = order.copy(lines = Vector(Line.Item("only", 1)))
+    assertEquals(d.asAffine.preview(short), None)
+    assertEquals(d.asAffine.set(Line.Discount(5))(short), short)
+    val swapped = order.copy(lines = order.lines.updated(1, Line.Item("x", 1)))
+    assertEquals(d.asAffine.preview(swapped), None)
+    assertEquals(z.asAffine.preview(order), Some(order))
+    // and at every depth of a lens walk, set through the optic is set through the cursor
+    val v = Address("Kraków", 30001)
+    val cu = z.down(customer)
+    assertEquals(cu.down(address).asAffine.set(v)(order), cu.down(address).set(v).root)
+    assertEquals(cu.asAffine.set(Customer("g", v))(order), cu.set(Customer("g", v)).root)
+  }
+
+  final case class Box[A](item: A, tag: String)
+
+  test("Poly: the whole changes type with the focus — a Box[String] becomes a Box[Int]") {
+    val item = Lens[Box[String], Box[Int], String, Int](_.item, (b, i) => Box(i, b.tag))
+    val out: Box[Int] = TypedZipper.Poly.of[Box[String], Box[Int]](Box("hello", "t")).down(item).modify(_.length)
+    assertEquals(out, Box(5, "t"))
+    assertEquals(TypedZipper.Poly.of[Box[String], Box[Int]](Box("hello", "t")).down(item).focus, "hello")
+  }
+
+  test("Poly: two lenses and a prism, type-changing; the wrong case builds nothing") {
+    val outer = Lens[Box[Box[Option[String]]], Box[Box[Option[Int]]], Box[Option[String]], Box[Option[Int]]](_.item, (b, i) => Box(i, b.tag))
+    val inner = Lens[Box[Option[String]], Box[Option[Int]], Option[String], Option[Int]](_.item, (b, i) => Box(i, b.tag))
+    val start = Box(Box(Some("four"): Option[String], "in"), "out")
+    val walked = TypedZipper.Poly.of[Box[Box[Option[String]]], Box[Box[Option[Int]]]](start)
+      .down(outer).down(inner).downCase(Prism.some[String, Int])
+    assertEquals(walked.map(_.focus), Some("four"))
+    assertEquals(walked.map(_.modify(_.length)), Some(Box(Box(Some(4): Option[Int], "in"), "out")))
+    val none = Box(Box(None: Option[String], "in"), "out")
+    assertEquals(TypedZipper.Poly.of[Box[Box[Option[String]]], Box[Box[Option[Int]]]](none)
+      .down(outer).down(inner).downCase(Prism.some[String, Int]).map(_.focus), None)
+  }
+
+  test("Poly shares a prefix: two downs from one cursor, each set a whole with only its own edit") {
+    final case class Pair(a: String, b: String)
+    val pa = Lens[Pair, Pair, String, String](_.a, (p, v) => p.copy(a = v))
+    val pb = Lens[Pair, Pair, String, String](_.b, (p, v) => p.copy(b = v))
+    val c = TypedZipper.Poly.of[Pair, Pair](Pair("a", "b"))
+    assertEquals(c.down(pa).set("A"), Pair("A", "b"))
+    assertEquals(c.down(pb).set("B"), Pair("a", "B"))
+  }
 }

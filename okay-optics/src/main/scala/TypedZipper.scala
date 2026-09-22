@@ -43,16 +43,22 @@ sealed trait TypedZipper[S, A, Self <: TypedZipper[S, A, Self]]:
 
   /** a lens frame: the move is total */
   def down[B](l: Lens[A, A, B, B]): TypedZipper.Below[S, A, B, Self] =
-    TypedZipper.Below(self, (a, b) => l.set(b)(a), l.get(focus))
+    TypedZipper.Below(self, a => Right(l.get(a)), (a, b) => l.set(b)(a), l.get(focus))
 
   /** an affine frame: the move may not exist */
   def downPartial[B](o: Affine[A, A, B, B]): Option[TypedZipper.Below[S, A, B, Self]] =
-    o.preview(focus).map(b => TypedZipper.Below(self, (a, b) => o.set(b)(a), b))
+    o.preview(focus).map(b => TypedZipper.Below(self, a => o.preview(a).toRight(a), (a, b) => o.set(b)(a), b))
 
   /** a prism frame: into one case of a sum, if the focus is that case */
   def downCase[B <: A](using ClassTag[B]): Option[TypedZipper.Below[S, A, B, Self]] =
     val p = Prism.of[A, B]
-    p.preview(focus).map(b => TypedZipper.Below(self, (a, b) => p.set(b)(a), b))
+    p.preview(focus).map(b => TypedZipper.Below(self, a => p.preview(a).toRight(a), (a, b) => p.set(b)(a), b))
+
+  /** the path from the root to this focus as an optic on the TREE —
+   * the typed twin of stage 1's `Zipper.at`. Affine, because an index
+   * or a case frame may not be there on another tree; on the tree the
+   * cursor was built from, `preview` is the focus. */
+  def asAffine: Affine[S, S, A, A]
 
   /** the focus as a lens on THIS cursor's type, every parameter
    * inferred from the receiver: `State.zoom(c.focusLens)(p)` */
@@ -69,6 +75,7 @@ object TypedZipper:
     def set(a: S): Top[S] = Top(a)
     def root: S = focus
     def depth: Int = 0
+    def asAffine: Affine[S, S, S, S] = Affine(Right(_), (_, v) => v)
     protected def self: Top[S] = this
 
   /** a frame below `parent`: how to put the focus back into the
@@ -77,15 +84,43 @@ object TypedZipper:
    * back as it was and `root` is the input, `eq`. `up` is the parent's
    * TYPE. Two cursors are the same when focus, path and root agree;
    * the flag is not part of that (Zipper.scala says the same). */
-  final case class Below[S, P, A, Z <: TypedZipper[S, P, Z]](parent: Z, put: (P, A) => P, focus: A, dirty: Boolean = false)
+  final case class Below[S, P, A, Z <: TypedZipper[S, P, Z]](parent: Z, look: P => Either[P, A], put: (P, A) => P,
+                                                             focus: A, dirty: Boolean = false)
     extends TypedZipper[S, A, Below[S, P, A, Z]]:
     def set(a: A): Below[S, P, A, Z] = copy(focus = a, dirty = true)
     def up: Z = if dirty then parent.set(put(parent.focus, focus)) else parent
     def root: S = up.root
     def depth: Int = parent.depth + 1
+    def asAffine: Affine[S, S, A, A] = parent.asAffine.andThen(Affine(look, put))
     protected def self: Below[S, P, A, Z] = this
 
   def apply[S](s: S): Top[S] = Top(s)
+
+  /**
+   * THE TYPE-CHANGING CURSOR: a focus and the plug — put a `B` back
+   * and the whole is a `T`. McBride's derivative APPLIED to its hole,
+   * with no frames and no `up`: once the focus changes type there is
+   * no parent of the old type to return to, and an unset cursor could
+   * not go up either (its frame would want a `B` where the focus is
+   * still an `A`). The way up is `set`, which IS the new whole, and a
+   * new cursor into it if the walk goes on. `down` takes the
+   * four-parameter optics — a `Lens[A, B, C, D]` says the part goes
+   * `C -> D` exactly when the whole goes `A -> B` (`PState.zoom`'s
+   * picture, theory ch. 3) — and composes them into the plug.
+   */
+  final case class Poly[A, B, T](focus: A, put: B => T):
+    def set(b: B): T = put(b)
+    def modify(f: A => B): T = put(f(focus))
+    def down[C, D](l: Lens[A, B, C, D]): Poly[C, D, T] =
+      Poly(l.get(focus), d => put(l.set(d)(focus)))
+    def downPartial[C, D](o: Affine[A, B, C, D]): Option[Poly[C, D, T]] =
+      o.preview(focus).map(c => Poly(c, d => put(o.set(d)(focus))))
+    def downCase[C, D](p: Prism[A, B, C, D]): Option[Poly[C, D, T]] =
+      p.preview(focus).map(c => Poly(c, d => put(p.set(d)(focus))))
+
+  object Poly:
+    /** the root: focus `S`, and the whole becomes `T` when set */
+    def of[S, T](s: S): Poly[S, T, T] = Poly(s, identity)
 
   /** the focus as a lens on the CURSOR: `State.zoom(TypedZipper.focus)(p)`
    * runs a `State % A` program at the focus with the frames riding
