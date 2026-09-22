@@ -54,6 +54,10 @@ sealed trait TypedZipper[S, A, Self <: TypedZipper[S, A, Self]]:
     val p = Prism.of[A, B]
     p.preview(focus).map(b => TypedZipper.Below(self, (a, b) => p.set(b)(a), b))
 
+  /** the focus as a lens on THIS cursor's type, every parameter
+   * inferred from the receiver: `State.zoom(c.focusLens)(p)` */
+  def focusLens: Lens[Self, Self, A, A] = TypedZipper.focus[S, A, Self]
+
   /** this cursor at its own type — the one thing an F-bound asks a
    * subclass to say, and each says it once */
   protected def self: Self

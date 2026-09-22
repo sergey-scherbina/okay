@@ -6,7 +6,9 @@ interpretations, the `Fuse` planner that turns a named optic path into
 hand-written code, `Focus`, and `Zipper` — Huet's cursor over a
 `Plate[T]` (how a tree exposes its children), with `Zipper.focus` as a
 lens on the cursor and `Zipper.at(path)` as the path back as an affine
-(specs/zipper.md).
+— and `TypedZipper`, the same cursor with its position as a type:
+frames are lenses, affines and prisms, `up` answers the parent's type
+(specs/zipper.md, stages 1 and 2).
 
 The guide is [optics.md](../optics.md), the arrow half is
 [arrows.md](../arrows.md), and the theory chapter is

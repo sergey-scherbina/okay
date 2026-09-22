@@ -843,6 +843,12 @@ State.zoom(Zipper.focus)(prog)        // a State % T program run AT the focus
 Zipper.at[Ui](path)                   // the path back as an affine — Ui.path
 ```
 
+`TypedZipper(order).down(customer).down(address)` is the same cursor
+with its position as a TYPE — the focus is an `Address`, `set` takes
+one, `up` gives the `Customer` cursor back, `field("city")` is the
+Mirror lens as a frame, `at(i)`/`downCase[B]` are the partial moves —
+for a program written against a part that must run at that part.
+
 `JsonEditor(json)(done)` in okay-ui is the product form: a `Screen`
 over a `Zipper[Json]` with move/edit/add/delete buttons and the focus
 marked in an outline. Theory and the Huet/McBride references:

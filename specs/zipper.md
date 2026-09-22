@@ -305,12 +305,15 @@ sealed trait TypedZipper[S, A, Self <: TypedZipper[S, A, Self]]:
   def downPartial[B](o: Affine[A, A, B, B]): Option[TypedZipper.Below[S, A, B, Self]]
   /** a prism frame: into one case of a sum */
   def downCase[B <: A](using ClassTag[B]): Option[TypedZipper.Below[S, A, B, Self]]
+  /** the focus as a lens on THIS cursor's type, inferred from the
+   *  receiver: `State.zoom(c.focusLens)(p)` needs no type arguments */
+  def focusLens: Lens[Self, Self, A, A]
 
 object TypedZipper:
   final case class Top[S](focus: S) extends TypedZipper[S, S, Top[S]]
-  final case class Below[S, P, A, Z <: TypedZipper[S, P, Z]](parent: Z, put: (P, A) => P, focus: A)
+  final case class Below[S, P, A, Z <: TypedZipper[S, P, Z]](parent: Z, put: (P, A) => P, focus: A, dirty: Boolean = false)
     extends TypedZipper[S, A, Below[S, P, A, Z]]:
-    def up: Z                                    // the parent's TYPE, statically
+    def up: Z                                    // the parent's TYPE, statically; put back only if dirty
   def apply[S](s: S): Top[S]
   /** the focus as a lens on the cursor — `State.zoom(TypedZipper.focus)(p)` */
   def focus[S, A, Z <: TypedZipper[S, A, Z]]: Lens[Z, Z, A, A]
@@ -327,25 +330,25 @@ extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: TypedZipper[S, Vector[B],
 Customer(name, address: Address(city)), lines: Vector[Line])` with
 `Line` a sum `Item | Discount`)
 
-- [ ] `down(l)` then `up` is the input cursor (same focus and root)
+- [x] `down(l)` then `up` is the input cursor (same focus and root)
       and `root eq` the input when nothing was set; `.up.up` from two
       lenses down is a `Top[Order]` — the type is checked by the
       compiler, the test only runs it.
-- [ ] `set` at a two-lens focus then `root` equals the nested `copy`;
+- [x] `set` at a two-lens focus then `root` equals the nested `copy`;
       every other field is `eq`.
-- [ ] `field("customer")` is `down(Lens.field[Order]("customer"))`:
+- [x] `field("customer")` is `down(Lens.field[Order]("customer"))`:
       the focus has the field's declared type, and a wrong name does
       not compile (`compileErrors`).
-- [ ] `at(i)` on a `Vector` focus answers the element or `None` past
+- [x] `at(i)` on a `Vector` focus answers the element or `None` past
       the end; `set` through it updates that element only.
-- [ ] `downCase[Discount]` answers the case or `None`; `set` through
+- [x] `downCase[Discount]` answers the case or `None`; `set` through
       it keeps the sum's other cases untouched elsewhere.
-- [ ] `TypedZipper.focus` satisfies GetPut, PutGet, PutPut; and
+- [x] `TypedZipper.focus` satisfies GetPut, PutGet, PutPut; and
       `State.zoom(TypedZipper.focus)(p)` runs a `State % Customer`
       program at a `Customer` focus with the frames untouched — the
       program written against `Customer` while parked in an `Order`,
       which is the consumer the entry named.
-- [ ] a walk shares its prefix: from one `down(customer)` both
+- [x] a walk shares its prefix: from one `down(customer)` both
       `down(name)` and `down(address)` are taken, edited, and each
       `root` shows only its own edit.
 
@@ -373,4 +376,14 @@ Customer(name, address: Address(city)), lines: Vector[Line])` with
 
 ### Results (stage 2)
 
-(after implementation)
+2026-09-22, the same evening, one lane. `TestTypedZipper` 7, green
+through `scripts/gate.sh`, no warnings. The first run was RED on the
+one law worth having — `root eq input` after a walk without edits —
+because `up` always ran `put` (a `copy`); the frame gained the same
+`dirty` flag stage 1's has, and the lens laws compare cursors by
+focus and root. `up.up` from two lenses is typed `Top[Order]` and
+`d.up` from a case frame is typed `Below[Order, Vector[Line], Line,
+?]` — both are `val` ascriptions in the test, so the compiler is the
+one asserting them. `compileErrors` pins that a misspelt field name
+is refused. Not built, each with its reason in Decisions: a
+type-changing `set`, a lens back from the cursor, `left`/`right`.

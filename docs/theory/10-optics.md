@@ -369,12 +369,33 @@ zipper as "not before a consumer that moves", named the terminal's
 Tab as one, and was wrong — that focus is an `Int` into a flattened
 tab order — until the operator asked for a product that edits a tree.
 
-What is *not* here is McBride's derivative in its full generality: a
-frame per *field*, each of a different type, so that the cursor's
-position is a type (`Order` → `Customer` → `Address`). The plate zipper
-is homogeneous — one node type, a vector of children — because the
-three trees that exist are, and the typed one stays recorded with its
-trigger (`backlog.d/optics-arrows-effects/zipper-mirror-derivative`).
+McBride's derivative in its full generality is the other cursor, and
+it is here too: `TypedZipper[S, A, _]` (`TypedZipper.scala`), whose
+POSITION IS A TYPE. The derivative of a product is per field — the
+one-hole context of `Order` at `customer` is "an `Order` with a
+`Customer`-shaped hole", a different type from the context at
+`lines` — and a lens into that field is exactly that derivative with
+`put` as the plug; a prism into a case is the derivative of a sum, an
+index into a `Vector` the affine of the paragraph above. So every
+frame of the typed zipper is an optic the library already has, and
+`field("customer")` is `Lens.field[Order]("customer")`, the Mirror
+consulted where it already is. What the frame adds is its parent's
+type, carried as a parameter and given back by `up`:
+
+```scala
+val c = TypedZipper(order).down(customer)              // TypedZipper[Order, Customer, _]
+c.down(address).down(city).set("Kraków").up.up.up      // a Top[Order], the compiler checked
+c.down(lines).at(1).flatMap(_.downCase[Line.Discount]) // Option: an index, then a case
+  .map(_.modify(d => d.copy(pct = d.pct * 2)).root)
+State.run(c)(State.zoom(c.focusLens)(renameCustomer))  // a State % Customer program, parked in an Order
+```
+
+The two cursors divide the work the way the entry that recorded them
+predicted: the plate zipper walks "the children" of one node type and
+is what an editor loops over; the typed zipper cannot loop — every
+frame is a distinct type — and is what a program written against a
+PART uses to run at that part while holding the whole: the last line
+above is the consumer that named it.
 
 ## Where the theory said no
 
