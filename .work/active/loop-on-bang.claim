@@ -1,6 +1,0 @@
-feature/loop-on-bang 2026-09-22T19:53:31Z
-agent: claude-code
-heartbeat: 2026-09-22T19:53:31Z
-status: in-progress
-done-so-far: sprint entry
-next: worktree ../okay-wt-loop-on-bang; !.loop in Effects.scala; Toolkit rewrite; spec stage-2 boxes; gate; land
