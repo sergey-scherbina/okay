@@ -124,8 +124,31 @@ object Form {
       RenderEnv(errors, k, labels.getOrElse(k, labels.getOrElse(n, n)), labels)
 
   private type Render[A] = Schema.Step[RenderEnv, Option[Json], Ui]
-  private val renderer = Schema.Folded[Render](new Schema.Algebra[Render]:
+  private val renderer = Schema.Folded[Render](RenderAlgebra(drill = false))
+  /** the same algebra ONE LEVEL deep (specs/form-drill.md): a composite
+   * below the root is an `into` button, not a subform */
+  private val drillRenderer = Schema.Folded[Render](RenderAlgebra(drill = true))
+
+  /**
+   * One algebra, two modes. `drill` changes exactly three arms — a
+   * product, a list and a sum that are NOT the root render as a
+   * `Button(name ›, key = s"$key$$into")` and produce no kids — and one
+   * more: a root LIST renders its items (a list can be the focus of a
+   * drill, where a flat form's root is never a list). Every leaf, the
+   * option label, the case Select, `$add`/`$del` and the error
+   * placement are shared by construction.
+   */
+  private final class RenderAlgebra(drill: Boolean) extends Schema.Algebra[Render]:
     import Schema.Step
+    /** the one-level stop: the composite's name as the way in */
+    private def into(e: RenderEnv): Ui = Ui.Button(s"${e.name} ›", key = s"${e.key}$$into")
+    /** a field's errors: its own, and in drill mode those BELOW it —
+     * the way in is where a reader looks for what is wrong inside */
+    private def errorsFor(errors: Vector[(String, String)], k: String): Vector[Ui] =
+      if !drill then errorsUnder(errors, k)
+      else errorsUnder(errors, k) ++ errors.collect {
+        case (ek, msg) if ek.startsWith(k + ".") || ek.startsWith(k + "[") => Ui.Text(s"! ${ek.drop(k.length + 1)}: $msg", Style(bold = true))
+      }
     private def unsupported(e: RenderEnv, node: String): Ui =
       if e.root then Ui.Text(s"unsupported form: $node") else Ui.Text(s"unsupported field: ${e.name}")
     private def number(node: String) = Step.leaf[RenderEnv, Option[Json], Ui]((e, v) =>
@@ -153,18 +176,22 @@ object Form {
       Step.node[RenderEnv, Option[Json], Ui, Vector[Ui]](
         (_, _) => Vector.empty,
         (e, v) =>
-          val vs = v match
-            case Some(Json.JArr(xs)) => xs
-            case _ => Vector.empty
-          vs.zipWithIndex.map((iv, i) => Step.Kid(each(), RenderEnv(e.errors, s"${e.key}[$i]", s"${e.name} $i", e.labels), Some(iv))),
+          if drill && !e.root then Vector.empty
+          else
+            val vs = v match
+              case Some(Json.JArr(xs)) => xs
+              case _ => Vector.empty
+            vs.zipWithIndex.map((iv, i) => Step.Kid(each(), RenderEnv(e.errors, s"${e.key}[$i]", s"${e.name} $i", e.labels), Some(iv))),
         _ :+ _,
         (e, _, uis) =>
-          if e.root then unsupported(e, "a list")
-          else Ui.Column(Ui.Text(e.name, Style(bold = true)) +:
-            uis.zipWithIndex.flatMap { (ui, i) =>
+          if drill && !e.root then into(e)
+          else if e.root && !drill then unsupported(e, "a list")
+          else
+            val rows = uis.zipWithIndex.flatMap { (ui, i) =>
               val ik = s"${e.key}[$i]"
-              Vector(Ui.Row(Vector(ui, Ui.Button("-", key = s"$ik$$del")))) ++ errorsUnder(e.errors, ik)
-            } :+ Ui.Button("+", key = s"${e.key}$$add")))
+              Vector(Ui.Row(Vector(ui, Ui.Button("-", key = s"$ik$$del")))) ++ errorsFor(e.errors, ik)
+            } :+ Ui.Button("+", key = s"${e.key}$$add")
+            if e.root then Ui.Column(rows) else Ui.Column(Ui.Text(e.name, Style(bold = true)) +: rows))
     def list[A](l: Schema.SList[A], of: () => Render[A]) = items(of)
     def vector[A](vs: Schema.SVector[A], of: () => Render[A]) = items(of)
 
@@ -174,12 +201,16 @@ object Form {
       Step.node[RenderEnv, Option[Json], Ui, Vector[Ui]](
         (_, _) => Vector.empty,
         (e, v) =>
-          val value = v.getOrElse(Json.JObj(Vector.empty))
-          fields.map((n, edge) => Step.Kid(edge(), e.field(n), get(value, n))),
+          if drill && !e.root then Vector.empty
+          else
+            val value = v.getOrElse(Json.JObj(Vector.empty))
+            fields.map((n, edge) => Step.Kid(edge(), e.field(n), get(value, n))),
         _ :+ _,
         (e, _, uis) =>
-          val children = fields.zip(uis).flatMap((nf, ui) => ui +: errorsUnder(e.errors, Form.key(e.key, nf._1)))
-          if e.root then Ui.Column(children) else Ui.Column(Ui.Text(e.name, Style(bold = true)) +: children))
+          if drill && !e.root then into(e)
+          else
+            val children = fields.zip(uis).flatMap((nf, ui) => ui +: errorsFor(e.errors, Form.key(e.key, nf._1)))
+            if e.root then Ui.Column(children) else Ui.Column(Ui.Text(e.name, Style(bold = true)) +: children))
 
     /** a sum: the case Select, then the chosen case's subform — only
       * when that case is a product with fields, as before */
@@ -193,25 +224,117 @@ object Form {
         case _ => Json.JObj(Vector.empty)
       Step.node[RenderEnv, Option[Json], Ui, Vector[Ui]](
         (e, v) =>
-          val head = Ui.Select(names.toVector, chosen(v.getOrElse(Json.JObj(Vector.empty))),
-            key = s"${e.key}.$$case".stripPrefix("."))
-          if e.root then Vector(head) else Vector(Ui.Text(e.name, Style(bold = true)), head),
+          if drill && !e.root then Vector.empty
+          else
+            val head = Ui.Select(names.toVector, chosen(v.getOrElse(Json.JObj(Vector.empty))),
+              key = s"${e.key}.$$case".stripPrefix("."))
+            if e.root then Vector(head) else Vector(Ui.Text(e.name, Style(bold = true)), head),
         (e, v) =>
-          val value = v.getOrElse(Json.JObj(Vector.empty))
-          val c = chosen(value)
-          su.cases(c)._2() match
-            case p: Schema.SProduct[?] if p.fields.nonEmpty =>
-              Vector(Step.Kid(cases(c)._2(), RenderEnv(e.errors, e.key, "", e.labels), Some(inner(value))))
-            case _ => Vector.empty,
+          if drill && !e.root then Vector.empty
+          else
+            val value = v.getOrElse(Json.JObj(Vector.empty))
+            val c = chosen(value)
+            su.cases(c)._2() match
+              case p: Schema.SProduct[?] if p.fields.nonEmpty =>
+                Vector(Step.Kid(cases(c)._2(), RenderEnv(e.errors, e.key, "", e.labels), Some(inner(value))))
+              case _ => Vector.empty,
         _ :+ _,
-        (_, _, all) => Ui.Column(all))
+        (e, _, all) => if drill && !e.root then into(e) else Ui.Column(all))
 
     /** a wrapper does not exist to the form */
     def iso[A, B](iso: Schema.SIso[A, B], under: () => Render[B]) =
       Step.via[RenderEnv, Option[Json], Option[Json], Ui](identity, under)
     def ref[A](name: String) =
       throw IllegalStateException(s"a lazy carrier never meets a back edge, got one at $name")
-  )
+
+  // ---- the drill: one level at a time (specs/form-drill.md) --------
+
+  /**
+   * The form of the value AT `path`, one level deep: the focus's
+   * scalars as widgets, its composites and items as `<key>$into`
+   * buttons, every key prefixed by the path — so an event from this
+   * view folds through `edit`/`submitted` exactly as one from the
+   * flat form does. A path that is not on the schema, or past a list's
+   * end, renders the root: total, like `edit`.
+   */
+  def renderAt[A](value: Json, path: String, errors: Vector[(String, String)] = Vector.empty,
+                  labels: Map[String, String] = Map.empty)(using s: Schema[A]): Ui =
+    val segs = if path.isEmpty then Nil else Path.parse(path)
+    focusAt(s, Some(value), segs) match
+      case Some((sub, v)) => Schema.Step.walk(drillRenderer(sub), RenderEnv(errors, path, "", labels), v)
+      case None => Schema.Step.walk(drillRenderer(s), RenderEnv(errors, "", "", labels), Some(value))
+
+  /** the schema and the value at a path — `editAtNative`'s routing,
+   * reading instead of writing: sums go into their chosen case
+   * without consuming a segment, isos and options are transparent,
+   * the case knob is not a place */
+  private def focusAt(s: Schema[?], value: Option[Json], path: List[Seg]): Option[(Schema[?], Option[Json])] =
+    s match
+      case Schema.SIso(u, _, _) => focusAt(u(), value, path)
+      case Schema.SOption(of) => focusAt(of(), value, path)
+      case _ => path match
+        case Nil => Some((s, value))
+        case seg :: rest => (s, seg) match
+          case (_: Schema.SSum[?], Seg.Case) => None
+          case (su: Schema.SSum[?], _) =>
+            val (_, cs) = value match
+              case Some(Json.JObj(Vector((n, _)))) => su.cases.find(_._1 == n).getOrElse(su.cases.head)
+              case _ => su.cases.head
+            val inner = value match
+              case Some(Json.JObj(Vector((_, v)))) => v
+              case _ => Json.JObj(Vector.empty)
+            focusAt(cs(), Some(inner), path)
+          case (p: Schema.SProduct[?], Seg.Field(n)) =>
+            p.fields.find(_._1 == n).flatMap((_, fs) => focusAt(fs(), value.flatMap(get(_, n)), rest))
+          case (p: Schema.SProduct[?], Seg.Index(n, i)) =>
+            p.fields.find(_._1 == n).flatMap((_, fs) => itemSchema(fs())).flatMap { item =>
+              value.flatMap(get(_, n)) match
+                case Some(Json.JArr(vs)) if vs.isDefinedAt(i) => focusAt(item, Some(vs(i)), rest)
+                case _ => None
+            }
+          case _ => None
+
+  /** the drill screen's state: the whole partial value, where the
+   * view is, and the errors shown since the last `done` */
+  private final case class Drilling(value: Json, path: String, errors: Vector[(String, String)])
+
+  /**
+   * The drill-down screen: `into` pushes the path, `out` pops it,
+   * every other event folds through `submitted` — the value is the
+   * WHOLE partial document, so a move is invisible to it. `done`
+   * answers `Some(value)` when `errors` is empty and otherwise shows
+   * them under their fields and stays; `cancel` answers `None`.
+   */
+  def drill[A](value: Json)(done: Option[Json] => Nav)(using s: Schema[A]): Screen =
+    Nav.screen(Drilling(value, "", Vector.empty))(drillView[A])((d, e) => drillStep[A](d, e, done))
+
+  /** the same over an existing `A`: in through the codec, out through
+   * the decode (the drift law of the second order, TestFormOptic) */
+  def drillValue[A](a: A)(done: Option[A] => Nav)(using s: Schema[A]): Screen =
+    drill[A](encoded(a))(j => done(j.flatMap(decode[A].apply(_).toOption)))
+
+  private def drillView[A](d: Drilling)(using Schema[A]): Ui =
+    // the focus's OWN errors (a missing sub-record is an error at its
+    // key, which no field inside it can show) and the form's ("")
+    val own = d.errors.collect { case (k, m) if k == d.path => Ui.Text(s"! $m", Style(bold = true)) }
+    Ui.Column(Vector(
+      Ui.Text(if d.path.isEmpty then "/" else d.path, Style(dim = true))) ++ own ++ Vector(
+      renderAt[A](d.value, d.path, d.errors),
+      Ui.Row(Vector(Ui.Button("out", "$out"), Ui.Button("done", "$done", Role.Primary), Ui.Button("cancel", "$cancel")))),
+      key = "$drill")
+
+  private def drillStep[A](d: Drilling, e: Event, done: Option[Json] => Nav)(using s: Schema[A]): Nav | Drilling =
+    e match
+      case Event.Pressed(k) if k.endsWith("$into") => d.copy(path = k.dropRight(5))
+      case Event.Pressed("$out") =>
+        d.copy(path = if d.path.isEmpty then "" else Path.show(Path.parse(d.path).init))
+      case Event.Pressed("$done") =>
+        val errs = errors[A](d.value)
+        if errs.isEmpty then done(Some(d.value)) else d.copy(errors = errs)
+      case Event.Pressed("$cancel") | Event.Closed => done(None)
+      case other => d.copy(value = submitted[A](d.value, other), errors = Vector.empty)
+
+  private def encoded[A](a: A)(using s: Schema[A]): Json = Json.parse(Json.write(a))
 
   // ---- editing: one event in, routed by its path -------------------
 
@@ -248,6 +371,12 @@ object Form {
     case Case
 
   private object Path:
+    /** the dotted string a list of segments came from */
+    def show(segs: List[Seg]): String = segs.map {
+      case Seg.Field(n) => n
+      case Seg.Index(n, i) => s"$n[$i]"
+      case Seg.Case => "$case"
+    }.mkString(".")
     def parse(k: String): List[Seg] = k.split('.').toList.map {
       case "$case" => Seg.Case
       case s if s.endsWith("]") && s.contains('[') =>
@@ -590,6 +719,22 @@ object Form {
    * host closing) answers None.
    */
   def ask[A](message: String, checks: Check[A]*)(using s: Schema[A]): Option[A] ! Dialog =
+    asking(message, checks, blank[A])
+
+  /** `ask`, started from a VALUE rather than from the blank — the seam
+   * `TestFormOptic` encoded by hand; the codec is the one encoder */
+  def askFrom[A](message: String, initial: A, checks: Check[A]*)(using s: Schema[A]): Option[A] ! Dialog =
+    asking(message, checks, encoded(initial))
+
+  /** the form of a typed cursor's focus, seeded from it: the answer is
+   * the cursor with the focus replaced, `up` and `root` as before —
+   * a program written against the part, parked in the whole
+   * (specs/zipper.md, stage 2's consumer; specs/form-drill.md) */
+  def askAt[S, A, Z <: okay.TypedZipper[S, A, Z]](z: okay.TypedZipper[S, A, Z], message: String, checks: Check[A]*)
+                                                   (using s: Schema[A]): Option[Z] ! Dialog =
+    askFrom(message, z.focus, checks*).map(_.map(a => z.set(a)))
+
+  private def asking[A](message: String, checks: Seq[Check[A]], start: Json)(using s: Schema[A]): Option[A] ! Dialog =
     def loop(j: Json, errs: Vector[(String, String)]): Option[A] ! Dialog =
       Dialog.show(asked(message, errs.collect { case ("", m) => m },
         ofWith[A](errs).apply(j))).flatMap {
@@ -611,7 +756,7 @@ object Form {
     // hold what the screen says or `ok` submits a form with no answer
     // where the screen shows one. The same door `Live.form` and
     // okay-watch's page had, counted here by writing the guide.
-    loop(blank[A], Vector.empty)
+    loop(start, Vector.empty)
 
   /** an invalid submit, as a CONDITION (ui-direct): the errors and
    * which attempt this is — the policy decides how forgiving the
