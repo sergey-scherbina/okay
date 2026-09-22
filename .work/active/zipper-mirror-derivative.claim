@@ -1,6 +1,0 @@
-feature/zipper-mirror-derivative 2026-09-22T21:25:28Z
-agent: claude-code
-heartbeat: 2026-09-22T21:25:28Z
-status: in-progress
-done-so-far: trigger fired by operator; worktree next
-next: specs/typed-zipper.md; TypedZipper[S, A] in okay-optics with Lens/Affine frames, field-by-Mirror down, focus lens + PState/State.zoom bridges; laws + a two-field descent program; docs ch.10 + guide; changelog
