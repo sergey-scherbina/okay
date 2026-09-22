@@ -85,4 +85,107 @@ class StagedBenchmark {
 
   @Benchmark
   def stagedHand(): Int = sw.run(0)(handBlock(0, 0))._2
+
+  // ---- specs/direct-stagers.md: (1) the SAME block through Stager.All
+  // with two unused slots — the price of the layout
+
+  val aw = Stager.All[Unit, Int, String, Nothing, Int]()
+
+  def allBlock(i: Int, acc: Int): Handled[aw.Row, aw.R, Int] =
+    if i >= Iters then Handled.pure(acc)
+    else Direct.staged(aw) {
+      val a = State.get[Int].!?
+      val _ = State.set[Int](i).!?
+      Writer.tell("w").!?
+      val b = State.get[Int].!?
+      val _ = State.set[Int](i + 1).!?
+      Writer.tell("w").!?
+      val c = State.get[Int].!?
+      val _ = State.set[Int](i + 2).!?
+      Writer.tell("w").!?
+      val d = State.get[Int].!?
+      allBlock(i + 1, acc + a + b + c + d).!?
+    }
+
+  @Benchmark
+  def stagedAllSW(): Int = aw.run((), 0)(allBlock(0, 0))._2 match
+    case Right(a) => a
+    case Left(n) => n
+
+  // ---- (2) a Reader + Throws block three ways: the shape a block
+  // that reads a configuration and may fail has — nine asks and one
+  // guarded raise (never taken: the loop must run) per iteration
+
+  case class Cfg(k: Int, limit: Int)
+  type RowRT = Reader % Cfg + Throws % String
+  val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()
+  val cfg = Cfg(3, Int.MaxValue)
+
+  def freeRT(i: Int, acc: Int): Int ! RowRT =
+    if i >= Iters then pure(acc)
+    else direct[[A] =>> A ! RowRT] {
+      val e1 = Reader.ask[Cfg].!?
+      val e2 = Reader.ask[Cfg].!?
+      val e3 = Reader.ask[Cfg].!?
+      val a = e1.k + e2.k + e3.k + i
+      val e4 = Reader.ask[Cfg].!?
+      val e5 = Reader.ask[Cfg].!?
+      val g = if a > e4.limit then raise[String, Int]("over").!? else a + e5.k
+      val e6 = Reader.ask[Cfg].!?
+      val e7 = Reader.ask[Cfg].!?
+      val e8 = Reader.ask[Cfg].!?
+      val e9 = Reader.ask[Cfg].!?
+      freeRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k).!?
+    }
+
+  def stagedRT(i: Int, acc: Int): Handled[rt.Row, rt.R, Int] =
+    if i >= Iters then Handled.pure(acc)
+    else Direct.staged(rt) {
+      val e1 = Reader.ask[Cfg].!?
+      val e2 = Reader.ask[Cfg].!?
+      val e3 = Reader.ask[Cfg].!?
+      val a = e1.k + e2.k + e3.k + i
+      val e4 = Reader.ask[Cfg].!?
+      val e5 = Reader.ask[Cfg].!?
+      val g = if a > e4.limit then raise[String, Int]("over").!? else a + e5.k
+      val e6 = Reader.ask[Cfg].!?
+      val e7 = Reader.ask[Cfg].!?
+      val e8 = Reader.ask[Cfg].!?
+      val e9 = Reader.ask[Cfg].!?
+      stagedRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k).!?
+    }
+
+  /** the parity target for (2), by hand — the SAME shape as `handBlock`:
+   * `rt.stage(op)` as the direct argument of every bind, nothing named */
+  def handRT(i: Int, acc: Int): Handled[rt.Row, rt.R, Int] =
+    if i >= Iters then Handled.pure(acc)
+    else
+      val M = summon[Monad[Handled[rt.Row, rt.R, *]]]
+      M.flatMap(rt.stage(Reader.Ask()))(e1 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e2 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e3 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e4 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e5 =>
+      M.flatMap(if e1.k + e2.k + e3.k + i > e4.limit then rt.stage[Int](Throws("over")) else Handled.pure[rt.Row, rt.R, Int](e1.k + e2.k + e3.k + i + e5.k))(g =>
+      M.flatMap(rt.stage(Reader.Ask()))(e6 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e7 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e8 =>
+      M.flatMap(rt.stage(Reader.Ask()))(e9 =>
+        handRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k)))))))))))
+
+  @Benchmark
+  def freeDirectRT(): Int =
+    !.run(runEither[Int, okay.Pure, String](Reader.run[Cfg, Int, Throws % String](cfg)(freeRT(0, 0)))) match
+      case Right(a) => a
+      case Left(_) => -1
+
+  @Benchmark
+  def stagedDirectRT(): Int = rt.run(cfg, ())(stagedRT(0, 0))._2 match
+    case Right(a) => a
+    case Left(_) => -1
+
+  @Benchmark
+  def stagedHandRT(): Int = rt.run(cfg, ())(handRT(0, 0))._2 match
+    case Right(a) => a
+    case Left(_) => -1
 }

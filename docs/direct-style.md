@@ -314,12 +314,57 @@ constructors, applied by the macro to the operation as you wrote it,
 so the compiler picks the arm — no `split`, no test, no tree.
 
 What the road costs, stated: a `Stager` object per row and answer
-layout — `Stager.StateWriter` ships, a user's row is a five-line object
-of the same shape; a marked program must be a leaf (`State.get`,
-`Writer.tell`, a raw operation) — `State.modify(f)` is refused with
-the fix in the message; and a staged block is `Func`, fast and NOT
-stack-safe on a left-nested chain — a loop of thousands of operations
-is fine, a loop of millions is a Free block under `Cont`.
+layout (the ones that ship are next); a marked program must be one
+the macro can walk at compile time — an operation, a leaf, a
+combinator like `State.modify(f)` or a for-comprehension over the row
+— and a program built at run time is refused with the shape in the
+message; and a staged block is `Func`, fast and NOT stack-safe on a
+left-nested chain — a loop of thousands of operations is fine, a loop
+of millions is a Free block under `Cont`.
+
+**Which stagers ship** (specs/direct-stagers.md). `Stager.All[E, S, W,
+Err, A]` covers every effect a block is written over when it is not
+`Async` — `Reader % E + State % S + Writer % W + Throws % Err` — in one
+layout: the environment an argument, the state and the log threaded,
+the error the answer's `Left`. A block over a SUBROW passes `Unit` for
+a slot it never reads and `Nothing` for one it never writes; the arms
+for those members are in the match and never chosen:
+
+```scala
+case class Cfg(k: Int, limit: Int)
+val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
+
+def total(xs: List[Int]): Handled[rt.Row, rt.R, Int] = Direct.staged(rt) {
+  val cfg = Reader.ask[Cfg].!?
+  var acc = 0
+  for x <- xs do
+    acc += x * cfg.k
+    if acc > cfg.limit then raise[String, Unit](s"over $acc").!?   // ends the block: Left
+  acc
+}
+
+rt.run(Cfg(2, 100), ())(total(List(1, 2, 3)))._2     // Right(12)
+rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2       // Left("over 6")
+```
+
+`raise(e).!?` inside a staged block drops the continuation and
+answers `Left(e)` — `run` is the block's catch; `catching`/`local`
+are handlers, i.e. programs, and stay outside (the rule above). The
+four singles — `Stager.Reading[E, A]`, `Stateful[S, A]`,
+`Logging[W, A]`, `Failing[Err, A]` — are the same arms with the tuple
+removed, for a block over one effect: `Stager.Stateful[Int, Int]()`
+runs as `st.run(s0)(block)` to `(state, answer)`. Why one class over
+the full row and not one per combination: a stager composed from
+per-effect arms cannot be written in plain Scala (the product would
+call the arm through a trait's abstract member, which is never
+inlined), and fifteen hand-written combinations is boilerplate; the
+unused slots were priced instead: the State+Writer block through
+`All` with two empty slots is 7.81 µs / 90 KB against `StateWriter`'s
+7.64 / 85 KB (+2%, +5.6% bytes — the extra `env =>` level per arm),
+and the Reader+Throws block above, at a thousand operations, is
+4.40 µs / 51 KB staged against 11.25 / 113 KB as a Free block under
+`Reader.run` + `runEither` — 2.56x, parity to 1% with the hand-written
+program (specs/direct-stagers.md).
 
 ## Layer 3 — auto-coloring: no marks, behind two gates
 

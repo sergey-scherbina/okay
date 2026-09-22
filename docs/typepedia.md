@@ -146,6 +146,21 @@ same material with the measurements attached.
   abortive/multi-shot/forwarding; **`!.widen`** — effect-row
   subsumption (Free is invariant, so it walks the tree).
 
+- **`Handled[Row, R, A]`** and **`Stager[Row, R]`** (Staged.scala;
+  specs/direct-staged.md, direct-stagers.md) — a staged block's
+  program: `Func`, the program as a function of its continuation at
+  answer type `R`, with the row in the type so `Direct.staged` can read
+  it. A `Stager` is the row's interpreter as an `inline match` over its
+  constructors, applied by the macro to each operation as written, so
+  the compiler picks the arm — no `split`. `Stager.All[E, S, W, Err, A]`
+  stages `Reader % E + State % S + Writer % W + Throws % Err` in one
+  layout (`E => (S, Vector[W]) => ((S, Vector[W]), Either[Err, A])`);
+  a subrow puts `Unit`/`Nothing` in the slots it does not use. The
+  singles `Reading`, `Stateful`, `Logging`, `Failing` carry one effect
+  with the tuple removed; `StateWriter` is the canonical pair the
+  numbers were taken on. Not stack-safe on a left-nested chain: a
+  loop of millions is a Free block.
+
 ## The standard effects
 
 - **`Reader % R`** — `Ask`, handled at relay speed. **Reading by the

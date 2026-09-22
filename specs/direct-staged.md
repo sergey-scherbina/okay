@@ -38,7 +38,7 @@ operation term itself, at the mark.
 ## Interface
 
 ```scala
-// core, Handled.scala
+// core, Staged.scala
 object Handled:
   /** a program over Row at answer type R, as a function of its
    * continuation — Func, with the row and the answer in the type so

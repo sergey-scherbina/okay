@@ -359,7 +359,14 @@ the arm chosen by the COMPILER, `Stager.stage`'s `inline match` on the
 operation as written, pays. The price is stated where it is paid: a
 `Stager` object per row and answer layout, and a staged block is
 `Func` — fast, and not stack-safe on a left-nested chain of
-millions. The lineage is Xie & Leijen's evidence passing and Schuster
+millions. The stager for the rows you actually write is
+`Stager.All[E, S, W, Err, A]` — Reader, State, Writer and Throws in
+one layout, `Unit`/`Nothing` in the slots a block does not use — so a
+block that reads a configuration and may fail is
+`Direct.staged(Stager.All[Cfg, Unit, Nothing, String, Int]()) { … }`,
+run as `.run(cfg, ())` to `((state, log), Either[String, Int])`; a
+`raise` inside ends the block with the `Left`
+([direct style](direct-style.md#layer-2½--the-staged-block-the-handler-known-at-the-call-site)). The lineage is Xie & Leijen's evidence passing and Schuster
 et al.'s capability-passing compilation (references in
 [direct style](direct-style.md)); the numbers are in
 specs/direct-staged.md.
