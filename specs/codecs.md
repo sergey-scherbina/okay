@@ -1691,3 +1691,67 @@ Scala's `StringBuilder`, which has an `append(Any)` — so
 rather than the prefix. A test written after the change would have
 been written against that behaviour. It is `java.lang.StringBuilder`
 now, whose `append(CharSequence, int, int)` is the one meant.
+
+## Big integers (2026-09-23, schema-bigint)
+
+Stage 0 of specs/scalus.md. Cardano asset quantities are uint64 (up
+to 2⁶⁴−1, past `Long`), minted quantities are signed int64, and a
+Plutus `Data.I` is unbounded. Every other road — an `SIso` over
+`String`, over `Array[Byte]` — makes every algebra see text or bytes
+where the value is a number: a JSON Schema says `string`, SQL types
+it `TEXT`, a Spark encoder cannot choose `decimal`. So a primitive.
+
+### Interface
+
+- `Schema.SBigInt extends Schema[BigInt]`; `given Schema[BigInt]`.
+- `Schema.Algebra.bigInt: F[BigInt]` — abstract, so every algebra is
+  swept by the compiler rather than by a grep.
+
+### Behavior
+
+- [ ] **CBOR, RFC 8949 §3.4.3 preferred serialization**: a value in
+      [−2⁶⁴, 2⁶⁴−1] is a plain integer (major 0/1, the FULL unsigned
+      64-bit argument); outside it, tag 2 (positive) / tag 3
+      (negative, magnitude −1−v) over a big-endian byte string without
+      leading zeros. This is exactly how Plutus `Data` and the Cardano
+      ledger encode integers, so bytes written here hash the same as
+      bytes written by a node. Decode accepts all four forms.
+- [ ] **the SLong decode refuses what does not fit**: a major-0
+      argument ≥ 2⁶³ (or a major-1 whose −1−n overflows) is a decode
+      error, not a wrapped negative. Found writing this: `In.head()`
+      reads the 8-byte argument into a signed `Long` and `intItem`
+      passed it through, so uint64 18446744073709551615 decoded as −1.
+- [ ] **the CBOR writer's header is unsigned**: `Out.header` compared
+      its argument signed, so an argument ≥ 2⁶³ (only reachable now,
+      through a uint64) would have been written as a 1-byte head.
+- [ ] **JSON: a string of decimal digits** (`"18446744073709551615"`).
+      `Json.JNum` holds a `Double`, which is exact only to 2⁵³; a
+      number there would silently round. Both decoders (`Json.decode`
+      over the tree, `JsonStrict` over the text) accept the SAME set:
+      a string of `-?[0-9]+`, or a JSON number that is integral and
+      within ±2⁵³ (exact, so nothing was lost before we saw it);
+      anything else is refused with the reason.
+- [ ] JSON Schema: `{"type": "string", "pattern": "^-?[0-9]+$"}` —
+      what the wire actually carries.
+- [ ] every other algebra (Validate, Compat, Digest, Typed/SQL, Form,
+      Protocol, R, Classify, ToolSpec, staging, the legacy JMH
+      encoder) handles the case; `-Wall`'s exhaustivity check is the
+      sweep and `clean; Test/compile` its proof.
+- [ ] round-trip laws, JSON and CBOR, at 0, ±1, ±2⁶³, 2⁶⁴−1, −2⁶⁴,
+      ±2⁶⁴ (the first tagged values) and a 300-bit value; the CBOR
+      bytes of the boundary values checked against RFC 8949 Appendix A
+      (`18446744073709551615` → `1bffffffffffffffff`,
+      `18446744073709551616` → `c249010000000000000000`,
+      `-18446744073709551617` → `c349010000000000000000`).
+
+### Decisions
+
+- A JSON string, not a number: `Json` would need a lossless number
+  case (`JBig`), and `Json` is matched in hundreds of places; the
+  string is what protobuf's JSON mapping does for int64 for the same
+  reason. Accepting small numbers on read keeps a hand-written `5`
+  working.
+- `SInt` truncating through `.toInt` (CBOR and JSON alike) is the
+  same class of defect as the SLong wrap but a separate decision
+  (JSON's truncation is documented at `JsonStrict.number`); filed as
+  `sint-decode-truncates`, not fixed here.
