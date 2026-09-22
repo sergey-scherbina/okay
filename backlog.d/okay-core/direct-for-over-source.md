@@ -1,8 +1,12 @@
-- [ ] direct-for-over-source — `for x <- src do body` in a direct
-      block where `src` is an EFFECTFUL source, not a collection: a
-      `Gen[W]` (okay-direct's generator view over `Unit ! Writer % W`,
-      direct-staged-v2), a `Stream[S, F]` instance, or the `Take`
-      side of a `Stage`. direct-loops (specs/direct-loops.md)
+- [ ] direct-for-over-source — NARROWED 2026-09-23 after `generators`
+      landed (changelog.d/generators.md): `for x <- gen do` over a
+      `Gen[W]` EXISTS in an ordinary block, through the generator's
+      iterator, lazily (`TestGen`: "reading three and no more"). What
+      is still open is the loop INSIDE a `direct` block with marks in
+      the body, and over the other effectful sources — a `Stream[S, F]`
+      instance or the `Take` side of a `Stage` — where there is no
+      iterator to read and the loop must be a program: `for x <- src do
+      body` with `body` performing effects. direct-loops (specs/direct-loops.md)
       iterates a materialised `List` only, for multi-shot safety, so
       today the consumer of a generator is `foldUntil`'s combinators
       or a hand-written `!.loop` over `uncons` — the iteratee is here
