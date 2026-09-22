@@ -1,6 +1,0 @@
-feature/fold-until-docs 2026-09-22T20:20:55Z
-agent: claude-code
-heartbeat: 2026-09-22T20:20:55Z
-status: in-progress
-done-so-far: sprint entry
-next: worktree; docs/guide.md + docs/typepedia.md; gate; land
