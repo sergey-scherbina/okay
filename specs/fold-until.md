@@ -72,13 +72,16 @@ it would have to invent one.
 Stages 2–4, specified here so the form is written down once, opened
 by their triggers (Decisions):
 
-- Stage 2 — `loop` on `!`: `def loop[S, A, F[+_]](s: S)(f: S =>
+- Stage 2 (loop-on-bang) — `!.loop[S, A, F[+_]](s: S)(f: S =>
   Either[S, A] ! F): A ! F`, `tailRecM` for programs, stack-safe by
-  `Free.flatMap`'s laziness. Trigger: rewriting two of the twelve
-  hand-written `def loop(state)` receive/dialog loops (Actor.scala:287,
-  Toolkit.scala:14–47, Dialog.scala:60, Ui.scala:693, Form.scala,
-  Conversation.scala:278, Nio.scala:97, chatweb Main.scala:30) and
-  finding them shorter.
+  `Free.flatMap`'s laziness. In `object !` beside `tailcall`, NOT a
+  top-level `loop`: Generate.scala's Cont fixpoint is called as
+  `loop(f)(a)`, the same two-list shape, and the overload would be
+  ambiguous at every existing call. Trigger: rewriting two of the
+  twelve hand-written `def loop(state)` receive/dialog loops
+  (Actor.scala:287, Toolkit.scala:14–47, Dialog.scala:60,
+  Ui.scala:693, Form.scala, Conversation.scala:278, Nio.scala:97,
+  chatweb Main.scala:30) and finding them shorter.
 - Stage 3 — a stopping `Stage.transduce`: `step: (S, I) => Stage[I,
   O, Either[S, R]]`, a stage that stops PULLING when its state says
   so (a prefix parser, a stateful `takeWhile`, "the first n matches").
@@ -114,6 +117,17 @@ Stage 1:
 - [x] `Writer.foldUntil` is tail-recursive across tells: a source of
       100 000 elements with the stop never firing folds on the
       default stack.
+
+Stage 2 — `!.loop(s)(f)`:
+
+- [ ] `!.loop(s)(f)` continues on `Left`, answers on `Right`, and runs
+      `f` once per iteration: a counter to 1 000 000 on the default
+      stack, at the `Pure` row.
+- [ ] the effects of every iteration are performed in order and each
+      iteration sees the state the previous one answered: a loop over
+      `State` whose steps read and write the cell.
+- [ ] the `Toolkit` dialogs — `confirm`, `alert`, `prompt`, `choice` —
+      are `!.loop` programs, and `TestToolkit` is unchanged and green.
 
 ## Out of scope
 
