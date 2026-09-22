@@ -118,6 +118,16 @@ object Gather {
    * the stage then tells, element by element; when it answers `false`
    * the stage stops awaiting — `through` then pulls nothing more from
    * upstream — and, as in a JDK stream, the finisher still runs.
+   *
+   * ONE-SHOT once built, and it says so. `through(p)(stage)` runs the
+   * stage eagerly up to its first output, so the program it answers
+   * already holds this run's gatherer state; running THAT program a
+   * second time would feed the same state again — measured, the JDK's
+   * `windowFixed` then fails with an NPE inside its own array (its
+   * finisher nulls it). A JDK gatherer's state is an opaque mutable
+   * object that cannot be snapshotted, so the second run is REFUSED
+   * with a message instead. Build the pipeline again (call `through`
+   * again) to run it again; that is always fine.
    */
   def stage[I, S, O](g: Gatherer[I, S, O]): Stage[I, O, Unit] =
     val init = g.initializer
@@ -127,6 +137,15 @@ object Gather {
       val state = init.get()
       val out = ArrayBuffer.empty[O]
       val ds: Gatherer.Downstream[O] = o => { out += o; true }
+      // the gatherer is finished: anything after this is a second run
+      // of a program that already consumed this state (see above)
+      var finished = false
+
+      def live(): Unit =
+        if finished then throw IllegalStateException(
+          "okay.java.Gather.stage: this pipeline already ran, and its JDK gatherer's state " +
+            "is spent (a program built by `through` holds the state of its first run). " +
+            "Build the pipeline again to run it again.")
 
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector
@@ -134,11 +153,14 @@ object Gather {
         batch.foldLeft(pure(()): Stage[I, O, Unit])((p, o) => p.flatMap(_ => Stage.tell[I, O](o)))
 
       def finish(): Stage[I, O, Unit] =
+        live()
+        finished = true
         finisher.accept(state, ds)
         flush()
 
       def loop: Stage[I, O, Unit] = Stage.await[I, O].flatMap {
         case Some(i) =>
+          live()
           val more = integrator.integrate(state, i, ds)
           flush().flatMap(_ => if more then loop else finish())
         case None => finish()

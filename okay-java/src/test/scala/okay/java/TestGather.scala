@@ -176,6 +176,31 @@ class TestGather extends munit.FunSuite {
     assertEquals(own(emit(xs), s).last, 55)
   }
 
+  test("a built pipeline over a JDK gatherer runs once, and a second run is REFUSED by name") {
+    // through(...) runs the stage eagerly to its first output, so the
+    // program holds this run's gatherer state; windowFixed nulls its
+    // array in the finisher and a re-run would NPE inside the JDK
+    val windows = through(emit(List(1, 2, 3)))(Gather.stage(Gatherers.windowFixed[Int](2)))
+    assertEquals(!.run(Writer.run(windows))._1.map(_.asScala.toList), Seq(List(1, 2), List(3)))
+    val again = intercept[IllegalStateException](!.run(Writer.run(windows)))
+    assert(again.getMessage.contains("already ran"), again.getMessage)
+    // building it again is always fine
+    val rebuilt = through(emit(List(1, 2, 3)))(Gather.stage(Gatherers.windowFixed[Int](2)))
+    assertEquals(!.run(Writer.run(rebuilt))._1.map(_.asScala.toList), Seq(List(1, 2), List(3)))
+  }
+
+  test("Windowed.gatherer: one gatherer value, two evaluations, the same panes") {
+    // the JDK path starts the stage PROGRAM per evaluation (Pos.Fresh),
+    // so okay-stream's Windows.stage re-run defect (backlog
+    // windows-stage-rerun-loses-pane) does not reach it
+    val g = Windowed.gatherer[Ev, String, Long, Long](10L, 10L, 0L)(_.key)(_.ts)(sum)
+    val evs = (0 until 40).map(i => Ev(i.toLong, "k", 1L)).asJava
+    val a = evs.stream().gather(g).toList.asScala.toSet
+    val b = evs.stream().gather(g).toList.asScala.toSet
+    assertEquals(b, a)
+    assertEquals(a.size, 4)
+  }
+
   test("round trip: a JDK gatherer through okay and back through the JDK") {
     val xs = (1 to 50).toList
     val g = Gatherers.windowSliding[Int](4)
