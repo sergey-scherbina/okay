@@ -120,3 +120,8 @@
       merged into Provide.scala). Nothing here changes the settled
       cause; recorded per the ledger's own point — only the fitting
       readings would make it worth nothing.
+      2026-09-23, okayCacheNative, GREEN on the rerun alone (10/10):
+      `RunTerminatedException` in the affected re-gate of okay-chain
+      after a rebase over docs-adapters-merge — a lane that added a new
+      Native module (okayChainNative, green) and touched no okay-cache
+      source. Recorded per the ledger; nothing changes the settled cause.
