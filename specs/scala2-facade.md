@@ -179,6 +179,38 @@ likely cause is `R` also being inferred through the handler's type.
 - [x] an effect left unhandled does not compile
 - [x] the probe stays at `-Xlint -Werror`, whatever that costs the API
 
+## Stage 4 — streams: `okay.scala2.Source`
+Operator (2026-09-23): "Стримы, файберы и каналы - нужно будет
+сделать их поддержку тоже". The core's `Source[W]` is
+`Unit ! (Writer % W + Async)`, which is exactly
+`Eff[Writer[W] with Async, Unit]`. So a 2.13 `Source[A]` wraps it, and
+a source can also be WRITTEN as an Eff that tells.
+
+- Constructors: `Source(as: A*)`, `fromIterable`, `range(from, until)`,
+  `unfold`, `empty`, and `fromEff(e: Eff[Writer[A] with Async, Unit])`
+  so that a source is an ordinary for-comprehension of `Writer.tell`
+  and `Async.delay`; `toEff` goes back.
+- Transformations: `map` (`Writer.map`), `filter` and `flatMapIterable`
+  (`Writer.expand`), `take`/`takeWhile`/`drop` (a `Stage` driven by
+  `through`, which STOPS PULLING the source once the stage ends, so
+  infinite sources are fine), `++`, `zipWithIndex`.
+- Concurrency: `merge(other)` over `Channel.merge` (a fiber per side,
+  one channel), read back through `drained`.
+- Running: `runCollect`, `runForeach`, `runFold`, each an
+  `Eff[Async, _]`, run with `Eff.runAsync`.
+
+## Behavior (stage 4), all from Scala 2.13
+- [ ] constructors, map/filter/take/takeWhile/drop/zipWithIndex/++
+      give the expected vectors
+- [ ] `take` on an infinite `unfold` terminates
+- [ ] a source written as an Eff for-comprehension (tell + delay):
+      nothing runs until the source is run
+- [ ] `runForeach` and `runFold` see every element in order
+- [ ] `merge` of two sources delivers the union of both, whatever the
+      interleaving
+- [ ] 100 000 elements through map/filter/runFold without a stack
+      overflow
+
 ## Later stages (not in stage 2)
 - Streams: a 2.13 `Source` facade over okay-stream.
 - Fibers and channels.
