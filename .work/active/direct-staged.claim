@@ -1,0 +1,6 @@
+feature/direct-staged 2026-09-22T18:29:01Z
+agent: claude-code
+heartbeat: 2026-09-22T18:29:01Z
+status: in-progress
+done-so-far: worktree created
+next: decisive lane first — the block applying the INLINE interpreter per operation (does C2 fold split on a fresh op?); then the design in specs/direct-staged.md
