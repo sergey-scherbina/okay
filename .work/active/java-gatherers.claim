@@ -1,6 +1,0 @@
-feature/java-gatherers 2026-09-22T23:00:15Z
-agent: claude-code
-heartbeat: 2026-09-22T23:00:15Z
-status: in-progress
-done-so-far: probe — dotc on JDK25 compiles Gatherer (bytecode 61), on 21 fails lazily (NoClassDefFoundError only when touched); -java-output-version 21 on 25 refuses Gatherer
-next: spec; .sdkmanrc 21->25 + ThisBuild -java-output-version 21 (operator chose); okay-java exempt; Gathers.scala Stage<->Gatherer + Windowed gatherer
