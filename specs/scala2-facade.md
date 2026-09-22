@@ -87,11 +87,58 @@ runnable — the IO-shaped subset of the library.
 - [x] Scala 3 code can `lift` an `A ! Async` and read `.program` back
 - [x] the probe project compiles with `-Werror` under 2.13.18
 
-## Later stages (not in stage 1)
-- State / Reader / Writer carriers with a FIXED state type per
-  carrier (`StateProg[S, A]`), since a 2.13 caller cannot name a row.
+## Stage 2 — everything a 2.13 program needs, in `okay.scala2`
+Operator (2026-09-23): the Scala 2 surface lives in ONE package,
+`okay.scala2`, and its types carry the library's own names ("вместо
+Cont2 называй тип просто Cont"). A 2.13 caller writes
+`import okay.scala2._` and gets `Cont`, `Eff`, `State`, `Reader`,
+`Writer`, `Throws`, `Async` — Scala 2 types, with the same names as
+the Scala 3 ones they stand for.
+
+- `Cont[A, S, R]` — the continuation paramonad (answer-type
+  modification) as a class: `map`, `flatMap`, `run(k)`;
+  `Cont.pure`, `Cont.shift`, `Cont.reset`. Stack-safe, because it is
+  okay's own `Cont` underneath.
+- `Eff[-R, A]` — a program over an OPEN row. The row is an
+  intersection of phantom capability types, `State[Int] with
+  Writer[String]`, which Scala 2 can spell; contravariance makes a
+  single-effect program widen into a wider row for free, and
+  `flatMap[R1 <: R, B]` accumulates rows the way ZIO 1's `R` did.
+  Each capability's companion holds its operations and its handler:
+  `State.get/put/modify/run`, `Reader.ask/run`,
+  `Writer.tell/run`, `Throws.raise/run` (into Either),
+  `Async.delay`; `Eff.run` for an `Eff[Any, A]`, `Eff.runAsync` for
+  an `Eff[Async, A]` (JVM, blocking).
+  Measured before writing (2026-09-22, by hand): scalac 2.13 infers
+  the residual row through `State.run(1)(prog)` with no annotation,
+  either handler order works, and running a program with an
+  unhandled effect is a compile error (its message names the row,
+  not the missing handler).
+- THE ONE CAST. On the Scala 2 side the row is a phantom, so the
+  program is stored at a single top row and each handler re-types it
+  at the concrete row it handles. There is no typed route: `Free` is
+  invariant in its row, and the phantom has no Scala 3 counterpart to
+  carry. The cast lives in one function with this reason beside it
+  (operator rule, no cast without necessity).
+- `Prog` stays — `Eff[Async with Throws[Throwable], A]` is the same
+  program, and `Prog.toEff` / `Eff.toProg` cross between them.
+
+## Behavior (stage 2), all from Scala 2.13
+- [ ] `Cont`: shift/reset, a continuation called twice, answer-type
+      change (Int → String), 100 000 binds without a stack overflow
+- [ ] `Eff`: State + Writer in one for-comprehension, handled in
+      both orders with the documented answers
+- [ ] `Eff`: Reader + State + Throws; a raise stops the program and
+      `Throws.run` answers Left, state handled outside it still
+      answers
+- [ ] `Eff`: Async + Throws run with `runAsync`
+- [ ] `Prog` ↔ `Eff` round trip
+
+## Later stages (not in stage 2)
 - Streams: a 2.13 `Source` facade over okay-stream.
-- Fibers and channels over `Prog`.
+- Fibers and channels.
+- A 2.13 user's OWN effect: okay declares one with `derives Effect`,
+  which is Scala 3; the facade needs a Scala 2 door for it.
 
 ## Decisions
 - FACADE over cross-build (operator choice, 2026-09-22, after the
