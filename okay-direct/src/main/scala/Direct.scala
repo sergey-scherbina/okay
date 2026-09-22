@@ -278,7 +278,7 @@ object Direct:
 
   /**
    * The block with its handler known at the call site
-   * (specs/direct-staged.md): over `Staged[Row, R, *]`, every marked
+   * (specs/direct-staged.md): over `Handled[Row, R, *]`, every marked
    * operation of the row — and every marked LEAF program, which is
    * what `State.get`, `Writer.tell`, `Reader.ask` inline to — is
    * emitted as `st.stage(op)`, whose inline match the compiler
@@ -290,21 +290,21 @@ object Direct:
    * (`Func` has no `delay`): a staged block is not stack-safe on a
    * left-nested chain, and says so in its spec.
    */
-  inline def staged[Row[+_], R](inline st: Stage[Row, R])[A]
-                               (inline block: DirectCtx[Staged[Row, R, *]] ?=> A)
-                               (using inline b: Binds): Staged[Row, R, A] =
+  inline def staged[Row[+_], R](inline st: Stager[Row, R])[A]
+                               (inline block: DirectCtx[Handled[Row, R, *]] ?=> A)
+                               (using inline b: Binds): Handled[Row, R, A] =
     ${ stagedImpl[Row, R, A]('st, 'block, 'b) }
 
   @scala.annotation.publicInBinary
-  private[okay] def stagedImpl[Row[+_] : Type, R: Type, A: Type](st: Expr[Stage[Row, R]],
-                                                                 block: Expr[DirectCtx[Staged[Row, R, *]] ?=> A],
+  private[okay] def stagedImpl[Row[+_] : Type, R: Type, A: Type](st: Expr[Stager[Row, R]],
+                                                                 block: Expr[DirectCtx[Handled[Row, R, *]] ?=> A],
                                                                  b: Expr[Binds])
-                                                                (using Quotes): Expr[Staged[Row, R, A]] =
+                                                                (using Quotes): Expr[Handled[Row, R, A]] =
     import quotes.reflect.*
-    type F[X] = Staged[Row, R, X]
+    type F[X] = Handled[Row, R, X]
     val topBody: Term = blockBody[F, A](block).asTerm
     val m = Expr.summon[Monad[F]].getOrElse(
-      report.errorAndAbort("direct.staged: no Monad[Staged[Row, R, *]] (macro bug)"))
+      report.errorAndAbort("direct.staged: no Monad[Handled[Row, R, *]] (macro bug)"))
     macros.DirectCompiler.pipeline[F, A](topBody, m,
       eager = true,
       parallel = b.asTerm.tpe <:< TypeRepr.of[Binds.Parallel.type],

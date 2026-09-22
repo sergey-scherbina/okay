@@ -59,7 +59,7 @@ private[okay] object DirectCompiler:
     val mmSym = Symbol.newVal(Symbol.spliceOwner, "mm$direct",
       if stage0.isDefined then M0.asTerm.tpe.widen else TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
     val mmVal = ValDef(mmSym, Some(M0.asTerm.changeOwner(mmSym)))
-    // the Stage object the same way (direct-staged): an inline
+    // the Stager object the same way (direct-staged): an inline
     // argument is substituted at every use, and a `new` there would
     // be one instance per operation; the val keeps the object's own
     // type, which is what its inline `stage` resolves on

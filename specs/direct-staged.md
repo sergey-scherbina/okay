@@ -38,42 +38,42 @@ operation term itself, at the mark.
 ## Interface
 
 ```scala
-// core, Staged.scala
-object Staged:
+// core, Handled.scala
+object Handled:
   /** a program over Row at answer type R, as a function of its
    * continuation — Func, with the row and the answer in the type so
    * the direct macro can read them off the block's F */
-  opaque type Staged[Row[+_], R, A] = (A => R) => R
-  given [Row[+_], R]: Monad[Staged[Row, R, *]]   // closure composition
-  def run[Row[+_], R, A](p: Staged[Row, R, A])(k: A => R): R
-  inline def shift[Row[+_], R, A](inline f: (A => R) => R): Staged[Row, R, A]
+  opaque type Handled[Row[+_], R, A] = (A => R) => R
+  given [Row[+_], R]: Monad[Handled[Row, R, *]]   // closure composition
+  def run[Row[+_], R, A](p: Handled[Row, R, A])(k: A => R): R
+  inline def shift[Row[+_], R, A](inline f: (A => R) => R): Handled[Row, R, A]
 
 /** a row's staged interpreter: ONE object per (row, answer layout),
  * whose `stage` is an INLINE MATCH over the row's constructors. The
  * trait carries the types; the object carries the method — it is
  * called on the object's own type, so it inlines, and the match on
  * the operation term reduces at compile time. */
-trait Stage[Row[+_], R]
+trait Stager[Row[+_], R]
 // a conforming object:
-//   object SW extends Stage[State % Int + Writer % String, Answer]:
-//     inline def stage[X](inline op: (State % Int + Writer % String)[X]): Staged[Row, Answer, X] =
+//   object SW extends Stager[State % Int + Writer % String, Answer]:
+//     inline def stage[X](inline op: (State % Int + Writer % String)[X]): Handled[Row, Answer, X] =
 //       inline op match
-//         case State.Get()   => Staged.shift(k => st => k(st._1)(st))
-//         case State.Set(s2) => Staged.shift(k => st => k(s2)((s2, st._2)))
-//         case Writer.Say(v) => Staged.shift(k => st => k(())((st._1, st._2 :+ v)))
+//         case State.Get()   => Handled.shift(k => st => k(st._1)(st))
+//         case State.Set(s2) => Handled.shift(k => st => k(s2)((s2, st._2)))
+//         case Writer.Say(v) => Handled.shift(k => st => k(())((st._1, st._2 :+ v)))
 
 // okay-direct
 object Direct:
-  /** the block over Staged[Row, R, *]: every marked OPERATION of the
+  /** the block over Handled[Row, R, *]: every marked OPERATION of the
    * row, and every marked leaf program `Free.Inject(op)` (which is
    * what `State.get[S]`, `Writer.tell(w)`, `Reader.ask[R]` inline to),
    * is emitted as `st.stage(op)` — the arm chosen at compile time.
    * `st` is an inline parameter so that its precise type (the
    * object) is what `stage` resolves on. */
-  inline def staged[Row[+_], R](inline st: Stage[Row, R])[A](inline block: DirectCtx[Staged[Row, R, *]] ?=> A): Staged[Row, R, A]
+  inline def staged[Row[+_], R](inline st: Stager[Row, R])[A](inline block: DirectCtx[Handled[Row, R, *]] ?=> A): Handled[Row, R, A]
 ```
 
-`Stage.stateWriter[S, W]` ships in core as the canonical object — the
+`Stager.stateWriter[S, W]` ships in core as the canonical object — the
 layout `((S, Vector[W]), A)` of `Fused.stateWriter`, so the fixture's
 laws apply to it unchanged.
 
@@ -113,7 +113,7 @@ laws apply to it unchanged.
 
 ## Out of scope
 
-- Any other row than the ones a `Stage` object is written for. The
+- Any other row than the ones a `Stager` object is written for. The
   layout of the accumulator is the row's business and a type-level
   product over an arbitrary union is a macro of its own; v1 ships
   the mechanism and ONE canonical object, and a user's row is a
@@ -139,15 +139,15 @@ under `Inlined`/`Typed` wrappers, so the macro strips the wrappers,
 recognises `Free.Inject.apply`, and stages its argument. Everything
 else the compiler does — ANF hoisting, if/match, loops, the defer
 pre-pass, vals — is untouched: the emission still speaks the
-monad's `flatMap`/`pure`, now `Staged`'s.
+monad's `flatMap`/`pure`, now `Handled`'s.
 
-`rowOf` gains its second case: `F[Unit]` is `Staged[Row, R, Unit]`
+`rowOf` gains its second case: `F[Unit]` is `Handled[Row, R, Unit]`
 (opaque, so it does not dealias to a function type) → `Row`.
 
 ## Decisions
 
 - **Explicit stage object, not a given** — chosen because the inline
-  member must be resolved on the object's own type: a `given Stage[Row,
+  member must be resolved on the object's own type: a `given Stager[Row,
   R] = SW` widens to the trait, where `stage` is not a member (an
   abstract inline member is not allowed), and an `inline given` is not
   unwrapped by `Expr.summon`. Passing the object as an `inline`

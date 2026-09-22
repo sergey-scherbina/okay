@@ -23,9 +23,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       case AppliedType(f, List(row, _)) if f.typeSymbol == freeClass => Some(row)
       case _ => None
 
-  lazy val stagedType: Symbol = Symbol.requiredModule("okay.Staged").typeMember("Staged")
+  lazy val stagedType: Symbol = Symbol.requiredModule("okay.Handled").typeMember("Handled")
 
-  /** the block's row when its F is `Staged[Row, R, *]` (specs/direct-
+  /** the block's row when its F is `Handled[Row, R, *]` (specs/direct-
    * staged.md) — opaque, so it does not dealias to the function it is.
    * Kept apart from `rowOf`: the defer pre-pass and the Once cells are
    * Free's, and a staged block has neither */

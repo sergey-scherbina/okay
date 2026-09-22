@@ -24,8 +24,8 @@ class StagedBenchmark {
   final val Iters = 100
 
   type Row = State % Int + Writer % String
-  type R = Stage.Answer[Int, String, Int]
-  val sw = Stage.StateWriter[Int, String, Int]()
+  type R = Stager.Answer[Int, String, Int]
+  val sw = Stager.StateWriter[Int, String, Int]()
 
   def freeBlock(i: Int, acc: Int): Int ! Row =
     if i >= Iters then pure(acc)
@@ -43,8 +43,8 @@ class StagedBenchmark {
       freeBlock(i + 1, acc + a + b + c + d).!?
     }
 
-  def stagedBlock(i: Int, acc: Int): Staged[Row, R, Int] =
-    if i >= Iters then Staged.pure(acc)
+  def stagedBlock(i: Int, acc: Int): Handled[Row, R, Int] =
+    if i >= Iters then Handled.pure(acc)
     else Direct.staged(sw) {
       val a = State.get[Int].!?
       val _ = State.set[Int](i).!?
@@ -60,10 +60,10 @@ class StagedBenchmark {
     }
 
   /** the parity target: what the macro should emit, by hand */
-  def handBlock(i: Int, acc: Int): Staged[Row, R, Int] =
-    if i >= Iters then Staged.pure(acc)
+  def handBlock(i: Int, acc: Int): Handled[Row, R, Int] =
+    if i >= Iters then Handled.pure(acc)
     else
-      val M = summon[Monad[Staged[Row, R, *]]]
+      val M = summon[Monad[Handled[Row, R, *]]]
       M.flatMap(sw.stage(State.Get()))(a =>
       M.flatMap(sw.stage(State.Set(i)))(_ =>
       M.flatMap(sw.stage(Writer.Say("w")))(_ =>

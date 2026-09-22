@@ -1,9 +1,9 @@
 ## direct-staged - Direct.staged: a direct block with the handler known at the call site
 
-Road 2 of specs/continuations-roadmap.md, built. `Staged[Row, R, A]`
-(core, Staged.scala) is `Func` with the row and the answer in the type;
-a `Stage` object's `stage` is an INLINE MATCH over the row's
-constructors, and `Stage.StateWriter[S, W, A]` is the canonical one.
+Road 2 of specs/continuations-roadmap.md, built. `Handled[Row, R, A]`
+(core, Handled.scala) is `Func` with the row and the answer in the type;
+a `Stager` object's `stage` is an INLINE MATCH over the row's
+constructors, and `Stager.StateWriter[S, W, A]` is the canonical one.
 `Direct.staged(sw) { … }` (okay-direct) compiles the same block text as
 `direct { … }` — combinators, raw operations, `if`, `for … do`,
 recursion — with every marked operation emitted as `sw.stage(op)` on
@@ -13,7 +13,7 @@ against the hand-written 7.69 / 84 568, and **2.24x** over the identical
 block as a Free block on the shipping runners (16.8 / 164 928).
 
 The macro seam is one lift: `DirectRow.rowOf` gains `stagedRow` (the
-row read off the opaque `Staged`), `liftOp` emits `st.stage[X](op)`
+row read off the opaque `Handled`), `liftOp` emits `st.stage[X](op)`
 instead of `Free.Inject(op)`, and a marked LEAF program (`State.get`,
 which inlines to `Free.Inject(Get())` under proxies) is taken apart
 before `compile` flattens it. For a staged block the hoisted monad val
@@ -35,5 +35,5 @@ data sets by state, log and answer; a concrete run; a 2 500-iteration
 loop on the default stack; the compound-program refusal; the
 foreign-monad refusal. okay-direct's suite 326 green. Limits stated in
 the spec and docs/direct-style.md ("Layer 2½"): v1 refuses compound
-marked programs, a Stage object is per row and layout, and a staged
+marked programs, a Stager object is per row and layout, and a staged
 block is not stack-safe on a left-nested chain.

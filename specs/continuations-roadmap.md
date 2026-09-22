@@ -143,7 +143,7 @@ bytecode size (the inlining line; `resume` is at 323 bytes and every
 deciding the shape. If the lane reads under 1.1x, road 1 is a
 refutation and the spec says so.
 
-### 2. Staged `direct` blocks — known handlers, no tree
+### 2. Handled `direct` blocks — known handlers, no tree
 
 **Today.** `direct` lowers a block into binds on the tree; `Fused`
 runs an inline handler-passing program with no tree at all; the two

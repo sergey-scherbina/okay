@@ -280,10 +280,10 @@ block text, run as a function of its continuation with each
 operation compiled to its handler's arm:
 
 ```scala
-val sw = Stage.StateWriter[Int, String, Int]()   // the row's staged interpreter
+val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interpreter
 
-def step(i: Int, acc: Int): Staged[sw.Row, sw.R, Int] =
-  if i >= 100 then Staged.pure(acc)
+def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
+  if i >= 100 then Handled.pure(acc)
   else Direct.staged(sw) {
     val a = State.get[Int].!?
     val _ = State.set[Int](i).!?
@@ -302,8 +302,8 @@ one line: `sw.stage` is an `inline match` over the row's
 constructors, applied by the macro to the operation as you wrote it,
 so the compiler picks the arm — no `split`, no test, no tree.
 
-What the road costs, stated: a `Stage` object per row and answer
-layout — `Stage.StateWriter` ships, a user's row is a five-line object
+What the road costs, stated: a `Stager` object per row and answer
+layout — `Stager.StateWriter` ships, a user's row is a five-line object
 of the same shape; a marked program must be a leaf (`State.get`,
 `Writer.tell`, a raw operation) — `State.modify(f)` is refused with
 the fix in the message; and a staged block is `Func`, fast and NOT

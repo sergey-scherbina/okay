@@ -13,8 +13,8 @@ import okay.Direct.*
 class TestStaged extends munit.FunSuite:
 
   type Row = State % Int + Writer % String
-  type R = Stage.Answer[Int, String, Int]
-  val sw = Stage.StateWriter[Int, String, Int]()
+  type R = Stager.Answer[Int, String, Int]
+  val sw = Stager.StateWriter[Int, String, Int]()
 
   /** the block, as a Free program: what every direct block is today */
   def free(xs: List[Int], k: Int): Int ! Row = direct[[A] =>> A ! Row] {
@@ -32,7 +32,7 @@ class TestStaged extends munit.FunSuite:
   }
 
   /** the same text, staged: every mark is one arm of `sw.stage` */
-  def staged(xs: List[Int], k: Int): Staged[Row, R, Int] = Direct.staged(sw) {
+  def staged(xs: List[Int], k: Int): Handled[Row, R, Int] = Direct.staged(sw) {
     val s0 = State.get[Int].!?
     Writer.tell(s"start $s0").!?
     for x <- xs do
@@ -68,8 +68,8 @@ class TestStaged extends munit.FunSuite:
   }
 
   test("a loop of ten thousand operations fits the default stack (Func's contract, stated)") {
-    def loop(i: Int, acc: Int): Staged[Row, R, Int] =
-      if i >= 2500 then Staged.pure(acc)
+    def loop(i: Int, acc: Int): Handled[Row, R, Int] =
+      if i >= 2500 then Handled.pure(acc)
       else Direct.staged(sw) {
         val a = State.get[Int].!?
         val _ = State.set[Int](a + 1).!?
@@ -85,7 +85,7 @@ class TestStaged extends munit.FunSuite:
 
   test("a compound program of the row under a mark is refused, naming the fix") {
     val e = compileErrors("""
-      val sw = Stage.StateWriter[Int, String, Int]()
+      val sw = Stager.StateWriter[Int, String, Int]()
       Direct.staged(sw) { State.modify[Int](_ + 1).!? }
     """)
     assert(e.contains("staged"), e)
@@ -94,7 +94,7 @@ class TestStaged extends munit.FunSuite:
 
   test("a foreign monad under a mark is refused as in a Free block") {
     val e = compileErrors("""
-      val sw = Stage.StateWriter[Int, String, Int]()
+      val sw = Stager.StateWriter[Int, String, Int]()
       Direct.staged(sw) { Option(1).!? }
     """)
     assert(e.contains("neither"), e)
