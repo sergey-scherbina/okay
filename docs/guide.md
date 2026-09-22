@@ -887,7 +887,10 @@ an intersection that Scala 2 can write,
 `Eff[State[Int] with Writer[String], A]`, and it is taken apart one
 handler at a time (`State.run`, `Writer.run`, ...). Continuations are
 `okay.scala2.Cont`, with `shift`, `reset` and answer-type modification.
-All of it is in the one package `okay.scala2`, under the library's own
+A 2.13 user's own effect is plain Scala 2: its operations extend
+`Op`, and `object Console extends Effect[Console]` declares it. Its
+handler receives each operation and the continuation, and can resume
+it once, never, or several times. All of it is in the one package `okay.scala2`, under the library's own
 names. The build needs both standard libraries, 2.13's first and 3.9's
 behind it. The module page
 gives the exact sbt settings, the same ones a gated 2.13 suite in this

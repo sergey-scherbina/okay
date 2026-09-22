@@ -9,6 +9,7 @@ lambdas, pattern matches) and the real library runs underneath.
 |---|---|
 | `Eff[-R, A]` | a program over an OPEN row of effects, spelled as an intersection: `Eff[State[Int] with Writer[String], A]`. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
 | `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
+| `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -142,11 +143,61 @@ assertEquals(s, "k(5)=10")
 Scala 2 cannot infer the type arguments of `shift` and `pure` from
 where they are used, so write them out.
 
+## Your own effect
+
+In Scala 3, okay declares an effect with `derives Effect`. A Scala 2
+build cannot run that derivation, but a handler only needs to test
+whether a value is one of the effect's operations, and a `ClassTag`
+answers that. So the whole declaration is ordinary Scala 2. The code
+below is copied from
+`okay-scala2/probe/src/test/scala/TestOwnEffectFromScala2.scala`:
+
+```scala
+sealed trait Console[A] extends Op[A]
+final case class PrintLn(s: String) extends Console[Unit]
+case object ReadLn extends Console[String]
+object Console extends Effect[Console]
+```
+
+```scala
+def console[R, B](out: ListBuffer[String], input: String): Handler[Console, R, B] =
+  new Handler[Console, R, B] {
+    def apply[X](op: Console[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+      case PrintLn(s) => out += s; k(())
+      case ReadLn => k(input)
+    }
+  }
+
+val prog: Eff[Effect[Console] with State[Int], String] = for {
+  name <- Console.send(ReadLn)
+  _ <- State.put(name.length)
+  _ <- Console.send(PrintLn("hi " + name))
+} yield name
+val out = ListBuffer.empty[String]
+val handled = Console.handle(prog)(a => Eff.pure(a))(console(out, "ada"))
+assertEquals(Eff.run(State.run(0)(handled)), (3, "ada"))
+```
+
+- The capability in the row is `Effect[Console]`.
+- A handler receives each operation together with its continuation
+  `k` (Plotkin & Pretnar, *Handlers of Algebraic Effects*, ESOP 2009,
+  doi:10.1007/978-3-642-00590-9_7). Calling `k` once resumes the
+  program. Not calling it aborts the rest. Calling it more than once
+  gives several answers; the probe's `Choose` handler collects all
+  four outcomes of two flips.
+- **For the LAST effect, use `Console.run(prog)(ret)(h)`, not
+  `handle`.** With `handle` in that position, scalac 2.13 infers
+  `R = Any`, and `-Xlint` warns "a type was inferred to be `Any`",
+  which is an error under `-Werror`. `run` has no `R` to infer, and it
+  returns the answer directly.
+- Pattern matching `op match { case PrintLn(s) => k(()) }` typechecks
+  in Scala 2, because matching on the case class tells scalac what `X`
+  is in that branch.
+
 ## What is not here yet
 
-- **Your own effects.** okay declares an effect with `derives Effect`,
-  which is Scala 3, and there is no Scala 2 way to do it yet.
-- **Streams, fibers and channels.**
+- **Streams, fibers and channels.** They are queued in the sprint as
+  `scala2-streams` and `scala2-fibers-channels`.
 - **Direct style.** It is built from Scala 3 macros, so from Scala 2
   it will never be available; write for-comprehensions instead.
 

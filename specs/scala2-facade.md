@@ -151,9 +151,10 @@ object Console extends Effect[Console]
 - `Op[+A]` — ONE Scala 3 signature that every Scala 2 effect's
   operations extend, so the stored program's row stays `Top`.
 - `Effect[F[_]](implicit ClassTag[F[Any]])` — `send(op)` performs an
-  operation as `Eff[this.type, A]`: the capability is the effect
-  object's SINGLETON type, so two effects are two capabilities with no
-  declaration beyond the object. `handle(e)(ret)(h)` removes it.
+  operation as `Eff[Effect[F], A]`, so two effects are two capabilities
+  with no declaration beyond the object. `handle(e)(ret)(h)` removes
+  it and leaves the rest of the row; `run(e)(ret)(h)` handles the LAST
+  effect and answers (see Results for why both exist).
 - `Handler[F, R, B]` — `apply[X](op: F[X], k: X => Eff[R, B])`: the
   operation AND its continuation. Resuming once is an ordinary effect;
   resuming never is abort; resuming twice is nondeterminism.
@@ -171,12 +172,12 @@ be `Any`". Plain `State.run` at the last position did not warn, so the
 likely cause is `R` also being inferred through the handler's type.
 
 ## Behavior (stage 3), all from Scala 2.13
-- [ ] a resumptive effect beside `State`, handled in the same program
-- [ ] a multi-shot handler: every answer of two flips
-- [ ] an aborting handler: the continuation dropped, the rest never runs
-- [ ] two user effects in one row, each handled by its own object
-- [ ] an effect left unhandled does not compile
-- [ ] the probe stays at `-Xlint -Werror`, whatever that costs the API
+- [x] a resumptive effect beside `State`, handled in the same program
+- [x] a multi-shot handler: every answer of two flips
+- [x] an aborting handler: the continuation dropped, the rest never runs
+- [x] two user effects in one row, each handled by its own object
+- [x] an effect left unhandled does not compile
+- [x] the probe stays at `-Xlint -Werror`, whatever that costs the API
 
 ## Later stages (not in stage 2)
 - Streams: a 2.13 `Source` facade over okay-stream.
@@ -238,3 +239,21 @@ likely cause is `R` also being inferred through the handler's type.
   okay; (2) the Scala 3 source spells the rows with `&`, because
   `with` as a type operator warns in 3.9, and scalac 2.13 reads `&`
   as its own `with`.
+- STAGE 3 (2026-09-23). `Op`, `Effect[F]`, `Handler[F, R, B]` in
+  okay.scala2. The 2.13 probe grows to 22 tests, green under
+  `-Xlint -Werror`: a resumptive effect beside State, a multi-shot one,
+  an aborting one, two user effects in one row, and two `compileErrors`
+  checks (an unhandled effect; `run` on a row that still holds another
+  effect).
+- `handle` AT THE LAST POSITION IS A LINT ERROR, and the prototype's
+  guess about why was REFUTED. With `handle` in that position, scalac
+  2.13 solves `R = Any` from the first argument list, and `-Xlint`
+  reports "a type was inferred to be `Any`". The guess was that the
+  singleton capability (`Console.type`) was the cause. Changing the
+  capability to `Effect[Console]` produced the same three errors at the
+  same three places. `State.run` at the last position does not warn,
+  and the one difference in shape is that `handle` names `R` in three
+  argument lists, not one. What works is `run(e)(ret)(h): B`, which has
+  no `R` at all. `Effect[Console]` stayed as the capability anyway: it
+  reads as the declaration does and does not depend on how the object
+  is imported.
