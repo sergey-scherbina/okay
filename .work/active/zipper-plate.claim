@@ -1,0 +1,6 @@
+feature/zipper-plate 2026-09-22T20:58:49Z
+agent: claude-code
+heartbeat: 2026-09-22T20:58:49Z
+status: in-progress
+done-so-far: trigger fired by operator (a product with tree editing); worktree next
+next: specs/zipper.md; Plate+Zipper in okay-optics; Plate[Json] (okay-codec), Plate[Ui] (okay-ui); JsonEditor Screen in okay-ui; tests: zipper laws, at==Ui.path, editor drive; docs ch.10 + guide
