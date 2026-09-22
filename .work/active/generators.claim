@@ -1,0 +1,6 @@
+feature/generators 2026-09-22T20:24:36Z
+agent: claude-code
+heartbeat: 2026-09-22T20:24:36Z
+status: in-progress
+done-so-far: worktree created
+next: specs/generators.md; core Gen.scala (Gen[W] = Unit ! (Writer % W + Stop), element-wise ops, readers on FoldUntil, iterator stepper, stop); Gen.direct with yield-as-emit; for x <- gen do in a block over !.loop; docs + literature
