@@ -400,7 +400,7 @@ Two more costs that are not tests:
 | it can fail / branch / remember | the effect: `Fail`, `Choice`, `State`, `Once` |
 | leave from the middle with an answer | `Delim.exit` (`Delim.abort` in `for`) |
 | a producer that pushes, a consumer that pulls | `Delim.collect` / `Delim.emit` |
-| ...pulled lazily, or stopped early | `Generate` / `Producer` — a `collect` has no early stop |
+| ...pulled lazily, or stopped early | `Generate` / `Producer` — a `collect` has no early stop; a fold that stops is `FoldUntil` (`Stream.foldUntil`, `Writer.foldUntil`, `Chunks.foldUntil`, `Source.runFoldUntil`) |
 | stop now, resume when the answer arrives | `Delim.resumable` / `pause` / `drive` |
 | ...and survive a restart | `Delim.answer` + `Delim.replay` over the journal |
 | ...and keep the journal in a durable log | `okay.persist.Dialogue` |

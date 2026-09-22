@@ -129,6 +129,36 @@ object Writer {
     loop(z)(a)
   }
 
+  /**
+   * A fold that STOPS (specs/fold-until.md): `loopWith`'s walk with
+   * an early `Pure(end(s))` the moment the state is done. The
+   * `Bind(Inject(Say), k)` arm does not call `k` then, which is what
+   * stops the producer: nothing past the satisfying tell is built,
+   * and an `F` operation that would have followed it is never
+   * performed. Answers `R` alone — a fold that stopped early never
+   * saw the program's answer, and a signature promising it would
+   * have to invent one.
+   */
+  def foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)
+                                  (using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F = {
+    val K = summon[FoldUntil[W, S, R]]
+    def _loop(s: S)(x: A ! Writer % W + F): R ! F = loop(s)(x)
+
+    @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F =
+      if K.done(s) then Pure(K.end(s))
+      else (x.resume: @unchecked) match
+        case Pure(_) => Pure(K.end(s))
+        case Inject(e) => split[Writer % W, F](e) {
+            case Say(v) => Pure(K.end(K.add(s, v))): R ! F
+          } { e => Inject(e).map(_ => K.end(s)) }
+        case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
+            (w0: @unchecked) match
+              case Say(v) => loop(K.add(s, v))(k(()))
+          } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
+
+    loop(K.init)(a)
+  }
+
   /** collect everything told, in order, forwarding the effects F */
   def run[W, A, F[+_]](a: A ! Writer % W + F)
                       (using TypeableK[Writer % W]): (Seq[W], A) ! F =

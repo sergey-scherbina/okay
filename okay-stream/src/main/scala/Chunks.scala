@@ -297,6 +297,24 @@ object Chunks {
       s
 
   /**
+   * `fold` with a stop (specs/fold-until.md): `done` is checked per
+   * element inside the chunk's `while`, and BEFORE `hasNext` pulls
+   * the next chunk — the second check is the one that saves a
+   * production, since the iterator's `hasNext` is what steps the
+   * tree.
+   */
+  def foldUntil[A, S, R](p: Chunks[A])(using fo: FoldUntil[A, S, R]): R =
+    var s = fo.init
+    val it = feedStream[Unit].iterator(p)
+    while !fo.done(s) && it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length && !fo.done(s) do
+        s = fo.add(s, c(i))
+        i += 1
+    fo.end(s)
+
+  /**
    * `foldLeft` for a G-EFFECTFUL chunked writer stream — a
    * `Source[Chunk[A]]`, or any `Unit ! (Writer % Chunk[A] + G)` — with
    * the step inlined into a per-chunk `while`, on `Writer.foldWith`.

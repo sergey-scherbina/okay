@@ -92,26 +92,26 @@ by their triggers (Decisions):
 
 Stage 1:
 
-- [ ] `FoldUntil.find/headOption/exists/forall/take` answer what the
+- [x] `FoldUntil.find/headOption/exists/forall/take` answer what the
       `List` methods of those names answer, on every input including
       the empty one and one where the stop never fires.
-- [ ] `FoldUntil.until(z)(f)(end)` runs the operator's `loop`: the
+- [x] `FoldUntil.until(z)(f)(end)` runs the operator's `loop`: the
       `Right` ends it, a `Left` continues, and `end` is applied to the
       last `Left` state when the input runs out first.
-- [ ] `Stream.foldUntil`, `Chunks.foldUntil`, `Writer.foldUntil` and
+- [x] `Stream.foldUntil`, `Chunks.foldUntil`, `Writer.foldUntil` and
       `Source.runFoldUntil` agree with `foldLeft` over the
       `takeWhile`-prefix on the pure road: the same instance over the
       same elements gives the same `R` on every carrier.
-- [ ] THE WALK STOPS: a source that counts its productions, asked for
+- [x] THE WALK STOPS: a source that counts its productions, asked for
       3 of 1000 through `take(3)`, produces 3 elements — and a chunked
       one produces one chunk (`Chunks.foldUntil` pulls no chunk after
       the one that satisfied it).
-- [ ] `done(init)` is honoured: `take(0)` consumes nothing, on every
+- [x] `done(init)` is honoured: `take(0)` consumes nothing, on every
       carrier.
-- [ ] `Writer.foldUntil` performs a forwarded `F` operation that
+- [x] `Writer.foldUntil` performs a forwarded `F` operation that
       precedes the stop and does NOT perform one that follows it
       (counted through a `Handler`).
-- [ ] `Writer.foldUntil` is tail-recursive across tells: a source of
+- [x] `Writer.foldUntil` is tail-recursive across tells: a source of
       100 000 elements with the stop never firing folds on the
       default stack.
 
@@ -158,8 +158,9 @@ The walks:
   early `Pure(end(s))` on `done` after a tell — the `Bind(Inject(Say),
   k)` arm does not call `k` when the state is done, which is what
   stops the producer. A forwarded `F` operation is still re-entered
-  through `flatMap` as in `loopWith`. `inline`, for the reason
-  `loopWith` is.
+  through `flatMap` as in `loopWith`. NOT `inline`, unlike `loopWith`:
+  the fold arrives as data, so there is no step to beta-reduce — the
+  same reason `Writer.fold` is a plain def over the inline `foldWith`.
 
 ## Decisions
 
@@ -181,4 +182,14 @@ The walks:
 
 ## Results
 
-(after the verify step)
+Stage 1 (2026-09-22): `TestFoldUntil` (core, 5) and
+`TestFoldUntilStreams` (okay-stream, 4), gate green with no warnings.
+The stop is measured by counting, not asserted by reading the code:
+`take(3)` over an on-demand `LazyList` evaluates 3 elements,
+`find(_ == 4)` evaluates 5; over an infinite `Chunks.generateWith`
+`take(3)` pulls 1 chunk and `find(_ == 5)` pulls 2; over a source
+with an Async operation after every tell, `take(3)` performs 2 of
+them and `take(0)` none. 100 000 tells with the stop never firing
+fold on the default stack on both the writer and the chunk road.
+Not measured: the per-element cost of `done` against `foldLeft` on
+the unboxed shape — Out of scope until a caller has that fold.

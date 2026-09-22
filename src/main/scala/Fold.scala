@@ -132,7 +132,8 @@ object Fold:
     def addLong(n: Long, a: A): Long = n + 1L
 
   /** does any element satisfy the predicate (it keeps scanning: a
-   * `Fold` has no way to stop, which is what `Chunks.exists` is for) */
+   * `Fold` has no way to stop, which is what `FoldUntil.exists` is
+   * for) */
   def exists[A](p: A => Boolean): OfBoolean[A] = new:
     def initBoolean: Boolean = false
     def addBoolean(s: Boolean, a: A): Boolean = s || p(a)
@@ -198,6 +199,94 @@ object Fold:
 
   /** the last element, if any */
   def last[A]: Fold[A, Option[A]] = Fold(Option.empty[A])((_, a) => Some(a))
+
+/**
+ * A left fold that may STOP (specs/fold-until.md): `done` is asked
+ * before the first element and after every step, and a consumer pulls
+ * nothing once it answers true; `end` turns the final state into the
+ * result whether the input ended or the fold did.
+ *
+ * This is the MACHINE form — a halting Moore machine — and the shape
+ * a caller more often has in hand, a step answering `Either[S, R]`,
+ * is `FoldUntil.until` over it rather than the primitive: a `Left`
+ * per element is an allocation in every consumer, and this library
+ * has measured that price out of every walk it has (`split` not
+ * `<|>`, no `Option` per element in the iterators). `add` then `done`
+ * allocates nothing.
+ *
+ * Deliberately NOT a `Fold`: a `Fold` consumer walks to the end, so a
+ * stopping fold passed where a `Fold` is expected would lose its stop
+ * silently — `take(3)` taking everything. Different contract,
+ * different type.
+ */
+trait FoldUntil[-A, S, R]:
+  /** the start */
+  def init: S
+
+  /** accept one element */
+  def add(s: S, a: A): S
+
+  /** has this state seen enough */
+  def done(s: S): Boolean
+
+  /** the result, from wherever the walk stopped */
+  def end(s: S): R
+
+object FoldUntil:
+  /** make one from its four parts */
+  def apply[A, S, R](z: S)(f: (S, A) => S)(stop: S => Boolean)(finish: S => R): FoldUntil[A, S, R] = new:
+    def init: S = z
+    def add(s: S, a: A): S = f(s, a)
+    def done(s: S): Boolean = stop(s)
+    def end(s: S): R = finish(s)
+
+  /**
+   * The operator's shape: a step that answers `Left(next)` to
+   * continue or `Right(result)` to stop, and `finish` for the state
+   * left when the input ran out first. The `Either` the step returns
+   * IS the state, so nothing is allocated beyond what the caller
+   * wrote.
+   */
+  def until[A, S, R](z: S)(f: (S, A) => Either[S, R])(finish: S => R): FoldUntil[A, Either[S, R], R] = new:
+    def init: Either[S, R] = Left(z)
+    def add(s: Either[S, R], a: A): Either[S, R] = s match
+      case Left(s) => f(s, a)
+      case r => r
+    def done(s: Either[S, R]): Boolean = s.isRight
+    def end(s: Either[S, R]): R = s match
+      case Left(s) => finish(s)
+      case Right(r) => r
+
+  /** the first element satisfying the predicate, and no pull after it */
+  def find[A](p: A => Boolean): FoldUntil[A, Option[A], Option[A]] = new:
+    def init: Option[A] = None
+    def add(s: Option[A], a: A): Option[A] = if p(a) then Some(a) else s
+    def done(s: Option[A]): Boolean = s.isDefined
+    def end(s: Option[A]): Option[A] = s
+
+  /** the first element, if any */
+  def headOption[A]: FoldUntil[A, Option[A], Option[A]] = find(_ => true)
+
+  /** does any element satisfy the predicate — stopping at the first that does */
+  def exists[A](p: A => Boolean): FoldUntil[A, Boolean, Boolean] = new:
+    def init: Boolean = false
+    def add(s: Boolean, a: A): Boolean = s || p(a)
+    def done(s: Boolean): Boolean = s
+    def end(s: Boolean): Boolean = s
+
+  /** do all of them — stopping at the first that does not */
+  def forall[A](p: A => Boolean): FoldUntil[A, Boolean, Boolean] = new:
+    def init: Boolean = true
+    def add(s: Boolean, a: A): Boolean = s && p(a)
+    def done(s: Boolean): Boolean = !s
+    def end(s: Boolean): Boolean = s
+
+  /** the first n elements, in order, and no pull after the nth */
+  def take[A](n: Int): FoldUntil[A, Vector[A], Vector[A]] = new:
+    def init: Vector[A] = Vector.empty
+    def add(s: Vector[A], a: A): Vector[A] = s :+ a
+    def done(s: Vector[A]): Boolean = s.length >= n
+    def end(s: Vector[A]): Vector[A] = s
 
 /**
  * Combine two, associatively — and NOTHING about an empty one.

@@ -253,6 +253,15 @@ extension [A](s: Source[A])
     Writer.loopWith[A, List[A], Unit, Vector[A], Async](s)(Nil)((l, a) => a :: l)((l, _) => l.reverse.toVector)
 
   /**
+   * A fold that stops (specs/fold-until.md): `Writer.foldUntil` on
+   * this source. An Async operation before the stop is performed,
+   * one after it never is, and the producer is not resumed past the
+   * element that satisfied the fold.
+   */
+  def runFoldUntil[S, R](using FoldUntil[A, S, R]): R ! Async =
+    Writer.foldUntil[A, S, Unit, R, Async](s)
+
+  /**
    * Run `f` for each element, in order — `ZStream#runForeach`,
    * fs2's `compile.foreach`, at this library's own `run` prefix. `f`
    * is itself a program, so a caller doing real work per element (an

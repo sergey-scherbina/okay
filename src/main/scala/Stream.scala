@@ -169,6 +169,17 @@ object Stream:
         while it.hasNext do b = fo.add(b, it.next())
         b
 
+  /**
+   * `fold` with a stop (specs/fold-until.md): the iterator is asked
+   * for an element only while the state has not seen enough, so a
+   * stream that computes on demand computes nothing past the stop.
+   */
+  def foldUntil[S[_], F[+_], A, B, R](s: S[A])(using fo: FoldUntil[A, B, R])(using St: Stream[S, F], H: Handler[F]): R =
+    val it = St.iterator(s)
+    var b = fo.init
+    while !fo.done(b) && it.hasNext do b = fo.add(b, it.next())
+    fo.end(b)
+
 extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
   /** keep the elements satisfying p */
   def filter(p: A => Boolean): LazyList[A] = s.toLazyList.filter(p)
