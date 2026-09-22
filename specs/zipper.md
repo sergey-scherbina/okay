@@ -128,8 +128,15 @@ Json (`TestJsonZipper`, okay-codec):
 Ui (`TestUiZipper`, okay-ui):
 
 - [ ] `Zipper.at[Ui](p).preview(t) == Ui.path(p).preview(t)` and the
-      `set`s agree, for every path of the `TestUiOptic` trees
-      including paths into leaves and past the children.
+      `set`s agree, for every path of the `TestUiOptic` trees that
+      passes through nodes where the structural walk and the patch
+      convention name the same children (Row, Column, Box, Scroll,
+      Form, Items), and past the children both refuse.
+- [ ] where they part is pinned, not hidden: a `Modal`'s body is child
+      1 on the patch path and child 0 for the zipper; a `Table` has
+      rows for the zipper and no children for the path; a `Tabs` page
+      off screen is reachable by the zipper — the editor's plate is
+      the structural walk on purpose (Decisions).
 
 JsonEditor (`TestJsonEditor`, okay-ui, driven through `Nav.update`
 as `TestScreens` drives):

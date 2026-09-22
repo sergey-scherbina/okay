@@ -513,6 +513,20 @@ object Ui {
       case Disclosure(t, o, body, k) => Disclosure(t, o, cs.headOption.getOrElse(body), k)
       case leaf => leaf
 
+  /**
+   * The tree for `Zipper` (specs/zipper.md): the STRUCTURAL walk —
+   * every child, on screen or not, the pages of a `Tabs`, the rows of
+   * a `Table` flattened — because an editor must reach every node.
+   * This is `kidsOf`'s convention, not `childAt`'s: the patch path
+   * puts a `Modal`'s body at index 1 and gives a `Table` no children,
+   * so `Zipper.at(p)` and `Ui.path(p)` agree exactly on the nodes
+   * where the two walks agree (Row, Column, Box, Scroll, Form, Items)
+   * and `TestUiZipper` pins where they part.
+   */
+  given plate: Plate[Ui] with
+    def children(t: Ui): Vector[Ui] = kidsOf(t, structural = true)
+    def withChildren(t: Ui, cs: Vector[Ui]): Ui = withKids(t, cs, structural = true)
+
   private def walk[F[_]](f: Ui => F[Ui], u: Ui, structural: Boolean)(using F: Applicative[F]): F[Ui] =
     val kids = kidsOf(u, structural)
     val traversed = kids.foldLeft(F.pure(Vector.empty[Ui]))((acc, x) =>
