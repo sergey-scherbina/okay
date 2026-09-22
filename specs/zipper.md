@@ -81,12 +81,13 @@ object JsonEditor:
   def apply(json: Json)(done: Option[Json] => Nav): Screen
 ```
 
-Keys, terminal and buttons alike: `j`/`k` next/previous sibling,
-`l` into (first child), `h` out (parent), `e` edit the focused
-scalar (a `Toolkit.prompt`; the text is `Json.parse`d, a parse error
-becomes a `JStr`), `d` delete the focus (root cannot be deleted),
-`a` add after the focus (`JNull`; in an object the key is prompted),
-`Enter`/"done", `Esc`-less "cancel" button.
+Buttons, since every host delivers `Pressed` and none delivers
+`Event.Key` (Decisions): `into` (first child), `out` (parent),
+`prev`/`next` (siblings); an inline `value` input with `set` (the
+text is `Json.parse`d, a parse error becomes a `JStr`); `delete` (the
+focus, through the parent; the root cannot be deleted); `add` (a
+`JNull` after the focus, with the `key` input's text in an object; at
+a container root, inside it, last); `done` and `cancel`.
 
 ## Behavior
 
@@ -143,19 +144,19 @@ as `TestScreens` drives):
 
 - [ ] the view marks the focused node and only it; the root is
       focused at start.
-- [ ] `l`/`h`/`j`/`k` move the mark as the zipper moves; a move that
-      does not exist leaves the view unchanged.
-- [ ] `e` on a scalar pushes the prompt; answering it replaces the
-      focus with the parsed value; cancelling leaves the document.
-- [ ] `d` removes the focus and the focus moves to the parent; `d` at
-      the root is a no-op.
-- [ ] `a` after an array element inserts `JNull` after it; in an
-      object the key prompt is pushed first and the field lands
-      with that key.
-- [ ] "done" answers `Some(edited)` through `done`; "cancel" answers
+- [ ] `into`/`out`/`prev`/`next` move the mark as the zipper moves; a
+      move that does not exist leaves the view unchanged.
+- [ ] the value input shows the focused scalar's text; `set` replaces
+      the focus with the parsed value, or with the text as a string
+      when it is not JSON.
+- [ ] `delete` removes the focus and the focus moves to the parent;
+      `delete` at the root is a no-op.
+- [ ] `add` after an array element inserts `JNull` after it and
+      focuses it; in an object the field lands with the key input's
+      text; at a container root it appends inside; a scalar root
+      takes nothing.
+- [ ] `done` answers `Some(edited)` through `done`; `cancel` answers
       `None` and the caller's document is the original.
-- [ ] the same script through buttons (`Pressed`) and through keys
-      (`Event.Key`) produces the same final document.
 
 ## Out of scope
 
@@ -222,9 +223,16 @@ by `Nav.update` in a test with no host.
   reusable product screen (any host, any stack), and okay-ui already
   depends on okay-codec for `Form`. Rejected: okay-demo (JVM-only,
   not reusable).
-- **Keys AND buttons** — the terminal host delivers chars, the HTML
-  and Swing hosts press buttons; one `step` handles both so the test
-  can assert they agree.
+- **Buttons only, no letter keys** — checked before writing them: no
+  host produces `Event.Key` (`Frame.interpretChar` drops a letter no
+  `Input` is focused on), so `j`/`k` bindings would be code nothing
+  can reach and a test could only drive by pretending. Rejected: the
+  keys the first draft of this spec listed.
+- **Inline editing, not a prompt dialog** — `Nav.To` after a `Push`ed
+  `Toolkit.prompt` replaces the prompt's frame only (`Nav.updateCmd`),
+  leaving the previous editor under the new one; an `Input` in the
+  view keeps one frame and works on a host with no dialog. Rejected:
+  the prompt the first draft of this spec listed.
 
 ## Results
 
