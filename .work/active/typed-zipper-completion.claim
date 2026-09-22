@@ -1,0 +1,6 @@
+feature/typed-zipper-completion 2026-09-22T21:42:28Z
+agent: claude-code
+heartbeat: 2026-09-22T21:42:28Z
+status: in-progress
+done-so-far: nothing yet
+next: specs/zipper.md stage 3 (asAffine: the path back as an optic; Poly: the type-changing cursor); TypedZipper.scala; TestTypedZipper; docs; changelog
