@@ -897,7 +897,7 @@ source can also be written as a for-comprehension of `Writer.tell` and
 a bounded `Channel` whose `send` and `receive` are programs that wait.
 All of it is in the one package `okay.scala2`, under the library's own
 names. The build needs both standard libraries, 2.13's first and 3.9's
-behind it. The module page
-gives the exact sbt settings, the same ones a gated 2.13 suite in this
-repository compiles with:
-[modules/okay-scala2.md](modules/okay-scala2.md).
+behind it. The walkthrough is [okay from Scala 2.13](scala2.md), the
+reference is [modules/okay-scala2.md](modules/okay-scala2.md), and why
+the row becomes an intersection is
+[theory ch. 13](theory/13-rows-without-unions.md).

@@ -87,6 +87,14 @@ parameterised state — an INSTANCE, which is also how far it goes: a
 prism cannot zoom a typestate program, by parametricity.
 *Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Riley 2018 · Pastro & Street 2008 · Atkey 2009*
 
+**[13 · Rows without unions](13-rows-without-unions.md)**
+The same row seen from the handler's side: a union of operations is an
+intersection of requirements. Contravariance does the membership proof,
+phantom capabilities hold what Scala 2 can write, one cast joins the two
+sides, and there are three facts about scalac 2.13 that decided the
+rest (`okay-scala2`).
+*Leijen 2014 · Kiselyov & Ishii 2015 · Swierstra 2008 · Dunfield & Pfenning 2003 · Brachthäuser, Schuster & Ostermann 2020 · Kiselyov & Shan 2007 · Plotkin & Pretnar 2009 · Kammar, Lindley & Oury 2013*
+
 ---
 
 The [map](README.md) explains the notation (`A ! F`, `%`, `+`, `/>`),

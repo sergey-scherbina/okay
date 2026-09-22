@@ -376,3 +376,33 @@ PURE2  Some(ada) / log=Find(7), Save(7,grace) / store=Vector((7,grace))
 agree, `replace` answers what was there and leaves its argument
 untouched, and the handler world matches the pure one, including the
 missing id: a find, no save, nothing written.
+
+## The same effect from Scala 2.13
+
+`derives Effect` is a Scala 3 derivation, so a Scala 2.13 build cannot
+use it. What a handler really needs from it is a way to recognise the
+effect's operations, and `okay-scala2` builds that from a `ClassTag`.
+In Scala 2 the declaration is therefore ordinary code: a sealed trait
+whose cases extend `Op`, plus an object extending `Effect`.
+
+```scala
+sealed trait KV[A] extends Op[A]
+final case class Get(key: String) extends KV[Option[String]]
+final case class Put(key: String, value: String) extends KV[Unit]
+object KV extends Effect[KV]
+```
+
+- **Handlers.** A handler is a `Handler[KV, R, B]` that gets each
+  operation together with its continuation, and it has the full
+  power of section 5's handlers: resume, abort, or resume more than
+  once.
+- **Rows.** A row is written as an intersection,
+  `Eff[Effect[KV] with State[Int], A]`, where section 3 wrote a union.
+  Theory ch. 13 explains why it is the same row.
+- **Recording and interpreting.** The recording decorator (section 6)
+  and interpreting into other effects (section 7) carry over as
+  handlers that call other effects' operations.
+
+The worked walkthrough (a store handler and a dry-run handler over the
+same program, with the snippets compiled by scalac 2.13) is section 5
+of [okay from Scala 2.13](scala2.md#5-your-own-effect).

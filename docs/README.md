@@ -47,13 +47,21 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   at runtime: routing by directory, sessions and typed forms, a live
   page, two languages, a login, and the container. Every command in
   it was executed before it was written down.
+- **[okay from Scala 2.13](scala2.md)** — for a codebase still on
+  Scala 2: the build (two standard libraries, and in which order),
+  `Prog` and `Eff` (several effects in one program, the row as an
+  intersection of capabilities), your own effect as a sealed trait and
+  an object, continuations, streams, fibers and channels, a Scala 3 /
+  Scala 2 phrasebook, and every compiler error the setup can produce
+  with its cause. Every snippet compiles under scalac 2.13 with
+  `-Werror` in the gate.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
   Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard, McBride &
   Paterson, Mokhov et al., Turner), and why each
   design decision — argued from the papers and the repository's own
-  measurements. Twelve chapters, Okay as the running example.
+  measurements. Thirteen chapters, Okay as the running example.
 - **[Direct style](direct-style.md)** — monads as plain code:
   the reflection foundation (two one-liners, no macros), the
   `direct` block (one mark, `.?`), auto-coloring behind two explicit

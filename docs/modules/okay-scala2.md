@@ -15,13 +15,22 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
+The walkthrough, from the build to a worker pool, is
+**[okay from Scala 2.13](../scala2.md)**. Why the row becomes an
+intersection is [theory ch. 13](../theory/13-rows-without-unions.md).
+This page is the module's reference: the setup, one example per area,
+the API with signatures, and the design.
+
 ## Setting up a 2.13 build
 
 These are the settings `okay-scala2-probe` uses in this repository's
 build.sbt, where the gate compiles a Scala 2.13 test suite with them.
 The only difference is that the probe reaches the facade through
 `dependsOn` + `projectDependencies`, while you reach it through a
-library dependency:
+library dependency. They were also checked in a separate consumer
+project against a `publishLocal`, since okay is not on Maven Central
+yet ([okay from Scala 2.13, section 1](../scala2.md#1-setting-up-the-build)
+explains how to publish it and why each line is there):
 
 ```scala
 scalaVersion := "2.13.18"
@@ -36,8 +45,9 @@ libraryDependencies +=
 lazy val Scala3Stdlib = config("scala3Stdlib").hide
 ivyConfigurations += Scala3Stdlib
 libraryDependencies += "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib
-Seq(Compile, Runtime, Test).map(c =>
-  c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value))
+Seq(Compile, Runtime, Test).flatMap(c => Seq(
+  c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
+  c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)))
 ```
 
 Why two standard libraries, and why in that order (all three measured
@@ -54,6 +64,11 @@ Why two standard libraries, and why in that order (all three measured
   scala.annotation.internal*), and at run time `scala.reflect.Enum`
   and the other Scala-3-only classes cannot be found. So it goes
   back in, at the end of the classpath.
+- The jar is appended to BOTH `dependencyClasspath` (compilation,
+  `test`) and `dependencyClasspathAsJars` (`sbt run` builds its
+  classpath from that one). With only the first, a consumer project
+  compiled and then failed on `run` with
+  `NoClassDefFoundError: scala/reflect/Enum`.
 - This is the same pair of jars as okay-spark's test classpath, only
   in the opposite order. Both are the same library compiled twice.
 
@@ -267,6 +282,68 @@ assertEquals(Eff.runAsync(prog), (1 to 1000).toVector)
 
 - **Direct style** is built from Scala 3 macros, so Scala 2 cannot use
   it. Write for-comprehensions instead.
+
+## API reference
+
+The signatures are written as Scala 2 sees them, with `with` for an
+intersection; the Scala 3 source writes `&`.
+
+**`Eff[-R, A]`** — `map[B](f: A => B): Eff[R, B]`,
+`flatMap[R1 <: R, B](f: A => Eff[R1, B]): Eff[R1, B]`.
+`object Eff`: `pure[A](a: A): Eff[Any, A]`, `run[A](e: Eff[Any, A]): A`,
+`runAsync[A](e: Eff[Async, A]): A`,
+`fromProg[A](p: Prog[A]): Eff[Async with Throws[Throwable], A]`,
+`toProg[A](e: Eff[Async with Throws[Throwable], A]): Prog[A]`.
+
+| capability | operations | handler |
+|---|---|---|
+| `State[S]` | `get[S]: Eff[State[S], S]`, `put[S](s: S): Eff[State[S], Unit]`, `modify[S](f: S => S): Eff[State[S], Unit]` | `run[S, R, A](s: S)(e: Eff[State[S] with R, A]): Eff[R, (S, A)]` |
+| `Reader[E]` | `ask[E]: Eff[Reader[E], E]` | `run[E, R, A](env: E)(e: Eff[Reader[E] with R, A]): Eff[R, A]` |
+| `Writer[W]` | `tell[W](w: W): Eff[Writer[W], Unit]` | `run[W, R, A](e: Eff[Writer[W] with R, A]): Eff[R, (Vector[W], A)]` |
+| `Throws[E]` | `raise[E, A](e: E): Eff[Throws[E], A]` | `run[E, R, A](e: Eff[Throws[E] with R, A]): Eff[R, Either[E, A]]` |
+| `Async` | `delay[A](a: => A): Eff[Async, A]`, `attempt[A](a: => A): Eff[Async with Throws[Throwable], A]`, `fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]]`, `par[A, B](a, b): Eff[Async, (A, B)]`, `race[A](a, b): Eff[Async, A]`, `sleep(millis: Long): Eff[Async, Unit]`, `timeout[A](millis: Long)(e): Eff[Async, Option[A]]` | `Eff.runAsync` |
+
+**Your own effect** — `trait Op[+A]`;
+`abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]])` with
+`send[A](op: F[A] with Op[A]): Eff[Effect[F], A]`,
+`handle[R, A, B](e: Eff[Effect[F] with R, A])(ret: A => Eff[R, B])(h: Handler[F, R, B]): Eff[R, B]`,
+`run[A, B](e: Eff[Effect[F], A])(ret: A => Eff[Any, B])(h: Handler[F, Any, B]): B`;
+`trait Handler[F[_], R, B] { def apply[X](op: F[X], k: X => Eff[R, B]): Eff[R, B] }`.
+
+**`Cont[A, S, R]`** — `map[B](f: A => B): Cont[B, S, R]`,
+`flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R]`,
+`run(k: A => S): R`. `object Cont`: `pure[A, R](a: A): Cont[A, R, R]`,
+`shift[A, S, R](f: (A => S) => R): Cont[A, S, R]`,
+`reset[A, R](c: Cont[A, A, R]): R`.
+
+**`Source[A]`** — `map`, `filter`, `mapConcat[B](f: A => Iterable[B])`,
+`take(n: Int)`, `takeWhile`, `drop(n: Int)`,
+`zipWithIndex: Source[(A, Long)]`, `++(that: => Source[A])`,
+`merge(that: Source[A])`; `runCollect: Eff[Async, Vector[A]]`,
+`runForeach(f: A => Eff[Async, Unit]): Eff[Async, Unit]`,
+`runFold[S](z: S)(f: (S, A) => S): Eff[Async, S]`,
+`toEff: Eff[Writer[A] with Async, Unit]`. `object Source`:
+`apply[A](as: A*)`, `fromIterable[A](as: Iterable[A])`, `empty[A]`,
+`range(from: Long, until: Long): Source[Long]`,
+`unfold[S, A](s: S)(f: S => Option[(A, S)])`,
+`fromEff[A](e: Eff[Writer[A] with Async, Unit])`.
+
+**`Fiber[A]`** — `join: Eff[Async, A]`,
+`joinEither: Eff[Async, Either[Throwable, A]]`,
+`cancel: Eff[Async, Unit]`.
+
+**`Channel[A]`** — `Channel[A](capacity: Int)`;
+`send(a: A): Eff[Async, Boolean]` (false once closed),
+`receive: Eff[Async, Option[A]]` (None once closed and drained),
+`offer(a: A): Boolean`, `close(): Unit`, `isClosed: Boolean`,
+`source: Source[A]`.
+
+**`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
+`recover(h: Throwable => Prog[A])`, `run(): A`,
+`runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,
+`fail(e: Throwable)`, `fromEither`, `sequence(ps: List[Prog[A]])`.
+`object Bridge` (Scala 3 only): `lift[A](p: A ! Async): Prog[A]`,
+`program[A](p: Prog[A]): A ! (Async + Throws % Throwable)`.
 
 ## Why a facade and not a cross-build
 

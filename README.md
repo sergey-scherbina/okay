@@ -30,7 +30,10 @@ What that buys you in practice: you don't choose between readable and fast, you 
 
 The library stands on work by Moggi, Wadler, Felleisen, Danvy & Filinski, Atkey, Swierstra and Kiselyov — every decision has a paper and a measurement behind it.
 
-Scala 3, just moved to 3.9 LTS.
+Scala 3, just moved to 3.9 LTS. Still on Scala 2.13? `okay-scala2`
+gives a 2.13 build effects, several in one program, your own effects,
+continuations, streams, fibers and channels, through types a Scala 2
+compiler can read: [okay from Scala 2.13](docs/scala2.md).
 Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
 Scala Native — each platform contributes evidence (can it park? what
 is its timer? what schedules?), not API: the same Await-based test
@@ -65,6 +68,7 @@ Start here:
 | [Continuations: a working book](docs/continuations/index.md) | the long form on the one idea the rest is built from: why a team should care, the four shapes as recipes, the machine, building new effects on it, the costs with numbers, and what it must not be asked to do |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Building a chat application](docs/building-a-chat-app.md) | an empty directory to a running streaming chat, outside this repo: depending on an unpublished library, backend, frontend, tests, run |
+| [okay from Scala 2.13](docs/scala2.md) | for a Scala 2 codebase: the build, `Eff` with the row as an intersection, your own effect, streams, fibers — every snippet compiled by scalac 2.13 in the gate |
 | [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
 | [Capabilities](docs/capabilities.md) | context functions as the wiring: doors, provide, wire — dependency injection with the container deleted |
 | [The theory of Okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
@@ -348,7 +352,10 @@ Interop: cats, ZIO, kyo, fs2, Kafka, Spark, Flink, JDBC — and the JDK
 itself (`okay-java`), where `Aggregator` IS `java.util.stream.Collector`
 (supplier/accumulator/combiner/finisher against init/add/merge/present)
 and `Chunks` crosses to `Stream` chunk-for-chunk, unboxed in both
-directions for `LongStream`/`IntStream`/`DoubleStream`.
+directions for `LongStream`/`IntStream`/`DoubleStream`. And Scala 2.13
+itself (`okay-scala2`): the same programs behind types that scalac 2.13
+reads through `-Ytasty-reader`, tested by a Scala 2.13 suite in the
+gate.
 
 ## The upper layers
 

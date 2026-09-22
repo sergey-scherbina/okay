@@ -916,10 +916,66 @@ and nothing else in the library casts for that reason:
   and packing a tag WITH an existential does work, which is what
   `Pipeline.Mapped` and `TaggedBuf` do — the tag captured where the
   type was still concrete, not guessed where it is not.
+- **`Rows.coerce` and `Effect.narrow`** (okay-scala2, Scala 2.13
+  facade). On the Scala 2 side a row is a PHANTOM intersection of
+  capabilities (`Eff[State[Int] with Writer[String], A]`) that no
+  Scala 3 type follows, so every program is stored at one row,
+  `Top[+X] = Any`, and `coerce` re-types it at the concrete union
+  each handler handles. This is sound because handlers split by the
+  operation's class and never by the row type, and because `Eff.run`
+  accepts only `Eff[Any, A]`. `narrow` types a Scala 2 user's
+  operation as its effect's `F` right after the `ClassTag` test that
+  proves it. The argument is theory ch. 13.
 
 What is not on this list is deliberate: GADT refinement removes casts
 outright wherever the ADT records the type (`Schema`, `Context`,
 `Model`), and 35 were removed that way rather than named.
+
+## Scala 2.13: `okay.scala2` (okay-scala2)
+
+The same programs, behind types that scalac 2.13 reads through
+`-Ytasty-reader`. The walkthrough is [scala2.md](scala2.md), the theory
+is [theory ch. 13](theory/13-rows-without-unions.md), and the API page
+is [modules/okay-scala2.md](modules/okay-scala2.md).
+
+- **`Eff[-R, A]`** — a program over an open row. `R` is an
+  intersection of capabilities, and `Eff` is CONTRAVARIANT in it, so a
+  program needing less fits wherever more is allowed. `flatMap[R1 <: R,
+  B]` finds the shared row. `Eff.run` takes `Eff[Any, A]`, meaning
+  nothing is left to handle. `Eff.runAsync` takes `Eff[Async, A]`.
+- **`State[S]`, `Reader[E]`, `Writer[W]`, `Throws[E]`, `Async`** — each
+  is a phantom capability trait, and its companion holds the operations
+  and the handler. `X.run(...)` removes `X` from the row and leaves the
+  rest.
+- **`Op[+A]`, `Effect[F]`, `Handler[F, R, B]`** — a Scala 2 user's own
+  effect. The operations extend `Op`, and `object KV extends
+  Effect[KV]` stands in for `derives Effect`; the capability is
+  `Effect[KV]`. A handler receives each operation and its continuation.
+  Use `KV.handle` when other effects remain and `KV.run` for the last
+  one.
+- **`Cont[A, S, R]`** — okay's `Cont` as a class: `shift`, `reset`,
+  `pure`, `map`, `flatMap`, `run(k)`.
+- **`Source[A]`** — the core's `Source` (`Unit ! (Writer % A +
+  Async)`) as a class. `fromEff`/`toEff` convert to and from
+  `Eff[Writer[A] with Async, Unit]`.
+- **`Fiber[A]`, `Channel[A]`** — `Async.fork` returns a `Fiber`; a
+  channel's `send`/`receive` are `Eff[Async, _]`.
+- **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
+  one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
+  `Eff.toProg` convert between the two.
+
+Three facts about scalac 2.13 decided this shape, and each one is a
+gotcha for anyone extending the facade:
+
+- A union type in a CONSTRUCTOR parameter makes scalac refuse the whole
+  class, while one in a method is read only when the method is called.
+  So each class keeps its program in a value class (`Body`,
+  `EffBody`, ...).
+- A curried handler method that names `R` in several argument lists
+  infers `R = Any` at the last position, which `-Xlint` reports. That
+  is why `Effect` has `run`.
+- The 2.13 probe must call every public method: a method nobody calls
+  is never read, so a broken signature would go unnoticed.
 
 ## Recurring gotchas
 

@@ -791,8 +791,13 @@ lazy val Scala3Stdlib = config("scala3Stdlib").hide
  * instead — compile needs it too, behind 2.13.18 (without it: "could
  * not find package scala.annotation.internal whilst reading
  * annotation of package scala2"). The settings are EXACTLY what
- * docs/modules/okay-scala2.md tells a 2.13 user to write, so the page's
- * snippet is gated here.
+ * docs/scala2.md tells a 2.13 user to write, so the page's snippet is
+ * gated here. The `AsJars` line is not decoration: `sbt run` builds its
+ * classpath from `dependencyClasspathAsJars`, and without it a consumer
+ * build compiled and then died on `run`, forked or not, with
+ * `NoClassDefFoundError: scala/reflect/Enum` (measured 2026-09-23 in a
+ * consumer project against a `publishLocal`). The tests here are NOT
+ * forked, so they run the way a user's `sbt test` does.
  *
  * `-Werror` because the gate's warning check reads Scala 3's
  * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
@@ -812,9 +817,9 @@ lazy val okayScala2Probe = (project in file("okay-scala2/probe"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     ivyConfigurations += Scala3Stdlib,
     libraryDependencies += "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib,
-    Seq(Compile, Runtime, Test).map(c =>
-      c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)),
-    Test / fork := true,
+    Seq(Compile, Runtime, Test).flatMap(c => Seq(
+      c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
+      c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value))),
   )
 
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */

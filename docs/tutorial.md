@@ -860,3 +860,12 @@ module page under [modules/](modules) is that module's full
 documentation — guide, tutorial, API reference, gotchas. The specs
 directory holds the design decisions — including the experiments that
 were tried, measured and rejected, so you don't have to re-run them.
+
+If part of your codebase is still on Scala 2.13, most of this tutorial
+carries over through `okay-scala2`. That covers chapter 2's telling
+(`Source`), chapter 5's async (`Async`, fibers, channels), `shift` and
+`reset` (`Cont`), and your own effects. Chapter 13's named prompts
+(`Delim`) are not in the Scala 2 facade yet. Direct style (chapter 20)
+and staging (chapter 11) will not carry over, because they are Scala 3
+metaprogramming. [okay from Scala 2.13](scala2.md) shows what each
+looks like in Scala 2.

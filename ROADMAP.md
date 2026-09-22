@@ -65,6 +65,12 @@ of delays; checkpointing = memoized prefixes; fiber supervision.
 `okay-cats` (Monad/MonadError instances for `A ! F`, Async ⇄ IO),
 `okay-zio` (Async ⇄ ZIO, ZStream ⇄ Chunks), `okay-kyo`, `okay-fs2`
 (Stream ⇄ Chunks via uncons, both directions).
+`okay-scala2`, the language itself as interop (specs/scala2-facade.md,
+stages 1–5 landed 2026-09-23): a Scala 2.13 build gets effects, open
+rows, its own effects, `Cont`, streams, fibers and channels through
+types scalac 2.13 reads with `-Ytasty-reader`. It is a facade, not a
+cross-build: the row is a union and the combinators are `inline`.
+Direct style is not planned; it is Scala 3 macros.
 
 ## P4 — External systems
 `okay-kafka` first (consumer polling is chunked by nature; source/sink

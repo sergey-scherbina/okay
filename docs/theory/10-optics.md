@@ -672,4 +672,4 @@ down rather than hidden behind an `inline`.
 
 ---
 
-← [9 · Conditions: resumable exceptions](09-conditions.md) · [Contents](index.md)
+← [9 · Conditions: resumable exceptions](09-conditions.md) · [Contents](index.md) · [13 · Rows without unions](13-rows-without-unions.md) →

@@ -35,6 +35,7 @@ turned out wrong are worked examples of the method, not embarrassments.
 | [8. Direct style](08-direct-style.md) | reflection, elaboration, capabilities — and why multi-shot survives here | Filinski 1994/1999 · Kameyama & Hasegawa 2003 · Brachthäuser et al. 2020 |
 | [9. Conditions: resumable exceptions](09-conditions.md) | signal without unwinding, restarts as prompts, the policy at the boundary | Steele 1990 · Pitman 2001 · Plotkin & Pretnar 2009/2013 · Zhang, Salvaneschi & Myers 2020 |
 | [10. Optics on profunctors](10-optics.md) | the constraint as a type parameter, the meet as an intersection, Tambara and Yoneda — and the type-changing lens that IS parameterised state, as an instance — with the prism that cannot be one, by parametricity | Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Atkey 2009 |
+| [13. Rows without unions](13-rows-without-unions.md) | the row seen from the handler: union of operations = intersection of requirements; contravariance as membership; phantom capabilities and the one cast behind okay-scala2 | Leijen 2014 · Swierstra 2008 · Dunfield & Pfenning 2003 · Brachthäuser et al. 2020 · Kiselyov & Shan 2007 |
 
 ## The notation, once
 

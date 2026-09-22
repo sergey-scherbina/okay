@@ -335,3 +335,21 @@ wrapped, and every operation that can wait is an `Eff[Async, _]`.
   held directly, not through a `Body`: their constructors name the
   core's `Fiber`/`Channel` traits, which contain no union, and scalac
   2.13 reads them fine.
+- DOCS AND A REAL CONSUMER (2026-09-23, scala2-docs). A user guide
+  (docs/scala2.md), theory ch. 13, typepedia entries (including the two
+  casts in the cast registry), and pointers from README, docs/README,
+  the tutorial, your-own-effect and ROADMAP. Every snippet is verbatim
+  from `TestScala2Guide`, 12 tests. The setup block was then checked
+  in a SEPARATE sbt project against a `publishLocal`, and that found a
+  defect the probe could not see: `sbt run` takes its classpath from
+  `dependencyClasspathAsJars`, so appending the 3.9 stdlib to
+  `dependencyClasspath` alone compiled and then failed on `run`,
+  forked or not, with `NoClassDefFoundError: scala/reflect/Enum`. The
+  probe had passed only because its tests were forked and read
+  `fullClasspath`. Two hypotheses were refuted along the way: "an
+  unforked run layers `scala.*` away" (a forked run failed the same
+  way), and "sbt drops a jar whose module id is `scala-library`"
+  (`Attributed.blank` changed nothing). What showed the cause was
+  `-XshowSettings:properties` in the forked JVM: its `java.class.path`
+  had no 3.9 jar at all. The fix appends to both, and the probe now
+  runs UNFORKED (46 tests), the way a user's `sbt test` does.
