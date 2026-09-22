@@ -80,10 +80,13 @@ and two hazards that must not:
 Nothing existing changes signature or meaning. Added:
 
 ```scala
-// 1. flat dispatch for comonadic rows: the same Handler[F + G] as
-//    Handler.union, assembled inline so the nested <|> tests unroll
-//    into ONE match over the row's operation classes
-inline def Handler.flat[F[+_], G[+_]](using TypeableK[F], Handler[F], Handler[G]): Handler[F + G]
+// 1. flat dispatch for comonadic rows: the same Handler[R] as the
+//    nested Handler.union chain, assembled by a macro over the row's
+//    members so the tests run as ONE chain of ifs over the operation
+//    classes with no handler object between a test and its answer
+//    (as shipped, handler-fusion-flat: over the whole row R, not two
+//    members at a time — the members are read off the applied row)
+inline def Handler.flat[R[+_]](using Distinct[R]): Handler[R]
 
 // 2. an effect's contribution to a fused loop: what it does to ONE
 //    operation given the accumulated state it owns. Tail-resumptive
@@ -168,7 +171,8 @@ of the reordered arc (see "After stage 0").
       of the hand-written loop (staging did not leave the win on the
       table), and the three-effect row (`+ Throws`) gains more than the
       two-effect one (the win grows with k, as the cost model says).
-- [ ] (GATED OFF, stage 2 — `Handler.flat` is not built)
+- [x] (BUILT — handler-fusion-flat, 2026-09-22, ba295482; see the end
+      of this box for the shipped number)
       MEASURED: `Handler.flat` on the four-effect agent row is not
       slower than `Handler.union` at any position, and faster at the
       last (the position that pays four tests today).
@@ -194,6 +198,25 @@ of the reordered arc (see "After stage 0").
       as `handler-fusion-flat`, with the hand-written `flat` in
       `FlatDispatchBenchmark` as the ceiling it is held to (within
       10%, the stage-1 rule).
+      BUILT AND MEASURED (ba295482, two rounds × two forks, minima,
+      rows `hff-flat-*`): `Handler.flat[R]` is a macro over the
+      applied row (Distinct's trick), handlers and tests bound to vals
+      outside the object. Position 4: `union4` 108.4, `inline4`
+      **100.2** (1.08x), `flatCalls4` 94.9, `flat4` 88.2; position 1:
+      95.4 / 94.8 / 94.7 / 88.2; bytes identical on all eight lanes.
+      THE CEILING LIED BY OMISSION: `flat` inlines the handlers'
+      BODIES as well as flattening the dispatch; a macro over opaque
+      `Handler` givens can only flatten, so the reachable ceiling is
+      `flatCalls` (1.14x) and the macro lands within 5.6% of it — the
+      10% rule holds. What the first cut got wrong, and it cost the
+      whole win: the givens spliced straight into `handle`, and a
+      `given x: T = …` in a class body is a lazy val, so every
+      operation paid an accessor — inline4 106.5 against union4 109.1,
+      and SLOWER than union at position 1. The 5.6% left is the test:
+      `ByClass.cls.isInstance(x)` through a field against the
+      constant-class `instanceof` the hand-written match compiles to
+      — filed as BACKLOG `typeablek-instanceof`, because that test is
+      under every `split` in the library, not only this one.
 
 ## Out of scope
 
