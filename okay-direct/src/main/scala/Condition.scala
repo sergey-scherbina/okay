@@ -216,7 +216,7 @@ object Condition {
    * docs/capabilities.md. The explicit `within` stays the floor.
    */
   inline def frame[A, F[+_]](name: String)
-    (inline body: Direct.DirectCtx[[X] =>> X ! (Op + F)] ?=> A)
+    (inline body: DirectCtx[[X] =>> X ! (Op + F)] ?=> A)
     (recover: Any => A): A ! (Op + F) =
     within[A, F](name)(Direct.direct[[X] =>> X ! (Op + F)](body))(recover)
 

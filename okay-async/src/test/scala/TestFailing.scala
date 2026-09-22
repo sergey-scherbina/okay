@@ -13,6 +13,11 @@ package okay
  */
 class TestFailing extends munit.FunSuite {
 
+  // Generic rows have no `Async` in their type constructor's implicit
+  // scope.  The optional module therefore exports this total instance
+  // through `Async`, rather than making core depend back on Async.
+  import Async.given
+
   /** did the instance for this row actually guard an Async.Run? */
   def guarded[F[+_]](e: F[Int])(using f: Failing[F]): Boolean =
     var hooked = false

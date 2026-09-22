@@ -137,7 +137,7 @@ object Reader {
    * Inlining removes the parameter at expansion and leaves `ask[E]`,
    * which is what the body was all along.
    */
-  inline def ask[F[_]](using inline ctx: Direct.DirectCtx[F])
+  inline def ask[F[_]](using inline ctx: DirectCtx[F])
                       (using f: RowOf[F])(using e: EnvOf[f.R]): e.E ! Reader % e.E =
     ask[e.E]
 

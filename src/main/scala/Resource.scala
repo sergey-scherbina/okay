@@ -73,7 +73,9 @@ object Resource {
    *     Resource.scoped(fresh[Conn].map(c => answer(r, c)))
    * }}}
    */
-  def scoped[A](a: A ! Resource): A = !.run(run[A, Nothing](a))
+  def scoped[A](a: A ! Resource): A =
+    !.run(run[A, Nothing](a)(using new Failing[Nothing]:
+      def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e))
 
   def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())

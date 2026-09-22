@@ -347,6 +347,92 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
 
 /**
+ * The portable asynchronous effect and its callback-based runtime
+ * semantics.  It deliberately supplies no platform default instances.
+ */
+lazy val okayAsync = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-async"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-async",
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    // the shared src/test/scala leans on platform defaults (Comonad/
+    // Handler[Async]) this module deliberately does not supply — see
+    // okay-platform, which is what has them. Only the cross suite runs here.
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/** The optional direct syntax and its compile-time implementation. */
+lazy val okayDirect = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-direct"))
+  .dependsOn(okayAsync, okayPlatform % "test->compile")
+  .settings(
+    name := "okay-direct",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    // the shared src/test/scala needs a CanBlock this module does not
+    // provide (okay-platform does); there is no direct-specific cross
+    // suite yet, so js/native simply carry no tests of their own.
+    Test / unmanagedSourceDirectories := Seq(),
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories := Seq(),
+  )
+
+/** Concrete JVM, JavaScript and Native runtimes plus system facades. */
+lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-platform"))
+  .dependsOn(okayAsync)
+  .settings(
+    name := "okay-platform",
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    // the shared src/test/scala leans on jvm-only pieces (CanBlock is
+    // not defined on JS); only the cross suite runs here.
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+        baseDirectory.value.getParentFile / "src" / "test" / "scala-native"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
  * Streams, channels and the buffers under them (core-modules stage 1,
  * 2026-09-18). 6 136 lines that left `okay` because nothing in the
  * control layer referred to them in code — every apparent dependency
@@ -369,7 +455,7 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stream"))
-  .dependsOn(okay % "compile->compile;test->test", okayStm % "test->compile")
+  .dependsOn(okayAsync % "compile->compile;test->test", okayPlatform % "compile->compile;test->test", okayStm % "test->compile")
   .settings(
     name := "okay-stream",
   )
@@ -423,7 +509,7 @@ lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-workflow"))
-  .dependsOn(okay % "compile->compile;test->test", okayOptics % "compile->compile;test->test")
+  .dependsOn(okayDirect % "compile->compile;test->test", okayOptics % "compile->compile;test->test")
   .settings(
     name := "okay-workflow",
   )
@@ -462,7 +548,7 @@ lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-data"))
-  .dependsOn(okay % "compile->compile;test->test")
+  .dependsOn(okayAsync % "compile->compile;test->test")
   .settings(
     name := "okay-data",
   )
@@ -507,7 +593,7 @@ lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-optics"))
-  .dependsOn(okay % "compile->compile;test->test")
+  .dependsOn(okay % "compile->compile;test->test", okayDirect % "test->compile", okayPlatform % "test->compile")
   .settings(
     name := "okay-optics",
   )
@@ -555,7 +641,7 @@ lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stm"))
-  .dependsOn(okay % "compile->compile;test->test")
+  .dependsOn(okayAsync % "compile->compile;test->test", okayPlatform % "test->compile")
   .settings(
     name := "okay-stm",
   )
@@ -588,7 +674,7 @@ lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 /** interop with cats: instances and conversions, nothing more (P3) */
 lazy val okayCats = (project in file("okay-cats"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okayAsync.jvm, okayPlatform.jvm)
   .settings(
     name := "okay-cats",
     libraryDependencies ++= Seq(
@@ -614,7 +700,7 @@ lazy val okayZio = (project in file("okay-zio"))
 
 /** interop with kyo: value and Async bridges (P3) */
 lazy val okayKyo = (project in file("okay-kyo"))
-  .dependsOn(okay.jvm, compare % "test->compile")
+  .dependsOn(okayAsync.jvm, okayPlatform.jvm, compare % "test->compile")
   .settings(
     name := "okay-kyo",
     libraryDependencies ++= Seq(
@@ -1163,7 +1249,7 @@ lazy val okayParse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-codec"))
-  .dependsOn(okayParse)
+  .dependsOn(okayParse, okay, okayStream, okayOptics)
   .settings(
     name := "okay-codec",
     libraryDependencies ++= Seq(
@@ -1421,7 +1507,7 @@ lazy val okayBlob = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayLlm = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-llm"))
-  .dependsOn(okayCodec)
+  .dependsOn(okayCodec, okayDirect)
   .settings(
     name := "okay-llm",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -2243,7 +2329,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,

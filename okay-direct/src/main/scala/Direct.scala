@@ -2,7 +2,6 @@ package okay
 
 import scala.quoted.*
 import scala.language.implicitConversions
-import scala.annotation.implicitNotFound
 
 /**
  * The flat block (specs/direct-macro.md): `direct[F] { ... m.reflect ... }`
@@ -22,6 +21,17 @@ import scala.annotation.implicitNotFound
  * and a general CPS transformer.
  */
 object Direct:
+
+  /** Compatibility aliases for the small core-level direct support
+   * surface. The DSL itself, including all macros, lives in this
+   * optional module. */
+  type DirectCtx[F[_]] = okay.DirectCtx[F]
+
+  /** Marker used by the optional DSL for auto-colouring operations.
+   * It refines the core's lightweight capability so core `Effect`
+   * never needs a dependency back on this module. */
+  @scala.annotation.implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .!? / !prog), which need no marker.")
+  trait Effect[G[_]] extends okay.DirectEffect[G]
 
   extension [F[_], A](m: F[A])
     /**
@@ -122,9 +132,6 @@ object Direct:
    * so outside a block they cannot resolve and F[A]-as-A stays the
    * compile error it always was.
    */
-  @implicitNotFound("no DirectCtx[${F}]: auto-coloring works only INSIDE a direct block.\nWrap the code in direct[F] { ... } — or use the explicit marks (.reflect / .!? / !prog),\nwhich need no capability.")
-  final class DirectCtx[F[_]] private[Direct] ()
-
   /**
    * How a `direct` block treats a call at its own program type. It
    * reaches the macro as an ordinary `using` argument with a DEFAULT,
@@ -243,9 +250,6 @@ object Direct:
     given Binds.Parallel.type = Binds.Parallel
 
   /** marker: G's operations may auto-color inside direct blocks */
-  @implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .!? / !prog), which need no marker.")
-  trait Effect[G[_]]
-
   /** the block's own monadic values auto-color: F[A] as A — a
    * phantom, the macro rewrites every call */
   given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A] =
@@ -254,7 +258,7 @@ object Direct:
 
   /** marked operations auto-color: G[A] as A, row membership checked
    * by the macro exactly as for .!? */
-  given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A] =
+  given opColor[F[_], G[_], A](using DirectCtx[F], okay.DirectEffect[G]): Conversion[G[A], A] =
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
 

@@ -368,7 +368,7 @@ object Cont:
      * one mandatory, so that `shift[Int]` names A and not F.
      */
     inline def shift[A](using d: DummyImplicit)[F[_]]
-                       (using inline ctx: Direct.DirectCtx[F])
+                       (using inline ctx: DirectCtx[F])
                        (using a: AnswerOf[F])
                        (f: (A => a.R) => a.R): F[A] =
       a(okay.shift[A, a.R, a.R](f))

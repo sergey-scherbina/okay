@@ -311,7 +311,7 @@ object Delim {
    * a reference to it must not survive into the output.
    */
   inline def shift[A](using in: Prompted[?])[F[_]]
-                         (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                         (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     okay.effect[rw.R, A](Capture(in.prompt, f, underPrompt = true, delimitK = true,
       at = at.where).asInstanceOf[rw.R[A]])
@@ -369,7 +369,7 @@ object Delim {
    * The `for`-style spelling of the same thing is `Delim.abort`.
    */
   inline def exit(using in: Prompted[?])[F[_]]
-                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                 (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (value: in.Res): Unit ! rw.R =
     shift[Unit](using in)(_ => okay.pure(value))
 
@@ -418,7 +418,7 @@ object Delim {
 
   /** emit one value into the `collect` in force */
   inline def emit(using e: Emitting[?])[F[_]]
-                 (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                 (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (a: e.Elem): Unit ! rw.R =
     shift[Unit](using e.in)(k => k(()).map(a :: _))
 
@@ -505,7 +505,7 @@ object Delim {
 
   /** ask, and hand the rest of the program back to the caller */
   inline def pause(using s: Asking[?, ?, ?, ?])[F[_]]
-                  (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                  (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                   (q: s.Qst): s.Ans ! rw.R =
     shift[s.Ans](using s.in)(k => okay.pure(Paused.Ask(q,
       // THE ONE CAST here, and what makes it right: `s` can only be
@@ -608,7 +608,7 @@ object Delim {
    * passing it down, or a `finally` that cannot see the answer.
    */
   inline def onReturn(using in: Prompted[?])[F[_]]
-                     (using inline ctx: Direct.DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                     (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                      (f: in.Res => in.Res): Unit ! rw.R =
     shift[Unit](using in)(k => k(()).map(f))
 

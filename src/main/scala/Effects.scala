@@ -400,7 +400,8 @@ object TypeableK:
  * (it extends `TypeableK`), so everything that asks for one finds
  * this instance in the signature's own companion.
  *
- * It also carries `Direct.Effect`, the marker that lets a signature's
+ * When `okay-direct` is present, its bridge exposes this same evidence
+ * as the marker that lets a signature's
  * operations auto-color inside a `direct` block:
  *
  *     val prog: Option[String] ! Users = direct {
@@ -424,7 +425,7 @@ object TypeableK:
  * joins it has to be DERIVABLE from the declaration alone, which
  * rules out most things and is the point.
  */
-trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]
+trait Effect[F[_]] extends TypeableK[F], DirectEffect[F]
 
 object Effect:
   /** delegates to `TypeableK`'s macro, which is where the check lives

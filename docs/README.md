@@ -163,6 +163,9 @@ API reference, gotchas.
 | module | what it is |
 |---|---|
 | `okay` (core) | effects, continuations, the algebra — covered by the guide/tutorial/typepedia above |
+| [`okay-async`](modules/okay-async.md) | the portable `Async` effect and its callback-based runtime semantics, with no platform default instances of its own |
+| [`okay-direct`](modules/okay-direct.md) | the optional direct syntax (`direct { ... }`) and its compile-time macro implementation |
+| [`okay-platform`](modules/okay-platform.md) | the concrete JVM, JavaScript and Native runtimes — `CanBlock`, the schedulers, the net and system facades |
 | [`okay-stream`](modules/okay-stream.md) | streams, channels, chunks and the buffers under them; it left the core because nothing in the effect system referred to it, and the core kept only the `Stream` typeclass and `Handoff` |
 | [`okay-workflow`](modules/okay-workflow.md) | the static workflow: `Wf`'s questions, `Proc`'s free arrow over them, and the macro that builds one — a leaf of the core, so it became a module |
 | [`okay-data`](modules/okay-data.md) | data structures that are not the effect system: the approximate aggregators (`Sketch`), and the coordination-free pair `Uid` and `Hlc`. `Aggregator` itself stayed in the core |

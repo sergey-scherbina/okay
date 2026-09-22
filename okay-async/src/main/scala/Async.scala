@@ -138,6 +138,10 @@ trait Scheduler:
 
 object Async {
 
+  // `Failing[Async]` belongs to Async's implicit scope even though the
+  // implementation lives in its own file.
+  export AsyncFailing.given
+
   import !.*
   import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
   import scala.concurrent.{Future, Promise}

@@ -68,7 +68,7 @@ object Free {
    * known, and coerces or refuses by name — which is where every other
    * decision about a mark is made.
    */
-  given directColor[R[+_], R2[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R2, A], A] =
+  given directColor[R[+_], R2[+_], A](using DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R2, A], A] =
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct { ... }")
 

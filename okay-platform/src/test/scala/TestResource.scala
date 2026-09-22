@@ -1,6 +1,9 @@
 package okay
 
 import !.*
+// AsyncFailing.anyRow no longer lives in Failing's own companion after
+// the async split, so it needs an explicit import (was automatic at HEAD).
+import okay.AsyncFailing.anyRow
 
 /** The resource region: releases at the end of the scope, no matter what. */
 class TestResource extends munit.FunSuite {
