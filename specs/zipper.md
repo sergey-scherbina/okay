@@ -424,17 +424,17 @@ object TypedZipper:
 
 ### Behavior (stage 3, `TestTypedZipper`)
 
-- [ ] `asAffine.preview(root)` is `Some(focus)` for a cursor with no
+- [x] `asAffine.preview(root)` is `Some(focus)` for a cursor with no
       edits, through lens, index and case frames; `None` through an
       index or case frame that is not there on another tree.
-- [ ] `asAffine.set(v)(root)` equals `set(v).root`, at every depth of
+- [x] `asAffine.set(v)(root)` equals `set(v).root`, at every depth of
       the test walk.
-- [ ] `Poly.of[Box[String], Box[Int]](b).down(item).modify(_.length)`
+- [x] `Poly.of[Box[String], Box[Int]](b).down(item).modify(_.length)`
       is `Box(5, tag)`: the whole changed type with the focus.
-- [ ] a type-changing walk of two lenses and a prism: `set` answers
+- [x] a type-changing walk of two lenses and a prism: `set` answers
       the new whole; `downCase` on the wrong case answers `None` and
       nothing is built.
-- [ ] `Poly` shares a prefix as `TypedZipper` does: two `down`s from
+- [x] `Poly` shares a prefix as `TypedZipper` does: two `down`s from
       one cursor, each `set` a whole with only its own edit.
 
 ### Decisions (stage 3)
@@ -457,4 +457,15 @@ object TypedZipper:
 
 ### Results (stage 3)
 
-(after implementation)
+2026-09-22, the same night. `TestTypedZipper` 11 (7 + 4), green
+through `scripts/gate.sh`, no warnings. `asAffine` composes the
+frames' `(look, put)` pairs through `Affine.andThen`, which the
+compiler accepts as an `Affine` because `(Strong & Choice) & (Strong
+& Choice)` simplifies; `preview` on the cursor's own tree is the
+focus through lens, index and case frames, `None` on a tree where
+the index or the case is missing, and `set` through it equals
+`set(v).root` at every depth tested. `Poly` is nineteen lines: the
+`Box[String] -> Box[Int]` walk of `TestZoom` reads as a cursor, a
+two-lens-and-`Prism.some` walk changes `Option[String]` to
+`Option[Int]` inside two boxes, and the wrong case builds nothing.
+`left`/`right` refused a second time, reason in Decisions.

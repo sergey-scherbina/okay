@@ -390,6 +390,22 @@ c.down(lines).at(1).flatMap(_.downCase[Line.Discount]) // Option: an index, then
 State.run(c)(State.zoom(c.focusLens)(renameCustomer))  // a State % Customer program, parked in an Order
 ```
 
+Two more things the typed cursor answers, both from the same
+derivative. The path BACK: every frame keeps its `look` beside its
+`put`, so `c.asAffine` is the walk as an optic on the tree — affine,
+because an index or a case frame may not be there on another tree —
+and `c.asAffine.set(v)(order)` is `c.set(v).root`. And the
+type-changing walk: `TypedZipper.Poly[A, B, T]` is the derivative
+*applied* — a focus and the plug, `put: B => T` — with no frames and
+no `up`, because once the focus changes type there is no parent of
+the old type to return to; `down` takes the four-parameter lens of
+the parameterised-state section, and `set` IS the new whole:
+
+```scala
+val item = Lens[Box[String], Box[Int], String, Int](_.item, (b, i) => Box(i, b.tag))
+TypedZipper.Poly.of[Box[String], Box[Int]](Box("hello", "t")).down(item).modify(_.length)   // Box(5, "t")
+```
+
 The two cursors divide the work the way the entry that recorded them
 predicted: the plate zipper walks "the children" of one node type and
 is what an editor loops over; the typed zipper cannot loop — every
