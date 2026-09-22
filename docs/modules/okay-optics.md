@@ -3,7 +3,10 @@
 Profunctor optics — `Iso`, `Lens`, `Prism`, `Affine`, `Traversal`,
 `Kaleidoscope`, `AlgebraicLens` — with their constraint classes, their
 interpretations, the `Fuse` planner that turns a named optic path into
-hand-written code, and `Focus`.
+hand-written code, `Focus`, and `Zipper` — Huet's cursor over a
+`Plate[T]` (how a tree exposes its children), with `Zipper.focus` as a
+lens on the cursor and `Zipper.at(path)` as the path back as an affine
+(specs/zipper.md).
 
 The guide is [optics.md](../optics.md), the arrow half is
 [arrows.md](../arrows.md), and the theory chapter is

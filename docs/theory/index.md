@@ -80,7 +80,8 @@ return.
 **[10 · Optics on profunctors](10-optics.md)**
 Why composition is the problem; the constraint as a type parameter and
 the meet as an intersection; Tambara modules and the Yoneda
-isomorphism; the traversal whose applicative slot is the effect row —
+isomorphism; the zipper as the residual carried (`Zipper`, `Plate`,
+the JSON editor); the traversal whose applicative slot is the effect row —
 and the line where a type-changing lens turns out to BE chapter 3's
 parameterised state — an INSTANCE, which is also how far it goes: a
 prism cannot zoom a typestate program, by parametricity.

@@ -826,6 +826,22 @@ the optic at run time and you are paying a small interpreter. The
 pairs, the numbers and the case where a `copy` still wins are in
 [optics.md](optics.md); the theory is [ch. 10](theory/10-optics.md).
 
+When the program is a WALK rather than an edit — into a node, next,
+edit, back out — the path an optic recomputes each time is a cursor's
+state, and that cursor is `Zipper[T]` over a `Plate[T]` (how the tree
+exposes its children; `Json` and `Ui` have one):
+
+```scala
+Zipper(doc).first.flatMap(_.right).map(_.set(JStr("grace")).root)   // into, next, edit, fold in
+State.zoom(Zipper.focus)(prog)        // a State % T program run AT the focus
+Zipper.at[Ui](path)                   // the path back as an affine — Ui.path
+```
+
+`JsonEditor(json)(done)` in okay-ui is the product form: a `Screen`
+over a `Zipper[Json]` with move/edit/add/delete buttons and the focus
+marked in an outline. Theory and the Huet/McBride references:
+[ch. 10, "The zipper"](theory/10-optics.md#the-zipper-the-residual-carried).
+
 ## Direct style, in one paragraph
 
 Any monad in this library can be written as plain code:

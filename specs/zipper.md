@@ -40,8 +40,8 @@ final case class Zipper[T](focus: T, frames: List[Zipper.Frame[T]]):
   def down(i: Int)(using Plate[T]): Option[Zipper[T]]
   def first(using Plate[T]): Option[Zipper[T]]         // down(0)
   def up(using Plate[T]): Option[Zipper[T]]
-  def left(using Plate[T]): Option[Zipper[T]]
-  def right(using Plate[T]): Option[Zipper[T]]
+  def left: Option[Zipper[T]]                             // the frame knows the siblings: no plate
+  def right: Option[Zipper[T]]
   def at(path: List[Int])(using Plate[T]): Option[Zipper[T]]
   def modify(f: T => T): Zipper[T]
   def set(t: T): Zipper[T]
@@ -51,8 +51,9 @@ final case class Zipper[T](focus: T, frames: List[Zipper.Frame[T]]):
   def isTop: Boolean
 
 object Zipper:
-  /** the parent as it was, its children, and which one the focus is */
-  final case class Frame[T](parent: T, siblings: Vector[T], i: Int)
+  /** the parent as it was, its children, which one the focus is, and
+   *  whether anything below changed — `up` rebuilds only then */
+  final case class Frame[T](parent: T, siblings: Vector[T], i: Int, dirty: Boolean = false)
   def apply[T](t: T): Zipper[T]
   /** the focus as a lens on the cursor — `State.zoom(Zipper.focus)(p)` */
   def focus[T]: Lens[Zipper[T], Zipper[T], T, T]
@@ -65,12 +66,14 @@ okay-codec, `JsonOptic.scala`: `given Plate[Json]` — children of a
 node), of a scalar none; `withChildren` on a `JObj` re-pairs keys with
 the new values POSITIONALLY and keeps the node unchanged when the
 arity differs (a key cannot be invented). Structural edits go through
-the parent: `Json.removeChild(j, i)`, `Json.insertChild(j, i, key,
-v)` (key used by objects, ignored by arrays).
+the parent: `JsonOptic.removeChild(j, i)`, `JsonOptic.insertChild(j,
+i, key, v)` (key used by objects, ignored by arrays).
 
 okay-ui, `Ui.scala` companion: `given Plate[Ui]`, the structural walk
 (`kidsOf`/`withKids` with `structural = true` — every child, on screen
-or not, which is `Ui.path`'s convention).
+or not). NOT `Ui.path`'s convention, as the first draft said: `childAt`
+is the patch path, and the two differ on `Modal`, `Disclosure`,
+`Table` and `Tabs` (Behavior, Ui).
 
 okay-ui, `JsonEditor.scala`:
 
@@ -94,46 +97,47 @@ a container root, inside it, last); `done` and `cancel`.
 Zipper (`TestZipper`, okay-optics, over a rose tree the test
 defines and over `Plate.of(traversal)` of the same):
 
-- [ ] `down(i)` on a node with an i-th child then `up` is the input
-      cursor, `==` AND the root `eq` the input tree — no rebuild
-      when nothing was modified.
-- [ ] `down(i)` past the children, `up` at the root, `left` at index
+- [x] `down(i)` on a node with an i-th child then `up` is the input
+      cursor (same focus, path and root — cursors are compared
+      observationally, the dirty flags are not the concept) AND the
+      root `eq` the input tree — no rebuild when nothing was modified.
+- [x] `down(i)` past the children, `up` at the root, `left` at index
       0 and `right` at the last child answer `None`; nothing throws.
-- [ ] `left` then `right` and `right` then `left` are the identity
+- [x] `left` then `right` and `right` then `left` are the identity
       where both moves exist.
-- [ ] `modify(f)` at a focus, then `root`, equals the hand-written
+- [x] `modify(f)` at a focus, then `root`, equals the hand-written
       rebuild of that one node; the siblings and every other subtree
       are `eq` to the input's.
-- [ ] `at(path)` reaches what repeated `down` reaches, and `path`
+- [x] `at(path)` reaches what repeated `down` reaches, and `path`
       reads back what `at` was given.
-- [ ] `Zipper.focus` satisfies GetPut, PutGet, PutPut on cursors at
+- [x] `Zipper.focus` satisfies GetPut, PutGet, PutPut on cursors at
       every depth of the test tree.
-- [ ] `State.zoom(Zipper.focus)(p)` runs a `State % T` program against
+- [x] `State.zoom(Zipper.focus)(p)` runs a `State % T` program against
       the focus and leaves the frames untouched: the same result as
       `modify` with the program's function.
-- [ ] `Plate.of(tr)` agrees with the hand plate on `children` and on
+- [x] `Plate.of(tr)` agrees with the hand plate on `children` and on
       `withChildren` for every node of the test tree.
 
 Json (`TestJsonZipper`, okay-codec):
 
-- [ ] `Plate[Json]`: `withChildren(t, children(t)) == t` for arrays,
+- [x] `Plate[Json]`: `withChildren(t, children(t)) == t` for arrays,
       objects and scalars; an object's keys are kept in order when
       values change; a different arity leaves the object unchanged.
-- [ ] `removeChild`/`insertChild` do what their names say on arrays
+- [x] `removeChild`/`insertChild` do what their names say on arrays
       and objects, keep other fields' order, and are the identity on
       scalars and out-of-range indices.
-- [ ] a document round-trips: `Zipper(j).at(p).map(_.set(v).root)`
+- [x] a document round-trips: `Zipper(j).at(p).map(_.set(v).root)`
       equals `JsonOptic`'s path optic setting the same value, on
       every path of a generated document.
 
 Ui (`TestUiZipper`, okay-ui):
 
-- [ ] `Zipper.at[Ui](p).preview(t) == Ui.path(p).preview(t)` and the
+- [x] `Zipper.at[Ui](p).preview(t) == Ui.path(p).preview(t)` and the
       `set`s agree, for every path of the `TestUiOptic` trees that
       passes through nodes where the structural walk and the patch
       convention name the same children (Row, Column, Box, Scroll,
       Form, Items), and past the children both refuse.
-- [ ] where they part is pinned, not hidden: a `Modal`'s body is child
+- [x] where they part is pinned, not hidden: a `Modal`'s body is child
       1 on the patch path and child 0 for the zipper; a `Table` has
       rows for the zipper and no children for the path; a `Tabs` page
       off screen is reachable by the zipper — the editor's plate is
@@ -142,20 +146,20 @@ Ui (`TestUiZipper`, okay-ui):
 JsonEditor (`TestJsonEditor`, okay-ui, driven through `Nav.update`
 as `TestScreens` drives):
 
-- [ ] the view marks the focused node and only it; the root is
+- [x] the view marks the focused node and only it; the root is
       focused at start.
-- [ ] `into`/`out`/`prev`/`next` move the mark as the zipper moves; a
+- [x] `into`/`out`/`prev`/`next` move the mark as the zipper moves; a
       move that does not exist leaves the view unchanged.
-- [ ] the value input shows the focused scalar's text; `set` replaces
+- [x] the value input shows the focused scalar's text; `set` replaces
       the focus with the parsed value, or with the text as a string
       when it is not JSON.
-- [ ] `delete` removes the focus and the focus moves to the parent;
+- [x] `delete` removes the focus and the focus moves to the parent;
       `delete` at the root is a no-op.
-- [ ] `add` after an array element inserts `JNull` after it and
+- [x] `add` after an array element inserts `JNull` after it and
       focuses it; in an object the field lands with the key input's
       text; at a container root it appends inside; a scalar root
       takes nothing.
-- [ ] `done` answers `Some(edited)` through `done`; `cancel` answers
+- [x] `done` answers `Some(edited)` through `done`; `cancel` answers
       `None` and the caller's document is the original.
 
 ## Out of scope
@@ -236,4 +240,19 @@ by `Nav.update` in a test with no host.
 
 ## Results
 
-(after implementation)
+2026-09-22, one lane. `TestZipper` 10, `TestJsonZipper` 3,
+`TestUiZipper` 3, `TestJsonEditor` 6 — all green through
+`scripts/gate.sh`, no warnings. Four things the code corrected in the
+spec, each now in Decisions or Interface: sideways moves need no
+plate; a frame carries a `dirty` flag rather than an `eq` test (which
+would have been a cast on an unbounded `T`); no host produces
+`Event.Key`, so the editor is buttons only; `Nav.To` after a `Push`ed
+prompt leaves the old frame under, so the edit is an inline `Input`.
+Found and pinned rather than papered over: `Ui`'s two conventions for
+the i-th child (`childAt` vs `kidsOf`), which is why `Zipper.at ==
+Ui.path` holds on Row/Column/Box/Scroll/Form/Items and is stated NOT
+to on `Modal`/`Disclosure`/`Table`/`Tabs`. Not measured: the cursor
+against the affine on a walk — `ui-path-two-walks-answered` priced the
+affine at 2.9-7.9x the hand walk, and the zipper's claim is O(1) per
+move by construction; a benchmark belongs to the first product that
+walks enough to notice.

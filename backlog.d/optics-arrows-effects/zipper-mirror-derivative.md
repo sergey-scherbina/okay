@@ -1,8 +1,9 @@
 - [ ] zipper-mirror-derivative — the GENERIC zipper: McBride's
       derivative of a type, derived from a `Mirror` (recorded at the
       operator's request 2026-09-22, "for the future"; the plate road
-      `zipper-plate` beside this is what the three known consumers
-      need and lands first). The one-hole context of a product
+      LANDED the same day — specs/zipper.md, `Zipper`/`Plate` in
+      okay-optics, `JsonEditor` in okay-ui — and is what the three
+      known consumers need). The one-hole context of a product
       `A * B * C` is the sum `∂A * B * C + A * ∂B * C + A * B * ∂C`, of
       a sum it is the sum of the derivatives, and of a recursive type
       the chain rule closes it — docs/theory/10-optics.md:294-303

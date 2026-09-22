@@ -301,6 +301,81 @@ focus. So a lens's residual is a derivative, and okay's `Ui.path`
 navigation, which walks a tree carrying where it came from, is the
 same idea written by hand.
 
+## The zipper: the residual, carried
+
+An optic is a *path*. `Ui.path(is)` starts from the root on every
+operation, holds nothing between two of them, and — `Fuse`, above —
+costs the hand-written update when the path is named in code. That is
+the right shape for an edit: one path, one `modify`. It is the wrong
+shape for a *cursor*: an editor that steps to the next sibling, then
+into it, then edits, then steps back, recomputes the path from the
+root at each step, and the residual it throws away after every one is
+exactly the thing the next step needs.
+
+Huet's zipper keeps it. `Zipper[T]` (`Zipper.scala`, okay-optics) is a
+focus and a stack of frames, each frame the parent node as it was,
+its children and the index of the one below — the one-hole context of
+the previous paragraph, materialised. A step to a sibling is an index
+change; `up` is one `updated` in the parent's vector and one rebuild,
+and only when something below actually changed, so a walk that edits
+nothing hands back the input tree itself, `eq`. The tree says how it
+exposes its children through a `Plate[T]` — Uniplate's `children` and
+`descend` as two methods, and `Plate.of(traversal)` builds one from
+the self-traversal of the origami section, since a plate *is* that
+traversal read as data. Every move answers an `Option`: a move that
+does not exist is a refusal, `Ui.path`'s at a leaf.
+
+What ties it back to the optics is two functions, not a new family:
+
+```scala
+Zipper.focus[T]: Lens[Zipper[T], Zipper[T], T, T]   // the focus, on the cursor
+Zipper.at[T: Plate](path): Affine[T, T, T, T]       // the path, on the tree — Ui.path by hand
+```
+
+so `State.zoom(Zipper.focus)(p)` runs a `State % T` program *at the
+focus* with the frames riding along in the outer state (the seam of
+the parameterised-state section, unchanged), and `TestUiZipper` pins
+`Zipper.at` to `Ui.path` on every path where the two conventions for
+"the i-th child" agree — and states where they do not: the patch path
+puts a `Modal`'s body at 1 and gives a `Table` no children, the
+structural walk an editor needs puts the body at 0 and reaches the
+rows.
+
+The pair that shows the division of labour. To rename one field, the
+optic is the whole program:
+
+```scala
+JsonOptic.field("name").set(JStr("grace"))(doc)
+```
+
+To *edit* a document — walk to a node, change it, walk on — the
+cursor is the state and the moves are the program:
+
+```scala
+val z = Zipper(doc)                                  // Plate[Json] from JsonOptic
+z.first.flatMap(_.right)                             // into, then the next field
+ .map(_.set(JStr("grace")))                          // an edit at the focus
+ .flatMap(_.up).flatMap(_.first)                     // back out, into the first
+ .map(_.root)                                        // every edit folded in
+```
+
+`JsonEditor` (okay-ui) is that program with a screen around it: a
+`Zipper[Json]` as the state, into/out/prev/next as the moves, an
+inline edit at the focus, delete and insert as a `modify` of the
+*parent* — a plate is arity-preserving, and an object's key cannot be
+invented by one — and the mark in the outline is `z.path`. It is the
+consumer that opened this section: the backlog had recorded the
+zipper as "not before a consumer that moves", named the terminal's
+Tab as one, and was wrong — that focus is an `Int` into a flattened
+tab order — until the operator asked for a product that edits a tree.
+
+What is *not* here is McBride's derivative in its full generality: a
+frame per *field*, each of a different type, so that the cursor's
+position is a type (`Order` → `Customer` → `Address`). The plate zipper
+is homogeneous — one node type, a vector of children — because the
+three trees that exist are, and the typed one stays recorded with its
+trigger (`backlog.d/optics-arrows-effects/zipper-mirror-derivative`).
+
 ## Where the theory said no
 
 Two refusals, both recorded in `specs/optics.md` and both instructive.

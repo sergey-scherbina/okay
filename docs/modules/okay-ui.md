@@ -18,6 +18,7 @@ because subscriptions are `merge`.
 | `Host` | the seam, React-shaped: hand over the whole tree — two functions, like `Link` |
 | `Frame` | the terminal's pure half: frames are `Vector[String]`, keys interpret against the tree — tested with no tty |
 | `Terminal.host()` / `Terminal.raw` | the thin impure edge: stty, stdin, painting (JVM + Native) |
+| `JsonEditor(json)(done)` | a JSON document edited in place: a `Screen` over `Zipper[Json]` — into/out/prev/next, an inline edit at the focus, add/delete through the parent, the focus marked in an outline; `done` answers `Some(edited)` or `None` (specs/zipper.md) |
 | `Swing.backend` / `Swing.host` / `Swing.window` | the JVM's own toolkit over the same seam: zero dependencies, headless-tested by the DOM battery (ui-native-toolkits) |
 | `okay.ui.gtk.Gtk` (okay-ui-gtk, Scala Native) | GTK 4 over the same seam, present only where `pkg-config --exists gtk4` answers (`brew install gtk4 pkg-config`); TestGtk against real widgets (ui-gtk) |
 | `React.elem` / `ReactJs.host` | pure `Ui => Elem` (JVM-tested), five lines of js glue over any `createElement`-shaped global — React, Preact, likes |
