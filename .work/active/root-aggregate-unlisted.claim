@@ -1,0 +1,6 @@
+feature/root-aggregate-unlisted 2026-09-22T23:20:09Z
+agent: claude-code
+heartbeat: 2026-09-22T23:20:09Z
+status: in-progress
+done-so-far: listed; docs-dynamo/cassandra left to docs-adapters-merge (sibling, branch 80cca2e1)
+next: add okayOps(jvm/js/native), okaySpring, okayGuice, okayCdi, okayOpenapi to the root aggregate; full matrix
