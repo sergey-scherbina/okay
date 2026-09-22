@@ -164,9 +164,9 @@ as `TestScreens` drives):
 
 ## Out of scope
 
-- The Mirror-derived generic zipper (heterogeneous frames, a focus
-  whose TYPE is the cursor position) — `zipper-mirror-derivative`,
-  with its own trigger.
+- (stage 1) The Mirror-derived generic zipper — was
+  `zipper-mirror-derivative`, opened by the operator the same evening;
+  it is Stage 2 below.
 - A `PState` road for type-changing moves (`JObj` → `Option[Json]`
   at a field) — the plate zipper is homogeneous by construction.
 - Renaming an object key, undo/redo, multi-line scalar editing — a
@@ -256,3 +256,121 @@ against the affine on a walk — `ui-path-two-walks-answered` priced the
 affine at 2.9-7.9x the hand walk, and the zipper's claim is O(1) per
 move by construction; a benchmark belongs to the first product that
 walks enough to notice.
+
+## Stage 2 — the typed zipper (zipper-mirror-derivative, 2026-09-22)
+
+### Overview
+
+Stage 1's cursor is homogeneous: one node type, a vector of children,
+the plate deciding what a child is. Its frames cannot say WHAT they
+are pointing into — `Zipper[Json]` at `order.customer.address` has
+the type `Zipper[Json]` at the root too. McBride's derivative is per
+FIELD: the one-hole context of `Order` at `customer` is "an `Order`
+with a `Customer`-shaped hole", a different type from the context at
+`lines`. Carried with a focus, that is a cursor whose POSITION IS A
+TYPE — `TypedZipper[Order, Address, _]` says where it is, `set` takes
+an `Address` and nothing else, and `up` answers the parent's type,
+statically. The backlog entry named the cost before it named the
+shape: every frame is a distinct type, so no loop walks "the
+children" — that is stage 1's job and stays so; this is for a cursor
+that knows statically where it is.
+
+The frame IS an optic. A lens into a field is exactly the derivative
+at that field with `put` as the plug; a prism into a case is the
+derivative of a sum (one summand); an index into a `Vector` is the
+affine the plate zipper walks by position. So the typed zipper adds
+no machinery of its own to the optics: `down(lens)` is total,
+`downPartial(affine)`, `downCase[B]` and `at(i)` answer an `Option`,
+and `field("name")` is the Mirror lens `Lens.field[A]("name")` that
+already exists — which is the whole Mirror content of the design, and
+why the entry's `Frame[S, A] :: Frame[A, B] :: …` tuple path was not
+needed: the parent's type is a type PARAMETER of the frame
+(F-bounded, `Below[S, P, A, Z <: TypedZipper[S, P, Z]]`), carried and
+never summoned, per the row-membership rule.
+
+### Interface
+
+okay-optics, `TypedZipper.scala`, package `okay`:
+
+```scala
+sealed trait TypedZipper[S, A, Self <: TypedZipper[S, A, Self]]:
+  def focus: A
+  def set(a: A): Self
+  def modify(f: A => A): Self
+  def root: S
+  def depth: Int
+  /** a lens frame: total */
+  def down[B](l: Lens[A, A, B, B]): TypedZipper.Below[S, A, B, Self]
+  /** an affine frame: the move may not exist */
+  def downPartial[B](o: Affine[A, A, B, B]): Option[TypedZipper.Below[S, A, B, Self]]
+  /** a prism frame: into one case of a sum */
+  def downCase[B <: A](using ClassTag[B]): Option[TypedZipper.Below[S, A, B, Self]]
+
+object TypedZipper:
+  final case class Top[S](focus: S) extends TypedZipper[S, S, Top[S]]
+  final case class Below[S, P, A, Z <: TypedZipper[S, P, Z]](parent: Z, put: (P, A) => P, focus: A)
+    extends TypedZipper[S, A, Below[S, P, A, Z]]:
+    def up: Z                                    // the parent's TYPE, statically
+  def apply[S](s: S): Top[S]
+  /** the focus as a lens on the cursor — `State.zoom(TypedZipper.focus)(p)` */
+  def focus[S, A, Z <: TypedZipper[S, A, Z]]: Lens[Z, Z, A, A]
+
+extension [S, A <: Product, Z <: TypedZipper[S, A, Z]](z: TypedZipper[S, A, Z])
+  /** a field by name, typed by the Mirror — `Lens.field[A](name)` as a frame */
+  inline def field[L <: String & Singleton](inline name: L)(using Mirror.ProductOf[A]): Below[S, A, Elem, Z]
+extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: TypedZipper[S, Vector[B], Z])
+  /** the i-th element of a Vector focus */
+  def at(i: Int): Option[Below[S, Vector[B], B, Z]]
+```
+
+### Behavior (`TestTypedZipper`, okay-optics, over `Order(customer:
+Customer(name, address: Address(city)), lines: Vector[Line])` with
+`Line` a sum `Item | Discount`)
+
+- [ ] `down(l)` then `up` is the input cursor (same focus and root)
+      and `root eq` the input when nothing was set; `.up.up` from two
+      lenses down is a `Top[Order]` — the type is checked by the
+      compiler, the test only runs it.
+- [ ] `set` at a two-lens focus then `root` equals the nested `copy`;
+      every other field is `eq`.
+- [ ] `field("customer")` is `down(Lens.field[Order]("customer"))`:
+      the focus has the field's declared type, and a wrong name does
+      not compile (`compileErrors`).
+- [ ] `at(i)` on a `Vector` focus answers the element or `None` past
+      the end; `set` through it updates that element only.
+- [ ] `downCase[Discount]` answers the case or `None`; `set` through
+      it keeps the sum's other cases untouched elsewhere.
+- [ ] `TypedZipper.focus` satisfies GetPut, PutGet, PutPut; and
+      `State.zoom(TypedZipper.focus)(p)` runs a `State % Customer`
+      program at a `Customer` focus with the frames untouched — the
+      program written against `Customer` while parked in an `Order`,
+      which is the consumer the entry named.
+- [ ] a walk shares its prefix: from one `down(customer)` both
+      `down(name)` and `down(address)` are taken, edited, and each
+      `root` shows only its own edit.
+
+### Decisions (stage 2)
+
+- **Frames are optics; the parent type is an F-bounded parameter** —
+  `up: Z` is what makes the position a type, and a parameter is never
+  searched for. Rejected: a heterogeneous tuple of frames (the entry's
+  first sketch — a `Tuple.Elem` computation per `up`, and a summon
+  over it; the row-membership crash rule).
+- **`field` by name reuses `Lens.field`** — the Mirror is already
+  consulted there, once; a second derivation would be a second place
+  for the same cast. Rejected: a `Mirror`-walking `∂` of the whole
+  product (every field's frame at once, nobody asked).
+- **Fixed-type frames, `Lens[A, A, B, B]`** — a type-changing `set[B]`
+  retypes every frame up to the root; that is `PState.zoom` over the
+  composed lens, which exists, and no cursor asked for it. Rejected:
+  four-parameter frames.
+- **No `at(path)` optic back from the cursor** — an affine frame has
+  no total `get`, so the path is not a lens; stage 1's `Zipper.at` is
+  the positional road. Rejected: keeping the getters to offer a lens
+  that a prism frame would make a lie.
+- **No `left`/`right`** — fields are not a sequence; a `Vector` focus
+  goes through `at(i)`, and sideways among siblings is stage 1.
+
+### Results (stage 2)
+
+(after implementation)
