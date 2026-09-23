@@ -711,6 +711,10 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`Gate`** (okay-x402) — an okay-http route behind x402: 402 with
+  what it accepts, then match, claim (no replay), verify, run, and settle
+  only a 2xx answer. `Paying(http, policy, payer)` is the client half;
+  keys live behind `Payer`, never in the module.
 - **`CardanoFlinkSource`** (okay-scalus-flink) — the chain as a FLIP-27
   source with ONE split (a chain is one sequence), whose checkpoint is
   the last block emitted; rows from `CardanoTables` through

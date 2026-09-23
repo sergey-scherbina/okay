@@ -219,6 +219,7 @@ API reference, gotchas.
 | [`okay-scalus`](modules/okay-scalus.md) | the Cardano chain as okay-chain events, from a relay over Ouroboros node-to-node, with scalus's ledger model for the blocks |
 | [`okay-scalus-spark`](modules/okay-scalus-spark.md) | `spark.read(Stream).format("cardano")`: confirmed Cardano blocks as the same typed tables, a rollback past `confirmations` fails the query |
 | [`okay-scalus-flink`](modules/okay-scalus-flink.md) | the Cardano chain as a Flink FLIP-27 source: one split, the last emitted block as its checkpoint, rows from `CardanoTables` through `FlinkSchema` |
+| [`okay-x402`](modules/okay-x402.md) | x402: a priced okay-http route answers 402, a paying client pays what its policy allows, a facilitator verifies and settles — only a successful answer is paid for |
 | [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
 | [`okay-codec`](modules/okay-codec.md) | the Schema algebra; JSON, CBOR and Markdown dialects |
