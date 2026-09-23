@@ -56,7 +56,11 @@ final class Gen[W](val program: Unit ! Gen.Row[W]) extends AnyVal:
   def map[V](f: W => V): Gen[V] = Gen.lazily(Writer.map[W, V, Unit, Stop](program)(f))
   /** Python's `yield from`: every told w replaced by f(w)'s tells */
   def flatMap[V](f: W => Gen[V]): Gen[V] = Gen.lazily(Gen.splice(program)(w => f(w).program))
-  def filter(p: W => Boolean): Gen[W] = Gen.lazily(Gen.splice(program)(w => if p(w) then Gen.emit(w).program else Gen.empty[W].program))
+  /** a walk, not a splice (gen-filter-as-walk): the kept tell is the
+   * body's own node re-bound, the rejected one a deferred skip — no
+   * program per element (splice built an emit/empty and a flatMap for
+   * each, measured at +109 B per element by generators-jmh) */
+  def filter(p: W => Boolean): Gen[W] = Gen.lazily(Gen.filtering(p)(program))
   def withFilter(p: W => Boolean): Gen[W] = filter(p)
   /** sequencing — one after the other */
   def ++(h: Gen[W]): Gen[W] = Gen.fromProgram(program.flatMap(_ => h.program))
@@ -174,6 +178,29 @@ object Gen:
               case Writer.Say(w) => if n == 1 then emit(w).program else emit(w).program.flatMap(_ => loop(n - 1)(k(()))) }
           { _ => stop[W].program }
     loop(n)(g)
+
+  /** keep the tells `p` accepts: the accepted tell is the input's OWN
+   * `Inject` node bound to the rest of the walk; a rejected one is
+   * skipped by a `Free.delay` so a long run of rejections is flat
+   * (`dropping`'s reason). Laziness kept: `k` runs only when the next
+   * value is asked for, as the reader drives */
+  private def filtering[W](p: W => Boolean)(g: Unit ! Row[W]): Unit ! Row[W] =
+    // the rejected tell is a DEFERRED skip, one `Delay` per rejection:
+    // recursing straight through a run of rejections (a budget of 64,
+    // then a Delay) allocated less — 330 against 354 B per element —
+    // and read 7% SLOWER: the runner's trampoline beats a chain of
+    // calls through `split`'s closure (gen-filter-as-walk, measured)
+    def loop(x: Unit ! Row[W]): Unit ! Row[W] = (x.resume: @unchecked) match
+      case Pure(_) => pure(())
+      case i @ Inject(e) => split[Writer % W, Stop](e)
+        { case Writer.Say(w) => if p(w) then i else pure(()) } { _ => stop[W].program }
+      case Bind(i @ Inject(e), k) => split[Writer % W, Stop](e)
+        { w0 => (w0: @unchecked) match
+            case Writer.Say(w) =>
+              if p(w) then Bind(i, (_: Any) => loop(k(())))
+              else Free.delay(() => loop(k(()))) }
+        { _ => stop[W].program }
+    loop(g)
 
   private def takingWhile[W](p: W => Boolean)(g: Unit ! Row[W]): Unit ! Row[W] =
     def loop(x: Unit ! Row[W]): Unit ! Row[W] = (x.resume: @unchecked) match

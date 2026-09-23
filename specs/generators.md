@@ -127,7 +127,9 @@ multi-shot re-entry is sound (direct-loops' rule).
   with a program-valued answer): a told `w` is replaced by `f(w)`'s
   tells, the continuation is called only when `f(w)` has been read
   through, a `Stop` drops the continuation. `map` is `Writer.map`;
-  `filter`/`++` are `splice`; `take` drops the continuation after the
+  `flatMap`/`++` are `splice`; `filter` is a walk of its own
+  (`filtering`: the kept tell re-bound, the rejected one a deferred
+  skip — gen-filter-as-walk); `take` drops the continuation after the
   n-th tell (the body runs EXACTLY to its n-th yield — checking `n`
   before calling `k`, not after); `drop` defers each skipped step
   (`Free.delay`) so a long skip is flat.
@@ -208,6 +210,7 @@ the same way; src/jmh/history.tsv `gj-*`):
 | `Writer.map` + a filtering `Writer.fold` step | 214.9 ± 1.4 | 272 |
 | infinite `Gen.unfold.take(10k).toList` | 252.3 ± 3.5 | 295 |
 | `Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList` | 338.7 ± 2.5 | 381 |
+| the same, `filter` as a walk (gen-filter-as-walk, 2026-09-23) | **283.9** | **354** |
 
 The entry's question answered in two halves. THE VALUE CLASS ADDS NO
 FRAME: `Gen.iterator` allocates what `Writer.run` allocates, to the
@@ -216,8 +219,17 @@ the `List` cons and the reverse, not the wrapper. SPLICE DOES:
 `filter` is `splice`, a program (`emit`/`empty` plus its `flatMap`)
 built per element, +109 B and +124 µs on 10k over the hand road —
 the one combinator where the pipeline is not parity, filed as
-`gen-filter-as-walk` (backlog okay-core) with the number: written as
-a walk that re-tells or skips, like `taking`, the frame goes. Between
+`gen-filter-as-walk` and CLOSED the same day: written as a walk (the
+kept tell is the input's own `Inject` node re-bound to the rest of the
+walk, the rejected one a `Free.delay` skip), the pipeline reads 283.9 µs
+/ 354 B/elem — 0.83 of the splice in time, 0.93 in bytes, on two quiet
+alternated pairs (history `gf-*`). What remains over the hand road's
+272 is the walk's own `Bind` + closure per kept element and `Delay` +
+thunk per rejected one; a budget that recursed straight through up to
+64 rejections before deferring allocated LESS (330 B/elem) and read 7%
+SLOWER — the runner's trampoline beats a call chain through `split`'s
+closure — and was not kept. The rest is `gen-chain-fusion`'s question
+(the filter fused into the reader, no program between). Between
 them, `Gen.read` over `Writer.foldUntil` on the same program is +40%
 and +24 B/elem — the `Stop` arm in every `split` (a second `TypeableK`
 test per element, the `typeablek-instanceof` residual) plus the

@@ -5084,3 +5084,11 @@ the same program is +40% / +24 B/elem: the `Stop` arm in every
 closure. `take` re-emits: +15% / +56 B. Read a generator through
 `iterator`, `first`, `find` or `exists` when the answer is not a list;
 those stop where the answer is and pay the wrapper nothing.
+
+**Follow-up, gen-filter-as-walk (2026-09-23).** `filter` written as a
+walk instead of a splice: `map.filter.toList` 341 → 284 µs (0.83),
+381 → 354 B/elem, two quiet alternated pairs, the unfiltered lanes
+byte-identical. A variant that recursed straight through a run of
+rejections (budget 64, then a `Delay`) allocated less (330 B/elem) and
+read 7% slower — kept out. What is left over the hand road (272) is
+the walk's `Bind` per kept and `Delay` per rejected element.

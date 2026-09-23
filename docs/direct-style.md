@@ -970,12 +970,16 @@ gated JMH runs, `-prof gc`; specs/generators.md Results has the
 table): the wrapper is free — `gen.iterator` allocates what the
 underlying `Writer` program read by `Writer.run` allocates, 191
 against 192 bytes per element, 151 against 134 µs per 10k. `toList`
-adds the list (48 B/elem). `map` IS `Writer.map`. The one combinator
-that is not parity is `filter`: it is `splice`, a small program per
-element, and a `map.filter.toList` pipeline reads 339 µs / 381 B/elem
-against 215 / 272 for the same work hand-written over `Writer` —
-+109 B per element for the convenience, filed to be closed by writing
-`filter` as a walk. `take` re-emits and costs +15%. Prefer `iterator`
+adds the list (48 B/elem). `map` IS `Writer.map`. `filter` was
+`splice`, a small program per element, and a `map.filter.toList`
+pipeline read 339 µs / 381 B/elem against 215 / 272 for the same work
+hand-written over `Writer`; written as a walk (gen-filter-as-walk —
+the kept tell is the body's own node re-bound, the rejected one a
+deferred skip) it reads 283 µs / 354 B/elem: 0.83 of the splice, and
+what remains over the hand road is the walk's `Bind` per kept element
+and `Delay` per rejected one — a fusion of the filter INTO the reader
+would remove those (backlog `gen-chain-fusion`). `take` re-emits and
+costs +15%. Prefer `iterator`
 or `first`/`find`/`exists` when the answer is not a list; those read
 the generator through `FoldUntil` and stop where the answer is.
 

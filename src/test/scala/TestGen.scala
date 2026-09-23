@@ -78,6 +78,20 @@ class TestGen extends munit.FunSuite:
     assertEquals(Gen.unfold(1)(i => Some((i, i + 1))).drop(2).take(2).toList, List(3, 4))
   }
 
+  test("filter is a walk: lazy to the counter, and a long run of rejections is flat") {
+    val c = Counted()
+    assertEquals(c.gen.filter(_ % 2 == 0).take(2).toList, List(2, 4))
+    assertEquals(c.steps, 4, "the body ran exactly to its fourth yield: two rejected, two kept")
+    val c2 = Counted()
+    val it = c2.gen.filter(_ > 2).iterator
+    assertEquals(it.next(), 3); assertEquals(c2.steps, 3)
+    // 100 000 rejected in a row on the default stack
+    val g = Gen.unfold(0)(i => if i < 100000 then Some((i, i + 1)) else None)
+    assertEquals(g.filter(_ == 99999).toList, List(99999))
+    assertEquals(g.filter(_ % 2 == 0).toList.size, 50000)
+    assertEquals(g.withFilter(_ < 3).map(_ * 10).toList, List(0, 10, 20))
+  }
+
   test("a plain for-comprehension over Gen is a generator — no macro, lazy, nested") {
     val inner = Counted()
     val pairs: Gen[(Int, Int)] =
