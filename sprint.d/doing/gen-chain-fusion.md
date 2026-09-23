@@ -1,4 +1,4 @@
-- [ ] gen-chain-fusion — a `Gen` chain (`map`/`filter`/`take`/`drop`,
+- [~] gen-chain-fusion — a `Gen` chain (`map`/`filter`/`take`/`drop`,
       specs/generators.md) is one element-wise `resume` walk PER STAGE:
       `g.map(f).filter(p).take(n)` walks every element three times, each
       stage re-telling into the next. `Pipeline.optimize` (okay-stream)
