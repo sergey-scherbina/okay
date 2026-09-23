@@ -204,7 +204,7 @@ object Cont:
 
     /**
      * the same for `map`, its own case rather than `Absorbed` over
-     * `a => Pure(f(a))`: that spelling allocates a `Pure` per element
+     * `a => Return(f(a))`: that spelling allocates a `Pure` per element
      * at RUN time, which measured +24 B/op and 8-19% on every Fib lane
      * — the generator maps once per element, so this is its hot path.
      */
@@ -307,7 +307,7 @@ object Cont:
     // because its two argument lists resolved the variable differently.
     case Bind(Inject(s), f) => s.at[Any, R](x => run(f(x))(k))
     case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)
-    case Bind(Pure(a), f) => step(f(a))(k)
+    case Bind(Return(a), f) => step(f(a))(k)
     case Delay(t) => step(t())(k)
     case Bind(Delay(t), g) => step(Bind(t(), g))(k)
 
