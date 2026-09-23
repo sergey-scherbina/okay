@@ -105,16 +105,16 @@ step — so it needs nothing suspended, and no thread.
 
 ## Stage 3: the build half as a plugin (frege-sbt-plugin, 2026-09-23)
 
-- [ ] `okay-frege/sbt-plugin`: a SOURCE sbt plugin, `okay-frege-sbt`
+- [x] `okay-frege/sbt-plugin`: a SOURCE sbt plugin, `okay-frege-sbt`
       (`OkayFrege`, `noTrigger`), the okay-deploy-sbt precedent; the
       repository's project/plugins.sbt depends on it and okay-frege
       enables it — project/Frege.scala is gone
-- [ ] settings a user can change: `fregeTarget` (17), `fregeJavaOptions`,
+- [x] settings a user can change: `fregeTarget` (17), `fregeJavaOptions`,
       `fregeFailOnWarnings` (true); `before(c)` / `in(c)`
-- [ ] incremental on the sources AND the compiler's classpath and
+- [x] incremental on the sources AND the compiler's classpath and
       options: a change in the Scala a native binds to recompiles (the
       first cut tracked source timestamps only and said so)
-- [ ] the full matrix green with okay-frege built through the plugin
+- [x] the full matrix green with okay-frege built through the plugin
       (the repository IS the plugin's first user)
 
 ## Decisions
@@ -194,3 +194,13 @@ infinite okay source (a StackOverflowError in both laziness tests) and a
 sleep that did not sleep (15 ms against the 40 asserted) — each failed
 its own test. The Async answer is the milliseconds slept, because
 Frege's `()` is a Java `short` and a boxed Unit would not cast.
+
+**Stage 3 (frege-sbt-plugin).** project/Frege.scala is now the source
+plugin okay-frege/sbt-plugin (`okay-frege-sbt`, `OkayFrege`), which the
+repository's project/plugins.sbt depends on — the okay-deploy-sbt
+precedent — and which okay-frege enables like any user would. Checked,
+not assumed: a cold `okayFrege/test` through the plugin is green with
+the Frege warning check on; a rerun with nothing changed leaves the
+compiled Frege classes untouched (same timestamp); and a one-line change
+to `Ops.scala` — the Scala the test natives bind to — recompiles them,
+which the first cut (source timestamps only) could not do.
