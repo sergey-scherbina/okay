@@ -1,0 +1,1 @@
+- [~] **scala2-pgvector** — okay-rag's PgVector from Scala 2.13: a VectorIndex over Postgres + pgvector (the one store stage 15.5 left out for want of a test), with a Live test against pgvector/pgvector. Operator: "Доделай" (2026-09-23).
