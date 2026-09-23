@@ -38,6 +38,15 @@ class TestStubs extends munit.FunSuite {
     assert(ts.contains("export interface Node {\n  children: Tree[];\n}"), ts)
   }
 
+  test("TypeScript on the WIRE: a sum's case carries its type field; a Long may be a bigint") {
+    val wire = Stubs.typescriptWire(summon[Schema[Order]], summon[Schema[Shape]])
+    assert(wire.contains("export interface Circle {\n  type: \"Circle\";\n  r: number;\n}"), wire)
+    assert(wire.contains("export type Shape = Circle | Rect;"), wire)
+    assert(wire.contains("  id: number | bigint;"), wire)
+    assert(wire.contains("  raw: Uint8Array;"), wire)
+    assert(wire.contains("  note: string | null;"), wire)
+  }
+
   test("deterministic: the same schemas give the same text") {
     assertEquals(Stubs.python(summon[Schema[Order]], summon[Schema[Shape]], summon[Schema[Tree]]), py)
     assertEquals(Stubs.typescript(summon[Schema[Order]], summon[Schema[Shape]], summon[Schema[Tree]]), ts)
