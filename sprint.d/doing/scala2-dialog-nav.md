@@ -1,1 +1,0 @@
-- [ ] **scala2-dialog-nav** — okay-ui's Dialog (scenarios as programs, cancellable scopes) and Nav (screens as a stack) for Scala 2.13 (specs/scala2-facade.md, stage 11). Operator: "Продолжай" (2026-09-23), after the five named areas landed.
