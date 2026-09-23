@@ -55,7 +55,10 @@ private[okay] object DirectCompiler:
     // a Free block that REBUILDS a lambda (programLambda, a nested
     // block under `Delim.shift`) left the inlined binds' proxies with
     // an owner LambdaLift could not find (TestBookInTheSystem). The
-    // Free gain is a lane of its own, with those two as its first laws
+    // Free road was then built with both laws kept (direct-inline-
+    // bind-free, 2026-09-23) and REFUTED by its number: bytes 0.97,
+    // time 1.00 — the gap to a hand-written Free program is the
+    // deferred self-call, not the virtual bind
     val mmSym = Symbol.newVal(Symbol.spliceOwner, "mm$direct",
       if stage0.isDefined then M0.asTerm.tpe.widen else TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
     val mmVal = ValDef(mmSym, Some(M0.asTerm.changeOwner(mmSym)))

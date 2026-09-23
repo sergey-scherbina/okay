@@ -3,6 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
+import okay.RowLift.at
 
 /**
  * specs/direct-staged.md, the number: the SAME block text three ways
@@ -74,6 +75,28 @@ class StagedBenchmark {
       M.flatMap(sw.stage(State.Set(i + 2)))(_ =>
       M.flatMap(sw.stage(Writer.Say("w")))(_ =>
       M.flatMap(sw.stage(State.Get()))(d => handBlock(i + 1, acc + a + b + c + d)))))))))))
+
+  /** direct-inline-bind-free's ceiling: the SAME Free block by hand,
+   * `Free.flatMap` (inline: `Bind(this, f)`) at every bind — what the
+   * macro would emit if its binds resolved the given's `override
+   * inline flatMap` instead of the trait's virtual one */
+  def freeHandNested(i: Int, acc: Int): Int ! Row =
+    if i >= Iters then pure(acc)
+    else
+      State.get[Int].at[Row].flatMap(a =>
+      State.set[Int](i).at[Row].flatMap(_ =>
+      Writer.tell("w").at[Row].flatMap(_ =>
+      State.get[Int].at[Row].flatMap(b =>
+      State.set[Int](i + 1).at[Row].flatMap(_ =>
+      Writer.tell("w").at[Row].flatMap(_ =>
+      State.get[Int].at[Row].flatMap(c =>
+      State.set[Int](i + 2).at[Row].flatMap(_ =>
+      Writer.tell("w").at[Row].flatMap(_ =>
+      State.get[Int].at[Row].flatMap(d => freeHandNested(i + 1, acc + a + b + c + d)))))))))))
+
+  @Benchmark
+  def freeHandNestedRun(): Int =
+    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](freeHandNested(0, 0)))._2._2
 
   /** the user's baseline: the Free block, built and run by the shipping runners */
   @Benchmark

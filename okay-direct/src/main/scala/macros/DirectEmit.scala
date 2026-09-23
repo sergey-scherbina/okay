@@ -20,7 +20,8 @@ import scala.quoted.*
  * on the staged carrier as 152 568 B/op against the hand-written
  * 84 568 on the same block. Every other block keeps the quote road,
  * unchanged — the precise type broke two carriers when tried on all
- * (pipeline says which); the Free gain is a lane of its own.
+ * (pipeline says which); the Free road was tried and refuted
+ * (direct-inline-bind-free: bytes 0.97, time 1.00).
  */
 private[okay] trait DirectEmit[F[_]] extends DirectPhase[F]:
   import q.reflect.*
