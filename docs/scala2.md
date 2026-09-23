@@ -945,6 +945,53 @@ assertEquals(Eff.runAsync(Guards.retry(okay.Retry.immediate(5))(flaky)), "ok")
   delay of the policy (`okay.Retry.constant`, `exponential`,
   `jittered`, `immediate`).
 
+## 8k. The durable log: okay-persist
+
+Module `okay-scala2-persist`. okay-persist's engine is synchronous and
+plain, so a Scala 2 caller uses it directly: `new MemoryStore`,
+`FileStore.open(dir)`, `topic.append(key, value, Ack.Durable)`,
+`topic.read(partition, from, max)`, `Offsets`, `Snapshots`. `Persist`
+supplies the three things that do not carry over. The code below is
+copied from `okay-scala2/probe/src/test/scala/TestPersistFromScala2.scala`:
+
+```scala
+val store = new MemoryStore
+val t = Persist.topic(store, "events")
+assertEquals(t.append("k".getBytes, "a".getBytes, Ack.Durable), 0L)
+assertEquals(t.append("k".getBytes, "b".getBytes, Ack.Durable), 1L)
+t.read(0, 0L, 10) match {
+  case Topic.Read.Records(rs) => assertEquals(rs.map(r => new String(r.value)), Vector("a", "b"))
+  case other => fail(other.toString)
+}
+```
+
+```scala
+val typed = Persist.typed[Deposit](Persist.topic(new MemoryStore, "deposits"))
+typed.append("acct-1".getBytes, Deposit("acct-1", 100), Ack.Durable)
+```
+
+```scala
+val prog = for {
+  writer <- Async.fork(Async.sleep(30).flatMap(_ => Async.delay { t.append("k".getBytes, "1".getBytes, Ack.Durable); t.append("k".getBytes, "2".getBytes, Ack.Durable); () }))
+  seen <- Persist.tail(t, 0, 0L, pollMillis = 5).map(r => new String(r.value)).take(3).runCollect
+  _ <- writer.join
+} yield seen
+assertEquals(Eff.runAsync(prog), Vector("0", "1", "2"))
+```
+
+- `Persist.topic(store, name, partitions = 1)`: `Store.topic` is a
+  trait method, and a trait's abstract-method DEFAULTS are invisible
+  from Scala 2, so `store.topic("t")` would ask for the partitions and
+  the policy. `Persist.topic` passes okay-persist's own defaults.
+- `Persist.typed[A](topic, version = 1)` is Scala 3's `topic.of[A]`,
+  an extension, which Scala 2 cannot see. It needs an implicit
+  `Schema[A]` (section 8a), and `read` answers `Typed.Decoded.Ok` or a
+  decode failure per record, never a thrown exception.
+- `Persist.stream(topic, partition, from)` reads to the end and
+  finishes. `Persist.tail(...)` keeps polling for new records until the
+  consumer stops, for example with `take`. Both are a `Source[Record]`
+  (section 7): okay-persist's own streams yield chunks, flattened here.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |

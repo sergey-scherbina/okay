@@ -762,3 +762,13 @@ metaprogramming.
   supervision-shapes flake is the reason not to leave a sleep there).
   Named `Guards` so that it cannot collide with `okay.resilience.Resilient`
   under two wildcard imports.
+- STAGE 15.2 (2026-09-23). okay-scala2-persist. The engine (stores,
+  topics, `Offsets`, `Snapshots`, `Typed`) is synchronous and readable,
+  and Scala 2 uses it directly. Two new reader facts came out of it: a
+  TRAIT's abstract-method defaults are invisible (`Store.topic("t")`
+  asks for every argument; class and object method defaults do carry
+  over), and so is an extension (`topic.of[A]`). `Persist` adds `topic`
+  with the defaults, `typed`, and `stream`/`tail` as a
+  `Source[Record]`, flattening the engine's chunked streams with
+  `Writer.expand`. 4 tests, including a FileStore reopen and a tail
+  that sees appends made after it started.

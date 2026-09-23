@@ -1,1 +1,0 @@
-- [ ] **scala2-persist** — okay-persist from Scala 2.13: the durable log (append, read, subscribe) over Eff/Source. Probe first, wrap only what 2.13 cannot use (specs/scala2-facade.md, stage 15, item 2). Operator: "Да бери делай всё что возможно чтобы работало в скале 2" (2026-09-23).

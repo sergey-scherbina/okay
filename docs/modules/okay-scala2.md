@@ -393,6 +393,8 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 
 **Resilience** (module `okay-scala2-resilience`) — `Guards.breaker[A](b: Breaker)(prog: Eff[Async, A], failing: Either[Throwable, A] => Boolean = _.isLeft)`, `Guards.bulkhead[A](b: Bulkhead)(prog)`, `Guards.limiter[A](l: Limiter, key: String = "")(prog)`, `Guards.hedge[A](afterMillis: Long, max: Int = 2)(prog)`, `Guards.deadline[A](d: Deadline)(prog)`, `Guards.retry[A](policy: LazyList[Long])(prog)`, each an `Eff[Async, A]`.
 
+**Persist** (module `okay-scala2-persist`) — `Persist.topic(store: Store, name, partitions: Int = 1): Topic`, `Persist.typed[A](topic, version: Int = 1)(implicit Schema[A]): Typed[A]`, `Persist.stream(topic, partition, from: Long, chunk: Int = 256): Source[Record]`, `Persist.tail(topic, partition, from, chunk = 256, pollMillis = 25L): Source[Record]`.
+
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
 `runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,
