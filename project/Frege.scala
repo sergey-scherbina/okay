@@ -38,6 +38,13 @@ object Frege {
    */
   def before(c: Configuration): Seq[Setting[_]] = in(c) ++ inConfig(c)(Seq(
     products ++= Seq(fregeCompile.value),
+    // `products` does not feed the jar: the classes are mapped in by
+    // name, or a published okay-frege ships the driver without the
+    // `Prog` it walks (measured: the first packageBin had no Prog*.class)
+    packageBin / mappings ++= {
+      val d = fregeCompile.value
+      (d ** "*.class").get.map(f => f -> IO.relativize(d, f).get)
+    },
   ))
 
   def in(c: Configuration): Seq[Setting[_]] = inConfig(c)(Seq(
