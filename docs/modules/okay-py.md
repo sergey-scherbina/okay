@@ -2,9 +2,8 @@
 
 Python as a handler (specs/py.md; the model is specs/r.md's,
 verbatim): call-shaped foreign compute. Calls are OPERATIONS —
-mockable by handler swap, supervised by dead-process-throws. (Not
-journalled by `Durable` yet: the `Journalled` seam exists, the
-`PyEval` instance is backlog `foreign-journalled`.) Named functions only: the enum has no
+journalled by `Durable`, mockable by handler swap, supervised by
+dead-process-throws. Named functions only: the enum has no
 eval-a-string case, structurally, so untrusted input reaches Python
 only as data.
 
@@ -20,3 +19,29 @@ Why not Python-on-the-JVM is answered once in the spec: Jython is
 dead for numerics, JEP/ScalaPy share fate with C-extension
 segfaults, GraalPy is watched — the subprocess boundary buys real
 CPython, every wheel, crash isolation, N-workers.
+
+## Journalled by Durable
+
+A Python call is an operation, and `PyEval` carries its own
+`Journalled` instance (in its companion, so no import): okay-agent's
+`Durable` records each call and answers it from the journal on replay,
+without starting Python.
+
+```scala
+val live = Durable.over[PyEval](canned(ran), j)()
+assertEquals(live.handle(PyEval.Call("statistics:median", xs)), Right(F64(2.0)))
+val replay = Durable.replayingOver[PyEval](j)
+assertEquals(replay.handle(PyEval.Call("statistics:median", xs)), Right(F64(2.0)))
+assertEquals(ran.get, 2, "replay touches no Python")
+```
+
+The journal's `op` is the function's address. The fingerprint is the
+address plus a SHA-256 of the encoded arguments, so a replay whose inputs
+changed is refused with `Durable.Drift` instead of being answered wrongly.
+The answer is written in the module's wire JSON, value or condition, so
+None, NaN, bytes and an integral float come back as they went in. A
+subprocess call has nowhere to carry an idempotency key, so do not
+declare it `OnRepeat.WithKey`. okay-py does not depend on okay-agent:
+the `Journalled` trait lives in okay-codec. The idea is the one Durable
+itself rests on, event sourcing of a computation's answers
+\[Fowler 2005, "Event Sourcing"\].

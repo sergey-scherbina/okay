@@ -22,7 +22,10 @@ as written — for R or for Python, where the same sentence had been
 copied. `Durable.tools` wraps a `Handler[Tool]`, and `Tool.Call`
 carries a `ToolCall` (a name and JSON arguments); there is no generic
 "journal any operation type". An `REval` handled by `RSubprocess` is
-therefore not journalled by anything today.
+therefore not journalled by anything today. (Made true on 2026-09-23
+by foreign-journalled: `REval` now carries its own `Journalled`
+instance — see the stage-0 behavior list and
+specs/foreign-highlevel.md.)
 
 What IS true is narrower and worth saying exactly: an R call reached
 THROUGH a tool — an agent whose `forecast` tool happens to call R
@@ -264,11 +267,13 @@ proves it.
       shim (the shim forwards the environment on purpose, or it would
       measure docker rather than us) — so it is proven only on a box
       with R on the PATH, and this audit's run was not one
-- [~] a journaled R step is skipped on Durable replay — NOT as
-      written: `Durable` journals `Tool`, not any operation type. An
-      R call reached through a tool is journalled because the TOOL is;
-      journaling `REval` itself is `durable-any-operation`. See the
-      correction in the overview.
+- [x] a journaled R step is skipped on Durable replay — true since
+      foreign-journalled (2026-09-23): `Journalled` moved to okay-codec
+      and `REval`'s companion carries its instance, so
+      `Durable.over[REval]` journals an R call and
+      `Durable.replayingOver[REval]` answers it without R (TestRJournal;
+      specs/foreign-highlevel.md stage 1). The 2026-09-07 correction in
+      the overview stays as the history of why it was once false.
 - [ ] (stage 1) the same test program passes over subprocess and
       Rserve engines unchanged (the two-driver acceptance move)
 

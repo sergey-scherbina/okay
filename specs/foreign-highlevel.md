@@ -41,24 +41,24 @@ Each stage is its own lane and appends its Decisions and Results here.
 
 ### Behavior
 
-- [ ] `okay.codec.Journalled` is the trait, unchanged in shape;
+- [x] `okay.codec.Journalled` is the trait, unchanged in shape;
       `okay.agent.Journalled` still names it (type and value), and
       `Durable.tools`, `TestDurableAnyOp` and every existing Durable test
       are green unchanged.
-- [ ] `Journalled[PyEval]`: the journal's `op` is the function's
+- [x] `Journalled[PyEval]`: the journal's `op` is the function's
       address; the fingerprint is the address plus a SHA-256 of the
       encoded arguments (and frame), so a replay whose inputs drifted is
       refused by the journal's existing drift check; the answer — value
       OR condition — is written as the module's own wire JSON and read
       back equal, None and NaN still distinct.
-- [ ] `Journalled[REval]` the same, with NA and NULL still distinct.
-- [ ] A durable program calling Python twice, run, then REPLAYED from its
+- [x] `Journalled[REval]` the same, with NA and NULL still distinct.
+- [x] A durable program calling Python twice, run, then REPLAYED from its
       journal with a handler that fails on any call: the replay answers
       both calls from the journal and calls nothing (no live Python
       needed — a mock handler counts the calls, the TestRMock precedent).
-- [ ] A frame round-trips through the journal (Frame operations), and a
+- [x] A frame round-trips through the journal (Frame operations), and a
       condition does (a failing call replays as the same condition).
-- [ ] `withKey` returns the operation unchanged — a subprocess call has
+- [x] `withKey` returns the operation unchanged — a subprocess call has
       nowhere to carry an idempotency key, so these operations must not be
       declared `OnRepeat.WithKey`; said in the instance's comment.
 
@@ -74,3 +74,13 @@ Each stage is its own lane and appends its Decisions and Results here.
   because the modules know each other") is made literally true.
 
 ## Results
+
+- Stage 1 (foreign-journalled, 2026-09-23). Eight tests with no live
+  interpreter (TestPyJournal 5, TestRJournal 3), green on the first run;
+  every existing okay-agent test is unchanged and green. The trait moved
+  with its whole doc comment; the only code that named its companion was
+  the `Tool` given, now in `Tool`'s companion. Mutant: a Python
+  fingerprint without the argument hash fails "drifted inputs are
+  refused". The instances' `perform` reconstructs the call inside its
+  own match, as the `Tool` instance does, so the answer's type is exact
+  and neither half of `(answer, written)` is a cast.

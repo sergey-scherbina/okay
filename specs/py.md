@@ -11,7 +11,9 @@ calls are OPERATIONS (`PyEval`, the `REval` twin — mockable by
 handler swap, supervised by dead-process-throws; the "journalable by
 `Durable`" half of that sentence was CORRECTED in specs/r.md on
 2026-09-07 and the correction applies here unchanged, since this
-spec inherits the model); named functions only, NO string eval,
+spec inherits the model — and it was made TRUE on 2026-09-23 by
+foreign-journalled, `PyEval` carrying its own `Journalled` instance,
+specs/foreign-highlevel.md stage 1); named functions only, NO string eval,
 structurally; neutral values and frames with `Schema` at the edge;
 `verify` at startup; a clean environment the parent leaks nothing
 into unless config names it. This spec records only what is

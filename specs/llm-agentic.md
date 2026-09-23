@@ -428,6 +428,11 @@ shipped, they have file and table implementations, and making them
 generic in the answer type would break every one of them to buy
 nothing the codec does not already buy.
 
+- [x] (2026-09-23, foreign-journalled) `Journalled` MOVED to okay-codec
+      as `okay.codec.Journalled`; `okay.agent.Journalled` is a type alias
+      and the `Tool` instance lives in `Tool`'s companion. okay-py and
+      okay-r now carry instances for `PyEval`/`REval` without depending
+      on okay-agent (specs/foreign-highlevel.md stage 1).
 - [x] (stage 1) LANDED 2026-09-09. `Journalled[Op]`, `Durable.over[Op]`
       and `Durable.replayingOver[Op]`; `tools` and `replaying` are now
       spellings of them at `Tool`, not a second implementation. The

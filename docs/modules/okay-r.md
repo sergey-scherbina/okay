@@ -127,6 +127,24 @@ a number. Collapsing any two of them silently changes what a
 statistical function computes, so `RValue` keeps them apart at the
 type level and the shim carries the distinction across the wire.
 
+## Journalled by Durable
+
+`REval` carries its own `Journalled` instance, as okay-py's `PyEval`
+does, so okay-agent's `Durable` journals an R call and answers it from
+the journal on replay without R:
+
+```scala
+val replay = Durable.replayingOver[REval](j)
+assertEquals(replay.handle(REval.Call("stats::median", xs)), Right(Vec(Vector(F64(2.0)))))
+assertEquals(ran.get, 2, "replay touches no R")
+```
+
+The answer is written in the module's wire JSON, so NULL, a typed NA
+and NaN come back distinct. The fingerprint is the function plus a
+SHA-256 of what it was asked, never the frame it answers, so a
+million-row answer does not make the fingerprint large, and drifted
+inputs are refused.
+
 ## What it is not
 
 Not R-on-the-JVM. The subprocess boundary buys the real interpreter,
@@ -145,8 +163,9 @@ this spec and specs/py.md used to say an R step is "journalable by
 `Durable`", and it is not. `Durable.tools` wraps a `Handler[Tool]` and
 `Tool.Call` carries a `ToolCall`; there is no generic
 journal-any-operation. An R call reached THROUGH a tool is journalled
-because the tool is — journaling an `REval` itself is filed as
-`durable-any-operation`.
+because the tool is — journaling an `REval` itself was filed as
+`durable-any-operation`. It is true now (foreign-journalled,
+2026-09-23): see "Journalled by Durable" below.
 
 ## Where the road goes
 
