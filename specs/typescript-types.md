@@ -197,6 +197,34 @@ Each stage is a lane; Results below record what each found.
       over the same client. The React part is typechecked only where
       `@types/react` is installed, and says so.
 
+## Stage T12 — a program's effects in its TypeScript type
+
+Until T12 a TypeScript program named its operations by strings: `perform("price",
+sku)` compiled whatever the name, and a missing handler was found at run time.
+okay's Scala side has always typed this (`A ! F`). T12 brings the row into
+TypeScript's types, the way TypeScript can hold one: a RECORD OF SIGNATURES.
+
+- [ ] `Ops` is `Record<string, (...args: any[]) => unknown>`, and
+      `Prog<T, O extends Ops = Ops>` carries the operations it may perform in
+      `name: keyof O & string`. The default `O` is the old, untyped program,
+      so existing code compiles unchanged. A program over fewer operations
+      fits a larger row, because the name union is covariant.
+- [ ] `effects<O>()` gives `perform`, `then`, `done` (and in the worker
+      library `call`) typed by `O`. tsc refuses an operation `O` does not
+      have, and arguments or an answer of the wrong type.
+- [ ] In `@okay/ts`, `effects<O>().run(program, handlers)` and `.durable`
+      take `Handlers<O>`, one handler per operation, sync or a Promise. tsc
+      refuses a run that leaves an operation unhandled.
+- [ ] `Stubs.typescriptOps(name, ops)` writes `O` from Scala: each
+      operation's argument and answer Schemas become its signature.
+      `Ts.callback`s carry their Schemas, so the Ops of a set of callbacks is
+      generated, not written. This holds in okay-py's Ts (the worker) and in
+      okay-ts (the browser).
+- [ ] (Live) The worker: a module typed by the generated Ops runs, and tsc
+      refuses a wrong operation name and a wrong argument type. The npm
+      package: a typed consumer runs, and tsc refuses an unknown operation
+      and a missing handler.
+
 ## Decisions
 
 - **The JSON codec's shape is the one shape**, not the wire's. It is what
