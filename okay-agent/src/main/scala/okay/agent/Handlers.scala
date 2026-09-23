@@ -93,6 +93,20 @@ object Handlers {
         case Tool.Call(c) => okay.pure[F, X](answer(c))
     }
 
+  /** `relayTools` for a table of PROGRAMS (`Toolbox.In[F]`): each call
+   * runs its tool in the row the program already carries. An unknown
+   * tool is still an answer; a tool's own failure is the row's
+   * business — a program cannot be `try`-caught from outside, and
+   * the tool that must answer its failure does so in its own row */
+  def relayToolsF[A, F[+_]](table: Map[String, ToolCall => String ! F])
+                           (prog: A ! (Tool + F)): A ! F =
+    okay.!.translate[A, Tool, F](prog) {
+      [X] => (e: Tool[X]) => e match
+        case Tool.Call(c) => table.get(c.name) match
+          case Some(f) => f(c).map(s => s: X)   // Tool.Call refines X >: String; Free is invariant
+          case None => okay.pure[F, X](s"error: no such tool '${c.name}'")
+    }
+
   // ---------------------------------------------------------------- model
 
   /** the local tokenizer: counting needs no provider, and no tokens

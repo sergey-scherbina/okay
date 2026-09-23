@@ -77,4 +77,11 @@ object Stepper {
   def transparent[A](s: Stepping[A] ! Rest)
                     (table: Map[String, ToolCall => String]): A ! Rest =
     drive(s)(c => pure(table.get(c.name).fold(s"no tool: ${c.name}")(_(c))))
+
+  /** the same over a table of PROGRAMS in the stepper's own row
+   * (`Toolbox.In[Rest]`, or a narrower box lifted with `.in`): every
+   * pause performs the real, effectful tool */
+  def transparentF[A](s: Stepping[A] ! Rest)
+                     (table: Map[String, ToolCall => String ! Rest]): A ! Rest =
+    drive(s)(c => table.get(c.name).fold(pure(s"no tool: ${c.name}"))(_(c)))
 }

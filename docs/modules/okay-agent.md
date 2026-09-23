@@ -109,6 +109,7 @@ Search.majority(Search.all(5)(complete)(ok))      // self-consistency
 | `Handlers.context/tools/gated/recording/scripted/observing/counter` | the policies | execute, approve, record, script, count |
 | `ToolSpec` / `.jsonSchema` / `.args` | derive a declaration, decode a call | one Schema for both |
 | `Toolbox.empty.on[A](name, desc)(run)` | declare and implement a tool at once | `specs` and `table` from one vector |
+| `Toolbox.In[F].on[A](name, desc)(run: A => String ! F)`, `box.in[F]` | a tool that is a PROGRAM, and a pure box lifted beside it | `Handlers.relayToolsF`, `Stepper.transparentF`, `Server.serveIn` take the table (stage 8) |
 | `Search.bestOf / validated / all / majority` | strategies over Choose + Logic | best-of-N, soft cut, self-consistency |
 
 ## Declaring tools: one place, not three

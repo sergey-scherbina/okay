@@ -20,6 +20,7 @@ because the two ends were already in the library's vocabulary:
 |---|---|
 | `Rpc` | JSON-RPC 2.0 as data, plus `Stage[String, Rpc, Unit]` framing. Decoding is total: a damaged line is a `Failed`, never a throw |
 | `Mcp` | the protocol vocabulary: methods, the handshake, `inputSchema` <-> `ToolSpec` |
+| `Server.serveIn[G]` / `Serving.callF` | the protocol once, in a row carrying the tools' effect; `serve` is its `Pure` instance, `run(link, serving)` its `Async` one with effectful tools answered (specs/optics-outside.md stage 8) |
 | `Client` / `Session` | a server as `tools`, `call`, and a `Handler[Tool]` (or `interpret`, where nothing may park) |
 | `Server` | `Serving` is everything a server has (tools, resources, prompts); `serve` is a PURE `Stage[Rpc, Rpc, Unit]` — the whole protocol is testable with no process, socket, clock or thread; `over` is the only part that touches a wire |
 | `Stdio` (JVM) | the transport: a spawned server's pipes, or this process's own stdin/stdout |

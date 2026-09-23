@@ -45,6 +45,10 @@ object Server {
   final case class Serving(info: Mcp.Info,
                            tools: Seq[ToolSpec] = Nil,
                            call: Map[String, ToolCall => String] = Map.empty,
+                           /** tools that are PROGRAMS in Async (`Toolbox.In[Async].table`):
+                            * answered by `run(link, serving)` through `serveIn`; a pure
+                            * `serve` cannot run them and does not see them */
+                           callF: Map[String, ToolCall => String ! Async] = Map.empty,
                            resources: Seq[Mcp.Resource] = Nil,
                            read: String => Option[String] = _ => None,
                            prompts: Seq[Mcp.Prompt] = Nil,
@@ -72,7 +76,8 @@ object Server {
      */
     def only(allowed: String => Boolean): Serving =
       copy(tools = tools.filter(t => allowed(t.name)),
-        call = call.filter((n, _) => allowed(n)))
+        call = call.filter((n, _) => allowed(n)),
+        callF = callF.filter((n, _) => allowed(n)))
 
   /** the tools-only server, which is what most are */
   def serve(info: Mcp.Info, tools: Seq[ToolSpec],
@@ -89,7 +94,27 @@ object Server {
    * hole.
    */
   def serve(s: Serving): Stage[Rpc, Rpc, Unit] =
+    serveIn[Pure](s)(c => pure(run(s.call, c)))
+
+  /** the row `serveIn` runs in: the protocol's two, and the tools' G */
+  type Row[G[+_]] = Take % Rpc + (Writer % Rpc + G)
+
+  /**
+   * THE PROTOCOL, GENERIC IN THE TOOLS' EFFECT (specs/optics-outside.md
+   * stage 8): one implementation of the stage, in a row that carries
+   * `G` beside `Take` and `Writer`, with `runTool` the only place `G`
+   * is performed — `serve` is this at `Pure`, which the union absorbs,
+   * and `run(link, serving)` is this at `Async` with `Serving.callF`
+   * answered. Written once so a tool that does I/O does not fork the
+   * protocol into two copies that drift.
+   */
+  def serveIn[G[+_]](s: Serving)(runTool: ToolCall => Json ! G): Unit ! Row[G] =
     val info = s.info
+    def tell(m: Rpc): Unit ! Row[G] = !.widen[Unit, Take % Rpc + Writer % Rpc, G](Stage.tell[Rpc, Rpc](m))
+    def answer(id: Json, result: Json): Unit ! Row[G] = tell(Rpc.Answer(id, result))
+    def fail(id: Json, code: Int, message: String): Unit ! Row[G] = tell(Rpc.Failed(id, code, message))
+    def await: Option[Rpc] ! Row[G] = !.widen[Option[Rpc], Take % Rpc + Writer % Rpc, G](Stage.await[Rpc, Rpc])
+    def tool(c: ToolCall): Json ! Row[G] = !.widen[Json, G, Take % Rpc + Writer % Rpc](runTool(c))
     // What a server DECLARES is exactly what it answers: a method of
     // a capability it does not have is `MethodNotFound`, not a polite
     // empty list. A client that read the handshake never asks; one
@@ -98,8 +123,7 @@ object Server {
     val hasResources = s.resources.nonEmpty || s.templates.nonEmpty
     val hasPrompts = s.prompts.nonEmpty
     val hasCompletions = s.complete.isDefined
-    val stage: Stage[Rpc, Rpc, Boolean] =
-      Stage.transduce(false)((ready, msg) => msg match {
+    def step(ready: Boolean, msg: Rpc): Boolean ! Row[G] = msg match {
         case Rpc.Request(id, Mcp.Initialize, _) =>
           answer(id, Mcp.initializeResult(info,
             tools = hasTools,
@@ -139,7 +163,7 @@ object Server {
         case Rpc.Request(id, Mcp.ToolsCall, params) =>
           Mcp.callOf(params, Json.print(id)) match
             case None => fail(id, Rpc.InvalidParams, "no tool name").map(_ => ready)
-            case Some(c) => answer(id, run(s.call, c)).map(_ => ready)
+            case Some(c) => tool(c).flatMap(j => answer(id, j)).map(_ => ready)
 
         case Rpc.Request(id, m, _)
           if (m == Mcp.ResourcesList || m == Mcp.ResourcesRead ||
@@ -211,14 +235,19 @@ object Server {
         // a damaged line arrives here as the Failed that decoding it
         // made, and JSON-RPC says the server owes exactly that error
         // back — so it is echoed, id and all (null, for a parse error)
-        case f: Rpc.Failed => Stage.tell[Rpc, Rpc](f).map(_ => ready)
+        case f: Rpc.Failed => tell(f).map(_ => ready)
 
         // an answer arriving at a server answers a request it never
         // made: nothing to do with it, and nothing to say about it
         case Rpc.Answer(_, _) => pure(ready)
-      }, pure)
+      }
 
-    stage.map(_ => ())
+    def go(ready: Boolean): Unit ! Row[G] = await.flatMap {
+      case Some(msg) => step(ready, msg).flatMap(go)
+      case None => pure(())
+    }
+
+    go(false)
 
   /**
    * Execute one call. An unknown tool and a throwing tool are both
@@ -234,12 +263,6 @@ object Server {
         try Mcp.contentResult(f(c))
         catch case e: Throwable =>
           Mcp.contentResult(Option(e.getMessage).getOrElse(e.toString), isError = true)
-
-  private def answer(id: Json, result: Json): Stage[Rpc, Rpc, Unit] =
-    Stage.tell[Rpc, Rpc](Rpc.Answer(id, result))
-
-  private def fail(id: Json, code: Int, message: String): Stage[Rpc, Rpc, Unit] =
-    Stage.tell[Rpc, Rpc](Rpc.Failed(id, code, message))
 
   /**
    * What a server says without being asked.
@@ -293,9 +316,23 @@ object Server {
           table: Map[String, ToolCall => String]): Unit ! Async =
     over(link)(serve(info, tools, table))
 
-  /** the whole server, from everything it has */
+  /** the whole server, from everything it has — including its
+   * effectful tools (`callF`), which run in the wire's own Async */
   def run(link: Link, serving: Serving): Unit ! Async =
-    over(link)(serve(serving))
+    overIn(link)(serveIn[Async](serving)(answering(serving)))
+
+  /** how `run` answers a call: a pure tool as before (`isError` on a
+   * throw), an effectful one as its program — whose own failure is
+   * its own row's business, since a program cannot be `try`-caught
+   * from outside and the server carries no Scheduler to `attempt` it */
+  def answering(serving: Serving): ToolCall => Json ! Async = c =>
+    serving.callF.get(c.name) match
+      case Some(f) if !serving.call.contains(c.name) => f(c).map(Mcp.contentResult(_))
+      case _ => pure(run(serving.call, c))
+
+  /** `over`, for a stage that already carries Async — `serveIn[Async]` */
+  def overIn(link: Link)(stage: Unit ! Row[Async]): Unit ! Async =
+    drain(link)(through[Rpc, Rpc, Async, Unit, Unit](framed(link))(stage))
 
   /** the pushing half alone, for a transport that owns its own
    * outbound channel (the HTTP route fans one out to many sessions) */

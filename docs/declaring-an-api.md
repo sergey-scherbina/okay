@@ -586,6 +586,13 @@ the table is built, because a builder method that silently did nothing
 would put the sentence on no operation at all. An operation nobody
 summarised carries no `summary` field and keeps its derived id.
 
-`Toolbox` handlers are pure `A => String`, because that is the seam
-`Mcp.Server`, `Handlers.tools` and `Stepper` already take; widening it
-is a separate decision with those three callers to carry.
+`Toolbox` handlers are pure `A => String` — the seam `Mcp.Server`,
+`Handlers.tools` and `Stepper` take, unchanged. A tool that must do
+I/O is a PROGRAM instead: `Toolbox.In[F].on[A](name, desc)(a => …:
+String ! F)`, the same declaration and decode, and a pure box lifts
+beside it with `box.in[F]`. The three callers each took the effectful
+seam without giving up the pure one — `Handlers.relayToolsF`,
+`Stepper.transparentF`, and `Server.serveIn[G]`, which is the MCP
+protocol written once in a row that carries the tools' effect, with
+`serve` its `Pure` instance and `Serving.callF` its `Async` tools
+(specs/optics-outside.md, stage 8).

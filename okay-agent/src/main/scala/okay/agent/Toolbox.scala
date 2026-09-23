@@ -1,5 +1,6 @@
 package okay.agent
 
+import okay.!
 import okay.codec.{Json, Schema}
 
 /**
@@ -101,6 +102,43 @@ object Toolbox {
 
   def raw(name: String, description: String, schema: Json)(run: Json => String): Toolbox =
     empty.raw(name, description, schema)(run)
+
+  /**
+   * A BOX WHOSE TOOLS ARE PROGRAMS (specs/optics-outside.md, stage 8):
+   * the same declaration, the same decode, and a handler that answers
+   * `String ! F` — a tool that must do I/O performs it in the row the
+   * caller runs, instead of closing over a runner of its own. A pure
+   * box lifts into any row with `box.in[F]`, so the two kinds mix in
+   * one `++`. The seams that take it: `Handlers.relayToolsF`,
+   * `Stepper.transparentF`, `Server.serveIn`/`Serving.callF` (okay-mcp).
+   */
+  final class In[F[+_]] private[agent] (val entries: Vector[In.Entry[F]]):
+    def on[A](name: String, description: String)(run: A => String ! F)(using s: Schema[A]): In[F] =
+      add(new In.Entry[F](ToolSpec[A](name, description), c =>
+        ToolSpec.args[A](c) match
+          case Right(a) => run(a)
+          case Left(e) => okay.pure(Toolbox.failed(name, e))))
+    def raw(name: String, description: String, schema: Json)(run: Json => String ! F): In[F] =
+      add(new In.Entry[F](ToolSpec(name, description, schema), c => run(c.args)))
+    def add(e: In.Entry[F]): In[F] = new In[F](entries :+ e)
+    def ++(that: In[F]): In[F] = new In[F](entries ++ that.entries)
+    def specs: Seq[ToolSpec] = entries.map(_.spec)
+    def names: Vector[String] = entries.map(_.name)
+    /** the effectful seam: one program per call */
+    def table: Map[String, ToolCall => String ! F] = entries.map(e => e.name -> (e.handle(_))).toMap
+    def call(c: ToolCall): Option[String ! F] = entries.find(_.name == c.name).map(_.handle(c))
+
+  object In:
+    def empty[F[+_]]: In[F] = new In[F](Vector.empty)
+    def on[A, F[+_]](name: String, description: String)(run: A => String ! F)(using Schema[A]): In[F] =
+      empty[F].on(name, description)(run)
+    final class Entry[F[+_]] private[agent] (val spec: ToolSpec, private[agent] val run: ToolCall => String ! F):
+      def name: String = spec.name
+      def handle(c: ToolCall): String ! F = run(c)
+
+  extension (b: Toolbox)
+    /** every pure tool as a program in F — `pure` of what it answered */
+    def in[F[+_]]: In[F] = new In[F](b.entries.map(e => new In.Entry[F](e.spec, c => okay.pure(e.handle(c)))))
 
   /**
    * One tool: its declaration and its answer, together.

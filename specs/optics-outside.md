@@ -1351,3 +1351,103 @@ it (the case wrapper is a level the key does not spell, as
 warnings. One expectation in the test was wrong and the law was
 right: an absent `Option` is written as `null`, so its key is present
 and `project` removes it — the assertion now says so.
+
+## Stage 8 — a tool is a program (optics-outside-tools-effectful, 2026-09-23)
+
+### The trigger, lifted
+
+Stage 2's Out of scope kept the handler seam pure — `A => String` —
+because that is what `Handlers.tools`, `Stepper` and `Mcp.Server`
+took, and widening it was "a separate decision with its own
+callers". The entry's trigger was the first tool that must do I/O its
+caller cannot do for it; none arrived (okay-persist is synchronous by
+design). The operator lifted the wait ("Все это нужно"). The decision
+that shaped the lane: the pure seam STAYS — every existing caller,
+test and demo is untouched — and an effectful seam is added beside it
+at each of the three callers, with one implementation of the MCP
+protocol serving both.
+
+### Interface
+
+okay-agent:
+
+```scala
+object Toolbox:
+  /** a box whose tools are PROGRAMS in F */
+  final class In[F[+_]]:
+    def on[A](name, description)(run: A => String ! F)(using Schema[A]): In[F]
+    def raw(name, description, schema)(run: Json => String ! F): In[F]
+    def ++(that: In[F]): In[F]; def specs; def names
+    def table: Map[String, ToolCall => String ! F]
+    def call(c: ToolCall): Option[String ! F]
+  object In: def empty[F[+_]]; def on[A, F[+_]](…)
+  extension (b: Toolbox) def in[F[+_]]: In[F]      // a pure box lifted: pure(what it answered)
+
+object Handlers:
+  def relayToolsF[A, F[+_]](table: Map[String, ToolCall => String ! F])(prog: A ! (Tool + F)): A ! F
+object Stepper:
+  def transparentF[A](s: Stepping[A] ! Rest)(table: Map[String, ToolCall => String ! Rest]): A ! Rest
+```
+
+okay-mcp `Server`:
+
+```scala
+final case class Serving(…, call: Map[String, ToolCall => String] = Map.empty,
+                         callF: Map[String, ToolCall => String ! Async] = Map.empty, …)
+type Row[G[+_]] = Take % Rpc + (Writer % Rpc + G)
+def serveIn[G[+_]](s: Serving)(runTool: ToolCall => Json ! G): Unit ! Row[G]   // THE protocol
+def serve(s: Serving): Stage[Rpc, Rpc, Unit] = serveIn[Pure](s)(c => pure(run(s.call, c)))
+def answering(serving: Serving): ToolCall => Json ! Async    // how run answers: pure first, then callF
+def overIn(link: Link)(stage: Unit ! Row[Async]): Unit ! Async
+def run(link: Link, serving: Serving): Unit ! Async = overIn(link)(serveIn[Async](serving)(answering(serving)))
+```
+
+### Behavior
+
+- [x] `Toolbox.In[W]`: a tool that tells performs in the caller's row
+      and answers; a pure box lifted with `.in[W]` answers what it
+      answered with nothing told; a bad argument is still an ANSWER
+      (`Toolbox.failed`'s data); an unknown name is `None`
+      (`TestToolbox`).
+- [x] `relayToolsF`: the agent's `Tool.Call`s run the programs, the
+      row one effect shorter; an unknown tool is an answer.
+- [x] `transparentF`: an `Async` tool performs in the stepper's row
+      exactly once, and the stepped run equals the direct one
+      (`TestStepper`).
+- [x] `serveIn[Async]`: an effectful tool answers a `tools/call` in the
+      wire's own row, performed once; a pure tool through the same
+      stage answers what `serve` answers — the protocol is one
+      implementation (`TestServer`); every earlier server test passes
+      unchanged, `serve` being `serveIn[Pure]`.
+
+### Design and decisions
+
+- **One protocol, generic in the tools' effect** — `serveIn[G]` is the
+  stage `serve` used to be, written in a row that carries `G`; the
+  transducer skeleton became a local `go` over a widened `await`, the
+  `Stage.tell`s widened by one helper. `serve` is the `Pure` instance
+  (the union absorbs `Nothing`), so the eleven pure server tests are
+  the guard that the generic stage is the old one. Rejected: a second
+  stage for effectful tools (the protocol forked into two copies that
+  drift — the fault this whole spec exists to remove).
+- **A tool's failure is its own row's business** — a program cannot be
+  `try`-caught from outside, and `Async.attempt` needs a `Scheduler`
+  the server does not carry; a pure tool keeps the `isError` answer
+  on a throw, an effectful one answers its failure in its own row
+  (`Throws`, or `attempt` where it has a Scheduler). Rejected: a
+  Scheduler parameter on `run` (every caller pays for the tools that
+  do not need it).
+- **`callF` beside `call`, not replacing it** — `Serving` is built by
+  five modules; a pure tool stays a pure tool. `answering` prefers the
+  pure table on a name both hold, so a lift by mistake cannot shadow.
+- **`.in[F]` on the pure box** — the two kinds meet in one `++`
+  without a third box type.
+
+### Results
+
+2026-09-23. `TestToolbox` +2, `TestStepper` +1, `TestServer` +1 (9
+in the suite), green through `scripts/gate.sh`, no warnings; the
+old private `answer`/`fail` helpers of the server went with the
+transducer they served. One test assumption corrected: a bad
+argument to an effectful tool answers `Toolbox.failed`'s JSON, not a
+string with an `error` prefix — the same DATA the pure box answers.

@@ -92,4 +92,31 @@ class TestServer extends munit.FunSuite {
     val out = talk(hello, damaged)
     assertEquals(out(1), damaged)   // the parse error goes back as the protocol owes it
   }
+
+  // ---- stage 8: a tool that is a program (specs/optics-outside.md)
+
+  test("serveIn[Async]: an effectful tool runs in the wire's row; serve at Pure is the same protocol") {
+    var performed = 0
+    val slow: Toolbox.In[Async] = Toolbox.In.on[Add, Async]("slow", "adds, later")(x =>
+      okay.async { performed += 1; (x.a + x.b).toString })
+    val serving = Server.Serving(info, box.specs ++ slow.specs, box.table, callF = slow.table)
+    val ask = Rpc.Request(Json.JNum(9), Mcp.ToolsCall, Mcp.callParams(
+      ToolCall("9", "slow", Json.JObj(Vector("a" -> Json.JNum(1), "b" -> Json.JNum(2))))))
+    val askPure = Rpc.Request(Json.JNum(10), Mcp.ToolsCall, Mcp.callParams(
+      ToolCall("10", "add", Json.JObj(Vector("a" -> Json.JNum(3), "b" -> Json.JNum(4))))))
+    val out: Seq[Rpc] = !.run(Async.run[Seq[Rpc], Nothing](
+      Writer.run[Rpc, Unit, Async](through[Rpc, Rpc, Async, Unit, Unit](
+        okay.Source.of(List(hello, ask, askPure)))(
+        Server.serveIn[Async](serving)(Server.answering(serving)))).map(_._1)))
+    assertEquals(performed, 1)
+    val Rpc.Answer(_, r1) = out(1): @unchecked
+    val Rpc.Answer(_, r2) = out(2): @unchecked
+    assertEquals(Rpc.field(r1, "content").isDefined, true)
+    assertEquals(Json.print(r1).contains("\"3\""), true)
+    assertEquals(Json.print(r2).contains("\"7\""), true)
+    // the pure protocol is unchanged: the same three through serve
+    val pureOut = talk(hello, askPure)
+    val Rpc.Answer(_, r3) = pureOut(1): @unchecked
+    assertEquals(r3, r2)
+  }
 }

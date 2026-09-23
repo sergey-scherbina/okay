@@ -94,6 +94,22 @@ class TestStepper extends munit.FunSuite {
     assertEquals(runRest(transparent(stepped(agent))(table))(model, freshCtx), direct)
   }
 
+  test("the transparent driver over PROGRAMS: an effectful tool performs in the stepper's row, and the run is the direct one") {
+    var performed = 0
+    val tableF = Map[String, ToolCall => String ! Rest]("search" -> (_ =>
+      !.widen[String, Async, Context + Model](okay.async { performed += 1; "found" })))
+    val table = Map[String, ToolCall => String]("search" -> (_ => "found"))
+    def model = Handlers.scripted(Seq(Reply("", Seq(search)), Reply("fin", Nil)))
+    val direct =
+      given Handler[Model] = model
+      given Handler[Tool] = Handlers.tools(table)
+      given Handler[Context] = freshCtx
+      given r: Handler[Agent] = Handler.flat[Agent]
+      agent.runWith
+    assertEquals(runRest(transparentF(stepped(agent))(tableF))(model, freshCtx), direct)
+    assertEquals(performed, 1)
+  }
+
   test("a stepping run is NOT replayable, and the row says why") {
     // the backlog asked for this rewrite partly to gain `Delim.replay`
     // for free. It does not: replaying a stepping session would ask
