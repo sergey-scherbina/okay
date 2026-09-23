@@ -502,6 +502,28 @@ version of this page quoted the starred numbers as "~1000x off"
 without the right-nested row beside them — that was the pathology
 measured, not the library.
 
+## 2b. countdown — Kammar-Lindley-Oury's own first lane
+
+`CountdownBenchmark`: N=100 000 handled state operations, tail-
+resumptive throughout — the effect-handlers-bench suite's (Kammar,
+Lindley & Oury, "Handlers in action", ICFP 2013; the descendant suite
+Koka/Effekt/OCaml 5's own papers report on) simplest, opening lane.
+specs/handlers-bench-suite.md has the rest of the suite named, and
+why only this one shape landed this pass — §3 below and `Generator`
+(§8) already occupy the suite's search and generator families under
+their own names.
+
+**SMOKE-TESTED ONLY**, marked as such rather than folded into this
+page's gated numbers: `-wi 1 -i 1 -f 1`, a moderately loaded box, no
+quiet-box protocol. okay 1575 µs/op, kyo 1781, zio 1302 (`Ref`, no
+first-class State effect), cats 3364 (`cats.data.State`); the hand
+loop reads at the JIT's noise floor — correctly, since a pure counting
+loop with no externally observable per-iteration effect is exactly
+what an optimizing JIT proves closed-form and folds, and every
+effectful lane cannot be. All four land within one order of magnitude
+of each other, matching the literature's own description of this
+shape as every runtime's cheapest.
+
 ## 3. Choice — 2^13 branches, all collected
 
 | List (floor) | **Okay** | kyo | atnos |
