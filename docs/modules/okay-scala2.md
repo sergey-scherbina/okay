@@ -82,7 +82,7 @@ Why two standard libraries, and why in that order (all three measured
 
 ## Writing it
 
-This code is copied from `okay-scala2/probe/src/test/scala/TestFromScala2.scala`,
+This code is copied from `scala2/okay-scala2/probe/src/test/scala/TestFromScala2.scala`,
 which the gate compiles with scalac 2.13.18 under `-Xlint -Werror`:
 
 ```scala
@@ -108,7 +108,7 @@ The types there have the same names as the Scala 3 types they wrap.
 Scala 2 cannot spell a union type, so the effect row is written as an
 intersection of capabilities. This is the same shape as the
 environment `R` in ZIO 1. The code below is copied from
-`okay-scala2/probe/src/test/scala/TestEffFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestEffFromScala2.scala`:
 
 ```scala
 val prog: Eff[State[Int] with Writer[String], Int] = for {
@@ -152,7 +152,7 @@ Control*, LFP 1990, doi:10.1145/91556.91622; answer-type modification
 and its typing: Asai, *On typing delimited continuations: three new
 solutions to the printf problem*, HOSC 2009,
 doi:10.1007/s10990-009-9049-5). The code below is copied from
-`okay-scala2/probe/src/test/scala/TestContFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestContFromScala2.scala`:
 
 ```scala
 val c: Cont[Int, Int, Int] = for {
@@ -175,7 +175,7 @@ build cannot run that derivation, but a handler only needs to test
 whether a value is one of the effect's operations, and a `ClassTag`
 answers that. So the whole declaration is ordinary Scala 2. The code
 below is copied from
-`okay-scala2/probe/src/test/scala/TestOwnEffectFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestOwnEffectFromScala2.scala`:
 
 ```scala
 sealed trait Console[A] extends Op[A]
@@ -226,7 +226,7 @@ perform `Async` between them. In Scala 2 terms that is
 `Eff[Writer[A] with Async, Unit]`. So there are two ways to get a
 `Source`: build it from the constructors, or write it as an ordinary
 for-comprehension and wrap it with `Source.fromEff`. The code below is
-copied from `okay-scala2/probe/src/test/scala/TestSourceFromScala2.scala`:
+copied from `scala2/okay-scala2/probe/src/test/scala/TestSourceFromScala2.scala`:
 
 ```scala
 val nats = Source.unfold(0)(n => Some((n, n + 1)))
@@ -258,7 +258,7 @@ operation (`runCollect`, `runForeach`, `runFold`) is an
 on the JVM. Anything that waits (`join`, `send` on a full channel,
 `receive` on an empty one, `sleep`) is an `Eff[Async, _]`, so it
 composes like the rest. The code below is copied from
-`okay-scala2/probe/src/test/scala/TestFibersChannelsFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestFibersChannelsFromScala2.scala`:
 
 ```scala
 val ch = Channel[Int](4)

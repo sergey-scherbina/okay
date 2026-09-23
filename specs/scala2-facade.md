@@ -853,3 +853,14 @@ metaprogramming.
   endpoints are `/healthz` and `/readyz` (the facade's comment first said
   `/health`), and okay-pg's SQL takes `$1`-numbered placeholders, not
   JDBC's `?` (by design: the SQL string is the dialect's).
+- LAYOUT (2026-09-23, scala2-dir). Operator: "я предлагаю перенести все
+  scala2 модули в подкаталог scala2". Every `okay-scala2*` module and the
+  2.13 probe now live under `scala2/`; artifact and project names are
+  unchanged, so a user's build is too. Paths written above this line are
+  where things were when they were written. One check depended on the old
+  layout without saying so: TestDocsIndex found module roots with
+  `file("okay-x")` and treats a path with a slash as a sub-project, so
+  after the move the seventeen facade modules would have silently left
+  "every module the build declares has a page". It now knows `scala2/`
+  as a grouping directory, and a control run (one facade page removed)
+  failed naming that module.

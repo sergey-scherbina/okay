@@ -7,7 +7,7 @@ them codecs, HTTP, SQL, agents and UI. It all
 lives in one package, `okay.scala2`, from the module `okay-scala2`.
 
 Every snippet below was copied from
-`okay-scala2/probe/src/test/scala/TestScala2Guide.scala`. That file is
+`scala2/okay-scala2/probe/src/test/scala/TestScala2Guide.scala`. That file is
 a Scala 2.13 suite, compiled by scalac 2.13.18 under
 `-Xlint -Werror` in this repository's ordinary gate. So the examples
 compile and pass as written, in the Scala 2 dialect.
@@ -301,7 +301,7 @@ What the handler does with `k` is its choice:
 - **several times**: several answers. A handler for a `Flip`
   operation that calls `k(true)` and `k(false)` and concatenates the
   results enumerates every outcome
-  (`okay-scala2/probe/src/test/scala/TestOwnEffectFromScala2.scala`).
+  (`scala2/okay-scala2/probe/src/test/scala/TestOwnEffectFromScala2.scala`).
 
 **`handle` or `run`?** `KV.handle(prog)(ret)(h)` removes `Effect[KV]`
 and leaves the rest of the row, so use it when other effects remain.
@@ -416,7 +416,7 @@ and the rest, which Scala 2's implicit search finds), `okay.codec.Cbor`,
   Schema as text.
 
 The model below is copied from
-`okay-scala2/probe/src/test/scala/TestCodecFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestCodecFromScala2.scala`:
 
 ```scala
 final case class Person(name: String, age: Int, email: Option[String], tags: List[String])
@@ -487,7 +487,7 @@ in its place:
   which is now public as `okay.http.Urls`.
 
 The routes below are copied from
-`okay-scala2/probe/src/test/scala/TestHttpFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestHttpFromScala2.scala`:
 
 ```scala
 final case class User(id: Int, name: String)
@@ -553,7 +553,7 @@ answers a program. `okay.scala2.Db` provides those operations as `Eff`
 and `Source`.
 
 The example below is copied from
-`okay-scala2/probe/src/test/scala/TestSqlFromScala2.scala`, where it
+`scala2/okay-scala2/probe/src/test/scala/TestSqlFromScala2.scala`, where it
 runs against an in-memory H2:
 
 ```scala
@@ -622,7 +622,7 @@ provides four things:
   one `say` to the next.
 
 The code below is copied from
-`okay-scala2/probe/src/test/scala/TestAgentFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestAgentFromScala2.scala`:
 
 ```scala
 final case class SearchArgs(query: String, limit: Option[Int])
@@ -678,7 +678,7 @@ answer programs. `UiApp` provides the loop as an `Eff`, and `UiHost`
 the hosts.
 
 The counter below is copied from
-`okay-scala2/probe/src/test/scala/TestUiFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestUiFromScala2.scala`:
 
 ```scala
 // a counter: two buttons, a label
@@ -726,7 +726,7 @@ it, and folds the user's edits into the value. All of its functions
 speak `okay.codec.Json`, which Scala 2 cannot read. So
 `okay.scala2.FormState[A]` (module `okay-scala2-ui`) holds that value
 itself and speaks only in `A`, `Ui` and `Event`. The code below is
-copied from `okay-scala2/probe/src/test/scala/TestFormFromScala2.scala`:
+copied from `scala2/okay-scala2/probe/src/test/scala/TestFormFromScala2.scala`:
 
 ```scala
 final case class Signup(name: String, age: Int, newsletter: Boolean)
@@ -770,7 +770,7 @@ and matching on it works. A socket's operations and a server session
 directly. So the client here is a set of `Eff` operations and a
 `Source`, and a server session is written as a fold, the way Scala 2
 writes a state machine. The session below is copied from
-`okay-scala2/probe/src/test/scala/TestWsFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestWsFromScala2.scala`:
 
 ```scala
 // each text frame answered with how many have arrived so far
@@ -823,7 +823,7 @@ assertEquals(got, (Vector("1: x", "2: y"), "ok"))
 `Choose` is one more capability of `Eff`: a program that performs
 `Choose.from(...)` has several answers, and a handler decides what they
 mean. It is okay's own `Choose` and `Logic` underneath. The code below is
-copied from `okay-scala2/probe/src/test/scala/TestChooseFromScala2.scala`:
+copied from `scala2/okay-scala2/probe/src/test/scala/TestChooseFromScala2.scala`:
 
 ```scala
 val triples = for {
@@ -868,7 +868,7 @@ assert(got.contains(100) && got.contains(200), got.toString)
 `Dialog` (module `okay-scala2-ui`) is okay-ui's scenario effect, as a
 capability of `Eff`. `Dialog.show(ui)` draws a screen and answers the
 next event, so a whole scenario is one program. The code below is
-copied from `okay-scala2/probe/src/test/scala/TestDialogNavFromScala2.scala`:
+copied from `scala2/okay-scala2/probe/src/test/scala/TestDialogNavFromScala2.scala`:
 
 ```scala
 // a scenario as one program: two questions, then an answer
@@ -911,7 +911,7 @@ their own constructors from Scala 2 (`new Breaker(name, failures,
 openMillis)`, `new Bulkhead(name, permits, queue)`, `new Limiter(name,
 ratePerSecond, burst)`, `Deadline.in(millis)`), and a refusal is its own
 `Refused.*`. `Guards` runs a program through a piece. The code below is
-copied from `okay-scala2/probe/src/test/scala/TestResilienceFromScala2.scala`:
+copied from `scala2/okay-scala2/probe/src/test/scala/TestResilienceFromScala2.scala`:
 
 ```scala
 val b = new Breaker("pay", 2, 60000L)
@@ -952,7 +952,7 @@ plain, so a Scala 2 caller uses it directly: `new MemoryStore`,
 `FileStore.open(dir)`, `topic.append(key, value, Ack.Durable)`,
 `topic.read(partition, from, max)`, `Offsets`, `Snapshots`. `Persist`
 supplies the three things that do not carry over. The code below is
-copied from `okay-scala2/probe/src/test/scala/TestPersistFromScala2.scala`:
+copied from `scala2/okay-scala2/probe/src/test/scala/TestPersistFromScala2.scala`:
 
 ```scala
 val store = new MemoryStore
@@ -998,7 +998,7 @@ Module `okay-scala2-stm`. The cell is okay's own `TRef`: `Stm.ref(init)`
 (the same as `TRef(init)`), `ref.get`, `ref.modify(f)`. `Tx` is the
 transaction language as a capability of `Eff`, and `Stm.atomically`
 runs a transaction as one atomic step of an `Eff[Async, A]`. The code
-below is copied from `okay-scala2/probe/src/test/scala/TestStmFromScala2.scala`:
+below is copied from `scala2/okay-scala2/probe/src/test/scala/TestStmFromScala2.scala`:
 
 ```scala
 def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Eff[Tx, Unit] = for {
@@ -1053,7 +1053,7 @@ own constructors, and its plain values (`Regime`, `Etag`, `Meta`,
 `Cond`, `PutResult`, the `Stats`) are used directly. The operations
 are programs, and three objects provide them: `Caches`, `Blobs`,
 `Documents`. The code below is copied from
-`okay-scala2/probe/src/test/scala/TestStoresFromScala2.scala`.
+`scala2/okay-scala2/probe/src/test/scala/TestStoresFromScala2.scala`.
 
 A cache (okay-cache). `getOrLoad` is the read to use: on a miss ONE load
 per key runs, and a caller that asks meanwhile waits for it rather than
@@ -1132,7 +1132,7 @@ val prog = for {
 
 Three modules, one per library: `okay-scala2-llm`, `okay-scala2-rag`,
 `okay-scala2-mcp`. The code below is copied from
-`okay-scala2/probe/src/test/scala/TestLlmFromScala2.scala`,
+`scala2/okay-scala2/probe/src/test/scala/TestLlmFromScala2.scala`,
 `TestRagFromScala2.scala` and `TestMcpFromScala2.scala`.
 
 **A completion as a token stream.** Section 8d holds a model for a
@@ -1226,7 +1226,7 @@ composition, and `get`, `set`, `modify`, `preview`, `toVector` are
 okay's operations. The shells are monomorphic: a `set` does not change
 the type. Scala 2 has no macros here, so a lens is written by hand from
 a getter and a copy. The code below is copied from
-`okay-scala2/probe/src/test/scala/TestOpticsFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestOpticsFromScala2.scala`:
 
 ```scala
 val address = Lens[Person, Address](_.address, (p, a) => p.copy(address = a))
@@ -1288,7 +1288,7 @@ type of the questions it asks the outside world, and `A` the type of the
 answers. `Workflow[Q, A]` holds the operations. Every operation's answer
 is journalled, the clock and ids included, so a replay reads them back.
 The code below is copied from
-`okay-scala2/probe/src/test/scala/TestWorkflowFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestWorkflowFromScala2.scala`:
 
 ```scala
 val wf = Workflow[String, String]
@@ -1381,7 +1381,7 @@ builders are plain, and Scala 2 uses them directly: `ActorRef`,
 operation that answers a program. Those are the objects `Actors`,
 `Outboxes`, `Logs`, `Tracing`, `Operations`, `Kafkas` and `Postgres`,
 each named apart from the library's own. The code below is copied from
-`okay-scala2/probe/src/test/scala/TestServicesFromScala2.scala`.
+`scala2/okay-scala2/probe/src/test/scala/TestServicesFromScala2.scala`.
 
 **Actors** (okay-actor). An actor is a state and what a message does to
 it. `ask` sends a message carrying a `Reply` box and waits a bounded time

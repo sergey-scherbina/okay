@@ -854,7 +854,7 @@ lazy val okayFrege = (project in file("okay-frege"))
  * Scala 3 whose public signatures a Scala 2 compiler can read through
  * `-Ytasty-reader` — no inline, no union row, no opaque type.
  */
-lazy val okayScala2 = (project in file("okay-scala2"))
+lazy val okayScala2 = (project in file("scala2/okay-scala2"))
   .dependsOn(okay.jvm, okayAsync.jvm, okayPlatform.jvm, okayStream.jvm)
   .settings(
     name := "okay-scala2",
@@ -867,7 +867,7 @@ lazy val okayScala2 = (project in file("okay-scala2"))
  * value type — rebuilt in the same package as okay-scala2. A separate
  * module, so a 2.13 build pulls the codec only if it uses it.
  */
-lazy val okayScala2Codec = (project in file("okay-scala2-codec"))
+lazy val okayScala2Codec = (project in file("scala2/okay-scala2-codec"))
   .dependsOn(okayCodec.jvm)
   .settings(
     name := "okay-scala2-codec",
@@ -878,7 +878,7 @@ lazy val okayScala2Codec = (project in file("okay-scala2-codec"))
  * `Response`, routing as Scala 2 extractors, a server and a client.
  * `Request`, `Method` and `Body` are okay-http's own, used directly.
  */
-lazy val okayScala2Http = (project in file("okay-scala2-http"))
+lazy val okayScala2Http = (project in file("scala2/okay-scala2-http"))
   .dependsOn(okayScala2, okayScala2Codec, okayHttp.jvm)
   .settings(
     name := "okay-scala2-http",
@@ -889,7 +889,7 @@ lazy val okayScala2Http = (project in file("okay-scala2-http"))
  * operations as `Eff` and `Source`; okay-sql's data types are used
  * directly. JVM, with okay-jdbc for `Db.jdbc`.
  */
-lazy val okayScala2Sql = (project in file("okay-scala2-sql"))
+lazy val okayScala2Sql = (project in file("scala2/okay-scala2-sql"))
   .dependsOn(okayScala2, okayScala2Codec, okaySql.jvm, okayJdbc)
   .settings(
     name := "okay-scala2-sql",
@@ -900,7 +900,7 @@ lazy val okayScala2Sql = (project in file("okay-scala2-sql"))
  * `Chat` over okay-agent's loop, `Model` (scripted or a provider),
  * `Tools`, `Policy`. okay-agent's `Turn` and `Reply` are used directly.
  */
-lazy val okayScala2Agent = (project in file("okay-scala2-agent"))
+lazy val okayScala2Agent = (project in file("scala2/okay-scala2-agent"))
   .dependsOn(okayScala2, okayScala2Codec, okayAgent.jvm, okayLlm.jvm)
   .settings(
     name := "okay-scala2-agent",
@@ -911,7 +911,7 @@ lazy val okayScala2Agent = (project in file("okay-scala2-agent"))
  * an `Eff` (`UiApp`), hosts (`UiHost`, `ScriptedHost`). okay-ui's `Ui`,
  * `Event` and `Frame` are used directly.
  */
-lazy val okayScala2Ui = (project in file("okay-scala2-ui"))
+lazy val okayScala2Ui = (project in file("scala2/okay-scala2-ui"))
   .dependsOn(okayScala2, okayUi.jvm)
   .settings(
     name := "okay-scala2-ui",
@@ -923,7 +923,7 @@ lazy val okayScala2Ui = (project in file("okay-scala2-ui"))
  * sessions as folds. Its own module, so okay-scala2-http does not pull
  * Jetty.
  */
-lazy val okayScala2Ws = (project in file("okay-scala2-ws"))
+lazy val okayScala2Ws = (project in file("scala2/okay-scala2-ws"))
   .dependsOn(okayScala2Http, okayJetty)
   .settings(
     name := "okay-scala2-ws",
@@ -934,7 +934,7 @@ lazy val okayScala2Ws = (project in file("okay-scala2-ws"))
  * `Guards`, the pieces' program transformations over `Eff`. The pieces
  * themselves are okay-resilience's own, used directly.
  */
-lazy val okayScala2Resilience = (project in file("okay-scala2-resilience"))
+lazy val okayScala2Resilience = (project in file("scala2/okay-scala2-resilience"))
   .dependsOn(okayScala2, okayResilience.jvm)
   .settings(
     name := "okay-scala2-resilience",
@@ -945,7 +945,7 @@ lazy val okayScala2Resilience = (project in file("okay-scala2-resilience"))
  * `Persist`, the defaults a Scala 2 caller cannot see and the streaming
  * reads. The engine API is okay-persist's own, used directly.
  */
-lazy val okayScala2Persist = (project in file("okay-scala2-persist"))
+lazy val okayScala2Persist = (project in file("scala2/okay-scala2-persist"))
   .dependsOn(okayScala2, okayPersist.jvm)
   .settings(
     name := "okay-scala2-persist",
@@ -956,7 +956,7 @@ lazy val okayScala2Persist = (project in file("okay-scala2-persist"))
  * the transaction language as a capability, and `Stm.atomically`.
  * `TRef` is okay's own, used directly.
  */
-lazy val okayScala2Stm = (project in file("okay-scala2-stm"))
+lazy val okayScala2Stm = (project in file("scala2/okay-scala2-stm"))
   .dependsOn(okayScala2, okayStm.jvm)
   .settings(
     name := "okay-scala2-stm",
@@ -968,7 +968,7 @@ lazy val okayScala2Stm = (project in file("okay-scala2-stm"))
  * the stores' operations over Eff and Source. The stores themselves are
  * built with their own constructors.
  */
-lazy val okayScala2Stores = (project in file("okay-scala2-stores"))
+lazy val okayScala2Stores = (project in file("scala2/okay-scala2-stores"))
   .dependsOn(okayScala2, okayCache.jvm, okayBlob.jvm, okayDocs.jvm)
   .settings(
     name := "okay-scala2-stores",
@@ -981,19 +981,19 @@ lazy val okayScala2Stores = (project in file("okay-scala2-stores"))
  * retrieval with the embedder as a plain function), `McpClient` and
  * `McpServer` (JSON as text, tools from okay-scala2-agent's `Tools`).
  */
-lazy val okayScala2Llm = (project in file("okay-scala2-llm"))
+lazy val okayScala2Llm = (project in file("scala2/okay-scala2-llm"))
   .dependsOn(okayScala2, okayLlm.jvm)
   .settings(
     name := "okay-scala2-llm",
   )
 
-lazy val okayScala2Rag = (project in file("okay-scala2-rag"))
+lazy val okayScala2Rag = (project in file("scala2/okay-scala2-rag"))
   .dependsOn(okayScala2, okayRag.jvm)
   .settings(
     name := "okay-scala2-rag",
   )
 
-lazy val okayScala2Mcp = (project in file("okay-scala2-mcp"))
+lazy val okayScala2Mcp = (project in file("scala2/okay-scala2-mcp"))
   .dependsOn(okayScala2, okayScala2Agent, okayMcp.jvm)
   .settings(
     name := "okay-scala2-mcp",
@@ -1004,7 +1004,7 @@ lazy val okayScala2Mcp = (project in file("okay-scala2-mcp"))
  * `Iso`, `Lens`, `Prism`, `Affine`, `Traversal` as Scala 2 classes,
  * each a shell over okay's own optic and its operations.
  */
-lazy val okayScala2Optics = (project in file("okay-scala2-optics"))
+lazy val okayScala2Optics = (project in file("scala2/okay-scala2-optics"))
   .dependsOn(okayScala2, okayOptics.jvm)
   .settings(
     name := "okay-scala2-optics",
@@ -1015,7 +1015,7 @@ lazy val okayScala2Optics = (project in file("okay-scala2-optics"))
  * `Workflow[Q, A]`, a durable program's doors as an Eff capability,
  * and `Workflows`, okay's own drivers over a journal.
  */
-lazy val okayScala2Workflow = (project in file("okay-scala2-workflow"))
+lazy val okayScala2Workflow = (project in file("scala2/okay-scala2-workflow"))
   .dependsOn(okayScala2, okayWorkflow.jvm)
   .settings(
     name := "okay-scala2-workflow",
@@ -1027,7 +1027,7 @@ lazy val okayScala2Workflow = (project in file("okay-scala2-workflow"))
  * `Logs`, `Tracing`, `Operations`, `Kafkas`, `Postgres` — the operations
  * that answer programs; the builders are the libraries' own.
  */
-lazy val okayScala2Services = (project in file("okay-scala2-services"))
+lazy val okayScala2Services = (project in file("scala2/okay-scala2-services"))
   .dependsOn(okayScala2, okayScala2Sql, okayScala2Http, okayActor.jvm, okayOutbox.jvm, okayObs.jvm,
     okayOps.jvm, okayKafka, okayPg.jvm)
   .settings(
@@ -1069,7 +1069,7 @@ lazy val Scala3Stdlib = config("scala3Stdlib").hide
  * `-Werror` because the gate's warning check reads Scala 3's
  * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
  */
-lazy val okayScala2Probe = (project in file("okay-scala2/probe"))
+lazy val okayScala2Probe = (project in file("scala2/okay-scala2/probe"))
   .dependsOn(okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services)
   .settings(
     name := "okay-scala2-probe",

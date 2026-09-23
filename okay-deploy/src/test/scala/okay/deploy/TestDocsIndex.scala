@@ -40,9 +40,12 @@ class TestDocsIndex extends munit.FunSuite:
   /** every module root the build declares — `file("okay-x")`, both
    * the `project in file(...)` and the crossProject `.in(file(...))`
    * forms. A path with a slash (okay-demo/web) is a sub-project of a
-   * module that has its own page, not a module root */
+   * module that has its own page, not a module root — except a
+   * GROUPING directory, which holds module roots without being one:
+   * `scala2/` (scala2-dir, 2026-09-23). Without it here, the seventeen
+   * Scala 2 facade modules would have left this check silently. */
   private lazy val modules: Set[String] =
-    "file\\(\"(okay-[a-z0-9-]+)\"\\)".r.findAllMatchIn(read("build.sbt"))
+    "file\\(\"(?:scala2/)?(okay-[a-z0-9-]+)\"\\)".r.findAllMatchIn(read("build.sbt"))
       .map(_.group(1)).toSet
 
   test("every module page is linked from the docs/README.md index") {
