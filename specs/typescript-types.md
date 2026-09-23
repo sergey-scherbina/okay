@@ -100,6 +100,30 @@ Each stage is a lane; Results below record what each found.
       declaration and refuses a wrong field. The declaration is generated
       by the same code that encodes the values, so the two cannot drift.
 
+## Stage T7 — a TypeScript module as a Scala facade (S3)
+
+- [ ] `TsFacade.declarations(dir, module)` runs
+      `tsc --declaration --emitDeclarationOnly` on the module. The
+      compiler, not a guess, answers each function's types, including a
+      return type the source did not write.
+- [ ] `TsTypes.parseModule` reads those declarations: the data subset
+      T3 reads, plus `export declare function f(a: T, b?: U): R;`. The
+      names a `import type { … }` brings in are known types (they
+      typically came from Scala through `Stubs.typescript`).
+- [ ] `TsFacade.render(obj, pkg, module, dts, imports)` is Scala source.
+      It holds the module's own data types (T3's output) and an object
+      with one method per function, each calling it through `Ts.fn`
+      in the JSON shape:
+      - a `Promise<T>` answers `T`, since the worker awaits it;
+      - `unknown`/`any`/`void` are TYPE PARAMETERS (`Out: Schema`,
+        `A: ToPy`), as in PyFacade;
+      - an optional parameter is left out and named in the comment;
+      - a function the facade cannot type is a comment saying why,
+        never a guess.
+- [ ] Live: the facade of a real module is checked in, and a test
+      asserts the generator writes it unchanged; its methods call the
+      TypeScript worker and answer typed values.
+
 ## Decisions
 
 - **The JSON codec's shape is the one shape**, not the wire's. It is what
