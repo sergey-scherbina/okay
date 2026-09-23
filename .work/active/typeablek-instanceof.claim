@@ -1,6 +1,0 @@
-feature/typeablek-instanceof 2026-09-22T22:08:40Z
-agent: claude-code
-heartbeat: 2026-09-22T22:08:40Z
-status: in-progress
-done-so-far: promoted from backlog (staging survey rank 2)
-next: derivedImpl emits a class with a constant-class isInstanceOf test; laws; before/after alternating rounds on fusedSWr (bytes must not move), nestedSWr, relayForward, inline4; record; land or refute
