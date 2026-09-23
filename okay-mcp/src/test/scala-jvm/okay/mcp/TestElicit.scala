@@ -28,7 +28,7 @@ class TestElicit extends munit.FunSuite {
             Mcp.ElicitationCreate, Duplex.elicitParams("which file?", schema))))
       case Rpc.Answer(Json.JStr("e1"), result) =>
         pure(answers.offer(Duplex.answerOf(result)): Unit)
-      case Rpc.Failed(Json.JStr("e1"), _, _) =>
+      case Rpc.Failed(Json.JStr("e1"), _, _, _) =>
         pure(answers.offer(Duplex.Answer.Cancel): Unit)
       case _ => pure(())
     }, pure)

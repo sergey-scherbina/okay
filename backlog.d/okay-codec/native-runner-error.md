@@ -130,3 +130,12 @@
       0 failed) — a lane that touched only okay-ui-gtk's test settings and
       the integrationTest alias, no okay-crdt source. Recorded per the
       ledger; nothing changes the settled cause.
+      2026-09-23, okayAsyncNative, x402-exact-local's full matrix: the
+      native test process exited 137 ("Test runner interrupted by fatal
+      signal 9") and ComRunner's accept timed out — on a module whose
+      Native side has NO tests (okay-async's src/test/scala is JVM-only);
+      load ~80. gate.sh did NOT classify it as a lost process (it printed
+      "a failure this script does not recognise"), so this shape — signal 9
+      plus accept timeout, no `Failed 0, Errors 1` line — is a gap in the
+      classifier worth closing. Green alone the same minute.
+

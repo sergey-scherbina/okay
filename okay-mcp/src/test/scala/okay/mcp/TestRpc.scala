@@ -37,7 +37,7 @@ class TestRpc extends munit.FunSuite {
     for bad <- Seq("", "{", "not json at all", "[1,2,3]", s"{${q}jsonrpc$q:${q}2.0$q}",
                    s"{${q}id$q:1}", " ") do
       Rpc.decode(bad) match
-        case Rpc.Failed(_, code, _) =>
+        case Rpc.Failed(_, code, _, _) =>
           assert(code == Rpc.ParseError || code == Rpc.InvalidRequest, s"$bad -> $code")
         case other => fail(s"'$bad' decoded to $other")
   }
@@ -56,7 +56,7 @@ class TestRpc extends munit.FunSuite {
   }
 
   test("a parse error answers with id null, which is what JSON-RPC owes") {
-    val Rpc.Failed(id, code, _) = Rpc.decode("{oops"): @unchecked
+    val Rpc.Failed(id, code, _, _) = Rpc.decode("{oops"): @unchecked
     assertEquals(id, Json.JNull)
     assertEquals(code, Rpc.ParseError)
   }

@@ -585,3 +585,16 @@ at its uri), and a server's prompt comes back as `Seq[Turn]`.
 `RepoMcp` now serves all three capabilities: the agent's two tools,
 every indexed file as a resource, and an `explain` prompt that finds a
 definition and opens a conversation about it.
+
+## Error data (2026-09-23, mcp-error-data)
+
+JSON-RPC 2.0's error object has an optional `data` member (§5.1) and
+`Rpc.Failed` had no place for it — found building x402's MCP transport
+(specs/x402.md stage 3), which puts a `PaymentRequired` in `error.data`
+under code 402. `Failed(id, code, message, data = None)`: decoded when
+present, encoded only when set (an absent optional is absent). The
+client's `Session.request` folded every refusal into a `JErr("code
+message")` string and so dropped it too; `Session.requestRpc` answers an
+`Outcome` — `Answered`, `Refused(failed)` whole, `Ended` — and `request`
+is that, folded exactly as before (every existing test unchanged).
+

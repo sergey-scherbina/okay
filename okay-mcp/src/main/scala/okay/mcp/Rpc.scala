@@ -28,8 +28,10 @@ enum Rpc:
   /** the answer to a request */
   case Answer(id: Json, result: Json)
 
-  /** the failure of a request — or of the line that should have been one */
-  case Failed(id: Json, code: Int, message: String)
+  /** the failure of a request — or of the line that should have been one.
+   * `data` is JSON-RPC 2.0's optional structured detail (§5.1): x402 over
+   * MCP carries its `PaymentRequired` there, under code 402 */
+  case Failed(id: Json, code: Int, message: String, data: Option[Json] = None)
 
 object Rpc {
 
@@ -67,7 +69,8 @@ object Rpc {
         case (None, id, _, Some(e)) =>
           Failed(id.getOrElse(Json.JNull),
             field(e, "code").collect { case Json.JNum(n) => n.toInt }.getOrElse(InternalError),
-            field(e, "message").collect { case Json.JStr(s) => s }.getOrElse(""))
+            field(e, "message").collect { case Json.JStr(s) => s }.getOrElse(""),
+            field(e, "data"))
         case _ => Failed(field(j, "id").getOrElse(Json.JNull), InvalidRequest,
           "not a JSON-RPC message: " + line)
     case _ => Failed(Json.JNull, InvalidRequest, "not a JSON-RPC object: " + line)
@@ -85,9 +88,10 @@ object Rpc {
       "method" -> Json.JStr(method), "params" -> params)
     case Answer(id, result) => obj(
       "jsonrpc" -> Json.JStr(Version), "id" -> id, "result" -> result)
-    case Failed(id, code, message) => obj(
+    case Failed(id, code, message, data) => obj(
       "jsonrpc" -> Json.JStr(Version), "id" -> id,
-      "error" -> obj("code" -> Json.JNum(code.toDouble), "message" -> Json.JStr(message)))
+      "error" -> Json.JObj(Vector("code" -> Json.JNum(code.toDouble), "message" -> Json.JStr(message)) ++
+        data.map("data" -> _)))
 
   /**
    * The framing, as a Stage: lines in, messages out. Blank lines are

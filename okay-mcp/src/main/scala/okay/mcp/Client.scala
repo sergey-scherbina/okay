@@ -44,7 +44,7 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
   import java.util.concurrent.atomic.AtomicInteger
 
   private val counter = AtomicInteger(0)
-  private val pending = ConcurrentHashMap[String, Json => Unit]()
+  private val pending = ConcurrentHashMap[String, Session.Outcome => Unit]()
   private var info: Option[Mcp.Info] = None
   private var caps: Set[String] = Set.empty
 
@@ -79,22 +79,22 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
   /** the link is gone: every waiting request answers, nobody hangs */
   private def ended(): Unit =
     notifications.close()
-    pending.values().forEach(k => k(Json.JErr("the MCP link ended")))
+    pending.values().forEach(k => k(Session.Outcome.Ended))
     pending.clear()
 
   private def dispatch(m: Rpc): Unit ! Async = m match
-    case Rpc.Answer(id, result) => async(complete(id, result))
-    case Rpc.Failed(id, code, msg) if id != Json.JNull =>
-      async(complete(id, Json.JErr(s"$code $msg")))
+    case Rpc.Answer(id, result) => async(complete(id, Session.Outcome.Answered(result)))
+    case f @ Rpc.Failed(id, _, _, _) if id != Json.JNull =>
+      async(complete(id, Session.Outcome.Refused(f)))
     // a damaged line from the server answers nothing and ends nothing
-    case Rpc.Failed(_, _, _) => pure(())
+    case Rpc.Failed(_, _, _, _) => pure(())
     case n: Rpc.Notify => notifications.send(n).map(_ => ())
     case Rpc.Request(id, method, params) =>
       // on its own fiber: a sampling call may take a second, and the
       // reader must keep reading while it does
       async(Async.spawn(serve(id, method, params)): Unit)
 
-  private def complete(id: Json, result: Json): Unit =
+  private def complete(id: Json, result: Session.Outcome): Unit =
     val k = pending.remove(Json.print(id))
     if k != null then k(result)
 
@@ -160,12 +160,22 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
    * race between spawned writers would not.
    */
   def request(method: String, params: Json): Json ! Async =
+    requestRpc(method, params).map {
+      case Session.Outcome.Answered(j) => j
+      case Session.Outcome.Refused(f) => Json.JErr(s"${f.code} ${f.message}")
+      case Session.Outcome.Ended => Json.JErr("the MCP link ended")
+    }
+
+  /** one request, answered as the peer answered it — a refusal WHOLE,
+   * with its code and its `data` (x402 over MCP puts a
+   * `PaymentRequired` there), rather than folded into a `JErr` string */
+  def requestRpc(method: String, params: Json): Session.Outcome ! Async =
     val id = Json.JNum(counter.incrementAndGet().toDouble)
     val key = Json.print(id)
-    val slot = Slot()
-    pending.put(key, j => slot.complete(j))
+    val slot = Slot[Session.Outcome]()
+    pending.put(key, o => slot.complete(o))
     link.send(Rpc.encode(Rpc.Request(id, method, params)))
-      .flatMap(_ => okay.await[Json](k => slot.onComplete(k)))
+      .flatMap(_ => okay.await[Session.Outcome](k => slot.onComplete(k)))
 
   /** one notification — nothing comes back, so nothing is waited for */
   def notify(method: String, params: Json): Unit ! Async =
@@ -323,11 +333,11 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
  * `CompletableFuture` would do it on the JVM and not on JS, and this
  * is nine lines.
  */
-private final class Slot {
-  private var value: Option[Json] = None
-  private var waiter: Option[Json => Unit] = None
+private final class Slot[A] {
+  private var value: Option[A] = None
+  private var waiter: Option[A => Unit] = None
 
-  def complete(j: Json): Unit =
+  def complete(j: A): Unit =
     val k = synchronized {
       if value.isEmpty then value = Some(j)
       val w = waiter
@@ -336,12 +346,20 @@ private final class Slot {
     }
     k.foreach(_(j))
 
-  def onComplete(k: Json => Unit): Unit =
+  def onComplete(k: A => Unit): Unit =
     val ready = synchronized {
       if value.isDefined then value else { waiter = Some(k); None }
     }
     ready.foreach(k)
 }
+
+object Session:
+  /** how a request ended: answered, refused by the peer (the refusal
+   * whole — code, message, `data`), or the link went away first */
+  enum Outcome:
+    case Answered(result: Json)
+    case Refused(failure: Rpc.Failed)
+    case Ended
 
 object Client {
 

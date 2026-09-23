@@ -108,7 +108,7 @@ class TestDuplex extends munit.FunSuite {
             Duplex.samplingParams(Seq(Turn.System("Be terse."), Turn.User("2+2?"))))))
       case Rpc.Answer(Json.JStr("s1"), result) =>
         pure(answered.offer(Duplex.replyOf(result)): Unit)
-      case Rpc.Failed(Json.JStr("s1"), _, m) => pure(answered.offer(Reply(s"refused: $m", Nil)): Unit)
+      case Rpc.Failed(Json.JStr("s1"), _, m, _) => pure(answered.offer(Reply(s"refused: $m", Nil)): Unit)
       case _ => pure(())
     }, pure)
 
@@ -128,7 +128,7 @@ class TestDuplex extends munit.FunSuite {
         Stage.tell[Rpc, Rpc](Rpc.Answer(id, Mcp.initializeResult(info)))
           .flatMap(_ => Stage.tell[Rpc, Rpc](Rpc.Request(Json.JStr("s1"), Mcp.SamplingCreate,
             Duplex.samplingParams(Seq(Turn.User("hi"))))))
-      case Rpc.Failed(Json.JStr("s1"), code, _) => pure(answered.offer(s"refused $code"): Unit)
+      case Rpc.Failed(Json.JStr("s1"), code, _, _) => pure(answered.offer(s"refused $code"): Unit)
       case Rpc.Answer(Json.JStr("s1"), _) => pure(answered.offer("answered"): Unit)
       case _ => pure(())
     }, pure)

@@ -80,7 +80,7 @@ class TestServer extends munit.FunSuite {
 
   test("requests before initialize are refused, as the protocol says") {
     val out = talk(Rpc.Request(Json.JNum(7), Mcp.ToolsList, Json.JObj(Vector.empty)))
-    val Rpc.Failed(_, code, _) = out.head: @unchecked
+    val Rpc.Failed(_, code, _, _) = out.head: @unchecked
     assertEquals(code, Rpc.InvalidRequest)
     // ping and initialize are the two that do not need it
     assertEquals(talk(Rpc.Request(Json.JNum(8), Mcp.Ping, Json.JObj(Vector.empty))).length, 1)
