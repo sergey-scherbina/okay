@@ -207,6 +207,14 @@ object RCodec {
 object R {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /** R source beside the Scala that calls it (foreign-inline-modules):
+   * a compile-time constant, shipped when R starts —
+   * `RSubprocess.start(..., modules = Seq(m))` */
+  inline def module(inline name: String, inline source: String): RModule =
+    scala.compiletime.requireConst(name)
+    scala.compiletime.requireConst(source)
+    RModule.fromConstant(name, source)
+
   /** call `address` and KEEP its result in the R process, answering a
    * handle (foreign-object-handles): `R.hold("stats::lm")(formula, data)` */
   def hold(address: String): Hold = Hold(address)

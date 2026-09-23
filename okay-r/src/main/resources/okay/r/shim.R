@@ -160,6 +160,11 @@ simplify_col <- function(xs) {
 
 resolve <- function(fn) {
   parts <- strsplit(fn, "::", fixed = TRUE)[[1]]
+  if (length(parts) == 2L && exists(parts[1], envir = .okay_modules, inherits = FALSE)) {
+    f <- get0(parts[2], envir = get(parts[1], envir = .okay_modules), inherits = FALSE, mode = "function")
+    if (is.null(f)) stop(sprintf("module '%s' has no function '%s'", parts[1], parts[2]))
+    return(f)
+  }
   if (length(parts) == 2L) {
     if (!requireNamespace(parts[1], quietly = TRUE))
       stop(sprintf("package '%s' is not installed", parts[1]))
@@ -272,6 +277,28 @@ serve <- function(req) {
     list(id = rid, condition = list(kind = class(c)[1], message = conditionMessage(c)))
   })
 }
+
+# ---- inline modules (foreign-inline-modules) -----------------------------
+# each `name=path` in OKAY_R_MODULES is sourced into its OWN environment,
+# where `name::fn` finds it; a module that does not load refuses at the
+# handshake, naming itself, rather than failing a call later
+
+.okay_modules <- new.env()
+local({
+  mods <- Sys.getenv("OKAY_R_MODULES", "")
+  if (nzchar(mods)) for (entry in strsplit(mods, ";", fixed = TRUE)[[1]]) {
+    at <- regexpr("=", entry, fixed = TRUE)
+    name <- substr(entry, 1L, at - 1L)
+    path <- substr(entry, at + 1L, nchar(entry))
+    e <- new.env(parent = globalenv())
+    tryCatch(sys.source(path, envir = e), error = function(err) {
+      say(list(shim = SHIM, fatal = sprintf("okay-r: module '%s' did not load: %s",
+                                            name, conditionMessage(err))))
+      quit(status = 1)
+    })
+    assign(name, e, envir = .okay_modules)
+  }
+})
 
 say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = ".")))
 

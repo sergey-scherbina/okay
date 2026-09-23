@@ -135,7 +135,13 @@ object PySubprocess:
    * exactly what `env` names.
    */
   def start(python: String = "python3",
-            env: Map[String, String] = Map.empty): PySubprocess =
+            env: Map[String, String] = Map.empty,
+            /** inline modules to ship on the worker's path (foreign-inline-modules) */
+            modules: Seq[PyModule] = Nil): PySubprocess =
+    startIn(python, PyModule.env(modules, env))
+
+  /** `start` once the modules are already in the environment */
+  private[py] def startIn(python: String, env: Map[String, String]): PySubprocess =
     val shim = java.nio.file.Files.createTempFile("okay-py-shim", ".py")
     val res = getClass.getResourceAsStream("/okay/py/shim.py")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")

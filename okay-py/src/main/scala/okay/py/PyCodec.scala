@@ -169,6 +169,16 @@ object Py {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
   /**
+   * Python source beside the Scala that calls it (foreign-inline-modules):
+   * the source must be a compile-time constant, and the engine ships it
+   * when a worker starts — `PySubprocess.start(..., modules = Seq(m))`.
+   */
+  inline def module(inline name: String, inline source: String): PyModule =
+    scala.compiletime.requireConst(name)
+    scala.compiletime.requireConst(source)
+    PyModule.fromConstant(name, source)
+
+  /**
    * Call `address` and KEEP its result in the worker, answering a handle
    * (foreign-object-handles): `Py.hold("random:Random")(42)` is a seeded
    * generator living in Python, whose methods `ref.call` reaches.

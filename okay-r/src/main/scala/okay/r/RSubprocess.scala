@@ -216,14 +216,16 @@ object RSubprocess:
              * verify-at-startup posture the Sql seam takes, for the
              * same reason — an analyst's environment drifts, and the
              * alternative to a loud refusal is a wrong number later */
-            require: Map[String, String] = Map.empty): RSubprocess =
+            require: Map[String, String] = Map.empty,
+            /** inline modules to load at start (foreign-inline-modules) */
+            modules: Seq[RModule] = Nil): RSubprocess =
     val shim = java.nio.file.Files.createTempFile("okay-r-shim", ".R")
     val res = getClass.getResourceAsStream("/okay/r/shim.R")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
     try java.nio.file.Files.copy(res, shim, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     finally res.close()
     shim.toFile.deleteOnExit()
-    val engine = startWith(rscript, shim, env, timeoutMillis)
+    val engine = startWith(rscript, shim, RModule.env(modules, env), timeoutMillis)
     if require.isEmpty then engine
     else
       val drift = engine.verify(require)
