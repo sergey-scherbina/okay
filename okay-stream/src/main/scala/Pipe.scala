@@ -453,6 +453,23 @@ private object Erased {
  */
 private inline val PullBudget = 256
 
+/**
+ * THE DRIVE STARTS WHEN THE PROGRAM RUNS, NOT WHEN IT IS BUILT
+ * (windows-stage-rerun-loses-pane, 2026-09-23). Every `through` and
+ * the effectful `pipe` below answer `Free.delay(() => loop(...))`
+ * rather than `loop(...)`: the loop's first step resumes the
+ * downstream, and resuming it runs the stage up to its first await or
+ * tell — at CONSTRUCTION. A stage that allocates mutable state on its
+ * first element (`Windows.stage`, `Stage.chunked`, `Gather.stage`,
+ * `Transducers.stage`) then had that state captured inside the built
+ * program's continuation, and running the built program a second
+ * time fed the spent state again: `Windows.stage` lost a whole pane
+ * without a word, a JDK gatherer NPE'd inside its own finisher.
+ * Deferred, a built program is a VALUE like any other: each run
+ * starts the stage from its first node, so each run makes its own
+ * state. One `Delay` node per RUN, not per element — the `PullBudget`
+ * deferral above already pays the same node every 256 elements.
+ */
 def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] = {
   type Res = Take % I + Writer % O
 
@@ -484,7 +501,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
         (o =>
           effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(u, k(Erased.resumeWith(x)))))
 
-  loop(up, down)
+  Free.delay(() => loop(up, down))
 }
 
 /** run a plain producer through a stage: its tells feed the stage's
@@ -510,7 +527,7 @@ def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = 
         (m =>
           effect[Writer % M, Any](Erased.reinject[(Writer % M)[Any]](m)).flatMap(x => loop(rest, k(Erased.resumeWith(x)))))
 
-  loop(p, s)
+  Free.delay(() => loop(p, s))
 }
 
 /**
@@ -561,7 +578,7 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
         (o =>
           effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(u, k(Erased.resumeWith(x)))))
 
-  loop(up, down)
+  Free.delay(() => loop(up, down))
 }
 
 /**
@@ -604,7 +621,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
         (o =>
           effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(rest, k(Erased.resumeWith(x)))))
 
-  loop(p, s)
+  Free.delay(() => loop(p, s))
 }
 
 /**
@@ -622,7 +639,7 @@ def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B 
       case Right((w, rest)) => loop(rest, k(Some(w)))
       case Left(_) => loop(p, k(None))
 
-  loop(p, c)
+  Free.delay(() => loop(p, c))
 }
 
 /** by class only: `Await()` carries no trace of V, so a row may hold

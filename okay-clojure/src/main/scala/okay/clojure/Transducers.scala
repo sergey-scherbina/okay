@@ -89,11 +89,13 @@ object Transducers {
    * the completion arity has flushed — `(take 3)` stops an okay
    * pipeline pulling, `(partition-all 3)` still hands over its tail.
    *
-   * ONE-SHOT once built, as `okay.java.Gather.stage` is and for the
-   * same reason: `through` runs a stage eagerly to its first output,
-   * so the program it answers holds this run's transducer state, and
-   * a `volatile!` cannot be snapshotted. A second run of the same
-   * built program is refused by name; build it again instead.
+   * A program BUILT over it is a value too, as over
+   * `okay.java.Gather.stage`: `through` starts its drive when the
+   * program runs (windows-stage-rerun-loses-pane), so each run of the
+   * built program applies `xf` afresh. What cannot be replayed is a
+   * continuation from INSIDE a run, resumed again after the run
+   * finished — a `volatile!` cannot be snapshotted — and that is
+   * refused by name, before the spent state is stepped.
    */
   def stage[I, O: ClassTag](xf: IFn): Stage[I, O, Unit] =
     Free.delay { () =>
@@ -111,8 +113,8 @@ object Transducers {
       def live(): Unit =
         if finished then throw IllegalStateException(
           "okay.clojure.Transducers.stage: this pipeline already ran, and its transducer's state " +
-            "is spent (a program built by `through` holds the state of its first run). " +
-            "Build the pipeline again to run it again.")
+            "is spent (a continuation from inside that run was resumed after it finished). " +
+            "Run the built program from its start to run it again.")
 
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector

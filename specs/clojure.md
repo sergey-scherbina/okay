@@ -47,9 +47,11 @@ For `Transducers.of(stage)` applied to `rf`:
 For `Transducers.stage(xf)`: `xf` is applied to a collecting `rf` when
 the stage STARTS (a `Free.delay`), steps are `(xrf acc x)`, and a
 reduced answer ends the stage after the completion arity has flushed.
-Like `Gather.stage`, a pipeline BUILT with `through` over it is
-one-shot (through-built-pipeline-one-shot) and refuses a re-run by
-name: a Clojure transducer's `volatile!` cannot be snapshotted.
+Like `Gather.stage`, a pipeline BUILT with `through` over it is a
+VALUE (since windows-stage-rerun-loses-pane `through` starts its drive
+at run time), and what it refuses by name is a continuation from
+inside a run resumed after that run finished: a Clojure transducer's
+`volatile!` cannot be snapshotted.
 
 ## Behavior
 
@@ -76,8 +78,10 @@ name: a Clojure transducer's `volatile!` cannot be snapshotted.
 - [x] a reduced from a Clojure transducer (take) stops the stage
       awaiting: a 1000-element producer is pulled at most 3 times
 - [x] round trip: `Transducers.stage(Transducers.of(s))` equals `s`
-- [x] a built pipeline over `Transducers.stage` refuses a second run by
-      name
+- [x] a built pipeline over `Transducers.stage` runs twice, the same
+      batches; a continuation from inside a run resumed after it
+      finished is refused by name (was: "refuses a second run" —
+      the eager drive was `through`'s, fixed there 2026-09-23)
 - [x] docs: module page, guide §5 paragraph, theory ch. 7 sentence;
       every snippet verbatim in a gated test
 

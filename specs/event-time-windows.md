@@ -126,10 +126,28 @@ object Windows:
 - [x] `live` falls back to zero after `close()`
 - [x] the `Stage` form gives the same panes as the class, and the SAME
       stage value driven twice gives the same answer (no shared state)
+- [x] one program BUILT by `through` over the stage, run twice, gives
+      the same panes — events 1,2,15,16,30 under tumbling 10 answer
+      three panes both times (the [10,20) pane used to vanish on the
+      second run; fixed in `through`, windows-stage-rerun-loses-pane)
 - [x] the operator is driven through `through` in a pipeline, so a
       window composes with the stages around it
 
 ## Results
+
+- **A built pipeline lost a pane on its second run, and the door was
+  `through`'s** (windows-stage-rerun-loses-pane, found 2026-09-23 by a
+  java-gatherers probe, fixed the same day). "The state is allocated
+  on the first element" protected two `through` calls over one stage
+  VALUE, and the box above tested exactly that — `runStage` called
+  `through` per run, so the box was green while one built program run
+  twice dropped [10,20) without a word. `through` resumed the stage at
+  construction, up to its first tell; the built program's continuation
+  held the live `Windows` with its open panes, and the second run
+  replayed the first pane from the tree and fed the spent operator.
+  The fix is `Free.delay` at the root of every `through` (Pipe.scala,
+  specs/stage-pipeline.md Decisions), nothing in this file; the new
+  box pins the built-program shape the old one missed.
 
 - **The general shape costs 11% against a packed key** (2 669 886 ev/s
   against 2 974 050 on §20's whole job, one day, best of two). That is

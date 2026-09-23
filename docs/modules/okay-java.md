@@ -67,10 +67,11 @@ a gatherer with no combiner is evaluated in encounter order even in a
 an exception.
 
 Two limits, both stated in the code. A JDK gatherer's state is an
-opaque mutable object, so a pipeline BUILT with `through(p)(Gather.stage(g))`
-runs once and refuses a second run by name (build it again instead;
-two `through` calls over one `Gather.stage` value are independent).
-And `Gather` needs JDK 24 to run; okay-java still loads on 17/21,
+opaque mutable object that cannot be snapshotted: a pipeline BUILT
+with `through(p)(Gather.stage(g))` is a value and runs as often as
+you like, each run making its own state, but a continuation from
+INSIDE one run resumed again after that run finished is refused by
+name. And `Gather` needs JDK 24 to run; okay-java still loads on 17/21,
 because a JVM links a class only when it is called.
 
 The P3 doctrine at its cheapest: the platform's own types as

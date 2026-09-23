@@ -77,15 +77,18 @@ object Gather {
    * the stage stops awaiting — `through` then pulls nothing more from
    * upstream — and, as in a JDK stream, the finisher still runs.
    *
-   * ONE-SHOT once built, and it says so. `through(p)(stage)` runs the
-   * stage eagerly up to its first output, so the program it answers
-   * already holds this run's gatherer state; running THAT program a
-   * second time would feed the same state again — measured, the JDK's
-   * `windowFixed` then fails with an NPE inside its own array (its
-   * finisher nulls it). A JDK gatherer's state is an opaque mutable
-   * object that cannot be snapshotted, so the second run is REFUSED
-   * with a message instead. Build the pipeline again (call `through`
-   * again) to run it again; that is always fine.
+   * A program BUILT over it is a value too: `through` starts its
+   * drive when the program runs, not when it is built (Pipe.scala,
+   * windows-stage-rerun-loses-pane, 2026-09-23), so each run of the
+   * built program reaches this `delay` and makes its own state. It
+   * used to drive the stage eagerly to its first output, and the
+   * built program then held this run's gatherer — measured, a second
+   * run NPE'd inside the JDK's `windowFixed` (its finisher nulls its
+   * array). What CANNOT be replayed is a continuation from inside a
+   * run — the rest after some output, resumed again after the run
+   * finished (a Free continuation is multi-shot): the JDK's state is
+   * an opaque mutable object that cannot be snapshotted, so that is
+   * REFUSED by name below, before the JDK's state is touched.
    */
   def stage[I, S, O](g: Gatherer[I, S, O]): Stage[I, O, Unit] =
     val init = g.initializer
@@ -95,15 +98,15 @@ object Gather {
       val state = init.get()
       val out = ArrayBuffer.empty[O]
       val ds: Gatherer.Downstream[O] = o => { out += o; true }
-      // the gatherer is finished: anything after this is a second run
-      // of a program that already consumed this state (see above)
+      // the gatherer is finished: anything after this is a continuation
+      // of this run resumed a second time (see above)
       var finished = false
 
       def live(): Unit =
         if finished then throw IllegalStateException(
           "okay.java.Gather.stage: this pipeline already ran, and its JDK gatherer's state " +
-            "is spent (a program built by `through` holds the state of its first run). " +
-            "Build the pipeline again to run it again.")
+            "is spent (a continuation from inside that run was resumed after it finished). " +
+            "Run the built program from its start to run it again.")
 
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector

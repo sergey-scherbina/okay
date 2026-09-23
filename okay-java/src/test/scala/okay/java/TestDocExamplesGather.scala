@@ -31,7 +31,8 @@ class TestDocExamplesGather extends munit.FunSuite:
 
   test("guide §5: a JDK gatherer as an okay stage") {
     val windows = through(lines("a", "b", "c"))(Gather.stage(Gatherers.windowFixed[String](2)))
-    // Writer.run(windows) — (Seq([a, b], [c]), ()); a built pipeline runs ONCE
+    // Writer.run(windows) — (Seq([a, b], [c]), ()); run it again: the same
+    assertEquals(told(windows).map(_.asScala.toList), Seq(List("a", "b"), List("c")))
     assertEquals(told(windows).map(_.asScala.toList), Seq(List("a", "b"), List("c")))
   }
 

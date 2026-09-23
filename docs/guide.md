@@ -553,6 +553,17 @@ Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((
 Writer.run(through(lines("host: a"))(header))                          // (Seq((host,a)), Left(1))
 ```
 
+What `through` answers is a program like any other — a value. Nothing
+runs until you run it, and running it twice runs it twice, each run
+starting every stage from its first node: a stage that allocates a
+buffer or a pane map on its first element (`Stage.chunked`,
+`Windows.stage`, a JDK gatherer under `Gather.stage`) makes a fresh one
+per run. It was not always so — `through` used to drive the stage to
+its first output when it was *built*, and a second run of the built
+program then fed that first run's state again, which lost a window
+pane without a word (specs/stage-pipeline.md, Decisions). Hold the
+built pipeline, run it as often as you like.
+
 `transduce` is this with a step that never answers `Right`; the
 server-driven UI session (`Wire.serveClosing`, okay-ui) is one — the
 state is the server's own plus the tree it showed, `Right` on a Close
@@ -582,15 +593,17 @@ val firstThree: Stage[Int, Int, Unit] =
 val out = Stream.iterate(1, _ + 1).gather(Gather.gatherer(firstThree)).toList   // [10, 20, 30]
 
 val windows = through(lines("a", "b", "c"))(Gather.stage(Gatherers.windowFixed[String](2)))
-// Writer.run(windows) — (Seq([a, b], [c]), ()); a built pipeline runs ONCE
+// Writer.run(windows) — (Seq([a, b], [c]), ()); run it again: the same
 ```
 
 No combiner, deliberately: a suspended stage is a position in the
 stream and two cannot be merged, and a combiner-less gatherer is
-evaluated in encounter order even in a `.parallel()` stream. A JDK
-gatherer's state is an opaque mutable object, so a pipeline BUILT with
-`through` over `Gather.stage` runs once and refuses a second run by
-name — call `through` again instead. `docs/modules/okay-java.md` has
+evaluated in encounter order even in a `.parallel()` stream. A
+pipeline built with `through` is a VALUE: it starts the gatherer when
+it is run, once per run, so running it twice windows twice. What is
+refused by name is resuming a continuation from INSIDE a run after
+that run finished — a JDK gatherer's state is an opaque mutable
+object that cannot be snapshotted. `docs/modules/okay-java.md` has
 `Windowed.gatherer`, the event-time window that hands each pane on
 the moment the watermark closes it.
 

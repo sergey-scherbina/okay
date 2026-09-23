@@ -140,6 +140,20 @@ class TestWindows extends munit.FunSuite {
     assertEquals(asMap(second), asMap(first), "a Stage is a VALUE: no state survives a run")
   }
 
+  test("one BUILT program, run twice: the same panes — `through` starts the stage when the program RUNS") {
+    // the probe that found windows-stage-rerun-loses-pane (2026-09-23):
+    // tumbling 10, lateness 0; the 15 closes [0,10) — the first tell,
+    // up to which `through` used to drive the stage at BUILD time,
+    // leaving the still-open [10,20) inside the built program's
+    // continuation. The second run then replayed the first pane from
+    // the tree and fed the spent state again: [10,20) was gone.
+    val evs = Vector(Ev(1, "a", 1), Ev(2, "a", 2), Ev(15, "a", 15), Ev(16, "a", 16), Ev(30, "a", 30))
+    val built = through(producer(evs))(Windows.stage(10L, 10L, 0L)((e: Ev) => e.key)((e: Ev) => e.ts)(sum))
+    val expected = Vector(Pane(0L, 10L, "a", 3L), Pane(10L, 20L, "a", 31L), Pane(30L, 40L, "a", 30L))
+    assertEquals(!.run(Writer.run(built))._1.toVector, expected)
+    assertEquals(!.run(Writer.run(built))._1.toVector, expected, "the second run of one built program lost no pane")
+  }
+
   test("a window is a stage like any other: it composes under `through`") {
     val evs = events(300, 2000L, 3, 10L)
     val (panes, _) = run(evs, 100L, 100L, 20L)

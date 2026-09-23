@@ -170,7 +170,7 @@ class TestTransducers extends munit.FunSuite {
     assertEquals(own(emit(xs), Transducers.stage[Long, List[Long]](Transducers.of(chunks))), own(emit(xs), chunks))
   }
 
-  test("a built pipeline over a Clojure transducer runs once, and a second run is REFUSED by name") {
+  test("a built pipeline over a Clojure transducer runs twice; a continuation resumed after its run finished is REFUSED by name") {
     // a STRICT transducer, which throws its own error if stepped after
     // completion: the refusal must come BEFORE the spent state is
     // touched (the JDK's windowFixed NPE'd there, java-gatherers), so
@@ -184,10 +184,22 @@ class TestTransducers extends munit.FunSuite {
               ([acc x] (when @done (throw (IllegalStateException. "stepped after completion")))
                        (.add buf x)
                        (if (= 2 (.size buf)) (let [v (vec buf)] (.clear buf) (rf acc v)) acc)))))""")
-    val built = through(emit(List(1L, 2L, 3L)))(Transducers.stage[Long, AnyRef](xf))
-    assertEquals(!.run(Writer.run(built))._1.size, 2)
-    val again = intercept[IllegalStateException](!.run(Writer.run(built)))
-    assert(again.getMessage.contains("already ran"), again.getMessage)
+    val built = through(emit(List(1L, 2L, 3L, 4L, 5L)))(Transducers.stage[Long, AnyRef](xf))
+    // a built program is a VALUE (through defers its drive,
+    // windows-stage-rerun-loses-pane): each run applies `xf` afresh
+    assertEquals(!.run(Writer.run(built))._1.size, 3)
+    assertEquals(!.run(Writer.run(built))._1.size, 3)
+    // what cannot be replayed is a continuation from INSIDE a run —
+    // the rest after the first batch holds that run's `volatile!`s.
+    // Resumed again after the run finished, it is refused by name
+    // (five elements so that an await is left after the batch `rest`
+    // is driven to when it is made: [3 4] told, 5 still to come)
+    Writer.uncons(built) match
+      case Right((_, rest)) =>
+        assertEquals(!.run(Writer.run(rest))._1.size, 2)
+        val again = intercept[IllegalStateException](!.run(Writer.run(rest)))
+        assert(again.getMessage.contains("already ran"), again.getMessage)
+      case Left(_) => fail("the pipeline ended without a batch")
   }
 
   // ---------------------------------------------------------------- Clj

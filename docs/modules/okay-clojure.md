@@ -62,13 +62,13 @@ against the stage's input class (a `ClassTag`; Clojure's integers are
 when it is something else, rather than failing later as a
 `ClassCastException` inside the stage.
 
-**One-shot pipelines.** A Clojure transducer's `volatile!` cannot be
-snapshotted, and `through` runs a stage eagerly to its first output,
-so a pipeline BUILT with `through` over `Transducers.stage` runs once
-and refuses a second run by name — before the spent state is touched.
-Build it again to run it again. `Transducers.of` has no such limit:
-each application to a reducing function is a fresh process, as it is
-for Clojure's own.
+**A built pipeline is a value.** `through` starts a stage when the
+program is run, so a pipeline BUILT over `Transducers.stage` applies
+the transducer afresh on every run. A Clojure transducer's `volatile!`
+cannot be snapshotted, though: a continuation from INSIDE one run,
+resumed again after that run finished, is refused by name — before
+the spent state is touched. `Transducers.of` starts a fresh process
+per application to a reducing function, as it does for Clojure's own.
 
 ## okay's effects from Clojure: `okay.core`
 

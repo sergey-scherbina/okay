@@ -81,7 +81,7 @@ an okay pipeline:
 
 ```scala
 val windows = through(lines("a", "b", "c"))(Gather.stage(Gatherers.windowFixed[String](2)))
-// Writer.run(windows) — (Seq([a, b], [c]), ()); a built pipeline runs ONCE
+// Writer.run(windows) — (Seq([a, b], [c]), ()); run it again: the same
 ```
 
 An event-time window is a gatherer too, and unlike a `Collector` it
@@ -255,14 +255,18 @@ docs/modules/okay-frege.md.
   only `Chunks` — an okay source with no other effect. An effectful
   source forced from inside a lazy value is lazy IO; it belongs in a
   program, as a `perform`.
-- **A built pipeline over the other side's mutable state runs once.**
-  `through(p)(stage)` runs a stage eagerly to its first output, so the
-  program it answers already holds that run's state. A JDK gatherer's
-  state and a Clojure transducer's `volatile!` cannot be snapshotted, so
-  `Gather.stage` and `Transducers.stage` REFUSE a second run of the same
-  built program by name — build it again. (`Gather.gatherer` and
-  `Transducers.of` have no such limit: each JDK evaluation, each
-  application to a reducing function, starts afresh.)
+- **A built pipeline is a value, even over the other side's mutable
+  state.** `through(p)(stage)` starts the stage when the program is
+  RUN, once per run (it used to drive the stage to its first output at
+  build time, and the built program then held that run's state —
+  found by a doc snippet, fixed in `through` itself,
+  windows-stage-rerun-loses-pane), so a JDK gatherer's state or a
+  Clojure transducer's `volatile!` is made afresh by every run. What
+  neither can do is be snapshotted: a continuation from INSIDE a run,
+  resumed again after that run finished, is REFUSED by name by
+  `Gather.stage` and `Transducers.stage` before the spent state is
+  touched. (`Gather.gatherer` and `Transducers.of` start afresh per
+  JDK evaluation and per application to a reducing function.)
 - **Types are checked at the seam, and refused by name.** A value
   arriving as `Object` is tested against the type the okay side declared
   (a `ClassTag`; Clojure's integers are `java.lang.Long`); an operation

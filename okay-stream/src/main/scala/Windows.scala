@@ -179,6 +179,16 @@ object Windows {
    * must not share one pane map between the runs. The state is
    * allocated on the first element, exactly as `Stage.chunked`
    * allocates its buffer (chunk-stack-safety, 2026-09-03).
+   *
+   * That protected two `through` calls over one stage value, and NOT
+   * one program built by `through` run twice: `through` used to drive
+   * the stage to its first tell at build time, so the built program's
+   * continuation held this run's `Windows` with its still-open panes,
+   * and a second run replayed the first pane from the tree, then fed
+   * the spent operator — the [10,20) pane of events 1,2,15,16,30 was
+   * gone, silently (windows-stage-rerun-loses-pane, 2026-09-23).
+   * Fixed where the door is, in `through` (Pipe.scala): the drive now
+   * starts when the program runs. TestWindows pins both shapes.
    */
   def stage[K, A, Acc, O](size: Long, slide: Long, lateness: Long)
                          (key: A => K)(at: A => Long)

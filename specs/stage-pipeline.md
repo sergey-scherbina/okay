@@ -36,6 +36,12 @@ def unchunked[I, O, A](s: StageC[I, O, A]): Stage[I, O, A] // adapter
   before finishing.
 - A stage's answer A is its own (statistics, final state); through
   keeps the DOWNSTREAM answer, as pipe keeps the consumer's.
+- A program built by `through` (every overload) or the effectful
+  `pipe` is a VALUE: its drive starts when it is RUN, not when it is
+  built (`Free.delay` at the root), so one built program run twice
+  starts its stages twice and each run makes its own state. Only the
+  pure `pipe` — which answers a plain `B`, not a program — runs at the
+  call.
 
 ## Behavior
 - [x] through is associative; the identity stage (await-tell loop) is
@@ -52,6 +58,11 @@ def unchunked[I, O, A](s: StageC[I, O, A]): Stage[I, O, A] // adapter
       them, laziness intact (a pure stage joins an effectful row via
       !.widen and a union-ACI ascription); associativity tested with
       effects in the row
+- [x] a built program starts its stage when RUN, once per run, through
+      every door — `through(stage)(stage)`, `through(producer)(stage)`,
+      both effectful overloads, the effectful `pipe` (a stage counting
+      its starts under `Free.delay`: 0 after building, 2 after two
+      runs); and `Windows.stage`'s lost pane comes back (TestWindows)
 
 ## Phased stages (stage-phased) — typestate on the stream
 
@@ -120,6 +131,27 @@ phased/phased3 are the extra door.
 - **Stage as an effect-union type alias, not a class** — transducers
   are programs; all existing machinery (handlers, forwarding, chunked
   Writer observation, laziness contract) applies verbatim.
+- **The drive is deferred at the root, not made re-entrant per
+  stage** (windows-stage-rerun-loses-pane, 2026-09-23). `loop(p, s)`
+  as the body of `through` resumed the downstream at CONSTRUCTION,
+  which ran the stage to its first await or tell; a stage allocating
+  mutable state on its first element (`Windows.stage`, `Stage.chunked`,
+  `Gather.stage`, `Transducers.stage`) then had that state captured in
+  the built program's continuation, and a second run of the built
+  program fed the spent state: `Windows.stage` lost the [10,20) pane of
+  events 1,2,15,16,30 silently, a JDK gatherer NPE'd in its finisher,
+  and two modules grew a `finished` flag to refuse the second run by
+  name. Counting the doors found FIVE (four `through` overloads and
+  the effectful `pipe`) against four stateful stages and every one
+  still to be written — so the fix is one `Free.delay` per door, not a
+  discipline per stage. Cost: one `Delay` node per RUN of a built
+  program; the `PullBudget` deferral already pays that node every 256
+  elements, so nothing was measured. The two `finished` flags stay
+  for what remains true: a continuation from INSIDE a run resumed
+  after that run finished (multi-shot) cannot be given fresh JDK or
+  Clojure state, and is still refused by name — TestGather and
+  TestTransducers reach it through `Writer.uncons`. `!.widen` is a
+  walk and therefore eager; the test puts its `delay` outside it.
 - **Multi-channel output** (e.g. instructions + diagnostics) is a
   union of Writers with class-distinct element types, or one Writer of
   a sum — decided per module (see streaming-parse.md); the core does

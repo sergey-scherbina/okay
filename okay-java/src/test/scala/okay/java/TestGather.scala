@@ -176,17 +176,34 @@ class TestGather extends munit.FunSuite {
     assertEquals(own(emit(xs), s).last, 55)
   }
 
-  test("a built pipeline over a JDK gatherer runs once, and a second run is REFUSED by name") {
-    // through(...) runs the stage eagerly to its first output, so the
-    // program holds this run's gatherer state; windowFixed nulls its
-    // array in the finisher and a re-run would NPE inside the JDK
+  test("a built pipeline over a JDK gatherer is a VALUE: run twice, the same windows") {
+    // `through` starts its drive when the program RUNS, not when it is
+    // built (windows-stage-rerun-loses-pane, 2026-09-23), so the
+    // gatherer's state is made per run of the built program: the
+    // second run is a fresh one, not the spent state fed again
     val windows = through(emit(List(1, 2, 3)))(Gather.stage(Gatherers.windowFixed[Int](2)))
     assertEquals(!.run(Writer.run(windows))._1.map(_.asScala.toList), Seq(List(1, 2), List(3)))
-    val again = intercept[IllegalStateException](!.run(Writer.run(windows)))
-    assert(again.getMessage.contains("already ran"), again.getMessage)
-    // building it again is always fine
-    val rebuilt = through(emit(List(1, 2, 3)))(Gather.stage(Gatherers.windowFixed[Int](2)))
-    assertEquals(!.run(Writer.run(rebuilt))._1.map(_.asScala.toList), Seq(List(1, 2), List(3)))
+    assertEquals(!.run(Writer.run(windows))._1.map(_.asScala.toList), Seq(List(1, 2), List(3)))
+  }
+
+  test("a continuation from INSIDE a run, resumed after that run finished, is REFUSED by name") {
+    // what cannot be replayed is the rest of a run: the continuation
+    // after the first window holds that run's gatherer, whose finisher
+    // nulls its array (an NPE inside the JDK, java-gatherers). A Free
+    // continuation is multi-shot, so resuming it again is possible —
+    // and answered with our message, before the JDK's state is touched.
+    // Five elements, not three: `rest` is driven to its NEXT output
+    // when it is made, so the refusal needs an await left after that
+    // output — [3,4] told, 5 still to come — for the second resume
+    // to reach
+    val windows = through(emit(List(1, 2, 3, 4, 5)))(Gather.stage(Gatherers.windowFixed[Int](2)))
+    Writer.uncons(windows) match
+      case Right((first, rest)) =>
+        assertEquals(first.asScala.toList, List(1, 2))
+        assertEquals(!.run(Writer.run(rest))._1.map(_.asScala.toList), Seq(List(3, 4), List(5)))
+        val again = intercept[IllegalStateException](!.run(Writer.run(rest)))
+        assert(again.getMessage.contains("already ran"), again.getMessage)
+      case Left(_) => fail("the pipeline ended without a window")
   }
 
   test("Windowed.gatherer: one gatherer value, two evaluations, the same panes") {

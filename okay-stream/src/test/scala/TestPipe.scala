@@ -149,4 +149,50 @@ class TestPipe extends munit.FunSuite {
       through[Int, Int, Async, Unit, Unit](src(3))(double))(inc)
     assertEquals(left.toLazyList.toList, List(7, 5, 3))
   }
+
+  test("a program built by `through`/`pipe` starts its stage when RUN, once per run — every overload") {
+    // windows-stage-rerun-loses-pane (2026-09-23): the drive used to
+    // start at BUILD time, so a built program held its first run's
+    // mutable stage state and a second run fed that state again.
+    // A stage that counts its starts sees the difference at once.
+    var starts = 0
+    def counting: Stage[Int, Int, Unit] = Free.delay { () => starts += 1; Stage.id[Int] }
+    val told: Int ! Writer % Int =
+      (1 to 3).foldLeft(pure[Writer % Int, Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
+
+    // 1. stage through stage; 2. producer through stage
+    val s1 = through(counting)(Stage.id[Int])
+    assertEquals(starts, 0, "through(stage)(stage) builds, runs nothing")
+    val p2 = through(told)(s1)
+    assertEquals(starts, 0, "through(producer)(stage) builds, runs nothing")
+    assertEquals(!.run(Writer.run(p2))._1, Seq(1, 2, 3))
+    assertEquals(!.run(Writer.run(p2))._1, Seq(1, 2, 3))
+    assertEquals(starts, 2, "one start per run")
+
+    // 3. effectful stage through effectful stage; 4. effectful producer through it
+    starts = 0
+    type Row = Take % Int + (Writer % Int + Async)
+    // `!.widen` is a WALK — it resumes its argument — so the delay
+    // goes outside it, or the walk itself would be the first start
+    val countingG: Unit ! Row = Free.delay { () =>
+      starts += 1; !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int]) }
+    val idG: Unit ! Row = !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int])
+    val s3 = through[Int, Int, Int, Async, Unit, Unit](countingG)(idG)
+    assertEquals(starts, 0, "the effectful through(stage)(stage) builds, runs nothing")
+    val toldG: Int ! (Writer % Int + Async) = !.widen[Int, Writer % Int, Async](told)
+    val p4 = through[Int, Int, Async, Int, Unit](toldG)(s3)
+    assertEquals(starts, 0, "the effectful through(producer)(stage) builds, runs nothing")
+    assertEquals(Writer.run(p4).runWith._1, Seq(1, 2, 3))
+    assertEquals(Writer.run(p4).runWith._1, Seq(1, 2, 3))
+    assertEquals(starts, 2)
+
+    // 5. an effectful producer piped into a consumer
+    starts = 0
+    val consumer: Int ! Take % Int = Free.delay { () => starts += 1; sums(3, 0) }
+    val p5 = pipe[Int, Int, Int, Async](toldG)(consumer)
+    assertEquals(starts, 0, "pipe builds, runs nothing")
+    assertEquals(p5.runWith, 6)
+    assertEquals(p5.runWith, 6)
+    assertEquals(starts, 2)
+  }
 }

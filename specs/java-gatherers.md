@@ -61,8 +61,10 @@ BY ACCIDENT is now asked for by flag:
       the integrator returns `false` after a refused push — and the
       stage's continuation past the refused tell is never run
       (1000 tells per element under `limit(3)`: at most 4 made)
-- [x] a pipeline BUILT by `through` over `Gather.stage` runs once and
-      refuses a second run by name (found by the doc test, below)
+- [x] a pipeline BUILT by `through` over `Gather.stage` runs twice,
+      the same windows; a continuation from inside a run resumed after
+      it finished is refused by name (was: "runs once and refuses a
+      second run" — see Results, the door was `through`'s)
 - [x] sequential by construction: no combiner, so a `.parallel()`
       stream evaluates the gatherer in encounter order (JEP 485's
       rule for a combiner-less gatherer), never on a split
@@ -136,17 +138,24 @@ check removed. The first cut of the short-circuit test used an
 INFINITE stream, and its mutant HUNG the suite instead of failing it
 — bounded to 1000 elements, it fails with `pulled = 1000`.
 
-**Found by the doc test: a built pipeline is one-shot.**
-`through(p)(stage)` drives the stage eagerly to its first output, so
-the program it answers already holds that run's state. Running the
-same built value twice fed the JDK's `windowFixed` its spent state —
-an NPE inside the JDK (its finisher nulls the array). A JDK gatherer's
-state cannot be snapshotted, so the second run is refused by name.
-Counting the doors: `Stage.chunked` survives the same re-run (its
-state resets after each emission); okay-stream's `Windows.stage`
-SILENTLY DROPS A PANE on it — filed, backlog
-`okay-core/windows-stage-rerun-loses-pane`. `Windowed.gatherer` is
-not affected: the JDK path starts the stage program per evaluation.
+**Found by the doc test: a built pipeline WAS one-shot — and the
+door was `through`'s, not the gatherer's.** `through(p)(stage)` drove
+the stage eagerly to its first output, so the program it answered
+already held that run's state. Running the same built value twice fed
+the JDK's `windowFixed` its spent state — an NPE inside the JDK (its
+finisher nulls the array) — and this lane refused the second run by
+name. Counting the doors: `Stage.chunked` survived the same re-run
+(its state resets after each emission); okay-stream's `Windows.stage`
+SILENTLY DROPPED A PANE on it — filed as
+`okay-core/windows-stage-rerun-loses-pane` and fixed the same day
+where all the doors are: `through` and the effectful `pipe` now answer
+`Free.delay(() => loop(...))`, so the drive starts when the program
+runs and each run makes its own state (specs/stage-pipeline.md). The
+refusal stays for the case that remains — a continuation from INSIDE
+a run resumed after that run finished, which a multi-shot Free
+continuation allows and an opaque JDK state cannot survive.
+`Windowed.gatherer` was never affected: the JDK path starts the stage
+program per evaluation.
 
 **Refuted alternative, measured:** `-Xunchecked-java-output-version`
 to keep bytecode 61 under an API floor of 21 — dotc overrides it with
