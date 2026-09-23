@@ -1,0 +1,16 @@
+[package]
+name = "okay-argon2"
+version = "0.1.0"
+edition = "2021"
+description = "Argon2id over the C ABI, for okay-rust (FFM on the JVM, @extern on Scala Native)"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+argon2 = { version = "0.5.3", default-features = false, features = ["alloc"] }
+
+[profile.release]
+panic = "abort"

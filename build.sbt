@@ -2339,6 +2339,25 @@ lazy val jettyVersion = "12.0.13"
  * be had from the JDK. Separate module so okay-security keeps its
  * zero; services opt in by classpath.
  */
+/**
+ * Rust kernels for okay (specs/polyglot-rust.md): a Rust crate over the C
+ * ABI (okay-rust/kernels/<name>, Cargo.lock checked in, builds offline), bound
+ * through FFM and offered as an okay EFFECT whose operations are the
+ * kernel's calls. JDK 22 floor: FFM is final there (JEP 454). The tests
+ * fork with native access enabled, which JDK 24+ otherwise warns about
+ * at the first restricted call.
+ */
+lazy val okayRust = project
+  .in(file("okay-rust"))
+  .dependsOn(okay.jvm, okaySecurityArgon2 % Test)
+  .settings(
+    name := "okay-rust",
+    jdkFloor(22),
+    Test / fork := true,
+    Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okaySecurityArgon2 = project
   .in(file("okay-security-argon2"))
   .dependsOn(okaySecurity.jvm)
@@ -2975,7 +2994,7 @@ lazy val root = (project in file("."))
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayR,
-    okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
+    okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
