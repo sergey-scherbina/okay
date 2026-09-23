@@ -407,6 +407,8 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 
 **MCP** (module `okay-scala2-mcp`) — `McpClient.connect(link, name, version): Eff[Async, McpClient]`, `McpClient.spawn(command: Seq[String], name, version)`; `McpClient`: `server: Option[(String, String)]`, `tools: Eff[Async, Seq[McpTool]]`, `call(name, argsJson: String): Eff[Async, String]`, `resources`, `read(uri): Eff[Async, Option[String]]`, `prompts`, `prompt(name, args: Map[String, String] = Map.empty): Eff[Async, Seq[Turn]]`; `McpTool(name, description, schema: String)`; `McpServer.run(link, name, version, tools: Tools, resources: Map[String, String] = Map.empty): Eff[Async, Unit]`; `McpLink.pair(): (Link, Link)`, `McpLink.of(in, out): Link`.
 
+**Optics** (module `okay-scala2-optics`) — `Lens[S, A](get: S => A, set: (S, A) => S)`: `get`, `set(a): S => S`, `modify(f): S => S`; `Prism[S, A](preview: S => Option[A], review: A => S)`, `Prism.subtype[S, A <: S](implicit ClassTag[A])`, `Prism.some[A]`: `preview`, `review`, `set`, `modify`; `Affine[S, A](preview, set: (S, A) => S)`: `preview`, `set`, `modify`; `Traversal[S, A](parts: S => Vector[A], rebuild: (S, Vector[A]) => S)`, `Traversal.each[A]`, `Traversal.eachList[A]`: `toVector`, `set`, `modify`; `Iso[S, A](to: S => A, from: A => S)`: `get`, `reverseGet`, `modify`. Every kind has `andThen` with every kind, answering the kind the lattice gives.
+
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
 `runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,

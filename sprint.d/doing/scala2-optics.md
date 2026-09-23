@@ -1,1 +1,0 @@
-- [ ] **scala2-optics** — okay-optics from Scala 2.13: Lens/Prism/Affine/Traversal built by hand (no macros), composed and used. Probe first, wrap only what 2.13 cannot use (specs/scala2-facade.md, stage 15, item 6). Operator: "Да бери делай всё что возможно чтобы работало в скале 2" (2026-09-23).

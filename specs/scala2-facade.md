@@ -813,3 +813,16 @@ metaprogramming.
   scripted SSE payload, so nothing decoded and `first` read an endless
   stream); the stream is now bounded at 50 so that failure mode fails
   instead of hanging. 7 tests.
+- STAGE 15.6 (2026-09-23). okay-scala2-optics. Nothing of okay-optics
+  reaches Scala 2 (type-lambda constraints, alias kinds, polymorphic
+  function types, `inline` extensions), so the five kinds are Scala 2
+  classes, each a shell over okay's optic with a body holder. Operations
+  and composition are okay's own (`import okay.given` brings the
+  profunctor instances). The first draft derived a prism's `review` and
+  an iso's `reverseGet` by calling `set` on a `null` source; that is
+  wrong for any preview that inspects its argument, and it was replaced
+  before the first test by carrying `review`/`from` beside the optic
+  and composing them explicitly. 5 tests: lens laws on a composed lens,
+  a subtype prism with a lens after it, lens-then-prism as an affine
+  (unchanged where absent), a traversal through `each`, and an iso then a
+  prism reviewing through both.

@@ -1213,6 +1213,67 @@ assertEquals(Eff.runAsync(prog), (Some(("calc", "1.0")), Seq("add"), true, "42")
   Its wrapper would need a live Postgres to test, and the default gate
   runs none. It is the same `VectorIndex` shape when it is asked for.
 
+## 8o. Optics: lens, prism, affine, traversal, iso
+
+Module `okay-scala2-optics`. An okay optic is `Optic[C[_[_, _]], S, T,
+A, B]`: its kinds are Scala 3 top-level aliases, its constraints are
+type lambdas over intersections, and every operation is an `inline`
+extension, so none of it reaches Scala 2. Here the five kinds are Scala
+2 classes, `Lens[S, A]`, `Prism[S, A]`, `Affine[S, A]`,
+`Traversal[S, A]` and `Iso[S, A]`. Each is a shell over okay's own
+optic: building one calls okay's constructor, `andThen` is okay's
+composition, and `get`, `set`, `modify`, `preview`, `toVector` are
+okay's operations. The shells are monomorphic: a `set` does not change
+the type. Scala 2 has no macros here, so a lens is written by hand from
+a getter and a copy. The code below is copied from
+`okay-scala2/probe/src/test/scala/TestOpticsFromScala2.scala`:
+
+```scala
+val address = Lens[Person, Address](_.address, (p, a) => p.copy(address = a))
+val city = Lens[Address, String](_.city, (a, c) => a.copy(city = c))
+```
+
+```scala
+val personCity = address.andThen(city)
+assertEquals(personCity.get(ada), "London")
+assertEquals(personCity.set("Paris")(ada).address, Address("Paris", "N1"))
+assertEquals(personCity.modify(_.toUpperCase)(ada).address.city, "LONDON")
+```
+
+A prism picks one case of a sum. `Prism.subtype` does it by class for a
+sealed hierarchy, and a lens after it reaches inside that case only:
+
+```scala
+val circle = Prism.subtype[Shape, Circle]
+val shapes = Vector[Shape](Circle(1.0), Rect(2.0, 3.0))
+assertEquals(shapes.map(circle.preview), Vector(Some(Circle(1.0)), None))
+assertEquals(shapes.map(circle.andThen(radius).modify(_ * 10)), Vector[Shape](Circle(10.0), Rect(2.0, 3.0)))
+```
+
+A traversal reaches every part, in order:
+
+```scala
+val prices = items.andThen(Traversal.each[Item]).andThen(price)
+assertEquals(prices.toVector(order), Vector(10, 25))
+assertEquals(prices.modify(_ * 2)(order).items.map(_.price), Vector(20, 50))
+```
+
+- Composition follows the lattice. An iso keeps the kind it meets. A lens
+  then a lens is a lens. A lens then a prism, or a prism then a lens, is
+  an `Affine`: at most one part, so `preview` rather than `get`, and a
+  `set` where the part is absent leaves the value unchanged. Anything
+  then a traversal is a traversal.
+- `Prism.some[A]` is the value inside a `Some`. `Traversal(parts,
+  rebuild)` makes a traversal from two functions; `Traversal.each` and
+  `eachList` cover vectors and lists.
+- A prism's `review` travels beside the okay optic and is composed
+  explicitly, because the profunctor encoding has no way to build an
+  `S` without one.
+- The encoding is Pickering, Gibbons and Wu, "Profunctor optics: modular
+  data accessors" (Programming 1(2), 2017,
+  [doi:10.22152/programming-journal.org/2017/1/7](https://doi.org/10.22152/programming-journal.org/2017/1/7));
+  docs/theory/10-optics.md explains it.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
