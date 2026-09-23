@@ -161,6 +161,33 @@ A decode failure names the path in R's own notation (`$sku`, `[2]`).
 Wire v3 (shim 3) added the named-list record. Before it, a named list
 that was not a data.frame was sent as a frame.
 
+## Callbacks into okay
+
+`okay_call("name", ...)` is R's `okay.call`. It is a function the shim
+defines, so R code reaches it from anywhere, including a package
+function. Here R's own `optimize` minimises an objective whose target
+comes from okay's `Reader`:
+
+```scala
+val objective = R.callback[Double, Double]("objective")(x => Reader.ask[Double].map(t => (x - t) * (x - t)))
+val fit = R.fn[Double]("minimise").calling(R.callbacks(objective))(-10.0, 10.0)
+val best = Reader.run(3.25)(fit).runWith
+```
+
+with, on the R side:
+
+```r
+minimise <- function(lo, hi) optimize(function(x) okay_call("objective", x), c(lo, hi), tol = 1e-9)$minimum
+```
+
+A callback that fails in okay is an R condition of class `okay_error`
+that carries the okay condition's `kind`, so
+`tryCatch(..., okay_error = function(e) e$kind)` works. The dialogue,
+the re-entrancy and the journaling are okay-py's (see its
+"Callbacks into okay"). Each step of the dialogue has its own deadline:
+a step that times out ends the call with the timeout condition, and the
+fresh process refuses the stale resume.
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`

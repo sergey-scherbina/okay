@@ -145,27 +145,27 @@ handler that resumes twice is refused by name, not answered wrongly.
 
 ### Behavior
 
-- [ ] Python: `import okay; okay.call("name", *args)` inside a function
+- [x] Python: `import okay; okay.call("name", *args)` inside a function
       called with callbacks; the shim injects the `okay` module. A
       callback that fails in okay raises `okay.OkayError` in Python, with
       the condition's kind and message; Python may catch it.
-- [ ] R: `okay_call("name", ...)`, a function the shim defines; a failure
+- [x] R: `okay_call("name", ...)`, a function the shim defines; a failure
       is an R condition of class `okay_error` (tryCatch-able).
-- [ ] Scala: `Py.fn[Out](addr).calling(cbs)(args...)` answers
+- [x] Scala: `Py.fn[Out](addr).calling(cbs)(args...)` answers
       `Either[Condition, Out] ! (F + PyEval)` where `cbs: Py.Callbacks[F]`
       is built from `Py.callback[In, Out](name)(f: In => Out ! F)`; `R`
       the same. Arguments and answers through `Schema` (stage 2).
-- [ ] A callback's program runs under the CALLER's handlers: a Python
+- [x] A callback's program runs under the CALLER's handlers: a Python
       optimiser minimising an objective whose value comes from okay's
       `Reader`, and a callback counting its calls in `State`.
-- [ ] Re-entrancy: a callback that itself calls Python on the same
+- [x] Re-entrancy: a callback that itself calls Python on the same
       worker is answered (nested exchange).
-- [ ] An unknown callback name, and a callback that was not offered to
+- [x] An unknown callback name, and a callback that was not offered to
       THIS call, are refused by name in the foreign language.
-- [ ] `Durable` journals the dialogue (`Start`/`Resume` are ordinary
+- [x] `Durable` journals the dialogue (`Start`/`Resume` are ordinary
       operations): a replay answers every step from the journal and
       starts no Python; the callbacks' own effects are theirs to journal.
-- [ ] The wire change is additive (a new op, a new message); the shim
+- [x] The wire change is additive (a new op, a new message); the shim
       version still bumps (Python 3, R 4) so a host never talks to a shim
       that cannot answer it.
 
@@ -205,3 +205,28 @@ handler that resumes twice is refused by name, not answered wrongly.
     codec keeps a Long past 32 bits".
   - Found beside it: the host sent `I64` as a JSON double, so a Long
     past 2^53 lost digits on the way to Python. It is tagged digits now.
+
+- Stage 7 (foreign-callbacks, 2026-09-23).
+  - Both languages work end to end on the first live run: python3 3.14,
+    and R 4.4.1 in docker. TestPyCallbacks has 7 tests: an optimiser
+    over a `Reader`, callbacks counted in `State`, a nested call on the
+    same worker, `OkayError` caught in Python, an unoffered name refused,
+    the pool, and a `Durable` replay. TestRCallbacks has the same 6 in R,
+    over R's own `optimize`. TestPyDialogue (2) checks the loop without
+    Python, in the default gate.
+  - Mutant: resuming each ask with its own arguments instead of the
+    callback's answer fails TestPyDialogue.
+  - Two wire facts found on the way. jsonlite sends a named `...` as an
+    OBJECT, so `okay_call` sends `unname(lapply(list(...), enc))`. The
+    shim reads stdin from two places (the main loop and a waiting
+    `okay.call`), so both use explicit `readline`, and one reader owns
+    the buffer.
+  - The R tests define their R functions by `base::source` of a file in
+    java.io.tmpdir, which the docker shim mounts. The API still has no
+    eval operation. A caller who addresses `base::source` has chosen to
+    run a file, which is not the same as the host evaluating a string.
+  - Not done, and stated: an exception THROWN out of a callback's program
+    (rather than a `Left`) leaves the Python/R frame parked in
+    `okay.call`. The worker stays usable, because the shim serves the
+    next request from inside the wait, but that frame never returns. A
+    `Left` is the supported failure channel.

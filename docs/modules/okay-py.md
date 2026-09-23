@@ -69,6 +69,56 @@ Wire v2 (shim 2) added the record. Before it, the shim sent every
 string-keyed `dict` as a frame. A dict answered by a call either failed
 in the shim or reached okay as `None`.
 
+## Callbacks into okay
+
+Python code can call back into okay in the middle of a call.
+`import okay; okay.call("name", *args)` runs a callback that the okay
+side offered, and the callback is an okay PROGRAM. It runs under the
+caller's handlers: Reader, State, Async, Durable, or another call into
+Python. Here a Python optimiser minimises an objective whose target comes
+from okay's `Reader`:
+
+```python
+def minimise(x0):
+    # a gradient-free search: every value of the objective is asked of okay
+    best, fb, step = x0, okay.call("objective", x0), 4.0
+```
+
+```scala
+val objective = Py.callback[Double, Double]("objective")(x => Reader.ask[Double].map(t => (x - t) * (x - t)))
+val fit = Py.fn[Double]("okaycb:minimise").calling(Py.callbacks(objective))(0.0)
+val best = Reader.run(3.25)(fit).runWith
+```
+
+A callback that updates `State` updates the caller's state. Two calls
+from Python are counted in okay:
+
+```scala
+assertEquals(State.handle(0)(prog).runWith, (2, Right(12L)))
+```
+
+How it works: a call with callbacks is a short dialogue, not one
+exchange. `PyEval.Start` answers either the result or a
+`PyStep.Ask(callback, args, k)`. okay runs the callback, and
+`PyEval.Resume(k, answer)` hands the answer back to the Python frame
+waiting inside `okay.call`. While that frame waits, the shim serves any
+request that arrives. So a callback may call Python again on the same
+worker, and `PyWorkers` keeps one worker for the whole dialogue.
+
+- **Failures.** A callback that fails in okay raises `okay.OkayError` in
+  Python, with the condition's `kind` and `message`, and Python may catch
+  it. A name this call did not offer is refused in Python by name.
+- **Journaling.** `Start` and `Resume` are ordinary operations, so
+  `Durable` journals the whole dialogue. A replay answers every step from
+  the journal without starting Python, and the callbacks run again under
+  their own handlers.
+- **One-shot.** The continuation is Python's blocked stack frame, so it
+  can be resumed ONCE. This is a coroutine in the sense of de Moura and
+  Ierusalimschy \[Revisiting coroutines, TOPLAS 2009,
+  doi:10.1145/1462166.1462167\]. The okay side is an effect handler over
+  it \[Plotkin & Pretnar, Handling algebraic effects, LMCS 2013,
+  doi:10.2168/LMCS-9(4:23)2013\].
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own
