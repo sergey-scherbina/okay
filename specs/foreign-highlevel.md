@@ -42,7 +42,7 @@ Each stage is its own lane and appends its Decisions and Results here.
 ### Behavior
 
 - [x] `okay.codec.Journalled` is the trait, unchanged in shape;
-      `okay.agent.Journalled` still names it (type and value), and
+      `okay.agent.Journalled` still names it (a type alias), and
       `Durable.tools`, `TestDurableAnyOp` and every existing Durable test
       are green unchanged.
 - [x] `Journalled[PyEval]`: the journal's `op` is the function's
