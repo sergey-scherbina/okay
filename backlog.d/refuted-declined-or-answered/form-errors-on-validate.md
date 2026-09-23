@@ -1,5 +1,6 @@
-- ANSWERED, and it was not the question it looked like
-  (form-errors-on-validate, 2026-09-18). The entry read the difference
+- form-errors-on-validate — ANSWERED 2026-09-18, and it was not the question it
+  looked like (was filed as `item-058` in okay-codec; named and moved here by
+  backlog-audit-0923). The entry read the difference
   between `Form.errors` and `Validate.errors` as WORDING, and proposed
   a `Wording` parameter on Validate. Running the two side by side on
   one schema (`FormErrorsProbe`) found two places where the form was

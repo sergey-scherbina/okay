@@ -1,4 +1,5 @@
-- ANSWERED, not a lane (ui-path-two-walks, 2026-09-18): the two walks
+- ui-path-two-walks-answered — ANSWERED 2026-09-18, not a lane (moved here from
+  optics-arrows-effects by backlog-audit-0923): the two walks
   STAY two, and the measurement is why — `PathWalkProbe` at depths 4,
   16 and 64 puts the affine at 2.9-7.9x the time and a steady ~5.5x
   the allocation of the hand walk, because it is built from a runtime

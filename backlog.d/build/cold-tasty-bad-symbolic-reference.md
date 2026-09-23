@@ -1,4 +1,7 @@
-- [ ] jdk-internal-bad-symbolic-reference — a COLD `okayJVM/compile`
+- [ ] cold-tasty-bad-symbolic-reference — RENAMED 2026-09-23 (backlog-audit-0923)
+      from `jdk-internal-bad-symbolic-reference`, as its own third
+      occurrence asked: the symbol is not the cause, a cold TASTy read
+      is. Was: a COLD `okayJVM/compile`
       can fail with no source position and one error:
 
           [error] Bad symbolic reference. A signature

@@ -1,4 +1,5 @@
-- [ ] §20's Spark row is a BATCH job over RDDs: no event time, a window
+- [ ] spark-structured-streaming-lane — (was `item-172`; named by backlog-audit-0923)
+      §20's Spark row is a BATCH job over RDDs: no event time, a window
       is a key, the arrival index carried through the shuffle. Spark's
       answer to an event-time question is Structured Streaming —
       `.withWatermark("ts", "30 seconds").groupBy(window($"ts", "5
