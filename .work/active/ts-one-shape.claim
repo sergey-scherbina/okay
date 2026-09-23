@@ -1,3 +1,0 @@
-slug: ts-one-shape
-who: claude-opus-5.5 (interop session)
-what: spec+plan for "one set of types" across the three Scala/TS scenarios; T1: the TS worker speaks the JSON codec shape
