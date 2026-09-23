@@ -1,0 +1,6 @@
+feature/frege-sbt-plugin 2026-09-23T08:08:28Z
+agent: claude-code
+heartbeat: 2026-09-23T08:08:28Z
+status: in-progress
+done-so-far: design (the okay-deploy-sbt source-plugin precedent)
+next: okay-frege/sbt-plugin (OkayFrege AutoPlugin, noTrigger); project/plugins.sbt depends on it; project/Frege.scala removed
