@@ -23,19 +23,25 @@ import java.nio.file.{Files, Path}
 object HaskellWorker:
 
   /** the `Okay` module's source, as this jar ships it */
-  def library: String =
-    val res = getClass.getResourceAsStream("/okay/hs/Okay.hs")
-    if res == null then throw IllegalStateException("okay.py: /okay/hs/Okay.hs is missing from the jar")
+  def library: String = resource("Okay.hs")
+
+  /** the `OkayEff` module: programs typed by their effects (hs-typed-effects) */
+  def effects: String = resource("OkayEff.hs")
+
+  private def resource(name: String): String =
+    val res = getClass.getResourceAsStream(s"/okay/hs/$name")
+    if res == null then throw IllegalStateException(s"okay.py: /okay/hs/$name is missing from the jar")
     try String(res.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally res.close()
 
   /**
    * Compile `dir/main` (default `Main.hs`) against the shipped `Okay`
-   * module; answers the binary. `Okay.hs` is written into `dir` beside it,
+   * module; answers the binary. `Okay.hs` and `OkayEff.hs` are written into `dir` beside it,
    * and GHC's objects go under `dir/.okay-build`. A compile error refuses
    * with GHC's own words.
    */
   def build(dir: Path, main: String = "Main.hs", ghc: String = "ghc"): Path =
     Files.writeString(dir.resolve("Okay.hs"), library): Unit
+    Files.writeString(dir.resolve("OkayEff.hs"), effects): Unit
     val out = dir.resolve(".okay-build")
     Files.createDirectories(out): Unit
     val bin = out.resolve("worker")
