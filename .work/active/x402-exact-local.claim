@@ -1,6 +1,0 @@
-feature/x402-exact-local 2026-09-23T12:44:59Z
-agent: claude-code
-heartbeat: 2026-09-23T12:44:59Z
-status: in-progress
-done-so-far: picked (operator: Продолжай 402)
-next: spec stage 2 split; okay-x402-evm: keccak, secp256k1 recovery, EIP-712, ExactEvm.verify, LocalFacilitator
