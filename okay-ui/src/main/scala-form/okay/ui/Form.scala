@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.{!, +, pure, Pure, Cont, reset, />}
+import okay.{!, +, Pure, Cont, reset, />}
 import okay.given
 import okay.codec.{Codecs, Json, Schema}
 
@@ -742,28 +742,29 @@ object Form {
     askFrom(message, z.focus, checks*).map(_.map(a => z.set(a)))
 
   private def asking[A](message: String, checks: Seq[Check[A]], start: Json)(using s: Schema[A]): Option[A] ! Dialog =
-    def loop(j: Json, errs: Vector[(String, String)]): Option[A] ! Dialog =
-      Dialog.show(asked(message, errs.collect { case ("", m) => m },
-        ofWith[A](errs).apply(j))).flatMap {
-        case Event.Pressed("$ok") =>
-          val fieldErrs = errors[A](j)
-          if fieldErrs.nonEmpty then loop(j, fieldErrs)
-          else decode[A].apply(j) match
-            case Left(err) => loop(j, Vector("" -> err))
-            case Right(a) =>
-              val crossErrs = checks.toVector.flatMap(_(a))
-              if crossErrs.isEmpty then okay.pure(Some(a))
-              else loop(j, crossErrs)
-        case Event.Pressed("$cancel") | Event.Closed => okay.pure(None)
-        case e => loop(edit[A](j, e), Vector.empty)
-      }
-
     // FROM THE BLANK, not from `{}` (form-ask-blank): a `Select` the
     // user never touches still shows an option, and the value has to
     // hold what the screen says or `ok` submits a form with no answer
     // where the screen shows one. The same door `Live.form` and
     // okay-watch's page had, counted here by writing the guide.
-    loop(start, Vector.empty)
+    //
+    // One `!.loop` (loop-audit): the state is the draft and its errors,
+    // `Right` is the answer, every `Left` is "show again with this".
+    !.loop((start, Vector.empty[(String, String)])) { (j, errs) =>
+      Dialog.show(asked(message, errs.collect { case ("", m) => m },
+        ofWith[A](errs).apply(j))).map {
+        case Event.Pressed("$ok") =>
+          val fieldErrs = errors[A](j)
+          if fieldErrs.nonEmpty then Left((j, fieldErrs))
+          else decode[A].apply(j) match
+            case Left(err) => Left((j, Vector("" -> err)))
+            case Right(a) =>
+              val crossErrs = checks.toVector.flatMap(_(a))
+              if crossErrs.isEmpty then Right(Some(a)) else Left((j, crossErrs))
+        case Event.Pressed("$cancel") | Event.Closed => Right(None)
+        case e => Left((edit[A](j, e), Vector.empty))
+      }
+    }
 
   /** an invalid submit, as a CONDITION (ui-direct): the errors and
    * which attempt this is — the policy decides how forgiving the
@@ -817,9 +818,11 @@ object Form {
               Condition.raiseC(InvalidSubmit(errs, n))(using ans)).map(Outcome.Done(_))
           )(_ => Outcome.Retry()))(_ => Outcome.Gave())).runWith
 
-    def loop(j: Json, errs: Vector[(String, String)], n: Int): Option[A] ! Dialog =
+    // the policy road has its own loop, and the same start: the state
+    // carries the attempt number the policy is asked with
+    !.loop((blank[A], Vector.empty[(String, String)], 1)) { (j, errs, n) =>
       Dialog.show(asked(message, errs.collect { case ("", m) => m },
-        ofWith[A](errs).apply(j))).flatMap {
+        ofWith[A](errs).apply(j))).map {
         case Event.Pressed("$ok") =>
           val fieldErrs = errors[A](j)
           val submit: Either[Vector[(String, String)], A] =
@@ -830,28 +833,25 @@ object Form {
                 val crossErrs = checks.toVector.flatMap(_(a))
                 if crossErrs.isEmpty then Right(a) else Left(crossErrs)
           submit match
-            case Right(a) => pure(Some(a))          // the policy is never consulted
+            case Right(a) => Right(Some(a))          // the policy is never consulted
             case Left(errs2) => verdict(errs2, n) match
-              case Outcome.Done(forced) => pure(Some(forced))
-              case Outcome.Gave() => pure(None)
-              case Outcome.Retry() => loop(j, errs2, n + 1)
-        case Event.Pressed("$cancel") | Event.Closed => pure(None)
-        case e => loop(edit[A](j, e), Vector.empty, n)
+              case Outcome.Done(forced) => Right(Some(forced))
+              case Outcome.Gave() => Right(None)
+              case Outcome.Retry() => Left((j, errs2, n + 1))
+        case Event.Pressed("$cancel") | Event.Closed => Right(None)
+        case e => Left((edit[A](j, e), Vector.empty, n))
       }
-
-    // the policy road has its own loop, and the same start
-    loop(blank[A], Vector.empty, 1)
+    }
 
   /** the same flow over a JSON Schema — what elicitation asks with */
   def askSchema(message: String, schema: Json): Option[Json] ! Dialog =
-    def loop(j: Json, error: Option[String]): Option[Json] ! Dialog =
-      Dialog.show(asked(message, error.toVector, ofSchema(schema)(j))).flatMap {
-        case Event.Pressed("$ok") => okay.pure(Some(j))
-        case Event.Pressed("$cancel") | Event.Closed => okay.pure(None)
-        case e => loop(editSchema(schema, j, e), None)
+    !.loop((Json.JObj(Vector.empty): Json, Option.empty[String])) { (j, error) =>
+      Dialog.show(asked(message, error.toVector, ofSchema(schema)(j))).map {
+        case Event.Pressed("$ok") => Right(Some(j))
+        case Event.Pressed("$cancel") | Event.Closed => Right(None)
+        case e => Left((editSchema(schema, j, e), None))
       }
-
-    loop(Json.JObj(Vector.empty), None)
+    }
 
   private def asked(message: String, formErrors: Vector[String], form: Ui): Ui =
     Ui.Column(Vector(Ui.Text(message)) ++

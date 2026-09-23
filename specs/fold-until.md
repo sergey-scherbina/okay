@@ -241,6 +241,34 @@ The walks:
   other. The two-`Either` form was written out and rejected on
   reading, not on length. Rejected: rewriting them anyway to make the
   trigger's count.
+- **The doors counted (loop-audit, 2026-09-23)** — every hand-written
+  `def loop(` in production code outside the interpreter walks, read
+  and decided:
+  - REWRITTEN over `!.loop`: `Form.asking` (state `(draft, errors)`),
+    the policy road of `Form.askWith` (state `(draft, errors, attempt)`)
+    and `Form.askSchema` (state `(draft, error)`) — each was a
+    `def loop` with three or four recursive calls and a trailing seed
+    call; each is now a `map` whose cases answer a value. The `pure`
+    import went with them. `TestFormDrill`, `TestDialog`, `TestScreens`,
+    `TestUiDirect`, `TestScope`, `TestToolkit` unchanged, 33 green.
+  - KEPT, pulling a source (`Ui.run`, chatweb `Main.loop`): the same
+    reason as `Dialog.run` — `Writer.uncons`'s `Either` under the
+    loop's own reads as the opposite of what it means. These are
+    consumers of a source, which is `Take.foldUntil`'s and
+    `transduceUntil`'s shape, not `!.loop`'s.
+  - KEPT, mutually recursive (`Conversation.loop` ↔ `fill`, with
+    `finish` and `again`): the recursion is the dialog's shape, with
+    exits inside `fill`; a single-body loop would have to swallow
+    `fill`.
+  - KEPT, no state and no exit (`Nio.listen`'s accept loop): it ends by
+    the channel's exception; a `Right` would be unreachable and the
+    type would promise an answer that never comes.
+  - NOT `!`-programs: `PWizard.step`'s loop is a `Machine` under `shift`
+    (the typed wizard's own retry); `Wire.serveClosing`'s loop is a
+    `Stage` that awaits — a `Stage.transduceUntil` door, filed as
+    `wire-serve-transduce-until` (backlog okay-ui).
+  - Interpreter walks (`Memory.scala`, `Pull.scala`) and the benchmark
+    harness (`JvmLane`) are not loops of this kind.
 - **Stages 3–4 stay `- [ ]` behind triggers** — the repository's rule
   is a consumer first; the form is written down here so the next lane
   does not re-derive it.
