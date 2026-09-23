@@ -243,6 +243,22 @@ assertEquals(golden.RFacadeDemo.trimmed[Double, Vector[Double]](Vector(1.0, 2.0,
 - **Defaults.** Formals with defaults are left out, and the comment says
   which.
 
+## Streams through R
+
+`R.stage` is `Py.stage` over an R function of a vector:
+
+```scala
+assertEquals(run(okay.through(numbers(9))(R.stage[Double, Double]("streamr::evens", chunk = 4))), List(2.0, 4.0, 6.0, 8.0))
+```
+
+A stateful R stage is a held CLOSURE, called per chunk through
+`base::do.call`:
+
+```scala
+val acc = R.hold("streamr::running")().runWith.toOption.get
+assertEquals(run(okay.through(numbers(6))(acc.stage[Double, Double](chunk = 2))), List(3.0, 10.0, 21.0))
+```
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`

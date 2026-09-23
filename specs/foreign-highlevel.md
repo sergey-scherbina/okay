@@ -529,6 +529,30 @@ the diff.
       COMPILES with the tests, and a live test regenerates it and compares
       it with the file.
 
+## Stage 6 — foreign-streaming
+
+### Behavior
+
+- [x] `Py.stage[I, O]("mod:fn", chunk)` / `R.stage[I, O]("mod::fn", chunk)`:
+      an okay stage in the row `Take % I + (Writer % O + PyEval)` that
+      pulls a chunk, calls the function with it as a list/vector, and
+      tells what comes back (any length). A partial chunk is flushed at
+      the end.
+- [x] Pull-driven: at each call the source has produced exactly the
+      elements asked for (default gate, with a mock).
+- [x] Stateful: a held Python object (`ref.stage(method, finish)`) or a
+      held R closure (`ref.stage(chunk, finish)`, called through
+      `base::do.call`).
+- [x] A failure ends the stage naming the condition (`PyStream.Failed`,
+      `RStream.Failed`).
+
+### Decisions
+
+- **Chunks over a generator.** A Python generator suspended on its input
+  would need a second thread in the shim, because the shim is one
+  request-answer loop. A stage that owns the pull is what `through`
+  already composes, and one message per chunk is the cost that matters.
+
 ## Results
 
 - Stage 1 (foreign-journalled, 2026-09-23). Eight tests with no live
@@ -636,3 +660,17 @@ the diff.
     where the methods need them (a default-gate test checks it).
   - R: `as.character(formals(f))` tells a default from none without
     evaluating the empty symbol, which errors if touched.
+
+- Stage 6 (foreign-streaming, 2026-09-23).
+  - Python: 4 live tests (a map in chunks with call sizes 4/4/2, a
+    filter, a held stateful windowing object flushed at the end, a
+    failure named). R: 3 live tests (the same, with a held closure via
+    `do.call`). The pull shape is in the default gate.
+  - Mutant: `buf.size > chunk` instead of `==` fails the pull test.
+  - Found while writing that test: a source built as a LEFT-nested
+    `p.flatMap(_ => { produced += 1; tell(x) })` read one element ahead
+    (5, 9 instead of 4, 8). `through` hands back its rest unresumed; it
+    is the reassociation of the left-nested bind that runs the next
+    lambda. A side effect hidden in a bind lambda is not a pull. The test
+    produces each element under its own `Free.delay`, which reads
+    exactly 4, 8, 10.

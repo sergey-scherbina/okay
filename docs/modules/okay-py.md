@@ -222,6 +222,36 @@ def mean(xs: Vector[Double]): Either[Condition, Double] ! PyEval =
   drifts from it silently. A generated one follows the code, so a change
   in Python shows up as a diff.
 
+## Streams through Python
+
+A Python function over a LIST becomes an okay stage over CHUNKS, and it
+composes with `through` like any stage:
+
+```scala
+val out = run(okay.through(numbers(10))(Py.stage[Long, Long]("streamy:double", chunk = 4)))
+```
+
+- **Chunks.** The stage pulls up to `chunk` elements and calls the
+  function once with them. It tells every element of the list that comes
+  back. That list may have any length, so the stage can filter or expand
+  as well as map. One message crosses per chunk, not per element, and
+  the end of the input flushes a partial chunk.
+- **Back-pressure.** The next pull waits for the answer, so a slow model
+  holds back its source. The default gate checks that the source has
+  produced exactly 4, 8, then 10 elements at the three calls.
+- **State.** A stateful transformation is a held object. Its `step` is
+  called per chunk and its `flush` once at the end:
+
+  ```scala
+  val out = run(okay.through(numbers(8))(win.stage[Long, Long]("step", chunk = 2, finish = Some("flush"))))
+  ```
+
+- **Failure.** A Python failure ends the stage with `PyStream.Failed`,
+  naming the condition, because a stage has no error channel of its own.
+- **Why chunks, not a generator.** A generator suspended on its input
+  would need a second thread inside the shim. Owning the pull on the okay
+  side is what `through` already composes.
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own
