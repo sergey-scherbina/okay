@@ -65,9 +65,14 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   libraries), a Scala 3 / Scala 2 phrasebook, and every compiler error the setup can produce
   with its cause. Every snippet compiles under scalac 2.13 with
   `-Werror` in the gate.
-- **[okay with TypeScript](typescript.md)** — TypeScript on the same
-  wire: typed calls, callbacks into okay's effects, held objects,
-  programs as data (multi-shot), types checked by `tsc`.
+- **[okay with TypeScript](typescript.md)** — Scala and TypeScript in
+  the three places they meet: a Scala backend with a TypeScript frontend
+  (a typed `client.ts`, live documents typed by path), both in the
+  browser (Scala.js exports with their `.d.ts`, the `@okay/ts` npm
+  package, durable flows in IndexedDB, `Direct.ts { }`), and both on the
+  backend (a Node worker, a generated Scala facade). Types are written
+  once, in either language, and every generated file is checked by
+  `tsc --strict`.
 - **[okay with Python and R](python-and-r.md)** — Python and R
   functions as typed Scala functions, and their code calling back into
   okay's effects by name, with diagrams; held models, inline modules,
