@@ -420,6 +420,17 @@ until Spark stage 2 has run on mainnet.
 
 ## Decisions
 
+- 2026-09-23 — **no Spark below the Spark adapter** (operator: the
+  same tables must work in okay-watch, which does not want Spark as a
+  dependency). (1) The §4 encodings live in okay-codec's `Columns`,
+  engine-free; okay-spark's `SparkSchema` only translates types and
+  values (landed as columns-neutral: every Spark test passed unchanged
+  over the translation). (2) §5's tables are NOT SQL views over a
+  `blocks` DataFrame: they are typed Scala rows produced in okay-scalus
+  (`CardanoTables.outputs(block): Vector[OutputRow]`, …), so the
+  explode is written once and every engine — Spark, DuckDB/okay-delta,
+  okay-watch's own aggregators — reads the same rows.
+
 - 2026-09-23 — **okay-scalus-chain findings.** (1) Two era numberings:
   chain-sync headers index eras by the hard-fork combinator (Conway 6),
   block-fetch's `[era, block]` counts Byron's boundary blocks

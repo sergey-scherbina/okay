@@ -84,6 +84,33 @@ Data Interchange Format*, RFC 8259 (2017), §6 "Numbers",
 doi:10.17487/RFC8259; the Cardano ledger's Conway CDDL (`big_int`,
 `big_uint = #6.2(bounded_bytes)`), IntersectMBO/cardano-ledger.
 
+**Columns: a datatype as a table, with no engine in it.** `Columns`
+folds a `Schema[A]` into column types (`Int32`, `Int64`, `Text`,
+`Binary`, `Decimal`, `Json`, `Arr`, `Struct`) and rows of plain Scala
+values. Every tabular decision a sum type or a recursive one forces is
+made here once, so Spark (okay-spark's `SparkSchema` is a thin
+translation of this), DuckDB, Parquet, Delta or an in-process
+aggregator all read the same table:
+
+```scala
+val (fields, toRow) = Columns.table[Output]
+// Vector(Field(id,Int32,false), Field(owner,Struct(Vector(Field(kind,Text,false),
+//   Field(KeyHash,Struct(...),true), Field(ScriptHash,Struct(...),true))),false),
+//   Field(lovelace,Decimal(38,0),false))
+val row = toRow(Output(2, Credential.ScriptHash(Array[Byte](2)), BigInt(5_000_000)))
+// Row(Vector(2, Row(Vector(ScriptHash, null, Row(Vector([2])))), 5000000))
+```
+
+A pure enum is `Text` holding the case NAME (an ordinal would be
+renumbered by the next case); a sum with payloads is `kind` plus one
+nullable struct per case WITH fields (a field-less case has no branch
+— Parquet refuses an empty struct — and a new case is a new nullable
+column old files read as null); a RECURSIVE type, a named node
+reachable from itself (mutual recursion included), is
+`Struct(cbor: Binary, json: Json)`; `BigInt` is `Decimal(38, 0)`,
+refused past 38 digits. The same reading as spark-avro's unions and
+spark-protobuf's `oneof`, with the discriminator they lack.
+
 **Totality underneath.** `Json.parse` rides the okay-parse pipeline,
 so a damaged document projects `JErr` values and a truncated one
 still decodes the fields it carries — the LLM structured-output case.
@@ -225,6 +252,7 @@ the wire sees.
 |---|---|---|
 | `Schema[A]` | `SInt/SLong/SDouble/SBool/SString/SBytes/SBigInt/SOption/SList/SProduct/SSum` | the reified shape; fields/cases are thunked for recursion |
 | `Schema.SBytes` | `Schema[Array[Byte]]` | raw bytes: a CBOR byte string, base64 in JSON, `contentEncoding` in a tool schema |
+| `Columns` | `fields[A]`, `row(a)`, `table[A]`, `column(s)`, `recursiveNames(s)` | a Schema as engine-free columns and rows |
 | `Schema.SBigInt` | `Schema[BigInt]` | an unbounded integer: a CBOR integer to 2⁶⁴−1 then a tag 2/3 bignum, a digit string in JSON, `SqlType.Num` in SQL |
 | `Base64` | `encode(Array[Byte]): String`, `decode(String): Either[String, Array[Byte]]` | RFC 4648 §4, hand-rolled and total; decoding reports rather than throws |
 | `Schema.derived` | `inline given derived[A](using Mirror.Of[A]): Schema[A]` | Mirrors derivation; write `given Schema[T] = Schema.derived` |

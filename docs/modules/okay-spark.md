@@ -42,11 +42,13 @@ element boundary and a boxed element where Spark boxes it too. It is
 the RDD level, not Catalyst: the Wrocław GTFS join reads 18 s here
 against 7 s through DataFrames, and 4 s in one JVM through `Chunks`.
 
-**ADTs as DataFrames.** `SparkSchema` folds an okay `Schema[A]` into a
+**ADTs as DataFrames.** `SparkSchema` turns an okay `Schema[A]` into a
 Spark `StructType` and rows — the Catalyst side, where Spark's own
 `ExpressionEncoder` (Scala 2 `TypeTag` reflection) sees no Scala 3
-enum. Spark has no sum type and no recursion, so those carry the
-decisions (specs/scalus.md §4):
+enum. It DECIDES nothing: okay-codec's `Columns` makes every tabular
+decision engine-free (so the same tables exist without Spark), and
+this translates its types and values — a `Json` column becomes a Spark
+4 VARIANT (specs/scalus.md §4):
 
 ```scala
 val df = SparkSchema.dataFrame(spark, Seq(
