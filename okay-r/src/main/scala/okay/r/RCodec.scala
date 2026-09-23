@@ -1,6 +1,7 @@
 package okay.r
 
-import okay.{!, effect}
+import okay.{!, +, effect, pure}
+import okay.RowLift.plus
 import okay.codec.Schema
 import RValue.*
 
@@ -206,6 +207,32 @@ object RCodec {
 object R {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /**
+   * A callback R may call by name while okay runs one of its functions
+   * (foreign-callbacks): `okay_call("objective", x)` in R decodes `x` as
+   * `Arg`, runs `f` as an okay program in `F` under the caller's
+   * handlers, and answers `Res` as the value of `okay_call`. okay-py's
+   * `Py.callback`, in R.
+   */
+  def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = CallbackOf(name)
+
+  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
+
+  final class CallbackOf[Arg: Schema, Res: Schema](name: String):
+    def apply[F[+_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
+      val in = args match
+        case Vector(one) => RCodec.decode[Arg](one)
+        case many => RCodec.decode[Arg](RValue.Vec(many))
+      in match
+        case Left(c) => pure[F, Either[Condition, RValue]](Left(c))
+        case Right(i) => f(i).map(o => Right(RCodec.encode(o))))
+
+  final class Callback[F[+_]](val name: String, val run: Vector[RValue] => Either[Condition, RValue] ! F)
+
+  final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
+    def names: Vector[String] = all.map(_.name)
+    def get(name: String): Option[Callback[F]] = all.find(_.name == name)
+
   final class Fn[Out](val address: String)(using out: Schema[Out]):
     def apply(): Either[Condition, Out] ! REval = call(Vector.empty)
     def apply[A: Schema](a: A): Either[Condition, Out] ! REval =
@@ -220,4 +247,30 @@ object R {
     private def call(args: Vector[RValue]): Either[Condition, Out] ! REval =
       effect[REval, Either[Condition, RValue]](REval.Call(address, args))
         .map(_.flatMap(RCodec.decode[Out](_)))
+
+    /** this function, offered `cbs` to call back into (foreign-callbacks) */
+    def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
+
+    final class Calling[F[+_]](cbs: Callbacks[F]):
+      def apply(): Either[Condition, Out] ! (F + REval) = dialogue(Vector.empty)
+      def apply[A: Schema](a: A): Either[Condition, Out] ! (F + REval) =
+        dialogue(Vector(RCodec.encode(a)))
+      def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! (F + REval) =
+        dialogue(Vector(RCodec.encode(a), RCodec.encode(b)))
+      def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! (F + REval) =
+        dialogue(Vector(RCodec.encode(a), RCodec.encode(b), RCodec.encode(c)))
+
+      /** start, then per ask run the callback's program and resume, until
+       * the function answers — each step one okay node */
+      private def dialogue(args: Vector[RValue]): Either[Condition, Out] ! (F + REval) =
+        type Row = F + REval
+        def go(step: RStep): Either[Condition, Out] ! Row = step match
+          case RStep.Done(a) => pure[Row, Either[Condition, Out]](a.flatMap(RCodec.decode[Out](_)))
+          case RStep.Ask(name, as, k) =>
+            val answered: Either[Condition, RValue] ! Row = cbs.get(name) match
+              case Some(cb) => cb.run(as).plus[REval]
+              case None => pure[Row, Either[Condition, RValue]](Left(Condition("NoCallback",
+                s"'$name' is not among this call's callbacks (${cbs.names.mkString(", ")})")))
+            answered.flatMap(a => effect[Row, RStep](REval.Resume(k, a))).flatMap(go)
+        effect[Row, RStep](REval.Start(address, args, cbs.names)).flatMap(go)
 }

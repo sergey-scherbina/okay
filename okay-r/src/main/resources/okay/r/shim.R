@@ -1,5 +1,6 @@
-# okay-r shim, version 3 (specs/r.md; v3 = foreign-typed-calls: a
-# named list that is not a data.frame is a RECORD on the wire). One JSON object per line each
+# okay-r shim, version 4 (specs/r.md; v3 = foreign-typed-calls: a
+# named list that is not a data.frame is a RECORD on the wire; v4 =
+# foreign-callbacks: `start`/`resume` and `okay_call`). One JSON object per line each
 # way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -8,7 +9,7 @@
 # has no JSON reader, and our own parser at the trust boundary is a
 # worse thing to own than one package every R installation has.
 
-SHIM <- 3
+SHIM <- 4
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
@@ -168,20 +169,60 @@ resolve <- function(fn) {
   f
 }
 
-say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = ".")))
+# ---- callbacks into okay (v4) ------------------------------------------
+#
+# okay_call("name", ...) inside a function okay started with callbacks: the
+# ask goes to the host and THIS frame waits for the resume, serving any
+# request that arrives meanwhile (a callback may call R again). A callback
+# that failed in okay is an R condition of class `okay_error`, with the
+# okay condition's `kind` beside its message — tryCatch-able.
 
-# ---- the loop ---------------------------------------------------------
+.okay_offered <- list()
+.okay_next_k <- 0L
 
-con <- file("stdin", open = "r")
-while (length(line <- readLines(con, n = 1L, warn = FALSE)) > 0) {
-  if (!nzchar(trimws(line))) next
-  req <- jsonlite::fromJSON(line, simplifyVector = FALSE)
+okay_call <- function(name, ...) {
+  n <- length(.okay_offered)
+  if (n == 0L)
+    stop(sprintf("okay_call('%s') outside a call okay started with callbacks", name))
+  offered <- .okay_offered[[n]]
+  if (!(name %in% offered))
+    stop(sprintf("okay_call('%s'): this call was offered %s", name, paste(offered, collapse = ", ")))
+  k <- .okay_next_k + 1L
+  assign(".okay_next_k", k, envir = globalenv())
+  say(list(ask = list(cb = name, args = unname(lapply(list(...), enc)), k = k)))
+  repeat {
+    line <- readLines(con, n = 1L, warn = FALSE)
+    if (length(line) == 0L) quit(status = 0)
+    if (!nzchar(trimws(line))) next
+    req <- jsonlite::fromJSON(line, simplifyVector = FALSE)
+    if (identical(req$op, "resume") && identical(as.integer(req$k), k)) {
+      if (!is.null(req$condition))
+        stop(structure(class = c("okay_error", "error", "condition"),
+                       list(message = req$condition$message, call = NULL,
+                            kind = req$condition$kind)))
+      return(dec(req$ok))
+    }
+    say(serve(req))
+  }
+}
+
+okay_push <- function(cbs)
+  assign(".okay_offered", c(.okay_offered, list(unlist(cbs))), envir = globalenv())
+okay_pop <- function()
+  assign(".okay_offered", .okay_offered[-length(.okay_offered)], envir = globalenv())
+
+serve <- function(req) {
   rid <- req$id
-  out <- tryCatch({
+  tryCatch({
     op <- req$op
     if (op == "call") {
       f <- resolve(req$fn)
       list(id = rid, ok = enc(do.call(f, lapply(req$args, dec))))
+    } else if (op == "start") {
+      f <- resolve(req$fn)
+      okay_push(req$callbacks)
+      res <- tryCatch(do.call(f, lapply(req$args, dec)), finally = okay_pop())
+      list(id = rid, ok = enc(res))
     } else if (op == "frame") {
       f <- resolve(req$fn)
       res <- do.call(f, c(list(dec(req$`in`)), lapply(req$args, dec)))
@@ -196,9 +237,20 @@ while (length(line <- readLines(con, n = 1L, warn = FALSE)) > 0) {
       }
       list(id = rid, ok = list(r = paste(R.version$major, R.version$minor, sep = "."),
                                packages = pkgs))
+    } else if (op == "resume") {
+      stop(sprintf("resume %s: no call is waiting for it (resumed twice?)", format(req$k)))
     } else stop(sprintf("unknown op '%s'", op))
   }, condition = function(c) {
     list(id = rid, condition = list(kind = class(c)[1], message = conditionMessage(c)))
   })
-  say(out)
+}
+
+say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = ".")))
+
+# ---- the loop ---------------------------------------------------------
+
+con <- file("stdin", open = "r")
+while (length(line <- readLines(con, n = 1L, warn = FALSE)) > 0) {
+  if (!nzchar(trimws(line))) next
+  say(serve(jsonlite::fromJSON(line, simplifyVector = FALSE)))
 }

@@ -23,6 +23,7 @@ class TestRJournal extends munit.FunSuite {
       case REval.Frame(_, in, _) =>
         ran.incrementAndGet(): Unit
         Right(RFrame(in.cols.map((n, c) => (n, c.reverse))))
+      case other => throw IllegalArgumentException(s"not canned: $other")
 
   private val xs = Vector(Vec(Vector(F64(3), F64(1), F64(2))))
 

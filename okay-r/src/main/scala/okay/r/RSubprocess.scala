@@ -61,6 +61,11 @@ final class RSubprocess private (private var proc: Process,
     val body = req match
       case Json.JObj(fs) => Json.JObj(("id" -> Json.JNum(id.toDouble)) +: fs)
       case other => other
+    send(body)
+
+  /** one message out, the next in — a `resume` opens nothing, so it
+   * carries no id (foreign-callbacks) */
+  private def send(body: Json): Either[Condition, Json] =
     out.write(Json.print(body)); out.write("\n"); out.flush()
     readLine() match
       case Left(c) => Left(c)
@@ -124,6 +129,22 @@ final class RSubprocess private (private var proc: Process,
           "op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn),
           "in" -> Wire.encFrame(frame),
           "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decFrame)
+      case REval.Start(fn, args, cbs) =>
+        stepOf(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc)),
+          "callbacks" -> Json.JArr(cbs.map(Json.JStr(_)))))))
+      case REval.Resume(k, a) =>
+        val answered = a match
+          case Right(v) => "ok" -> Wire.enc(v)
+          case Left(c) => "condition" -> Json.JObj(Vector(
+            "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
+        stepOf(send(Json.JObj(Vector(
+          "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered))))
+
+  /** a call's next message: an ask, or its answer (a timeout included) */
+  private def stepOf(e: Either[Condition, Json]): RStep =
+    e.toOption.flatMap(Wire.step).getOrElse(RStep.Done(answer(e)(v => Right(Wire.dec(v)))))
 
   /**
    * Presence and version of named packages, mismatches as data naming
@@ -167,7 +188,7 @@ final class RSubprocess private (private var proc: Process,
 
 object RSubprocess:
 
-  val ShimVersion = 3
+  val ShimVersion = 4
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH

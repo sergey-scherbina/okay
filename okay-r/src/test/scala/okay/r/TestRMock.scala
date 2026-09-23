@@ -21,6 +21,7 @@ class TestRMock extends munit.FunSuite:
       case REval.Call(fn, _) =>
         answers.get(fn).toRight(Condition("simpleError", s"no canned answer for '$fn'"))
       case REval.Frame(_, in, _) => Right(in)
+      case other => throw IllegalArgumentException(s"not canned: $other")
 
   test("a canned-answers handler IS the mock — no R, no process, no test double to write") {
     val h = canned(Map("forecast::auto.arima" -> Vec(Vector(F64(42)))))
