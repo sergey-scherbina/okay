@@ -1,6 +1,6 @@
 package okay.clojure
 
-import okay.{!, %, Stage, Writer, pure, through}
+import okay.{!, %, +, Chunks, Reader, Stage, State, Writer, pure, through}
 import clojure.lang.{IFn, PersistentVector}
 import scala.jdk.CollectionConverters.*
 
@@ -47,4 +47,21 @@ class TestDocExamplesClojure extends munit.FunSuite:
     val windows = through(lines("a", "a", "b", "c", "c", "d"))(pairs)
     // Writer.run(windows) — (Seq([a b], [c d]), ())
     assertEquals(told(windows).map(_.toString), Seq("[\"a\" \"b\"]", "[\"c\" \"d\"]"))
+  }
+
+  def value(name: String) = Clj.value("okay.clojure.programs", name).fold(e => fail(e), identity)
+
+  test("okay-clojure.md: okay's effects from Clojure, okay.core") {
+    val prog = Program.run[Reader % Long + State % Long, java.lang.Long](value("reader-state"))(
+      using summon, Program.Row.of[Reader % Long] | Program.Row.of[State % Long])
+    val answer = !.run(State.handle(5L)(Reader.run(7L)(prog)))   // (6, 7006)
+    assertEquals((answer._1, answer._2.longValue), (6L, 7006L))
+  }
+
+  test("okay-clojure.md: lazy seqs, both ways") {
+    val range = Clj.eval("(range)").fold(e => fail(e), identity)
+    val c = Program.chunks[java.lang.Long](range)            // a Clojure (range), infinite, as okay Chunks
+    assertEquals(Chunks.foldLeft(Chunks.take(c)(3))(Vector.empty[Long])(_ :+ _.longValue), Vector(0L, 1L, 2L))
+    val s = Program.seq(Chunks.map(Chunks.range(0, 5))(Long.box))   // okay Chunks as a Clojure lazy seq
+    assertEquals(Clj.fn("clojure.core", "vec").fold(e => fail(e), identity).invoke(s).toString, "[0 1 2 3 4]")
   }

@@ -8,6 +8,10 @@
 | `Clj` | calling Clojure through its own Java API (`clojure.java.api.Clojure`): `fn(ns, name)` loads the namespace and answers the var's `IFn`, `require(ns)`, `eval(source)` — each a `Left` NAMING what is missing (an unbound var, a namespace that does not load, source that does not read) instead of Clojure's later "Attempting to call unbound fn" |
 | `Transducers.of(stage)` | an okay `Stage` as a Clojure transducer: runs in `into`, `transduce`, `sequence`, `eduction`, a core.async channel; composes with `comp` against Clojure's own, in either order |
 | `Transducers.stage(xf)` | any Clojure transducer — `(map inc)`, `(partition-all 3)`, `(dedupe)`, a library's own — as a `Stage` in an okay pipeline (`through`, `pipe`) |
+| `okay.core` (Clojure, in the jar) | okay's effects FROM Clojure: a program is data — `done`, `step`, `bind`, `perform`, `await`, `tell`, and `mlet`, a monadic let |
+| `Program.stage` / `stageWith` / `run` | a Clojure `okay.core` program as an okay `Stage` (that may also perform) or as `A ! F` — multi-shot, no threads |
+| `Program.chunks` / `Program.seq` | a Clojure seq as okay `Chunks` and okay `Chunks` as a Clojure lazy seq, both LAZY — infinite either way; `seq` takes only pure `Chunks` |
+| `Ops` | the core effects' operations for Clojure to perform (Reader, State, Throws, Choose, Async sleep) |
 
 ## A stage is a transducer
 
@@ -64,6 +68,54 @@ and refuses a second run by name — before the spent state is touched.
 Build it again to run it again. `Transducers.of` has no such limit:
 each application to a reducing function is a fresh process, as it is
 for Clojure's own.
+
+## okay's effects from Clojure: `okay.core`
+
+The transducer is the part of Clojure that is a transformation; a
+Clojure program that needs okay's EFFECTS — ask a Reader, touch State,
+raise, sleep, choose — goes through `okay.core`, a namespace shipped in
+this jar (`(require '[okay.core :as ok])`, no AOT). It is okay's freer
+tree written in Clojure: a program is `(done v)` or `(step op k)`, and
+`mlet` — cats' monadic let — reads like `do`:
+
+```clojure
+(def reader-state
+  "Reader and State, in mlet order: env * 1000 + the state after +1"
+  (ok/mlet [env (ok/perform (Ops/ask))
+            s   (ok/perform (Ops/get))
+            _   (ok/perform (Ops/set (inc s)))
+            s2  (ok/perform (Ops/get))]
+    (ok/done (+ (* env 1000) s2))))
+```
+
+```scala
+val prog = Program.run[Reader % Long + State % Long, java.lang.Long](value("reader-state"))(
+  using summon, Program.Row.of[Reader % Long] | Program.Row.of[State % Long])
+val answer = !.run(State.handle(5L)(Reader.run(7L)(prog)))   // (6, 7006)
+```
+
+okay's driver (`Program`) walks the data: each operation runs under the
+okay program's handlers, and the continuation `k` is a Clojure function —
+so `Choose` resumes it once per branch (all four sums of `(Ops/choose
+[1 2])` and `(Ops/choose [10 20])` come back), a hundred thousand steps
+run on the default stack, and no thread is involved. A stage is the same
+program using `ok/await` and `ok/tell`; `Program.stageWith[I, O, F]` lets
+it perform `F` too. This is okay-frege's design (docs/modules/okay-frege.md
+says why it is not lazy IO), and the two drivers are the same walk.
+
+## Lazy seqs, both ways
+
+```scala
+Program.chunks[java.lang.Long](range)            // a Clojure (range), infinite, as okay Chunks
+Program.seq(Chunks.map(Chunks.range(0, 5))(Long.box))   // okay Chunks as a Clojure lazy seq
+```
+
+A Clojure seq is realised only as far as okay pulls it (counted: five
+elements read in chunks of eight realise one 32-element Clojure block of
+a thousand), and an infinite okay source under `(take 10 …)` produces at
+most one chunk. `Program.seq` takes only pure `Chunks` — an effectful
+source realised from inside a lazy seq is lazy IO; it is a `perform` in
+an `okay.core` program instead.
 
 No AOT, no `gen-class`: the transducer is a Scala `AFn`, and Clojure
 sees an ordinary `IFn` — the module has no Clojure build step.

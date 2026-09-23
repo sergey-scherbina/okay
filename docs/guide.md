@@ -599,6 +599,9 @@ finisher are a transducer's step and completion arities, and okay-clojure's
 `Transducers.of(stage)` hands a stage to `into`, `sequence` or `comp`
 as an ordinary transducer, while `Transducers.stage(xf)` runs
 Clojure's own (`(partition-all 3)`, `(dedupe)`) in an okay pipeline —
+and a Clojure program that needs okay's EFFECTS writes them with
+`okay.core` (a thin program-as-data namespace in the jar, `mlet` in place
+of `do`), walked by okay like Frege's `Prog` below —
 docs/modules/okay-clojure.md.
 
 And to **Frege**, a Haskell for the JVM, from the other end: there the

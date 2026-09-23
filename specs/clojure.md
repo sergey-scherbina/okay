@@ -94,24 +94,24 @@ every operation under okay's handlers, every continuation a Clojure
 function, so multi-shot handlers call it per branch and no thread is
 involved.
 
-- [ ] `okay.core` loads from the jar (`(require 'okay.core)`), and
+- [x] `okay.core` loads from the jar (`(require 'okay.core)`), and
       refers nothing that shadows clojure.core without saying so
       (`await` is excluded from clojure.core in its own ns)
-- [ ] `Program.stage[I, O](prog)` / `stageWith[I, O, F]`: a Clojure
+- [x] `Program.stage[I, O](prog)` / `stageWith[I, O, F]`: a Clojure
       program that awaits and tells as an okay `Stage` — law against the
       same stage written in okay
-- [ ] `Program.run[F, A](prog)`: `perform op` as an operation of F —
+- [x] `Program.run[F, A](prog)`: `perform op` as an operation of F —
       Reader and State in `mlet` order; a Throws from Clojure reaches
       `runEither`; an operation outside the row refused by name
-- [ ] MULTI-SHOT: Choose × Choose from Clojure gives all four branches
-- [ ] a hundred thousand Clojure steps on the default stack
-- [ ] `okay.clojure.Ops`: the core effects' operations for Clojure to
+- [x] MULTI-SHOT: Choose × Choose from Clojure gives all four branches
+- [x] a hundred thousand Clojure steps on the default stack
+- [x] `okay.clojure.Ops`: the core effects' operations for Clojure to
       perform (Reader, State, Throws, Choose, Async sleep)
-- [ ] seqs: a Clojure lazy seq as okay `Chunks` — an infinite `(range)`
+- [x] seqs: a Clojure lazy seq as okay `Chunks` — an infinite `(range)`
       read partially; okay `Chunks` as a Clojure lazy seq — an infinite
       okay source under `(take 10 …)` produces at most one chunk;
       PURE by type (only `Chunks` becomes a seq)
-- [ ] docs: module page (effects, seqs), every snippet in a gated test
+- [x] docs: module page (effects, seqs), every snippet in a gated test
 
 ## Decisions
 
@@ -152,3 +152,13 @@ the transducer's, not ours.
 **Types at the seam, measured:** `ClassTag[Long]` accepts Clojure's
 `java.lang.Long` elements; a String is refused naming
 `java.lang.String`.
+
+**Stage 2 (clojure-effects-seqs).** `okay.core` loads from the jar as a
+resource and its records are recognised by class once loaded
+(`RT.classForName`), not by key lookups. 12 new tests (28 in the module),
+green on the first run. Mutants: an eager okay->seq (the infinite-source
+test caught it), an eager seq->Chunks (caught by the infinite AND the
+counted test — the counted one is bounded, `(range 1000)`, so an eager
+bridge fails instead of hanging, the java-gatherers lesson). `Row` and
+`Ops` are copies of okay-frege's for now; the shared-driver lane decides
+where one copy lives.
