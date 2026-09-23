@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Async, effect, pure}
+import okay.{!, +, Async, Handler, effect, pure}
 import okay.codec.Json
 
 /**
@@ -46,6 +46,33 @@ enum Model[+A] derives okay.Effect:
 /** one typed tool invocation — the handler decides what that means */
 enum Tool[+A] derives okay.Effect:
   case Call(call: ToolCall) extends Tool[String]
+
+object Tool:
+  /** the instance the shipped behaviour is made of: the answer is
+   * already a `String`, so the codec is the identity, and the parked
+   * question shows the call's own arguments */
+  given Journalled[Tool] with
+    def name[A](op: Tool[A]): String = op match
+      case Tool.Call(c) => c.name
+    def fingerprint[A](op: Tool[A]): String = op match
+      case Tool.Call(c) => s"${c.name}(${Json.print(c.args)})"
+    def withKey[A](op: Tool[A], key: String): Tool[A] = op match
+      case Tool.Call(c) =>
+        val args = c.args match
+          case Json.JObj(fs) =>
+            Json.JObj(fs.filterNot(_._1 == Durable.KeyField) :+ (Durable.KeyField, Json.JStr(key)))
+          case _ => Json.JObj(Vector((Durable.KeyField, Json.JStr(key))))
+        Tool.Call(c.copy(args = args))
+    def perform[A](op: Tool[A], inner: Handler[Tool]): (A, String) = op match
+      case Tool.Call(c) =>
+        // rebuilt here, so the call is a `Tool[String]` and its answer
+        // is a `String` — the point of `perform` existing at all
+        val answer: String = inner.handle(Tool.Call(c))
+        (answer, answer)
+    def decode[A](op: Tool[A], written: String): A = op match
+      case Tool.Call(_) => written
+    override def asked[A](op: Tool[A]): Json = op match
+      case Tool.Call(c) => c.args
 
 
 /**

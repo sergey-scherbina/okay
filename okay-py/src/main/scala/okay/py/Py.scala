@@ -5,7 +5,7 @@ import okay.codec.Json
 
 /**
  * Python as a handler (specs/py.md; the model is specs/r.md's):
- * calls are OPERATIONS — journalable by Durable, mockable by
+ * calls are OPERATIONS — journalled by Durable (`PyEval`'s given), mockable by
  * handler swap, supervised by dead-process-throws. Named functions
  * only: there is deliberately NO operation that evals a string, so
  * untrusted input reaches Python only as data.
@@ -32,11 +32,69 @@ enum PyEval[A] derives okay.Effect:
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
     extends PyEval[Either[Condition, PyFrame]]
 
+object PyEval:
+  /**
+   * `Durable` journals a Python call (foreign-journalled,
+   * specs/foreign-highlevel.md stage 1). Found without an import: this
+   * companion is in the implicit scope of `Journalled[PyEval]`.
+   *
+   * The journal's `op` is the function's address. The fingerprint is
+   * the address plus a SHA-256 of the encoded arguments (and frame):
+   * what the program ASKED, cheap to store however big the frame, and a
+   * replay whose inputs drifted is refused by Durable's drift check. The
+   * answer is written in this module's own wire JSON — a value OR a
+   * condition — so a replay reads back exactly what the call answered,
+   * None and NaN still distinct.
+   *
+   * `withKey` returns the call unchanged: a subprocess call has nowhere
+   * to carry an idempotency key, so a Python call must not be declared
+   * `OnRepeat.WithKey`.
+   */
+  given okay.codec.Journalled[PyEval] with
+    def name[A](op: PyEval[A]): String = op match
+      case Call(fn, _) => fn
+      case Frame(fn, _, _) => fn
+    def fingerprint[A](op: PyEval[A]): String = op match
+      case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Frame(fn, in, args) =>
+        s"$fn#${Wire.digest(Json.JArr(Vector(Wire.encFrame(in), Json.JArr(args.map(Wire.enc)))))}"
+    def withKey[A](op: PyEval[A], key: String): PyEval[A] = op
+    def perform[A](op: PyEval[A], inner: okay.Handler[PyEval]): (A, String) = op match
+      case Call(fn, args) =>
+        val answer = inner.handle(Call(fn, args))
+        (answer, Wire.written(answer.map(Wire.enc)))
+      case Frame(fn, in, args) =>
+        val answer = inner.handle(Frame(fn, in, args))
+        (answer, Wire.written(answer.map(Wire.encFrame)))
+    def decode[A](op: PyEval[A], written: String): A = op match
+      case Call(_, _) => Wire.read(written).map(Wire.dec)
+      case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
+
 
 /** the wire halves shared by every engine: PyValue <-> the tagged
  * JSON the shim speaks (None = null; NaN and bytes ride tagged
  * objects, because JSON has neither) */
 private[py] object Wire {
+
+  /** a journalled answer: `{"ok": ...}` or `{"condition": {...}}` */
+  def written(answer: Either[Condition, Json]): String = Json.print(answer match
+    case Right(j) => Json.JObj(Vector("ok" -> j))
+    case Left(c) => Json.JObj(Vector("condition" -> Json.JObj(Vector(
+      "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message))))))
+
+  /** a journalled answer back: the value's JSON, or its condition */
+  def read(written: String): Either[Condition, Json] = Json.parse(written) match
+    case Json.JObj(Vector(("ok", j))) => Right(j)
+    case Json.JObj(Vector(("condition", Json.JObj(fs)))) =>
+      def field(n: String) = fs.collectFirst { case (`n`, Json.JStr(v)) => v }.getOrElse("")
+      Left(Condition(field("kind"), field("message")))
+    case other => throw IllegalStateException(s"okay.py: not a journalled answer: ${Json.print(other)}")
+
+  /** SHA-256 of a value's printed JSON, hex */
+  def digest(j: Json): String =
+    java.security.MessageDigest.getInstance("SHA-256").nn
+      .digest(Json.print(j).getBytes(java.nio.charset.StandardCharsets.UTF_8)).nn
+      .map(b => f"${b & 0xff}%02x").mkString
 
   /**
    * `PyValue.Arr`/`Json.JArr` recurse on the VALUE's own nesting —

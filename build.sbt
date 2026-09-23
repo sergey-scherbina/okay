@@ -2181,7 +2181,9 @@ lazy val okaySecurityArgon2 = project
  * "wrong venv" a loud startup refusal.
  */
 lazy val okayPy = (project in file("okay-py"))
-  .dependsOn(okay.jvm, okayCodec.jvm)
+  // okay-agent for TESTS only: its Durable journals these operations
+  // through their own `Journalled` instances (foreign-journalled)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayAgent.jvm % Test)
   .settings(
     name := "okay-py",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -2192,7 +2194,9 @@ lazy val okayPy = (project in file("okay-py"))
 // dependency: Durable journals R steps because they are operations,
 // not because the modules know each other.
 lazy val okayR = (project in file("okay-r"))
-  .dependsOn(okay.jvm, okayCodec.jvm)
+  // okay-agent for TESTS only: its Durable journals these operations
+  // through their own `Journalled` instances (foreign-journalled)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayAgent.jvm % Test)
   .settings(
     name := "okay-r",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

@@ -3,8 +3,8 @@ package okay.r
 import okay.codec.Json
 
 /**
- * R as a handler (specs/r.md): calls are OPERATIONS — journalable by
- * Durable, mockable by handler swap, supervised by
+ * R as a handler (specs/r.md): calls are OPERATIONS — journalled by
+ * Durable (`REval`'s given), mockable by handler swap, supervised by
  * dead-process-throws. Named functions only: there is deliberately NO
  * operation that evals a string, so untrusted input reaches R only as
  * data.
@@ -158,6 +158,36 @@ enum REval[A] derives okay.Effect:
   case Frame(fn: String, in: RFrame, args: Vector[RValue])
     extends REval[Either[Condition, RFrame]]
 
+object REval:
+  /**
+   * `Durable` journals an R call (foreign-journalled,
+   * specs/foreign-highlevel.md stage 1) — okay-py's instance, with R's
+   * values: the answer is written in this module's wire JSON, so NA and
+   * NULL come back distinct. The fingerprint is the function plus a
+   * SHA-256 of what it was ASKED, never the frame it answers.
+   * `withKey` is the identity: an R call has nowhere to carry a key, so
+   * it must not be declared `OnRepeat.WithKey`.
+   */
+  given okay.codec.Journalled[REval] with
+    def name[A](op: REval[A]): String = op match
+      case Call(fn, _) => fn
+      case Frame(fn, _, _) => fn
+    def fingerprint[A](op: REval[A]): String = op match
+      case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Frame(fn, in, args) =>
+        s"$fn#${Wire.digest(Json.JArr(Vector(Wire.encFrame(in), Json.JArr(args.map(Wire.enc)))))}"
+    def withKey[A](op: REval[A], key: String): REval[A] = op
+    def perform[A](op: REval[A], inner: okay.Handler[REval]): (A, String) = op match
+      case Call(fn, args) =>
+        val answer = inner.handle(Call(fn, args))
+        (answer, Wire.written(answer.map(Wire.enc)))
+      case Frame(fn, in, args) =>
+        val answer = inner.handle(Frame(fn, in, args))
+        (answer, Wire.written(answer.map(Wire.encFrame)))
+    def decode[A](op: REval[A], written: String): A = op match
+      case Call(_, _) => Wire.read(written).map(Wire.dec)
+      case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
+
 
 /**
  * The wire halves every engine shares: `RValue` <-> the tagged JSON
@@ -169,6 +199,26 @@ enum REval[A] derives okay.Effect:
  * JSON has no way to keep distinct from a double).
  */
 private[r] object Wire {
+
+  /** a journalled answer: `{"ok": ...}` or `{"condition": {...}}` */
+  def written(answer: Either[Condition, Json]): String = Json.print(answer match
+    case Right(j) => Json.JObj(Vector("ok" -> j))
+    case Left(c) => Json.JObj(Vector("condition" -> Json.JObj(Vector(
+      "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message))))))
+
+  /** a journalled answer back: the value's JSON, or its condition */
+  def read(written: String): Either[Condition, Json] = Json.parse(written) match
+    case Json.JObj(Vector(("ok", j))) => Right(j)
+    case Json.JObj(Vector(("condition", Json.JObj(fs)))) =>
+      def field(n: String) = fs.collectFirst { case (`n`, Json.JStr(v)) => v }.getOrElse("")
+      Left(Condition(field("kind"), field("message")))
+    case other => throw IllegalStateException(s"okay.r: not a journalled answer: ${Json.print(other)}")
+
+  /** SHA-256 of a value's printed JSON, hex */
+  def digest(j: Json): String =
+    java.security.MessageDigest.getInstance("SHA-256").nn
+      .digest(Json.print(j).getBytes(java.nio.charset.StandardCharsets.UTF_8)).nn
+      .map(b => f"${b & 0xff}%02x").mkString
 
   /**
    * `RValue.Vec`/`Json.JArr` recurse on the VALUE's own nesting — an
