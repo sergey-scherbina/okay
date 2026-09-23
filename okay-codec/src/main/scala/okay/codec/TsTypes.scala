@@ -46,6 +46,16 @@ object TsTypes:
     case Interface(name: String, fields: Vector[Field])
     case Alias(name: String, tpe: TsType)
 
+  /** an exported function of a module: its parameters and its answer */
+  final case class Fn(name: String, params: Vector[Field], returns: TsType)
+
+  /** an export this reader does not type, and why (a generic, a callback…) */
+  final case class Unread(name: String, why: String)
+
+  /** a module's declarations (typescript-types T7): its data, its functions
+   * in order, and the type names its `import`s bring in */
+  final case class ModuleDecls(decls: Vector[Decl], functions: Vector[Either[Unread, Fn]], imported: Vector[String])
+
   // ---------------------------------------------------------------- tokens
 
   private enum Tok:
@@ -120,13 +130,88 @@ object TsTypes:
       case Tok.Id(s) => s
       case other => refuse(s"expected a name, found ${describe(other)}")
 
-    def decls(): Vector[Decl] =
+    private val fns = Vector.newBuilder[Either[Unread, Fn]]
+    private val imports = Vector.newBuilder[String]
+
+    /** past the next `;` outside any brackets: the end of an export this
+     * reader gave up on */
+    private def skipStatement(): Unit =
+      var depth = 0
+      var closedBlock = false // a class body ends its statement with no `;`
+      while i < ts.length && !(depth == 0 && (sym(";") || closedBlock)) do
+        next() match
+          case Tok.Sym("=") if sym(">") => i += 1 // an arrow, not a bracket
+          case Tok.Sym("(" | "{" | "[" | "<") => depth += 1
+          case Tok.Sym("}") => depth -= 1; closedBlock = depth == 0
+          case Tok.Sym(")" | "]" | ">") => depth -= 1
+          case _ => ()
+      if sym(";") then i += 1
+
+    /** `import type { A, B as C } from "…";` -> A, C */
+    private def importNames(): Unit =
+      while i < ts.length && !sym(";") && !sym("{") do i += 1
+      if sym("{") then
+        i += 1
+        var last: Option[String] = None
+        while i < ts.length && !sym("}") do
+          next() match
+            case Tok.Id("type") if !sym(",") && !sym("}") => ()
+            case Tok.Id("as") => ()
+            case Tok.Id(n) => last = Some(n)
+            case Tok.Sym(",") => last.foreach(imports += _); last = None
+            case _ => ()
+        last.foreach(imports += _)
+      while i < ts.length && !sym(";") do i += 1
+      if sym(";") then i += 1
+
+    /** `function f(a: T, b?: U): R;` — refused alone, not the module */
+    private def function(): Unit =
+      val n = name()
+      val start = i
+      try
+        if sym("<") then refuse(s"function $n is generic; generics are not read")
+        expect("(")
+        val ps = Vector.newBuilder[Field]
+        while !sym(")") do
+          if sym(".") then refuse(s"function $n takes a rest parameter")
+          val p = name()
+          val optional = sym("?")
+          if optional then i += 1
+          expect(":")
+          ps += Field(p, union(), optional)
+          if sym(",") then i += 1
+        expect(")")
+        expect(":")
+        val r = union()
+        if sym(";") then i += 1
+        fns += Right(Fn(n, ps.result(), r))
+      catch case r: Refused =>
+        i = start
+        skipStatement()
+        fns += Left(Unread(n, r.why))
+
+    def module(): ModuleDecls =
+      val ds = decls(functions = true)
+      ModuleDecls(ds, fns.result(), imports.result())
+
+    def decls(functions: Boolean = false): Vector[Decl] =
       val out = Vector.newBuilder[Decl]
       while i < ts.length do
         if id("export") || id("declare") then i += 1
+        else if functions && id("import") then importNames()
         else if id("import") then
           while i < ts.length && !sym(";") do i += 1
           if sym(";") then i += 1
+        else if functions && id("function") then
+          i += 1
+          function()
+        else if functions && sym("{") then skipStatement() // `export {};`
+        else if functions && (id("const") || id("let") || id("var") || id("class")) then
+          val kind = peek.fold("")(describe)
+          i += 1
+          val n = name()
+          skipStatement()
+          fns += Left(Unread(n, s"a $kind export, not a function"))
         else if id("interface") then
           i += 1
           val n = name()
@@ -186,6 +271,11 @@ object TsTypes:
     private def primary(): TsType = peek match
       case Some(Tok.Sym("{")) => TsType.Obj(obj())
       case Some(Tok.Sym("(")) =>
+        // `(x: T) => R` or `() => R`: a callback's type, not data
+        val arrow = (ts.lift(i + 1).map(_.tok), ts.lift(i + 2).map(_.tok)) match
+          case (Some(Tok.Id(_)), Some(Tok.Sym(":" | "?" | ","))) | (Some(Tok.Sym(")")), _) => true
+          case _ => false
+        if arrow then refuse("a function type is not data")
         i += 1
         val t = union()
         expect(")")
@@ -208,6 +298,15 @@ object TsTypes:
             as.result()
         TsType.Named(n, args)
       case other => refuse(s"expected a type, found ${other.fold("the end")(describe)}")
+
+  /** a module's declarations as `tsc --declaration` writes them: the data
+   * subset `parse` reads plus exported functions; a function that cannot
+   * be read is an `Unread`, the data still refuses as a whole */
+  def parseModule(source: String): Either[String, ModuleDecls] =
+    tokens(source).flatMap { ts =>
+      try Right(Parser(ts).module())
+      catch case r: Refused => Left(r.why)
+    }
 
   /** the declarations in `source`, or where and why they were refused */
   def parse(source: String): Either[String, Vector[Decl]] =
@@ -242,32 +341,49 @@ object TsTypes:
     parse(source).flatMap(ds => render(ds, pkg))
 
   def render(decls: Vector[Decl], pkg: String): Either[String, String] =
+    renderData(decls, Set.empty).map(body =>
+      s"package $pkg\n\nimport okay.codec.Schema\n\n// Generated by okay.codec.TsTypes from TypeScript declarations: regenerate it, do not edit it.\n\n" +
+        body.mkString("\n\n") + "\n")
+
+  /** one TypeScript type as a Scala type, where `known` names the types
+   * in scope besides the leaves (typescript-types T7: a function's
+   * parameters and answer) */
+  def scalaType(t: TsType, known: Set[String], where: String): Either[String, String] =
+    try Right(typeOf(t, known, where))
+    catch case r: Refused => Left(r.why)
+
+  private def typeOf(t: TsType, known: Set[String], where: String): String = t match
+    case TsType.Named("string", _) => "String"
+    case TsType.Named("number", _) => "Double"
+    case TsType.Named("boolean", _) => "Boolean"
+    case TsType.Named(n, Vector()) if leaves.contains(n) => leaves(n)
+    case TsType.Named("Array", Vector(of)) => s"Vector[${typeOf(of, known, where)}]"
+    case TsType.Named("Record" | "Map", _) => throw Refused(s"$where: a map is not read; a Schema has no map case")
+    case TsType.Named(n, Vector()) if known(n) => ident(n)
+    case TsType.Named(n, Vector()) => throw Refused(s"$where: '$n' is not declared here")
+    case TsType.Named(n, _) => throw Refused(s"$where: '$n<…>' is generic; generics are not read")
+    case TsType.Arr(of) => s"Vector[${typeOf(of, known, where)}]"
+    case TsType.Union(parts) if parts.contains(TsType.Null) =>
+      parts.filterNot(_ == TsType.Null) match
+        case Vector(one) => s"Option[${typeOf(one, known, where)}]"
+        case _ => throw Refused(s"$where: a union of several types besides null is not a field type")
+    case TsType.Union(_) => throw Refused(s"$where: a union is read only as a whole `type` (a sum)")
+    case TsType.Obj(_) => throw Refused(s"$where: an inline object type needs a name (an interface)")
+    case TsType.Lit(v) => throw Refused(s"$where: a literal type (\"$v\") is not read")
+    case TsType.Null => throw Refused(s"$where: null alone is not a type")
+
+  /** the Scala declarations for `decls`, one string each; `known` names
+   * types declared elsewhere (a module's imports) */
+  def renderData(decls: Vector[Decl], known: Set[String]): Either[String, Vector[String]] =
     val interfaces = decls.collect { case d: Decl.Interface => d.name -> d }.toMap
     val aliasNames = decls.collect { case Decl.Alias(n, _) => n }.toSet
+    val inScope = known ++ interfaces.keySet ++ aliasNames
     // an alias `type Int = number;` that Stubs wrote is a leaf, not a type
     def isLeafAlias(d: Decl): Boolean = d match
       case Decl.Alias(n, TsType.Named(_, _)) => leaves.contains(n)
       case _ => false
 
-    def scalaType(t: TsType, where: String): String = t match
-      case TsType.Named("string", _) => "String"
-      case TsType.Named("number", _) => "Double"
-      case TsType.Named("boolean", _) => "Boolean"
-      case TsType.Named(n, Vector()) if leaves.contains(n) => leaves(n)
-      case TsType.Named("Array", Vector(of)) => s"Vector[${scalaType(of, where)}]"
-      case TsType.Named("Record" | "Map", _) => throw Refused(s"$where: a map is not read; a Schema has no map case")
-      case TsType.Named(n, Vector()) if interfaces.contains(n) || aliasNames(n) => ident(n)
-      case TsType.Named(n, Vector()) => throw Refused(s"$where: '$n' is not declared here")
-      case TsType.Named(n, _) => throw Refused(s"$where: '$n<…>' is generic; generics are not read")
-      case TsType.Arr(of) => s"Vector[${scalaType(of, where)}]"
-      case TsType.Union(parts) if parts.contains(TsType.Null) =>
-        parts.filterNot(_ == TsType.Null) match
-          case Vector(one) => s"Option[${scalaType(one, where)}]"
-          case _ => throw Refused(s"$where: a union of several types besides null is not a field type")
-      case TsType.Union(_) => throw Refused(s"$where: a union is read only as a whole `type` (a sum)")
-      case TsType.Obj(_) => throw Refused(s"$where: an inline object type needs a name (an interface)")
-      case TsType.Lit(v) => throw Refused(s"$where: a literal type (\"$v\") is not read")
-      case TsType.Null => throw Refused(s"$where: null alone is not a type")
+    def scalaType(t: TsType, where: String): String = typeOf(t, inScope, where)
 
     def params(fields: Vector[Field], owner: String, skip: Set[String]): String =
       fields.filterNot(f => skip(f.name)).map { f =>
@@ -314,6 +430,5 @@ object TsTypes:
           Some(s"enum ${ident(n)} derives Schema:\n${cs.mkString("\n")}")
         case Decl.Alias(n, t) => Some(s"type ${ident(n)} = ${scalaType(t, n)}")
       }
-      Right(s"package $pkg\n\nimport okay.codec.Schema\n\n// Generated by okay.codec.TsTypes from TypeScript declarations: regenerate it, do not edit it.\n\n" +
-        body.mkString("\n\n") + "\n")
+      Right(body)
     catch case r: Refused => Left(r.why)
