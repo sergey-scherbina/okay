@@ -1,6 +1,0 @@
-feature/clojure-effects-seqs 2026-09-23T07:58:08Z
-agent: claude-code
-heartbeat: 2026-09-23T07:58:08Z
-status: in-progress
-done-so-far: design
-next: okay.core (Clojure resource: program as data + mlet macro) walked by an okay driver; lazy seq <-> Source/Chunks
