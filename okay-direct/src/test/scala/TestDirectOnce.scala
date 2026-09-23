@@ -69,6 +69,9 @@ def test[X](e: Fetch[X]): X ! Test = direct:
   e.show.tell
   // `: X` since Free[F, +A] (free-answer-variance): the block's answer
   // no longer pins the match's type, so its first arm (`Long`) would
+  // type it and the others fail. The macro cannot ascribe it for you —
+  // the block is typed before the macro runs; TestDirectGadtTail pins
+  // why (a dotty inference rule, reproduced with no macro at all)
   (e match
     // the one mark: a GADT branch whose value IS the match's answer
     // types at the abstract X, where colouring cannot reach
