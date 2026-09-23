@@ -1,0 +1,6 @@
+feature/scala2-codec 2026-09-23T06:03:21Z
+agent: claude-code
+heartbeat: 2026-09-23T06:03:21Z
+status: in-progress
+done-so-far: probe: Schema/Cbor/Yaml/Validate readable from 2.13; Json.tasty BROKEN for the 2.13 reader (MatchError 49), so Json/JsonSchema need a facade
+next: spec stages 6-10 (codec/http/sql/agent/ui) + queue; codec facade (Schema builders, Json via String)
