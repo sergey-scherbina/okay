@@ -192,6 +192,46 @@ is answered in the row by `p.orElse(q)` / `p.recover(h)`. Where the row
 carries `Choose` instead, the same pattern PRUNES the branch and the
 search goes on.
 
+**Scoped effects — `recover`×`State`'s order, and `Reader.local`**
+(specs/scoped-effects-laws.md). A `catch`/`local` whose body performs
+OTHER effects raises a question algebraic operations never do (Wu,
+Schrijvers & Hinze, "Effect handlers in scope", Haskell 2014): does a
+`State` write made INSIDE survive the catch, or roll back with it?
+`recover` answers it by its own definition — GLOBAL by default, since
+it forwards `State`'s operations unchanged, never buffering them to
+undo:
+
+```scala
+type Row = State % Int + Throws % String
+val p: Int ! Row =
+  State.set[Int](5).at[Row].flatMap(_ => raise[String, Int]("boom").at[Row])
+    .recover(_ => State.get[Int].at[Row])
+// State.run(0)(runEither[Int, State % Int, String](p)) == (5, Right(5)) — the set(5) sticks
+```
+
+For a SCOPED, transactional attempt instead, run `State` INSIDE the
+guarded block rather than outside it — its writes are then that
+sub-run's own business, discarded whole on a raise. `Reader.local`
+overrides `ask` for one block the same way `recover` answers `raise`
+for one block — built on the same tool, `Effects.handle`:
+
+```scala
+val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
+// Reader.run(5)(p) == 50; asking OUTSIDE the local still sees 5
+```
+
+Two things about it are worth knowing before reaching further:
+nesting `local(f2)(local(f1)(p))` composes INSIDE-OUT (`f1(f2(r))`,
+not the mtl-style `f2(f1(r))` a first guess assumes) because `local`'s
+own bookkeeping ask is an ordinary `ask`, reachable by an enclosing
+`local` exactly like a user's; and `local`/`recover` cannot reach
+inside another effect's OPAQUE operation payload (a `Delim.push`'s
+`body`, chiefly) — a plainer, more basic limit than Kiselyov, Shan &
+Sabry's "Delimited dynamic binding" (ICFP 2006), which is about a
+narrower case one level past this one. specs/scoped-effects-laws.md
+has both, found (and one first written down wrong) against tests
+that were run rather than assumed correct.
+
 **Handling.** `runWith(using h)` for a per-operation `Handler[F]`;
 `h.tracing(log)` makes any handler a recording one, since the
 operations are already data; `!.translate` interprets each operation

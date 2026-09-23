@@ -1,6 +1,7 @@
 package okay
 
 import okay.!.*
+import okay.RowLift.at
 
 /**
  * The Reader effect: ask for an environment of type R. The handler
@@ -166,6 +167,46 @@ object Reader {
     relay[A, A, Reader % R, F](a)(pure(_)):
       [X, Y] => e => e match
         case Ask() => Cont.Pure(r)
+
+  /**
+   * SCOPED override: `p`'s own asks answer `f(r)`, `r` the AMBIENT
+   * environment (specs/scoped-effects-laws.md). Asked ONCE, closed
+   * over — a Reader's environment is one value for the whole run,
+   * so `f` is applied once and every ask `local` claims answers the
+   * same `f(r)`, not a live re-read.
+   *
+   * Built on `Effects.handle`, the same tool `Throws.recover` uses:
+   * peel this ONE signature's own operations, forward everything
+   * else unchanged. That forwarding is why `local` composes
+   * correctly through a `Delim` capture made and re-invoked from
+   * INSIDE `p` — `handle`'s forwarding arm wraps a forwarded
+   * operation's continuation with the SAME handling loop again, and
+   * that wrapping is baked into the tree it returns, not a pass that
+   * finishes before anyone else looks (Kiselyov, Shan & Sabry,
+   * "Delimited dynamic binding", ICFP 2006, is the paper; the trap it
+   * warns about is the OTHER composition — a continuation captured
+   * OUTSIDE a `local` and invoked from inside it, which sees the
+   * CALLING `local` and cannot see the capturing one, since that
+   * scope was never part of the data. Documented, not fixed:
+   * specs/scoped-effects-laws.md, Out of scope).
+   *
+   * `.at` widens the handled result back into the declared row: `p`
+   * no longer performs any `Reader % R` op after this (they were all
+   * answered), but code AFTER `local(f)(p)` still may, and still sees
+   * the ambient `r` — `local` scopes `p`, not what follows it.
+   */
+  def local[R, A, F[+_]](f: R => R)(p: A ! Reader % R + F): A ! Reader % R + F =
+    // the GADT refinement `Ask(): Reader[R, R]` fixing X=R holds in a
+    // method's match, not inside the `[X] => ...` lambda handle wants
+    // (gadt-on-a-covariant-enum: the same trap SharedOnce.answer met)
+    def answer[X](e: Reader[R, X], r2: R): Cont[X, Free[F, A], Free[F, A]] = e match
+      case Ask() => shift(k => k(r2))
+    ask[R].at[Reader % R + F].flatMap { r =>
+      val r2 = f(r)
+      (Effects[Free].handle[Reader % R, F](p)(a => pure[F, A](a)):
+        [X] => (e: Reader[R, X]) => answer(e, r2)
+      ).at[Reader % R + F]
+    }
 }
 
 /** by class only: `Ask()` carries no trace of R, so a row may hold
