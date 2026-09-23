@@ -1,4 +1,4 @@
-- [ ] router-trie — `Router.routes` is first-match: `entries.iterator
+- [~] router-trie — `Router.routes` is first-match: `entries.iterator
       .map(answer).collectFirst`, one `matches` closure per entry per
       request (Route.scala). A trie by method and path segment built
       once at `Router` construction answers in O(segments) and keeps
