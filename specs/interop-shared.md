@@ -66,7 +66,7 @@ per-language classes stay as the names users bind to (Frege natives name
 ## Results
 
 - Four alternating rounds on one box (load 7–18), min of 7 runs each,
-  base = 99593e93 (the PRICE tests on the old code):
+  base = the lane's own PRICE-tests commit (the tests on the old code):
 
   | driver | base, ms | shared, ms |
   |---|---|---|
