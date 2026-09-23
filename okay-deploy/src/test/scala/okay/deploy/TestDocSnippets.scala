@@ -138,9 +138,16 @@ class TestDocSnippets extends munit.FunSuite:
         else
           inBlock = true
           counted = t.drop(3).trim == "scala" && !(i > 0 && lines(i - 1).trim.startsWith("<!-- not-a-test:"))
-      else if inBlock && counted && t.nonEmpty then out += ((i + 1, t))
+      else if inBlock && counted && t.nonEmpty && !proseInCode(t) then out += ((i + 1, t))
       i += 1
     out.result()
+
+  /** a line that is ONLY a comment, or an elision, is prose in a code
+   * block — there is nothing a test could run. A code line with a
+   * trailing comment is still checked whole: the comment is usually
+   * the answer the page claims, which is exactly what drifts. */
+  private def proseInCode(t: String): Boolean =
+    t.startsWith("//") || t == "..." || t == "…"
 
   private def unpinned: Vector[(String, Int, String)] =
     ratchetDocs.flatMap(doc =>
