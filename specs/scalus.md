@@ -377,6 +377,31 @@ spark.readStream.format("cardano")
   durably BEFORE they are offered — the driver appends to a journal
   (okay-persist) in the checkpoint directory and offsets are journal
   sequence numbers. Stage 3, after `confirmed` works.
+
+  **As designed for building (2026-09-23, scalus-events-mode):**
+  - `mode = events` (default `confirmed`). `confirmations` still sets
+    the follower's `Finality` — `0` gives every block as it arrives,
+    and every rollback that reaches an emitted block as a row.
+  - The driver's follower thread APPENDS each event — `Applied(block
+    bytes)` or `RolledBack(to, from)` — to an okay-persist `FileStore`
+    topic (`Ack.Durable`: fsync'd) BEFORE it is visible to Spark. The
+    journal lives in option `journal` (a local directory), or under the
+    query's checkpoint location when that is a local path.
+  - An offset is the journal SEQUENCE (dense). `planInputPartitions`
+    reads its range back from the journal on the driver and ships the
+    events (block bytes) in partitions, as `confirmed` mode ships bytes;
+    a re-run batch reads the same records, whatever the chain did since.
+    On restart the follower resumes after the last journaled Applied
+    block (its checkpoint is IN the journal).
+  - A row is `struct<seq, event: 'applied' | 'rolled_back',
+    rollbackTo: struct<blockNo, hash>, row: <the table's row>>`: an
+    applied block gives one row per table row with `row` set; a
+    rollback gives ONE row per micro-batch table with `rollbackTo` set
+    and `row` null. A consumer deletes every row with `blockNo >
+    rollbackTo.blockNo` (a Delta MERGE, a `foreachBatch`) and reads on.
+  - Tested against a FAKE RELAY — the recorded headers and blocks
+    replayed by a scripted chain that answers the client's requests and
+    can roll back (a real preprod rollback cannot be summoned).
 - Batch: `spark.read.format("cardano").option("from", ...).option("to", ...)`
   — the same partitions, a bounded range.
 
