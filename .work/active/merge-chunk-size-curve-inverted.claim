@@ -1,6 +1,0 @@
-feature/merge-chunk-size-curve-inverted 2026-09-23T20:17:59Z
-agent: claude-code
-heartbeat: 2026-09-23T20:17:59Z
-status: in-progress
-done-so-far: found merge's OWN chunked=true path still uses through(Stage.unchunk) directly, unlike the sibling Source.unchunked extension which already uses Writer.expand (the same proven fix)
-next: apply Writer.expand to merge's chunked path; ChunkFlushBenchmark.okayChunked before/after at k=16/256/1024, alternated quiet
