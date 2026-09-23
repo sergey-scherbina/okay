@@ -8,15 +8,19 @@ import java.util.concurrent.TimeUnit
  * made of (sprint generators-jmh; specs/generators.md, Results).
  *
  * `Gen[W]` is a value class over `Unit ! (Writer % W + Stop)`: `map`
- * IS `Writer.map`, the readers ARE `FoldUntil` walks (`Gen.read`),
- * `filter` is `splice` (a program per element), `take` re-emits. So
+ * IS `Writer.map`, the readers ARE `FoldUntil` walks, the chain is
+ * fused into the reader (gen-chain-fusion, gen-flatmap-fusion). So
  * parity with a Writer program read by `Writer.foldUntil` is the
  * expectation, and the lanes are paired to find where it does not
  * hold: the same 10 000 Longs, unfolded, on both roads.
  *
- *   genUnfoldToList     Gen.unfold(...).toList                          (Gen.read, collecting)
- *   writerUnfoldCollect the same program at Writer % Long, Writer.run       (no Stop arm, no value class)
- *   writerUnfoldFoldUntil the same program, Writer.foldUntil(collecting) (the same reader shape, no Stop)
+ *   genUnfoldToList     Gen.unfold(...).toList
+ *   writerUnfoldCollect the same program at Writer % Long, Writer.run
+ *   writerUnfoldFoldUntil the same program, Writer.foldUntil(collecting) (the Stop-free floor)
+ *   genOfToList         Gen.of(prog).toList — the SAME prog, widened by Stop ONLY
+ *                        (gen-read-stop-residual: isolates the row-width cost — none)
+ *   writerUnfoldShapedFoldUntil the SAME shape unfold uses (S => Option[(W,S)]), Writer-only, no Stop
+ *                        (isolates unfold's Option/Tuple tax — the real residual)
  *   genPipelineToList   .map(_ * 2).filter(_ % 3 == 0).toList
  *   writerPipelineCollect Writer.map + a filtering Writer.fold step     (the hand road for the pipeline)
  *   genTakeToList       an INFINITE unfold, .take(n).toList
