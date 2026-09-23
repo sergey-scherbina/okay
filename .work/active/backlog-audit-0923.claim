@@ -1,0 +1,6 @@
+feature/backlog-audit-0923 2026-09-23T11:11:53Z
+agent: claude-code
+heartbeat: 2026-09-23T11:11:53Z
+status: in-progress
+done-so-far: audit read; findings listed in the sprint entry
+next: worktree; apply moves/renames/merge/rewrites; board+changelog checks; gate the board tests; land
