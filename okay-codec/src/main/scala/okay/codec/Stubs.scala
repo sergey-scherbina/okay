@@ -153,6 +153,23 @@ object Stubs:
       s"\n/** every key a live subscription to a $name may name, and what it is told (paths cut at depth $depth) */\n" +
       s"export interface ${name}Paths {\n${lines.mkString("\n")}\n}\n"
 
+  /**
+   * The operations a TypeScript program may perform, as the record of
+   * signatures TypeScript holds a row in (typescript-types T12):
+   * `export type ShopOps = { price_of: (a0: string) => number; ... }`, with
+   * the declarations of every type the signatures name. An operation given
+   * without its Schemas is `(...args: any[]) => unknown`, and says so.
+   */
+  def typescriptOps(name: String, ops: Seq[(String, Option[(Schema[?], Schema[?])])]): String =
+    val w = Writer()
+    val sigs = ops.map { (op, types) =>
+      types match
+        case Some((arg, res)) => s"  ${tsKey(op)}: (a0: ${tsType(arg, w)}) => ${tsType(res, w)};"
+        case None => s"  ${tsKey(op)}: (...args: any[]) => unknown; // made without its Schemas"
+    }
+    tsFile(w) +
+      s"\n/** the operations a program may perform, each with what it answers */\nexport type $name = {\n${sigs.mkString("\n")}\n};\n"
+
   private def tsFile(w: Writer): String =
     val aliases = TsLeaves.filter((name, _, _) => w.leaves(name))
       .map((name, t, note) => s"export type $name = $t;$note").mkString("\n")

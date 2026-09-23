@@ -2,7 +2,7 @@ package okay.npm
 
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
-import scala.scalajs.js.annotation.JSExportTopLevel
+import scala.scalajs.js.annotation.{JSExport, JSExportTopLevel}
 import okay.{!, Async, Channel, effect, pure}
 import okay.codec.{Json, Schema, Stubs}
 import okay.crdt.{GCounter, NodeId, OrSet, PNCounter}
@@ -139,6 +139,24 @@ object Okay:
   def durable(flow: String, program: js.Any, callbacks: js.Dictionary[js.Function], journal: js.Dynamic): js.Promise[js.Any] =
     answer(Ts.durableJson(flow, program, jsCallbacks(callbacks), imported(journal)))
 
+  /** `effects<Ops>()` (typescript-types T12): the same functions, as the
+   * methods of one object whose TYPE `index.d.ts` declares by the program's
+   * operations. Methods rather than a literal of functions because `perform`
+   * is variadic, which an exported method is and a Scala lambda is not; the
+   * combinator is `andThen`, since a `then` method would make the object a
+   * thenable that `await` tries to resolve. */
+  final class Effects:
+    @JSExport def perform(name: String, args: js.Any*): js.Any = performing(name, args*)
+    @JSExport def andThen(p: js.Dynamic, f: js.Function1[js.Any, js.Any]): js.Any = Okay.andThen(p, f)
+    @JSExport def done(value: js.Any): js.Any = Okay.done(value)
+    @JSExport def run(program: js.Any, callbacks: js.Dictionary[js.Function]): js.Promise[js.Any] =
+      Okay.run(program, callbacks)
+    @JSExport def durable(flow: String, program: js.Any, callbacks: js.Dictionary[js.Function],
+                          journal: js.Dynamic): js.Promise[js.Any] = Okay.durable(flow, program, callbacks, journal)
+
+  @JSExportTopLevel("effects")
+  def effects(): Effects = Effects()
+
   // ------------------------------------------------------------------- CRDTs
 
   private def node(n: String): NodeId = NodeId(n)
@@ -207,10 +225,31 @@ export type GCounter = ${Stubs.typescriptType(g)};
 export type PNCounter = ${Stubs.typescriptType(p)};
 export type OrSet = ${Stubs.typescriptType(s)};
 
-/** a program as data: okay walks it, and each perform is a callback */
-export type Prog<T> =
+/** the operations a program may perform, as a record of signatures: its effects,
+ * in its type. `Ts.ops` in Scala writes one from the callbacks' Schemas. */
+export type Ops = Record<string, (...args: any[]) => unknown>;
+
+/** a program as data: okay walks it, and each perform is a callback. `O` is
+ * what it may perform; the default is any name, the untyped program. */
+export type Prog<T, O extends Ops = Ops> =
   | { tag: "done"; value: T }
-  | { tag: "perform"; name: string; args: unknown[]; k: (x: any) => Prog<T> };
+  | { tag: "perform"; name: keyof O & string; args: unknown[]; k: (x: any) => Prog<T, O> };
+
+/** one handler per operation of O, answering its value or a Promise of it */
+export type Handlers<O extends Ops> = {
+  [K in keyof O]: (...args: Parameters<O[K]>) => ReturnType<O[K]> | Promise<ReturnType<O[K]>>;
+};
+
+/** a program's operations, typed: a name O does not have, a wrong argument, or a
+ * run that leaves an operation without its handler, does not compile */
+export interface Effects<O extends Ops> {
+  perform<K extends keyof O & string>(name: K, ...args: Parameters<O[K]>): Prog<ReturnType<O[K]>, O>;
+  andThen<A, B>(p: Prog<A, O>, f: (a: A) => Prog<B, O>): Prog<B, O>;
+  done<A>(value: A): Prog<A, O>;
+  run<T>(program: Prog<T, O>, handlers: Handlers<O>): Promise<T>;
+  durable<T>(flow: string, program: Prog<T, O>, handlers: Handlers<O>, journal: Journal): Promise<T>;
+}
+export declare function effects<O extends Ops>(): Effects<O>;
 
 export declare function done<T>(value: T): Prog<T>;
 export declare function perform<T = unknown>(name: string, args: unknown[]): Prog<T>;

@@ -58,6 +58,42 @@ const n: string = gcounter.value(gcounter.empty());
 console.log(n);
 TS
 
+# the operations in the program's TYPE (typescript-types T12)
+cat > "$app/typed.ts" <<'TS'
+import { effects } from "@okay/ts";
+
+type ShopOps = { price: (sku: string) => number; stock: (sku: string) => number };
+const shop = effects<ShopOps>();
+
+const offer = shop.andThen(shop.perform("price", "tea"), (price) =>
+  shop.andThen(shop.perform("stock", "tea"), (stock) => shop.done({ price, stock })));
+const quote = await shop.run(offer, { price: (sku) => (sku === "tea" ? 4.5 : 0), stock: async () => 12 });
+console.log(JSON.stringify(quote));
+TS
+cat > "$app/unknown-op.ts" <<'TS'
+import { effects } from "@okay/ts";
+type ShopOps = { price: (sku: string) => number };
+const shop = effects<ShopOps>();
+console.log(shop.perform("refund", "tea"));
+TS
+cat > "$app/missing-handler.ts" <<'TS'
+import { effects } from "@okay/ts";
+type ShopOps = { price: (sku: string) => number; stock: (sku: string) => number };
+const shop = effects<ShopOps>();
+console.log(await shop.run(shop.perform("price", "tea"), { price: () => 1 }));
+TS
+(cd "$app" && tsc --noEmit --strict --target es2022 --module nodenext typed.ts > "$work/typed.txt" 2>&1) \
+  || { cat "$work/typed.txt"; red "tsc --strict refused the typed-effects consumer"; }
+for wrong in unknown-op missing-handler; do
+  if (cd "$app" && tsc --noEmit --strict --target es2022 --module nodenext "$wrong.ts" > "$work/$wrong.txt" 2>&1); then
+    red "tsc accepted $wrong.ts, which its operations' type forbids"
+  fi
+done
+grep -q '"refund"' "$work/unknown-op.txt" || { cat "$work/unknown-op.txt"; red "unknown-op.ts was refused for another reason"; }
+grep -q "stock" "$work/missing-handler.txt" || { cat "$work/missing-handler.txt"; red "missing-handler.ts was refused for another reason"; }
+typed_out=$(cd "$app" && node typed.ts 2>&1) || { echo "$typed_out"; red "node failed to run the typed consumer"; }
+[ "$typed_out" = '{"price":4.5,"stock":12}' ] || red "the typed consumer printed $typed_out"
+
 (cd "$app" && tsc --noEmit --strict --target es2022 --module nodenext consumer.ts > "$work/tsc.txt" 2>&1) \
   || { cat "$work/tsc.txt"; red "tsc --strict refused the consumer"; }
 if (cd "$app" && tsc --noEmit --strict --target es2022 --module nodenext wrong.ts > "$work/wrong.txt" 2>&1); then
@@ -69,4 +105,4 @@ out=$(cd "$app" && node consumer.ts 2>&1) || { echo "$out"; red "node failed to 
 want='{"total":3,"cart":["milk","tea"],"quote":{"price":4.5,"stock":12},"seen":["packed","shipped"]}'
 [ "$out" = "$want" ] || red "the consumer printed $out, expected $want"
 
-echo "ts-npm: GREEN — packed, installed offline, typed by tsc --strict, run by Node ($tarball)"
+echo "ts-npm: GREEN — packed, installed offline, typed by tsc --strict (effects too), run by Node ($tarball)"

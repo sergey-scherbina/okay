@@ -267,9 +267,14 @@ object Py {
         case many => shape.decode[Arg](PyValue.Arr(many))
       in match
         case Left(c) => pure[F, Either[Condition, PyValue]](Left(c))
-        case Right(i) => f(i).map(o => Right(shape.encode(o))))
+        case Right(i) => f(i).map(o => Right(shape.encode(o))),
+      Some((summon[Schema[Arg]], summon[Schema[Res]])))
 
-  final class Callback[F[+_]](val name: String, val run: Vector[PyValue] => Either[Condition, PyValue] ! F)
+  /** `types`: the argument's and the answer's Schemas, when the callback was
+   * made by `callback[Arg, Res]` — what `Ts.ops` writes a TypeScript
+   * signature from (typescript-types T12) */
+  final class Callback[F[+_]](val name: String, val run: Vector[PyValue] => Either[Condition, PyValue] ! F,
+                              val types: Option[(Schema[?], Schema[?])] = None)
 
   final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
     def names: Vector[String] = all.map(_.name)

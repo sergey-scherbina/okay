@@ -40,6 +40,14 @@ class TestOkayNpm extends munit.FunSuite {
     }
   }
 
+  test("effects(): the same program through the typed object's methods") {
+    val fx = Okay.effects()
+    val p = fx.andThen(js.Dynamic.global.Object(fx.perform("price", "tea")), (price: js.Any) =>
+      fx.done(js.Dynamic.literal(price = price)))
+    val callbacks = js.Dictionary[js.Function]("price" -> priceOf)
+    fx.run(p, callbacks).toFuture.map(v => assertEquals(str(v), """{"price":4.5}"""))
+  }
+
   test("durable: a journalled flow run twice calls each callback once, and answers the same") {
     var prices = 0
     val counted: js.Function1[String, Double] = _ => { prices += 1; 4.5 }
@@ -105,7 +113,7 @@ class TestOkayNpm extends munit.FunSuite {
     val d = Okay.declarations
     assert(d.contains("export type GCounter = "), d)
     for name <- Vector("done", "perform", "performing", "then", "run", "channel", "durable",
-                       "memoryJournal", "indexedDbJournal") do
+                       "memoryJournal", "indexedDbJournal", "effects") do
       assert(d.contains(s"export declare function $name"), name)
     for name <- Vector("gcounter", "pncounter", "orset", "declarations") do
       assert(d.contains(s"export declare const $name"), name)

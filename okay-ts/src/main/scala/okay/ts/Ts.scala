@@ -40,13 +40,22 @@ object Ts:
       case _ => Right(Json.JNull)
 
   /** a named operation of a TypeScript program: an okay program in F */
-  final class Callback[F[+_]](val name: String, val run: Json => Either[Failure, Json] ! F)
+  /** `types`: the argument's and the answer's Schemas, when the callback
+   * was made by `callback[Arg, Res]` — what `Ts.ops` writes a TypeScript
+   * signature from (typescript-types T12) */
+  final class Callback[F[+_]](val name: String, val run: Json => Either[Failure, Json] ! F,
+                              val types: Option[(Schema[?], Schema[?])] = None)
 
   final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
     def get(name: String): Option[Callback[F]] = all.find(_.name == name)
     def names: Vector[String] = all.map(_.name)
 
   def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
+
+  /** the TypeScript type of these callbacks as a program's operations
+   * (typescript-types T12), for `effects<Name>()` */
+  def ops[F[+_]](name: String, cbs: Callbacks[F]): String =
+    Stubs.typescriptOps(name, cbs.all.map(c => (c.name, c.types)))
 
   /** `perform(name, x)` in TypeScript runs `f(x)` in okay; several
    * arguments arrive as an array */
@@ -59,7 +68,8 @@ object Ts:
         case many => many
       Json.decode(arg)(in) match
         case Left(why) => pure[F, Either[Failure, Json]](Left(Failure("Decode", s"$name: $why")))
-        case Right(a) => f(a).map(r => Right(Json.parse(Json.encode(res)(r)))))
+        case Right(a) => f(a).map(r => Right(Json.parse(Json.encode(res)(r)))),
+      Some((arg, res)))
 
   /** a JavaScript exception, by its name and message */
   private def caught(e: Any): Failure = e match
@@ -139,7 +149,7 @@ object Ts:
       def entry(name: String, args: Json, answer: Json): Json =
         Json.JObj(Vector("name" -> Json.JStr(name), "args" -> args, "answer" -> answer))
       val wrapped = Callbacks[Async](cbs.all.map { cb =>
-        Callback[Async](cb.name, args =>
+        Callback[Async](cb.name, types = cb.types, run = args =>
           val i = step
           step += 1
           recorded.lift(i) match
