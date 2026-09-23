@@ -79,6 +79,29 @@ step — so it needs nothing suspended, and no thread.
       guide paragraph, theory ch. 7 paragraph with references; every
       snippet in a gated test
 
+## Stage 2 (frege-effects-lists, 2026-09-23)
+
+- [ ] `Frege.stageWith[I, O, F](prog)`: a Frege stage that also
+      PERFORMS — row `Take % I + (Writer % O + F)`, so it runs through
+      okay-stream's effectful `through`; a Frege filter that asks its
+      threshold from `Reader` is the test
+- [ ] `Ops.sleep(ms)`: `Async` from Frege — an `Operation Long` (answers
+      the milliseconds slept, not `()`, whose Java form is a `short`);
+      two sleeps of 20 ms take at least 40 ms under `Async.run`
+- [ ] `Frege.chunks(xs)`: a Frege list as okay `Chunks`, lazily — an
+      infinite Frege list read partially, forced only as far as okay
+      pulled (counted on the Frege side is impossible, so: an infinite
+      list completes the test at all, and a bounded `take` answers)
+- [ ] `Frege.list(chunks)`: an okay pure `Chunks` as a Frege lazy list —
+      a Frege function over an INFINITE okay source takes only what it
+      needs: the elements okay produced are counted, and bounded by the
+      chunk the last demanded element sat in
+- [ ] `Frege.option`/`Frege.maybe`: `Maybe` <-> `Option`, both ways
+- [ ] PURE by type: `list` takes `Chunks` (`Unit ! Writer % Chunk[A]`,
+      no other row), so an effectful okay source cannot become a Frege
+      list — the lazy-IO argument, enforced by the signature
+- [ ] docs: the module page's list section, guide unchanged
+
 ## Decisions
 
 - **Effects explicit, never in a thunk** — the lazy-IO argument above.
