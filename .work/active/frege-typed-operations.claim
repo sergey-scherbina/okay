@@ -1,0 +1,6 @@
+feature/frege-typed-operations 2026-09-23T07:30:55Z
+agent: claude-code
+heartbeat: 2026-09-23T07:30:55Z
+status: in-progress
+done-so-far: Frege Typecheck.checkReturn read: warns when the return is a bare tyvar (or tyvar-headed app) absent from the args
+next: Operation a phantom (perform :: Operation a -> Prog a); cast via Answer a; fregeCompile fails on W lines
