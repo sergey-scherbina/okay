@@ -1,4 +1,0 @@
-feature/scala2-dir 2026-09-23T16:23:38Z
-agent: claude-code
-status: in-progress
-next: git mv okay-scala2* scala2/
