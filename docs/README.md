@@ -88,6 +88,14 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   is usually written, the rule for when to reach for an effect
   instead, and the cases where a capture makes code worse. The theory
   is [theory/2](theory/02-continuations.md).
+- **[Reading a blockchain](cardano.md)** — Cardano from a relay to
+  typed tables with no node, no API key and no Spark: follow the chain
+  to confirmed blocks (rollbacks said, never papered over), explode each
+  block into transactions, inputs, outputs, assets, mints,
+  certificates, withdrawals and redeemers, and read sum types and
+  recursive datums as columns any engine can take — Spark when you
+  want it. Its code is run by `TestCardanoGuide` on a recorded preprod
+  session checked against Koios.
 - **[Durable workflows](durable-workflows.md)** — a program that WAITS
   (for a person, a service, a date), written as straight-line code and
   able to outlive the process running it: the journal that is the only

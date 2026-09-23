@@ -298,6 +298,13 @@ network's `SlotConfig`.
 
 ### 5. Tables: one derived tree, the rest are SQL
 
+**Superseded 2026-09-23** (Decisions: "no Spark below the Spark
+adapter"): the tables below are `okay.scalus.CardanoTables` — typed
+Scala rows produced from each block, engine-free — not SQL views over a
+`blocks` DataFrame. The table list and the keys stand; the explode is
+written once, in Scala, and Spark derives its DataFrames from the row
+types. Built as cardano-tables, checked against Koios.
+
 One row per block, derived mechanically from the model (§3–4):
 
 ```

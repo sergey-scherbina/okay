@@ -61,6 +61,16 @@ Spark, `outputs` joined to `inputs`. ADA is `slip44:1815`; a native
 token is `token:<policy>.<name>` in hex, okay's convention, because
 CAIP-19 registers no Cardano asset namespace.
 
+**A block as tables.** `CardanoTables.of(block)` explodes one block
+into typed rows — blocks, transactions, inputs, outputs, assets,
+mints, certificates, withdrawals, redeemers — each carrying `slot`,
+`blockNo`, `blockHash` and `time`. The explode is written once and
+every consumer reads the same rows: your own code, `Columns` for any
+engine, Spark. Inputs are references (resolve them by joining
+`outputs`); `spent` and `collateralReturn` say what the LEDGER did with
+a transaction whose scripts failed. Walkthrough with every table:
+[Reading a blockchain](../cardano.md).
+
 **The model as a `Schema`.** `import okay.scalus.CardanoSchemas.given`
 gives every scalus ledger type an okay `Schema`, so a `Transaction` or a
 `Block` folds into JSON, CBOR, a validator and engine-free `Columns` —
@@ -101,6 +111,7 @@ RFC 8949 (CBOR), tag 24 "encoded CBOR data item".
 | `Header` | `era, blockNo, slot, hash, prev` | read from the header bytes |
 | `CardanoBlock` | `header`, `bytes`, `time`, `block`, `transactions` | `BlockOf` instance |
 | `CardanoLedger` | `Ledger[scalus.cardano.ledger.Transaction]` | |
+| `CardanoTables` | `of(block): Tables`; `BlockRow`, `TransactionRow`, `InputRow`, `OutputRow`, `AssetRow`, `MintRow`, `CertificateRow`, `WithdrawalRow`, `RedeemerRow` | a block as typed rows |
 | `CardanoSchemas` | `import CardanoSchemas.given` | a `Schema` for every scalus ledger type |
 | `N2N` | segments, `Demux`, the four protocols' messages | pure |
 

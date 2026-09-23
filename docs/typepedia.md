@@ -709,6 +709,12 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`CardanoTables`** (okay-scalus) — a Cardano block as TYPED ROWS
+  (transactions, inputs, outputs, assets, mints, certificates,
+  withdrawals, redeemers), the explode written once so an engine-free
+  consumer and Spark read the same tables. Sums stay sums in the rows;
+  `Columns` gives them their tabular shape. An input is a reference, and
+  resolving it is a join — the rows do not guess.
 - **`CardanoFollower`** (okay-scalus) — a Cardano relay followed to
   confirmed blocks with no node and no API key: Ouroboros node-to-node
   written here (mux, handshake, chain-sync, block-fetch in batches,
