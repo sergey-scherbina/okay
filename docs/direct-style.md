@@ -978,9 +978,11 @@ and now the chain is FUSED into the reader (gen-chain-fusion): the
 stages are data, a stopping reader walks the source once applying
 them per element, and the same pipeline reads 202 µs / 231 B/elem —
 under the hand road, which still walks `Writer.map`. `take` fused is
-0.77 of the re-emitting walk. `program` materialises a chain as the
-walks when a road needs a program (`iterator`, `flatMap`, `++`, a
-block). Prefer `iterator`
+0.77 of the re-emitting walk; `flatMap`, `++` and `zipWithIndex` are
+fused the same way (gen-flatmap-fusion — an inner generator is read
+where the reader stands). `program` materialises a chain as the
+walks when a road needs a program (`iterator`, a block). Prefer
+`iterator`
 or `first`/`find`/`exists` when the answer is not a list; those read
 the generator through `FoldUntil` and stop where the answer is.
 

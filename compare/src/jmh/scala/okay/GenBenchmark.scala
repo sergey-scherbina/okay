@@ -77,6 +77,26 @@ class GenBenchmark {
     val mapped = Writer.map[Long, Long, Unit, Nothing](prog)(_ * 2)
     !.run(Writer.fold[Long, List[Long], Unit, Nothing](mapped)(using summon, filtering))._1.reverse
 
+  // ---- the barriers, fused (gen-flatmap-fusion): flatMap, ++, zipWithIndex
+
+  @Benchmark
+  def genFlatMapToList: List[Long] = gen.flatMap(i => Gen.emit(i).map(_ + 1)).toList
+
+  /** the hand road for flatMap's shape: a Writer program telling once per element */
+  @Benchmark
+  def writerFlatMapCollect: List[Long] =
+    val mapped = Writer.map[Long, Long, Unit, Nothing](prog)(_ + 1)
+    !.run(Writer.run[Long, Unit, Nothing](mapped))._1.toList
+
+  @Benchmark
+  def genConcatToList: List[Long] = (gen ++ gen).toList
+
+  @Benchmark
+  def genZipWithIndexSum: Long =
+    var s = 0L
+    gen.zipWithIndex.foreach((x, i) => s += x + i)
+    s
+
   // ---- take, iterator, and the async comparator
 
   @Benchmark

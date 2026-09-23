@@ -111,6 +111,47 @@ class TestGen extends munit.FunSuite:
       assertEquals(g.exists(_ > 10), fused.exists(_ > 10))
   }
 
+  test("FUSED = MATERIALISED with flatMap, ++ and zipWithIndex in the chains") {
+    val rnd = new scala.util.Random(20260928)
+    for _ <- 1 to 200 do
+      val n = rnd.nextInt(12)
+      var g: Gen[Int] = Gen.unfold(0)(i => if i < n then Some((i, i + 1)) else None)
+      for _ <- 1 to rnd.nextInt(5) do
+        rnd.nextInt(7) match
+          case 0 => g = g.map(_ + 1)
+          case 1 => g = g.filter(_ % 2 == 0)
+          case 2 => g = g.take(rnd.nextInt(6))
+          case 3 => g = g.flatMap(i => if i % 3 == 0 then Gen(i, i * 10) else Gen.emit(i))
+          case 4 => g = g ++ Gen(100, 101)
+          case 5 => g = g.zipWithIndex.map((x, i) => x + i)
+          case _ => g = g.drop(1)
+      val fused = g.toList
+      assertEquals(fused, Gen.fromProgram(g.program).toList, "the walks")
+      assertEquals(fused, g.iterator.toList, "the stepper")
+      assertEquals(g.first, fused.headOption)
+  }
+
+  test("fused ++: a take across counts through; each side's own take counts its own; indices continue; the right side is not run if the left is enough") {
+    val c = Counted()
+    assertEquals((Gen(1, 2) ++ c.gen).take(3).toList, List(1, 2, 1))
+    assertEquals(c.steps, 1)
+    assertEquals((Gen(1, 2, 3).take(2) ++ Gen(7, 8, 9).take(1)).toList, List(1, 2, 7))
+    assertEquals((Gen("a") ++ Gen("b", "c")).zipWithIndex.toList, List(("a", 0), ("b", 1), ("c", 2)))
+    val c2 = Counted()
+    assertEquals((Gen(5, 6, 7) ++ c2.gen).take(2).toList, List(5, 6))
+    assertEquals(c2.steps, 0, "the right side never ran")
+    assertEquals((Gen.emit(1) ++ Gen.stop ++ Gen.emit(3)).map(_ * 2).toList, List(2))
+  }
+
+  test("fused flatMap: lazy to the inner counter; an inner Stop ends the whole generation") {
+    val inner = Counted()
+    assertEquals(Gen(1, 2, 3).flatMap(x => inner.gen.take(2).map(_ * x)).take(3).toList, List(1, 2, 2))
+    assertEquals(inner.steps, 3, "two from the first inner, one from the second, then stopped")
+    assertEquals(Gen.from(1 to 10).flatMap(i => if i == 4 then Gen.stop else Gen.emit(i)).toList, List(1, 2, 3))
+    assertEquals(Gen(1, 2).flatMap(i => Gen.emit(i) ++ Gen.emit(i + 10)).zipWithIndex.toList,
+      List((1, 0), (11, 1), (2, 2), (12, 3)))
+  }
+
   test("a fused take(n) runs the body exactly to its n-th KEPT element; find stops where it finds") {
     val c = Counted()
     assertEquals(c.gen.map(_ * 3).filter(_ % 2 == 0).take(2).toList, List(6, 12))

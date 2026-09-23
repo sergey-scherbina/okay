@@ -586,8 +586,10 @@ same material with the measurements attached.
   chain of stages (gen-chain-fusion): `map`/`filter`/`take`/
   `takeWhile`/`drop` append a stage, the stopping readers walk the
   source ONCE applying the stages per element (a transducer with its
-  state type as `St[S]`), and `program` materialises the chain as
-  walks for `iterator`, `flatMap`, `++` and a block.
+  state type as `St[S]`); `flatMap` and `zipWithIndex` are stages too
+  and `++` a `Cat` node, each read FROM the reader's state (an inner
+  `Stop` ends the whole generation); `program` materialises the chain
+  as walks for `iterator` and a block.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.

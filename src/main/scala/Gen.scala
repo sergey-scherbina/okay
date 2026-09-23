@@ -71,19 +71,22 @@ final class Gen[W](val chain: Gen.Chain[W]) extends AnyVal:
    * the tells) */
   def drop(n: Int): Gen[W] = new Gen(chain.andThen(Gen.Xf.Drop(n)))
 
-  // ---- barriers: a new source from the materialised program
-  /** Python's `yield from`: every told w replaced by f(w)'s tells */
-  def flatMap[V](f: W => Gen[V]): Gen[V] = Gen.lazily(Gen.splice(program)(w => f(w).program))
-  /** sequencing — one after the other */
-  def ++(h: Gen[W]): Gen[W] = Gen.fromProgram(program.flatMap(_ => h.program))
-  def zipWithIndex: Gen[(W, Int)] = Gen.lazily(Gen.indexed(program))
+  /** Python's `yield from`: every told w replaced by f(w)'s tells —
+   * fused, the inner generator's chain is read from the reader's
+   * current state inside `add` (gen-flatmap-fusion); a `Stop` inside
+   * it ends the whole generation, as the spliced program's would */
+  def flatMap[V](f: W => Gen[V]): Gen[V] = new Gen(chain.andThen(Gen.Xf.FlatMap(f)))
+  /** sequencing — one after the other: a `Cat` node, the reader's
+   * state threaded from the left side into the right */
+  def ++(h: Gen[W]): Gen[W] = new Gen(Gen.Chain.Cat(chain, h.chain, Gen.Xf.Id[W]()))
+  def zipWithIndex: Gen[(W, Int)] = new Gen(chain.andThen(Gen.Xf.Indexed[W]()))
 
   // ---- readers: ONE walk of the source, the chain applied per
   // element; every one stops the body where it has read enough
   /** the general stopping reader (specs/fold-until.md): `done` is
    * asked before the first element and after each; a `Stop` in the
    * body ends the read as the body's end would */
-  def foldUntil[S, R](using K: FoldUntil[W, S, R]): R = Gen.read(chain.source)(chain.xf.fold(K))
+  def foldUntil[S, R](using K: FoldUntil[W, S, R]): R = K.end(chain.readState(K)(K.init).s)
   def toList: List[W] = foldUntil(using Gen.collecting[W])
   def toVector: Vector[W] = toList.toVector
   def first: Option[W] = foldUntil(using FoldUntil.headOption[W])
@@ -107,63 +110,105 @@ object Gen:
   /** a program that tells, as a generator — the same value, named */
   def fromProgram[W](p: Unit ! Row[W]): Gen[W] = new Gen(Chain(p))
 
-  /** a transformed generator, built when first READ: every walk below
-   * resumes its input's head, which would run the body's first step at
-   * construction — Python runs nothing before `next()`, and neither
-   * does this (a `Delay`, which the runners force in constant stack) */
-  private def lazily[W](p: => Unit ! Row[W]): Gen[W] = new Gen(Chain(Free.delay(() => p)))
+
+  /** a read's answer: the reader's state where the walk ended, and
+   * whether a `Stop` ended it — a concatenation's right side and a
+   * flatMap's outer read must not go on after one */
+  final class Halt[S](val s: S, val stopped: Boolean)
 
   /**
-   * A source program and the stages to read it through
+   * A source and the stages to read it through
    * (specs/gen-chain-fusion.md). The source's element type is an
    * existential the value class cannot name; a type member names it
-   * once, and every reader is `read(source)(xf.fold(K))`.
+   * once. Two node kinds: a program (`Plain`/`Staged`) and a
+   * concatenation of two chains (`Cat`, gen-flatmap-fusion) — each
+   * read FROM a downstream state, so a side or an inner generator is
+   * read where the reader stands.
    */
   abstract class Chain[W]:
     type A
-    val source: Unit ! Row[A]
     val xf: Xf[A, W]
+    /** the raw source(s) through a reader at A, from a state */
+    def readSource[S, R](K: FoldUntil[A, S, R])(s0: S): Halt[S]
+    /** the whole chain from a downstream state: the stages' own state
+     * wrapped around it, the walk, and the reader's state back out */
+    final def readState[S, R](K: FoldUntil[W, S, R])(s0: S): Halt[S] =
+      val h = readSource(xf.fold(K))(xf.inject(s0))
+      Halt(xf.project(h.s), h.stopped)
     /** the chain as a program: a plain chain IS its source (no node —
-     * `say(w)` sits on every walk's hot path); a staged one
-     * is its walks, built when first read */
+     * `say(w)` sits on every walk's hot path); a staged one is its
+     * walks, built when first read */
     def program: Unit ! Row[W]
-    def andThen[V](s: Xf[W, V]): Chain[V] =
-      val self = this
-      new Chain[V]:
-        type A = self.A
-        val source: Unit ! Row[A] = self.source
-        val xf: Xf[A, V] = self.xf.andThen(s)
-        def program: Unit ! Row[V] = Free.delay(() => xf.walk(source))
+    def andThen[V](s: Xf[W, V]): Chain[V]
 
   object Chain:
-    def apply[W](p: Unit ! Row[W]): Chain[W] = new Chain[W]:
+    def apply[W](p: Unit ! Row[W]): Chain[W] = Plain(p)
+
+    final class Plain[W](val source: Unit ! Row[W]) extends Chain[W]:
       type A = W
-      val source: Unit ! Row[W] = p
       val xf: Xf[W, W] = Xf.Id[W]()
-      def program: Unit ! Row[W] = p
+      def readSource[S, R](K: FoldUntil[W, S, R])(s0: S): Halt[S] = Gen.readState(source)(K)(s0)
+      def program: Unit ! Row[W] = source
+      def andThen[V](s: Xf[W, V]): Chain[V] = Staged(source, s)
+
+    final class Staged[A0, W](val source: Unit ! Row[A0], val xf: Xf[A0, W]) extends Chain[W]:
+      type A = A0
+      def readSource[S, R](K: FoldUntil[A0, S, R])(s0: S): Halt[S] = Gen.readState(source)(K)(s0)
+      def program: Unit ! Row[W] = Free.delay(() => xf.walk(source))
+      def andThen[V](s: Xf[W, V]): Chain[V] = Staged(source, xf.andThen(s))
+
+    /** one after the other; `xf` applies AFTER both, its state
+     * threaded across — a `take` over a concatenation counts through
+     * it, each side's own stages count their own */
+    final class Cat[A0, W](val l: Chain[A0], val r: Chain[A0], val xf: Xf[A0, W]) extends Chain[W]:
+      type A = A0
+      def readSource[S, R](K: FoldUntil[A0, S, R])(s0: S): Halt[S] =
+        val h = l.readState(K)(s0)
+        if h.stopped || K.done(h.s) then h else r.readState(K)(h.s)
+      def program: Unit ! Row[W] = Free.delay(() => xf.walk(l.program.flatMap(_ => r.program)))
+      def andThen[V](s: Xf[W, V]): Chain[V] = Cat(l, r, xf.andThen(s))
 
   /**
    * A stage with two readings: FUSED — a transformer of the reader,
    * Clojure's transducer with the state type it adds carried as `St`
-   * so the fused reader is a `FoldUntil` at a known state type and
-   * `read` is unchanged — and MATERIALISED, the walk it was (for
-   * `program`). Stateless stages keep `St[S] = S`.
+   * so the fused reader is a `FoldUntil` at a known state type — and
+   * MATERIALISED, the walk it was (for `program`). Stateless stages
+   * keep `St[S] = S`. `inject`/`project` wrap and unwrap that state,
+   * so a chain can be read FROM a downstream state (a concatenation's
+   * side, a flatMap's inner generator).
    */
   sealed trait Xf[A, B]:
     type St[S]
     def fold[S, R](k: FoldUntil[B, S, R]): FoldUntil[A, St[S], R]
+    def inject[S](s: S): St[S]
+    def project[S](st: St[S]): S
     def walk(p: Unit ! Row[A]): Unit ! Row[B]
     def andThen[C](that: Xf[B, C]): Xf[A, C] = Xf.Compose(this, that)
 
   object Xf:
-    final class Id[A] extends Xf[A, A]:
+    /** a stage that adds no state */
+    sealed trait Stateless[A, B] extends Xf[A, B]:
       type St[S] = S
+      def inject[S](s: S): S = s
+      def project[S](st: S): S = st
+
+    /** a count beside the reader's state — a class, not a tuple, so
+     * the count is a field and never boxed (a `(Int, S)` per element
+     * measured at +40 B) */
+    final class Counted[S](val n: Int, val s: S)
+
+    /** a stage whose state is a count, fresh at zero when injected */
+    sealed trait Counting[A, B] extends Xf[A, B]:
+      type St[S] = Counted[S]
+      def inject[S](s: S): Counted[S] = Counted(0, s)
+      def project[S](st: Counted[S]): S = st.s
+
+    final class Id[A] extends Stateless[A, A]:
       def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, S, R] = k
       def walk(p: Unit ! Row[A]): Unit ! Row[A] = p
       override def andThen[C](that: Xf[A, C]): Xf[A, C] = that
 
-    final class Map[A, B](f: A => B) extends Xf[A, B]:
-      type St[S] = S
+    final class Map[A, B](f: A => B) extends Stateless[A, B]:
       def fold[S, R](k: FoldUntil[B, S, R]): FoldUntil[A, S, R] = new:
         def init: S = k.init
         def add(s: S, a: A): S = k.add(s, f(a))
@@ -171,8 +216,7 @@ object Gen:
         def end(s: S): R = k.end(s)
       def walk(p: Unit ! Row[A]): Unit ! Row[B] = Writer.map[A, B, Unit, Stop](p)(f)
 
-    final class Filter[A](p: A => Boolean) extends Xf[A, A]:
-      type St[S] = S
+    final class Filter[A](p: A => Boolean) extends Stateless[A, A]:
       def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, S, R] = new:
         def init: S = k.init
         def add(s: S, a: A): S = if p(a) then k.add(s, a) else s
@@ -180,13 +224,29 @@ object Gen:
         def end(s: S): R = k.end(s)
       def walk(g: Unit ! Row[A]): Unit ! Row[A] = filtering(p)(g)
 
-    /** a count beside the reader's state — a class, not a tuple, so
-     * the count is a field and never boxed (a `(Int, S)` per element
-     * measured at +40 B) */
-    final class Counted[S](val n: Int, val s: S)
+    /** `yield from`, fused: the inner generator's chain is read from
+     * the reader's state inside `add`; n = 1 once an inner `Stop`
+     * ended it, which ends the whole generation (the spliced program's
+     * law: a `Stop` is one more member of the row) */
+    final class FlatMap[A, B](f: A => Gen[B]) extends Counting[A, B]:
+      def fold[S, R](k: FoldUntil[B, S, R]): FoldUntil[A, Counted[S], R] = new:
+        def init: Counted[S] = Counted(0, k.init)
+        def add(s: Counted[S], a: A): Counted[S] =
+          val h = f(a).chain.readState(k)(s.s)
+          Counted(if h.stopped then 1 else 0, h.s)
+        def done(s: Counted[S]): Boolean = s.n == 1 || k.done(s.s)
+        def end(s: Counted[S]): R = k.end(s.s)
+      def walk(p: Unit ! Row[A]): Unit ! Row[B] = splice(p)(w => f(w).program)
 
-    final class Take[A](n: Int) extends Xf[A, A]:
-      type St[S] = Counted[S]
+    final class Indexed[A] extends Counting[A, (A, Int)]:
+      def fold[S, R](k: FoldUntil[(A, Int), S, R]): FoldUntil[A, Counted[S], R] = new:
+        def init: Counted[S] = Counted(0, k.init)
+        def add(s: Counted[S], a: A): Counted[S] = Counted(s.n + 1, k.add(s.s, (a, s.n)))
+        def done(s: Counted[S]): Boolean = k.done(s.s)
+        def end(s: Counted[S]): R = k.end(s.s)
+      def walk(g: Unit ! Row[A]): Unit ! Row[(A, Int)] = indexed(g)
+
+    final class Take[A](n: Int) extends Counting[A, A]:
       def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, Counted[S], R] = new:
         def init: Counted[S] = Counted(0, k.init)
         def add(s: Counted[S], a: A): Counted[S] = Counted(s.n + 1, k.add(s.s, a))
@@ -194,9 +254,8 @@ object Gen:
         def end(s: Counted[S]): R = k.end(s.s)
       def walk(g: Unit ! Row[A]): Unit ! Row[A] = taking(n)(g)
 
-    final class TakeWhile[A](p: A => Boolean) extends Xf[A, A]:
+    final class TakeWhile[A](p: A => Boolean) extends Counting[A, A]:
       /** n = 1 once stopped */
-      type St[S] = Counted[S]
       def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, Counted[S], R] = new:
         def init: Counted[S] = Counted(0, k.init)
         def add(s: Counted[S], a: A): Counted[S] = if p(a) then Counted(0, k.add(s.s, a)) else Counted(1, s.s)
@@ -204,9 +263,8 @@ object Gen:
         def end(s: Counted[S]): R = k.end(s.s)
       def walk(g: Unit ! Row[A]): Unit ! Row[A] = takingWhile(p)(g)
 
-    final class Drop[A](n: Int) extends Xf[A, A]:
+    final class Drop[A](n: Int) extends Counting[A, A]:
       /** n = skipped so far */
-      type St[S] = Counted[S]
       def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, Counted[S], R] = new:
         def init: Counted[S] = Counted(0, k.init)
         def add(s: Counted[S], a: A): Counted[S] =
@@ -220,6 +278,8 @@ object Gen:
     final class Compose[A, B, C](val a: Xf[A, B], val b: Xf[B, C]) extends Xf[A, C]:
       type St[S] = a.St[b.St[S]]
       def fold[S, R](k: FoldUntil[C, S, R]): FoldUntil[A, St[S], R] = a.fold(b.fold(k))
+      def inject[S](s: S): St[S] = a.inject(b.inject(s))
+      def project[S](st: St[S]): S = b.project(a.project(st))
       def walk(p: Unit ! Row[A]): Unit ! Row[C] = b.walk(a.walk(p))
 
   /** yield one value — a tell. Sequence with `++`; `flatMap` is
@@ -348,13 +408,14 @@ object Gen:
           { _ => ended[W] }
     loop(n)(g)
 
-  private def read[W, S, R](g: Unit ! Row[W])(K: FoldUntil[W, S, R]): R =
-    @tailrec def loop(s: S)(x: Unit ! Row[W]): R =
-      if K.done(s) then K.end(s)
+  /** the walk, from a state: where it ended and whether a `Stop` did */
+  private[okay] def readState[W, S, R](g: Unit ! Row[W])(K: FoldUntil[W, S, R])(s0: S): Halt[S] =
+    @tailrec def loop(s: S)(x: Unit ! Row[W]): Halt[S] =
+      if K.done(s) then Halt(s, false)
       else (x.resume: @unchecked) match
-        case Pure(_) => K.end(s)
+        case Pure(_) => Halt(s, false)
         case Inject(e) => split[Writer % W, Stop](e)
-          { case Writer.Say(w) => K.end(K.add(s, w)) } { _ => K.end(s) }
+          { case Writer.Say(w) => Halt(K.add(s, w), false) } { _ => Halt(s, true) }
         case Bind(Inject(e), k) => split[Writer % W, Stop](e)
           { w0 => (w0: @unchecked) match
               case Writer.Say(w) =>
@@ -362,9 +423,9 @@ object Gen:
                 // call, and `k(())` runs the body between this yield and
                 // the next; a reader that has read enough must not
                 val s2 = K.add(s, w)
-                if K.done(s2) then K.end(s2) else loop(s2)(k(())) }
-          { _ => K.end(s) }
-    loop(K.init)(g)
+                if K.done(s2) then Halt(s2, false) else loop(s2)(k(())) }
+          { _ => Halt(s, true) }
+    loop(s0)(g)
 
   /** collect everything told, never done */
   private def collecting[W]: FoldUntil[W, List[W], List[W]] = new:
