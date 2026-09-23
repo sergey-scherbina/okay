@@ -34,23 +34,24 @@ unchanged.
 
 ### Behavior
 
-- [ ] A typed call: a case class reaches TypeScript as a plain object, and
+- [x] A typed call: a case class reaches TypeScript as a plain object, and
       the answer comes back through `Schema`.
-- [ ] A callback: `call("price_of", sku)` inside a TypeScript function runs
+- [x] A callback: `call("price_of", sku)` inside a TypeScript function runs
       an okay program under the caller's handlers, synchronously (the
       worker reads its stdin with `readSync`, so the function simply
       returns the value).
-- [ ] An async TypeScript function (a `Promise`) is awaited.
-- [ ] A held object: its methods and fields, and the object as an argument.
-- [ ] Programs as data, MULTI-SHOT: `then(perform("choose", [1, 2]), x => ...)`
+- [x] An async TypeScript function (a `Promise`) is awaited.
+- [x] A held object: its methods and fields, and the object as an argument.
+- [x] Programs as data, MULTI-SHOT: `then(perform("choose", [1, 2]), x => ...)`
       under okay's `runChoice` answers every branch.
-- [ ] Integers past 2^53 cross as `bigint`, bytes as `Uint8Array`, and
+- [x] Integers past 2^53 cross as `bigint`, bytes as `Uint8Array`, and
       NaN stays NaN.
-- [ ] `Stubs.typescriptWire(schemas*)`: the `.d.ts` of the shapes the
+- [x] `Stubs.typescriptWire(schemas*)`: the `.d.ts` of the shapes the
       WIRE hands TypeScript (a sum carries `type: "Case"`, as in Python;
-      a `BigInt` is `bigint`). A user module typed with it passes
+      a `Long` or `BigInt` is `number | bigint`, since only a value past
+      2^53 arrives as a bigint). A user module typed with it passes
       `tsc --strict`, and a read of a field that does not exist fails.
-- [ ] A TypeScript exception is a condition by name; the worker lives on.
+- [x] A TypeScript exception is a condition by name; the worker lives on.
 
 ## Decisions
 
@@ -63,3 +64,18 @@ unchanged.
   `OKAY_TS_MODULES`, the way okay-r loads its inline modules.
 
 ## Results
+
+- Stage 1 (ts-worker, 2026-09-23), with Node 26.9 and tsc.
+  - A hand-run smoke test of the worker answered every operation on its
+    first run.
+  - TestTsWorker has 7 live tests: a typed call whose TypeScript calls
+    back into okay's Reader; a sum with its type field; an awaited async
+    function; a held `Counter`; multi-shot `Choice` over a TypeScript
+    program (11, 21, 12, 22); `Long.MaxValue` as a bigint, bytes and NaN
+    round trips; a `RangeError` as a condition by name, with the worker
+    alive after it; and `tsc --strict` accepting the module typed with
+    `Stubs.typescriptWire`, while refusing `order.skuu`.
+  - Default gate: the wire declarations' shape. Mutant: a sum case without
+    its `type` field fails it.
+  - Not checked with `tsc`: the worker itself. It needs `@types/node`,
+    which is not installed; Node runs it, and the tests exercise it.

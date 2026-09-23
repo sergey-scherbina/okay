@@ -1,0 +1,129 @@
+# okay with TypeScript
+
+okay is an effects library for Scala 3. A program is a value, and
+handlers decide what its operations mean. This page shows TypeScript
+taking part in such a program. A Scala program calls TypeScript functions
+as typed Scala functions. The TypeScript code calls back into okay's
+effects in the middle of a call. And a TypeScript program can be written
+as DATA, whose continuations okay may resume more than once.
+
+TypeScript runs in its own Node process, which speaks okay's line
+protocol: the same wire, and the same Scala API, as
+[okay with Python and R](python-and-r.md). Node runs `.ts` files by
+stripping their types, so there is no build step.
+
+<!-- not-a-test: a diagram -->
+```mermaid
+flowchart LR
+  subgraph JVM["the JVM: your Scala program"]
+    P["an okay program<br/>Either[Condition, Out] ! (F + PyEval)"]
+    F["handlers for F<br/>Reader · State · Choice · ..."]
+    P --> F
+  end
+  W["node worker.ts<br/>(shipped in the jar)"]
+  M["your modules<br/>shop.ts · model.ts"]
+  P <-->|"one JSON line each way"| W
+  W --> M
+  M -->|"call(name, x) · perform(name, x)"| W
+```
+
+## A module
+
+```typescript
+import { call, done, perform, then, type Prog } from "./okay.ts";
+import type { Order, Shape, Totals } from "./model.ts";
+
+export function total(order: Order): Totals {
+  const price = call<number>("price_of", order.sku);
+  return { sku: order.sku, amount: price * Number(order.qty), note: null };
+}
+```
+
+- **`./okay.ts`** is okay's TypeScript library. It ships in the jar, and
+  `TsWorker.start` writes it beside your modules.
+- **`call("price_of", sku)`** calls back into okay. It runs the callback
+  the Scala side offered under that name, as an okay program under the
+  caller's handlers, and returns its answer.
+- **`./model.ts`** holds the types of the values, generated from the Scala
+  `Schema`s:
+
+```scala
+val model = Stubs.typescriptWire(summon[Schema[Order]], summon[Schema[Totals]], summon[Schema[Shape]])
+```
+
+## From Scala
+
+```scala
+private lazy val w = TsWorker.start(dir, modules = Seq("shop"))
+```
+
+```scala
+val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+val total = Py.fn[Totals]("shop:total").calling(Py.callbacks(priceOf))(Order("tea", 3L))
+assertEquals(Reader.run(Map("tea" -> 4.0))(total).runWith, Right(Totals("tea", 12.0, None)))
+```
+
+The API is okay-py's, because the wire is. `Py.fn` makes a typed call,
+`Py.callback` offers a callback, `Py.hold` keeps an object in the worker,
+`Py.program` runs a program as data, and `Durable` journals any of them.
+What the name in `call("price_of", ...)` is, and why a callback is a
+name rather than a function, is explained in
+[okay with Python and R](python-and-r.md#what-is-the-name-in-okaycallprice_of-x).
+
+## Programs as data, many answers
+
+```typescript
+export function pairs(): Prog<number> {
+  return then(perform<number>("choose", [1, 2]), (x) =>
+    then(perform<number>("choose", [10, 20]), (y) => done(x + y)));
+}
+```
+
+The worker keeps each continuation under an id, so okay's `Choice`
+handler can continue the same one twice and gets every combination:
+
+```scala
+assertEquals(runChoice(pairs.program).runWith.toList, List(Right(11L), Right(21L), Right(12L), Right(22L)))
+```
+
+## Objects, async, errors, numbers
+
+- **Held objects.** `Py.hold("shop:counter")()` keeps a `Counter` in the
+  worker, and its methods and fields are reached by name.
+- **Async functions.** An async function (a `Promise`) is awaited.
+- **Errors.** An exception is a condition by name, and the worker lives
+  on:
+
+  ```scala
+  assertEquals(Py.fn[Long]("shop:fail")().runWith, Left(Condition("RangeError", "typescript says no")))
+  ```
+
+- **Numbers.** An integer past 2^53 crosses as a `bigint`, so its declared
+  type is `number | bigint`. Bytes cross as a `Uint8Array`, and NaN stays
+  NaN.
+
+## Types, checked by the real compiler
+
+`Stubs.typescriptWire` declares the shapes TypeScript actually receives:
+a sealed trait or enum is its case's object with `type: "Case"`, and
+`None` is `null`. The test compiles the module above with
+`tsc --strict`. It passes, and a read of `order.skuu` fails before
+anything runs.
+
+(`Stubs.typescript`, without `Wire`, declares what okay's JSON codec
+writes instead, `{ "Case": {...} }`, for an HTTP API or a Scala.js
+export. The two differ because the codecs do.)
+
+## The limits, stated
+
+- **Callbacks in async code.** A callback is synchronous: the worker
+  reads its stdin with `readSync`, so `call` simply returns. Inside an
+  async function, a `call` made after the function's first `await` is
+  outside the call that offered it, and is refused by name.
+- **Modules load at start.** They are imported once, when the worker
+  starts. A callback's nested request is served synchronously, and an
+  `import` is not.
+- **What is next.** TypeScript programs INSIDE okay on Scala.js, in the
+  browser with no process, is the next stage (specs/typescript.md).
+
+The design and the results: [specs/typescript.md](../specs/typescript.md).

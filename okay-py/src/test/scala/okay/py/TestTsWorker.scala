@@ -11,7 +11,8 @@ object TestTsWorker:
     case Rect(w: Double, h: Double)
 
   // no margin: the docs quote these lines
-  val shop: String = """import { call, done, perform, then, type Prog } from "./okay.ts";
+  val shop: String = """
+import { call, done, perform, then, type Prog } from "./okay.ts";
 import type { Order, Shape, Totals } from "./model.ts";
 
 export function total(order: Order): Totals {

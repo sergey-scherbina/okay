@@ -292,6 +292,9 @@ now it crosses as an int.
 - **Every crossing is serialised.** Values cross as JSON lines. For big
   frames, [okay-r](modules/okay-r.md) records what that costs.
 
+TypeScript speaks the same wire, through the same API: see
+[okay with TypeScript](typescript.md).
+
 Why a process at all, and not Python inside the JVM: see
 [specs/py.md](../specs/py.md). In short, the value of Python and R is
 their C- and Fortran-backed packages, and a JVM reimplementation lags
