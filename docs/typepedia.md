@@ -724,6 +724,11 @@ same material with the measurements attached.
   `params._meta`, and a DELIVERED answer (no `isError`) is settled with
   the receipt in `result._meta` — `Charge`'s rules, shared with `Gate`.
   `X402Mcp.Paying` is the client half, a `Session` that pays once.
+- **`CircleSigner` / `TurnkeySigner` / `Web3Signer`** (okay-x402-signers)
+  — x402's typed data signed in a Circle developer-controlled wallet (a
+  fresh RSA-OAEP entity-secret ciphertext per request), in Turnkey (the
+  body stamped with a P-256 API key) or by a self-hosted Web3Signer or
+  Clef (`eth_signTypedData`); every answer recovered to the address.
 - **`CdpSigner`** (okay-x402-cdp) — an `AuthorizationSigner` over a
   Coinbase CDP Server Wallet: the EIP-712 typed data is sent, so CDP's
   wallet policies see what they sign; both JWTs as Coinbase's SDK builds

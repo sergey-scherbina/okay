@@ -40,6 +40,42 @@ object Eip712:
   def digest(domain: Array[Byte], a: Authorization): Array[Byte] =
     Evm.keccak(Array[Byte](0x19, 0x01) ++ domain ++ structHash(a))
 
+  def digest(d: Domain, a: Authorization): Array[Byte] =
+    digest(domainSeparator(d.name, d.version, d.chainId, d.verifyingContract), a)
+
+  /** the typed data of an EIP-3009 transfer as JSON — what a signing
+   * service that signs TYPED DATA is sent (`eth_signTypedData_v4`'s
+   * object; CDP, Circle and Turnkey take this shape) */
+  def typedData(d: Domain, a: Authorization): Json =
+    def field(n: String, t: String) = JObj(Vector("name" -> JStr(n), "type" -> JStr(t)))
+    JObj(Vector(
+      "domain" -> JObj(Vector("name" -> JStr(d.name), "version" -> JStr(d.version),
+        "chainId" -> JNum(d.chainId.toDouble), "verifyingContract" -> JStr(d.verifyingContract))),
+      "types" -> JObj(Vector(
+        "EIP712Domain" -> JArr(Vector(field("name", "string"), field("version", "string"),
+          field("chainId", "uint256"), field("verifyingContract", "address"))),
+        "TransferWithAuthorization" -> JArr(Vector(field("from", "address"), field("to", "address"),
+          field("value", "uint256"), field("validAfter", "uint256"), field("validBefore", "uint256"),
+          field("nonce", "bytes32"))))),
+      "primaryType" -> JStr("TransferWithAuthorization"),
+      "message" -> JObj(Vector("from" -> JStr(a.from), "to" -> JStr(a.to), "value" -> JStr(a.value.toString),
+        "validAfter" -> JStr(a.validAfter.toString), "validBefore" -> JStr(a.validBefore.toString),
+        "nonce" -> JStr("0x" + Evm.hex(a.nonce))))))
+
+  /**
+   * A signature a SERVICE returned, checked before it is used: `v` as
+   * 0/1 or 27/28, whichever the service writes (FiatToken wants 27/28),
+   * then RECOVERED against the digest this process computes — it must be
+   * the account's. A service answering for another key does not get to
+   * sign our payments; the refusal names both addresses.
+   */
+  def checked(d: Domain, a: Authorization, raw: Array[Byte], account: String): Either[String, Array[Byte]] =
+    val sig = if raw.length == 65 && (raw(64) & 0xFF) < 27 then raw.updated(64, (raw(64) + 27).toByte) else raw
+    Evm.recover(digest(d, a), sig) match
+      case Right(who) if who.equalsIgnoreCase(account) => Right(sig)
+      case Right(who) => Left(s"the signature recovers to $who, not the account $account")
+      case Left(e) => Left(s"the signature does not recover: $e")
+
 /**
  * x402's `exact` scheme on EVM (EIP-3009), verified OFFLINE — the checks
  * the reference facilitator makes that need no chain, with its own

@@ -54,13 +54,7 @@ final class CdpSigner(http: Http, val address: String, credentials: CdpCredentia
         sig match
           case None => throw IllegalStateException(s"CDP answered no signature: ${text.take(300)}")
           case Some(raw) =>
-            // v as 0/1 or 27/28, whichever the service writes: FiatToken wants 27/28
-            val s = if raw.length == 65 && (raw(64) & 0xFF) < 27 then raw.updated(64, (raw(64) + 27).toByte) else raw
-            val digest = Eip712.digest(Eip712.domainSeparator(d.name, d.version, d.chainId, d.verifyingContract), a)
-            Evm.recover(digest, s) match
-              case Right(who) if who.equalsIgnoreCase(address) => s
-              case Right(who) => throw IllegalStateException(s"CDP's signature recovers to $who, not the account $address")
-              case Left(e) => throw IllegalStateException(s"CDP's signature does not recover: $e")
+            Eip712.checked(d, a, raw, address).fold(e => throw IllegalStateException(s"CDP: $e"), identity)
       }
     }
 
@@ -68,21 +62,7 @@ object CdpSigner:
   val Api = "https://api.cdp.coinbase.com"
 
   /** the typed data of an EIP-3009 transfer, as CDP's endpoint takes it */
-  def typedData(d: Eip712.Domain, a: Eip712.Authorization): Json =
-    def field(n: String, t: String) = JObj(Vector("name" -> JStr(n), "type" -> JStr(t)))
-    JObj(Vector(
-      "domain" -> JObj(Vector("name" -> JStr(d.name), "version" -> JStr(d.version),
-        "chainId" -> JNum(d.chainId.toDouble), "verifyingContract" -> JStr(d.verifyingContract))),
-      "types" -> JObj(Vector(
-        "EIP712Domain" -> JArr(Vector(field("name", "string"), field("version", "string"),
-          field("chainId", "uint256"), field("verifyingContract", "address"))),
-        "TransferWithAuthorization" -> JArr(Vector(field("from", "address"), field("to", "address"),
-          field("value", "uint256"), field("validAfter", "uint256"), field("validBefore", "uint256"),
-          field("nonce", "bytes32"))))),
-      "primaryType" -> JStr("TransferWithAuthorization"),
-      "message" -> JObj(Vector("from" -> JStr(a.from), "to" -> JStr(a.to), "value" -> JStr(a.value.toString),
-        "validAfter" -> JStr(a.validAfter.toString), "validBefore" -> JStr(a.validBefore.toString),
-        "nonce" -> JStr("0x" + Evm.hex(a.nonce))))))
+  def typedData(d: Eip712.Domain, a: Eip712.Authorization): Json = Eip712.typedData(d, a)
 
   /** from the settings: every secret resolved NOW, so a missing one fails
    * at startup naming its reference */

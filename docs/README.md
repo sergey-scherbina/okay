@@ -234,6 +234,7 @@ API reference, gotchas.
 | [`okay-x402`](modules/okay-x402.md) | x402: a priced okay-http route answers 402, a paying client pays what its policy allows, a facilitator verifies and settles — only a successful answer is paid for |
 | [`okay-x402-evm`](modules/okay-x402-evm.md) | x402's `exact` scheme verified offline: keccak, secp256k1 recovery, EIP-712; the spec's own example signature recovers to its payer |
 | [`okay-x402-cdp`](modules/okay-x402-cdp.md) | x402 payments signed by a Coinbase CDP Server Wallet: the typed data goes to CDP (whose policies can refuse), the key stays in its enclave, the signature is recovered before use |
+| [`okay-x402-signers`](modules/okay-x402-signers.md) | x402 signers without SDKs: a Circle developer-controlled wallet, Turnkey, or a self-hosted Web3Signer/Clef — typed data signed where the key lives, every answer recovered before use |
 | [`okay-x402-mcp`](modules/okay-x402-mcp.md) | x402 over MCP: a priced tool answers JSON-RPC 402 with its price in `error.data`, a paying session pays by policy and asks again, the receipt rides in `result._meta` |
 | [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
