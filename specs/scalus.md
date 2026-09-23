@@ -456,6 +456,32 @@ until Spark stage 2 has run on mainnet.
         Spark snippet analysed by `TestDocExamplesCardanoSpark`
 - **Stage 3 — events mode** (journal-backed offsets, rollback rows) — [x] LANDED 2026-09-23 (scalus-events-mode): tested against a fake relay that rolls back
 - **Stage 4 — Flink** (§7) — [x] LANDED 2026-09-23 (scalus-flink): a FLIP-27 source, one split, checkpoint = last emitted block; FlinkSchema over Columns; a MiniCluster job equals CardanoTables
+- **Stage 5 — executors fetch their own ranges** (scalus-executor-fetch,
+  operator: "scalus-executor-fetch делай"). §6's original plan, beside
+  the first version rather than instead of it: option `fetch` =
+  `driver` (as before: the driver holds the bodies) | `executor`.
+  - [ ] okay-scalus: block-fetch of a header range as its own function
+        (`BlockFetch.range`), used by the chain-sync source AND by an
+        executor; the source generic in what it completes a header
+        batch into (`HeaderSync[A]`), so the driver can follow HEADERS
+        only; `CardanoFollower.headers` — the same `Tracker`, confirming
+        headers (`BlockOf[Header]`)
+  - [ ] okay-scalus-spark, `fetch = executor`: the driver follows
+        headers and holds only them (~1 KB a block, not the block);
+        a partition carries its range's HEADERS and the relay option;
+        the executor opens its own session, `RequestRange`s first..last,
+        pairs each body with its header (as the source does) and
+        explodes rows. Confirmed ranges are deterministic, so a re-run
+        batch reads the same rows — the exactly-once argument of §6
+        unchanged. Batch and stream both.
+  - [ ] a relay that has lost the range (`NoBlocks`) fails the task with
+        the range named — Spark retries a task, and a retried fetch of a
+        confirmed range is the same fetch
+  - [ ] tests (fake relay, every connection a fresh scripted relay): the
+        DataFrame under `fetch = executor` equals `fetch = driver` row for
+        row, batch and stream; a relay without the range fails naming it
+  - [ ] measured, `Live`: a preprod backfill, driver vs executor, same
+        blocks, same local cluster — the number that decides the default
 
 ## Decisions
 
