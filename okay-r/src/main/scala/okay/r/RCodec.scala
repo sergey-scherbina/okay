@@ -207,6 +207,11 @@ object RCodec {
 object R {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /** an R function over a vector as an okay stage over chunks
+   * (foreign-streaming): see `RStream` */
+  def stage[I: ToR, O: Schema](address: String, chunk: Int = 64): Unit ! RStream.Row[I, O] =
+    RStream.chunked[I, O](chunk, buf => REval.Call(address, Vector(RValue.Vec(buf))), None)
+
   /** R source beside the Scala that calls it (foreign-inline-modules):
    * a compile-time constant, shipped when R starts —
    * `RSubprocess.start(..., modules = Seq(m))` */

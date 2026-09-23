@@ -51,6 +51,13 @@ final case class PyRef(id: Long, pyType: String):
       .map(_.flatMap(PyCodec.decode[Out](_)))
   /** drop the object in the worker; idempotent */
   def release: Unit ! PyEval = okay.effect[PyEval, Unit](PyEval.Release(this))
+  /** this object as a STATEFUL stage over chunks (foreign-streaming):
+   * `method` per chunk, `finish` once at the end */
+  def stage[I: ToPy, O: okay.codec.Schema](method: String, chunk: Int = 64,
+                                          finish: Option[String] = None): Unit ! PyStream.Row[I, O] =
+    PyStream.chunked[I, O](chunk,
+      buf => PyEval.Method(this, method, Vector(PyValue.Arr(buf)), hold = false),
+      finish.map(f => PyEval.Method(this, f, Vector.empty, hold = false)))
 
 object PyRef:
   final class Method[Out: okay.codec.Schema](ref: PyRef, name: String):

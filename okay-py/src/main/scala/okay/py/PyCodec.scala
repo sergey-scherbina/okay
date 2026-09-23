@@ -168,6 +168,11 @@ object PyCodec {
 object Py {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /** a Python function over a LIST as an okay stage over chunks
+   * (foreign-streaming): see `PyStream` */
+  def stage[I: ToPy, O: Schema](address: String, chunk: Int = 64): Unit ! PyStream.Row[I, O] =
+    PyStream.chunked[I, O](chunk, buf => PyEval.Call(address, Vector(PyValue.Arr(buf))), None)
+
   /**
    * Python source beside the Scala that calls it (foreign-inline-modules):
    * the source must be a compile-time constant, and the engine ships it

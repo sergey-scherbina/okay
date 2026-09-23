@@ -49,6 +49,11 @@ enum RValue:
 final case class RRef(id: Long, rClass: String):
   /** drop the object in the R process; idempotent */
   def release: Unit ! REval = okay.effect[REval, Unit](REval.Release(this))
+  /** this held CLOSURE as a stateful stage over chunks (foreign-streaming);
+   * `finish`, another held closure, is called with nothing at the end */
+  def stage[I: ToR, O: okay.codec.Schema](chunk: Int = 64, finish: Option[RRef] = None): Unit ! RStream.Row[I, O] =
+    RStream.chunked[I, O](chunk, buf => RStream.viaClosure(this, Vector(RValue.Vec(buf))),
+      finish.map(f => RStream.viaClosure(f, Vector.empty)))
 
 /** how an argument becomes an `RValue`: through its `Schema`, or as the
  * handle it is */

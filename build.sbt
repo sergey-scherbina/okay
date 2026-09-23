@@ -2208,7 +2208,7 @@ lazy val okaySecurityArgon2 = project
 lazy val okayPy = (project in file("okay-py"))
   // okay-agent for TESTS only: its Durable journals these operations
   // through their own `Journalled` instances (foreign-journalled)
-  .dependsOn(okay.jvm, okayCodec.jvm, okayAgent.jvm % Test)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayStream.jvm, okayAgent.jvm % Test)
   .settings(
     name := "okay-py",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -2221,7 +2221,7 @@ lazy val okayPy = (project in file("okay-py"))
 lazy val okayR = (project in file("okay-r"))
   // okay-agent for TESTS only: its Durable journals these operations
   // through their own `Journalled` instances (foreign-journalled)
-  .dependsOn(okay.jvm, okayCodec.jvm, okayAgent.jvm % Test)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayStream.jvm, okayAgent.jvm % Test)
   .settings(
     name := "okay-r",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
