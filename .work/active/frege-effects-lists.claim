@@ -1,0 +1,6 @@
+feature/frege-effects-lists 2026-09-23T07:48:45Z
+agent: claude-code
+heartbeat: 2026-09-23T07:48:45Z
+status: in-progress
+done-so-far: plan on the board (5 lanes: frege-effects-lists, frege-sbt-plugin, clojure-effects-seqs, clojure-core-async, edn-codec)
+next: effectful Frege stage (row Take+Writer+F), Ops.sleep (Async), Frege [a] <-> Chunks both ways
