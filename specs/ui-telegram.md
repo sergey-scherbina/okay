@@ -69,7 +69,7 @@ object Telegram:
 
 ## Behavior
 
-- [ ] **the mapping**: `Text` a line of the message (bold / emphasis
+- [x] **the mapping**: `Text` a line of the message (bold / emphasis
       `<b>`, muted `<i>`, text HTML-escaped); `Button` a callback
       button; buttons of one `Row` (or horizontal `Box`) share a keyboard
       row, a vertical container gives each its own; `Check` a toggle
@@ -81,14 +81,14 @@ object Telegram:
       Every other node is LOWERED first (`Ui.lower`, vocabulary `link`)
       — a Table, Tabs, a Modal, a Disclosure mean in a chat what they
       mean on a terminal.
-- [ ] **callback data is small and bound to the frame**: `f<frame>.<n>`,
+- [x] **callback data is small and bound to the frame**: `f<frame>.<n>`,
       never the key itself — a key can be longer than Telegram's 64
       bytes, and a press on an OLDER frame's button is refused with a
       notice («устарело» / «outdated»), not read against the new tree.
-- [ ] **a press is an event**: a Button → `Pressed(key)`; a Check →
+- [x] **a press is an event**: a Button → `Pressed(key)`; a Check →
       `Toggled(key, !on)`; a Select option → `Chosen(key, i)`; every
       press is ANSWERED (`Answer`), or the person's client spins.
-- [ ] **typing is an edit**: the edit button focuses its Input and
+- [x] **typing is an edit**: the edit button focuses its Input and
       `Ask`s for the value (ForceReply, the prompt is the label); the
       next `Said` is `Edited(key, text)`. A Form's submit button is
       `Pressed(form)`, as on every host. The HYBRID is not this host's:
@@ -96,14 +96,14 @@ object Telegram:
       turns its button into `Submitted(form, edits)` — for a chat exactly
       as for a browser, so a server cannot tell them apart. A `Said`
       with nothing focused is not an event.
-- [ ] **one message, edited in place**: the first frame is `Send`, and
+- [x] **one message, edited in place**: the first frame is `Send`, and
       every later frame `Edit`s that message (its id from `sent`); a
       frame equal to the one shown sends nothing.
-- [ ] **the limits are the chat's, met honestly**: text past 4096
+- [x] **the limits are the chat's, met honestly**: text past 4096
       characters is cut with «…»; more than 100 buttons keep the first
       100 and say so in the text; an empty frame shows «·» (Telegram
       refuses an empty message).
-- [ ] **the seam's claim, the gate**: one application answers the SAME
+- [x] **the seam's claim, the gate**: one application answers the SAME
       final state (a) run by `Ui.run` on the scripted test host and (b)
       served by `Wire.serve`, drawn by `Wire.client(Telegram.host(…))`,
       driven by scripted `Update`s — presses, a Check, a Select, an
@@ -146,3 +146,18 @@ screen stays one message however many times it changes.
   and the browser client already exists — serving it inside Telegram is
   a deployment of `Wire`, not a host.
 - Photos, files, locations as inputs.
+
+## Results
+
+- `okay-ui/src/main/scala/okay/ui/Telegram.scala`: the mapping
+  (`render`), the `Session` (`show`/`hear`/`sent`) and the `host` over a
+  consumer's `perform`. Shared source — it compiles on JVM, JS and
+  Native.
+- `TestTelegram`, 7 (JVM): the mapping as a value, the lowering, the
+  frame-bound callback data and the stale press, press/edit/answer, the
+  edited-in-place message and the chat's limits, and THE SEAM — one app
+  (counter, Select, a Form with an Input and a Check, a quit button)
+  reaches `S(n=1, name="ada", even=false, pick=2, saved=true)` both on
+  the scripted test host through `Ui.run` and through `Wire.serveClosing`
+  + `Wire.client(Telegram.host(…))` driven by scripted chat updates, the
+  Form's edits folded by `Wire.client` and crossing as one `Submitted`.
