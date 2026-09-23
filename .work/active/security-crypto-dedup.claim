@@ -1,6 +1,0 @@
-feature/security-crypto-dedup 2026-09-23T06:11:10Z
-agent: claude-code
-heartbeat: 2026-09-23T06:11:10Z
-status: in-progress
-done-so-far: survey
-next: okay.security.Crypto extends okay.crypto.Crypto; security givens delegate the four primitives
