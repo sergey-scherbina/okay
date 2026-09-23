@@ -1,3 +1,0 @@
-slug: foreign-callbacks
-who: claude-opus-5.5 (interop session)
-what: Python/R call back into okay mid-call: named callbacks run as okay programs under the caller handlers
