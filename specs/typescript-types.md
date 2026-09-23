@@ -70,20 +70,20 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T1 — one shape
 
-- [ ] `Ts.fn[Out]("mod:f")(args)`, `Ts.callback`, `Ts.hold`,
+- [x] `Ts.fn[Out]("mod:f")(args)`, `Ts.callback`, `Ts.hold`,
       `Ts.program` on the JVM (package `okay.py`, object `Ts`): the same
       operations as `Py.*`, but every value is encoded by okay's JSON codec
       and handed to TypeScript as the plain object JSON would parse to; an
       answer is decoded by the same codec.
-- [ ] A sum crosses as `{ "Case": {...} }`, `None` as `null`, a `BigInt`
+- [x] A sum crosses as `{ "Case": {...} }`, `None` as `null`, a `BigInt`
       as a string of digits — the `Stubs.typescript` shapes, asserted
       against the real worker.
-- [ ] ONE declaration file checks all three: a TypeScript module typed
+- [x] ONE declaration file checks all three: a TypeScript module typed
       with `Stubs.typescript` runs in the worker (S3), and the same types
       describe what okay-ts hands a program in the browser (S2) and what an
       okay HTTP endpoint answers (S1); `tsc --strict` passes.
-- [ ] `Stubs.typescriptWire` stays for callers of `Py.*` on a TS worker,
-      and its doc says to prefer the `Ts` API.
+- [x] `Stubs.typescriptWire` stays for callers of `Py.*` on a TS worker;
+      docs/typescript.md says to prefer `Ts` and `Stubs.typescript`.
 
 ## Decisions
 
@@ -94,3 +94,21 @@ Each stage is a lane; Results below record what each found.
   Python's `TypedDict`, and it stays there.
 
 ## Results
+
+- T1 (ts-one-shape, 2026-09-23).
+  - A `Shape` (python | json) is now a parameter of okay-py's call
+    classes. `Py` keeps `Shape.python` as the default given, and `Ts` is
+    the same API with `Shape.json` in lexical scope. A held object
+    remembers the shape it was made with, so its methods speak it too.
+  - TestTsOneShape has 4 live tests. The worker receives exactly the JSON
+    an HTTP endpoint sends (compared as parsed JSON, and literally for a
+    sum: `{"Rect":{"w":2,"h":3}}`). A call typed only by
+    `Stubs.typescript` covers an `Option`, a callback and a sum both
+    ways. Multi-shot works in the JSON shape. `tsc --strict` compiles the
+    module and refuses a wrong field.
+  - All 22 unit tests and 66 live okay-py tests still pass.
+  - Mutant: `Ts` with the Python shape fails two tests.
+  - Found on the way: the test's object-level `val` summoning
+    `Schema[Order]` for a case class nested in that object DEADLOCKED one
+    thread (a Scala 3 lazy val is not re-entrant). The gate's watchdog
+    caught the stall and its dump named it. It is a `def` now.

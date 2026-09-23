@@ -27,6 +27,53 @@ flowchart LR
   M -->|"call(name, x) · perform(name, x)"| W
 ```
 
+## One set of types, three ways to run
+
+Scala and TypeScript meet in three places:
+
+| | Scala | TypeScript | a value crosses as |
+|---|---|---|---|
+| a Scala backend, a TypeScript frontend | the JVM | the browser | HTTP or WebSocket JSON |
+| both in the browser | Scala.js | the browser | a JavaScript value, in-process |
+| both on the backend | the JVM | a Node worker | the okay wire |
+
+In all three, a value looks THE SAME to TypeScript: the shape okay's JSON
+codec writes. A case class is an object, an enum case is
+`{ "Case": {...} }`, `None` is `null`, and a `BigInt` is a string of
+digits. So one declaration file, generated once from the Scala types,
+types a TypeScript module in all three places:
+
+```scala
+def declarations: String = Stubs.typescript(summon[Schema[Order]], summon[Schema[Totals]], summon[Schema[Shape]])
+```
+
+A module typed only by it:
+
+```typescript
+export function area(s: Shape): number {
+return "Rect" in s ? s.Rect.w * s.Rect.h : 3 * s.Circle.r * s.Circle.r;
+}
+```
+
+On the JVM, `Ts` is the API that speaks this shape to a worker. It is
+okay-py's `Py`, with the JSON codec as its shape:
+
+```scala
+val total = Ts.fn[Totals]("shop:total").calling(Ts.callbacks(priceOf))(Order("tea", 3L, None))
+```
+
+The test checks the claim literally. What the worker receives is
+byte-for-byte the JSON an okay HTTP endpoint sends for the same value.
+`tsc --strict` compiles the module above, and it refuses `s.Rect.width`.
+
+This page's older examples use `Py.*` with `Stubs.typescriptWire`, the
+worker's own wire shape (a sum carries a `type` field). Prefer `Ts` and
+`Stubs.typescript`: one shape everywhere.
+
+Types written in TypeScript first, and a check that two hand-written
+copies still agree, are the next stages
+([specs/typescript-types.md](../specs/typescript-types.md)).
+
 ## A module
 
 ```typescript
