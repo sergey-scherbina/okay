@@ -1,6 +1,0 @@
-feature/generators-docs 2026-09-23T00:21:58Z
-agent: claude-code
-heartbeat: 2026-09-23T00:21:58Z
-status: in-progress
-done-so-far: generators landed with direct-style + tutorial docs only
-next: guide §3 paragraph, theory ch. 7 paragraph + references (PEP 255, James & Sabry 2011), typepedia entry; snippets verbatim in a gated test; land
