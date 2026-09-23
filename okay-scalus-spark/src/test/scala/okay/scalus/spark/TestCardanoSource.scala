@@ -46,6 +46,21 @@ class TestCardanoSource extends munit.FunSuite:
     src.next().fold(e => fail(e), identity).collect { case _root_.okay.chain.Observed.Forward(b) => CardanoTables.of(b) }
       .foldLeft(Tables.empty)(_ ++ _)
 
+  /**
+   * The SETUP is paid before the tests, not inside the first one
+   * (scalus-cardano-source-timeout, 2026-09-23): the first test used to
+   * start the Spark session and replay the recorded chain (`direct`) under
+   * its own 30 s budget, and timed out in a full gate at load 41–76 while
+   * passing 4/4 alone. Measured on this box at load 22: the session 1.2 s,
+   * the first query 1.7 s, the others under 0.6 s. The budget below is
+   * ~70x the slowest measured test — room for a loaded box, not a cover
+   * for a hang.
+   */
+  override def beforeAll(): Unit =
+    spark: Unit
+    direct: Unit
+  override def munitTimeout = scala.concurrent.duration.Duration(120, "s")
+
   test("batch: the outputs table is CardanoTables' outputs, row for row") {
     val df = read("outputs")
     val got = df.select("txHash", "index", "address", "lovelace").collect()
