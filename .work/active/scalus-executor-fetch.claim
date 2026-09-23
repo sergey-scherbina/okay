@@ -1,0 +1,2 @@
+scalus-executor-fetch: executors block-fetch their own ranges; the driver follows headers only
+agent: claude (session c7162529), 2026-09-23
