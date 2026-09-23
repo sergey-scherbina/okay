@@ -2,7 +2,7 @@ package okay.resilience
 
 import okay.{Async, !, +, TypeableK}
 import okay.!.Inject
-import okay.Free.{Bind, Pure}
+import okay.Free.{Bind, Return}
 
 /**
  * Five handlers around one operation (specs/resilience.md): a
@@ -61,10 +61,10 @@ object Attempt:
     // is a failure of the program like any other.
     val head = try Right(p.resume) catch case t: Throwable => Left(t)
     head match
-      case Left(t) => Pure(Left(t))
+      case Left(t) => Return(Left(t))
       case Right(h) => (h: @unchecked) match
-        case Pure(a) => Pure(Right(a))
-        case Inject(e) => step(e, (x: A) => Pure(x))
+        case Return(a) => Return(Right(a))
+        case Inject(e) => step(e, (x: A) => Return(x))
         case Bind(Inject(e), k) => step(e, k)
 
   /** the continuation applied, its own throw made an answer */
@@ -72,7 +72,7 @@ object Attempt:
     val next = try Right(k(x)) catch case t: Throwable => Left(t)
     next match
       case Right(p) => apply(p)
-      case Left(t) => Pure(Left(t))
+      case Left(t) => Return(Left(t))
 
   /**
    * The same observation over a ROW: guard the `Async` operations,
@@ -89,10 +89,10 @@ object Attempt:
   def in[A, F[+_]](p: A ! (F + Async))(using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
     val head = try Right(p.resume) catch case t: Throwable => Left(t)
     head match
-      case Left(t) => Pure(Left(t))
+      case Left(t) => Return(Left(t))
       case Right(h) => (h: @unchecked) match
-        case Pure(a) => Pure(Right(a))
-        case Inject(e) => split(e, (x: A) => Pure(x))
+        case Return(a) => Return(Right(a))
+        case Inject(e) => split(e, (x: A) => Return(x))
         case Bind(Inject(e), k) => split(e, k)
 
   /** one operation of the row: ours to guard, or someone else's to relay */
@@ -108,7 +108,7 @@ object Attempt:
     val next = try Right(k(x)) catch case t: Throwable => Left(t)
     next match
       case Right(p) => in(p)
-      case Left(t) => Pure(Left(t))
+      case Left(t) => Return(Left(t))
 
   private def stepIn[X, A, F[+_]](e: Async[X], k: X => A ! (F + Async))
                                  (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) = e match
@@ -116,13 +116,13 @@ object Attempt:
       okay.effect[F + Async, Either[Throwable, X]](
         Async.Run(() => try Right(f()) catch case t: Throwable => Left(t))).flatMap {
         case Right(x) => continueIn(k, x)
-        case Left(t) => Pure(Left(t))
+        case Left(t) => Return(Left(t))
       }
     case Async.Await(reg) =>
       okay.effect[F + Async, Either[Throwable, X]](
         Async.Await(cb => reg(r => cb(Right(r))))).flatMap {
         case Right(x) => continueIn(k, x)
-        case Left(t) => Pure(Left(t))
+        case Left(t) => Return(Left(t))
       }
 
   // `k` is the continuation the GADT match typed at X
@@ -131,11 +131,11 @@ object Attempt:
       okay.effect[Async, Either[Throwable, X]](Async.Run(() => try Right(f()) catch case t: Throwable => Left(t)))
         .flatMap {
           case Right(x) => continue(k, x)
-          case Left(t) => Pure(Left(t))
+          case Left(t) => Return(Left(t))
         }
     case Async.Await(reg) =>
       okay.effect[Async, Either[Throwable, X]](Async.Await(cb => reg(r => cb(Right(r)))))
         .flatMap {
           case Right(x) => continue(k, x)
-          case Left(t) => Pure(Left(t))
+          case Left(t) => Return(Left(t))
         }

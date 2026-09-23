@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.{!, %, +, Free, Stage, Take, Writer, pure, split}
-import okay.Free.{Bind, Inject, Pure}
+import okay.Free.{Bind, Inject, Return}
 import java.util.stream.Gatherer
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
@@ -68,7 +68,7 @@ object Gather {
   @tailrec def drive[I, O, A](p: Stage[I, O, A], ds: Gatherer.Downstream[? >: O],
                               ended: Boolean): Pos[I, O, A] =
     (p.resume: @unchecked) match
-      case Pure(_) => Pos.Done()
+      case Return(_) => Pos.Done()
       case Inject(e) => split[Take % I, Writer % O](e)
         { case Take.Await() => Pos.Done[I, O, A]() }
         { case Writer.Say(o) => ds.push(o): Unit; Pos.Done[I, O, A]() }

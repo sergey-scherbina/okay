@@ -1,7 +1,7 @@
 package okay.clojure
 
 import okay.{%, Free, Stage, Take, Writer, pure, split}
-import okay.Free.{Bind, Inject, Pure}
+import okay.Free.{Bind, Inject, Return}
 import clojure.lang.{AFn, IFn, RT, Reduced}
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
@@ -65,7 +65,7 @@ object Transducers {
   @tailrec private def drive[I, O, A](p: Stage[I, O, A], rf: IFn, acc: AnyRef,
                                       ended: Boolean): (Pos[I, O, A], AnyRef) =
     (p.resume: @unchecked) match
-      case Pure(_) => (Pos.Done(), acc)
+      case Return(_) => (Pos.Done(), acc)
       case Inject(e) => split[Take % I, Writer % O](e)
         { case Take.Await() => (Pos.Done[I, O, A](), acc) }
         { case Writer.Say(o) => (Pos.Done[I, O, A](), rf.invoke(acc, boxed(o))) }

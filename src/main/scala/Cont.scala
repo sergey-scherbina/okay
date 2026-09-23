@@ -1,6 +1,6 @@
 package okay
 
-import okay.Free.{Pure, Inject, Bind, Delay}
+import okay.Free.{Return, Inject, Bind, Delay}
 
 /**
  * Final tagless interface of delimited control: the parameterised
@@ -44,7 +44,7 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * continuation A => S, makes an answer R — it means (A => S) => R.
  *
  * `S` and `R` are PHANTOM to the tree. The tree is `Free[Shift, A]`,
- * the same `Pure | Inject | Bind | Delay` every effect program is
+ * the same `Return | Inject | Bind | Delay` every effect program is
  * made of, and it carries no answer type at all. Danvy and Filinski's
  * answer-type modification — `PState` changing its state type,
  * `Loop`'s open recursion — lives entirely in the signatures of this
@@ -168,8 +168,8 @@ object Cont:
     Free.defer(thunk)(f)
 
   /** `defer` with nothing to do afterwards — `Free.delay` on this
-   * side, and the same reason: `defer(t)(Pure)` would push a rotated
-   * `Pure` continuation down the deferred subprogram (delay-node) */
+   * side, and the same reason: `defer(t)(Return)` would push a rotated
+   * `Return` continuation down the deferred subprogram (delay-node) */
   def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Free.delay(thunk)
 
   /**
@@ -248,14 +248,14 @@ object Cont:
    * answer itself instead of applying a continuation to it.
    *
    * `c / k` and `ifAnswer(a)` agree for an answer by the runner's own
-   * `Pure` case, so this decides nothing about meaning; what it
+   * `Return` case, so this decides nothing about meaning; what it
    * decides is who builds the continuation. A handler that does NOT
-   * capture builds exactly `Pure` — every comonadic handler does, and
+   * capture builds exactly `Return` — every comonadic handler does, and
    * they are the overwhelming majority — and a caller that can go on
    * from the answer with a tail call then needs no trampoline node at
    * all. `Effects.handle` is that caller, and the node it avoids was
    * measured at 59 µs and 730 328 B on a 10 000-operation program
-   * (handle-forward-fast): a `Defer` whose continuation is `Pure`
+   * (handle-forward-fast): a `Defer` whose continuation is `Return`
    * rotates into a LEFT-nested `Bind`, and left-nesting is the one
    * shape this tree rewrites, so every following operation pays.
    *
@@ -271,10 +271,10 @@ object Cont:
   inline def onAnswer[A, S, B](c: Rep[A, S, S])(inline ifAnswer: A => B)
                                                (inline otherwise: => B): B =
     c match
-      case Pure(a) => ifAnswer(a)
+      case Return(a) => ifAnswer(a)
       case _ => otherwise
 
-  /** `Shift.at`'s claim at the other node the tree cannot type: a `Pure`
+  /** `Shift.at`'s claim at the other node the tree cannot type: a `Return`
    * reached through a `Cont[A, S, R]` was built by `Cont.Pure[A, R']`,
    * whose signature is `Cont[A, R', R']` — so the facade already fixed
    * S = R' = R, and the tree, which keeps no answer type, cannot say
@@ -297,7 +297,7 @@ object Cont:
    */
   @annotation.tailrec
   private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
-    case Pure(a) => pinned[S, R](k(a))
+    case Return(a) => pinned[S, R](k(a))
     case Inject(s) => s.at[S, R](k)
     // the leaf's inner answer is the Bind's existential — `Any` names
     // "whatever it is". Left to inference it came out `Nothing`, and a
