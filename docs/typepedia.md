@@ -1158,6 +1158,60 @@ gotcha for anyone extending the facade:
 - A poly-function literal (`[X] => ...`) cannot be passed with the
   colon-argument syntax — parenthesize the call.
 
+## Rows: what infers and what you spell (row-inference-ergonomics)
+
+A day's worth of core code (2026-09-23) spelled row unions by hand at
+several sites; each was checked with a `compileErrors` probe before
+being written down here, because one claim written from memory at
+filing time — "`X + Pure` needs help" — turned out not to be true
+once tested, and this list exists to not repeat that.
+
+- **`.at`/`.plus` need an explicit import, even inside package
+  `okay` itself.** `RowLift`'s extensions are NOT in scope by
+  default — `import okay.RowLift.at` (or `{at, plus}`) is needed in
+  every file that widens a row this way, main sources included. The
+  single most common trap of the day (hit five separate times) —
+  the error it produces names an unrelated macro
+  (`Free.directColor`'s missing `DirectCtx`) rather than "import
+  missing", which is why it reads as confusing rather than obvious.
+- **`X` DOES satisfy an `X + Pure` slot directly — verified, not
+  assumed.** `val p: Int ! Writer % String = ...; val q: Int ! (Writer
+  % String + okay.Pure) = p` compiles with no `.at`, and `q eq p` (no
+  new node either). If you find yourself reaching for `.at` just to
+  add a trailing `+ Pure`, try the bare ascription first.
+- **`flatMap` between two DIFFERENT effects needs BOTH sides widened
+  to the same row — not just one.** `State.set(5).at[Row].flatMap(_
+  => raise("x"))` still fails to compile if the continuation is not
+  ALSO `.at[Row]`; `flatMap`'s row parameter is shared and invariant,
+  so both operands must already agree on it before the call, not
+  after. This is the day's most common ACTUAL trap (the `X + Pure`
+  one above is not).
+- **A method expecting `R ! (F + G)` does not recover that shape from
+  an argument already typed as the EXPANDED union
+  `[A] =>> F[A] | G[A]`.** `Delim.Stacked`'s own `reset`/`delimited`
+  needed `push[R, F](...)`/`run[R, F](...)` with explicit type
+  arguments for exactly this reason — the argument's type, once
+  Scala has expanded `Delim + F` into the type lambda, is no longer
+  syntactically `Delim + F` for a LATER call's inference to match
+  against.
+- **`Effects[Free].handle[F, G](...)`/`!.translate[A, F, G]` want
+  their type arguments spelled**, not inferred from the value
+  arguments — `handle`'s own signature splits its type parameters
+  across a `using` clause (`[F[+_], G[+_]](using TypeableK[F])[A,
+  B]`), and Scala only infers what comes AFTER the point it has
+  already committed to from what came before.
+- **A union's own ACI is Scala's, not this library's, and it is
+  FULL — both directions checked, not assumed from the "union ACI"
+  comment alone.** `A ! ((F + G) + H)` satisfies `A ! (F + (G + H))`
+  with a plain ascription (re-parenthesization), and — the stronger
+  fact, since dotty's `|` normalizes a union's members into a
+  canonical order for type equality — `A ! (F + G)` ALSO satisfies
+  `A ! (G + F)` the same way, two DIFFERENT members simply swapped.
+  Reaching for `.at`/`.plus` to reorder or reassociate a union you
+  already hold is unnecessary ceremony; `.at` earns its keep only
+  where the SHAPE of members actually differs (a real widening, or
+  the `+Pure`/two-sided-flatMap cases above).
+
 ## The edge patterns: linear context without nesting (ctx-edge-docs)
 
 Two verified styles for application-edge code (experimental base:
