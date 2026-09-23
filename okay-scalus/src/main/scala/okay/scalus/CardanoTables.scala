@@ -143,3 +143,24 @@ object CardanoTables:
         outputs, assets, mints, certs, withdrawals, redeemers)
     }.foldLeft(Tables.empty)(_ ++ _)
     tables.copy(blocks = Vector(BlockRow(slot, no, bh, h.prev, t, b.file.era, txs.size, invalid.size)))
+
+  /** one table: its name, how a block's `Tables` yield its rows, and its
+   * `Schema` — what an engine adapter (Spark, Flink) needs to serve it by
+   * name without knowing the row types */
+  final class Table[A](val name: String, val pick: Tables => Vector[A])(using val schema: Schema[A])
+
+  /** every table, by the name an adapter's `table` option uses */
+  val all: Vector[Table[?]] = Vector(
+    Table[BlockRow]("blocks", _.blocks),
+    Table[TransactionRow]("transactions", _.transactions),
+    Table[InputRow]("inputs", _.inputs),
+    Table[OutputRow]("outputs", _.outputs),
+    Table[AssetRow]("assets", _.assets),
+    Table[MintRow]("mints", _.mints),
+    Table[CertificateRow]("certificates", _.certificates),
+    Table[WithdrawalRow]("withdrawals", _.withdrawals),
+    Table[RedeemerRow]("redeemers", _.redeemers))
+
+  def named(name: String): Table[?] =
+    all.find(_.name == name).getOrElse(throw IllegalArgumentException(
+      s"unknown table '$name'; one of: ${all.map(_.name).mkString(", ")}"))

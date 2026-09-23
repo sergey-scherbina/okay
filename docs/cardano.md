@@ -20,9 +20,10 @@ alternative and every finding.
 | Cardano | `okay-scalus` | the node-to-node client, `CardanoFollower`, `CardanoTables`, `CardanoLedger`, `Schema`s for scalus's ledger model |
 | tables without an engine | `okay-codec` `Columns` | any `Schema` as column types and rows of plain values |
 | Spark | `okay-spark` `SparkSchema`, `okay-scalus-spark` | `Columns` translated into a DataFrame; `format("cardano")` |
+| Flink | `okay-flink` `FlinkSchema`, `okay-scalus-flink` | `Columns` translated into Flink rows; a FLIP-27 source |
 
-Only the last row depends on Spark. Everything above it runs in an
-ordinary JVM process.
+Only the last two rows depend on an engine. Everything above them runs
+in an ordinary JVM process.
 
 ## 1. Follow the chain
 
@@ -189,6 +190,13 @@ finality, `mode = events` shows every block as it arrives and a
 rollback as a row (`event = 'rolled_back'`, `rollbackTo.blockNo`), backed
 by a local journal so a re-run batch still reads what it read. Details and options:
 [okay-scalus-spark](modules/okay-scalus-spark.md).
+
+## 6. Into Flink
+
+The same tables as a Flink FLIP-27 source — one split, because the
+chain is one sequence; its checkpoint is the last block emitted:
+see [okay-scalus-flink](modules/okay-scalus-flink.md). Flink has no
+VARIANT, so a recursive value's json is text there.
 
 ## How this is verified
 

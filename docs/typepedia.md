@@ -711,6 +711,10 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`CardanoFlinkSource`** (okay-scalus-flink) — the chain as a FLIP-27
+  source with ONE split (a chain is one sequence), whose checkpoint is
+  the last block emitted; rows from `CardanoTables` through
+  `FlinkSchema`, the same tables Spark reads.
 - **`format("cardano")`** (okay-scalus-spark) — a Spark DataSource V2
   that decides nothing: the driver follows a relay to confirmed blocks,
   partitions carry their bytes, executors decode them into

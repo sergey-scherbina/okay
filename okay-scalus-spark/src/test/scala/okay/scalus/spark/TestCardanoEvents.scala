@@ -1,6 +1,6 @@
 package okay.scalus.spark
 
-import _root_.okay.scalus.{FakeRelay, Recorded}
+import _root_.okay.scalus.{FakeRelay, Recorded, Relays}
 import FakeRelay.Step.*
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.util.CaseInsensitiveStringMap

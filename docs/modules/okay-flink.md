@@ -32,6 +32,13 @@ stream
   .aggregate(fn)          // merge handles pane consolidation
 ```
 
+**Rows from a Schema.** `FlinkSchema` translates okay-codec's
+`Columns` — the engine-free tabular reading of any `Schema[A]` — into a
+Flink row type and `Row`s: `rowTypeOf[A]`, `rows(xs)`, `rowType(fields)`,
+`rowOf(fields, row)`. It decides nothing (the same enum, sum and
+recursion encodings Spark gets); a `Json` column is text, Flink having
+no VARIANT, and an array is an `OBJECT_ARRAY` of its element's class.
+
 ## API reference
 
 | member | signature | meaning |

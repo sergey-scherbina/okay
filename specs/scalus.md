@@ -455,9 +455,19 @@ until Spark stage 2 has run on mainnet.
         docs/cardano.md, its code run by `TestCardanoGuide` and the
         Spark snippet analysed by `TestDocExamplesCardanoSpark`
 - **Stage 3 — events mode** (journal-backed offsets, rollback rows) — [x] LANDED 2026-09-23 (scalus-events-mode): tested against a fake relay that rolls back
-- **Stage 4 — Flink** (§7)
+- **Stage 4 — Flink** (§7) — [x] LANDED 2026-09-23 (scalus-flink): a FLIP-27 source, one split, checkpoint = last emitted block; FlinkSchema over Columns; a MiniCluster job equals CardanoTables
 
 ## Decisions
+
+- 2026-09-23 — **Flink: one split, and shared registries.** A chain is
+  one ordered sequence, so the FLIP-27 source has ONE split and
+  parallelism belongs after it. Its state is the last block emitted —
+  confirmed blocks cannot be taken back, so a restored job resumes
+  exactly after it. The table registry (`CardanoTables.Table`/`all`)
+  and `Relays` moved into okay-scalus, engine-free, so Spark and Flink
+  serve the same tables by name without either depending on the
+  other; `FlinkSchema` is `SparkSchema`'s twin over `Columns` (a `Json`
+  column is text: Flink has no VARIANT).
 
 - 2026-09-23 — **the DRIVER fetches, executors decode** (okay-scalus-
   spark, first version). §6 planned executors fetching block ranges

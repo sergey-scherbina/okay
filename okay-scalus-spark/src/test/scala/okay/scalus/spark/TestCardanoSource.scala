@@ -1,6 +1,6 @@
 package okay.scalus.spark
 
-import _root_.okay.scalus.{CardanoTables, Recorded, Wire, N2N}
+import _root_.okay.scalus.{CardanoTables, Recorded, Relays, Wire, N2N}
 import _root_.okay.scalus.CardanoTables.Tables
 import org.apache.spark.sql.SparkSession
 

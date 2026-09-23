@@ -1270,11 +1270,59 @@ lazy val okayScalusSpark = (project in file("okay-scalus-spark"))
     sparkTestSettings,
   )
 
+/** the Flink test JVM, shared by okay-flink and okay-scalus-flink (a forked
+ * JVM with the heap and the add-opens Flink's MiniCluster needs) */
+lazy val flinkTestSettings: Seq[Setting[_]] = Seq(
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      // 8 GB because of ONE lane: java.util.stream has no event time, so
+      // its "windows" are keys and the whole history stays resident.
+      // Measured 2026-09-10: the parallel JDK lane dies with an
+      // OutOfMemoryError at 2.4M events on 4 GB, where the okay and
+      // Flink lanes — both of which EVICT on a watermark — never came
+      // near it. The heap is a lane's requirement, so it is stated here
+      // rather than tuned until the red went away.
+      "-Xmx8g",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/java.text=ALL-UNNAMED",
+      "--add-opens=java.base/java.time=ALL-UNNAMED",
+    )
+)
+
+/**
+ * okay-scalus-flink (specs/scalus.md §7): the Cardano chain as a Flink
+ * FLIP-27 source over okay-scalus's follower and CardanoTables; its row
+ * type is okay-flink's FlinkSchema over okay-codec's Columns.
+ */
+lazy val okayScalusFlink = (project in file("okay-scalus-flink"))
+  .dependsOn(okayScalus % "compile->compile;test->test", okayFlink)
+  .settings(
+    name := "okay-scalus-flink",
+    libraryDependencies ++= Seq(
+      "org.apache.flink" % "flink-core" % "1.20.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "org.apache.flink" % "flink-streaming-java" % "1.20.0" % Test,
+      "org.apache.flink" % "flink-clients" % "1.20.0" % Test,
+    ),
+    flinkTestSettings,
+  )
+
 lazy val okayFlink = (project in file("okay-flink"))
   // okay-java is TEST only, and only for §20's third lane: the same
   // job over java.util.stream, whose `Collector` an okay Aggregator
-  // already is (okay-java's Collect.collector)
-  .dependsOn(okay.jvm, okayJava % Test, compare % "test->compile")
+  // already is (okay-java's Collect.collector). okay-codec for `Schema`/
+  // `Columns`: FlinkSchema translates the engine-free columns.
+  .dependsOn(okay.jvm, okayCodec.jvm, okayJava % Test, compare % "test->compile")
   .settings(
     name := "okay-flink",
     // bench-across-processes: FlinkClusterBench starts a REAL
@@ -1316,30 +1364,7 @@ lazy val okayFlink = (project in file("okay-flink"))
     // Flink 1.20 on JDK 21 reaches into java.base by reflection (Kryo,
     // its own MemorySegment); the same list okay-spark needs, and for
     // the same reason
-    Test / fork := true,
-    Test / javaOptions ++= Seq(
-      // 8 GB because of ONE lane: java.util.stream has no event time, so
-      // its "windows" are keys and the whole history stays resident.
-      // Measured 2026-09-10: the parallel JDK lane dies with an
-      // OutOfMemoryError at 2.4M events on 4 GB, where the okay and
-      // Flink lanes — both of which EVICT on a watermark — never came
-      // near it. The heap is a lane's requirement, so it is stated here
-      // rather than tuned until the red went away.
-      "-Xmx8g",
-      "--add-opens=java.base/java.lang=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-      "--add-opens=java.base/java.io=ALL-UNNAMED",
-      "--add-opens=java.base/java.net=ALL-UNNAMED",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      "--add-opens=java.base/java.util=ALL-UNNAMED",
-      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
-      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
-      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
-      "--add-opens=java.base/java.text=ALL-UNNAMED",
-      "--add-opens=java.base/java.time=ALL-UNNAMED",
-    ),
+    flinkTestSettings,
   )
 
 /** JDBC as chunked async streams under the Resource region (P4) */
@@ -2704,7 +2729,7 @@ lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
-    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark,
+    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,

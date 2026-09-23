@@ -52,8 +52,11 @@ final class CardanoSource extends TableProvider with DataSourceRegister:
     CardanoTable(CaseInsensitiveStringMap(props))
 
 object CardanoSource:
-  /** one of CardanoTables' row types, as Spark reads it */
-  final class Kind[A](val name: String, pick: Tables => Vector[A])(using s: Schema[A]):
+  /** one of CardanoTables' tables, as Spark reads it */
+  final class Kind[A](val table: CardanoTables.Table[A]):
+    import table.schema as s
+    val name: String = table.name
+    private def pick(t: Tables): Vector[A] = table.pick(t)
     lazy val schema: StructType = SparkSchema.structOf[A]
     def rows(t: Tables): Seq[Row] = SparkSchema.rows(pick(t))
 
@@ -66,22 +69,13 @@ object CardanoSource:
       case Journaled.RolledBack(no, hash) =>
         SparkSchema.rows(Vector(EventRow[A](seq, "rolled_back", Some(RollbackPoint(no, hash)), None)))
 
-  val kinds: Vector[Kind[?]] = Vector(
-    Kind[BlockRow]("blocks", _.blocks),
-    Kind[TransactionRow]("transactions", _.transactions),
-    Kind[InputRow]("inputs", _.inputs),
-    Kind[OutputRow]("outputs", _.outputs),
-    Kind[AssetRow]("assets", _.assets),
-    Kind[MintRow]("mints", _.mints),
-    Kind[CertificateRow]("certificates", _.certificates),
-    Kind[WithdrawalRow]("withdrawals", _.withdrawals),
-    Kind[RedeemerRow]("redeemers", _.redeemers))
+  val kinds: Vector[Kind[?]] = CardanoTables.all.map(t => Kind(t))
 
   def table(o: CaseInsensitiveStringMap): Kind[?] = named(Option(o.get("table")).getOrElse("blocks"))
 
   def named(name: String): Kind[?] =
-    kinds.find(_.name == name).getOrElse(throw IllegalArgumentException(
-      s"unknown table '$name'; one of: ${kinds.map(_.name).mkString(", ")}"))
+    val t = CardanoTables.named(name)
+    kinds.find(_.table eq t).getOrElse(Kind(t))
 
   def network(o: CaseInsensitiveStringMap): CardanoNetwork = Option(o.get("network")).getOrElse("mainnet") match
     case "mainnet" => CardanoNetwork.mainnet
@@ -90,11 +84,7 @@ object CardanoSource:
     case other => throw IllegalArgumentException(s"unknown network '$other'; one of: mainnet, preprod, preview")
 
   def wire(o: CaseInsensitiveStringMap): Wire =
-    val relay = Option(o.get("relay")).getOrElse(throw IllegalArgumentException("option 'relay' is required"))
-    if relay.startsWith("registered:") then Relays(relay.stripPrefix("registered:"))
-    else relay.split(':') match
-      case Array(host, port) => Wire.tcp(host, port.toInt)
-      case _ => throw IllegalArgumentException(s"relay '$relay' is neither host:port nor registered:<name>")
+    Relays.connect(Option(o.get("relay")).getOrElse(throw IllegalArgumentException("option 'relay' is required")))
 
   def eventsMode(o: CaseInsensitiveStringMap): Boolean = Option(o.get("mode")).getOrElse("confirmed") match
     case "confirmed" => false
@@ -106,13 +96,6 @@ object CardanoSource:
     case other => other.split(':') match
       case Array(slot, hash, no) => Some(Checkpoint(slot.toLong, hash, no.toLong))
       case _ => throw IllegalArgumentException(s"start '$other' is neither 'tip' nor slot:hash:blockNo")
-
-/** wires registered in this JVM by name — `relay = registered:<name>` */
-object Relays:
-  private val wires = java.util.concurrent.ConcurrentHashMap[String, () => Wire]()
-  def register(name: String, make: () => Wire): Unit = wires.put(name, make): Unit
-  def apply(name: String): Wire =
-    Option(wires.get(name)).map(_()).getOrElse(throw IllegalArgumentException(s"no relay registered as '$name'"))
 
 /** a confirmed block's bytes, as a partition carries it */
 final case class Carried(era: Int, header: Array[Byte], body: Array[Byte], time: Option[Long]):

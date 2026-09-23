@@ -1,1 +1,0 @@
-- [ ] scalus-flink — stage 4 of specs/scalus.md: okay-chain's `Tracker` (fed by okay-scalus's chain-sync) as a FLIP-27 Flink `Source` (split = block range), the same `Schema` folded into Flink `RowType`; no variant type there, recursive fallback is cbor + JSON string. Trigger: Spark stage 2 has run on mainnet.
