@@ -1,6 +1,0 @@
-feature/gen-chain-fusion 2026-09-23T01:05:49Z
-agent: claude-code
-heartbeat: 2026-09-23T01:05:49Z
-status: in-progress
-done-so-far: trigger met (generators-jmh +109 B/elem; gen-filter-as-walk left Bind/Delay per element)
-next: spec; the chain's stages carried as data and applied in the reader (one walk, no program between stages); laws (laziness counter through a fused chain); GenBenchmark pipeline row toward the hand road's 272 B/elem; gate; land
