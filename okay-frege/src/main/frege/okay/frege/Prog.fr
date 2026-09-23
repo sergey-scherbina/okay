@@ -1,0 +1,62 @@
+--- A Frege program okay runs (specs/frege.md): an answer, or ONE operation
+--- for okay and the rest of the program as a Frege function of its answer.
+---
+--- This is okay's own freer tree, written in Frege. The okay driver
+--- (okay.frege.Frege, Scala) walks it: it performs each operation under
+--- whatever handlers run the okay program and calls the continuation
+--- with the answer. Because the continuation is a plain Frege function,
+--- a handler may call it more than once (Choice), and no thread is ever
+--- parked — the effects are okay's, the program is Frege's.
+---
+--- Existing Frege IO code enters by 'liftIO': the driver runs the IO
+--- action, which never calls back into okay, as one step.
+module okay.frege.Prog where
+
+--- a value crossing the seam, as Java sees it
+data Obj = pure native java.lang.Object
+
+--- an answer from okay, as the type the program's own signature names
+--- (the compiler warns that a polymorphic result "will diverge": it is
+--- a Java cast, and it returns)
+pure native fromObj "(Object)" :: Obj -> a
+pure native toObj   "(Object)" :: a -> Obj
+pure native isNull  java.util.Objects.isNull :: Obj -> Bool
+
+--- what one step asks of okay
+data Op = Await            --- the next input of a stage (okay's Take)
+        | Tell Obj         --- emit one output (okay's Writer)
+        | Perform Obj      --- an operation of the okay program's row
+        | Lift (IO Obj)    --- existing Frege IO, run by the driver as one step
+
+--- a program: its answer, or an operation and what follows it
+data Prog a = Done a | Step Op (Obj -> Prog a)
+
+bindP :: Prog a -> (a -> Prog b) -> Prog b
+bindP (Done a)    f = f a
+bindP (Step op k) f = Step op (\x -> bindP (k x) f)
+
+instance Functor Prog where
+  fmap f p = bindP p (\a -> Done (f a))
+
+instance Applicative Prog where
+  pure = Done
+  pf <*> px = bindP pf (\f -> fmap f px)
+
+instance Monad Prog where
+  (>>=) = bindP
+
+--- the next element of a stage's input, Nothing at its end
+await :: Prog (Maybe a)
+await = Step Await (\x -> Done (if isNull x then Nothing else Just (fromObj x)))
+
+--- emit one element of a stage's output
+tell :: b -> Prog ()
+tell b = Step (Tell (toObj b)) (\_ -> Done ())
+
+--- perform an okay operation (an okay.frege.Ops value, or your own)
+perform :: Obj -> Prog a
+perform op = Step (Perform op) (\x -> Done (fromObj x))
+
+--- existing Frege IO, as one step of the program
+liftIO :: IO a -> Prog a
+liftIO io = Step (Lift (fmap toObj io)) (\x -> Done (fromObj x))

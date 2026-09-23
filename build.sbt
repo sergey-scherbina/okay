@@ -815,6 +815,28 @@ lazy val okayClojure = (project in file("okay-clojure"))
   )
 
 /**
+ * interop with FREGE, a Haskell for the JVM (specs/frege.md): a Frege
+ * program written in `Prog` — a thin Frege monad whose operations are
+ * okay's (await, tell, perform) and whose `liftIO` takes existing Frege
+ * IO — runs as an okay Stage or program; its continuations are Frege
+ * functions, so multi-shot handlers work and no thread is involved.
+ * `.fr` sources are compiled by project/Frege.scala (forked, -target 17):
+ * src/main/frege BEFORE the Scala driver that reads its classes.
+ */
+lazy val okayFrege = (project in file("okay-frege"))
+  .dependsOn(okay.jvm, okayStream.jvm)
+  .settings(
+    name := "okay-frege",
+    libraryDependencies ++= Seq(
+      "org.frege-lang" % "frege" % "3.25.153",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    Test / fork := true,
+  )
+  .settings(Frege.before(Compile))
+  .settings(Frege.in(Test))
+
+/**
  * okay from SCALA 2.13 (specs/scala2-facade.md): a facade written in
  * Scala 3 whose public signatures a Scala 2 compiler can read through
  * `-Ytasty-reader` — no inline, no union row, no opaque type.
@@ -2584,7 +2606,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
-    okayJava, okayClojure, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
+    okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
