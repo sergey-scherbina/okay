@@ -1,0 +1,7 @@
+feature/ui-telegram 2026-09-23T20:49:08Z
+agent: claude-code (session 015Dgo1djjZ2sTTSg7xfQoEY)
+heartbeat: 2026-09-23T20:49:08Z
+status: in-progress
+done-so-far: read specs/ui.md, Wire, Protocol, Client; the Telegram client is a client of Wire's protocol
+next: specs/ui-telegram.md, then the failing gate (one app, test host vs Telegram), then TelegramView/TelegramClient
+files: okay-ui/src/main/scala-form/okay/ui/Telegram*.scala (new) okay-ui/src/test/scala/okay/ui/TestTelegram*.scala (new) specs/ui-telegram.md (new) specs/ui.md sprint.d/doing/ui-telegram.md changelog.d/ui-telegram.md
