@@ -1,6 +1,0 @@
-feature/router-trie 2026-09-23T06:34:32Z
-agent: claude-code
-heartbeat: 2026-09-23T06:34:32Z
-status: in-progress
-done-so-far: promoted from backlog; trigger waived by the operator (2026-09-23)
-next: spec; Router.Index (method -> segment count -> literal trie, candidates in declaration order, run decides); laws vs the scan on generated tables; compare/RouterBenchmark at 3/30/300 routes; docs; gate; land
