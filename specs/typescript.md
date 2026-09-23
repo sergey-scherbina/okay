@@ -53,6 +53,26 @@ unchanged.
       `tsc --strict`, and a read of a field that does not exist fails.
 - [x] A TypeScript exception is a condition by name; the worker lives on.
 
+## Stage 2 — TypeScript programs inside okay, on Scala.js
+
+A new module, okay-ts (Scala.js only), for TypeScript in the browser or
+on Node with no process in between.
+
+- [ ] `Ts.run[F, Out](program, callbacks)`: a TypeScript program built
+      from the same `done`/`perform`/`then` objects as the worker's
+      library, walked by okay IN THE SAME JavaScript runtime. Each named
+      operation is an okay callback (`Ts.callback[Arg, Res](name)(f)`) run
+      under the caller's handlers. Continuations are JS functions, so a
+      `Choice` handler continues one twice (multi-shot, in-process).
+- [ ] Values cross through okay's JSON codec (`JSON.stringify`/`parse`
+      at the boundary), which is exactly the shape `Stubs.typescript`
+      declares. A sum is `{ "Case": {...} }`. No cast: the walk reads the
+      program through JSON and `js.Dynamic`.
+- [ ] A JavaScript exception in the program is a `Left(Failure(name,
+      message))`, not an escape.
+- [ ] Stage 3, okay called FROM TypeScript: `Ts.promise(program)` runs an
+      `A ! Async` and hands TypeScript a `Promise` of its JSON value.
+
 ## Decisions
 
 - **Node's own TypeScript, no build step.** Node runs `.ts` by stripping

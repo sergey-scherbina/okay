@@ -1541,6 +1541,23 @@ lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlat
  * and not a backend. Pure string building, so it cross-builds
  * everywhere and its tests run on JS and Native too.
  */
+/**
+ * TypeScript programs INSIDE okay, on Scala.js (specs/typescript.md,
+ * stage 2): a TS program built from done/perform/then objects is walked
+ * in the same JavaScript runtime, its named operations okay callbacks; and
+ * an okay program handed to TypeScript as a Promise. JS only: there is no
+ * TypeScript runtime on the JVM to share (the JVM road is okay-py's
+ * TsWorker, stage 1).
+ */
+lazy val okayTs = crossProject(JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-ts"))
+  .dependsOn(okay, okayCodec, okayAsync)
+  .settings(
+    name := "okay-ts",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayJs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-js"))
@@ -2821,7 +2838,7 @@ lazy val root = (project in file("."))
     // build stopped at "Error downloading dev.okay:okay-js_3:0.1.1").
     // okay-acme's network suites are Live-tagged, so the default gate
     // runs none of them.
-    okayJs.jvm, okayJs.js, okayJs.native, okayAcme,
+    okayJs.jvm, okayJs.js, okayJs.native, okayTs.js, okayAcme,
     // five more that were simply never listed (root-aggregate-unlisted,
     // 2026-09-23), and it had cost two of them already: okay-spring no
     // longer COMPILED (Async left the core on 2026-09-18 and nothing
