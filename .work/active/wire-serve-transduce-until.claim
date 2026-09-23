@@ -1,6 +1,0 @@
-feature/wire-serve-transduce-until 2026-09-23T06:23:25Z
-agent: claude-code
-heartbeat: 2026-09-23T06:23:25Z
-status: in-progress
-done-so-far: promoted from backlog
-next: worktree; Wire.serveClosing over Stage.transduceUntil; protocol suite unchanged; gate; land
