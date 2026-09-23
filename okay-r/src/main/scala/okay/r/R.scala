@@ -30,6 +30,10 @@ enum RValue:
   case Str(v: String)
   case Bytes(v: Array[Byte])           // R's raw
   case Vec(v: Vector[RValue])
+  /** a NAMED LIST that is not a data.frame — a record, in order. Wire v3
+   * (foreign-typed-calls): before it a named list answered by a call was
+   * sent as a frame, which a value decode could not read */
+  case Named(kv: Vector[(String, RValue)])
 
 enum RType:
   case Logical, Integer, Double, Character
@@ -111,6 +115,9 @@ object RFrame:
     case (o: Schema.SOption[?], other) => decode(o.of(), other).map(Some(_))
     case (Schema.SInt, RValue.I32(x)) => Right(x)
     case (Schema.SLong, RValue.I32(x)) => Right(x.toLong)
+    // R has no 64-bit integer: a Long crossed as an exact double or as its digits
+    case (Schema.SLong, RValue.F64(x)) if x == math.floor(x) && math.abs(x) <= RCodec.Exact => Right(x.toLong)
+    case (Schema.SLong, RValue.Str(x)) if x.toLongOption.isDefined => Right(x.toLong)
     case (Schema.SDouble, RValue.F64(x)) => Right(x)
     case (Schema.SDouble, RValue.I32(x)) => Right(x.toDouble)
     case (Schema.SBool, RValue.Bool(x)) => Right(x)
@@ -130,7 +137,8 @@ object RFrame:
     case (o: Schema.SOption[?], None) => naOf(o.of())
     case (o: Schema.SOption[?], Some(x)) => encode(o.of(), x)
     case (Schema.SInt, x: Int) => RValue.I32(x)
-    case (Schema.SLong, x: Long) => RValue.I32(x.toInt)
+    // was `I32(x.toInt)`, which truncated any Long past 32 bits SILENTLY
+    case (Schema.SLong, x: Long) => RCodec.long(x)
     case (Schema.SDouble, x: Double) => RValue.F64(x)
     case (Schema.SBool, x: Boolean) => RValue.Bool(x)
     case (Schema.SString, x: String) => RValue.Str(x)
@@ -152,7 +160,7 @@ object RFrame:
  * message — data, and the process survives to take the next call */
 final case class Condition(kind: String, message: String)
 
-enum REval[A] derives okay.Effect:
+enum REval[+A] derives okay.Effect:
   case Call(fn: String, args: Vector[RValue])
     extends REval[Either[Condition, RValue]]
   case Frame(fn: String, in: RFrame, args: Vector[RValue])
@@ -245,11 +253,13 @@ private[r] object Wire {
       case RValue.Str(s) => Json.JStr(s)
       case RValue.Bytes(bs) => tagged("raw",
         "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs)))
-      case RValue.Vec(_) => throw IllegalStateException("unreachable: Vec is handled by the work-list")
+      case RValue.Vec(_) | RValue.Named(_) =>
+        throw IllegalStateException("unreachable: containers are handled by the work-list")
 
     enum Step:
       case Todo(v: RValue)
       case Combine(n: Int)
+      case CombineNamed(keys: Vector[String])
 
     var todo = List[Step](Step.Todo(v0))
     var results = List.empty[Json]
@@ -257,12 +267,19 @@ private[r] object Wire {
       todo.head match
         case Step.Todo(RValue.Vec(xs)) =>
           todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
+        case Step.Todo(RValue.Named(kv)) =>
+          todo = kv.toList.map(p => Step.Todo(p._2)) ::: Step.CombineNamed(kv.map(_._1)) :: todo.tail
         case Step.Todo(other) =>
           results = leaf(other) :: results
           todo = todo.tail
         case Step.Combine(n) =>
           val (items, rest) = results.splitAt(n)
           results = Json.JArr(items.reverse.toVector) :: rest
+          todo = todo.tail
+        case Step.CombineNamed(keys) =>
+          val (items, rest) = results.splitAt(keys.length)
+          val pairs = keys.zip(items.reverse).map((k, v) => Json.JArr(Vector(Json.JStr(k), v)))
+          results = tagged("named", "kv" -> Json.JArr(pairs)) :: rest
           todo = todo.tail
     results.head
 
@@ -374,6 +391,13 @@ private[r] object Wire {
     enum Step:
       case Todo(j: Json)
       case Combine(n: Int)
+      case CombineNamed(keys: Vector[String])
+
+    def namedPairs(fs: Vector[(String, Json)]): Option[Vector[(String, Json)]] =
+      if !fs.exists(_ == ("t" -> Json.JStr("named"))) then None
+      else fs.collectFirst { case ("kv", Json.JArr(ps)) => ps.collect {
+        case Json.JArr(Vector(Json.JStr(k), v)) => (k, v)
+      } }
 
     var todo = List[Step](Step.Todo(j0))
     var results = List.empty[RValue]
@@ -381,12 +405,23 @@ private[r] object Wire {
       todo.head match
         case Step.Todo(Json.JArr(xs)) =>
           todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
+        case Step.Todo(o @ Json.JObj(fs)) =>
+          namedPairs(fs) match
+            case Some(kv) =>
+              todo = kv.toList.map(p => Step.Todo(p._2)) ::: Step.CombineNamed(kv.map(_._1)) :: todo.tail
+            case None =>
+              results = leaf(o) :: results
+              todo = todo.tail
         case Step.Todo(other) =>
           results = leaf(other) :: results
           todo = todo.tail
         case Step.Combine(n) =>
           val (items, rest) = results.splitAt(n)
           results = RValue.Vec(items.reverse.toVector) :: rest
+          todo = todo.tail
+        case Step.CombineNamed(keys) =>
+          val (items, rest) = results.splitAt(keys.length)
+          results = RValue.Named(keys.zip(items.reverse)) :: rest
           todo = todo.tail
     results.head
 

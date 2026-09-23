@@ -167,7 +167,7 @@ final class RSubprocess private (private var proc: Process,
 
 object RSubprocess:
 
-  val ShimVersion = 2
+  val ShimVersion = 3
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH

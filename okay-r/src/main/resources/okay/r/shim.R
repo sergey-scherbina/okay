@@ -1,4 +1,5 @@
-# okay-r shim, version 2 (specs/r.md). One JSON object per line each
+# okay-r shim, version 3 (specs/r.md; v3 = foreign-typed-calls: a
+# named list that is not a data.frame is a RECORD on the wire). One JSON object per line each
 # way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -7,7 +8,7 @@
 # has no JSON reader, and our own parser at the trust boundary is a
 # worse thing to own than one package every R installation has.
 
-SHIM <- 2
+SHIM <- 3
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
@@ -27,9 +28,15 @@ if (!requireNamespace("jsonlite", quietly = TRUE)) {
 enc <- function(v) {
   if (is.null(v)) return(NULL)
   if (is.raw(v)) return(list(t = "raw", b64 = jsonlite::base64_enc(v)))
-  if (is.data.frame(v) || (is.list(v) && !is.null(names(v)) && all(names(v) != ""))) {
+  if (is.data.frame(v)) {
     cols <- lapply(names(v), function(n) enc_column(n, v[[n]]))
     return(list(t = "frame", v = 2L, cols = cols))
+  }
+  # a named list that is not a data.frame is a record: its elements, in
+  # order (v3). The frame op still answers a frame: it coerces first.
+  if (is.list(v) && !is.null(names(v)) && all(names(v) != "")) {
+    kv <- lapply(names(v), function(n) list(n, enc(v[[n]])))
+    return(list(t = "named", kv = kv))
   }
   if (is.list(v)) return(lapply(v, enc))
   enc_col(v)
@@ -110,6 +117,11 @@ dec <- function(v) {
     if (t == "nan") return(NaN)
     if (t == "i") return(as.integer(v$v))
     if (t == "raw") return(jsonlite::base64_dec(v$b64))
+    if (t == "named") {
+      out <- lapply(v$kv, function(p) dec(p[[2]]))
+      names(out) <- vapply(v$kv, function(p) p[[1]], character(1))
+      return(out)
+    }
     if (t == "frame") {
       fv <- if (is.null(v$v)) 1L else as.integer(v$v)
       if (fv > 2L) stop(sprintf("frame format v%d: this shim reads up to v2", fv))
