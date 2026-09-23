@@ -1,0 +1,6 @@
+feature/optics-outside-query 2026-09-23T08:08:56Z
+agent: claude-code
+heartbeat: 2026-09-23T08:08:56Z
+status: in-progress
+done-so-far: seat surveyed: okay-sql Typed (Schema rows, snake columns, encodeParams); law against real SQLite in okay-jdbc TestSqlite
+next: okay.sql.Query[A] — predicates by field name checked against the schema; sql (WHERE + params) and test(a) (the same predicate in memory, over encodeParams); select/update renderers; tests in okay-sql (pure) + okay-jdbc (sqlite law); spec stage 9; docs; changelog
