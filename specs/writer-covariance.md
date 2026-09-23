@@ -722,7 +722,7 @@ sentence that made the operator ask ("не возражаю — делай").
 ```scala
 extension [A, F[+_]](p: A ! F)
   inline def bind[B, G[+_]](f: A => B ! G): B ! (F + G)   // G read off f, F off p
-  inline def thenIn[B, G[+_]](q: => B ! G): B ! (F + G)
+  inline def andThen[B, G[+_]](q: => B ! G): B ! (F + G)
 ```
 
 ### Behavior (`TestBindIn`, core)
@@ -736,7 +736,7 @@ extension [A, F[+_]](p: A ! F)
 - [x] the tree is the same tree: `bind` builds one `Bind` whose
       continuation is `f` — no walk, no re-injection — checked by
       stepping (`resume`) and by the operation count under a relay.
-- [x] `thenIn` runs both sides, in order, dropping the first answer.
+- [x] `andThen` runs both sides, in order, dropping the first answer.
 
 ### The ergonomics questions, answered (the operator asked)
 

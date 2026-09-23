@@ -148,7 +148,7 @@ known only by MEMBERSHIP, as a row-polymorphic helper's is. A BIND
 whose continuation answers in another row is `p.bind(x => q)`: the
 result lands in the union of the two rows, the other row read off
 `q` with nothing written (`Reader.ask[Int].bind(e => Writer.tell(
-s"$e"))`, `import okay.RowLift.bind` as with `plus`/`at`); `thenIn`
+s"$e"))`, `import okay.RowLift.bind` as with `plus`/`at`); `andThen`
 is the same with the answer dropped. Inside a
 `direct` block none of this is spelled — marks widen
 (`[R[+_] : Has[State % Int]]`).

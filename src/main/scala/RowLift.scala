@@ -178,6 +178,6 @@ object RowLift:
     inline def bind[B, G[+_]](f: A => B ! G): B ! (F + G) =
       coerce[A, F, F + G](p).flatMap(a => coerce[B, G, F + G](f(a)))
 
-    /** the same, the answer dropped: `p thenIn q` runs p, then q */
-    inline def thenIn[B, G[+_]](q: => B ! G): B ! (F + G) =
+    /** the same, the answer dropped: `p andThen q` runs p, then q */
+    inline def andThen[B, G[+_]](q: => B ! G): B ! (F + G) =
       coerce[A, F, F + G](p).flatMap(_ => coerce[B, G, F + G](q))

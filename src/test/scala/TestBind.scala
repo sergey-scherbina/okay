@@ -1,7 +1,7 @@
 package okay
 
 import okay.!.*
-import okay.RowLift.{plus, bind, thenIn}
+import okay.RowLift.{plus, bind, andThen}
 
 /**
  * specs/writer-covariance.md, bind-in: a bind across rows, the other
@@ -45,7 +45,7 @@ class TestBind extends munit.FunSuite:
     assertEquals(asked, 1)
   }
 
-  test("thenIn: both sides run, in order, the first answer dropped") {
-    val p: Int ! Two = Reader.ask[Int].thenIn(Writer.tell("after").map(_ => 7))
+  test("andThen: both sides run, in order, the first answer dropped") {
+    val p: Int ! Two = Reader.ask[Int].andThen(Writer.tell("after").map(_ => 7))
     assertEquals(!.run(Writer.run[String, Int, okay.Pure](Reader.run[Int, Int, Writer % String](1)(p))), (Seq("after"), 7))
   }
