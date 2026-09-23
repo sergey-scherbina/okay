@@ -1,4 +1,4 @@
-- [ ] optics-outside-query — a query is an optic. `Forget[Sql]`
+- [ ] optics-outside-query — TRIGGER LIFTED by the operator (2026-09-23: "сделай без триггера. Это полезная штука, пусть будет … Все это нужно"); the original trigger stays below as the record of what was waited for. — a query is an optic. `Forget[Sql]`
       compiles it to SQL, `Function1` runs the SAME predicate over a
       `Vector` in a test, `set` compiles to UPDATE. The seat is empty
       — okay-sql is strings plus `Schema` for rows — but typed query

@@ -1,4 +1,4 @@
-- [ ] optics-outside-live — subscribe to a lens. The lens compiles to
+- [ ] optics-outside-live — TRIGGER LIFTED by the operator (2026-09-23: "сделай без триггера. Это полезная штука, пусть будет … Все это нужно"); the original trigger stays below as the record of what was waited for. — subscribe to a lens. The lens compiles to
       a wire path, the server pushes only the focused part of the
       document, and a client write comes back as `set`. The most
       valuable of the six to a user and the most work: the optic must

@@ -1,4 +1,4 @@
-- [ ] optics-outside-policy — a projection policy is a traversal:
+- [ ] optics-outside-policy — TRIGGER LIFTED by the operator (2026-09-23: "сделай без триггера. Это полезная штука, пусть будет … Все это нужно"); the original trigger stays below as the record of what was waited for. — a projection policy is a traversal:
       which fields of a record may be seen, embedded, logged. The
       interpreter that earns it is the AUDIT — "name the fields this
       policy touches", with no document in hand — and the law that

@@ -1,4 +1,4 @@
-- [ ] optics-outside-tools-effectful — `Toolbox` handlers are
+- [ ] optics-outside-tools-effectful — TRIGGER LIFTED by the operator (2026-09-23: "сделай без триггера. Это полезная штука, пусть будет … Все это нужно"); the original trigger stays below as the record of what was waited for. — `Toolbox` handlers are
       `A => String`, because that is the seam `Mcp.Server`,
       `Handlers.tools` and `Stepper` already take. A tool that must do
       I/O has to close over its own runner today. Widening to
