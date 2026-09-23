@@ -591,6 +591,27 @@ threaded through `Once.run`'s loop as `State.handle` threads `S`, so
 the tree holds no cell: the same program run twice replays the same
 trace.
 
+That threading is also why a handle shared BETWEEN FIBRES runs twice:
+each fibre's `Once.run` has its own cells. `SharedOnce` (okay-async)
+is the other reading for that case — the `memoize`/`Deferred` of the
+async libraries: one store for every fibre that runs through it, and a
+demand met while the program is in flight WAITS for its answer (an
+`Async` await, resumed by the store) instead of running it again:
+
+```scala
+val store = SharedOnce()
+val (a, b) = Async.par(store.run(p), store.run(p)).runWith   // p ran once; a == b
+```
+
+`store.runIn` forwards the rest of a wider row. The price is what the
+threading bought: a program under a shared store is not replayable,
+and a knot — a program demanding its own handle — is a hang rather
+than `Once.run`'s exception, because the waiter is the fibre that
+would have stored. `Once.run` stays the default and what a `lazy val`
+compiles to; reach for the store only where the handle crosses fibres
+([cats-effect's `Deferred`](https://typelevel.org/cats-effect/docs/std/deferred)
+and ZIO's `Promise` are the same cell with a different name).
+
 In a block the word is Scala's own:
 
 ```scala

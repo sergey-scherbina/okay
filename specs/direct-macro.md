@@ -620,3 +620,50 @@ data, before any bind is emitted and without running anything:
   - Application spines: only VALUE slots (receiver, arguments) are
     hoisted; callee structure (Selects, TypeApplies, curried lists)
     is rebuilt — a partially applied method is not a value.
+
+## Once across fibres (once-across-fibres, 2026-09-23)
+
+`Once.run` threads its cells, so a fibre forked inside a program
+takes a snapshot and two fibres demanding one handle run it twice,
+each in its own store. `SharedOnce` (okay-async/SharedOnce.scala) is
+the shared-cell reading: one store, a demand that WAITS while the
+program is in flight.
+
+```scala
+final class SharedOnce:
+  def run[A](a: A ! (Once + Async)): A ! Async
+  def runIn[A, F[+_]](a: A ! (Once + (Async + F))): A ! (Async + F)
+```
+
+### Behavior — once across fibres
+
+- [x] one `!.once` value demanded from two fibres under one
+      `SharedOnce` runs its program ONCE; the second fibre waits (an
+      `Async` await resumed by the store) and gets the same answer
+      (TestSharedOnce, JVM: `par` needs a Scheduler)
+- [x] for contrast, pinned: the same value under `Once.run` per fibre
+      runs twice
+- [x] a demand after the store is filled answers from the store; the
+      first store wins
+- [x] `runIn` forwards the rest of the row (a `Writer` tell inside the
+      program happens once, with its one run)
+
+### Decisions — once across fibres
+
+- **A `translate` handler, not a second loop.** Each `Once` operation
+  answers a program in `Async + F`; the waiting demand is an ordinary
+  `await`, so it suspends the fibre as any await does and the machine
+  needs nothing new. `Once.run` keeps its threaded loop untouched.
+- **One cast, the same as `Once.stored`'s**, isolated in `cell(h)`: a
+  heterogeneous map keyed by handle identity; the cell's `A` is the
+  handle's.
+- **A knot is a HANG, documented, not detected.** The fibre that would
+  store is the one waiting; `Async` has no fibre identity to tell a
+  self-demand from a sibling's, and a thread heuristic would misfire
+  when a continuation resumes on another thread. `Once.run` is where
+  a knot is possible; the shared store is for handles that cross
+  fibres, and its doc says so.
+- **Not replayable, said out loud.** The cells live outside the tree,
+  which is exactly what the threaded reading refused; a program under
+  `SharedOnce` is run, not replayed.
+
