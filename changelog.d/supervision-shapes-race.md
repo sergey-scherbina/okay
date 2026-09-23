@@ -24,3 +24,7 @@ The remaining gap, that a failing scope answers before its cancelled
 children have stopped, is filed as supervised-waits-on-failure, with the
 reason it is not fixed here: JS's `PromiseDrive` might never settle a
 cancelled child.
+
+Also: two E176 warnings (a discarded `offer` Boolean) that ui-telegram's
+TestTelegram had just brought to master, found by this lane's gate, are
+now `val _ =`.

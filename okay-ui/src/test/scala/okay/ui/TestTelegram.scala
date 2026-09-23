@@ -145,8 +145,8 @@ class TestTelegram extends munit.FunSuite {
     val drawn = Channel[Message]()
     var nextId = 100L
     val (host, hear) = Telegram.host {
-      case Act.Send(m) => async { drawn.offer(m); nextId += 1; Some(nextId) }
-      case Act.Edit(_, m) => async { drawn.offer(m); None }
+      case Act.Send(m) => async { val _ = drawn.offer(m); nextId += 1; Some(nextId) }
+      case Act.Edit(_, m) => async { val _ = drawn.offer(m); None }
       case _ => async(None)
     }
     Async.spawn(Wire.client(host)(Writer.of(down), l => up.send(l).map(_ => ()))): Unit
