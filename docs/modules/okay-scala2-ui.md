@@ -9,6 +9,7 @@ The loop and the hosts answer programs, and this module provides them:
 | `UiApp.run` / `runWith` / `window` | okay-ui's Elm loop as an `Eff[Async, S]`: in a host, with an external event source, or in a Swing window |
 | `UiHost.terminal()` / `UiHost.swing(container)` | okay-ui's terminal and Swing hosts |
 | `ScriptedHost(events*)` / `ScriptedHost.open(events*)` | a host for tests: scripted events, every frame kept |
+| `FormState[A]` | okay-ui's `Form` over `A` without its `Json`: `view`, `edit(event)`, `errors`, `decoded`, `json`, `withLabels`; `FormState.blank[A]`, `FormState.of(a)` |
 
 The walkthrough is section 8e of
 [okay from Scala 2.13](../scala2.md#8e-ui-the-view-as-a-value-the-loop-as-a-fold),

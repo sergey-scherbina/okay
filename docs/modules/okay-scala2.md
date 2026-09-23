@@ -375,6 +375,7 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 **UI** (module `okay-scala2-ui`) — `UiApp.run[S](init: S)(view: S => Ui)(update: (S, Event) => S)(host: UiHost): Eff[Async, S]`, `UiApp.runWith[S](...)(host, external: Source[Event])`, `UiApp.window[S](title)(init)(view)(update)`;
 `UiHost.terminal()`, `UiHost.swing(root: java.awt.Container)`;
 `ScriptedHost(events: Event*)` / `ScriptedHost.open(events: Event*)` (without the closing `Closed`), `.host: UiHost`, `.frames: Vector[Ui]`.
+`FormState.blank[A](implicit Schema[A])`, `FormState.of[A](a: A)`; `form.view: Ui`, `form.edit(e: Event): FormState[A]`, `form.errors: Vector[(String, String)]`, `form.decoded: Either[String, A]`, `form.json: String`, `form.withLabels(labels: Map[String, String])`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,

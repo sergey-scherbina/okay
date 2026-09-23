@@ -377,6 +377,23 @@ methods answer programs) are not usable. okay-scala2-ui's `UiApp` is
 - [x] an external source merges in, and its `Closed` ends the loop
       (deterministic: exactly 3 increments)
 
+## Stage 11 — forms, and what is queued after them
+okay-ui's `Form` is readable, but every function in it takes or
+returns a `Json`, which 2.13 cannot read. `FormState[A]` holds that
+value in `FormValue` (a value class, for the constructor reason) and
+speaks `A`, `Ui` and `Event`.
+
+- [x] a blank form does not decode and names its missing fields
+- [x] edits (text, number, toggle) fold into a value that decodes
+- [x] a form filled from a value decodes back to it and draws it
+- [x] the form is the state of a `UiApp` loop driven by a `ScriptedHost`
+- [x] labels appear in the drawn form
+
+Queued after it, in order: WebSockets (`scala2-ws`); nondeterminism as
+an `Eff` capability, with okay-agent's search strategies over it
+(`scala2-choose-search`); okay-ui's `Dialog`/`Nav` scenarios
+(`scala2-dialog-nav`).
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -539,3 +556,5 @@ methods answer programs) are not usable. okay-scala2-ui's `UiApp` is
   `Closed` raced the external events. `ScriptedHost.open` (no
   `Closed`) made it exact. All five areas the operator named (codecs,
   HTTP, SQL, agents, UI) are now covered.
+- STAGE 11 (2026-09-23). `FormState` in okay-scala2-ui.
+  `TestFormFromScala2` has 5 tests, all green on their first run.

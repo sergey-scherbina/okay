@@ -27,6 +27,7 @@ Contents:
 8c. [SQL: queries and transactions](#8c-sql-queries-and-transactions)
 8d. [Agents: a model, tools, a conversation](#8d-agents-a-model-tools-a-conversation)
 8e. [UI: the view as a value, the loop as a fold](#8e-ui-the-view-as-a-value-the-loop-as-a-fold)
+8f. [Forms from a Schema](#8f-forms-from-a-schema)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -714,6 +715,49 @@ assertEquals(host.frames, Vector(view(0), view(1), view(2), view(1)))
 - The Swing and terminal hosts are okay-ui's own. They are not
   exercised by the 2.13 probe, which has no display and no tty.
 
+## 8f. Forms from a Schema
+
+okay-ui's `Form` renders a form from the same `Schema` that decodes
+it, and folds the user's edits into the value. All of its functions
+speak `okay.codec.Json`, which Scala 2 cannot read. So
+`okay.scala2.FormState[A]` (module `okay-scala2-ui`) holds that value
+itself and speaks only in `A`, `Ui` and `Event`. The code below is
+copied from `okay-scala2/probe/src/test/scala/TestFormFromScala2.scala`:
+
+```scala
+final case class Signup(name: String, age: Int, newsletter: Boolean)
+object Signup {
+  implicit val schema: Schema[Signup] =
+    Schemas.product3("Signup", "name", "age", "newsletter")(Signup.apply)(s => (s.name, s.age, s.newsletter))
+}
+```
+
+```scala
+val filled = FormState.blank[Signup]
+  .edit(Event.Edited("name", "Ada"))
+  .edit(Event.Edited("age", "36"))
+  .edit(Event.Toggled("newsletter", true))
+assertEquals(filled.errors, Vector.empty)
+assertEquals(filled.decoded, Right(Signup("Ada", 36, newsletter = true)))
+```
+
+and as the state of a `UiApp` loop, from the same file:
+
+```scala
+val host = ScriptedHost(Event.Edited("name", "Cy"), Event.Edited("age", "5"))
+val done = Eff.runAsync(UiApp.run(FormState.blank[Signup])(_.view)(_.edit(_))(host.host))
+assertEquals(done.decoded, Right(Signup("Cy", 5, newsletter = false)))
+```
+
+- A field's key is its path: `name`, and for nested records
+  `where.city`. Edits arrive as okay-ui's own `Event.Edited`,
+  `Toggled`, `Chosen`, or a whole `Submitted` form.
+- `errors` lists the fields that do not validate yet, as (path,
+  message). `view` shows each error beside its field. `decoded` is
+  `Right` once the value is complete.
+- `FormState.of(a)` starts filled from a value. `withLabels` gives
+  fields human names.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -761,8 +805,8 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
   (8c), agents (8d) and UI (8e) are covered. Several pieces are not
   wrapped yet: WebSockets, okay-agent's search strategies
   (`Search.bestOf` and friends), durable agents, and okay-ui's
-  `Form`/`Dialog`/`Nav`. `Form` is readable from 2.13 but untested
-  there. The remaining modules are not wrapped either.
+  `Dialog`/`Nav` (forms are, in section 8f). They are queued in the
+  sprint. The remaining modules are not wrapped either.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does
