@@ -555,6 +555,32 @@ the diff.
 
 ## Stage 8 — foreign-managed-env
 
+## Stage 6 — foreign-streaming
+
+### Behavior
+
+- [x] `Py.stage[I, O]("mod:fn", chunk)` / `R.stage[I, O]("mod::fn", chunk)`:
+      an okay stage in the row `Take % I + (Writer % O + PyEval)` that
+      pulls a chunk, calls the function with it as a list/vector, and
+      tells what comes back (any length). A partial chunk is flushed at
+      the end.
+- [x] Pull-driven: at each call the source has produced exactly the
+      elements asked for (default gate, with a mock).
+- [x] Stateful: a held Python object (`ref.stage(method, finish)`) or a
+      held R closure (`ref.stage(chunk, finish)`, called through
+      `base::do.call`).
+- [x] A failure ends the stage naming the condition (`PyStream.Failed`,
+      `RStream.Failed`).
+
+### Decisions
+
+- **Chunks over a generator.** A Python generator suspended on its input
+  would need a second thread in the shim, because the shim is one
+  request-answer loop. A stage that owns the pull is what `through`
+  already composes, and one message per chunk is the cost that matters.
+
+## Stage 8 — foreign-managed-env
+
 ### Behavior
 
 - [ ] `PyEnv(python = "3.12", packages = Map("six" -> "1.16.0"))`: the
@@ -696,3 +722,36 @@ the diff.
     lambda. A side effect hidden in a bind lambda is not a pull. The test
     produces each element under its own `Free.delay`, which reads
     exactly 4, 8, 10.
+
+- Stage 8 (foreign-managed-env, 2026-09-23).
+  - PyEnv: 3 live tests against uv 0.5.9. A Python 3.12 venv with `six`
+    pinned is built once, is the cache on the second provision (the
+    ready mark's mtime is unchanged), and is used by a worker. A
+    half-built directory is rebuilt, and a package that does not
+    resolve refuses.
+  - REnv: 2 live tests inside the docker R 4.4.1. `praise` is installed
+    from CRAN once, and `praise::praise` is called through a session
+    that required it. An unknown package refuses by name.
+  - The key tests (order-independent, repository-dependent) are in the
+    default gate. Mutant: an unsorted key fails them.
+  - Found on the way: the docker Rscript shim forwards its WHOLE
+    environment into the container, so an inherited host PATH would
+    replace the container's. The provisioning run therefore gets a clean
+    environment, as a session does.
+
+### The series, closed
+
+All eight stages landed on 2026-09-23 in this order: 1 journalled,
+2 typed calls, 7 callbacks (moved forward at the operator's request),
+3 held objects, 4 inline modules, 5 a generated facade (in place of the
+trait macro), 6 streams, 8 managed environments.
+
+- Four defects in the existing modules were found and fixed on the way:
+  - a dict or named list answered by a call became None or failed;
+  - a Long past 2^53 lost digits going to Python;
+  - the R frame codec truncated a Long to 32 bits without any error;
+  - `PyEval`/`REval` were invariant, so no okay program could use them.
+- Shim versions moved: Python 1 to 5, R 2 to 6.
+- What is still open is in backlog `polyglot`: remote-foreign's
+  program-as-data half (for GHC), schema stubs for the far side, and
+  lift cancellation.

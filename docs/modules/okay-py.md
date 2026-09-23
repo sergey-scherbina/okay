@@ -252,6 +252,30 @@ val out = run(okay.through(numbers(10))(Py.stage[Long, Long]("streamy:double", c
   would need a second thread inside the shim. Owning the pull on the okay
   side is what `through` already composes.
 
+## The environment, declared in code
+
+A declared environment replaces the README step "create a venv and pip
+install these":
+
+```scala
+val env = PyEnv(python = "3.12", packages = Map("six" -> "1.16.0"), cache = Some(cache))
+```
+
+- **`provision()`** builds it with `uv` into a cache directory keyed by a
+  hash of the declaration, and answers its interpreter. The same
+  declaration gets the same directory, so the second provision is the
+  cache.
+- **`start()`** also starts a worker on it and runs `verify` on the
+  packages, so a drift refuses by name.
+- **Interrupted builds.** A build that died leaves no ready mark, and it
+  is rebuilt rather than trusted.
+- **Concurrent builds.** Two provisions of one declaration take a file
+  lock, so one builds while the other waits.
+- **Failures.** A package that does not resolve refuses with uv's own
+  words.
+- **Version specs.** A spec is written as pip reads it (`>=2,<3`), and a
+  bare version means exactly that version.
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own

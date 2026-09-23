@@ -259,6 +259,23 @@ val acc = R.hold("streamr::running")().runWith.toOption.get
 assertEquals(run(okay.through(numbers(6))(acc.stage[Double, Double](chunk = 2))), List(3.0, 10.0, 21.0))
 ```
 
+## The library, declared in code
+
+`REnv(packages = Seq("praise"))` is `PyEnv` for R:
+
+- **Where packages go.** The CRAN packages are installed into a library
+  directory keyed by the declaration. The install uses a fixed script
+  shipped in the jar, and the package names reach it as data.
+- **The session.** `start()` hands the library to the session as
+  `R_LIBS` and REQUIRES the packages:
+
+  ```scala
+  val word = R.fn[String]("praise::praise")("${Adjective}").runWith
+  ```
+
+- **Failures.** A package CRAN does not have refuses at provision and
+  names it.
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`
