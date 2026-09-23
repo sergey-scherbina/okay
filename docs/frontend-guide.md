@@ -138,7 +138,9 @@ flat fold leaves. When the code, not the user, chooses the part —
 "edit this order's customer" — `Form.askAt(TypedZipper(order)
 .down(customer), "customer")` asks the form of the focus's type,
 seeded from it, and answers the cursor with the focus replaced
-(`Form.askFrom` is the seeded `ask` underneath). Design and the
+(`Form.askFrom` is the seeded `ask` underneath); `Form.drillAt(c)`
+opens the drill-down at a typed cursor's position (`c.pathKey`, the
+same dotted key) and lets the user navigate from there. Design and the
 reasons in `specs/form-drill.md`.
 
 Errors are data, per field: `Form.errors[A](value)` answers

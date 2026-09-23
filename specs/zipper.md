@@ -524,3 +524,70 @@ extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: Z)
 `TestTypedZipper` 13 (11 + 2), green through `scripts/gate.sh`, no
 warnings, first run. The extension takes `z: Z` and the compiler
 infers `S` and `B` from `Z`'s bound — no `=:=` evidence, no cast.
+
+## Stage 5 — the typed path as a form's key (typed-path-key, 2026-09-23)
+
+`backlog.d/okay-codec/schema-typed-paths` asked for `Schema.path[A]
+.field("address").field("city")`: a chain by field NAME with the
+intermediate types inferred, checked against the Mirror. Stage 2
+built that chain without noticing it was this entry —
+`TypedZipper(a).field("address").field("city")` — and stage 3 gave
+the chain back as an optic (`asAffine`). What the entry still needed
+was the other spelling of the same path, the DOTTED KEY a form's
+router, errors and widgets use (specs/form-drill.md): with it a
+position the code chose by type opens a drill-down form where the
+user navigates from.
+
+### Interface (stage 5)
+
+```scala
+sealed trait TypedZipper[S, A, Self]:
+  /** `customer.address.city`, `lines[1].qty`; Some only when every frame
+   *  was taken by NAME — field, at, downCase (transparent, as a case is
+   *  to Form.edit); a lens handed to down knows no name */
+  def pathKey: Option[String]
+
+object Form:
+  def drill[A](value: Json, at: String)(done: Option[Json] => Nav)(using Schema[A]): Screen
+  /** a drill over the cursor's root, opened at its focus; None where the cursor has no key */
+  def drillAt[S, A, Z <: TypedZipper[S, A, Z]](z: TypedZipper[S, A, Z])(done: Option[S] => Nav)(using Schema[S]): Option[Screen]
+```
+
+### Behavior (stage 5)
+
+- [x] `field`/`at`/`downCase` frames spell the router's key; the root
+      is `""`; a chain through a lens frame is `None`, and so is every
+      frame below it; the key and `asAffine` point at the same element.
+- [x] `Form.drill(value, at)` opens at the key; `Form.drillAt(cursor)`
+      opens the cursor's root at its focus, edits fold as usual, `done`
+      answers the decoded root; a cursor with a lens frame answers no
+      screen rather than the root.
+- [x] `for i <- Take.each[Int] do tell(i * 2).!?` in a direct block IS a
+      `Stage`, and a guarded loop over `Take.each` a consumer — tested
+      in okay-llm, the module whose test classpath holds both
+      okay-direct and okay-stream (specs/direct-loops.md v3 Results).
+
+### Decisions (stage 5)
+
+- **A name on the frame, not a second frame type** — `Below` gained
+  `name: Option[String]`; `field` sets it, `downCase` sets `Some("")`
+  (transparent), `down(lens)` leaves `None`. Rejected: a `Named`
+  subclass (a fourth frame type for one string).
+- **`None`, not the root, for a keyless cursor** — a lens frame in the
+  chain means the position has no dotted spelling; answering the root
+  would open the form somewhere the caller did not choose.
+- **The backlog entry is ANSWERED, not implemented** — moved to
+  `refuted-declined-or-answered` with the record; its cost question
+  (`optics-field-fuse`, the planner cannot read the by-name lens)
+  stays open where it is.
+
+### Results (stage 5)
+
+2026-09-23. `TestTypedZipper` 14 (+1), `TestFormDrill` 12 (+1),
+`TestTakeLoopInBlock` 2 (new, okay-llm), green through
+`scripts/gate.sh`. Two compiler facts on the way: `.copy` on a
+`Below` re-infers its type arguments and the inline `name: L` then
+disagrees with the declared match type (`(name : L)` vs `L`) — the
+frame is built directly with the lens ascribed to a local alias;
+and the `field` extension now takes `z: Z` as `at` does, the
+compiler inferring `S`/`A` from the F-bound.

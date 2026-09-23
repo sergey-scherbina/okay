@@ -410,7 +410,9 @@ And the one sideways move the types allow: `at(i)` on a `Vector`
 focus is an element frame whose siblings share its type, so
 `c.down(lines).at(0).flatMap(_.right)` is typed — where the field
 beside `customer` is not another `Customer`, and no `right` exists
-across fields.
+across fields. And every frame taken by NAME remembers it: `pathKey`
+is the walk as the dotted key a form routes by, so a position the
+code chose by type is where `Form.drillAt(c)` opens.
 
 The two cursors divide the work the way the entry that recorded them
 predicted: the plate zipper walks "the children" of one node type and
