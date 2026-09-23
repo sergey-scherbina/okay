@@ -146,6 +146,52 @@ goes over the same pipe. Because each step is an ordinary okay operation,
 `Durable` journals the whole dialogue, and a replay answers every step
 from the journal without starting Python.
 
+## Programs as data: many answers, and Haskell
+
+A callback's continuation is a Python frame waiting in `okay.call`, so it
+can be resumed once. Some code can do more. A program can be written as
+DATA, a value built from `okay.done` and `okay.perform(...).then(f)`,
+where the rest of the program is an ordinary function:
+
+```python
+def pairs():
+    return okay.perform("choose", [1, 2]).then(lambda x:
+           okay.perform("choose", [10, 20]).then(lambda y:
+           okay.done(x + y)))
+```
+
+The worker hands okay one node at a time and keeps each continuation
+under an id. okay may therefore continue the SAME one twice, and its
+`Choice` handler, asked for every combination, gets all four:
+
+```scala
+val pairs = Py.program[Long]("progs:pairs").calling(Py.callbacks(choose))()
+assertEquals(runChoice(pairs.program).runWith.toList, List(Right(11L), Right(21L), Right(12L), Right(22L)))
+```
+
+`pairs.forget` releases the continuations the worker kept, just as
+`release` drops a held object.
+
+Haskell is where this shape is at home: its continuations are pure
+functions. The jar ships a small Haskell module, `Okay` (base and
+containers only), and a program written against it:
+
+```haskell
+pairs :: [Value] -> Prog Value
+pairs _ = do
+  x <- perform "choose" [VList [VInt 1, VInt 2]]
+  y <- perform "choose" [VList [VInt 10, VInt 20]]
+  return (VInt (asInt x + asInt y))
+```
+
+`HaskellWorker.build(dir)` compiles it with GHC, and
+`PySubprocess.speaking(Seq(binary))` runs it. The worker speaks the same
+wire as Python, so the same `Py.program` drives it, multi-shot included.
+A Haskell `error` arrives as a condition by name, and the worker keeps
+running. R has it too (`okay_done`, `okay_perform`, `okay_then`, and
+`R.program`), with R closures as the continuations. The protocol is
+[specs/remote-foreign.md](../specs/remote-foreign.md).
+
 ## The rest of the toolkit
 
 Each of these has a section with its tests in

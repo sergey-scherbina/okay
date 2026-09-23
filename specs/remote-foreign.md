@@ -20,9 +20,12 @@ continuation held on the far side of a pipe.
 
 Python is the reference far side, because it is on every machine that
 runs okay-py and its lambdas are values. R's closures are values too, so
-R gets it as well. A GHC shim would speak the same five messages. The
-protocol is written down below for it, and GHC is not installed where
-this was built.
+R gets it as well. Haskell gets it through a module the jar ships
+(`/okay/hs/Okay.hs`) and a worker compiled with GHC; it speaks the same
+five messages. (The first draft of this paragraph said GHC was not
+installed. The operator remembered it had been. ghcup's directories were
+there and empty, so GHC 9.14.1 was reinstalled through Homebrew and the
+Haskell side was built and tested for real.)
 
 ## Protocol (one JSON line each way, on the existing shim)
 
@@ -38,23 +41,23 @@ may be continued any number of times.
 
 ## Behavior
 
-- [ ] Python: `okay.done(v)`, `okay.perform(name, *args)` and `p.then(f)`
+- [x] Python: `okay.done(v)`, `okay.perform(name, *args)` and `p.then(f)`
       build a program; a function returning one is started with
       `Py.program[Out](addr).calling(cbs)(args)`, answering a `PyRun`:
       `run.program: Either[Condition, Out] ! (F + PyEval)` and
       `run.forget: Unit ! PyEval`.
-- [ ] MULTI-SHOT across the process: a Python program that performs
+- [x] MULTI-SHOT across the process: a Python program that performs
       `choose` twice, under okay's `runChoice`, answers all four
       combinations; the same continuation id is continued twice.
-- [ ] A named operation is a callback (the same `Py.callback` as stage 7):
+- [x] A named operation is a callback (the same `Py.callback` as stage 7):
       a Reader-backed program runs to its answer.
-- [ ] `Durable` journals `Program`/`Continue`/`Forget`; a replay needs no
+- [x] `Durable` journals `Program`/`Continue`/`Forget`; a replay needs no
       Python.
-- [ ] A continuation of a forgotten run, and a function that does not
+- [x] A continuation of a forgotten run, and a function that does not
       return a program, are refused by name.
-- [ ] `PyWorkers`: a run's continuations live in ONE worker; its
+- [x] `PyWorkers`: a run's continuations live in ONE worker; its
       continues go there.
-- [ ] R: `okay_done`, `okay_perform`, `okay_then`, and `R.program` —
+- [x] R: `okay_done`, `okay_perform`, `okay_then`, and `R.program` —
       the same, with R closures as the continuations.
 
 ## Decisions
@@ -72,3 +75,22 @@ may be continued any number of times.
   Keeping the pure function is exact and linear.
 
 ## Results
+
+- 2026-09-23. Python: 4 live tests. Multi-shot `Choice` across the
+  process gives 11, 21, 12, 22. A callback runs under `Reader`. A
+  forgotten run is refused by name, and so is a function that returns no
+  program. A Durable replay needs no Python.
+- Haskell (GHC 9.14.1): 4 live tests. The worker is compiled from a
+  test's `Main.hs` against the shipped `Okay.hs`. Multi-shot works, a
+  callback runs under `Reader`, a Haskell `error` is the condition
+  `HaskellError` and the worker lives on, and a Durable replay needs no
+  Haskell. `Okay.hs` compiles clean under `-Wall`, after its one partial
+  `head` was replaced by a pattern.
+- R: 2 live tests (multi-shot with R closures, and a Reader callback).
+- Default gate: TestPyProgramShape has a scripted far side that keeps
+  continuations by id, and it checks that the first continuation is
+  continued exactly twice. Mutant: continuing a fixed id instead of the
+  node's `k` sends the walk into a loop that runs out of memory, and the
+  test fails.
+- The shims move to Python 6 and R 7. `PySubprocess.speaking(command)`
+  runs any process that speaks the okay wire.

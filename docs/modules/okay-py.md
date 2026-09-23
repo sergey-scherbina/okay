@@ -276,6 +276,18 @@ val env = PyEnv(python = "3.12", packages = Map("six" -> "1.16.0"), cache = Some
 - **Version specs.** A spec is written as pip reads it (`>=2,<3`), and a
   bare version means exactly that version.
 
+## Programs as data, multi-shot, and Haskell
+
+`Py.program[Out]("mod:f").calling(cbs)(args)` starts a Python function
+that returns a program built from `okay.done` and
+`okay.perform(name, ...).then(f)`. The worker keeps each continuation by
+id, so a `Choice` handler can continue the same one twice. `run.forget`
+releases them. `HaskellWorker.build(dir)` compiles a Haskell `Main.hs`
+against the shipped `Okay` module, and `PySubprocess.speaking(Seq(bin))`
+runs it on the same wire. The guide is
+[okay with Python and R](../python-and-r.md), and the protocol is
+[specs/remote-foreign.md](../../specs/remote-foreign.md).
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own
