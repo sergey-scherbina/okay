@@ -1,4 +1,4 @@
-- [ ] wire-serve-transduce-until — `Wire.serveClosing` (okay-ui,
+- [~] wire-serve-transduce-until — `Wire.serveClosing` (okay-ui,
       Wire.scala) is a hand-written `loop`/`step` pair over
       `Stage.await`: state `(vocab, s, shown)`, stops on `Msg.Close`
       or a `done` update, tells patches in between — exactly
