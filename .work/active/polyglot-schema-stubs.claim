@@ -1,3 +1,0 @@
-slug: polyglot-schema-stubs
-who: claude-opus-5.5 (interop session)
-what: TypedDict (.py) and TypeScript (.d.ts) declarations generated from Schema, checked by mypy and tsc
