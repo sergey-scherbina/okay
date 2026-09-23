@@ -39,14 +39,34 @@ object Direct:
   /** the same block, printed at compile time into a constant */
   transparent inline def source(inline body: Any): String = ${ sourceImpl('body) }
 
+  /**
+   * The block with its TYPES (typescript-types T8): each `val`/`var` a
+   * `Stmt.TypedVar` and each lambda a `Js.TypedFun`, typed with what the
+   * Scala compiler inferred — `number`, `string`, `boolean`, `any` for a
+   * `Dyn` or a spliced `Js` (untyped JavaScript, said so), `(a0: A) => B`
+   * for a function, `void` for `Unit`. Any other type is refused by name.
+   * `Js.printTs` prints it as TypeScript, `Js.print` as the same JavaScript.
+   */
+  inline def ts(inline body: Any): Vector[Stmt] = ${ tsImpl('body) }
+
+  /** the typed block, printed as TypeScript at compile time */
+  transparent inline def tsSource(inline body: Any): String = ${ tsSourceImpl('body) }
+
   def jsImpl(body: Expr[Any])(using Quotes): Expr[Vector[Stmt]] =
-    '{ ${ Expr.ofSeq(read(body).map(lift)) }.toVector }
+    '{ ${ Expr.ofSeq(read(body, typed = false).map(lift)) }.toVector }
 
   def sourceImpl(body: Expr[Any])(using q: Quotes): Expr[String] =
     import q.reflect.*
-    Literal(StringConstant(Js.print(read(body)))).asExprOf[String]
+    Literal(StringConstant(Js.print(read(body, typed = false)))).asExprOf[String]
 
-  private def read(body: Expr[Any])(using q: Quotes): Vector[Stmt] =
+  def tsImpl(body: Expr[Any])(using Quotes): Expr[Vector[Stmt]] =
+    '{ ${ Expr.ofSeq(read(body, typed = true).map(lift)) }.toVector }
+
+  def tsSourceImpl(body: Expr[Any])(using q: Quotes): Expr[String] =
+    import q.reflect.*
+    Literal(StringConstant(Js.printTs(read(body, typed = true)))).asExprOf[String]
+
+  private def read(body: Expr[Any], typed: Boolean)(using q: Quotes): Vector[Stmt] =
     import q.reflect.*
 
     /** the operators Scala and JavaScript spell and mean the same */
@@ -84,6 +104,24 @@ object Direct:
      * splice case swallowed a variable the block had just made. */
     val declared = scala.collection.mutable.Set.empty[String]
 
+    /** a Scala type as TypeScript, or refused by name (T8) */
+    def tsType(t: TypeRepr, where: Position): String =
+      val w = t.widen.dealias
+      if w =:= TypeRepr.of[Int] || w =:= TypeRepr.of[Long] || w =:= TypeRepr.of[Double] ||
+        w =:= TypeRepr.of[Float] || w =:= TypeRepr.of[Short] || w =:= TypeRepr.of[Byte] then "number"
+      else if w =:= TypeRepr.of[String] then "string"
+      else if w =:= TypeRepr.of[Boolean] then "boolean"
+      else if w =:= TypeRepr.of[Unit] then "void"
+      else if w =:= TypeRepr.of[Null] then "null"
+      // untyped JavaScript, and the annotation says so rather than inventing a type
+      else if w <:< TypeRepr.of[Dyn] || w <:< TypeRepr.of[Js] then "any"
+      else if w.isFunctionType then
+        val as = w.typeArgs
+        val ps = as.init.zipWithIndex.map((p, i) => s"a$i: ${tsType(p, where)}")
+        s"(${ps.mkString(", ")}) => ${tsType(as.last, where)}"
+      else no(s"a value of type ${w.show} as TypeScript", where,
+        "js { } values are numbers, strings, booleans, Dyn, Js and functions of them")
+
     def block(t: Term): Vector[Stmt] = t match
       case Inlined(_, _, inner) => block(inner)
       case Block(stats, last) =>
@@ -101,8 +139,8 @@ object Direct:
       case other => statement(other)
 
     def stat(s: Statement): Vector[Stmt] = s match
-      case ValDef(name, _, Some(rhs)) =>
-        val v = Stmt.Var(name, expr(rhs))
+      case ValDef(name, tpt, Some(rhs)) =>
+        val v = if typed then Stmt.TypedVar(name, tsType(tpt.tpe, s.pos), expr(rhs)) else Stmt.Var(name, expr(rhs))
         declared += name
         Vector(v)
       case ValDef(name, _, None) =>
@@ -126,6 +164,12 @@ object Direct:
           case other => other))
       case While(c, b) => Vector(Stmt.While(expr(c), statement(b)))
       case Assign(lhs, rhs) => Vector(Stmt.Set(expr(lhs), expr(rhs)))
+      // `d.f = v` on a Dyn is Scala's `d.updateDynamic("f")(v)`, which is
+      // an ASSIGNMENT — printed as the call it is spelled as, it was
+      // `document.updateDynamic("title", label)`, a method no JavaScript
+      // object has. Found by tsc on T8's first typed program
+      case Apply(Apply(Select(on, "updateDynamic"), List(Literal(StringConstant(n)))), List(v)) =>
+        Vector(Stmt.Set(callee(on, n), expr(v)))
       case Literal(UnitConstant()) => Vector.empty
       case other => Vector(Stmt.Do(expr(other)))
 
@@ -220,9 +264,17 @@ object Direct:
       // a lambda is a function, which is the one place a Scala shape
       // and a JavaScript shape line up exactly
       case Lambda(params, body) =>
-        Js.Fun(params.toVector.map(_.name), statement(body))
+        if typed then Js.TypedFun(params.toVector.map(p => (p.name, tsType(p.tpt.tpe, p.pos))), statement(body))
+        else Js.Fun(params.toVector.map(_.name), statement(body))
 
       case Select(on, name) => Js.Field(expr(on), name)
+      // CALLING A FUNCTION VALUE IS A CALL. Scala spells `f(1)` on a
+      // function-typed val as `f.apply(1)`, and printed as written that is
+      // JavaScript's Function.prototype.apply — `this` = 1, no arguments —
+      // a different program with no error to show for it. Found by T8's
+      // first typed test (typescript-types), which printed `f.apply(n, s)`
+      case Apply(Select(on, "apply"), as) if on.tpe.widen.isFunctionType =>
+        Js.Call(expr(on), args(as))
       case Apply(Select(root, n), as) if isGlobal(root) =>
         Js.Call(Js.Name(n), args(as))
       case Apply(Select(on, name), as) =>
@@ -243,6 +295,7 @@ object Direct:
 
   private def lift(s: Stmt)(using Quotes): Expr[Stmt] = s match
     case Stmt.Var(n, v) => '{ Stmt.Var(${ Expr(n) }, ${ liftJs(v) }) }
+    case Stmt.TypedVar(n, t, v) => '{ Stmt.TypedVar(${ Expr(n) }, ${ Expr(t) }, ${ liftJs(v) }) }
     case Stmt.Set(t, v) => '{ Stmt.Set(${ liftJs(t) }, ${ liftJs(v) }) }
     case Stmt.Do(o) => '{ Stmt.Do(${ liftJs(o) }) }
     case Stmt.Return(o) =>
@@ -289,6 +342,9 @@ object Direct:
     case Js.Fun(ps, b) =>
       val params = Expr.ofSeq(ps.map(Expr(_)))
       '{ Js.Fun($params.toVector, ${ liftAll(b) }) }
+    case Js.TypedFun(ps, b) =>
+      val params = Expr.ofSeq(ps.map((n, t) => '{ (${ Expr(n) }, ${ Expr(t) }) }))
+      '{ Js.TypedFun($params.toVector, ${ liftAll(b) }) }
 
   private def liftJsAll(js: Vector[Js])(using Quotes): Expr[Vector[Js]] =
     '{ ${ Expr.ofSeq(js.map(liftJs)) }.toVector }

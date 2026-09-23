@@ -68,11 +68,13 @@ object Emit:
       case '{ Js.Bin(${ Expr(op) }, ${ Expr(l) }, ${ Expr(r) }) } => Some(Js.Bin(op, l, r))
       case '{ Js.Ternary(${ Expr(c) }, ${ Expr(y) }, ${ Expr(n) }) } => Some(Js.Ternary(c, y, n))
       case '{ Js.Fun(${ Expr(ps) }, ${ Expr(b) }) } => Some(Js.Fun(ps, b))
+      case '{ Js.TypedFun(${ Expr(ps) }, ${ Expr(b) }) } => Some(Js.TypedFun(ps, b))
       case _ => None
 
   given stmtOf: FromExpr[Stmt] with
     def unapply(x: Expr[Stmt])(using Quotes): Option[Stmt] = x match
       case '{ Stmt.Var(${ Expr(n) }, ${ Expr(v) }) } => Some(Stmt.Var(n, v))
+      case '{ Stmt.TypedVar(${ Expr(n) }, ${ Expr(t) }, ${ Expr(v) }) } => Some(Stmt.TypedVar(n, t, v))
       case '{ Stmt.Set(${ Expr(t) }, ${ Expr(v) }) } => Some(Stmt.Set(t, v))
       case '{ Stmt.Do(${ Expr(o) }) } => Some(Stmt.Do(o))
       case '{ Stmt.Return(${ Expr(o) }) } => Some(Stmt.Return(o))

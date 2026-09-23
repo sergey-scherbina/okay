@@ -39,6 +39,10 @@ enum Js:
   case Bin(op: String, l: Js, r: Js)
   case Ternary(cond: Js, yes: Js, no: Js)
   case Fun(params: Vector[String], body: Vector[Stmt])
+  /** a function whose parameters carry TypeScript types
+   * (typescript-types T8): printed as `Fun` for JavaScript, and with
+   * `(a: number)` by `printTs` */
+  case TypedFun(params: Vector[(String, String)], body: Vector[Stmt])
   /** THE ESCAPE HATCH, AND IT IS NAMED.
    *
    * A tree that could not express a regex literal or a `try/catch`
@@ -54,6 +58,9 @@ enum Js:
  * emits `var x = if (...)`, which does not parse. */
 enum Stmt:
   case Var(name: String, value: Js)
+  /** a `var` whose TypeScript type is known (typescript-types T8):
+   * `var x = …;` for JavaScript, `var x: number = …;` by `printTs` */
+  case TypedVar(name: String, tpe: String, value: Js)
   case Set(target: Js, value: Js)
   /** an expression evaluated for its effect */
   case Do(of: Js)
@@ -118,10 +125,12 @@ object Js:
       case Bin(_, l, r) => inJs(l) + inJs(r)
       case Ternary(c, y, n) => inJs(c) + inJs(y) + inJs(n)
       case Fun(_, b) => b.map(inStmt).sum
+      case TypedFun(_, b) => b.map(inStmt).sum
       case _ => 0
     def inStmt(s: Stmt): Int = s match
       case Stmt.Raw(_) => 1
       case Stmt.Var(_, v) => inJs(v)
+      case Stmt.TypedVar(_, _, v) => inJs(v)
       case Stmt.Set(t, v) => inJs(t) + inJs(v)
       case Stmt.Do(o) => inJs(o)
       case Stmt.Return(o) => o.map(inJs).getOrElse(0)
@@ -141,13 +150,20 @@ object Js:
   /** one expression, as source */
   def print(j: Js): String =
     val sb = StringBuilder()
-    expr(j, 0, sb)
+    Printer(ts = false).expr(j, 0, sb)
     sb.result()
 
   /** a program, as source */
   def print(stmts: Vector[Stmt]): String =
     val sb = StringBuilder()
-    stmts.foreach(stmt(_, 0, sb))
+    stmts.foreach(Printer(ts = false).stmt(_, 0, sb))
+    sb.result()
+
+  /** a program as TypeScript (typescript-types T8): the same text as
+   * `print`, with the types a `TypedVar` and a `TypedFun` carry */
+  def printTs(stmts: Vector[Stmt]): String =
+    val sb = StringBuilder()
+    stmts.foreach(Printer(ts = true).stmt(_, 0, sb))
     sb.result()
 
   /**
@@ -236,217 +252,235 @@ object Js:
       case "||" => 4
       case _ => 4
     case _: Ternary => 3
-    case _: Fun => 20
+    case _: (Fun | TypedFun) => 20
 
-  private def expr(j: Js, outer: Int, sb: StringBuilder, depth: Int = 0): Unit =
-    val mine = prec(j)
-    val wrap = mine < outer
-    if wrap then sb += '('
-    // the match's own value is a builder nobody wants: this writes
-    val _ : Any = j match
-      case Num(v) =>
-        sb ++= (if v == v.toLong.toDouble && v.abs < 1e15 then v.toLong.toString else v.toString)
-      case Str(s) => sb ++= quote(s)
-      case Bool(b) => sb ++= b.toString
-      case Null => sb ++= "null"
-      case Undefined => sb ++= "undefined"
-      case Name(id) => sb ++= id
-      case Raw(source) => sb ++= source
-      case Arr(items) =>
-        sb += '['
-        items.zipWithIndex.foreach { (x, i) =>
-          if i > 0 then sb ++= ", "
-          expr(x, 0, sb, depth)
-        }
-        sb += ']'
-      case Obj(fields) =>
-        sb += '{'
-        fields.zipWithIndex.foreach { case ((k, v), i) =>
-          if i > 0 then sb ++= ", "
-          sb ++= key(k)
-          sb ++= ": "
-          expr(v, 0, sb, depth)
-        }
-        sb += '}'
-      case Field(of, n) =>
-        expr(of, mine, sb, depth)
-        sb += '.' ++= n
-      case Index(of, a) =>
-        expr(of, mine, sb, depth)
-        sb += '['
-        expr(a, 0, sb, depth)
-        sb += ']'
-      case Call(fn, args) =>
-        expr(fn, mine, sb, depth)
-        sb += '('
-        args.zipWithIndex.foreach { (x, i) =>
-          if i > 0 then sb ++= ", "
-          expr(x, 0, sb, depth)
-        }
-        sb += ')'
-      case New(fn, args) =>
-        sb ++= "new "
-        expr(fn, mine, sb, depth)
-        sb += '('
-        args.zipWithIndex.foreach { (x, i) =>
-          if i > 0 then sb ++= ", "
-          expr(x, 0, sb, depth)
-        }
-        sb += ')'
-      case Unary(op, of) =>
-        sb ++= op
-        // `typeof x` needs the space; `!x` does not
-        if op.head.isLetter then sb += ' '
-        // AND A UNARY ON A UNARY IS PARENTHESISED, because `-(-x)`
-        // printed as `--x` is a DECREMENT — a different program, not
-        // a different spelling. Found by the test that expected the
-        // parentheses, which is the only reason it is not still there
-        of match
-          case _: Unary => sb += '('; expr(of, 0, sb, depth); sb += ')'
-          case _ => expr(of, mine, sb, depth)
-      case Bin(op, l, r) =>
-        expr(l, mine, sb, depth)
-        sb += ' '
-        sb ++= op
-        sb += ' '
-        // the right side of a left-associative operator binds tighter
-        expr(r, mine + 1, sb, depth)
-      case Ternary(c, y, n) =>
-        expr(c, mine + 1, sb, depth)
-        sb ++= " ? "
-        expr(y, 0, sb, depth)
-        sb ++= " : "
-        expr(n, 0, sb, depth)
-      case Fun(params, body) =>
-        sb ++= "function ("
-        sb ++= params.mkString(", ")
-        sb ++= ") {"
-        body.foreach(stmt(_, depth + 1, sb))
-        // the closing brace on its own line AT THE FUNCTION'S OWN
-        // indentation, so a served file reads like something a person
-        // wrote rather than like output
-        if body.nonEmpty then pad(depth, sb)
-        sb ++= "}"
-    if wrap then sb += ')'
+  /** JavaScript, or TypeScript when `ts`: one printer, so the two texts
+   * differ in the types and nowhere else */
+  private final class Printer(ts: Boolean):
 
-  /** does this expression's TEXT begin with `function` or `{`? The
-   * leftmost spine is what a parser sees first, so a call on a
-   * function literal counts and a call on a name does not */
-  private def leadsWithFunctionOrObject(j: Js): Boolean = j match
-    case _: Fun | _: Obj => true
-    case Call(fn, _) => leadsWithFunctionOrObject(fn)
-    case Field(of, _) => leadsWithFunctionOrObject(of)
-    case Index(of, _) => leadsWithFunctionOrObject(of)
-    case Bin(_, l, _) => leadsWithFunctionOrObject(l)
-    case Ternary(c, _, _) => leadsWithFunctionOrObject(c)
-    case _ => false
-
-  private def pad(depth: Int, sb: StringBuilder): Unit =
-    sb += '\n'
-    var i = 0
-    while i < depth do { sb ++= "  "; i += 1 }
-
-  /** SEMICOLONS ARE WRITTEN, NEVER INFERRED. Automatic semicolon
-   * insertion is a language feature nobody should depend on twice */
-  private def stmt(s: Stmt, depth: Int, sb: StringBuilder): Unit =
-    pad(depth, sb)
-    s match
-      case Stmt.Var(n, v) =>
-        sb ++= "var "
-        sb ++= n
-        sb ++= " = "
-        expr(v, 0, sb, depth)
-        sb += ';'
-      case Stmt.Set(t, v) =>
-        expr(t, 0, sb, depth)
-        sb ++= " = "
-        expr(v, 0, sb, depth)
-        sb += ';'
-      case Stmt.Do(o) =>
-        // AN EXPRESSION STATEMENT THAT BEGINS WITH `function` OR `{`
-        // MUST BE PARENTHESISED. JavaScript reads a statement
-        // starting with `function` as a DECLARATION, which needs a
-        // name, so the immediately-invoked function every generated
-        // program is wrapped in would not parse: `SyntaxError:
-        // Function statements require a function name`. Found the
-        // first time a whole program was printed rather than a
-        // fragment.
-        if leadsWithFunctionOrObject(o) then
+    def expr(j: Js, outer: Int, sb: StringBuilder, depth: Int = 0): Unit =
+      val mine = prec(j)
+      val wrap = mine < outer
+      if wrap then sb += '('
+      // the match's own value is a builder nobody wants: this writes
+      val _ : Any = j match
+        case Num(v) =>
+          sb ++= (if v == v.toLong.toDouble && v.abs < 1e15 then v.toLong.toString else v.toString)
+        case Str(s) => sb ++= quote(s)
+        case Bool(b) => sb ++= b.toString
+        case Null => sb ++= "null"
+        case Undefined => sb ++= "undefined"
+        case Name(id) => sb ++= id
+        case Raw(source) => sb ++= source
+        case Arr(items) =>
+          sb += '['
+          items.zipWithIndex.foreach { (x, i) =>
+            if i > 0 then sb ++= ", "
+            expr(x, 0, sb, depth)
+          }
+          sb += ']'
+        case Obj(fields) =>
+          sb += '{'
+          fields.zipWithIndex.foreach { case ((k, v), i) =>
+            if i > 0 then sb ++= ", "
+            sb ++= key(k)
+            sb ++= ": "
+            expr(v, 0, sb, depth)
+          }
+          sb += '}'
+        case Field(of, n) =>
+          expr(of, mine, sb, depth)
+          sb += '.' ++= n
+        case Index(of, a) =>
+          expr(of, mine, sb, depth)
+          sb += '['
+          expr(a, 0, sb, depth)
+          sb += ']'
+        case Call(fn, args) =>
+          expr(fn, mine, sb, depth)
           sb += '('
-          expr(o, 0, sb, depth)
+          args.zipWithIndex.foreach { (x, i) =>
+            if i > 0 then sb ++= ", "
+            expr(x, 0, sb, depth)
+          }
           sb += ')'
-        else expr(o, 0, sb, depth)
-        sb += ';'
-      case Stmt.Return(None) => sb ++= "return;"
-      case Stmt.Return(Some(o)) =>
-        sb ++= "return "
-        expr(o, 0, sb, depth)
-        sb += ';'
-      case Stmt.If(c, yes, no) =>
-        sb ++= "if ("
-        expr(c, 0, sb, depth)
-        sb ++= ") {"
-        yes.foreach(stmt(_, depth + 1, sb))
-        pad(depth, sb)
-        sb += '}'
-        if no.nonEmpty then
-          sb ++= " else {"
-          no.foreach(stmt(_, depth + 1, sb))
+        case New(fn, args) =>
+          sb ++= "new "
+          expr(fn, mine, sb, depth)
+          sb += '('
+          args.zipWithIndex.foreach { (x, i) =>
+            if i > 0 then sb ++= ", "
+            expr(x, 0, sb, depth)
+          }
+          sb += ')'
+        case Unary(op, of) =>
+          sb ++= op
+          // `typeof x` needs the space; `!x` does not
+          if op.head.isLetter then sb += ' '
+          // AND A UNARY ON A UNARY IS PARENTHESISED, because `-(-x)`
+          // printed as `--x` is a DECREMENT — a different program, not
+          // a different spelling. Found by the test that expected the
+          // parentheses, which is the only reason it is not still there
+          of match
+            case _: Unary => sb += '('; expr(of, 0, sb, depth); sb += ')'
+            case _ => expr(of, mine, sb, depth)
+        case Bin(op, l, r) =>
+          expr(l, mine, sb, depth)
+          sb += ' '
+          sb ++= op
+          sb += ' '
+          // the right side of a left-associative operator binds tighter
+          expr(r, mine + 1, sb, depth)
+        case Ternary(c, y, n) =>
+          expr(c, mine + 1, sb, depth)
+          sb ++= " ? "
+          expr(y, 0, sb, depth)
+          sb ++= " : "
+          expr(n, 0, sb, depth)
+        case Fun(params, body) => fun(params, body, sb, depth)
+        case TypedFun(params, body) =>
+          fun(params.map((n, t) => if ts then s"$n: $t" else n), body, sb, depth)
+      if wrap then sb += ')'
+
+    private def fun(params: Vector[String], body: Vector[Stmt], sb: StringBuilder, depth: Int): Unit =
+      sb ++= "function ("
+      sb ++= params.mkString(", ")
+      sb ++= ") {"
+      body.foreach(stmt(_, depth + 1, sb))
+      // the closing brace on its own line AT THE FUNCTION'S OWN
+      // indentation, so a served file reads like something a person
+      // wrote rather than like output
+      if body.nonEmpty then pad(depth, sb)
+      sb ++= "}"
+
+    /** does this expression's TEXT begin with `function` or `{`? The
+     * leftmost spine is what a parser sees first, so a call on a
+     * function literal counts and a call on a name does not */
+    private def leadsWithFunctionOrObject(j: Js): Boolean = j match
+      case _: Fun | _: TypedFun | _: Obj => true
+      case Call(fn, _) => leadsWithFunctionOrObject(fn)
+      case Field(of, _) => leadsWithFunctionOrObject(of)
+      case Index(of, _) => leadsWithFunctionOrObject(of)
+      case Bin(_, l, _) => leadsWithFunctionOrObject(l)
+      case Ternary(c, _, _) => leadsWithFunctionOrObject(c)
+      case _ => false
+
+    private def pad(depth: Int, sb: StringBuilder): Unit =
+      sb += '\n'
+      var i = 0
+      while i < depth do { sb ++= "  "; i += 1 }
+
+    /** SEMICOLONS ARE WRITTEN, NEVER INFERRED. Automatic semicolon
+     * insertion is a language feature nobody should depend on twice */
+    def stmt(s: Stmt, depth: Int, sb: StringBuilder): Unit =
+      pad(depth, sb)
+      s match
+        case Stmt.Var(n, v) =>
+          sb ++= "var "
+          sb ++= n
+          sb ++= " = "
+          expr(v, 0, sb, depth)
+          sb += ';'
+        case Stmt.TypedVar(n, t, v) =>
+          sb ++= "var "
+          sb ++= n
+          if ts then (sb ++= ": " ++= t): Unit
+          sb ++= " = "
+          expr(v, 0, sb, depth)
+          sb += ';'
+        case Stmt.Set(t, v) =>
+          expr(t, 0, sb, depth)
+          sb ++= " = "
+          expr(v, 0, sb, depth)
+          sb += ';'
+        case Stmt.Do(o) =>
+          // AN EXPRESSION STATEMENT THAT BEGINS WITH `function` OR `{`
+          // MUST BE PARENTHESISED. JavaScript reads a statement
+          // starting with `function` as a DECLARATION, which needs a
+          // name, so the immediately-invoked function every generated
+          // program is wrapped in would not parse: `SyntaxError:
+          // Function statements require a function name`. Found the
+          // first time a whole program was printed rather than a
+          // fragment.
+          if leadsWithFunctionOrObject(o) then
+            sb += '('
+            expr(o, 0, sb, depth)
+            sb += ')'
+          else expr(o, 0, sb, depth)
+          sb += ';'
+        case Stmt.Return(None) => sb ++= "return;"
+        case Stmt.Return(Some(o)) =>
+          sb ++= "return "
+          expr(o, 0, sb, depth)
+          sb += ';'
+        case Stmt.If(c, yes, no) =>
+          sb ++= "if ("
+          expr(c, 0, sb, depth)
+          sb ++= ") {"
+          yes.foreach(stmt(_, depth + 1, sb))
           pad(depth, sb)
           sb += '}'
-      case Stmt.While(c, body) =>
-        sb ++= "while ("
-        expr(c, 0, sb, depth)
-        sb ++= ") {"
-        body.foreach(stmt(_, depth + 1, sb))
-        pad(depth, sb)
-        sb += '}'
-      case Stmt.For(init, cond, step, body) =>
-        sb ++= "for ("
-        init.foreach {
-          case Stmt.Var(n, v) =>
-            sb ++= "var "; sb ++= n; sb ++= " = "
-            expr(v, 0, sb, depth)
-          case Stmt.Set(t, v) => expr(t, 0, sb, depth); sb ++= " = "; expr(v, 0, sb, depth)
-          case Stmt.Do(o) => expr(o, 0, sb, depth)
-          case other => sb ++= Js.print(Vector(other)).trim.stripSuffix(";")
-        }
-        sb ++= "; "
-        cond.foreach(expr(_, 0, sb, depth))
-        sb ++= "; "
-        step.foreach(expr(_, 0, sb, depth))
-        sb ++= ") {"
-        body.foreach(stmt(_, depth + 1, sb))
-        pad(depth, sb)
-        sb += '}'
-      case Stmt.Switch(on, cases, fallback) =>
-        sb ++= "switch ("
-        expr(on, 0, sb, depth)
-        sb ++= ") {"
-        cases.foreach { (k, body) =>
-          pad(depth + 1, sb)
-          sb ++= "case "
-          expr(k, 0, sb, depth)
-          sb += ':'
-          body.foreach(stmt(_, depth + 2, sb))
-        }
-        if fallback.nonEmpty then
-          pad(depth + 1, sb)
-          sb ++= "default:"
-          fallback.foreach(stmt(_, depth + 2, sb))
-        pad(depth, sb)
-        sb += '}'
-      case Stmt.Break => sb ++= "break;"
-      case Stmt.Block(body) =>
-        sb += '{'
-        body.foreach(stmt(_, depth + 1, sb))
-        pad(depth, sb)
-        sb += '}'
-      case Stmt.Comment(text) =>
-        // every line of it, so a paragraph stays a paragraph
-        text.linesIterator.zipWithIndex.foreach { (line, i) =>
-          if i > 0 then pad(depth, sb)
-          sb ++= "// "
-          sb ++= line
-        }
-      case Stmt.Raw(source) => sb ++= source
+          if no.nonEmpty then
+            sb ++= " else {"
+            no.foreach(stmt(_, depth + 1, sb))
+            pad(depth, sb)
+            sb += '}'
+        case Stmt.While(c, body) =>
+          sb ++= "while ("
+          expr(c, 0, sb, depth)
+          sb ++= ") {"
+          body.foreach(stmt(_, depth + 1, sb))
+          pad(depth, sb)
+          sb += '}'
+        case Stmt.For(init, cond, step, body) =>
+          sb ++= "for ("
+          init.foreach {
+            case Stmt.Var(n, v) =>
+              sb ++= "var "; sb ++= n; sb ++= " = "
+              expr(v, 0, sb, depth)
+            case Stmt.TypedVar(n, t, v) =>
+              sb ++= "var "; sb ++= n; if ts then (sb ++= ": " ++= t): Unit; sb ++= " = "
+              expr(v, 0, sb, depth)
+            case Stmt.Set(t, v) => expr(t, 0, sb, depth); sb ++= " = "; expr(v, 0, sb, depth)
+            case Stmt.Do(o) => expr(o, 0, sb, depth)
+            case other => sb ++= (if ts then Js.printTs(Vector(other)) else Js.print(Vector(other))).trim.stripSuffix(";")
+          }
+          sb ++= "; "
+          cond.foreach(expr(_, 0, sb, depth))
+          sb ++= "; "
+          step.foreach(expr(_, 0, sb, depth))
+          sb ++= ") {"
+          body.foreach(stmt(_, depth + 1, sb))
+          pad(depth, sb)
+          sb += '}'
+        case Stmt.Switch(on, cases, fallback) =>
+          sb ++= "switch ("
+          expr(on, 0, sb, depth)
+          sb ++= ") {"
+          cases.foreach { (k, body) =>
+            pad(depth + 1, sb)
+            sb ++= "case "
+            expr(k, 0, sb, depth)
+            sb += ':'
+            body.foreach(stmt(_, depth + 2, sb))
+          }
+          if fallback.nonEmpty then
+            pad(depth + 1, sb)
+            sb ++= "default:"
+            fallback.foreach(stmt(_, depth + 2, sb))
+          pad(depth, sb)
+          sb += '}'
+        case Stmt.Break => sb ++= "break;"
+        case Stmt.Block(body) =>
+          sb += '{'
+          body.foreach(stmt(_, depth + 1, sb))
+          pad(depth, sb)
+          sb += '}'
+        case Stmt.Comment(text) =>
+          // every line of it, so a paragraph stays a paragraph
+          text.linesIterator.zipWithIndex.foreach { (line, i) =>
+            if i > 0 then pad(depth, sb)
+            sb ++= "// "
+            sb ++= line
+          }
+        case Stmt.Raw(source) => sb ++= source
