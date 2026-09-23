@@ -1,3 +1,0 @@
-slug: hs-typed-effects
-who: claude-opus-5.5 (interop session)
-what: the Haskell worker's programs typed by their effects: OkayEff (Eff effs a, Member, Wire), Hs.ops generating the effect GADT from Scala callbacks
