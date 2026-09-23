@@ -112,3 +112,14 @@ Each stage is a lane; Results below record what each found.
     `Schema[Order]` for a case class nested in that object DEADLOCKED one
     thread (a Scala 3 lazy val is not re-entrant). The gate's watchdog
     caught the stall and its dump named it. It is a `def` now.
+
+- T2 (ts-types-scala-to-ts, 2026-09-23). `okay.codec.StubFiles`
+  (JVM) has `typescript` and `python` (write the generated declarations)
+  and `write` (only when the text changed; answers whether it wrote).
+  TestStubFiles has 2 tests: written once, left alone while unchanged
+  (same mtime), rewritten when a type is added; and the Python twin. The
+  build step is a user's `main` listing the types plus an sbt task. Its
+  shape is shown in the doc and not tested here, because it belongs to
+  the user's build.
+  - Mutant: always rewriting fails "left alone while the model does not
+    change".
