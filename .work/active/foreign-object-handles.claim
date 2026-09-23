@@ -1,3 +1,0 @@
-slug: foreign-object-handles
-who: claude-opus-5.5 (interop session)
-what: Python/R objects held on the far side behind a handle; refs as arguments; pool pinning
