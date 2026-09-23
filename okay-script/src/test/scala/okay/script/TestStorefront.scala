@@ -89,7 +89,11 @@ class TestStorefront extends munit.FunSuite:
     }
   }
 
-  test("the library answers no URL, and the site warms with every page compiling") {
+  // Live (flaky-to-integration, 2026-09-23): a 30 s budget on COMPILING
+  // every page is a wall-clock verdict — it timed out at load ~88 and
+  // passed alone; the fix of the assertion is backlog
+  // storefront-timeout-under-load
+  test("the library answers no URL, and the site warms with every page compiling".tag(new munit.Tag("Live"))) {
     withSite { site =>
       assertEquals(get(site, "/lib/cards")._1, 404)
       assertEquals(get(site, "/lib/domain")._1, 404)

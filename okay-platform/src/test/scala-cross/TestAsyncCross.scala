@@ -25,7 +25,10 @@ class TestAsyncCross extends munit.FunSuite {
     Async.runAsync(prog).map(v => assertEquals(v, 42))
   }
 
-  test("sleep then answer completes via runAsync without blocking the loop") {
+  // Live (flaky-to-integration, 2026-09-23): it ORDERS two clocks (a
+  // 10 ms timer before a 50 ms sleep), which a loaded box inverted once;
+  // the clock-free rewrite is backlog async-cross-sleep-timer-flake
+  test("sleep then answer completes via runAsync without blocking the loop".tag(new munit.Tag("Live"))) {
     @volatile var interleaved = false
     summon[Timer].after(10)(() => interleaved = true): Unit
     Async.runAsync(Async.sleep(50).map(_ => 42)).map: v =>

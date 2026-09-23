@@ -68,8 +68,16 @@ class PublisherTckTest extends munit.FunSuite {
     assert(cases.length > 30, s"expected the full TCK, found ${cases.length} cases")
   }
 
+  /** TCK cases judged by the GARBAGE COLLECTOR within a wall-clock
+   * timeout (§3.13: a WeakReference cleared after System.gc()) — they
+   * failed at load ~80 and pass alone, so they run in integrationTest
+   * (flaky-to-integration, 2026-09-23; backlog
+   * reactive-tck-gc-under-load) */
+  private val byTheCollector = Set("required_spec313_cancelMustMakeThePublisherEventuallyDropAllReferencesToTheSubscriber")
+
   cases.foreach: m =>
-    test(s"tck: ${m.getName}") {
+    val name = s"tck: ${m.getName}"
+    test(if byTheCollector(m.getName) then name.tag(new munit.Tag("Live")) else munit.TestOptions(name)) {
       val v = verification()
       v.setUp()
       try m.invoke(v)

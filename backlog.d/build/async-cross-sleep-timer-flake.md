@@ -15,3 +15,8 @@
       claim — "sleep does not block the loop" is provable without a
       second timer beating it.
       1. 2026-09-22, fused-out-of-core gate, Native, alone green.
+      MOVED to integrationTest 2026-09-23 (flaky-to-integration, operator:
+      "вынеси нестабильные тесты в интеграционные"): the test is `Live`-tagged,
+      so the default gate no longer depends on its timing. What stays OPEN is
+      the fix above — an assertion that does not need the clock — after which
+      the tag comes off.

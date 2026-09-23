@@ -34,7 +34,10 @@ class TestSupervisionShapes extends munit.FunSuite {
     val a = f
     (a, (System.nanoTime() - t0) / 1000000)
 
-  test("par supervises its ONE sibling: cancelled, not waited for") {
+  // Live (flaky-to-integration, 2026-09-23): the verdict is an ELAPSED
+  // time — 422 ms at load 48-72, green alone; asserting the cancellation
+  // itself instead is backlog supervision-shapes-timing-flake
+  test("par supervises its ONE sibling: cancelled, not waited for".tag(new munit.Tag("Live"))) {
     val (out, took) = ms:
       scala.util.Try(!.run(Async.run[(Int, Int), Pure](
         Async.par(async { Thread.sleep(sleep); 1 }, async[Int](throw boom)))))
