@@ -114,6 +114,54 @@ anything runs.
 writes instead, `{ "Case": {...} }`, for an HTTP API or a Scala.js
 export. The two differ because the codecs do.)
 
+## Inside okay, in the browser: no process at all
+
+In a browser there is no worker to start, and none is needed. okay itself
+runs there through Scala.js, and module `okay-ts` walks a TypeScript
+program in the SAME JavaScript runtime. The program is the same
+`done`/`perform`/`then` objects. Here it is as the JavaScript TypeScript
+compiles to:
+
+```javascript
+pairs: () => then(perform("choose", [1, 2]), (x) =>
+then(perform("choose", [10, 20]), (y) => done(x + y))),
+```
+
+```scala
+val answers = !.run(runChoice(Ts.run[Choose, Long](programs.pairs(), Ts.callbacks(choose))))
+```
+
+The continuations are plain JavaScript functions, so okay's `Choice`
+continues one twice here as well, and gets all four answers. A named
+operation is an okay callback run under the caller's handlers:
+
+```scala
+val priceOf = Ts.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+```
+
+In-process, values cross the way okay's JSON codec writes them, so their
+types are `Stubs.typescript`'s: a sum is `{ "Rect": { w, h } }`. A
+JavaScript exception is a `Left(Failure(name, message))`.
+
+## okay, called from TypeScript
+
+The other direction: `Ts.promise(program)` runs an okay `A ! Async` and
+hands TypeScript a `Promise` of its value. An `@JSExportTopLevel`
+function returning it is an okay program a TypeScript caller simply
+`await`s, and its type is again `Stubs.typescript`'s:
+
+```scala
+val program = okay.pure[Async, Totals](Totals("tea", 12.0, None))
+```
+
+## TypeScript libraries, used from okay
+
+To call an existing TypeScript library from okay on Scala.js, generate
+Scala.js facades from its `.d.ts` with ScalablyTyped (a separate sbt
+plugin, not part of okay). Then use the library from an okay program
+like any Scala.js API. This path is not built or tested here, so it is a
+pointer, not a promise.
+
 ## The limits, stated
 
 - **Callbacks in async code.** A callback is synchronous: the worker
@@ -123,7 +171,7 @@ export. The two differ because the codecs do.)
 - **Modules load at start.** They are imported once, when the worker
   starts. A callback's nested request is served synchronously, and an
   `import` is not.
-- **What is next.** TypeScript programs INSIDE okay on Scala.js, in the
-  browser with no process, is the next stage (specs/typescript.md).
+- **okay-js prints JavaScript, not TypeScript.** Its typed tree has no
+  type annotations yet (backlog polyglot-typescript).
 
 The design and the results: [specs/typescript.md](../specs/typescript.md).

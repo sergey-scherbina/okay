@@ -58,19 +58,19 @@ unchanged.
 A new module, okay-ts (Scala.js only), for TypeScript in the browser or
 on Node with no process in between.
 
-- [ ] `Ts.run[F, Out](program, callbacks)`: a TypeScript program built
+- [x] `Ts.run[F, Out](program, callbacks)`: a TypeScript program built
       from the same `done`/`perform`/`then` objects as the worker's
       library, walked by okay IN THE SAME JavaScript runtime. Each named
       operation is an okay callback (`Ts.callback[Arg, Res](name)(f)`) run
       under the caller's handlers. Continuations are JS functions, so a
       `Choice` handler continues one twice (multi-shot, in-process).
-- [ ] Values cross through okay's JSON codec (`JSON.stringify`/`parse`
+- [x] Values cross through okay's JSON codec (`JSON.stringify`/`parse`
       at the boundary), which is exactly the shape `Stubs.typescript`
       declares. A sum is `{ "Case": {...} }`. No cast: the walk reads the
       program through JSON and `js.Dynamic`.
-- [ ] A JavaScript exception in the program is a `Left(Failure(name,
+- [x] A JavaScript exception in the program is a `Left(Failure(name,
       message))`, not an escape.
-- [ ] Stage 3, okay called FROM TypeScript: `Ts.promise(program)` runs an
+- [x] Stage 3, okay called FROM TypeScript: `Ts.promise(program)` runs an
       `A ! Async` and hands TypeScript a `Promise` of its JSON value.
 
 ## Decisions
@@ -99,3 +99,15 @@ on Node with no process in between.
     its `type` field fails it.
   - Not checked with `tsc`: the worker itself. It needs `@types/node`,
     which is not installed; Node runs it, and the tests exercise it.
+
+- Stages 2 and 3 (ts-scalajs, 2026-09-23). The new module okay-ts
+  (Scala.js only) has 5 tests, run by Node through Scala.js in the
+  default gate: multi-shot `Choice` over a JS program (11, 21, 12, 22),
+  a Reader callback with values in JSON's shape, a sum as
+  `{ "Rect": ... }`, a JS `RangeError` and a non-program as `Left`s by
+  name, and `Ts.promise` resolving to the JSON value.
+  - Mutant: handing each continuation `null` instead of okay's answer
+    fails two tests.
+  - Found on the way: `JSON.stringify` is typed `String` but answers
+    `undefined` for `undefined`, so the match has to be over `Any`.
+    Matching over `String` warned that the other case was unreachable.
