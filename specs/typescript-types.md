@@ -177,3 +177,8 @@ Each stage is a lane; Results below record what each found.
     first assumed); and `tsc` needs `"type": "module"` in a
     `package.json` for top-level `await`, which Node had guessed from the
     syntax.
+  - The full matrix caught what the JVM run could not: the first cut split
+    the path with a look-behind regex, and Scala.js refuses look-behind
+    below ES2018. The same generator runs on JS for a browser-side
+    build, so it is a scan now, and the shape test runs on both
+    platforms.

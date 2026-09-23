@@ -59,6 +59,23 @@ object TsClient:
     }
     e.method.toString.toLowerCase + (if segs.isEmpty then "Root" else segs.mkString)
 
+  /** `/tasks/{id}` -> `/tasks/${encodeURIComponent(String(id))}`; a scan,
+   * not a look-behind regex, which Scala.js refuses below ES2018 */
+  private def templated(path: String): String =
+    val out = StringBuilder()
+    var i = 0
+    while i < path.length do
+      val open = path.indexOf('{', i)
+      val close = if open < 0 then -1 else path.indexOf('}', open)
+      if close < 0 then
+        out ++= path.substring(i)
+        i = path.length
+      else
+        out ++= path.substring(i, open)
+        out ++= "${encodeURIComponent(String(" + param(path.substring(open + 1, close)) + "))}"
+        i = close + 1
+    out.toString
+
   /** the client's source; its types are imported from `modelPath` */
   def client(router: Router, modelPath: String = "./model.ts"): String =
     val names = TsTypes.parse(model(router)).toOption.getOrElse(Vector.empty).map {
@@ -87,11 +104,7 @@ object TsClient:
              s"$key${if q.required then "" else "?"}: ${if q.repeated then s"$t[]" else t}"
            }
            Vector(s"query${if queries.forall(!_.required) then "?" else ""}: { ${fields.mkString("; ")} }"))
-      val path = "`" + e.described.path.split("(?=\\{)|(?<=\\})").map { part =>
-        if part.startsWith("{") && part.endsWith("}") then
-          "${encodeURIComponent(String(" + param(part.drop(1).dropRight(1)) + "))}"
-        else part
-      }.mkString + "`"
+      val path = "`" + templated(e.described.path) + "`"
       val q = if queries.isEmpty then "undefined" else "query"
       val b = if bodyT.isDefined then "body" else "undefined"
       val send = s"""send(o, "${e.method.toString.toUpperCase}", $path, $q, $b)"""
