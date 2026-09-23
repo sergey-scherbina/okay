@@ -1,6 +1,0 @@
-feature/optics-outside-policy 2026-09-23T07:41:26Z
-agent: claude-code
-heartbeat: 2026-09-23T07:41:26Z
-status: in-progress
-done-so-far: seat surveyed: okay-leads has no sources any more, the weighed incident lives in a private repo — the policy is built as a library over Schema/Json in okay-codec
-next: okay.codec.Policy (reified keys checked against the schema; touches = DESCRIBE, traversal/project/redact = RUN; law couples them); TestPolicy; specs/optics-outside.md stage 7; docs/optics.md; changelog
