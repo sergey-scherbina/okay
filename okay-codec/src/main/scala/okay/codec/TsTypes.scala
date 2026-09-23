@@ -218,6 +218,10 @@ object TsTypes:
 
   // ------------------------------------------------------------- Scala out
 
+  /** the names of the leaf aliases `Stubs.typescript` writes (`Int`, `Long`…):
+   * helpers of the generated file, not types of the model */
+  def leafAliases: Set[String] = leaves.keySet
+
   /** the aliases `Stubs.typescript` writes for Scala leaves */
   private val leaves = Map("Int" -> "Int", "Long" -> "Long", "Char" -> "Char",
     "BigIntDigits" -> "BigInt", "Base64" -> "Array[Byte]")
