@@ -1,6 +1,0 @@
-feature/direct-inline-bind-free 2026-09-23T00:26:57Z
-agent: claude-code
-heartbeat: 2026-09-23T00:26:57Z
-status: in-progress
-done-so-far: promoted from backlog
-next: lane first — freeHandNested (the Free block by hand, Free.flatMap at every bind) beside freeDirectNested; under 3% refutes; else the precise-typed val for Free blocks guarded by the two laws (ctxMonad carrier, rebuilt lambda); gate; land
