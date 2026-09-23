@@ -1,3 +1,0 @@
-slug: ts-npm
-who: claude-opus-5.5 (interop session)
-what: T9: okay-ts-npm, an ES-module npm package (run, CRDTs, channels as AsyncIterable) with its generated index.d.ts
