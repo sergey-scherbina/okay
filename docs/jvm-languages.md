@@ -287,6 +287,24 @@ Python and R are not JVM languages, and each runs in its own process. They
 get the same depth by a different road: typed calls, and callbacks into
 okay's effects by name. See [okay with Python and R](python-and-r.md).
 
+### Where each language names okay's effects
+
+okay's Scala programs carry their effects in their type, `A ! F`. How
+much of that reaches the other language differs:
+
+| language | in the language's own types | where the row is stated |
+|---|---|---|
+| Scala 3 | the whole row, `A ! (Reader % Long + State % Long)` | the type |
+| Scala 2 ([okay-scala2](scala2.md)) | the whole row, `Eff[State[S] with Writer[W], A]`; `Eff.run` takes only `Eff[Any, _]` | the type |
+| TypeScript | the operations and their signatures, `Prog<T, ShopOps>` / `effects<ShopOps>()`, generated from the Scala callbacks by `Ts.ops` ([details](typescript.md#a-programs-effects-in-its-type)) | the type, checked by tsc |
+| Frege | each operation's ANSWER, `perform :: Operation a -> Prog a`; `Prog a` has no row | `Frege.run[F, A]` in Scala, checked per operation at run time |
+| Clojure | nothing; a program is data | `Program.run[F, A]` in Scala, checked per operation at run time |
+| Haskell (GHC worker), Python, R | nothing; an operation is a name | the callbacks the Scala side offers, checked by name at run time |
+
+Frege has no type-level lists, so the typed answer is as far as it can
+go. For GHC a row-indexed `Prog` is possible and is in the backlog
+(hs-typed-effects).
+
 ### Bridging a language this guide does not cover
 
 The three bridges share one copy of everything that is not a matter of

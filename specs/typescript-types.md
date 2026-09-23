@@ -204,23 +204,23 @@ sku)` compiled whatever the name, and a missing handler was found at run time.
 okay's Scala side has always typed this (`A ! F`). T12 brings the row into
 TypeScript's types, the way TypeScript can hold one: a RECORD OF SIGNATURES.
 
-- [ ] `Ops` is `Record<string, (...args: any[]) => unknown>`, and
+- [x] `Ops` is `Record<string, (...args: any[]) => unknown>`, and
       `Prog<T, O extends Ops = Ops>` carries the operations it may perform in
       `name: keyof O & string`. The default `O` is the old, untyped program,
       so existing code compiles unchanged. A program over fewer operations
       fits a larger row, because the name union is covariant.
-- [ ] `effects<O>()` gives `perform`, `then`, `done` (and in the worker
+- [x] `effects<O>()` gives `perform`, `then`, `done` (and in the worker
       library `call`) typed by `O`. tsc refuses an operation `O` does not
       have, and arguments or an answer of the wrong type.
-- [ ] In `@okay/ts`, `effects<O>().run(program, handlers)` and `.durable`
+- [x] In `@okay/ts`, `effects<O>().run(program, handlers)` and `.durable`
       take `Handlers<O>`, one handler per operation, sync or a Promise. tsc
       refuses a run that leaves an operation unhandled.
-- [ ] `Stubs.typescriptOps(name, ops)` writes `O` from Scala: each
+- [x] `Stubs.typescriptOps(name, ops)` writes `O` from Scala: each
       operation's argument and answer Schemas become its signature.
       `Ts.callback`s carry their Schemas, so the Ops of a set of callbacks is
       generated, not written. This holds in okay-py's Ts (the worker) and in
       okay-ts (the browser).
-- [ ] (Live) The worker: a module typed by the generated Ops runs, and tsc
+- [x] (Live) The worker: a module typed by the generated Ops runs, and tsc
       refuses a wrong operation name and a wrong argument type. The npm
       package: a typed consumer runs, and tsc refuses an unknown operation
       and a missing handler.
@@ -488,3 +488,24 @@ TypeScript's types, the way TypeScript can hold one: a RECORD OF SIGNATURES.
     the affine changes nothing where nothing is. Over HTTP that read as a
     204 for a write that did not happen (the first end-to-end run said
     "accepted"), so LiveHttp answers 409 there.
+
+- T12 (ts-typed-effects, 2026-09-23).
+  - The worker library (`okay.ts`) and `@okay/ts` have `Ops`,
+    `Prog<T, O>` and `effects<O>()`. `@okay/ts` adds `Handlers<O>` for
+    `run`/`durable`.
+  - `Stubs.typescriptOps` writes the Ops. `Ts.ops` writes it in okay-py
+    and okay-ts from `Ts.callback`s, which now carry their Schemas
+    (`Callback.types`).
+  - TestTsTypedEffects (Live) covers the generated Ops text, a typed
+    module performing through okay's Reader in the worker, and tsc
+    refusing `prices_of` and a `number` for a `string`.
+    TestTsOneShape still passes unchanged: the default Ops keeps old
+    code compiling.
+  - `scripts/ts-npm-check.sh` adds a typed consumer that runs, and tsc
+    refusing an unknown operation and a `run` missing the `stock`
+    handler.
+  - Mutant: widening the worker's `call` to any name fails the tsc
+    test.
+  - A design finding: the typed combinator is `andThen`. A `then`
+    method on the effects object would make it a thenable, and an
+    `async` function returning it would have it "resolved" by `await`.

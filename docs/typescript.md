@@ -380,6 +380,19 @@ const quote = await run(
 );
 ```
 
+- **Effects in the type.** `effects<Ops>()` types a program's
+  operations. `run` then takes exactly one handler per operation, so a
+  missing handler is a compile error, not a run-time surprise:
+
+```typescript
+type ShopOps = { price: (sku: string) => number; stock: (sku: string) => number };
+const shop = effects<ShopOps>();
+```
+
+```typescript
+const quote = await shop.run(offer, { price: (sku) => (sku === "tea" ? 4.5 : 0), stock: async () => 12 });
+```
+
 - **Channels.** An okay channel is an `AsyncIterable`:
 
 ```typescript
@@ -560,6 +573,45 @@ The API is okay-py's, because the wire is. `Py.fn` makes a typed call,
 What the name in `call("price_of", ...)` is, and why a callback is a
 name rather than a function, is explained in
 [okay with Python and R](python-and-r.md#what-is-the-name-in-okaycallprice_of-x).
+
+### A program's effects, in its type
+
+`call("price_of", sku)` names an operation by a string: any name
+compiles, and a mistake shows only when the program runs. okay's Scala
+side types this as `A ! F`. TypeScript can hold the same row as a record
+of signatures, and `Ts.ops` writes that record from the callbacks you
+already declared in Scala:
+
+```scala
+  val priceOf = Ts.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+```
+
+`Ts.ops("ShopOps", Ts.callbacks(priceOf, discount))` is
+`export type ShopOps = { price_of: (a0: string) => number; discount: (a0: number) => number; }`.
+The module types its operations with it:
+
+```typescript
+const shop = effects<ShopOps>();
+
+export function total(order: Order): Totals {
+  const price: number = shop.call("price_of", order.sku);
+  return { sku: order.sku, amount: shop.call("discount", price * order.qty), note: order.gift };
+}
+```
+
+- **What tsc checks.** `shop.call("prices_of", …)` does not compile,
+  and neither does `shop.call("price_of", order.qty)`: the operation
+  takes a `string`. The answer is typed too, so `price` is a `number`
+  because the Scala callback answers a `Double`.
+- **Programs as data.** `shop.perform` builds a step of a program, and
+  `Prog<T, ShopOps>` carries in its type the operations it may perform.
+  A program over fewer operations fits a larger set, because the set of
+  names is a union and a smaller union is a subtype.
+- **Why `andThen`.** The typed combinator is `andThen`, not `then`. An
+  object with a `then` method is a thenable, and `await` would try to
+  resolve it.
+- **Old code.** Untyped `perform`/`call` still work: the default
+  operation set is "any name".
 
 ### A typed Scala facade for a TypeScript module
 
