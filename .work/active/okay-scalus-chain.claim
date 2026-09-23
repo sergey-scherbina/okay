@@ -1,0 +1,6 @@
+feature/okay-scalus-chain 2026-09-23T06:14:05Z
+agent: claude-code
+heartbeat: 2026-09-23T06:14:05Z
+status: in-progress
+done-so-far: N2N CDDL read (ouroboros-network a3d8017)
+next: module + scalus dep + real block fixture; then mux/handshake/chain-sync/block-fetch
