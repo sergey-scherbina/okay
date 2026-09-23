@@ -119,10 +119,39 @@ object !:
   inline def effect[F[+_], A](e: F[A]): A ! F = Freer.Op(e)   // the factory, index pinned at Unit
   // resume, next, ?, tailcall, widen, translate, relay, interpret, tracing: as today, over Freer.resume
 
-/** stage 2: an indexed program; ordinary effects inject DIAGONALLY,
- *  transitions only through typed smart constructors */
-type Prog[F[+_], A, S, R] = Freer[Lift[F], A, S, R]
-def effect[F[+_], A, R](e: F[A]): Prog[F, A, R, R] = Freer.Op(e)
+/** stage 2 (2026-09-23): an INDEXED program — the same Free tree
+ *  behind an opaque facade with two phantom indexes, `S` before and
+ *  `R` after. Ordinary programs enter DIAGONALLY (`diag`, at any
+ *  index, moving nothing); only a smart constructor may claim a move
+ *  (`Prog.transition`), and the module that writes one keeps it
+ *  private. Never matched, so the existential leak that refuted the
+ *  indexed enum (stage 1) cannot reach it. */
+opaque type Prog[F[+_], A, S, R] = Free[F, A]
+object Prog:
+  inline def diag[S, F[+_], A](p: A ! F): Prog[F, A, S, S]          // any program, index unmoved
+  inline def pure[F[+_], A, S](a: A): Prog[F, A, S, S]
+  inline def effect[F[+_], A, S](e: F[A]): Prog[F, A, S, S]
+  inline def transition[S, R, F[+_], A](p: A ! F): Prog[F, A, S, R]  // THE claim; a module's private tool
+  extension [F[+_], A, S, R](m: Prog[F, A, S, R])
+    inline def flatMap[B, T](f: A => Prog[F, B, R, T]): Prog[F, B, S, T]
+    inline def map[B](f: A => B): Prog[F, B, S, R]
+  extension [F[+_], A, S](m: Prog[F, A, S, S])
+    inline def free: A ! F                                            // unlift — DIAGONAL only
+
+/** the Delim half: the prompt stack in the index, as a lexical given
+ *  (the probe's shape, 4af08745, over the real machine) */
+object Delim.Stacked:   // spelled `Delim.Stacked` in Delim.scala
+  final class Stack[S0 <: Tuple] { type S = S0 }
+  final class In[R, S <: Tuple](val p: Prompt[R]) { given stack: Stack[p.type *: S] }
+  sealed trait Has[S <: Tuple, P]        // "p is on the stack" — the compile error's home
+  type Under[F[+_], A, S <: Tuple] = Prog[Delim + F, A, S, S]
+  def delimited[R, F[+_]](body: (s: In[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
+                         (using OneMachine[F], At): R ! F              // the root: installs AND runs
+  def reset[R, F[+_]](using st: Stack[?])(body: (s: In[R, st.S]) => Under[F, R, s.p.type *: st.S])
+                     (using At): Under[F, R, st.S]                     // nested: installs only
+  def shift[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], ev: Has[st.S, p.type])
+                        (f: (A => Under[F, R, st.S]) => Under[F, R, st.S])(using At): Under[F, A, st.S]
+  // shift0 / control / control0 / abort: the same signatures over their Delim twins
 ```
 
 Unchanged by this spec: `Control[M]` and its `Cont`/`Func` instances,
@@ -195,20 +224,40 @@ Stage 1 — `Free` on it:
       = pure(()).flatMap(_ => forever)` does not diverge at
       construction (no Pure-fusion in `Lift.flatMap`, ever).
 
-Stage 2 — the index as typestate, Delim first:
-- [ ] `Prog[F, A, S, R]` and the diagonal `effect[F, A, R]` factory
-      exist; `A ! F` is `Prog[F, A, Unit, Unit]`, so stage 1 code is
-      untouched.
-- [ ] Delim carries its prompt stack in the index: `push(p)` is
-      `Prog[Delim + F, R, P :: St, St]`-shaped, `shift(p)` requires `p`
-      in the stack, and `NoPrompt` (Delim.scala's thrown case) becomes
-      a compile error in a `compileErrors` test. TestDelim green with
-      no annotations inside for-comprehensions beyond what PState needs
-      today (none).
+Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09-23):
+- [ ] `Prog[F, A, S, R]` exists as an opaque facade over `Free[F, A]`
+      with `diag`/`pure`/`effect` at the diagonal, `flatMap` composing
+      indexes end to end, `map` keeping them, `free` unlifting a
+      DIAGONAL program only; `A ! F` is untouched (see Decisions: the
+      diagonal is a conversion, not a definition).
+- [ ] Delim carries its prompt stack in the index: `Delim.Stacked.
+      reset` installs `s.p.type` on the stack for its body, `shift(p)`
+      requires `Has[stack, p.type]`, and the three `NoPrompt` shapes
+      the probe named — a shift with NO reset, a shift to a FOREIGN
+      prompt of the same answer type, and a prompt that ESCAPES its
+      reset into a `var` and is shifted to afterwards — are
+      `compileErrors` in TestProg, with the message naming the stack.
+- [ ] The five positive shapes of the probe run through the REAL
+      machine and answer the shift/reset laws' values: bare, a
+      for-comprehension, an ordinary effect in head position, nesting
+      with a shift to the OUTER prompt, a reset as a step of a larger
+      program. TestDelim is untouched (the facade is additive).
 - [ ] The spec's own first caveat is a test: a `Throws` abort inside a
       block promising a transition drops the continuation and the
       transition does NOT happen — asserted, so nobody reads the type
       as a run-time guarantee.
+- [ ] One module protocol typed: okay-sql's transaction as a `Prog`
+      over any `Sql` (`Tx.begin: Idle -> Open`, `commit`/`rollback`:
+      `Open -> Idle`, `query`/`update`/`batch` at any index, `Tx.run`
+      accepting only `Idle -> Idle`) — the nested `begin` that
+      `PgSql.begin` refuses with an `IllegalStateException`, a `commit`
+      with no `begin`, and a program that ends inside a transaction
+      are `compileErrors`; a well-bracketed program runs against a
+      recording fake `Sql` in the order the type promised.
+- [ ] Zero bytes and zero time: the facade is an opaque alias and
+      every constructor is `inline`, so a `Prog` program IS the `Free`
+      tree it wraps — asserted structurally (`free` is identity; the
+      same nodes, `eq`) rather than benchmarked, since no node changes.
 
 ## Out of scope
 
@@ -229,6 +278,41 @@ Stage 2 — the index as typestate, Delim first:
 
 ## Decisions
 
+- **Stage 2 is an ADDITIVE facade, and `A ! F` is not redefined**
+  (2026-09-23). The interface once read "`A ! F` is `Prog[F, A, Unit,
+  Unit]`"; with `Prog` an opaque alias that cannot be — one type
+  cannot be both the alias and its own facade — and it need not be:
+  `Prog.diag` is an inline identity, so any program enters at any
+  index for nothing, and `free` leaves at the diagonal. The
+  PState/Delim policy (operator, 2026-09-01: additive where apt,
+  primary only where necessary) decides the rest: `Delim.reset`,
+  `shift` and their callers in okay-ui/okay-agent/okay-llm keep their
+  spelling; `Delim.Stacked` is the typed door beside them.
+- **The stack is a lexical GIVEN with a type member, exactly the
+  probe's shape** (4af08745) — not an inferred parameter (a
+  for-comprehension head has no expected type), not a curried
+  dependent context function (refused by the compiler), not a stack
+  carried through a non-curried one (crashes dotty). The escape case
+  falls out of the same design with no region system: after a
+  `reset` returns, the stack in force is the OUTER given, which has
+  no `p.type` in it, so a shift to the leaked prompt has no `Has`.
+  specs/delim-safety.md's region tag (`[S] => Prompted[R, S] ?=>`)
+  was the other road; it needs `S` in the program's type for the
+  tag to bind, and therefore on every `Delim` signature and the four
+  inline doors — the given stack costs one `import s.given` per
+  reset instead.
+- **`transition` is public and named as the claim it is.** A module
+  typing its protocol must make its own transitions, so the tool
+  cannot be `private[okay]`; the discipline is the module's — it
+  calls `transition` inside its private smart constructors and
+  exposes only those, which is how `Tx` in okay-sql is written. A
+  `transition` at a call site is the `asInstanceOf` of this design and
+  reviewed as one.
+- **`free` unlifts the diagonal only.** A `Prog[F, A, S, R]` with `S
+  != R` is a program that promises a move; letting it out as a plain
+  `A ! F` would run the move without the bracket that closes it
+  (`begin` without `commit`). A module's runner takes the closed shape
+  (`Tx.run: Idle -> Idle`) and unlifts inside.
 - **Enum with a closed `Op(g: G[A, S, R])`, not a sealed trait with
   an open leaf.** Chosen for exhaustiveness: every match in the
   library is checked. The wrapper's cost was the objection — `Op(g)`
