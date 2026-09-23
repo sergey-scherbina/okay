@@ -1,0 +1,6 @@
+feature/writer-fold-until-unboxed 2026-09-23T06:41:09Z
+agent: claude-code
+heartbeat: 2026-09-23T06:41:09Z
+status: in-progress
+done-so-far: sprint entry
+next: worktree; lanes; per-lane measure; decide; land
