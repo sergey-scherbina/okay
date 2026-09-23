@@ -42,26 +42,26 @@ row of the block. Operator, 2026-09-23: "widen несёт двойственну
 
 ## Behavior
 
-- [ ] every `!.widen` call site compiles unchanged, and the full
+- [x] every `!.widen` call site compiles unchanged, and the full
       family is green: the coercion produces the same told elements
       and the same answer as the walk on every shape (`Pure`, `Inject`,
       `Bind`, `Delay`, `Bind(Delay, f)`), asserted by a law over the
       two names on one program.
-- [ ] `!.widen` forces nothing: a program under `Free.delay` whose
+- [x] `!.widen` forces nothing: a program under `Free.delay` whose
       thunk counts is widened with the count at 0, and the count is 1
       after ONE run and 2 after two — the rerun law the eager head
       broke, now true by construction and pinned in core rather than
       only in okay-clojure/okay-java's stages.
-- [ ] `!.normalize` agrees with `!.widen` on every shape (the law
+- [x] `!.normalize` agrees with `!.widen` on every shape (the law
       above, both directions) and is what the old `widen` was, so the
       stage suites that pinned the deferred-head fix stay green
       through it too.
-- [ ] NUMBER OWED, a `through` over a widened pure stage (TestPipe's
+- [x] NUMBER OWED, a `through` over a widened pure stage (TestPipe's
       shape, 10 000 elements): `!.widen` (coercion) against
       `!.normalize` (the walk) against the stage at the row directly
       (the floor) — the coercion at the floor, the walk above it, with
       the count of nodes rebuilt per pull stated.
-- [ ] NUMBER OWED, the merge lanes: `MergeBenchmark.okaySourceMerge`
+- [x] NUMBER OWED, the merge lanes: `MergeBenchmark.okaySourceMerge`
       unchanged (it never used `!.widen`; `Writer.widen` stays), and the
       chunked merge (`ChunkFlushBenchmark.okayChunked`, whose
       `Stage.unchunk` is widened into the Async row by `!.widen`) equal
@@ -99,4 +99,42 @@ one that remains.
 
 ## Results
 
-(after the measurement)
+2026-09-23. `TestWidenSplit` (core, 2): the two names agree on six
+tree shapes including a 200-deep chain, and `widen` enters a deferred
+head 0 times at widen, 1 after one run, 2 after two — the rerun law
+by construction. `TestWidenDelay`, `TestPipe`, `TestStreamSource`,
+`TestGather` (okay-java), `TestTransducers` (okay-clojure) — the
+suites that pinned the deferred-head fix — unchanged, green.
+
+`compare/WidenBenchmark`, `through(Source.range 10k)(stage)` with a
+pure doubling stage joined to the Async row, measured on a box
+running sibling gates all day: three ALTERNATED rounds, `-f 1`, the
+instantaneous CPU recorded before and after every run, the rounds a
+sibling matrix hit (cpu% > 1300) discarded on the record
+(history `ws-*`):
+
+| lane | round 2 (quiet) | round 3 (quiet) | B/op |
+|---|---|---|---|
+| the stage at the row directly (floor) | 289.2 (min) | 307.8 ± 87, min 289.5 | 4 075 475 |
+| `!.widen` — the coercion | 290.6 ± 2.0 | 288.3 ± 10.9 | 4 075 481 |
+| `!.normalize` — the walk | 413.3 ± 6.7 | 415.7 ± 7.6 | 5 195 556 |
+
+The walk cost a widened stage **+43%** in time and **+112 B per
+element** — an `Inject` and a `flatMap` closure per operation,
+rebuilt as the stage ran; the coercion is the floor to the microsecond
+and to ±200 bytes in four megabytes. The count owed: one node
+rebuilt per operation per pull, zero now.
+
+The merge lanes: `okaySourceMerge` never used `!.widen` (its walk is
+`Writer.widen`, kept). The chunked merge, whose `Stage.unchunk` IS
+joined to the row by `!.widen`, read 203.7 ± 4.0 and 209.3 ± 29.3
+(minima 202.6 / 202.2) at k=16 against the 2026-09-20 record 224.6 —
+about 9% faster; merge-lane-variance says this lane swings, so the
+size carries that caveat and the sign rests on two agreeing minima
+that both beat the record.
+
+Operator's question answered: a row upcast is never legitimately a
+walk. The walk is a normalisation, worth its cost only where a
+rotation would otherwise be paid inside a contended region — and
+there it is `Writer.widen`, a different operation over the element
+type, under its own name.

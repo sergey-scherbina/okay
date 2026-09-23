@@ -1,65 +1,51 @@
 package okay
 
-import org.openjdk.jmh.annotations.{State as JmhState, *}
+import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 
 /**
- * free-row-variance: what is the PRIZE, before paying for it?
- *
- * `Source.merge` calls `Writer.widen` once per source, and widen
- * rebuilds every Free node of the walk — solely because `Free` is
- * invariant in its row (Effects.scala says so in as many words). A
- * spike confirmed `enum Free[+F[+_], A]` passes the variance check
- * and that the row subtyping then holds at concrete rows, which
- * would make those two calls disappear. It also confirmed the cost:
- * every tree walker that matches `Bind(Inject(e), k)` captures a
- * fresh row and needs re-typing by hand.
- *
- * So: measure the prize first. `widened` is the plain drain with ONE
- * widen pass over it; `plain` is the same drain without. The
- * difference per element is what covariance would remove per source.
+ * What `!.widen`'s walk cost a stage (widen-split): `through` over a
+ * pure doubling stage joined to an `Async` row three ways — the stage
+ * at the row directly (the floor), by the coercion `!.widen` is now,
+ * and by `!.normalize`, the walk it used to be, which rebuilds one
+ * node per operation as the stage runs. 10 000 elements, drained.
  */
-@JmhState(Scope.Thread)
+@State(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
-@Fork(1)
+@Fork(2)
 class WidenBenchmark {
 
-  @Param(Array("500", "2000"))
-  var n: Int = 500
+  val n = 10000L
+  type Row = Take % Long + (Writer % Long + Async)
+
+  /** the pure stage, TestPipe's shape */
+  def double: Stage[Long, Long, Unit] =
+    Stage.await[Long, Long].flatMap {
+      case Some(x) => Stage.tell[Long, Long](x * 2).flatMap(_ => double)
+      case None => pure(())
+    }
+
+  /** the same stage written at the Async row — the floor */
+  def doubleAt: Unit ! Row =
+    effect[Row, Option[Long]](Take.Await[Long]()).flatMap {
+      case Some(x) => effect[Row, Unit](Writer(x * 2)).flatMap(_ => doubleAt)
+      case None => pure(())
+    }
+
+  def src: Source[Long] = Source.range(0L, n)
 
   @Benchmark
-  def plain(): Long =
-    Source.of(LazyList.range(0L, n.toLong)).toLazyList.foldLeft(0L)(_ + _)
-
-  /** the same source with one widen pass — exactly what Source.merge
-   * pays per source, and exactly what a covariant row would delete */
-  @Benchmark
-  def widened(): Long =
-    val s: Unit ! (Writer % Long + Async) = Source.of(LazyList.range(0L, n.toLong))
-    Writer.widen[Long, Long | String, Unit, Async](s)
-      .toLazyList.foldLeft(0L)((acc, x) => acc + (x match { case l: Long => l; case _ => 0L }))
-
-  // ── the decisive pair: the same merge, with and without widen ──
-  // Source.merge's body, at ONE element type so the union collapses
-  // and the two widen calls are the ONLY difference between them.
-
-  private type S[W] = Unit ! (Writer % W + Async)
+  def throughAtRow: Long =
+    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(doubleAt))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 
   @Benchmark
-  def mergeWithWiden(): Long =
-    (Source.of(LazyList.range(0L, n.toLong)) merge Source.of(LazyList.range(n.toLong, 2L * n)))
-      .toLazyList.foldLeft(0L)(_ + _)
+  def throughWidened: Long =
+    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.widen[Unit, Take % Long + Writer % Long, Async](double)))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 
-  /** identical, minus the two Writer.widen passes */
   @Benchmark
-  def mergeNoWiden(): Long =
-    val a: S[Long] = Source.of(LazyList.range(0L, n.toLong))
-    val b: S[Long] = Source.of(LazyList.range(n.toLong, 2L * n))
-    val merged: Unit ! (Writer % Long + Async) =
-      okay.pure[Writer % Long + Async, Unit](()).flatMap: _ =>
-        Writer.of(Channel.merge[Long, S, Async, S, Async](a, b, 64))
-    merged.toLazyList.foldLeft(0L)(_ + _)
+  def throughNormalized: Long =
+    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.normalize[Unit, Take % Long + Writer % Long, Async](double)))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 }

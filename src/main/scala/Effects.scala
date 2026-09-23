@@ -388,37 +388,48 @@ object Effects {
    * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
   inline def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) = Once.once(p)
 
-  /** re-inject into a wider row: effect subsumption. Free is invariant
-   * in its signature, so widening walks the tree — one re-injected
-   * node per operation, deferred as it goes.
+  /**
+   * The same program in a wider row: effect subsumption, as a
+   * COERCION (widen-split, 2026-09-23). `Free` is invariant in its
+   * row by a measured choice (free-row-variance, 2026-09-03: the
+   * covariant `enum Free[+F[+_], A]` passes the variance check, and
+   * was not taken), so the type system cannot see that a program at
+   * `F` is one at `F + G`; `RowLift.into` says it once, by the erasure
+   * argument RowLift.scala states — an `Inject(e)` with `e: F[X]` IS a
+   * value of `(F + G)[X]`, since the row is a union. Nothing is
+   * forced and nothing is walked: a program whose state is made under
+   * `Free.delay` stays deferred until it runs, which is what
+   * windows-stage-rerun-loses-pane had to fix in the walk this used to
+   * be. The walk is `normalize`, below, under the name of what it
+   * does.
+   */
+  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = RowLift.into[A, F, F + G](p)
+
+  /**
+   * The WALK `widen` used to be: resume the head and rebuild the tree
+   * node by node into the wider row, one re-injected node per
+   * operation, deferred as it goes — a NORMALISATION rather than an
+   * upcast, and the two are told apart by name now (widen-split).
    *
-   * The invariance is a CHOICE, and measured (free-row-variance,
-   * 2026-09-03): `enum Free[+F[+_], A]` does pass the variance check
-   * — F occurs only covariantly — and the row subtyping then holds at
-   * concrete rows, which would delete this walk from every widening
-   * call site. It was not taken, because deleting the walk makes
-   * things SLOWER where it matters: the walk is also a NORMALIZATION,
-   * and `Source.merge` without it runs 5-7% slower (specs/writer-
-   * covariance.md), since the rotation it saves would otherwise be
-   * paid per pull inside the merge's contended region. An upcast free
-   * at the type level is not free operationally.
+   * When it pays: a rotation the walk does up front is one a runner
+   * would otherwise do per pull — which is why `Source.merge` keeps
+   * `Writer.widen`'s walk over its element type (measured,
+   * free-row-variance-widen-in-merge: 5.3% slower without it). No
+   * caller of THIS name is known; it is here so the walk keeps a
+   * name and its reason, not because anything wants it.
    *
    * A DEFERRED HEAD STAYS DEFERRED (windows-stage-rerun-loses-pane,
-   * 2026-09-23). The walk sees the head by resuming it, and `resume`
-   * forces a `Delay` — so a program whose state is made under
-   * `Free.delay` (`Gather.stage`, `Transducers.stage`) used to START
-   * at widen time, and the widened VALUE then held that start: run
-   * twice, the second run met the first run's state. The two deferred
-   * shapes are therefore rebuilt as deferred, and the walk begins
-   * only when the program runs. `RowLift.plus`/`at` are the no-walk
-   * road: one coercion, nothing forced, nothing normalised. */
-  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = p match
-    case Free.Delay(t) => Free.Delay(() => widen[A, F, G](t()))
-    case Bind(Free.Delay(t), f) => Free.defer(() => widen(t()))(x => widen[A, F, G](f(x)))
+   * 2026-09-23): `resume` forces a `Delay`, so the two deferred
+   * shapes are rebuilt as deferred and the walk begins only when the
+   * program runs.
+   */
+  def normalize[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = p match
+    case Free.Delay(t) => Free.Delay(() => normalize[A, F, G](t()))
+    case Bind(Free.Delay(t), f) => Free.defer(() => normalize(t()))(x => normalize[A, F, G](f(x)))
     case _ => (p.resume: @unchecked) match
       case Return(a) => Return(a)
       case Inject(e) => Inject(e)
-      case Bind(Inject(e), k) => Inject(e).flatMap(x => widen[A, F, G](k(x)))
+      case Bind(Inject(e), k) => Inject(e).flatMap(x => normalize[A, F, G](k(x)))
 
   /**
    * Interpret F into ANOTHER ROW rather than into a value.

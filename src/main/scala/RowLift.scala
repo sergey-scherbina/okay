@@ -79,8 +79,10 @@ object RowLift:
    * supplies the side condition — `at` by a witness, `plus` by
    * construction.
    *
-   * NOT a replacement for `!.widen`: on a streaming path the walk is
-   * also a normalisation, and removing it is measurably slower.
+   * `!.widen` IS this coercion since widen-split (2026-09-23). The
+   * walk that used to sit under that name is `!.normalize`; the walk
+   * a streaming path measurably needs is `Writer.widen`'s, over the
+   * element type, and that one stays a walk.
    */
   private inline def coerce[A, F[+_], R[+_]](p: A ! F): A ! R =
     p.asInstanceOf[A ! R]

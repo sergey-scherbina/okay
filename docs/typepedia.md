@@ -144,9 +144,13 @@ same material with the measurements attached.
   encoding cannot leak into inference).
 - **`!.relay`** — tail-resumptive handling; **`Effects.handle`** —
   abortive/multi-shot/forwarding; **`!.widen`** — effect-row
-  subsumption (Free is invariant in its ROW, so it walks the tree;
-  it is covariant in its ANSWER, so `Int ! F` is an `Any ! F` for
-  free — free-answer-variance).
+  subsumption as a COERCION in the ROW (`RowLift.into`, the one cast;
+  nothing forced, so a deferred head stays deferred — widen-split),
+  where `!` is covariant in its ANSWER by type (`Int ! F` is an
+  `Any ! F` for free — free-answer-variance); **`!.normalize`** — the
+  walk `widen` used to be, rebuilding the tree into the wider row,
+  kept under the name of what it does (`Writer.widen`, over the
+  element type, is the walk `Source.merge` measurably needs).
 
 - **`Handled[Row, R, A]`** and **`Stager[Row, R]`** (Staged.scala;
   specs/direct-staged.md, direct-stagers.md) — a staged block's

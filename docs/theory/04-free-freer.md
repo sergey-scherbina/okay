@@ -180,13 +180,18 @@ fix. `docs/benchmarks.md` §6 carries the full numbers.
 
 One more thing the sweep's frame makes visible, and it is a statement
 about free monads rather than about this library. `Free` is invariant
-in its signature, so widening a program into a larger row walks the
-tree and re-injects each operation. That looks like pure tax, and the
-type-level cure is available: `F` occurs only covariantly in the
-three cases, `enum Free[+F[+_], A]` passes the variance check, and
-the row subtyping then holds pointwise at concrete rows — the two
-`widen` calls in a merge would become coercions and the pass would
-disappear.
+in its signature, so the type system cannot see that a program at `F`
+is one at `F + G`; for years of this library `!.widen` answered that
+by WALKING the tree and re-injecting each operation. That looks like
+pure tax, and the type-level cure is available: `F` occurs only
+covariantly in the three cases, `enum Free[+F[+_], A]` passes the
+variance check, and the row subtyping then holds pointwise at
+concrete rows — the two `Writer.widen` calls in a merge would become
+coercions and the pass would disappear. (Since widen-split,
+2026-09-23, `!.widen` itself IS a coercion — `RowLift`'s one cast,
+sound by erasure, nothing forced — and the walk keeps the name
+`!.normalize`; what the paragraph below is about is `Writer.widen`,
+the element-type re-tell a merge still walks.)
 
 Measured, removing that pass makes the merge **slower** — 5–7% on
 2×2000 elements, bars non-overlapping across two runs. The reason is
