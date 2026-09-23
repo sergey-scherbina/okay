@@ -113,7 +113,12 @@ index above lists them all with one-line summaries.
   but an inline handler-passing program over `Control` (`Interpr`,
   specs/staged-effects.md) — and only when the program is static at
   the call site: on a loop-shaped program the fused `Free` walk wins
-  (specs/handler-fusion.md, stage B).
+  (specs/handler-fusion.md, stage B). The same rule reaches a `direct`
+  block: `Direct.staged(Stager.All[E, S, W, Err, A]()) { … }` compiles
+  each operation of Reader/State/Writer/Throws to its handler's arm at
+  compile time — 2.24x–2.56x over the same block as a Free program,
+  parity with the hand-written `Func` program
+  (docs/direct-style.md, Layer 2½; docs/benchmarks.md §22).
 - `!.relay` (Effects.scala) — tail-resumptive handling: the answer-polymorphic
   handler must resume exactly once, which keeps the loop tail-recursive.
   `Effects.handle` — general handlers (abort, forwarding), via foldCont.
@@ -202,6 +207,13 @@ inspect, ship — the inline shape is for speed.)
 - Writer programs, producers, generators (`generate`/`Put`: one unfold,
   three carriers — LazyList, Producer, Teller) are all streams; effect
   handlers forward the telling, so they are stream transformers.
+- `Gen[W]` (Gen.scala) — Python-style generators: a `yield` that
+  suspends until read, `for … yield` over a `Gen` with no macro, a
+  `generator[W] { … }` block in okay-direct with `Gen.emit`/`Gen.stop`
+  and `while`/recursion, `iterator` holding the continuation until the
+  next `next()`; the chain of `map`/`filter`/`take`/`flatMap`/`++` is
+  fused into the reader — a `map.filter.toList` pipeline reads under
+  the hand-written `Writer` road (docs/benchmarks.md §21).
 - `Take`/`pipe` (Pipe.scala) — coroutine pipelines: tell meets await
   one element at a time, no channel, no materialization; the consumer
   drives, a finite consumer ends an infinite producer.

@@ -569,27 +569,27 @@ same material with the measurements attached.
   and no time — the specialised walk reads 73 ± 11 against 80 ± 3 µs
   per 10k, inside the bars, because a `Bind`, a `Say`, a continuation
   and a `split` per element dwarf it.
-- **`Gen[W]`** (Gen.scala; specs/generators.md) — a Python-style
-  generator: a VALUE CLASS over `Unit ! (Writer % W + Stop)`, the
-  program that tells, with `Stop` for the early end. Element-wise
-  `map`/`flatMap`/`withFilter`/`take`/`takeWhile`/`drop`/`++`, so a
-  for-comprehension over a `Gen` is a generator with no macro; the
-  readers (`toList`, `first`, `find`, `exists`, `forall`, `foreach`,
-  `foldUntil`) are `FoldUntil` and stop the body where they have read
-  enough; `iterator` holds the continuation and applies it on the NEXT
-  `next()` (the Python law). `Gen.emit`/`stop`/`from`/`unfold`/`of`
-  build one; in okay-direct `generator[W] { … }` is a block where
-  `for … yield` emits. Non-memoising (`toLazyList` memoises). A value
-  class because an extension on the row alias cannot infer `W` and an
-  extension on an opaque lost to the package's `map` in lexical scope.
-  Its one field is a `Gen.Chain[W]` — a source program and an `Xf`
-  chain of stages (gen-chain-fusion): `map`/`filter`/`take`/
-  `takeWhile`/`drop` append a stage, the stopping readers walk the
-  source ONCE applying the stages per element (a transducer with its
-  state type as `St[S]`); `flatMap` and `zipWithIndex` are stages too
-  and `++` a `Cat` node, each read FROM the reader's state (an inner
-  `Stop` ends the whole generation); `program` materialises the chain
-  as walks for `iterator` and a block.
+- **`Gen[W]`** (Gen.scala; specs/generators.md, gen-chain-fusion.md) —
+  a Python-style generator. A VALUE CLASS whose one field is a
+  `Gen.Chain[W]`: a source program `Unit ! (Writer % W + Stop)` — the
+  program that tells, `Stop` the early end — and the stages to read it
+  through. `map`/`filter`/`withFilter`/`take`/`takeWhile`/`drop`/
+  `flatMap`/`zipWithIndex` append a stage and `++` a `Cat` node,
+  nothing walked; a for-comprehension over a `Gen` is a generator with
+  no macro. The readers (`toList`, `first`, `find`, `exists`,
+  `forall`, `foreach`, `foldUntil`) are `FoldUntil`: one walk of the
+  source, the stages applied per element inside `add` (a transducer
+  with the state it adds as `St[S]`), stopping the body where they
+  have read enough — a fused `take` is done at its n-th kept element;
+  an inner generator's `Stop` ends the whole generation. `iterator`
+  holds the continuation and applies it on the NEXT `next()` (the
+  Python law) over `program`, the chain materialised as walks; a
+  `generator[W] { … }` block (okay-direct) reads `program` too.
+  `Gen.emit`/`stop`/`from`/`unfold`/`of` build one. Non-memoising
+  (`toLazyList` memoises). A value class because an extension on the
+  row alias cannot infer `W` and an extension on an opaque lost to
+  the package's `map` in lexical scope; a `Chain` because the source's
+  element type is an existential a value class cannot name.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.

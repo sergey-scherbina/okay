@@ -5043,11 +5043,16 @@ clusters and shut them down.
 ## 21. Generators — what `Gen` costs over the program it wraps
 
 `Gen[W]` (specs/generators.md) is a value class over `Unit ! (Writer %
-W + Stop)`: `map` IS `Writer.map`, the readers ARE `FoldUntil` walks,
-`filter` is `splice`, `take` re-emits. The question generators-jmh
-asked is whether the wrapper and `splice` add a frame per element;
-`compare/GenBenchmark`, 10 000 Longs unfolded on both roads, answers
-it in two halves.
+W + Stop)`, the program that tells; since gen-chain-fusion its one
+field is a `Chain`: the source program and the stages
+(`map`/`filter`/`take`/`takeWhile`/`drop`/`flatMap`/`zipWithIndex`,
+`++` as a node) as DATA, applied per element inside a stopping
+reader's `add` — one walk of the source, nothing built between
+stages. `program` materialises the same chain as walks for the roads
+that need a program (`iterator`, a `generator` block). Four lanes in
+one day took the pipeline from three walks to one read;
+`compare/GenBenchmark`, 10 000 Longs unfolded on both roads, is where
+each step was priced.
 
 **How it was measured, because that is most of the story.** Three
 whole-matrix rounds on a box running sibling gates back to back came
@@ -5057,7 +5062,13 @@ only after 20 s with no sibling sbt or JMH fork and the box's
 instantaneous CPU under 200% (the 1-minute load average lags a gate by
 minutes and never bottoms out between two), and re-run when the box
 was busy at its end — `take` needed five tries. B/op is a `-prof gc`
-pass the same way. All rows in `src/jmh/history.tsv` as `gj-*`.
+pass the same way; it held to the byte across every contaminated
+round of every lane, which is why it is the column a loaded box can
+still be trusted on. Rows in `src/jmh/history.tsv` as `gj-*`
+(generators-jmh), `gf-*` (gen-filter-as-walk), `gcf-*`
+(gen-chain-fusion), `gfm-*` (gen-flatmap-fusion).
+
+**The wrapper is free** (generators-jmh):
 
 | lane | µs / 10k | B / elem |
 |---|---|---|
@@ -5066,38 +5077,97 @@ pass the same way. All rows in `src/jmh/history.tsv` as `gj-*`.
 | `Gen.unfold.iterator`, summed | 150.5 ± 7.3 | **191** |
 | the same program, `Writer.foldUntil(collecting)` | 157.3 ± 0.9 | 215 |
 | `Gen.unfold.toList` | 219.4 ± 4.7 | 239 |
-| `Writer.map` + a filtering `Writer.fold` step | 214.9 ± 1.4 | 272 |
-| infinite `Gen.unfold.take(10k).toList` | 252.3 ± 3.5 | 295 |
-| `Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList` | 338.7 ± 2.5 | 381 |
 
-**The value class adds no frame.** `Gen.iterator` allocates what
-`Writer.run` allocates, to the byte (191 vs 192 B/elem); `toList`'s
-48 B/elem over it is the `List` cons and the reverse. **`splice`
-does.** `filter` builds an `emit`/`empty` program and its `flatMap`
-per element: +109 B and +124 µs on 10k over the hand-written road,
-the one pipeline combinator that is not parity — filed as
-`gen-filter-as-walk` (backlog okay-core), closed by writing `filter`
-in `taking`'s shape. In between, `Gen.read` over `Writer.foldUntil` on
-the same program is +40% / +24 B/elem: the `Stop` arm in every
-`split` (a second `TypeableK` test per element, the
-`typeablek-instanceof` residual) and the non-inline walk's per-element
-closure. `take` re-emits: +15% / +56 B. Read a generator through
-`iterator`, `first`, `find` or `exists` when the answer is not a list;
-those stop where the answer is and pay the wrapper nothing.
+`Gen.iterator` allocates what `Writer.run` allocates, to the byte;
+`toList`'s 48 B/elem over it is the `List` cons and the reverse.
+`Gen.read` over `Writer.foldUntil` on the same program is +40% /
++24 B/elem: the `Stop` arm in every `split` and the non-inline walk's
+per-element closure — the price of the early end being a member of
+the row. Read a generator through `iterator`, `first`, `find` or
+`exists` when the answer is not a list; those stop where the answer
+is.
 
-**Follow-up, gen-filter-as-walk (2026-09-23).** `filter` written as a
-walk instead of a splice: `map.filter.toList` 341 → 284 µs (0.83),
-381 → 354 B/elem, two quiet alternated pairs, the unfiltered lanes
-byte-identical. A variant that recursed straight through a run of
-rejections (budget 64, then a `Delay`) allocated less (330 B/elem) and
-read 7% slower — kept out. What is left over the hand road (272) is
-the walk's `Bind` per kept and `Delay` per rejected element.
+**The pipeline, from three walks to one read** — the same
+`Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList`, and its hand road
+`Writer.map` + a filtering `Writer.fold` step at 214.9 µs / 272 B/elem:
 
-**Follow-up, gen-chain-fusion (2026-09-23).** The chain fused into the
-reader (stages as data, one walk of the source): `map.filter.toList`
-282 → **202 µs**, 354 → **231 B/elem** — under the hand road (215 /
-272), which still walks `Writer.map`; infinite `take(10k).toList`
-246 → 189 µs, 295 → 239 B/elem; the identity chain byte-identical.
-Two wrong first cuts, both caught by these rows: a delaying `program`
-def (+96 B/elem on the identity lane) and a boxed `(Int, S)` take
-state (+40 B/elem).
+| the chain as | µs / 10k | B / elem | lane |
+|---|---|---|---|
+| walks, `filter` a splice (an `emit`/`empty` program per element) | 338.7 | 381 | generators-jmh |
+| walks, `filter` a walk (the kept tell re-bound, the rejected one a deferred skip) | 283.9 | 354 | gen-filter-as-walk |
+| **stages fused into the reader** (one walk of the source) | **201.8** | **231** | gen-chain-fusion |
+
+Under the hand road on both columns, because the hand road still
+walks `Writer.map` and the fused chain walks nothing: `f` and `p` run
+inside `add`. The other stages the same way — infinite
+`take(10k).toList` 246 → 189 µs, 295 → 239 B/elem (the count is a
+`Counted` beside the reader's state, scalar-replaced: the bytes equal
+the plain read's); and the three that had stayed walks
+(gen-flatmap-fusion, bytes from the first alternated pair — the box
+carried sibling gates at load 85–200 that day, times await a quiet
+pair): `++` 287 → 239 B/elem (the plain read's exactly), `flatMap`
+495 → 407 (what is left is building the inner `Gen` per element, the
+API's own), `zipWithIndex` 311 → 215. The identity chain stayed
+byte-identical through all of it.
+
+**What the rows refused on the way**, each a believable idea until
+its row: a `filter` that recursed straight through a run of
+rejections before deferring (budget 64) allocated LESS — 330 B/elem —
+and read 7% SLOWER, the runner's trampoline beating a call chain
+through `split`'s closure; a `program` written as a def that always
+delays put a `Gen`, a `Chain` and a `Delay` per element under every
+walk's `emit(w).program`, +96 B/elem on the identity lane; a `(Int, S)`
+tuple as `take`'s state boxed the count, +40 B/elem and 1.19x the
+walk it replaced. The identity lane is where a wrapper's hidden
+per-element cost shows first; measure it in every round.
+
+## 22. Staged direct blocks — the handler known at the call site
+
+A `direct` block lowers to a `Free` tree and handlers walk it at run
+time. When the handlers are known where the block is written,
+`Direct.staged(stager) { … }` (specs/direct-staged.md,
+docs/direct-style.md Layer 2½) compiles each operation to its
+handler's arm — a `Stager`'s `inline match` on the operation as
+written — and the block runs as a function of its continuation with
+no tree and no `split`. okay-direct `StagedBenchmark`: a static 10-op
+block inside a 100-iteration loop, per-lane minima of two rounds × two
+forks, `-prof gc`; rows `ds-*`, `dst-*`, `dib-*`.
+
+| block | as a Free `direct` block, shipping runners | `Direct.staged` | the same program by hand |
+|---|---|---|---|
+| State + Writer (get/set/tell) | 16.8 µs / 164 928 B | **7.50 / 85 368** | 7.69 / 84 568 |
+| Reader + Throws (nine asks, a guarded raise) | 11.25 / 112 896 | **4.40 / 51 288** | 4.35 / 48 888 |
+
+2.24x and 2.56x over what a user has today, parity to 1% with the
+hand-written program (the +800 and +2 400 B are the block's hoisted
+vals). The stagers that ship (direct-stagers): `Stager.All[E, S, W,
+Err, A]` over Reader + State + Writer + Throws in one layout, a subrow
+through `Unit`/`Nothing` slots — priced at +2% / +5.6% B on the
+State+Writer block for two unused slots, the extra `env =>` level per
+arm, not the tuple — and the four singles with the tuple removed.
+
+**What it took to reach parity, in the order the rows found it**
+(direct-staged): the inliner's proxy val for an operation's argument
+defeats the inline match (put the rhs back); `val _ = m.!?` bound
+into a match into a `pure` (a discard binds straight: 203 328 →
+164 928 B on the FREE lane too); and the bind itself — `M.flatMap` on
+a val typed `Monad[F]` is the trait's virtual call, on the given's
+PRECISE type it is the `override inline` member the inliner reduces:
+152 568 → 85 368 B. **And what the rows refused**: the same precise
+bind on a plain Free block (direct-inline-bind-free) read 1.00 in
+time and 0.97 in bytes — the gap to a hand-written Free program
+(1.08x) is the deferred self-call, a thunk and a `Delay` per
+iteration for stack safety, not the virtual bind; reverted. A
+hand-written parity target written comfortably (a `def ask`, braced
+lambdas, named vals) read 2.2x SLOWER than the macro's own output and
+allocated 75% more — a ceiling is a ceiling only in the flat shape.
+
+**The derived test as a constant `instanceof`** (typeablek-instanceof):
+`derives Effect` used to build `ByClass(cls)`, a `Class.isInstance`
+through a field; now it emits, per signature, a class whose test is
+`x.isInstanceOf[F[?, …]]`. Two quiet alternated pairs, `tki-*`:
+`fusedSWr` 0.92, `relayForward` 0.91, `nestedSWr` 0.96 — every walker
+whose test runs under `split` per operation — and `inline4` 1.01, the
+flat-dispatch lane the residual had been NAMED on, where the chain of
+tests was one devirtualised call already. Two loud rounds at load 6–44
+had read `nestedSWr` 0.83 first; the quiet pair says 0.96.

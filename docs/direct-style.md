@@ -965,26 +965,22 @@ What is not here, on purpose: sending values INTO a generator
 generator is a `Source`; a body that must release a resource on an
 early stop is a lane of its own (specs/generators.md, Out of scope).
 
-**What it costs**, measured (generators-jmh, 10 000 Longs, per-lane
-gated JMH runs, `-prof gc`; specs/generators.md Results has the
-table): the wrapper is free — `gen.iterator` allocates what the
-underlying `Writer` program read by `Writer.run` allocates, 191
-against 192 bytes per element, 151 against 134 µs per 10k. `toList`
-adds the list (48 B/elem). `map` IS `Writer.map`. `filter` was
-`splice`, a small program per element, and a `map.filter.toList`
-pipeline read 339 µs / 381 B/elem against 215 / 272 for the same work
-hand-written over `Writer`; as a walk (gen-filter-as-walk) 283 / 354;
-and now the chain is FUSED into the reader (gen-chain-fusion): the
-stages are data, a stopping reader walks the source once applying
-them per element, and the same pipeline reads 202 µs / 231 B/elem —
+**What it costs**, measured (compare `GenBenchmark`, 10 000 Longs,
+quiet alternated pairs, `-prof gc`; docs/benchmarks.md §21 has the
+tables and the method): the wrapper is free — `gen.iterator`
+allocates what the underlying `Writer` program read by `Writer.run`
+allocates, 191 against 192 bytes per element; `toList` adds the list
+(48 B/elem). A chain is not walks: the stages are data and every
+stopping reader walks the source once, applying them per element, so
+`map(_ * 2).filter(_ % 3 == 0).toList` reads 202 µs / 231 B/elem
+against 215 / 272 for the same work hand-written over `Writer` —
 under the hand road, which still walks `Writer.map`. `take` fused is
-0.77 of the re-emitting walk; `flatMap`, `++` and `zipWithIndex` are
-fused the same way (gen-flatmap-fusion — an inner generator is read
-where the reader stands). `program` materialises a chain as the
-walks when a road needs a program (`iterator`, a block). Prefer
-`iterator`
-or `first`/`find`/`exists` when the answer is not a list; those read
-the generator through `FoldUntil` and stop where the answer is.
+0.77 of the walk it replaced; `flatMap`, `++` and `zipWithIndex` are
+fused the same way, an inner generator read where the reader stands
+(0.82, 0.83 and 0.69 of the walks in bytes). `program` materialises a
+chain as the walks when a road needs a program: `iterator` and a
+`generator` block. Prefer `iterator` or `first`/`find`/`exists` when
+the answer is not a list; those stop where the answer is.
 
 ## Loops and comprehensions, in full (direct-loops v2)
 

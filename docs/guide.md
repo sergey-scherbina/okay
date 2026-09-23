@@ -959,8 +959,14 @@ work; `!prog` performs a program in one glyph and involves no implicit
 conversion), auto-coloring can remove marks entirely behind explicit
 gates, a block may recurse on its own def a million deep because a
 self-call is deferred into the tree, and every refusal is a
-positioned compile error naming the workaround. The whole story,
-with the reasoning and the graveyard of refuted alternatives:
+positioned compile error naming the workaround. Two more doors on the
+same block: `Direct.staged(stager) { … }` compiles each operation to
+its handler's arm when the handlers are known at the call site
+(`Stager.All` for Reader/State/Writer/Throws; 2.24x–2.56x over the
+Free block, parity with the hand-written program), and
+`generator[W] { … }` makes `for … yield`, `Gen.emit` and `Gen.stop`
+a Python-style generator read lazily through `Gen` (§3). The whole
+story, with the reasoning and the graveyard of refuted alternatives:
 [direct-style.md](direct-style.md); the theory with the literature:
 [theory ch. 8](theory/08-direct-style.md).
 

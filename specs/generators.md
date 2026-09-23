@@ -123,16 +123,16 @@ multi-shot re-entry is sound (direct-loops' rule).
   `direct` block over the row, and a `Source` is the same thing plus
   `Async`. The class around it is a VALUE CLASS — no allocation — and
   exists for name resolution alone (Decisions).
-- **Element-wise operators are one walk** (`splice`: `relay`'s shape
-  with a program-valued answer): a told `w` is replaced by `f(w)`'s
-  tells, the continuation is called only when `f(w)` has been read
-  through, a `Stop` drops the continuation. `map` is `Writer.map`;
-  `flatMap`/`++` are `splice`; `filter` is a walk of its own
-  (`filtering`: the kept tell re-bound, the rejected one a deferred
-  skip — gen-filter-as-walk); `take` drops the continuation after the
-  n-th tell (the body runs EXACTLY to its n-th yield — checking `n`
-  before calling `k`, not after); `drop` defers each skipped step
-  (`Free.delay`) so a long skip is flat.
+- **Element-wise operators are STAGES, read as one walk**
+  (specs/gen-chain-fusion.md, after this lane): a stopping reader
+  walks the source once and applies the chain per element, so
+  `take(n)` is done at its n-th kept element and the body runs no
+  further. The walks this lane wrote (`splice`: `relay`'s shape with a
+  program-valued answer, the continuation called only when `f(w)` has
+  been read through, a `Stop` dropping it; `taking`, which drops the
+  continuation after the n-th tell; `filtering`; `dropping`, deferring
+  each skipped step so a long skip is flat) remain as `program` — the
+  chain materialised for `iterator` and a `generator` block.
 - **Readers are `FoldUntil`** (the sibling's): `done` asked before the
   first element and after each, a `Stop` ending the read as the
   body's end does. `toList`/`foreach` are never-done instances.

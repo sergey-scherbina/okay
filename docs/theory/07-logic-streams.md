@@ -225,8 +225,9 @@ sense \[[Hickey 2014](#ref-hickey-2014)\], a transformer of the
 reader, with the state each stage adds carried as a type member
 (`Xf.St[S]`: `take` wraps `(Int, S)`, `map` adds nothing) — and a
 stopping reader walks the source once, applying every stage inside
-`add`; `program` materialises the same chain as the walks when a road
-needs a program (specs/gen-chain-fusion.md).
+`add` — `flatMap` and `++` included, an inner generator read from
+where the reader stands; `program` materialises the same chain as the
+walks when a road needs a program (specs/gen-chain-fusion.md).
 
 ```scala
 enum Tree { case Leaf(v: Int); case Node(l: Tree, r: Tree) }
