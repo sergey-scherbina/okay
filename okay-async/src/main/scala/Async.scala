@@ -310,6 +310,13 @@ object Async {
           if !failed.getAndSet(true) then onFirstFailure(e)
           settle()
         case Right(_) => settle()
+      // A CHILD FORKED AFTER THE SCOPE FAILED is cancelled as it joins:
+      // `cancelAll` reaches only the kids it saw, and the body may still
+      // be forking (supervision-shapes-race, 2026-09-23 — such a child
+      // was never cancelled; a test waited 5 s for it). `cancelAll` sets
+      // `failed` BEFORE reading `kids`, and this reads `failed` AFTER
+      // joining `kids`, so one of the two always sees the other.
+      if failed.get() then f.cancel()
       f
 
     private def settle(): Unit =
@@ -327,7 +334,9 @@ object Async {
         // a child may have finished between the check and the set
         if live.get() == 0 then fireIdle()
 
-    private[okay] def cancelAll(): Unit = kids.get().foreach(_.cancel())
+    private[okay] def cancelAll(): Unit =
+      failed.set(true)
+      kids.get().foreach(_.cancel())
 
   /** @see [[Nursery]] */
   def supervised[A](body: Nursery ?=> A ! Async)(using S: Scheduler): A ! Async =
