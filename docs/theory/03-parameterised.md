@@ -52,6 +52,40 @@ whole effect machinery of chapter 5 — built on `/>`-valued handlers —
 rides on ordinary monadic code while the general three-parameter form
 stays available underneath.
 
+**Answer-type modification is not "the state effect's typing
+trick"; it is `shift`'s own typing, and state is only its most
+common tenant.** A one-line illustration that never mentions state
+at all — Asai's typed `printf` \[[Asai 2009](#ref-asai-2009)\], whose
+whole point since Danvy and Filinski's original paper
+\[[Danvy & Filinski 1990](#ref-danvy-1990)\] is that `shift` may answer with a
+DIFFERENT type than its own continuation returns, and here that
+difference is "one more expected argument":
+
+```scala
+def lit(s: String): Cont[Unit, String, String] = shift(k => s + k(()))
+def hole[T]: Cont[T, String, T => String] = shift(k => (t: T) => k(t))
+
+val fmt: Cont[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
+val asFunction: Int => String = fmt / (_ => "")
+// asFunction(7) == "Score: 7"
+```
+
+`hole`'s `shift` hands its continuation `k: T => String` straight to
+whoever supplies the argument — so the format's answer type is not
+`String`, it is `T => String`: one more arrow than a format with no
+holes has. That is the ENTIRE mechanism `PState.set` uses below to
+move a state's type; here what moves is "how many arguments this
+program still needs" instead. A second hole does not compose by
+nesting a further `flatMap` inside the first's continuation — `bind`
+requires whatever comes next to answer EXACTLY the first shift's own
+`S` (here, `String`), and a further hole answers `T => String`
+instead, so the two cannot nest this way. That is not a limitation of
+this illustration; it is why Asai's paper needed "three NEW
+solutions" for the general multi-argument case rather than one
+obvious one, and rebuilding one of them is outside what this chapter
+sets out to show (specs/atm-beyond-state-docs.md has the refuted
+attempt, kept as a `compileErrors` pin rather than prose).
+
 (An implementation footnote recorded at `Monad.scala:29`: the diagonal
 instance is a *named class with a public `P`*, not an anonymous
 `given … with`, because an `inline` method reaching a privately
@@ -80,6 +114,19 @@ recurring house pattern: the more general theory is present, and the
 specialized fast path exists *because a benchmark said so*, not
 instead of the theory.
 
+A THIRD instance carries the same index without touching `Cont` at
+all: `Prog[F, A, S, R]` (freer-base stage 2, specs/freer-base.md) is
+an opaque facade over the ordinary `Free[F, A]` tree with the SAME
+two phantom indices, checking a protocol written as smart
+constructors (`okay-sql`'s `Tx.begin: Idle -> Open`) at compile time
+for zero bytes and zero time — because the tree underneath carries no
+index at all, only the facade's TYPE does. Where `PState` earns its
+index by construction (`shift`'s own typing enforces it, even under
+an abort), `Prog`'s index is a claim its author makes once, in one
+named function (`Prog.transition`), and the compiler checks only what
+is BUILT FROM smart constructors that call it — the same trade every
+phantom-typed protocol makes, stated rather than glossed over.
+
 ## Why a paramonad at the foundation
 
 Chapter 2 ended with Filinski: delimited control expresses every
@@ -89,9 +136,11 @@ ability to change the answer type is either forbidden (losing
 expressiveness) or unchecked (losing safety). So Okay's tower has a
 paramonad at the bottom out of necessity, and Atkey's diagonal theorem
 is the ramp back down to the ordinary monads everything else is
-written in. One trait (`ParaMonad`), one theorem (the diagonal), two
-instances (`Cont`, `PState`) — the chapter is short because the design
-followed the paper closely enough that there is little else to say.
+written in. One trait (`ParaMonad`), one theorem (the diagonal), THREE
+instances (`Cont`'s answer-type modification, `PState`'s typestate,
+`Prog`'s phantom protocol on `Free`) — the chapter is short because
+the design followed the paper closely enough that there is little
+else to say.
 
 
 **The production consumer.** The two-state degenerate form of this
@@ -110,6 +159,11 @@ price/benefit analysis actually bought.
   contexts.* DIKU report 89/12, 1989.
 - <a id="ref-asai-2007"></a>Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
   continuations.](https://doi.org/10.1007/978-3-540-76637-7_16)* APLAS 2007.
+- <a id="ref-danvy-1990"></a>Olivier Danvy, Andrzej Filinski. *[Abstracting
+  control.](https://doi.org/10.1145/91556.91622)* LFP 1990.
+- <a id="ref-asai-2009"></a>Kenichi Asai. *[On typing delimited continuations: three new
+  solutions to the printf problem.](https://doi.org/10.1007/s10990-009-9049-5)*
+  Higher-Order and Symbolic Computation 22(3), 2009.
 
 ---
 
