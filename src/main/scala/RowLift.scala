@@ -150,3 +150,32 @@ object RowLift:
      * nothing left for a proof to establish.
      */
     inline def plus[R[+_]]: A ! (F + R) = coerce(p)
+
+    /**
+     * A BIND ACROSS ROWS (bind-in-row-union, 2026-09-23): the
+     * continuation may answer in ANOTHER row, and the result is the
+     * union of the two. `Free` is invariant in its row by a measured
+     * decision (free-row-variance, above), so `p.flatMap(f)` refuses
+     * an `f` whose row differs; what this adds is not a fourth cast
+     * but INFERENCE — the spelling it replaces,
+     *
+     *     p.plus[G].flatMap(x => f(x).plus[F])
+     *
+     * names both rows by hand at every call, while here `G` is read
+     * off `f`'s result and `F` off `p`. Both sides ride into `F + G`
+     * by construction (`plus`), so no witness is needed and no tree is
+     * walked: one `Bind` node, exactly what `flatMap` builds.
+     *
+     * Not `flatMap` itself, on purpose: `Free.flatMap` is the hottest
+     * path in the library and an overload taking a row-polymorphic
+     * continuation would put every lambda's typing through overload
+     * resolution; and a `for`-comprehension desugars to `flatMap` by
+     * name, so mixed rows in a `for` stay `.at[R]` on each generator —
+     * or a `direct` block, where marks widen with nothing written.
+     */
+    inline def bindIn[B, G[+_]](f: A => B ! G): B ! (F + G) =
+      coerce[A, F, F + G](p).flatMap(a => coerce[B, G, F + G](f(a)))
+
+    /** the same, the answer dropped: `p thenIn q` runs p, then q */
+    inline def thenIn[B, G[+_]](q: => B ! G): B ! (F + G) =
+      coerce[A, F, F + G](p).flatMap(_ => coerce[B, G, F + G](q))

@@ -707,3 +707,52 @@ Two smaller facts fell out and are worth keeping:
 - `derives Effect` (ClassTag-based) needs no covariance at all, so the
   one place that does need it is now the one place a signature can
   avoid declaring.
+
+## bind-in (2026-09-23): a bind across rows, the other row inferred
+
+rowlift left one thing to write by hand. `at` and `plus` move a
+PROGRAM into a wider row; a BIND whose continuation answers in
+another row still had to name both rows — `p.plus[G].flatMap(x =>
+f(x).plus[F])` — and the first draft of a core test this week wrote
+it with two `!.widen`s and three type arguments each, which is the
+sentence that made the operator ask ("не возражаю — делай").
+
+### Interface
+
+```scala
+extension [A, F[+_]](p: A ! F)
+  inline def bindIn[B, G[+_]](f: A => B ! G): B ! (F + G)   // G read off f, F off p
+  inline def thenIn[B, G[+_]](q: => B ! G): B ! (F + G)
+```
+
+### Behavior (`TestBindIn`, core)
+
+- [x] `Reader.ask[Int].bindIn(e => Writer.tell(s"$e"))` typechecks
+      with no type argument written, answers in `Reader % Int + Writer
+      % String`, and runs to the same answer and log as the spelling
+      with two `plus`es.
+- [x] a chain of three rows: `bindIn` twice lands in the union of all
+      three, and the effects run in order.
+- [x] the tree is the same tree: `bindIn` builds one `Bind` whose
+      continuation is `f` — no walk, no re-injection — checked by
+      stepping (`resume`) and by the operation count under a relay.
+- [x] `thenIn` runs both sides, in order, dropping the first answer.
+
+### The ergonomics questions, answered (the operator asked)
+
+1. **Primitive or spelling?** A spelling — two `plus` and a `flatMap`
+   — and the name is worth having for INFERENCE alone: the other row
+   is read off the lambda, which the two-`plus` form cannot do.
+2. **`for` over mixed rows?** No, and not by a `Monad` instance
+   either: `for` desugars to `flatMap` by NAME, and `Free.flatMap`
+   takes a continuation in the same row. Making `flatMap` itself
+   row-polymorphic — an overload with a `B ! G` continuation — would
+   put every lambda in the library through overload resolution on the
+   hottest path, for a gain a `direct` block already gives with
+   nothing written. Rejected; the two roads in a `for` are `.at[R]`
+   per generator, or a block.
+3. **When to reach for which** — one line in the guide beside
+   `plus`/`at`: inside a helper, `plus` (say only what you add);
+   several operations into one named row, `at`; a bind whose
+   continuation is in another row, `bindIn`; a whole block of mixed
+   rows, `direct`.
