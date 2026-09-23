@@ -1,0 +1,6 @@
+feature/scalus-flink 2026-09-23T11:41:38Z
+agent: claude-code
+heartbeat: 2026-09-23T11:41:38Z
+status: in-progress
+done-so-far: trigger met (mainnet Spark run cfd2fb13)
+next: Relays + CardanoTables.Table into okay-scalus; FlinkSchema in okay-flink; okay-scalus-flink FLIP-27 source
