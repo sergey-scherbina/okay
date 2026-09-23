@@ -1,3 +1,0 @@
-slug: ts-frontend-live
-who: claude-opus-5.5 (interop session)
-what: T11: typed Watched paths (Stubs.typescriptPaths), SSE+POST routes for a Watched, a typed TS client, <okay-live> element and a React hook
