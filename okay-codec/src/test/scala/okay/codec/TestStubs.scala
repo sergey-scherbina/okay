@@ -33,8 +33,10 @@ class TestStubs extends munit.FunSuite {
   test("TypeScript: the JSON codec's shapes — a sum externally tagged, null, digits for a BigInt") {
     assert(ts.contains("export type Shape =\n  | { Circle: Circle }\n  | { Rect: Rect };"), ts)
     assert(ts.contains("  note: string | null;"), ts)
-    assert(ts.contains("  total: string;"), ts)
-    assert(ts.contains("  id: number; // a Long: exact as a JS number only to 2^53"), ts)
+    assert(ts.contains("  total: BigIntDigits;"), ts)
+    assert(ts.contains("export type BigIntDigits = string;"), ts)
+    assert(ts.contains("  id: Long;"), ts)
+    assert(ts.contains("export type Long = number; // exact as a JS number only to 2^53"), ts)
     assert(ts.contains("export interface Node {\n  children: Tree[];\n}"), ts)
   }
 
