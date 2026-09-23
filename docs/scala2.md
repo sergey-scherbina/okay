@@ -1046,6 +1046,88 @@ which introduced `retry` and `orElse`. The commit is Dice, Shalev and
 Shavit's TL2, "Transactional Locking II" (DISC 2006,
 [doi:10.1007/11864219_14](https://doi.org/10.1007/11864219_14)).
 
+## 8m. Stores: cache, blob, documents
+
+Module `okay-scala2-stores`. Each store is built from Scala 2 with its
+own constructors, and its plain values (`Regime`, `Etag`, `Meta`,
+`Cond`, `PutResult`, the `Stats`) are used directly. The operations
+are programs, and three objects provide them: `Caches`, `Blobs`,
+`Documents`. The code below is copied from
+`okay-scala2/probe/src/test/scala/TestStoresFromScala2.scala`.
+
+A cache (okay-cache). `getOrLoad` is the read to use: on a miss ONE load
+per key runs, and a caller that asks meanwhile waits for it rather than
+loading again:
+
+```scala
+val cache = Cache.memory[String, Int](Regime.Invalidated, 100)
+val loads = new AtomicInteger
+val slowLoad = (k: String) => Async.sleep(20).map { _ => loads.incrementAndGet(); k.length }
+val prog = for {
+  a <- Async.fork(Caches.getOrLoad(cache, "hello")(slowLoad))
+  b <- Async.fork(Caches.getOrLoad(cache, "hello")(slowLoad))
+  x <- a.join
+  y <- b.join
+  cached <- Caches.get(cache, "hello")
+} yield (x, y, cached)
+assertEquals(Eff.runAsync(prog), (5, 5, Some(5)))
+assertEquals(loads.get, 1)
+```
+
+- `Caches.writeThrough(cache, k)(commit)` runs the write, THEN
+  invalidates `k`. The other order leaves a window in which a reader
+  loads the old value back into the cache.
+- Across nodes, a writer publishes the key with
+  `Invalidations.append(topic, key)` and every reader runs
+  `Caches.drain(topic, cache, keyOf, from)`, which answers the next
+  offset to drain from.
+
+A blob store (okay-blob): `Fs(root)` on a disk, `S3.wired(...)` for S3
+and anything that speaks its API. An absent key is a `Left` naming it,
+never an exception:
+
+```scala
+val blob = Fs(Files.createTempDirectory("okay-s2-blob"))
+val prog = for {
+  _ <- Blobs.putBytes(blob, "reports/a.txt", "alpha".getBytes)
+  _ <- Blobs.put(blob, "reports/b.txt", Source(ArraySeq.unsafeWrapArray("be".getBytes), ArraySeq.unsafeWrapArray("ta".getBytes)))
+  _ <- Blobs.putBytes(blob, "other/c.txt", "gamma".getBytes)
+  a <- Blobs.getBytes(blob, "reports/a.txt")
+  b <- Blobs.getBytes(blob, "reports/b.txt")
+  missing <- Blobs.getBytes(blob, "reports/none.txt")
+  keys <- Blobs.list(blob, "reports/").map(_.key).runCollect
+} yield (a.map(new String(_)), b.map(new String(_)), missing.isLeft, keys)
+```
+
+- `Blobs.put` takes the bytes as a `Source` of chunks and
+  `Blobs.stream` gives them back the same way, so an object larger
+  than memory never has to be in memory. A chunk is
+  `ArraySeq[Byte]` (okay's `Chunk`, whose alias Scala 2 cannot see).
+- `Blobs.backup(root, blob)` copies okay-persist's closed segments to
+  the blob, and `Blobs.restore(blob, root)` brings them back.
+
+Documents (okay-docs): `Documents.onTopic[A](topic, indexes)` keeps them
+on an okay-persist topic, given a `Schema[A]` (section 8a). Every write
+takes a condition, and a refused write says what is there now:
+
+```scala
+val people = Documents.onTopic[Person](Persist.topic(new MemoryStore, "people"), Map("city" -> ((p: Person) => p.city)))
+val prog = for {
+  first <- Documents.put(people, "ada", Person("Ada", "London"), Cond.IfAbsent)
+  again <- Documents.put(people, "ada", Person("Ada", "Paris"), Cond.IfAbsent)
+  _ <- Documents.put(people, "alan", Person("Alan", "London"))
+  found <- Documents.get(people, "ada")
+  londoners <- Documents.query(people, "city", "London").map(_._1).runCollect
+} yield (first, again, found.map(_.value), londoners.sorted)
+```
+
+- `Cond.Always`, `Cond.IfAbsent`, `Cond.IfVersion(v)`: compare-and-set
+  on the version `get` returned. The answer is `PutResult.Applied(version)`
+  or `PutResult.Stale(current)`.
+- `onTopic` is a factory rather than `new TopicDocs(...)`, because
+  `new` from Scala 2 makes the TASTy reader read the whole class
+  (section 10).
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -1083,7 +1165,7 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 | ``Expected `<project> / scalaVersion` to be 3.9.0 or later, but found 2.13.18`` | sbt found `scala-library:3.9.0` among the dependencies (SIP-51) | exclude it on the dependency (section 1); do NOT reach for `allowUnsafeScalaLibUpgrade`, which makes 3.9 the compile stdlib and gives the second error of this table |
 | `type mismatch` ... `required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]` (for a program over `State[Int] with Writer[String]` passed straight to `Eff.run(State.run(1)(...))`) | an effect is left unhandled (here `Writer`); scalac reports it at the handler, not at the missing one | handle it before `Eff.run` |
 | `a type was inferred to be Any` at `X.handle(...)` | `handle` used for the last effect | use `X.run(...)` (section 5) |
-| `Unsupported Scala 3 union in bounds of type +; found in object okay.Effects$package` (at your `package` line) | code names a Scala 3 class whose CONSTRUCTOR mentions an effect row, such as `okay.http.Response` | use the `okay.scala2` type (`okay.scala2.Response`) |
+| `Unsupported Scala 3 union in bounds of type +; found in object okay.Effects$package` (at your `package` line) | code names a Scala 3 class whose CONSTRUCTOR mentions an effect row, such as `okay.http.Response`; or code writes `new` for a class whose METHODS do, such as `new okay.docs.TopicDocs[A](topic)`, because `new` makes the reader complete the whole class | use the `okay.scala2` type (`okay.scala2.Response`), or its factory (`Documents.onTopic`) — a factory that answers the class is fine: `Fs(root)` works where `new TopicDocs` does not |
 | `Unsupported Scala 3 generic tuple type scala.Tuple` | code names okay-http's `Route` | route by pattern matching (section 8b) |
 | `type Chunk is not a member of package okay`, or `not found: type Schema` for an alias you imported (any Scala 3 top-level alias) | Scala 3 top-level aliases are invisible from Scala 2 | name the type the alias stands for: `ArraySeq[Byte]` for `Chunk[Byte]`, `okay.codec.Schema` for `Schema` |
 | `type mismatch; found: Source[Event.Pressed]; required: Source[Event]` | from Scala 2 a Scala 3 enum case is typed as the case | write the type argument: `Source[Event](...)` |

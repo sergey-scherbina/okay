@@ -962,6 +962,18 @@ lazy val okayScala2Stm = (project in file("okay-scala2-stm"))
     name := "okay-scala2-stm",
   )
 
+/**
+ * okay-cache, okay-blob and okay-docs for Scala 2.13
+ * (specs/scala2-facade.md, stage 15.4): `Caches`, `Blobs`, `Documents`,
+ * the stores' operations over Eff and Source. The stores themselves are
+ * built with their own constructors.
+ */
+lazy val okayScala2Stores = (project in file("okay-scala2-stores"))
+  .dependsOn(okayScala2, okayCache.jvm, okayBlob.jvm, okayDocs.jvm)
+  .settings(
+    name := "okay-scala2-stores",
+  )
+
 /** Scala 3's stdlib for a Scala 2.13 project: resolved here and
  * placed BEHIND 2.13's by hand — see okay-scala2-probe */
 lazy val Scala3Stdlib = config("scala3Stdlib").hide
@@ -998,7 +1010,7 @@ lazy val Scala3Stdlib = config("scala3Stdlib").hide
  * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
  */
 lazy val okayScala2Probe = (project in file("okay-scala2/probe"))
-  .dependsOn(okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm)
+  .dependsOn(okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores)
   .settings(
     name := "okay-scala2-probe",
     publish / skip := true,
@@ -2821,7 +2833,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
-    okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
+    okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,

@@ -397,6 +397,10 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 
 **Transactions** (module `okay-scala2-stm`) — `Stm.ref[A](init: A): TRef[A]`, `Stm.atomically[A](tx: Eff[Tx, A]): Eff[Async, A]`; `Tx.read[A](r: TRef[A]): Eff[Tx, A]`, `Tx.write(r, a): Eff[Tx, Unit]`, `Tx.modify[A, B](r)(f: A => (A, B)): Eff[Tx, B]`, `Tx.update(r)(f: A => A): Eff[Tx, Unit]`, `Tx.retry[A]`, `Tx.check(cond: Boolean): Eff[Tx, Unit]`, `Tx.orElse[A](a, b): Eff[Tx, A]`.
 
+**Stores** (module `okay-scala2-stores`) — `Caches.get(c: Cache[K, V], k): Eff[Async, Option[V]]`, `Caches.put(c, k, v)`, `Caches.invalidate(c, k)`, `Caches.getOrLoad(c, k)(load: K => Eff[Async, V]): Eff[Async, V]`, `Caches.writeThrough(c, k)(commit: Eff[Async, A]): Eff[Async, A]`, `Caches.drain(topic, c, keyOf: String => K, from: Long, max: Int = 512): Eff[Async, Long]`, `Caches.latest(v: View[K, V], k)`, `Caches.refresh(v)`;
+`Blobs.put(b: Blob, key, bytes: Source[ArraySeq[Byte]]): Eff[Async, Etag]`, `Blobs.putBytes(b, key, bytes: Array[Byte])`, `Blobs.putFile(b, key, path: Path, chunk: Int = 65536)`, `Blobs.getBytes(b, key, range: Option[(Long, Long)] = None): Eff[Async, Either[String, Array[Byte]]]`, `Blobs.stream(b, key, range = None): Source[ArraySeq[Byte]]`, `Blobs.head(b, key): Eff[Async, Option[Meta]]`, `Blobs.list(b, prefix): Source[Meta]`, `Blobs.delete(b, key)`, `Blobs.backup(root: Path, b, prefix = "persist", active = true): Eff[Async, Vector[String]]`, `Blobs.restore(b, root, prefix = "persist")`;
+`Documents.onTopic[A](topic, indexes: Map[String, A => String] = Map.empty)(implicit Schema[A]): Docs[A]`, `Documents.get(d: Docs[A], id): Eff[Async, Option[Docs.Versioned[A]]]`, `Documents.put(d, id, a, cond: Cond = Cond.Always): Eff[Async, PutResult]`, `Documents.delete(d, id, cond = Cond.Always)`, `Documents.query(d, field, equals, max: Int = 256): Source[(String, A)]`.
+
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
 `runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,

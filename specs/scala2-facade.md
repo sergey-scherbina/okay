@@ -780,3 +780,17 @@ metaprogramming.
   Pinned by a `compileErrors` test. 5 tests: a transfer, 1000
   increments from 8 fibers, a retry woken by another fiber, and
   `orElse` discarding the first branch's writes.
+- STAGE 15.4 (2026-09-23). okay-scala2-stores: `Caches`, `Blobs`,
+  `Documents`. Every store is BUILT from Scala 2 with its own
+  constructor, and every OPERATION answers a program, so the facade is
+  the operations only. A new reader fact: `new TopicDocs[A](topic)`
+  failed with "Unsupported Scala 3 union in bounds of type +" although
+  the constructor mentions no row. `new` makes the reader complete the
+  whole class, and `query`'s type is a `Source`. A method that ANSWERS
+  such a class is fine (`Fs(root)` works), so the fix is a factory,
+  `Documents.onTopic`, found by bisecting the test file (the cache
+  tests compiled, the documents test alone did not). 6 tests:
+  single-flight `getOrLoad` under two fibers, write-through ordering,
+  cross-node `drain`, blob put/get/list/stream/head/delete, `putFile`
+  with a persist backup and restore, and conditional document writes
+  with an indexed query.
