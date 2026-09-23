@@ -56,6 +56,20 @@ from its data, picks the first requirement the `Policy` allows, asks the
 allows nothing or the payer declines, the 402 is the answer. `call` is
 `Session.call` with payment: the tool's text, or `error: <code> <why>`.
 
+**For an agent.** `paying.handler` (or `paying.interpret` where
+nothing may block) is the agent's `Tool` handler, so an agent program
+does not change by one character when its tools cost money: the price
+is met outside the program, by the policy, the consent and the payer.
+A payment refused — over budget, a person's no — reaches the model as
+the tool's answer, `error: 402 …`, which it can read and work around.
+
+```scala
+// the AGENT: at most 0.05 USDC over the whole conversation, asked of nobody
+val budget = Consent.budget(BigInt(50000), Network.base, usdcOnBase)
+val tools: Handler[Tool] = X402Mcp.Paying(session, Policy.upTo(BigInt(10000), Set(Network.base), Set(usdcOnBase)), payer, budget).handler
+// ... Agent.converse(task, specs) with `tools` in scope; budget.remaining is what is left
+```
+
 **The hook, for other uses.** `Server.Around` is plain okay-mcp and
 knows nothing of money: `apply(request)` returns `Left(reply)` to answer
 now, or `Right(Pass(request, leave))` to go on, where `leave` turns the
@@ -69,7 +83,7 @@ admitted payment — is exactly what the second half needs.
 |---|---|
 | `X402Mcp.gate(price, facilitator, settled)` | the server side, a `Server.Around[Async]` |
 | `X402Mcp.byTool(accepts, description)` | price `tools/call` by name |
-| `X402Mcp.Paying(session, policy, payer)` | `requestRpc`, `call` — the paying client |
+| `X402Mcp.Paying(session, policy, payer, consent)` | `requestRpc`, `call`, and `handler` / `interpret` — the paying client, and the agent's `Tool` handler |
 | `X402Mcp.paymentRequired(id, required, settlement)` | the 402 refusal as the transport prints it |
 | `X402Mcp.receipt(result)`, `meta`, `withMeta` | reading and writing `_meta` |
 | `Server.Around`, `Around.Pass`, `Around.none` (okay-mcp) | the hook around every request |
@@ -82,8 +96,9 @@ admitted payment — is exactly what the second half needs.
 byte for byte. `TestX402McpGate` runs every road of the gate as a pure
 stage (unpaid, paid, replayed, forged, malformed, a failing tool, a
 failed settlement). `TestX402McpSession` puts a paying client and a
-gated server on an in-memory wire (JVM). The snippet above is run by
-`TestDocExamplesX402Mcp`.
+gated server on an in-memory wire (JVM), and `TestX402McpAgent` runs
+the same agent program against a free tool table and a paid server.
+The snippets above are run by `TestDocExamplesX402Mcp`.
 
 ## Gotchas
 

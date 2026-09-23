@@ -1,7 +1,8 @@
 package okay.x402.mcp
 
 import okay.*
-import okay.agent.ToolCall
+import okay.given
+import okay.agent.{Tool, ToolCall}
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.mcp.{Mcp, Rpc, Server, Session}
@@ -113,23 +114,36 @@ object X402Mcp:
   /**
    * The client side: a `Session` that pays. A request refused with 402
    * and a readable `PaymentRequired` is paid ONCE — the first accepted
-   * requirement the policy allows, signed by the payer — and repeated
-   * with the payment in `_meta`. Anything else, including a policy that
-   * allows nothing or a payer that declines, is the answer as it came.
+   * requirement the policy allows, if the `Consent` approves, signed by
+   * the payer — and repeated with the payment in `_meta`. Anything else,
+   * including a policy that allows nothing, a consent that refuses or a
+   * payer that declines, is the answer as it came. A repeat whose answer
+   * carries no successful receipt was not paid, and the consent is told.
    */
-  final class Paying(session: Session, policy: Policy, payer: Payer):
+  final class Paying(session: Session, policy: Policy, payer: Payer, consent: Consent = Consent.always):
     def requestRpc(method: String, params: Json): Session.Outcome ! Async =
       session.requestRpc(method, params).flatMap {
         case first @ Session.Outcome.Refused(Rpc.Failed(_, PaymentRequiredCode, _, Some(data))) =>
           X402.paymentRequired(data).toOption
             .flatMap(q => q.accepts.find(policy.accept).map(q -> _)) match
             case None => pure(first)
-            case Some((q, choice)) => payer.pay(choice, q.resource).flatMap {
-              case None => pure(first)
-              case Some(p) => session.requestRpc(method, withMeta(params, Payment, X402.toJson(p)))
+            case Some((q, choice)) => consent.approve(choice, q.resource).flatMap {
+              case false => pure(first)
+              case true => payer.pay(choice, q.resource).flatMap {
+                case None => consent.returned(choice); pure(first)
+                case Some(p) =>
+                  session.requestRpc(method, withMeta(params, Payment, X402.toJson(p))).map { again =>
+                    if !paid(again) then consent.returned(choice)
+                    again
+                  }
+              }
             }
         case other => pure(other)
       }
+
+    private def paid(o: Session.Outcome): Boolean = o match
+      case Session.Outcome.Answered(result) => receipt(result).exists(_.success)
+      case _ => false
 
     /** `Session.call`, paying: the tool's text, or `error: <why>` */
     def call(c: ToolCall): String ! Async =
@@ -138,3 +152,20 @@ object X402Mcp:
         case Session.Outcome.Refused(f) => s"error: ${f.code} ${f.message}"
         case Session.Outcome.Ended => "error: the MCP link ended"
       }
+
+    /**
+     * The paying session AS the agent's `Tool` handler, the two forms
+     * `Session` has: an agent program does not change by one character
+     * when its tools cost money — the price is met by the policy, the
+     * consent and the payer, all of them outside the program, and a
+     * refusal reaches the model as the `error: 402 …` answer it can read.
+     */
+    def interpret: Tool ==> ([X] =>> X ! Async) =
+      [X] => (t: Tool[X]) => t match
+        // Tool is covariant, so matching `Call` gives String <: X — an
+        // upcast, not an assertion
+        case Tool.Call(c) => call(c).map(s => (s: X))
+
+    def handler(using CanBlock): Handler[Tool] = new:
+      def handle[A](e: Tool[A]): A = e match
+        case Tool.Call(c) => call(c).runWith

@@ -725,6 +725,10 @@ same material with the measurements attached.
   `params._meta`, and a DELIVERED answer (no `isError`) is settled with
   the receipt in `result._meta` — `Charge`'s rules, shared with `Gate`.
   `X402Mcp.Paying` is the client half, a `Session` that pays once.
+- **`Consent`** (okay-x402) — the decision before an x402 payment, with
+  the chosen price and resource in hand: `ask` (a person, a model),
+  `budget` (a running total, reserved atomically and given back when a
+  payment is not taken), `a and b`. Beside `Policy`, which only picks.
 - **`Server.Around`** (okay-mcp) — a hook around every request of
   `serveIn`: answer now, or pass on with a `leave` that sees the reply.
   One closure, not a before/after pair, because what the first half

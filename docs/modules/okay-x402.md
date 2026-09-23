@@ -53,6 +53,18 @@ enter okay-x402: the `Payer` is yours (a wallet, a KMS, a hardware
 signer). When the policy allows nothing, or the payer declines, the
 `402` is the answer.
 
+**Consent: the decision with the price in hand.** `Policy` says which
+requirements are acceptable at all; a `Consent` is asked about the ONE
+the client chose, with the resource, before anything is signed — the
+place for a person, a model or a budget. `Consent.budget(total,
+network, asset)` is a running total over every payment: an approval
+reserves its amount atomically, and a payment that was not taken
+(refused, declined by the payer, or answered without a successful
+`PAYMENT-RESPONSE`) gives it back. `Consent.ask(f)` asks someone;
+`budget and ask(f)` needs both, and the second's no returns the first's
+reservation. `Paying(http, policy, payer, consent)` takes it; the
+default is `Consent.always`.
+
 **The facilitator.** `HttpFacilitator(http, base)` speaks x402's
 facilitator API — `POST /verify` and `POST /settle` with
 `{paymentPayload, paymentRequirements}`, `GET /supported`. A transport
@@ -76,7 +88,8 @@ field is OMITTED, as the protocol does.
 | `Gate(price, facilitator, settled)(route)` | a priced okay-http route |
 | `Facilitator`, `HttpFacilitator(http, base)` | verify, settle, supported |
 | `Settled` | used payments; `Settled.inMemory()` |
-| `Paying(http, policy, payer)`, `Policy`, `Payer` | the paying client |
+| `Paying(http, policy, payer, consent)`, `Policy`, `Payer` | the paying client |
+| `Consent`, `Consent.always` / `ask` / `budget`, `and`, `Budget.remaining` | the decision before paying |
 | `Charge.admit`, `settle`, `release` | the payment rules without a transport — `Gate` and okay-x402-mcp both run them |
 
 ## Verification

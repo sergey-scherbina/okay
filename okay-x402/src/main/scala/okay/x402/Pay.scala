@@ -154,6 +154,70 @@ object Policy:
   def upTo(max: BigInt, networks: Set[Network], assets: Set[String]): Policy =
     Policy(r => r.amount <= max && networks(r.network) && assets.exists(_.equalsIgnoreCase(r.asset)))
 
+/**
+ * The decision taken BEFORE a payment, with the price in hand (specs/x402.md
+ * §3: "a tool call that hits 402 surfaces the price to the agent's policy
+ * before paying"). `Policy` says which requirements are acceptable at all
+ * and is a predicate; a `Consent` is asked about the ONE chosen, may be a
+ * person or a budget or a model, and is told when a payment it approved
+ * was NOT taken — refused, declined by the payer, or not settled — so a
+ * budget is spent only on what was actually paid.
+ */
+trait Consent:
+  def approve(choice: PaymentRequirements, resource: ResourceInfo): Boolean ! Async
+  /** an approved payment was not taken: whatever it reserved comes back */
+  def returned(choice: PaymentRequirements): Unit = ()
+
+  /** both must approve; when the second refuses, the first gets its
+   * reservation back */
+  infix def and(that: Consent): Consent =
+    val self = this
+    new Consent:
+      def approve(c: PaymentRequirements, r: ResourceInfo): Boolean ! Async =
+        self.approve(c, r).flatMap { ok =>
+          if !ok then pure(false)
+          else that.approve(c, r).map { both =>
+            if !both then self.returned(c)
+            both
+          }
+        }
+      override def returned(c: PaymentRequirements): Unit = { self.returned(c); that.returned(c) }
+
+object Consent:
+  /** no question asked: `Policy` alone decides */
+  val always: Consent = (_, _) => pure(true)
+
+  /** a question for someone — a person, a model — with the price and the
+   * resource in hand; `Boolean ! Async` so it may take its time */
+  def ask(f: (PaymentRequirements, ResourceInfo) => Boolean ! Async): Consent = (c, r) => f(c, r)
+
+  /** at most `total` atomic units of `asset` on `network`, over every
+   * payment together; anything else is refused */
+  def budget(total: BigInt, network: Network, asset: String): Budget = Budget(total, network, asset)
+
+/**
+ * A running total: each approval RESERVES its amount atomically (two calls
+ * racing cannot both spend the last of it), and a payment that was not
+ * taken gives its reservation back.
+ */
+final class Budget(total: BigInt, network: Network, asset: String) extends Consent:
+  private val left = java.util.concurrent.atomic.AtomicReference[BigInt](total)
+  def remaining: BigInt = left.get
+  private def mine(c: PaymentRequirements): Boolean =
+    c.network == network && c.asset.equalsIgnoreCase(asset)
+  def approve(c: PaymentRequirements, r: ResourceInfo): Boolean ! Async = okay.async {
+    mine(c) && {
+      @annotation.tailrec def take(): Boolean =
+        val now = left.get
+        if c.amount > now then false
+        else if left.compareAndSet(now, now - c.amount) then true
+        else take()
+      take()
+    }
+  }
+  override def returned(c: PaymentRequirements): Unit =
+    if mine(c) then left.updateAndGet(_ + c.amount): Unit
+
 /** signs a payment for requirements — keys live behind this, never in
  * okay-x402; `None` declines */
 trait Payer:
@@ -161,12 +225,15 @@ trait Payer:
 
 /**
  * The paying CLIENT: an `Http` that, on a `402` with `PAYMENT-REQUIRED`,
- * picks the first accepted requirement the policy allows, asks the payer
- * to sign, and repeats the request once with `PAYMENT-SIGNATURE`. When
- * the policy allows nothing or the payer declines, the 402 is the answer.
+ * picks the first accepted requirement the policy allows, asks the
+ * `Consent`, asks the payer to sign, and repeats the request once with
+ * `PAYMENT-SIGNATURE`. When the policy allows nothing, the consent
+ * refuses or the payer declines, the 402 is the answer. A repeat that
+ * does not come back with a SUCCESSFUL `PAYMENT-RESPONSE` was not paid,
+ * and the consent is told so.
  */
 object Paying:
-  def apply(http: Http, policy: Policy, payer: Payer): Http = new Http:
+  def apply(http: Http, policy: Policy, payer: Payer, consent: Consent = Consent.always): Http = new Http:
     def send(r: Request): Response ! Async =
       http.send(r).flatMap { resp =>
         val required =
@@ -174,11 +241,21 @@ object Paying:
           else resp.header(X402.Required).flatMap(h => X402.unheader(h).flatMap(X402.paymentRequired).toOption)
         required.flatMap(q => q.accepts.find(policy.accept).map(q -> _)) match
           case None => pure(resp)
-          case Some((q, choice)) => payer.pay(choice, q.resource).flatMap {
-            case None => pure(resp)
-            case Some(p) =>
-              val signed = r.copy(headers = r.headers.filterNot(_._1.equalsIgnoreCase(X402.Signature)) :+
-                (X402.Signature -> X402.header(X402.toJson(p))))
-              resp.release.flatMap(_ => http.send(signed))
+          case Some((q, choice)) => consent.approve(choice, q.resource).flatMap {
+            case false => pure(resp)
+            case true => payer.pay(choice, q.resource).flatMap {
+              case None => consent.returned(choice); pure(resp)
+              case Some(p) =>
+                val signed = r.copy(headers = r.headers.filterNot(_._1.equalsIgnoreCase(X402.Signature)) :+
+                  (X402.Signature -> X402.header(X402.toJson(p))))
+                resp.release.flatMap(_ => http.send(signed)).map { again =>
+                  if !settled(again) then consent.returned(choice)
+                  again
+                }
+            }
           }
       }
+
+  /** the answer carries a successful settlement */
+  def settled(resp: Response): Boolean =
+    resp.header(X402.Response).flatMap(h => X402.unheader(h).flatMap(X402.settlement).toOption).exists(_.success)

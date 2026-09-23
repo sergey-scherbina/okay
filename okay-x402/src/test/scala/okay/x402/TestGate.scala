@@ -151,3 +151,49 @@ class TestGate extends munit.FunSuite:
       assertEquals(b.isValid, false)
       assert(b.invalidReason.exists(_.contains("502")), b.toString)
   }
+
+  // ---- consent: the decision before paying, with the price in hand
+
+  private def premium(http: Http): Future[Int] =
+    run(http.send(Request.get("https://api.example.com/premium-data"))).map(_.status)
+
+  test("a consent that refuses is asked with the price, and nothing is signed") {
+    val payer = Signing("good")
+    @volatile var asked: Option[(BigInt, String)] = None
+    val no = Consent.ask((c, r) => { asked = Some((c.amount, r.url)); pure(false) })
+    premium(Paying(server(Counting()), anyUsdc, payer, no)).map { status =>
+      assertEquals(status, 402)
+      assertEquals(asked, Some((BigInt(10000), resource.url)))
+      assertEquals(payer.calls, 0)
+    }
+  }
+
+  test("a budget is spent across payments and refuses the one it cannot cover") {
+    val payer = Signing("good")
+    val budget = Consent.budget(BigInt(25000), price.network, usdc.toLowerCase)
+    val http = Paying(server(Counting()), anyUsdc, payer, budget)
+    for a <- premium(http); b <- premium(http); c <- premium(http)
+    yield
+      assertEquals((a, b, c), (200, 200, 402))
+      assertEquals((budget.remaining, payer.calls), (BigInt(5000), 2))
+  }
+
+  test("a payment that was not taken gives its reservation back") {
+    val budget = Consent.budget(BigInt(25000), price.network, usdc)
+    val forged = Paying(server(Counting()), anyUsdc, Signing("forged"), budget)
+    val unsettled = Paying(server(Counting(settleOk = false)), anyUsdc, Signing("good"), budget)
+    for a <- premium(forged); b <- premium(unsettled)
+    yield
+      assertEquals((a, b), (402, 402))
+      assertEquals(budget.remaining, BigInt(25000))
+  }
+
+  test("budget AND a person: the person's no returns the budget's reservation; another asset is not the budget's") {
+    val budget = Consent.budget(BigInt(25000), price.network, usdc)
+    val payer = Signing("good")
+    premium(Paying(server(Counting()), anyUsdc, payer, budget and Consent.ask((_, _) => pure(false)))).flatMap { s =>
+      assertEquals((s, budget.remaining, payer.calls), (402, BigInt(25000), 0))
+      val other = Consent.budget(BigInt(25000), price.network, "0xdai")
+      premium(Paying(server(Counting()), anyUsdc, payer, other)).map(s2 => assertEquals(s2, 402))
+    }
+  }
