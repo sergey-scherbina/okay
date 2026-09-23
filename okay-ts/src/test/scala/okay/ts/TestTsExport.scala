@@ -57,7 +57,7 @@ class TestTsExport extends munit.FunSuite {
     val has = (cp.spawnSync("tsc", js.Array("--version")).status: Any) == 0
     assume(has, "tsc is not installed")
     val dir = fs.mkdtempSync(node("path").join(node("os").tmpdir(), "okay-ts-export-")).toString
-    def write(f: String, s: String): Unit = fs.writeFileSync(s"$dir/$f", s): Unit
+    def write(f: String, s: String): Unit = { val _ = fs.writeFileSync(s"$dir/$f", s) }
     write("package.json", """{"type":"module"}""")
     write("shop.ts", shop.declaration)
     write("usage.ts", """import { shop, type Totals } from "./shop.ts";
