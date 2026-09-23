@@ -798,6 +798,23 @@ lazy val okayJava = (project in file("okay-java"))
   )
 
 /**
+ * interop with CLOJURE (specs/clojure.md): `Clj` calls into Clojure
+ * through its own Java API, and a `Stage` IS a transducer both ways —
+ * `Transducers.of(stage)` runs in `into`/`transduce`/`sequence`,
+ * `Transducers.stage(xf)` runs Clojure's transducers in okay pipelines.
+ * JVM; Clojure 1.12 runs on JDK 8+, so the build's default floor.
+ */
+lazy val okayClojure = (project in file("okay-clojure"))
+  .dependsOn(okay.jvm, okayStream.jvm)
+  .settings(
+    name := "okay-clojure",
+    libraryDependencies ++= Seq(
+      "org.clojure" % "clojure" % "1.12.6",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
+/**
  * okay from SCALA 2.13 (specs/scala2-facade.md): a facade written in
  * Scala 3 whose public signatures a Scala 2 compiler can read through
  * `-Ytasty-reader` — no inline, no union row, no opaque type.
@@ -2543,7 +2560,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
-    okayJava, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
+    okayJava, okayClojure, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
