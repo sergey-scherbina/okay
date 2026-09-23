@@ -1,0 +1,6 @@
+feature/widen-split 2026-09-23T11:23:38Z
+agent: claude-code
+heartbeat: 2026-09-23T11:23:38Z
+status: in-progress
+done-so-far: promoted from backlog
+next: worktree; spec; !.normalize (the walk) + !.widen as the coercion; the 37 call sites; merge + through lanes measured; docs; gate; land

@@ -1,4 +1,4 @@
-- [ ] widen-split — `!.widen` carries two jobs under one name, and
+- [~] widen-split — `!.widen` carries two jobs under one name, and
       only one of them is what its callers ask for. Its type says
       "the same program in a wider row", which `RowLift.plus[G]`/
       `.at[R]` already do for free (one commented coercion, nothing
