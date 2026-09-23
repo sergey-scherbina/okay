@@ -69,14 +69,18 @@ userPost.describe                                 // DESCRIBE "/users/{id}/posts
 | `Router.Answer` | what an entry says it answers: status, optional schema, description, media type |
 | `Router.summarised(text)` | one sentence about what the operation just declared is FOR — the only part of an entry nothing else can derive; throws on an empty router |
 | `Router.routes` / `.describe` / `.markdown` / `.entries` | the `PartialFunction` every server here takes, the listing, the listing as a doc table, the rows |
+| `Router.Index` (router-trie) | what `routes` consults per request: method → segment count → a trie over the template's literals, built once per table; it names the candidates in declaration order and the ENTRY still decides — headers, queries, security, first-match unchanged |
 | `okay.http.syntax.*` | the terse form: `"id".as[Int]`, `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` |
 
-Five properties the reference will not tell you but the guide will,
+Six properties the reference will not tell you but the guide will,
 each chosen rather than inherited: the law `unapply(url(a)) == Some(a)`
 and what it forces; percent-decoding per segment, AFTER the split;
 present-and-unparseable is a MISS rather than `None`; a path cannot
-follow a query, structurally; and `isDefinedAt` does not run the
-handler.
+follow a query, structurally; `isDefinedAt` does not run the handler;
+and dispatch is an index over the path's shape that only chooses who
+is ASKED (specs/router-trie.md) — every entry the index skips would
+have refused its own `unapply` on the method, the segment count or a
+literal, so the answer is the scan's answer, in the scan's order.
 
 ## What it buys okay-mcp
 

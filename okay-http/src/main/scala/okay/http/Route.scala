@@ -1480,13 +1480,24 @@ final class Router private (val entries: Vector[Router.Entry]):
       else r =>
         if !e.matches(r) then None
         else Some(pure(Router.challenge(401, e.security.head.realm, "no_verifier")))
+    // THE INDEX DECIDES WHO IS ASKED, THE ENTRY DECIDES (router-trie):
+    // the candidates are the entries whose method, segment count and
+    // literal segments the request can satisfy, in declaration order,
+    // and each is asked `matches`/`run` exactly as the scan asked
+    // every entry — first-match kept, headers, queries and security
+    // still the entry's own
+    val ix = index
     new PartialFunction[Request, Response ! Async]:
-      def isDefinedAt(r: Request): Boolean = entries.exists(_.matches(r))
+      def isDefinedAt(r: Request): Boolean = ix.candidates(r).exists(i => entries(i).matches(r))
       def apply(r: Request): Response ! Async =
-        entries.iterator.map(e => answer(e)(r)).collectFirst { case Some(x) => x }
+        ix.candidates(r).iterator.map(i => answer(entries(i))(r)).collectFirst { case Some(x) => x }
           .getOrElse(throw MatchError(r))
       override def applyOrElse[R <: Request, B >: Response ! Async](r: R, other: R => B): B =
-        entries.iterator.map(e => answer(e)(r)).collectFirst { case Some(x) => x }.getOrElse(other(r))
+        ix.candidates(r).iterator.map(i => answer(entries(i))(r)).collectFirst { case Some(x) => x }
+          .getOrElse(other(r))
+
+  /** the dispatch index, built once per table (router-trie) */
+  private lazy val index: Router.Index = Router.Index(entries)
 
   /** every entry, from the same values that dispatch */
   def describe: Vector[(Method, String)] = entries.map(e => (e.method, e.path))
@@ -1845,6 +1856,70 @@ object Router:
    * `okay.security.Secure.verifier` adapts `String => Verified` to it.
    */
   type Verify = String => Either[String, Set[String]]
+
+  /**
+   * The dispatch index (router-trie): method → segment count → a trie
+   * on the template's literal segments, a `{param}` a wildcard branch,
+   * each leaf the indices of the entries declared at that shape, in
+   * declaration order. `candidates(r)` walks the request's segments
+   * down both a literal and the wildcard branch and answers the union
+   * of the leaves reached, sorted — the entries the request can
+   * possibly match, and nothing an entry's own `matches` would not
+   * have refused: a different method, count or literal is a miss for
+   * `unapply` too. Everything else (queries, headers, security) stays
+   * the entry's decision. A template this cannot read (an escape
+   * `segmentsOf` refuses) is a candidate for EVERY request. Built
+   * once per `Router` (a `lazy val`), so a table consulted per
+   * request pays it once.
+   */
+  private[http] final class Index(entries: Vector[Entry]):
+    private final class Node:
+      var lits: Map[String, Node] = Map.empty
+      var wild: Node | Null = null
+      var leaf: Vector[Int] = Vector.empty
+      def lit(seg: String): Node = lits.get(seg) match
+        case Some(n) => n
+        case None => val n = new Node; lits = lits.updated(seg, n); n
+      def wildcard: Node =
+        if wild == null then wild = new Node
+        wild.nn
+
+    /** roots by method ordinal, then by segment count */
+    private val roots: Array[Map[Int, Node]] = Array.fill(Method.values.length)(Map.empty)
+    /** entries whose template could not be read: always asked */
+    private var always: Vector[Int] = Vector.empty
+
+    for (e, i) <- entries.zipWithIndex do
+      Route.segmentsOf(e.path) match
+        case None => always = always :+ i
+        case Some(segs) =>
+          val m = e.method.ordinal
+          val root = roots(m).get(segs.length) match
+            case Some(n) => n
+            case None => val n = new Node; roots(m) = roots(m).updated(segs.length, n); n
+          var node = root
+          for seg <- segs do
+            node = if seg.length >= 2 && seg.charAt(0) == '{' && seg.charAt(seg.length - 1) == '}' then node.wildcard else node.lit(seg)
+          node.leaf = node.leaf :+ i
+
+    def candidates(r: Request): Vector[Int] =
+      Route.segmentsOf(r.url) match
+        case None => always
+        case Some(ss) =>
+          roots(r.method.ordinal).get(ss.length) match
+            case None => always
+            case Some(root) =>
+              val out = scala.collection.mutable.ArrayBuffer.empty[Int]
+              def walk(n: Node, d: Int): Unit =
+                if d == ss.length then out ++= n.leaf
+                else
+                  n.lits.get(ss(d)) match
+                    case Some(c) => walk(c, d + 1)
+                    case None => ()
+                  if n.wild != null then walk(n.wild.nn, d + 1)
+              walk(root, 0)
+              if always.nonEmpty then out ++= always
+              if out.length <= 1 then out.toVector else out.sortInPlace().toVector
 
   /** `Authorization: Bearer <token>`, case-insensitively, and nothing
    * else — a scheme this table does not know is no credential */
