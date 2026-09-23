@@ -1,0 +1,6 @@
+feature/free-return-rename 2026-09-23T08:51:23Z
+agent: claude-code
+heartbeat: 2026-09-23T08:51:23Z
+status: in-progress
+done-so-far: survey: 80 case Pure( sites in 39 files, 49 constructor calls, 14 doc files; Cont.Pure (229) untouched, as the operator said
+next: rename the enum case in Free.scala, let the compiler list every site, fix by the list; docs (theory ch.4/11, guides); spec note; changelog; one gate
