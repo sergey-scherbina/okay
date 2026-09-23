@@ -1,0 +1,6 @@
+feature/gen-filter-as-walk 2026-09-23T00:44:03Z
+agent: claude-code
+heartbeat: 2026-09-23T00:44:03Z
+status: in-progress
+done-so-far: promoted from backlog (the generators-jmh number is the trigger)
+next: Gen.filter as a walk in taking's shape (no program per element); withFilter/zipWithIndex the same; TestGen laziness counter unchanged; re-measure gj-gc-gen-pipeline-vs-writer-pipeline10k on compare/GenBenchmark; gate; land

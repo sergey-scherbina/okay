@@ -1,4 +1,4 @@
-- [ ] gen-filter-as-walk — `Gen.filter` is `splice`, which builds an
+- [~] gen-filter-as-walk — `Gen.filter` is `splice`, which builds an
       `emit`/`empty` program plus a `flatMap` PER ELEMENT; measured
       (generators-jmh, 2026-09-23, per-lane gated JMH, `-prof gc`):
       `Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList` over 10 000
