@@ -1269,3 +1269,85 @@ optics as `Prism[String, String, A, A]`, and `set` on a matching path
 rebuilds the path from new parameters. `put` on a MISS is the whole
 unchanged — a prism's set, not its review — which the test asserts as
 the shape rather than working around.
+
+## Stage 7 — a projection policy is a traversal, and its audit (optics-outside-policy, 2026-09-23)
+
+### The trigger, lifted
+
+Candidate 2 waited for "the first place that hands a record onward
+with SOME fields removed AND must answer which fields it touches with
+no document in hand". The seat this repository once had for it
+(okay-leads) has no sources any more and the incident that priced
+its absence (`weighed-not-read-out-of-the-embedding`: price and
+contact in a summary's text, 0.63 → 0.13) lives in a private
+repository. The operator lifted the wait ("Все это нужно"), so the
+policy is built as a library over the two things every record here
+has — a `Schema` and a `Json` form — and its consumer is whichever
+product next embeds, logs or ships a record.
+
+### Interface
+
+okay-codec, `Policy.scala`:
+
+```scala
+final class Policy[A]:
+  def touches: Set[String]                                   // DESCRIBE — no document
+  def project(j: Json): Json                                 // RUN — the fields removed
+  def redact(j: Json, marker: Json = JStr("[redacted]")): Json   // RUN — kept, values replaced
+  def optics: Vector[(String, Traversal[Json, Json, Json, Json])]  // one optic per hidden key
+  def optic(key: String): Option[Traversal[Json, Json, Json, Json]]
+  def text(a: A): String                                     // the allowed fields, as one string
+object Policy:
+  /** dotted keys checked against the schema; a key naming nothing is refused BY NAME */
+  def hide[A](keys: String*)(using Schema[A]): Either[String, Policy[A]]
+```
+
+A key is `field.field…`; a segment through a list or vector applies
+to every element; a segment through a sum reaches the case that has
+it (the case wrapper is a level the key does not spell, as
+`JsonOptic.path` knows); `Option` and isos are transparent.
+
+### Behavior (`TestPolicy`, okay-codec)
+
+- [x] a key the schema does not write is refused by name at
+      construction; a whole sub-record may be hidden.
+- [x] `touches` is the declaration — DESCRIBE needs no document.
+- [x] THE LAW: the dotted keys `project` removes from a document are
+      exactly `touches` restricted to the keys that document has — on
+      the full document, on one with the other sum case (the hidden
+      case field is simply not there), on one with an absent `Option`
+      (the codec writes `null`, so the key is there and goes).
+- [x] through a list, every element loses the field and keeps the rest.
+- [x] `redact` keeps every key; `optic(key)` sees the values before and
+      the markers after; `optic` of a key not hidden is `None`.
+- [x] `text(a)` — the embedding's/log line's view — has no price, no
+      email, no secret, and does have the allowed fields.
+
+### Design and decisions
+
+- **Reified keys, optics derived** — a profunctor optic can be run
+  but not asked what it looks at; the audit needs names, so the names
+  are the source and each key's optic is built from them. This is the
+  arc's criterion for an optic in a public API, met from the other
+  side: the DESCRIBE interpreter is a `Set[String]` because that is
+  what a describer of fields IS.
+- **One optic per key, not one for all** — two independent traversals
+  compose only through a bind, which an `Applicative`-polymorphic
+  traversal has not; `project`/`redact` run the keys in sequence
+  through `modify` (Function1, where sequencing is free). Rejected: a
+  combined traversal (a first draft reached for a cast to fake the
+  bind — refused by the no-cast rule).
+- **`Either` at construction, not a throw** — a policy is declared
+  once, at startup; a typo must fail there, by name, not by the field
+  it failed to hide.
+- **Over `Json`, with `text` for the value** — the record that travels,
+  embeds or is logged is the Json the codec writes; a typed `A => A`
+  cannot remove a field, and a blank per type would be a second place
+  to drift. `text(a)` is the one typed door, through the codec.
+
+### Results
+
+2026-09-23. `TestPolicy` 6, green through `scripts/gate.sh`, no
+warnings. One expectation in the test was wrong and the law was
+right: an absent `Option` is written as `null`, so its key is present
+and `project` removes it — the assertion now says so.

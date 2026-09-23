@@ -270,6 +270,29 @@ Present case, the program runs and the answer is `Some`. Absent case,
 nothing runs at all, the state passes through, and the answer is
 `None`.
 
+## 6. A policy is a traversal — and it can be audited
+
+Which fields of a record may be seen, embedded, logged? Written as a
+function `A => A` that blanks them, the question "which fields does
+this policy touch" cannot be answered without running it on a
+document. Written as a `Policy`, the names are the declaration and
+both interpreters read it:
+
+```scala
+val policy = Policy.hide[Order]("customer.email", "lines.price").toOption.get
+policy.touches                       // Set("customer.email", "lines.price") — no document in hand
+policy.project(json)                 // the fields removed, every line's price included
+policy.redact(json)                  // kept, values replaced by "[redacted]"
+policy.text(order)                   // what an embedding or a log line may see
+policy.optic("lines.price")          // the field as a traversal, for anything else
+```
+
+A key naming nothing the schema writes is refused by name at
+construction (`hide` answers `Either`), and the law `TestPolicy` pins
+is the coupling: the keys `project` removes are exactly `touches`,
+restricted to the keys the document has. Design and the trigger's
+history in `specs/optics-outside.md`, stage 7.
+
 ## Where to go next
 
 - [arrows](arrows.md) — the neighbour in the same table: the glyphs,

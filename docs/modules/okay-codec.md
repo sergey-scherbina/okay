@@ -7,6 +7,12 @@
 Depends on: `okay-parse`. Pure Scala — cross-built for JVM and JS
 (the JS client of okay-cluster encodes with exactly this code).
 
+
+`Policy` (specs/optics-outside.md stage 7): a projection policy over a
+schema — dotted keys checked by name at construction, `touches` the
+audit with no document, `project`/`redact`/`optic(key)`/`text` the
+runs; the audit names exactly the fields the projection removes.
+
 ## Guide
 
 **Derivations are catamorphisms over one Schema.** `Schema[A]`
