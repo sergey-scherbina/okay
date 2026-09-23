@@ -21,5 +21,11 @@ depends here, a caller that needs signing depends there. Platform
 primitives, never our own (the specs/tls.md rule).
 
 Cross-built JVM + JS (no Native: it has no platform crypto to rest
-on). Consumers: [`okay-pg`](okay-pg.md) (SCRAM),
-[`okay-security`](okay-security.md).
+on). Consumer: [`okay-pg`](okay-pg.md) (SCRAM) — the only one.
+
+[`okay-security`](okay-security.md) does NOT depend on it: its own,
+wider `okay.security.Crypto` seam still declares these four primitives
+itself, and its `CryptoJvm`/`CryptoJs` implement them a second time
+beside RSA/ECDSA. The split (security-crypto-split, 2026-09-01) moved
+okay-pg off a private copy and left okay-security's copy where it was
+(backlog `okay-security/security-crypto-dedup`).
