@@ -1,6 +1,0 @@
-feature/generators-jmh 2026-09-22T21:42:35Z
-agent: claude-code
-heartbeat: 2026-09-22T22:22:21Z
-status: in-progress
-done-so-far: GenBenchmark (8 lanes) compiles; round 1 discarded (load 112), round 2 recorded (Gen.toList 1.46x Writer.run, 1.09x Writer.foldUntil; pipeline 1.51x; take 1.18x)
-next: round 3 on a quiet box; -prof gc pass; Results in specs/generators.md; docs; land
