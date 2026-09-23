@@ -1,4 +1,0 @@
-feature/scala2-services 2026-09-23T16:02:29Z
-agent: claude-code
-status: in-progress
-next: probe okay-actor/kafka/pg/outbox/obs/ops from 2.13
