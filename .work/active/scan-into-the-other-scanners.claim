@@ -1,0 +1,6 @@
+feature/scan-into-the-other-scanners 2026-09-23T16:56:34Z
+agent: claude-code
+heartbeat: 2026-09-23T16:56:34Z
+status: in-progress
+done-so-far: read Yaml.scala, Xml.scala (the model), Code.scala found
+next: convert Yaml.scan to ScanInto (recursive step->stepInto calls); a lexYamlElementwise JMH lane; TestCodec/TestLaws green; then Code
