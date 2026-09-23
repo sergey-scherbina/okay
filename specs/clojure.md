@@ -81,6 +81,38 @@ name: a Clojure transducer's `volatile!` cannot be snapshotted.
 - [x] docs: module page, guide §5 paragraph, theory ch. 7 sentence;
       every snippet verbatim in a gated test
 
+## Stage 2: okay's effects from Clojure, and lazy seqs (clojure-effects-seqs, 2026-09-23)
+
+The operator's direction for Frege holds here too: okay's effects enter
+the other language through OUR thin wrapper, as data. `okay.core` is a
+Clojure namespace shipped in the okay-clojure jar (a `.clj` resource,
+loaded by `require`, no AOT): a program is `(done v)` or `(step op k)`,
+`k` a Clojure function from the operation's answer to the rest; `bind`,
+`perform`, `await`, `tell`, and `mlet` — a monadic let, cats' shape —
+in place of `do`. The okay driver (`okay.clojure.Program`) walks it:
+every operation under okay's handlers, every continuation a Clojure
+function, so multi-shot handlers call it per branch and no thread is
+involved.
+
+- [ ] `okay.core` loads from the jar (`(require 'okay.core)`), and
+      refers nothing that shadows clojure.core without saying so
+      (`await` is excluded from clojure.core in its own ns)
+- [ ] `Program.stage[I, O](prog)` / `stageWith[I, O, F]`: a Clojure
+      program that awaits and tells as an okay `Stage` — law against the
+      same stage written in okay
+- [ ] `Program.run[F, A](prog)`: `perform op` as an operation of F —
+      Reader and State in `mlet` order; a Throws from Clojure reaches
+      `runEither`; an operation outside the row refused by name
+- [ ] MULTI-SHOT: Choose × Choose from Clojure gives all four branches
+- [ ] a hundred thousand Clojure steps on the default stack
+- [ ] `okay.clojure.Ops`: the core effects' operations for Clojure to
+      perform (Reader, State, Throws, Choose, Async sleep)
+- [ ] seqs: a Clojure lazy seq as okay `Chunks` — an infinite `(range)`
+      read partially; okay `Chunks` as a Clojure lazy seq — an infinite
+      okay source under `(take 10 …)` produces at most one chunk;
+      PURE by type (only `Chunks` becomes a seq)
+- [ ] docs: module page (effects, seqs), every snippet in a gated test
+
 ## Decisions
 
 - **A transducer, not a Clojure seq, is the seam.** A lazy seq is a
