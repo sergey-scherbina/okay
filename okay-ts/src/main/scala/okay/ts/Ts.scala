@@ -2,7 +2,7 @@ package okay.ts
 
 import scala.scalajs.js
 import okay.{!, Async, pure}
-import okay.codec.{Json, Schema}
+import okay.codec.{Json, Schema, Stubs}
 
 /**
  * TypeScript programs INSIDE okay, on Scala.js (specs/typescript.md,
@@ -106,3 +106,42 @@ object Ts:
     import scala.scalajs.js.JSConverters.*
     given scala.concurrent.ExecutionContext = scala.scalajs.concurrent.JSExecutionContext.queue
     Async.runAsync(program).map(toJs(_)).toJSPromise
+
+  /**
+   * One okay function for a TypeScript caller (typescript-types T6): the
+   * argument read with okay's JSON codec, the answer written with it, as a
+   * `Promise`. A wrong argument rejects the promise with a `TypeError`
+   * naming the function and the reason. (`export` is a Scala 3 keyword,
+   * hence `expose`.)
+   */
+  def expose[A, B](name: String)(f: A => B ! Async)(using a: Schema[A], b: Schema[B]): Exposed =
+    val call: js.Function1[js.Any, js.Promise[js.Any]] = (in: js.Any) =>
+      fromJs[A](in) match
+        case Right(x) => promise(f(x))
+        case Left(why) => js.Promise.reject(js.TypeError(s"$name: ${why.message}"))
+    Exposed(name, a, b, call)
+
+  /** a function `expose` made: its name, its types and the JS function */
+  final class Exposed private[Ts] (val name: String, val in: Schema[?], val out: Schema[?],
+                                   val fn: js.Function1[js.Any, js.Promise[js.Any]])
+
+  /**
+   * Exposed functions as one module for TypeScript: `js` is the object to
+   * export (`@JSExportTopLevel("tasks") val tasks: js.Object = m.js`), and
+   * `declaration` is the `.d.ts` TypeScript reads for it. The declaration
+   * is written from the same Schemas that encode the values, so the
+   * declared types match what is sent.
+   */
+  def module(name: String)(exposed: Exposed*): TsModule = TsModule(name, exposed.toVector)
+
+  final class TsModule private[Ts] (val name: String, val exposed: Vector[Exposed]):
+    def js: scala.scalajs.js.Object & scala.scalajs.js.Dynamic =
+      val o = scala.scalajs.js.Dynamic.literal()
+      exposed.foreach(e => o.updateDynamic(e.name)(e.fn))
+      o
+
+    def declaration: String =
+      val types = Stubs.typescript(exposed.flatMap(e => Vector(e.in, e.out))*)
+      val sigs = exposed.map(e =>
+        s"  ${e.name}(input: ${Stubs.typescriptType(e.in)}): Promise<${Stubs.typescriptType(e.out)}>;")
+      types + s"\nexport declare const $name: {\n${sigs.mkString("\n")}\n};\n"
