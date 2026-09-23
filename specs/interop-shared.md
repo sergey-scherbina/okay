@@ -21,21 +21,71 @@ per-language classes stay as the names users bind to (Frege natives name
 
 ## Behavior
 
-- [ ] measured FIRST on the current code, then after, alternating on the
+- [x] measured FIRST on the current code, then after, alternating on the
       same box (PRICE lines in the suites, min of runs): a gatherer over
       1e6 elements, a transducer over 1e6, a Frege step, a Clojure
       program step — no pipeline slower beyond the noise of its own runs
-- [ ] `okay.Member[F]`: found for one signature, built with `|` for a
-      union; both bridges use it; `Frege.Row`/`Program.Row` gone
-- [ ] `okay.Operations`: ask/get/set/raise/choose/sleep, once; the
+- [x] `okay.Member[F]`: found for one signature, built with `|` for a
+      union; both bridges use it; `Frege.Row`/`Program.Row` stay as
+      ALIASES of it (a type and a val), so every call site and doc
+      snippet written against them compiles unchanged
+- [x] `okay.Operations`: ask/get/set/raise/choose/sleep, once; the
       language `Ops` delegate
-- [ ] `okay.Push`: the push driver of a stage; `Gather` and `Transducers`
+- [x] `okay.Push`: the push driver of a stage; `Gather` and `Transducers`
       both on it (the transducer's accumulator threaded by its `emit`)
-- [ ] `okay.Foreign`: a program-as-data walker over a `View` (done / the
+- [x] `okay.Foreign`: a program-as-data walker over a `View` (done / the
       step's operation / resume); Frege and Clojure each supply a view
-- [ ] every existing suite of the three modules green unchanged; the
+- [x] every existing suite of the three modules green unchanged; the
       mutants of their lanes still fail (the tests did not move)
 
 ## Decisions
 
+- **A `View` of methods, not a `Step` object per node.** The walker asks
+  `kind(p): Int`, then `payload`/`resume`: nothing is allocated to
+  describe a node the language already represents. The cost is that a
+  view reads a node's fields twice (Frege's `mem1` thunk, Clojure's
+  record lookup) — cheap reads of already-forced values, and the price
+  table below shows no loss.
+- **Kinds are `inline val` Ints** (Done 0, Await 1, Tell 2, Perform 3,
+  Lift 4) so the walker's match is a `tableswitch`, not a type test.
+- **The per-language names stay.** Frege natives bind
+  `okay.frege.Ops.set :: Long -> Operation Long`; Clojure calls
+  `(okay.clojure.Ops/ask)`. Those are the public contract, so they
+  became facades over `okay.Operations`, keeping their typed signatures
+  (Frege's `Long` arguments, `choose2`).
+- **`Foreign.obj` replaces three `boxed` casts** with a match
+  (`case r: AnyRef => r`) that casts nothing: an erased value is already
+  an Object at run time. `Member.operation` holds the one cast left in
+  the bridges, commented once.
+- **Placement:** `Member` in the core beside `TypeableK`; `Operations`
+  in okay-platform's SHARED sources (Timer exists on all three
+  platforms); `Push` and `Foreign` in okay-stream's shared sources — so
+  both are cross-built, and a JS or TypeScript program-as-data can reuse
+  `Foreign` on Scala.js (backlog: polyglot-typescript).
+
 ## Results
+
+- Four alternating rounds on one box (load 7–18), min of 7 runs each,
+  base = 99593e93 (the PRICE tests on the old code):
+
+  | driver | base, ms | shared, ms |
+  |---|---|---|
+  | gatherer, 1e6 | 27.4–29.6 | 27.9–29.4 |
+  | transducer, 1e6 | 29.4–30.8 | 26.7–29.8 |
+  | Clojure program, 2e5 steps | 13.7–23.6 | 16.2–23.8 |
+  | Frege program, 2e5 steps | 39.8–44.8 | 41.0–43.6 |
+
+  Every range overlaps its base; no driver is slower beyond its own
+  noise. The transducer reads slightly faster (its accumulator is now a
+  field of the process, not a tuple per drive), within noise.
+- 122 tests across okay-java, okay-clojure and okay-frege green,
+  unchanged.
+- Mutants on the SHARED code, each caught by a test of an earlier lane:
+  `Push.drive` ignoring a refused push fails TestGather's "a refused
+  push stops the stage mid-element" (1000 tells for a downstream that
+  took 3) and TestTransducers' "(take 2) stops the stage mid-element";
+  `Foreign.run` resuming with null instead of the answer fails three
+  Frege tests (Reader/State from Frege, the multi-shot Choose, the doc
+  example). A lesson in method, recorded because it hid a result for one
+  run: `sbt "a/test; b/test"` stops at the first red, so a mutant must be
+  run against each module alone.

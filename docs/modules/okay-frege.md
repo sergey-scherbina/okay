@@ -13,7 +13,7 @@
 | `Frege.chunks(xs)` / `Frege.list(c)` | a Frege list as okay `Chunks` and okay `Chunks` as a Frege list, both LAZY — infinite either way; `list` takes only pure `Chunks` |
 | `Frege.option` / `Frege.maybe` | `Maybe` <-> `Option` |
 | `Frege.run[F](prog)` | a Frege `Prog a` as `A ! F`: each `perform` runs as an operation of the row `F`, under whatever handlers run it |
-| `Frege.Row` | whether a value from Frege is an operation of `F` — found for one signature, built with `|` for a union |
+| `Frege.Row` | whether a value from Frege is an operation of `F` — found for one signature, built with `|` for a union (the core's `okay.Member`) |
 | `Ops` | the core effects' operations as values for Frege to `perform` (Reader, State, Throws, Choose, and `sleep` for Async) — one pure native each |
 | `okay-frege-sbt` (sbt plugin, `OkayFrege`) | compiles `.fr` sources (forked, `-target 17`, warnings fail) before the Scala that reads them, or after the Scala they call — what a user enables to write Frege, and what this repository uses |
 

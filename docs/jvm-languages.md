@@ -266,13 +266,43 @@ docs/modules/okay-frege.md.
 - **Types are checked at the seam, and refused by name.** A value
   arriving as `Object` is tested against the type the okay side declared
   (a `ClassTag`; Clojure's integers are `java.lang.Long`); an operation
-  is tested against the program's row (`Row`). A union row is spelled
+  is tested against the program's row (`Row`, which is the core's
+  `okay.Member` under each bridge's own name). A union row is spelled
   once — `Row.of[F] | Row.of[G]` — because the compiler cannot infer
   the two sides of a union type.
 - **No bridge claims what it cannot keep.** No combiner from a stage (a
   suspended program is a position, and positions do not merge — a
   combiner-less gatherer is evaluated in order even in a parallel
   stream); no multi-shot through a thread (there is no thread).
+
+### Bridging a language this guide does not cover
+
+The three bridges share one copy of everything that is not a matter of
+the other language's syntax, so a fourth (Kotlin, Groovy, a Lisp, a
+Scheme) is mostly a matter of reading that language's values:
+
+- `okay.Push` drives a `Stage` by pushing its tells, and answers where
+  the stage stands between two calls from outside (`Fresh`, `Waiting`,
+  `Done`). `Gather.gatherer` and `Transducers.of` are each a few lines
+  over it: the first hands it the JDK's `Downstream.push`; the second
+  hands it a function that calls `rf` and threads the accumulator.
+- `okay.Foreign` walks a program that the other language wrote as data
+  (an answer, or an operation plus a function from its answer to the
+  rest) as an okay stage or program. A bridge supplies a `Foreign.View`
+  that says which of five kinds a node is (Done, Await, Tell, Perform,
+  Lift), reads its payload, and resumes it with an answer.
+  `Program.stageWith` and `Frege.stageWith` are each one line over it.
+- `okay.Member[F]` tests whether an `Object` from the other side is an
+  operation of the row F.
+- `okay.Operations` holds the core effects' operations as values for
+  the other language to hand back: `ask`, `get`, `set`, `raise`,
+  `choose`, `sleep`.
+
+This is the free monad's separation of a program's description from its
+interpretation \[Swierstra 2008; Kiselyov & Ishii 2015\], applied across a
+language boundary. The foreign language builds the description, and the
+view is the only part of the interpreter that needs to know how that
+language spells it.
 
 ## 7. What it costs
 
@@ -318,6 +348,7 @@ lazy val app = project
 - Rich Hickey. *[Transducers are coming.](https://clojure.org/news/2014/08/06/transducers-are-coming)* 2014.
 - Viktor Klang. *[JEP 485: Stream Gatherers.](https://openjdk.org/jeps/485)* OpenJDK, final in JDK 24.
 - Oleg Kiselyov. *[Iteratees.](https://doi.org/10.1007/978-3-642-29822-6_15)* FLOPS 2012 — why lazy IO fails, and the consumer-as-program answer.
+- Wouter Swierstra. *[Data types à la carte.](https://doi.org/10.1017/S0956796808006758)* JFP 18(4), 2008 — a program as a value, its interpretation supplied separately.
 - Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible effects.](https://doi.org/10.1145/2804302.2804319)* Haskell 2015 — the tree `okay.core` and `Prog` re-spell.
 - Simon Peyton Jones, Philip Wadler. *[Imperative functional programming.](https://doi.org/10.1145/158511.158524)* POPL 1993 — effects as a monad in a lazy language.
 - Gordon Plotkin, Matija Pretnar. *[Handling algebraic effects.](https://doi.org/10.2168/LMCS-9(4:23)2013)* LMCS 2013 — handlers that call a continuation more than once.
