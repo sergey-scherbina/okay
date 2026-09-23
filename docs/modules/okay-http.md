@@ -69,7 +69,7 @@ userPost.describe                                 // DESCRIBE "/users/{id}/posts
 | `Router.Answer` | what an entry says it answers: status, optional schema, description, media type |
 | `Router.summarised(text)` | one sentence about what the operation just declared is FOR — the only part of an entry nothing else can derive; throws on an empty router |
 | `Router.routes` / `.describe` / `.markdown` / `.entries` | the `PartialFunction` every server here takes, the listing, the listing as a doc table, the rows |
-| `Router.Index` (router-trie) | what `routes` consults per request: method → segment count → a trie over the template's literals, built once per table; it names the candidates in declaration order and the ENTRY still decides — headers, queries, security, first-match unchanged |
+| `Router.Index` (router-trie) | what `routes` consults per request: method → segment count → a trie over the template's literals, built once per table; it names the candidates in declaration order and the ENTRY still decides — headers, queries, security, first-match unchanged. A constant ~275 ns per request at 3 or 300 routes, where the scan paid ~120 ns per entry (docs/benchmarks.md §23) |
 | `okay.http.syntax.*` | the terse form: `"id".as[Int]`, `"q".as[String]`, `"page".opt[Int]`, `"tag".all[String]` |
 
 Six properties the reference will not tell you but the guide will,

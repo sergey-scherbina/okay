@@ -5173,3 +5173,22 @@ whose test runs under `split` per operation — and `inline4` 1.01, the
 flat-dispatch lane the residual had been NAMED on, where the chain of
 tests was one devirtualised call already. Two loud rounds at load 6–44
 had read `nestedSWr` 0.83 first; the quiet pair says 0.96.
+
+## 23. Router dispatch — an index names the candidates
+
+`Router.routes` was first-match over every entry, each `matches`
+splitting and decoding the path again: ~120 ns and ~780 B per entry
+tried. router-trie (specs/router-trie.md) puts an index in front —
+method → segment count → a trie over the template's literals — that
+names the candidates in declaration order; each is asked exactly what
+the scan asked, so headers, queries, security and first-match are
+untouched. compare `RouterBenchmark`, one quiet pair, `rt-*`:
+
+| table, request | scan | index |
+|---|---|---|
+| 3 routes, hit the last | 356 ns / 2.4 KB | 342 ns / 2.1 KB |
+| 30 routes, hit the last | 3.8 µs / 21 KB | 297 ns / 2.1 KB |
+| 300 routes, hit the last | 37.1 µs / 233 KB | 275 ns / 2.0 KB |
+| 300 routes, a miss | 40.7 µs / 240 KB | 79 ns / 0.8 KB |
+
+Parity at three routes, a constant at any size.

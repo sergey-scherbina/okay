@@ -39,25 +39,25 @@ template `segmentsOf` refuses is a candidate for every request.
 
 ## Behavior
 
-- [ ] AGREEMENT with the scan on generated tables: for random tables
+- [x] AGREEMENT with the scan on generated tables: for random tables
       (1–40 entries, random methods, templates mixing literals and
       params, overlapping shapes, `Route.root`) and random requests
       (hits, near-misses on one literal, wrong method, wrong count, a
       malformed escape), `routes.isDefinedAt` and the entry that
       answers (`applyOrElse`, handlers answering distinct statuses)
       equal a reference first-match scan over `entries`.
-- [ ] `candidates(r)` ⊇ the entries whose `matches(r)` holds, and is
+- [x] `candidates(r)` ⊇ the entries whose `matches(r)` holds, and is
       sorted ascending (declaration order).
-- [ ] Headers, queries and security unchanged: `TestRouteHeaders`,
+- [x] Headers, queries and security unchanged: `TestRouteHeaders`,
       `TestRouterOut`, the secured-route tests and every http suite
       pass as they are.
-- [ ] `++` of two routers dispatches in the concatenated order.
-- [ ] MEASURED (compare `RouterBenchmark`, quiet alternated pairs):
+- [x] `++` of two routers dispatches in the concatenated order.
+- [x] MEASURED (compare `RouterBenchmark`, quiet alternated pairs):
       tables of 3, 30 and 300 literal-discriminated routes, a request
       hitting the LAST route and a miss, `routes.applyOrElse` — the
       scan (master) against the index; the table size at which the
       index pays, and the price at 3. Rows `rt-*`.
-- [ ] Docs: the http guide's router paragraph names the index and its
+- [x] Docs: the http guide's router paragraph names the index and its
       invariant; typepedia `Router` entry.
 
 ## Out of scope
@@ -95,4 +95,29 @@ template `segmentsOf` refuses is a candidate for every request.
 
 ## Results
 
-(after the lane)
+**2026-09-23** (compare `RouterBenchmark`, `-prof gc`, one quiet pair
+— the scan at 12:43 and the index at 14:39, both at load 3–4, on a box
+that carried sibling gates at load 60–120 between; rows `rt-*`).
+Literal-discriminated routes `/svc{i}/items/{id}`, a request hitting
+the LAST route, `routes.applyOrElse`, the handler's program built and
+not run:
+
+| table | scan (master) | index | ratio |
+|---|---|---|---|
+| 3 routes, hit last | 356 ns / 2 400 B | 342 ns / 2 144 B | 0.96 |
+| 30 routes, hit last | 3 798 ns / 21 408 B | 297 ns / 2 084 B | 12.8x |
+| 300 routes, hit last | 37 091 ns / 233 076 B | 275 ns / 2 024 B | 135x |
+| 300 routes, a miss | 40 745 ns / 240 208 B | 79 ns / 760 B | 518x |
+| 300 routes, `isDefinedAt` | 28 767 ns / 230 544 B | 276 ns / 1 944 B | 104x |
+
+The scan paid ~780 B and ~120 ns PER ENTRY TRIED — every `matches`
+split and decoded the path again — so the index's price at three
+routes is nothing (the path is split once) and its answer is a
+constant, ~275 ns and 2 KB, whatever the table holds; a miss is
+cheaper still, the trie walk with no candidate to ask. Laws:
+`TestRouterIndex` 3/3 (300 tables × 50 requests against the scan),
+`TestRouteHeaders`, `TestRouterOut` unchanged; the http family gate
+green. The first `after` attempt died in JMH's bytecode generator
+(`NoClassDefFoundError: okay/Free$Pure`) after the lane was rebased
+over core changes — the worktree's incremental classes were
+inconsistent; cold targets fixed it.
