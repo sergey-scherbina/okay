@@ -1,6 +1,0 @@
-feature/jvm-languages-guide 2026-09-23T08:23:34Z
-agent: claude-code
-heartbeat: 2026-09-23T08:23:34Z
-status: in-progress
-done-so-far: outline
-next: docs/jvm-languages.md (Java/Clojure/Frege interop guide, snippets verbatim from the doc tests); lands after clojure-effects-seqs and frege-sbt-plugin
