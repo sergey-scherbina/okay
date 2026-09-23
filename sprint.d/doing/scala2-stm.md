@@ -1,1 +1,0 @@
-- [ ] **scala2-stm** — okay-stm from Scala 2.13: TRef and atomic transactions (retry, orElse) as Eff. Probe first, wrap only what 2.13 cannot use (specs/scala2-facade.md, stage 15, item 3). Operator: "Да бери делай всё что возможно чтобы работало в скале 2" (2026-09-23).

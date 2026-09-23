@@ -395,6 +395,8 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 
 **Persist** (module `okay-scala2-persist`) — `Persist.topic(store: Store, name, partitions: Int = 1): Topic`, `Persist.typed[A](topic, version: Int = 1)(implicit Schema[A]): Typed[A]`, `Persist.stream(topic, partition, from: Long, chunk: Int = 256): Source[Record]`, `Persist.tail(topic, partition, from, chunk = 256, pollMillis = 25L): Source[Record]`.
 
+**Transactions** (module `okay-scala2-stm`) — `Stm.ref[A](init: A): TRef[A]`, `Stm.atomically[A](tx: Eff[Tx, A]): Eff[Async, A]`; `Tx.read[A](r: TRef[A]): Eff[Tx, A]`, `Tx.write(r, a): Eff[Tx, Unit]`, `Tx.modify[A, B](r)(f: A => (A, B)): Eff[Tx, B]`, `Tx.update(r)(f: A => A): Eff[Tx, Unit]`, `Tx.retry[A]`, `Tx.check(cond: Boolean): Eff[Tx, Unit]`, `Tx.orElse[A](a, b): Eff[Tx, A]`.
+
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
 `runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,

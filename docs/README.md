@@ -283,6 +283,7 @@ API reference, gotchas.
 | [`okay-scala2-ws`](modules/okay-scala2-ws.md) | WebSockets from Scala 2.13: a client, sessions as folds (replayable without a socket), a server over okay-jetty |
 | [`okay-scala2-resilience`](modules/okay-scala2-resilience.md) | okay-resilience from Scala 2.13: breaker, bulkhead, limiter, hedge, deadline and retry around an `Eff` |
 | [`okay-scala2-persist`](modules/okay-scala2-persist.md) | okay-persist for Scala 2.13: topics with defaults, the typed view, streams of records |
+| [`okay-scala2-stm`](modules/okay-scala2-stm.md) | okay-stm for Scala 2.13: transactions over TRef with retry and orElse |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |

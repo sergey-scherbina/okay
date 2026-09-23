@@ -772,3 +772,11 @@ metaprogramming.
   `Source[Record]`, flattening the engine's chunked streams with
   `Writer.expand`. 4 tests, including a FileStore reopen and a tail
   that sees appends made after it started.
+- STAGE 15.3 (2026-09-23). okay-scala2-stm. `TRef` is core and
+  readable, used directly (`Stm.ref` is only a name for `TRef(init)`).
+  `Tx` is a phantom capability like `Choose`, and `Stm.atomically`
+  takes `Eff[Tx, A]`, so the Scala 3 rule "no I/O in a transaction"
+  holds in Scala 2 by the same means: the row, not a runtime check.
+  Pinned by a `compileErrors` test. 5 tests: a transfer, 1000
+  increments from 8 fibers, a retry woken by another fiber, and
+  `orElse` discarding the first branch's writes.

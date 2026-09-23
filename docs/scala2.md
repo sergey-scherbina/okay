@@ -992,6 +992,60 @@ assertEquals(Eff.runAsync(prog), Vector("0", "1", "2"))
   consumer stops, for example with `take`. Both are a `Source[Record]`
   (section 7): okay-persist's own streams yield chunks, flattened here.
 
+## 8l. Transactions: okay-stm
+
+Module `okay-scala2-stm`. The cell is okay's own `TRef`: `Stm.ref(init)`
+(the same as `TRef(init)`), `ref.get`, `ref.modify(f)`. `Tx` is the
+transaction language as a capability of `Eff`, and `Stm.atomically`
+runs a transaction as one atomic step of an `Eff[Async, A]`. The code
+below is copied from `okay-scala2/probe/src/test/scala/TestStmFromScala2.scala`:
+
+```scala
+def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Eff[Tx, Unit] = for {
+  balance <- Tx.read(from)
+  _ <- Tx.check(balance >= amount)
+  _ <- Tx.write(from, balance - amount)
+  _ <- Tx.update(to)(_ + amount)
+} yield ()
+```
+
+```scala
+val a = Stm.ref(100)
+val b = Stm.ref(0)
+Eff.runAsync(Stm.atomically(transfer(a, b, 30)))
+assertEquals((a.get, b.get), (70, 30))
+```
+
+`Tx.check` is `Tx.retry` unless the condition holds, and a retry does
+not spin: the transaction parks until something it READ changes, then
+runs again. Here a transfer waits for a deposit made by another fiber:
+
+```scala
+val prog = for {
+  waiting <- Async.fork(Stm.atomically(transfer(account, out, 50)))
+  _ <- Async.sleep(20)
+  _ <- Stm.atomically(Tx.write(account, 80))
+  _ <- waiting.join
+} yield (account.get, out.get)
+assertEquals(Eff.runAsync(prog), (30, 50))
+```
+
+- `Tx.orElse(a, b)` runs `a`, and if `a` retries, runs `b` instead.
+  `a`'s writes are discarded as if it never ran. If `b` retries too,
+  the whole transaction waits on what either branch read.
+- A transaction's row is `Tx` alone, so an `Async` inside it is a type
+  error: `Stm.atomically(Async.delay(println(1)))` does not compile. A
+  conflict re-runs the transaction, and I/O must not run twice.
+- On the JVM `atomically` is okay-stm's TL2 strategy: a version per
+  cell, validation on every read, a commit that never blocks.
+
+This is the design of Harris, Marlow, Peyton Jones and Herlihy,
+"Composable memory transactions" (PPoPP 2005,
+[doi:10.1145/1065944.1065952](https://doi.org/10.1145/1065944.1065952)),
+which introduced `retry` and `orElse`. The commit is Dice, Shalev and
+Shavit's TL2, "Transactional Locking II" (DISC 2006,
+[doi:10.1007/11864219_14](https://doi.org/10.1007/11864219_14)).
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |

@@ -81,6 +81,18 @@ check() {
       done
     done
   done
+  # ONE ITEM, ONE BOARD (2026-09-23): a claim that ADDED the sprint item
+  # instead of `git mv`-ing it left the backlog copy behind (80a1ccec),
+  # and this check said "well formed" while TestBoardEntries failed
+  # every lane's gate. The claim runs this script, not the test.
+  dupes=$(for f in sprint.d/*/*.md backlog.d/*/*.md; do
+            [ -e "$f" ] && basename "$f"
+          done | grep -vx '_section.md' | sort | uniq -d)
+  for d in $dupes; do
+    echo "board: $d is filed twice — promote with git mv, not a copy:" >&2
+    ls sprint.d/*/"$d" backlog.d/*/"$d" 2>/dev/null | sed 's/^/  /' >&2
+    bad=1
+  done
   [ "$bad" = 0 ] && echo "board: sprint.d and backlog.d are well formed"
   exit "$bad"
 }
