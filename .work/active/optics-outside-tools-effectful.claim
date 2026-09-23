@@ -1,0 +1,6 @@
+feature/optics-outside-tools-effectful 2026-09-23T07:52:03Z
+agent: claude-code
+heartbeat: 2026-09-23T07:52:03Z
+status: in-progress
+done-so-far: nothing yet
+next: Toolbox.In[F] (+ Toolbox#in[F] lift), Handlers.relayToolsF, Stepper.transparentF, Mcp Server.serveIn[G] with serve = its Pure instance and Serving.callF; tests in okay-agent + okay-mcp; spec stage 8; docs; changelog
