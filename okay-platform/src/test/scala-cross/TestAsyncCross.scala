@@ -28,12 +28,24 @@ class TestAsyncCross extends munit.FunSuite {
   // Live (flaky-to-integration, 2026-09-23): it ORDERS two clocks (a
   // 10 ms timer before a 50 ms sleep), which a loaded box inverted once;
   // the clock-free rewrite is backlog async-cross-sleep-timer-flake
-  test("sleep then answer completes via runAsync without blocking the loop".tag(new munit.Tag("Live"))) {
-    @volatile var interleaved = false
-    summon[Timer].after(10)(() => interleaved = true): Unit
-    Async.runAsync(Async.sleep(50).map(_ => 42)).map: v =>
-      assertEquals(v, 42)
-      assert(interleaved, "the timer should have fired while we slept")
+  // load-flakes (2026-09-23): the first version asserted a 10 ms timer
+  // fired before a 50 ms sleep answered — two clocks racing, inverted
+  // once on Native at full load. The property splits into two halves
+  // that need no clock at all.
+  test("sleep then answer completes via runAsync") {
+    Async.runAsync(Async.sleep(50).map(_ => 42)).map(v => assertEquals(v, 42))
+  }
+
+  test("runAsync does not block: it returns before the program can finish") {
+    // the program waits on a callback only THIS test fires, so the
+    // future cannot be complete when runAsync returns unless runAsync
+    // ran it to the end — which, on a program that cannot end yet,
+    // would never return at all
+    var resume: (Either[Throwable, Int] => Unit) | Null = null
+    val f = Async.runAsync(Async.await[Int] { k => resume = k; () => () }.map(_ + 1))
+    assert(!f.isCompleted, "runAsync returned a finished future for an unfinished program")
+    resume.nn(Right(41))
+    f.map(v => assertEquals(v, 42))
   }
 
   test("race answers the one that finishes, without waiting for the other") {

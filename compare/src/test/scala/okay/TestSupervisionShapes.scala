@@ -34,39 +34,46 @@ class TestSupervisionShapes extends munit.FunSuite {
     val a = f
     (a, (System.nanoTime() - t0) / 1000000)
 
-  // Live (flaky-to-integration, 2026-09-23): the verdict is an ELAPSED
-  // time — 422 ms at load 48-72, green alone; asserting the cancellation
-  // itself instead is backlog supervision-shapes-timing-flake
-  test("par supervises its ONE sibling: cancelled, not waited for".tag(new munit.Tag("Live"))) {
-    val (out, took) = ms:
-      scala.util.Try(!.run(Async.run[(Int, Int), Pure](
-        Async.par(async { Thread.sleep(sleep); 1 }, async[Int](throw boom)))))
+  /**
+   * A sibling that NEVER finishes on its own and says when it is
+   * cancelled (load-flakes, 2026-09-23). The first version slept 800 ms
+   * and judged "cancelled, not waited for" by ELAPSED time, which a box
+   * at load 48-72 read as 422 ms; this one asserts the cancellation
+   * itself — `await`'s canceler is what `par`/`supervised` call — and a
+   * shape that WAITED would hang the test instead of passing slowly.
+   */
+  private def neverUnlessCancelled(cancelled: java.util.concurrent.atomic.AtomicInteger): Int ! Async =
+    Async.await[Int](_ => () => cancelled.incrementAndGet(): Unit)
+
+  test("par supervises its ONE sibling: cancelled, not waited for") {
+    val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
+    val out = scala.util.Try(!.run(Async.run[(Int, Int), Pure](
+      Async.par(neverUnlessCancelled(cancelled), async[Int](throw boom)))))
     assert(out.isFailure, s"the pair did not fail: $out")
-    assert(took < sleep / 2, s"took ${took}ms — the healthy sibling was waited for")
+    assertEquals(cancelled.get, 1, "the healthy sibling was not cancelled")
   }
 
   test("supervised supervises a SCOPE: nine siblings cancelled") {
-    val (out, took) = ms:
-      scala.util.Try(!.run(Async.run[Int, Pure](
-        Async.supervised: n ?=>
-          (0 to 9).foreach: i =>
-            val _ =
-              if i == 3 then n.fork[Int](async(throw boom))
-              else n.fork(async { Thread.sleep(sleep); i })
-          okay.pure[Async, Int](0))))
+    val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
+    val out = scala.util.Try(!.run(Async.run[Int, Pure](
+      Async.supervised: n ?=>
+        (0 to 9).foreach: i =>
+          val _ =
+            if i == 3 then n.fork[Int](async(throw boom))
+            else n.fork(neverUnlessCancelled(cancelled))
+        okay.pure[Async, Int](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
-    assert(took < sleep / 2, s"took ${took}ms — the scope waited for the siblings")
+    assertEquals(cancelled.get, 9, "the scope did not cancel all nine siblings")
   }
 
   test("Par.traverse DOES cancel — it is built on par") {
-    val (out, took) = ms:
-      scala.util.Try(!.run(Async.run[Seq[Int], Pure](
-        Par.traverse(0 to 9): i =>
-          if i == 3 then async[Int](throw boom)
-          else async { Thread.sleep(sleep); i })))
+    val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
+    val out = scala.util.Try(!.run(Async.run[Seq[Int], Pure](
+      Par.traverse(0 to 9): i =>
+        if i == 3 then async[Int](throw boom)
+        else neverUnlessCancelled(cancelled))))
     assert(out.isFailure, s"the traverse did not fail: $out")
-    assert(took < sleep / 2,
-      s"took ${took}ms — Par.traverse stopped cancelling its siblings")
+    assert(cancelled.get >= 1, "Par.traverse stopped cancelling its siblings")
   }
 
   test("THE DOCUMENTED LIMIT is Parallel.parTraverse, which cancels nobody") {

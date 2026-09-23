@@ -19,6 +19,9 @@ import java.nio.file.{Files, Path}
  */
 class TestStorefront extends munit.FunSuite:
 
+  /** compiling a whole site is load-bound; see the warm-up test below */
+  override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
+
   private def fixture: Path =
     Path.of(getClass.getResource("/storefront/index.md").toURI).getParent
 
@@ -89,11 +92,13 @@ class TestStorefront extends munit.FunSuite:
     }
   }
 
-  // Live (flaky-to-integration, 2026-09-23): a 30 s budget on COMPILING
-  // every page is a wall-clock verdict — it timed out at load ~88 and
-  // passed alone; the fix of the assertion is backlog
-  // storefront-timeout-under-load
-  test("the library answers no URL, and the site warms with every page compiling".tag(new munit.Tag("Live"))) {
+  // load-flakes (2026-09-23): nothing here asserts a time — the 30 s
+  // that timed out at load ~88 was munit's DEFAULT timeout, a budget
+  // nobody chose, on a test that compiles every page of the site. The
+  // property is "every page compiles"; the suite's own timeout (above)
+  // gives the compiler room on a loaded box, and a page that does not
+  // compile still fails by its error, not by the clock.
+  test("the library answers no URL, and the site warms with every page compiling") {
     withSite { site =>
       assertEquals(get(site, "/lib/cards")._1, 404)
       assertEquals(get(site, "/lib/domain")._1, 404)

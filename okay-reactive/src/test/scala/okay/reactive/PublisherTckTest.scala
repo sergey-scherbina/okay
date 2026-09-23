@@ -29,8 +29,8 @@ import okay.given
  */
 class PublisherTckTest extends munit.FunSuite {
 
-  private def verification(): FlowPublisherVerification[Long] =
-    new FlowPublisherVerification[Long](TestEnvironment(300L)) {
+  private def verification(timeout: Long = 300L): FlowPublisherVerification[Long] =
+    new FlowPublisherVerification[Long](TestEnvironment(timeout)) {
       given Scheduler = Schedulers.loom
 
       override def createFlowPublisher(n: Long): Flow.Publisher[Long] =
@@ -69,16 +69,19 @@ class PublisherTckTest extends munit.FunSuite {
   }
 
   /** TCK cases judged by the GARBAGE COLLECTOR within a wall-clock
-   * timeout (§3.13: a WeakReference cleared after System.gc()) — they
-   * failed at load ~80 and pass alone, so they run in integrationTest
-   * (flaky-to-integration, 2026-09-23; backlog
-   * reactive-tck-gc-under-load) */
+   * timeout (§3.13: a WeakReference cleared after System.gc()). The
+   * TCK's own wait is the environment's default timeout, 300 ms here
+   * for every other case; at load ~80 the publisher's asynchronous
+   * cleanup had not dropped the subscriber by then. These cases get
+   * ten times that (load-flakes, 2026-09-23) — the property is "the
+   * reference is dropped eventually", which the TCK itself states;
+   * 300 ms was a budget, never part of it. */
   private val byTheCollector = Set("required_spec313_cancelMustMakeThePublisherEventuallyDropAllReferencesToTheSubscriber")
 
   cases.foreach: m =>
     val name = s"tck: ${m.getName}"
-    test(if byTheCollector(m.getName) then name.tag(new munit.Tag("Live")) else munit.TestOptions(name)) {
-      val v = verification()
+    test(name) {
+      val v = if byTheCollector(m.getName) then verification(3000L) else verification()
       v.setUp()
       try m.invoke(v)
       catch
