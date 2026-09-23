@@ -34,3 +34,22 @@ class TestDocExamplesCardanoSpark extends munit.FunSuite:
     assert(outputs.isStreaming)
     assertEquals(withDatums.schema.fieldNames.toList, List("txHash", "index", "address", "lovelace", "constructor"))
   }
+
+  test("docs: rollbacks as rows (mode = events)") {
+    // ---- snippet: events
+    val events = spark.readStream.format("cardano")
+      .option("relay", "preprod-node.play.dev.cardano.org:3001")
+      .option("network", "preprod")
+      .option("table", "outputs")
+      .option("mode", "events")
+      .option("confirmations", "0")          // every block as it arrives
+      .option("journal", "/var/lib/cardano-journal")
+      .load()
+    // event = 'applied'     → row is set: an output of a block just applied
+    // event = 'rolled_back' → rollbackTo is set: delete rows above rollbackTo.blockNo
+    val applied    = events.where("event = 'applied'").select("seq", "row.txHash", "row.index", "row.lovelace")
+    val rollbacks  = events.where("event = 'rolled_back'").select("seq", "rollbackTo.blockNo")
+    // ---- snippet ends
+    assertEquals(applied.schema.fieldNames.toList, List("seq", "txHash", "index", "lovelace"))
+    assertEquals(rollbacks.schema.fieldNames.toList, List("seq", "blockNo"))
+  }

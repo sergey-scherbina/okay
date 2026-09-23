@@ -50,6 +50,35 @@ same rows (Spark's exactly-once contract with an idempotent sink). A
 rollback deeper than `confirmations` FAILS the query: rows that were
 never final are not produced.
 
+**Rollbacks as rows (`mode = events`).** A confirmed stream never
+shows a block that is not final — and waits `confirmations` blocks for
+it. When latency matters more, `events` mode shows every block as it
+arrives and says so when the chain takes some back:
+
+```scala
+val events = spark.readStream.format("cardano")
+  .option("relay", "preprod-node.play.dev.cardano.org:3001")
+  .option("network", "preprod")
+  .option("table", "outputs")
+  .option("mode", "events")
+  .option("confirmations", "0")          // every block as it arrives
+  .option("journal", "/var/lib/cardano-journal")
+  .load()
+// event = 'applied'     → row is set: an output of a block just applied
+// event = 'rolled_back' → rollbackTo is set: delete rows above rollbackTo.blockNo
+val applied    = events.where("event = 'applied'").select("seq", "row.txHash", "row.index", "row.lovelace")
+val rollbacks  = events.where("event = 'rolled_back'").select("seq", "rollbackTo.blockNo")
+```
+
+Every event is appended to a local journal (okay-persist, fsync'd)
+BEFORE Spark sees it, and an offset is the journal's sequence number —
+because a batch that held a block the chain later orphaned must still
+read the same records when it is re-run, and a relay can no longer
+serve that block. A restarted query resumes after the newest block
+still standing in the journal (the rollbacks replayed). The consumer's
+half is one rule: on `rolled_back`, delete every row whose `blockNo` is
+above `rollbackTo.blockNo` (a Delta `MERGE`, or a `foreachBatch`).
+
 **A bounded read.** `spark.read` (batch) takes `start` and `blocks`:
 the first `blocks` confirmed blocks after the checkpoint.
 
@@ -64,6 +93,8 @@ the first `blocks` confirmed blocks after the checkpoint.
 | `start` | `tip`, or `slot:hash:blockNo` | `tip` |
 | `blocks` | batch only: how many confirmed blocks | required for batch |
 | `blocksPerPartition` | blocks per input partition | `10` |
+| `mode` | `confirmed` (a rollback past `confirmations` fails the query), `events` (rollbacks are rows) | `confirmed` |
+| `journal` | `events` only: a local directory for the event journal | the checkpoint location, when local |
 
 ## API reference
 
@@ -81,8 +112,9 @@ the first `blocks` confirmed blocks after the checkpoint.
   long-stopped stream resuming far behind the tip catches up through
   the driver. Fetching bodies on executors for backfill is the next
   step (backlog `scalus-executor-fetch`).
-- `events` mode — rollbacks as rows instead of a failure — is backlog
-  `scalus-events-mode`.
+- `events` mode needs a LOCAL journal directory (the driver writes it);
+  a checkpoint location on HDFS/S3 is refused with that reason — pass
+  `journal`.
 - The Spark test JVMs of this module share okay-spark's settings
   (`sparkTestSettings` in build.sbt: the Scala 2.13 library first for
   Spark's reflection, a forked JDK 25, the `--add-opens` Spark needs).

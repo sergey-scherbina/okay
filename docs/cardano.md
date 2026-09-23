@@ -184,7 +184,10 @@ Nothing new is decided on the way: the rows are `CardanoTables`', the
 shape `Columns`', and a `Json` column is a Spark VARIANT. An offset is a
 confirmed block, so a re-run micro-batch yields the same rows; a
 rollback deeper than `confirmations` fails the query instead of
-producing rows that were never final. Details and options:
+producing rows that were never final. When latency matters more than
+finality, `mode = events` shows every block as it arrives and a
+rollback as a row (`event = 'rolled_back'`, `rollbackTo.blockNo`), backed
+by a local journal so a re-run batch still reads what it read. Details and options:
 [okay-scalus-spark](modules/okay-scalus-spark.md).
 
 ## How this is verified

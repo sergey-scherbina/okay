@@ -1259,7 +1259,7 @@ lazy val okayScalus = (project in file("okay-scalus"))
  * Columns', their Spark types SparkSchema's.
  */
 lazy val okayScalusSpark = (project in file("okay-scalus-spark"))
-  .dependsOn(okayScalus % "compile->compile;test->test", okaySpark)
+  .dependsOn(okayScalus % "compile->compile;test->test", okaySpark, okayPersist.jvm)
   .settings(
     name := "okay-scalus-spark",
     libraryDependencies ++= Seq(

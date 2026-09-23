@@ -57,6 +57,15 @@ object CardanoSource:
     lazy val schema: StructType = SparkSchema.structOf[A]
     def rows(t: Tables): Seq[Row] = SparkSchema.rows(pick(t))
 
+    // `events` mode: the same row, wrapped in what happened to it
+    private given Schema[EventRow[A]] = Schema.derived
+    lazy val eventsSchema: StructType = SparkSchema.structOf[EventRow[A]]
+    def eventRows(seq: Long, j: Journaled): Seq[Row] = j match
+      case Journaled.Applied(c) =>
+        SparkSchema.rows(pick(CardanoTables.of(c.block)).map(r => EventRow(seq, "applied", None, Some(r))))
+      case Journaled.RolledBack(no, hash) =>
+        SparkSchema.rows(Vector(EventRow[A](seq, "rolled_back", Some(RollbackPoint(no, hash)), None)))
+
   val kinds: Vector[Kind[?]] = Vector(
     Kind[BlockRow]("blocks", _.blocks),
     Kind[TransactionRow]("transactions", _.transactions),
@@ -87,6 +96,11 @@ object CardanoSource:
       case Array(host, port) => Wire.tcp(host, port.toInt)
       case _ => throw IllegalArgumentException(s"relay '$relay' is neither host:port nor registered:<name>")
 
+  def eventsMode(o: CaseInsensitiveStringMap): Boolean = Option(o.get("mode")).getOrElse("confirmed") match
+    case "confirmed" => false
+    case "events" => true
+    case other => throw IllegalArgumentException(s"unknown mode '$other'; one of: confirmed, events")
+
   def checkpoint(s: String): Option[Checkpoint] = s match
     case "tip" => None
     case other => other.split(':') match
@@ -107,6 +121,8 @@ final case class Carried(era: Int, header: Array[Byte], body: Array[Byte], time:
 
 object Carried:
   def of(b: CardanoBlock): Carried = Carried(b.header.era, b.header.bytes, b.bytes, b.time)
+  /** what the events journal stores (CardanoEvents.scala) */
+  given Schema[Carried] = Schema.derived
 
 /** where a stream stands: the last confirmed block read */
 final case class CardanoOffset(slot: Long, hash: String, blockNo: Long) extends Offset:
@@ -122,16 +138,22 @@ object CardanoOffset:
 
 final class CardanoTable(options: CaseInsensitiveStringMap) extends Table with SupportsRead:
   private val kind = CardanoSource.table(options)
+  private val events = CardanoSource.eventsMode(options)
   def name(): String = s"cardano.${kind.name}"
-  override def schema(): StructType = kind.schema
+  override def schema(): StructType = if events then kind.eventsSchema else kind.schema
   def capabilities(): java.util.Set[TableCapability] =
     Set(TableCapability.BATCH_READ, TableCapability.MICRO_BATCH_READ).asJava
   def newScanBuilder(o: CaseInsensitiveStringMap): ScanBuilder = () => CardanoScan(options, kind)
 
 final class CardanoScan(options: CaseInsensitiveStringMap, kind: CardanoSource.Kind[?]) extends Scan:
-  def readSchema(): StructType = kind.schema
-  override def toBatch: Batch = CardanoBatch(options, kind)
-  override def toMicroBatchStream(checkpointLocation: String): MicroBatchStream = CardanoStream(options, kind)
+  private val events = CardanoSource.eventsMode(options)
+  def readSchema(): StructType = if events then kind.eventsSchema else kind.schema
+  override def toBatch: Batch =
+    if events then throw UnsupportedOperationException("mode=events is a stream; a batch read is always confirmed")
+    else CardanoBatch(options, kind)
+  override def toMicroBatchStream(checkpointLocation: String): MicroBatchStream =
+    if events then EventsStream(options, kind, Journal.dir(options, checkpointLocation))
+    else CardanoStream(options, kind)
 
 /** the rows of carried blocks, decoded where the partition runs */
 final case class BlockPartition(blocks: Vector[Carried]) extends InputPartition

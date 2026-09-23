@@ -402,6 +402,9 @@ spark.readStream.format("cardano")
   - Tested against a FAKE RELAY — the recorded headers and blocks
     replayed by a scripted chain that answers the client's requests and
     can roll back (a real preprod rollback cannot be summoned).
+  - RESULT: a stream over "five blocks, back to 2, then 3 and 4 again"
+    yields `+0 +1 +2 +3 +4 <2 +3 +4` with seq 0..7; a range planned twice
+    reads the same records; a journal replayed resumes at block 2.
 - Batch: `spark.read.format("cardano").option("from", ...).option("to", ...)`
   — the same partitions, a bounded range.
 
@@ -451,7 +454,7 @@ until Spark stage 2 has run on mainnet.
   - [x] the tables (typed rows, §5 as superseded) and the guide
         docs/cardano.md, its code run by `TestCardanoGuide` and the
         Spark snippet analysed by `TestDocExamplesCardanoSpark`
-- **Stage 3 — events mode** (journal-backed offsets, rollback rows)
+- **Stage 3 — events mode** (journal-backed offsets, rollback rows) — [x] LANDED 2026-09-23 (scalus-events-mode): tested against a fake relay that rolls back
 - **Stage 4 — Flink** (§7)
 
 ## Decisions
