@@ -1,6 +1,0 @@
-feature/edn-codec 2026-09-23T09:48:14Z
-agent: claude-code
-heartbeat: 2026-09-23T09:48:14Z
-status: in-progress
-done-so-far: design — Edn tree, iterative reader/printer, Schema via the Step encoder and a native+Cont decoder mirroring Json
-next: okay-codec Edn.scala; tests; Clojure cross-check in okay-clojure
