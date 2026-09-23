@@ -128,7 +128,22 @@ TypeScript to Scala and gets the original types. That Scala is a golden
 file which compiles, and its own TypeScript equals the first TypeScript
 byte for byte.
 
-A check that two hand-written copies still agree is the next stage
+### Two copies, kept honest
+
+Some teams keep a hand-written TypeScript model beside the Scala one, or
+edit a generated file after checking it in. `TsCheck` asks `tsc` whether
+the two are still the same types. For every type, a line compiles only
+when each copy is assignable to the other, so field order and formatting
+don't matter, but a field or its optionality does:
+
+```scala
+assertEquals(TsCheck.same(generated, handwritten), Right(()))
+```
+
+A renamed field, a field made optional, or a missing type comes back as
+`Left`, naming the type (`"Line: …"`), in time to fail a build rather
+than reach a user. `TsCheck.sameAs(file, schemas*)` compares a file
+against the declarations the Scala types generate
 ([specs/typescript-types.md](../specs/typescript-types.md)).
 
 ## A module

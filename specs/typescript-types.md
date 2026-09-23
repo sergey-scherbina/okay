@@ -144,3 +144,17 @@ Each stage is a lane; Results below record what each found.
   - Mutant: reading `Long` back as `Double` fails the round trip.
   - A refusal message was sharpened on the way: `Record<…>` was called
     "generic" and is now "a map is not read; a Schema has no map case".
+
+- T4 (ts-types-check, 2026-09-23). `okay.codec.TsCheck` (JVM) writes the
+  two copies and a `check.ts` holding one line per type,
+  `Same<G.X, H.X> = true`, and runs `tsc --strict`. Each error names its
+  line, and so its type.
+  - The leaf aliases (`Int`, `Long`…) are left out of the comparison. The
+    first run compared `Int`, and a hand-written copy that says `number`
+    has no `Int` to compare. `Same` compares THROUGH the aliases, which
+    is the point.
+  - TestTsCheck has 4 live tests: another order and format are the same;
+    a renamed field, a field made optional, and a missing type are each
+    named.
+  - Mutant: a one-way `Same` misses the optional field, and the test
+    fails.
