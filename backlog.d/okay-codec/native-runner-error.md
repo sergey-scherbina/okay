@@ -125,3 +125,8 @@
       after a rebase over docs-adapters-merge — a lane that added a new
       Native module (okayChainNative, green) and touched no okay-cache
       source. Recorded per the ledger; nothing changes the settled cause.
+      2026-09-23, okayCrdtNative, GREEN on the rerun alone: lost its test
+      process in the full-matrix gate of ui-gtk-integration (6495 tests,
+      0 failed) — a lane that touched only okay-ui-gtk's test settings and
+      the integrationTest alias, no okay-crdt source. Recorded per the
+      ledger; nothing changes the settled cause.
