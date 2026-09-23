@@ -184,6 +184,7 @@ directory okay-frege/sbt-plugin, which this repository's own
 project/plugins.sbt depends on — the okay-deploy-sbt precedent). A
 project that writes Frege against okay-frege:
 
+<!-- not-a-test: sbt build configuration -->
 ```scala
 // project/plugins.sbt
 addSbtPlugin("dev.okay" % "okay-frege-sbt" % okayVersion)
