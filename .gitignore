@@ -23,3 +23,6 @@ hs_err_pid*.log
 *.jfr
 compare/okay.*-AverageTime-*/
 compare/jmh-result.text
+
+# a golden facade test leaves its regeneration beside the golden (foreign-module-trait)
+*.scala.new

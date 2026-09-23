@@ -1,7 +1,8 @@
 # okay-r shim, version 4 (specs/r.md; v3 = foreign-typed-calls: a
 # named list that is not a data.frame is a RECORD on the wire; v4 =
 # foreign-callbacks: `start`/`resume` and `okay_call`; v5 =
-# foreign-object-handles: `hold`/`release`, refs as values). One JSON object per line each
+# foreign-object-handles: `hold`/`release`, refs as values; v6 =
+# foreign-module-trait: `okay_describe`). One JSON object per line each
 # way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -10,7 +11,7 @@
 # has no JSON reader, and our own parser at the trust boundary is a
 # worse thing to own than one package every R installation has.
 
-SHIM <- 5
+SHIM <- 6
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
@@ -230,6 +231,34 @@ okay_held <- function(i) {
   if (!exists(key, envir = .okay_objects, inherits = FALSE))
     stop(sprintf("ref %s is not held by this process (released, or held by a process that is gone)", key))
   get(key, envir = .okay_objects, inherits = FALSE)
+}
+
+# ---- describing a module or a package (v6) ------------------------------
+# what okay's RFacade writes a Scala object from: each function's name and
+# its formals. R has no annotations, so only the SHAPE is described.
+
+okay_describe <- function(target) {
+  env <- if (exists(target, envir = .okay_modules, inherits = FALSE)) get(target, envir = .okay_modules)
+    else if (requireNamespace(target, quietly = TRUE)) asNamespace(target)
+    else stop(sprintf("no module or package named '%s'", target))
+  fns <- if (isNamespace(env)) getNamespaceExports(target) else ls(env)
+  fns <- sort(fns[!startsWith(fns, ".")], method = "radix")
+  out <- list()
+  for (n in fns) {
+    f <- get0(n, envir = env, inherits = FALSE)
+    if (!is.function(f)) next
+    fs <- formals(f)
+    # as.character of the formals: "" where there is no default, which
+    # never evaluates the missing-argument symbol itself
+    has <- nzchar(as.character(fs))
+    params <- list()
+    for (i in seq_along(fs)) {
+      p <- names(fs)[i]
+      if (p != "...") params[[length(params) + 1L]] <- list(name = p, default = has[i])
+    }
+    out[[length(out) + 1L]] <- list(name = n, params = params)
+  }
+  out
 }
 
 okay_push <- function(cbs)

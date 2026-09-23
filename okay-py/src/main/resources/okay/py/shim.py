@@ -1,14 +1,15 @@
 # okay-py shim, version 3 (specs/py.md; v2 = foreign-typed-calls: a dict
 # is a record on the wire, a frame only where a frame is asked; v3 =
 # foreign-callbacks: `start`/`resume` and the injected `okay` module; v4 =
-# foreign-object-handles: `hold`/`method`/`attr`/`release`, refs as values). Stdlib only, deliberately:
+# foreign-object-handles: `hold`/`method`/`attr`/`release`, refs as values;
+# v5 = foreign-module-trait: `okay.describe`). Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
-import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types
+import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types, inspect
 
-SHIM = 4
+SHIM = 5
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -135,7 +136,33 @@ def _call(name, *args):
             return dec(req.get("ok"))
         serve(req)                       # a nested request, answered in turn
 
+def _ann(a):
+    if a is inspect.Parameter.empty:
+        return ""
+    if isinstance(a, str):
+        return a
+    if isinstance(a, type):
+        return a.__name__
+    return str(a).replace("typing.", "")
+
+def _describe(module):
+    # what okay's PyFacade writes a Scala object from (foreign-module-trait):
+    # the module's own public functions, in name order, as they are declared
+    mod = importlib.import_module(module)
+    out = []
+    for name, fn in inspect.getmembers(mod, inspect.isfunction):
+        if name.startswith("_") or fn.__module__ != mod.__name__:
+            continue
+        sig = inspect.signature(fn)
+        params = [{"name": p.name, "ann": _ann(p.annotation), "default": p.default is not p.empty}
+                  for p in sig.parameters.values()
+                  if p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)]
+        doc = (inspect.getdoc(fn) or "").split("\n")[0]
+        out.append({"name": name, "params": params, "returns": _ann(sig.return_annotation), "doc": doc})
+    return out
+
 okay_module = types.ModuleType("okay")
+okay_module.describe = _describe
 okay_module.call = _call
 okay_module.OkayError = OkayError
 sys.modules["okay"] = okay_module

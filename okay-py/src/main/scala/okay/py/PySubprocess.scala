@@ -126,7 +126,7 @@ final class PySubprocess private (proc: Process,
 
 object PySubprocess:
 
-  val ShimVersion = 4
+  val ShimVersion = 5
 
   /**
    * Start a worker: the configured interpreter (resolved against
