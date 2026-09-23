@@ -1,4 +1,4 @@
-- [ ] merge-chunk-size-curve-inverted — CAUSE ISOLATED, A QUARTER OF
+- [~] merge-chunk-size-curve-inverted — CAUSE ISOLATED, A QUARTER OF
       IT FIXED (2026-09-10). okay's chunked merge gets slower as the
       chunk grows where every competitor's gets faster. Measured, one
       stage at a time, quiet box:
