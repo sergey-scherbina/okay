@@ -293,4 +293,39 @@ Recorded so that nobody mistakes "possible" for "planned".
 
 ## Results
 
-(none yet — the plan as written on 2026-09-16)
+**Road 2 built** (specs/direct-staged.md, 2026-09-22): `Direct.staged`
+2.24x on the State+Writer block, parity with the hand-written `Func`
+program; then specs/direct-stagers.md (2026-09-23): `Stager.All` over
+Reader+State+Writer+Throws, the Reader+Throws block 2.56x.
+
+**The staging survey, 2026-09-22** (the operator: "what else can be
+fused or staged beyond handlers and direct blocks?"), the inventory
+after handler-fusion, direct-staged and generators — recorded here
+because a survey that lives in a chat is not a record:
+
+| already staged | mechanism | number |
+|---|---|---|
+| tagless programs | `staged[M]` inline over `Control` (staged-tagless) | 1.9x at `Func` |
+| effects | `runIn[Func]` REFUTED; the inline program shape wins (staged-effects) | 263 vs 429 ns |
+| handlers | `Handler.flat`, the arm chosen at compile time (handler-fusion) | 1.08–1.24x; arc closed |
+| direct blocks | `Direct.staged` + loops v2 + stagers (direct-staged, direct-stagers) | 2.24x / 2.56x |
+| codecs | three CBOR decoders, JSON (codecs, schema-fold) | closed |
+| optics | `Fuse` (optics) | byte-for-byte with the hand-written update |
+| stream pipelines | `Pipeline.optimize` + chunked compile (staged-pipelines) | at/under Iterator — no production caller |
+
+What remained, ranked by (a production caller) × (a measurable
+interpretive layer) × (a plausible lever), and what became of each:
+
+1. **Stagers for the rows people write** — BUILT (direct-stagers).
+2. **The derived test as a constant `instanceof`** — BUILT
+   (typeablek-instanceof, 2026-09-23): 0.91–0.96 on every walker with
+   a test under `split`, 1.01 on the flat lane that filed it.
+3. **`Gen` chain fusion** — backlog `gen-chain-fusion`, triggered by
+   `generators-jmh`'s number.
+4. **A router trie** — backlog `router-trie`, triggered by a router
+   with dozens of routes (in-repo routers hold 1–3).
+
+Where staging is pointless, and why: `Proc`/workflow (the durable
+log's I/O is the cost, not dispatch); `Sql` (a string and parameters,
+the driver does the work); road 1 here (`!.runAll` over a vector of
+handlers, capped 1.1–1.3x by handler-fusion's own data).
