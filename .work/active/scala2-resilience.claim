@@ -1,6 +1,0 @@
-feature/scala2-resilience 2026-09-23T10:03:58Z
-agent: claude-code
-heartbeat: 2026-09-23T10:03:58Z
-status: in-progress
-done-so-far: picked
-next: survey okay-resilience API, facade, tests
