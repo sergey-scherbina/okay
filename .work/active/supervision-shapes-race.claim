@@ -1,3 +1,0 @@
-slug: supervision-shapes-race
-who: claude-opus-5.5 (interop session)
-what: TestSupervisionShapes: the failing branch threw before the healthy sibling registered its canceler (0 cancellations under load); a latch orders them
