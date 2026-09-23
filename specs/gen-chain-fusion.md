@@ -86,17 +86,21 @@ object Gen:
 ## Design
 
 - **A transducer with its state type as a type member.** A stateless
-  stage (`Map`, `Filter`) has `St[S] = S`; `Take`/`Drop` carry
-  `(Int, S)`, `TakeWhile` `(Boolean, S)`; `Compose` nests
-  `a.St[b.St[S]]`. So the fused reader is a `FoldUntil` at a KNOWN
+  stage (`Map`, `Filter`) has `St[S] = S`; `Take`/`Drop`/`TakeWhile`
+  carry `Counted[S]` — a count beside the reader's state as a CLASS,
+  not a `(Int, S)` tuple, which boxed the count (Results); `Compose`
+  nests `a.St[b.St[S]]`. So the fused reader is a `FoldUntil` at a KNOWN
   state type and `Gen.read` needs no change — `done` before `k`, the
   law fold-until gave it, now decides for the whole chain.
 - **`Chain[W]` with `type A`** — the source's element type is an
   existential the value class cannot name; a type member names it
   once, and every reader is `Gen.read(chain.source)(chain.xf.fold(K))`.
-- **`program` materialises lazily** (`Free.delay` around the walks),
-  so a chain's construction still runs nothing (Python's law), and a
-  barrier (`flatMap`) takes the materialised program as its source.
+- **`program` is a method of `Chain`**: a plain chain answers its
+  source with no node (the walks say `say(w)`, never `emit(w).program`
+  — a wrapper per element on a hot path, Results); a staged chain
+  materialises its walks under a `Free.delay`, so construction still
+  runs nothing (Python's law), and a barrier (`flatMap`) takes that
+  program as its source.
 
 ## Decisions
 
